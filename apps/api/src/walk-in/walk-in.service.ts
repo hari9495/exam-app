@@ -106,25 +106,27 @@ export class WalkInService {
       // anyone who knows a candidate's email could tamper with their stored details.
       const existingCandidate = await tx.candidate.findFirst({ where: { organizationId: org.id, email: dto.email } });
       const isNewCandidate = !existingCandidate;
-      let candidate =
-        existingCandidate ??
-        (await tx.candidate.create({
-          data: { organizationId: org.id, email: dto.email, name: dto.name, phone: dto.phone },
-        }));
 
       // ...with one narrow exception: a stored ONE-WORD name is almost always a placeholder from
       // a hand-created record ("Siva"), and the candidate has just typed their full name into the
       // registration form. Leaving it alone means their own invite email greets them by a
       // fragment. See expandedName for why this cannot be used to replace a name outright.
-      if (existingCandidate) {
-        const expanded = expandedName(existingCandidate.name, dto.name);
-        if (expanded) {
-          await tx.candidate.update({ where: { id: existingCandidate.id }, data: { name: expanded } });
-          // Built locally rather than from the update's return value: the only field that can
-          // have changed is the one just written, and the greeting below reads candidate.name.
-          candidate = { ...existingCandidate, name: expanded };
-        }
-      }
+      const expanded = existingCandidate ? expandedName(existingCandidate.name, dto.name) : null;
+
+      const candidate = await tx.candidate.upsert({
+        where: { organizationId_email: { organizationId: org.id, email: dto.email } },
+        create: { organizationId: org.id, email: dto.email, name: dto.name, phone: dto.phone },
+        // Mirrors PublicApplicationsService.apply / PipelineService.addEntry: upsert's `update`
+        // branch is unfiltered by the soft-delete `$extends` (unlike the findFirst above), so it
+        // can match a soft-deleted row via the org+email unique. Without this, a RETURNING
+        // soft-deleted candidate is invisible to findFirst -> the old `create` branch fired ->
+        // hit the (organizationId, email) unique constraint on the hidden row -> unhandled 500
+        // on this public endpoint. Clearing deletedAt/deletedByUserId resurrects it instead, a
+        // no-op for a live candidate (already null). Name is NOT blanket-overwritten here (unlike
+        // addEntry, which is recruiter-authenticated) -- only the narrow expandedName exception
+        // above applies, same as public apply.
+        update: { ...(expanded ? { name: expanded } : {}), deletedAt: null, deletedByUserId: null },
+      });
 
       // Drive-sourced ATS entry: if this exam's walk-in group is linked to a job, the registrant
       // enters that job's pipeline. Any registration to a linked group counts (not gated on a live

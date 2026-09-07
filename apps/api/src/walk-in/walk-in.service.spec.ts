@@ -110,7 +110,7 @@ describe('WalkInService', () => {
         },
         candidate: {
           findFirst: jest.fn().mockResolvedValue(null),
-          create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
         },
         invitation: {
           findFirst: jest.fn().mockResolvedValue(null),
@@ -121,8 +121,11 @@ describe('WalkInService', () => {
 
       const result = await service.register('demo-org', dto);
 
-      expect(tx.candidate.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ organizationId: 'org-1', email: 'alice@test.com', name: 'Alice' }) }),
+      expect(tx.candidate.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ organizationId: 'org-1', email: 'alice@test.com', name: 'Alice' }),
+          update: { deletedAt: null, deletedByUserId: null },
+        }),
       );
       expect(tx.invitation.create).toHaveBeenCalledWith(
         // emailStatus 'none': the walk-in courtesy email is untracked, so the row must
@@ -166,6 +169,44 @@ describe('WalkInService', () => {
       expect(html).toContain('please do not reply');
     });
 
+    // Finding 1 (whole-branch review): findFirst is soft-delete-filtered, so a RETURNING
+    // soft-deleted candidate is invisible to it -- the old findFirst-then-create shape would
+    // then run `create`, hit the (organizationId, email) unique constraint the hidden row still
+    // holds, and 500 on this public endpoint. candidate.upsert's `update` branch is unfiltered
+    // and matches the hidden row via that same unique key, so it resurrects instead of erroring.
+    it('resurrects a returning soft-deleted candidate via upsert instead of erroring, mirroring public apply', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org' });
+      const tx = {
+        exam: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'exam-1', status: 'published', walkInEnabled: true, schedulingEnabled: false, availabilityWindowEnd: null,
+          }),
+        },
+        candidate: {
+          // Soft-deleted -- invisible to the soft-delete-filtered findFirst, exactly as it would
+          // be against the real forTenant client.
+          findFirst: jest.fn().mockResolvedValue(null),
+          // upsert's update branch is unfiltered, so against the real DB it matches the hidden
+          // row and clears deletedAt/deletedByUserId. The mock return value represents that.
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice', deletedAt: null, deletedByUserId: null }),
+        },
+        invitation: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'raw-token' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.register('demo-org', dto);
+
+      expect(tx.candidate.upsert).toHaveBeenCalledWith({
+        where: { organizationId_email: { organizationId: 'org-1', email: 'alice@test.com' } },
+        create: { organizationId: 'org-1', email: 'alice@test.com', name: 'Alice', phone: undefined },
+        update: { deletedAt: null, deletedByUserId: null },
+      });
+      expect(result).toEqual({ token: 'raw-token' });
+    });
+
     it('signs a private-container logo URL before embedding it in the walk-in email, with a long TTL that outlasts the send-to-open delay', async () => {
       prisma.organization.findUnique.mockResolvedValue({
         id: 'org-1', slug: 'demo-org',
@@ -181,7 +222,7 @@ describe('WalkInService', () => {
         },
         candidate: {
           findFirst: jest.fn().mockResolvedValue(null),
-          create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
         },
         invitation: {
           findFirst: jest.fn().mockResolvedValue(null),
@@ -216,6 +257,7 @@ describe('WalkInService', () => {
           // walk-in registration (see expandedName), which is what the assertion below pins.
           findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
           update: jest.fn(),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
         },
         invitation: {
           findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'existing-token' }),
@@ -228,6 +270,11 @@ describe('WalkInService', () => {
 
       expect(tx.invitation.create).not.toHaveBeenCalled();
       expect(tx.candidate.update).not.toHaveBeenCalled();
+      // No name in the upsert's update payload -- a stored full name is never rewritten (see
+      // expandedName); only the resurrect fields are always present.
+      expect(tx.candidate.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ update: { deletedAt: null, deletedByUserId: null } }),
+      );
       expect(result).toEqual({ token: 'existing-token' });
       // Not a new candidate -- only invitation.created should fire, no candidate.applied.
       expect(integrationEvents.emit).toHaveBeenCalledTimes(1);
@@ -244,7 +291,7 @@ describe('WalkInService', () => {
         },
         candidate: {
           findFirst: jest.fn().mockResolvedValue(null),
-          create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
         },
         walkInGroup: { findUnique: jest.fn().mockResolvedValue({ jobId: null }) },
         driveSession: {
@@ -283,7 +330,7 @@ describe('WalkInService', () => {
         },
         candidate: {
           findFirst: jest.fn().mockResolvedValue(null),
-          create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
         },
         walkInGroup: { findUnique: jest.fn().mockResolvedValue({ jobId: null }) },
         driveSession: {
@@ -313,7 +360,7 @@ describe('WalkInService', () => {
         },
         candidate: {
           findFirst: jest.fn().mockResolvedValue(null),
-          create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
         },
         invitation: {
           findFirst: jest.fn().mockResolvedValue(null),
@@ -342,6 +389,7 @@ describe('WalkInService', () => {
         candidate: {
           findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
           update: jest.fn(),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
         },
         walkInGroup: { findUnique: jest.fn().mockResolvedValue({ jobId: null }) },
         driveSession: {
@@ -376,6 +424,7 @@ describe('WalkInService', () => {
         candidate: {
           findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
           update: jest.fn(),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
         },
         walkInGroup: { findUnique: jest.fn().mockResolvedValue({ jobId: null }) },
         driveSession: {
@@ -409,6 +458,7 @@ describe('WalkInService', () => {
         candidate: {
           findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
           update: jest.fn(),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Jane Anderson' }),
         },
         invitation: {
           findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'existing-token' }),
@@ -419,10 +469,12 @@ describe('WalkInService', () => {
 
       await service.register('demo-org', { ...dto, name: 'Alice Jane Anderson' });
 
-      expect(tx.candidate.update).toHaveBeenCalledWith({
-        where: { id: 'cand-1' },
-        data: { name: 'Alice Jane Anderson' },
-      });
+      // The expanded name now travels through upsert's `update` branch (alongside the resurrect
+      // fields), not a standalone candidate.update call.
+      expect(tx.candidate.update).not.toHaveBeenCalled();
+      expect(tx.candidate.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ update: { name: 'Alice Jane Anderson', deletedAt: null, deletedByUserId: null } }),
+      );
     });
 
     it('refuses to replace a stored one-word name with an unrelated one', async () => {
@@ -437,6 +489,7 @@ describe('WalkInService', () => {
         candidate: {
           findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
           update: jest.fn(),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
         },
         invitation: {
           findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', examId: 'exam-1', candidateId: 'cand-1', status: 'invited', token: 'existing-token' }),
@@ -448,6 +501,10 @@ describe('WalkInService', () => {
       await service.register('demo-org', { ...dto, name: 'Mallory Smith' });
 
       expect(tx.candidate.update).not.toHaveBeenCalled();
+      // No name in the upsert's update payload -- expansion refused, only resurrect fields sent.
+      expect(tx.candidate.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ update: { deletedAt: null, deletedByUserId: null } }),
+      );
     });
 
     it('issues a new token for an existing candidate whose prior invitation has expired', async () => {
@@ -466,6 +523,7 @@ describe('WalkInService', () => {
           // walk-in registration (see expandedName), which is what the assertion below pins.
           findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
           update: jest.fn(),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
         },
         invitation: {
           findFirst: jest.fn().mockResolvedValue(null),
@@ -494,7 +552,7 @@ describe('WalkInService', () => {
           },
           candidate: {
             findFirst: jest.fn().mockResolvedValue(null),
-            create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+            upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
           },
           walkInGroup: { findUnique: jest.fn().mockResolvedValue({ jobId: 'job-1' }) },
           driveSession: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -522,6 +580,7 @@ describe('WalkInService', () => {
           candidate: {
             findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
             update: jest.fn(),
+            upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice Anderson' }),
           },
           walkInGroup: { findUnique: jest.fn().mockResolvedValue({ jobId: 'job-1' }) },
           driveSession: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -547,7 +606,7 @@ describe('WalkInService', () => {
           },
           candidate: {
             findFirst: jest.fn().mockResolvedValue(null),
-            create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+            upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
           },
           walkInGroup: { findUnique: jest.fn().mockResolvedValue({ jobId: null }) },
           driveSession: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -573,7 +632,7 @@ describe('WalkInService', () => {
           },
           candidate: {
             findFirst: jest.fn().mockResolvedValue(null),
-            create: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
+            upsert: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'alice@test.com', name: 'Alice' }),
           },
           invitation: {
             findFirst: jest.fn().mockResolvedValue(null),

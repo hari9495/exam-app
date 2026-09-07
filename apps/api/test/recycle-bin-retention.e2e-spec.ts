@@ -35,6 +35,10 @@ describe('RecycleBinRetentionService (real DB)', () => {
   let fkBlockedPipelineId: string;
   let blockingJobId: string;
 
+  // Finding 2 (whole-branch review): a job hard-deleted by the scheduled purge must also sweep
+  // its CustomFieldValue rows (EAV table, no FK to Job) -- otherwise they orphan forever.
+  let oldDeletedJobWithCfvId: string;
+
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule] }).compile();
     prisma = moduleRef.get(PrismaService);
@@ -85,6 +89,20 @@ describe('RecycleBinRetentionService (real DB)', () => {
     );
     blockingJobId = blockingJob.id;
 
+    const oldDeletedJobWithCfv = await tenantPrisma.forTenant(context(), (tx) =>
+      tx.job.create({ data: { organizationId: orgId, title: 'Old Deleted Job With Custom Fields', createdById: randomUUID() } }),
+    );
+    oldDeletedJobWithCfvId = oldDeletedJobWithCfv.id;
+    // No CustomFieldDefinition FK on CustomFieldValue.definitionId -- a random id is enough to
+    // prove the entityType+entityId sweep. Routed through forTenant, not the raw `prisma` client:
+    // custom_field_values carries the same RLS as every other tenant table (BLOCK PREDICATE AFTER
+    // INSERT), which rejects a write made without the session context forTenant sets up.
+    await tenantPrisma.forTenant(context(), (tx) =>
+      tx.customFieldValue.create({
+        data: { organizationId: orgId, definitionId: randomUUID(), entityType: 'job', entityId: oldDeletedJobWithCfvId, valueText: 'Engineering' },
+      }),
+    );
+
     // Soft-delete with explicit deletedAt timestamps (directly, via the raw client) -- prune()
     // reads deletedAt, so the seeded value IS the thing under test.
     await tenantPrisma.forTenantIncludingDeleted(context(), (tx) =>
@@ -99,9 +117,15 @@ describe('RecycleBinRetentionService (real DB)', () => {
     await tenantPrisma.forTenantIncludingDeleted(context(), (tx) =>
       tx.pipeline.update({ where: { id: fkBlockedPipelineId }, data: { deletedAt: OLD } }),
     );
+    await tenantPrisma.forTenantIncludingDeleted(context(), (tx) =>
+      tx.job.update({ where: { id: oldDeletedJobWithCfvId }, data: { deletedAt: OLD } }),
+    );
   });
 
   afterAll(async () => {
+    // Mops up anything a failed assertion left behind -- the test itself expects prune() to have
+    // already removed these.
+    await tenantPrisma.forTenant(superAdminCtx, (tx) => tx.customFieldValue.deleteMany({ where: { organizationId: orgId } }));
     await tenantPrisma.forTenant(superAdminCtx, (tx) => tx.job.deleteMany({ where: { organizationId: orgId } }));
     await tenantPrisma.forTenant(superAdminCtx, (tx) => tx.pipeline.deleteMany({ where: { organizationId: orgId } }));
     await tenantPrisma.forTenant(superAdminCtx, (tx) => tx.candidate.deleteMany({ where: { organizationId: orgId } }));
@@ -113,9 +137,10 @@ describe('RecycleBinRetentionService (real DB)', () => {
   it('hard-deletes soft-deleted rows past the 30-day cutoff, retains newer soft-deleted + live rows, and skips an FK-blocked row without aborting the rest', async () => {
     const purgedCount = await service.prune(now);
 
-    // The one due-and-purgeable candidate + the one due-and-purgeable pipeline. The FK-blocked
-    // pipeline is due (deletedAt < cutoff) but must be skipped, not counted.
-    expect(purgedCount).toBeGreaterThanOrEqual(2);
+    // The one due-and-purgeable candidate + the one due-and-purgeable pipeline + the one
+    // due-and-purgeable job. The FK-blocked pipeline is due (deletedAt < cutoff) but must be
+    // skipped, not counted.
+    expect(purgedCount).toBeGreaterThanOrEqual(3);
 
     const oldCandidateGone = await tenantPrisma.forTenantIncludingDeleted(context(), (tx) => tx.candidate.findUnique({ where: { id: oldDeletedCandidateId } }));
     expect(oldCandidateGone).toBeNull();
@@ -143,6 +168,17 @@ describe('RecycleBinRetentionService (real DB)', () => {
     );
     expect(blockedPipelineStillThere).not.toBeNull();
     expect(blockedPipelineStillThere?.deletedAt).not.toBeNull();
+
+    // Finding 2: the scheduled purge hard-deleted the old job, and swept its customFieldValue
+    // rows along with it (EAV table, no FK to Job -- nothing else would clean these up).
+    const oldJobWithCfvGone = await tenantPrisma.forTenantIncludingDeleted(context(), (tx) =>
+      tx.job.findUnique({ where: { id: oldDeletedJobWithCfvId } }),
+    );
+    expect(oldJobWithCfvGone).toBeNull();
+    const cfvRowsGone = await tenantPrisma.forTenant(context(), (tx) =>
+      tx.customFieldValue.findMany({ where: { entityType: 'job', entityId: oldDeletedJobWithCfvId } }),
+    );
+    expect(cfvRowsGone).toHaveLength(0);
 
     // Cleanup the still-referencing job before afterAll's deleteMany so teardown isn't itself
     // FK-blocked (deleteMany would otherwise hit the same NoAction constraint).

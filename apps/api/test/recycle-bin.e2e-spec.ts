@@ -88,6 +88,10 @@ describe('RecycleBinService (real DB)', () => {
 
   afterAll(async () => {
     const superAdminCtx = { organizationId: null as unknown as string, isSuperAdmin: true };
+    // Cleanup for the job-customFieldValue-cleanup tests -- most rows are already purged by the
+    // tests themselves, this only mops up anything a failed assertion left behind. Routed
+    // through forTenant (not the raw `prisma` client) so RLS's session context is actually set.
+    await tenantPrisma.forTenant(superAdminCtx, (tx) => tx.customFieldValue.deleteMany({ where: { organizationId: orgId } }));
     await tenantPrisma.forTenant(superAdminCtx, (tx) => tx.walkInGroup.deleteMany({ where: { organizationId: orgId } }));
     await tenantPrisma.forTenant(superAdminCtx, (tx) => tx.job.deleteMany({ where: { organizationId: orgId } }));
     await tenantPrisma.forTenant(superAdminCtx, (tx) => tx.pipeline.deleteMany({ where: { organizationId: orgId } }));
@@ -182,6 +186,83 @@ describe('RecycleBinService (real DB)', () => {
 
     it('404s purging an id that does not exist at all', async () => {
       await expect(service.purge(context(), 'pipeline', randomUUID())).rejects.toThrow(NotFoundException);
+    });
+
+    // Finding 2 (whole-branch review): CustomFieldValue is an EAV table keyed by (entityType,
+    // entityId) with no FK to Job -- a final hard-delete must sweep the job's own rows there or
+    // they orphan forever (the soft-delete/restore path correctly leaves them alone).
+    describe('job customFieldValue cleanup', () => {
+      // custom_field_values carries the same RLS as every other tenant table (see
+      // custom_fields_rls migration): a BLOCK PREDICATE AFTER INSERT rejects a write made without
+      // the session context forTenant/forTenantIncludingDeleted set up, so every read/write here
+      // goes through tenantPrisma, not the raw `prisma` client.
+      it('deletes the job\'s customFieldValue rows when the job is purged', async () => {
+        const job = await tenantPrisma.forTenant(context(), (tx) =>
+          tx.job.create({ data: { organizationId: orgId, title: 'Job with custom fields', createdById: randomUUID() } }),
+        );
+        // No CustomFieldDefinition FK on CustomFieldValue.definitionId -- a random id is enough
+        // to prove the entityType+entityId sweep, without needing a real definition row.
+        await tenantPrisma.forTenant(context(), (tx) =>
+          tx.customFieldValue.create({
+            data: { organizationId: orgId, definitionId: randomUUID(), entityType: 'job', entityId: job.id, valueText: 'Engineering' },
+          }),
+        );
+        await tenantPrisma.forTenant(context(), (tx) =>
+          tx.customFieldValue.create({
+            data: { organizationId: orgId, definitionId: randomUUID(), entityType: 'job', entityId: job.id, valueNumber: 5 },
+          }),
+        );
+        await tenantPrisma.forTenantIncludingDeleted(context(), (tx) =>
+          tx.job.update({ where: { id: job.id }, data: { deletedAt: new Date(), deletedByUserId: randomUUID() } }),
+        );
+
+        await service.purge(context(), 'job', job.id);
+
+        const remainingValues = await tenantPrisma.forTenant(context(), (tx) =>
+          tx.customFieldValue.findMany({ where: { entityType: 'job', entityId: job.id } }),
+        );
+        expect(remainingValues).toHaveLength(0);
+        const jobGone = await tenantPrisma.forTenantIncludingDeleted(context(), (tx) => tx.job.findUnique({ where: { id: job.id } }));
+        expect(jobGone).toBeNull();
+      });
+
+      it('still purges a job that has no customFieldValue rows at all', async () => {
+        const job = await tenantPrisma.forTenant(context(), (tx) =>
+          tx.job.create({ data: { organizationId: orgId, title: 'Job with no custom fields', createdById: randomUUID() } }),
+        );
+        await tenantPrisma.forTenantIncludingDeleted(context(), (tx) =>
+          tx.job.update({ where: { id: job.id }, data: { deletedAt: new Date(), deletedByUserId: randomUUID() } }),
+        );
+
+        await expect(service.purge(context(), 'job', job.id)).resolves.toBeUndefined();
+
+        const jobGone = await tenantPrisma.forTenantIncludingDeleted(context(), (tx) => tx.job.findUnique({ where: { id: job.id } }));
+        expect(jobGone).toBeNull();
+      });
+
+      it('does not touch customFieldValue rows when purging a candidate (out of scope)', async () => {
+        const candidate = await tenantPrisma.forTenant(context(), (tx) =>
+          tx.candidate.create({ data: { organizationId: orgId, email: `cfv-${randomUUID()}@candidate.test`, name: 'CFV Candidate' } }),
+        );
+        await tenantPrisma.forTenant(context(), (tx) =>
+          tx.customFieldValue.create({
+            data: { organizationId: orgId, definitionId: randomUUID(), entityType: 'candidate', entityId: candidate.id, valueText: 'kept' },
+          }),
+        );
+        await tenantPrisma.forTenantIncludingDeleted(context(), (tx) =>
+          tx.candidate.update({ where: { id: candidate.id }, data: { deletedAt: new Date(), deletedByUserId: randomUUID() } }),
+        );
+
+        await service.purge(context(), 'candidate', candidate.id);
+
+        // Pre-existing/out-of-scope orphan: the candidate is gone but its CFV row is untouched --
+        // this pins current (unchanged) behaviour, not a desired end state.
+        const remainingValues = await tenantPrisma.forTenant(context(), (tx) =>
+          tx.customFieldValue.findMany({ where: { entityType: 'candidate', entityId: candidate.id } }),
+        );
+        expect(remainingValues).toHaveLength(1);
+        await tenantPrisma.forTenant(context(), (tx) => tx.customFieldValue.deleteMany({ where: { entityType: 'candidate', entityId: candidate.id } }));
+      });
     });
   });
 });

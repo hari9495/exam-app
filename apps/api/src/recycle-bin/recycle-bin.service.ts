@@ -79,9 +79,21 @@ export class RecycleBinService {
   async purge(context: TenantContext, entityType: EntityType, id: string): Promise<void> {
     const config = this.getConfig(entityType);
     try {
-      await this.tenantPrisma.forTenantIncludingDeleted(context, (tx) =>
-        (tx as any)[config.delegate].delete({ where: { id, deletedAt: { not: null } } }),
-      );
+      await this.tenantPrisma.forTenantIncludingDeleted(context, async (tx) => {
+        await (tx as any)[config.delegate].delete({ where: { id, deletedAt: { not: null } } });
+        // Job hard-delete only: CustomFieldValue is an EAV table keyed by (entityType, entityId)
+        // with no FK to Job (verified in schema.prisma), so nothing else cleans these up --
+        // the soft-delete/restore path already correctly leaves them alone (kept for restore),
+        // but a final hard-delete must sweep them or they orphan forever. Runs AFTER the job's
+        // own delete succeeds (same transaction) so a P2025/P2003 there leaves both the job and
+        // its custom-field values untouched. Candidate CFV rows are pre-existing/out of scope --
+        // JOB ONLY, per the brief.
+        if (entityType === 'job') {
+          await tx.customFieldValue.deleteMany({
+            where: { organizationId: context.organizationId as string, entityType: 'job', entityId: id },
+          });
+        }
+      });
     } catch (error) {
       throw this.mapPrismaError(error, entityType);
     }

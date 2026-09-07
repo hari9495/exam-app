@@ -32,6 +32,7 @@ describe('RecycleBinRetentionService', () => {
       job: makeDelegate(['j1']),
       pipeline: makeDelegate([]),
       walkInGroup: makeDelegate(['w1']),
+      customFieldValue: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
     };
     tenantPrisma.forTenantIncludingDeleted.mockImplementation((_ctx, fn) => fn(tx));
 
@@ -47,6 +48,79 @@ describe('RecycleBinRetentionService', () => {
     expect(tx.candidate.delete).toHaveBeenCalledWith({ where: { id: 'c2' } });
     expect(tx.job.delete).toHaveBeenCalledWith({ where: { id: 'j1' } });
     expect(tx.walkInGroup.delete).toHaveBeenCalledWith({ where: { id: 'w1' } });
+    // Job hard-delete only -- the EAV customFieldValue cleanup runs for the purged job and
+    // nothing else (candidate/pipeline/walk-in-group have no such cleanup).
+    expect(tx.customFieldValue.deleteMany).toHaveBeenCalledTimes(1);
+    expect(tx.customFieldValue.deleteMany).toHaveBeenCalledWith({ where: { entityType: 'job', entityId: 'j1' } });
+  });
+
+  // Finding 2 (whole-branch review): CustomFieldValue is an EAV table keyed by (entityType,
+  // entityId) with no FK to Job, so nothing else cleans these up on a final hard-delete.
+  describe('job customFieldValue cleanup', () => {
+    it('deletes each purged job\'s customFieldValue rows', async () => {
+      const tx = {
+        candidate: makeDelegate([]),
+        job: makeDelegate(['j1', 'j2']),
+        pipeline: makeDelegate([]),
+        walkInGroup: makeDelegate([]),
+        customFieldValue: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      };
+      tenantPrisma.forTenantIncludingDeleted.mockImplementation((_ctx, fn) => fn(tx));
+
+      const count = await service.prune();
+
+      expect(count).toBe(2);
+      expect(tx.customFieldValue.deleteMany).toHaveBeenCalledWith({ where: { entityType: 'job', entityId: 'j1' } });
+      expect(tx.customFieldValue.deleteMany).toHaveBeenCalledWith({ where: { entityType: 'job', entityId: 'j2' } });
+    });
+
+    it('still purges a job with no customFieldValue rows (deleteMany count 0 is not an error)', async () => {
+      const tx = {
+        candidate: makeDelegate([]),
+        job: makeDelegate(['j1']),
+        pipeline: makeDelegate([]),
+        walkInGroup: makeDelegate([]),
+        customFieldValue: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      };
+      tenantPrisma.forTenantIncludingDeleted.mockImplementation((_ctx, fn) => fn(tx));
+
+      const count = await service.prune();
+
+      expect(count).toBe(1);
+    });
+
+    // Best-effort: the job row is already gone once delegate.delete resolves, so a failure in
+    // this secondary cleanup must not turn an actually-purged job into a "skipped" row.
+    it('still counts the job as purged when its customFieldValue cleanup itself fails', async () => {
+      const tx = {
+        candidate: makeDelegate([]),
+        job: makeDelegate(['j1']),
+        pipeline: makeDelegate([]),
+        walkInGroup: makeDelegate([]),
+        customFieldValue: { deleteMany: jest.fn().mockRejectedValue(new Error('db blip')) },
+      };
+      tenantPrisma.forTenantIncludingDeleted.mockImplementation((_ctx, fn) => fn(tx));
+
+      const count = await service.prune();
+
+      expect(count).toBe(1);
+      expect(tx.job.delete).toHaveBeenCalledWith({ where: { id: 'j1' } });
+    });
+
+    it('does not touch customFieldValue when purging candidates/pipelines/walk-in-groups', async () => {
+      const tx = {
+        candidate: makeDelegate(['c1']),
+        job: makeDelegate([]),
+        pipeline: makeDelegate(['p1']),
+        walkInGroup: makeDelegate(['w1']),
+        customFieldValue: { deleteMany: jest.fn() },
+      };
+      tenantPrisma.forTenantIncludingDeleted.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.prune();
+
+      expect(tx.customFieldValue.deleteMany).not.toHaveBeenCalled();
+    });
   });
 
   // Carry-forward from T5 review: a single deleteMany per model would fail the WHOLE batch if any

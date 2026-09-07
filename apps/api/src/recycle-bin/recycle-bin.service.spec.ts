@@ -109,6 +109,48 @@ describe('RecycleBinService', () => {
       await expect(service.purge(context, 'walk-in-group', 'missing')).rejects.toThrow(NotFoundException);
     });
 
+    // Finding 2 (whole-branch review): CustomFieldValue is an EAV table keyed by
+    // (entityType, entityId) with no FK to Job, so a job's final hard-delete must sweep its own
+    // rows there or they orphan forever. JOB ONLY -- candidate CFV orphaning is pre-existing/out
+    // of scope, proven by the sibling test below.
+    it('deletes the job\'s customFieldValue rows after a job hard-delete', async () => {
+      const tx = {
+        job: { delete: jest.fn().mockResolvedValue({ id: 'j1', title: 'Engineer' }) },
+        customFieldValue: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
+      };
+      tenantPrisma.forTenantIncludingDeleted.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.purge(context, 'job', 'j1');
+
+      expect(tx.job.delete).toHaveBeenCalledWith({ where: { id: 'j1', deletedAt: { not: null } } });
+      expect(tx.customFieldValue.deleteMany).toHaveBeenCalledWith({
+        where: { organizationId: 'org-1', entityType: 'job', entityId: 'j1' },
+      });
+    });
+
+    it('does not touch customFieldValue when purging a candidate (out of scope)', async () => {
+      const tx = {
+        candidate: { delete: jest.fn().mockResolvedValue({ id: 'c1', name: 'Ann' }) },
+        customFieldValue: { deleteMany: jest.fn() },
+      };
+      tenantPrisma.forTenantIncludingDeleted.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.purge(context, 'candidate', 'c1');
+
+      expect(tx.customFieldValue.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('leaves customFieldValue rows alone when the job delete itself fails (e.g. FK-blocked)', async () => {
+      const tx = {
+        job: { delete: jest.fn().mockRejectedValue(knownRequestError('P2003')) },
+        customFieldValue: { deleteMany: jest.fn() },
+      };
+      tenantPrisma.forTenantIncludingDeleted.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.purge(context, 'job', 'j1')).rejects.toThrow(ConflictException);
+      expect(tx.customFieldValue.deleteMany).not.toHaveBeenCalled();
+    });
+
     // Real-world trigger: `Job.pipelineId -> Pipeline` and `CandidateEmail.candidateId -> Candidate`
     // are `onDelete: NoAction` FKs, so purging a Pipeline still referenced by a Job (or a Candidate
     // with any CandidateEmail row) throws P2003 -- must surface as a clean 409, never a raw 500,

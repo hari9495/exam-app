@@ -46,6 +46,21 @@ export class RecycleBinRetentionService implements OnModuleInit, OnModuleDestroy
           for (const { id } of due) {
             try {
               await delegate.delete({ where: { id } });
+              // Job hard-delete only: CustomFieldValue is an EAV table keyed by (entityType,
+              // entityId) with no FK to Job, so nothing else cleans these up on a final purge --
+              // same cleanup as recycle-bin.service.ts's manual purge. Best-effort and isolated
+              // in its own try/catch: the job row is already gone by this point regardless of
+              // whether this secondary cleanup succeeds, so a failure here must not mark an
+              // actually-purged job as "skipped". Candidate CFV rows are pre-existing/out of
+              // scope -- JOB ONLY.
+              if (entityType === 'job') {
+                try {
+                  await tx.customFieldValue.deleteMany({ where: { entityType: 'job', entityId: id } });
+                } catch (cfvError) {
+                  const detail = cfvError instanceof Error ? cfvError.message : String(cfvError);
+                  this.logger.warn(`Recycle-bin prune: job ${id} purged but its customFieldValue cleanup failed: ${detail}`);
+                }
+              }
               purged++;
             } catch (error) {
               // P2003 (FK constraint) is the expected case -- a soft-deleted row still referenced
