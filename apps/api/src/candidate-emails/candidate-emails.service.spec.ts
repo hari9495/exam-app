@@ -13,6 +13,7 @@ describe('CandidateEmailsService', () => {
     user: Record<string, jest.Mock>;
     candidateEmail: Record<string, jest.Mock>;
     candidate: Record<string, jest.Mock>;
+    orgSenderAddress: Record<string, jest.Mock>;
   };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
@@ -47,6 +48,9 @@ describe('CandidateEmailsService', () => {
       },
       candidate: {
         update: jest.fn().mockResolvedValue({}),
+      },
+      orgSenderAddress: {
+        findFirst: jest.fn(),
       },
     };
     tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
@@ -260,6 +264,46 @@ describe('CandidateEmailsService', () => {
       const createOrder = tx.candidateEmail.create.mock.invocationCallOrder[0];
       const countOrder = tx.candidateEmail.count.mock.invocationCallOrder[0];
       expect(createOrder).toBeLessThan(countOrder);
+    });
+
+    it('sends with fromAddress when senderAddressId resolves to one of the org\'s own sender addresses', async () => {
+      tx.orgSenderAddress.findFirst.mockResolvedValue({ id: 'sender-1', organizationId: 'org-1', address: 'jobs@acme.com' });
+      email.send.mockResolvedValue({ success: true });
+
+      await service.sendMessage(context, 'user-1', 'entry-1', {
+        subject: 's',
+        body: 'b',
+        source: 'manual',
+        senderAddressId: 'sender-1',
+      });
+
+      expect(tx.orgSenderAddress.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'sender-1', organizationId: 'org-1' } }),
+      );
+      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ fromAddress: 'jobs@acme.com' }));
+    });
+
+    it('rejects when senderAddressId does not belong to the org, and does not send', async () => {
+      tx.orgSenderAddress.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.sendMessage(context, 'user-1', 'entry-1', {
+          subject: 's',
+          body: 'b',
+          source: 'manual',
+          senderAddressId: 'not-mine',
+        }),
+      ).rejects.toThrow(NotFoundException);
+      expect(email.send).not.toHaveBeenCalled();
+    });
+
+    it('sends without fromAddress when senderAddressId is absent (unchanged behavior)', async () => {
+      email.send.mockResolvedValue({ success: true });
+
+      await service.sendMessage(context, 'user-1', 'entry-1', { subject: 's', body: 'b', source: 'manual' });
+
+      expect(tx.orgSenderAddress.findFirst).not.toHaveBeenCalled();
+      expect(email.send).toHaveBeenCalledWith(expect.not.objectContaining({ fromAddress: expect.anything() }));
     });
   });
 
