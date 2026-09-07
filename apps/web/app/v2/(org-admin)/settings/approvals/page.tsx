@@ -21,7 +21,7 @@ const desc: React.CSSProperties = { fontSize: 13, color: muted, margin: '4px 0 0
 type Notice = { type: 'success' | 'error'; text: string } | null;
 
 function toEditorStep(step: ApprovalChainStep): EditorStep {
-  return { name: step.name, approverType: step.approverType, approverUserIds: step.approverUserIds, managerLevel: step.managerLevel };
+  return { name: step.name, approverType: step.approverType, approverUserIds: step.approverUserIds, managerLevel: step.managerLevel, groupId: step.groupId ?? undefined };
 }
 
 function GateCard({ gate, title, description, initial }: { gate: ApprovalGate; title: string; description: string; initial: ApprovalChain | undefined }) {
@@ -63,6 +63,7 @@ function GateCard({ gate, title, description, initial }: { gate: ApprovalGate; t
           approverType: s.approverType,
           approverUserIds: s.approverType === 'users' ? s.approverUserIds : undefined,
           managerLevel: s.approverType === 'reporting_manager' ? s.managerLevel ?? undefined : undefined,
+          groupId: s.approverType === 'group' ? s.groupId : undefined,
         })),
       },
       {

@@ -15,7 +15,7 @@ export function useApprovalChains() {
 export interface UpsertApprovalChainInput {
   gate: ApprovalGate;
   enabled: boolean;
-  steps: { name: string; approverType: string; approverUserIds?: string[]; managerLevel?: number }[];
+  steps: { name: string; approverType: string; approverUserIds?: string[]; managerLevel?: number; groupId?: string }[];
 }
 
 export function useUpsertApprovalChain() {

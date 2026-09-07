@@ -4,12 +4,19 @@ function makeTx(overrides: {
   users?: Record<string, { managerId?: string | null; status?: string }>;
   jobs?: Record<string, { hiringManagerId?: string | null }>;
   offers?: Record<string, { pipelineEntry: { jobId: string } | null }>;
+  groupMembers?: Record<string, string[]>;
 } = {}) {
   const users = overrides.users ?? {};
   const jobs = overrides.jobs ?? {};
   const offers = overrides.offers ?? {};
+  const groupMembers = overrides.groupMembers ?? {};
 
   return {
+    userGroupMember: {
+      findMany: jest.fn(async ({ where: { groupId } }: { where: { organizationId: string; groupId: string } }) => {
+        return (groupMembers[groupId] ?? []).map((userId) => ({ userId }));
+      }),
+    },
     user: {
       findUnique: jest.fn(async ({ where: { id } }: { where: { id: string } }) => {
         const u = users[id];
@@ -50,6 +57,18 @@ function usersStep(overrides: Partial<ChainStepInput> = {}): ChainStepInput {
   };
 }
 
+function groupStep(overrides: Partial<ChainStepInput> = {}): ChainStepInput {
+  return {
+    position: 0,
+    name: 'Group step',
+    approverType: 'group',
+    approverUserIds: [],
+    managerLevel: null,
+    groupId: null,
+    ...overrides,
+  };
+}
+
 describe('resolveSteps', () => {
   it("passes users steps through, dropping deactivated users", async () => {
     const tx = makeTx({
@@ -66,6 +85,7 @@ describe('resolveSteps', () => {
       submitterUserId: 'submitter',
       gate: 'requisition',
       subjectId: 'job-1',
+      organizationId: 'org-1',
     });
 
     expect(skipped).toEqual([]);
@@ -94,6 +114,7 @@ describe('resolveSteps', () => {
       submitterUserId: 'submitter',
       gate: 'requisition',
       subjectId: 'job-1',
+      organizationId: 'org-1',
     });
 
     expect(skipped).toEqual([]);
@@ -123,6 +144,7 @@ describe('resolveSteps', () => {
       submitterUserId: 'submitter',
       gate: 'requisition',
       subjectId: 'job-1',
+      organizationId: 'org-1',
     });
 
     expect(skipped).toEqual([]);
@@ -149,6 +171,7 @@ describe('resolveSteps', () => {
       submitterUserId: 'submitter',
       gate: 'requisition',
       subjectId: 'job-1',
+      organizationId: 'org-1',
     });
 
     expect(skipped).toEqual([]);
@@ -177,6 +200,7 @@ describe('resolveSteps', () => {
       submitterUserId: 'submitter',
       gate: 'offer',
       subjectId: 'offer-1',
+      organizationId: 'org-1',
     });
 
     expect(skipped).toEqual([]);
@@ -209,6 +233,7 @@ describe('resolveSteps', () => {
       submitterUserId: 'submitter',
       gate: 'requisition',
       subjectId: 'job-1',
+      organizationId: 'org-1',
     });
 
     expect(resolved).toEqual([]);
@@ -242,6 +267,7 @@ describe('resolveSteps', () => {
       submitterUserId: 'submitter',
       gate: 'requisition',
       subjectId: 'job-1',
+      organizationId: 'org-1',
     });
 
     expect(skipped).toEqual([
@@ -250,6 +276,101 @@ describe('resolveSteps', () => {
     expect(resolved).toEqual([
       { position: 0, name: 'First approval', approverType: 'users', approverUserIds: ['u1'] },
       { position: 1, name: 'Third approval', approverType: 'users', approverUserIds: ['u3'] },
+    ]);
+  });
+
+  it("resolves a 'group' step to the group's active members, dropping the inactive one", async () => {
+    const tx = makeTx({
+      users: {
+        u1: { status: 'active' },
+        u2: { status: 'active' },
+        u3: { status: 'deactivated' },
+      },
+      groupMembers: { 'group-1': ['u1', 'u2', 'u3'] },
+    });
+    const step = groupStep({ groupId: 'group-1' });
+
+    const { resolved, skipped } = await resolveSteps(tx, {
+      steps: [step],
+      submitterUserId: 'submitter',
+      gate: 'requisition',
+      subjectId: 'job-1',
+      organizationId: 'org-1',
+    });
+
+    expect(skipped).toEqual([]);
+    expect(resolved).toEqual([
+      { position: 0, name: 'Group step', approverType: 'group', approverUserIds: ['u1', 'u2'] },
+    ]);
+    expect(tx.userGroupMember.findMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', groupId: 'group-1' },
+      select: { userId: true },
+    });
+  });
+
+  it("skips a 'group' step (with reason) when none of the group's members are active", async () => {
+    const tx = makeTx({
+      users: { u1: { status: 'deactivated' } },
+      groupMembers: { 'group-1': ['u1'] },
+    });
+    const step = groupStep({ groupId: 'group-1' });
+
+    const { resolved, skipped } = await resolveSteps(tx, {
+      steps: [step],
+      submitterUserId: 'submitter',
+      gate: 'requisition',
+      subjectId: 'job-1',
+      organizationId: 'org-1',
+    });
+
+    expect(resolved).toEqual([]);
+    expect(skipped).toEqual([
+      { position: 0, reason: 'No approver resolved for step "Group step" (group)' },
+    ]);
+  });
+
+  it("skips a 'group' step with no groupId configured", async () => {
+    const tx = makeTx();
+    const step = groupStep({ groupId: null });
+
+    const { resolved, skipped } = await resolveSteps(tx, {
+      steps: [step],
+      submitterUserId: 'submitter',
+      gate: 'requisition',
+      subjectId: 'job-1',
+      organizationId: 'org-1',
+    });
+
+    expect(resolved).toEqual([]);
+    expect(skipped).toEqual([{ position: 0, reason: 'no group configured' }]);
+    expect(tx.userGroupMember.findMany).not.toHaveBeenCalled();
+  });
+
+  it("resolves a 'group' step interleaved with a 'users' step, both resolving with contiguous positions", async () => {
+    const tx = makeTx({
+      users: {
+        u1: { status: 'active' },
+        u2: { status: 'active' },
+      },
+      groupMembers: { 'group-1': ['u2'] },
+    });
+    const steps: ChainStepInput[] = [
+      usersStep({ position: 0, name: 'First approval', approverUserIds: ['u1'] }),
+      groupStep({ position: 1, name: 'Group approval', groupId: 'group-1' }),
+    ];
+
+    const { resolved, skipped } = await resolveSteps(tx, {
+      steps,
+      submitterUserId: 'submitter',
+      gate: 'requisition',
+      subjectId: 'job-1',
+      organizationId: 'org-1',
+    });
+
+    expect(skipped).toEqual([]);
+    expect(resolved).toEqual([
+      { position: 0, name: 'First approval', approverType: 'users', approverUserIds: ['u1'] },
+      { position: 1, name: 'Group approval', approverType: 'group', approverUserIds: ['u2'] },
     ]);
   });
 });

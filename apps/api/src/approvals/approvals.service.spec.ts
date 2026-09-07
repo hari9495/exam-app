@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { ApprovalsService } from './approvals.service';
 import { resolveSteps } from './approver-resolver';
 
@@ -126,6 +126,51 @@ describe('ApprovalsService.submit', () => {
     const survivingRecipients = [...new Set(recipientsArg)].filter((id) => id && id !== actorArg);
     expect(survivingRecipients).toContain('user-1');
     expect(survivingRecipients).toContain('admin-1');
+  });
+
+  it('carries groupId into ChainStepInput and organizationId into resolveSteps, freezing the group\'s active members into the snapshot', async () => {
+    const groupStep = { position: 0, name: 'Group approval', approverType: 'group', approverUserIds: ['u1', 'u2'] };
+    tx.approvalChain.findUnique.mockResolvedValue({
+      enabled: true,
+      steps: [{ position: 0, name: 'Group approval', approverType: 'group', approverUserIds: null, groupId: 'group-1', managerLevel: null }],
+    });
+    mockResolveSteps.mockResolvedValue({ resolved: [groupStep], skipped: [] });
+
+    const result = await service.submit(context, 'requisition', 'job-1', 'user-1');
+
+    expect(result).toEqual({ status: 'pending_approval', requestId: 'req-1' });
+    expect(mockResolveSteps).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        organizationId: 'org-1',
+        steps: [expect.objectContaining({ approverType: 'group', groupId: 'group-1' })],
+      }),
+    );
+    expect(tx.approvalRequest.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ chainSnapshotJson: JSON.stringify([groupStep]) }),
+    });
+  });
+
+  it('FROZEN: a later group-membership change does not alter the already-persisted snapshot', async () => {
+    tx.approvalChain.findUnique.mockResolvedValue({
+      enabled: true,
+      steps: [{ position: 0, name: 'Group approval', approverType: 'group', approverUserIds: null, groupId: 'group-1', managerLevel: null }],
+    });
+
+    const firstResolved = [{ position: 0, name: 'Group approval', approverType: 'group', approverUserIds: ['u1', 'u2'] }];
+    mockResolveSteps.mockResolvedValueOnce({ resolved: firstResolved, skipped: [] });
+    await service.submit(context, 'requisition', 'job-1', 'user-1');
+    const firstSnapshot = tx.approvalRequest.create.mock.calls[0][0].data.chainSnapshotJson;
+    expect(firstSnapshot).toEqual(JSON.stringify(firstResolved));
+
+    // Simulate a membership change resolving differently for a later submission.
+    const secondResolved = [{ position: 0, name: 'Group approval', approverType: 'group', approverUserIds: ['u3'] }];
+    mockResolveSteps.mockResolvedValueOnce({ resolved: secondResolved, skipped: [] });
+    await service.submit(context, 'requisition', 'job-2', 'user-1');
+
+    // The first request's already-persisted snapshot is untouched by the later resolution.
+    expect(tx.approvalRequest.create.mock.calls[0][0].data.chainSnapshotJson).toEqual(firstSnapshot);
+    expect(tx.approvalRequest.create.mock.calls[1][0].data.chainSnapshotJson).toEqual(JSON.stringify(secondResolved));
   });
 });
 
@@ -287,6 +332,46 @@ describe('ApprovalsService.decide', () => {
 
     await expect(service.decide(context, 'req-1', 'mgr-1', 'approved')).rejects.toThrow(ConflictException);
     expect(notifications.notify).not.toHaveBeenCalled();
+  });
+
+  // decide() is UNCHANGED by group-approver support: it authorizes purely off the frozen
+  // approverUserIds in chainSnapshotJson, regardless of approverType. These tests exercise
+  // that unchanged any-of logic against a 'group'-shaped frozen step.
+  describe('group step (decide() unchanged -- any-of against the frozen snapshot)', () => {
+    const groupReq = (overrides: Record<string, unknown> = {}) => ({
+      id: 'req-1',
+      organizationId: 'org-1',
+      gate: 'requisition',
+      subjectType: 'job',
+      subjectId: 'job-1',
+      status: 'pending_approval',
+      currentStepPosition: 0,
+      submittedByUserId: 'submitter-1',
+      // Frozen at submit time: group had u1 + u2 as active members.
+      chainSnapshotJson: JSON.stringify([
+        { position: 0, name: 'Group approval', approverType: 'group', approverUserIds: ['u1', 'u2'] },
+      ]),
+      ...overrides,
+    });
+
+    it('a member frozen into the snapshot approves -> resolves the request (any-of)', async () => {
+      tx.approvalRequest.findFirst.mockResolvedValue(groupReq());
+
+      const result = await service.decide(context, 'req-1', 'u2', 'approved');
+
+      expect(result).toEqual({ requestStatus: 'approved', subjectResolved: true, subjectType: 'job', subjectId: 'job-1', gate: 'requisition' });
+      expect(tx.approvalDecision.create).toHaveBeenCalledWith({
+        data: { requestId: 'req-1', stepPosition: 0, approverUserId: 'u2', decision: 'approved', note: null },
+      });
+    });
+
+    it('a user not in the frozen snapshot (e.g. added to the group after submit) is forbidden', async () => {
+      tx.approvalRequest.findFirst.mockResolvedValue(groupReq());
+
+      await expect(service.decide(context, 'req-1', 'u3-added-after-submit', 'approved')).rejects.toThrow(ForbiddenException);
+      expect(tx.approvalDecision.create).not.toHaveBeenCalled();
+      expect(tx.approvalRequest.updateMany).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -799,5 +884,126 @@ describe('ApprovalsService.getSummariesFor', () => {
     const result = await service.getSummariesFor(context, 'job', ['job-1']);
 
     expect(result.has('job-1')).toBe(false);
+  });
+});
+
+describe('ApprovalsService.upsertChain / getChains', () => {
+  const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+  const groupStepDto = (overrides: Record<string, unknown> = {}) => ({
+    name: 'Group approval',
+    approverType: 'group',
+    groupId: 'group-1',
+    ...overrides,
+  });
+
+  const makeTx = (overrides: Record<string, unknown> = {}) => ({
+    approvalChain: { upsert: jest.fn().mockResolvedValue({ id: 'chain-1' }) },
+    approvalChainStep: { deleteMany: jest.fn().mockResolvedValue({}), createMany: jest.fn().mockResolvedValue({}), findMany: jest.fn() },
+    userGroupMember: { findMany: jest.fn().mockResolvedValue([{ userId: 'u1' }, { userId: 'u2' }]) },
+    user: { findMany: jest.fn().mockResolvedValue([{ id: 'u1' }, { id: 'u2' }]) },
+    ...overrides,
+  });
+
+  const makeService = (tx: Record<string, unknown>) => {
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    return new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+  };
+
+  it('rejects an enabled chain with a group step whose group has 0 active members', async () => {
+    const tx = makeTx({ userGroupMember: { findMany: jest.fn().mockResolvedValue([]) } });
+    const service = makeService(tx);
+
+    await expect(service.upsertChain(context, 'requisition', { enabled: true, steps: [groupStepDto()] } as any)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(tx.approvalChainStep.createMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects an enabled chain with a group step whose group members are all inactive', async () => {
+    const tx = makeTx({
+      userGroupMember: { findMany: jest.fn().mockResolvedValue([{ userId: 'u1' }, { userId: 'u2' }]) },
+      user: { findMany: jest.fn().mockResolvedValue([]) }, // neither u1 nor u2 is active
+    });
+    const service = makeService(tx);
+
+    await expect(service.upsertChain(context, 'requisition', { enabled: true, steps: [groupStepDto()] } as any)).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('accepts an enabled chain with a group step that has at least one active member, persisting groupId', async () => {
+    const tx = makeTx();
+    const service = makeService(tx);
+
+    const result = await service.upsertChain(context, 'requisition', { enabled: true, steps: [groupStepDto()] } as any);
+
+    expect(tx.userGroupMember.findMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', groupId: 'group-1' },
+      select: { userId: true },
+    });
+    expect(tx.approvalChainStep.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ chainId: 'chain-1', position: 0, groupId: 'group-1' })],
+    });
+    expect(result.steps[0]).toEqual(expect.objectContaining({ approverType: 'group' }));
+  });
+
+  it('a group step missing groupId is rejected even when the chain is disabled', async () => {
+    const tx = makeTx();
+    const service = makeService(tx);
+
+    await expect(
+      service.upsertChain(context, 'requisition', { enabled: false, steps: [groupStepDto({ groupId: undefined })] } as any),
+    ).rejects.toThrow(BadRequestException);
+    expect(tx.approvalChainStep.createMany).not.toHaveBeenCalled();
+  });
+
+  it('a group step missing groupId is rejected on a disabled chain without checking membership', async () => {
+    const tx = makeTx();
+    const service = makeService(tx);
+
+    await expect(
+      service.upsertChain(context, 'requisition', { enabled: false, steps: [groupStepDto({ groupId: undefined })] } as any),
+    ).rejects.toThrow(BadRequestException);
+    expect(tx.userGroupMember.findMany).not.toHaveBeenCalled();
+  });
+
+  it('persists groupId as null for non-group steps, and clears it when a step switches from group to users', async () => {
+    const tx = makeTx();
+    const service = makeService(tx);
+
+    await service.upsertChain(context, 'requisition', {
+      enabled: true,
+      steps: [{ name: 'Manager sign-off', approverType: 'users', approverUserIds: ['mgr-1'] }],
+    } as any);
+
+    expect(tx.approvalChainStep.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ approverType: 'users', groupId: null })],
+    });
+    expect(tx.userGroupMember.findMany).not.toHaveBeenCalled();
+  });
+
+  it('getChains round-trips groupId: present on a group step, null on other steps', async () => {
+    const tx = {
+      approvalChain: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            gate: 'requisition',
+            enabled: true,
+            steps: [
+              { position: 0, name: 'Group approval', approverType: 'group', approverUserIds: null, groupId: 'group-1', managerLevel: null },
+              { position: 1, name: 'Manager sign-off', approverType: 'users', approverUserIds: '["mgr-1"]', groupId: null, managerLevel: null },
+            ],
+          },
+        ]),
+      },
+    };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+
+    const result = await service.getChains(context);
+
+    expect(result.requisition.steps[0]).toEqual(expect.objectContaining({ approverType: 'group', groupId: 'group-1' }));
+    expect(result.requisition.steps[1]).toEqual(expect.objectContaining({ approverType: 'users', groupId: null }));
   });
 });

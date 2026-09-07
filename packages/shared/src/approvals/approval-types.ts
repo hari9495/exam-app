@@ -1,7 +1,7 @@
 export const APPROVAL_GATES = ['requisition', 'offer'] as const;
 export type ApprovalGate = (typeof APPROVAL_GATES)[number];
 
-export const APPROVER_TYPES = ['users', 'reporting_manager', 'hiring_manager'] as const;
+export const APPROVER_TYPES = ['users', 'reporting_manager', 'hiring_manager', 'group'] as const;
 export type ApproverType = (typeof APPROVER_TYPES)[number];
 
 export const APPROVAL_NOTIFICATION_TYPES = {

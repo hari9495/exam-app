@@ -2,7 +2,7 @@ import type { ApprovalGate, ResolvedStep, ApproverType } from '@exam-platform/sh
 
 export interface ChainStepInput {
   position: number; name: string; approverType: ApproverType;
-  approverUserIds: string[]; managerLevel: number | null;
+  approverUserIds: string[]; managerLevel: number | null; groupId?: string | null;
 }
 
 async function walkManagers(tx: any, startUserId: string, levels: number): Promise<string | null> {
@@ -22,7 +22,7 @@ async function activeIds(tx: any, ids: string[]): Promise<string[]> {
 
 export async function resolveSteps(
   tx: any,
-  args: { steps: ChainStepInput[]; submitterUserId: string; gate: ApprovalGate; subjectId: string },
+  args: { steps: ChainStepInput[]; submitterUserId: string; gate: ApprovalGate; subjectId: string; organizationId: string },
 ): Promise<{ resolved: ResolvedStep[]; skipped: { position: number; reason: string }[] }> {
   const resolved: ResolvedStep[] = [];
   const skipped: { position: number; reason: string }[] = [];
@@ -41,6 +41,13 @@ export async function resolveSteps(
       }
       const job = jobId ? await tx.job.findUnique({ where: { id: jobId }, select: { hiringManagerId: true } }) : null;
       ids = job?.hiringManagerId ? await activeIds(tx, [job.hiringManagerId]) : [];
+    } else if (s.approverType === 'group') {
+      if (!s.groupId) { skipped.push({ position: s.position, reason: 'no group configured' }); continue; }
+      const members = await tx.userGroupMember.findMany({
+        where: { organizationId: args.organizationId, groupId: s.groupId },
+        select: { userId: true },
+      });
+      ids = await activeIds(tx, members.map((m: { userId: string }) => m.userId));
     }
     if (ids.length === 0) {
       skipped.push({ position: s.position, reason: `No approver resolved for step "${s.name}" (${s.approverType})` });

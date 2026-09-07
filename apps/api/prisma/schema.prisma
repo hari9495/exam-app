@@ -1109,6 +1109,7 @@ model ApprovalChainStep {
   name            String        @db.NVarChar(200)
   approverType    String        @map("approver_type") // 'users' | 'reporting_manager' | 'hiring_manager'
   approverUserIds String?       @map("approver_user_ids") @db.NVarChar(Max) // JSON array
+  groupId         String?       @map("group_id") @db.UniqueIdentifier
   managerLevel    Int?          @map("manager_level")
   chain           ApprovalChain @relation(fields: [chainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 

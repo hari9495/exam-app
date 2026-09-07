@@ -20,6 +20,7 @@ export interface ChainStepDto {
   approverType: string;
   approverUserIds: string[];
   managerLevel: number | null;
+  groupId: string | null;
 }
 
 export interface ChainDto {
@@ -133,8 +134,15 @@ export class ApprovalsService {
         approverType: s.approverType as ApproverType,
         approverUserIds: s.approverUserIds ? JSON.parse(s.approverUserIds) : [],
         managerLevel: s.managerLevel,
+        groupId: s.groupId,
       }));
-      const { resolved, skipped } = await resolveSteps(tx, { steps: stepInputs, submitterUserId, gate, subjectId });
+      const { resolved, skipped } = await resolveSteps(tx, {
+        steps: stepInputs,
+        submitterUserId,
+        gate,
+        subjectId,
+        organizationId: context.organizationId as string,
+      });
 
       for (const sk of skipped) {
         await this.audit.record(context, {
@@ -547,13 +555,16 @@ export class ApprovalsService {
       return {
         gate,
         enabled: row.enabled,
-        steps: row.steps.map((s: { position: number; name: string; approverType: string; approverUserIds: string | null; managerLevel: number | null }) => ({
-          position: s.position,
-          name: s.name,
-          approverType: s.approverType,
-          approverUserIds: s.approverUserIds ? JSON.parse(s.approverUserIds) : [],
-          managerLevel: s.managerLevel,
-        })),
+        steps: row.steps.map(
+          (s: { position: number; name: string; approverType: string; approverUserIds: string | null; managerLevel: number | null; groupId: string | null }) => ({
+            position: s.position,
+            name: s.name,
+            approverType: s.approverType,
+            approverUserIds: s.approverUserIds ? JSON.parse(s.approverUserIds) : [],
+            managerLevel: s.managerLevel,
+            groupId: s.groupId,
+          }),
+        ),
       };
     };
 
@@ -566,9 +577,15 @@ export class ApprovalsService {
     //   chain never runs, so an incomplete draft is fine while it's off).
     // - a 'reporting_manager' step with no explicit level defaults to 1 rather than rejecting,
     //   since level 1 (direct manager) is the sane default most orgs want anyway.
+    // - a 'group' step always needs a groupId configured, enabled or not (there's nothing
+    //   sensible to persist otherwise); the empty-active-member check only applies once
+    //   enabled, mirroring the 'users' rule above.
     const normalizedSteps = dto.steps.map((step) => {
       if (dto.enabled && step.approverType === 'users' && (!step.approverUserIds || step.approverUserIds.length === 0)) {
         throw new BadRequestException('Each users step needs at least one approver');
+      }
+      if (step.approverType === 'group' && !step.groupId) {
+        throw new BadRequestException('Each group step needs a group selected');
       }
       const managerLevel = step.approverType === 'reporting_manager' ? (step.managerLevel ?? 1) : (step.managerLevel ?? null);
       return {
@@ -576,10 +593,28 @@ export class ApprovalsService {
         approverType: step.approverType,
         approverUserIds: step.approverUserIds ?? [],
         managerLevel,
+        groupId: step.approverType === 'group' ? (step.groupId as string) : null,
       };
     });
 
     return this.tenantPrisma.forTenant(context, async (tx): Promise<ChainDto> => {
+      if (dto.enabled) {
+        for (const step of normalizedSteps) {
+          if (step.approverType !== 'group') continue;
+          const members = await tx.userGroupMember.findMany({
+            where: { organizationId: context.organizationId as string, groupId: step.groupId as string },
+            select: { userId: true },
+          });
+          const active =
+            members.length > 0
+              ? await tx.user.findMany({ where: { id: { in: members.map((m) => m.userId) }, status: 'active' }, select: { id: true } })
+              : [];
+          if (active.length === 0) {
+            throw new BadRequestException(`Group step "${step.name}" has no active members`);
+          }
+        }
+      }
+
       const chain = await tx.approvalChain.upsert({
         where: { organizationId_gate: { organizationId: context.organizationId as string, gate } },
         update: { enabled: dto.enabled },
@@ -597,6 +632,7 @@ export class ApprovalsService {
             approverType: step.approverType,
             approverUserIds: JSON.stringify(step.approverUserIds),
             managerLevel: step.managerLevel,
+            groupId: step.groupId,
           })),
         });
       }
