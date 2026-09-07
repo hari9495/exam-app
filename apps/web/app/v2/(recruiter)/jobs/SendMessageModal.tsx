@@ -4,11 +4,12 @@
 // primitives. All hooks, state, handlers, validation, constants (SAMPLE_TOKENS, TOKEN,
 // renderPreview, templateValue), the SendMessageInitial interface, and the mutation payload are
 // verbatim from the old file (format only).
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Dialog, TextField, Combobox, Button, dt } from '../../../../components/ui-v2';
 import { useToast } from '../../../../components/ui';
 import { useMessageTemplates, useSendMessage } from '../../../../lib/hooks/useCandidateMessages';
 import { useIntegrations } from '../../../../lib/hooks/useIntegrations';
+import { useOrgSenderAddresses } from '../../../../lib/hooks/useOrgSenderAddresses';
 import { CandidateEmailTemplate } from '../../../../lib/types';
 
 // Readable stand-ins for the tokens the server would otherwise fill from live data (see
@@ -56,10 +57,22 @@ export function SendMessageModal({ entryId, candidateId, candidateName, onClose,
   // Best-effort, same as the templates admin page: a plain recruiter gets a 403 on this org-admin
   // endpoint, so isSuccess just stays false and the banner quietly doesn't render.
   const { data: integrations, isSuccess: integrationsLoaded } = useIntegrations();
+  // Best-effort like the templates fetch above: a plain recruiter without org:manage_settings
+  // just never sees senders configured, so `senders` stays empty and the picker doesn't render.
+  const { data: senders } = useOrgSenderAddresses();
   const { toast } = useToast();
   const [selectValue, setSelectValue] = useState(initial?.templateId ?? '');
   const [subject, setSubject] = useState(initial?.subject ?? '');
   const [body, setBody] = useState(initial?.body ?? '');
+  const [senderAddressId, setSenderAddressId] = useState('');
+
+  // Defaults the picker to the org's default sender once senders load, without ever overriding a
+  // choice the recruiter already made.
+  useEffect(() => {
+    if (senderAddressId || !senders) return;
+    const defaultSender = senders.find((s) => s.isDefault);
+    if (defaultSender) setSenderAddressId(defaultSender.id);
+  }, [senders, senderAddressId]);
 
   function handleTemplateChange(value: string) {
     const template = (templates ?? []).find((t, i) => templateValue(t, i) === value);
@@ -76,7 +89,14 @@ export function SendMessageModal({ entryId, candidateId, candidateName, onClose,
 
   function handleSend() {
     sendMessage.mutate(
-      { templateId: resolveTemplateId(), subject: subject.trim(), body: body.trim() },
+      {
+        templateId: resolveTemplateId(),
+        subject: subject.trim(),
+        body: body.trim(),
+        // Additive: an empty selection (no senders configured, or none picked yet) omits the key
+        // entirely, so the server falls back to the org's default / emailFromAddress unchanged.
+        ...(senderAddressId ? { senderAddressId } : {}),
+      },
       {
         onSuccess: () => {
           toast('Message sent.');
@@ -106,6 +126,17 @@ export function SendMessageModal({ entryId, candidateId, candidateName, onClose,
             options={(templates ?? []).map((t, i) => ({ value: templateValue(t, i), label: t.name }))}
           />
         </div>
+        {senders && senders.length > 0 && (
+          <div>
+            <label className="v2-label">From</label>
+            <Combobox
+              width="100%"
+              value={senderAddressId}
+              onChange={setSenderAddressId}
+              options={senders.map((s) => ({ value: s.id, label: s.isDefault ? `${s.label} (default)` : s.label }))}
+            />
+          </div>
+        )}
         <TextField id="msg-subject" label="Subject" value={subject} onChange={setSubject} required />
         <div>
           <label htmlFor="message-body" className="v2-label">Body</label>
