@@ -14,6 +14,9 @@ describe('ApprovalsService.submit', () => {
   let tx: {
     approvalChain: { findUnique: jest.Mock };
     approvalRequest: { create: jest.Mock };
+    job: { findFirst: jest.Mock };
+    offer: { findFirst: jest.Mock };
+    candidate: { findFirst: jest.Mock };
     $queryRaw: jest.Mock;
   };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
@@ -24,6 +27,9 @@ describe('ApprovalsService.submit', () => {
       approvalRequest: {
         create: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'req-1', ...data })),
       },
+      job: { findFirst: jest.fn().mockResolvedValue({ title: 'Engineer' }) },
+      offer: { findFirst: jest.fn() },
+      candidate: { findFirst: jest.fn() },
       $queryRaw: jest.fn().mockResolvedValue([{ id: 'admin-1' }]),
     };
     tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
@@ -92,7 +98,30 @@ describe('ApprovalsService.submit', () => {
       'user-1',
       ['mgr-1', 'mgr-2'],
       'approval.requested',
-      expect.objectContaining({ entityType: 'job', entityId: 'job-1', linkPath: '/v2/approvals' }),
+      expect.objectContaining({ entityType: 'job', entityId: 'job-1', linkPath: '/v2/approvals', subjectLabel: 'Engineer' }),
+    );
+  });
+
+  it('resolves an offer subjectLabel (candidate name, unprefixed) on the requested notify', async () => {
+    const step = { position: 0, name: 'Manager sign-off', approverType: 'users', approverUserIds: ['mgr-1'] };
+    tx.approvalChain.findUnique.mockResolvedValue({
+      enabled: true,
+      steps: [{ position: 0, name: 'Manager sign-off', approverType: 'users', approverUserIds: '["mgr-1"]', managerLevel: null }],
+    });
+    mockResolveSteps.mockResolvedValue({ resolved: [step], skipped: [] });
+    tx.offer.findFirst.mockResolvedValue({ candidateId: 'cand-1' });
+    tx.candidate.findFirst.mockResolvedValue({ name: 'Jane Doe' });
+
+    await service.submit(context, 'offer', 'offer-1', 'user-1');
+
+    expect(tx.offer.findFirst).toHaveBeenCalledWith({ where: { id: 'offer-1', organizationId: 'org-1' }, select: { candidateId: true } });
+    expect(tx.candidate.findFirst).toHaveBeenCalledWith({ where: { id: 'cand-1' }, select: { name: true } });
+    expect(notifications.notify).toHaveBeenCalledWith(
+      context,
+      'user-1',
+      ['mgr-1'],
+      'approval.requested',
+      expect.objectContaining({ entityType: 'offer', entityId: 'offer-1', subjectLabel: 'Jane Doe' }),
     );
   });
 
@@ -137,8 +166,9 @@ describe('ApprovalsService.decide', () => {
   let tx: {
     approvalRequest: { findFirst: jest.Mock; updateMany: jest.Mock };
     approvalDecision: { create: jest.Mock };
-    job: { updateMany: jest.Mock };
-    offer: { updateMany: jest.Mock };
+    job: { updateMany: jest.Mock; findFirst: jest.Mock };
+    offer: { updateMany: jest.Mock; findFirst: jest.Mock };
+    candidate: { findFirst: jest.Mock };
   };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
@@ -162,8 +192,9 @@ describe('ApprovalsService.decide', () => {
     tx = {
       approvalRequest: { findFirst: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       approvalDecision: { create: jest.fn().mockResolvedValue({}) },
-      job: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      offer: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      job: { updateMany: jest.fn().mockResolvedValue({ count: 1 }), findFirst: jest.fn().mockResolvedValue({ title: 'Engineer' }) },
+      offer: { updateMany: jest.fn().mockResolvedValue({ count: 1 }), findFirst: jest.fn() },
+      candidate: { findFirst: jest.fn() },
     };
     tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -189,7 +220,7 @@ describe('ApprovalsService.decide', () => {
       'mgr-1',
       ['mgr-2'],
       'approval.requested',
-      expect.objectContaining({ entityType: 'job', entityId: 'job-1', linkPath: '/v2/approvals' }),
+      expect.objectContaining({ entityType: 'job', entityId: 'job-1', linkPath: '/v2/approvals', subjectLabel: 'Engineer' }),
     );
     expect(tx.job.updateMany).not.toHaveBeenCalled();
     expect(tx.offer.updateMany).not.toHaveBeenCalled();
@@ -215,14 +246,16 @@ describe('ApprovalsService.decide', () => {
       'mgr-2',
       ['submitter-1'],
       'approval.approved',
-      expect.objectContaining({ entityType: 'job', entityId: 'job-1' }),
+      expect.objectContaining({ entityType: 'job', entityId: 'job-1', subjectLabel: 'Engineer' }),
     );
   });
 
-  it('flips an offer to approved on final-step approval', async () => {
+  it('flips an offer to approved on final-step approval and resolves its candidate-name subjectLabel', async () => {
     tx.approvalRequest.findFirst.mockResolvedValue(
       twoStepReq({ currentStepPosition: 1, subjectType: 'offer', subjectId: 'offer-1', gate: 'offer' }),
     );
+    tx.offer.findFirst.mockResolvedValue({ candidateId: 'cand-1' });
+    tx.candidate.findFirst.mockResolvedValue({ name: 'Jane Doe' });
 
     const result = await service.decide(context, 'req-1', 'mgr-2', 'approved');
 
@@ -232,6 +265,15 @@ describe('ApprovalsService.decide', () => {
       data: { status: 'approved' },
     });
     expect(tx.job.updateMany).not.toHaveBeenCalled();
+    expect(tx.offer.findFirst).toHaveBeenCalledWith({ where: { id: 'offer-1', organizationId: 'org-1' }, select: { candidateId: true } });
+    expect(tx.candidate.findFirst).toHaveBeenCalledWith({ where: { id: 'cand-1' }, select: { name: true } });
+    expect(notifications.notify).toHaveBeenCalledWith(
+      context,
+      'mgr-2',
+      ['submitter-1'],
+      'approval.approved',
+      expect.objectContaining({ entityType: 'offer', entityId: 'offer-1', subjectLabel: 'Jane Doe' }),
+    );
   });
 
   it('marks rejected + subjectResolved on reject, storing the note, and flips the job to draft', async () => {
@@ -256,7 +298,7 @@ describe('ApprovalsService.decide', () => {
       'mgr-1',
       ['submitter-1'],
       'approval.rejected',
-      expect.objectContaining({ entityType: 'job', entityId: 'job-1' }),
+      expect.objectContaining({ entityType: 'job', entityId: 'job-1', subjectLabel: 'Engineer' }),
     );
   });
 
@@ -297,6 +339,9 @@ describe('ApprovalsService.cancel', () => {
   let notifications: { notify: jest.Mock };
   let tx: {
     approvalRequest: { findFirst: jest.Mock; updateMany: jest.Mock };
+    job: { findFirst: jest.Mock };
+    offer: { findFirst: jest.Mock };
+    candidate: { findFirst: jest.Mock };
   };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
@@ -319,6 +364,9 @@ describe('ApprovalsService.cancel', () => {
   beforeEach(() => {
     tx = {
       approvalRequest: { findFirst: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      job: { findFirst: jest.fn().mockResolvedValue({ title: 'Engineer' }) },
+      offer: { findFirst: jest.fn() },
+      candidate: { findFirst: jest.fn() },
     };
     tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -342,7 +390,25 @@ describe('ApprovalsService.cancel', () => {
       'submitter-1',
       ['mgr-1'],
       'approval.cancelled',
-      expect.objectContaining({ entityType: 'job', entityId: 'job-1', linkPath: '/v2/approvals' }),
+      expect.objectContaining({ entityType: 'job', entityId: 'job-1', linkPath: '/v2/approvals', subjectLabel: 'Engineer' }),
+    );
+  });
+
+  it('resolves an offer candidate-name subjectLabel on the cancelled notify', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq({ subjectType: 'offer', subjectId: 'offer-1', gate: 'offer' }));
+    tx.offer.findFirst.mockResolvedValue({ candidateId: 'cand-1' });
+    tx.candidate.findFirst.mockResolvedValue({ name: 'Jane Doe' });
+
+    await service.cancel(context, 'req-1', 'submitter-1', false);
+
+    expect(tx.offer.findFirst).toHaveBeenCalledWith({ where: { id: 'offer-1', organizationId: 'org-1' }, select: { candidateId: true } });
+    expect(tx.candidate.findFirst).toHaveBeenCalledWith({ where: { id: 'cand-1' }, select: { name: true } });
+    expect(notifications.notify).toHaveBeenCalledWith(
+      context,
+      'submitter-1',
+      ['mgr-1'],
+      'approval.cancelled',
+      expect.objectContaining({ entityType: 'offer', entityId: 'offer-1', subjectLabel: 'Jane Doe' }),
     );
   });
 
