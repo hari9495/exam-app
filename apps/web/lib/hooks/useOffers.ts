@@ -18,6 +18,7 @@ export interface CreateOfferInput {
   expiresAt: string;
   subject?: string;
   body?: string;
+  templateId?: string;
 }
 
 // candidateId is needed (beyond entryId) purely to invalidate the right ['candidate-offers', X]
@@ -74,21 +75,46 @@ export function useCancelOffer() {
   });
 }
 
-export function useOfferTemplate() {
+// GET /offer-template -- all of the org's saved named templates (empty array if none saved yet;
+// the server still resolves a code-default when an offer omits templateId).
+export function useOfferTemplates() {
   const { accessToken } = useAuth();
-  return useQuery<OfferTemplate>({
+  return useQuery<OfferTemplate[]>({
     queryKey: ['offer-template'],
     queryFn: () => apiFetch('/offer-template', {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
   });
 }
 
+export interface CreateOfferTemplateInput { name: string; subject: string; body: string; isDefault?: boolean; }
+
+export function useCreateOfferTemplate() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation<OfferTemplate, Error, CreateOfferTemplateInput>({
+    mutationFn: (input) =>
+      apiFetch('/offer-template', { method: 'POST', body: JSON.stringify(input) }, accessToken ?? undefined) as Promise<OfferTemplate>,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['offer-template'] }),
+  });
+}
+
+export interface UpdateOfferTemplateInput { id: string; name?: string; subject?: string; body?: string; isDefault?: boolean; }
+
 export function useUpdateOfferTemplate() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
-  return useMutation<OfferTemplate, Error, { subject: string; body: string }>({
-    mutationFn: (input) =>
-      apiFetch('/offer-template', { method: 'PUT', body: JSON.stringify(input) }, accessToken ?? undefined) as Promise<OfferTemplate>,
+  return useMutation<OfferTemplate, Error, UpdateOfferTemplateInput>({
+    mutationFn: ({ id, ...input }) =>
+      apiFetch(`/offer-template/${id}`, { method: 'PATCH', body: JSON.stringify(input) }, accessToken ?? undefined) as Promise<OfferTemplate>,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['offer-template'] }),
+  });
+}
+
+export function useDeleteOfferTemplate() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation<{ success: true }, Error, string>({
+    mutationFn: (id) => apiFetch(`/offer-template/${id}`, { method: 'DELETE' }, accessToken ?? undefined) as Promise<{ success: true }>,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['offer-template'] }),
   });
 }

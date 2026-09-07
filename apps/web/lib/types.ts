@@ -642,11 +642,13 @@ export interface Offer {
   approval: ApprovalSummary | null;
 }
 
-// GET /offer-template -- the org's saved offer letter override, or the code default (id: null).
+// GET /offer-template -- the org's saved, named offer letter templates (empty if none saved yet).
 export interface OfferTemplate {
   id: string | null;
+  name: string;
   subject: string;
   body: string;
+  isDefault: boolean;
 }
 
 // GET /public/offers/:token -- unauthenticated, deliberately thin (no offer id, no org internals).
