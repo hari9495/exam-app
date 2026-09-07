@@ -1249,3 +1249,17 @@ model UserGroupMember {
   @@index([organizationId, userId])
   @@map("user_group_members")
 }
+
+model OrgSenderAddress {
+  id             String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  label          String   @db.NVarChar(200)
+  address        String   @db.NVarChar(320)
+  isDefault      Boolean  @default(false) @map("is_default")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([organizationId, address])
+  @@index([organizationId])
+  @@map("org_sender_addresses")
+}
