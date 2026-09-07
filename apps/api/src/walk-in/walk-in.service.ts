@@ -6,6 +6,7 @@ import { EmailService } from '../email/email.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { buildAssessmentEmailHtml, generateToken, resolveInvitationExpiry, EMAIL_LOGO_SAS_TTL_MS } from '../invitations/invitations.service';
 import { RegisterWalkInDto } from './dto/register-walk-in.dto';
+import { resolveConsentStamp } from '../common/consent-check';
 
 /**
  * Decides whether a walk-in registration may replace a stored candidate name, returning the new
@@ -62,7 +63,9 @@ export class WalkInService {
     private readonly pipeline: PipelineService,
   ) {}
 
-  private async resolveOrg(orgSlug: string): Promise<{ id: string }> {
+  private async resolveOrg(
+    orgSlug: string,
+  ): Promise<{ id: string; applyConsentText: string | null; applyConsentVersion: number }> {
     const org = await this.prisma.organization.findUnique({ where: { slug: orgSlug } });
     if (!org) {
       throw new NotFoundException(`Organization "${orgSlug}" not found`);
@@ -74,10 +77,13 @@ export class WalkInService {
   // link/QR) -- walkInListed is deliberately NOT checked in that branch, since being placed
   // in a named group is itself the recruiter's explicit choice to expose the exam there,
   // independent of whether it's also in the org-wide default picker.
-  async listExams(orgSlug: string, groupId?: string): Promise<WalkInExamOption[]> {
+  async listExams(
+    orgSlug: string,
+    groupId?: string,
+  ): Promise<{ exams: WalkInExamOption[]; applyConsentText: string | null; applyConsentVersion: number }> {
     const org = await this.resolveOrg(orgSlug);
     const context = { organizationId: org.id, isSuperAdmin: true };
-    return this.tenantPrisma.forTenant(context, (tx) =>
+    const exams = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.exam.findMany({
         where: {
           organizationId: org.id,
@@ -89,10 +95,14 @@ export class WalkInService {
         orderBy: { title: 'asc' },
       }),
     );
+    return { exams, applyConsentText: org.applyConsentText ?? null, applyConsentVersion: org.applyConsentVersion ?? 1 };
   }
 
   async register(orgSlug: string, dto: RegisterWalkInDto): Promise<{ token: string }> {
     const org = await this.resolveOrg(orgSlug);
+    // Thrown before the tenant tx opens (and thus before any candidate write) when this org
+    // requires consent and the registrant didn't accept it.
+    const consentStamp = resolveConsentStamp(org.applyConsentText, org.applyConsentVersion, dto.consentAccepted);
     const context = { organizationId: org.id, isSuperAdmin: true };
 
     const { invitation, exam, candidate, isNewCandidate } = await this.tenantPrisma.forTenant(context, async (tx) => {
@@ -109,7 +119,7 @@ export class WalkInService {
       let candidate =
         existingCandidate ??
         (await tx.candidate.create({
-          data: { organizationId: org.id, email: dto.email, name: dto.name, phone: dto.phone },
+          data: { organizationId: org.id, email: dto.email, name: dto.name, phone: dto.phone, ...consentStamp },
         }));
 
       // ...with one narrow exception: a stored ONE-WORD name is almost always a placeholder from
@@ -118,11 +128,15 @@ export class WalkInService {
       // fragment. See expandedName for why this cannot be used to replace a name outright.
       if (existingCandidate) {
         const expanded = expandedName(existingCandidate.name, dto.name);
-        if (expanded) {
-          await tx.candidate.update({ where: { id: existingCandidate.id }, data: { name: expanded } });
-          // Built locally rather than from the update's return value: the only field that can
-          // have changed is the one just written, and the greeting below reads candidate.name.
-          candidate = { ...existingCandidate, name: expanded };
+        // consentStamp folds into the same update as the name expansion (when both apply) so a
+        // returning candidate never gets two writes; when neither applies, updateData is {} and
+        // no update call happens at all -- unchanged from before consent existed.
+        const updateData = { ...(expanded ? { name: expanded } : {}), ...consentStamp };
+        if (Object.keys(updateData).length > 0) {
+          await tx.candidate.update({ where: { id: existingCandidate.id }, data: updateData });
+          // Built locally rather than from the update's return value: the only fields that can
+          // have changed are the ones just written, and the greeting below reads candidate.name.
+          candidate = { ...existingCandidate, ...updateData };
         }
       }
 

@@ -112,8 +112,21 @@ describe('PublicApplicationsService', () => {
         postedAt: '2026-08-01T00:00:00.000Z',
         orgName: 'Acme',
         orgLogo: 'logos/acme.png?sig=abc',
+        applyConsentText: null,
+        applyConsentVersion: 1,
         customFields: [],
       });
+    });
+
+    it('exposes the org’s configured apply-consent text and version', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ job: { findUnique: jest.fn().mockResolvedValue(openJob) } }));
+      mockNoCustomFieldDefs();
+      prisma.organization.findUnique.mockResolvedValue({ name: 'Acme', logoPath: null, applyConsentText: 'I agree to X', applyConsentVersion: 3 });
+
+      const result = await service.getPublicJob('valid-token');
+
+      expect(result.applyConsentText).toBe('I agree to X');
+      expect(result.applyConsentVersion).toBe(3);
     });
 
     it('returns orgLogo: null and skips signing when the org has no logo', async () => {
@@ -358,6 +371,106 @@ describe('PublicApplicationsService', () => {
       expect(writeTx.candidate.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: {} }));
       // Existing candidate re-applying is not a new applicant -- no candidate.applied event.
       expect(integrationEvents.emit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('apply — consent', () => {
+    function buildWriteTx(existingCandidate: unknown) {
+      return withRecomputeMocks({
+        candidate: {
+          findUnique: jest.fn().mockResolvedValue(existingCandidate),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', portalToken: 'ptok-1' }),
+        },
+        candidateProfile: { upsert: jest.fn().mockResolvedValue({ id: 'prof-1' }) },
+        pipelineEntry: { upsert: jest.fn().mockResolvedValue({ id: 'en-1', applicationToken: 'tok-1' }) },
+      });
+    }
+
+    async function callApply(writeTx: any, consentAccepted?: boolean) {
+      const bootstrapTx = { job: { findUnique: jest.fn().mockResolvedValue(openJob) } };
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c, fn) => fn(bootstrapTx))
+        .mockImplementationOnce((_c, fn) => fn(writeTx));
+      blobStorage.upload.mockResolvedValue('candidates/org-1/x.pdf');
+      jobsService.enqueue.mockResolvedValue({ id: 'aijob' });
+      const pdf = Buffer.from('%PDF-1.7 x').toString('base64');
+      return service.apply('valid-token', {
+        name: 'A',
+        email: 'a@x.com',
+        resumeBase64: pdf,
+        ...(consentAccepted === undefined ? {} : { consentAccepted }),
+      });
+    }
+
+    it('stamps a NEW candidate with consentedAt/version when the org requires consent and it is accepted', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: 'I agree to X', applyConsentVersion: 3 });
+      const writeTx = buildWriteTx(null);
+
+      await callApply(writeTx, true);
+
+      expect(writeTx.candidate.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ consentedAt: expect.any(Date), consentVersion: 3 }),
+          update: expect.objectContaining({ consentedAt: expect.any(Date), consentVersion: 3 }),
+        }),
+      );
+    });
+
+    it('stamps a RETURNING candidate with consentedAt/version when the org requires consent and it is accepted', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: 'I agree to X', applyConsentVersion: 3 });
+      // Stored name is already two words -- expandedName won't fire, isolating the assertion to consent alone.
+      const writeTx = buildWriteTx({ id: 'cand-1', name: 'Real Name', phone: '555-0000' });
+
+      await callApply(writeTx, true);
+
+      expect(writeTx.candidate.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({ consentedAt: expect.any(Date), consentVersion: 3 }),
+        }),
+      );
+    });
+
+    it('rejects with BadRequest and writes nothing when the org requires consent and consentAccepted is missing', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: 'I agree to X', applyConsentVersion: 1 });
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ job: { findUnique: jest.fn().mockResolvedValue(openJob) } }));
+
+      await expect(
+        service.apply('valid-token', { name: 'A', email: 'a@x.com', resumeBase64: Buffer.from('%PDF-1.7 x').toString('base64') }),
+      ).rejects.toThrow('Consent is required to apply');
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1); // only the bootstrap read, no write tx
+    });
+
+    it('rejects with BadRequest when the org requires consent and consentAccepted is explicitly false', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: 'I agree to X', applyConsentVersion: 1 });
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ job: { findUnique: jest.fn().mockResolvedValue(openJob) } }));
+
+      await expect(callApply({}, false)).rejects.toThrow('Consent is required to apply');
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('does not stamp and does not require consent when applyConsentText is null (not configured)', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: null, applyConsentVersion: 1 });
+      const writeTx = buildWriteTx(null);
+
+      const out = await callApply(writeTx);
+
+      expect(out.statusToken).toBe('tok-1');
+      const create = writeTx.candidate.upsert.mock.calls[0][0].create;
+      expect(create.consentedAt).toBeUndefined();
+      expect(create.consentVersion).toBeUndefined();
+    });
+
+    it('does not stamp and does not require consent when applyConsentText is whitespace-only', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: '   ', applyConsentVersion: 2 });
+      const writeTx = buildWriteTx(null);
+
+      const out = await callApply(writeTx);
+
+      expect(out.statusToken).toBe('tok-1');
+      const create = writeTx.candidate.upsert.mock.calls[0][0].create;
+      expect(create.consentedAt).toBeUndefined();
+      expect(create.consentVersion).toBeUndefined();
     });
   });
 
