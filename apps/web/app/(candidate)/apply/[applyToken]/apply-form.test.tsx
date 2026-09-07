@@ -170,4 +170,52 @@ describe('ApplyForm', () => {
 
     expect(await screen.findByText("This role isn't accepting applications.")).toBeInTheDocument();
   });
+
+  // --- Zoho #21 candidate consent capture ---
+
+  it('renders no consent checkbox when the job has no applyConsentText configured', async () => {
+    mockFetch();
+    render(<ApplyForm />);
+
+    expect(await screen.findByText('Senior Backend Engineer')).toBeInTheDocument();
+    expect(screen.queryByText('I have read and agree to the above.')).not.toBeInTheDocument();
+  });
+
+  it('requires the consent checkbox and blocks submission until checked, then sends consentAccepted:true', async () => {
+    global.fetch = jest.fn(async (url, options) => {
+      const urlString = String(url);
+      if (options?.method === 'POST' && urlString.endsWith('/public/jobs/tok-abc/apply')) {
+        return new Response(JSON.stringify({ statusToken: 'tok-1' }), { status: 200 });
+      }
+      if (urlString.endsWith('/public/jobs/tok-abc')) {
+        return new Response(
+          JSON.stringify({ ...JOB, applyConsentText: 'We will process your data per our privacy policy.', applyConsentVersion: 2 }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 404 });
+    }) as unknown as typeof fetch;
+    render(<ApplyForm />);
+
+    expect(await screen.findByText('We will process your data per our privacy policy.')).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText('Name'), 'Jane Candidate');
+    await userEvent.type(screen.getByLabelText('Email'), 'jane@example.com');
+    const file = new File([new Uint8Array([1, 2, 3])], 'cv.pdf', { type: 'application/pdf' });
+    await userEvent.upload(screen.getByLabelText(/Resume/), file);
+
+    const submitButton = screen.getByRole('button', { name: /Submit application/i });
+    expect(submitButton).toBeDisabled();
+    await userEvent.click(submitButton);
+    expect((global.fetch as jest.Mock).mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+
+    await userEvent.click(screen.getByLabelText('I have read and agree to the above.'));
+    expect(submitButton).toBeEnabled();
+    await userEvent.click(submitButton);
+
+    await screen.findByRole('link', { name: 'Track this application' });
+    const postCall = (global.fetch as jest.Mock).mock.calls.find(([, options]) => options?.method === 'POST');
+    const body = JSON.parse(postCall![1].body);
+    expect(body.consentAccepted).toBe(true);
+  });
 });

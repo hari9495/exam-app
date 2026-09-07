@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { motion, MotionConfig } from 'framer-motion';
 import { AlertCircle, MailCheck } from 'lucide-react';
-import { Button, Input, Select, RequiredFieldsNote } from '../../../components/ui';
+import { Button, Checkbox, Input, Select, RequiredFieldsNote } from '../../../components/ui';
 import { AuthPageLayout } from '../../../components/AuthPageLayout';
 import { useWalkInExams, useWalkInRegister } from '../../../lib/hooks/useWalkIn';
 import { composeName, EMAIL_PATTERN, PHONE_PATTERN } from '../../../lib/candidateValidation';
@@ -14,6 +14,7 @@ interface FormErrors {
   lastName?: string;
   email?: string;
   phone?: string;
+  consent?: string;
 }
 
 // Live validation on blur, not just on submit -- lets a candidate fix a typo'd email
@@ -43,7 +44,11 @@ export default function WalkInPage() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const searchParams = useSearchParams();
   const groupParam = searchParams.get('group');
-  const { data: exams, isLoading, isError } = useWalkInExams(orgSlug, groupParam);
+  // Task 2 (Zoho #21) changed this endpoint's shape from a bare array to
+  // { exams, applyConsentText, applyConsentVersion } -- unwrap both here.
+  const { data: walkInData, isLoading, isError } = useWalkInExams(orgSlug, groupParam);
+  const exams = walkInData?.exams;
+  const applyConsentText = walkInData?.applyConsentText;
   const register = useWalkInRegister(orgSlug);
 
   const [firstName, setFirstName] = useState('');
@@ -52,6 +57,7 @@ export default function WalkInPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [examId, setExamId] = useState('');
+  const [consentAccepted, setConsentAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FormErrors>({});
   // A QR-scanned registration often happens on a phone, which can't run the exam UI
@@ -82,13 +88,20 @@ export default function WalkInPage() {
       lastName: lastName.trim() ? undefined : 'Complete this field.',
       email: validateEmailField(email),
       phone: validatePhoneField(phone),
+      consent: applyConsentText && !consentAccepted ? 'You must accept to continue.' : undefined,
     };
     if (Object.values(nextErrors).some(Boolean)) {
       setFieldErrors(nextErrors);
       return;
     }
     register.mutate(
-      { name: composeName(firstName, middleName, lastName), email: email.trim(), phone: phone.trim() || undefined, examId: resolvedExamId },
+      {
+        name: composeName(firstName, middleName, lastName),
+        email: email.trim(),
+        phone: phone.trim() || undefined,
+        examId: resolvedExamId,
+        ...(applyConsentText ? { consentAccepted } : {}),
+      },
       {
         onSuccess: () => setSubmitted(true),
         onError: (err) => setError(err instanceof Error ? err.message : 'Registration failed.'),
@@ -222,6 +235,20 @@ export default function WalkInPage() {
                     }))}
                     required
                   />
+                )}
+                {applyConsentText && (
+                  <div className="flex flex-col gap-2 rounded-md border border-rule p-3">
+                    <p className="whitespace-pre-wrap text-xs text-muted">{applyConsentText}</p>
+                    <Checkbox
+                      label="I have read and agree to the above."
+                      checked={consentAccepted}
+                      onChange={(checked) => {
+                        setConsentAccepted(checked);
+                        if (fieldErrors.consent) setFieldErrors((current) => ({ ...current, consent: undefined }));
+                      }}
+                    />
+                    {fieldErrors.consent && <p className="text-xs text-status-danger">{fieldErrors.consent}</p>}
+                  </div>
                 )}
                 <Button type="submit" loading={register.isPending} disabled={!resolvedExamId} className="w-full">
                   Email me my exam link
