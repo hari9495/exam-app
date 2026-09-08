@@ -20,6 +20,9 @@ export class UpdateJobDto {
   @IsOptional() @IsBoolean()
   publicApplyEnabled?: boolean;
 
+  @IsOptional() @IsBoolean()
+  listOnCareers?: boolean;
+
   @IsOptional() @IsString() @MaxLength(5000)
   fitCriteria?: string;
 

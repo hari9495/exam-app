@@ -339,6 +339,7 @@ export class PipelineService {
       description?: string;
       status?: 'open' | 'closed';
       publicApplyEnabled?: boolean;
+      listOnCareers?: boolean;
       fitCriteria?: string | null;
       fitRubric?: { label: string; weight: number }[] | null;
       location?: string;
@@ -382,6 +383,7 @@ export class PipelineService {
         status?: string;
         closedAt?: Date | null;
         publicApplyEnabled?: boolean;
+        listOnCareers?: boolean;
         applyToken?: string;
         fitCriteria?: string | null;
         fitRubric?: string | null;
@@ -422,6 +424,9 @@ export class PipelineService {
         if (dto.publicApplyEnabled && !job.applyToken) {
           data.applyToken = randomUUID();
         }
+      }
+      if (dto.listOnCareers !== undefined) {
+        data.listOnCareers = dto.listOnCareers;
       }
       if (dto.fitCriteria !== undefined) {
         data.fitCriteria = dto.fitCriteria?.trim() || null;

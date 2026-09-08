@@ -601,6 +601,41 @@ describe('PipelineService', () => {
     });
   });
 
+  describe('updateJob listOnCareers flag', () => {
+    it('writes listOnCareers when provided', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const tx = {
+        job: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open', applyToken: null, publicApplyEnabled: false, listOnCareers: false }),
+          update,
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.updateJob(context, 'user-1', 'job-1', { listOnCareers: true });
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'job-1' },
+        data: expect.objectContaining({ listOnCareers: true }),
+      });
+    });
+
+    it('leaves listOnCareers untouched when not part of the update', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const tx = {
+        job: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open', applyToken: null, publicApplyEnabled: false, listOnCareers: false }),
+          update,
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.updateJob(context, 'user-1', 'job-1', { title: 'New Title' });
+
+      expect(update.mock.calls[0][0].data).not.toHaveProperty('listOnCareers');
+    });
+  });
+
   describe('updateJob fit criteria', () => {
     let tx: any;
     beforeEach(() => {
