@@ -10,6 +10,7 @@ The standard every v2 surface (`app/v2/**`) is reviewed against — by `/code-re
 - **No exclamation marks** in system copy.
 - **CTA / focus color is the org accent slot**, not a fixed brand color — never hardcode `#3b5fe3`; use `var(--accent)` / `var(--org-primary)`.
 - **Two token sets exist today:** login is C1 under `.v2`; new v2 surfaces are Azure under `.wfx`. Never let one scope's values leak into the other.
+- **Landing-page "anti-AI-slop" advice does not apply to the console** (neo-brutalism, exaggerated padding, spring physics on every element, 900-weight headers). Personality: "a tool teams live in all day, not a landing page." The Motion chapter already fixes what moves and how.
 
 ---
 
@@ -80,3 +81,16 @@ The standard every v2 surface (`app/v2/**`) is reviewed against — by `/code-re
 - [ ] 21st.dev / any external component is retoned to our tokens before use — never dropped in with its own colors; gradients stripped unless data-true.
 - [ ] Old UI (`app/login`, `components/ui`, `components/invigilator.css`) untouched; login (C1) untouched unless the change IS the scheduled login retone.
 - [ ] Product name renders from `BRAND.productName` only (the `WorkfoxMark` identifier is fine).
+
+## Information design — what goes on a screen (Workfox-specific)
+Every section above can pass while a screen still reads as a generated template. This section reviews the layer a template decides for you — what is shown, what comes first, and what it is called. Personality sets the bar: "a tool teams live in all day, not a landing page."
+- [ ] The unit of a home or list screen is a person + their context + one next action — never a metric tile. Recruiting is people and decisions.
+- [ ] One focal point per screen, chosen by importance to the person using it, not by template order. If two things shout, nothing does.
+- [ ] Dense enough to scan in a second: 13–14px rows, real names, real next actions. No landing-page whitespace on work screens.
+- [ ] Metrics are demoted on work screens — a quiet strip, or a link to Reports. A "+12% vs window" appears only where it changes a decision.
+- [ ] Bricolage for the one thing to be read first (a greeting, a name, a section heading); everything else Hanken 13–14 (see Typography).
+- [ ] Group labels name the person's obligation, not the system's state: "Feedback you owe", not "Pending grading". Fact, then next step (see Voice).
+- [ ] 21st.dev intake goes one layer deeper than tokens: strip the template's information architecture too. Keep the component, discard its dashboard.
+- [ ] Retired patterns — fail the review on sight: gradient-fill area charts on work screens (intake: gradients only when data-true); gauges against invented targets (Standards: every decorating metric must be data-true); rainbow-tinted icon stat tiles; icon-in-a-circle + bold header + paragraph rows; grids of equal-weight cards with no first thing.
+
+Worked example: the recruiter home as shipped, annotated, beside a people-first "Today" in the same shell — https://claude.ai/code/artifact/cadde746-7cde-4f75-b527-fba5b73d1485
