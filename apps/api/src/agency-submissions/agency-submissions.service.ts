@@ -3,6 +3,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { AuditService, BlobStorageService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { expandedName } from '../walk-in/walk-in.service';
 import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
+import { JobsService } from '../jobs/jobs.service';
 
 const STATUSES = ['pending', 'accepted', 'rejected'] as const;
 export type AgencySubmissionStatus = (typeof STATUSES)[number];
@@ -13,6 +14,7 @@ export class AgencySubmissionsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly blobStorage: BlobStorageService,
     private readonly audit: AuditService,
+    private readonly jobsService: JobsService,
   ) {}
 
   async list(context: TenantContext, status: AgencySubmissionStatus = 'pending') {
@@ -82,6 +84,12 @@ export class AgencySubmissionsService {
         update: { ...(nameUpdate ? { name: nameUpdate } : {}), deletedAt: null, deletedByUserId: null },
       });
 
+      // Existing candidates (pre-portal) may lack a token; mint one so every accepted candidate
+      // gets a portal link, same backfill apply() does for a returning candidate.
+      if (!candidate.portalToken) {
+        await tx.candidate.update({ where: { id: candidate.id }, data: { portalToken: randomUUID() } });
+      }
+
       await tx.candidateProfile.upsert({
         where: { candidateId: candidate.id },
         create: { organizationId, candidateId: candidate.id, resumePath: submission.resumePath, parseStatus: 'pending' },
@@ -135,6 +143,11 @@ export class AgencySubmissionsService {
 
       return candidate.id;
     });
+
+    // Outside the tx, same as apply() -- enqueues the newly-attached résumé for re-parsing.
+    // Attribution is the reviewing recruiter (a real authenticated actor here, unlike apply()'s
+    // unauthenticated public endpoint, which falls back to job.createdById).
+    await this.jobsService.enqueue(context, 'resume_parse', JSON.stringify({ candidateId }), userId);
 
     await this.audit.record(context, {
       actorUserId: userId,
