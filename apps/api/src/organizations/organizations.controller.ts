@@ -192,6 +192,7 @@ export class OrganizationsController {
   @Post('careers/banner')
   @RequirePermissions('org:manage_settings')
   @UseInterceptors(FileInterceptor('file'))
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
   uploadCareersBanner(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @UploadedFile() file: Express.Multer.File) {
     return this.organizationsService.uploadCareersBanner(tenant, userId, file);
   }
