@@ -68,6 +68,10 @@ model Organization {
   createdAt              DateTime          @default(now()) @map("created_at")
   applyConsentText       String?           @map("apply_consent_text") @db.NVarChar(Max)
   applyConsentVersion    Int               @default(1) @map("apply_consent_version")
+  careersEnabled         Boolean           @default(false) @map("careers_enabled")
+  careersHeadline        String?           @map("careers_headline")
+  careersIntro           String?           @map("careers_intro") @db.NVarChar(Max)
+  careersBannerPath      String?           @map("careers_banner_path")
   users                  User[]
   auditLogs              AuditLog[]
   webhookDeliveries      WebhookDelivery[]
@@ -864,6 +868,7 @@ model Job {
   createdAt          DateTime        @default(now()) @map("created_at")
   closedAt           DateTime?       @map("closed_at")
   publicApplyEnabled Boolean         @default(false) @map("public_apply_enabled")
+  listOnCareers      Boolean         @default(false) @map("list_on_careers")
   applyToken         String?         @unique @map("apply_token")
   location           String?         @db.NVarChar(200)
   employmentType     String?         @map("employment_type") @db.NVarChar(50)
