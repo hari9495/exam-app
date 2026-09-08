@@ -106,7 +106,7 @@ export default function V2TodayPage() {
 
   const period = greetingPeriod(new Date().getHours());
   const name = firstName(user?.name);
-  const kicker = new Intl.DateTimeFormat(undefined, { timeZone: today.today.timeZone, weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(today.today.iso));
+  const kicker = new Intl.DateTimeFormat(undefined, { timeZone: today.today.timeZone, weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${today.today.iso}T12:00:00Z`));
   const total = today.needsYou.total;
 
   return (

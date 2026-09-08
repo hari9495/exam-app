@@ -19,7 +19,7 @@ function fmtTime(iso: string): string {
 
 function fixture(overrides: Partial<TodayResponse> = {}): TodayResponse {
   return {
-    today: { iso: '2026-09-08T00:00:00.000Z', timeZone: TIME_ZONE },
+    today: { iso: '2026-09-08', timeZone: TIME_ZONE },
     needsYou: {
       feedbackOwed: [
         { id: 'f1', candidateId: 'c1', candidateName: 'Asha Rao', subtitle: 'Backend Engineer · interviewed today · scorecard due', at: '2026-09-08T09:00:00.000Z', actionLabel: 'Add feedback', actionHref: '/v2/jobs/j1' },
@@ -185,5 +185,16 @@ describe('V2TodayPage', () => {
     mockedUseToday.mockReturnValue({ data: fixture(), isLoading: false, isError: false });
     renderPage();
     expect(screen.getByRole('link', { name: 'Full reports' })).toHaveAttribute('href', '/v2/reports');
+  });
+
+  it('the date kicker shows the correct calendar day in a west-of-UTC timezone (no off-by-one)', () => {
+    mockedUseToday.mockReturnValue({
+      data: fixture({ today: { iso: '2026-09-08', timeZone: 'America/Los_Angeles' } }),
+      isLoading: false,
+      isError: false,
+    });
+    renderPage();
+    expect(screen.getByText(/8 September/)).toBeInTheDocument();
+    expect(screen.queryByText(/7 September/)).not.toBeInTheDocument();
   });
 });
