@@ -882,6 +882,7 @@ model Job {
   pipeline           Pipeline?       @relation(fields: [pipelineId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   deletedAt          DateTime?       @map("deleted_at")
   deletedByUserId    String?         @map("deleted_by_user_id") @db.UniqueIdentifier
+  jobBoardPublications JobBoardPublication[]
 
   @@index([organizationId, status])
   @@map("jobs")
@@ -1297,4 +1298,32 @@ model OrgSenderAddress {
   @@unique([organizationId, address])
   @@index([organizationId])
   @@map("org_sender_addresses")
+}
+
+model JobBoard {
+  id             String                @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String                @map("organization_id") @db.UniqueIdentifier
+  name           String                @db.NVarChar(200)
+  feedToken      String                @unique @map("feed_token")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  publications   JobBoardPublication[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("job_boards")
+}
+
+model JobBoardPublication {
+  jobBoardId     String   @map("job_board_id") @db.UniqueIdentifier
+  jobId          String   @map("job_id") @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  createdAt      DateTime @default(now()) @map("created_at")
+  jobBoard       JobBoard @relation(fields: [jobBoardId], references: [id], onDelete: Cascade)
+  job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@id([jobBoardId, jobId])
+  @@index([jobId])
+  @@index([organizationId])
+  @@map("job_board_publications")
 }
