@@ -113,7 +113,12 @@ export class AuthController {
       }
     }
 
-    const tokens = await this.authService.issueTokensForSso(user.id, user.organizationId, user.role);
+    const tokens = await this.authService.issueTokensForSso(
+      user.id,
+      user.organizationId,
+      user.role,
+      user.permissionProfileId ?? null,
+    );
     res.cookie(REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions());
     return { accessToken: tokens.accessToken };
   }

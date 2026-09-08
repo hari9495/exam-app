@@ -83,7 +83,7 @@ export class AuthService {
       throw new UnauthorizedException('This account has been deactivated');
     }
 
-    const tokens = await this.issueTokenPair(user.id, user.organizationId, user.role);
+    const tokens = await this.issueTokenPair(user.id, user.organizationId, user.role, user.permissionProfileId ?? null);
     await this.audit.record(
       { organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' },
       { actorUserId: user.id, action: 'login.success', entityType: 'user', entityId: user.id },
@@ -296,7 +296,7 @@ export class AuthService {
       }
     }
 
-    return this.issueTokenPair(user.id, user.organizationId, user.role, payload.familyId);
+    return this.issueTokenPair(user.id, user.organizationId, user.role, user.permissionProfileId ?? null, payload.familyId);
   }
 
   async logout(refreshToken: string): Promise<void> {
@@ -312,8 +312,13 @@ export class AuthService {
     });
   }
 
-  async issueTokensForSso(userId: string, organizationId: string | null, role: string): Promise<TokenPair> {
-    const tokens = await this.issueTokenPair(userId, organizationId, role);
+  async issueTokensForSso(
+    userId: string,
+    organizationId: string | null,
+    role: string,
+    permissionProfileId: string | null,
+  ): Promise<TokenPair> {
+    const tokens = await this.issueTokenPair(userId, organizationId, role, permissionProfileId);
     await this.recordLogin(userId, organizationId, role);
     return tokens;
   }
@@ -343,6 +348,7 @@ export class AuthService {
       sub: actorUserId,
       organizationId: targetOrgId,
       role: 'super_admin',
+      permissionProfileId: null,
       actingSuperAdmin: true,
       actingOrgName: org.name,
       actingOrgSlug: org.slug,
@@ -406,6 +412,7 @@ export class AuthService {
       sub: target.id,
       organizationId: target.organizationId,
       role: target.role,
+      permissionProfileId: null,
       impersonatorUserId: caller.userId,
       impersonatorEmail: callerRecord?.email ?? undefined,
     });
@@ -430,6 +437,7 @@ export class AuthService {
     sub: string;
     organizationId: string | null;
     role: string;
+    permissionProfileId: string | null;
     actingSuperAdmin?: boolean;
     actingOrgName?: string;
     actingOrgSlug?: string;
@@ -446,9 +454,10 @@ export class AuthService {
     userId: string,
     organizationId: string | null,
     role: string,
+    permissionProfileId: string | null,
     familyId: string = randomUUID(),
   ): Promise<TokenPair> {
-    const accessToken = this.signAccessToken({ sub: userId, organizationId, role });
+    const accessToken = this.signAccessToken({ sub: userId, organizationId, role, permissionProfileId });
     const refreshToken = this.jwt.sign(
       { sub: userId, familyId },
       { secret: process.env.JWT_REFRESH_SECRET, expiresIn: `${process.env.REFRESH_TOKEN_TTL_DAYS ?? 30}d` as `${number}d` },

@@ -25,4 +25,16 @@ describe('JwtStrategy.validate', () => {
     const user = strategy.validate({ sub: 'u1', organizationId: 'org1', role: 'org_admin' });
     expect(user.impersonatorUserId).toBeUndefined();
   });
+
+  it('surfaces permissionProfileId on the request user', () => {
+    const user = strategy.validate({
+      sub: 'u1', organizationId: 'org1', role: 'recruiter', permissionProfileId: 'profile-1',
+    });
+    expect(user.permissionProfileId).toBe('profile-1');
+  });
+
+  it('defaults permissionProfileId to null for an old token minted before the claim existed', () => {
+    const user = strategy.validate({ sub: 'u1', organizationId: 'org1', role: 'recruiter' });
+    expect(user.permissionProfileId).toBeNull();
+  });
 });
