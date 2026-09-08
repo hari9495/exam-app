@@ -162,6 +162,8 @@ model User {
   avatarPath          String?              @map("avatar_path")
   lastLoginAt         DateTime?            @map("last_login_at")
   managerId           String?              @map("manager_id") @db.UniqueIdentifier
+  permissionProfileId String?              @map("permission_profile_id") @db.UniqueIdentifier
+  permissionProfile   PermissionProfile?   @relation(fields: [permissionProfileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   createdAt           DateTime             @default(now()) @map("created_at")
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
@@ -1297,4 +1299,18 @@ model OrgSenderAddress {
   @@unique([organizationId, address])
   @@index([organizationId])
   @@map("org_sender_addresses")
+}
+
+model PermissionProfile {
+  id              String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  organizationId  String   @map("organization_id") @db.UniqueIdentifier
+  name            String   @db.NVarChar(200)
+  permissionsJson String   @map("permissions_json") @db.NVarChar(Max)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  users           User[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("permission_profiles")
 }

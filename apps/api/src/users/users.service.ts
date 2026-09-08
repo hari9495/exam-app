@@ -47,6 +47,7 @@ const SAFE_USER_SELECT = {
   role: true,
   status: true,
   managerId: true,
+  permissionProfileId: true,
   lastLoginAt: true,
   createdAt: true,
   timeZone: true,
