@@ -2,7 +2,7 @@ import { PublicApplicationsController } from './public-applications.controller';
 
 describe('PublicApplicationsController', () => {
   function setup() {
-    const service = { getPublicJob: jest.fn(), apply: jest.fn(), getApplicationStatus: jest.fn(), getJobsFeed: jest.fn(), getPortal: jest.fn(), updatePortalProfile: jest.fn(), uploadPortalResume: jest.fn(), getUnsubscribe: jest.fn(), setUnsubscribe: jest.fn() };
+    const service = { getPublicJob: jest.fn(), apply: jest.fn(), getApplicationStatus: jest.fn(), getJobsFeed: jest.fn(), getBoardFeed: jest.fn(), getPortal: jest.fn(), updatePortalProfile: jest.fn(), uploadPortalResume: jest.fn(), getUnsubscribe: jest.fn(), setUnsubscribe: jest.fn() };
     const controller = new PublicApplicationsController(service as any);
     return { service, controller };
   }
@@ -24,6 +24,12 @@ describe('PublicApplicationsController', () => {
     const { service, controller } = setup();
     controller.jobsFeed();
     expect(service.getJobsFeed).toHaveBeenCalled();
+  });
+
+  it('boardFeed delegates to service.getBoardFeed with the feedToken', () => {
+    const { service, controller } = setup();
+    controller.boardFeed('feed-token-1');
+    expect(service.getBoardFeed).toHaveBeenCalledWith('feed-token-1');
   });
 
   it('portal delegates to service.getPortal with the portalToken', () => {

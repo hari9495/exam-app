@@ -25,6 +25,13 @@ export class PublicApplicationsController {
     return this.service.getJobsFeed();
   }
 
+  // Distinct segment from jobs-feed.xml and jobs/:applyToken -- no route collision.
+  @Get('job-boards/:feedToken/feed.xml')
+  @Header('Content-Type', 'application/xml; charset=utf-8')
+  boardFeed(@Param('feedToken') feedToken: string) {
+    return this.service.getBoardFeed(feedToken);
+  }
+
   @Get('jobs/:applyToken')
   getJob(@Param('applyToken') applyToken: string) {
     return this.service.getPublicJob(applyToken);
