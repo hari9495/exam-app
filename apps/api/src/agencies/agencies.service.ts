@@ -88,15 +88,11 @@ export class AgenciesService {
       throw error;
     }
     await this.audit.record(context, { actorUserId, action: 'agency.created', entityType: 'agency', entityId: created.id, metadata: { name } });
-    return toDto(created, dto.jobIds?.length ?? 0, 0);
+    return toDto(created, new Set(dto.jobIds ?? []).size, 0);
   }
 
   async update(context: TenantContext, actorUserId: string, id: string, dto: UpdateAgencyDto): Promise<AgencyWithStats> {
     const orgId = context.organizationId as string;
-    const existing = await this.tenantPrisma.forTenant(context, (tx) => tx.agency.findFirst({ where: { id, organizationId: orgId } }));
-    if (!existing) {
-      throw new NotFoundException(`Agency ${id} not found`);
-    }
     let name: string | undefined;
     if (dto.name !== undefined) {
       name = dto.name.trim();
@@ -104,9 +100,16 @@ export class AgenciesService {
         throw new BadRequestException('Agency name is required');
       }
     }
-    let updated: Agency;
+    // Fetch-existence, the scalar update, and the allowlist reconcile all run inside ONE
+    // forTenant transaction, so a concurrent delete/rename between the check and the write can't
+    // slip through as an unhandled P2025 -- a missing agency surfaces as a clean 404 instead.
+    let result: { agency: Agency; assignedJobCount: number; pendingSubmissionCount: number };
     try {
-      updated = await this.tenantPrisma.forTenant(context, async (tx) => {
+      result = await this.tenantPrisma.forTenant(context, async (tx) => {
+        const existing = await tx.agency.findFirst({ where: { id, organizationId: orgId } });
+        if (!existing) {
+          throw new NotFoundException(`Agency ${id} not found`);
+        }
         const agency = await tx.agency.update({
           where: { id },
           data: {
@@ -118,7 +121,9 @@ export class AgenciesService {
         if (dto.jobIds !== undefined) {
           await this.setAllowlist(tx, orgId, id, dto.jobIds);
         }
-        return agency;
+        const assignedJobCount = await tx.agencyJob.count({ where: { agencyId: id } });
+        const pendingSubmissionCount = await tx.agencySubmission.count({ where: { agencyId: id, status: 'pending' } });
+        return { agency, assignedJobCount, pendingSubmissionCount };
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -127,25 +132,27 @@ export class AgenciesService {
       throw error;
     }
     await this.audit.record(context, { actorUserId, action: 'agency.updated', entityType: 'agency', entityId: id, metadata: { name } });
-    const assignedJobCount = await this.tenantPrisma.forTenant(context, (tx) => tx.agencyJob.count({ where: { agencyId: id } }));
-    const pendingSubmissionCount = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.agencySubmission.count({ where: { agencyId: id, status: 'pending' } }),
-    );
-    return toDto(updated, assignedJobCount, pendingSubmissionCount);
+    return toDto(result.agency, result.assignedJobCount, result.pendingSubmissionCount);
   }
 
   async remove(context: TenantContext, actorUserId: string, id: string): Promise<{ id: string }> {
     const orgId = context.organizationId as string;
-    const existing = await this.tenantPrisma.forTenant(context, (tx) => tx.agency.findFirst({ where: { id, organizationId: orgId } }));
-    if (!existing) {
-      throw new NotFoundException(`Agency ${id} not found`);
-    }
-    const submissionCount = await this.tenantPrisma.forTenant(context, (tx) => tx.agencySubmission.count({ where: { agencyId: id } }));
-    if (submissionCount > 0) {
-      throw new ConflictException('Cannot delete an agency with submissions');
-    }
-    // AgencyJob cascades via the FK (onDelete: Cascade, see T1) -- no manual cleanup.
-    await this.tenantPrisma.forTenant(context, (tx) => tx.agency.delete({ where: { id } }));
+    // Existence check, the submission-count guard, and the delete all run inside ONE forTenant
+    // transaction -- a submission inserted between the count-check and the delete can't slip
+    // past the 409 guard.
+    const existing = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const agency = await tx.agency.findFirst({ where: { id, organizationId: orgId } });
+      if (!agency) {
+        throw new NotFoundException(`Agency ${id} not found`);
+      }
+      const submissionCount = await tx.agencySubmission.count({ where: { agencyId: id } });
+      if (submissionCount > 0) {
+        throw new ConflictException('Cannot delete an agency with submissions');
+      }
+      // AgencyJob cascades via the FK (onDelete: Cascade, see T1) -- no manual cleanup.
+      await tx.agency.delete({ where: { id } });
+      return agency;
+    });
     await this.audit.record(context, { actorUserId, action: 'agency.deleted', entityType: 'agency', entityId: id, metadata: { name: existing.name } });
     return { id };
   }

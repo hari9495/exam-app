@@ -173,6 +173,19 @@ describe('AgenciesService', () => {
       expect(tx.agency.update).not.toHaveBeenCalled();
     });
 
+    it('surfaces a duplicate name as a conflict', async () => {
+      const tx = {
+        agency: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'agency-1', name: 'Old Name', contactEmail: null, active: true, portalToken: 'tok-1', organizationId: 'org-1' }),
+          update: jest.fn().mockRejectedValue(knownRequestError('P2002')),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.update(context, 'user-1', 'agency-1', { name: 'Existing Name' })).rejects.toThrow(ConflictException);
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
     it('rejects a cross-org jobId and leaves the allowlist untouched', async () => {
       const tx = {
         agency: {
