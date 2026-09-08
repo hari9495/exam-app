@@ -13,7 +13,7 @@ const V2_ROUTES = new Set([
   '/message-templates', '/offer-template',
   '/users', '/audit-log', '/system-logs', '/data-rights',
   '/settings/branding', '/settings/integrations', '/settings/sso', '/settings/billing',
-  '/settings/approvals', '/settings/pipelines', '/settings/business-hours', '/settings/custom-fields', '/settings/field-permissions', '/settings/user-groups',
+  '/settings/approvals', '/settings/pipelines', '/settings/business-hours', '/settings/custom-fields', '/settings/field-permissions', '/settings/user-groups', '/settings/permission-profiles',
   '/settings/record-visibility',
   '/settings/recycle-bin',
   '/settings/approval-emails',

@@ -54,6 +54,9 @@ export interface StaffUser {
   // emailSignature, unlike timeZone, really is /users/me-exclusive -- see SafeUser's comment
   // in apps/api/src/users/users.service.ts.
   emailSignature?: string | null;
+  // null/omitted = the user's role default permission set; a profile id overrides it. Set via
+  // PATCH /users/:id; takes effect on the user's next login/token refresh (JWT-embedded).
+  permissionProfileId?: string | null;
 }
 
 export interface DirectoryUser extends StaffUser {
@@ -66,6 +69,12 @@ export interface UserGroupMember { userId: string; name: string | null; email: s
 export interface UserGroup { id: string; name: string; description: string | null; members: UserGroupMember[]; }
 export interface UserGroupDirectoryEntry { id: string; name: string; memberIds: string[]; }
 export interface MyGroups { groupIds: string[]; coMemberUserIds: string[]; }
+
+// Custom Permission Profiles (Zoho-style org-defined permission sets, assignable per user in
+// place of their role default). Shapes mirror the permission-profiles API responses verbatim
+// (see apps/api/src/permission-profiles/permission-profiles.service.ts + assignable-permissions.ts).
+export interface PermissionProfile { id: string; name: string; permissions: string[]; assignedUserCount: number; }
+export interface AssignablePermission { key: string; description: string; }
 
 // Org Sender Addresses (Zoho-style configurable From addresses). Shapes mirror the
 // org-sender-addresses API responses verbatim (see apps/api/src/organizations/org-sender-addresses.service.ts).
