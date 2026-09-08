@@ -56,6 +56,7 @@ import { FieldPermissionsModule } from './field-permissions/field-permissions.mo
 import { RecycleBinModule } from './recycle-bin/recycle-bin.module';
 import { AgenciesModule } from './agencies/agencies.module';
 import { AgencyPortalModule } from './agency-portal/agency-portal.module';
+import { AgencySubmissionsModule } from './agency-submissions/agency-submissions.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 import { SentryShutdownFlush } from './sentry-shutdown.provider';
@@ -118,6 +119,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     RecycleBinModule,
     AgenciesModule,
     AgencyPortalModule,
+    AgencySubmissionsModule,
   ],
   controllers: [HealthController],
   providers: [
