@@ -174,7 +174,9 @@ describe('AgencyPortalService', () => {
 
       const result = await service.submit('T', validDto);
 
-      expect(result.isDuplicate).toBe(true);
+      // The public response must never leak isDuplicate (email-enumeration oracle) -- only { id }.
+      expect(result).toEqual({ id: expect.any(String) });
+      expect(result).not.toHaveProperty('isDuplicate');
       expect(blobStorage.upload).toHaveBeenCalledTimes(1);
       expect(blobStorage.upload).toHaveBeenCalledWith(expect.stringMatching(/^candidates\/org-1\/.+\.pdf$/), expect.any(Buffer), 'application/pdf');
       expect(tx.agencySubmission.create).toHaveBeenCalledTimes(1);
@@ -195,9 +197,11 @@ describe('AgencyPortalService', () => {
 
       const result = await service.submit('T', validDto);
 
-      expect(result.isDuplicate).toBe(false);
       expect(result.id).toBeTruthy();
+      expect(result).not.toHaveProperty('isDuplicate');
       expect(tx.agencySubmission.create).toHaveBeenCalledTimes(1);
+      const createArgs = tx.agencySubmission.create.mock.calls[0][0];
+      expect(createArgs.data).toMatchObject({ isDuplicate: false });
       // No candidate or pipeline row written on submit -- only agencySubmission.create, and the
       // fixture tx doesn't even expose candidate.create/pipelineEntry.create, so calling either
       // would throw and fail the test.

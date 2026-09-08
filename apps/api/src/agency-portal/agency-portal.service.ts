@@ -57,7 +57,7 @@ export class AgencyPortalService {
     return { agencyName, jobs, submissions };
   }
 
-  async submit(token: string, dto: CreateSubmissionDto): Promise<{ id: string; isDuplicate: boolean }> {
+  async submit(token: string, dto: CreateSubmissionDto): Promise<{ id: string }> {
     // Validate the résumé FIRST -- reject an oversized/non-PDF payload before touching the DB.
     const buf = Buffer.from(dto.resumeBase64, 'base64');
     const validated = validatePdfUpload(buf);
@@ -86,7 +86,7 @@ export class AgencyPortalService {
       'application/pdf',
     );
 
-    const { id, isDuplicate } = await this.tenantPrisma.forTenant(
+    const { id } = await this.tenantPrisma.forTenant(
       { organizationId: agency.organizationId, isSuperAdmin: true },
       async (tx) => {
         const isDuplicate = Boolean(
@@ -112,6 +112,6 @@ export class AgencyPortalService {
       },
     );
 
-    return { id, isDuplicate };
+    return { id };
   }
 }
