@@ -74,6 +74,7 @@ export function useUpdateJob(jobId: string) {
       input: Partial<CreateJobInput> & {
         status?: JobStatus;
         publicApplyEnabled?: boolean;
+        listOnCareers?: boolean;
         fitCriteria?: string | null;
         fitRubric?: RubricDimension[] | null;
       },
