@@ -10,10 +10,10 @@ describe('roleToLandingPath', () => {
   it('routes panel to /v2/panel/reports', () => {
     expect(roleToLandingPath('panel')).toBe('/v2/panel/reports');
   });
-  it('routes recruiter (default) to /v2/dashboard', () => {
-    expect(roleToLandingPath('recruiter')).toBe('/v2/dashboard');
+  it('routes recruiter (default) to /v2/today', () => {
+    expect(roleToLandingPath('recruiter')).toBe('/v2/today');
   });
-  it('routes unknown/undefined to /v2/dashboard', () => {
-    expect(roleToLandingPath(undefined)).toBe('/v2/dashboard');
+  it('routes unknown/undefined to /v2/today', () => {
+    expect(roleToLandingPath(undefined)).toBe('/v2/today');
   });
 });

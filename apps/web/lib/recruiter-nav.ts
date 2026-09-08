@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, BookOpen, Users, BarChart3, QrCode, Briefcase, TrendingUp, Mail, FileSignature, CheckSquare } from 'lucide-react';
+import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, QrCode, Briefcase, TrendingUp, Mail, FileSignature, CheckSquare } from 'lucide-react';
 
 // The recruiter-scoped nav, shared by BOTH shells that can render it: the (recruiter) route group
 // and the (panel) group, which owns /reports and shows this same sidebar to a recruiter or
@@ -11,6 +11,7 @@ import { LayoutDashboard, FileText, BookOpen, Users, BarChart3, QrCode, Briefcas
 //
 // Add any new recruiter-visible feature here, and to SUPER_ADMIN_FULL_NAV in super-admin-nav.ts.
 export const RECRUITER_NAV_ITEMS = [
+  { href: '/today', label: 'Today', icon: Sun },
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/exams', label: 'Exams', icon: FileText },
   { href: '/questions', label: 'Question Bank', icon: BookOpen },

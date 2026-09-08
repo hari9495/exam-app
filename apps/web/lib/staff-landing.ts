@@ -10,6 +10,6 @@ export function staffLandingPath(role: string | null | undefined): string {
     case 'panel':
       return '/v2/panel/reports';
     default:
-      return '/v2/dashboard'; // recruiter
+      return '/v2/today'; // recruiter
   }
 }

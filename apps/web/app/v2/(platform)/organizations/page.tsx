@@ -217,7 +217,7 @@ export default function V2OrganizationsPage() {
 
   async function handleSwitchInto(orgId: string) {
     await switchIntoOrg(orgId);
-    router.push('/dashboard');
+    router.push('/today');
   }
 
   function handleSetStatus(org: Organization, status: 'active' | 'suspended') {

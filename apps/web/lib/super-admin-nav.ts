@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode, Briefcase, TrendingUp, Mail, FileSignature, CreditCard, CheckSquare, GitPullRequestArrow, Kanban, Clock, SlidersHorizontal, EyeOff, Trash2, MailCheck, Send, FileCheck } from 'lucide-react';
+import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode, Briefcase, TrendingUp, Mail, FileSignature, CreditCard, CheckSquare, GitPullRequestArrow, Kanban, Clock, SlidersHorizontal, EyeOff, Trash2, MailCheck, Send, FileCheck } from 'lucide-react';
 
 // The COMPLETE union of org-scoped staff features. A super_admin acting into an org sees this exact
 // nav in EVERY staff shell (recruiter / org-admin / panel), so no feature is ever hidden by whichever
@@ -6,6 +6,7 @@ import { LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldC
 // when `actingSuperAdmin` is true. Keep this list exhaustive -- it is the single source of truth for
 // "a super_admin can reach everything." Add any new staff feature here too.
 export const SUPER_ADMIN_FULL_NAV = [
+  { href: '/today', label: 'Today', icon: Sun },
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/exams', label: 'Exams', icon: FileText },
   { href: '/questions', label: 'Question Bank', icon: BookOpen },

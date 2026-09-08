@@ -8,6 +8,6 @@ export function roleToLandingPath(role: string | undefined): string {
     case 'panel':
       return '/v2/panel/reports';
     default:
-      return '/v2/dashboard';
+      return '/v2/today';
   }
 }
