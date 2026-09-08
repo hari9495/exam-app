@@ -24,6 +24,7 @@ export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
   @Get('today')
+  @RequireAnyPermission('exam:manage', 'results:view')
   getToday(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
     return this.dashboardService.getToday(tenant, userId);
   }

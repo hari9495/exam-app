@@ -1,9 +1,11 @@
 import { BadRequestException, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { Reflector } from '@nestjs/core';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+import { PERMISSIONS_ANY_KEY } from '../rbac/permissions.decorator';
 
 class MockGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
@@ -50,6 +52,12 @@ describe('DashboardController', () => {
 
       expect(service.getToday).toHaveBeenCalledWith(tenant, 'user-1');
       await expect(result).resolves.toEqual(fixture);
+    });
+
+    it('carries the same exam:manage/results:view permission gate as summary', () => {
+      const reflector = new Reflector();
+      expect(reflector.get(PERMISSIONS_ANY_KEY, DashboardController.prototype.getToday)).toEqual(['exam:manage', 'results:view']);
+      expect(reflector.get(PERMISSIONS_ANY_KEY, DashboardController.prototype.getSummary)).toEqual(['exam:manage', 'results:view']);
     });
   });
 

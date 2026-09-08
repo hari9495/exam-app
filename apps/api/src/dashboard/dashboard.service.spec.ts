@@ -610,7 +610,8 @@ describe('DashboardService', () => {
         confirmedSlotId: 'slot-early',
         pipelineEntryId: 'pe-early',
         candidateId: 'cand-early',
-        slots: [{ id: 'slot-early', startsAt: new Date('2026-09-08T09:00:00.000Z'), endsAt: new Date('2026-09-08T09:30:00.000Z') }],
+        // Not yet ended (now is 12:00) -- still belongs in interviewsToday, not feedbackOwed.
+        slots: [{ id: 'slot-early', startsAt: new Date('2026-09-08T13:00:00.000Z'), endsAt: new Date('2026-09-08T13:30:00.000Z') }],
         pipelineEntry: { jobId: 'job-early', job: { title: 'Backend Engineer' }, candidate: { name: 'Alice' } },
       };
       const late = {
@@ -652,8 +653,8 @@ describe('DashboardService', () => {
           id: 'iv-early',
           candidateId: 'cand-early',
           candidateName: 'Alice',
-          subtitle: 'Backend Engineer · 09:00 with panel',
-          at: '2026-09-08T09:00:00.000Z',
+          subtitle: 'Backend Engineer · 13:00 with panel',
+          at: '2026-09-08T13:00:00.000Z',
           actionLabel: 'Open brief',
           actionHref: '/v2/jobs/job-early',
         },
@@ -727,6 +728,103 @@ describe('DashboardService', () => {
         actionLabel: 'Add feedback',
         actionHref: '/v2/jobs/job-u',
       });
+    });
+
+    it('keeps an interview in exactly one group: ended+unrated -> feedbackOwed only, ended+rated -> neither, in-progress -> interviewsToday only', async () => {
+      const endedUnrated = {
+        id: 'iv-ended-unrated',
+        confirmedSlotId: 'slot-ended-unrated',
+        pipelineEntryId: 'pe-ended-unrated',
+        candidateId: 'cand-ended-unrated',
+        slots: [{ id: 'slot-ended-unrated', startsAt: new Date('2026-09-08T08:00:00.000Z'), endsAt: new Date('2026-09-08T08:30:00.000Z') }],
+        pipelineEntry: { jobId: 'job-ended-unrated', job: { title: 'Backend Engineer' }, candidate: { name: 'Uma' } },
+      };
+      const endedRated = {
+        id: 'iv-ended-rated',
+        confirmedSlotId: 'slot-ended-rated',
+        pipelineEntryId: 'pe-ended-rated',
+        candidateId: 'cand-ended-rated',
+        slots: [{ id: 'slot-ended-rated', startsAt: new Date('2026-09-08T09:00:00.000Z'), endsAt: new Date('2026-09-08T09:30:00.000Z') }],
+        pipelineEntry: { jobId: 'job-ended-rated', job: { title: 'Frontend Engineer' }, candidate: { name: 'Raj' } },
+      };
+      const inProgress = {
+        id: 'iv-in-progress',
+        confirmedSlotId: 'slot-in-progress',
+        pipelineEntryId: 'pe-in-progress',
+        candidateId: 'cand-in-progress',
+        // now is 12:00; started 11:45, ends 12:15 -- ongoing, not yet ended.
+        slots: [{ id: 'slot-in-progress', startsAt: new Date('2026-09-08T11:45:00.000Z'), endsAt: new Date('2026-09-08T12:15:00.000Z') }],
+        pipelineEntry: { jobId: 'job-in-progress', job: { title: 'QA Engineer' }, candidate: { name: 'Ivy' } },
+      };
+      const tx = buildTodayTx({
+        interview: { findMany: jest.fn().mockResolvedValue([endedUnrated, endedRated, inProgress]) },
+        pipelineFeedback: { findMany: jest.fn().mockResolvedValue([{ entryId: 'pe-ended-rated' }]) },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      mockWeek();
+
+      const result = await service.getToday(context, userId, now);
+
+      expect(result.needsYou.interviewsToday.map((i) => i.id)).toEqual(['iv-in-progress']);
+      expect(result.needsYou.feedbackOwed.map((i) => i.id)).toEqual(['iv-ended-unrated']);
+      expect(result.needsYou.total).toBe(2);
+    });
+
+    it('reads a relative day off local day boundaries, not raw elapsed hours, and honours the user timezone', async () => {
+      // 08:30 local (IST) on 2026-09-08; the interview ended 20:00 local (IST) the day
+      // before -- only 12.5h ago, so a naive 24h-block diff would floor to "today".
+      const nowIst = new Date('2026-09-08T03:00:00.000Z');
+      const endedYesterdayLocal = {
+        id: 'iv-ist-owed',
+        confirmedSlotId: 'slot-ist-owed',
+        pipelineEntryId: 'pe-ist-owed',
+        candidateId: 'cand-ist-owed',
+        slots: [{ id: 'slot-ist-owed', startsAt: new Date('2026-09-07T13:30:00.000Z'), endsAt: new Date('2026-09-07T14:30:00.000Z') }],
+        pipelineEntry: { jobId: 'job-ist-owed', job: { title: 'Ops Engineer' }, candidate: { name: 'Priya' } },
+      };
+      const tx = buildTodayTx({
+        user: { findUnique: jest.fn().mockResolvedValue({ timeZone: 'Asia/Kolkata' }) },
+        interview: { findMany: jest.fn().mockResolvedValue([endedYesterdayLocal]) },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      mockWeek();
+
+      const result = await service.getToday(context, userId, nowIst);
+
+      expect(result.needsYou.feedbackOwed).toHaveLength(1);
+      expect(result.needsYou.feedbackOwed[0].subtitle).toBe('Ops Engineer · interviewed yesterday · scorecard due');
+    });
+
+    it('filters interviewsToday on the LOCAL day boundary, not UTC midnight', async () => {
+      const now3 = new Date('2026-09-08T03:00:00.000Z'); // 08:30 IST
+      const justAfterMidnightLocal = {
+        id: 'iv-boundary-in',
+        confirmedSlotId: 'slot-boundary-in',
+        pipelineEntryId: 'pe-boundary-in',
+        candidateId: 'cand-boundary-in',
+        // 00:30 IST on 2026-09-08 -- inside today's local window; still running past `now3`.
+        slots: [{ id: 'slot-boundary-in', startsAt: new Date('2026-09-07T19:00:00.000Z'), endsAt: new Date('2026-09-08T03:30:00.000Z') }],
+        pipelineEntry: { jobId: 'job-boundary-in', job: { title: 'Site Reliability Engineer' }, candidate: { name: 'Nina' } },
+      };
+      const justBeforeMidnightLocal = {
+        id: 'iv-boundary-out',
+        confirmedSlotId: 'slot-boundary-out',
+        pipelineEntryId: 'pe-boundary-out',
+        candidateId: 'cand-boundary-out',
+        // 23:30 IST on 2026-09-07 -- yesterday's local window; a UTC-midnight filter would wrongly include it.
+        slots: [{ id: 'slot-boundary-out', startsAt: new Date('2026-09-07T18:00:00.000Z'), endsAt: new Date('2026-09-07T18:30:00.000Z') }],
+        pipelineEntry: { jobId: 'job-boundary-out', job: { title: 'Data Engineer' }, candidate: { name: 'Omar' } },
+      };
+      const tx = buildTodayTx({
+        user: { findUnique: jest.fn().mockResolvedValue({ timeZone: 'Asia/Kolkata' }) },
+        interview: { findMany: jest.fn().mockResolvedValue([justAfterMidnightLocal, justBeforeMidnightLocal]) },
+      });
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      mockWeek();
+
+      const result = await service.getToday(context, userId, now3);
+
+      expect(result.needsYou.interviewsToday.map((i) => i.id)).toEqual(['iv-boundary-in']);
     });
 
     it('lists offers expiring within the horizon with the queried where/orderBy shape', async () => {

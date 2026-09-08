@@ -280,8 +280,11 @@ export class DashboardService {
       const withSlot = mine
         .map((i) => ({ ...i, slot: i.slots.find((s) => s.id === i.confirmedSlotId) }))
         .filter((i): i is typeof i & { slot: NonNullable<(typeof i)['slot']> } => !!i.slot);
+      // An interview belongs to exactly one group: "today" is today's slot that hasn't
+      // ended yet (endsAt >= now); once it ends it moves to feedbackOwed (or drops off
+      // entirely once rated) -- never both, never double-counted in `total`.
       const todays = withSlot
-        .filter((i) => i.slot.startsAt >= win.start && i.slot.startsAt < win.end)
+        .filter((i) => i.slot.startsAt >= win.start && i.slot.startsAt < win.end && i.slot.endsAt >= now)
         .sort((a, b) => +a.slot.startsAt - +b.slot.startsAt);
       const ended = withSlot.filter((i) => i.slot.endsAt < now && i.slot.endsAt >= lookback);
       const rated = ended.length
@@ -364,9 +367,12 @@ export class DashboardService {
     });
 
     const fmtTime = (d: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: core.win.timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
-    const daysAgoCount = (d: Date) => Math.max(0, Math.floor((now.getTime() - d.getTime()) / DAY_MS));
+    // Diff LOCAL day boundaries (not raw elapsed ms) so an event that ended yesterday
+    // evening never reads as "today" just because it was <24h ago; also honours the
+    // user's timezone the same way fmtTime/weekday already do.
     const relDay = (d: Date) => {
-      const n = daysAgoCount(d);
+      const eventWin = dayWindow(d, core.win.timeZone);
+      const n = Math.max(0, Math.round((core.win.start.getTime() - eventWin.start.getTime()) / DAY_MS));
       return n === 0 ? 'today' : n === 1 ? 'yesterday' : `${n} days ago`;
     };
     const weekday = (d: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: core.win.timeZone, weekday: 'long' }).format(d);
