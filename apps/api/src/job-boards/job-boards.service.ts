@@ -7,8 +7,10 @@ import { UpsertJobBoardDto } from './dto/upsert-job-board.dto';
 export type JobBoardWithStats = JobBoard & { feedUrl: string; publishedJobCount: number };
 
 function buildFeedUrl(feedToken: string): string {
-  const baseUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
-  return `${baseUrl}/public/job-boards/${feedToken}/feed.xml`;
+  // Mirrors the SAML SP URL idiom (auth/saml.strategy.ts spUrls()): the feed is
+  // a NestJS route served at the API origin under the global 'api/v1' prefix,
+  // not a Next.js page under FRONTEND_URL.
+  return `${process.env.API_ORIGIN}/api/v1/public/job-boards/${feedToken}/feed.xml`;
 }
 
 @Injectable()

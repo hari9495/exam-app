@@ -21,7 +21,7 @@ describe('JobBoardsService', () => {
       ],
     }).compile();
     service = moduleRef.get(JobBoardsService);
-    process.env.FRONTEND_URL = 'https://app.example.com';
+    process.env.API_ORIGIN = 'https://api.example.com';
   });
 
   function knownRequestError(code: string) {
@@ -47,8 +47,8 @@ describe('JobBoardsService', () => {
 
       expect(tx.jobBoard.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: 'org-1' } }));
       expect(result).toEqual([
-        { id: 'board-1', name: 'LinkedIn', feedToken: 'tok-1', organizationId: 'org-1', feedUrl: 'https://app.example.com/public/job-boards/tok-1/feed.xml', publishedJobCount: 3 },
-        { id: 'board-2', name: 'Indeed', feedToken: 'tok-2', organizationId: 'org-1', feedUrl: 'https://app.example.com/public/job-boards/tok-2/feed.xml', publishedJobCount: 0 },
+        { id: 'board-1', name: 'LinkedIn', feedToken: 'tok-1', organizationId: 'org-1', feedUrl: 'https://api.example.com/api/v1/public/job-boards/tok-1/feed.xml', publishedJobCount: 3 },
+        { id: 'board-2', name: 'Indeed', feedToken: 'tok-2', organizationId: 'org-1', feedUrl: 'https://api.example.com/api/v1/public/job-boards/tok-2/feed.xml', publishedJobCount: 0 },
       ]);
     });
 
@@ -74,7 +74,7 @@ describe('JobBoardsService', () => {
         data: { organizationId: 'org-1', name: 'LinkedIn', feedToken: expect.any(String) },
       });
       expect(result).toEqual(
-        expect.objectContaining({ id: 'board-1', name: 'LinkedIn', feedUrl: 'https://app.example.com/public/job-boards/tok-1/feed.xml', publishedJobCount: 0 }),
+        expect.objectContaining({ id: 'board-1', name: 'LinkedIn', feedUrl: 'https://api.example.com/api/v1/public/job-boards/tok-1/feed.xml', publishedJobCount: 0 }),
       );
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'job_board.created', entityId: 'board-1' }));
     });
@@ -108,7 +108,7 @@ describe('JobBoardsService', () => {
 
       expect(tx.jobBoard.update).toHaveBeenCalledWith({ where: { id: 'board-1' }, data: { name: 'New Name' } });
       expect(result).toEqual(
-        expect.objectContaining({ id: 'board-1', name: 'New Name', feedUrl: 'https://app.example.com/public/job-boards/tok-1/feed.xml', publishedJobCount: 2 }),
+        expect.objectContaining({ id: 'board-1', name: 'New Name', feedUrl: 'https://api.example.com/api/v1/public/job-boards/tok-1/feed.xml', publishedJobCount: 2 }),
       );
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'job_board.updated', entityId: 'board-1' }));
     });
