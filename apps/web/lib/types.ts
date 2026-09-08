@@ -1424,6 +1424,35 @@ export interface DashboardAnalytics {
   questionDifficulty: { questionId: string; text: string; correctRate: number; answered: number }[];
 }
 
+// --- Today home (mirrors apps/api/src/dashboard/dashboard.service.ts's TodayItem/TodayResponse
+// verbatim -- field names must match byte-for-byte; types only, no runtime import) ---
+export interface TodayItem {
+  id: string;
+  candidateId: string | null;
+  candidateName: string;
+  subtitle: string;
+  at: string | null;
+  actionLabel: string;
+  actionHref: string;
+}
+
+export interface TodayResponse {
+  today: { iso: string; timeZone: string };
+  needsYou: {
+    feedbackOwed: TodayItem[];
+    interviewsToday: TodayItem[];
+    offersExpiring: TodayItem[];
+    approvalsPending: TodayItem[];
+    total: number;
+  };
+  watch: {
+    staleInvitations: number;
+    proctoringFlags: number;
+    nextDrive: { id: string; name: string; groupName: string; startsAt: string; registered: number } | null;
+  };
+  week: { newApplicants: number; invited: number; awaitingGrading: number; passRate: number | null };
+}
+
 // --- Custom fields (Task 8) ---
 // Mirrors apps/api/src/custom-fields/custom-fields-config.controller.ts's toResponse() --
 // the API parses optionsJson server-side so web only ever sees `options: string[] | null`.
