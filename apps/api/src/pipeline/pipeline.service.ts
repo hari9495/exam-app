@@ -311,8 +311,8 @@ export class PipelineService {
     });
   }
 
-  async getJob(context: TenantContext, jobId: string, role: string): Promise<Job & { linkedExams: { examId: string; title: string }[]; approval: ApprovalSummary | null; customFields: CustomFieldRead[] }> {
-    const { job, linkedExams, customFields } = await this.tenantPrisma.forTenant(context, async (tx) => {
+  async getJob(context: TenantContext, jobId: string, role: string): Promise<Job & { linkedExams: { examId: string; title: string }[]; approval: ApprovalSummary | null; customFields: CustomFieldRead[]; jobBoardIds: string[] }> {
+    const { job, linkedExams, customFields, jobBoardIds } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const organizationId = context.organizationId as string;
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId } });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
@@ -323,11 +323,17 @@ export class PipelineService {
         select: JOB_DEFINITION_SELECT,
       })) as CustomFieldDefinitionLite[];
       const rows = await tx.customFieldValue.findMany({ where: { organizationId, entityType: 'job', entityId: jobId } });
-      return { job, linkedExams, customFields: serializeCustomFieldValues(rows, defs) };
+      const publications = await tx.jobBoardPublication.findMany({ where: { jobId }, select: { jobBoardId: true } });
+      return {
+        job,
+        linkedExams,
+        customFields: serializeCustomFieldValues(rows, defs),
+        jobBoardIds: publications.map((p: { jobBoardId: string }) => p.jobBoardId),
+      };
     });
     const approval = (await this.approvals.getSummariesFor(context, 'job', [jobId])).get(jobId) ?? null;
     const hiddenJ = await this.fieldPerms.getHiddenFields(context, role, 'job');
-    return redactFields({ ...job, linkedExams, customFields, approval }, hiddenJ);
+    return redactFields({ ...job, linkedExams, customFields, approval, jobBoardIds }, hiddenJ);
   }
 
   async updateJob(
@@ -350,6 +356,7 @@ export class PipelineService {
       salaryMax?: number;
       salaryCurrency?: string;
       customFields?: Record<string, string | number | null>;
+      jobBoardIds?: string[];
     },
   ): Promise<Job & { customFields?: CustomFieldRead[] }> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
@@ -434,6 +441,29 @@ export class PipelineService {
           throw new BadRequestException((e as Error).message);
         }
         data.fitRubric = dims.length ? JSON.stringify(dims) : null;
+      }
+      // jobBoardIds is the COMPLETE set of boards for this job -- omitted means "leave
+      // untouched" (like customFields above), [] clears every publication. Validated against
+      // this org's boards BEFORE any reconciliation write so an unknown/cross-org id rejects
+      // with nothing persisted (the whole updateJob call runs inside forTenant's transaction).
+      if (dto.jobBoardIds !== undefined) {
+        const ids = [...new Set(dto.jobBoardIds)];
+        if (ids.length > 0) {
+          const boards = await tx.jobBoard.findMany({ where: { id: { in: ids }, organizationId }, select: { id: true } });
+          if (boards.length !== ids.length) {
+            throw new BadRequestException('One or more job boards were not found');
+          }
+        }
+        const existing = await tx.jobBoardPublication.findMany({ where: { jobId }, select: { jobBoardId: true } });
+        const existingIds = existing.map((p: { jobBoardId: string }) => p.jobBoardId);
+        const toRemove = existingIds.filter((id: string) => !ids.includes(id));
+        const toAdd = ids.filter((id) => !existingIds.includes(id));
+        if (toRemove.length > 0) {
+          await tx.jobBoardPublication.deleteMany({ where: { jobId, jobBoardId: { in: toRemove } } });
+        }
+        if (toAdd.length > 0) {
+          await tx.jobBoardPublication.createMany({ data: toAdd.map((jobBoardId) => ({ jobBoardId, jobId, organizationId })) });
+        }
       }
       const updated = await tx.job.update({ where: { id: jobId }, data });
       await this.audit.record(context, {

@@ -8,6 +8,9 @@ import { computeCriteriaHash } from '../candidate-fit/candidate-fit.core';
 function withJobCustomFieldMocks(tx: any) {
   tx.customFieldDefinition = { findMany: jest.fn().mockResolvedValue([]), ...tx.customFieldDefinition };
   tx.customFieldValue = { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn().mockResolvedValue({ count: 0 }), ...tx.customFieldValue };
+  // getJob also unconditionally loads the job's current board publications (jobBoardIds) --
+  // default to "not published anywhere" so pre-existing tests are unaffected.
+  tx.jobBoardPublication = { findMany: jest.fn().mockResolvedValue([]), ...tx.jobBoardPublication };
   return tx;
 }
 
@@ -182,6 +185,7 @@ describe('PipelineService', () => {
         jobExam: { findMany: jest.fn().mockResolvedValue([]) },
         customFieldDefinition: { findMany: jest.fn().mockResolvedValue(defs) },
         customFieldValue: { findMany: jest.fn().mockResolvedValue([{ definitionId: 'def-1', valueText: 'Referral', valueNumber: null, valueDate: null }]) },
+        jobBoardPublication: { findMany: jest.fn().mockResolvedValue([]) },
       };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
@@ -634,6 +638,108 @@ describe('PipelineService', () => {
         service.updateJob(context, 'user-1', 'job-1', { fitRubric: [{ label: 'A', weight: 50 }] } as any),
       ).rejects.toThrow(/sum to 100/i);
     });
+  });
+
+  describe('updateJob jobBoardIds (replace-set board publications)', () => {
+    // Every test below is a job in good standing (open, no requisition gate) with an existing
+    // publication to board-old -- so "replace" and "clear" tests have something to remove.
+    function tx(existingPublications: { jobBoardId: string }[] = [{ jobBoardId: 'board-old' }]) {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      return {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open', applyToken: null, publicApplyEnabled: false }), update },
+        // Resolves only ids actually in this org's board set (board-1/board-2) -- mirrors real
+        // Prisma filtering so a test's requested id subset gets back exactly the matching rows.
+        jobBoard: {
+          findMany: jest.fn(({ where }: any) =>
+            Promise.resolve(where.id.in.filter((id: string) => ['board-1', 'board-2'].includes(id)).map((id: string) => ({ id }))),
+          ),
+        },
+        jobBoardPublication: {
+          findMany: jest.fn().mockResolvedValue(existingPublications),
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          createMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+      };
+    }
+
+    it('validates every id resolves to a same-org JobBoard, then creates the missing publication rows', async () => {
+      const t = tx([]);
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(t));
+
+      await service.updateJob(context, 'user-1', 'job-1', { jobBoardIds: ['board-1', 'board-2'] } as any);
+
+      expect(t.jobBoard.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['board-1', 'board-2'] }, organizationId: 'org-1' },
+        select: { id: true },
+      });
+      expect(t.jobBoardPublication.createMany).toHaveBeenCalledWith({
+        data: [
+          { jobBoardId: 'board-1', jobId: 'job-1', organizationId: 'org-1' },
+          { jobBoardId: 'board-2', jobId: 'job-1', organizationId: 'org-1' },
+        ],
+      });
+      expect(t.jobBoardPublication.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects a cross-org/unknown board id with BadRequest and persists nothing', async () => {
+      const t = tx();
+      t.jobBoard.findMany.mockResolvedValue([{ id: 'board-1' }]); // 'board-9' doesn't resolve for this org
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(t));
+
+      await expect(
+        service.updateJob(context, 'user-1', 'job-1', { jobBoardIds: ['board-1', 'board-9'] } as any),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(t.jobBoardPublication.deleteMany).not.toHaveBeenCalled();
+      expect(t.jobBoardPublication.createMany).not.toHaveBeenCalled();
+      expect(t.job.update).not.toHaveBeenCalled();
+    });
+
+    it('a second update with a different set replaces (removes the old, adds the new)', async () => {
+      const t = tx([{ jobBoardId: 'board-old' }]);
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(t));
+
+      await service.updateJob(context, 'user-1', 'job-1', { jobBoardIds: ['board-1'] } as any);
+
+      expect(t.jobBoardPublication.deleteMany).toHaveBeenCalledWith({ where: { jobId: 'job-1', jobBoardId: { in: ['board-old'] } } });
+      expect(t.jobBoardPublication.createMany).toHaveBeenCalledWith({ data: [{ jobBoardId: 'board-1', jobId: 'job-1', organizationId: 'org-1' }] });
+    });
+
+    it('an empty array clears every publication for the job', async () => {
+      const t = tx([{ jobBoardId: 'board-old' }]);
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(t));
+
+      await service.updateJob(context, 'user-1', 'job-1', { jobBoardIds: [] } as any);
+
+      expect(t.jobBoard.findMany).not.toHaveBeenCalled(); // nothing to validate against an empty set
+      expect(t.jobBoardPublication.deleteMany).toHaveBeenCalledWith({ where: { jobId: 'job-1', jobBoardId: { in: ['board-old'] } } });
+      expect(t.jobBoardPublication.createMany).not.toHaveBeenCalled();
+    });
+
+    it('omitting jobBoardIds leaves publications untouched', async () => {
+      const t = tx([{ jobBoardId: 'board-old' }]);
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(t));
+
+      await service.updateJob(context, 'user-1', 'job-1', { title: 'New Title' });
+
+      expect(t.jobBoard.findMany).not.toHaveBeenCalled();
+      expect(t.jobBoardPublication.findMany).not.toHaveBeenCalled();
+      expect(t.jobBoardPublication.deleteMany).not.toHaveBeenCalled();
+      expect(t.jobBoardPublication.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  it('getJob returns jobBoardIds mapped from the job\'s current publications', async () => {
+    const tx = withJobCustomFieldMocks({
+      job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+      jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+      jobBoardPublication: { findMany: jest.fn().mockResolvedValue([{ jobBoardId: 'board-1' }, { jobBoardId: 'board-2' }]) },
+    });
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+    const job = await service.getJob(context, 'job-1', 'org_admin');
+
+    expect(job.jobBoardIds).toEqual(['board-1', 'board-2']);
   });
 
   it('deleteJob soft-deletes and audits job.deleted', async () => {
@@ -2110,6 +2216,7 @@ describe('PipelineService', () => {
         jobExam: { findMany: jest.fn().mockResolvedValue([]) },
         customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) },
         customFieldValue: { findMany: jest.fn().mockResolvedValue([]) },
+        jobBoardPublication: { findMany: jest.fn().mockResolvedValue([]) },
       };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
       fieldPerms.getHiddenFields.mockResolvedValue(new Set(['salaryMin', 'salaryMax', 'salaryCurrency', 'headcount']));
@@ -2128,6 +2235,7 @@ describe('PipelineService', () => {
         jobExam: { findMany: jest.fn().mockResolvedValue([]) },
         customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) },
         customFieldValue: { findMany: jest.fn().mockResolvedValue([]) },
+        jobBoardPublication: { findMany: jest.fn().mockResolvedValue([]) },
       };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
       fieldPerms.getHiddenFields.mockResolvedValue(new Set());
