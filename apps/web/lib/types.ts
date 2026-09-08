@@ -71,6 +71,41 @@ export interface MyGroups { groupIds: string[]; coMemberUserIds: string[]; }
 // org-sender-addresses API responses verbatim (see apps/api/src/organizations/org-sender-addresses.service.ts).
 export interface OrgSenderAddress { id: string; label: string; address: string; isDefault: boolean; }
 
+// Agency portal (external recruiting agencies submit candidates against an assigned-jobs
+// allowlist). Shapes mirror apps/api/src/agencies/agencies.service.ts's AgencyWithStats and
+// apps/api/src/agency-submissions/agency-submissions.service.ts's list() mapping verbatim.
+// NOTE: the list response has no `jobIds`/`agencyId` fields -- only aggregate counts -- so the
+// web layer can't know an agency's CURRENT job allowlist ahead of an edit (see useAgencies.ts).
+export interface Agency {
+  id: string;
+  name: string;
+  contactEmail: string | null;
+  active: boolean;
+  portalUrl: string;
+  assignedJobCount: number;
+  pendingSubmissionCount: number;
+}
+
+export type AgencySubmissionStatus = 'pending' | 'accepted' | 'rejected';
+
+export interface AgencySubmission {
+  id: string;
+  agencyName: string;
+  jobTitle: string;
+  candidateName: string;
+  candidateEmail: string;
+  candidatePhone: string | null;
+  isDuplicate: boolean;
+  status: AgencySubmissionStatus;
+  createdAt: string;
+  resumeUrl: string | null;
+}
+
+// Public /agency/[token] portal (unauthenticated) -- mirrors AgencyPortalService.getPortal.
+export interface PublicAgencyPortalJob { id: string; title: string; location: string | null; department: string | null; }
+export interface PublicAgencySubmission { id: string; jobId: string; jobTitle: string; candidateName: string; status: AgencySubmissionStatus; createdAt: string; }
+export interface PublicAgencyPortal { agencyName: string; jobs: PublicAgencyPortalJob[]; submissions: PublicAgencySubmission[]; }
+
 export interface AuditLogEntry {
   id: string;
   action: string;

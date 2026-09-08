@@ -1,4 +1,4 @@
-import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode, Briefcase, TrendingUp, Mail, FileSignature, CreditCard, CheckSquare, GitPullRequestArrow, Kanban, Clock, SlidersHorizontal, EyeOff, Trash2, MailCheck, Send, FileCheck } from 'lucide-react';
+import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode, Briefcase, TrendingUp, Mail, FileSignature, CreditCard, CheckSquare, GitPullRequestArrow, Kanban, Clock, SlidersHorizontal, EyeOff, Trash2, MailCheck, Send, FileCheck, Building2 } from 'lucide-react';
 
 // The COMPLETE union of org-scoped staff features. A super_admin acting into an org sees this exact
 // nav in EVERY staff shell (recruiter / org-admin / panel), so no feature is ever hidden by whichever
@@ -35,8 +35,10 @@ export const SUPER_ADMIN_FULL_NAV = [
   { href: '/settings/recycle-bin', label: 'Recycle Bin', icon: Trash2 },
   { href: '/settings/sender-addresses', label: 'Sender Addresses', icon: Send },
   { href: '/settings/apply-consent', label: 'Applicant Consent', icon: FileCheck },
+  { href: '/settings/agencies', label: 'Agencies', icon: Building2 },
   { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode },
   { href: '/jobs', label: 'Jobs', icon: Briefcase },
+  { href: '/agency-submissions', label: 'Agency Submissions', icon: Building2 },
   { href: '/approvals', label: 'Approvals', icon: CheckSquare },
   { href: '/analytics/hiring', label: 'Hiring Analytics', icon: TrendingUp },
   { href: '/message-templates', label: 'Message Templates', icon: Mail },
