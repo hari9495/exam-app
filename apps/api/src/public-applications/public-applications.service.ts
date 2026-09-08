@@ -29,6 +29,27 @@ function parseOptionsJson(optionsJson: string | null): string[] | null {
   }
 }
 
+export interface CareersPageResponse {
+  orgName: string;
+  headline: string | null;
+  intro: string | null;
+  logoUrl: string | null;
+  bannerUrl: string | null;
+  primaryColor: string | null;
+  accentColor: string | null;
+  textColor: string | null;
+  jobs: {
+    applyToken: string;
+    title: string;
+    location: string | null;
+    employmentType: string | null;
+    department: string | null;
+    salaryMin: number | null;
+    salaryMax: number | null;
+    salaryCurrency: string | null;
+  }[];
+}
+
 @Injectable()
 export class PublicApplicationsService {
   // jobs is RLS-protected and there is no org context until the applyToken resolves one. The
@@ -438,6 +459,54 @@ export class PublicApplicationsService {
       tx.candidate.update({ where: { id: candidate.id }, data: { emailOptedOutAt: optedOut ? new Date() : null } }),
     );
     return { optedOut };
+  }
+
+  // Public, unauthenticated careers page for an org. jobs/organization are RLS tables and there is
+  // no org context until the slug resolves one, so this reads inside the same LOOKUP_ORG bypass as
+  // resolveJob/getJobsFeed. 404 (not a distinguishing error) for both an unknown slug and a known
+  // org that hasn't opted in -- same anti-oracle reasoning as resolveJob's generic message.
+  async getCareers(orgSlug: string): Promise<CareersPageResponse> {
+    const result = await this.tenantPrisma.forTenant(
+      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
+      async (tx) => {
+        const org = await tx.organization.findFirst({
+          where: { slug: orgSlug },
+          select: {
+            id: true, name: true, careersEnabled: true, careersHeadline: true, careersIntro: true,
+            careersBannerPath: true, logoPath: true, primaryColor: true, accentColor: true, textColor: true,
+          },
+        });
+        if (!org || !org.careersEnabled) return null;
+        // The 4-condition filter is load-bearing: listOnCareers alone must never surface a job
+        // that isn't also open + publicApplyEnabled + has a live apply link.
+        const jobs = await tx.job.findMany({
+          where: { organizationId: org.id, status: 'open', publicApplyEnabled: true, listOnCareers: true, applyToken: { not: null } },
+          select: {
+            applyToken: true, title: true, location: true, employmentType: true, department: true,
+            salaryMin: true, salaryMax: true, salaryCurrency: true, createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        return { org, jobs };
+      },
+    );
+    if (!result) throw new NotFoundException('Careers page not found');
+    const { org, jobs } = result;
+    return {
+      orgName: org.name,
+      headline: org.careersHeadline ?? null,
+      intro: org.careersIntro ?? null,
+      logoUrl: org.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
+      bannerUrl: org.careersBannerPath ? ((await this.blobStorage.signIfOurs(org.careersBannerPath)) as string | null) : null,
+      primaryColor: org.primaryColor ?? null,
+      accentColor: org.accentColor ?? null,
+      textColor: org.textColor ?? null,
+      jobs: jobs.map((j) => ({
+        applyToken: j.applyToken as string,
+        title: j.title, location: j.location, employmentType: j.employmentType, department: j.department,
+        salaryMin: j.salaryMin, salaryMax: j.salaryMax, salaryCurrency: j.salaryCurrency,
+      })),
+    };
   }
 
   async getApplicationStatus(statusToken: string) {
