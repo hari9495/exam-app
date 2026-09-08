@@ -58,7 +58,21 @@ describe('AgencyPortalService', () => {
         findFirst: jest.fn(async ({ where }: any) => agencyJobs.find((r) => matches(r, where)) ?? null),
       },
       agencySubmission: {
-        findMany: jest.fn(async ({ where }: any) => submissions.filter((r) => matches(r, where))),
+        // Mirrors the real query's `select: { id, jobId, status, candidateName, createdAt, job: { title } }`
+        // -- isDuplicate is stored on the row but never PROJECTED to the public portal (email-enumeration
+        // oracle fix), same as a real Prisma select would drop it.
+        findMany: jest.fn(async ({ where }: any) =>
+          submissions
+            .filter((r) => matches(r, where))
+            .map((r) => ({
+              id: r.id,
+              jobId: r.jobId,
+              status: r.status,
+              candidateName: r.candidateName,
+              createdAt: r.createdAt,
+              job: { title: r.job.title },
+            })),
+        ),
         create: jest.fn(async ({ data }: any) => ({ id: 'new-sub-id', ...data })),
       },
       candidate: {
@@ -100,6 +114,9 @@ describe('AgencyPortalService', () => {
       // Never another agency's job or submission leaking through.
       expect(result.jobs.some((j: any) => j.id === 'job-other')).toBe(false);
       expect(result.submissions.some((s: any) => s.id === 'sub-2')).toBe(false);
+      // isDuplicate must never reach the public portal response (email-enumeration oracle) --
+      // it stays stored on the row for the recruiter queue only.
+      expect(result.submissions[0]).not.toHaveProperty('isDuplicate');
     });
 
     it('throws NotFoundException for an unknown token', async () => {

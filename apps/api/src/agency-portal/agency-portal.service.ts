@@ -41,7 +41,6 @@ export class AgencyPortalService {
             id: true,
             jobId: true,
             status: true,
-            isDuplicate: true,
             candidateName: true,
             createdAt: true,
             job: { select: { title: true } },
