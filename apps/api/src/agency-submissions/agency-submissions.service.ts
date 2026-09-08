@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditService, BlobStorageService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { expandedName } from '../walk-in/walk-in.service';
+import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
 
 const STATUSES = ['pending', 'accepted', 'rejected'] as const;
 export type AgencySubmissionStatus = (typeof STATUSES)[number];
@@ -126,6 +127,11 @@ export class AgencySubmissionsService {
         where: { id },
         data: { status: 'accepted', candidateId: candidate.id, reviewedByUserId: userId, reviewedAt: new Date() },
       });
+
+      // Last write in the tx: an accepted agency submission always makes the candidate at least
+      // 'engaged' (same idiom as apply()'s recompute) -- without this, a re-engaged candidate keeps
+      // a stale globalStage from before this pipeline entry existed.
+      await recomputeGlobalStage(tx, organizationId, candidate.id);
 
       return candidate.id;
     });

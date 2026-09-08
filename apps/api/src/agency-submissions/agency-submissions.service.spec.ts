@@ -87,9 +87,15 @@ describe('AgencySubmissionsService', () => {
         candidate: {
           findUnique: jest.fn().mockResolvedValue(null),
           upsert: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Alice' }),
+          update: jest.fn(),
         },
         candidateProfile: { upsert: jest.fn() },
-        pipelineEntry: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'entry-1' }) },
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'entry-1' }),
+          findMany: jest.fn().mockResolvedValue([{ archivedAt: null, status: { stage: { category: 'active' } } }]),
+        },
+        candidateEmail: { count: jest.fn().mockResolvedValue(0) },
         job: { findFirst: jest.fn().mockResolvedValue({ pipelineId: 'pipe-1' }) },
         pipeline: {
           findFirst: jest.fn().mockResolvedValue({
@@ -138,10 +144,16 @@ describe('AgencySubmissionsService', () => {
           // Existing candidate has a full stored name -- expandedName must refuse to overwrite it.
           findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Alice Anderson', phone: '555-9999' }),
           upsert: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Alice Anderson' }),
+          update: jest.fn(),
         },
         candidateProfile: { upsert: jest.fn() },
         // Entry already exists on this job -- must NOT create a second one.
-        pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'entry-existing' }), create: jest.fn() },
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'entry-existing' }),
+          create: jest.fn(),
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+        candidateEmail: { count: jest.fn().mockResolvedValue(0) },
         job: { findFirst: jest.fn() },
         pipeline: { findFirst: jest.fn() },
       };
@@ -164,9 +176,15 @@ describe('AgencySubmissionsService', () => {
         candidate: {
           findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Alice Anderson', deletedAt: new Date(), deletedByUserId: 'user-9' }),
           upsert: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Alice Anderson', deletedAt: null, deletedByUserId: null }),
+          update: jest.fn(),
         },
         candidateProfile: { upsert: jest.fn() },
-        pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'entry-existing' }), create: jest.fn() },
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'entry-existing' }),
+          create: jest.fn(),
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+        candidateEmail: { count: jest.fn().mockResolvedValue(0) },
         job: { findFirst: jest.fn() },
         pipeline: { findFirst: jest.fn() },
       };
@@ -185,9 +203,15 @@ describe('AgencySubmissionsService', () => {
         candidate: {
           findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Alice' }),
           upsert: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Alice' }),
+          update: jest.fn(),
         },
         candidateProfile: { upsert: jest.fn() },
-        pipelineEntry: { findFirst: jest.fn().mockResolvedValue({ id: 'entry-existing' }), create: jest.fn() },
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'entry-existing' }),
+          create: jest.fn(),
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+        candidateEmail: { count: jest.fn().mockResolvedValue(0) },
         job: { findFirst: jest.fn() },
         pipeline: { findFirst: jest.fn() },
       };
@@ -199,6 +223,46 @@ describe('AgencySubmissionsService', () => {
       expect(tx.candidate.upsert).toHaveBeenCalledWith(
         expect.objectContaining({ update: { deletedAt: null, deletedByUserId: null } }),
       );
+    });
+
+    it('recomputes globalStage as the last tx write -- a re-engaged candidate loses its stale label', async () => {
+      // Candidate was previously fully rejected/archived (globalStage would have been stamped
+      // 'rejected' or 'available' back then) and has no live entry on THIS job yet, so accept()
+      // takes the pipeline-entry-create branch. Without the recompute call, globalStage would be
+      // left at whatever stale value the candidate carried in from before this submission.
+      const tx = {
+        agencySubmission: { findFirst: jest.fn().mockResolvedValue(pendingSubmission), update: jest.fn() },
+        candidate: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Alice Anderson', globalStage: 'rejected' }),
+          upsert: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Alice Anderson' }),
+          update: jest.fn(),
+        },
+        candidateProfile: { upsert: jest.fn() },
+        pipelineEntry: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'entry-1' }),
+          // Reflects the just-created entry: one live 'active'-category entry.
+          findMany: jest.fn().mockResolvedValue([{ archivedAt: null, status: { stage: { category: 'active' } } }]),
+        },
+        candidateEmail: { count: jest.fn().mockResolvedValue(0) },
+        job: { findFirst: jest.fn().mockResolvedValue({ pipelineId: 'pipe-1' }) },
+        pipeline: {
+          findFirst: jest.fn().mockResolvedValue({
+            stages: [{ category: 'active', statuses: [{ id: 'status-1' }] }],
+          }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.accept(context, 'sub-1', 'user-1');
+
+      // recomputeGlobalStage's own last write: candidate.update with the derived stage.
+      expect(tx.candidate.update).toHaveBeenCalledWith({ where: { id: 'cand-1' }, data: { globalStage: 'engaged' } });
+      // Must run AFTER the pipeline entry is created (and after the submission is marked accepted),
+      // matching apply()'s "last write in the tx" ordering.
+      const entryCreateOrder = tx.pipelineEntry.create.mock.invocationCallOrder[0];
+      const recomputeOrder = tx.candidate.update.mock.invocationCallOrder[0];
+      expect(recomputeOrder).toBeGreaterThan(entryCreateOrder);
     });
   });
 
