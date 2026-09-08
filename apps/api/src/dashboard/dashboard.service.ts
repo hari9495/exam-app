@@ -1,11 +1,15 @@
-import { Injectable } from '@nestjs/common';
-import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { Injectable, Logger } from '@nestjs/common';
+import { TenantContext, TenantPrismaService, isPendingForApprover } from '@exam-platform/shared';
+import { dayWindow } from './today-window';
 
 const STALE_INVITATION_DAYS = 5;
 const ACTIVITY_ACTIONS = ['exam.published', 'invitation.created', 'attempt.settled', 'attempt.manually_graded'];
 const ACTIVITY_LIMIT = 10;
 const RECENT_PROCTORING_LIMIT = 5;
 const UPCOMING_EXAMS_LIMIT = 5;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const FEEDBACK_LOOKBACK_DAYS = 14;
+const OFFER_EXPIRY_HORIZON_DAYS = 3;
 
 export interface DashboardTrendPoint {
   date: string;
@@ -174,6 +178,33 @@ function bucketByDay(timestamps: Date[], days: number): DashboardTrendPoint[] {
   return points;
 }
 
+export interface TodayItem {
+  id: string;
+  candidateId: string | null;
+  candidateName: string;
+  subtitle: string;
+  at: string | null;
+  actionLabel: string;
+  actionHref: string;
+}
+
+export interface TodayResponse {
+  today: { iso: string; timeZone: string };
+  needsYou: {
+    feedbackOwed: TodayItem[];
+    interviewsToday: TodayItem[];
+    offersExpiring: TodayItem[];
+    approvalsPending: TodayItem[];
+    total: number;
+  };
+  watch: {
+    staleInvitations: number;
+    proctoringFlags: number;
+    nextDrive: { id: string; name: string; groupName: string; startsAt: string; registered: number } | null;
+  };
+  week: { newApplicants: number; invited: number; awaitingGrading: number; passRate: number | null };
+}
+
 export interface DashboardSummary {
   stats: {
     totalCandidates: number;
@@ -210,7 +241,203 @@ function describeActivity(action: string, entityId: string | null, metadata: Rec
 
 @Injectable()
 export class DashboardService {
+  private readonly logger = new Logger(DashboardService.name);
+
   constructor(private readonly tenantPrisma: TenantPrismaService) {}
+
+  // The signed-in recruiter's personal worklist: what needs THEM right now (interviews
+  // they're on today, feedback they owe, offers about to lapse, approvals only they can
+  // decide), plus org-wide things worth watching and a light weekly pulse. One `forTenant`
+  // call gathers the raw rows; formatting (subtitles, ISO timestamps) happens after, using
+  // the resolved timezone, so date-formatting logic never needs its own RLS transaction.
+  async getToday(context: TenantContext, userId: string, now = new Date()): Promise<TodayResponse> {
+    const organizationId = context.organizationId as string;
+
+    const core = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const user = await tx.user.findUnique({ where: { id: userId }, select: { timeZone: true } });
+      const win = dayWindow(now, user?.timeZone);
+      const lookback = new Date(now.getTime() - FEEDBACK_LOOKBACK_DAYS * DAY_MS);
+      const horizon = new Date(now.getTime() + OFFER_EXPIRY_HORIZON_DAYS * DAY_MS);
+      const staleThreshold = new Date(now.getTime() - STALE_INVITATION_DAYS * DAY_MS);
+
+      const mine = await tx.interview.findMany({
+        where: {
+          organizationId,
+          status: 'confirmed',
+          confirmedSlotId: { not: null },
+          panelists: { some: { userId } },
+          pipelineEntry: { candidate: { erasedAt: null } },
+        },
+        select: {
+          id: true,
+          confirmedSlotId: true,
+          pipelineEntryId: true,
+          candidateId: true,
+          slots: { select: { id: true, startsAt: true, endsAt: true } },
+          pipelineEntry: { select: { jobId: true, job: { select: { title: true } }, candidate: { select: { name: true } } } },
+        },
+      });
+      const withSlot = mine
+        .map((i) => ({ ...i, slot: i.slots.find((s) => s.id === i.confirmedSlotId) }))
+        .filter((i): i is typeof i & { slot: NonNullable<(typeof i)['slot']> } => !!i.slot);
+      const todays = withSlot
+        .filter((i) => i.slot.startsAt >= win.start && i.slot.startsAt < win.end)
+        .sort((a, b) => +a.slot.startsAt - +b.slot.startsAt);
+      const ended = withSlot.filter((i) => i.slot.endsAt < now && i.slot.endsAt >= lookback);
+      const rated = ended.length
+        ? await tx.pipelineFeedback.findMany({
+            where: { authorUserId: userId, entryId: { in: ended.map((i) => i.pipelineEntryId) } },
+            select: { entryId: true },
+          })
+        : [];
+      const ratedEntries = new Set(rated.map((r) => r.entryId));
+      const owed = ended.filter((i) => !ratedEntries.has(i.pipelineEntryId)).sort((a, b) => +a.slot.endsAt - +b.slot.endsAt);
+
+      const offers = await tx.offer.findMany({
+        where: {
+          organizationId,
+          status: 'sent',
+          respondedAt: null,
+          expiresAt: { gt: now, lte: horizon },
+          pipelineEntry: { candidate: { erasedAt: null } },
+        },
+        select: {
+          id: true,
+          candidateId: true,
+          expiresAt: true,
+          sentAt: true,
+          pipelineEntry: { select: { jobId: true, job: { select: { title: true } }, candidate: { select: { name: true } } } },
+        },
+        orderBy: { expiresAt: 'asc' },
+      });
+
+      const pendingAll = await tx.approvalRequest.findMany({
+        where: { organizationId, status: 'pending_approval' },
+        select: { id: true, subjectType: true, subjectId: true, status: true, chainSnapshotJson: true, currentStepPosition: true, submittedAt: true },
+        orderBy: { submittedAt: 'asc' },
+      });
+      const pending = pendingAll.filter((r) => isPendingForApprover(r, userId));
+      const approvals: TodayItem[] = [];
+      for (const r of pending) {
+        let label = 'Approval';
+        let candidateId: string | null = null;
+        if (r.subjectType === 'job') {
+          const job = await tx.job.findUnique({ where: { id: r.subjectId }, select: { title: true } });
+          label = job?.title ?? label;
+        } else if (r.subjectType === 'offer') {
+          const offer = await tx.offer.findUnique({
+            where: { id: r.subjectId },
+            select: { candidateId: true, pipelineEntry: { select: { candidate: { select: { name: true } } } } },
+          });
+          label = offer?.pipelineEntry.candidate.name ?? label;
+          candidateId = offer?.candidateId ?? null;
+        }
+        approvals.push({
+          id: r.id,
+          candidateId,
+          candidateName: label,
+          subtitle: `${r.subjectType === 'job' ? 'Requisition' : 'Offer'} · waiting for your decision`,
+          at: r.submittedAt.toISOString(),
+          actionLabel: 'Review',
+          actionHref: '/v2/approvals',
+        });
+      }
+
+      const exams = await tx.exam.findMany({ where: { organizationId }, select: { id: true } });
+      const examIds = exams.map((e) => e.id);
+      const [staleInvitations, proctoringFlags, drive] = await Promise.all([
+        tx.invitation.count({ where: { examId: { in: examIds }, status: 'invited', invitedAt: { lte: staleThreshold }, attempt: null } }),
+        // Recent flags only (7 days) -- an all-time count would just grow forever and stop
+        // meaning "worth a look today".
+        tx.proctoringEvent.count({
+          where: { attempt: { examId: { in: examIds } }, occurredAt: { gte: new Date(now.getTime() - 7 * DAY_MS) } },
+        }),
+        tx.driveSession.findFirst({
+          where: { walkInGroup: { organizationId }, endsAt: { gt: now } },
+          orderBy: { startsAt: 'asc' },
+          select: { id: true, name: true, startsAt: true, walkInGroup: { select: { name: true } } },
+        }),
+      ]);
+      const registered = drive ? await tx.invitation.count({ where: { driveSessionId: drive.id } }) : 0;
+
+      return { win, todays, owed, offers, approvals, staleInvitations, proctoringFlags, drive, registered };
+    });
+
+    const fmtTime = (d: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: core.win.timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+    const daysAgoCount = (d: Date) => Math.max(0, Math.floor((now.getTime() - d.getTime()) / DAY_MS));
+    const relDay = (d: Date) => {
+      const n = daysAgoCount(d);
+      return n === 0 ? 'today' : n === 1 ? 'yesterday' : `${n} days ago`;
+    };
+    const weekday = (d: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: core.win.timeZone, weekday: 'long' }).format(d);
+
+    const interviewsToday: TodayItem[] = core.todays.map((i) => ({
+      id: i.id,
+      candidateId: i.candidateId,
+      candidateName: i.pipelineEntry.candidate.name,
+      subtitle: `${i.pipelineEntry.job.title} · ${fmtTime(i.slot.startsAt)} with panel`,
+      at: i.slot.startsAt.toISOString(),
+      actionLabel: 'Open brief',
+      actionHref: `/v2/jobs/${i.pipelineEntry.jobId}`,
+    }));
+    const feedbackOwed: TodayItem[] = core.owed.map((i) => ({
+      id: i.id,
+      candidateId: i.candidateId,
+      candidateName: i.pipelineEntry.candidate.name,
+      subtitle: `${i.pipelineEntry.job.title} · interviewed ${relDay(i.slot.endsAt)} · scorecard due`,
+      at: i.slot.endsAt.toISOString(),
+      actionLabel: 'Add feedback',
+      actionHref: `/v2/jobs/${i.pipelineEntry.jobId}`,
+    }));
+    const offersExpiring: TodayItem[] = core.offers.map((o) => ({
+      id: o.id,
+      candidateId: o.candidateId,
+      candidateName: o.pipelineEntry.candidate.name,
+      subtitle: `${o.pipelineEntry.job.title} · offer sent ${o.sentAt ? relDay(o.sentAt) : 'recently'} · expires ${weekday(o.expiresAt)}`,
+      at: o.expiresAt.toISOString(),
+      actionLabel: 'Nudge',
+      actionHref: `/v2/jobs/${o.pipelineEntry.jobId}`,
+    }));
+
+    const summary = await this.getSummary(context, '7d');
+    let passRate: number | null = null;
+    try {
+      const rate = (await this.getAnalytics(context, { window: '7d' })).scores.passRate;
+      passRate = rate === null ? null : Math.round(rate);
+    } catch (err) {
+      this.logger.warn(`today: analytics pass rate unavailable: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    return {
+      today: { iso: core.win.iso, timeZone: core.win.timeZone },
+      needsYou: {
+        feedbackOwed,
+        interviewsToday,
+        offersExpiring,
+        approvalsPending: core.approvals,
+        total: feedbackOwed.length + interviewsToday.length + offersExpiring.length + core.approvals.length,
+      },
+      watch: {
+        staleInvitations: core.staleInvitations,
+        proctoringFlags: core.proctoringFlags,
+        nextDrive: core.drive
+          ? {
+              id: core.drive.id,
+              name: core.drive.name,
+              groupName: core.drive.walkInGroup.name,
+              startsAt: core.drive.startsAt.toISOString(),
+              registered: core.registered,
+            }
+          : null,
+      },
+      week: {
+        newApplicants: summary.stats.totalCandidates,
+        invited: summary.stats.invitationsSent,
+        awaitingGrading: summary.stats.pendingGradingCount,
+        passRate,
+      },
+    };
+  }
 
   async getSummary(context: TenantContext, window: Window): Promise<DashboardSummary> {
     const organizationId = context.organizationId as string;

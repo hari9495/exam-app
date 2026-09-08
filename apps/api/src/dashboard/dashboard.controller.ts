@@ -3,6 +3,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
+import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { DashboardService } from './dashboard.service';
 
@@ -21,6 +22,11 @@ type Window = (typeof WINDOWS)[number];
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
+
+  @Get('today')
+  getToday(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
+    return this.dashboardService.getToday(tenant, userId);
+  }
 
   @Get('summary')
   @RequireAnyPermission('exam:manage', 'results:view')

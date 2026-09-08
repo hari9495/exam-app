@@ -13,7 +13,7 @@ class MockGuard implements CanActivate {
 
 describe('DashboardController', () => {
   let controller: DashboardController;
-  let service: { getSummary: jest.Mock; getTrend: jest.Mock; getExamPerformance: jest.Mock; getFunnel: jest.Mock };
+  let service: { getSummary: jest.Mock; getTrend: jest.Mock; getExamPerformance: jest.Mock; getFunnel: jest.Mock; getToday: jest.Mock };
   const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   beforeEach(async () => {
@@ -22,6 +22,7 @@ describe('DashboardController', () => {
       getTrend: jest.fn().mockResolvedValue({ points: [] }),
       getExamPerformance: jest.fn().mockResolvedValue({ exams: [] }),
       getFunnel: jest.fn().mockResolvedValue({ invited: 0, started: 0, submitted: 0, passed: 0 }),
+      getToday: jest.fn(),
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [DashboardController],
@@ -33,6 +34,23 @@ describe('DashboardController', () => {
       .useClass(MockGuard)
       .compile();
     controller = moduleRef.get(DashboardController);
+  });
+
+  describe('getToday', () => {
+    it('delegates to the service with the tenant and current user id', async () => {
+      const fixture = {
+        today: { iso: '2026-09-08', timeZone: 'UTC' },
+        needsYou: { feedbackOwed: [], interviewsToday: [], offersExpiring: [], approvalsPending: [], total: 0 },
+        watch: { staleInvitations: 0, proctoringFlags: 0, nextDrive: null },
+        week: { newApplicants: 0, invited: 0, awaitingGrading: 0, passRate: null },
+      };
+      service.getToday.mockResolvedValue(fixture);
+
+      const result = controller.getToday(tenant, 'user-1');
+
+      expect(service.getToday).toHaveBeenCalledWith(tenant, 'user-1');
+      await expect(result).resolves.toEqual(fixture);
+    });
   });
 
   describe('getSummary', () => {
