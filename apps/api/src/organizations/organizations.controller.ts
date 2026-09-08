@@ -18,6 +18,7 @@ import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
+import { UpdateCareersDto } from './dto/update-careers.dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('organizations')
@@ -174,6 +175,25 @@ export class OrganizationsController {
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   uploadLogo(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @UploadedFile() file: Express.Multer.File) {
     return this.organizationsService.uploadLogo(tenant, userId, file);
+  }
+
+  @Get('careers')
+  @RequirePermissions('org:manage_settings')
+  getCareers(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.getCareers(tenant);
+  }
+
+  @Put('careers')
+  @RequirePermissions('org:manage_settings')
+  setCareers(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateCareersDto) {
+    return this.organizationsService.setCareers(tenant, userId, dto);
+  }
+
+  @Post('careers/banner')
+  @RequirePermissions('org:manage_settings')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadCareersBanner(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @UploadedFile() file: Express.Multer.File) {
+    return this.organizationsService.uploadCareersBanner(tenant, userId, file);
   }
 
   @Patch(':id/status')
