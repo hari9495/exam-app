@@ -12,6 +12,7 @@ export interface AgencyWithStats {
   portalUrl: string;
   assignedJobCount: number;
   pendingSubmissionCount: number;
+  jobIds: string[];
 }
 
 // Mirrors the offers/careers idiom: the agency portal is a Next PAGE
@@ -21,7 +22,7 @@ function buildPortalUrl(portalToken: string): string {
   return `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/agency/${portalToken}`;
 }
 
-function toDto(agency: Agency, assignedJobCount: number, pendingSubmissionCount: number): AgencyWithStats {
+function toDto(agency: Agency, assignedJobCount: number, pendingSubmissionCount: number, jobIds: string[]): AgencyWithStats {
   return {
     id: agency.id,
     name: agency.name,
@@ -30,6 +31,7 @@ function toDto(agency: Agency, assignedJobCount: number, pendingSubmissionCount:
     portalUrl: buildPortalUrl(agency.portalToken),
     assignedJobCount,
     pendingSubmissionCount,
+    jobIds,
   };
 }
 
@@ -53,7 +55,19 @@ export class AgenciesService {
         _count: { _all: true },
       });
       const subCountByAgency = new Map(subCounts.map((c: { agencyId: string; _count: { _all: number } }) => [c.agencyId, c._count._all]));
-      return agencies.map((a: Agency) => toDto(a, jobCountByAgency.get(a.id) ?? 0, subCountByAgency.get(a.id) ?? 0));
+      // Actual per-agency job ids -- needed so the settings edit dialog can pre-check the
+      // current allowlist instead of opening empty (see feedback: opening empty + full-replace
+      // Save silently wipes an already-assigned agency's allowlist).
+      const agencyJobRows = await tx.agencyJob.findMany({ where: { organizationId: orgId }, select: { agencyId: true, jobId: true } });
+      const jobIdsByAgency = new Map<string, string[]>();
+      for (const row of agencyJobRows as { agencyId: string; jobId: string }[]) {
+        const list = jobIdsByAgency.get(row.agencyId);
+        if (list) list.push(row.jobId);
+        else jobIdsByAgency.set(row.agencyId, [row.jobId]);
+      }
+      return agencies.map((a: Agency) =>
+        toDto(a, jobCountByAgency.get(a.id) ?? 0, subCountByAgency.get(a.id) ?? 0, jobIdsByAgency.get(a.id) ?? []),
+      );
     });
   }
 
@@ -88,7 +102,8 @@ export class AgenciesService {
       throw error;
     }
     await this.audit.record(context, { actorUserId, action: 'agency.created', entityType: 'agency', entityId: created.id, metadata: { name } });
-    return toDto(created, new Set(dto.jobIds ?? []).size, 0);
+    const createdJobIds = [...new Set(dto.jobIds ?? [])];
+    return toDto(created, createdJobIds.length, 0, createdJobIds);
   }
 
   async update(context: TenantContext, actorUserId: string, id: string, dto: UpdateAgencyDto): Promise<AgencyWithStats> {
@@ -103,7 +118,7 @@ export class AgenciesService {
     // Fetch-existence, the scalar update, and the allowlist reconcile all run inside ONE
     // forTenant transaction, so a concurrent delete/rename between the check and the write can't
     // slip through as an unhandled P2025 -- a missing agency surfaces as a clean 404 instead.
-    let result: { agency: Agency; assignedJobCount: number; pendingSubmissionCount: number };
+    let result: { agency: Agency; assignedJobCount: number; pendingSubmissionCount: number; jobIds: string[] };
     try {
       result = await this.tenantPrisma.forTenant(context, async (tx) => {
         const existing = await tx.agency.findFirst({ where: { id, organizationId: orgId } });
@@ -121,9 +136,11 @@ export class AgenciesService {
         if (dto.jobIds !== undefined) {
           await this.setAllowlist(tx, orgId, id, dto.jobIds);
         }
+        const jobRows = await tx.agencyJob.findMany({ where: { agencyId: id }, select: { jobId: true } });
+        const jobIds = jobRows.map((r: { jobId: string }) => r.jobId);
         const assignedJobCount = await tx.agencyJob.count({ where: { agencyId: id } });
         const pendingSubmissionCount = await tx.agencySubmission.count({ where: { agencyId: id, status: 'pending' } });
-        return { agency, assignedJobCount, pendingSubmissionCount };
+        return { agency, assignedJobCount, pendingSubmissionCount, jobIds };
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -132,7 +149,7 @@ export class AgenciesService {
       throw error;
     }
     await this.audit.record(context, { actorUserId, action: 'agency.updated', entityType: 'agency', entityId: id, metadata: { name } });
-    return toDto(result.agency, result.assignedJobCount, result.pendingSubmissionCount);
+    return toDto(result.agency, result.assignedJobCount, result.pendingSubmissionCount, result.jobIds);
   }
 
   async remove(context: TenantContext, actorUserId: string, id: string): Promise<{ id: string }> {

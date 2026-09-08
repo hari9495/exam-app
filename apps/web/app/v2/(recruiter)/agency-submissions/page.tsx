@@ -12,7 +12,8 @@ import {
   useAgencySubmissions, useAcceptAgencySubmission, useRejectAgencySubmission,
 } from '../../../../lib/hooks/useAgencies';
 import type { AgencySubmission, AgencySubmissionStatus } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, Pill, Tabs } from '../../../../components/ui-v2';
+import { DataTable, DT_FEATURES, dt, Pill } from '../../../../components/ui-v2/DataTable';
+import { Tabs } from '../../../../components/ui-v2/Tabs';
 import { STATUS } from '../../../../components/ui-v2/viz';
 
 const STATUS_PILL: Record<AgencySubmissionStatus, { c: string; label: string }> = {

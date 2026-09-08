@@ -21,8 +21,8 @@ const mockedUseJobs = usePipelineHooks.useJobs as jest.Mock;
 // verbatim in the rendered page, rather than reconstructing `${something}/agency/${token}`
 // itself (that would just be re-testing the mock, not the component).
 const AGENCIES = [
-  { id: 'a1', name: 'Acme Staffing', contactEmail: 'ops@acme-staffing.com', active: true, portalUrl: 'https://app.example.com/agency/tok-a1-xyz', assignedJobCount: 3, pendingSubmissionCount: 2 },
-  { id: 'a2', name: 'Talent Bridge', contactEmail: null, active: false, portalUrl: 'https://app.example.com/agency/tok-a2-abc', assignedJobCount: 0, pendingSubmissionCount: 0 },
+  { id: 'a1', name: 'Acme Staffing', contactEmail: 'ops@acme-staffing.com', active: true, portalUrl: 'https://app.example.com/agency/tok-a1-xyz', assignedJobCount: 1, pendingSubmissionCount: 2, jobIds: ['j1'] },
+  { id: 'a2', name: 'Talent Bridge', contactEmail: null, active: false, portalUrl: 'https://app.example.com/agency/tok-a2-abc', assignedJobCount: 0, pendingSubmissionCount: 0, jobIds: [] },
 ];
 
 function renderPage() {
@@ -133,6 +133,21 @@ describe('V2AgenciesSettingsPage', () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: /delete acme staffing/i }));
     expect(screen.getByRole('status')).toHaveTextContent('Cannot delete an agency with submissions');
+  });
+
+  it('opening "Assigned jobs" pre-checks the agency\'s current allowlist, so an unmodified Save keeps it intact', async () => {
+    renderPage();
+    fireEvent.click(screen.getAllByRole('button', { name: /assigned jobs/i })[0]);
+
+    const dialog = screen.getByRole('dialog');
+    const backendCheckbox = within(dialog).getByRole('checkbox', { name: 'Backend Engineer' });
+    const recruiterCheckbox = within(dialog).getByRole('checkbox', { name: 'Recruiter' });
+    // a1's jobIds is ['j1'] (Backend Engineer) -- pre-checked, not opened empty.
+    expect(backendCheckbox).toBeChecked();
+    expect(recruiterCheckbox).not.toBeChecked();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(updateMutate).toHaveBeenCalledWith({ id: 'a1', jobIds: ['j1'] }, expect.anything()));
   });
 
   it('renaming a row calls the update mutation on blur', () => {

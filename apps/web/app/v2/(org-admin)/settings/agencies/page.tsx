@@ -8,12 +8,12 @@
 // the ui-v2 barrel -- the barrel re-exports DataTable, which pulls in @tanstack/react-table
 // (ESM-only) and breaks under jest; this page doesn't need a DataTable anyway.
 //
-// NOTE (API gap): GET /agencies only returns aggregate counts (assignedJobCount), not the actual
-// jobIds allowlist -- there's no per-agency detail endpoint. So the "Assigned jobs" dialog can't
-// pre-check the agency's current jobs; it opens empty with a note, and Save always sends the
-// complete replacement set the admin just checked. Renaming/toggling active/etc. never touch
-// jobIds (each mutation only sends the fields it changed), so those actions never risk wiping an
-// existing allowlist -- only an explicit "Assigned jobs" -> Save can change it.
+// GET /agencies returns each agency's actual jobIds allowlist alongside assignedJobCount, so the
+// "Assigned jobs" dialog pre-checks the agency's current jobs before Save sends its full
+// replacement set -- otherwise saving with nothing (re-)checked would wipe the allowlist.
+// Renaming/toggling active/etc. never touch jobIds (each mutation only sends the fields it
+// changed), so those actions never risk wiping an existing allowlist -- only an explicit
+// "Assigned jobs" -> Save can change it.
 import { useState } from 'react';
 import { Plus, Trash2, Copy } from 'lucide-react';
 import { useAuth } from '../../../../../lib/auth-context';
@@ -65,7 +65,7 @@ function JobsChecklist({ selected, onToggle }: { selected: Set<string>; onToggle
 
 function AssignedJobsDialog({ agency, onClose, notify }: { agency: Agency; onClose: () => void; notify: (type: 'success' | 'error', text: string) => void }) {
   const update = useUpdateAgency();
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set(agency.jobIds));
 
   function toggle(jobId: string) {
     setSelected((prev) => {
@@ -88,9 +88,8 @@ function AssignedJobsDialog({ agency, onClose, notify }: { agency: Agency; onClo
   return (
     <Dialog open onClose={onClose} title={`Assigned jobs — ${agency.name}`} width={420}>
       <p style={{ ...desc, marginBottom: 12 }}>
-        {agency.name} currently has access to {agency.assignedJobCount} job{agency.assignedJobCount === 1 ? '' : 's'}.
-        The current list isn&apos;t shown here — check every job this agency should have access to, then Save to
-        replace the full list.
+        {agency.name} currently has access to {agency.assignedJobCount} job{agency.assignedJobCount === 1 ? '' : 's'}
+        (checked below). Adjust the checklist, then Save to replace the full list.
       </p>
       <JobsChecklist selected={selected} onToggle={toggle} />
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>

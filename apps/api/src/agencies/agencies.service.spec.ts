@@ -29,7 +29,7 @@ describe('AgenciesService', () => {
   }
 
   describe('list', () => {
-    it('returns each agency with its portalUrl and counts', async () => {
+    it('returns each agency with its portalUrl, counts, and its actual jobIds allowlist', async () => {
       const tx = {
         agency: {
           findMany: jest.fn().mockResolvedValue([
@@ -37,7 +37,14 @@ describe('AgenciesService', () => {
             { id: 'agency-2', name: 'Beta Recruiters', contactEmail: 'b@ex.com', active: true, portalToken: 'tok-2', organizationId: 'org-1' },
           ]),
         },
-        agencyJob: { groupBy: jest.fn().mockResolvedValue([{ agencyId: 'agency-1', _count: { _all: 3 } }]) },
+        agencyJob: {
+          groupBy: jest.fn().mockResolvedValue([{ agencyId: 'agency-1', _count: { _all: 3 } }]),
+          findMany: jest.fn().mockResolvedValue([
+            { agencyId: 'agency-1', jobId: 'job-1' },
+            { agencyId: 'agency-1', jobId: 'job-2' },
+            { agencyId: 'agency-1', jobId: 'job-3' },
+          ]),
+        },
         agencySubmission: { groupBy: jest.fn().mockResolvedValue([{ agencyId: 'agency-2', _count: { _all: 2 } }]) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
@@ -55,6 +62,7 @@ describe('AgenciesService', () => {
           portalUrl: 'https://app.example.com/agency/tok-1',
           assignedJobCount: 3,
           pendingSubmissionCount: 0,
+          jobIds: ['job-1', 'job-2', 'job-3'],
         },
         {
           id: 'agency-2',
@@ -64,16 +72,18 @@ describe('AgenciesService', () => {
           portalUrl: 'https://app.example.com/agency/tok-2',
           assignedJobCount: 0,
           pendingSubmissionCount: 2,
+          jobIds: [],
         },
       ]);
     });
 
     it('returns an empty list without querying counts', async () => {
-      const tx = { agency: { findMany: jest.fn().mockResolvedValue([]) }, agencyJob: { groupBy: jest.fn() }, agencySubmission: { groupBy: jest.fn() } };
+      const tx = { agency: { findMany: jest.fn().mockResolvedValue([]) }, agencyJob: { groupBy: jest.fn(), findMany: jest.fn() }, agencySubmission: { groupBy: jest.fn() } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       expect(await service.list(context)).toEqual([]);
       expect(tx.agencyJob.groupBy).not.toHaveBeenCalled();
+      expect(tx.agencyJob.findMany).not.toHaveBeenCalled();
     });
   });
 
@@ -97,6 +107,7 @@ describe('AgenciesService', () => {
         portalUrl: 'https://app.example.com/agency/tok-1',
         assignedJobCount: 0,
         pendingSubmissionCount: 0,
+        jobIds: [],
       });
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'agency.created', entityId: 'agency-1' }));
     });

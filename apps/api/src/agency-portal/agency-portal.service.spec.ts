@@ -111,6 +111,10 @@ describe('AgencyPortalService', () => {
       expect(result.jobs).toHaveLength(1);
       expect(result.submissions).toHaveLength(1);
       expect(result.submissions[0].id).toBe('sub-1');
+      // Flat jobTitle (not a nested job.title) -- matches the public page's s.jobTitle read and
+      // the authed /agency-submissions endpoint's shape.
+      expect(result.submissions[0].jobTitle).toBe('Open Role');
+      expect(result.submissions[0]).not.toHaveProperty('job');
       // Never another agency's job or submission leaking through.
       expect(result.jobs.some((j: any) => j.id === 'job-other')).toBe(false);
       expect(result.submissions.some((s: any) => s.id === 'sub-2')).toBe(false);

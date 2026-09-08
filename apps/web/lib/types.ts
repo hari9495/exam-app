@@ -74,8 +74,9 @@ export interface OrgSenderAddress { id: string; label: string; address: string; 
 // Agency portal (external recruiting agencies submit candidates against an assigned-jobs
 // allowlist). Shapes mirror apps/api/src/agencies/agencies.service.ts's AgencyWithStats and
 // apps/api/src/agency-submissions/agency-submissions.service.ts's list() mapping verbatim.
-// NOTE: the list response has no `jobIds`/`agencyId` fields -- only aggregate counts -- so the
-// web layer can't know an agency's CURRENT job allowlist ahead of an edit (see useAgencies.ts).
+// jobIds is this agency's CURRENT job allowlist -- lets the settings edit dialog pre-check the
+// checklist instead of opening empty (a full-replace Save from an empty-checked state would
+// otherwise wipe the allowlist -- see useAgencies.ts).
 export interface Agency {
   id: string;
   name: string;
@@ -84,6 +85,7 @@ export interface Agency {
   portalUrl: string;
   assignedJobCount: number;
   pendingSubmissionCount: number;
+  jobIds: string[];
 }
 
 export type AgencySubmissionStatus = 'pending' | 'accepted' | 'rejected';

@@ -49,7 +49,16 @@ export class AgencyPortalService {
         return {
           agencyName: agency.name,
           jobs: agencyJobs.map((aj: any) => aj.job),
-          submissions: submissionRows,
+          // Flatten job.title -- the public page reads s.jobTitle (matches the authed
+          // /agency-submissions endpoint's flat shape), not a nested job object.
+          submissions: submissionRows.map((s: any) => ({
+            id: s.id,
+            jobId: s.jobId,
+            jobTitle: s.job.title,
+            candidateName: s.candidateName,
+            status: s.status,
+            createdAt: s.createdAt,
+          })),
         };
       },
     );
