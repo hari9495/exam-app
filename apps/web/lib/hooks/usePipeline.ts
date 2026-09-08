@@ -76,6 +76,7 @@ export function useUpdateJob(jobId: string) {
         publicApplyEnabled?: boolean;
         fitCriteria?: string | null;
         fitRubric?: RubricDimension[] | null;
+        jobBoardIds?: string[];
       },
     ) => apiFetch(`/jobs/${jobId}`, { method: 'PATCH', body: JSON.stringify(input) }, accessToken ?? undefined),
     onSuccess: () => {

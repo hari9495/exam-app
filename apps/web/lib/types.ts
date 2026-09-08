@@ -71,6 +71,10 @@ export interface MyGroups { groupIds: string[]; coMemberUserIds: string[]; }
 // org-sender-addresses API responses verbatim (see apps/api/src/organizations/org-sender-addresses.service.ts).
 export interface OrgSenderAddress { id: string; label: string; address: string; isDefault: boolean; }
 
+// Mirrors apps/api/src/job-boards/job-boards.service.ts's JobBoardWithStats (id/name/feedToken
+// trimmed to what the web needs: the feed link is already resolved to a full feedUrl).
+export interface JobBoard { id: string; name: string; feedUrl: string; publishedJobCount: number; }
+
 export interface AuditLogEntry {
   id: string;
   action: string;
@@ -543,6 +547,9 @@ export interface JobDetail {
   salaryCurrency: string | null;
   approval: ApprovalSummary | null;
   customFields: CustomFieldRead[];
+  // Board publications for this job, as returned by getJob (NOT present on the PATCH response --
+  // always refetch the job read to see the current set after an update).
+  jobBoardIds: string[];
 }
 
 export type CandidateParseStatus = 'pending' | 'parsing' | 'done' | 'failed' | 'unavailable';
