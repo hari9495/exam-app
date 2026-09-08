@@ -4,6 +4,8 @@ import {
   APPROVAL_NOTIFICATION_TYPES,
   APPROVAL_EMAIL_EVENT_TYPES,
   isApprovalEmailEventType,
+  currentStepApproverIds,
+  isPendingForApprover,
 } from './approval-types';
 
 describe('approval-types', () => {
@@ -50,5 +52,26 @@ describe('isApprovalEmailEventType', () => {
   it('is false for null/undefined', () => {
     expect(isApprovalEmailEventType(null as unknown as string)).toBe(false);
     expect(isApprovalEmailEventType(undefined as unknown as string)).toBe(false);
+  });
+});
+
+describe('currentStepApproverIds', () => {
+  const snap = JSON.stringify([{ approverUserIds: ['u1'] }, { approverUserIds: ['u2', 'u3'] }]);
+  it('returns the approver ids of the current step', () => {
+    expect(currentStepApproverIds(snap, 1)).toEqual(['u2', 'u3']);
+  });
+  it('returns [] for a missing step, malformed JSON, or non-string ids', () => {
+    expect(currentStepApproverIds(snap, 5)).toEqual([]);
+    expect(currentStepApproverIds('not json', 0)).toEqual([]);
+    expect(currentStepApproverIds(JSON.stringify([{ approverUserIds: [1, null] }]), 0)).toEqual([]);
+  });
+});
+
+describe('isPendingForApprover', () => {
+  const snap = JSON.stringify([{ approverUserIds: ['u1'] }, { approverUserIds: ['u2'] }]);
+  it('is true only when pending and the user is on the current step', () => {
+    expect(isPendingForApprover({ status: 'pending_approval', chainSnapshotJson: snap, currentStepPosition: 1 }, 'u2')).toBe(true);
+    expect(isPendingForApprover({ status: 'pending_approval', chainSnapshotJson: snap, currentStepPosition: 1 }, 'u1')).toBe(false);
+    expect(isPendingForApprover({ status: 'approved', chainSnapshotJson: snap, currentStepPosition: 1 }, 'u2')).toBe(false);
   });
 });

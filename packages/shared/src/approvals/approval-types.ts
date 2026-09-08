@@ -30,3 +30,23 @@ export interface ResolvedStep {
   approverType: ApproverType;
   approverUserIds: string[];
 }
+
+// The frozen chain is stored as JSON on the request; the current step's approvers are the only
+// people who can act on it right now. Shared by the approvals inbox and the Today home so the
+// definition of "pending for me" exists exactly once.
+export function currentStepApproverIds(chainSnapshotJson: string, currentStepPosition: number): string[] {
+  try {
+    const steps = JSON.parse(chainSnapshotJson) as { approverUserIds?: unknown }[];
+    const ids = steps?.[currentStepPosition]?.approverUserIds;
+    return Array.isArray(ids) && ids.every((x) => typeof x === 'string') ? (ids as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function isPendingForApprover(
+  row: { status: string; chainSnapshotJson: string; currentStepPosition: number },
+  userId: string,
+): boolean {
+  return row.status === 'pending_approval' && currentStepApproverIds(row.chainSnapshotJson, row.currentStepPosition).includes(userId);
+}

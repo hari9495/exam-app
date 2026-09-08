@@ -9,6 +9,7 @@ import {
   ResolvedStep,
   APPROVAL_GATES,
   APPROVAL_NOTIFICATION_TYPES,
+  isPendingForApprover,
 } from '@exam-platform/shared';
 import { NotificationsService } from '../notifications/notifications.service';
 import { resolveSteps } from './approver-resolver';
@@ -357,11 +358,7 @@ export class ApprovalsService {
         const all = await tx.approvalRequest.findMany({
           where: { organizationId: context.organizationId as string, status: 'pending_approval' },
         });
-        rows = all.filter((r) => {
-          const steps: ResolvedStep[] = JSON.parse(r.chainSnapshotJson);
-          const step = steps[r.currentStepPosition];
-          return !!step && step.approverUserIds.includes(userId);
-        });
+        rows = all.filter((r) => isPendingForApprover(r, userId));
       }
 
       const labels = await this.resolveSubjectLabels(context, tx, rows);
