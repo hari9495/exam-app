@@ -163,6 +163,18 @@ describe('V2TodayPage', () => {
     expect(screen.getByText(/Pass rate is holding at 62%/)).toBeInTheDocument();
   });
 
+  it('the greeting uses the display font (Bricolage) and "This week" numbers use mono/tabular-nums, not Bricolage', () => {
+    mockedUseToday.mockReturnValue({ data: fixture(), isLoading: false, isError: false });
+    renderPage();
+    const heading = screen.getByRole('heading', { level: 1 });
+    expect(heading).toHaveClass('v2-title'); // .v2-title in v2.css sets fontFamily: var(--font-disp) -- the one Bricolage moment
+
+    const newApplicants = screen.getByText('12');
+    expect(newApplicants.style.fontFamily).toBe('var(--font-mono)');
+    expect(newApplicants.style.fontFamily).not.toBe('var(--font-disp)');
+    expect(newApplicants.style.fontVariantNumeric).toBe('tabular-nums');
+  });
+
   it('omits the pass-rate sentence when passRate is null', () => {
     mockedUseToday.mockReturnValue({ data: fixture({ week: { newApplicants: 12, invited: 8, awaitingGrading: 3, passRate: null } }), isLoading: false, isError: false });
     renderPage();

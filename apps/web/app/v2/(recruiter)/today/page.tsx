@@ -69,7 +69,7 @@ function WorthALookCard({ watch }: { watch: TodayResponse['watch'] }) {
 function Stat({ value, label }: { value: number; label: string }) {
   return (
     <div>
-      <div style={{ fontFamily: 'var(--font-disp)', fontWeight: 600, fontSize: 24, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+      <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: 24, color: 'var(--ink)', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
       <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{label}</div>
     </div>
   );
