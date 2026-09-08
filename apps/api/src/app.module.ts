@@ -54,6 +54,7 @@ import { ApprovalsModule } from './approvals/approvals.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { FieldPermissionsModule } from './field-permissions/field-permissions.module';
 import { RecycleBinModule } from './recycle-bin/recycle-bin.module';
+import { JobBoardsModule } from './job-boards/job-boards.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 import { SentryShutdownFlush } from './sentry-shutdown.provider';
@@ -114,6 +115,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     CustomFieldsModule,
     FieldPermissionsModule,
     RecycleBinModule,
+    JobBoardsModule,
   ],
   controllers: [HealthController],
   providers: [
