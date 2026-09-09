@@ -263,6 +263,9 @@ export interface Candidate {
   // Only the /candidates list endpoint populates this (CandidateListItem server-side) -- see
   // candidates.service.ts. Absent (not empty-array) anywhere else Candidate is used as a shape.
   customFields?: CustomFieldRead[];
+  // Candidate SMS opt-out (Zoho #16) -- set via PATCH /candidates/:id/sms-opt-out, separate from
+  // email consent. Present wherever the full Candidate row is serialized (list + this endpoint).
+  smsOptedOutAt?: string | null;
 }
 
 export interface Invitation {
@@ -615,11 +618,20 @@ export interface PendingMessage {
   body: string;
 }
 
+// SMS counterpart of PendingMessage (Zoho #16) -- body-only, no subject. Mirrors
+// apps/api/src/pipeline/pipeline.service.ts PendingSmsMessage.
+export interface PendingSmsMessage {
+  templateId: string | null;
+  body: string;
+}
+
 // PATCH /entries/:id's response shape -- changed from a bare PipelineEntry to this envelope so
-// a stage move can carry an optional pendingMessage alongside the updated entry.
+// a stage move can carry an optional pendingMessage/pendingSmsMessage alongside the updated
+// entry. Both can be present at once (independent email/SMS trigger resolution).
 export interface PatchEntryResult {
   entry: PipelineEntry;
   pendingMessage?: PendingMessage;
+  pendingSmsMessage?: PendingSmsMessage;
 }
 
 // Mirrors apps/api/prisma/schema.prisma CandidateEmail -- only the fields the web app renders
@@ -648,6 +660,39 @@ export interface CandidateEmailTemplate {
   body: string;
   enabled: boolean;
   isDefault: boolean;
+}
+
+// Mirrors apps/api/prisma/schema.prisma CandidateSms (Zoho #16) -- only the fields the web app
+// renders, same trim as CandidateEmail above.
+export interface CandidateSms {
+  id: string;
+  toPhone: string;
+  renderedBody: string;
+  status: 'sent' | 'failed';
+  source: string;
+  sentByUserId: string | null;
+  createdAt: string;
+}
+
+// GET /candidate-sms-templates -- saved templates plus code defaults, body-only (no subject).
+// Mirrors apps/api/src/candidate-sms/candidate-sms-templates.service.ts SmsTemplateView.
+export interface CandidateSmsTemplate {
+  id: string | null;
+  name: string;
+  triggerStageId: string | null;
+  triggerMode: 'manual' | 'prompt' | 'auto';
+  body: string;
+  enabled: boolean;
+  isDefault: boolean;
+}
+
+// GET/PUT /organizations/sms-config -- mirrors apps/api/src/organizations/organizations.service.ts
+// SmsConfigResponse. NEVER carries the auth token -- `configured` is the only signal the token is set.
+export interface SmsConfigResponse {
+  smsEnabled: boolean;
+  smsAccountSid: string | null;
+  smsFromNumber: string | null;
+  configured: boolean;
 }
 
 // pending_approval/approved only appear when the org's offer approval chain is enabled (Phase-1
