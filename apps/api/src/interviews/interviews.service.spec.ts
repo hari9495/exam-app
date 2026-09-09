@@ -197,6 +197,13 @@ describe('InterviewsService', () => {
         expect(tx.interview.create).not.toHaveBeenCalled();
       });
 
+      it('throws BadRequestException when slotDurationMinutes is not in the [15,30,45,60] allowlist', async () => {
+        await expect(
+          service.createInterview(context, 'user-1', 'entry-1', { ...selfBookDto, slotDurationMinutes: 20 } as any),
+        ).rejects.toThrow(BadRequestException);
+        expect(tx.interview.create).not.toHaveBeenCalled();
+      });
+
       it('throws BadRequestException when bookingWindowStart >= bookingWindowEnd', async () => {
         await expect(
           service.createInterview(context, 'user-1', 'entry-1', {
