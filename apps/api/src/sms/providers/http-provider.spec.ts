@@ -87,6 +87,38 @@ describe('httpProvider.validateConfig', () => {
       BadRequestException,
     );
   });
+
+  it('accepts a public hostname starting with "fc" (not an IP literal)', () => {
+    expect(() => httpProvider.validateConfig({ ...base, url: 'https://fc-gateway.com/send' })).not.toThrow();
+  });
+
+  it('accepts a public hostname starting with "fd" (not an IP literal)', () => {
+    expect(() => httpProvider.validateConfig({ ...base, url: 'https://fd-sms.example.com/x' })).not.toThrow();
+  });
+
+  it('rejects [::ffff:127.0.0.1] (IPv4-mapped IPv6 loopback)', () => {
+    expect(() => httpProvider.validateConfig({ ...base, url: 'https://[::ffff:127.0.0.1]/x' })).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('rejects [::ffff:10.0.0.1] (IPv4-mapped IPv6 private range)', () => {
+    expect(() => httpProvider.validateConfig({ ...base, url: 'https://[::ffff:10.0.0.1]/x' })).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('rejects [febf::1] (top of the fe80::/10 link-local range)', () => {
+    expect(() => httpProvider.validateConfig({ ...base, url: 'https://[febf::1]/x' })).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('rejects [fe90::1] (inside the fe80::/10 link-local range)', () => {
+    expect(() => httpProvider.validateConfig({ ...base, url: 'https://[fe90::1]/x' })).toThrow(
+      BadRequestException,
+    );
+  });
 });
 
 describe('httpProvider.send', () => {

@@ -5,10 +5,52 @@ function isBlank(value: unknown): boolean {
   return typeof value !== 'string' || value.trim() === '';
 }
 
+const IPV4_LITERAL_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+function isPrivateIPv4(ipv4: string): boolean {
+  return (
+    ipv4 === '0.0.0.0' ||
+    /^127\./.test(ipv4) ||
+    /^10\./.test(ipv4) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(ipv4) ||
+    /^192\.168\./.test(ipv4) ||
+    /^169\.254\./.test(ipv4)
+  );
+}
+
+/**
+ * Extracts the embedded IPv4 address from an IPv4-mapped IPv6 literal, in
+ * either its dotted-quad form (::ffff:1.2.3.4) or the hex form the WHATWG
+ * URL parser normalizes it to (::ffff:7f00:1). Returns null if `host` isn't
+ * one of those forms.
+ */
+function extractIPv4MappedAddress(host: string): string | null {
+  const dotted = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(host);
+  if (dotted) {
+    return dotted[1];
+  }
+  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+  if (hex) {
+    const hi = parseInt(hex[1], 16);
+    const lo = parseInt(hex[2], 16);
+    return [(hi >> 8) & 0xff, hi & 0xff, (lo >> 8) & 0xff, lo & 0xff].join('.');
+  }
+  return null;
+}
+
 /**
  * SSRF guard for org-supplied webhook URLs: only a public https host may be
  * targeted. Rejects loopback/private/link-local hosts so the server can't be
  * coerced into POSTing candidate PII (to/body) to an internal address.
+ *
+ * The private/loopback/link-local range checks only apply when the host is
+ * an IP literal (or the exact string "localhost") — a DNS hostname is never
+ * range-matched, so a public domain like fc-gateway.com isn't wrongly
+ * blocked just because it happens to start with an IPv6 prefix string.
+ *
+ * LIMITATION: DNS rebinding (a public hostname that resolves to a private
+ * IP at request time) can't be caught here — this check is static, at
+ * config-save time, and never resolves the hostname. Out of scope.
  */
 function assertPublicHttpsUrl(url: URL): void {
   if (url.protocol !== 'https:') {
@@ -19,18 +61,30 @@ function assertPublicHttpsUrl(url: URL): void {
   // inspect the address itself.
   const host = url.hostname.replace(/^\[/, '').replace(/\]$/, '').toLowerCase();
 
-  const isPrivate =
-    host === 'localhost' ||
-    host === '0.0.0.0' ||
-    host === '::1' ||
-    /^127\./.test(host) ||
-    /^10\./.test(host) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
-    /^192\.168\./.test(host) ||
-    /^169\.254\./.test(host) ||
-    /^fc/.test(host) || // fc00::/7 unique-local
-    /^fd/.test(host) ||
-    /^fe80/.test(host); // link-local
+  const isIPv4Literal = IPV4_LITERAL_RE.test(host);
+  const isIPv6Literal = host.includes(':');
+
+  let isPrivate = host === 'localhost';
+
+  if (isIPv4Literal) {
+    isPrivate = isPrivate || isPrivateIPv4(host);
+  }
+
+  if (isIPv6Literal) {
+    isPrivate =
+      isPrivate ||
+      host === '::1' ||
+      /^fc/.test(host) || // fc00::/7 unique-local
+      /^fd/.test(host) ||
+      /^fe[89ab]/.test(host); // fe80::/10 link-local
+
+    if (!isPrivate) {
+      const mapped = extractIPv4MappedAddress(host);
+      if (mapped && isPrivateIPv4(mapped)) {
+        isPrivate = true;
+      }
+    }
+  }
 
   if (isPrivate) {
     throw new BadRequestException('SMS webhook url must not target a private/local address');
