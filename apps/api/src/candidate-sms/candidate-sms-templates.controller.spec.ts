@@ -23,6 +23,8 @@ describe('CandidateSmsTemplatesController', () => {
   let service: {
     listWithDefaults: jest.Mock;
     upsert: jest.Mock;
+    setEnabled: jest.Mock;
+    remove: jest.Mock;
   };
   const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
@@ -30,6 +32,8 @@ describe('CandidateSmsTemplatesController', () => {
     service = {
       listWithDefaults: jest.fn().mockResolvedValue([{ id: null, isDefault: true }]),
       upsert: jest.fn().mockResolvedValue({ id: 's1' }),
+      setEnabled: jest.fn().mockResolvedValue({ id: 's1', enabled: true }),
+      remove: jest.fn().mockResolvedValue({ success: true }),
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [CandidateSmsTemplatesController],
@@ -58,6 +62,16 @@ describe('CandidateSmsTemplatesController', () => {
     const dto = { name: 'Offer v2', triggerStageId: null, triggerMode: 'prompt', body: 'B' } as any;
     await controller.update(tenant, 'user-1', 's1', dto);
     expect(service.upsert).toHaveBeenCalledWith(tenant, 'user-1', { ...dto, id: 's1' });
+  });
+
+  it('PATCH /:id/enabled delegates to setEnabled', async () => {
+    await controller.setEnabled(tenant, 'user-1', 's1', { enabled: false } as any);
+    expect(service.setEnabled).toHaveBeenCalledWith(tenant, 'user-1', 's1', false);
+  });
+
+  it('DELETE /:id delegates to remove', async () => {
+    await controller.remove(tenant, 'user-1', 's1');
+    expect(service.remove).toHaveBeenCalledWith(tenant, 'user-1', 's1');
   });
 
   // Routes must be mounted behind JwtAuthGuard, not simply absent -- an unauthenticated

@@ -136,4 +136,36 @@ export class CandidateSmsTemplatesService {
       return row;
     });
   }
+
+  async setEnabled(context: TenantContext, actorUserId: string, id: string, enabled: boolean) {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const existing = await tx.candidateSmsTemplate.findFirst({ where: { id, organizationId: context.organizationId as string } });
+      if (!existing) throw new NotFoundException(`Template ${id} not found`);
+
+      const row = await tx.candidateSmsTemplate.update({ where: { id }, data: { enabled } });
+      await this.audit.record(context, {
+        actorUserId,
+        action: enabled ? 'candidate_sms_template.enabled' : 'candidate_sms_template.disabled',
+        entityType: 'candidate_sms_template',
+        entityId: id,
+      });
+      return row;
+    });
+  }
+
+  async remove(context: TenantContext, actorUserId: string, id: string): Promise<{ success: true }> {
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      const existing = await tx.candidateSmsTemplate.findFirst({ where: { id, organizationId: context.organizationId as string } });
+      if (!existing) throw new NotFoundException(`Template ${id} not found`);
+
+      await tx.candidateSmsTemplate.delete({ where: { id } });
+      await this.audit.record(context, {
+        actorUserId,
+        action: 'candidate_sms_template.removed',
+        entityType: 'candidate_sms_template',
+        entityId: id,
+      });
+    });
+    return { success: true };
+  }
 }

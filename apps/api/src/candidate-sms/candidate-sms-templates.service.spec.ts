@@ -19,6 +19,7 @@ describe('CandidateSmsTemplatesService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn(),
         update: jest.fn(),
+        delete: jest.fn(),
       },
       // Default pipeline used to line up DEFAULT_SMS_TEMPLATES (keyed by stage NAME) against real
       // per-org stage ids -- no stages by default; individual tests opt in.
@@ -222,6 +223,49 @@ describe('CandidateSmsTemplatesService', () => {
       expect(tx.candidateSmsTemplate.findFirst).not.toHaveBeenCalled();
       expect(tx.candidateSmsTemplate.create).toHaveBeenCalledTimes(2);
       expect(tx.candidateSmsTemplate.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setEnabled', () => {
+    it('enables a row and audits candidate_sms_template.enabled', async () => {
+      tx.candidateSmsTemplate.findFirst.mockResolvedValue({ id: 's1', organizationId: 'org-1' });
+      tx.candidateSmsTemplate.update.mockResolvedValue({ id: 's1', enabled: true });
+
+      await service.setEnabled(context, 'user-1', 's1', true);
+
+      expect(tx.candidateSmsTemplate.update).toHaveBeenCalledWith({ where: { id: 's1' }, data: { enabled: true } });
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'candidate_sms_template.enabled', entityId: 's1' }));
+    });
+
+    it('disables a row and audits candidate_sms_template.disabled', async () => {
+      tx.candidateSmsTemplate.findFirst.mockResolvedValue({ id: 's1', organizationId: 'org-1' });
+      tx.candidateSmsTemplate.update.mockResolvedValue({ id: 's1', enabled: false });
+
+      await service.setEnabled(context, 'user-1', 's1', false);
+
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'candidate_sms_template.disabled', entityId: 's1' }));
+    });
+
+    it('throws NotFoundException when the row is not in the org', async () => {
+      tx.candidateSmsTemplate.findFirst.mockResolvedValue(null);
+      await expect(service.setEnabled(context, 'user-1', 'missing', true)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('remove', () => {
+    it('deletes a saved row and audits candidate_sms_template.removed', async () => {
+      tx.candidateSmsTemplate.findFirst.mockResolvedValue({ id: 's1', organizationId: 'org-1' });
+
+      const out = await service.remove(context, 'user-1', 's1');
+
+      expect(tx.candidateSmsTemplate.delete).toHaveBeenCalledWith({ where: { id: 's1' } });
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'candidate_sms_template.removed', entityId: 's1' }));
+      expect(out).toEqual({ success: true });
+    });
+
+    it('throws NotFoundException when the row is not in the org', async () => {
+      tx.candidateSmsTemplate.findFirst.mockResolvedValue(null);
+      await expect(service.remove(context, 'user-1', 'missing')).rejects.toThrow(NotFoundException);
     });
   });
 });
