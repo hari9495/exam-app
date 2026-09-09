@@ -32,6 +32,8 @@ describe('PipelineService', () => {
   let audit: { record: jest.Mock };
   let templates: { resolveForStage: jest.Mock };
   let messages: { sendMessage: jest.Mock };
+  let smsTemplates: { resolveForStage: jest.Mock };
+  let candidateSms: { sendSms: jest.Mock };
   let integrationEvents: { emit: jest.Mock };
   let notifications: { createMentions: jest.Mock; notify: jest.Mock };
   let approvals: { getChains: jest.Mock; submit: jest.Mock; isConfigurer: jest.Mock; cancelForSubject: jest.Mock; getSummariesFor: jest.Mock };
@@ -49,6 +51,8 @@ describe('PipelineService', () => {
     audit = { record: jest.fn() };
     templates = { resolveForStage: jest.fn().mockResolvedValue(null) };
     messages = { sendMessage: jest.fn().mockResolvedValue({ id: 'email-1' }) };
+    smsTemplates = { resolveForStage: jest.fn().mockResolvedValue(null) };
+    candidateSms = { sendSms: jest.fn().mockResolvedValue({ id: 'sms-1' }) };
     integrationEvents = { emit: jest.fn().mockResolvedValue(undefined) };
     notifications = { createMentions: jest.fn().mockResolvedValue(undefined), notify: jest.fn().mockResolvedValue(undefined) };
     approvals = {
@@ -65,7 +69,7 @@ describe('PipelineService', () => {
     // Empty set by default (matches getHiddenFields' own contract for an ungoverned/admin role) --
     // pre-existing tests below pass role 'org_admin' and don't care about redaction.
     fieldPerms = { getHiddenFields: jest.fn().mockResolvedValue(new Set()) };
-    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any);
+    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {
@@ -1747,6 +1751,57 @@ describe('PipelineService', () => {
 
         expect(result.entry).toEqual({ id: 'entry-1', statusId: 'st-offer' });
         expect(result.pendingMessage).toBeUndefined();
+      });
+
+      it('auto-sends SMS when the target stage resolves an auto SMS template', async () => {
+        smsTemplates.resolveForStage.mockResolvedValue({ id: 'sms-t1', body: 'b', triggerMode: 'auto' });
+
+        const result = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(smsTemplates.resolveForStage).toHaveBeenCalledWith(context, 'stage-offer');
+        expect(candidateSms.sendSms).toHaveBeenCalledWith(context, null, 'entry-1', { templateId: 'sms-t1', body: 'b', source: 'stage_auto' });
+        expect(result.pendingSmsMessage).toBeUndefined();
+      });
+
+      it('returns a pendingSmsMessage (does not send) for a prompt SMS template', async () => {
+        smsTemplates.resolveForStage.mockResolvedValue({ id: 'sms-t1', body: 'b', triggerMode: 'prompt' });
+
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(r.pendingSmsMessage).toEqual({ templateId: 'sms-t1', body: 'b' });
+        expect(candidateSms.sendSms).not.toHaveBeenCalled();
+      });
+
+      it('does nothing SMS-wise when no SMS template resolves', async () => {
+        smsTemplates.resolveForStage.mockResolvedValue(null);
+
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(r.pendingSmsMessage).toBeUndefined();
+        expect(candidateSms.sendSms).not.toHaveBeenCalled();
+      });
+
+      it('returns BOTH pendingMessage and pendingSmsMessage when email and SMS both prompt on the same move', async () => {
+        templates.resolveForStage.mockResolvedValue({ id: 'e1', subject: 's', body: 'email body', triggerMode: 'prompt' });
+        smsTemplates.resolveForStage.mockResolvedValue({ id: 'sms-t1', body: 'sms body', triggerMode: 'prompt' });
+
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(r.pendingMessage).toEqual({ templateId: 'e1', subject: 's', body: 'email body' });
+        expect(r.pendingSmsMessage).toEqual({ templateId: 'sms-t1', body: 'sms body' });
+        expect(messages.sendMessage).not.toHaveBeenCalled();
+        expect(candidateSms.sendSms).not.toHaveBeenCalled();
+      });
+
+      it('still returns the moved entry (and any resolved email pendingMessage) when the SMS resolution throws', async () => {
+        templates.resolveForStage.mockResolvedValue({ id: 'e1', subject: 's', body: 'email body', triggerMode: 'prompt' });
+        smsTemplates.resolveForStage.mockRejectedValue(new Error('sms pool exhausted'));
+
+        const result = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(result.entry).toEqual({ id: 'entry-1', statusId: 'st-offer' });
+        expect(result.pendingMessage).toEqual({ templateId: 'e1', subject: 's', body: 'email body' });
+        expect(result.pendingSmsMessage).toBeUndefined();
       });
     });
 

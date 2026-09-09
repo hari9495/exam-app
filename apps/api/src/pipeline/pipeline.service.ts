@@ -14,6 +14,8 @@ import { PatchEntryDto } from './dto/patch-entry.dto';
 import { AddFeedbackDto } from './dto/add-feedback.dto';
 import { CandidateEmailTemplatesService } from '../candidate-emails/candidate-email-templates.service';
 import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
+import { CandidateSmsTemplatesService } from '../candidate-sms/candidate-sms-templates.service';
+import { CandidateSmsService } from '../candidate-sms/candidate-sms.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ApprovalsService, ApprovalSummary, SubmitResult } from '../approvals/approvals.service';
@@ -128,9 +130,15 @@ export interface PendingMessage {
   body: string;
 }
 
+export interface PendingSmsMessage {
+  templateId: string | null;
+  body: string;
+}
+
 export interface PatchEntryResult {
   entry: PipelineEntry;
   pendingMessage?: PendingMessage;
+  pendingSmsMessage?: PendingSmsMessage;
 }
 
 // Selects exactly the columns upsertCustomFieldValues/serializeCustomFieldValues need -- shared
@@ -153,6 +161,8 @@ export class PipelineService {
     private readonly audit: AuditService,
     private readonly templates: CandidateEmailTemplatesService,
     private readonly messages: CandidateEmailsService,
+    private readonly smsTemplates: CandidateSmsTemplatesService,
+    private readonly candidateSms: CandidateSmsService,
     private readonly integrationEvents: IntegrationEventsService,
     private readonly notifications: NotificationsService,
     private readonly approvals: ApprovalsService,
@@ -892,6 +902,9 @@ export class PipelineService {
     // Stage-move comms hook: runs AFTER the tx above has committed. Wrapped so a transient
     // failure here (e.g. resolveForStage hitting a starved pool) can never surface as an error
     // for a stage move that already persisted.
+    let pendingMessage: PendingMessage | undefined;
+    let pendingSmsMessage: PendingSmsMessage | undefined;
+
     try {
       if (commsStageId) {
         const tpl = await this.templates.resolveForStage(context, commsStageId);
@@ -901,11 +914,33 @@ export class PipelineService {
             .sendMessage(context, null, entryId, { templateId: tpl.id, subject: tpl.subject, body: tpl.body, source: 'stage_auto' })
             .catch((e) => this.logger.error(`Auto-send candidate email failed for entry ${entryId}`, e));
         } else if (tpl?.triggerMode === 'prompt') {
-          return { entry, pendingMessage: { templateId: tpl.id, subject: tpl.subject, body: tpl.body } };
+          pendingMessage = { templateId: tpl.id, subject: tpl.subject, body: tpl.body };
         }
       }
     } catch (e) {
       this.logger.error(`Post-commit comms resolution failed for entry ${entryId}`, e as Error);
+    }
+
+    // Independent SMS resolution, same fail-open posture, in its own try so a throw here can
+    // never wipe out an already-resolved email pendingMessage above.
+    try {
+      if (commsStageId) {
+        const smsTpl = await this.smsTemplates.resolveForStage(context, commsStageId);
+        if (smsTpl?.triggerMode === 'auto') {
+          // Fire-and-forget: the stage-move response must not block on SMS delivery.
+          this.candidateSms
+            .sendSms(context, null, entryId, { templateId: smsTpl.id, body: smsTpl.body, source: 'stage_auto' })
+            .catch((e) => this.logger.error(`Auto-send candidate SMS failed for entry ${entryId}`, e));
+        } else if (smsTpl?.triggerMode === 'prompt') {
+          pendingSmsMessage = { templateId: smsTpl.id, body: smsTpl.body };
+        }
+      }
+    } catch (e) {
+      this.logger.error(`Post-commit SMS comms resolution failed for entry ${entryId}`, e as Error);
+    }
+
+    if (pendingMessage || pendingSmsMessage) {
+      return { entry, ...(pendingMessage ? { pendingMessage } : {}), ...(pendingSmsMessage ? { pendingSmsMessage } : {}) };
     }
     return { entry };
   }

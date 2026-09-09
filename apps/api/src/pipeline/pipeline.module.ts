@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CandidateEmailsModule } from '../candidate-emails/candidate-emails.module';
+import { CandidateSmsModule } from '../candidate-sms/candidate-sms.module';
 import { JobsModule } from '../jobs/jobs.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ApprovalsModule } from '../approvals/approvals.module';
@@ -13,8 +14,9 @@ import { PipelinesService } from './pipelines.service';
   // JobsModule -> IntegrationEventsService (candidate.hired fan-out); NotificationsModule -> the
   // in-app @mention notifications created from candidate feedback; ApprovalsModule -> the
   // requisition gate (getChains/submit/isConfigurer/cancelForSubject); FieldPermissionsModule ->
-  // getHiddenFields for board/job/csv field-hiding.
-  imports: [CandidateEmailsModule, JobsModule, NotificationsModule, ApprovalsModule, FieldPermissionsModule],
+  // getHiddenFields for board/job/csv field-hiding; CandidateSmsModule -> the stage-move SMS hook
+  // (mirrors CandidateEmailsModule) -- no circular import, CandidateSmsModule only imports SmsModule.
+  imports: [CandidateEmailsModule, CandidateSmsModule, JobsModule, NotificationsModule, ApprovalsModule, FieldPermissionsModule],
   controllers: [PipelineController, PipelinesConfigController],
   providers: [PipelineService, PipelinesService],
   exports: [PipelineService, PipelinesService],
