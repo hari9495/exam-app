@@ -16,6 +16,24 @@ const SINGLE_SLOT_INTERVIEW = {
   confirmedSlotId: null,
 };
 
+const SELF_BOOK_INTERVIEW = {
+  jobTitle: 'Senior Backend Engineer',
+  orgName: 'Acme Corp',
+  slots: [],
+  location: 'Zoom',
+  timeZone: 'UTC',
+  panel: ['Jane', 'Sam'],
+  status: 'proposed',
+  confirmedSlotId: null,
+  bookingMode: 'self_book',
+  slotDurationMinutes: 30,
+  availableSlots: [
+    { startsAt: '2099-01-15T15:00:00.000Z', endsAt: '2099-01-15T15:30:00.000Z' },
+    { startsAt: '2099-01-15T16:00:00.000Z', endsAt: '2099-01-15T16:30:00.000Z' },
+    { startsAt: '2099-01-16T15:00:00.000Z', endsAt: '2099-01-16T15:30:00.000Z' },
+  ],
+};
+
 const MULTI_SLOT_INTERVIEW = {
   ...SINGLE_SLOT_INTERVIEW,
   slots: [
@@ -184,6 +202,68 @@ describe('InterviewPage', () => {
     expect(await screen.findByText(/no longer available/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Confirm/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Decline/i })).not.toBeInTheDocument();
+  });
+
+  it('self-book: renders availableSlots grouped by day and books a slot', async () => {
+    const fetchMock = jest.fn(async (url, options) => {
+      const urlString = String(url);
+      if (options?.method === 'POST' && urlString.endsWith('/public/interviews/tok-abc/respond')) {
+        return new Response(JSON.stringify({ status: 'confirmed' }), { status: 200 });
+      }
+      if (urlString.endsWith('/public/interviews/tok-abc')) {
+        return new Response(JSON.stringify(SELF_BOOK_INTERVIEW), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 404 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<InterviewPage />);
+    expect(await screen.findByText('Senior Backend Engineer')).toBeInTheDocument();
+
+    // Two distinct days rendered as group headers, with a Book button per slot.
+    expect(screen.getByText(/Pick a time that works for you/i)).toBeInTheDocument();
+    const bookButtons = screen.getAllByRole('button', { name: /\d{1,2}:\d{2}/ });
+    expect(bookButtons).toHaveLength(3);
+
+    await userEvent.click(bookButtons[0]);
+
+    expect(await screen.findByRole('heading', { name: /Interview confirmed/i })).toBeInTheDocument();
+
+    const postCall = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST');
+    expect(postCall).toBeDefined();
+    expect(JSON.parse(postCall![1].body)).toEqual({
+      action: 'book',
+      startsAt: '2099-01-15T15:00:00.000Z',
+      endsAt: '2099-01-15T15:30:00.000Z',
+    });
+  });
+
+  it('self-book: a 409 on book refetches the list and shows the taken message', async () => {
+    let getCount = 0;
+    const REFRESHED = { ...SELF_BOOK_INTERVIEW, availableSlots: SELF_BOOK_INTERVIEW.availableSlots.slice(1) };
+    const fetchMock = jest.fn(async (url, options) => {
+      const urlString = String(url);
+      if (options?.method === 'POST' && urlString.endsWith('/public/interviews/tok-abc/respond')) {
+        return new Response(JSON.stringify({ message: 'taken' }), { status: 409 });
+      }
+      if (urlString.endsWith('/public/interviews/tok-abc')) {
+        getCount += 1;
+        return new Response(JSON.stringify(getCount === 1 ? SELF_BOOK_INTERVIEW : REFRESHED), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 404 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<InterviewPage />);
+    expect(await screen.findByText('Senior Backend Engineer')).toBeInTheDocument();
+
+    const bookButtons = screen.getAllByRole('button', { name: /\d{1,2}:\d{2}/ });
+    await userEvent.click(bookButtons[0]);
+
+    expect(await screen.findByText(/that time was just taken/i)).toBeInTheDocument();
+    // Refetched -- the taken slot is gone, one fewer Book button now.
+    expect(await screen.findAllByRole('button', { name: /\d{1,2}:\d{2}/ })).toHaveLength(2);
+    expect(getCount).toBe(2);
   });
 
   it('shows a generic closed state on a 404/409 fetch', async () => {

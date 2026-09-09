@@ -11,6 +11,15 @@ function formatSlot(startsAt: string, timeZone: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short', timeZone }).format(new Date(startsAt));
 }
 
+// Same Intl options as formatSlot, split into day/time so self-book slots can be grouped by day.
+function formatDay(startsAt: string, timeZone: string): string {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeZone }).format(new Date(startsAt));
+}
+
+function formatTime(startsAt: string, timeZone: string): string {
+  return new Intl.DateTimeFormat(undefined, { timeStyle: 'short', timeZone }).format(new Date(startsAt));
+}
+
 type RespondAction = 'confirm' | 'decline' | 'reschedule';
 type RespondedState = { action: RespondAction; slotId?: string } | null;
 
@@ -24,6 +33,24 @@ export default function InterviewPage() {
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [reschedOpen, setReschedOpen] = useState(false);
   const [reschedNote, setReschedNote] = useState('');
+  const [bookedSlot, setBookedSlot] = useState<{ startsAt: string } | null>(null);
+  const [booking, setBooking] = useState(false);
+
+  function loadInterview(): Promise<void> {
+    return fetch(`${API_BASE}/public/interviews/${token}`)
+      .then((res) => {
+        if (!res.ok) throw new Error('not ok');
+        return res.json();
+      })
+      .then((data: PublicInterview) => {
+        setInterview(data);
+        // A single-slot invite has nothing to pick -- Confirm can post it directly.
+        if (data.slots.length === 1) setSelectedSlotId(data.slots[0].id);
+      })
+      .catch(() => {
+        setLoadFailed(true);
+      });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -46,6 +73,29 @@ export default function InterviewPage() {
       cancelled = true;
     };
   }, [token]);
+
+  async function bookSlot(slot: { startsAt: string; endsAt: string }) {
+    setRespondError(null);
+    setBooking(true);
+    try {
+      const res = await fetch(`${API_BASE}/public/interviews/${token}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'book', startsAt: slot.startsAt, endsAt: slot.endsAt }),
+      });
+      if (res.status === 409) {
+        setRespondError('that time was just taken -- please pick another');
+        await loadInterview();
+        return;
+      }
+      if (!res.ok) throw new Error('Could not book this time. Please try again.');
+      setBookedSlot(slot);
+    } catch (err) {
+      setRespondError(err instanceof Error ? err.message : 'Could not book this time. Please try again.');
+    } finally {
+      setBooking(false);
+    }
+  }
 
   async function respond(action: RespondAction, extra?: { slotId?: string; note?: string }) {
     setRespondError(null);
@@ -71,6 +121,16 @@ export default function InterviewPage() {
 
   if (!interview) {
     return <TerminalCard tone="loading" title="Loading" body="This only takes a moment." />;
+  }
+
+  if (bookedSlot) {
+    return (
+      <TerminalCard
+        tone="success"
+        title="Interview confirmed"
+        body={`You're confirmed for ${formatSlot(bookedSlot.startsAt, interview.timeZone)}.`}
+      />
+    );
   }
 
   if (responded) {
@@ -104,6 +164,70 @@ export default function InterviewPage() {
             : 'This interview invitation is no longer available.'
         }
       />
+    );
+  }
+
+  if (interview.bookingMode === 'self_book') {
+    const availableSlots = interview.availableSlots ?? [];
+    const slotsByDay = new Map<string, { startsAt: string; endsAt: string }[]>();
+    for (const slot of availableSlots) {
+      const day = formatDay(slot.startsAt, interview.timeZone);
+      const existing = slotsByDay.get(day);
+      if (existing) existing.push(slot);
+      else slotsByDay.set(day, [slot]);
+    }
+
+    return (
+      <div className="mx-auto flex flex-1 max-w-xl flex-col justify-center gap-6 p-4 sm:p-8">
+        <div className="rounded-lg border border-candidate-border bg-white p-6">
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-candidate-text-secondary">{interview.orgName}</p>
+          <h1 className="mb-4 font-display text-xl font-bold text-candidate-text">{interview.jobTitle}</h1>
+
+          <dl className="mb-4 flex flex-col gap-2 text-sm">
+            <div className="flex justify-between gap-4">
+              <dt className="text-candidate-text-secondary">Location</dt>
+              <dd className="font-medium text-candidate-text">{interview.location}</dd>
+            </div>
+            {interview.panel.length > 0 && (
+              <div className="flex justify-between gap-4">
+                <dt className="text-candidate-text-secondary">Panel</dt>
+                <dd className="font-medium text-candidate-text">{interview.panel.join(', ')}</dd>
+              </div>
+            )}
+          </dl>
+
+          {respondError ? (
+            <p role="alert" className="mb-4 rounded-md bg-candidate-danger-bg px-3 py-2 text-sm text-candidate-danger">
+              {respondError}
+            </p>
+          ) : null}
+
+          <p className="mb-2 text-sm font-medium text-candidate-text">Pick a time that works for you</p>
+          {availableSlots.length === 0 ? (
+            <p className="text-sm text-candidate-text-secondary">No times are currently available. Please check back later.</p>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {Array.from(slotsByDay.entries()).map(([day, daySlots]) => (
+                <div key={day}>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-candidate-text-secondary">{day}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {daySlots.map((slot) => (
+                      <CandidateButton
+                        key={slot.startsAt}
+                        variant="secondary"
+                        disabled={booking}
+                        onClick={() => bookSlot(slot)}
+                      >
+                        {formatTime(slot.startsAt, interview.timeZone)}
+                      </CandidateButton>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     );
   }
 
