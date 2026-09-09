@@ -137,6 +137,77 @@ describe('InterviewsService', () => {
       await expect(service.createInterview(context, 'user-1', 'entry-x', dto as any)).rejects.toThrow(NotFoundException);
       expect(tx.interview.create).not.toHaveBeenCalled();
     });
+
+    it('proposed mode (explicit) still requires + persists discrete slots exactly as today (regression)', async () => {
+      tx.interview.create.mockResolvedValue({ id: 'interview-1', status: 'proposed' });
+
+      await service.createInterview(context, 'user-1', 'entry-1', { ...dto, bookingMode: 'proposed' } as any);
+
+      expect(tx.interview.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            slots: { create: [{ organizationId: 'org-1', startsAt: new Date(dto.slots[0].startsAt), endsAt: new Date(dto.slots[0].endsAt) }] },
+          }),
+        }),
+      );
+    });
+
+    describe('self_book mode', () => {
+      const selfBookDto = {
+        panelistUserIds: ['panelist-1'],
+        location: 'Room 1',
+        timeZone: 'UTC',
+        bookingMode: 'self_book' as const,
+        bookingWindowStart: '2026-09-10T09:00:00.000Z',
+        bookingWindowEnd: '2026-09-12T17:00:00.000Z',
+        slotDurationMinutes: 30,
+      };
+
+      it('persists bookingMode/window/duration and creates NO slots', async () => {
+        tx.interview.create.mockResolvedValue({ id: 'interview-1', status: 'proposed' });
+
+        await service.createInterview(context, 'user-1', 'entry-1', selfBookDto as any);
+
+        expect(tx.interview.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              bookingMode: 'self_book',
+              bookingWindowStart: new Date(selfBookDto.bookingWindowStart),
+              bookingWindowEnd: new Date(selfBookDto.bookingWindowEnd),
+              slotDurationMinutes: 30,
+              slots: { create: [] },
+            }),
+          }),
+        );
+      });
+
+      it('throws BadRequestException when the booking window is missing', async () => {
+        const { bookingWindowStart, ...missingWindow } = selfBookDto;
+        await expect(
+          service.createInterview(context, 'user-1', 'entry-1', missingWindow as any),
+        ).rejects.toThrow(BadRequestException);
+        expect(tx.interview.create).not.toHaveBeenCalled();
+      });
+
+      it('throws BadRequestException when slotDurationMinutes is missing', async () => {
+        const { slotDurationMinutes, ...missingDuration } = selfBookDto;
+        await expect(
+          service.createInterview(context, 'user-1', 'entry-1', missingDuration as any),
+        ).rejects.toThrow(BadRequestException);
+        expect(tx.interview.create).not.toHaveBeenCalled();
+      });
+
+      it('throws BadRequestException when bookingWindowStart >= bookingWindowEnd', async () => {
+        await expect(
+          service.createInterview(context, 'user-1', 'entry-1', {
+            ...selfBookDto,
+            bookingWindowStart: '2026-09-12T17:00:00.000Z',
+            bookingWindowEnd: '2026-09-12T17:00:00.000Z',
+          } as any),
+        ).rejects.toThrow(BadRequestException);
+        expect(tx.interview.create).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('listForEntry', () => {

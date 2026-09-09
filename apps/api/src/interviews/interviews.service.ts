@@ -14,6 +14,11 @@ const LOGO_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
 // ponytail: built-in copy, no per-org template lookup (unlike OfferTemplatesService) --
 // nothing in this task asked for customizable invite templates, add one if that changes.
+// Re-checked here (not just at the DTO boundary) because slotDurationMinutes flows straight
+// into the pure slot generator (booking-slots.ts) -- a 0/negative duration must never reach it,
+// even from a caller that bypasses the HTTP ValidationPipe.
+const ALLOWED_SLOT_DURATIONS = [15, 30, 45, 60];
+
 const DEFAULT_INVITE_SUBJECT = 'Interview invitation: {{jobTitle}} at {{orgName}}';
 const DEFAULT_INVITE_BODY =
   "Hi {{candidateName}},\n\n" +
@@ -46,9 +51,22 @@ export class InterviewsService {
     entryId: string,
     dto: CreateInterviewDto,
   ): Promise<Interview> {
-    if (!dto.slots?.length) throw new BadRequestException('At least one slot is required');
-    if (dto.slots.some((s) => new Date(s.endsAt).getTime() <= new Date(s.startsAt).getTime())) {
-      throw new BadRequestException('Each slot must end after it starts');
+    const isSelfBook = dto.bookingMode === 'self_book';
+    if (isSelfBook) {
+      if (!dto.bookingWindowStart || !dto.bookingWindowEnd || !dto.slotDurationMinutes) {
+        throw new BadRequestException('bookingWindowStart, bookingWindowEnd and slotDurationMinutes are required for self_book mode');
+      }
+      if (!ALLOWED_SLOT_DURATIONS.includes(dto.slotDurationMinutes)) {
+        throw new BadRequestException(`slotDurationMinutes must be one of ${ALLOWED_SLOT_DURATIONS.join(', ')}`);
+      }
+      if (new Date(dto.bookingWindowStart).getTime() >= new Date(dto.bookingWindowEnd).getTime()) {
+        throw new BadRequestException('bookingWindowStart must be before bookingWindowEnd');
+      }
+    } else {
+      if (!dto.slots?.length) throw new BadRequestException('At least one slot is required');
+      if (dto.slots.some((s) => new Date(s.endsAt).getTime() <= new Date(s.startsAt).getTime())) {
+        throw new BadRequestException('Each slot must end after it starts');
+      }
     }
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
@@ -75,8 +93,14 @@ export class InterviewsService {
           location: dto.location,
           timeZone: dto.timeZone,
           recruiterNote: dto.recruiterNote ?? null,
+          bookingMode: isSelfBook ? 'self_book' : 'proposed',
+          bookingWindowStart: isSelfBook ? new Date(dto.bookingWindowStart!) : null,
+          bookingWindowEnd: isSelfBook ? new Date(dto.bookingWindowEnd!) : null,
+          slotDurationMinutes: isSelfBook ? dto.slotDurationMinutes! : null,
           slots: {
-            create: dto.slots.map((s) => ({ organizationId: orgId, startsAt: new Date(s.startsAt), endsAt: new Date(s.endsAt) })),
+            create: isSelfBook
+              ? []
+              : dto.slots!.map((s) => ({ organizationId: orgId, startsAt: new Date(s.startsAt), endsAt: new Date(s.endsAt) })),
           },
           panelists: {
             create: dto.panelistUserIds.map((userId) => ({ organizationId: orgId, userId })),
