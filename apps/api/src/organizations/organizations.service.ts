@@ -22,6 +22,7 @@ import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
+import { UpdateSmsConfigDto } from './dto/update-sms-config.dto';
 import { BusinessHours, Holiday } from '@exam-platform/shared';
 
 export interface BrandingResponse {
@@ -92,6 +93,15 @@ export interface IntegrationsResponse {
 
 export interface PipelineSettingsResponse {
   autoArchiveSiblingsOnHire: boolean;
+}
+
+export interface SmsConfigResponse {
+  smsEnabled: boolean;
+  smsAccountSid: string | null;
+  smsFromNumber: string | null;
+  // True only once accountSid + the encrypted token + fromNumber are all present.
+  // NEVER add the token/ciphertext itself to this shape -- mirror smtpConfigured.
+  configured: boolean;
 }
 
 export interface BusinessHoursResponse {
@@ -600,6 +610,45 @@ export class OrganizationsService {
       entityId: organizationId,
     });
     return { aiKeyConfigured: true };
+  }
+
+  async getSmsConfig(context: TenantContext): Promise<SmsConfigResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { smsEnabled: true, smsAccountSid: true, smsAuthTokenEncrypted: true, smsFromNumber: true },
+    });
+    return {
+      smsEnabled: org?.smsEnabled ?? false,
+      smsAccountSid: org?.smsAccountSid ?? null,
+      smsFromNumber: org?.smsFromNumber ?? null,
+      configured: Boolean(org?.smsAccountSid && org?.smsAuthTokenEncrypted && org?.smsFromNumber),
+    };
+  }
+
+  async putSmsConfig(context: TenantContext, actorUserId: string, dto: UpdateSmsConfigDto): Promise<SmsConfigResponse> {
+    const organizationId = this.requireOrganizationId(context);
+
+    // Mirror updateSmtpSettings's write-only-secret rule: a non-blank token is
+    // encrypted and stored; omitted/blank/whitespace leaves the existing
+    // encrypted token untouched rather than clearing or overwriting it with ''.
+    const trimmedToken = dto.smsAuthToken?.trim();
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        ...(dto.smsEnabled !== undefined ? { smsEnabled: dto.smsEnabled } : {}),
+        ...(dto.smsAccountSid !== undefined ? { smsAccountSid: dto.smsAccountSid } : {}),
+        ...(dto.smsFromNumber !== undefined ? { smsFromNumber: dto.smsFromNumber } : {}),
+        ...(trimmedToken ? { smsAuthTokenEncrypted: this.cryptoService.encrypt(trimmedToken) } : {}),
+      },
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.sms_configured',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return this.getSmsConfig(context);
   }
 
   async updateWebhookUrl(context: TenantContext, actorUserId: string, dto: UpdateWebhookUrlDto): Promise<{ webhookUrl: string }> {

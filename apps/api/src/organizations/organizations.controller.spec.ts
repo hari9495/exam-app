@@ -138,3 +138,52 @@ describe('OrganizationsController apply-consent', () => {
     expect(permissions).toEqual(['org:manage_settings']);
   });
 });
+
+describe('OrganizationsController sms-config', () => {
+  let controller: OrganizationsController;
+  let service: { getSmsConfig: jest.Mock; putSmsConfig: jest.Mock };
+  const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+  beforeEach(async () => {
+    service = {
+      getSmsConfig: jest.fn().mockResolvedValue({ smsEnabled: false, smsAccountSid: null, smsFromNumber: null, configured: false }),
+      putSmsConfig: jest.fn().mockResolvedValue({ smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567', configured: true }),
+    };
+    const moduleRef = await Test.createTestingModule({
+      controllers: [OrganizationsController],
+      providers: [{ provide: OrganizationsService, useValue: service }],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useClass(MockGuard)
+      .overrideGuard(PermissionsGuard)
+      .useClass(MockGuard)
+      .compile();
+    controller = moduleRef.get(OrganizationsController);
+  });
+
+  it('GET /organizations/sms-config delegates to getSmsConfig and never surfaces the token', async () => {
+    const result = await controller.getSmsConfig(tenant);
+    expect(service.getSmsConfig).toHaveBeenCalledWith(tenant);
+    expect(result).toEqual({ smsEnabled: false, smsAccountSid: null, smsFromNumber: null, configured: false });
+    expect(result).not.toHaveProperty('smsAuthToken');
+    expect(result).not.toHaveProperty('smsAuthTokenEncrypted');
+  });
+
+  it('PUT /organizations/sms-config delegates to putSmsConfig', async () => {
+    const dto = { smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567', smsAuthToken: 'secret-token' };
+    const result = await controller.putSmsConfig(tenant, 'user-1', dto);
+    expect(service.putSmsConfig).toHaveBeenCalledWith(tenant, 'user-1', dto);
+    expect(result).toEqual({ smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567', configured: true });
+    expect(result).not.toHaveProperty('smsAuthToken');
+  });
+
+  it('gates the getter behind org:manage_settings', () => {
+    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.getSmsConfig);
+    expect(permissions).toEqual(['org:manage_settings']);
+  });
+
+  it('gates the setter behind org:manage_settings', () => {
+    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.putSmsConfig);
+    expect(permissions).toEqual(['org:manage_settings']);
+  });
+});

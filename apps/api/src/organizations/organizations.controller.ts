@@ -18,6 +18,7 @@ import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
+import { UpdateSmsConfigDto } from './dto/update-sms-config.dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('organizations')
@@ -85,6 +86,18 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   revokeApiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
     return this.organizationsService.revokeApiKey(tenant, userId);
+  }
+
+  @Get('sms-config')
+  @RequirePermissions('org:manage_settings')
+  getSmsConfig(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.getSmsConfig(tenant);
+  }
+
+  @Put('sms-config')
+  @RequirePermissions('org:manage_settings')
+  putSmsConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateSmsConfigDto) {
+    return this.organizationsService.putSmsConfig(tenant, userId, dto);
   }
 
   @Patch('integrations/webhook')
