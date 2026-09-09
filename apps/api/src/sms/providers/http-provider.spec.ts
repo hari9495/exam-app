@@ -223,4 +223,43 @@ describe('httpProvider.send', () => {
     );
     expect(result).toEqual({ ok: false });
   });
+
+  it('calls fetch with redirect:manual so a 3xx to an internal address is never followed', async () => {
+    const fetchImpl = mockFetch({ ok: true, status: 200 });
+    await httpProvider.send(
+      { url: 'https://api.example.com/sms', bodyTemplate: '{}' },
+      args,
+      fetchImpl as never,
+    );
+    const [, options] = fetchImpl.mock.calls[0];
+    expect(options.redirect).toBe('manual');
+  });
+
+  it('re-validates the final substituted url and never calls fetch when {{to}} lands in the host', async () => {
+    const fetchImpl = mockFetch({ ok: true, status: 200 });
+    const config = {
+      url: 'https://{{to}}/x',
+      bodyTemplate: '{}',
+    };
+
+    const result = await httpProvider.send(config, { to: '127.0.0.1', body: 'hi' }, fetchImpl as never);
+
+    expect(result).toEqual({ ok: false });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('a normal valid send with no host substitution still works, with redirect:manual and 2xx->ok', async () => {
+    const fetchImpl = mockFetch({ ok: true, status: 200 });
+    const config = {
+      url: 'https://api.example.com/sms?to={{to}}',
+      bodyTemplate: '{"to":"{{to}}","body":"{{body}}"}',
+    };
+
+    const result = await httpProvider.send(config, args, fetchImpl as never);
+
+    expect(result).toEqual({ ok: true, status: 200 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [, options] = fetchImpl.mock.calls[0];
+    expect(options.redirect).toBe('manual');
+  });
 });

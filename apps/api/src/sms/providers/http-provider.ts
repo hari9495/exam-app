@@ -141,6 +141,11 @@ export const httpProvider: SmsProviderAdapter = {
       const url = substitute(config.url as string, args, isJson);
       const body = substitute(config.bodyTemplate as string, args, isJson);
 
+      // Re-validate the FINAL substituted url: {{to}}/{{body}} can land in
+      // the host (e.g. `https://{{to}}/x`), so the template check done at
+      // config-save time isn't enough — throwing here is caught below.
+      assertPublicHttpsUrl(new URL(url));
+
       const headers: Record<string, string> = { 'Content-Type': contentType };
       if (!isBlank(config.authHeader)) {
         headers.Authorization = config.authHeader as string;
@@ -150,6 +155,7 @@ export const httpProvider: SmsProviderAdapter = {
         method: (config.method as string) || 'POST',
         headers,
         body,
+        redirect: 'manual', // never follow a redirect to an internal address
       });
       return { ok: res.ok, status: res.status };
     } catch {
