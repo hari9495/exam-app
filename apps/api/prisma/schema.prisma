@@ -68,6 +68,9 @@ model Organization {
   createdAt              DateTime          @default(now()) @map("created_at")
   applyConsentText       String?           @map("apply_consent_text") @db.NVarChar(Max)
   applyConsentVersion    Int               @default(1) @map("apply_consent_version")
+  whatsappEnabled         Boolean          @default(false) @map("whatsapp_enabled")
+  whatsappProvider        String           @default("twilio") @map("whatsapp_provider")
+  whatsappConfigEncrypted String?          @map("whatsapp_config_encrypted") @db.NVarChar(Max)
   users                  User[]
   auditLogs              AuditLog[]
   webhookDeliveries      WebhookDelivery[]
@@ -526,6 +529,7 @@ model Candidate {
   portalToken     String?           @unique @map("portal_token")
   unsubscribeToken String?          @unique @map("unsubscribe_token")
   emailOptedOutAt  DateTime?        @map("email_opted_out_at")
+  whatsappOptedOutAt DateTime?      @map("whatsapp_opted_out_at")
   createdAt       DateTime          @default(now()) @map("created_at")
   erasedAt        DateTime?         @map("erased_at")
   deletedAt       DateTime?         @map("deleted_at")
@@ -536,6 +540,7 @@ model Candidate {
   pipelineEntries PipelineEntry[]
   profile         CandidateProfile?
   candidateEmails CandidateEmail[]
+  candidateWhatsapp CandidateWhatsapp[]
 
   @@unique([organizationId, email])
   @@index([organizationId, globalStage])
@@ -1078,6 +1083,43 @@ model CandidateEmail {
   @@index([organizationId, candidateId])
   @@index([pipelineEntryId])
   @@map("candidate_emails")
+}
+
+model CandidateWhatsappTemplate {
+  id             String              @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String              @map("organization_id") @db.UniqueIdentifier
+  name           String              @db.NVarChar(200)
+  // a PipelineStage id, or null = manual-only
+  triggerStageId String?             @map("trigger_stage_id") @db.UniqueIdentifier
+  // 'manual' | 'prompt' | 'auto'
+  triggerMode    String              @default("manual") @map("trigger_mode")
+  body           String              @db.NVarChar(Max)
+  enabled        Boolean             @default(true)
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+
+  @@index([organizationId])
+  @@map("candidate_whatsapp_templates")
+}
+
+model CandidateWhatsapp {
+  id              String    @id @default(uuid()) @db.UniqueIdentifier
+  organizationId  String    @map("organization_id") @db.UniqueIdentifier
+  candidateId     String    @map("candidate_id") @db.UniqueIdentifier
+  pipelineEntryId String?   @map("pipeline_entry_id") @db.UniqueIdentifier
+  templateId      String?   @map("template_id") @db.UniqueIdentifier
+  toPhone         String    @map("to_phone")
+  renderedBody    String    @map("rendered_body") @db.NVarChar(Max)
+  status          String    // 'sent' | 'failed'
+  source          String    // 'manual' | 'stage_prompt' | 'stage_auto'
+  sentByUserId    String?   @map("sent_by_user_id") @db.UniqueIdentifier
+  errorDetail     String?   @map("error_detail") @db.NVarChar(Max)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  candidate       Candidate @relation(fields: [candidateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([organizationId, candidateId])
+  @@index([pipelineEntryId])
+  @@map("candidate_whatsapp")
 }
 
 model Offer {
