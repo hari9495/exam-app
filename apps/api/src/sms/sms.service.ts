@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService, OrgSecretsCryptoService } from '@exam-platform/shared';
-import { sendTwilioSms } from './twilio-transport';
+import { getSmsProvider } from './providers';
 
 export interface SendSmsInput {
   to: string;
@@ -25,16 +25,18 @@ export class SmsService {
     try {
       const org = await this.prisma.organization.findUnique({
         where: { id: input.organizationId },
-        select: { smsEnabled: true, smsAccountSid: true, smsAuthTokenEncrypted: true, smsFromNumber: true },
+        select: { smsEnabled: true, smsProvider: true, smsConfigEncrypted: true },
       });
 
+      const adapter = getSmsProvider(org?.smsProvider ?? '');
+
       // Refuse rather than send -- mirrors EmailService's deliverable gate. An org with no
-      // Twilio configured (or SMS turned off) must never have the transport called: there is
-      // no undeliverable-fallback channel for SMS to quietly relay through, so the only safe
-      // behavior is to log and report failure.
-      if (!org?.smsEnabled || !org.smsAccountSid || !org.smsAuthTokenEncrypted || !org.smsFromNumber) {
+      // SMS provider configured (or SMS turned off, or an unrecognized provider id) must never
+      // have the transport called: there is no undeliverable-fallback channel for SMS to
+      // quietly relay through, so the only safe behavior is to log and report failure.
+      if (!org?.smsEnabled || !org.smsConfigEncrypted || !adapter) {
         this.logger.error(
-          `SMS_NOT_SENT: no Twilio configured for organization ${input.organizationId} -- "${input.body.slice(
+          `SMS_NOT_SENT: no SMS provider configured for organization ${input.organizationId} -- "${input.body.slice(
             0,
             40,
           )}" to ${input.to} was NOT sent`,
@@ -42,19 +44,29 @@ export class SmsService {
         return { success: false };
       }
 
-      const authToken = this.cryptoService.decrypt(org.smsAuthTokenEncrypted);
-      const result = await sendTwilioSms({
-        accountSid: org.smsAccountSid,
-        authToken,
-        from: org.smsFromNumber,
-        to: input.to,
-        body: input.body,
-      });
+      let config: Record<string, unknown>;
+      try {
+        config = JSON.parse(this.cryptoService.decrypt(org.smsConfigEncrypted));
+      } catch {
+        this.logger.error(`SMS_NOT_SENT: unreadable SMS config for organization ${input.organizationId}`);
+        return { success: false };
+      }
+
+      try {
+        adapter.validateConfig(config);
+      } catch {
+        this.logger.error(
+          `SMS_NOT_SENT: invalid ${org.smsProvider} SMS config for organization ${input.organizationId}`,
+        );
+        return { success: false };
+      }
+
+      const result = await adapter.send(config, { to: input.to, body: input.body });
       if (!result.ok) {
         this.logger.error(
-          `SMS_SEND_FAILED: Twilio rejected message to ${input.to} for organization ${input.organizationId} (status ${
-            result.status ?? 'network error'
-          })`,
+          `SMS_SEND_FAILED: ${org.smsProvider} rejected message to ${input.to} for organization ${
+            input.organizationId
+          } (status ${result.status ?? 'network error'})`,
         );
       }
       return { success: result.ok };
