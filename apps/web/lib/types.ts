@@ -263,6 +263,10 @@ export interface Candidate {
   // Only the /candidates list endpoint populates this (CandidateListItem server-side) -- see
   // candidates.service.ts. Absent (not empty-array) anywhere else Candidate is used as a shape.
   customFields?: CustomFieldRead[];
+  // The raw candidate row (spread verbatim server-side) already carries this column; declared
+  // here so the WhatsApp opt-out hint in CandidateDrawer can read it off a /candidates lookup
+  // without a dedicated get-one-candidate endpoint. Absent on any other Candidate-shaped response.
+  whatsappOptedOutAt?: string | null;
 }
 
 export interface Invitation {
@@ -615,11 +619,19 @@ export interface PendingMessage {
   body: string;
 }
 
+// WhatsApp counterpart of PendingMessage -- no subject (WhatsApp is body-only). Mirrors
+// apps/api/src/pipeline/pipeline.service.ts PendingWhatsappMessage.
+export interface PendingWhatsappMessage {
+  templateId: string | null;
+  body: string;
+}
+
 // PATCH /entries/:id's response shape -- changed from a bare PipelineEntry to this envelope so
 // a stage move can carry an optional pendingMessage alongside the updated entry.
 export interface PatchEntryResult {
   entry: PipelineEntry;
   pendingMessage?: PendingMessage;
+  pendingWhatsappMessage?: PendingWhatsappMessage;
 }
 
 // Mirrors apps/api/prisma/schema.prisma CandidateEmail -- only the fields the web app renders
@@ -648,6 +660,58 @@ export interface CandidateEmailTemplate {
   body: string;
   enabled: boolean;
   isDefault: boolean;
+}
+
+// --- WhatsApp (Zoho #24) ------------------------------------------------------
+// Mirrors apps/api/src/whatsapp/providers/types.ts WhatsappConfigField -- a provider's config
+// schema, used to render the Integrations WhatsApp card's fields dynamically.
+export interface WhatsappConfigField {
+  key: string;
+  label: string;
+  secret: boolean;
+  required: boolean;
+  placeholder?: string;
+}
+
+// GET /organizations/whatsapp-providers -- metadata-only catalog (no send/validateConfig).
+export interface WhatsappProviderCatalogItem {
+  id: string;
+  label: string;
+  configFields: WhatsappConfigField[];
+}
+
+// GET/PUT /organizations/whatsapp-config. `config` never carries a secret:true field's value --
+// see WhatsappConfigField.secret and OrganizationsService.getWhatsappConfig.
+export interface WhatsappConfigResponse {
+  whatsappEnabled: boolean;
+  whatsappProvider: string;
+  configured: boolean;
+  config: Record<string, unknown>;
+}
+
+// GET /candidate-whatsapp-templates -- body-only counterpart of CandidateEmailTemplate (no
+// subject). Mirrors apps/api/src/candidate-whatsapp/candidate-whatsapp-templates.service.ts
+// WhatsappTemplateView.
+export interface WhatsappTemplate {
+  id: string | null;
+  name: string;
+  triggerStageId: string | null;
+  triggerMode: 'manual' | 'prompt' | 'auto';
+  body: string;
+  enabled: boolean;
+  isDefault: boolean;
+}
+
+// Mirrors apps/api prisma CandidateWhatsapp row (the fields the web app renders in the
+// candidate-drawer WhatsApp history list).
+export interface CandidateWhatsappMessage {
+  id: string;
+  toPhone: string;
+  renderedBody: string;
+  status: 'sent' | 'failed';
+  source: string;
+  sentByUserId: string | null;
+  createdAt: string;
 }
 
 // pending_approval/approved only appear when the org's offer approval chain is enabled (Phase-1

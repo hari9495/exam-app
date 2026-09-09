@@ -10,7 +10,7 @@ import { RECRUITER_NAV_ITEMS } from './recruiter-nav';
 const V2_ROUTES = new Set([
   '/today', '/dashboard', '/exams', '/questions', '/candidates', '/reports',
   '/walk-in-groups', '/jobs', '/approvals', '/analytics/hiring',
-  '/message-templates', '/offer-template',
+  '/message-templates', '/whatsapp-templates', '/offer-template',
   '/users', '/audit-log', '/system-logs', '/data-rights',
   '/settings/branding', '/settings/integrations', '/settings/sso', '/settings/billing',
   '/settings/approvals', '/settings/pipelines', '/settings/business-hours', '/settings/custom-fields', '/settings/field-permissions', '/settings/user-groups',
