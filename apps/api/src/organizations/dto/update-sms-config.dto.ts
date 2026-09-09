@@ -1,4 +1,5 @@
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsObject, IsOptional, IsString } from 'class-validator';
+import { SMS_PROVIDER_IDS } from '../../sms/providers';
 
 export class UpdateSmsConfigDto {
   @IsOptional()
@@ -6,16 +7,14 @@ export class UpdateSmsConfigDto {
   smsEnabled?: boolean;
 
   @IsOptional()
-  @IsString()
-  smsAccountSid?: string;
+  @IsIn(SMS_PROVIDER_IDS)
+  smsProvider?: string;
 
+  // Provider-shaped config blob (fields defined by that provider's configFields).
+  // Loosely validated here -- the selected adapter's validateConfig does the real
+  // per-field validation server-side. Write-only for secret fields: blank/absent
+  // keeps the existing encrypted value (see OrganizationsService.putSmsConfig).
   @IsOptional()
-  @IsString()
-  smsFromNumber?: string;
-
-  // Write-only, like the SMTP password: present + non-blank -> encrypt and store;
-  // omitted or blank/whitespace -> leave the existing encrypted token untouched.
-  @IsOptional()
-  @IsString()
-  smsAuthToken?: string;
+  @IsObject()
+  config?: Record<string, unknown>;
 }

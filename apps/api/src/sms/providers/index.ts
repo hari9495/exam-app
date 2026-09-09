@@ -16,3 +16,5 @@ export function getSmsProvider(id: string): SmsProviderAdapter | undefined {
 export function listSmsProviders(): SmsProviderAdapter[] {
   return Object.values(SMS_PROVIDERS);
 }
+
+export const SMS_PROVIDER_IDS = Object.keys(SMS_PROVIDERS);

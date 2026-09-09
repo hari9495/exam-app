@@ -146,8 +146,13 @@ describe('OrganizationsController sms-config', () => {
 
   beforeEach(async () => {
     service = {
-      getSmsConfig: jest.fn().mockResolvedValue({ smsEnabled: false, smsAccountSid: null, smsFromNumber: null, configured: false }),
-      putSmsConfig: jest.fn().mockResolvedValue({ smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567', configured: true }),
+      getSmsConfig: jest.fn().mockResolvedValue({ smsEnabled: false, smsProvider: 'twilio', configured: false, config: {} }),
+      putSmsConfig: jest.fn().mockResolvedValue({
+        smsEnabled: true,
+        smsProvider: 'twilio',
+        configured: true,
+        config: { accountSid: 'AC123', from: '+15551234567' },
+      }),
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [OrganizationsController],
@@ -161,20 +166,24 @@ describe('OrganizationsController sms-config', () => {
     controller = moduleRef.get(OrganizationsController);
   });
 
-  it('GET /organizations/sms-config delegates to getSmsConfig and never surfaces the token', async () => {
+  it('GET /organizations/sms-config delegates to getSmsConfig and never surfaces a secret', async () => {
     const result = await controller.getSmsConfig(tenant);
     expect(service.getSmsConfig).toHaveBeenCalledWith(tenant);
-    expect(result).toEqual({ smsEnabled: false, smsAccountSid: null, smsFromNumber: null, configured: false });
-    expect(result).not.toHaveProperty('smsAuthToken');
-    expect(result).not.toHaveProperty('smsAuthTokenEncrypted');
+    expect(result).toEqual({ smsEnabled: false, smsProvider: 'twilio', configured: false, config: {} });
+    expect(JSON.stringify(result)).not.toMatch(/authToken|authHeader/i);
   });
 
-  it('PUT /organizations/sms-config delegates to putSmsConfig', async () => {
-    const dto = { smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567', smsAuthToken: 'secret-token' };
+  it('PUT /organizations/sms-config delegates to putSmsConfig and never surfaces a secret', async () => {
+    const dto = { smsEnabled: true, smsProvider: 'twilio', config: { accountSid: 'AC123', from: '+15551234567', authToken: 'secret-token' } };
     const result = await controller.putSmsConfig(tenant, 'user-1', dto);
     expect(service.putSmsConfig).toHaveBeenCalledWith(tenant, 'user-1', dto);
-    expect(result).toEqual({ smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567', configured: true });
-    expect(result).not.toHaveProperty('smsAuthToken');
+    expect(result).toEqual({
+      smsEnabled: true,
+      smsProvider: 'twilio',
+      configured: true,
+      config: { accountSid: 'AC123', from: '+15551234567' },
+    });
+    expect(JSON.stringify(result)).not.toContain('secret-token');
   });
 
   it('gates the getter behind org:manage_settings', () => {
@@ -184,6 +193,43 @@ describe('OrganizationsController sms-config', () => {
 
   it('gates the setter behind org:manage_settings', () => {
     const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.putSmsConfig);
+    expect(permissions).toEqual(['org:manage_settings']);
+  });
+});
+
+describe('OrganizationsController sms-providers catalog', () => {
+  let controller: OrganizationsController;
+  const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+  beforeEach(async () => {
+    const moduleRef = await Test.createTestingModule({
+      controllers: [OrganizationsController],
+      providers: [{ provide: OrganizationsService, useValue: {} }],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useClass(MockGuard)
+      .overrideGuard(PermissionsGuard)
+      .useClass(MockGuard)
+      .compile();
+    controller = moduleRef.get(OrganizationsController);
+  });
+
+  it('GET /organizations/sms-providers returns id/label/configFields metadata only, no secrets', () => {
+    const result = controller.getSmsProviders();
+
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBeGreaterThan(0);
+    for (const entry of result) {
+      expect(Object.keys(entry).sort()).toEqual(['configFields', 'id', 'label']);
+    }
+    const twilio = result.find((p: any) => p.id === 'twilio');
+    expect(twilio).toBeDefined();
+    expect(twilio!.label).toBe('Twilio');
+    expect(twilio!.configFields.some((f: any) => f.key === 'authToken' && f.secret === true)).toBe(true);
+  });
+
+  it('gates sms-providers behind org:manage_settings', () => {
+    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.getSmsProviders);
     expect(permissions).toEqual(['org:manage_settings']);
   });
 });
