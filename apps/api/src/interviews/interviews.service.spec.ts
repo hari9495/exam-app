@@ -37,6 +37,8 @@ describe('InterviewsService', () => {
       },
       interviewSlot: {
         findUnique: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
       },
       interviewPanelist: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -450,6 +452,10 @@ describe('InterviewsService', () => {
         recruiterNote: 'Bring photo ID',
         confirmedSlotId: null,
         sentByUserId: 'recruiter-1',
+        bookingMode: 'proposed',
+        bookingWindowStart: null,
+        bookingWindowEnd: null,
+        slotDurationMinutes: null,
         slots: [
           { id: 'slot-1', startsAt: new Date('2026-09-01T14:00:00.000Z'), endsAt: new Date('2026-09-01T15:00:00.000Z') },
           { id: 'slot-2', startsAt: new Date('2026-09-02T14:00:00.000Z'), endsAt: new Date('2026-09-02T15:00:00.000Z') },
@@ -461,7 +467,7 @@ describe('InterviewsService', () => {
     beforeEach(() => {
       tx.interview.findUnique.mockResolvedValue(baseResolvedInterview());
       tx.pipelineEntry.findUnique.mockResolvedValue({ job: { title: 'Backend Engineer' } });
-      tx.organization.findUnique.mockResolvedValue({ name: 'Acme' });
+      tx.organization.findUnique.mockResolvedValue({ name: 'Acme', businessHoursJson: null, holidaysJson: null });
       tx.interviewPanelist.findMany.mockResolvedValue([{ userId: 'panelist-1' }]);
       tx.user.findMany.mockResolvedValue([{ name: 'Priya Singh' }]);
     });
@@ -488,10 +494,88 @@ describe('InterviewsService', () => {
       });
     });
 
+    it('proposed mode: returns exactly today\'s shape -- no bookingMode/availableSlots fields, even with panelist data present', async () => {
+      const out = await service.getPublicInterview('interview-token-1');
+
+      expect(out).not.toHaveProperty('bookingMode');
+      expect(out).not.toHaveProperty('availableSlots');
+      expect(tx.organization.findUnique).toHaveBeenCalledTimes(1); // no business-hours lookup for proposed mode
+    });
+
     it('throws a generic NotFoundException for an unknown token', async () => {
       tx.interview.findUnique.mockResolvedValue(null);
 
       await expect(service.getPublicInterview('bad-token')).rejects.toThrow(NotFoundException);
+    });
+
+    describe('self_book mode, not yet confirmed', () => {
+      beforeEach(() => {
+        jest.useFakeTimers().setSystemTime(new Date('2026-09-10T00:00:00.000Z'));
+        tx.interview.findUnique.mockResolvedValue(
+          baseResolvedInterview({
+            bookingMode: 'self_book',
+            confirmedSlotId: null,
+            bookingWindowStart: new Date('2026-09-10T09:00:00.000Z'),
+            bookingWindowEnd: new Date('2026-09-10T12:00:00.000Z'),
+            slotDurationMinutes: 60,
+            slots: [],
+          }),
+        );
+        // getBusyIntervals: one OTHER confirmed interview shares panelist-1 and covers 10:00-11:00.
+        tx.interview.findMany.mockResolvedValue([{ confirmedSlotId: 'busy-slot-1' }]);
+        tx.interviewSlot.findMany.mockResolvedValue([
+          { startsAt: new Date('2026-09-10T10:00:00.000Z'), endsAt: new Date('2026-09-10T11:00:00.000Z') },
+        ]);
+      });
+
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      it('returns bookingMode/slotDurationMinutes/timeZone/availableSlots, excluding the panelist-busy slot', async () => {
+        const out = await service.getPublicInterview('interview-token-1');
+
+        expect(tx.interview.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({
+              organizationId: 'org-1',
+              status: 'confirmed',
+              confirmedSlotId: { not: null },
+              id: { not: 'interview-1' },
+              panelists: { some: { userId: { in: ['panelist-1'] } } },
+            }),
+          }),
+        );
+        expect(out).toMatchObject({
+          bookingMode: 'self_book',
+          slotDurationMinutes: 60,
+          timeZone: 'UTC',
+          availableSlots: [
+            { startsAt: '2026-09-10T09:00:00.000Z', endsAt: '2026-09-10T10:00:00.000Z' },
+            { startsAt: '2026-09-10T11:00:00.000Z', endsAt: '2026-09-10T12:00:00.000Z' },
+          ],
+        });
+      });
+
+      it('an already-confirmed self-book interview returns exactly today\'s shape (no availableSlots)', async () => {
+        tx.interview.findUnique.mockResolvedValue(
+          baseResolvedInterview({
+            bookingMode: 'self_book',
+            status: 'confirmed',
+            confirmedSlotId: 'booked-slot-1',
+            bookingWindowStart: new Date('2026-09-10T09:00:00.000Z'),
+            bookingWindowEnd: new Date('2026-09-10T12:00:00.000Z'),
+            slotDurationMinutes: 60,
+            slots: [{ id: 'booked-slot-1', startsAt: new Date('2026-09-10T10:00:00.000Z'), endsAt: new Date('2026-09-10T11:00:00.000Z') }],
+          }),
+        );
+
+        const out = await service.getPublicInterview('interview-token-1');
+
+        expect(out).not.toHaveProperty('bookingMode');
+        expect(out).not.toHaveProperty('availableSlots');
+        expect(out).toMatchObject({ status: 'confirmed', confirmedSlotId: 'booked-slot-1' });
+      });
     });
   });
 
@@ -507,6 +591,10 @@ describe('InterviewsService', () => {
         recruiterNote: 'Bring photo ID',
         confirmedSlotId: null,
         sentByUserId: 'recruiter-1',
+        bookingMode: 'proposed',
+        bookingWindowStart: null,
+        bookingWindowEnd: null,
+        slotDurationMinutes: null,
         slots: [
           { id: 'slot-1', startsAt: new Date('2026-09-01T14:00:00.000Z'), endsAt: new Date('2026-09-01T15:00:00.000Z') },
           { id: 'slot-2', startsAt: new Date('2026-09-02T14:00:00.000Z'), endsAt: new Date('2026-09-02T15:00:00.000Z') },
@@ -522,7 +610,7 @@ describe('InterviewsService', () => {
         job: { title: 'Backend Engineer' },
         candidate: { name: 'Asha Rao', email: 'asha@example.com' },
       });
-      tx.organization.findUnique.mockResolvedValue({ name: 'Acme' });
+      tx.organization.findUnique.mockResolvedValue({ name: 'Acme', businessHoursJson: null, holidaysJson: null });
       tx.user.findUnique.mockResolvedValue({ email: 'recruiter@example.com' });
       tx.interviewPanelist.findMany.mockResolvedValue([{ userId: 'panelist-1' }]);
       tx.user.findMany.mockResolvedValue([{ email: 'panelist@example.com', name: 'Jane Doe' }]);
@@ -711,6 +799,147 @@ describe('InterviewsService', () => {
       });
       expect(audit.record).not.toHaveBeenCalled();
       expect(emailService.send).not.toHaveBeenCalled();
+    });
+
+    describe('book action (self_book mode)', () => {
+      const selfBookInterview = (overrides: Record<string, unknown> = {}) =>
+        baseResolvedInterview({
+          bookingMode: 'self_book',
+          bookingWindowStart: new Date('2026-09-10T09:00:00.000Z'),
+          bookingWindowEnd: new Date('2026-09-10T12:00:00.000Z'),
+          slotDurationMinutes: 60,
+          slots: [],
+          ...overrides,
+        });
+
+      beforeEach(() => {
+        jest.useFakeTimers().setSystemTime(new Date('2026-09-10T00:00:00.000Z'));
+        tx.interview.findUnique.mockResolvedValue(selfBookInterview());
+        // No other confirmed interview shares a panelist by default -- every generated slot is free.
+        tx.interview.findMany.mockResolvedValue([]);
+        tx.interviewSlot.findMany.mockResolvedValue([]);
+        tx.interviewSlot.create.mockImplementation(({ data }: any) =>
+          Promise.resolve({ id: 'new-slot-1', ...data }),
+        );
+      });
+
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      it('books a slot that IS in the freshly-derived available set: creates one InterviewSlot, confirms, and audits', async () => {
+        const out = await service.respondPublic('interview-token-1', {
+          action: 'book',
+          startsAt: '2026-09-10T10:00:00.000Z',
+          endsAt: '2026-09-10T11:00:00.000Z',
+        } as any);
+
+        expect(tx.interviewSlot.create).toHaveBeenCalledTimes(1);
+        expect(tx.interviewSlot.create).toHaveBeenCalledWith({
+          data: {
+            organizationId: 'org-1',
+            interviewId: 'interview-1',
+            startsAt: new Date('2026-09-10T10:00:00.000Z'),
+            endsAt: new Date('2026-09-10T11:00:00.000Z'),
+          },
+        });
+        expect(tx.interview.updateMany).toHaveBeenCalledWith({
+          where: { id: 'interview-1', organizationId: 'org-1', status: 'proposed' },
+          data: { status: 'confirmed', respondedAt: expect.any(Date), confirmedSlotId: 'new-slot-1' },
+        });
+        expect(audit.record).toHaveBeenCalledWith(
+          expect.objectContaining({ organizationId: 'org-1' }),
+          expect.objectContaining({ actorUserId: null, action: 'interview.confirmed', entityId: 'interview-1' }),
+        );
+        expect(out).toMatchObject({ status: 'confirmed', confirmedSlotId: 'new-slot-1' });
+      });
+
+      it('sends the same confirm-family notifications (candidate + panelist ICS + recruiter) as action:confirm', async () => {
+        await service.respondPublic('interview-token-1', {
+          action: 'book',
+          startsAt: '2026-09-10T10:00:00.000Z',
+          endsAt: '2026-09-10T11:00:00.000Z',
+        } as any);
+
+        expect(emailService.send).toHaveBeenCalledTimes(3);
+        expect(emailService.send).toHaveBeenNthCalledWith(
+          1,
+          expect.objectContaining({ to: 'asha@example.com', attachments: [{ filename: 'interview.ics', content: expect.any(Buffer) }] }),
+        );
+      });
+
+      it('a slot NOT in the current available set -> ConflictException (409), no InterviewSlot created, no state change', async () => {
+        await expect(
+          service.respondPublic('interview-token-1', {
+            action: 'book',
+            startsAt: '2026-09-10T13:00:00.000Z', // outside the booking window
+            endsAt: '2026-09-10T14:00:00.000Z',
+          } as any),
+        ).rejects.toThrow(ConflictException);
+
+        expect(tx.interviewSlot.create).not.toHaveBeenCalled();
+        expect(tx.interview.updateMany).not.toHaveBeenCalled();
+        expect(audit.record).not.toHaveBeenCalled();
+        expect(emailService.send).not.toHaveBeenCalled();
+      });
+
+      it('a conflict that appears at commit (a panelist just got booked elsewhere) -> 409, nothing created', async () => {
+        // The FRESH re-read inside the tx now finds another confirmed interview sharing panelist-1
+        // that covers the requested 10:00-11:00 slot.
+        tx.interview.findMany.mockResolvedValue([{ confirmedSlotId: 'busy-slot-1' }]);
+        tx.interviewSlot.findMany.mockResolvedValue([
+          { startsAt: new Date('2026-09-10T10:00:00.000Z'), endsAt: new Date('2026-09-10T11:00:00.000Z') },
+        ]);
+
+        await expect(
+          service.respondPublic('interview-token-1', {
+            action: 'book',
+            startsAt: '2026-09-10T10:00:00.000Z',
+            endsAt: '2026-09-10T11:00:00.000Z',
+          } as any),
+        ).rejects.toThrow(ConflictException);
+
+        expect(tx.interviewSlot.create).not.toHaveBeenCalled();
+        expect(tx.interview.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('book on a proposed-mode interview -> BadRequestException, nothing touched', async () => {
+        tx.interview.findUnique.mockResolvedValue(baseResolvedInterview({ bookingMode: 'proposed' }));
+
+        await expect(
+          service.respondPublic('interview-token-1', {
+            action: 'book',
+            startsAt: '2026-09-01T14:00:00.000Z',
+            endsAt: '2026-09-01T15:00:00.000Z',
+          } as any),
+        ).rejects.toThrow(BadRequestException);
+
+        expect(tx.interviewSlot.create).not.toHaveBeenCalled();
+        expect(tx.interview.updateMany).not.toHaveBeenCalled();
+        expect(audit.record).not.toHaveBeenCalled();
+      });
+
+      it('book on an already-confirmed self-book interview -> the same generic ConflictException as any resolved interview', async () => {
+        tx.interview.findUnique.mockResolvedValue(selfBookInterview({ status: 'confirmed', confirmedSlotId: 'existing-slot' }));
+
+        await expect(
+          service.respondPublic('interview-token-1', {
+            action: 'book',
+            startsAt: '2026-09-10T10:00:00.000Z',
+            endsAt: '2026-09-10T11:00:00.000Z',
+          } as any),
+        ).rejects.toThrow(ConflictException);
+
+        expect(tx.interviewSlot.create).not.toHaveBeenCalled();
+      });
+
+      it('confirm on a self-book interview behaves sanely: no discrete slots to match -> generic ConflictException', async () => {
+        await expect(
+          service.respondPublic('interview-token-1', { action: 'confirm', slotId: 'slot-1' } as any),
+        ).rejects.toThrow(ConflictException);
+
+        expect(tx.interview.updateMany).not.toHaveBeenCalled();
+      });
     });
   });
 });

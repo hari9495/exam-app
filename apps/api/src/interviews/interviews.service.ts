@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Interview } from '@prisma/client';
-import { TenantPrismaService, TenantContext, AuditService, BlobStorageService } from '@exam-platform/shared';
+import { Interview, Prisma } from '@prisma/client';
+import { TenantPrismaService, TenantContext, AuditService, BlobStorageService, BusinessHours, Holiday } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { buildCandidateEmailHtml } from '../candidate-emails/candidate-email-render';
@@ -9,6 +9,7 @@ import { CreateInterviewDto } from './dto/create-interview.dto';
 import { RespondInterviewDto } from './dto/respond-interview.dto';
 import { renderInterviewTemplate, formatSlot } from './interview-render';
 import { buildInterviewIcs } from './interview-ics';
+import { generateBookableSlots, BusyInterval } from './booking-slots';
 
 const LOGO_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -366,6 +367,10 @@ export class InterviewsService {
             recruiterNote: true,
             confirmedSlotId: true,
             sentByUserId: true,
+            bookingMode: true,
+            bookingWindowStart: true,
+            bookingWindowEnd: true,
+            slotDurationMinutes: true,
             slots: { select: { id: true, startsAt: true, endsAt: true } },
           },
         }),
@@ -377,8 +382,60 @@ export class InterviewsService {
     return interview;
   }
 
+  // Collective panelist availability, not per-panelist (see design doc "Out of scope"): any OTHER
+  // confirmed interview that shares at least one of this interview's panelists blocks that time
+  // for everyone. Reused verbatim by getPublicInterview (GET) and respondPublic's book branch
+  // (fresh re-read inside the tx, per the anti-tamper/anti-race requirement) -- same function,
+  // same query shape, so a slot that's bookable on GET is re-derived identically at POST time.
+  private async getBusyIntervals(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    panelistUserIds: string[],
+    excludeInterviewId: string,
+  ): Promise<BusyInterval[]> {
+    if (!panelistUserIds.length) return [];
+    const confirmed = await tx.interview.findMany({
+      where: {
+        organizationId,
+        status: 'confirmed',
+        confirmedSlotId: { not: null },
+        id: { not: excludeInterviewId },
+        panelists: { some: { userId: { in: panelistUserIds } } },
+      },
+      select: { confirmedSlotId: true },
+    });
+    const slotIds = confirmed.map((i) => i.confirmedSlotId).filter((id): id is string => Boolean(id));
+    if (!slotIds.length) return [];
+    const slots = await tx.interviewSlot.findMany({
+      where: { id: { in: slotIds }, organizationId },
+      select: { startsAt: true, endsAt: true },
+    });
+    return slots.map((s) => ({ startsAt: s.startsAt.toISOString(), endsAt: s.endsAt.toISOString() }));
+  }
+
+  // Shared by getPublicInterview and respondPublic's book branch -- same org config source the
+  // slot picker / business-hours settings page uses (organizations.service.getBusinessHours),
+  // read here directly since this runs inside an already-open tenant tx.
+  private async getBusinessHoursConfig(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+  ): Promise<{ businessHours: BusinessHours | null; holidays: Holiday[] }> {
+    const org = await tx.organization.findUnique({
+      where: { id: organizationId },
+      select: { businessHoursJson: true, holidaysJson: true },
+    });
+    return {
+      businessHours: org?.businessHoursJson ? (JSON.parse(org.businessHoursJson) as BusinessHours) : null,
+      holidays: org?.holidaysJson ? (JSON.parse(org.holidaysJson) as Holiday[]) : [],
+    };
+  }
+
   async getPublicInterview(token: string) {
     const interview = await this.resolveInterviewByToken(token);
+    // "Not yet confirmed" is the confirmedSlotId, not the status string: a self-book interview
+    // sits at status:'proposed' the whole time it's awaiting a booking (see createInterview),
+    // exactly like a today's-shape proposed interview -- confirmedSlotId is what actually flips.
+    const isPendingSelfBook = interview.bookingMode === 'self_book' && interview.confirmedSlotId === null;
 
     const details = await this.tenantPrisma.forTenant(
       { organizationId: interview.organizationId, isSuperAdmin: true },
@@ -395,11 +452,37 @@ export class InterviewsService {
         const panelUsers = panelistRows.length
           ? await tx.user.findMany({ where: { id: { in: panelistRows.map((p) => p.userId) } }, select: { name: true } })
           : [];
-        return { jobTitle: entry?.job.title ?? '', orgName: org?.name ?? '', panel: panelUsers.map((u) => firstName(u.name)) };
+
+        let availableSlots: { startsAt: string; endsAt: string }[] | undefined;
+        if (isPendingSelfBook) {
+          const busyIntervals = await this.getBusyIntervals(
+            tx,
+            interview.organizationId,
+            panelistRows.map((p) => p.userId),
+            interview.id,
+          );
+          const { businessHours, holidays } = await this.getBusinessHoursConfig(tx, interview.organizationId);
+          availableSlots = generateBookableSlots({
+            windowStart: interview.bookingWindowStart!.toISOString(),
+            windowEnd: interview.bookingWindowEnd!.toISOString(),
+            slotDurationMinutes: interview.slotDurationMinutes!,
+            businessHours,
+            holidays,
+            busyIntervals,
+            now: new Date().toISOString(),
+          });
+        }
+
+        return {
+          jobTitle: entry?.job.title ?? '',
+          orgName: org?.name ?? '',
+          panel: panelUsers.map((u) => firstName(u.name)),
+          availableSlots,
+        };
       },
     );
 
-    return {
+    const base = {
       jobTitle: details.jobTitle,
       orgName: details.orgName,
       slots: interview.slots.map((s) => ({ id: s.id, startsAt: s.startsAt, endsAt: s.endsAt })),
@@ -409,6 +492,17 @@ export class InterviewsService {
       status: interview.status,
       confirmedSlotId: interview.confirmedSlotId,
     };
+
+    // Proposed mode, or an already-confirmed self-book interview: exactly today's shape, no
+    // bookingMode/availableSlots fields added -- the candidate page keys off their absence.
+    if (!isPendingSelfBook) return base;
+
+    return {
+      ...base,
+      bookingMode: interview.bookingMode,
+      slotDurationMinutes: interview.slotDurationMinutes,
+      availableSlots: details.availableSlots!,
+    };
   }
 
   async respondPublic(
@@ -416,8 +510,23 @@ export class InterviewsService {
     dto: RespondInterviewDto,
   ): Promise<{ status: string; confirmedSlotId: string | null; candidateReschedNote: string | null; respondedAt: Date }> {
     const interview = await this.resolveInterviewByToken(token);
+
+    // Mode check FIRST, before the proposed/state check below: 'book' on a mode:'proposed'
+    // interview is a client mistake (wrong flow), not a state race, so it gets its own 400 --
+    // it's not the same "invitation no longer available" family as everything else here, and
+    // that interview will normally still be status:'proposed' too (so the state check below
+    // would never fire for it).
+    if (dto.action === 'book') {
+      if (interview.bookingMode !== 'self_book') {
+        throw new BadRequestException('This interview is not open for self-service booking');
+      }
+      if (!dto.startsAt || !dto.endsAt) {
+        throw new BadRequestException('startsAt and endsAt are required to book a slot');
+      }
+    }
     // Generic conflict message -- same anti-oracle reasoning as the NotFound above, just
-    // surfaced as a 409 once the token itself is known-good.
+    // surfaced as a 409 once the token itself is known-good. Covers "book" too: a self-book
+    // interview that's already confirmed (or declined) is no longer status:'proposed'.
     if (interview.status !== 'proposed') {
       throw new ConflictException('This interview invitation is no longer available');
     }
@@ -435,11 +544,13 @@ export class InterviewsService {
       confirm: 'confirmed',
       decline: 'declined',
       reschedule: 'reschedule_requested',
+      book: 'confirmed',
     } as const;
     const auditActionByAction = {
       confirm: 'interview.confirmed',
       decline: 'interview.declined',
       reschedule: 'interview.reschedule_requested',
+      book: 'interview.confirmed',
     } as const;
 
     const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
@@ -447,6 +558,47 @@ export class InterviewsService {
       const data: Record<string, unknown> = { status: statusByAction[dto.action], respondedAt };
       if (dto.action === 'confirm') data.confirmedSlotId = chosenSlot!.id;
       if (dto.action === 'reschedule') data.candidateReschedNote = dto.note ?? null;
+
+      if (dto.action === 'book') {
+        // Re-validation on book (anti-tamper + anti-race): the candidate's chosen slot is NEVER
+        // trusted. Re-derive the currently-available set with a FRESH busy-intervals read, inside
+        // THIS tx -- a booking that committed since the GET (or even since this request started)
+        // is already visible here. Only an exact ISO member is honored.
+        const panelistRows = await tx.interviewPanelist.findMany({
+          where: { interviewId: interview.id },
+          select: { userId: true },
+        });
+        const busyIntervals = await this.getBusyIntervals(
+          tx,
+          interview.organizationId,
+          panelistRows.map((p) => p.userId),
+          interview.id,
+        );
+        const { businessHours, holidays } = await this.getBusinessHoursConfig(tx, interview.organizationId);
+        const available = generateBookableSlots({
+          windowStart: interview.bookingWindowStart!.toISOString(),
+          windowEnd: interview.bookingWindowEnd!.toISOString(),
+          slotDurationMinutes: interview.slotDurationMinutes!,
+          businessHours,
+          holidays,
+          busyIntervals,
+          now: new Date().toISOString(),
+        });
+        const isMember = available.some((s) => s.startsAt === dto.startsAt && s.endsAt === dto.endsAt);
+        if (!isMember) {
+          throw new ConflictException('That time was just taken -- please pick another');
+        }
+        const slot = await tx.interviewSlot.create({
+          data: {
+            organizationId: interview.organizationId,
+            interviewId: interview.id,
+            startsAt: new Date(dto.startsAt!),
+            endsAt: new Date(dto.endsAt!),
+          },
+        });
+        chosenSlot = { id: slot.id, startsAt: slot.startsAt, endsAt: slot.endsAt };
+        data.confirmedSlotId = slot.id;
+      }
 
       // Compound-precondition write, not a pre-tx-guarded update: two concurrent public
       // requests (double-click, retry) can both pass the status check above, but only one can
@@ -489,7 +641,7 @@ export class InterviewsService {
         : null;
 
       let panelists: { email: string; name: string | null }[] = [];
-      if (dto.action === 'confirm') {
+      if (dto.action === 'confirm' || dto.action === 'book') {
         const panelistRows = await tx.interviewPanelist.findMany({
           where: { interviewId: interview.id },
           select: { userId: true },
@@ -509,7 +661,7 @@ export class InterviewsService {
       };
     });
 
-    if (dto.action === 'confirm') {
+    if (dto.action === 'confirm' || dto.action === 'book') {
       // candidateName/jobTitle are attacker-controlled (candidate name comes from the public
       // apply form) so they are only ever interpolated into plain bodyText and rendered via
       // buildCandidateEmailHtml, which HTML-escapes it -- never hand-built into raw HTML. The
