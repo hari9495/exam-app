@@ -354,6 +354,38 @@ export class CandidatesService {
     return { id: candidateId };
   }
 
+  // WhatsApp opt-in is legally distinct from email/SMS (Candidate.emailOptedOutAt is a
+  // separate column) -- a recruiter toggles this independently of the email unsubscribe
+  // state. Enforced at send time by candidate-whatsapp, not here.
+  async setWhatsappOptOut(
+    context: TenantContext,
+    actorUserId: string,
+    candidateId: string,
+    optedOut: boolean,
+  ): Promise<{ id: string; whatsappOptedOutAt: Date | null }> {
+    const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const candidate = await tx.candidate.findFirst({
+        where: { id: candidateId, organizationId: context.organizationId as string },
+      });
+      if (!candidate) {
+        throw new NotFoundException(`Candidate ${candidateId} not found`);
+      }
+      return tx.candidate.update({
+        where: { id: candidateId },
+        data: { whatsappOptedOutAt: optedOut ? new Date() : null },
+      });
+    });
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: optedOut ? 'candidate.whatsapp_opted_out' : 'candidate.whatsapp_opted_in',
+      entityType: 'candidate',
+      entityId: candidateId,
+    });
+
+    return { id: updated.id, whatsappOptedOutAt: updated.whatsappOptedOutAt };
+  }
+
   async lookupByEmail(context: TenantContext, email: string, role: string): Promise<RedactedCandidate> {
     const candidate = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.candidate.findFirst({

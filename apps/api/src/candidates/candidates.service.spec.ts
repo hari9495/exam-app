@@ -451,6 +451,62 @@ describe('CandidatesService', () => {
     });
   });
 
+  describe('setWhatsappOptOut', () => {
+    it('sets whatsappOptedOutAt to a timestamp and audits candidate.whatsapp_opted_out', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1' }),
+          update: jest.fn().mockResolvedValue({ id: 'cand-1', whatsappOptedOutAt: new Date('2026-01-01T00:00:00Z') }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.setWhatsappOptOut(context, 'user-1', 'cand-1', true);
+
+      expect(tx.candidate.update).toHaveBeenCalledWith({
+        where: { id: 'cand-1' },
+        data: { whatsappOptedOutAt: expect.any(Date) },
+      });
+      expect(result).toEqual({ id: 'cand-1', whatsappOptedOutAt: new Date('2026-01-01T00:00:00Z') });
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1',
+        action: 'candidate.whatsapp_opted_out',
+        entityType: 'candidate',
+        entityId: 'cand-1',
+      });
+    });
+
+    it('clears whatsappOptedOutAt back to null and audits candidate.whatsapp_opted_in', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1' }),
+          update: jest.fn().mockResolvedValue({ id: 'cand-1', whatsappOptedOutAt: null }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.setWhatsappOptOut(context, 'user-1', 'cand-1', false);
+
+      expect(tx.candidate.update).toHaveBeenCalledWith({ where: { id: 'cand-1' }, data: { whatsappOptedOutAt: null } });
+      expect(result).toEqual({ id: 'cand-1', whatsappOptedOutAt: null });
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1',
+        action: 'candidate.whatsapp_opted_in',
+        entityType: 'candidate',
+        entityId: 'cand-1',
+      });
+    });
+
+    it('throws NotFoundException for a candidate outside the caller organization (org-scoped via forTenant)', async () => {
+      const tx = { candidate: { findFirst: jest.fn().mockResolvedValue(null), update: jest.fn() } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.setWhatsappOptOut(context, 'user-1', 'cand-1', true)).rejects.toThrow(NotFoundException);
+      expect(tx.candidate.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+  });
+
   it('rejects creating a candidate whose email already exists in the organization', async () => {
     const tx = {
       candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com' }) },

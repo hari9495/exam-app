@@ -138,3 +138,77 @@ describe('OrganizationsController apply-consent', () => {
     expect(permissions).toEqual(['org:manage_settings']);
   });
 });
+
+describe('OrganizationsController whatsapp-config', () => {
+  let controller: OrganizationsController;
+  let service: { getWhatsappConfig: jest.Mock; putWhatsappConfig: jest.Mock; getWhatsappProviderCatalog: jest.Mock };
+  const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+  beforeEach(async () => {
+    service = {
+      getWhatsappConfig: jest.fn().mockResolvedValue({
+        whatsappEnabled: false,
+        whatsappProvider: 'twilio',
+        configured: false,
+        config: {},
+      }),
+      putWhatsappConfig: jest.fn().mockResolvedValue({
+        whatsappEnabled: true,
+        whatsappProvider: 'twilio',
+        configured: true,
+        config: { accountSid: 'AC123' },
+      }),
+      getWhatsappProviderCatalog: jest.fn().mockReturnValue([
+        { id: 'twilio', label: 'Twilio WhatsApp', configFields: [] },
+        { id: 'http', label: 'Generic HTTP', configFields: [] },
+      ]),
+    };
+    const moduleRef = await Test.createTestingModule({
+      controllers: [OrganizationsController],
+      providers: [{ provide: OrganizationsService, useValue: service }],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useClass(MockGuard)
+      .overrideGuard(PermissionsGuard)
+      .useClass(MockGuard)
+      .compile();
+    controller = moduleRef.get(OrganizationsController);
+  });
+
+  it('GET /organizations/whatsapp-config delegates to getWhatsappConfig and never carries a secret', async () => {
+    const result = await controller.getWhatsappConfig(tenant);
+    expect(service.getWhatsappConfig).toHaveBeenCalledWith(tenant);
+    expect(JSON.stringify(result)).not.toMatch(/authToken|authHeader/);
+  });
+
+  it('PUT /organizations/whatsapp-config delegates to putWhatsappConfig', async () => {
+    const dto = { config: { accountSid: 'AC123' } } as any;
+    const result = await controller.updateWhatsappConfig(tenant, 'user-1', dto);
+    expect(service.putWhatsappConfig).toHaveBeenCalledWith(tenant, 'user-1', dto);
+    expect(result).toEqual({ whatsappEnabled: true, whatsappProvider: 'twilio', configured: true, config: { accountSid: 'AC123' } });
+  });
+
+  it('GET /organizations/whatsapp-providers delegates to getWhatsappProviderCatalog with no args', () => {
+    const result = controller.getWhatsappProviders();
+    expect(service.getWhatsappProviderCatalog).toHaveBeenCalledWith();
+    expect(result).toEqual([
+      { id: 'twilio', label: 'Twilio WhatsApp', configFields: [] },
+      { id: 'http', label: 'Generic HTTP', configFields: [] },
+    ]);
+  });
+
+  it('gates the config getter behind org:manage_settings', () => {
+    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.getWhatsappConfig);
+    expect(permissions).toEqual(['org:manage_settings']);
+  });
+
+  it('gates the config setter behind org:manage_settings', () => {
+    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.updateWhatsappConfig);
+    expect(permissions).toEqual(['org:manage_settings']);
+  });
+
+  it('gates the provider catalog behind org:manage_settings', () => {
+    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.getWhatsappProviders);
+    expect(permissions).toEqual(['org:manage_settings']);
+  });
+});

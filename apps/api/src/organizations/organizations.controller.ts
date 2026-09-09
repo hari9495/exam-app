@@ -18,6 +18,7 @@ import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
+import { UpdateWhatsappConfigDto } from './dto/update-whatsapp-config.dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('organizations')
@@ -174,6 +175,28 @@ export class OrganizationsController {
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   uploadLogo(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @UploadedFile() file: Express.Multer.File) {
     return this.organizationsService.uploadLogo(tenant, userId, file);
+  }
+
+  // GET never returns a secret field (see OrganizationsService.getWhatsappConfig) --
+  // gated anyway, same as every other integrations/config route in this controller.
+  @Get('whatsapp-config')
+  @RequirePermissions('org:manage_settings')
+  getWhatsappConfig(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.getWhatsappConfig(tenant);
+  }
+
+  @Put('whatsapp-config')
+  @RequirePermissions('org:manage_settings')
+  updateWhatsappConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateWhatsappConfigDto) {
+    return this.organizationsService.putWhatsappConfig(tenant, userId, dto);
+  }
+
+  // Metadata only (id/label/configFields) -- never carries a secret value, but still
+  // gated org:manage_settings since it's part of the same admin-only config surface.
+  @Get('whatsapp-providers')
+  @RequirePermissions('org:manage_settings')
+  getWhatsappProviders() {
+    return this.organizationsService.getWhatsappProviderCatalog();
   }
 
   @Patch(':id/status')
