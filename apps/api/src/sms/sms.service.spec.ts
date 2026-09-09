@@ -4,6 +4,7 @@ jest.mock('./twilio-transport', () => ({
   sendTwilioSms: (...args: unknown[]) => mockSendTwilioSms(...args),
 }));
 
+import { Logger } from '@nestjs/common';
 import { SmsService } from './sms.service';
 
 describe('SmsService', () => {
@@ -85,6 +86,44 @@ describe('SmsService', () => {
     const result = await service.send(input);
 
     expect(result).toEqual({ success: false });
+  });
+
+  it('logs SMS_SEND_FAILED with org/to/status (no secrets) when Twilio rejects the send, distinct from the gate log', async () => {
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    prisma.organization.findUnique.mockResolvedValue(configuredOrg);
+    cryptoService.decrypt.mockReturnValue('decrypted-token');
+    mockSendTwilioSms.mockResolvedValue({ ok: false, status: 400 });
+
+    const result = await service.send(input);
+
+    expect(result).toEqual({ success: false });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const [message] = errorSpy.mock.calls[0];
+    expect(message).toEqual(expect.stringContaining('SMS_SEND_FAILED'));
+    expect(message).toEqual(expect.stringContaining('400'));
+    expect(message).toEqual(expect.stringContaining(input.to));
+    expect(message).toEqual(expect.stringContaining(input.organizationId));
+    expect(message).not.toEqual(expect.stringContaining('decrypted-token'));
+    expect(message).not.toEqual(expect.stringContaining('encrypted-blob'));
+    expect(message).not.toEqual(expect.stringContaining('SMS_NOT_SENT'));
+
+    errorSpy.mockRestore();
+  });
+
+  it('still logs the unconfigured SMS_NOT_SENT gate message and never the SMS_SEND_FAILED transport message', async () => {
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    prisma.organization.findUnique.mockResolvedValue({ ...configuredOrg, smsEnabled: false });
+
+    const result = await service.send(input);
+
+    expect(result).toEqual({ success: false });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const [message] = errorSpy.mock.calls[0];
+    expect(message).toEqual(expect.stringContaining('SMS_NOT_SENT'));
+    expect(message).not.toEqual(expect.stringContaining('SMS_SEND_FAILED'));
+    expect(mockSendTwilioSms).not.toHaveBeenCalled();
+
+    errorSpy.mockRestore();
   });
 
   it('returns success:false when the transport call throws', async () => {

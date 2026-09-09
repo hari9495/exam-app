@@ -50,6 +50,13 @@ export class SmsService {
         to: input.to,
         body: input.body,
       });
+      if (!result.ok) {
+        this.logger.error(
+          `SMS_SEND_FAILED: Twilio rejected message to ${input.to} for organization ${input.organizationId} (status ${
+            result.status ?? 'network error'
+          })`,
+        );
+      }
       return { success: result.ok };
     } catch (error) {
       this.logger.error(`Failed to send SMS to ${input.to}`, error as Error);
