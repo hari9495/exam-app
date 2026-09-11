@@ -10,12 +10,27 @@ import { ArrowLeft } from 'lucide-react';
 import { useCandidateComparison } from '../../../../../../lib/hooks/usePanelReports';
 import { IntegrityBadge } from '../../../../../../components/ui';
 import { Pill } from '../../../../../../components/ui-v2';
-import { STATUS } from '../../../../../../components/ui-v2/viz';
+import { STATUS, rateColor } from '../../../../../../components/ui-v2/viz';
 
 const backLink: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)', textDecoration: 'none' };
 const th: React.CSSProperties = { padding: '10px 14px', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', textAlign: 'left', whiteSpace: 'nowrap' };
 const metricCell: React.CSSProperties = { padding: '11px 14px', fontSize: 13, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap' };
 const valueCell: React.CSSProperties = { padding: '11px 14px', fontSize: 13, color: 'var(--ink)' };
+
+// Value + a thin rate-colored magnitude bar, so a metric row is scannable across the candidate
+// columns at a glance (high = good; same rateColor + scaleX as the candidate report).
+function ScoreCell({ pct, text }: { pct: number | null; text: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 84 }}>
+      <span className="v2-mono">{text}</span>
+      {pct !== null && (
+        <div style={{ position: 'relative', height: 5, width: 84, borderRadius: 99, overflow: 'hidden', background: 'color-mix(in srgb, var(--ink) 8%, transparent)' }}>
+          <div style={{ position: 'absolute', inset: 0, transformOrigin: 'left', transform: `scaleX(${Math.max(0, Math.min(100, pct)) / 100})`, background: rateColor(pct) }} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CompareInner() {
   const { examId } = useParams<{ examId: string }>();
@@ -40,9 +55,9 @@ function CompareInner() {
   const sectionTitles = [...new Set(rows.flatMap((row) => row.sectionScores.map((section) => section.title)))];
 
   return (
-    <div>
+    <div className="v2-rise">
       {header}
-      <div style={{ overflowX: 'auto', background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14 }}>
+      <div style={{ overflowX: 'auto', background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--hair)' }}>
@@ -53,7 +68,7 @@ function CompareInner() {
           <tbody>
             <tr style={{ borderBottom: '1px solid var(--hair)' }}>
               <td style={metricCell}>Overall score</td>
-              {rows.map((row) => <td key={row.invitationId} style={valueCell}><span className="v2-mono">{row.percentage !== null ? `${row.percentage.toFixed(1)}%` : '—'}</span></td>)}
+              {rows.map((row) => <td key={row.invitationId} style={valueCell}><ScoreCell pct={row.percentage} text={row.percentage !== null ? `${row.percentage.toFixed(1)}%` : '—'} /></td>)}
             </tr>
             <tr style={{ borderBottom: '1px solid var(--hair)' }}>
               <td style={metricCell}>Result</td>
@@ -68,7 +83,8 @@ function CompareInner() {
                 <td style={metricCell}>{title}</td>
                 {rows.map((row) => {
                   const section = row.sectionScores.find((s) => s.title === title);
-                  return <td key={row.invitationId} style={valueCell}><span className="v2-mono">{section ? `${section.score}/${section.maxScore}` : '—'}</span></td>;
+                  const pct = section && section.maxScore > 0 ? (section.score / section.maxScore) * 100 : null;
+                  return <td key={row.invitationId} style={valueCell}><ScoreCell pct={pct} text={section ? `${section.score}/${section.maxScore}` : '—'} /></td>;
                 })}
               </tr>
             ))}
