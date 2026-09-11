@@ -82,6 +82,11 @@ export default function V2EditExamPage() {
 
   return (
     <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+      {/* Entrance on the shell chrome (header + tabs) ONLY. The tab-content panels are reused
+          as-is and own their own Dialogs + live-monitoring sockets, so they stay OUTSIDE this
+          .v2-rise — a transform ancestor would become the containing block for their
+          position:fixed overlays. */}
+      <div className="v2-rise">
       <Link href="/v2/exams" style={backLink}><ArrowLeft size={15} /> Back to Exams</Link>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, margin: '10px 0 16px' }}>
         <div>
@@ -112,6 +117,7 @@ export default function V2EditExamPage() {
       </div>
 
       <Tabs tabs={tabs} value={activeTab} onChange={setActiveTab} divider={false} />
+      </div>
 
       {activeTab === 'details' && (
         <div>
