@@ -194,7 +194,10 @@ describe('V2TodayPage', () => {
       isError: false,
     });
     renderPage();
-    expect(screen.getByText(/8 September/)).toBeInTheDocument();
-    expect(screen.queryByText(/7 September/)).not.toBeInTheDocument();
+    // Locale-agnostic: the kicker uses the runtime's default locale, so day/month order
+    // differs (en-GB "8 September" vs en-US "September 8"). The point of this test is the
+    // calendar day is 8, not 7 -- assert that regardless of ordering.
+    expect(screen.getByText(/8 September|September 8/)).toBeInTheDocument();
+    expect(screen.queryByText(/7 September|September 7/)).not.toBeInTheDocument();
   });
 });

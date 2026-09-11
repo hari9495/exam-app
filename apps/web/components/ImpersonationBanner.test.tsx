@@ -29,5 +29,5 @@ it('navigates to the restored admin console after Return to admin, instead of bo
   render(<ImpersonationBanner />);
   await userEvent.click(screen.getByRole('button', { name: /return to admin/i }));
   expect(mockStop).toHaveBeenCalled();
-  await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/organizations'));
+  await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/v2/organizations'));
 });
