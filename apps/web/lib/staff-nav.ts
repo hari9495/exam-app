@@ -9,16 +9,19 @@ import { RECRUITER_NAV_ITEMS } from './recruiter-nav';
 // moment you opened a settings page.
 const V2_ROUTES = new Set([
   '/today', '/dashboard', '/exams', '/questions', '/candidates', '/reports',
-  '/walk-in-groups', '/jobs', '/approvals', '/analytics/hiring',
-  '/message-templates', '/offer-template',
+  '/walk-in-groups', '/jobs', '/agency-submissions', '/approvals', '/analytics/hiring',
+  '/message-templates', '/sms-templates', '/whatsapp-templates', '/offer-template',
   '/users', '/audit-log', '/system-logs', '/data-rights',
   '/settings/branding', '/settings/integrations', '/settings/sso', '/settings/billing',
-  '/settings/approvals', '/settings/pipelines', '/settings/business-hours', '/settings/custom-fields', '/settings/field-permissions', '/settings/user-groups',
+  '/settings/approvals', '/settings/pipelines', '/settings/business-hours', '/settings/custom-fields', '/settings/field-permissions', '/settings/user-groups', '/settings/permission-profiles',
   '/settings/record-visibility',
   '/settings/recycle-bin',
   '/settings/approval-emails',
   '/settings/sender-addresses',
   '/settings/apply-consent',
+  '/settings/careers',
+  '/settings/job-boards',
+  '/settings/agencies',
 ]);
 
 // The ONE staff sidebar, identical in every org-scoped shell (the (recruiter) and (org-admin) route

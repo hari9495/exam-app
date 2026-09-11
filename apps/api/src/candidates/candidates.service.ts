@@ -9,6 +9,7 @@ import { FieldPermissionsService } from '../field-permissions/field-permissions.
 import { redactFields, redactMany } from '../field-permissions/redact';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { UpdateCandidateDto } from './dto/update-candidate.dto';
+import { UpdateSmsOptOutDto } from './dto/update-sms-opt-out.dto';
 import {
   upsertCustomFieldValues,
   serializeCustomFieldValues,
@@ -322,6 +323,38 @@ export class CandidatesService {
     return updated;
   }
 
+  // SMS consent is legally distinct from the candidate's active/inactive status, so it lives
+  // on its own toggle rather than folded into update()'s general field set -- mirrors how
+  // erase() gets its own dedicated endpoint instead of being just another PATCH field.
+  async setSmsOptOut(
+    context: TenantContext,
+    actorUserId: string,
+    candidateId: string,
+    dto: UpdateSmsOptOutDto,
+  ): Promise<{ id: string; smsOptedOutAt: Date | null }> {
+    const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const candidate = await tx.candidate.findFirst({
+        where: { id: candidateId, organizationId: context.organizationId as string },
+      });
+      if (!candidate) {
+        throw new NotFoundException(`Candidate ${candidateId} not found`);
+      }
+      return tx.candidate.update({
+        where: { id: candidateId },
+        data: { smsOptedOutAt: dto.optedOut ? new Date() : null },
+      });
+    });
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: dto.optedOut ? 'candidate.sms_opted_out' : 'candidate.sms_opted_in',
+      entityType: 'candidate',
+      entityId: candidateId,
+    });
+
+    return { id: updated.id, smsOptedOutAt: updated.smsOptedOutAt };
+  }
+
   async remove(context: TenantContext, actorUserId: string, candidateId: string): Promise<{ id: string }> {
     await this.tenantPrisma.forTenant(context, async (tx) => {
       const candidate = await tx.candidate.findFirst({
@@ -352,6 +385,38 @@ export class CandidatesService {
     });
 
     return { id: candidateId };
+  }
+
+  // WhatsApp opt-in is legally distinct from email/SMS (Candidate.emailOptedOutAt is a
+  // separate column) -- a recruiter toggles this independently of the email unsubscribe
+  // state. Enforced at send time by candidate-whatsapp, not here.
+  async setWhatsappOptOut(
+    context: TenantContext,
+    actorUserId: string,
+    candidateId: string,
+    optedOut: boolean,
+  ): Promise<{ id: string; whatsappOptedOutAt: Date | null }> {
+    const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const candidate = await tx.candidate.findFirst({
+        where: { id: candidateId, organizationId: context.organizationId as string },
+      });
+      if (!candidate) {
+        throw new NotFoundException(`Candidate ${candidateId} not found`);
+      }
+      return tx.candidate.update({
+        where: { id: candidateId },
+        data: { whatsappOptedOutAt: optedOut ? new Date() : null },
+      });
+    });
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: optedOut ? 'candidate.whatsapp_opted_out' : 'candidate.whatsapp_opted_in',
+      entityType: 'candidate',
+      entityId: candidateId,
+    });
+
+    return { id: updated.id, whatsappOptedOutAt: updated.whatsappOptedOutAt };
   }
 
   async lookupByEmail(context: TenantContext, email: string, role: string): Promise<RedactedCandidate> {

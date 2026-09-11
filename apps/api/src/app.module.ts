@@ -33,6 +33,8 @@ import { WalkInGroupsModule } from './walk-in-groups/walk-in-groups.module';
 import { DrivesModule } from './drives/drives.module';
 import { PipelineModule } from './pipeline/pipeline.module';
 import { CandidateEmailsModule } from './candidate-emails/candidate-emails.module';
+import { CandidateSmsModule } from './candidate-sms/candidate-sms.module';
+import { CandidateWhatsappModule } from './candidate-whatsapp/candidate-whatsapp.module';
 import { AttemptsAdminModule } from './attempts-admin/attempts-admin.module';
 import { ReportsModule } from './reports/reports.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -54,6 +56,12 @@ import { ApprovalsModule } from './approvals/approvals.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { FieldPermissionsModule } from './field-permissions/field-permissions.module';
 import { RecycleBinModule } from './recycle-bin/recycle-bin.module';
+import { ApiUsageModule } from './api-usage/api-usage.module';
+import { PermissionProfilesModule } from './permission-profiles/permission-profiles.module';
+import { JobBoardsModule } from './job-boards/job-boards.module';
+import { AgenciesModule } from './agencies/agencies.module';
+import { AgencyPortalModule } from './agency-portal/agency-portal.module';
+import { AgencySubmissionsModule } from './agency-submissions/agency-submissions.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 import { SentryShutdownFlush } from './sentry-shutdown.provider';
@@ -95,6 +103,8 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     DrivesModule,
     PipelineModule,
     CandidateEmailsModule,
+    CandidateSmsModule,
+    CandidateWhatsappModule,
     AttemptsAdminModule,
     ReportsModule,
     DashboardModule,
@@ -114,6 +124,12 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     CustomFieldsModule,
     FieldPermissionsModule,
     RecycleBinModule,
+    ApiUsageModule,
+    PermissionProfilesModule,
+    JobBoardsModule,
+    AgenciesModule,
+    AgencyPortalModule,
+    AgencySubmissionsModule,
   ],
   controllers: [HealthController],
   providers: [

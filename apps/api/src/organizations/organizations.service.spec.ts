@@ -865,6 +865,168 @@ describe('OrganizationsService', () => {
     });
   });
 
+  describe('getCareers', () => {
+    it('returns enabled/headline/intro/bannerUrl from the org row', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        careersEnabled: true,
+        careersHeadline: 'Join us',
+        careersIntro: 'We build things.',
+        careersBannerPath: null,
+      });
+
+      const result = await service.getCareers({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ enabled: true, headline: 'Join us', intro: 'We build things.', bannerUrl: null });
+    });
+
+    it('defaults to disabled/null when no org row is found', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+
+      const result = await service.getCareers({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ enabled: false, headline: null, intro: null, bannerUrl: null });
+    });
+
+    it('signs a stored bannerPath through signIfOurs', async () => {
+      const bannerPath = 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/careers-banners/org-1.png';
+      prisma.organization.findUnique.mockResolvedValue({
+        careersEnabled: true,
+        careersHeadline: null,
+        careersIntro: null,
+        careersBannerPath: bannerPath,
+      });
+      blobStorage.signIfOurs.mockResolvedValueOnce(`${bannerPath}?sig=redacted`);
+
+      const result = await service.getCareers({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(blobStorage.signIfOurs).toHaveBeenCalledWith(bannerPath);
+      expect(result.bannerUrl).toBe(`${bannerPath}?sig=redacted`);
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(service.getCareers({ organizationId: null, isSuperAdmin: true })).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setCareers', () => {
+    beforeEach(() => {
+      prisma.organization.update.mockResolvedValue({});
+      prisma.organization.findUnique.mockResolvedValue({
+        careersEnabled: true,
+        careersHeadline: 'Join us',
+        careersIntro: 'We build things.',
+        careersBannerPath: null,
+      });
+    });
+
+    it('persists careersEnabled and returns the fresh careers response', async () => {
+      const result = await service.setCareers({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', {
+        enabled: true,
+        headline: 'Join us',
+        intro: 'We build things.',
+      });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { careersEnabled: true, careersHeadline: 'Join us', careersIntro: 'We build things.' },
+      });
+      expect(result).toEqual({ enabled: true, headline: 'Join us', intro: 'We build things.', bannerUrl: null });
+    });
+
+    it('normalizes an empty/whitespace headline and intro to null', async () => {
+      await service.setCareers({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', {
+        enabled: false,
+        headline: '   ',
+        intro: '',
+      });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { careersEnabled: false, careersHeadline: null, careersIntro: null },
+      });
+    });
+
+    it('leaves headline/intro untouched when omitted from the dto', async () => {
+      await service.setCareers({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', { enabled: true });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { careersEnabled: true },
+      });
+    });
+
+    it('records an organization.careers_updated audit entry', async () => {
+      await service.setCareers({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', { enabled: true });
+
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        { actorUserId: 'user-1', action: 'organization.careers_updated', entityType: 'organization', entityId: 'org-1' },
+      );
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.setCareers({ organizationId: null, isSuperAdmin: true }, 'user-1', { enabled: true }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('uploadCareersBanner', () => {
+    const pngFile = { mimetype: 'image/png', size: 1024, buffer: Buffer.from('fake-png-bytes') } as Express.Multer.File;
+
+    beforeEach(() => {
+      blobStorage.upload.mockReset().mockResolvedValue('https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/careers-banners/org-1.png');
+      prisma.organization.update.mockResolvedValue({});
+    });
+
+    it('uploads the file to blob storage under careers-banners/{orgId} and updates careersBannerPath', async () => {
+      const result = await service.uploadCareersBanner({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', pngFile);
+
+      expect(blobStorage.upload).toHaveBeenCalledWith(expect.stringContaining('careers-banners/org-1-'), pngFile.buffer, 'image/png');
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { careersBannerPath: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/careers-banners/org-1.png' },
+      });
+      expect(result.bannerUrl).toBe('https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/careers-banners/org-1.png');
+    });
+
+    it('records an organization.careers_banner_updated audit entry', async () => {
+      await service.uploadCareersBanner({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', pngFile);
+
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        { actorUserId: 'user-1', action: 'organization.careers_banner_updated', entityType: 'organization', entityId: 'org-1' },
+      );
+    });
+
+    it('rejects a non-image mimetype without uploading anything', async () => {
+      const badFile = { mimetype: 'application/pdf', size: 1024, buffer: Buffer.from('x') } as Express.Multer.File;
+
+      await expect(
+        service.uploadCareersBanner({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', badFile),
+      ).rejects.toThrow(BadRequestException);
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('rejects a file over 2MB without uploading anything', async () => {
+      const bigFile = { mimetype: 'image/png', size: 2 * 1024 * 1024 + 1, buffer: Buffer.from('x') } as Express.Multer.File;
+
+      await expect(
+        service.uploadCareersBanner({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', bigFile),
+      ).rejects.toThrow(BadRequestException);
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.uploadCareersBanner({ organizationId: null, isSuperAdmin: true }, 'user-1', pngFile),
+      ).rejects.toThrow(BadRequestException);
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getPublicBrandingBySlug', () => {
     it('returns branding for an existing slug, with no auth/tenant context required', async () => {
       prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Corp', logoPath: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', primaryColor: '#1a73e8', accentColor: null });
@@ -1011,6 +1173,261 @@ describe('OrganizationsService', () => {
         service.updateSmtpSettings({ organizationId: null, isSuperAdmin: true }, 'user-1', dto),
       ).rejects.toThrow(BadRequestException);
       expect(mockTransporterVerify).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getSmsConfig', () => {
+    it('returns {config:{}, configured:false} when no config blob is stored', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: false, smsProvider: 'twilio', smsConfigEncrypted: null,
+      });
+
+      const result = await service.getSmsConfig({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ smsEnabled: false, smsProvider: 'twilio', configured: false, config: {} });
+      expect(cryptoService.decrypt).not.toHaveBeenCalled();
+    });
+
+    it('strips the twilio secret field (authToken) but keeps non-secret fields (accountSid, from), and NEVER leaks the token', async () => {
+      cryptoService.decrypt.mockReturnValue(
+        JSON.stringify({ accountSid: 'AC123', authToken: 'super-secret-token', from: '+15551234567' }),
+      );
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getSmsConfig({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({
+        smsEnabled: true,
+        smsProvider: 'twilio',
+        configured: true,
+        config: { accountSid: 'AC123', from: '+15551234567' },
+      });
+      expect(result.config).not.toHaveProperty('authToken');
+      expect(JSON.stringify(result)).not.toContain('super-secret-token');
+    });
+
+    it('strips the http secret field (authHeader) but keeps non-secret fields (url, bodyTemplate), and NEVER leaks the header', async () => {
+      cryptoService.decrypt.mockReturnValue(
+        JSON.stringify({
+          url: 'https://example.com/sms',
+          authHeader: 'Bearer super-secret-header',
+          bodyTemplate: '{"to":"{{to}}","body":"{{body}}"}',
+        }),
+      );
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'http', smsConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getSmsConfig({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result.smsProvider).toBe('http');
+      expect(result.configured).toBe(true);
+      expect(result.config).toEqual({
+        url: 'https://example.com/sms',
+        bodyTemplate: '{"to":"{{to}}","body":"{{body}}"}',
+      });
+      expect(result.config).not.toHaveProperty('authHeader');
+      expect(JSON.stringify(result)).not.toContain('super-secret-header');
+    });
+
+    it('reports configured false when the stored config fails the adapter\'s validateConfig', async () => {
+      cryptoService.decrypt.mockReturnValue(JSON.stringify({ accountSid: 'AC123' })); // missing authToken/from
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getSmsConfig({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result.configured).toBe(false);
+    });
+
+    it('returns config:{} for an unrecognized provider id rather than risk leaking an unknown field', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'unknown-vendor', smsConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getSmsConfig({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ smsEnabled: true, smsProvider: 'unknown-vendor', configured: false, config: {} });
+    });
+
+    it('treats a malformed/undecryptable blob as no config rather than throwing', async () => {
+      cryptoService.decrypt.mockReturnValue('not valid json');
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getSmsConfig({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ smsEnabled: true, smsProvider: 'twilio', configured: false, config: {} });
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(service.getSmsConfig({ organizationId: null, isSuperAdmin: true })).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('putSmsConfig', () => {
+    it('merges incoming config over the existing decrypted blob and encrypts the merged JSON', async () => {
+      cryptoService.decrypt.mockReturnValue(
+        JSON.stringify({ accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' }),
+      );
+      cryptoService.encrypt.mockReturnValue('encrypted-merged-blob');
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: false, smsProvider: 'twilio', smsConfigEncrypted: 'existing-blob',
+      });
+      prisma.organization.update.mockResolvedValue({});
+
+      const result = await service.putSmsConfig(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        'user-1',
+        { smsEnabled: true, config: { accountSid: 'AC-new', authToken: 'new-secret-token' } },
+      );
+
+      // Non-secret field overwritten, secret field re-encrypted with the new value,
+      // fields absent from the incoming config (from) carried over from existing.
+      expect(cryptoService.encrypt).toHaveBeenCalledWith(
+        JSON.stringify({ accountSid: 'AC-new', authToken: 'new-secret-token', from: '+15550000000' }),
+      );
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { smsProvider: 'twilio', smsConfigEncrypted: 'encrypted-merged-blob', smsEnabled: true },
+      });
+      expect(JSON.stringify(prisma.organization.update.mock.calls[0][0])).not.toContain('new-secret-token');
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        { actorUserId: 'user-1', action: 'organization.sms_configured', entityType: 'organization', entityId: 'org-1' },
+      );
+      expect(result.configured).toBe(true);
+    });
+
+    it('keeps the existing encrypted secret when the incoming secret field is absent', async () => {
+      cryptoService.decrypt.mockReturnValue(
+        JSON.stringify({ accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' }),
+      );
+      cryptoService.encrypt.mockReturnValue('encrypted-blob');
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: 'existing-blob',
+      });
+      prisma.organization.update.mockResolvedValue({});
+
+      await service.putSmsConfig(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        'user-1',
+        { config: { accountSid: 'AC-old', from: '+15551234567' } },
+      );
+
+      const encryptedJson = cryptoService.encrypt.mock.calls[0][0];
+      expect(JSON.parse(encryptedJson)).toEqual({ accountSid: 'AC-old', authToken: 'old-token', from: '+15551234567' });
+    });
+
+    it('keeps the existing encrypted secret when the incoming secret field is blank/whitespace', async () => {
+      cryptoService.decrypt.mockReturnValue(
+        JSON.stringify({ accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' }),
+      );
+      cryptoService.encrypt.mockReturnValue('encrypted-blob');
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: 'existing-blob',
+      });
+      prisma.organization.update.mockResolvedValue({});
+
+      await service.putSmsConfig(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        'user-1',
+        { config: { accountSid: 'AC-old', authToken: '   ', from: '+15550000000' } },
+      );
+
+      const encryptedJson = cryptoService.encrypt.mock.calls[0][0];
+      expect(JSON.parse(encryptedJson).authToken).toBe('old-token');
+    });
+
+    it('rejects an invalid merged config via BadRequestException without persisting anything', async () => {
+      cryptoService.decrypt.mockReturnValue(JSON.stringify({ accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' }));
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: 'existing-blob',
+      });
+
+      await expect(
+        service.putSmsConfig(
+          { organizationId: 'org-1', isSuperAdmin: false },
+          'user-1',
+          { config: { accountSid: '' } },
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(cryptoService.encrypt).not.toHaveBeenCalled();
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unknown provider id via BadRequestException without persisting anything', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: null,
+      });
+
+      await expect(
+        service.putSmsConfig(
+          { organizationId: 'org-1', isSuperAdmin: false },
+          'user-1',
+          { smsProvider: 'unknown-vendor' as any },
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('on provider change, treats incoming config as the full new config (no cross-provider merge) and validates against the new adapter', async () => {
+      // Existing provider is twilio; switching to http. The old twilio blob's
+      // fields must NOT leak into the new http config.
+      cryptoService.decrypt.mockReturnValue(
+        JSON.stringify({ accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' }),
+      );
+      cryptoService.encrypt.mockReturnValue('encrypted-http-blob');
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: 'existing-blob',
+      });
+      prisma.organization.update.mockResolvedValue({});
+
+      await service.putSmsConfig(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        'user-1',
+        {
+          smsProvider: 'http',
+          config: { url: 'https://example.com/sms', bodyTemplate: '{{body}}' },
+        },
+      );
+
+      const encryptedJson = cryptoService.encrypt.mock.calls[0][0];
+      expect(JSON.parse(encryptedJson)).toEqual({ url: 'https://example.com/sms', bodyTemplate: '{{body}}' });
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { smsProvider: 'http', smsConfigEncrypted: 'encrypted-http-blob', smsEnabled: true },
+      });
+    });
+
+    it('rejects a provider-change PUT whose new config is invalid for the new adapter', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: null,
+      });
+
+      await expect(
+        service.putSmsConfig(
+          { organizationId: 'org-1', isSuperAdmin: false },
+          'user-1',
+          { smsProvider: 'http', config: { url: 'http://localhost/sms', bodyTemplate: '{{body}}' } }, // http (not https) + private host
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.putSmsConfig({ organizationId: null, isSuperAdmin: true }, 'user-1', { smsEnabled: true }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
     });
   });
 
@@ -1545,6 +1962,262 @@ describe('OrganizationsService', () => {
         service.setApplyConsent({ organizationId: null, isSuperAdmin: true }, 'user-1', { text: 'x' }),
       ).rejects.toThrow(BadRequestException);
       expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // Security-critical: getWhatsappConfig must never return a provider's secret
+  // field (authToken/authHeader), for either registered adapter.
+  describe('getWhatsappConfig', () => {
+    const context = { organizationId: 'org-1', isSuperAdmin: false };
+
+    it('strips the secret field from a valid twilio blob, keeps non-secret fields, and reports configured:true', async () => {
+      const blob = { accountSid: 'AC123', authToken: 'super-secret-token', from: '+15550000000' };
+      cryptoService.decrypt.mockReturnValue(JSON.stringify(blob));
+      prisma.organization.findUnique.mockResolvedValue({
+        whatsappEnabled: true,
+        whatsappProvider: 'twilio',
+        whatsappConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getWhatsappConfig(context);
+
+      expect(result.config).not.toHaveProperty('authToken');
+      expect(result.config).toEqual({ accountSid: 'AC123', from: '+15550000000' });
+      expect(JSON.stringify(result)).not.toContain('super-secret-token');
+      expect(result).toEqual({
+        whatsappEnabled: true,
+        whatsappProvider: 'twilio',
+        configured: true,
+        config: { accountSid: 'AC123', from: '+15550000000' },
+      });
+    });
+
+    it('strips the secret field from a valid http blob, keeps non-secret fields, and reports configured:true', async () => {
+      const blob = {
+        url: 'https://example.com/whatsapp',
+        bodyTemplate: '{{body}}',
+        authHeader: 'Bearer super-secret-header-value',
+      };
+      cryptoService.decrypt.mockReturnValue(JSON.stringify(blob));
+      prisma.organization.findUnique.mockResolvedValue({
+        whatsappEnabled: true,
+        whatsappProvider: 'http',
+        whatsappConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getWhatsappConfig(context);
+
+      expect(result.config).not.toHaveProperty('authHeader');
+      expect(result.config).toEqual({ url: 'https://example.com/whatsapp', bodyTemplate: '{{body}}' });
+      expect(JSON.stringify(result)).not.toContain('super-secret-header-value');
+      expect(result.configured).toBe(true);
+    });
+
+    it('reports configured:false when the stored blob fails the adapter validateConfig check', async () => {
+      // Missing the required `from` field for twilio.
+      cryptoService.decrypt.mockReturnValue(JSON.stringify({ accountSid: 'AC123', authToken: 'tok' }));
+      prisma.organization.findUnique.mockResolvedValue({
+        whatsappEnabled: true,
+        whatsappProvider: 'twilio',
+        whatsappConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getWhatsappConfig(context);
+
+      expect(result.configured).toBe(false);
+    });
+
+    it('returns config:{} and configured:false when no config has been saved', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        whatsappEnabled: false,
+        whatsappProvider: 'twilio',
+        whatsappConfigEncrypted: null,
+      });
+
+      const result = await service.getWhatsappConfig(context);
+
+      expect(result).toEqual({ whatsappEnabled: false, whatsappProvider: 'twilio', configured: false, config: {} });
+      expect(cryptoService.decrypt).not.toHaveBeenCalled();
+    });
+
+    it('returns config:{} for an unknown/unregistered provider id', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        whatsappEnabled: true,
+        whatsappProvider: 'not-a-real-provider',
+        whatsappConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getWhatsappConfig(context);
+
+      expect(result).toEqual({
+        whatsappEnabled: true,
+        whatsappProvider: 'not-a-real-provider',
+        configured: false,
+        config: {},
+      });
+    });
+
+    it('falls back to config:{} when the stored blob fails to decrypt/parse', async () => {
+      cryptoService.decrypt.mockImplementation(() => {
+        throw new Error('bad ciphertext');
+      });
+      prisma.organization.findUnique.mockResolvedValue({
+        whatsappEnabled: true,
+        whatsappProvider: 'twilio',
+        whatsappConfigEncrypted: 'corrupted',
+      });
+
+      const result = await service.getWhatsappConfig(context);
+
+      expect(result.config).toEqual({});
+      expect(result.configured).toBe(false);
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(service.getWhatsappConfig({ organizationId: null, isSuperAdmin: true })).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('putWhatsappConfig', () => {
+    const context = { organizationId: 'org-1', isSuperAdmin: false };
+
+    it('same provider: a blank/absent secret keeps the existing secret (encrypted blob still carries the OLD token)', async () => {
+      const existingBlob = { accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' };
+      cryptoService.decrypt.mockReturnValue(JSON.stringify(existingBlob));
+      cryptoService.encrypt.mockReturnValue('new-encrypted-blob');
+      prisma.organization.findUnique
+        .mockResolvedValueOnce({ whatsappEnabled: false, whatsappProvider: 'twilio', whatsappConfigEncrypted: 'old-encrypted-blob' })
+        // Second read is putWhatsappConfig's own call to getWhatsappConfig for the return value.
+        .mockResolvedValueOnce({ whatsappEnabled: true, whatsappProvider: 'twilio', whatsappConfigEncrypted: 'new-encrypted-blob' });
+      prisma.organization.update.mockResolvedValue({});
+
+      await service.putWhatsappConfig(context, 'user-1', {
+        whatsappEnabled: true,
+        config: { accountSid: 'AC-new', authToken: '' },
+      });
+
+      expect(cryptoService.encrypt).toHaveBeenCalledWith(
+        JSON.stringify({ accountSid: 'AC-new', authToken: 'old-token', from: '+15550000000' }),
+      );
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { whatsappProvider: 'twilio', whatsappConfigEncrypted: 'new-encrypted-blob', whatsappEnabled: true },
+      });
+    });
+
+    it('same provider: a new non-blank secret overwrites the existing one', async () => {
+      const existingBlob = { accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' };
+      cryptoService.decrypt.mockReturnValue(JSON.stringify(existingBlob));
+      cryptoService.encrypt.mockReturnValue('new-encrypted-blob');
+      prisma.organization.findUnique
+        .mockResolvedValueOnce({ whatsappEnabled: true, whatsappProvider: 'twilio', whatsappConfigEncrypted: 'old-encrypted-blob' })
+        .mockResolvedValueOnce({ whatsappEnabled: true, whatsappProvider: 'twilio', whatsappConfigEncrypted: 'new-encrypted-blob' });
+      prisma.organization.update.mockResolvedValue({});
+
+      await service.putWhatsappConfig(context, 'user-1', { config: { authToken: 'brand-new-token' } });
+
+      expect(cryptoService.encrypt).toHaveBeenCalledWith(
+        JSON.stringify({ accountSid: 'AC-old', authToken: 'brand-new-token', from: '+15550000000' }),
+      );
+    });
+
+    it('non-secret fields overwrite normally', async () => {
+      const existingBlob = { accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' };
+      cryptoService.decrypt.mockReturnValue(JSON.stringify(existingBlob));
+      cryptoService.encrypt.mockReturnValue('new-encrypted-blob');
+      prisma.organization.findUnique
+        .mockResolvedValueOnce({ whatsappEnabled: true, whatsappProvider: 'twilio', whatsappConfigEncrypted: 'old-encrypted-blob' })
+        .mockResolvedValueOnce({ whatsappEnabled: true, whatsappProvider: 'twilio', whatsappConfigEncrypted: 'new-encrypted-blob' });
+      prisma.organization.update.mockResolvedValue({});
+
+      await service.putWhatsappConfig(context, 'user-1', { config: { from: '+15559999999' } });
+
+      expect(cryptoService.encrypt).toHaveBeenCalledWith(
+        JSON.stringify({ accountSid: 'AC-old', authToken: 'old-token', from: '+15559999999' }),
+      );
+    });
+
+    it('provider change: treats the incoming config as a full replacement, no merge from the old provider blob', async () => {
+      const existingBlob = { accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' };
+      cryptoService.decrypt.mockReturnValue(JSON.stringify(existingBlob));
+      cryptoService.encrypt.mockReturnValue('new-encrypted-blob');
+      prisma.organization.findUnique
+        .mockResolvedValueOnce({ whatsappEnabled: true, whatsappProvider: 'twilio', whatsappConfigEncrypted: 'old-encrypted-blob' })
+        .mockResolvedValueOnce({ whatsappEnabled: true, whatsappProvider: 'http', whatsappConfigEncrypted: 'new-encrypted-blob' });
+      prisma.organization.update.mockResolvedValue({});
+
+      await service.putWhatsappConfig(context, 'user-1', {
+        whatsappProvider: 'http',
+        config: { url: 'https://example.com/hook', bodyTemplate: '{{body}}' },
+      });
+
+      // decrypt of the OLD (twilio) blob is never even inspected for merging --
+      // the http adapter's fields (url/bodyTemplate) come only from dto.config.
+      expect(cryptoService.encrypt).toHaveBeenCalledWith(
+        JSON.stringify({ url: 'https://example.com/hook', bodyTemplate: '{{body}}' }),
+      );
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { whatsappProvider: 'http', whatsappConfigEncrypted: 'new-encrypted-blob' },
+      });
+    });
+
+    it('throws BadRequestException and persists nothing when the merged config fails adapter validateConfig', async () => {
+      prisma.organization.findUnique.mockResolvedValueOnce({
+        whatsappEnabled: false,
+        whatsappProvider: 'twilio',
+        whatsappConfigEncrypted: null,
+      });
+
+      await expect(
+        service.putWhatsappConfig(context, 'user-1', { config: { accountSid: 'AC123' } }), // missing authToken/from
+      ).rejects.toThrow(BadRequestException);
+
+      expect(cryptoService.encrypt).not.toHaveBeenCalled();
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException for an unknown provider id and persists nothing', async () => {
+      prisma.organization.findUnique.mockResolvedValueOnce({
+        whatsappEnabled: false,
+        whatsappProvider: 'twilio',
+        whatsappConfigEncrypted: null,
+      });
+
+      await expect(
+        service.putWhatsappConfig(context, 'user-1', { whatsappProvider: 'not-a-real-provider', config: {} }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.putWhatsappConfig({ organizationId: null, isSuperAdmin: true }, 'user-1', { config: {} }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getWhatsappProviderCatalog', () => {
+    it('returns metadata only -- id, label, configFields -- for every registered provider', () => {
+      const result = service.getWhatsappProviderCatalog();
+
+      expect(result).toEqual([
+        {
+          id: 'twilio',
+          label: 'Twilio WhatsApp',
+          configFields: expect.arrayContaining([expect.objectContaining({ key: 'authToken', secret: true })]),
+        },
+        {
+          id: 'http',
+          label: 'Generic HTTP',
+          configFields: expect.arrayContaining([expect.objectContaining({ key: 'authHeader', secret: true })]),
+        },
+      ]);
+      // No `send`/`validateConfig` functions or actual secret values leaked into the catalog shape.
+      expect(JSON.stringify(result)).not.toMatch(/"send"|"validateConfig"/);
     });
   });
 });

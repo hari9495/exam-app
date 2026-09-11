@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { IsOptional, IsString } from 'class-validator';
 import { ApiKeyAuthGuard } from './api-key-auth.guard';
@@ -9,6 +9,7 @@ import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { TenantContext } from '@exam-platform/shared';
 import { PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
 import { SkipGlobalThrottle } from '../fail-open-throttler.guard';
+import { ApiUsageInterceptor } from '../api-usage/api-usage.interceptor';
 
 // The global ValidationPipe runs with { whitelist: true, forbidNonWhitelisted: true }
 // (apps/api/src/main.ts) -- any query key without a validation decorator is rejected
@@ -30,6 +31,7 @@ class ListInvitationsQueryDto extends PaginationQueryDto {
 
 @Controller('public/invitations')
 @UseGuards(ApiKeyAuthGuard, PublicApiThrottlerGuard)
+@UseInterceptors(ApiUsageInterceptor)
 @Throttle(PUBLIC_API_THROTTLE)
 @SkipGlobalThrottle()
 export class PublicInvitationsController {

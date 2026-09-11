@@ -881,6 +881,212 @@ describe('PublicApplicationsService', () => {
     });
   });
 
+  describe('getCareers', () => {
+    const enabledOrg = {
+      id: 'org-1',
+      name: 'Acme',
+      careersEnabled: true,
+      careersHeadline: 'Join us',
+      careersIntro: 'We build things',
+      careersBannerPath: 'banners/acme.png',
+      logoPath: 'logos/acme.png',
+      primaryColor: '#111111',
+      accentColor: '#222222',
+      textColor: '#333333',
+    };
+    const listedJobs = [
+      {
+        applyToken: 'tok-1',
+        title: 'Backend Engineer',
+        location: 'Remote',
+        employmentType: 'FULL_TIME',
+        department: 'Engineering',
+        salaryMin: 100000,
+        salaryMax: 150000,
+        salaryCurrency: 'USD',
+        createdAt: new Date('2026-08-01T00:00:00.000Z'),
+      },
+      {
+        applyToken: 'tok-2',
+        title: 'Product Designer',
+        location: 'Bengaluru',
+        employmentType: 'FULL_TIME',
+        department: 'Design',
+        salaryMin: null,
+        salaryMax: null,
+        salaryCurrency: null,
+        createdAt: new Date('2026-08-02T00:00:00.000Z'),
+      },
+    ];
+
+    it('returns branding + listed jobs, mapped to the response shape, with signed logo/banner URLs', async () => {
+      const findFirst = jest.fn().mockResolvedValue(enabledOrg);
+      const findMany = jest.fn().mockResolvedValue(listedJobs);
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ organization: { findFirst }, job: { findMany } }),
+      );
+      blobStorage.signIfOurs.mockImplementation(async (path: string) => `${path}?sig=abc`);
+
+      const result = await service.getCareers('acme');
+
+      expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
+        { organizationId: '00000000-0000-0000-0000-000000000000', isSuperAdmin: true },
+        expect.any(Function),
+      );
+      expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { slug: 'acme' } }));
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            organizationId: 'org-1',
+            status: 'open',
+            publicApplyEnabled: true,
+            listOnCareers: true,
+            applyToken: { not: null },
+          },
+        }),
+      );
+      expect(result).toEqual({
+        orgName: 'Acme',
+        headline: 'Join us',
+        intro: 'We build things',
+        logoUrl: 'logos/acme.png?sig=abc',
+        bannerUrl: 'banners/acme.png?sig=abc',
+        primaryColor: '#111111',
+        accentColor: '#222222',
+        textColor: '#333333',
+        jobs: [
+          {
+            applyToken: 'tok-1',
+            title: 'Backend Engineer',
+            location: 'Remote',
+            employmentType: 'FULL_TIME',
+            department: 'Engineering',
+            salaryMin: 100000,
+            salaryMax: 150000,
+            salaryCurrency: 'USD',
+          },
+          {
+            applyToken: 'tok-2',
+            title: 'Product Designer',
+            location: 'Bengaluru',
+            employmentType: 'FULL_TIME',
+            department: 'Design',
+            salaryMin: null,
+            salaryMax: null,
+            salaryCurrency: null,
+          },
+        ],
+      });
+    });
+
+    it('throws NotFoundException when the org slug is unknown', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ organization: { findFirst: jest.fn().mockResolvedValue(null) }, job: { findMany: jest.fn() } }),
+      );
+      await expect(service.getCareers('unknown')).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws NotFoundException when the org has careersEnabled: false', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({
+          organization: { findFirst: jest.fn().mockResolvedValue({ ...enabledOrg, careersEnabled: false }) },
+          job: { findMany: jest.fn() },
+        }),
+      );
+      await expect(service.getCareers('acme')).rejects.toThrow(NotFoundException);
+    });
+
+    it('excludes a job that is listOnCareers but not publicApplyEnabled (filter is applied in the query, never leaks)', async () => {
+      // The query itself filters this out server-side; findMany here returns only what a
+      // correct `where` clause would -- this test locks in that the 4-condition where above
+      // is exactly what's sent, so such a job could never come back.
+      const findMany = jest.fn().mockResolvedValue([]);
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ organization: { findFirst: jest.fn().mockResolvedValue(enabledOrg) }, job: { findMany } }),
+      );
+
+      const result = await service.getCareers('acme');
+
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ publicApplyEnabled: true, listOnCareers: true }),
+        }),
+      );
+      expect(result.jobs).toEqual([]);
+    });
+
+    it('returns null logoUrl/bannerUrl and skips signing when the paths are null', async () => {
+      const orgNoBranding = { ...enabledOrg, logoPath: null, careersBannerPath: null };
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ organization: { findFirst: jest.fn().mockResolvedValue(orgNoBranding) }, job: { findMany: jest.fn().mockResolvedValue([]) } }),
+      );
+
+      const result = await service.getCareers('acme');
+
+      expect(blobStorage.signIfOurs).not.toHaveBeenCalled();
+      expect(result.logoUrl).toBeNull();
+      expect(result.bannerUrl).toBeNull();
+    });
+  });
+
+  describe('getBoardFeed', () => {
+    const board = { id: 'board-1', organizationId: 'org-1', feedToken: 'feed-tok-1' };
+
+    it('emits the same Indeed-style XML shape as getJobsFeed for the board\'s published+public jobs', async () => {
+      const findMany = jest.fn().mockResolvedValue([
+        {
+          title: 'Backend Engineer',
+          description: 'Build things',
+          location: 'Bengaluru',
+          employmentType: 'FULL_TIME',
+          createdAt: new Date('2026-08-01T00:00:00.000Z'),
+          applyToken: 'tok-1',
+          organizationId: 'org-1',
+        },
+      ]);
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ jobBoard: { findUnique: jest.fn().mockResolvedValue(board) }, job: { findMany } }),
+      );
+      prisma.organization.findMany.mockResolvedValue([{ id: 'org-1', name: 'Acme' }]);
+
+      const xml = await service.getBoardFeed('feed-tok-1');
+
+      expect(xml.startsWith('<?xml')).toBe(true);
+      expect(xml).toContain('<source>');
+      expect(xml).toContain('<publisher>');
+      expect(xml).toContain('Backend Engineer');
+      expect(xml).toContain('/apply/tok-1');
+      expect(xml).toContain('Acme');
+    });
+
+    it('filters the job query on org + open + publicApplyEnabled + applyToken + published-to-THIS-board', async () => {
+      const findMany = jest.fn().mockResolvedValue([]);
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ jobBoard: { findUnique: jest.fn().mockResolvedValue(board) }, job: { findMany } }),
+      );
+      prisma.organization.findMany.mockResolvedValue([]);
+
+      await service.getBoardFeed('feed-tok-1');
+
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            organizationId: 'org-1',
+            status: 'open',
+            publicApplyEnabled: true,
+            applyToken: { not: null },
+            jobBoardPublications: { some: { jobBoardId: 'board-1' } },
+          },
+        }),
+      );
+    });
+
+    it('throws NotFoundException for an unknown feedToken', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ jobBoard: { findUnique: jest.fn().mockResolvedValue(null) } }));
+      await expect(service.getBoardFeed('bad-token')).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('getUnsubscribe', () => {
     it('resolves by unsubscribeToken via the LOOKUP_ORG/isSuperAdmin bypass and returns optedOut + orgName', async () => {
       tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>

@@ -72,7 +72,11 @@ export function ScheduleInterviewModal({ entryId, candidateId, onClose }: Schedu
   const holidays = businessHoursErrored ? [] : businessHoursData?.holidays ?? [];
   const { toast } = useToast();
 
+  const [mode, setMode] = useState<'proposed' | 'self_book'>('proposed');
   const [slots, setSlots] = useState<SlotRow[]>([newSlotRow()]);
+  const [bookingWindowStart, setBookingWindowStart] = useState('');
+  const [bookingWindowEnd, setBookingWindowEnd] = useState('');
+  const [slotDurationMinutes, setSlotDurationMinutes] = useState(30);
   const [panelistIds, setPanelistIds] = useState<string[]>([]);
   const [timeZone, setTimeZoneState] = useState(
     () => currentUser?.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
@@ -101,7 +105,11 @@ export function ScheduleInterviewModal({ entryId, candidateId, onClose }: Schedu
 
   const staff = users?.data ?? [];
   const completeSlots = slots.filter((slot) => slot.start && slot.end);
-  const canSubmit = Boolean(completeSlots.length > 0 && panelistIds.length > 0 && location.trim());
+  const canSubmit = Boolean(
+    mode === 'proposed'
+      ? completeSlots.length > 0 && panelistIds.length > 0 && location.trim()
+      : bookingWindowStart && bookingWindowEnd && panelistIds.length > 0 && location.trim(),
+  );
 
   function updateSlot(key: number, field: 'start' | 'end', value: string) {
     setSlots((current) => current.map((slot) => (slot.key === key ? { ...slot, [field]: value } : slot)));
@@ -113,16 +121,29 @@ export function ScheduleInterviewModal({ entryId, candidateId, onClose }: Schedu
 
   async function handleSend() {
     try {
-      const created = await createInterview.mutateAsync({
-        slots: completeSlots.map((slot) => ({
-          startsAt: zonedWallClockToUtcISO(slot.start, timeZone),
-          endsAt: zonedWallClockToUtcISO(slot.end, timeZone),
-        })),
-        panelistUserIds: panelistIds,
-        location: location.trim(),
-        timeZone,
-        recruiterNote: recruiterNote.trim() || undefined,
-      });
+      const created = await createInterview.mutateAsync(
+        mode === 'proposed'
+          ? {
+              slots: completeSlots.map((slot) => ({
+                startsAt: zonedWallClockToUtcISO(slot.start, timeZone),
+                endsAt: zonedWallClockToUtcISO(slot.end, timeZone),
+              })),
+              panelistUserIds: panelistIds,
+              location: location.trim(),
+              timeZone,
+              recruiterNote: recruiterNote.trim() || undefined,
+            }
+          : {
+              bookingMode: 'self_book',
+              bookingWindowStart: zonedWallClockToUtcISO(bookingWindowStart, timeZone),
+              bookingWindowEnd: zonedWallClockToUtcISO(bookingWindowEnd, timeZone),
+              slotDurationMinutes,
+              panelistUserIds: panelistIds,
+              location: location.trim(),
+              timeZone,
+              recruiterNote: recruiterNote.trim() || undefined,
+            },
+      );
       await sendInterview.mutateAsync(created.id);
       toast('Interview invite sent.');
       onClose();
@@ -144,6 +165,74 @@ export function ScheduleInterviewModal({ entryId, candidateId, onClose }: Schedu
           </div>
         )}
 
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setMode('proposed')}
+            className="v2-hoverbtn"
+            aria-pressed={mode === 'proposed'}
+            style={{ ...dt.toolBtn, ...(mode === 'proposed' ? { background: 'var(--org-primary)', color: '#fff' } : {}) }}
+          >
+            Propose specific times
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('self_book')}
+            className="v2-hoverbtn"
+            aria-pressed={mode === 'self_book'}
+            style={{ ...dt.toolBtn, ...(mode === 'self_book' ? { background: 'var(--org-primary)', color: '#fff' } : {}) }}
+          >
+            Let candidate pick a time
+          </button>
+        </div>
+
+        {mode === 'self_book' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span className="v2-label" style={{ marginBottom: 0 }}>Booking window</span>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                <label htmlFor="booking-window-start" className="v2-label" style={{ fontSize: 11 }}>
+                  Window start
+                </label>
+                <input
+                  id="booking-window-start"
+                  type="datetime-local"
+                  value={bookingWindowStart}
+                  onChange={(e) => setBookingWindowStart(e.target.value)}
+                  style={input}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                <label htmlFor="booking-window-end" className="v2-label" style={{ fontSize: 11 }}>
+                  Window end
+                </label>
+                <input
+                  id="booking-window-end"
+                  type="datetime-local"
+                  value={bookingWindowEnd}
+                  onChange={(e) => setBookingWindowEnd(e.target.value)}
+                  style={input}
+                />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="slot-duration" className="v2-label" style={{ fontSize: 11 }}>
+                Slot duration
+              </label>
+              <select
+                id="slot-duration"
+                value={slotDurationMinutes}
+                onChange={(e) => setSlotDurationMinutes(Number(e.target.value))}
+                style={input}
+              >
+                <option value={15}>15 minutes</option>
+                <option value={30}>30 minutes</option>
+                <option value={45}>45 minutes</option>
+                <option value={60}>60 minutes</option>
+              </select>
+            </div>
+          </div>
+        ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span className="v2-label" style={{ marginBottom: 0 }}>Proposed times</span>
           {slots.map((slot, index) => {
@@ -202,6 +291,7 @@ export function ScheduleInterviewModal({ entryId, candidateId, onClose }: Schedu
             <button type="button" onClick={() => setSlots((current) => [...current, newSlotRow()])} className="v2-hoverbtn" style={dt.toolBtn}>Add slot</button>
           </div>
         </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span className="v2-label" style={{ marginBottom: 0 }}>Panel</span>

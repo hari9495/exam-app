@@ -8,9 +8,10 @@ import { RecordVisibilityService } from './record-visibility.service';
 import { OrgSenderAddressesController } from './org-sender-addresses.controller';
 import { OrgSenderAddressesService } from './org-sender-addresses.service';
 import { EmailModule } from '../email/email.module';
+import { ApiUsageModule } from '../api-usage/api-usage.module';
 
 @Module({
-  imports: [EmailModule, CryptoModule, StorageModule],
+  imports: [EmailModule, CryptoModule, StorageModule, ApiUsageModule],
   controllers: [OrganizationsController, OrganizationsPublicController, RecordVisibilityConfigController, OrgSenderAddressesController],
   providers: [OrganizationsService, RecordVisibilityService, OrgSenderAddressesService],
   exports: [OrganizationsService],

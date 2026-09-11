@@ -22,7 +22,12 @@ import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
+import { UpdateCareersDto } from './dto/update-careers.dto';
+import { UpdateSmsConfigDto } from './dto/update-sms-config.dto';
+import { getSmsProvider } from '../sms/providers';
+import { UpdateWhatsappConfigDto } from './dto/update-whatsapp-config.dto';
 import { BusinessHours, Holiday } from '@exam-platform/shared';
+import { getWhatsappProvider, listWhatsappProviders, WhatsappConfigField } from '../whatsapp/providers';
 
 export interface BrandingResponse {
   // The organisation's own display name. Consumers render this in place of the
@@ -94,6 +99,18 @@ export interface PipelineSettingsResponse {
   autoArchiveSiblingsOnHire: boolean;
 }
 
+export interface SmsConfigResponse {
+  smsEnabled: boolean;
+  smsProvider: string;
+  // True only once a config blob is stored AND it passes the selected adapter's
+  // validateConfig. NEVER add the encrypted blob or any secret field to this shape.
+  configured: boolean;
+  // The decrypted config blob with every secret:true field (per the adapter's
+  // configFields) stripped out -- non-secret fields (from/url/bodyTemplate) pre-fill
+  // the edit form; secret fields (authToken/authHeader) are NEVER returned.
+  config: Record<string, unknown>;
+}
+
 export interface BusinessHoursResponse {
   businessHours: BusinessHours | null;
   holidays: Holiday[];
@@ -102,6 +119,31 @@ export interface BusinessHoursResponse {
 export interface ApplyConsentResponse {
   text: string | null;
   version: number;
+}
+
+export interface CareersSettingsResponse {
+  enabled: boolean;
+  headline: string | null;
+  intro: string | null;
+  bannerUrl: string | null;
+}
+
+export interface WhatsappConfigResponse {
+  whatsappEnabled: boolean;
+  whatsappProvider: string;
+  // True only when a config blob exists AND the adapter's own validateConfig
+  // accepts it -- an org that saved a blob for a provider it later can't
+  // validate against (e.g. a required field went missing) reads as unconfigured.
+  configured: boolean;
+  // Decrypted blob minus every field the adapter marks secret:true. Never put
+  // authToken/authHeader (or any future secret field) in here.
+  config: Record<string, unknown>;
+}
+
+export interface WhatsappProviderCatalogItem {
+  id: string;
+  label: string;
+  configFields: WhatsappConfigField[];
 }
 
 export interface SsoSettingsResponse {
@@ -602,6 +644,105 @@ export class OrganizationsService {
     return { aiKeyConfigured: true };
   }
 
+  // Decrypts+parses the stored SMS config blob. Guards both a missing blob and a
+  // malformed one (never lets a decrypt/parse failure surface as an error) -- an
+  // unreadable blob is treated the same as no config at all.
+  private decryptSmsConfig(encrypted: string | null | undefined): Record<string, unknown> {
+    if (!encrypted) {
+      return {};
+    }
+    try {
+      const parsed: unknown = JSON.parse(this.cryptoService.decrypt(encrypted));
+      return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  async getSmsConfig(context: TenantContext): Promise<SmsConfigResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { smsEnabled: true, smsProvider: true, smsConfigEncrypted: true },
+    });
+    const smsProvider = org?.smsProvider ?? 'twilio';
+    const adapter = getSmsProvider(smsProvider);
+    const raw = this.decryptSmsConfig(org?.smsConfigEncrypted);
+
+    // Unknown provider (e.g. stored id no longer registered): we can't know which
+    // fields of an unrecognized shape are secret, so return nothing rather than
+    // risk leaking one.
+    if (!adapter) {
+      return { smsEnabled: org?.smsEnabled ?? false, smsProvider, configured: false, config: {} };
+    }
+
+    const secretKeys = new Set(adapter.configFields.filter((f) => f.secret).map((f) => f.key));
+    const config = Object.fromEntries(Object.entries(raw).filter(([key]) => !secretKeys.has(key)));
+
+    let configured = false;
+    if (org?.smsConfigEncrypted) {
+      try {
+        adapter.validateConfig(raw);
+        configured = true;
+      } catch {
+        configured = false;
+      }
+    }
+
+    return { smsEnabled: org?.smsEnabled ?? false, smsProvider, configured, config };
+  }
+
+  async putSmsConfig(context: TenantContext, actorUserId: string, dto: UpdateSmsConfigDto): Promise<SmsConfigResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const existing = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { smsEnabled: true, smsProvider: true, smsConfigEncrypted: true },
+    });
+
+    const provider = dto.smsProvider ?? existing?.smsProvider ?? 'twilio';
+    const adapter = getSmsProvider(provider);
+    if (!adapter) {
+      throw new BadRequestException(`Unknown SMS provider: ${provider}`);
+    }
+
+    // Switching provider starts from a blank config for the new provider -- fields
+    // from the old provider's blob (even same-named ones) are never carried over.
+    const providerChanged = dto.smsProvider != null && dto.smsProvider !== existing?.smsProvider;
+    const existingCfg = providerChanged ? {} : this.decryptSmsConfig(existing?.smsConfigEncrypted);
+
+    const merged: Record<string, unknown> = { ...existingCfg, ...(dto.config ?? {}) };
+    for (const field of adapter.configFields) {
+      if (!field.secret) {
+        continue;
+      }
+      const incoming = dto.config?.[field.key];
+      const isBlank = incoming === undefined || incoming === null || (typeof incoming === 'string' && incoming.trim() === '');
+      if (isBlank) {
+        // Write-only secret pattern (mirrors SMTP): omitted/blank keeps whatever
+        // was already stored for this provider rather than clearing it.
+        merged[field.key] = existingCfg[field.key];
+      }
+    }
+
+    adapter.validateConfig(merged);
+
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        smsProvider: provider,
+        smsConfigEncrypted: this.cryptoService.encrypt(JSON.stringify(merged)),
+        smsEnabled: dto.smsEnabled ?? existing?.smsEnabled ?? false,
+      },
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.sms_configured',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return this.getSmsConfig(context);
+  }
+
   async updateWebhookUrl(context: TenantContext, actorUserId: string, dto: UpdateWebhookUrlDto): Promise<{ webhookUrl: string }> {
     const organizationId = this.requireOrganizationId(context);
 
@@ -794,6 +935,160 @@ export class OrganizationsService {
     }
 
     return { text: org.applyConsentText, version: org.applyConsentVersion };
+  }
+
+  async getCareers(context: TenantContext): Promise<CareersSettingsResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { careersEnabled: true, careersHeadline: true, careersIntro: true, careersBannerPath: true },
+    });
+    return {
+      enabled: org?.careersEnabled ?? false,
+      headline: org?.careersHeadline ?? null,
+      intro: org?.careersIntro ?? null,
+      bannerUrl: org?.careersBannerPath ? ((await this.blobStorage.signIfOurs(org.careersBannerPath)) as string | null) : null,
+    };
+  }
+
+  async setCareers(context: TenantContext, actorUserId: string, dto: UpdateCareersDto): Promise<CareersSettingsResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const norm = (s: string | null | undefined) => {
+      const t = (s ?? '').trim();
+      return t.length ? t : null;
+    };
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        careersEnabled: dto.enabled,
+        ...(dto.headline !== undefined && { careersHeadline: norm(dto.headline) }),
+        ...(dto.intro !== undefined && { careersIntro: norm(dto.intro) }),
+      },
+    });
+    await this.audit.record(context, { actorUserId, action: 'organization.careers_updated', entityType: 'organization', entityId: organizationId });
+    return this.getCareers(context);
+  }
+
+  async uploadCareersBanner(context: TenantContext, actorUserId: string, file: Express.Multer.File): Promise<{ bannerUrl: string | null }> {
+    const organizationId = this.requireOrganizationId(context);
+    const extension = ALLOWED_LOGO_MIME_TYPES[file.mimetype];
+    if (!extension) {
+      throw new BadRequestException('Banner must be a PNG, JPEG, or SVG image');
+    }
+    if (file.size > MAX_LOGO_SIZE_BYTES) {
+      throw new BadRequestException('Banner file must be 2MB or smaller');
+    }
+    const blobPath = `careers-banners/${organizationId}-${Date.now()}${extension}`;
+    const careersBannerPath = await this.blobStorage.upload(blobPath, file.buffer, file.mimetype);
+    await this.prisma.organization.update({ where: { id: organizationId }, data: { careersBannerPath } });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.careers_banner_updated',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return { bannerUrl: (await this.blobStorage.signIfOurs(careersBannerPath)) as string | null };
+  }
+
+  // Decrypts the stored blob, falling back to {} on a parse/decrypt failure (a
+  // corrupted or foreign-format blob must never surface as a 500 on a read).
+  private decryptWhatsappConfig(encrypted: string | null | undefined): Record<string, unknown> {
+    if (!encrypted) {
+      return {};
+    }
+    try {
+      return JSON.parse(this.cryptoService.decrypt(encrypted)) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+
+  async getWhatsappConfig(context: TenantContext): Promise<WhatsappConfigResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { whatsappEnabled: true, whatsappProvider: true, whatsappConfigEncrypted: true },
+    });
+    const whatsappEnabled = org?.whatsappEnabled ?? false;
+    const whatsappProvider = org?.whatsappProvider ?? 'twilio';
+    const adapter = getWhatsappProvider(whatsappProvider);
+
+    // Unknown/no-longer-registered provider id -- report the flags honestly but
+    // don't guess at which fields would have been secret.
+    if (!adapter) {
+      return { whatsappEnabled, whatsappProvider, configured: false, config: {} };
+    }
+
+    const raw = this.decryptWhatsappConfig(org?.whatsappConfigEncrypted);
+    const secretKeys = new Set(adapter.configFields.filter((field) => field.secret).map((field) => field.key));
+    const config = Object.fromEntries(Object.entries(raw).filter(([key]) => !secretKeys.has(key)));
+
+    let configured = false;
+    if (org?.whatsappConfigEncrypted) {
+      try {
+        adapter.validateConfig(raw);
+        configured = true;
+      } catch {
+        configured = false;
+      }
+    }
+
+    return { whatsappEnabled, whatsappProvider, configured, config };
+  }
+
+  async putWhatsappConfig(context: TenantContext, actorUserId: string, dto: UpdateWhatsappConfigDto): Promise<WhatsappConfigResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const existing = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { whatsappEnabled: true, whatsappProvider: true, whatsappConfigEncrypted: true },
+    });
+    const existingProvider = existing?.whatsappProvider ?? 'twilio';
+    const provider = dto.whatsappProvider ?? existingProvider;
+    const adapter = getWhatsappProvider(provider);
+    if (!adapter) {
+      throw new BadRequestException(`Unknown WhatsApp provider "${provider}"`);
+    }
+
+    // Switching provider starts from a clean slate -- a Twilio authToken has no
+    // meaning against the HTTP adapter's fields, so it must not leak across.
+    const providerChanged = dto.whatsappProvider != null && dto.whatsappProvider !== existingProvider;
+    const existingCfg = providerChanged ? {} : this.decryptWhatsappConfig(existing?.whatsappConfigEncrypted);
+
+    const merged: Record<string, unknown> = { ...existingCfg, ...(dto.config ?? {}) };
+    for (const field of adapter.configFields) {
+      if (!field.secret) continue;
+      const incoming = dto.config?.[field.key];
+      const isBlank = incoming === undefined || incoming === null || (typeof incoming === 'string' && incoming.trim() === '');
+      if (isBlank) {
+        // Blank/absent secret on write means "keep what's already there", never
+        // "clear it" -- a web form's write-only secret field always submits blank.
+        merged[field.key] = existingCfg[field.key];
+      }
+    }
+
+    adapter.validateConfig(merged); // throws BadRequestException on invalid -- nothing persisted below
+
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        whatsappProvider: provider,
+        whatsappConfigEncrypted: this.cryptoService.encrypt(JSON.stringify(merged)),
+        ...(dto.whatsappEnabled !== undefined ? { whatsappEnabled: dto.whatsappEnabled } : {}),
+      },
+    });
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.whatsapp_config_updated',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+
+    return this.getWhatsappConfig(context);
+  }
+
+  getWhatsappProviderCatalog(): WhatsappProviderCatalogItem[] {
+    return listWhatsappProviders().map(({ id, label, configFields }) => ({ id, label, configFields }));
   }
 
   async generateWebhookSecret(context: TenantContext, actorUserId: string): Promise<{ webhookSecret: string }> {

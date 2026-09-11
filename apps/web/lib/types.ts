@@ -54,6 +54,9 @@ export interface StaffUser {
   // emailSignature, unlike timeZone, really is /users/me-exclusive -- see SafeUser's comment
   // in apps/api/src/users/users.service.ts.
   emailSignature?: string | null;
+  // null/omitted = the user's role default permission set; a profile id overrides it. Set via
+  // PATCH /users/:id; takes effect on the user's next login/token refresh (JWT-embedded).
+  permissionProfileId?: string | null;
 }
 
 export interface DirectoryUser extends StaffUser {
@@ -67,9 +70,56 @@ export interface UserGroup { id: string; name: string; description: string | nul
 export interface UserGroupDirectoryEntry { id: string; name: string; memberIds: string[]; }
 export interface MyGroups { groupIds: string[]; coMemberUserIds: string[]; }
 
+// Custom Permission Profiles (Zoho-style org-defined permission sets, assignable per user in
+// place of their role default). Shapes mirror the permission-profiles API responses verbatim
+// (see apps/api/src/permission-profiles/permission-profiles.service.ts + assignable-permissions.ts).
+export interface PermissionProfile { id: string; name: string; permissions: string[]; assignedUserCount: number; }
+export interface AssignablePermission { key: string; description: string; }
+
 // Org Sender Addresses (Zoho-style configurable From addresses). Shapes mirror the
 // org-sender-addresses API responses verbatim (see apps/api/src/organizations/org-sender-addresses.service.ts).
 export interface OrgSenderAddress { id: string; label: string; address: string; isDefault: boolean; }
+
+// Mirrors apps/api/src/job-boards/job-boards.service.ts's JobBoardWithStats (id/name/feedToken
+// trimmed to what the web needs: the feed link is already resolved to a full feedUrl).
+export interface JobBoard { id: string; name: string; feedUrl: string; publishedJobCount: number; }
+
+// Agency portal (external recruiting agencies submit candidates against an assigned-jobs
+// allowlist). Shapes mirror apps/api/src/agencies/agencies.service.ts's AgencyWithStats and
+// apps/api/src/agency-submissions/agency-submissions.service.ts's list() mapping verbatim.
+// jobIds is this agency's CURRENT job allowlist -- lets the settings edit dialog pre-check the
+// checklist instead of opening empty (a full-replace Save from an empty-checked state would
+// otherwise wipe the allowlist -- see useAgencies.ts).
+export interface Agency {
+  id: string;
+  name: string;
+  contactEmail: string | null;
+  active: boolean;
+  portalUrl: string;
+  assignedJobCount: number;
+  pendingSubmissionCount: number;
+  jobIds: string[];
+}
+
+export type AgencySubmissionStatus = 'pending' | 'accepted' | 'rejected';
+
+export interface AgencySubmission {
+  id: string;
+  agencyName: string;
+  jobTitle: string;
+  candidateName: string;
+  candidateEmail: string;
+  candidatePhone: string | null;
+  isDuplicate: boolean;
+  status: AgencySubmissionStatus;
+  createdAt: string;
+  resumeUrl: string | null;
+}
+
+// Public /agency/[token] portal (unauthenticated) -- mirrors AgencyPortalService.getPortal.
+export interface PublicAgencyPortalJob { id: string; title: string; location: string | null; department: string | null; }
+export interface PublicAgencySubmission { id: string; jobId: string; jobTitle: string; candidateName: string; status: AgencySubmissionStatus; createdAt: string; }
+export interface PublicAgencyPortal { agencyName: string; jobs: PublicAgencyPortalJob[]; submissions: PublicAgencySubmission[]; }
 
 export interface AuditLogEntry {
   id: string;
@@ -263,6 +313,13 @@ export interface Candidate {
   // Only the /candidates list endpoint populates this (CandidateListItem server-side) -- see
   // candidates.service.ts. Absent (not empty-array) anywhere else Candidate is used as a shape.
   customFields?: CustomFieldRead[];
+  // Candidate SMS opt-out (Zoho #16) -- set via PATCH /candidates/:id/sms-opt-out, separate from
+  // email consent. Present wherever the full Candidate row is serialized (list + this endpoint).
+  smsOptedOutAt?: string | null;
+  // The raw candidate row (spread verbatim server-side) already carries this column; declared
+  // here so the WhatsApp opt-out hint in CandidateDrawer can read it off a /candidates lookup
+  // without a dedicated get-one-candidate endpoint. Absent on any other Candidate-shaped response.
+  whatsappOptedOutAt?: string | null;
 }
 
 export interface Invitation {
@@ -439,6 +496,40 @@ export interface PublicJob {
   customFields: PublicCustomFieldDef[];
 }
 
+// GET /public/careers/:orgSlug -- unauthenticated, mirrors PublicApplicationsService.getCareers
+// verbatim (org branding + the jobs opted into the public careers page via listOnCareers).
+export interface CareersJob {
+  applyToken: string;
+  title: string;
+  location: string | null;
+  employmentType: string | null;
+  department: string | null;
+  salaryMin: number | null;
+  salaryMax: number | null;
+  salaryCurrency: string | null;
+}
+
+export interface CareersPageResponse {
+  orgName: string;
+  headline: string | null;
+  intro: string | null;
+  logoUrl: string | null;
+  bannerUrl: string | null;
+  primaryColor: string | null;
+  accentColor: string | null;
+  textColor: string | null;
+  jobs: CareersJob[];
+}
+
+// GET/PUT /organizations/careers -- authed org-admin config, mirrors
+// OrganizationsService.CareersSettingsResponse verbatim.
+export interface CareersSettingsResponse {
+  enabled: boolean;
+  headline: string | null;
+  intro: string | null;
+  bannerUrl: string | null;
+}
+
 export interface PortalApplication {
   jobTitle: string;
   stage: string;
@@ -532,6 +623,7 @@ export interface JobDetail {
   closedAt: string | null;
   linkedExams: { examId: string; title: string }[];
   publicApplyEnabled: boolean;
+  listOnCareers: boolean;
   applyToken: string | null;
   fitCriteria?: string | null;
   fitRubric?: string | null;
@@ -543,6 +635,9 @@ export interface JobDetail {
   salaryCurrency: string | null;
   approval: ApprovalSummary | null;
   customFields: CustomFieldRead[];
+  // Board publications for this job, as returned by getJob (NOT present on the PATCH response --
+  // always refetch the job read to see the current set after an update).
+  jobBoardIds: string[];
 }
 
 export type CandidateParseStatus = 'pending' | 'parsing' | 'done' | 'failed' | 'unavailable';
@@ -615,11 +710,28 @@ export interface PendingMessage {
   body: string;
 }
 
+// SMS counterpart of PendingMessage (Zoho #16) -- body-only, no subject. Mirrors
+// apps/api/src/pipeline/pipeline.service.ts PendingSmsMessage.
+export interface PendingSmsMessage {
+  templateId: string | null;
+  body: string;
+}
+
+// WhatsApp counterpart of PendingMessage -- no subject (WhatsApp is body-only). Mirrors
+// apps/api/src/pipeline/pipeline.service.ts PendingWhatsappMessage.
+export interface PendingWhatsappMessage {
+  templateId: string | null;
+  body: string;
+}
+
 // PATCH /entries/:id's response shape -- changed from a bare PipelineEntry to this envelope so
-// a stage move can carry an optional pendingMessage alongside the updated entry.
+// a stage move can carry an optional pendingMessage/pendingSmsMessage alongside the updated
+// entry. Both can be present at once (independent email/SMS trigger resolution).
 export interface PatchEntryResult {
   entry: PipelineEntry;
   pendingMessage?: PendingMessage;
+  pendingSmsMessage?: PendingSmsMessage;
+  pendingWhatsappMessage?: PendingWhatsappMessage;
 }
 
 // Mirrors apps/api/prisma/schema.prisma CandidateEmail -- only the fields the web app renders
@@ -648,6 +760,108 @@ export interface CandidateEmailTemplate {
   body: string;
   enabled: boolean;
   isDefault: boolean;
+}
+
+// Mirrors apps/api/prisma/schema.prisma CandidateSms (Zoho #16) -- only the fields the web app
+// renders, same trim as CandidateEmail above.
+export interface CandidateSms {
+  id: string;
+  toPhone: string;
+  renderedBody: string;
+  status: 'sent' | 'failed';
+  source: string;
+  sentByUserId: string | null;
+  createdAt: string;
+}
+
+// --- WhatsApp (Zoho #24) ------------------------------------------------------
+// Mirrors apps/api/src/whatsapp/providers/types.ts WhatsappConfigField -- a provider's config
+// schema, used to render the Integrations WhatsApp card's fields dynamically.
+export interface WhatsappConfigField {
+  key: string;
+  label: string;
+  secret: boolean;
+  required: boolean;
+  placeholder?: string;
+}
+
+// GET /organizations/whatsapp-providers -- metadata-only catalog (no send/validateConfig).
+export interface WhatsappProviderCatalogItem {
+  id: string;
+  label: string;
+  configFields: WhatsappConfigField[];
+}
+
+// GET/PUT /organizations/whatsapp-config. `config` never carries a secret:true field's value --
+// see WhatsappConfigField.secret and OrganizationsService.getWhatsappConfig.
+export interface WhatsappConfigResponse {
+  whatsappEnabled: boolean;
+  whatsappProvider: string;
+  configured: boolean;
+  config: Record<string, unknown>;
+}
+
+// GET /candidate-sms-templates -- saved templates plus code defaults, body-only (no subject).
+// Mirrors apps/api/src/candidate-sms/candidate-sms-templates.service.ts SmsTemplateView.
+export interface CandidateSmsTemplate {
+  id: string | null;
+  name: string;
+  triggerStageId: string | null;
+  triggerMode: 'manual' | 'prompt' | 'auto';
+  body: string;
+  enabled: boolean;
+  isDefault: boolean;
+}
+
+// GET /candidate-whatsapp-templates -- body-only counterpart of CandidateEmailTemplate (no
+// subject). Mirrors apps/api/src/candidate-whatsapp/candidate-whatsapp-templates.service.ts
+// WhatsappTemplateView.
+export interface WhatsappTemplate {
+  id: string | null;
+  name: string;
+  triggerStageId: string | null;
+  triggerMode: 'manual' | 'prompt' | 'auto';
+  body: string;
+  enabled: boolean;
+  isDefault: boolean;
+}
+
+// GET/PUT /organizations/sms-config -- mirrors apps/api/src/organizations/organizations.service.ts
+// SmsConfigResponse. `config` never carries secret fields (see SmsConfigField.secret below) --
+// `configured` is the only signal a secret is set.
+export interface SmsConfigResponse {
+  smsEnabled: boolean;
+  smsProvider: string;
+  configured: boolean;
+  config: Record<string, string>;
+}
+
+// GET /organizations/sms-providers -- mirrors apps/api/src/sms/providers/types.ts SmsConfigField
+// and the controller's listSmsProviders() projection (id/label/configFields only, no secrets).
+export interface SmsConfigField {
+  key: string;
+  label: string;
+  secret: boolean;
+  required: boolean;
+  placeholder?: string;
+}
+
+export interface SmsProviderCatalogEntry {
+  id: string;
+  label: string;
+  configFields: SmsConfigField[];
+}
+
+// Mirrors apps/api prisma CandidateWhatsapp row (the fields the web app renders in the
+// candidate-drawer WhatsApp history list).
+export interface CandidateWhatsappMessage {
+  id: string;
+  toPhone: string;
+  renderedBody: string;
+  status: 'sent' | 'failed';
+  source: string;
+  sentByUserId: string | null;
+  createdAt: string;
 }
 
 // pending_approval/approved only appear when the org's offer approval chain is enabled (Phase-1
@@ -713,6 +927,8 @@ export interface Interview {
 }
 
 // GET /public/interviews/:token -- unauthenticated, mirrors InterviewsService.getPublicInterview.
+// bookingMode/slotDurationMinutes/availableSlots are present only for a self-book interview that
+// isn't confirmed yet -- proposed mode and already-confirmed interviews omit them (today's shape).
 export interface PublicInterview {
   jobTitle: string;
   orgName: string;
@@ -722,6 +938,9 @@ export interface PublicInterview {
   panel: string[];
   status: InterviewStatus;
   confirmedSlotId: string | null;
+  bookingMode?: 'proposed' | 'self_book';
+  slotDurationMinutes?: number;
+  availableSlots?: { startsAt: string; endsAt: string }[];
 }
 
 export type DriveSessionStatus = 'scheduled' | 'live' | 'ended';
@@ -894,6 +1113,15 @@ export interface WebhookDeliveryRow {
   status: string;
   httpStatusCode: number | null;
   createdAt: string;
+}
+
+// Mirrors GET /organizations/api-usage?window= response (apps/api organizations.controller.ts
+// -> ApiUsageService.report) verbatim -- field names match exactly.
+export interface ApiUsageReport {
+  window: number;
+  totals: { requests: number; throttled: number };
+  byEndpoint: { endpoint: string; requests: number; throttled: number }[];
+  byDay: { day: string; requests: number; throttled: number }[];
 }
 
 // Mirrors apps/api/src/integrations/connected-apps.service.ts ConnectedAppView -- what

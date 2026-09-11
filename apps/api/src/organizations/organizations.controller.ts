@@ -8,6 +8,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { OrganizationsService } from './organizations.service';
+import { ApiUsageService } from '../api-usage/api-usage.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
 import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
@@ -18,12 +19,20 @@ import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
+import { ApiUsageQueryDto } from './dto/api-usage-query.dto';
+import { UpdateCareersDto } from './dto/update-careers.dto';
+import { UpdateSmsConfigDto } from './dto/update-sms-config.dto';
+import { listSmsProviders } from '../sms/providers';
+import { UpdateWhatsappConfigDto } from './dto/update-whatsapp-config.dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('organizations')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class OrganizationsController {
-  constructor(private readonly organizationsService: OrganizationsService) {}
+  constructor(
+    private readonly organizationsService: OrganizationsService,
+    private readonly apiUsage: ApiUsageService,
+  ) {}
 
   @Post()
   @RequirePermissions('platform:manage_organizations')
@@ -63,6 +72,12 @@ export class OrganizationsController {
     return this.organizationsService.getIntegrations(tenant);
   }
 
+  @Get('api-usage')
+  @RequirePermissions('org:manage_settings')
+  getApiUsage(@CurrentTenant() tenant: TenantContext, @Query() query: ApiUsageQueryDto) {
+    return this.apiUsage.report(tenant, query.window ?? 30);
+  }
+
   @Patch('integrations/smtp')
   @RequirePermissions('org:manage_settings')
   updateSmtpSettings(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateSmtpSettingsDto) {
@@ -85,6 +100,26 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   revokeApiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
     return this.organizationsService.revokeApiKey(tenant, userId);
+  }
+
+  @Get('sms-config')
+  @RequirePermissions('org:manage_settings')
+  getSmsConfig(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.getSmsConfig(tenant);
+  }
+
+  @Put('sms-config')
+  @RequirePermissions('org:manage_settings')
+  putSmsConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateSmsConfigDto) {
+    return this.organizationsService.putSmsConfig(tenant, userId, dto);
+  }
+
+  // Provider catalog for the config UI: metadata only (id/label/configFields), no
+  // secrets -- lets the web render the right fields per provider.
+  @Get('sms-providers')
+  @RequirePermissions('org:manage_settings')
+  getSmsProviders() {
+    return listSmsProviders().map(({ id, label, configFields }) => ({ id, label, configFields }));
   }
 
   @Patch('integrations/webhook')
@@ -174,6 +209,48 @@ export class OrganizationsController {
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   uploadLogo(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @UploadedFile() file: Express.Multer.File) {
     return this.organizationsService.uploadLogo(tenant, userId, file);
+  }
+
+  @Get('careers')
+  @RequirePermissions('org:manage_settings')
+  getCareers(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.getCareers(tenant);
+  }
+
+  @Put('careers')
+  @RequirePermissions('org:manage_settings')
+  setCareers(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateCareersDto) {
+    return this.organizationsService.setCareers(tenant, userId, dto);
+  }
+
+  @Post('careers/banner')
+  @RequirePermissions('org:manage_settings')
+  @UseInterceptors(FileInterceptor('file'))
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  uploadCareersBanner(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @UploadedFile() file: Express.Multer.File) {
+    return this.organizationsService.uploadCareersBanner(tenant, userId, file);
+  }
+
+  // GET never returns a secret field (see OrganizationsService.getWhatsappConfig) --
+  // gated anyway, same as every other integrations/config route in this controller.
+  @Get('whatsapp-config')
+  @RequirePermissions('org:manage_settings')
+  getWhatsappConfig(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.getWhatsappConfig(tenant);
+  }
+
+  @Put('whatsapp-config')
+  @RequirePermissions('org:manage_settings')
+  updateWhatsappConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateWhatsappConfigDto) {
+    return this.organizationsService.putWhatsappConfig(tenant, userId, dto);
+  }
+
+  // Metadata only (id/label/configFields) -- never carries a secret value, but still
+  // gated org:manage_settings since it's part of the same admin-only config surface.
+  @Get('whatsapp-providers')
+  @RequirePermissions('org:manage_settings')
+  getWhatsappProviders() {
+    return this.organizationsService.getWhatsappProviderCatalog();
   }
 
   @Patch(':id/status')

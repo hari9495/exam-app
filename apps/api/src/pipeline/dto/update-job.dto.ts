@@ -20,6 +20,9 @@ export class UpdateJobDto {
   @IsOptional() @IsBoolean()
   publicApplyEnabled?: boolean;
 
+  @IsOptional() @IsBoolean()
+  listOnCareers?: boolean;
+
   @IsOptional() @IsString() @MaxLength(5000)
   fitCriteria?: string;
 
@@ -46,4 +49,9 @@ export class UpdateJobDto {
 
   @IsOptional() @IsObject()
   customFields?: Record<string, string | number | null>;
+
+  // Complete replace-set of board ids for this job -- omit to leave publications untouched,
+  // send [] to clear all. See PipelineService.updateJob.
+  @IsOptional() @IsArray() @IsUUID('4', { each: true })
+  jobBoardIds?: string[];
 }

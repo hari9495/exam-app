@@ -8,6 +8,9 @@ import { computeCriteriaHash } from '../candidate-fit/candidate-fit.core';
 function withJobCustomFieldMocks(tx: any) {
   tx.customFieldDefinition = { findMany: jest.fn().mockResolvedValue([]), ...tx.customFieldDefinition };
   tx.customFieldValue = { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn().mockResolvedValue({ count: 0 }), ...tx.customFieldValue };
+  // getJob also unconditionally loads the job's current board publications (jobBoardIds) --
+  // default to "not published anywhere" so pre-existing tests are unaffected.
+  tx.jobBoardPublication = { findMany: jest.fn().mockResolvedValue([]), ...tx.jobBoardPublication };
   return tx;
 }
 
@@ -32,6 +35,10 @@ describe('PipelineService', () => {
   let audit: { record: jest.Mock };
   let templates: { resolveForStage: jest.Mock };
   let messages: { sendMessage: jest.Mock };
+  let smsTemplates: { resolveForStage: jest.Mock };
+  let candidateSms: { sendSms: jest.Mock };
+  let whatsappTemplates: { resolveForStage: jest.Mock };
+  let candidateWhatsapp: { sendWhatsapp: jest.Mock };
   let integrationEvents: { emit: jest.Mock };
   let notifications: { createMentions: jest.Mock; notify: jest.Mock };
   let approvals: { getChains: jest.Mock; submit: jest.Mock; isConfigurer: jest.Mock; cancelForSubject: jest.Mock; getSummariesFor: jest.Mock };
@@ -49,6 +56,10 @@ describe('PipelineService', () => {
     audit = { record: jest.fn() };
     templates = { resolveForStage: jest.fn().mockResolvedValue(null) };
     messages = { sendMessage: jest.fn().mockResolvedValue({ id: 'email-1' }) };
+    smsTemplates = { resolveForStage: jest.fn().mockResolvedValue(null) };
+    candidateSms = { sendSms: jest.fn().mockResolvedValue({ id: 'sms-1' }) };
+    whatsappTemplates = { resolveForStage: jest.fn().mockResolvedValue(null) };
+    candidateWhatsapp = { sendWhatsapp: jest.fn().mockResolvedValue({ id: 'wa-1' }) };
     integrationEvents = { emit: jest.fn().mockResolvedValue(undefined) };
     notifications = { createMentions: jest.fn().mockResolvedValue(undefined), notify: jest.fn().mockResolvedValue(undefined) };
     approvals = {
@@ -65,7 +76,7 @@ describe('PipelineService', () => {
     // Empty set by default (matches getHiddenFields' own contract for an ungoverned/admin role) --
     // pre-existing tests below pass role 'org_admin' and don't care about redaction.
     fieldPerms = { getHiddenFields: jest.fn().mockResolvedValue(new Set()) };
-    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any);
+    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, whatsappTemplates as any, candidateWhatsapp as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {
@@ -182,6 +193,7 @@ describe('PipelineService', () => {
         jobExam: { findMany: jest.fn().mockResolvedValue([]) },
         customFieldDefinition: { findMany: jest.fn().mockResolvedValue(defs) },
         customFieldValue: { findMany: jest.fn().mockResolvedValue([{ definitionId: 'def-1', valueText: 'Referral', valueNumber: null, valueDate: null }]) },
+        jobBoardPublication: { findMany: jest.fn().mockResolvedValue([]) },
       };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
 
@@ -601,6 +613,41 @@ describe('PipelineService', () => {
     });
   });
 
+  describe('updateJob listOnCareers flag', () => {
+    it('writes listOnCareers when provided', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const tx = {
+        job: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open', applyToken: null, publicApplyEnabled: false, listOnCareers: false }),
+          update,
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.updateJob(context, 'user-1', 'job-1', { listOnCareers: true });
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'job-1' },
+        data: expect.objectContaining({ listOnCareers: true }),
+      });
+    });
+
+    it('leaves listOnCareers untouched when not part of the update', async () => {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      const tx = {
+        job: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open', applyToken: null, publicApplyEnabled: false, listOnCareers: false }),
+          update,
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.updateJob(context, 'user-1', 'job-1', { title: 'New Title' });
+
+      expect(update.mock.calls[0][0].data).not.toHaveProperty('listOnCareers');
+    });
+  });
+
   describe('updateJob fit criteria', () => {
     let tx: any;
     beforeEach(() => {
@@ -634,6 +681,108 @@ describe('PipelineService', () => {
         service.updateJob(context, 'user-1', 'job-1', { fitRubric: [{ label: 'A', weight: 50 }] } as any),
       ).rejects.toThrow(/sum to 100/i);
     });
+  });
+
+  describe('updateJob jobBoardIds (replace-set board publications)', () => {
+    // Every test below is a job in good standing (open, no requisition gate) with an existing
+    // publication to board-old -- so "replace" and "clear" tests have something to remove.
+    function tx(existingPublications: { jobBoardId: string }[] = [{ jobBoardId: 'board-old' }]) {
+      const update = jest.fn().mockImplementation(({ data }) => ({ id: 'job-1', ...data }));
+      return {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open', applyToken: null, publicApplyEnabled: false }), update },
+        // Resolves only ids actually in this org's board set (board-1/board-2) -- mirrors real
+        // Prisma filtering so a test's requested id subset gets back exactly the matching rows.
+        jobBoard: {
+          findMany: jest.fn(({ where }: any) =>
+            Promise.resolve(where.id.in.filter((id: string) => ['board-1', 'board-2'].includes(id)).map((id: string) => ({ id }))),
+          ),
+        },
+        jobBoardPublication: {
+          findMany: jest.fn().mockResolvedValue(existingPublications),
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          createMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+      };
+    }
+
+    it('validates every id resolves to a same-org JobBoard, then creates the missing publication rows', async () => {
+      const t = tx([]);
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(t));
+
+      await service.updateJob(context, 'user-1', 'job-1', { jobBoardIds: ['board-1', 'board-2'] } as any);
+
+      expect(t.jobBoard.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['board-1', 'board-2'] }, organizationId: 'org-1' },
+        select: { id: true },
+      });
+      expect(t.jobBoardPublication.createMany).toHaveBeenCalledWith({
+        data: [
+          { jobBoardId: 'board-1', jobId: 'job-1', organizationId: 'org-1' },
+          { jobBoardId: 'board-2', jobId: 'job-1', organizationId: 'org-1' },
+        ],
+      });
+      expect(t.jobBoardPublication.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects a cross-org/unknown board id with BadRequest and persists nothing', async () => {
+      const t = tx();
+      t.jobBoard.findMany.mockResolvedValue([{ id: 'board-1' }]); // 'board-9' doesn't resolve for this org
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(t));
+
+      await expect(
+        service.updateJob(context, 'user-1', 'job-1', { jobBoardIds: ['board-1', 'board-9'] } as any),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(t.jobBoardPublication.deleteMany).not.toHaveBeenCalled();
+      expect(t.jobBoardPublication.createMany).not.toHaveBeenCalled();
+      expect(t.job.update).not.toHaveBeenCalled();
+    });
+
+    it('a second update with a different set replaces (removes the old, adds the new)', async () => {
+      const t = tx([{ jobBoardId: 'board-old' }]);
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(t));
+
+      await service.updateJob(context, 'user-1', 'job-1', { jobBoardIds: ['board-1'] } as any);
+
+      expect(t.jobBoardPublication.deleteMany).toHaveBeenCalledWith({ where: { jobId: 'job-1', jobBoardId: { in: ['board-old'] } } });
+      expect(t.jobBoardPublication.createMany).toHaveBeenCalledWith({ data: [{ jobBoardId: 'board-1', jobId: 'job-1', organizationId: 'org-1' }] });
+    });
+
+    it('an empty array clears every publication for the job', async () => {
+      const t = tx([{ jobBoardId: 'board-old' }]);
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(t));
+
+      await service.updateJob(context, 'user-1', 'job-1', { jobBoardIds: [] } as any);
+
+      expect(t.jobBoard.findMany).not.toHaveBeenCalled(); // nothing to validate against an empty set
+      expect(t.jobBoardPublication.deleteMany).toHaveBeenCalledWith({ where: { jobId: 'job-1', jobBoardId: { in: ['board-old'] } } });
+      expect(t.jobBoardPublication.createMany).not.toHaveBeenCalled();
+    });
+
+    it('omitting jobBoardIds leaves publications untouched', async () => {
+      const t = tx([{ jobBoardId: 'board-old' }]);
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(t));
+
+      await service.updateJob(context, 'user-1', 'job-1', { title: 'New Title' });
+
+      expect(t.jobBoard.findMany).not.toHaveBeenCalled();
+      expect(t.jobBoardPublication.findMany).not.toHaveBeenCalled();
+      expect(t.jobBoardPublication.deleteMany).not.toHaveBeenCalled();
+      expect(t.jobBoardPublication.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  it('getJob returns jobBoardIds mapped from the job\'s current publications', async () => {
+    const tx = withJobCustomFieldMocks({
+      job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+      jobExam: { findMany: jest.fn().mockResolvedValue([]) },
+      jobBoardPublication: { findMany: jest.fn().mockResolvedValue([{ jobBoardId: 'board-1' }, { jobBoardId: 'board-2' }]) },
+    });
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+    const job = await service.getJob(context, 'job-1', 'org_admin');
+
+    expect(job.jobBoardIds).toEqual(['board-1', 'board-2']);
   });
 
   it('deleteJob soft-deletes and audits job.deleted', async () => {
@@ -1748,6 +1897,108 @@ describe('PipelineService', () => {
         expect(result.entry).toEqual({ id: 'entry-1', statusId: 'st-offer' });
         expect(result.pendingMessage).toBeUndefined();
       });
+
+      it('auto-sends SMS when the target stage resolves an auto SMS template', async () => {
+        smsTemplates.resolveForStage.mockResolvedValue({ id: 'sms-t1', body: 'b', triggerMode: 'auto' });
+
+        const result = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(smsTemplates.resolveForStage).toHaveBeenCalledWith(context, 'stage-offer');
+        expect(candidateSms.sendSms).toHaveBeenCalledWith(context, null, 'entry-1', { templateId: 'sms-t1', body: 'b', source: 'stage_auto' });
+        expect(result.pendingSmsMessage).toBeUndefined();
+      });
+
+      it('returns a pendingSmsMessage (does not send) for a prompt SMS template', async () => {
+        smsTemplates.resolveForStage.mockResolvedValue({ id: 'sms-t1', body: 'b', triggerMode: 'prompt' });
+
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(r.pendingSmsMessage).toEqual({ templateId: 'sms-t1', body: 'b' });
+        expect(candidateSms.sendSms).not.toHaveBeenCalled();
+      });
+
+      it('does nothing SMS-wise when no SMS template resolves', async () => {
+        smsTemplates.resolveForStage.mockResolvedValue(null);
+
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(r.pendingSmsMessage).toBeUndefined();
+        expect(candidateSms.sendSms).not.toHaveBeenCalled();
+      });
+
+      it('returns BOTH pendingMessage and pendingSmsMessage when email and SMS both prompt on the same move', async () => {
+        templates.resolveForStage.mockResolvedValue({ id: 'e1', subject: 's', body: 'email body', triggerMode: 'prompt' });
+        smsTemplates.resolveForStage.mockResolvedValue({ id: 'sms-t1', body: 'sms body', triggerMode: 'prompt' });
+
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(r.pendingMessage).toEqual({ templateId: 'e1', subject: 's', body: 'email body' });
+        expect(r.pendingSmsMessage).toEqual({ templateId: 'sms-t1', body: 'sms body' });
+        expect(messages.sendMessage).not.toHaveBeenCalled();
+        expect(candidateSms.sendSms).not.toHaveBeenCalled();
+      });
+
+      it('still returns the moved entry (and any resolved email pendingMessage) when the SMS resolution throws', async () => {
+        templates.resolveForStage.mockResolvedValue({ id: 'e1', subject: 's', body: 'email body', triggerMode: 'prompt' });
+        smsTemplates.resolveForStage.mockRejectedValue(new Error('sms pool exhausted'));
+
+        const result = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(result.entry).toEqual({ id: 'entry-1', statusId: 'st-offer' });
+        expect(result.pendingMessage).toEqual({ templateId: 'e1', subject: 's', body: 'email body' });
+        expect(result.pendingSmsMessage).toBeUndefined();
+      });
+
+      it('WhatsApp auto-sends when the target stage resolves an auto template', async () => {
+        whatsappTemplates.resolveForStage.mockResolvedValue({ id: 'wt1', body: 'wb', triggerMode: 'auto' });
+
+        const result = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(whatsappTemplates.resolveForStage).toHaveBeenCalledWith(context, 'stage-offer');
+        expect(candidateWhatsapp.sendWhatsapp).toHaveBeenCalledWith(context, null, 'entry-1', { templateId: 'wt1', body: 'wb', source: 'stage_auto' });
+        expect(result.pendingWhatsappMessage).toBeUndefined();
+      });
+
+      it('WhatsApp returns a pendingWhatsappMessage (does not send) for a prompt template', async () => {
+        whatsappTemplates.resolveForStage.mockResolvedValue({ id: 'wt1', body: 'wb', triggerMode: 'prompt' });
+
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(r.pendingWhatsappMessage).toMatchObject({ templateId: 'wt1', body: 'wb' });
+        expect(candidateWhatsapp.sendWhatsapp).not.toHaveBeenCalled();
+      });
+
+      it('WhatsApp does nothing when no template resolves', async () => {
+        whatsappTemplates.resolveForStage.mockResolvedValue(null);
+
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(r.pendingWhatsappMessage).toBeUndefined();
+        expect(candidateWhatsapp.sendWhatsapp).not.toHaveBeenCalled();
+      });
+
+      it('returns BOTH pendingMessage and pendingWhatsappMessage when both channels resolve to prompt', async () => {
+        templates.resolveForStage.mockResolvedValue({ id: 't1', subject: 's', body: 'b', triggerMode: 'prompt' });
+        whatsappTemplates.resolveForStage.mockResolvedValue({ id: 'wt1', body: 'wb', triggerMode: 'prompt' });
+
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(r.pendingMessage).toMatchObject({ templateId: 't1', subject: 's', body: 'b' });
+        expect(r.pendingWhatsappMessage).toMatchObject({ templateId: 'wt1', body: 'wb' });
+        expect(messages.sendMessage).not.toHaveBeenCalled();
+        expect(candidateWhatsapp.sendWhatsapp).not.toHaveBeenCalled();
+      });
+
+      it('still returns the moved entry (and the resolved email pendingMessage) when the WhatsApp resolution throws', async () => {
+        templates.resolveForStage.mockResolvedValue({ id: 't1', subject: 's', body: 'b', triggerMode: 'prompt' });
+        whatsappTemplates.resolveForStage.mockRejectedValue(new Error('wa pool exhausted'));
+
+        const result = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(result.entry).toEqual({ id: 'entry-1', statusId: 'st-offer' });
+        expect(result.pendingMessage).toMatchObject({ templateId: 't1', subject: 's', body: 'b' });
+        expect(result.pendingWhatsappMessage).toBeUndefined();
+      });
     });
 
     it('recomputes the candidate global stage once after a status change', async () => {
@@ -2110,6 +2361,7 @@ describe('PipelineService', () => {
         jobExam: { findMany: jest.fn().mockResolvedValue([]) },
         customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) },
         customFieldValue: { findMany: jest.fn().mockResolvedValue([]) },
+        jobBoardPublication: { findMany: jest.fn().mockResolvedValue([]) },
       };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
       fieldPerms.getHiddenFields.mockResolvedValue(new Set(['salaryMin', 'salaryMax', 'salaryCurrency', 'headcount']));
@@ -2128,6 +2380,7 @@ describe('PipelineService', () => {
         jobExam: { findMany: jest.fn().mockResolvedValue([]) },
         customFieldDefinition: { findMany: jest.fn().mockResolvedValue([]) },
         customFieldValue: { findMany: jest.fn().mockResolvedValue([]) },
+        jobBoardPublication: { findMany: jest.fn().mockResolvedValue([]) },
       };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
       fieldPerms.getHiddenFields.mockResolvedValue(new Set());

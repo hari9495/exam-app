@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiKeyAuthGuard } from './api-key-auth.guard';
 import { PublicApiThrottlerGuard } from './public-api-throttler.guard';
@@ -8,9 +8,11 @@ import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { TenantContext } from '@exam-platform/shared';
 import { PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
 import { SkipGlobalThrottle } from '../fail-open-throttler.guard';
+import { ApiUsageInterceptor } from '../api-usage/api-usage.interceptor';
 
 @Controller('public/exams')
 @UseGuards(ApiKeyAuthGuard, PublicApiThrottlerGuard)
+@UseInterceptors(ApiUsageInterceptor)
 @Throttle(PUBLIC_API_THROTTLE)
 @SkipGlobalThrottle()
 export class PublicExamsController {

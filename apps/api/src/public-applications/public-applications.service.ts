@@ -29,6 +29,27 @@ function parseOptionsJson(optionsJson: string | null): string[] | null {
   }
 }
 
+export interface CareersPageResponse {
+  orgName: string;
+  headline: string | null;
+  intro: string | null;
+  logoUrl: string | null;
+  bannerUrl: string | null;
+  primaryColor: string | null;
+  accentColor: string | null;
+  textColor: string | null;
+  jobs: {
+    applyToken: string;
+    title: string;
+    location: string | null;
+    employmentType: string | null;
+    department: string | null;
+    salaryMin: number | null;
+    salaryMax: number | null;
+    salaryCurrency: string | null;
+  }[];
+}
+
 @Injectable()
 export class PublicApplicationsService {
   // jobs is RLS-protected and there is no org context until the applyToken resolves one. The
@@ -113,24 +134,14 @@ export class PublicApplicationsService {
     };
   }
 
-  // Public jobs feed for aggregators (Indeed-style XML). Every entry is an already-public
-  // (open + publicApplyEnabled) role linking to its own apply page. Global across tenants: these
-  // roles are already individually public, and aggregators filter by company.
-  // ponytail: global feed; if a per-org careers feed is ever needed, key it on a public org slug.
-  async getJobsFeed(): Promise<string> {
+  // Shared by getJobsFeed and getBoardFeed: same select shape in, same Indeed-style XML out.
+  private async renderJobsFeedXml(
+    jobs: {
+      title: string; description: string | null; location: string | null; employmentType: string | null;
+      createdAt: Date; applyToken: string | null; organizationId: string;
+    }[],
+  ): Promise<string> {
     const baseUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
-    const jobs = await this.tenantPrisma.forTenant(
-      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
-      (tx) =>
-        tx.job.findMany({
-          where: { status: 'open', publicApplyEnabled: true, applyToken: { not: null } },
-          select: {
-            title: true, description: true, location: true, employmentType: true,
-            createdAt: true, applyToken: true, organizationId: true,
-          },
-          orderBy: { createdAt: 'desc' },
-        }),
-    );
     // Job has no organization relation navigation; resolve names in one batched query.
     const orgs = await this.prisma.organization.findMany({
       where: { id: { in: [...new Set(jobs.map((j) => j.organizationId))] } },
@@ -154,6 +165,55 @@ export class PublicApplicationsService {
       )
       .join('\n');
     return `<?xml version="1.0" encoding="utf-8"?>\n<source>\n  <publisher>Prudent Hire</publisher>\n${entries}\n</source>\n`;
+  }
+
+  private readonly JOB_FEED_SELECT = {
+    title: true, description: true, location: true, employmentType: true,
+    createdAt: true, applyToken: true, organizationId: true,
+  } as const;
+
+  // Public jobs feed for aggregators (Indeed-style XML). Every entry is an already-public
+  // (open + publicApplyEnabled) role linking to its own apply page. Global across tenants: these
+  // roles are already individually public, and aggregators filter by company.
+  // ponytail: global feed; if a per-org careers feed is ever needed, key it on a public org slug.
+  async getJobsFeed(): Promise<string> {
+    const jobs = await this.tenantPrisma.forTenant(
+      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
+      (tx) =>
+        tx.job.findMany({
+          where: { status: 'open', publicApplyEnabled: true, applyToken: { not: null } },
+          select: this.JOB_FEED_SELECT,
+          orderBy: { createdAt: 'desc' },
+        }),
+    );
+    return this.renderJobsFeedXml(jobs);
+  }
+
+  // Per-board public feed: same XML shape as getJobsFeed, but scoped to one org's board AND
+  // only jobs actually published to THIS board (jobBoardPublications.some), on top of the same
+  // open/publicApplyEnabled/applyToken public-visibility gate.
+  async getBoardFeed(feedToken: string): Promise<string> {
+    const { board, jobs } = await this.tenantPrisma.forTenant(
+      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
+      async (tx) => {
+        const board = await tx.jobBoard.findUnique({ where: { feedToken } });
+        if (!board) return { board: null, jobs: [] };
+        const jobs = await tx.job.findMany({
+          where: {
+            organizationId: board.organizationId,
+            status: 'open',
+            publicApplyEnabled: true,
+            applyToken: { not: null },
+            jobBoardPublications: { some: { jobBoardId: board.id } },
+          },
+          select: this.JOB_FEED_SELECT,
+          orderBy: { createdAt: 'desc' },
+        });
+        return { board, jobs };
+      },
+    );
+    if (!board) throw new NotFoundException('Feed not found');
+    return this.renderJobsFeedXml(jobs);
   }
 
   async apply(applyToken: string, dto: ApplyDto): Promise<{ statusToken: string; portalToken: string }> {
@@ -438,6 +498,54 @@ export class PublicApplicationsService {
       tx.candidate.update({ where: { id: candidate.id }, data: { emailOptedOutAt: optedOut ? new Date() : null } }),
     );
     return { optedOut };
+  }
+
+  // Public, unauthenticated careers page for an org. jobs/organization are RLS tables and there is
+  // no org context until the slug resolves one, so this reads inside the same LOOKUP_ORG bypass as
+  // resolveJob/getJobsFeed. 404 (not a distinguishing error) for both an unknown slug and a known
+  // org that hasn't opted in -- same anti-oracle reasoning as resolveJob's generic message.
+  async getCareers(orgSlug: string): Promise<CareersPageResponse> {
+    const result = await this.tenantPrisma.forTenant(
+      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
+      async (tx) => {
+        const org = await tx.organization.findFirst({
+          where: { slug: orgSlug },
+          select: {
+            id: true, name: true, careersEnabled: true, careersHeadline: true, careersIntro: true,
+            careersBannerPath: true, logoPath: true, primaryColor: true, accentColor: true, textColor: true,
+          },
+        });
+        if (!org || !org.careersEnabled) return null;
+        // The 4-condition filter is load-bearing: listOnCareers alone must never surface a job
+        // that isn't also open + publicApplyEnabled + has a live apply link.
+        const jobs = await tx.job.findMany({
+          where: { organizationId: org.id, status: 'open', publicApplyEnabled: true, listOnCareers: true, applyToken: { not: null } },
+          select: {
+            applyToken: true, title: true, location: true, employmentType: true, department: true,
+            salaryMin: true, salaryMax: true, salaryCurrency: true, createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        return { org, jobs };
+      },
+    );
+    if (!result) throw new NotFoundException('Careers page not found');
+    const { org, jobs } = result;
+    return {
+      orgName: org.name,
+      headline: org.careersHeadline ?? null,
+      intro: org.careersIntro ?? null,
+      logoUrl: org.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
+      bannerUrl: org.careersBannerPath ? ((await this.blobStorage.signIfOurs(org.careersBannerPath)) as string | null) : null,
+      primaryColor: org.primaryColor ?? null,
+      accentColor: org.accentColor ?? null,
+      textColor: org.textColor ?? null,
+      jobs: jobs.map((j) => ({
+        applyToken: j.applyToken as string,
+        title: j.title, location: j.location, employmentType: j.employmentType, department: j.department,
+        salaryMin: j.salaryMin, salaryMax: j.salaryMax, salaryCurrency: j.salaryCurrency,
+      })),
+    };
   }
 
   async getApplicationStatus(statusToken: string) {

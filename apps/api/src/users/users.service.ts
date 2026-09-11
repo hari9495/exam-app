@@ -47,6 +47,7 @@ const SAFE_USER_SELECT = {
   role: true,
   status: true,
   managerId: true,
+  permissionProfileId: true,
   lastLoginAt: true,
   createdAt: true,
   timeZone: true,
@@ -300,12 +301,25 @@ export class UsersService {
       if (target.role === 'super_admin') {
         throw new ForbiddenException('Cannot modify a platform administrator');
       }
+      // A non-null profile id must resolve inside the caller's own org -- without this check
+      // an org admin could assign a teammate a profile (and its permissions) belonging to a
+      // different tenant, which forTenant's RLS scoping alone would not catch here since we're
+      // validating an arbitrary caller-supplied id, not a row already scoped by a where clause.
+      if (dto.permissionProfileId !== undefined && dto.permissionProfileId !== null) {
+        const profile = await tx.permissionProfile.findFirst({
+          where: { id: dto.permissionProfileId, organizationId: context.organizationId as string },
+        });
+        if (!profile) {
+          throw new NotFoundException('Permission profile not found');
+        }
+      }
       const updated = await tx.user.update({
         where: { id: targetUserId },
         data: {
           ...(dto.role !== undefined ? { role: dto.role } : {}),
           ...(dto.name !== undefined ? { name: dto.name } : {}),
           ...(dto.managerId !== undefined ? { managerId: dto.managerId } : {}),
+          ...(dto.permissionProfileId !== undefined ? { permissionProfileId: dto.permissionProfileId } : {}),
         },
         select: SAFE_USER_SELECT,
       });
@@ -315,6 +329,15 @@ export class UsersService {
         entityType: 'user',
         entityId: targetUserId,
       });
+      if (dto.permissionProfileId !== undefined) {
+        await this.audit.record(context, {
+          actorUserId,
+          action: 'user.permission_profile_assigned',
+          entityType: 'user',
+          entityId: targetUserId,
+          metadata: { permissionProfileId: dto.permissionProfileId },
+        });
+      }
       return updated;
     });
   }

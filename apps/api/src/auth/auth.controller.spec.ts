@@ -40,7 +40,7 @@ describe('AuthController.ssoExchange', () => {
 
     expect(result).toEqual({ accessToken: 'access-1' });
     expect(tenantPrisma.forTenant).toHaveBeenCalledWith({ organizationId: null, isSuperAdmin: true }, expect.any(Function));
-    expect(authService.issueTokensForSso).toHaveBeenCalledWith('user-1', 'org-1', 'recruiter');
+    expect(authService.issueTokensForSso).toHaveBeenCalledWith('user-1', 'org-1', 'recruiter', null);
     expect(prisma.ssoLoginCode.delete).toHaveBeenCalledWith({ where: { id: 'code-row-1' } });
     // secure: true is the assertion that matters. This previously pinned `secure: false` --
     // the value that shipped a session cookie without the Secure flag to production.

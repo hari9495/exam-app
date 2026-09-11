@@ -24,12 +24,17 @@ import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
 import { useUserGroupDirectory } from '../../../../lib/hooks/useUserGroups';
 import { mentionRecipients } from '../../../../lib/mentionRecipients';
 import { useCandidateMessages, useResendMessage } from '../../../../lib/hooks/useCandidateMessages';
+import { useCandidateSmsMessages, useResendSms, useSetSmsOptOut, useCandidateContactInfo } from '../../../../lib/hooks/useCandidateSms';
+import { useCandidateWhatsapp, useResendWhatsapp, useSetCandidateWhatsappOptOut } from '../../../../lib/hooks/useCandidateWhatsapp';
+import { useCandidates } from '../../../../lib/hooks/useCandidates';
 import { useCandidateOffers, useWithdrawOffer, useSendOffer, useSubmitOffer, useCancelOffer } from '../../../../lib/hooks/useOffers';
 import { useApprovalGateStatus } from '../../../../lib/hooks/useApprovals';
 import { useCandidateInterviews, useCancelInterview } from '../../../../lib/hooks/useInterviews';
 import { BoardEntryRow, EntryExamResult, CandidateProfile, Offer, OfferStatus, Interview, InterviewStatus, PipelineStageConfig } from '../../../../lib/types';
 import { collectChecklistItems } from '../../../../lib/blueprintChecklist';
 import { SendMessageModal } from './SendMessageModal';
+import { SendSmsModal } from './SendSmsModal';
+import { SendWhatsappModal } from './SendWhatsappModal';
 import { CreateOfferModal } from './CreateOfferModal';
 import { ScheduleInterviewModal } from './ScheduleInterviewModal';
 
@@ -266,6 +271,163 @@ function MessagesSection({ entryId, candidateId, candidateName }: { entryId: str
         </ul>
       )}
       {composing && <SendMessageModal entryId={entryId} candidateId={candidateId} candidateName={candidateName} onClose={() => setComposing(false)} />}
+    </div>
+  );
+}
+
+// SMS counterpart of MessagesSection (Zoho #16) -- history + Send-SMS + opt-out toggle. The
+// Send-SMS control is disabled with a hint when the candidate has no phone or is opted out;
+// there's no per-candidate GET returning those, so useCandidateContactInfo does a best-effort
+// lookup (mirrors the email side's tolerance of a 403 from a role without candidate:manage --
+// see SendMessageModal's integrationsLoaded banner). Unknown (still loading, or the lookup
+// failed/403'd) never blocks sending -- the server still enforces both gates authoritatively.
+function SmsSection({ entryId, candidateId, candidateName, candidateEmail }: { entryId: string; candidateId: string; candidateName: string; candidateEmail: string | null }) {
+  const { data: messages, isLoading } = useCandidateSmsMessages(candidateId);
+  const resendSms = useResendSms(candidateId);
+  const setSmsOptOut = useSetSmsOptOut(candidateId);
+  const { data: contactInfo } = useCandidateContactInfo(candidateId, candidateEmail);
+  const { toast } = useToast();
+  const [composing, setComposing] = useState(false);
+
+  const hasPhone = contactInfo ? Boolean(contactInfo.phone) : true;
+  const optedOut = Boolean(contactInfo?.smsOptedOutAt);
+  const sendDisabled = !hasPhone || optedOut;
+  const sendHint = !hasPhone ? 'No phone number on file.' : optedOut ? 'Candidate has opted out of SMS.' : null;
+
+  function handleResend(smsId: string) {
+    resendSms.mutate(smsId, {
+      onSuccess: () => toast('SMS resent.'),
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to resend SMS.', 'error'),
+    });
+  }
+
+  function handleToggleOptOut() {
+    setSmsOptOut.mutate(!optedOut, {
+      onSuccess: () => toast(optedOut ? 'Candidate opted back in to SMS.' : 'Candidate opted out of SMS.'),
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to update SMS opt-out.', 'error'),
+    });
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
+        <h3 style={{ ...sectionH, margin: 0 }}>SMS</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: muted, cursor: 'pointer' }}>
+            <input type="checkbox" checked={optedOut} disabled={setSmsOptOut.isPending} onChange={handleToggleOptOut} />
+            Opted out
+          </label>
+          <button type="button" onClick={() => setComposing(true)} disabled={sendDisabled} title={sendHint ?? undefined} className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: sendDisabled ? 0.5 : 1 }}>Send SMS</button>
+        </div>
+      </div>
+      {sendHint && <p style={{ fontSize: 12, color: muted, margin: '0 0 8px' }}>{sendHint}</p>}
+      {isLoading ? (
+        <p style={{ fontSize: 13, color: muted, margin: 0 }}>Loading…</p>
+      ) : (messages ?? []).length === 0 ? (
+        <p style={{ fontSize: 13, color: muted, margin: 0 }}>No SMS sent yet.</p>
+      ) : (
+        <ul style={{ display: 'flex', flexDirection: 'column', gap: 8, listStyle: 'none', padding: 0, margin: 0 }}>
+          {(messages ?? []).map((message) => (
+            <li key={message.id} style={listItem}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <span style={{ fontSize: 13, color: ink }}>{message.renderedBody}</span>
+                <Pill c={message.status === 'sent' ? STATUS.ok : STATUS.bad} label={message.status} />
+              </div>
+              <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12, color: muted }}>
+                <span>{new Date(message.createdAt).toLocaleString()}</span>
+                {message.status === 'failed' && (
+                  <button type="button" onClick={() => handleResend(message.id)} disabled={resendSms.isPending} style={{ ...linkBtn, opacity: resendSms.isPending ? 0.5 : 1 }}>Resend</button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {composing && <SendSmsModal entryId={entryId} candidateId={candidateId} candidateName={candidateName} onClose={() => setComposing(false)} />}
+    </div>
+  );
+}
+
+// No dedicated "get one candidate" endpoint exists (only the paginated /candidates list), so this
+// reuses that list's search-by-email to learn phone/opt-out state for the disabled-hint below.
+// ponytail: substring search, not an exact-id lookup -- fine for a hint, not a security gate (the
+// server re-checks phone/opt-out on every actual send). Falls back to "unknown" (hint suppressed,
+// action left enabled) when the candidate has no email or the lookup 403s for this role.
+function useCandidateContact(candidateId: string, candidateEmail: string | null) {
+  const { data } = useCandidates({ search: candidateEmail ?? undefined, pageSize: 25 });
+  return candidateEmail ? data?.data.find((c) => c.id === candidateId) : undefined;
+}
+
+function WhatsappSection({ entryId, candidateId, candidateName, candidateEmail }: { entryId: string; candidateId: string; candidateName: string; candidateEmail: string | null }) {
+  const { data: messages, isLoading } = useCandidateWhatsapp(candidateId);
+  const resendWhatsapp = useResendWhatsapp(candidateId);
+  const setOptOut = useSetCandidateWhatsappOptOut();
+  const contact = useCandidateContact(candidateId, candidateEmail);
+  const { toast } = useToast();
+  const [composing, setComposing] = useState(false);
+
+  const knownContact = Boolean(contact);
+  const hasPhone = Boolean(contact?.phone?.trim());
+  const optedOut = Boolean(contact?.whatsappOptedOutAt);
+  const disabledReason = !knownContact ? null : optedOut ? 'Candidate opted out of WhatsApp.' : !hasPhone ? 'No phone number on file.' : null;
+
+  function handleResend(messageId: string) {
+    resendWhatsapp.mutate(messageId, {
+      onSuccess: () => toast('WhatsApp message resent.'),
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to resend WhatsApp message.', 'error'),
+    });
+  }
+  function handleToggleOptOut(next: boolean) {
+    setOptOut.mutate({ id: candidateId, optedOut: next }, {
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to update WhatsApp opt-out.', 'error'),
+    });
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
+        <h3 style={{ ...sectionH, margin: 0 }}>WhatsApp</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: muted, cursor: knownContact ? 'pointer' : 'not-allowed' }}>
+            <input type="checkbox" checked={optedOut} disabled={setOptOut.isPending || !knownContact} onChange={(e) => handleToggleOptOut(e.target.checked)} />
+            Opted out
+          </label>
+          <button
+            type="button"
+            onClick={() => setComposing(true)}
+            disabled={Boolean(disabledReason)}
+            title={disabledReason ?? undefined}
+            className="v2-hoverbtn"
+            style={{ ...dt.toolBtn, opacity: disabledReason ? 0.5 : 1, cursor: disabledReason ? 'not-allowed' : 'pointer' }}
+          >
+            Send WhatsApp
+          </button>
+        </div>
+      </div>
+      {disabledReason && <p style={{ fontSize: 12, color: muted, margin: '0 0 8px' }}>{disabledReason}</p>}
+      {isLoading ? (
+        <p style={{ fontSize: 13, color: muted, margin: 0 }}>Loading…</p>
+      ) : (messages ?? []).length === 0 ? (
+        <p style={{ fontSize: 13, color: muted, margin: 0 }}>No WhatsApp messages sent yet.</p>
+      ) : (
+        <ul style={{ display: 'flex', flexDirection: 'column', gap: 8, listStyle: 'none', padding: 0, margin: 0 }}>
+          {(messages ?? []).map((message) => (
+            <li key={message.id} style={listItem}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <span style={{ fontSize: 13, color: ink }}>{message.renderedBody}</span>
+                <Pill c={message.status === 'sent' ? STATUS.ok : STATUS.bad} label={message.status} />
+              </div>
+              <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12, color: muted }}>
+                <span>{new Date(message.createdAt).toLocaleString()}</span>
+                {message.status === 'failed' && (
+                  <button type="button" onClick={() => handleResend(message.id)} disabled={resendWhatsapp.isPending} style={{ ...linkBtn, opacity: resendWhatsapp.isPending ? 0.5 : 1 }}>Resend</button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {composing && <SendWhatsappModal entryId={entryId} candidateId={candidateId} candidateName={candidateName} onClose={() => setComposing(false)} />}
     </div>
   );
 }
@@ -690,6 +852,8 @@ export function CandidateDrawer({ jobId, row, stages, onClose }: { jobId: string
         </div>
 
         <div style={card}><MessagesSection entryId={row.entryId} candidateId={row.candidateId} candidateName={row.candidateName} /></div>
+        <div style={card}><SmsSection entryId={row.entryId} candidateId={row.candidateId} candidateName={row.candidateName} candidateEmail={row.candidateEmail} /></div>
+        <div style={card}><WhatsappSection entryId={row.entryId} candidateId={row.candidateId} candidateName={row.candidateName} candidateEmail={row.candidateEmail} /></div>
         <div style={card}><OffersSection entryId={row.entryId} candidateId={row.candidateId} /></div>
         <div style={card}><InterviewsSection entryId={row.entryId} candidateId={row.candidateId} /></div>
       </div>
