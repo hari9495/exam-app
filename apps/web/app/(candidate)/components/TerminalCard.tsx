@@ -31,7 +31,7 @@ interface TerminalCardProps {
 export function TerminalCard({ tone, title, body, children }: TerminalCardProps) {
   return (
     <div className="flex flex-1 items-center justify-center px-8 pb-32 pt-8">
-      <div className="w-full max-w-sm rounded-lg border border-candidate-border bg-white p-6 text-center">
+      <div className="candidate-rise w-full max-w-sm rounded-lg border border-candidate-border bg-white p-6 text-center shadow-[0_1px_2px_rgba(16,24,40,0.04),0_10px_28px_-18px_rgba(16,24,40,0.20)]">
         <div className={clsx('mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full', ICON_CLASSES[tone])}>
           <ToneIcon tone={tone} />
         </div>
