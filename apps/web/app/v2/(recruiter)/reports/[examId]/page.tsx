@@ -9,18 +9,32 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Users, CheckCircle2, Target, BarChart3, ListFilter, Check } from 'lucide-react';
+import { ListFilter, Check } from 'lucide-react';
 import { useExam, useExams } from '../../../../../lib/hooks/useExams';
 import { useResultsSummary, useQuestionAccuracy, useResultsList, useResultsExport } from '../../../../../lib/hooks/usePanelReports';
 import { RESULT_STATUS_LABEL, RESULT_STATUS_TONE } from '../../../../../lib/candidate-status';
 import { ExamResultRow } from '../../../../../lib/types';
 import { IntegrityBadge, useToast } from '../../../../../components/ui';
 import { QuestionAccuracyPanel } from '../../../../../components/QuestionAccuracyPanel';
-import { DataTable, DT_FEATURES, dt, SortHead, Pill, Cb, Tabs, Combobox, IconStatCard, Dropdown, DropdownItem } from '../../../../../components/ui-v2';
+import { DataTable, DT_FEATURES, dt, SortHead, Pill, Cb, Tabs, Combobox, Dropdown, DropdownItem } from '../../../../../components/ui-v2';
 import { STATUS, VIZ, rateColor } from '../../../../../components/ui-v2/viz';
 
 const TONE_COLOR: Record<string, string> = { success: STATUS.ok, danger: STATUS.bad, warning: STATUS.warn, info: VIZ.azure, purple: VIZ.violet, neutral: 'var(--muted)' };
 const PASS_FAIL_COLOR: Record<string, string> = { pass: STATUS.ok, fail: STATUS.bad };
+
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
+
+// Demoted summary metric for the quiet strip (Workfox rule 4/8): label + tabular number, no rainbow
+// icon stat tiles. `color` carries meaning where it does (pass/avg rate via rateColor); the two
+// counts stay neutral ink.
+function QuietStat({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div style={{ padding: '14px 18px', minWidth: 0 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)' }}>{label}</div>
+      <div className="v2-mono" style={{ fontSize: 24, fontWeight: 600, color: color ?? 'var(--ink)', marginTop: 6 }}>{value}</div>
+    </div>
+  );
+}
 
 const STATUS_FILTER_OPTIONS = [{ value: 'all', label: 'All statuses' }, ...Object.entries(RESULT_STATUS_LABEL).map(([value, label]) => ({ value, label }))];
 const INTEGRITY_FILTER_OPTIONS = [
@@ -110,11 +124,11 @@ export default function V2ExamReportPage() {
       {summaryLoading ? (
         <p style={{ marginBottom: 16, fontSize: 13, color: 'var(--muted)' }}>Loading summary…</p>
       ) : summary ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14, marginBottom: 20 }}>
-          <IconStatCard title="Total candidates" value={summary.totalCandidates} icon={<Users size={20} />} accent={VIZ.azure} />
-          <IconStatCard title="Settled" value={summary.settledCount} icon={<CheckCircle2 size={20} />} accent={VIZ.teal} />
-          <IconStatCard title="Pass rate" value={`${summary.passRate.toFixed(1)}%`} icon={<Target size={20} />} accent={rateColor(summary.passRate)} />
-          <IconStatCard title="Average score" value={`${summary.averagePercentage.toFixed(1)}%`} icon={<BarChart3 size={20} />} accent={rateColor(summary.averagePercentage)} />
+        <div style={{ ...card, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 20 }} className="wf-hero-kpis">
+          <QuietStat label="Total candidates" value={String(summary.totalCandidates)} />
+          <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Settled" value={String(summary.settledCount)} /></div>
+          <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Pass rate" value={`${summary.passRate.toFixed(1)}%`} color={rateColor(summary.passRate)} /></div>
+          <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Average score" value={`${summary.averagePercentage.toFixed(1)}%`} color={rateColor(summary.averagePercentage)} /></div>
         </div>
       ) : null}
 
