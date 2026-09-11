@@ -22,6 +22,7 @@ import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
 import { ApiUsageQueryDto } from './dto/api-usage-query.dto';
 import { UpdateCareersDto } from './dto/update-careers.dto';
 import { UpdateSmsConfigDto } from './dto/update-sms-config.dto';
+import { listSmsProviders } from '../sms/providers';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 
 @Controller('organizations')
@@ -110,6 +111,14 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   putSmsConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateSmsConfigDto) {
     return this.organizationsService.putSmsConfig(tenant, userId, dto);
+  }
+
+  // Provider catalog for the config UI: metadata only (id/label/configFields), no
+  // secrets -- lets the web render the right fields per provider.
+  @Get('sms-providers')
+  @RequirePermissions('org:manage_settings')
+  getSmsProviders() {
+    return listSmsProviders().map(({ id, label, configFields }) => ({ id, label, configFields }));
   }
 
   @Patch('integrations/webhook')

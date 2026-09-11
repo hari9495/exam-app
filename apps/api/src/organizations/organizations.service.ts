@@ -24,6 +24,7 @@ import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
 import { UpdateCareersDto } from './dto/update-careers.dto';
 import { UpdateSmsConfigDto } from './dto/update-sms-config.dto';
+import { getSmsProvider } from '../sms/providers';
 import { BusinessHours, Holiday } from '@exam-platform/shared';
 
 export interface BrandingResponse {
@@ -98,11 +99,14 @@ export interface PipelineSettingsResponse {
 
 export interface SmsConfigResponse {
   smsEnabled: boolean;
-  smsAccountSid: string | null;
-  smsFromNumber: string | null;
-  // True only once accountSid + the encrypted token + fromNumber are all present.
-  // NEVER add the token/ciphertext itself to this shape -- mirror smtpConfigured.
+  smsProvider: string;
+  // True only once a config blob is stored AND it passes the selected adapter's
+  // validateConfig. NEVER add the encrypted blob or any secret field to this shape.
   configured: boolean;
+  // The decrypted config blob with every secret:true field (per the adapter's
+  // configFields) stripped out -- non-secret fields (from/url/bodyTemplate) pre-fill
+  // the edit form; secret fields (authToken/authHeader) are NEVER returned.
+  config: Record<string, unknown>;
 }
 
 export interface BusinessHoursResponse {
@@ -620,34 +624,94 @@ export class OrganizationsService {
     return { aiKeyConfigured: true };
   }
 
+  // Decrypts+parses the stored SMS config blob. Guards both a missing blob and a
+  // malformed one (never lets a decrypt/parse failure surface as an error) -- an
+  // unreadable blob is treated the same as no config at all.
+  private decryptSmsConfig(encrypted: string | null | undefined): Record<string, unknown> {
+    if (!encrypted) {
+      return {};
+    }
+    try {
+      const parsed: unknown = JSON.parse(this.cryptoService.decrypt(encrypted));
+      return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  }
+
   async getSmsConfig(context: TenantContext): Promise<SmsConfigResponse> {
     const organizationId = this.requireOrganizationId(context);
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { smsEnabled: true, smsAccountSid: true, smsAuthTokenEncrypted: true, smsFromNumber: true },
+      select: { smsEnabled: true, smsProvider: true, smsConfigEncrypted: true },
     });
-    return {
-      smsEnabled: org?.smsEnabled ?? false,
-      smsAccountSid: org?.smsAccountSid ?? null,
-      smsFromNumber: org?.smsFromNumber ?? null,
-      configured: Boolean(org?.smsAccountSid && org?.smsAuthTokenEncrypted && org?.smsFromNumber),
-    };
+    const smsProvider = org?.smsProvider ?? 'twilio';
+    const adapter = getSmsProvider(smsProvider);
+    const raw = this.decryptSmsConfig(org?.smsConfigEncrypted);
+
+    // Unknown provider (e.g. stored id no longer registered): we can't know which
+    // fields of an unrecognized shape are secret, so return nothing rather than
+    // risk leaking one.
+    if (!adapter) {
+      return { smsEnabled: org?.smsEnabled ?? false, smsProvider, configured: false, config: {} };
+    }
+
+    const secretKeys = new Set(adapter.configFields.filter((f) => f.secret).map((f) => f.key));
+    const config = Object.fromEntries(Object.entries(raw).filter(([key]) => !secretKeys.has(key)));
+
+    let configured = false;
+    if (org?.smsConfigEncrypted) {
+      try {
+        adapter.validateConfig(raw);
+        configured = true;
+      } catch {
+        configured = false;
+      }
+    }
+
+    return { smsEnabled: org?.smsEnabled ?? false, smsProvider, configured, config };
   }
 
   async putSmsConfig(context: TenantContext, actorUserId: string, dto: UpdateSmsConfigDto): Promise<SmsConfigResponse> {
     const organizationId = this.requireOrganizationId(context);
+    const existing = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { smsEnabled: true, smsProvider: true, smsConfigEncrypted: true },
+    });
 
-    // Mirror updateSmtpSettings's write-only-secret rule: a non-blank token is
-    // encrypted and stored; omitted/blank/whitespace leaves the existing
-    // encrypted token untouched rather than clearing or overwriting it with ''.
-    const trimmedToken = dto.smsAuthToken?.trim();
+    const provider = dto.smsProvider ?? existing?.smsProvider ?? 'twilio';
+    const adapter = getSmsProvider(provider);
+    if (!adapter) {
+      throw new BadRequestException(`Unknown SMS provider: ${provider}`);
+    }
+
+    // Switching provider starts from a blank config for the new provider -- fields
+    // from the old provider's blob (even same-named ones) are never carried over.
+    const providerChanged = dto.smsProvider != null && dto.smsProvider !== existing?.smsProvider;
+    const existingCfg = providerChanged ? {} : this.decryptSmsConfig(existing?.smsConfigEncrypted);
+
+    const merged: Record<string, unknown> = { ...existingCfg, ...(dto.config ?? {}) };
+    for (const field of adapter.configFields) {
+      if (!field.secret) {
+        continue;
+      }
+      const incoming = dto.config?.[field.key];
+      const isBlank = incoming === undefined || incoming === null || (typeof incoming === 'string' && incoming.trim() === '');
+      if (isBlank) {
+        // Write-only secret pattern (mirrors SMTP): omitted/blank keeps whatever
+        // was already stored for this provider rather than clearing it.
+        merged[field.key] = existingCfg[field.key];
+      }
+    }
+
+    adapter.validateConfig(merged);
+
     await this.prisma.organization.update({
       where: { id: organizationId },
       data: {
-        ...(dto.smsEnabled !== undefined ? { smsEnabled: dto.smsEnabled } : {}),
-        ...(dto.smsAccountSid !== undefined ? { smsAccountSid: dto.smsAccountSid } : {}),
-        ...(dto.smsFromNumber !== undefined ? { smsFromNumber: dto.smsFromNumber } : {}),
-        ...(trimmedToken ? { smsAuthTokenEncrypted: this.cryptoService.encrypt(trimmedToken) } : {}),
+        smsProvider: provider,
+        smsConfigEncrypted: this.cryptoService.encrypt(JSON.stringify(merged)),
+        smsEnabled: dto.smsEnabled ?? existing?.smsEnabled ?? false,
       },
     });
     await this.audit.record(context, {

@@ -1177,37 +1177,91 @@ describe('OrganizationsService', () => {
   });
 
   describe('getSmsConfig', () => {
-    it('reports unconfigured with no token/accountSid/fromNumber set', async () => {
+    it('returns {config:{}, configured:false} when no config blob is stored', async () => {
       prisma.organization.findUnique.mockResolvedValue({
-        smsEnabled: false, smsAccountSid: null, smsAuthTokenEncrypted: null, smsFromNumber: null,
+        smsEnabled: false, smsProvider: 'twilio', smsConfigEncrypted: null,
       });
 
       const result = await service.getSmsConfig({ organizationId: 'org-1', isSuperAdmin: false });
 
-      expect(result).toEqual({ smsEnabled: false, smsAccountSid: null, smsFromNumber: null, configured: false });
+      expect(result).toEqual({ smsEnabled: false, smsProvider: 'twilio', configured: false, config: {} });
+      expect(cryptoService.decrypt).not.toHaveBeenCalled();
     });
 
-    it('reports configured true and the non-secret fields once accountSid+token+fromNumber are all set, and NEVER returns the token', async () => {
+    it('strips the twilio secret field (authToken) but keeps non-secret fields (accountSid, from), and NEVER leaks the token', async () => {
+      cryptoService.decrypt.mockReturnValue(
+        JSON.stringify({ accountSid: 'AC123', authToken: 'super-secret-token', from: '+15551234567' }),
+      );
       prisma.organization.findUnique.mockResolvedValue({
-        smsEnabled: true, smsAccountSid: 'AC123', smsAuthTokenEncrypted: 'encrypted-token-blob', smsFromNumber: '+15551234567',
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: 'encrypted-blob',
       });
 
       const result = await service.getSmsConfig({ organizationId: 'org-1', isSuperAdmin: false });
 
-      expect(result).toEqual({ smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567', configured: true });
-      expect(result).not.toHaveProperty('smsAuthToken');
-      expect(result).not.toHaveProperty('smsAuthTokenEncrypted');
-      expect(JSON.stringify(result)).not.toContain('encrypted-token-blob');
+      expect(result).toEqual({
+        smsEnabled: true,
+        smsProvider: 'twilio',
+        configured: true,
+        config: { accountSid: 'AC123', from: '+15551234567' },
+      });
+      expect(result.config).not.toHaveProperty('authToken');
+      expect(JSON.stringify(result)).not.toContain('super-secret-token');
     });
 
-    it('reports configured false when any one of accountSid/token/fromNumber is missing', async () => {
+    it('strips the http secret field (authHeader) but keeps non-secret fields (url, bodyTemplate), and NEVER leaks the header', async () => {
+      cryptoService.decrypt.mockReturnValue(
+        JSON.stringify({
+          url: 'https://example.com/sms',
+          authHeader: 'Bearer super-secret-header',
+          bodyTemplate: '{"to":"{{to}}","body":"{{body}}"}',
+        }),
+      );
       prisma.organization.findUnique.mockResolvedValue({
-        smsEnabled: true, smsAccountSid: 'AC123', smsAuthTokenEncrypted: null, smsFromNumber: '+15551234567',
+        smsEnabled: true, smsProvider: 'http', smsConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getSmsConfig({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result.smsProvider).toBe('http');
+      expect(result.configured).toBe(true);
+      expect(result.config).toEqual({
+        url: 'https://example.com/sms',
+        bodyTemplate: '{"to":"{{to}}","body":"{{body}}"}',
+      });
+      expect(result.config).not.toHaveProperty('authHeader');
+      expect(JSON.stringify(result)).not.toContain('super-secret-header');
+    });
+
+    it('reports configured false when the stored config fails the adapter\'s validateConfig', async () => {
+      cryptoService.decrypt.mockReturnValue(JSON.stringify({ accountSid: 'AC123' })); // missing authToken/from
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: 'encrypted-blob',
       });
 
       const result = await service.getSmsConfig({ organizationId: 'org-1', isSuperAdmin: false });
 
       expect(result.configured).toBe(false);
+    });
+
+    it('returns config:{} for an unrecognized provider id rather than risk leaking an unknown field', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'unknown-vendor', smsConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getSmsConfig({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ smsEnabled: true, smsProvider: 'unknown-vendor', configured: false, config: {} });
+    });
+
+    it('treats a malformed/undecryptable blob as no config rather than throwing', async () => {
+      cryptoService.decrypt.mockReturnValue('not valid json');
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getSmsConfig({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ smsEnabled: true, smsProvider: 'twilio', configured: false, config: {} });
     });
 
     it('throws BadRequestException when the caller has no organization context', async () => {
@@ -1217,73 +1271,156 @@ describe('OrganizationsService', () => {
   });
 
   describe('putSmsConfig', () => {
-    it('encrypts a non-blank token and persists the ciphertext, never the plaintext', async () => {
-      cryptoService.encrypt.mockReturnValue('encrypted-token-blob');
-      prisma.organization.update.mockResolvedValue({});
+    it('merges incoming config over the existing decrypted blob and encrypts the merged JSON', async () => {
+      cryptoService.decrypt.mockReturnValue(
+        JSON.stringify({ accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' }),
+      );
+      cryptoService.encrypt.mockReturnValue('encrypted-merged-blob');
       prisma.organization.findUnique.mockResolvedValue({
-        smsEnabled: true, smsAccountSid: 'AC123', smsAuthTokenEncrypted: 'encrypted-token-blob', smsFromNumber: '+15551234567',
+        smsEnabled: false, smsProvider: 'twilio', smsConfigEncrypted: 'existing-blob',
       });
+      prisma.organization.update.mockResolvedValue({});
 
       const result = await service.putSmsConfig(
         { organizationId: 'org-1', isSuperAdmin: false },
         'user-1',
-        { smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567', smsAuthToken: 'super-secret-token' },
+        { smsEnabled: true, config: { accountSid: 'AC-new', authToken: 'new-secret-token' } },
       );
 
-      expect(cryptoService.encrypt).toHaveBeenCalledWith('super-secret-token');
+      // Non-secret field overwritten, secret field re-encrypted with the new value,
+      // fields absent from the incoming config (from) carried over from existing.
+      expect(cryptoService.encrypt).toHaveBeenCalledWith(
+        JSON.stringify({ accountSid: 'AC-new', authToken: 'new-secret-token', from: '+15550000000' }),
+      );
       expect(prisma.organization.update).toHaveBeenCalledWith({
         where: { id: 'org-1' },
-        data: {
-          smsEnabled: true,
-          smsAccountSid: 'AC123',
-          smsFromNumber: '+15551234567',
-          smsAuthTokenEncrypted: 'encrypted-token-blob',
-        },
+        data: { smsProvider: 'twilio', smsConfigEncrypted: 'encrypted-merged-blob', smsEnabled: true },
       });
-      expect(JSON.stringify(prisma.organization.update.mock.calls[0][0])).not.toContain('super-secret-token');
-      expect(result).toEqual({ smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567', configured: true });
+      expect(JSON.stringify(prisma.organization.update.mock.calls[0][0])).not.toContain('new-secret-token');
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
         { actorUserId: 'user-1', action: 'organization.sms_configured', entityType: 'organization', entityId: 'org-1' },
       );
+      expect(result.configured).toBe(true);
     });
 
-    it('leaves the existing encrypted token untouched when smsAuthToken is omitted', async () => {
-      prisma.organization.update.mockResolvedValue({});
+    it('keeps the existing encrypted secret when the incoming secret field is absent', async () => {
+      cryptoService.decrypt.mockReturnValue(
+        JSON.stringify({ accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' }),
+      );
+      cryptoService.encrypt.mockReturnValue('encrypted-blob');
       prisma.organization.findUnique.mockResolvedValue({
-        smsEnabled: true, smsAccountSid: 'AC123', smsAuthTokenEncrypted: 'previously-stored-blob', smsFromNumber: '+15551234567',
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: 'existing-blob',
       });
+      prisma.organization.update.mockResolvedValue({});
 
       await service.putSmsConfig(
         { organizationId: 'org-1', isSuperAdmin: false },
         'user-1',
-        { smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567' },
+        { config: { accountSid: 'AC-old', from: '+15551234567' } },
       );
 
-      expect(cryptoService.encrypt).not.toHaveBeenCalled();
-      expect(prisma.organization.update).toHaveBeenCalledWith({
-        where: { id: 'org-1' },
-        data: { smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567' },
-      });
+      const encryptedJson = cryptoService.encrypt.mock.calls[0][0];
+      expect(JSON.parse(encryptedJson)).toEqual({ accountSid: 'AC-old', authToken: 'old-token', from: '+15551234567' });
     });
 
-    it('leaves the existing encrypted token untouched when smsAuthToken is blank/whitespace', async () => {
-      prisma.organization.update.mockResolvedValue({});
+    it('keeps the existing encrypted secret when the incoming secret field is blank/whitespace', async () => {
+      cryptoService.decrypt.mockReturnValue(
+        JSON.stringify({ accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' }),
+      );
+      cryptoService.encrypt.mockReturnValue('encrypted-blob');
       prisma.organization.findUnique.mockResolvedValue({
-        smsEnabled: true, smsAccountSid: 'AC123', smsAuthTokenEncrypted: 'previously-stored-blob', smsFromNumber: '+15551234567',
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: 'existing-blob',
       });
+      prisma.organization.update.mockResolvedValue({});
 
       await service.putSmsConfig(
         { organizationId: 'org-1', isSuperAdmin: false },
         'user-1',
-        { smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567', smsAuthToken: '   ' },
+        { config: { accountSid: 'AC-old', authToken: '   ', from: '+15550000000' } },
       );
 
+      const encryptedJson = cryptoService.encrypt.mock.calls[0][0];
+      expect(JSON.parse(encryptedJson).authToken).toBe('old-token');
+    });
+
+    it('rejects an invalid merged config via BadRequestException without persisting anything', async () => {
+      cryptoService.decrypt.mockReturnValue(JSON.stringify({ accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' }));
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: 'existing-blob',
+      });
+
+      await expect(
+        service.putSmsConfig(
+          { organizationId: 'org-1', isSuperAdmin: false },
+          'user-1',
+          { config: { accountSid: '' } },
+        ),
+      ).rejects.toThrow(BadRequestException);
+
       expect(cryptoService.encrypt).not.toHaveBeenCalled();
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unknown provider id via BadRequestException without persisting anything', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: null,
+      });
+
+      await expect(
+        service.putSmsConfig(
+          { organizationId: 'org-1', isSuperAdmin: false },
+          'user-1',
+          { smsProvider: 'unknown-vendor' as any },
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('on provider change, treats incoming config as the full new config (no cross-provider merge) and validates against the new adapter', async () => {
+      // Existing provider is twilio; switching to http. The old twilio blob's
+      // fields must NOT leak into the new http config.
+      cryptoService.decrypt.mockReturnValue(
+        JSON.stringify({ accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' }),
+      );
+      cryptoService.encrypt.mockReturnValue('encrypted-http-blob');
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: 'existing-blob',
+      });
+      prisma.organization.update.mockResolvedValue({});
+
+      await service.putSmsConfig(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        'user-1',
+        {
+          smsProvider: 'http',
+          config: { url: 'https://example.com/sms', bodyTemplate: '{{body}}' },
+        },
+      );
+
+      const encryptedJson = cryptoService.encrypt.mock.calls[0][0];
+      expect(JSON.parse(encryptedJson)).toEqual({ url: 'https://example.com/sms', bodyTemplate: '{{body}}' });
       expect(prisma.organization.update).toHaveBeenCalledWith({
         where: { id: 'org-1' },
-        data: { smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567' },
+        data: { smsProvider: 'http', smsConfigEncrypted: 'encrypted-http-blob', smsEnabled: true },
       });
+    });
+
+    it('rejects a provider-change PUT whose new config is invalid for the new adapter', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsProvider: 'twilio', smsConfigEncrypted: null,
+      });
+
+      await expect(
+        service.putSmsConfig(
+          { organizationId: 'org-1', isSuperAdmin: false },
+          'user-1',
+          { smsProvider: 'http', config: { url: 'http://localhost/sms', bodyTemplate: '{{body}}' } }, // http (not https) + private host
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(prisma.organization.update).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException when the caller has no organization context', async () => {

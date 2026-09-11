@@ -775,12 +775,29 @@ export interface CandidateSmsTemplate {
 }
 
 // GET/PUT /organizations/sms-config -- mirrors apps/api/src/organizations/organizations.service.ts
-// SmsConfigResponse. NEVER carries the auth token -- `configured` is the only signal the token is set.
+// SmsConfigResponse. `config` never carries secret fields (see SmsConfigField.secret below) --
+// `configured` is the only signal a secret is set.
 export interface SmsConfigResponse {
   smsEnabled: boolean;
-  smsAccountSid: string | null;
-  smsFromNumber: string | null;
+  smsProvider: string;
   configured: boolean;
+  config: Record<string, string>;
+}
+
+// GET /organizations/sms-providers -- mirrors apps/api/src/sms/providers/types.ts SmsConfigField
+// and the controller's listSmsProviders() projection (id/label/configFields only, no secrets).
+export interface SmsConfigField {
+  key: string;
+  label: string;
+  secret: boolean;
+  required: boolean;
+  placeholder?: string;
+}
+
+export interface SmsProviderCatalogEntry {
+  id: string;
+  label: string;
+  configFields: SmsConfigField[];
 }
 
 // pending_approval/approved only appear when the org's offer approval chain is enabled (Phase-1

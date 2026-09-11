@@ -73,9 +73,8 @@ model Organization {
   careersIntro           String?           @map("careers_intro") @db.NVarChar(Max)
   careersBannerPath      String?           @map("careers_banner_path")
   smsEnabled             Boolean           @default(false) @map("sms_enabled")
-  smsAccountSid          String?           @map("sms_account_sid")
-  smsAuthTokenEncrypted  String?           @map("sms_auth_token_encrypted")
-  smsFromNumber          String?           @map("sms_from_number")
+  smsProvider            String            @default("twilio") @map("sms_provider")
+  smsConfigEncrypted     String?           @map("sms_config_encrypted") @db.NVarChar(Max)
   users                  User[]
   auditLogs              AuditLog[]
   webhookDeliveries      WebhookDelivery[]
