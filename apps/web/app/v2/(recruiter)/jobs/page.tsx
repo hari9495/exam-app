@@ -132,6 +132,9 @@ export default function V2JobsPage() {
 
   return (
     <>
+      {/* Content-only entrance; the new-job + delete Dialogs stay outside (a .v2-rise transform
+          becomes the containing block for their position:fixed overlays). */}
+      <div className="v2-rise">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
         <div>
           <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Jobs</h1>
@@ -150,6 +153,7 @@ export default function V2JobsPage() {
         isLoading={isLoading} isError={isError} errorMessage="Failed to load jobs." emptyMessage={q ? 'No matches.' : 'No jobs yet.'}
         columnLabels={{ pipeline: 'Pipeline', createdAt: 'Created' }}
       />
+      </div>
 
       <Dialog open={addOpen} onClose={() => setAddOpen(false)} title="New job">
         <form onSubmit={handleCreate}>
