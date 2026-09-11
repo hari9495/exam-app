@@ -162,6 +162,9 @@ export default function V2MessageTemplatesPage() {
 
   return (
     <>
+      {/* Content-only entrance; the edit/create Dialog stays outside (a .v2-rise transform becomes
+          the containing block for its position:fixed overlay). */}
+      <div className="v2-rise">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
         <div>
           <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Message Templates</h1>
@@ -183,6 +186,7 @@ export default function V2MessageTemplatesPage() {
         isLoading={isLoading} isError={isError} errorMessage="Failed to load templates." emptyMessage={q ? 'No matches.' : 'No templates.'}
         columnLabels={{ event: 'Trigger event', mode: 'Trigger mode', enabled: 'Enabled' }}
       />
+      </div>
 
       {editing && <EditTemplateDialog template={editing} pipelines={pipelines ?? []} onClose={() => setEditing(null)} onSaved={() => notify('success', 'Template saved.')} />}
       {creating && <EditTemplateDialog template={BLANK_TEMPLATE} pipelines={pipelines ?? []} isNew onClose={() => setCreating(false)} onSaved={() => notify('success', 'Template created.')} />}
