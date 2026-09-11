@@ -15,7 +15,7 @@ import { DataTable, DT_FEATURES, dt, SortHead, Pill, Dialog } from '../../../../
 import { STATUS, VIZ } from '../../../../../../components/ui-v2/viz';
 
 const backLink: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)', textDecoration: 'none' };
-const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: 20 };
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: 20, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
 const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none' };
 const STATUS_TONE: Record<DriveSessionStatus, { c: string; label: string }> = { scheduled: { c: VIZ.azure, label: 'Scheduled' }, live: { c: STATUS.ok, label: 'Live' }, ended: { c: 'var(--muted)', label: 'Ended' } };
 
@@ -62,6 +62,9 @@ export default function V2GroupDrivesPage() {
 
   return (
     <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+      {/* Content-only entrance; the delete Dialog stays outside (a .v2-rise transform becomes the
+          containing block for its position:fixed overlay). */}
+      <div className="v2-rise">
       <Link href="/v2/walk-in-groups" style={backLink}><ArrowLeft size={15} /> Back to Walk-in Groups</Link>
       <h1 className="v2-title" style={{ fontSize: 22, margin: '10px 0 4px' }}>Drives{group ? ` — ${group.name}` : ''}</h1>
       <p style={{ margin: '0 0 20px', fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5 }}>Schedule a time-boxed hiring drive for this group. Candidates who register while a drive is live are attributed to it.</p>
@@ -78,6 +81,7 @@ export default function V2GroupDrivesPage() {
       </form>
 
       <DataTable columns={columns} data={drives ?? []} getRowId={(d) => d.id} hideToolbar isLoading={isLoading} emptyMessage="No drives scheduled yet." />
+      </div>
 
       <Dialog open={!!pendingDelete} onClose={() => setPendingDelete(null)} title="Delete drive">
         <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5, margin: '0 0 18px' }}>Delete <strong style={{ color: 'var(--ink)' }}>{pendingDelete?.name}</strong>? Registered candidates keep their attempts and revert to plain walk-ins.</p>

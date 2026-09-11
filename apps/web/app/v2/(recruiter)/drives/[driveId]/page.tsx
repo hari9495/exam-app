@@ -29,7 +29,7 @@ export default function V2DrivePage() {
   }, [drive]);
 
   return (
-    <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+    <div className="v2-rise" style={{ maxWidth: 1280, margin: '0 auto' }}>
       <Link href="/v2/walk-in-groups" style={backLink}><ArrowLeft size={15} /> Back to Walk-in Groups</Link>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '10px 0 16px' }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>{drive?.name ?? 'Drive'}</h1>
