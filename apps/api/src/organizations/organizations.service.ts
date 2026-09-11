@@ -25,7 +25,9 @@ import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
 import { UpdateCareersDto } from './dto/update-careers.dto';
 import { UpdateSmsConfigDto } from './dto/update-sms-config.dto';
 import { getSmsProvider } from '../sms/providers';
+import { UpdateWhatsappConfigDto } from './dto/update-whatsapp-config.dto';
 import { BusinessHours, Holiday } from '@exam-platform/shared';
+import { getWhatsappProvider, listWhatsappProviders, WhatsappConfigField } from '../whatsapp/providers';
 
 export interface BrandingResponse {
   // The organisation's own display name. Consumers render this in place of the
@@ -124,6 +126,24 @@ export interface CareersSettingsResponse {
   headline: string | null;
   intro: string | null;
   bannerUrl: string | null;
+}
+
+export interface WhatsappConfigResponse {
+  whatsappEnabled: boolean;
+  whatsappProvider: string;
+  // True only when a config blob exists AND the adapter's own validateConfig
+  // accepts it -- an org that saved a blob for a provider it later can't
+  // validate against (e.g. a required field went missing) reads as unconfigured.
+  configured: boolean;
+  // Decrypted blob minus every field the adapter marks secret:true. Never put
+  // authToken/authHeader (or any future secret field) in here.
+  config: Record<string, unknown>;
+}
+
+export interface WhatsappProviderCatalogItem {
+  id: string;
+  label: string;
+  configFields: WhatsappConfigField[];
 }
 
 export interface SsoSettingsResponse {
@@ -968,6 +988,107 @@ export class OrganizationsService {
       entityId: organizationId,
     });
     return { bannerUrl: (await this.blobStorage.signIfOurs(careersBannerPath)) as string | null };
+  }
+
+  // Decrypts the stored blob, falling back to {} on a parse/decrypt failure (a
+  // corrupted or foreign-format blob must never surface as a 500 on a read).
+  private decryptWhatsappConfig(encrypted: string | null | undefined): Record<string, unknown> {
+    if (!encrypted) {
+      return {};
+    }
+    try {
+      return JSON.parse(this.cryptoService.decrypt(encrypted)) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+
+  async getWhatsappConfig(context: TenantContext): Promise<WhatsappConfigResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { whatsappEnabled: true, whatsappProvider: true, whatsappConfigEncrypted: true },
+    });
+    const whatsappEnabled = org?.whatsappEnabled ?? false;
+    const whatsappProvider = org?.whatsappProvider ?? 'twilio';
+    const adapter = getWhatsappProvider(whatsappProvider);
+
+    // Unknown/no-longer-registered provider id -- report the flags honestly but
+    // don't guess at which fields would have been secret.
+    if (!adapter) {
+      return { whatsappEnabled, whatsappProvider, configured: false, config: {} };
+    }
+
+    const raw = this.decryptWhatsappConfig(org?.whatsappConfigEncrypted);
+    const secretKeys = new Set(adapter.configFields.filter((field) => field.secret).map((field) => field.key));
+    const config = Object.fromEntries(Object.entries(raw).filter(([key]) => !secretKeys.has(key)));
+
+    let configured = false;
+    if (org?.whatsappConfigEncrypted) {
+      try {
+        adapter.validateConfig(raw);
+        configured = true;
+      } catch {
+        configured = false;
+      }
+    }
+
+    return { whatsappEnabled, whatsappProvider, configured, config };
+  }
+
+  async putWhatsappConfig(context: TenantContext, actorUserId: string, dto: UpdateWhatsappConfigDto): Promise<WhatsappConfigResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const existing = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { whatsappEnabled: true, whatsappProvider: true, whatsappConfigEncrypted: true },
+    });
+    const existingProvider = existing?.whatsappProvider ?? 'twilio';
+    const provider = dto.whatsappProvider ?? existingProvider;
+    const adapter = getWhatsappProvider(provider);
+    if (!adapter) {
+      throw new BadRequestException(`Unknown WhatsApp provider "${provider}"`);
+    }
+
+    // Switching provider starts from a clean slate -- a Twilio authToken has no
+    // meaning against the HTTP adapter's fields, so it must not leak across.
+    const providerChanged = dto.whatsappProvider != null && dto.whatsappProvider !== existingProvider;
+    const existingCfg = providerChanged ? {} : this.decryptWhatsappConfig(existing?.whatsappConfigEncrypted);
+
+    const merged: Record<string, unknown> = { ...existingCfg, ...(dto.config ?? {}) };
+    for (const field of adapter.configFields) {
+      if (!field.secret) continue;
+      const incoming = dto.config?.[field.key];
+      const isBlank = incoming === undefined || incoming === null || (typeof incoming === 'string' && incoming.trim() === '');
+      if (isBlank) {
+        // Blank/absent secret on write means "keep what's already there", never
+        // "clear it" -- a web form's write-only secret field always submits blank.
+        merged[field.key] = existingCfg[field.key];
+      }
+    }
+
+    adapter.validateConfig(merged); // throws BadRequestException on invalid -- nothing persisted below
+
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        whatsappProvider: provider,
+        whatsappConfigEncrypted: this.cryptoService.encrypt(JSON.stringify(merged)),
+        ...(dto.whatsappEnabled !== undefined ? { whatsappEnabled: dto.whatsappEnabled } : {}),
+      },
+    });
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.whatsapp_config_updated',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+
+    return this.getWhatsappConfig(context);
+  }
+
+  getWhatsappProviderCatalog(): WhatsappProviderCatalogItem[] {
+    return listWhatsappProviders().map(({ id, label, configFields }) => ({ id, label, configFields }));
   }
 
   async generateWebhookSecret(context: TenantContext, actorUserId: string): Promise<{ webhookSecret: string }> {

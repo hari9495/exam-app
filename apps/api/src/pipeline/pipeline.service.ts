@@ -16,6 +16,8 @@ import { CandidateEmailTemplatesService } from '../candidate-emails/candidate-em
 import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
 import { CandidateSmsTemplatesService } from '../candidate-sms/candidate-sms-templates.service';
 import { CandidateSmsService } from '../candidate-sms/candidate-sms.service';
+import { CandidateWhatsappTemplatesService } from '../candidate-whatsapp/candidate-whatsapp-templates.service';
+import { CandidateWhatsappService } from '../candidate-whatsapp/candidate-whatsapp.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ApprovalsService, ApprovalSummary, SubmitResult } from '../approvals/approvals.service';
@@ -135,10 +137,16 @@ export interface PendingSmsMessage {
   body: string;
 }
 
+export interface PendingWhatsappMessage {
+  templateId: string | null;
+  body: string;
+}
+
 export interface PatchEntryResult {
   entry: PipelineEntry;
   pendingMessage?: PendingMessage;
   pendingSmsMessage?: PendingSmsMessage;
+  pendingWhatsappMessage?: PendingWhatsappMessage;
 }
 
 // Selects exactly the columns upsertCustomFieldValues/serializeCustomFieldValues need -- shared
@@ -163,6 +171,8 @@ export class PipelineService {
     private readonly messages: CandidateEmailsService,
     private readonly smsTemplates: CandidateSmsTemplatesService,
     private readonly candidateSms: CandidateSmsService,
+    private readonly whatsappTemplates: CandidateWhatsappTemplatesService,
+    private readonly candidateWhatsapp: CandidateWhatsappService,
     private readonly integrationEvents: IntegrationEventsService,
     private readonly notifications: NotificationsService,
     private readonly approvals: ApprovalsService,
@@ -934,14 +944,16 @@ export class PipelineService {
       }
     }
 
-    // Stage-move comms hook: runs AFTER the tx above has committed. Wrapped so a transient
-    // failure here (e.g. resolveForStage hitting a starved pool) can never surface as an error
-    // for a stage move that already persisted.
+    // Stage-move comms hooks: run AFTER the tx above has committed. Each channel is wrapped in
+    // its own fail-open try so a transient failure in one (e.g. resolveForStage hitting a
+    // starved pool) can never surface as an error for a stage move that already persisted, and
+    // can never swallow a result already resolved by another channel.
     let pendingMessage: PendingMessage | undefined;
     let pendingSmsMessage: PendingSmsMessage | undefined;
+    let pendingWhatsappMessage: PendingWhatsappMessage | undefined;
 
-    try {
-      if (commsStageId) {
+    if (commsStageId) {
+      try {
         const tpl = await this.templates.resolveForStage(context, commsStageId);
         if (tpl?.triggerMode === 'auto') {
           // Fire-and-forget: the stage-move response must not block on email delivery.
@@ -951,15 +963,11 @@ export class PipelineService {
         } else if (tpl?.triggerMode === 'prompt') {
           pendingMessage = { templateId: tpl.id, subject: tpl.subject, body: tpl.body };
         }
+      } catch (e) {
+        this.logger.error(`Post-commit comms resolution failed for entry ${entryId}`, e as Error);
       }
-    } catch (e) {
-      this.logger.error(`Post-commit comms resolution failed for entry ${entryId}`, e as Error);
-    }
 
-    // Independent SMS resolution, same fail-open posture, in its own try so a throw here can
-    // never wipe out an already-resolved email pendingMessage above.
-    try {
-      if (commsStageId) {
+      try {
         const smsTpl = await this.smsTemplates.resolveForStage(context, commsStageId);
         if (smsTpl?.triggerMode === 'auto') {
           // Fire-and-forget: the stage-move response must not block on SMS delivery.
@@ -969,15 +977,31 @@ export class PipelineService {
         } else if (smsTpl?.triggerMode === 'prompt') {
           pendingSmsMessage = { templateId: smsTpl.id, body: smsTpl.body };
         }
+      } catch (e) {
+        this.logger.error(`Post-commit SMS comms resolution failed for entry ${entryId}`, e as Error);
       }
-    } catch (e) {
-      this.logger.error(`Post-commit SMS comms resolution failed for entry ${entryId}`, e as Error);
+
+      try {
+        const waTpl = await this.whatsappTemplates.resolveForStage(context, commsStageId);
+        if (waTpl?.triggerMode === 'auto') {
+          // Fire-and-forget: the stage-move response must not block on WhatsApp delivery.
+          this.candidateWhatsapp
+            .sendWhatsapp(context, null, entryId, { templateId: waTpl.id, body: waTpl.body, source: 'stage_auto' })
+            .catch((e) => this.logger.error(`Auto-send candidate WhatsApp failed for entry ${entryId}`, e));
+        } else if (waTpl?.triggerMode === 'prompt') {
+          pendingWhatsappMessage = { templateId: waTpl.id, body: waTpl.body };
+        }
+      } catch (e) {
+        this.logger.error(`Post-commit WhatsApp comms resolution failed for entry ${entryId}`, e as Error);
+      }
     }
 
-    if (pendingMessage || pendingSmsMessage) {
-      return { entry, ...(pendingMessage ? { pendingMessage } : {}), ...(pendingSmsMessage ? { pendingSmsMessage } : {}) };
-    }
-    return { entry };
+    return {
+      entry,
+      ...(pendingMessage ? { pendingMessage } : {}),
+      ...(pendingSmsMessage ? { pendingSmsMessage } : {}),
+      ...(pendingWhatsappMessage ? { pendingWhatsappMessage } : {}),
+    };
   }
 
   async linkExam(context: TenantContext, actorUserId: string, jobId: string, examId: string): Promise<{ success: true }> {

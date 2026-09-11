@@ -37,6 +37,8 @@ describe('PipelineService', () => {
   let messages: { sendMessage: jest.Mock };
   let smsTemplates: { resolveForStage: jest.Mock };
   let candidateSms: { sendSms: jest.Mock };
+  let whatsappTemplates: { resolveForStage: jest.Mock };
+  let candidateWhatsapp: { sendWhatsapp: jest.Mock };
   let integrationEvents: { emit: jest.Mock };
   let notifications: { createMentions: jest.Mock; notify: jest.Mock };
   let approvals: { getChains: jest.Mock; submit: jest.Mock; isConfigurer: jest.Mock; cancelForSubject: jest.Mock; getSummariesFor: jest.Mock };
@@ -56,6 +58,8 @@ describe('PipelineService', () => {
     messages = { sendMessage: jest.fn().mockResolvedValue({ id: 'email-1' }) };
     smsTemplates = { resolveForStage: jest.fn().mockResolvedValue(null) };
     candidateSms = { sendSms: jest.fn().mockResolvedValue({ id: 'sms-1' }) };
+    whatsappTemplates = { resolveForStage: jest.fn().mockResolvedValue(null) };
+    candidateWhatsapp = { sendWhatsapp: jest.fn().mockResolvedValue({ id: 'wa-1' }) };
     integrationEvents = { emit: jest.fn().mockResolvedValue(undefined) };
     notifications = { createMentions: jest.fn().mockResolvedValue(undefined), notify: jest.fn().mockResolvedValue(undefined) };
     approvals = {
@@ -72,7 +76,7 @@ describe('PipelineService', () => {
     // Empty set by default (matches getHiddenFields' own contract for an ungoverned/admin role) --
     // pre-existing tests below pass role 'org_admin' and don't care about redaction.
     fieldPerms = { getHiddenFields: jest.fn().mockResolvedValue(new Set()) };
-    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any);
+    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, whatsappTemplates as any, candidateWhatsapp as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {
@@ -1943,6 +1947,57 @@ describe('PipelineService', () => {
         expect(result.entry).toEqual({ id: 'entry-1', statusId: 'st-offer' });
         expect(result.pendingMessage).toEqual({ templateId: 'e1', subject: 's', body: 'email body' });
         expect(result.pendingSmsMessage).toBeUndefined();
+      });
+
+      it('WhatsApp auto-sends when the target stage resolves an auto template', async () => {
+        whatsappTemplates.resolveForStage.mockResolvedValue({ id: 'wt1', body: 'wb', triggerMode: 'auto' });
+
+        const result = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(whatsappTemplates.resolveForStage).toHaveBeenCalledWith(context, 'stage-offer');
+        expect(candidateWhatsapp.sendWhatsapp).toHaveBeenCalledWith(context, null, 'entry-1', { templateId: 'wt1', body: 'wb', source: 'stage_auto' });
+        expect(result.pendingWhatsappMessage).toBeUndefined();
+      });
+
+      it('WhatsApp returns a pendingWhatsappMessage (does not send) for a prompt template', async () => {
+        whatsappTemplates.resolveForStage.mockResolvedValue({ id: 'wt1', body: 'wb', triggerMode: 'prompt' });
+
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(r.pendingWhatsappMessage).toMatchObject({ templateId: 'wt1', body: 'wb' });
+        expect(candidateWhatsapp.sendWhatsapp).not.toHaveBeenCalled();
+      });
+
+      it('WhatsApp does nothing when no template resolves', async () => {
+        whatsappTemplates.resolveForStage.mockResolvedValue(null);
+
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(r.pendingWhatsappMessage).toBeUndefined();
+        expect(candidateWhatsapp.sendWhatsapp).not.toHaveBeenCalled();
+      });
+
+      it('returns BOTH pendingMessage and pendingWhatsappMessage when both channels resolve to prompt', async () => {
+        templates.resolveForStage.mockResolvedValue({ id: 't1', subject: 's', body: 'b', triggerMode: 'prompt' });
+        whatsappTemplates.resolveForStage.mockResolvedValue({ id: 'wt1', body: 'wb', triggerMode: 'prompt' });
+
+        const r = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(r.pendingMessage).toMatchObject({ templateId: 't1', subject: 's', body: 'b' });
+        expect(r.pendingWhatsappMessage).toMatchObject({ templateId: 'wt1', body: 'wb' });
+        expect(messages.sendMessage).not.toHaveBeenCalled();
+        expect(candidateWhatsapp.sendWhatsapp).not.toHaveBeenCalled();
+      });
+
+      it('still returns the moved entry (and the resolved email pendingMessage) when the WhatsApp resolution throws', async () => {
+        templates.resolveForStage.mockResolvedValue({ id: 't1', subject: 's', body: 'b', triggerMode: 'prompt' });
+        whatsappTemplates.resolveForStage.mockRejectedValue(new Error('wa pool exhausted'));
+
+        const result = await service.patchEntry(context, 'user-1', 'entry-1', { statusId: 'st-offer' });
+
+        expect(result.entry).toEqual({ id: 'entry-1', statusId: 'st-offer' });
+        expect(result.pendingMessage).toMatchObject({ templateId: 't1', subject: 's', body: 'b' });
+        expect(result.pendingWhatsappMessage).toBeUndefined();
       });
     });
 

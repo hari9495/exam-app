@@ -11,6 +11,7 @@ import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { UpdateCandidateDto } from './dto/update-candidate.dto';
 import { UpdateSmsOptOutDto } from './dto/update-sms-opt-out.dto';
 import { BulkUploadCandidatesDto } from './dto/bulk-upload-candidates.dto';
+import { UpdateWhatsappOptOutDto } from './dto/update-whatsapp-opt-out.dto';
 
 @Controller('candidates')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -110,5 +111,19 @@ export class CandidatesController {
   @RequirePermissions('candidate:data_rights')
   erase(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.candidatesService.erase(tenant, userId, id);
+  }
+
+  // Gated like the other candidate mutations above (candidate:manage), not
+  // candidate:data_rights -- this is a recruiter preference toggle, not a
+  // subject-rights action.
+  @Patch(':id/whatsapp-opt-out')
+  @RequirePermissions('candidate:manage')
+  setWhatsappOptOut(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateWhatsappOptOutDto,
+  ) {
+    return this.candidatesService.setWhatsappOptOut(tenant, userId, id, dto.optedOut);
   }
 }

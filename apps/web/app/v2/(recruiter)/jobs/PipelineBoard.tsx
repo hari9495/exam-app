@@ -24,6 +24,7 @@ import { useToast } from '../../../../components/ui';
 import { CandidateDrawer } from './CandidateDrawer';
 import { SendMessageModal, SendMessageInitial } from './SendMessageModal';
 import { SendSmsModal, SendSmsInitial } from './SendSmsModal';
+import { SendWhatsappModal, SendWhatsappInitial } from './SendWhatsappModal';
 import { Cb, dt } from '../../../../components/ui-v2';
 import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
 
@@ -130,13 +131,15 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
   const [openRow, setOpenRow] = useState<BoardEntryRow | null>(null);
   const [composeFor, setComposeFor] = useState<{ entryId: string; candidateId: string; candidateName: string; initial: SendMessageInitial } | null>(null);
   const [composeSmsFor, setComposeSmsFor] = useState<{ entryId: string; candidateId: string; candidateName: string; initial: SendSmsInitial } | null>(null);
+  const [composeWhatsappFor, setComposeWhatsappFor] = useState<{ entryId: string; candidateId: string; candidateName: string; initial: SendWhatsappInitial } | null>(null);
 
   const stages = useMemo(() => (board ? [...board.pipeline.stages].sort((a, b) => a.position - b.position) : []), [board]);
   const statusGroups = useMemo(() => buildStatusOptions(stages), [stages]);
 
-  // A status move (or reject/un-reject) can carry back a pendingMessage and/or a
-  // pendingSmsMessage — each reviewed in its own modal before it sends. Both can be present at
-  // once (independent email/SMS trigger resolution). Row lookup lives here so all move paths
+  // A status move (or reject/un-reject) can carry back a pendingMessage and/or a pendingSmsMessage
+  // and/or a pendingWhatsappMessage (independent prompts — see pipeline.service.ts patchEntry) —
+  // each reviewed in its own compose modal before it sends. Any subset can be present at once. Row
+  // lookup lives here so all move paths
   // share one opener.
   function openComposeIfPending(entryId: string, result: PatchEntryResult) {
     if (!board) return;
@@ -147,6 +150,9 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
     }
     if (result.pendingSmsMessage) {
       setComposeSmsFor({ entryId, candidateId: row.candidateId, candidateName: row.candidateName, initial: result.pendingSmsMessage });
+    }
+    if (result.pendingWhatsappMessage) {
+      setComposeWhatsappFor({ entryId, candidateId: row.candidateId, candidateName: row.candidateName, initial: result.pendingWhatsappMessage });
     }
   }
   function handleStatusChange(entryId: string, statusId: string) {
@@ -196,6 +202,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
       {openRow && <CandidateDrawer jobId={jobId} row={openRow} stages={board.pipeline.stages} onClose={() => setOpenRow(null)} />}
       {composeFor && <SendMessageModal entryId={composeFor.entryId} candidateId={composeFor.candidateId} candidateName={composeFor.candidateName} initial={composeFor.initial} onClose={() => setComposeFor(null)} />}
       {composeSmsFor && <SendSmsModal entryId={composeSmsFor.entryId} candidateId={composeSmsFor.candidateId} candidateName={composeSmsFor.candidateName} initial={composeSmsFor.initial} onClose={() => setComposeSmsFor(null)} />}
+      {composeWhatsappFor && <SendWhatsappModal entryId={composeWhatsappFor.entryId} candidateId={composeWhatsappFor.candidateId} candidateName={composeWhatsappFor.candidateName} initial={composeWhatsappFor.initial} onClose={() => setComposeWhatsappFor(null)} />}
     </div>
   );
 }

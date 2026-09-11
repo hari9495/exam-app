@@ -14,7 +14,7 @@ class MockGuard implements CanActivate {
 
 describe('CandidatesController', () => {
   let controller: CandidatesController;
-  let service: { getProfile: jest.Mock; getResumeUrl: jest.Mock; list: jest.Mock; setSmsOptOut: jest.Mock };
+  let service: { getProfile: jest.Mock; getResumeUrl: jest.Mock; list: jest.Mock; setSmsOptOut: jest.Mock; setWhatsappOptOut: jest.Mock };
   const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   beforeEach(async () => {
@@ -23,6 +23,7 @@ describe('CandidatesController', () => {
       getResumeUrl: jest.fn().mockResolvedValue({ url: 'https://blob.test/resume.pdf?sig=abc' }),
       list: jest.fn().mockResolvedValue({ data: [], total: 0 }),
       setSmsOptOut: jest.fn().mockResolvedValue({ id: 'cand-1', smsOptedOutAt: new Date('2026-09-09T00:00:00.000Z') }),
+      setWhatsappOptOut: jest.fn().mockResolvedValue({ id: 'cand-1', whatsappOptedOutAt: null }),
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [CandidatesController],
@@ -77,6 +78,19 @@ describe('CandidatesController', () => {
         controller.list(tenant, 'org_admin', undefined, undefined, undefined, undefined, 'not-a-stage'),
       ).toThrow(BadRequestException);
       expect(service.list).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setWhatsappOptOut', () => {
+    it('PATCH /candidates/:id/whatsapp-opt-out delegates to the service', async () => {
+      const result = await controller.setWhatsappOptOut(tenant, 'user-1', 'cand-1', { optedOut: true });
+      expect(service.setWhatsappOptOut).toHaveBeenCalledWith(tenant, 'user-1', 'cand-1', true);
+      expect(result).toEqual({ id: 'cand-1', whatsappOptedOutAt: null });
+    });
+
+    it('gates the route behind candidate:manage', () => {
+      const permissions = Reflect.getMetadata(PERMISSIONS_KEY, CandidatesController.prototype.setWhatsappOptOut);
+      expect(permissions).toEqual(['candidate:manage']);
     });
   });
 });

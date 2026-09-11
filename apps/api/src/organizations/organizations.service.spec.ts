@@ -1964,6 +1964,262 @@ describe('OrganizationsService', () => {
       expect(prisma.organization.update).not.toHaveBeenCalled();
     });
   });
+
+  // Security-critical: getWhatsappConfig must never return a provider's secret
+  // field (authToken/authHeader), for either registered adapter.
+  describe('getWhatsappConfig', () => {
+    const context = { organizationId: 'org-1', isSuperAdmin: false };
+
+    it('strips the secret field from a valid twilio blob, keeps non-secret fields, and reports configured:true', async () => {
+      const blob = { accountSid: 'AC123', authToken: 'super-secret-token', from: '+15550000000' };
+      cryptoService.decrypt.mockReturnValue(JSON.stringify(blob));
+      prisma.organization.findUnique.mockResolvedValue({
+        whatsappEnabled: true,
+        whatsappProvider: 'twilio',
+        whatsappConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getWhatsappConfig(context);
+
+      expect(result.config).not.toHaveProperty('authToken');
+      expect(result.config).toEqual({ accountSid: 'AC123', from: '+15550000000' });
+      expect(JSON.stringify(result)).not.toContain('super-secret-token');
+      expect(result).toEqual({
+        whatsappEnabled: true,
+        whatsappProvider: 'twilio',
+        configured: true,
+        config: { accountSid: 'AC123', from: '+15550000000' },
+      });
+    });
+
+    it('strips the secret field from a valid http blob, keeps non-secret fields, and reports configured:true', async () => {
+      const blob = {
+        url: 'https://example.com/whatsapp',
+        bodyTemplate: '{{body}}',
+        authHeader: 'Bearer super-secret-header-value',
+      };
+      cryptoService.decrypt.mockReturnValue(JSON.stringify(blob));
+      prisma.organization.findUnique.mockResolvedValue({
+        whatsappEnabled: true,
+        whatsappProvider: 'http',
+        whatsappConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getWhatsappConfig(context);
+
+      expect(result.config).not.toHaveProperty('authHeader');
+      expect(result.config).toEqual({ url: 'https://example.com/whatsapp', bodyTemplate: '{{body}}' });
+      expect(JSON.stringify(result)).not.toContain('super-secret-header-value');
+      expect(result.configured).toBe(true);
+    });
+
+    it('reports configured:false when the stored blob fails the adapter validateConfig check', async () => {
+      // Missing the required `from` field for twilio.
+      cryptoService.decrypt.mockReturnValue(JSON.stringify({ accountSid: 'AC123', authToken: 'tok' }));
+      prisma.organization.findUnique.mockResolvedValue({
+        whatsappEnabled: true,
+        whatsappProvider: 'twilio',
+        whatsappConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getWhatsappConfig(context);
+
+      expect(result.configured).toBe(false);
+    });
+
+    it('returns config:{} and configured:false when no config has been saved', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        whatsappEnabled: false,
+        whatsappProvider: 'twilio',
+        whatsappConfigEncrypted: null,
+      });
+
+      const result = await service.getWhatsappConfig(context);
+
+      expect(result).toEqual({ whatsappEnabled: false, whatsappProvider: 'twilio', configured: false, config: {} });
+      expect(cryptoService.decrypt).not.toHaveBeenCalled();
+    });
+
+    it('returns config:{} for an unknown/unregistered provider id', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        whatsappEnabled: true,
+        whatsappProvider: 'not-a-real-provider',
+        whatsappConfigEncrypted: 'encrypted-blob',
+      });
+
+      const result = await service.getWhatsappConfig(context);
+
+      expect(result).toEqual({
+        whatsappEnabled: true,
+        whatsappProvider: 'not-a-real-provider',
+        configured: false,
+        config: {},
+      });
+    });
+
+    it('falls back to config:{} when the stored blob fails to decrypt/parse', async () => {
+      cryptoService.decrypt.mockImplementation(() => {
+        throw new Error('bad ciphertext');
+      });
+      prisma.organization.findUnique.mockResolvedValue({
+        whatsappEnabled: true,
+        whatsappProvider: 'twilio',
+        whatsappConfigEncrypted: 'corrupted',
+      });
+
+      const result = await service.getWhatsappConfig(context);
+
+      expect(result.config).toEqual({});
+      expect(result.configured).toBe(false);
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(service.getWhatsappConfig({ organizationId: null, isSuperAdmin: true })).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('putWhatsappConfig', () => {
+    const context = { organizationId: 'org-1', isSuperAdmin: false };
+
+    it('same provider: a blank/absent secret keeps the existing secret (encrypted blob still carries the OLD token)', async () => {
+      const existingBlob = { accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' };
+      cryptoService.decrypt.mockReturnValue(JSON.stringify(existingBlob));
+      cryptoService.encrypt.mockReturnValue('new-encrypted-blob');
+      prisma.organization.findUnique
+        .mockResolvedValueOnce({ whatsappEnabled: false, whatsappProvider: 'twilio', whatsappConfigEncrypted: 'old-encrypted-blob' })
+        // Second read is putWhatsappConfig's own call to getWhatsappConfig for the return value.
+        .mockResolvedValueOnce({ whatsappEnabled: true, whatsappProvider: 'twilio', whatsappConfigEncrypted: 'new-encrypted-blob' });
+      prisma.organization.update.mockResolvedValue({});
+
+      await service.putWhatsappConfig(context, 'user-1', {
+        whatsappEnabled: true,
+        config: { accountSid: 'AC-new', authToken: '' },
+      });
+
+      expect(cryptoService.encrypt).toHaveBeenCalledWith(
+        JSON.stringify({ accountSid: 'AC-new', authToken: 'old-token', from: '+15550000000' }),
+      );
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { whatsappProvider: 'twilio', whatsappConfigEncrypted: 'new-encrypted-blob', whatsappEnabled: true },
+      });
+    });
+
+    it('same provider: a new non-blank secret overwrites the existing one', async () => {
+      const existingBlob = { accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' };
+      cryptoService.decrypt.mockReturnValue(JSON.stringify(existingBlob));
+      cryptoService.encrypt.mockReturnValue('new-encrypted-blob');
+      prisma.organization.findUnique
+        .mockResolvedValueOnce({ whatsappEnabled: true, whatsappProvider: 'twilio', whatsappConfigEncrypted: 'old-encrypted-blob' })
+        .mockResolvedValueOnce({ whatsappEnabled: true, whatsappProvider: 'twilio', whatsappConfigEncrypted: 'new-encrypted-blob' });
+      prisma.organization.update.mockResolvedValue({});
+
+      await service.putWhatsappConfig(context, 'user-1', { config: { authToken: 'brand-new-token' } });
+
+      expect(cryptoService.encrypt).toHaveBeenCalledWith(
+        JSON.stringify({ accountSid: 'AC-old', authToken: 'brand-new-token', from: '+15550000000' }),
+      );
+    });
+
+    it('non-secret fields overwrite normally', async () => {
+      const existingBlob = { accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' };
+      cryptoService.decrypt.mockReturnValue(JSON.stringify(existingBlob));
+      cryptoService.encrypt.mockReturnValue('new-encrypted-blob');
+      prisma.organization.findUnique
+        .mockResolvedValueOnce({ whatsappEnabled: true, whatsappProvider: 'twilio', whatsappConfigEncrypted: 'old-encrypted-blob' })
+        .mockResolvedValueOnce({ whatsappEnabled: true, whatsappProvider: 'twilio', whatsappConfigEncrypted: 'new-encrypted-blob' });
+      prisma.organization.update.mockResolvedValue({});
+
+      await service.putWhatsappConfig(context, 'user-1', { config: { from: '+15559999999' } });
+
+      expect(cryptoService.encrypt).toHaveBeenCalledWith(
+        JSON.stringify({ accountSid: 'AC-old', authToken: 'old-token', from: '+15559999999' }),
+      );
+    });
+
+    it('provider change: treats the incoming config as a full replacement, no merge from the old provider blob', async () => {
+      const existingBlob = { accountSid: 'AC-old', authToken: 'old-token', from: '+15550000000' };
+      cryptoService.decrypt.mockReturnValue(JSON.stringify(existingBlob));
+      cryptoService.encrypt.mockReturnValue('new-encrypted-blob');
+      prisma.organization.findUnique
+        .mockResolvedValueOnce({ whatsappEnabled: true, whatsappProvider: 'twilio', whatsappConfigEncrypted: 'old-encrypted-blob' })
+        .mockResolvedValueOnce({ whatsappEnabled: true, whatsappProvider: 'http', whatsappConfigEncrypted: 'new-encrypted-blob' });
+      prisma.organization.update.mockResolvedValue({});
+
+      await service.putWhatsappConfig(context, 'user-1', {
+        whatsappProvider: 'http',
+        config: { url: 'https://example.com/hook', bodyTemplate: '{{body}}' },
+      });
+
+      // decrypt of the OLD (twilio) blob is never even inspected for merging --
+      // the http adapter's fields (url/bodyTemplate) come only from dto.config.
+      expect(cryptoService.encrypt).toHaveBeenCalledWith(
+        JSON.stringify({ url: 'https://example.com/hook', bodyTemplate: '{{body}}' }),
+      );
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { whatsappProvider: 'http', whatsappConfigEncrypted: 'new-encrypted-blob' },
+      });
+    });
+
+    it('throws BadRequestException and persists nothing when the merged config fails adapter validateConfig', async () => {
+      prisma.organization.findUnique.mockResolvedValueOnce({
+        whatsappEnabled: false,
+        whatsappProvider: 'twilio',
+        whatsappConfigEncrypted: null,
+      });
+
+      await expect(
+        service.putWhatsappConfig(context, 'user-1', { config: { accountSid: 'AC123' } }), // missing authToken/from
+      ).rejects.toThrow(BadRequestException);
+
+      expect(cryptoService.encrypt).not.toHaveBeenCalled();
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException for an unknown provider id and persists nothing', async () => {
+      prisma.organization.findUnique.mockResolvedValueOnce({
+        whatsappEnabled: false,
+        whatsappProvider: 'twilio',
+        whatsappConfigEncrypted: null,
+      });
+
+      await expect(
+        service.putWhatsappConfig(context, 'user-1', { whatsappProvider: 'not-a-real-provider', config: {} }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.putWhatsappConfig({ organizationId: null, isSuperAdmin: true }, 'user-1', { config: {} }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getWhatsappProviderCatalog', () => {
+    it('returns metadata only -- id, label, configFields -- for every registered provider', () => {
+      const result = service.getWhatsappProviderCatalog();
+
+      expect(result).toEqual([
+        {
+          id: 'twilio',
+          label: 'Twilio WhatsApp',
+          configFields: expect.arrayContaining([expect.objectContaining({ key: 'authToken', secret: true })]),
+        },
+        {
+          id: 'http',
+          label: 'Generic HTTP',
+          configFields: expect.arrayContaining([expect.objectContaining({ key: 'authHeader', secret: true })]),
+        },
+      ]);
+      // No `send`/`validateConfig` functions or actual secret values leaked into the catalog shape.
+      expect(JSON.stringify(result)).not.toMatch(/"send"|"validateConfig"/);
+    });
+  });
 });
 
 describe('UpdateBusinessHoursDto validation', () => {
