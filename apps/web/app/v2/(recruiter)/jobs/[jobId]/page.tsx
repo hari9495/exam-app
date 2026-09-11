@@ -164,6 +164,10 @@ export default function V2JobPage() {
 
   return (
     <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* One entrance over the detail header + editor card. PipelineBoard and AddCandidateModal stay
+          OUTSIDE this wrapper: a .v2-rise transform becomes the containing block for their
+          position:fixed drawer/dialog descendants. */}
+      <div className="v2-rise" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div>
         <Link href="/v2/jobs" style={backLink}><ArrowLeft size={15} /> Back to Jobs</Link>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10 }}>
@@ -179,7 +183,7 @@ export default function V2JobPage() {
       </div>
 
       {job && (
-        <div className="wf-editor" style={{ background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: '0 28px' }}>
+        <div className="wf-editor" style={{ background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: '0 28px', boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' }}>
           {canManage && (
             <JobSection first title="Requisition" description="Role details, and the approval status for opening this requisition.">
               <RequisitionSection job={job} jobId={jobId} />
@@ -206,6 +210,7 @@ export default function V2JobPage() {
           )}
         </div>
       )}
+      </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 4 }}>
         <h2 className="v2-title" style={{ fontSize: 16, margin: 0 }}>Pipeline</h2>
