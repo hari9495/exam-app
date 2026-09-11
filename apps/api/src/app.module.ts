@@ -57,6 +57,9 @@ import { RecycleBinModule } from './recycle-bin/recycle-bin.module';
 import { ApiUsageModule } from './api-usage/api-usage.module';
 import { PermissionProfilesModule } from './permission-profiles/permission-profiles.module';
 import { JobBoardsModule } from './job-boards/job-boards.module';
+import { AgenciesModule } from './agencies/agencies.module';
+import { AgencyPortalModule } from './agency-portal/agency-portal.module';
+import { AgencySubmissionsModule } from './agency-submissions/agency-submissions.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 import { SentryShutdownFlush } from './sentry-shutdown.provider';
@@ -120,6 +123,9 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     ApiUsageModule,
     PermissionProfilesModule,
     JobBoardsModule,
+    AgenciesModule,
+    AgencyPortalModule,
+    AgencySubmissionsModule,
   ],
   controllers: [HealthController],
   providers: [

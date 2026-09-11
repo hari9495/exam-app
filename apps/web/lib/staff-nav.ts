@@ -9,7 +9,7 @@ import { RECRUITER_NAV_ITEMS } from './recruiter-nav';
 // moment you opened a settings page.
 const V2_ROUTES = new Set([
   '/today', '/dashboard', '/exams', '/questions', '/candidates', '/reports',
-  '/walk-in-groups', '/jobs', '/approvals', '/analytics/hiring',
+  '/walk-in-groups', '/jobs', '/agency-submissions', '/approvals', '/analytics/hiring',
   '/message-templates', '/offer-template',
   '/users', '/audit-log', '/system-logs', '/data-rights',
   '/settings/branding', '/settings/integrations', '/settings/sso', '/settings/billing',
@@ -21,6 +21,7 @@ const V2_ROUTES = new Set([
   '/settings/apply-consent',
   '/settings/careers',
   '/settings/job-boards',
+  '/settings/agencies',
 ]);
 
 // The ONE staff sidebar, identical in every org-scoped shell (the (recruiter) and (org-admin) route

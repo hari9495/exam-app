@@ -890,6 +890,8 @@ model Job {
   deletedAt          DateTime?       @map("deleted_at")
   deletedByUserId    String?         @map("deleted_by_user_id") @db.UniqueIdentifier
   jobBoardPublications JobBoardPublication[]
+  agencyJobs         AgencyJob[]
+  agencySubmissions  AgencySubmission[]
 
   @@index([organizationId, status])
   @@map("jobs")
@@ -1362,4 +1364,58 @@ model JobBoardPublication {
   @@index([jobId])
   @@index([organizationId])
   @@map("job_board_publications")
+}
+
+model Agency {
+  id             String             @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String             @map("organization_id") @db.UniqueIdentifier
+  name           String             @db.NVarChar(200)
+  contactEmail   String?            @map("contact_email")
+  portalToken    String             @unique @map("portal_token")
+  active         Boolean            @default(true)
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+  agencyJobs     AgencyJob[]
+  submissions    AgencySubmission[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("agencies")
+}
+
+model AgencyJob {
+  agencyId       String   @map("agency_id") @db.UniqueIdentifier
+  jobId          String   @map("job_id") @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  createdAt      DateTime @default(now()) @map("created_at")
+  agency         Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([agencyId, jobId])
+  @@index([jobId])
+  @@index([organizationId])
+  @@map("agency_jobs")
+}
+
+model AgencySubmission {
+  id             String    @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String    @map("organization_id") @db.UniqueIdentifier
+  agencyId       String    @map("agency_id") @db.UniqueIdentifier
+  jobId          String    @map("job_id") @db.UniqueIdentifier
+  candidateName  String    @map("candidate_name")
+  candidateEmail String    @map("candidate_email")
+  candidatePhone String?   @map("candidate_phone")
+  resumePath     String    @map("resume_path")
+  isDuplicate    Boolean   @default(false) @map("is_duplicate")
+  status         String    @default("pending") // 'pending' | 'accepted' | 'rejected'
+  candidateId    String?   @map("candidate_id") @db.UniqueIdentifier
+  reviewedByUserId String? @map("reviewed_by_user_id") @db.UniqueIdentifier
+  reviewedAt     DateTime? @map("reviewed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  agency         Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([organizationId, status])
+  @@index([agencyId])
+  @@map("agency_submissions")
 }
