@@ -25,7 +25,7 @@ export function CareersJobList({ jobs }: { jobs: CareersJob[] }) {
   );
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="candidate-rise flex flex-col gap-4">
       {(departments.length > 0 || locations.length > 0) && (
         <div className="flex flex-wrap gap-3">
           {departments.length > 0 && (
@@ -68,7 +68,7 @@ export function CareersJobList({ jobs }: { jobs: CareersJob[] }) {
               <li key={job.applyToken}>
                 <Link
                   href={`/apply/${job.applyToken}`}
-                  className="block rounded-lg border border-candidate-border bg-white p-4 transition-colors hover:border-candidate-primary"
+                  className="block rounded-lg border border-candidate-border bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_10px_28px_-18px_rgba(16,24,40,0.20)] transition-all hover:border-candidate-primary hover:shadow-[0_2px_4px_rgba(16,24,40,0.06),0_16px_36px_-18px_rgba(16,24,40,0.28)]"
                 >
                   <p className="font-display text-base font-bold text-candidate-text">{job.title}</p>
                   {meta.length > 0 && (
