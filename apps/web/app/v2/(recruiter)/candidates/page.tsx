@@ -34,7 +34,7 @@ const AVA = [VIZ.azure, VIZ.teal, VIZ.violet, VIZ.amber];
 function initials(n: string) { return n.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase(); }
 function Avatar({ name, i }: { name: string; i: number }) {
   const c = AVA[i % AVA.length];
-  return <span style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600, background: `color-mix(in srgb, ${c} 15%, var(--surface))`, color: c }}>{initials(name)}</span>;
+  return <span style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600, boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent)', background: `color-mix(in srgb, ${c} 15%, var(--surface))`, color: c }}>{initials(name)}</span>;
 }
 function csvCell(v: string) { return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
 
@@ -171,6 +171,9 @@ export default function V2CandidatesPage() {
 
   return (
     <>
+      {/* One calm entrance on the list content; Dialogs stay OUTSIDE it -- a transform on an
+          ancestor would become the containing block for their position:fixed overlays. */}
+      <div className="v2-rise">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Candidates</h1>
         <span style={{ display: 'inline-flex', gap: 8 }}>
@@ -207,6 +210,7 @@ export default function V2CandidatesPage() {
           </div>
         )}
       />
+      </div>
 
       <Dialog open={!!pendingDelete} onClose={() => setPendingDelete(null)} title="Delete candidate">
         <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5, margin: '0 0 18px' }}>
