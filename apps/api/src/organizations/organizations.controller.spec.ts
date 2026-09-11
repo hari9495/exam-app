@@ -184,3 +184,62 @@ describe('OrganizationsController apply-consent', () => {
     expect(permissions).toEqual(['org:manage_settings']);
   });
 });
+
+describe('OrganizationsController careers', () => {
+  let controller: OrganizationsController;
+  let service: { getCareers: jest.Mock; setCareers: jest.Mock; uploadCareersBanner: jest.Mock };
+  const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+  beforeEach(async () => {
+    service = {
+      getCareers: jest.fn().mockResolvedValue({ enabled: false, headline: null, intro: null, bannerUrl: null }),
+      setCareers: jest.fn().mockResolvedValue({ enabled: true, headline: 'Join us', intro: null, bannerUrl: null }),
+      uploadCareersBanner: jest.fn().mockResolvedValue({ bannerUrl: 'https://example.com/banner.png' }),
+    };
+    const moduleRef = await Test.createTestingModule({
+      controllers: [OrganizationsController],
+      providers: [{ provide: OrganizationsService, useValue: service }],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useClass(MockGuard)
+      .overrideGuard(PermissionsGuard)
+      .useClass(MockGuard)
+      .compile();
+    controller = moduleRef.get(OrganizationsController);
+  });
+
+  it('GET /organizations/careers delegates to getCareers', async () => {
+    const result = await controller.getCareers(tenant);
+    expect(service.getCareers).toHaveBeenCalledWith(tenant);
+    expect(result).toEqual({ enabled: false, headline: null, intro: null, bannerUrl: null });
+  });
+
+  it('PUT /organizations/careers delegates to setCareers', async () => {
+    const dto = { enabled: true, headline: 'Join us' };
+    const result = await controller.setCareers(tenant, 'user-1', dto as any);
+    expect(service.setCareers).toHaveBeenCalledWith(tenant, 'user-1', dto);
+    expect(result).toEqual({ enabled: true, headline: 'Join us', intro: null, bannerUrl: null });
+  });
+
+  it('POST /organizations/careers/banner delegates to uploadCareersBanner', async () => {
+    const file = { mimetype: 'image/png', size: 1024, buffer: Buffer.from('x') } as Express.Multer.File;
+    const result = await controller.uploadCareersBanner(tenant, 'user-1', file);
+    expect(service.uploadCareersBanner).toHaveBeenCalledWith(tenant, 'user-1', file);
+    expect(result).toEqual({ bannerUrl: 'https://example.com/banner.png' });
+  });
+
+  it('gates the getter behind org:manage_settings', () => {
+    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.getCareers);
+    expect(permissions).toEqual(['org:manage_settings']);
+  });
+
+  it('gates the setter behind org:manage_settings', () => {
+    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.setCareers);
+    expect(permissions).toEqual(['org:manage_settings']);
+  });
+
+  it('gates the banner upload behind org:manage_settings', () => {
+    const permissions = Reflect.getMetadata(PERMISSIONS_KEY, OrganizationsController.prototype.uploadCareersBanner);
+    expect(permissions).toEqual(['org:manage_settings']);
+  });
+});

@@ -2,7 +2,7 @@ import { PublicApplicationsController } from './public-applications.controller';
 
 describe('PublicApplicationsController', () => {
   function setup() {
-    const service = { getPublicJob: jest.fn(), apply: jest.fn(), getApplicationStatus: jest.fn(), getJobsFeed: jest.fn(), getPortal: jest.fn(), updatePortalProfile: jest.fn(), uploadPortalResume: jest.fn(), getUnsubscribe: jest.fn(), setUnsubscribe: jest.fn() };
+    const service = { getPublicJob: jest.fn(), apply: jest.fn(), getApplicationStatus: jest.fn(), getJobsFeed: jest.fn(), getPortal: jest.fn(), updatePortalProfile: jest.fn(), uploadPortalResume: jest.fn(), getUnsubscribe: jest.fn(), setUnsubscribe: jest.fn(), getCareers: jest.fn() };
     const controller = new PublicApplicationsController(service as any);
     return { service, controller };
   }
@@ -62,5 +62,11 @@ describe('PublicApplicationsController', () => {
     const { service, controller } = setup();
     controller.setUnsubscribe('unsub-token-1', { optedOut: true } as any);
     expect(service.setUnsubscribe).toHaveBeenCalledWith('unsub-token-1', true);
+  });
+
+  it('getCareers delegates to service.getCareers with the orgSlug', () => {
+    const { service, controller } = setup();
+    controller.getCareers('acme');
+    expect(service.getCareers).toHaveBeenCalledWith('acme');
   });
 });

@@ -865,6 +865,168 @@ describe('OrganizationsService', () => {
     });
   });
 
+  describe('getCareers', () => {
+    it('returns enabled/headline/intro/bannerUrl from the org row', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        careersEnabled: true,
+        careersHeadline: 'Join us',
+        careersIntro: 'We build things.',
+        careersBannerPath: null,
+      });
+
+      const result = await service.getCareers({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ enabled: true, headline: 'Join us', intro: 'We build things.', bannerUrl: null });
+    });
+
+    it('defaults to disabled/null when no org row is found', async () => {
+      prisma.organization.findUnique.mockResolvedValue(null);
+
+      const result = await service.getCareers({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ enabled: false, headline: null, intro: null, bannerUrl: null });
+    });
+
+    it('signs a stored bannerPath through signIfOurs', async () => {
+      const bannerPath = 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/careers-banners/org-1.png';
+      prisma.organization.findUnique.mockResolvedValue({
+        careersEnabled: true,
+        careersHeadline: null,
+        careersIntro: null,
+        careersBannerPath: bannerPath,
+      });
+      blobStorage.signIfOurs.mockResolvedValueOnce(`${bannerPath}?sig=redacted`);
+
+      const result = await service.getCareers({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(blobStorage.signIfOurs).toHaveBeenCalledWith(bannerPath);
+      expect(result.bannerUrl).toBe(`${bannerPath}?sig=redacted`);
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(service.getCareers({ organizationId: null, isSuperAdmin: true })).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setCareers', () => {
+    beforeEach(() => {
+      prisma.organization.update.mockResolvedValue({});
+      prisma.organization.findUnique.mockResolvedValue({
+        careersEnabled: true,
+        careersHeadline: 'Join us',
+        careersIntro: 'We build things.',
+        careersBannerPath: null,
+      });
+    });
+
+    it('persists careersEnabled and returns the fresh careers response', async () => {
+      const result = await service.setCareers({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', {
+        enabled: true,
+        headline: 'Join us',
+        intro: 'We build things.',
+      });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { careersEnabled: true, careersHeadline: 'Join us', careersIntro: 'We build things.' },
+      });
+      expect(result).toEqual({ enabled: true, headline: 'Join us', intro: 'We build things.', bannerUrl: null });
+    });
+
+    it('normalizes an empty/whitespace headline and intro to null', async () => {
+      await service.setCareers({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', {
+        enabled: false,
+        headline: '   ',
+        intro: '',
+      });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { careersEnabled: false, careersHeadline: null, careersIntro: null },
+      });
+    });
+
+    it('leaves headline/intro untouched when omitted from the dto', async () => {
+      await service.setCareers({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', { enabled: true });
+
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { careersEnabled: true },
+      });
+    });
+
+    it('records an organization.careers_updated audit entry', async () => {
+      await service.setCareers({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', { enabled: true });
+
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        { actorUserId: 'user-1', action: 'organization.careers_updated', entityType: 'organization', entityId: 'org-1' },
+      );
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.setCareers({ organizationId: null, isSuperAdmin: true }, 'user-1', { enabled: true }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('uploadCareersBanner', () => {
+    const pngFile = { mimetype: 'image/png', size: 1024, buffer: Buffer.from('fake-png-bytes') } as Express.Multer.File;
+
+    beforeEach(() => {
+      blobStorage.upload.mockReset().mockResolvedValue('https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/careers-banners/org-1.png');
+      prisma.organization.update.mockResolvedValue({});
+    });
+
+    it('uploads the file to blob storage under careers-banners/{orgId} and updates careersBannerPath', async () => {
+      const result = await service.uploadCareersBanner({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', pngFile);
+
+      expect(blobStorage.upload).toHaveBeenCalledWith(expect.stringContaining('careers-banners/org-1-'), pngFile.buffer, 'image/png');
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { careersBannerPath: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/careers-banners/org-1.png' },
+      });
+      expect(result.bannerUrl).toBe('https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/careers-banners/org-1.png');
+    });
+
+    it('records an organization.careers_banner_updated audit entry', async () => {
+      await service.uploadCareersBanner({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', pngFile);
+
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        { actorUserId: 'user-1', action: 'organization.careers_banner_updated', entityType: 'organization', entityId: 'org-1' },
+      );
+    });
+
+    it('rejects a non-image mimetype without uploading anything', async () => {
+      const badFile = { mimetype: 'application/pdf', size: 1024, buffer: Buffer.from('x') } as Express.Multer.File;
+
+      await expect(
+        service.uploadCareersBanner({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', badFile),
+      ).rejects.toThrow(BadRequestException);
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('rejects a file over 2MB without uploading anything', async () => {
+      const bigFile = { mimetype: 'image/png', size: 2 * 1024 * 1024 + 1, buffer: Buffer.from('x') } as Express.Multer.File;
+
+      await expect(
+        service.uploadCareersBanner({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', bigFile),
+      ).rejects.toThrow(BadRequestException);
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.uploadCareersBanner({ organizationId: null, isSuperAdmin: true }, 'user-1', pngFile),
+      ).rejects.toThrow(BadRequestException);
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getPublicBrandingBySlug', () => {
     it('returns branding for an existing slug, with no auth/tenant context required', async () => {
       prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Corp', logoPath: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png', primaryColor: '#1a73e8', accentColor: null });

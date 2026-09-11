@@ -439,6 +439,40 @@ export interface PublicJob {
   customFields: PublicCustomFieldDef[];
 }
 
+// GET /public/careers/:orgSlug -- unauthenticated, mirrors PublicApplicationsService.getCareers
+// verbatim (org branding + the jobs opted into the public careers page via listOnCareers).
+export interface CareersJob {
+  applyToken: string;
+  title: string;
+  location: string | null;
+  employmentType: string | null;
+  department: string | null;
+  salaryMin: number | null;
+  salaryMax: number | null;
+  salaryCurrency: string | null;
+}
+
+export interface CareersPageResponse {
+  orgName: string;
+  headline: string | null;
+  intro: string | null;
+  logoUrl: string | null;
+  bannerUrl: string | null;
+  primaryColor: string | null;
+  accentColor: string | null;
+  textColor: string | null;
+  jobs: CareersJob[];
+}
+
+// GET/PUT /organizations/careers -- authed org-admin config, mirrors
+// OrganizationsService.CareersSettingsResponse verbatim.
+export interface CareersSettingsResponse {
+  enabled: boolean;
+  headline: string | null;
+  intro: string | null;
+  bannerUrl: string | null;
+}
+
 export interface PortalApplication {
   jobTitle: string;
   stage: string;
@@ -532,6 +566,7 @@ export interface JobDetail {
   closedAt: string | null;
   linkedExams: { examId: string; title: string }[];
   publicApplyEnabled: boolean;
+  listOnCareers: boolean;
   applyToken: string | null;
   fitCriteria?: string | null;
   fitRubric?: string | null;

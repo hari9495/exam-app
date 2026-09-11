@@ -22,6 +22,7 @@ import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
+import { UpdateCareersDto } from './dto/update-careers.dto';
 import { BusinessHours, Holiday } from '@exam-platform/shared';
 
 export interface BrandingResponse {
@@ -102,6 +103,13 @@ export interface BusinessHoursResponse {
 export interface ApplyConsentResponse {
   text: string | null;
   version: number;
+}
+
+export interface CareersSettingsResponse {
+  enabled: boolean;
+  headline: string | null;
+  intro: string | null;
+  bannerUrl: string | null;
 }
 
 export interface SsoSettingsResponse {
@@ -794,6 +802,59 @@ export class OrganizationsService {
     }
 
     return { text: org.applyConsentText, version: org.applyConsentVersion };
+  }
+
+  async getCareers(context: TenantContext): Promise<CareersSettingsResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { careersEnabled: true, careersHeadline: true, careersIntro: true, careersBannerPath: true },
+    });
+    return {
+      enabled: org?.careersEnabled ?? false,
+      headline: org?.careersHeadline ?? null,
+      intro: org?.careersIntro ?? null,
+      bannerUrl: org?.careersBannerPath ? ((await this.blobStorage.signIfOurs(org.careersBannerPath)) as string | null) : null,
+    };
+  }
+
+  async setCareers(context: TenantContext, actorUserId: string, dto: UpdateCareersDto): Promise<CareersSettingsResponse> {
+    const organizationId = this.requireOrganizationId(context);
+    const norm = (s: string | null | undefined) => {
+      const t = (s ?? '').trim();
+      return t.length ? t : null;
+    };
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        careersEnabled: dto.enabled,
+        ...(dto.headline !== undefined && { careersHeadline: norm(dto.headline) }),
+        ...(dto.intro !== undefined && { careersIntro: norm(dto.intro) }),
+      },
+    });
+    await this.audit.record(context, { actorUserId, action: 'organization.careers_updated', entityType: 'organization', entityId: organizationId });
+    return this.getCareers(context);
+  }
+
+  async uploadCareersBanner(context: TenantContext, actorUserId: string, file: Express.Multer.File): Promise<{ bannerUrl: string | null }> {
+    const organizationId = this.requireOrganizationId(context);
+    const extension = ALLOWED_LOGO_MIME_TYPES[file.mimetype];
+    if (!extension) {
+      throw new BadRequestException('Banner must be a PNG, JPEG, or SVG image');
+    }
+    if (file.size > MAX_LOGO_SIZE_BYTES) {
+      throw new BadRequestException('Banner file must be 2MB or smaller');
+    }
+    const blobPath = `careers-banners/${organizationId}-${Date.now()}${extension}`;
+    const careersBannerPath = await this.blobStorage.upload(blobPath, file.buffer, file.mimetype);
+    await this.prisma.organization.update({ where: { id: organizationId }, data: { careersBannerPath } });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.careers_banner_updated',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return { bannerUrl: (await this.blobStorage.signIfOurs(careersBannerPath)) as string | null };
   }
 
   async generateWebhookSecret(context: TenantContext, actorUserId: string): Promise<{ webhookSecret: string }> {

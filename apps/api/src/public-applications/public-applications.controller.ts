@@ -25,6 +25,12 @@ export class PublicApplicationsController {
     return this.service.getJobsFeed();
   }
 
+  // Distinct segment from jobs/:applyToken -- no route collision.
+  @Get('careers/:orgSlug')
+  getCareers(@Param('orgSlug') orgSlug: string) {
+    return this.service.getCareers(orgSlug);
+  }
+
   @Get('jobs/:applyToken')
   getJob(@Param('applyToken') applyToken: string) {
     return this.service.getPublicJob(applyToken);
