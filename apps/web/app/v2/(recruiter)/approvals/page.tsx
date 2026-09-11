@@ -7,13 +7,12 @@
 // rows, a second step opens ApprovalDecisionDialog wired to useDecideApproval.
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Inbox, Send, CheckCircle2 } from 'lucide-react';
 import { useApprovalRequests, useApprovalRequest, useDecideApproval } from '../../../../lib/hooks/useApprovals';
 import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
 import { formatRelativeTime } from '../../../../lib/audit-display';
 import { deriveStepStates } from '../../../../lib/approvals-display';
 import type { ApprovalGate, ApprovalRequestSummary, DirectoryUser } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, Pill, Tabs, Dialog, Button, IconStatCard, ApprovalTimeline, ApprovalDecisionDialog } from '../../../../components/ui-v2';
+import { DataTable, DT_FEATURES, dt, Pill, Tabs, Dialog, Button, ApprovalTimeline, ApprovalDecisionDialog } from '../../../../components/ui-v2';
 import { VIZ, STATUS } from '../../../../components/ui-v2/viz';
 
 const GATE_LABEL: Record<ApprovalGate, string> = { requisition: 'Requisition', offer: 'Offer' };
@@ -25,6 +24,19 @@ const STATUS_PILL: Record<string, { c: string; label: string }> = {
   cancelled: { c: 'var(--muted)', label: 'Cancelled' },
 };
 const linkBtn: React.CSSProperties = { background: 'none', border: 'none', padding: 0, font: 'inherit', fontWeight: 600, color: 'var(--org-primary)', cursor: 'pointer', textAlign: 'left' };
+
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
+
+// Demoted metric for the quiet strip (Workfox rule 4/8): label + tabular number. No rainbow icon
+// stat tiles -- one card, thin dividers between cells.
+function QuietStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div style={{ padding: '14px 18px', minWidth: 0 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)' }}>{label}</div>
+      <div className="v2-mono" style={{ fontSize: 24, fontWeight: 600, color: 'var(--ink)', marginTop: 6 }}>{value.toLocaleString()}</div>
+    </div>
+  );
+}
 
 function subjectLabel(row: { subjectType: string; subjectId: string; subjectLabel?: string }): string {
   return row.subjectLabel || `${row.subjectType === 'job' ? 'Job' : 'Offer'} #${row.subjectId.slice(0, 8)}`;
@@ -137,16 +149,20 @@ export default function V2ApprovalsPage() {
 
   return (
     <>
+      {/* Content-only entrance; the detail/decision Dialogs stay outside (a .v2-rise transform
+          becomes the containing block for their position:fixed overlays). */}
+      <div className="v2-rise">
       <div style={{ marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)', margin: 0 }}>Approvals</p>
         <h1 className="v2-title" style={{ fontSize: 22, margin: '2px 0 0' }}>Approval Inbox</h1>
         <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0' }}>Review requisitions and offers waiting on your sign-off, and track what you&apos;ve submitted.</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }} className="wf-hero-kpis">
-        <IconStatCard title="Awaiting you" value={inbox.data?.length ?? 0} icon={<Inbox size={22} />} accent={VIZ.azure} />
-        <IconStatCard title="Submitted by you" value={submitted.data?.length ?? 0} icon={<Send size={22} />} accent={VIZ.violet} />
-        <IconStatCard title="Approved recently" value={approvedRecently} icon={<CheckCircle2 size={22} />} accent={VIZ.teal} />
+      {/* Quiet metric strip — one card, thin dividers, no rainbow icon stat tiles (Workfox rule 4/8). */}
+      <div style={{ ...card, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 16 }} className="wf-hero-kpis">
+        <QuietStat label="Awaiting you" value={inbox.data?.length ?? 0} />
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Submitted by you" value={submitted.data?.length ?? 0} /></div>
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Approved recently" value={approvedRecently} /></div>
       </div>
 
       <Tabs
@@ -165,6 +181,7 @@ export default function V2ApprovalsPage() {
         errorMessage="Failed to load approval requests."
         emptyMessage={scope === 'inbox' ? "Nothing is waiting on you right now." : "You haven't submitted anything for approval yet."}
       />
+      </div>
 
       {selectedId && <RequestDetailDialog id={selectedId} scope={scope} teammates={teammates} onClose={() => setSelectedId(null)} />}
     </>
