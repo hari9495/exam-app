@@ -69,6 +69,9 @@ export default function V2WalkInGroupsPage() {
 
   return (
     <>
+      {/* Content-only entrance; the new-group, delete and manage Dialogs stay outside (a .v2-rise
+          transform becomes the containing block for their position:fixed overlays). */}
+      <div className="v2-rise">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
         <div>
           <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Walk-in Groups</h1>
@@ -87,6 +90,7 @@ export default function V2WalkInGroupsPage() {
         isLoading={isLoading} isError={isError} errorMessage="Failed to load groups." emptyMessage={q ? 'No matches.' : 'No walk-in groups yet. Create one to start.'}
         columnLabels={{ exams: 'Exams' }}
       />
+      </div>
 
       <Dialog open={addOpen} onClose={() => setAddOpen(false)} title="New walk-in group">
         <form onSubmit={handleCreate}>
