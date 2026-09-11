@@ -57,7 +57,7 @@ function WorthALookCard({ watch }: { watch: TodayResponse['watch'] }) {
     <Card>
       <div style={sectionHeaderStyle}>Worth a look</div>
       {rows.map((row) => (
-        <div key={row.key} style={railRowStyle}>
+        <div key={row.key} className="today-row" style={railRowStyle}>
           <span style={{ fontSize: 13, color: 'var(--ink)' }}>{row.text}</span>
           <Link href={row.href} className="v2-hoverbtn" style={outlineActionStyle} {...{ 'data-variant': 'outline' }}>{row.actionLabel}</Link>
         </div>
@@ -111,7 +111,7 @@ export default function V2TodayPage() {
 
   return (
     <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+      <div className="today-rise" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 11.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', marginBottom: 6 }}>{kicker}</div>
           <h1 className="v2-title" style={{ fontSize: 34, margin: 0 }}>Good {period}, {name}.</h1>
@@ -130,8 +130,10 @@ export default function V2TodayPage() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: 24, alignItems: 'start' }}>
-        <NeedsYouCard needsYou={today.needsYou} timeZone={today.today.timeZone} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="today-rise" style={{ ['--rise-delay']: '70ms' } as CSSProperties}>
+          <NeedsYouCard needsYou={today.needsYou} timeZone={today.today.timeZone} />
+        </div>
+        <div className="today-rise" style={{ display: 'flex', flexDirection: 'column', gap: 16, ['--rise-delay']: '130ms' } as CSSProperties}>
           <WorthALookCard watch={today.watch} />
           <ThisWeekCard week={today.week} />
         </div>
