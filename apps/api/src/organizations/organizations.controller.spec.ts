@@ -198,7 +198,10 @@ describe('OrganizationsController careers', () => {
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [OrganizationsController],
-      providers: [{ provide: OrganizationsService, useValue: service }],
+      providers: [
+        { provide: OrganizationsService, useValue: service },
+        { provide: ApiUsageService, useValue: {} },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useClass(MockGuard)
@@ -261,7 +264,10 @@ describe('OrganizationsController sms-config', () => {
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [OrganizationsController],
-      providers: [{ provide: OrganizationsService, useValue: service }],
+      providers: [
+        { provide: OrganizationsService, useValue: service },
+        { provide: ApiUsageService, useValue: {} },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useClass(MockGuard)
@@ -309,7 +315,10 @@ describe('OrganizationsController sms-providers catalog', () => {
   beforeEach(async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [OrganizationsController],
-      providers: [{ provide: OrganizationsService, useValue: {} }],
+      providers: [
+        { provide: OrganizationsService, useValue: {} },
+        { provide: ApiUsageService, useValue: {} },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useClass(MockGuard)
@@ -365,7 +374,10 @@ describe('OrganizationsController whatsapp-config', () => {
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [OrganizationsController],
-      providers: [{ provide: OrganizationsService, useValue: service }],
+      providers: [
+        { provide: OrganizationsService, useValue: service },
+        { provide: ApiUsageService, useValue: {} },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useClass(MockGuard)
