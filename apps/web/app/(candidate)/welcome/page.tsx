@@ -146,7 +146,7 @@ export default function CandidateWelcomePage() {
 
   return (
     <div className="mx-auto flex flex-1 max-w-xl flex-col justify-center gap-6 p-8">
-      <div className="rounded-lg border border-candidate-border bg-white p-6">
+      <div className="candidate-rise rounded-lg border border-candidate-border bg-white p-6 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_10px_28px_-18px_rgba(16,24,40,0.20)]">
         <p className="mb-1 text-xs font-bold uppercase tracking-wide text-candidate-primary">
           Hi, {current.candidateName} — you&apos;re invited to
         </p>

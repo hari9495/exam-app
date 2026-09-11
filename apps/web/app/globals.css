@@ -54,6 +54,16 @@
   background-color: rgb(255 255 255 / 0.32);
 }
 
+/* Candidate flow: ONE calm entrance on the terminal + welcome cards. These screens
+   are seen once/occasionally, so a gentle fade + 6px rise is appropriate -- the timed
+   exam screen deliberately gets no motion. transform+opacity only (GPU). Under
+   reduced-motion the movement is dropped and only the opacity fade remains. */
+@keyframes candidate-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.candidate-rise { animation: candidate-rise 240ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  @keyframes candidate-rise { from { opacity: 0; } to { opacity: 1; } }
+}
+
 /* Printed output should match what's on screen -- badge colors, code-block
    backgrounds, etc. -- not the browser's default "skip backgrounds" behavior. */
 @media print {
