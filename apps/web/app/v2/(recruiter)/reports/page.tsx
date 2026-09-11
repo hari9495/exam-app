@@ -37,7 +37,7 @@ export default function V2ReportsPage() {
   ];
 
   return (
-    <>
+    <div className="v2-rise">
       <h1 className="v2-title" style={{ fontSize: 22, margin: '0 0 6px' }}>Results</h1>
       <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 14px' }}>
         {rows.length} {rows.length === 1 ? 'exam' : 'exams'}
@@ -49,6 +49,6 @@ export default function V2ReportsPage() {
         isLoading={isLoading} isError={isError} errorMessage="Failed to load Results." emptyMessage={q ? 'No matches.' : 'No exams yet.'}
         columnLabels={COLUMN_LABELS}
       />
-    </>
+    </div>
   );
 }
