@@ -19,6 +19,10 @@ function mockFetch() {
     if (options?.method === 'POST' && urlString.endsWith('/public/jobs/tok-abc/apply')) {
       return new Response(JSON.stringify({ statusToken: 'tok-1' }), { status: 200 });
     }
+    // Résumé autofill fires on file-select; return no fields so it's a no-op for these tests.
+    if (options?.method === 'POST' && urlString.endsWith('/public/jobs/tok-abc/parse-resume')) {
+      return new Response(JSON.stringify({}), { status: 200 });
+    }
     if (urlString.endsWith('/public/jobs/tok-abc')) {
       return new Response(JSON.stringify(JOB), { status: 200 });
     }
@@ -54,7 +58,7 @@ describe('ApplyForm', () => {
     const link = await screen.findByRole('link', { name: 'Track this application' });
     expect(link).toHaveAttribute('href', '/application/tok-1');
 
-    const postCall = (global.fetch as jest.Mock).mock.calls.find(([, options]) => options?.method === 'POST');
+    const postCall = (global.fetch as jest.Mock).mock.calls.find(([url, options]) => options?.method === 'POST' && String(url).endsWith('/apply'));
     expect(postCall).toBeDefined();
     expect(String(postCall![0])).toBe('http://localhost:3001/api/v1/public/jobs/tok-abc/apply');
     const body = JSON.parse(postCall![1].body);
@@ -77,7 +81,7 @@ describe('ApplyForm', () => {
     await userEvent.click(screen.getByRole('button', { name: /Submit application/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Enter your name.');
-    expect((global.fetch as jest.Mock).mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+    expect((global.fetch as jest.Mock).mock.calls.some(([url, options]) => options?.method === 'POST' && String(url).endsWith('/apply'))).toBe(false);
   });
 
   it('blocks submission and shows an inline error when email is invalid', async () => {
@@ -94,7 +98,7 @@ describe('ApplyForm', () => {
     await userEvent.click(screen.getByRole('button', { name: /Submit application/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid email address.');
-    expect((global.fetch as jest.Mock).mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+    expect((global.fetch as jest.Mock).mock.calls.some(([url, options]) => options?.method === 'POST' && String(url).endsWith('/apply'))).toBe(false);
   });
 
   it('renders apply-visible custom fields and forwards them in the apply POST body', async () => {
@@ -127,7 +131,7 @@ describe('ApplyForm', () => {
     await userEvent.click(screen.getByRole('button', { name: /Submit application/i }));
 
     await screen.findByRole('link', { name: 'Track this application' });
-    const postCall = (global.fetch as jest.Mock).mock.calls.find(([, options]) => options?.method === 'POST');
+    const postCall = (global.fetch as jest.Mock).mock.calls.find(([url, options]) => options?.method === 'POST' && String(url).endsWith('/apply'));
     const body = JSON.parse(postCall![1].body);
     expect(body.customFields).toEqual({ 'def-1': 'https://linkedin.com/in/jane' });
   });
@@ -161,7 +165,7 @@ describe('ApplyForm', () => {
     await userEvent.click(screen.getByRole('button', { name: /Submit application/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('LinkedIn URL is required.');
-    expect((global.fetch as jest.Mock).mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+    expect((global.fetch as jest.Mock).mock.calls.some(([url, options]) => options?.method === 'POST' && String(url).endsWith('/apply'))).toBe(false);
   });
 
   it('shows a generic message when the job is not accepting applications', async () => {
@@ -207,14 +211,14 @@ describe('ApplyForm', () => {
     const submitButton = screen.getByRole('button', { name: /Submit application/i });
     expect(submitButton).toBeDisabled();
     await userEvent.click(submitButton);
-    expect((global.fetch as jest.Mock).mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+    expect((global.fetch as jest.Mock).mock.calls.some(([url, options]) => options?.method === 'POST' && String(url).endsWith('/apply'))).toBe(false);
 
     await userEvent.click(screen.getByLabelText('I have read and agree to the above.'));
     expect(submitButton).toBeEnabled();
     await userEvent.click(submitButton);
 
     await screen.findByRole('link', { name: 'Track this application' });
-    const postCall = (global.fetch as jest.Mock).mock.calls.find(([, options]) => options?.method === 'POST');
+    const postCall = (global.fetch as jest.Mock).mock.calls.find(([url, options]) => options?.method === 'POST' && String(url).endsWith('/apply'));
     const body = JSON.parse(postCall![1].body);
     expect(body.consentAccepted).toBe(true);
   });

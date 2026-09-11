@@ -2,7 +2,7 @@ import { PublicApplicationsController } from './public-applications.controller';
 
 describe('PublicApplicationsController', () => {
   function setup() {
-    const service = { getPublicJob: jest.fn(), apply: jest.fn(), getApplicationStatus: jest.fn(), getJobsFeed: jest.fn(), getBoardFeed: jest.fn(), getPortal: jest.fn(), updatePortalProfile: jest.fn(), uploadPortalResume: jest.fn(), getUnsubscribe: jest.fn(), setUnsubscribe: jest.fn(), getCareers: jest.fn() };
+    const service = { getPublicJob: jest.fn(), apply: jest.fn(), parseResume: jest.fn(), getApplicationStatus: jest.fn(), getJobsFeed: jest.fn(), getBoardFeed: jest.fn(), getPortal: jest.fn(), updatePortalProfile: jest.fn(), uploadPortalResume: jest.fn(), getUnsubscribe: jest.fn(), setUnsubscribe: jest.fn(), getCareers: jest.fn() };
     const controller = new PublicApplicationsController(service as any);
     return { service, controller };
   }
@@ -18,6 +18,13 @@ describe('PublicApplicationsController', () => {
     const dto = { name: 'Candidate', email: 'candidate@example.com', resumeBase64: 'JVBERi0=' };
     controller.apply('apply-token-1', dto as any);
     expect(service.apply).toHaveBeenCalledWith('apply-token-1', dto);
+  });
+
+  it('parseResume delegates to service.parseResume with the applyToken and dto', () => {
+    const { service, controller } = setup();
+    const dto = { resumeBase64: 'JVBERi0=' };
+    controller.parseResume('apply-token-1', dto as any);
+    expect(service.parseResume).toHaveBeenCalledWith('apply-token-1', dto);
   });
 
   it('jobsFeed delegates to service.getJobsFeed', () => {
