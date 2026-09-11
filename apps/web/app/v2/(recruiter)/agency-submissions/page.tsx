@@ -104,7 +104,7 @@ export default function V2AgencySubmissionsPage() {
   ];
 
   return (
-    <>
+    <div className="v2-rise">
       <div style={{ marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)', margin: 0 }}>Agencies</p>
         <h1 className="v2-title" style={{ fontSize: 22, margin: '2px 0 0' }}>Agency Submissions</h1>
@@ -134,6 +134,6 @@ export default function V2AgencySubmissionsPage() {
         errorMessage="Failed to load agency submissions."
         emptyMessage={status === 'pending' ? 'No pending submissions right now.' : `No ${status} submissions.`}
       />
-    </>
+    </div>
   );
 }
