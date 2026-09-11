@@ -48,7 +48,7 @@ function DetailsCard({ portal, portalToken, onUpdate }: { portal: PortalView; po
   }
 
   return (
-    <div className="rounded-lg border border-candidate-border bg-white p-4">
+    <div className="rounded-lg border border-candidate-border bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_10px_28px_-18px_rgba(16,24,40,0.20)]">
       <h2 className="font-display text-base font-semibold text-candidate-text">Your details</h2>
       <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-3">
         <div className="flex flex-col gap-1">
@@ -118,7 +118,7 @@ function ResumeCard({ portal, portalToken, onUpdate }: { portal: PortalView; por
   }
 
   return (
-    <div className="rounded-lg border border-candidate-border bg-white p-4">
+    <div className="rounded-lg border border-candidate-border bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_10px_28px_-18px_rgba(16,24,40,0.20)]">
       <h2 className="font-display text-base font-semibold text-candidate-text">Résumé</h2>
       <p className="mt-1 text-sm text-candidate-text-secondary">
         {portal.resume.hasResume ? `Résumé on file${portal.resume.parseStatus ? ` · ${portal.resume.parseStatus}` : ''}` : 'No résumé uploaded'}
@@ -168,7 +168,7 @@ function fmt(iso: string, timeZone?: string): string {
 
 function ApplicationCard({ app }: { app: PortalApplication }) {
   return (
-    <div className="rounded-lg border border-candidate-border bg-white p-4">
+    <div className="rounded-lg border border-candidate-border bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_10px_28px_-18px_rgba(16,24,40,0.20)]">
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-display text-base font-semibold text-candidate-text">{app.jobTitle}</h2>
         <span
@@ -256,7 +256,7 @@ export default function PortalPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 p-4 sm:p-8">
+    <div className="candidate-rise mx-auto flex w-full max-w-2xl flex-col gap-5 p-4 sm:p-8">
       <div>
         <p className="text-sm font-semibold text-candidate-text-secondary">{portal.orgName}</p>
         <h1 className="font-display text-2xl font-bold text-candidate-text">Your applications</h1>
