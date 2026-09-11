@@ -7,14 +7,26 @@
 // Modals → v2 Dialog; toast → inline notice.
 import { useMemo, useState, type FormEvent } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { ShieldCheck, UserPlus } from 'lucide-react';
 import { useSuperAdmins, useInviteSuperAdmin, usePromoteSuperAdmin } from '../../../../lib/hooks/useSuperAdmins';
 import type { SuperAdminSummary } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, SortHead, TextField, Dialog, Button, IconStatCard } from '../../../../components/ui-v2';
-import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
+import { DataTable, DT_FEATURES, dt, SortHead, TextField, Dialog, Button } from '../../../../components/ui-v2';
+import { STATUS } from '../../../../components/ui-v2/viz';
 
 // Matches the server's MAX_PAGE_SIZE; see the note in useOrganizations.
 const SUPER_ADMIN_PAGE_SIZE = 100;
+
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
+
+// Demoted metric for the quiet strip (Workfox rule 4/8): label + tabular number, no rainbow icon
+// stat tiles -- one card, thin dividers between cells.
+function QuietStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div style={{ padding: '14px 18px', minWidth: 0 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)' }}>{label}</div>
+      <div className="v2-mono" style={{ fontSize: 24, fontWeight: 600, color: 'var(--ink)', marginTop: 6 }}>{value.toLocaleString()}</div>
+    </div>
+  );
+}
 
 type GrantKind = 'invite' | 'promote';
 
@@ -71,6 +83,9 @@ export default function V2PlatformAdminsPage() {
 
   return (
     <>
+      {/* Content-only entrance; the invite/promote/confirm Dialogs stay outside (a .v2-rise transform
+          becomes the containing block for their position:fixed overlays). */}
+      <div className="v2-rise">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <div>
           <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)', margin: 0 }}>Platform</p>
@@ -87,9 +102,10 @@ export default function V2PlatformAdminsPage() {
         <div role="status" style={{ marginBottom: 12, fontSize: 13, padding: '9px 13px', borderRadius: 9, border: `1px solid ${notice.type === 'success' ? 'color-mix(in srgb, #15803d 30%, transparent)' : 'color-mix(in srgb, var(--danger) 30%, transparent)'}`, background: notice.type === 'success' ? 'color-mix(in srgb, #15803d 8%, transparent)' : 'color-mix(in srgb, var(--danger) 8%, transparent)', color: notice.type === 'success' ? STATUS.ok : 'var(--danger)' }}>{notice.text}</div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 16, maxWidth: 560 }} className="wf-hero-kpis">
-        <IconStatCard title="Platform admins" value={stats.total} icon={<ShieldCheck size={22} />} accent={VIZ.violet} />
-        <IconStatCard title="Granted last 30 days" value={stats.recent} icon={<UserPlus size={22} />} accent={VIZ.teal} />
+      {/* Quiet metric strip — one card, thin divider, no rainbow icon stat tiles (Workfox rule 4/8). */}
+      <div style={{ ...card, display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', marginBottom: 16, maxWidth: 560 }} className="wf-hero-kpis">
+        <QuietStat label="Platform admins" value={stats.total} />
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Granted last 30 days" value={stats.recent} /></div>
       </div>
 
       <DataTable
@@ -98,6 +114,7 @@ export default function V2PlatformAdminsPage() {
         isLoading={isLoading} isError={isError} errorMessage="Failed to load platform admins." emptyMessage={q ? 'No matching platform admins.' : 'No platform admins yet.'}
         columnLabels={{ email: 'Email', createdAt: 'Created' }}
       />
+      </div>
 
       {openForm !== null && !confirming && (
         <Dialog open onClose={closeAll} title={openForm === 'promote' ? 'Promote existing user' : 'Invite new admin'} width={440}>

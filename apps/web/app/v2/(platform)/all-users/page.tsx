@@ -9,15 +9,28 @@
 import { Suspense, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, LogIn, Users, UserCheck, Building2, UserMinus } from 'lucide-react';
+import { MoreHorizontal, LogIn } from 'lucide-react';
 import { useUserDirectory } from '../../../../lib/hooks/useUserDirectory';
 import { useAuth } from '../../../../lib/auth-context';
 import type { DirectoryUser } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, SortHead, Pill, Dropdown, DropdownItem, IconStatCard } from '../../../../components/ui-v2';
-import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
+import { DataTable, DT_FEATURES, dt, SortHead, Pill, Dropdown, DropdownItem } from '../../../../components/ui-v2';
+import { STATUS } from '../../../../components/ui-v2/viz';
 
 // Matches the server's MAX_PAGE_SIZE in apps/api/src/common/paginated-response.ts.
 const DIRECTORY_PAGE_SIZE = 100;
+
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
+
+// Demoted metric for the quiet strip (Workfox rule 4/8): label + tabular number, no rainbow icon
+// stat tiles -- one card, thin dividers between cells.
+function QuietStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div style={{ padding: '14px 18px', minWidth: 0 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)' }}>{label}</div>
+      <div className="v2-mono" style={{ fontSize: 24, fontWeight: 600, color: 'var(--ink)', marginTop: 6 }}>{value.toLocaleString()}</div>
+    </div>
+  );
+}
 
 function AllUsersInner() {
   const router = useRouter();
@@ -75,18 +88,19 @@ function AllUsersInner() {
   ];
 
   return (
-    <>
+    <div className="v2-rise">
       <div style={{ marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)', margin: 0 }}>Platform</p>
         <h1 className="v2-title" style={{ fontSize: 22, margin: '2px 0 0' }}>All Users</h1>
         <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0' }}>Everyone across every organization — switch in to manage a user&apos;s org.</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }} className="wf-hero-kpis">
-        <IconStatCard title="Total users" value={stats.total} icon={<Users size={22} />} accent={VIZ.azure} />
-        <IconStatCard title="Active" value={stats.active} icon={<UserCheck size={22} />} accent={VIZ.teal} />
-        <IconStatCard title="Organizations" value={stats.orgs} icon={<Building2 size={22} />} accent={VIZ.violet} />
-        <IconStatCard title="No organization" value={stats.noOrg} icon={<UserMinus size={22} />} accent={VIZ.amber} />
+      {/* Quiet metric strip — one card, thin dividers, no rainbow icon stat tiles (Workfox rule 4/8). */}
+      <div style={{ ...card, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 16 }} className="wf-hero-kpis">
+        <QuietStat label="Total users" value={stats.total} />
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Active" value={stats.active} /></div>
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Organizations" value={stats.orgs} /></div>
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="No organization" value={stats.noOrg} /></div>
       </div>
 
       <DataTable
@@ -95,7 +109,7 @@ function AllUsersInner() {
         isLoading={isLoading} isError={isError} errorMessage="Failed to load users." emptyMessage={q ? 'No matching users.' : 'No users found.'}
         columnLabels={{ email: 'Email', name: 'Name', role: 'Role', organizationName: 'Organization', status: 'Status' }}
       />
-    </>
+    </div>
   );
 }
 
