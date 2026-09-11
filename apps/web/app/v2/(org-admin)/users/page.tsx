@@ -9,7 +9,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Pencil, Power, KeyRound, ListFilter, Check, LogIn, Plus, Users, UserCheck, ShieldCheck, ClipboardList } from 'lucide-react';
+import { MoreHorizontal, Pencil, Power, KeyRound, ListFilter, Check, LogIn, Plus } from 'lucide-react';
 import { useUsers, useUpdateUser, useDeactivateUser, useReactivateUser, useResetUserPassword, useCreateUser, useBulkCreateUsers } from '../../../../lib/hooks/useUsers';
 import { usePermissionProfiles } from '../../../../lib/hooks/usePermissionProfiles';
 import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
@@ -17,7 +17,7 @@ import { useCurrentUser } from '../../../../lib/hooks/useCurrentUser';
 import { useSsoStatus, useSsoSettings } from '../../../../lib/hooks/useSso';
 import { useAuth } from '../../../../lib/auth-context';
 import type { StaffUser } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, SortHead, Pill, Cb, Dropdown, DropdownItem, Dialog, TextField, Combobox, Button, IconStatCard } from '../../../../components/ui-v2';
+import { DataTable, DT_FEATURES, dt, SortHead, Pill, Cb, Dropdown, DropdownItem, Dialog, TextField, Combobox, Button } from '../../../../components/ui-v2';
 import { VIZ, STATUS } from '../../../../components/ui-v2/viz';
 
 const ROLE_COLOR: Record<string, string> = { org_admin: VIZ.violet, recruiter: VIZ.azure, panel: 'var(--muted)', super_admin: VIZ.amber };
@@ -55,6 +55,19 @@ function canImpersonate(target: StaffUser, currentUserRole: string | null, isAct
   if (target.role === 'super_admin') return false;
   if (isActingSuperAdmin) return true;
   return currentUserRole === 'org_admin' && (target.role === 'recruiter' || target.role === 'panel');
+}
+
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
+
+// Demoted metric for the quiet strip (Workfox rule 4/8): label + tabular number. No rainbow icon
+// stat tiles -- one card, thin dividers between cells.
+function QuietStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div style={{ padding: '14px 18px', minWidth: 0 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)' }}>{label}</div>
+      <div className="v2-mono" style={{ fontSize: 24, fontWeight: 600, color: 'var(--ink)', marginTop: 6 }}>{value.toLocaleString()}</div>
+    </div>
+  );
 }
 
 type Notify = (type: 'success' | 'error', text: string) => void;
@@ -289,6 +302,9 @@ export default function V2UsersPage() {
 
   return (
     <>
+      {/* Content-only entrance; the edit + new-user Dialogs stay outside (a .v2-rise transform
+          becomes the containing block for their position:fixed overlays). */}
+      <div className="v2-rise">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <div>
           <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)', margin: 0 }}>Organization</p>
@@ -302,11 +318,12 @@ export default function V2UsersPage() {
         <div role="status" style={{ marginBottom: 12, fontSize: 13, padding: '9px 13px', borderRadius: 9, border: `1px solid ${notice.type === 'success' ? 'color-mix(in srgb, #15803d 30%, transparent)' : 'color-mix(in srgb, var(--danger) 30%, transparent)'}`, background: notice.type === 'success' ? 'color-mix(in srgb, #15803d 8%, transparent)' : 'color-mix(in srgb, var(--danger) 8%, transparent)', color: notice.type === 'success' ? STATUS.ok : 'var(--danger)' }}>{notice.text}</div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }} className="wf-hero-kpis">
-        <IconStatCard title="Total users" value={stats.total} icon={<Users size={22} />} accent={VIZ.azure} />
-        <IconStatCard title="Active" value={stats.active} icon={<UserCheck size={22} />} accent={VIZ.teal} />
-        <IconStatCard title="Org admins" value={stats.orgAdmins} icon={<ShieldCheck size={22} />} accent={VIZ.violet} />
-        <IconStatCard title="Panelists" value={stats.panelists} icon={<ClipboardList size={22} />} accent={VIZ.amber} />
+      {/* Quiet metric strip — one card, thin dividers, no rainbow icon stat tiles (Workfox rule 4/8). */}
+      <div style={{ ...card, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 16 }} className="wf-hero-kpis">
+        <QuietStat label="Total users" value={stats.total} />
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Active" value={stats.active} /></div>
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Org admins" value={stats.orgAdmins} /></div>
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Panelists" value={stats.panelists} /></div>
       </div>
 
       <DataTable
@@ -315,6 +332,7 @@ export default function V2UsersPage() {
         isLoading={isLoading} isError={isError} errorMessage="Failed to load staff users." emptyMessage={q || roleFilter !== 'all' || statusFilter !== 'all' ? 'No matching staff users.' : 'No staff users yet.'}
         columnLabels={{ name: 'Full name', email: 'Email', role: 'Role', status: 'Status', lastLoginAt: 'Last login', createdAt: 'Created' }}
       />
+      </div>
 
       {editing && (
         <Dialog open onClose={() => setEditing(null)} title={`Edit ${editing.email}`} width={440}>
