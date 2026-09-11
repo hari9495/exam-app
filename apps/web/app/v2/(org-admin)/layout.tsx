@@ -6,7 +6,7 @@
 // built by the shared buildStaffNav -- the SAME nav the (recruiter) group renders for org_admin --
 // so opening a settings page keeps the one standard sidebar instead of swapping to a settings sub-nav.
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { MotionConfig } from 'framer-motion';
 import { useAuth } from '../../../lib/auth-context';
 import { staffLandingPath } from '../../../lib/staff-landing';
@@ -23,6 +23,7 @@ export default function OrgAdminV2Layout({ children }: { children: React.ReactNo
   const { data: branding } = useOrgBranding();
   useDocumentBranding(branding?.name, branding?.logoUrl);
   const { data: currentUser } = useCurrentUser();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!isLoading && !accessToken) {
@@ -72,7 +73,10 @@ export default function OrgAdminV2Layout({ children }: { children: React.ReactNo
           onLogout={handleLogout}
         >
           <OverLimitBanner />
-          {children}
+          {/* One calm entrance per page: keyed by pathname so each settings/console page
+              fades + rises in on navigation. Reuses the shared .v2-rise primitive
+              (reduced-motion aware). OverLimitBanner stays outside so it never re-animates. */}
+          <div key={pathname} className="v2-rise">{children}</div>
         </AppShell>
       </div>
     </MotionConfig>

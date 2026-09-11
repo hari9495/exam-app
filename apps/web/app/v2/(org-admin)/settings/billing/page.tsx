@@ -9,7 +9,7 @@ import type { DimensionUsage } from '../../../../../lib/types';
 
 const ink = 'var(--ink)';
 const muted = 'var(--muted)';
-const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '20px 22px' };
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '20px 22px', boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
 
 // Same thresholds as before: at/over limit = danger, >=80% = warn, else ok.
 function meterColor(pct: number): string {
@@ -33,7 +33,9 @@ function Meter({ label, used, limit }: { label: string } & DimensionUsage) {
         </span>
       </div>
       <div style={{ marginTop: 7, position: 'relative', height: 8, width: '100%', overflow: 'hidden', borderRadius: 99, background: 'color-mix(in srgb, var(--ink) 8%, transparent)' }}>
-        <div style={{ height: '100%', borderRadius: 99, background: color, width: `${width}%`, transition: 'width .3s ease' }} />
+        {/* Fill via transform:scaleX (not width) so the bar animates on the GPU without layout
+            thrash; the track's overflow:hidden + radius round the ends. */}
+        <div style={{ height: '100%', width: '100%', background: color, transformOrigin: 'left', transform: `scaleX(${width / 100})`, transition: 'transform .3s ease' }} />
       </div>
       <div style={{ marginTop: 4, fontSize: 11, color: muted }}>{Math.round(pct)}% used</div>
     </div>
