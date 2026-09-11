@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useStaffLogin } from '../../../lib/hooks/useStaffLogin';
 import { BRAND } from '../../../lib/brand';
 import { Button, TextField, PasswordField, FormAlert, WorkfoxMark } from '../../../components/ui-v2';
@@ -14,6 +14,7 @@ const PROOF = [
 
 export default function V2LoginPage() {
   const s = useStaffLogin();
+  const reduce = useReducedMotion();
   const orgName = s.branding?.name;
   const initial = (orgName || 'W').trim().charAt(0).toUpperCase();
 
@@ -28,9 +29,9 @@ export default function V2LoginPage() {
     >
       <div style={{ display: 'grid', placeItems: 'center', padding: 32, background: 'var(--paper)' }}>
         <motion.div
-          initial={{ opacity: 0, y: 8 }}
+          initial={{ opacity: 0, y: reduce ? 0 : 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.2, 0.7, 0.2, 1] }}
+          transition={{ duration: reduce ? 0.18 : 0.4, ease: [0.2, 0.7, 0.2, 1] }}
           style={{ width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 16 }}
         >
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, fontFamily: 'var(--font-disp)', fontWeight: 600, fontSize: 17, letterSpacing: '-0.01em' }}>
@@ -67,14 +68,14 @@ export default function V2LoginPage() {
             )}
 
             {s.ssoEnabled && s.ssoLoginHref ? (
-              <motion.a whileTap={{ scale: 0.98 }} href={s.ssoLoginHref} onClick={s.onSsoClick} className="v2-cta" style={{ textDecoration: 'none', height: 44 }}>
+              <motion.a whileTap={reduce ? undefined : { scale: 0.98 }} href={s.ssoLoginHref} onClick={s.onSsoClick} className="v2-cta" style={{ textDecoration: 'none', height: 44 }}>
                 Continue with SSO
               </motion.a>
             ) : (
               <>
                 <TextField id="email" label="Email" type="email" value={s.email} onChange={s.setEmail} required autoComplete="email" />
                 <PasswordField id="password" label="Password" value={s.password} onChange={s.setPassword} required />
-                <motion.div whileTap={{ scale: 0.98 }} transition={{ type: 'spring', stiffness: 500, damping: 30 }}>
+                <motion.div whileTap={reduce ? undefined : { scale: 0.98 }} transition={{ type: 'spring', stiffness: 500, damping: 30 }}>
                   <Button type="submit" loading={s.submitting} fullWidth>Sign in</Button>
                 </motion.div>
                 <Link href="/forgot-password" className="v2-link">Forgot password?</Link>
