@@ -46,11 +46,13 @@ function Row({ item, timeZone, primary }: { item: TodayItem; timeZone: string; p
   // trip over a data-* prop Link's own type doesn't declare.
   const variantAttr = { 'data-variant': primary ? 'primary' : 'outline' };
   return (
-    <div style={rowStyle}>
+    <div className="today-row" style={rowStyle}>
       <div
         style={{
           width: 36, height: 36, borderRadius: '50%', background: 'var(--surface)', flexShrink: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 600, color: 'var(--ink)',
+          // Depth via a semi-transparent inset ring, not a solid border (emil-design-eng).
+          boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent)',
         }}
       >
         {initials(item.candidateName)}
@@ -80,7 +82,10 @@ export function NeedsYouCard({ needsYou, timeZone }: { needsYou: NeedsYou; timeZ
   if (nonEmpty.length === 0) {
     return (
       <Card>
-        <div style={{ padding: 20, fontSize: 13.5, color: 'var(--muted)' }}>Nothing needs you right now.</div>
+        <div style={{ padding: '28px 20px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>Nothing needs you right now.</div>
+          <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>New work appears here as candidates move through your pipeline.</div>
+        </div>
       </Card>
     );
   }

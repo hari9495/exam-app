@@ -175,3 +175,26 @@
 @container (max-width: 520px) { .wf-section { grid-template-columns: 1fr; gap: 8px; } }
 /* Paired short fields (type/difficulty, marks/negative, …) stack when very tight. */
 @container (max-width: 400px) { .wf-pair { grid-template-columns: 1fr; } }
+
+/* --- Workfox "Today" polish -------------------------------------------------
+   Motion chapter: ONE entrance (a short staggered fade + 8px rise, ease-out,
+   <300ms), nothing idle. Under reduced-motion the movement is dropped and only
+   opacity fades. `both` fill keeps a staggered block invisible until its delay
+   so nothing flashes at 0ms. Only transform+opacity animate (GPU). */
+@keyframes today-rise { to { opacity: 1; transform: none; } }
+@keyframes today-fade { to { opacity: 1; } }
+.today-rise {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: today-rise 260ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  animation-delay: var(--rise-delay, 0ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .today-rise { transform: none; animation-name: today-fade; animation-duration: 180ms; }
+}
+/* Faint hover tint on a worklist row to aid the second-glance scan — hover-capable
+   pointers only, so a tap on touch never leaves a stuck highlight. Matches .wf-trow. */
+@media (hover: hover) and (pointer: fine) {
+  .today-row { transition: background .12s ease; }
+  .today-row:hover { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+}
