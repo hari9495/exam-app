@@ -76,7 +76,7 @@ interface PipelineCardProps {
 
 function PipelineCard({ row, canManage, statusGroups, onOpen, onStatusChange, onReject }: PipelineCardProps) {
   return (
-    <div style={card}>
+    <div className="v2-cardhover" style={card}>
       <button type="button" onClick={() => onOpen(row)} style={{ textAlign: 'left', background: 'none', border: 'none', padding: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--org-primary)', cursor: 'pointer' }}>{row.candidateName}</button>
       {/* Chips row only when there's something to show — no orphan "—" placeholder. */}
       {(row.examResults.length > 0 || row.fitScore != null) && (
@@ -181,11 +181,11 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
           (which spilled the card footer controls out of the card on narrow/minimized screens). */}
       <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${stages.length}, minmax(200px, 1fr))`, gap: 16 }}>
-          {stages.map((stage) => {
+          {stages.map((stage, i) => {
             const rows = board.columns[stage.id] ?? [];
             const shown = visible(rows);
             return (
-              <div key={stage.id} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div key={stage.id} className="v2-rise" style={{ display: 'flex', flexDirection: 'column', gap: 12, ['--rise-delay']: `${i * 40}ms` } as React.CSSProperties}>
                 <h3 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', margin: 0 }}>{stage.name} ({shown.length})</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {(sortByFit ? sortByFitScore(shown) : shown).map((row) => (

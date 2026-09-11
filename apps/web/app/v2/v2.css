@@ -176,25 +176,41 @@
 /* Paired short fields (type/difficulty, marks/negative, …) stack when very tight. */
 @container (max-width: 400px) { .wf-pair { grid-template-columns: 1fr; } }
 
-/* --- Workfox "Today" polish -------------------------------------------------
-   Motion chapter: ONE entrance (a short staggered fade + 8px rise, ease-out,
-   <300ms), nothing idle. Under reduced-motion the movement is dropped and only
-   opacity fades. `both` fill keeps a staggered block invisible until its delay
-   so nothing flashes at 0ms. Only transform+opacity animate (GPU). */
-@keyframes today-rise { to { opacity: 1; transform: none; } }
-@keyframes today-fade { to { opacity: 1; } }
-.today-rise {
+/* --- Workfox v2 motion — shared polish primitives --------------------------
+   Motion chapter: ONE entrance (short staggered fade + 8px rise, ease-out,
+   <300ms), nothing idle. Movement dropped under reduced-motion (opacity only).
+   `both` fill keeps a staggered block invisible until its delay so nothing
+   flashes at 0ms. transform+opacity only (GPU). `.today-*` names are kept as
+   aliases so the merged Today screen renders unchanged. */
+@keyframes v2-rise { to { opacity: 1; transform: none; } }
+@keyframes v2-fade { to { opacity: 1; } }
+.today-rise, .v2-rise {
   opacity: 0;
   transform: translateY(8px);
-  animation: today-rise 260ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  animation: v2-rise 260ms cubic-bezier(0.23, 1, 0.32, 1) both;
   animation-delay: var(--rise-delay, 0ms);
 }
 @media (prefers-reduced-motion: reduce) {
-  .today-rise { transform: none; animation-name: today-fade; animation-duration: 180ms; }
+  .today-rise, .v2-rise { transform: none; animation-name: v2-fade; animation-duration: 180ms; }
 }
-/* Faint hover tint on a worklist row to aid the second-glance scan — hover-capable
-   pointers only, so a tap on touch never leaves a stuck highlight. Matches .wf-trow. */
+/* Faint hover tint on a scannable row — hover-capable pointers only, so a tap on
+   touch never leaves a stuck highlight. Matches .wf-trow. */
 @media (hover: hover) and (pointer: fine) {
-  .today-row { transition: background .12s ease; }
-  .today-row:hover { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+  .today-row, .v2-rowhover { transition: background .12s ease; }
+  .today-row:hover, .v2-rowhover:hover { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+  /* Clickable kanban card: a hair of lift + a token-tinted border so it reads as
+     pressable (it opens the drawer). transform/border/shadow only — layers over
+     the card's inline base styles without a specificity fight. */
+  .v2-cardhover { transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease; }
+  .v2-cardhover:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--org-primary) 40%, var(--hair)); box-shadow: 0 6px 18px -12px rgba(11, 18, 32, .35); }
+}
+/* Shared Dialog entrance: overlay fades in, panel scales 0.97->1 + opacity from
+   center (emil: modals scale from center, not from a trigger). One entrance,
+   ~180ms ease-out. Reduced-motion keeps the fade and drops the scale. */
+@keyframes v2-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes v2-panel-in { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }
+.v2-overlay-in { animation: v2-overlay-in 140ms ease both; }
+.v2-panel-in { animation: v2-panel-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both; transform-origin: center; }
+@media (prefers-reduced-motion: reduce) {
+  .v2-panel-in { animation-name: v2-overlay-in; }
 }
