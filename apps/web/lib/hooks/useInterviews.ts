@@ -13,11 +13,16 @@ export function useCandidateInterviews(candidateId: string) {
 }
 
 export interface CreateInterviewInput {
-  slots: { startsAt: string; endsAt: string }[];
+  // Required in 'proposed' mode (the default); omitted in 'self_book' mode.
+  slots?: { startsAt: string; endsAt: string }[];
   panelistUserIds: string[];
   location: string;
   timeZone: string;
   recruiterNote?: string;
+  bookingMode?: 'proposed' | 'self_book';
+  bookingWindowStart?: string;
+  bookingWindowEnd?: string;
+  slotDurationMinutes?: number;
 }
 
 // candidateId is needed (beyond entryId) purely to invalidate the right ['candidate-interviews', X]

@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ScheduleInterviewModal } from './ScheduleInterviewModal';
 import { useCurrentUser } from '../../../../lib/hooks/useCurrentUser';
 import { useCreateInterview, useSendInterview } from '../../../../lib/hooks/useInterviews';
@@ -120,6 +121,75 @@ describe('ScheduleInterviewModal off-hours/holiday warning', () => {
     setSlotStart('2026-01-27T20:00');
     expect(screen.queryByText(/Outside business hours/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/On a holiday/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('ScheduleInterviewModal mode toggle', () => {
+  beforeEach(() => {
+    setCommonDefaults();
+    mockUseUsers.mockReturnValue({ data: { data: [{ id: 'u1', name: 'Jane Panelist', email: 'jane@acme.com' }] } });
+    mockUseIntegrations.mockReturnValue({ data: { smtpConfigured: true }, isSuccess: true });
+    mockUseCurrentUser.mockReturnValue({ data: { id: 'u1', timeZone: 'UTC' } });
+    mockUseBusinessHours.mockReturnValue({ data: { businessHours: null, holidays: [] }, isError: false });
+  });
+
+  it('proposed mode (default) still sends the existing slots payload -- regression', async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({ id: 'interview-1' });
+    const sendMutateAsync = jest.fn().mockResolvedValue({ id: 'interview-1' });
+    mockUseCreateInterview.mockReturnValue({ mutateAsync, isPending: false });
+    mockUseSendInterview.mockReturnValue({ mutateAsync: sendMutateAsync, isPending: false });
+
+    renderModal();
+    setSlotStart('2026-01-27T10:00');
+    fireEvent.change(screen.getByLabelText('End 1'), { target: { value: '2026-01-27T11:00' } });
+    await userEvent.click(screen.getByText('Jane Panelist'));
+    await userEvent.type(screen.getByLabelText('Location'), 'Zoom');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        slots: [{ startsAt: '2026-01-27T10:00:00.000Z', endsAt: '2026-01-27T11:00:00.000Z' }],
+        panelistUserIds: ['u1'],
+        location: 'Zoom',
+      }),
+    );
+    const payload = mutateAsync.mock.calls[0][0];
+    expect(payload.bookingMode).toBeUndefined();
+    expect(payload.bookingWindowStart).toBeUndefined();
+  });
+
+  it('switching to "Let candidate pick a time" sends the self-book payload -- no slots', async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({ id: 'interview-1' });
+    const sendMutateAsync = jest.fn().mockResolvedValue({ id: 'interview-1' });
+    mockUseCreateInterview.mockReturnValue({ mutateAsync, isPending: false });
+    mockUseSendInterview.mockReturnValue({ mutateAsync: sendMutateAsync, isPending: false });
+
+    renderModal();
+    await userEvent.click(screen.getByRole('button', { name: 'Let candidate pick a time' }));
+
+    fireEvent.change(screen.getByLabelText('Window start'), { target: { value: '2026-01-27T09:00' } });
+    fireEvent.change(screen.getByLabelText('Window end'), { target: { value: '2026-01-28T09:00' } });
+    fireEvent.change(screen.getByLabelText('Slot duration'), { target: { value: '45' } });
+    await userEvent.click(screen.getByText('Jane Panelist'));
+    await userEvent.type(screen.getByLabelText('Location'), 'Zoom');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(mutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingMode: 'self_book',
+        bookingWindowStart: '2026-01-27T09:00:00.000Z',
+        bookingWindowEnd: '2026-01-28T09:00:00.000Z',
+        slotDurationMinutes: 45,
+        panelistUserIds: ['u1'],
+        location: 'Zoom',
+      }),
+    );
+    const payload = mutateAsync.mock.calls[0][0];
+    expect(payload.slots).toBeUndefined();
+    // Proposed-times UI is gone once in self-book mode.
+    expect(screen.queryByLabelText('Start 1')).not.toBeInTheDocument();
   });
 });
 

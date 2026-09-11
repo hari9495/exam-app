@@ -801,6 +801,8 @@ export interface Interview {
 }
 
 // GET /public/interviews/:token -- unauthenticated, mirrors InterviewsService.getPublicInterview.
+// bookingMode/slotDurationMinutes/availableSlots are present only for a self-book interview that
+// isn't confirmed yet -- proposed mode and already-confirmed interviews omit them (today's shape).
 export interface PublicInterview {
   jobTitle: string;
   orgName: string;
@@ -810,6 +812,9 @@ export interface PublicInterview {
   panel: string[];
   status: InterviewStatus;
   confirmedSlotId: string | null;
+  bookingMode?: 'proposed' | 'self_book';
+  slotDurationMinutes?: number;
+  availableSlots?: { startsAt: string; endsAt: string }[];
 }
 
 export type DriveSessionStatus = 'scheduled' | 'live' | 'ended';
