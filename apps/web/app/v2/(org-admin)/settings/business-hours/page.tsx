@@ -17,7 +17,7 @@ import { useBusinessHours, useUpdateBusinessHours } from '../../../../../lib/hoo
 import { Button } from '../../../../../components/ui-v2/Button';
 
 const muted = 'var(--muted)';
-const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '18px 20px' };
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '18px 20px', boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
 const desc: React.CSSProperties = { fontSize: 13, color: muted, margin: '4px 0 0' };
 const input: React.CSSProperties = { boxSizing: 'border-box', padding: '7px 10px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none' };
 const row: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--hair)' };

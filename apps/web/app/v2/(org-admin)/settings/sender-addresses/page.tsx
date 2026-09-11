@@ -18,7 +18,7 @@ import { TextField } from '../../../../../components/ui-v2/TextField';
 import { Dialog } from '../../../../../components/ui-v2/Dialog';
 
 const muted = 'var(--muted)';
-const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '16px 20px', marginBottom: 12 };
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '16px 20px', marginBottom: 12, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
 const desc: React.CSSProperties = { fontSize: 13, color: muted, margin: '4px 0 0' };
 const dangerIconBtn: React.CSSProperties = { display: 'inline-grid', placeItems: 'center', width: 30, height: 30, borderRadius: 7, border: '1px solid color-mix(in srgb, var(--danger) 35%, var(--hair))', background: 'var(--paper)', color: 'var(--danger)', cursor: 'pointer' };
 // Canonical secondary button (values match components/ui-v2/DataTable.tsx's `dt.toolBtn` exactly).
