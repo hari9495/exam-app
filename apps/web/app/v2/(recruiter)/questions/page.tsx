@@ -149,6 +149,9 @@ export default function V2QuestionsPage() {
 
   return (
     <>
+      {/* Content-only entrance; the delete / bulk-upload / generate Dialogs stay outside (a .v2-rise
+          transform becomes the containing block for their position:fixed overlays). */}
+      <div className="v2-rise">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Question Bank</h1>
         <span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
@@ -199,6 +202,7 @@ export default function V2QuestionsPage() {
           </span>
         }
       />
+      </div>
 
       <Dialog open={!!pendingDelete} onClose={() => setPendingDelete(null)} title="Delete question">
         <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5, margin: '0 0 8px' }}>Delete this question? It will be removed from the question bank. Exams that already use it keep their copy.</p>
