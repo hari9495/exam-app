@@ -17,7 +17,7 @@ import { TextField } from '../../../../components/ui-v2/TextField';
 import { Dialog } from '../../../../components/ui-v2/Dialog';
 
 const muted = 'var(--muted)';
-const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '16px 20px', marginBottom: 12 };
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '16px 20px', marginBottom: 12, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
 const desc: React.CSSProperties = { fontSize: 13, color: muted, margin: '6px 0 0' };
 const dangerIconBtn: React.CSSProperties = { display: 'inline-grid', placeItems: 'center', width: 30, height: 30, borderRadius: 7, border: '1px solid color-mix(in srgb, var(--danger) 35%, var(--hair))', background: 'var(--paper)', color: 'var(--danger)', cursor: 'pointer' };
 // Canonical secondary button (values match components/ui-v2/DataTable.tsx's `dt.toolBtn` exactly).
@@ -130,6 +130,9 @@ export default function V2OfferTemplatePage() {
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
+      {/* Content-only entrance; the create/edit Dialogs stay outside (a .v2-rise transform becomes
+          the containing block for their position:fixed overlays). */}
+      <div className="v2-rise">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
         <div>
           <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Offer Templates</h1>
@@ -149,6 +152,7 @@ export default function V2OfferTemplatePage() {
       {!isLoading && !isError && (!templates || templates.length === 0) && <p style={{ fontSize: 13, color: muted }}>No templates yet — add one to get started. Offers will use the built-in default until then.</p>}
 
       {templates && templates.map((t) => <TemplateRow key={t.id} template={t} onEdit={setEditing} notify={notify} />)}
+      </div>
 
       {creating && <TemplateFormDialog onClose={() => setCreating(false)} notify={notify} />}
       {editing && <TemplateFormDialog template={editing} onClose={() => setEditing(null)} notify={notify} />}
