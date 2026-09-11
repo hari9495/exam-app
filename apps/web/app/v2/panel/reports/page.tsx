@@ -6,11 +6,23 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { ColumnDef } from '@tanstack/react-table';
-import { ClipboardList, CircleCheck, Users, CheckCheck } from 'lucide-react';
 import { useExams } from '../../../../lib/hooks/useExams';
 import type { ExamListItem, ExamStatus } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, SortHead, Pill, IconStatCard } from '../../../../components/ui-v2';
-import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
+import { DataTable, DT_FEATURES, dt, SortHead, Pill } from '../../../../components/ui-v2';
+import { STATUS } from '../../../../components/ui-v2/viz';
+
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
+
+// Demoted metric for the quiet strip (Workfox rule 4/8): label + tabular number, no rainbow icon
+// stat tiles -- one card, thin dividers between cells.
+function QuietStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div style={{ padding: '14px 18px', minWidth: 0 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)' }}>{label}</div>
+      <div className="v2-mono" style={{ fontSize: 24, fontWeight: 600, color: 'var(--ink)', marginTop: 6 }}>{value.toLocaleString()}</div>
+    </div>
+  );
+}
 
 const STATUS_TONE: Record<ExamStatus, { c: string; label: string }> = { published: { c: STATUS.ok, label: 'Published' }, draft: { c: 'var(--muted)', label: 'Draft' }, archived: { c: STATUS.bad, label: 'Archived' } };
 const COLUMN_LABELS: Record<string, string> = { status: 'Status', attemptTotalCount: 'Attempts', durationMinutes: 'Duration', passCriteriaPercent: 'Pass mark', createdAt: 'Created' };
@@ -46,7 +58,7 @@ export default function V2PanelReportsPage() {
   ];
 
   return (
-    <>
+    <div className="v2-rise">
       <div style={{ marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)', margin: 0 }}>Panel</p>
         <h1 className="v2-title" style={{ fontSize: 22, margin: '2px 0 0' }}>Results</h1>
@@ -56,11 +68,12 @@ export default function V2PanelReportsPage() {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }} className="wf-hero-kpis">
-        <IconStatCard title="Exams" value={stats.total} icon={<ClipboardList size={22} />} accent={VIZ.azure} />
-        <IconStatCard title="Published" value={stats.published} icon={<CircleCheck size={22} />} accent={VIZ.teal} />
-        <IconStatCard title="Total attempts" value={stats.attempts} icon={<Users size={22} />} accent={VIZ.violet} />
-        <IconStatCard title="Settled" value={stats.settled} icon={<CheckCheck size={22} />} accent={VIZ.amber} />
+      {/* Quiet metric strip — one card, thin dividers, no rainbow icon stat tiles (Workfox rule 4/8). */}
+      <div style={{ ...card, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 16 }} className="wf-hero-kpis">
+        <QuietStat label="Exams" value={stats.total} />
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Published" value={stats.published} /></div>
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Total attempts" value={stats.attempts} /></div>
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Settled" value={stats.settled} /></div>
       </div>
 
       <DataTable
@@ -69,6 +82,6 @@ export default function V2PanelReportsPage() {
         isLoading={isLoading} isError={isError} errorMessage="Failed to load Results." emptyMessage={q ? 'No matches.' : 'No exams yet.'}
         columnLabels={COLUMN_LABELS}
       />
-    </>
+    </div>
   );
 }
