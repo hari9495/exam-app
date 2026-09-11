@@ -104,7 +104,7 @@ export default function V2ExamReportPage() {
   ];
 
   return (
-    <div>
+    <div className="v2-rise">
       <h1 className="v2-title" style={{ fontSize: 22, margin: '0 0 16px' }}>{exam?.title ?? 'Exam Results'}</h1>
 
       {summaryLoading ? (
