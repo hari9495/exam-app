@@ -1,6 +1,9 @@
 import { randomUUID } from 'crypto';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService, TenantPrismaService, BlobStorageService } from '@exam-platform/shared';
+import pdfParse from 'pdf-parse';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { PrismaService, TenantPrismaService, BlobStorageService, AiApiKeyResolverService, AiNotConfiguredError } from '@exam-platform/shared';
+import { QuotaService } from '../billing/quota.service';
+import { ParseResumeDto } from './dto/parse-resume.dto';
 import { JobsService } from '../jobs/jobs.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { expandedName } from '../walk-in/walk-in.service';
@@ -50,8 +53,25 @@ export interface CareersPageResponse {
   }[];
 }
 
+// Same guard the résumé-parse processor uses: truncate before the AI call so a huge PDF can't blow
+// past the model context or run up token cost.
+const MAX_RESUME_TEXT_CHARS = 40_000;
+
+// Contact-only extraction schema (distinct from the enrichment schema in resume-parse.processor,
+// which pulls summary/skills/title/years). Every field optional -- a résumé may omit any of them.
+const CONTACT_SCHEMA = {
+  type: 'object' as const,
+  properties: {
+    name: { type: 'string', description: "The applicant's full name." },
+    email: { type: 'string', description: "The applicant's email address." },
+    phone: { type: 'string', description: "The applicant's phone number." },
+  },
+  required: [] as string[],
+};
+
 @Injectable()
 export class PublicApplicationsService {
+  private readonly logger = new Logger(PublicApplicationsService.name);
   // jobs is RLS-protected and there is no org context until the applyToken resolves one. The
   // super-admin flag on forTenant bypasses the RLS predicate entirely, so this placeholder org
   // is never used for filtering and never written anywhere -- it just satisfies the context shape.
@@ -63,6 +83,8 @@ export class PublicApplicationsService {
     private readonly blobStorage: BlobStorageService,
     private readonly jobsService: JobsService,
     private readonly integrationEvents: IntegrationEventsService,
+    private readonly aiApiKeyResolver: AiApiKeyResolverService,
+    private readonly quota: QuotaService,
   ) {}
 
   private async resolveJob(applyToken: string) {
@@ -92,6 +114,70 @@ export class PublicApplicationsService {
       throw new NotFoundException('This role is not accepting applications');
     }
     return job;
+  }
+
+  // Best-effort résumé → contact-field prefill for the public apply form. Resolves the org from the
+  // apply token (so it can use that org's AI provider), extracts name/email/phone WITHOUT creating a
+  // candidate or persisting the PDF, and returns only fields the model was confident about.
+  //
+  // Never throws for the "no prefill available" case: a missing AI key, an exhausted AI quota, a
+  // scanned/empty PDF, or a malformed AI result all resolve to {} so the candidate simply fills the
+  // form manually. Submit stays fully authoritative and re-validates everything. Bad/closed token
+  // (NotFound) and an invalid/oversized PDF (BadRequest via validatePdfUpload) still surface, so the
+  // client isn't misled into thinking a broken upload was accepted.
+  async parseResume(applyToken: string, dto: ParseResumeDto): Promise<{ name?: string; email?: string; phone?: string }> {
+    const job = await this.resolveJob(applyToken);
+    const buf = Buffer.from(dto.resumeBase64, 'base64');
+    const validated = validatePdfUpload(buf);
+    if (!validated.ok) {
+      throw new BadRequestException(validated.reason === 'too_large' ? 'Résumé exceeds 5 MB' : 'Résumé must be a PDF');
+    }
+
+    const organizationId = job.organizationId;
+    const context = { organizationId, isSuperAdmin: true };
+    try {
+      // AiNotConfiguredError (no key for this org) → dormant, not an error: return no prefill.
+      const aiProvider = await this.aiApiKeyResolver.resolve(organizationId).catch((error) => {
+        if (error instanceof AiNotConfiguredError) return null;
+        throw error;
+      });
+      if (!aiProvider) return {};
+
+      // Cost control at a public trust boundary: an org out of AI credits isn't charged for a
+      // convenience call. assertWithinLimit throws when exhausted; the outer catch turns that into
+      // an empty prefill rather than a 402 that would block applying.
+      await this.quota.assertWithinLimit(context, 'ai_credits');
+
+      const text = (await pdfParse(buf)).text.slice(0, MAX_RESUME_TEXT_CHARS);
+      if (!text.trim()) return {};
+
+      const result = await aiProvider.generateStructured({
+        modelTier: 'fast',
+        maxTokens: 512,
+        prompt:
+          "Extract the applicant's contact details from the following résumé text. " +
+          'Return only fields that are clearly present; omit anything you are unsure about.\n\n' +
+          `Résumé text:\n${text}`,
+        tool: {
+          name: 'report_contact',
+          description: "Report the applicant's contact details extracted from a résumé.",
+          schema: CONTACT_SCHEMA,
+        },
+      });
+
+      // Record the spend so the quota above is meaningful (mirrors resume-parse). sourceId is a
+      // UUID column and there is no candidate yet, so it stays null.
+      await this.tenantPrisma.forTenant(context, (tx) =>
+        tx.aiCreditUsage.create({ data: { organizationId, source: 'resume_autofill', credits: 1, sourceId: null } }),
+      );
+
+      const pick = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+      return { name: pick(result.name), email: pick(result.email), phone: pick(result.phone) };
+    } catch (error) {
+      // Best-effort: quota exceeded, AI failure, unreadable PDF text, etc. → no prefill.
+      this.logger.warn(`Résumé autofill skipped for a ${organizationId} apply: ${(error as Error).message}`);
+      return {};
+    }
   }
 
   async getPublicJob(applyToken: string) {

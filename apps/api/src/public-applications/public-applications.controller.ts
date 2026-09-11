@@ -2,6 +2,7 @@ import { Body, Controller, Get, Header, Param, Patch, Post, UseGuards } from '@n
 import { Throttle } from '@nestjs/throttler';
 import { PublicApplicationsService } from './public-applications.service';
 import { ApplyDto } from './dto/apply.dto';
+import { ParseResumeDto } from './dto/parse-resume.dto';
 import { UpdatePortalProfileDto } from './dto/update-portal-profile.dto';
 import { UploadPortalResumeDto } from './dto/upload-portal-resume.dto';
 import { UnsubscribeDto } from './dto/unsubscribe.dto';
@@ -46,6 +47,14 @@ export class PublicApplicationsController {
   @Post('jobs/:applyToken/apply')
   apply(@Param('applyToken') applyToken: string, @Body() dto: ApplyDto) {
     return this.service.apply(applyToken, dto);
+  }
+
+  // Best-effort résumé → contact prefill for the apply form. Under the controller-level strict
+  // walk-in throttle (this triggers an AI call, so it must stay rate-limited); the service caps
+  // spend against the org's AI quota and returns {} whenever no prefill is available.
+  @Post('jobs/:applyToken/parse-resume')
+  parseResume(@Param('applyToken') applyToken: string, @Body() dto: ParseResumeDto) {
+    return this.service.parseResume(applyToken, dto);
   }
 
   @Get('applications/:statusToken')

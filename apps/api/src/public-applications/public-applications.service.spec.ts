@@ -1,9 +1,15 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+// Mocked so parseResume's PDF→text step is deterministic without a real PDF binary.
+import pdfParse from 'pdf-parse';
 import { PublicApplicationsService } from './public-applications.service';
-import { PrismaService, TenantPrismaService, BlobStorageService } from '@exam-platform/shared';
+import { PrismaService, TenantPrismaService, BlobStorageService, AiApiKeyResolverService, AiNotConfiguredError } from '@exam-platform/shared';
+import { QuotaService } from '../billing/quota.service';
 import { JobsService } from '../jobs/jobs.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
+
+jest.mock('pdf-parse', () => jest.fn());
+const mockPdfParse = pdfParse as unknown as jest.Mock;
 
 // apply() now calls recomputeGlobalStage(tx, ...) as its last write, which reads
 // tx.pipelineEntry.findMany + tx.candidateEmail.count and writes tx.candidate.update. Default to
@@ -27,6 +33,8 @@ describe('PublicApplicationsService', () => {
   let blobStorage: { upload: jest.Mock; signIfOurs: jest.Mock };
   let jobsService: { enqueue: jest.Mock };
   let integrationEvents: { emit: jest.Mock };
+  let aiApiKeyResolver: { resolve: jest.Mock };
+  let quota: { assertWithinLimit: jest.Mock };
 
   const openJob = {
     id: 'job-1',
@@ -47,6 +55,9 @@ describe('PublicApplicationsService', () => {
     blobStorage = { upload: jest.fn(), signIfOurs: jest.fn(async (value) => value) };
     jobsService = { enqueue: jest.fn() };
     integrationEvents = { emit: jest.fn() };
+    aiApiKeyResolver = { resolve: jest.fn() };
+    quota = { assertWithinLimit: jest.fn() };
+    mockPdfParse.mockReset();
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -56,6 +67,8 @@ describe('PublicApplicationsService', () => {
         { provide: BlobStorageService, useValue: blobStorage },
         { provide: JobsService, useValue: jobsService },
         { provide: IntegrationEventsService, useValue: integrationEvents },
+        { provide: AiApiKeyResolverService, useValue: aiApiKeyResolver },
+        { provide: QuotaService, useValue: quota },
       ],
     }).compile();
     service = moduleRef.get(PublicApplicationsService);
@@ -1153,6 +1166,67 @@ describe('PublicApplicationsService', () => {
 
       await expect(service.setUnsubscribe('bad-token', true)).rejects.toThrow(NotFoundException);
       expect(update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('parseResume (résumé autofill)', () => {
+    const pdfB64 = Buffer.from('%PDF-1.4 résumé text').toString('base64');
+    const jobLookup = () =>
+      tenantPrisma.forTenant.mockImplementationOnce((_c: unknown, fn: (tx: any) => unknown) =>
+        fn({ job: { findUnique: jest.fn().mockResolvedValue(openJob) } }),
+      );
+
+    it('returns {} when the org has no AI key (dormant until provisioned), without spending', async () => {
+      jobLookup();
+      aiApiKeyResolver.resolve.mockRejectedValue(new AiNotConfiguredError('no key'));
+
+      await expect(service.parseResume('token', { resumeBase64: pdfB64 })).resolves.toEqual({});
+      expect(quota.assertWithinLimit).not.toHaveBeenCalled();
+      expect(mockPdfParse).not.toHaveBeenCalled();
+    });
+
+    it('extracts and returns only the confident contact fields, and records the AI spend', async () => {
+      const createUsage = jest.fn().mockResolvedValue({});
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c: unknown, fn: (tx: any) => unknown) => fn({ job: { findUnique: jest.fn().mockResolvedValue(openJob) } }))
+        .mockImplementationOnce((_c: unknown, fn: (tx: any) => unknown) => fn({ aiCreditUsage: { create: createUsage } }));
+      const generateStructured = jest.fn().mockResolvedValue({ name: 'Jane Doe', email: 'jane@example.com', phone: '   ', title: 'ignored' });
+      aiApiKeyResolver.resolve.mockResolvedValue({ generateStructured });
+      quota.assertWithinLimit.mockResolvedValue(undefined);
+      mockPdfParse.mockResolvedValue({ text: 'Jane Doe jane@example.com' });
+
+      const result = await service.parseResume('token', { resumeBase64: pdfB64 });
+
+      // Empty phone is dropped; unknown fields ignored.
+      expect(result).toEqual({ name: 'Jane Doe', email: 'jane@example.com', phone: undefined });
+      expect(generateStructured).toHaveBeenCalledTimes(1);
+      expect(createUsage).toHaveBeenCalledWith({ data: { organizationId: 'org-1', source: 'resume_autofill', credits: 1, sourceId: null } });
+    });
+
+    it('returns {} (never blocks the applicant) when the AI quota is exhausted', async () => {
+      jobLookup();
+      const generateStructured = jest.fn();
+      aiApiKeyResolver.resolve.mockResolvedValue({ generateStructured });
+      quota.assertWithinLimit.mockRejectedValue(new Error('quota exceeded'));
+
+      await expect(service.parseResume('token', { resumeBase64: pdfB64 })).resolves.toEqual({});
+      expect(generateStructured).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-PDF upload (trust boundary) before any AI work', async () => {
+      jobLookup();
+      const notPdf = Buffer.from('just some text').toString('base64');
+
+      await expect(service.parseResume('token', { resumeBase64: notPdf })).rejects.toThrow(BadRequestException);
+      expect(aiApiKeyResolver.resolve).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unknown/closed apply token with NotFound', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c: unknown, fn: (tx: any) => unknown) =>
+        fn({ job: { findUnique: jest.fn().mockResolvedValue(null) } }),
+      );
+
+      await expect(service.parseResume('bad-token', { resumeBase64: pdfB64 })).rejects.toThrow(NotFoundException);
     });
   });
 });

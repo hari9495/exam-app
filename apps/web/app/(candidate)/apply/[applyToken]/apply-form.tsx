@@ -39,6 +39,7 @@ export default function ApplyForm() {
   const [submitting, setSubmitting] = useState(false);
   const [statusToken, setStatusToken] = useState<string | null>(null);
   const [portalToken, setPortalToken] = useState<string | null>(null);
+  const [autofilling, setAutofilling] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +58,32 @@ export default function ApplyForm() {
       cancelled = true;
     };
   }, [applyToken]);
+
+  // Best-effort: when a valid PDF is attached, ask the server to read contact details out of it
+  // and prefill ONLY the fields the applicant hasn't already filled. Silently does nothing on any
+  // failure (or when the org has no AI key configured — the endpoint returns {}). The functional
+  // setState reads the latest value so we never clobber what the applicant typed.
+  async function autofillFromResume(f: File) {
+    if (f.type !== 'application/pdf' || f.size > MAX_RESUME_BYTES) return;
+    setAutofilling(true);
+    try {
+      const resumeBase64 = await readFileAsBase64(f);
+      const res = await fetch(`${API_BASE}/public/jobs/${applyToken}/parse-resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeBase64 }),
+      });
+      if (!res.ok) return;
+      const data: { name?: string; email?: string; phone?: string } = await res.json();
+      if (data.name) setName((cur) => (cur.trim() ? cur : data.name!));
+      if (data.email) setEmail((cur) => (cur.trim() ? cur : data.email!));
+      if (data.phone) setPhone((cur) => (cur.trim() ? cur : data.phone!));
+    } catch {
+      // Autofill is a convenience — never surface an error; the applicant just fills the form.
+    } finally {
+      setAutofilling(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -234,12 +261,15 @@ export default function ApplyForm() {
               type="file"
               accept="application/pdf"
               onChange={(e) => {
-                setFile(e.target.files?.[0] ?? null);
+                const picked = e.target.files?.[0] ?? null;
+                setFile(picked);
                 setFileError(null);
+                if (picked) void autofillFromResume(picked);
               }}
               required
               className="text-sm text-candidate-text-secondary"
             />
+            {autofilling ? <p className="text-xs text-candidate-text-tertiary">Reading your résumé to prefill the form…</p> : null}
             {fileError ? <p className="text-xs text-candidate-danger">{fileError}</p> : null}
           </div>
 
