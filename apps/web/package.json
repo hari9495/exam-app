@@ -30,7 +30,7 @@
     "framer-motion": "^12.42.2",
     "lucide-react": "^1.24.0",
     "monaco-editor": "0.52.2",
-    "next": "^16.2.10",
+    "next": "^16.3.4",
     "postcss": "^8.4.31",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
