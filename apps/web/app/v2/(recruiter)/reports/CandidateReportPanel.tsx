@@ -20,9 +20,9 @@ import { useToast, IntegrityBadge } from '../../../../components/ui';
 import { AuditHistoryLink } from '../../../../components/AuditHistoryLink';
 import { TabActivitySummaryCard, TabActivityBanner, hasTabActivityContent } from '../../../../components/TabActivity';
 import { Dialog, Button, Pill, dt } from '../../../../components/ui-v2';
-import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
+import { STATUS, VIZ, rateColor } from '../../../../components/ui-v2/viz';
 
-const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: 18 };
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: 18, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
 const SEVERITY_COLOR: Record<string, string> = { high: STATUS.bad, medium: STATUS.warn, low: 'var(--muted)' };
 
 function formatSnapshotTime(occurredAt: string): string {
@@ -90,6 +90,9 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
 
   return (
     <div style={{ maxWidth: 1040, margin: '0 auto' }}>
+      {/* Content entrance; the Dialogs below stay OUTSIDE this wrapper -- a transform ancestor
+          would become the containing block for their position:fixed overlays. */}
+      <div className="v2-rise">
       {backSlot}
       <div style={{ marginTop: 12, marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -334,6 +337,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
           <TabActivitySummaryCard summary={candidate.tabActivitySummary ?? []} proctoringAnalysis={candidate.proctoringAnalysis} />
         </div>
       )}
+      </div>
 
       <Dialog
         open={selectedSnapshot !== null}
@@ -418,10 +422,23 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
           <div key={section.sectionId} style={card}>
             <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)', margin: 0 }}>{section.title}</h3>
-              <span style={{ fontSize: 13, color: 'var(--muted)' }}>
-                {section.score}/{section.maxScore} · {section.weightPercent}% weight
-                {section.requiredCount != null ? ` · best ${section.requiredCount} of ${section.questions.length} counted` : ''}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {section.maxScore > 0 && (() => {
+                  // Section score as a magnitude bar. Rate-colored (not single hue like the
+                  // question-accuracy bar): here high IS good, so a low section = a real weak
+                  // area worth flagging -- same rateColor the reports summary uses for scores.
+                  const pct = Math.max(0, Math.min(100, (section.score / section.maxScore) * 100));
+                  return (
+                    <div title={`${pct.toFixed(0)}% of section marks`} style={{ position: 'relative', height: 6, width: 88, flexShrink: 0, borderRadius: 99, overflow: 'hidden', background: 'color-mix(in srgb, var(--ink) 8%, transparent)' }}>
+                      <div style={{ position: 'absolute', inset: 0, transformOrigin: 'left', transform: `scaleX(${pct / 100})`, background: rateColor(pct) }} />
+                    </div>
+                  );
+                })()}
+                <span style={{ fontSize: 13, color: 'var(--muted)' }}>
+                  {section.score}/{section.maxScore} · {section.weightPercent}% weight
+                  {section.requiredCount != null ? ` · best ${section.requiredCount} of ${section.questions.length} counted` : ''}
+                </span>
+              </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {section.questions.map((question, qIndex) => (
