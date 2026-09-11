@@ -14,7 +14,7 @@ import { useFieldPermissions, useUpdateFieldPermissions } from '../../../../../l
 import { Button } from '../../../../../components/ui-v2/Button';
 
 const muted = 'var(--muted)';
-const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '18px 20px' };
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '18px 20px', boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
 const desc: React.CSSProperties = { fontSize: 13, color: muted, margin: '4px 0 0' };
 const th: React.CSSProperties = { textAlign: 'left', fontSize: 12, fontWeight: 600, color: muted, padding: '6px 10px', borderBottom: '1px solid var(--hair)' };
 const td: React.CSSProperties = { padding: '8px 10px', borderBottom: '1px solid var(--hair)', fontSize: 13, color: 'var(--ink)' };
