@@ -451,6 +451,64 @@ describe('CandidatesService', () => {
     });
   });
 
+  describe('setSmsOptOut', () => {
+    it('sets smsOptedOutAt to now when opting out', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', smsOptedOutAt: null }),
+          update: jest.fn().mockResolvedValue({ id: 'cand-1', smsOptedOutAt: new Date('2026-09-09T00:00:00.000Z') }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.setSmsOptOut(context, 'user-1', 'cand-1', { optedOut: true });
+
+      expect(tx.candidate.update).toHaveBeenCalledWith({
+        where: { id: 'cand-1' },
+        data: { smsOptedOutAt: expect.any(Date) },
+      });
+      expect(result).toEqual({ id: 'cand-1', smsOptedOutAt: expect.any(Date) });
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1',
+        action: 'candidate.sms_opted_out',
+        entityType: 'candidate',
+        entityId: 'cand-1',
+      });
+    });
+
+    it('clears smsOptedOutAt to null when opting back in', async () => {
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', smsOptedOutAt: new Date() }),
+          update: jest.fn().mockResolvedValue({ id: 'cand-1', smsOptedOutAt: null }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.setSmsOptOut(context, 'user-1', 'cand-1', { optedOut: false });
+
+      expect(tx.candidate.update).toHaveBeenCalledWith({
+        where: { id: 'cand-1' },
+        data: { smsOptedOutAt: null },
+      });
+      expect(result).toEqual({ id: 'cand-1', smsOptedOutAt: null });
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: 'user-1',
+        action: 'candidate.sms_opted_in',
+        entityType: 'candidate',
+        entityId: 'cand-1',
+      });
+    });
+
+    it('is org-scoped: throws NotFoundException for a candidate outside the caller organization', async () => {
+      const tx = { candidate: { findFirst: jest.fn().mockResolvedValue(null), update: jest.fn() } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(service.setSmsOptOut(context, 'user-1', 'cand-1', { optedOut: true })).rejects.toThrow(NotFoundException);
+      expect(tx.candidate.update).not.toHaveBeenCalled();
+    });
+  });
+
   it('rejects creating a candidate whose email already exists in the organization', async () => {
     const tx = {
       candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com' }) },

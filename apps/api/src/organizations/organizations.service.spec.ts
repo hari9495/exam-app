@@ -1176,6 +1176,124 @@ describe('OrganizationsService', () => {
     });
   });
 
+  describe('getSmsConfig', () => {
+    it('reports unconfigured with no token/accountSid/fromNumber set', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: false, smsAccountSid: null, smsAuthTokenEncrypted: null, smsFromNumber: null,
+      });
+
+      const result = await service.getSmsConfig({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ smsEnabled: false, smsAccountSid: null, smsFromNumber: null, configured: false });
+    });
+
+    it('reports configured true and the non-secret fields once accountSid+token+fromNumber are all set, and NEVER returns the token', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsAccountSid: 'AC123', smsAuthTokenEncrypted: 'encrypted-token-blob', smsFromNumber: '+15551234567',
+      });
+
+      const result = await service.getSmsConfig({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result).toEqual({ smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567', configured: true });
+      expect(result).not.toHaveProperty('smsAuthToken');
+      expect(result).not.toHaveProperty('smsAuthTokenEncrypted');
+      expect(JSON.stringify(result)).not.toContain('encrypted-token-blob');
+    });
+
+    it('reports configured false when any one of accountSid/token/fromNumber is missing', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsAccountSid: 'AC123', smsAuthTokenEncrypted: null, smsFromNumber: '+15551234567',
+      });
+
+      const result = await service.getSmsConfig({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result.configured).toBe(false);
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(service.getSmsConfig({ organizationId: null, isSuperAdmin: true })).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('putSmsConfig', () => {
+    it('encrypts a non-blank token and persists the ciphertext, never the plaintext', async () => {
+      cryptoService.encrypt.mockReturnValue('encrypted-token-blob');
+      prisma.organization.update.mockResolvedValue({});
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsAccountSid: 'AC123', smsAuthTokenEncrypted: 'encrypted-token-blob', smsFromNumber: '+15551234567',
+      });
+
+      const result = await service.putSmsConfig(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        'user-1',
+        { smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567', smsAuthToken: 'super-secret-token' },
+      );
+
+      expect(cryptoService.encrypt).toHaveBeenCalledWith('super-secret-token');
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: {
+          smsEnabled: true,
+          smsAccountSid: 'AC123',
+          smsFromNumber: '+15551234567',
+          smsAuthTokenEncrypted: 'encrypted-token-blob',
+        },
+      });
+      expect(JSON.stringify(prisma.organization.update.mock.calls[0][0])).not.toContain('super-secret-token');
+      expect(result).toEqual({ smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567', configured: true });
+      expect(audit.record).toHaveBeenCalledWith(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        { actorUserId: 'user-1', action: 'organization.sms_configured', entityType: 'organization', entityId: 'org-1' },
+      );
+    });
+
+    it('leaves the existing encrypted token untouched when smsAuthToken is omitted', async () => {
+      prisma.organization.update.mockResolvedValue({});
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsAccountSid: 'AC123', smsAuthTokenEncrypted: 'previously-stored-blob', smsFromNumber: '+15551234567',
+      });
+
+      await service.putSmsConfig(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        'user-1',
+        { smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567' },
+      );
+
+      expect(cryptoService.encrypt).not.toHaveBeenCalled();
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567' },
+      });
+    });
+
+    it('leaves the existing encrypted token untouched when smsAuthToken is blank/whitespace', async () => {
+      prisma.organization.update.mockResolvedValue({});
+      prisma.organization.findUnique.mockResolvedValue({
+        smsEnabled: true, smsAccountSid: 'AC123', smsAuthTokenEncrypted: 'previously-stored-blob', smsFromNumber: '+15551234567',
+      });
+
+      await service.putSmsConfig(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        'user-1',
+        { smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567', smsAuthToken: '   ' },
+      );
+
+      expect(cryptoService.encrypt).not.toHaveBeenCalled();
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { smsEnabled: true, smsAccountSid: 'AC123', smsFromNumber: '+15551234567' },
+      });
+    });
+
+    it('throws BadRequestException when the caller has no organization context', async () => {
+      await expect(
+        service.putSmsConfig({ organizationId: null, isSuperAdmin: true }, 'user-1', { smsEnabled: true }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('generateApiKey', () => {
     it('stores a hashed key and returns the full key exactly once', async () => {
       prisma.organization.update.mockResolvedValue({ id: 'org-1' });

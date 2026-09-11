@@ -24,15 +24,17 @@ import {
   useTestConnectedApp,
 } from '../../../../../lib/hooks/useConnectedApps';
 import type { WebhookDeliveryRow, ConnectedAppRow } from '../../../../../lib/types';
-import { Mail, Sparkles, KeyRound, Webhook, Plug } from 'lucide-react';
+import { Mail, MessageSquare, Sparkles, KeyRound, Webhook, Plug } from 'lucide-react';
 import { Button, TextField, PasswordField, Combobox, Dialog, DataTable, DT_FEATURES, dt, Cb, SortHead, Pill } from '../../../../../components/ui-v2';
 import { STATUS } from '../../../../../components/ui-v2/viz';
 import { ApiUsageCard } from './ApiUsageCard';
+import { SmsConfigSection } from './SmsConfigSection';
 
 // Section-sidebar layout (21st.dev "Settings Card with Sidebar" #25323, retoned Azure): a left
 // icon-nav swaps the right panel so each integration gets its own focused space.
 const SECTIONS = [
   { id: 'email', label: 'Email (SMTP)', icon: Mail },
+  { id: 'sms', label: 'SMS (Twilio)', icon: MessageSquare },
   { id: 'ai', label: 'AI API key', icon: Sparkles },
   { id: 'api', label: 'Public API', icon: KeyRound },
   { id: 'webhooks', label: 'Webhooks', icon: Webhook },
@@ -284,6 +286,7 @@ export default function V2IntegrationsSettingsPage() {
         </section>
 
         )}
+        {active === 'sms' && <SmsConfigSection />}
         {active === 'ai' && (
         <section style={card}>
           <h2 style={sectionTitle}>AI API Key</h2>

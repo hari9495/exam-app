@@ -72,6 +72,10 @@ model Organization {
   careersHeadline        String?           @map("careers_headline")
   careersIntro           String?           @map("careers_intro") @db.NVarChar(Max)
   careersBannerPath      String?           @map("careers_banner_path")
+  smsEnabled             Boolean           @default(false) @map("sms_enabled")
+  smsAccountSid          String?           @map("sms_account_sid")
+  smsAuthTokenEncrypted  String?           @map("sms_auth_token_encrypted")
+  smsFromNumber          String?           @map("sms_from_number")
   users                  User[]
   auditLogs              AuditLog[]
   webhookDeliveries      WebhookDelivery[]
@@ -538,10 +542,12 @@ model Candidate {
   deletedByUserId String?           @map("deleted_by_user_id") @db.UniqueIdentifier
   consentedAt     DateTime?         @map("consented_at")
   consentVersion  Int?              @map("consent_version")
+  smsOptedOutAt   DateTime?         @map("sms_opted_out_at")
   invitations     Invitation[]
   pipelineEntries PipelineEntry[]
   profile         CandidateProfile?
   candidateEmails CandidateEmail[]
+  candidateSms    CandidateSms[]
 
   @@unique([organizationId, email])
   @@index([organizationId, globalStage])
@@ -1088,6 +1094,41 @@ model CandidateEmail {
   @@index([organizationId, candidateId])
   @@index([pipelineEntryId])
   @@map("candidate_emails")
+}
+
+model CandidateSmsTemplate {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  name           String   @db.NVarChar(200)
+  triggerStageId String?  @map("trigger_stage_id") @db.UniqueIdentifier
+  triggerMode    String   @default("manual") @map("trigger_mode") // 'manual' | 'prompt' | 'auto'
+  body           String   @db.NVarChar(Max)
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([organizationId])
+  @@map("candidate_sms_templates")
+}
+
+model CandidateSms {
+  id              String    @id @default(uuid()) @db.UniqueIdentifier
+  organizationId  String    @map("organization_id") @db.UniqueIdentifier
+  candidateId     String    @map("candidate_id") @db.UniqueIdentifier
+  pipelineEntryId String?   @map("pipeline_entry_id") @db.UniqueIdentifier
+  templateId      String?   @map("template_id") @db.UniqueIdentifier
+  toPhone         String    @map("to_phone")
+  renderedBody    String    @map("rendered_body") @db.NVarChar(Max)
+  status          String    // 'sent' | 'failed'
+  source          String    // 'manual' | 'stage_prompt' | 'stage_auto'
+  sentByUserId    String?   @map("sent_by_user_id") @db.UniqueIdentifier
+  errorDetail     String?   @map("error_detail") @db.NVarChar(Max)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  candidate       Candidate @relation(fields: [candidateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([organizationId, candidateId])
+  @@index([pipelineEntryId])
+  @@map("candidate_sms")
 }
 
 model Offer {
