@@ -98,6 +98,42 @@ describe('AuthService', () => {
     expect(decoded.role).toBe('org_admin');
   });
 
+  it('mints an access token carrying the logged-in user\'s permissionProfileId', async () => {
+    const passwordHash = await argon2.hash('correct-password');
+    prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'active' });
+    tenantPrisma.forTenant.mockResolvedValueOnce({
+      id: 'user-1', organizationId: 'org-1', role: 'org_admin', status: 'active', passwordHash,
+      permissionProfileId: 'profile-1',
+    });
+    tenantPrisma.forTenant.mockResolvedValueOnce(undefined);
+    prisma.refreshToken.create.mockResolvedValue({});
+
+    const result = await service.login({
+      organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'correct-password',
+    });
+
+    const decoded = jwt.decode(result.accessToken) as { permissionProfileId: string | null };
+    expect(decoded.permissionProfileId).toBe('profile-1');
+  });
+
+  it('mints an access token with permissionProfileId null when the user has no assignment', async () => {
+    const passwordHash = await argon2.hash('correct-password');
+    prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'active' });
+    tenantPrisma.forTenant.mockResolvedValueOnce({
+      id: 'user-1', organizationId: 'org-1', role: 'org_admin', status: 'active', passwordHash,
+      permissionProfileId: null,
+    });
+    tenantPrisma.forTenant.mockResolvedValueOnce(undefined);
+    prisma.refreshToken.create.mockResolvedValue({});
+
+    const result = await service.login({
+      organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'correct-password',
+    });
+
+    const decoded = jwt.decode(result.accessToken) as { permissionProfileId: string | null };
+    expect(decoded.permissionProfileId).toBeNull();
+  });
+
   it('records lastLoginAt on successful password login, RLS-scoped to the user\'s own org', async () => {
     const passwordHash = await argon2.hash('correct-password');
     prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'active' });
@@ -173,7 +209,9 @@ describe('AuthService', () => {
         .mockResolvedValueOnce({ id: 'rt-live', tokenHash: 'someone-elses-hash', createdAt: new Date() })
         // 2nd lookup: the presented token IS the row rotated out 2 seconds ago.
         .mockResolvedValueOnce({ id: 'rt-old', tokenHash, revokedAt: new Date(Date.now() - 2_000) });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'org_admin', status: 'active' });
+      tenantPrisma.forTenant.mockResolvedValue({
+        id: 'user-1', organizationId: 'org-1', role: 'org_admin', status: 'active', permissionProfileId: 'profile-1',
+      });
       prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'active' });
 
       const result = await service.refresh(refreshToken);
@@ -186,6 +224,24 @@ describe('AuthService', () => {
         expect.anything(),
         expect.objectContaining({ action: 'auth.token_reuse_detected' }),
       );
+    });
+
+    it('re-issues carrying the CURRENT user row\'s permissionProfileId, not whatever the old token had', async () => {
+      // The whole point of re-reading the user on every refresh: an admin can reassign a
+      // profile mid-session and have it take effect on the user's very next silent refresh,
+      // without forcing a re-login.
+      const refreshToken = jwt.sign({ sub: 'user-1', familyId: 'family-1' }, { secret: process.env.JWT_REFRESH_SECRET });
+      const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
+      prisma.refreshToken.findFirst.mockResolvedValue({ id: 'rt-1', tokenHash, revokedAt: null });
+      tenantPrisma.forTenant.mockResolvedValue({
+        id: 'user-1', organizationId: 'org-1', role: 'org_admin', status: 'active', permissionProfileId: 'profile-new',
+      });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'active' });
+
+      const result = await service.refresh(refreshToken);
+
+      const decoded = jwt.decode(result.accessToken) as { permissionProfileId: string | null };
+      expect(decoded.permissionProfileId).toBe('profile-new');
     });
 
     it('still treats a token revoked OUTSIDE the grace window as reuse and revokes the family', async () => {
@@ -486,12 +542,12 @@ describe('AuthService', () => {
         .mockReturnValueOnce('signed-refresh-token');
       prisma.refreshToken.create.mockResolvedValue({ id: 'rt-1' });
 
-      const result = await service.issueTokensForSso('user-1', 'org-1', 'recruiter');
+      const result = await service.issueTokensForSso('user-1', 'org-1', 'recruiter', 'profile-1');
 
       expect(result).toEqual({ accessToken: 'signed-access-token', refreshToken: 'signed-refresh-token' });
       expect(jwt.sign).toHaveBeenNthCalledWith(
         1,
-        { sub: 'user-1', organizationId: 'org-1', role: 'recruiter' },
+        { sub: 'user-1', organizationId: 'org-1', role: 'recruiter', permissionProfileId: 'profile-1' },
         expect.objectContaining({ secret: process.env.JWT_ACCESS_SECRET }),
       );
       expect(prisma.refreshToken.create).toHaveBeenCalledWith(
@@ -506,7 +562,7 @@ describe('AuthService', () => {
         fn({ user: { update: userUpdate } }),
       );
 
-      await service.issueTokensForSso('user-1', 'org-1', 'recruiter');
+      await service.issueTokensForSso('user-1', 'org-1', 'recruiter', null);
 
       expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
@@ -533,7 +589,8 @@ describe('AuthService', () => {
         { actorUserId: 'super-admin-1', action: 'super_admin.org_switch_in', entityType: 'organization', entityId: 'org-1' },
       );
       const payload = jwt.verify(token, { secret: 'test-secret' }) as {
-        sub: string; organizationId: string; role: string; actingSuperAdmin: boolean; actingOrgName: string; actingOrgSlug: string;
+        sub: string; organizationId: string; role: string; permissionProfileId: string | null;
+        actingSuperAdmin: boolean; actingOrgName: string; actingOrgSlug: string;
       };
       expect(payload).toMatchObject({
         sub: 'super-admin-1', organizationId: 'org-1', role: 'super_admin', actingSuperAdmin: true, actingOrgName: 'Acme Inc',
@@ -543,6 +600,10 @@ describe('AuthService', () => {
         // every user regardless of whether the org they were viewing actually had SSO enabled.
         actingOrgSlug: 'acme',
       });
+      // An acting-into-org token is never subject to profile-based field/permission
+      // restriction -- actingSuperAdmin already bypasses that guard (T4) regardless, so
+      // this is never resolved from a real profile assignment.
+      expect(payload.permissionProfileId).toBeNull();
     });
   });
 
@@ -576,10 +637,20 @@ describe('AuthService', () => {
     }
 
     it('lets a super_admin impersonate a recruiter in another org', async () => {
-      mockTarget({ id: 'target1', role: 'recruiter', organizationId: 'orgB', status: 'active', email: 't@x.com' }, { id: 'admin1', email: 'admin@x.com' });
+      // The target has its own profile assignment ('target-profile'), but an impersonation
+      // token must never carry it -- see permissionProfileId: null below. The guard (T4)
+      // bypasses field/permission restriction entirely via actingSuperAdmin/impersonation
+      // regardless, so the impersonated session is never resolved from a real profile.
+      mockTarget(
+        { id: 'target1', role: 'recruiter', organizationId: 'orgB', status: 'active', email: 't@x.com', permissionProfileId: 'target-profile' },
+        { id: 'admin1', email: 'admin@x.com' },
+      );
       const token = await service.impersonate({ userId: 'admin1', organizationId: null, role: 'super_admin' }, 'target1');
       expect(token).toBe('signed.jwt.token');
-      expect(jwt.sign).toHaveBeenCalledWith(expect.objectContaining({ sub: 'target1', role: 'recruiter', impersonatorUserId: 'admin1' }), expect.anything());
+      expect(jwt.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ sub: 'target1', role: 'recruiter', impersonatorUserId: 'admin1', permissionProfileId: null }),
+        expect.anything(),
+      );
       expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'user.impersonate_start' }));
     });
 

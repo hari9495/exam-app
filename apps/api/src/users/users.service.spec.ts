@@ -966,6 +966,84 @@ describe('UsersService', () => {
         new BadRequestException('A user cannot report to themselves'),
       );
     });
+
+    it('assigns a same-org permission profile and audits it', async () => {
+      const tx = {
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          update: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', name: 'Al', organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date(), permissionProfileId: 'profile1' }),
+        },
+        permissionProfile: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'profile1', organizationId: 'org1' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      const result = await service.update(ctx, 't1', { permissionProfileId: 'profile1' }, 'admin1');
+      expect(result.permissionProfileId).toBe('profile1');
+      expect(tx.permissionProfile.findFirst).toHaveBeenCalledWith({ where: { id: 'profile1', organizationId: 'org1' } });
+      expect(tx.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 't1' }, data: expect.objectContaining({ permissionProfileId: 'profile1' }) }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        ctx,
+        expect.objectContaining({ action: 'user.permission_profile_assigned', entityId: 't1', actorUserId: 'admin1' }),
+      );
+    });
+
+    it('rejects a permission profile that belongs to another org', async () => {
+      const tx = {
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          update: jest.fn(),
+        },
+        permissionProfile: {
+          findFirst: jest.fn().mockResolvedValue(null),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await expect(service.update(ctx, 't1', { permissionProfileId: 'other-org-profile' }, 'admin1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(tx.user.update).not.toHaveBeenCalled();
+    });
+
+    it('clears a user\'s permission profile when passed null', async () => {
+      const tx = {
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          update: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', name: 'Al', organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date(), permissionProfileId: null }),
+        },
+        permissionProfile: { findFirst: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await service.update(ctx, 't1', { permissionProfileId: null }, 'admin1');
+      expect(tx.permissionProfile.findFirst).not.toHaveBeenCalled();
+      expect(tx.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 't1' }, data: expect.objectContaining({ permissionProfileId: null }) }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        ctx,
+        expect.objectContaining({ action: 'user.permission_profile_assigned', entityId: 't1' }),
+      );
+    });
+
+    it('leaves permissionProfileId untouched when omitted', async () => {
+      const tx = {
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          update: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', name: 'X', organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() }),
+        },
+        permissionProfile: { findFirst: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await service.update(ctx, 't1', { name: 'X' }, 'admin1');
+      expect(tx.permissionProfile.findFirst).not.toHaveBeenCalled();
+      expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 't1' }, data: { name: 'X' } }));
+      expect(audit.record).not.toHaveBeenCalledWith(
+        ctx,
+        expect.objectContaining({ action: 'user.permission_profile_assigned' }),
+      );
+    });
   });
 
   describe('requestPasswordReset', () => {

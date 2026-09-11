@@ -6,6 +6,7 @@ export interface JwtPayload {
   sub: string;
   organizationId: string | null;
   role: string;
+  permissionProfileId?: string | null;
   actingSuperAdmin?: boolean;
   actingOrgName?: string;
   impersonatorUserId?: string;
@@ -27,6 +28,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       userId: payload.sub,
       organizationId: payload.organizationId,
       role: payload.role,
+      permissionProfileId: payload.permissionProfileId ?? null,
       actingSuperAdmin: payload.actingSuperAdmin ?? false,
       impersonatorUserId: payload.impersonatorUserId,
       impersonatorEmail: payload.impersonatorEmail,

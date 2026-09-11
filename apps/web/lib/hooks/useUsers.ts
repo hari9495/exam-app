@@ -50,10 +50,16 @@ export function useUpdateUser() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { id: string; role?: string; name?: string; managerId?: string | null }) =>
+    mutationFn: (input: { id: string; role?: string; name?: string; managerId?: string | null; permissionProfileId?: string | null }) =>
       apiFetch(
         `/users/${input.id}`,
-        { method: 'PATCH', body: JSON.stringify({ role: input.role, name: input.name, managerId: input.managerId }) },
+        {
+          method: 'PATCH',
+          // JSON.stringify drops any key whose value is `undefined`, so an omitted
+          // permissionProfileId leaves the user's existing assignment untouched -- only an
+          // explicit id or `null` (role default) reaches UpdateUserDto's permissionProfileId.
+          body: JSON.stringify({ role: input.role, name: input.name, managerId: input.managerId, permissionProfileId: input.permissionProfileId }),
+        },
         accessToken ?? undefined,
       ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
