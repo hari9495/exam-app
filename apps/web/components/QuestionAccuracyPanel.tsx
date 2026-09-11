@@ -59,7 +59,21 @@ export function QuestionAccuracyPanel({ examId }: { examId: string }) {
       key: 'accuracy',
       header: <FilterableHeader label="Accuracy" value={filter} onChange={setFilter} options={ACCURACY_FILTER_OPTIONS} />,
       sortLabel: 'Accuracy',
-      render: (row) => `${row.accuracyPercentage.toFixed(1)}%`,
+      render: (row) => {
+        // Inline magnitude bar: length encodes accuracy, single brand hue (NOT rate colors --
+        // high accuracy isn't "good"; it can flag a leaked/too-easy question, which the bucket
+        // filter surfaces). Fill via transform:scaleX (GPU, no layout); the track's radius +
+        // overflow round the end. See docs: dataviz skill (sequential = one hue).
+        const pct = Math.max(0, Math.min(100, row.accuracyPercentage));
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 132 }}>
+            <div style={{ position: 'relative', height: 6, width: 72, flexShrink: 0, borderRadius: 99, overflow: 'hidden', background: 'color-mix(in srgb, var(--ink) 8%, transparent)' }}>
+              <div style={{ position: 'absolute', inset: 0, transformOrigin: 'left', transform: `scaleX(${pct / 100})`, background: 'var(--org-primary)' }} />
+            </div>
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{row.accuracyPercentage.toFixed(1)}%</span>
+          </div>
+        );
+      },
     },
     {
       key: 'attempted',
