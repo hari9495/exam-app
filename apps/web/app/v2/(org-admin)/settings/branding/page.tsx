@@ -21,7 +21,7 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
 const ink = 'var(--ink)';
 const muted = 'var(--muted)';
-const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '18px 20px' };
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '18px 20px', boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
 const sectionTitle: React.CSSProperties = { fontFamily: 'var(--font-disp)', fontSize: 15, fontWeight: 600, color: ink, margin: 0 };
 const desc: React.CSSProperties = { fontSize: 13, color: muted, margin: '4px 0 0' };
 const errorText: React.CSSProperties = { fontSize: 12.5, color: 'var(--danger)', margin: '10px 0 0' };

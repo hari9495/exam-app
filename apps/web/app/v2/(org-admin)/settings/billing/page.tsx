@@ -9,7 +9,7 @@ import type { DimensionUsage } from '../../../../../lib/types';
 
 const ink = 'var(--ink)';
 const muted = 'var(--muted)';
-const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '20px 22px' };
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '20px 22px', boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
 
 // Same thresholds as before: at/over limit = danger, >=80% = warn, else ok.
 function meterColor(pct: number): string {
