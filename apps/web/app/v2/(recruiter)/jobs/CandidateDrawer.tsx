@@ -255,7 +255,7 @@ function MessagesSection({ entryId, candidateId, candidateName }: { entryId: str
       ) : (
         <ul style={{ display: 'flex', flexDirection: 'column', gap: 8, listStyle: 'none', padding: 0, margin: 0 }}>
           {(messages ?? []).map((message) => (
-            <li key={message.id} style={listItem}>
+            <li key={message.id} className="v2-rowhover" style={listItem}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 500, color: ink }}>{message.subject}</span>
                 <Pill c={message.status === 'sent' ? STATUS.ok : STATUS.bad} label={message.status} />
@@ -328,7 +328,7 @@ function SmsSection({ entryId, candidateId, candidateName, candidateEmail }: { e
       ) : (
         <ul style={{ display: 'flex', flexDirection: 'column', gap: 8, listStyle: 'none', padding: 0, margin: 0 }}>
           {(messages ?? []).map((message) => (
-            <li key={message.id} style={listItem}>
+            <li key={message.id} className="v2-rowhover" style={listItem}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                 <span style={{ fontSize: 13, color: ink }}>{message.renderedBody}</span>
                 <Pill c={message.status === 'sent' ? STATUS.ok : STATUS.bad} label={message.status} />
@@ -412,7 +412,7 @@ function WhatsappSection({ entryId, candidateId, candidateName, candidateEmail }
       ) : (
         <ul style={{ display: 'flex', flexDirection: 'column', gap: 8, listStyle: 'none', padding: 0, margin: 0 }}>
           {(messages ?? []).map((message) => (
-            <li key={message.id} style={listItem}>
+            <li key={message.id} className="v2-rowhover" style={listItem}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                 <span style={{ fontSize: 13, color: ink }}>{message.renderedBody}</span>
                 <Pill c={message.status === 'sent' ? STATUS.ok : STATUS.bad} label={message.status} />
@@ -488,7 +488,7 @@ function OffersSection({ entryId, candidateId }: { entryId: string; candidateId:
       ) : (
         <ul style={{ display: 'flex', flexDirection: 'column', gap: 8, listStyle: 'none', padding: 0, margin: 0 }}>
           {(offers ?? []).map((offer) => (
-            <li key={offer.id} style={listItem}>
+            <li key={offer.id} className="v2-rowhover" style={listItem}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 500, color: ink }}>{offer.compensation}</span>
                 <Pill c={OFFER_STATUS_PILL[offer.status].c} label={OFFER_STATUS_PILL[offer.status].label} />
@@ -552,7 +552,7 @@ function InterviewsSection({ entryId, candidateId }: { entryId: string; candidat
       ) : (
         <ul style={{ display: 'flex', flexDirection: 'column', gap: 8, listStyle: 'none', padding: 0, margin: 0 }}>
           {(interviews ?? []).map((interview) => (
-            <li key={interview.id} style={listItem}>
+            <li key={interview.id} className="v2-rowhover" style={listItem}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 500, color: ink }}>{interviewTimeLabel(interview) ?? 'No time proposed'}</span>
                 <Pill c={INTERVIEW_STATUS_COLOR[interview.status]} label={interview.status} />
@@ -828,7 +828,7 @@ export function CandidateDrawer({ jobId, row, stages, onClose }: { jobId: string
           ) : (
             <ul style={{ display: 'flex', flexDirection: 'column', gap: 12, listStyle: 'none', padding: 0, margin: 0 }}>
               {(feedback ?? []).map((entry) => (
-                <li key={entry.id} style={listItem}>
+                <li key={entry.id} className="v2-rowhover" style={listItem}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, color: muted }}>
                     <span>{entry.authorName ?? 'Unknown'}</span>
                     <span>{new Date(entry.createdAt).toLocaleString()}</span>
