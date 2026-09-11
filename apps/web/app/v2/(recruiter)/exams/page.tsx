@@ -93,6 +93,9 @@ export default function V2ExamsPage() {
 
   return (
     <>
+      {/* One calm entrance on the list content; the Dialog stays OUTSIDE it -- a transform on an
+          ancestor would become the containing block for its position:fixed overlay. */}
+      <div className="v2-rise">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Exams</h1>
         <Link href="/v2/exams/new" className="v2-hoverbtn" style={dt.primaryBtn}><Plus size={14} /> New exam</Link>
@@ -109,6 +112,7 @@ export default function V2ExamsPage() {
         isLoading={isLoading} isError={isError} errorMessage="Failed to load exams." emptyMessage="No exams found."
         columnLabels={COLUMN_LABELS} onExport={exportCsv}
       />
+      </div>
 
       <Dialog open={!!pendingDelete} onClose={() => setPendingDelete(null)} title="Delete exam">
         <p style={{ fontSize: 13.5, color: 'var(--muted)', lineHeight: 1.5, margin: '0 0 18px' }}>
