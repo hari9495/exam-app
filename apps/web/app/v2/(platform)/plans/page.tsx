@@ -7,11 +7,24 @@
 // Checkbox → v2 Cb.
 import { useMemo, useState, type FormEvent } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Pencil, Plus, Layers, Eye, EyeOff } from 'lucide-react';
+import { Pencil, Plus } from 'lucide-react';
 import { usePlans, useCreatePlan, useUpdatePlan } from '../../../../lib/hooks/usePlans';
 import type { Plan } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, SortHead, Pill, Cb, Dropdown, DropdownItem, TextField, Dialog, Button, IconStatCard } from '../../../../components/ui-v2';
-import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
+import { DataTable, DT_FEATURES, dt, SortHead, Pill, Cb, Dropdown, DropdownItem, TextField, Dialog, Button } from '../../../../components/ui-v2';
+import { STATUS } from '../../../../components/ui-v2/viz';
+
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
+
+// Demoted metric for the quiet strip (Workfox rule 4/8): label + tabular number, no rainbow icon
+// stat tiles -- one card, thin dividers between cells.
+function QuietStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div style={{ padding: '14px 18px', minWidth: 0 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)' }}>{label}</div>
+      <div className="v2-mono" style={{ fontSize: 24, fontWeight: 600, color: 'var(--ink)', marginTop: 6 }}>{value.toLocaleString()}</div>
+    </div>
+  );
+}
 
 interface PlanFormState {
   name: string;
@@ -120,6 +133,9 @@ export default function V2PlansPage() {
 
   return (
     <>
+      {/* Content-only entrance; the create/edit Dialog stays outside (a .v2-rise transform becomes
+          the containing block for its position:fixed overlay). */}
+      <div className="v2-rise">
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <div>
           <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)', margin: 0 }}>Platform</p>
@@ -133,10 +149,11 @@ export default function V2PlansPage() {
         <div role="status" style={{ marginBottom: 12, fontSize: 13, padding: '9px 13px', borderRadius: 9, border: `1px solid ${notice.type === 'success' ? 'color-mix(in srgb, #15803d 30%, transparent)' : 'color-mix(in srgb, var(--danger) 30%, transparent)'}`, background: notice.type === 'success' ? 'color-mix(in srgb, #15803d 8%, transparent)' : 'color-mix(in srgb, var(--danger) 8%, transparent)', color: notice.type === 'success' ? STATUS.ok : 'var(--danger)' }}>{notice.text}</div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }} className="wf-hero-kpis">
-        <IconStatCard title="Total plans" value={stats.total} icon={<Layers size={22} />} accent={VIZ.azure} />
-        <IconStatCard title="Public" value={stats.public} icon={<Eye size={22} />} accent={VIZ.teal} />
-        <IconStatCard title="Hidden" value={stats.hidden} icon={<EyeOff size={22} />} accent={VIZ.violet} />
+      {/* Quiet metric strip — one card, thin dividers, no rainbow icon stat tiles (Workfox rule 4/8). */}
+      <div style={{ ...card, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 16 }} className="wf-hero-kpis">
+        <QuietStat label="Total plans" value={stats.total} />
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Public" value={stats.public} /></div>
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat label="Hidden" value={stats.hidden} /></div>
       </div>
 
       <DataTable
@@ -145,6 +162,7 @@ export default function V2PlansPage() {
         isLoading={isLoading} isError={isError} errorMessage="Failed to load plans." emptyMessage={q ? 'No matching plans.' : 'No plans yet.'}
         columnLabels={{ name: 'Name', seatLimit: 'Seats', candidateLimit: 'Candidates', aiCreditLimit: 'AI Credits', proctoringMinutesLimit: 'Proctoring Minutes', priceLabel: 'Price', isPublic: 'Visibility' }}
       />
+      </div>
 
       {formOpen && (
         <Dialog open onClose={closeForm} title={editing ? `Edit ${editing.name}` : 'New Plan'} width={480}>
