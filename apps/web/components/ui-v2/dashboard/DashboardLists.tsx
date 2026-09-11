@@ -31,7 +31,7 @@ export function AttentionPanel({ data }: { data: AttentionData }) {
   const has = data.pendingGrading.length > 0 || data.proctoringFlags.length > 0 || data.staleInvitationCount > 0;
   const rows: React.ReactNode[] = [];
   data.pendingGrading.forEach((it) => rows.push(
-    <Link key={`pg-${it.examId}`} href={`/exams/${it.examId}/edit`} className="wf-row" style={rowLink}>
+    <Link key={`pg-${it.examId}`} href={`/v2/exams/${it.examId}/edit`} className="wf-row" style={rowLink}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ flex: 1, fontSize: 13, color: 'var(--ink)' }}>{it.examTitle} <span style={{ color: 'var(--muted)' }}>· {it.count} answer{it.count === 1 ? '' : 's'} awaiting grading</span></span>
         <span style={countPill}>{it.count}</span>
@@ -39,7 +39,7 @@ export function AttentionPanel({ data }: { data: AttentionData }) {
     </Link>,
   ));
   data.proctoringFlags.forEach((it, i) => rows.push(
-    <Link key={`pf-${it.examId}-${i}`} href={`/exams/${it.examId}/edit`} className="wf-row" style={rowLink}>
+    <Link key={`pf-${it.examId}-${i}`} href={`/v2/exams/${it.examId}/edit`} className="wf-row" style={rowLink}>
       <div style={{ fontSize: 13, color: 'var(--ink)' }}>{it.examTitle} <span style={{ color: 'var(--muted)' }}>· flagged a proctoring violation</span></div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 1 }}>{timeAgo(it.occurredAt)}</div>
     </Link>,
@@ -69,8 +69,8 @@ export function AttentionPanel({ data }: { data: AttentionData }) {
         </Timeline>
       )}
       <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-        <Link href="/exams/new" style={secondaryBtn}><Plus size={14} /> Create exam</Link>
-        <Link href="/candidates" style={secondaryBtn}><Mail size={14} /> Invite candidates</Link>
+        <Link href="/v2/exams/new" style={secondaryBtn}><Plus size={14} /> Create exam</Link>
+        <Link href="/v2/candidates" style={secondaryBtn}><Mail size={14} /> Invite candidates</Link>
       </div>
     </Panel>
   );
@@ -102,7 +102,7 @@ export function UpcomingExamsPanel({ exams }: { exams: { examId: string; examTit
       <Timeline>
         {exams.map((it, i) => (
           <TimelineRow key={it.examId} color="var(--org-primary)" last={i === exams.length - 1}>
-            <Link href={`/exams/${it.examId}/edit`} className="wf-row" style={rowLink}>
+            <Link href={`/v2/exams/${it.examId}/edit`} className="wf-row" style={rowLink}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ flex: 1, fontSize: 13, color: 'var(--ink)' }}>{it.examTitle}</span>
                 <span style={{ fontSize: 11.5, color: 'var(--muted)', flexShrink: 0 }}>{new Date(it.availabilityWindowStart).toLocaleDateString()}</span>
