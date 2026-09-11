@@ -14,6 +14,7 @@ import { PipelineBoard } from '../PipelineBoard';
 import { FitCriteriaEditor } from '../FitCriteriaEditor';
 import { RequisitionSection } from '../RequisitionSection';
 import { useJob, useUpdateJob } from '../../../../../lib/hooks/usePipeline';
+import { useJobBoards } from '../../../../../lib/hooks/useJobBoards';
 import { useAuth } from '../../../../../lib/auth-context';
 import { JobDetail, JobStatus } from '../../../../../lib/types';
 import { dt, Pill, FormAlert } from '../../../../../components/ui-v2';
@@ -100,6 +101,49 @@ function PublicApplyControl({ job, jobId }: { job: JobDetail; jobId: string }) {
   );
 }
 
+// Multi-select of the org's job boards for this job (Zoho #23). `jobBoardIds` on the job comes
+// from the getJob read (not the PATCH response -- see useJob's queryKey invalidation in
+// useUpdateJob), so toggling a checkbox re-derives the full set from `job.jobBoardIds` and PATCHes
+// the whole replace-set. A board only actually appears on its feed once the job is both open and
+// public-apply is enabled (feed.ts's public-visibility gate), so this shows a hint rather than
+// blocking selection -- an admin may want to pre-select boards before the job goes live.
+function JobBoardsControl({ job, jobId }: { job: JobDetail; jobId: string }) {
+  const { data: boards, isLoading } = useJobBoards();
+  const updateJob = useUpdateJob(jobId);
+  const needsPublicApply = !(job.status === 'open' && job.publicApplyEnabled);
+
+  function toggleBoard(boardId: string, checked: boolean) {
+    const next = checked
+      ? [...job.jobBoardIds, boardId]
+      : job.jobBoardIds.filter((id) => id !== boardId);
+    updateJob.mutate({ jobBoardIds: next });
+  }
+
+  if (isLoading) return <p style={{ fontSize: 12.5, color: 'var(--muted)' }}>Loading boards…</p>;
+  if (!boards || boards.length === 0) return <p style={{ fontSize: 12.5, color: 'var(--muted)' }}>No job boards configured yet.</p>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)' }}>Publish to boards</span>
+      {boards.map((board) => (
+        <label key={board.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 9, fontSize: 13, color: 'var(--ink)', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={job.jobBoardIds.includes(board.id)}
+            disabled={updateJob.isPending}
+            onChange={(e) => toggleBoard(board.id, e.target.checked)}
+            style={{ width: 15, height: 15, accentColor: 'var(--org-primary)' }}
+          />
+          {board.name}
+        </label>
+      ))}
+      {job.jobBoardIds.length > 0 && needsPublicApply && (
+        <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>Also needs the job to be open and public applications enabled to appear on the feed.</p>
+      )}
+    </div>
+  );
+}
+
 export default function V2JobPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const { role } = useAuth();
@@ -147,6 +191,7 @@ export default function V2JobPage() {
           {canManage && (
             <JobSection title="Public applications" description="Share a public link so anyone can apply to this role.">
               <PublicApplyControl job={job} jobId={jobId} />
+              <JobBoardsControl job={job} jobId={jobId} />
             </JobSection>
           )}
           {canManage && (

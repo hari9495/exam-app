@@ -134,24 +134,14 @@ export class PublicApplicationsService {
     };
   }
 
-  // Public jobs feed for aggregators (Indeed-style XML). Every entry is an already-public
-  // (open + publicApplyEnabled) role linking to its own apply page. Global across tenants: these
-  // roles are already individually public, and aggregators filter by company.
-  // ponytail: global feed; if a per-org careers feed is ever needed, key it on a public org slug.
-  async getJobsFeed(): Promise<string> {
+  // Shared by getJobsFeed and getBoardFeed: same select shape in, same Indeed-style XML out.
+  private async renderJobsFeedXml(
+    jobs: {
+      title: string; description: string | null; location: string | null; employmentType: string | null;
+      createdAt: Date; applyToken: string | null; organizationId: string;
+    }[],
+  ): Promise<string> {
     const baseUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
-    const jobs = await this.tenantPrisma.forTenant(
-      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
-      (tx) =>
-        tx.job.findMany({
-          where: { status: 'open', publicApplyEnabled: true, applyToken: { not: null } },
-          select: {
-            title: true, description: true, location: true, employmentType: true,
-            createdAt: true, applyToken: true, organizationId: true,
-          },
-          orderBy: { createdAt: 'desc' },
-        }),
-    );
     // Job has no organization relation navigation; resolve names in one batched query.
     const orgs = await this.prisma.organization.findMany({
       where: { id: { in: [...new Set(jobs.map((j) => j.organizationId))] } },
@@ -175,6 +165,55 @@ export class PublicApplicationsService {
       )
       .join('\n');
     return `<?xml version="1.0" encoding="utf-8"?>\n<source>\n  <publisher>Prudent Hire</publisher>\n${entries}\n</source>\n`;
+  }
+
+  private readonly JOB_FEED_SELECT = {
+    title: true, description: true, location: true, employmentType: true,
+    createdAt: true, applyToken: true, organizationId: true,
+  } as const;
+
+  // Public jobs feed for aggregators (Indeed-style XML). Every entry is an already-public
+  // (open + publicApplyEnabled) role linking to its own apply page. Global across tenants: these
+  // roles are already individually public, and aggregators filter by company.
+  // ponytail: global feed; if a per-org careers feed is ever needed, key it on a public org slug.
+  async getJobsFeed(): Promise<string> {
+    const jobs = await this.tenantPrisma.forTenant(
+      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
+      (tx) =>
+        tx.job.findMany({
+          where: { status: 'open', publicApplyEnabled: true, applyToken: { not: null } },
+          select: this.JOB_FEED_SELECT,
+          orderBy: { createdAt: 'desc' },
+        }),
+    );
+    return this.renderJobsFeedXml(jobs);
+  }
+
+  // Per-board public feed: same XML shape as getJobsFeed, but scoped to one org's board AND
+  // only jobs actually published to THIS board (jobBoardPublications.some), on top of the same
+  // open/publicApplyEnabled/applyToken public-visibility gate.
+  async getBoardFeed(feedToken: string): Promise<string> {
+    const { board, jobs } = await this.tenantPrisma.forTenant(
+      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
+      async (tx) => {
+        const board = await tx.jobBoard.findUnique({ where: { feedToken } });
+        if (!board) return { board: null, jobs: [] };
+        const jobs = await tx.job.findMany({
+          where: {
+            organizationId: board.organizationId,
+            status: 'open',
+            publicApplyEnabled: true,
+            applyToken: { not: null },
+            jobBoardPublications: { some: { jobBoardId: board.id } },
+          },
+          select: this.JOB_FEED_SELECT,
+          orderBy: { createdAt: 'desc' },
+        });
+        return { board, jobs };
+      },
+    );
+    if (!board) throw new NotFoundException('Feed not found');
+    return this.renderJobsFeedXml(jobs);
   }
 
   async apply(applyToken: string, dto: ApplyDto): Promise<{ statusToken: string; portalToken: string }> {

@@ -1029,6 +1029,64 @@ describe('PublicApplicationsService', () => {
     });
   });
 
+  describe('getBoardFeed', () => {
+    const board = { id: 'board-1', organizationId: 'org-1', feedToken: 'feed-tok-1' };
+
+    it('emits the same Indeed-style XML shape as getJobsFeed for the board\'s published+public jobs', async () => {
+      const findMany = jest.fn().mockResolvedValue([
+        {
+          title: 'Backend Engineer',
+          description: 'Build things',
+          location: 'Bengaluru',
+          employmentType: 'FULL_TIME',
+          createdAt: new Date('2026-08-01T00:00:00.000Z'),
+          applyToken: 'tok-1',
+          organizationId: 'org-1',
+        },
+      ]);
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ jobBoard: { findUnique: jest.fn().mockResolvedValue(board) }, job: { findMany } }),
+      );
+      prisma.organization.findMany.mockResolvedValue([{ id: 'org-1', name: 'Acme' }]);
+
+      const xml = await service.getBoardFeed('feed-tok-1');
+
+      expect(xml.startsWith('<?xml')).toBe(true);
+      expect(xml).toContain('<source>');
+      expect(xml).toContain('<publisher>');
+      expect(xml).toContain('Backend Engineer');
+      expect(xml).toContain('/apply/tok-1');
+      expect(xml).toContain('Acme');
+    });
+
+    it('filters the job query on org + open + publicApplyEnabled + applyToken + published-to-THIS-board', async () => {
+      const findMany = jest.fn().mockResolvedValue([]);
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
+        fn({ jobBoard: { findUnique: jest.fn().mockResolvedValue(board) }, job: { findMany } }),
+      );
+      prisma.organization.findMany.mockResolvedValue([]);
+
+      await service.getBoardFeed('feed-tok-1');
+
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            organizationId: 'org-1',
+            status: 'open',
+            publicApplyEnabled: true,
+            applyToken: { not: null },
+            jobBoardPublications: { some: { jobBoardId: 'board-1' } },
+          },
+        }),
+      );
+    });
+
+    it('throws NotFoundException for an unknown feedToken', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c, fn) => fn({ jobBoard: { findUnique: jest.fn().mockResolvedValue(null) } }));
+      await expect(service.getBoardFeed('bad-token')).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('getUnsubscribe', () => {
     it('resolves by unsubscribeToken via the LOOKUP_ORG/isSuperAdmin bypass and returns optedOut + orgName', async () => {
       tenantPrisma.forTenant.mockImplementationOnce((_c, fn) =>
