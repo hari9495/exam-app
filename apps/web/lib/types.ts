@@ -896,6 +896,15 @@ export interface WebhookDeliveryRow {
   createdAt: string;
 }
 
+// Mirrors GET /organizations/api-usage?window= response (apps/api organizations.controller.ts
+// -> ApiUsageService.report) verbatim -- field names match exactly.
+export interface ApiUsageReport {
+  window: number;
+  totals: { requests: number; throttled: number };
+  byEndpoint: { endpoint: string; requests: number; throttled: number }[];
+  byDay: { day: string; requests: number; throttled: number }[];
+}
+
 // Mirrors apps/api/src/integrations/connected-apps.service.ts ConnectedAppView -- what
 // GET/POST/PATCH /organizations/integrations/connected-apps(/:id) returns (Slack/Teams
 // chat-notification channels, distinct from the generic Webhooks integration above).
