@@ -4,13 +4,13 @@
 // Shell/branding come from the (recruiter) layout; this renders the report content only.
 
 import { useState } from 'react';
-import { Area, AreaChart, ResponsiveContainer, XAxis, Tooltip } from 'recharts';
-import { Users, Send, Activity, ClipboardCheck, RotateCcw } from 'lucide-react';
+import { Line, LineChart, ResponsiveContainer, XAxis, Tooltip } from 'recharts';
+import { RotateCcw } from 'lucide-react';
 import { useDashboardSummary, useDashboardTrend, useDashboardAnalytics } from '../../../../lib/hooks/useDashboard';
 import { useExams } from '../../../../lib/hooks/useExams';
 import { useCandidates } from '../../../../lib/hooks/useCandidates';
 import type { DashboardWindow, DashboardTrendMetric, DashboardTrendDays } from '../../../../lib/types';
-import { IconStatCard, Gauge, AnalyticsTiles, Panel, AttentionPanel, ActivityPanel, UpcomingExamsPanel, Combobox } from '../../../../components/ui-v2';
+import { AnalyticsTiles, Panel, AttentionPanel, ActivityPanel, UpcomingExamsPanel, Combobox } from '../../../../components/ui-v2';
 import { VIZ, STATUS, rateColor } from '../../../../components/ui-v2/viz';
 
 const WINDOW_DAYS: Record<Exclude<DashboardWindow, 'all'>, DashboardTrendDays> = { '7d': 7, '14d': 14, '30d': 30, '90d': 90 };
@@ -30,17 +30,28 @@ const chip = (active: boolean): React.CSSProperties => ({
 function passColor(p: number) { return p >= 50 ? STATUS.ok : p >= 35 ? STATUS.warn : STATUS.bad; }
 function fmtDate(d: string) { return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
 
-function Kpi({ title, value, icon, metric, accent, days }: {
-  title: string; value: number; icon: React.ReactNode; metric: DashboardTrendMetric; accent: string; days: DashboardTrendDays;
-}) {
+const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
+
+// Quiet, demoted metric (Workfox rule 4/8): label + tabular number + a directional change chip.
+// No icon circle, no per-stat rainbow accent -- the only color is the change direction (STATUS).
+function QuietStat({ title, value, metric, days }: { title: string; value: number; metric: DashboardTrendMetric; days: DashboardTrendDays }) {
   const { data: trend } = useDashboardTrend(metric, days);
   const pts = trend?.points ?? [];
   const first = pts[0]?.value ?? 0;
   const last = pts[pts.length - 1]?.value ?? 0;
   const change = first > 0 ? Math.round(((last - first) / first) * 100) : last > 0 ? 100 : 0;
-  const changeType = change > 0 ? 'positive' : change < 0 ? 'negative' : 'neutral';
   const changeText = change > 0 ? `+${change}%` : change < 0 ? `${change}%` : '±0%';
-  return <IconStatCard title={title} value={value} icon={icon} change={changeText} changeType={changeType} caption="vs start of window" accent={accent} />;
+  const changeColor = change > 0 ? STATUS.ok : change < 0 ? STATUS.bad : 'var(--muted)';
+  return (
+    <div style={{ padding: '14px 18px', minWidth: 0 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)' }}>{title}</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 6 }}>
+        <span className="v2-mono" style={{ fontSize: 24, fontWeight: 600, color: 'var(--ink)' }}>{value.toLocaleString()}</span>
+        <span className="v2-mono" style={{ fontSize: 12, fontWeight: 500, color: changeColor }}>{changeText}</span>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>vs start of window</div>
+    </div>
+  );
 }
 
 export default function V2DashboardPage() {
@@ -74,6 +85,7 @@ export default function V2DashboardPage() {
 
   return (
     <>
+      <div className="v2-rise">
       {/* Header + time slicer */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Recruiting overview</h1>
@@ -98,12 +110,12 @@ export default function V2DashboardPage() {
         <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)' }}>Applies to analytics below</span>
       </div>
 
-      {/* KPI strip — icon-led tiles with subtle tint */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }} className="wf-hero-kpis">
-        <Kpi title="Total candidates" value={summary.stats.totalCandidates} icon={<Users size={22} />} metric="candidates" accent={VIZ.azure} days={days} />
-        <Kpi title="Invitations sent" value={summary.stats.invitationsSent} icon={<Send size={20} />} metric="invitations" accent={VIZ.teal} days={days} />
-        <Kpi title="Attempts in progress" value={summary.stats.attemptsInProgress} icon={<Activity size={22} />} metric="attempts" accent={VIZ.amber} days={days} />
-        <Kpi title="Pending grading" value={summary.stats.pendingGradingCount} icon={<ClipboardCheck size={22} />} metric="pendingGrading" accent={VIZ.violet} days={days} />
+      {/* Quiet metric strip — one card, thin dividers, no rainbow icon tiles (Workfox rule 4/8) */}
+      <div style={{ ...card, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)' }} className="wf-hero-kpis">
+        <QuietStat title="Total candidates" value={summary.stats.totalCandidates} metric="candidates" days={days} />
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat title="Invitations sent" value={summary.stats.invitationsSent} metric="invitations" days={days} /></div>
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat title="Attempts in progress" value={summary.stats.attemptsInProgress} metric="attempts" days={days} /></div>
+        <div style={{ borderLeft: '1px solid var(--hair)' }}><QuietStat title="Pending grading" value={summary.stats.pendingGradingCount} metric="pendingGrading" days={days} /></div>
       </div>
 
       {/* Trend + pass-rate gauge */}
@@ -112,17 +124,12 @@ export default function V2DashboardPage() {
           <div style={{ height: 150 }}>
             {series.length > 1 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={series} margin={{ top: 6, right: 4, bottom: 0, left: 4 }}>
-                  <defs>
-                    <linearGradient id="wf-report-area" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={VIZ.azure} stopOpacity={0.26} />
-                      <stop offset="100%" stopColor={VIZ.azure} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
+                {/* Line, not a gradient area (Workfox rule 8): thin 2px stroke, recessive axis. */}
+                <LineChart data={series} margin={{ top: 6, right: 4, bottom: 0, left: 4 }}>
                   <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={24} />
                   <Tooltip cursor={{ stroke: '#e2e8f0' }} contentStyle={{ background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 8, fontSize: 12 }} />
-                  <Area type="monotone" dataKey="value" stroke={VIZ.azure} strokeWidth={2} fill="url(#wf-report-area)" isAnimationActive={false} />
-                </AreaChart>
+                  <Line type="monotone" dataKey="value" stroke={VIZ.azure} strokeWidth={2} dot={false} isAnimationActive={false} />
+                </LineChart>
               </ResponsiveContainer>
             ) : (
               <div style={{ display: 'grid', placeItems: 'center', height: '100%', fontSize: 13, color: 'var(--muted)' }}>Not enough activity to chart yet.</div>
@@ -130,8 +137,19 @@ export default function V2DashboardPage() {
           </div>
         </Panel>
         <Panel title="Pass rate">
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, paddingTop: 2 }}>
-            <Gauge value={passRate} size={124} label="of 70% target" color={rateColor(passRate, 70)} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span className="v2-mono" style={{ fontSize: 34, fontWeight: 600, color: rateColor(passRate, 70), letterSpacing: '-0.01em' }}>{passRate}%</span>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>passed</span>
+            </div>
+            {/* Linear bar + a reference tick at the 70% target -- an honest reference line, not a
+                gauge arc against an invented target (Workfox rule 8). scaleX = no layout thrash. */}
+            <div style={{ position: 'relative', height: 8 }}>
+              <div style={{ position: 'absolute', inset: 0, borderRadius: 99, overflow: 'hidden', background: 'color-mix(in srgb, var(--ink) 8%, transparent)' }}>
+                <div style={{ position: 'absolute', inset: 0, transformOrigin: 'left', transform: `scaleX(${Math.max(0, Math.min(100, passRate)) / 100})`, background: rateColor(passRate, 70) }} />
+              </div>
+              <div title="70% target" style={{ position: 'absolute', top: -2, bottom: -2, left: '70%', width: 2, borderRadius: 1, background: 'color-mix(in srgb, var(--ink) 45%, transparent)' }} />
+            </div>
             <div style={{ display: 'flex', gap: 18, fontSize: 12, color: 'var(--muted)' }}>
               <span>Passed <b style={{ color: 'var(--ink)' }}>{analytics?.funnel.passed ?? 0}</b></span>
               <span>Target <b style={{ color: 'var(--ink)' }}>70%</b></span>
@@ -198,6 +216,7 @@ export default function V2DashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12, marginTop: 12 }} className="wf-hero-grid">
         <AttentionPanel data={{ pendingGrading: summary.attention.pendingGrading, proctoringFlags: summary.attention.recentProctoringFlags, staleInvitationCount: summary.attention.staleInvitationCount }} />
         <ActivityPanel activity={summary.activity} />
+      </div>
       </div>
     </>
   );
