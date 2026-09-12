@@ -1279,6 +1279,14 @@ model Interview {
   bookingWindowStart   DateTime?           @map("booking_window_start")
   bookingWindowEnd     DateTime?           @map("booking_window_end")
   slotDurationMinutes  Int?                @map("slot_duration_minutes")
+  // Calendar OAuth sync (Zoho #22): set when a confirmed interview was pushed to an
+  // organizer's connected calendar. ownerId is whose connection holds the event (so we
+  // can update/delete it); meetingUrl is the auto-generated Meet/Teams join link. All null
+  // when no organizer had a connected calendar (the feature is best-effort and inert).
+  externalEventProvider String?            @map("external_event_provider")
+  externalEventId       String?            @map("external_event_id") @db.NVarChar(Max)
+  externalEventOwnerId  String?            @map("external_event_owner_id") @db.UniqueIdentifier
+  meetingUrl            String?            @map("meeting_url") @db.NVarChar(Max)
   createdAt            DateTime            @default(now()) @map("created_at")
   updatedAt            DateTime            @updatedAt @map("updated_at")
   pipelineEntry        PipelineEntry       @relation(fields: [pipelineEntryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -1312,6 +1320,45 @@ model InterviewPanelist {
   @@unique([interviewId, userId])
   @@index([organizationId, userId])
   @@map("interview_panelists")
+}
+
+// Calendar OAuth sync (Zoho #22): one row per user per provider. The platform registers
+// one OAuth app per provider (env client id/secret); each recruiter connects their OWN
+// account, so we store their refresh/access tokens (encrypted with OrgSecretsCryptoService,
+// same AES-256-GCM as smtp/ai/sms secrets). userId is a plain scalar (no User back-relation),
+// matching InterviewPanelist. Tenant-scoped -> RLS predicate in the _rls sibling migration.
+model CalendarConnection {
+  id                    String   @id @default(uuid()) @db.UniqueIdentifier
+  organizationId        String   @map("organization_id") @db.UniqueIdentifier
+  userId                String   @map("user_id") @db.UniqueIdentifier
+  provider              String // 'google' | 'microsoft'
+  connectedEmail        String?  @map("connected_email")
+  accessTokenEncrypted  String   @map("access_token_encrypted") @db.NVarChar(Max)
+  refreshTokenEncrypted String   @map("refresh_token_encrypted") @db.NVarChar(Max)
+  tokenExpiresAt        DateTime @map("token_expires_at")
+  scope                 String?  @db.NVarChar(Max)
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, provider])
+  @@index([organizationId, userId])
+  @@map("calendar_connections")
+}
+
+// Transient CSRF/state store for the OAuth redirect round-trip: rawState goes out as the
+// `state` param, only its sha256 is stored, and the callback (which carries no JWT) hashes
+// the returned state to recover the initiating user/provider. One-time, short TTL. NOT
+// RLS-scoped -- looked up by stateHash without a tenant context, exactly like SsoLoginCode.
+model CalendarOAuthState {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  stateHash      String   @unique @map("state_hash")
+  userId         String   @map("user_id") @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  provider       String
+  expiresAt      DateTime @map("expires_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("calendar_oauth_states")
 }
 
 model OfferTemplate {
