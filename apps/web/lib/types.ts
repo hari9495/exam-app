@@ -553,6 +553,20 @@ export interface PortalView {
   applications: PortalApplication[];
 }
 
+export interface PortalOpenJob {
+  applyToken: string;
+  title: string;
+  location: string | null;
+  employmentType: string | null;
+}
+
+export interface PortalOpenJobs {
+  hasResume: boolean;
+  requiresConsent: boolean;
+  requiredFieldCount: number;
+  jobs: PortalOpenJob[];
+}
+
 export interface ApplicationStatus {
   jobTitle: string;
   appliedAt: string;

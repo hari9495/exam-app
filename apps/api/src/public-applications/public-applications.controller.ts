@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Header, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Headers, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { PublicApplicationsService } from './public-applications.service';
 import { ApplyDto } from './dto/apply.dto';
 import { ParseResumeDto } from './dto/parse-resume.dto';
 import { UpdatePortalProfileDto } from './dto/update-portal-profile.dto';
 import { UploadPortalResumeDto } from './dto/upload-portal-resume.dto';
+import { QuickApplyDto } from './dto/quick-apply.dto';
 import { UnsubscribeDto } from './dto/unsubscribe.dto';
 import { PublicApplicationsThrottlerGuard } from './public-applications.throttler.guard';
 import { STRICT_WALK_IN_THROTTLE } from '../rate-limit-tiers';
@@ -85,5 +86,34 @@ export class PublicApplicationsController {
   @Post('portal/:portalToken/resume')
   uploadPortalResume(@Param('portalToken') portalToken: string, @Body() dto: UploadPortalResumeDto) {
     return this.service.uploadPortalResume(portalToken, dto);
+  }
+
+  // Returning-candidate one-click re-apply: the org's other open roles, and applying to one reusing
+  // the candidate's saved details + résumé. Both scoped by the candidate's own portal token.
+  @Get('portal/:portalToken/open-jobs')
+  portalOpenJobs(@Param('portalToken') portalToken: string) {
+    return this.service.getPortalOpenJobs(portalToken);
+  }
+
+  @Post('portal/:portalToken/apply/:applyToken')
+  quickApply(
+    @Param('portalToken') portalToken: string,
+    @Param('applyToken') applyToken: string,
+    @Body() dto: QuickApplyDto,
+  ) {
+    return this.service.quickApply(portalToken, applyToken, dto);
+  }
+
+  // External Easy Apply ingestion: a job board POSTs an application here with the org's shared
+  // secret in the X-EasyApply-Secret header. Distinct 'easy-apply' segment -- no route collision
+  // with jobs/portal. Inert (generic 404) until the org configures the provider's secret.
+  @Post('easy-apply/:orgSlug/:provider')
+  easyApply(
+    @Param('orgSlug') orgSlug: string,
+    @Param('provider') provider: string,
+    @Headers('x-easyapply-secret') secret: string | undefined,
+    @Body() payload: unknown,
+  ) {
+    return this.service.easyApplyIngest(orgSlug, provider, secret, payload);
   }
 }

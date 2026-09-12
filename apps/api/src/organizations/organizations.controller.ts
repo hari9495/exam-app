@@ -22,6 +22,7 @@ import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
 import { ApiUsageQueryDto } from './dto/api-usage-query.dto';
 import { UpdateCareersDto } from './dto/update-careers.dto';
 import { UpdateSmsConfigDto } from './dto/update-sms-config.dto';
+import { UpdateEasyApplyConfigDto } from './dto/update-easy-apply-config.dto';
 import { listSmsProviders } from '../sms/providers';
 import { UpdateWhatsappConfigDto } from './dto/update-whatsapp-config.dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
@@ -120,6 +121,18 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   getSmsProviders() {
     return listSmsProviders().map(({ id, label, configFields }) => ({ id, label, configFields }));
+  }
+
+  @Get('easy-apply-config')
+  @RequirePermissions('org:manage_settings')
+  getEasyApplyConfig(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.getEasyApplyConfig(tenant);
+  }
+
+  @Put('easy-apply-config')
+  @RequirePermissions('org:manage_settings')
+  putEasyApplyConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateEasyApplyConfigDto) {
+    return this.organizationsService.putEasyApplyConfig(tenant, userId, dto);
   }
 
   @Patch('integrations/webhook')

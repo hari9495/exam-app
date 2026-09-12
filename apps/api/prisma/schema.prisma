@@ -75,6 +75,10 @@ model Organization {
   smsEnabled             Boolean           @default(false) @map("sms_enabled")
   smsProvider            String            @default("twilio") @map("sms_provider")
   smsConfigEncrypted     String?           @map("sms_config_encrypted") @db.NVarChar(Max)
+  // External Easy Apply (Indeed/LinkedIn) ingestion creds, encrypted JSON keyed by provider:
+  // { "<provider>": { "secret": "..." } }. A provider is enabled iff it has a stored secret;
+  // the feature is inert until an org configures one. Same on/off shape as the SMS config blob.
+  easyApplyConfigEncrypted String?         @map("easy_apply_config_encrypted") @db.NVarChar(Max)
   whatsappEnabled         Boolean          @default(false) @map("whatsapp_enabled")
   whatsappProvider        String           @default("twilio") @map("whatsapp_provider")
   whatsappConfigEncrypted String?          @map("whatsapp_config_encrypted") @db.NVarChar(Max)

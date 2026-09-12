@@ -2220,6 +2220,68 @@ describe('OrganizationsService', () => {
       expect(JSON.stringify(result)).not.toMatch(/"send"|"validateConfig"/);
     });
   });
+
+  describe('easy-apply config', () => {
+    const ctx = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+    it('putEasyApplyConfig enables a provider by storing its secret, and never returns the secret', async () => {
+      prisma.organization.findUnique
+        .mockResolvedValueOnce({ easyApplyConfigEncrypted: null }) // put's read
+        .mockResolvedValueOnce({ slug: 'acme', easyApplyConfigEncrypted: 'enc-blob' }); // getEasyApplyConfig re-read
+      cryptoService.encrypt.mockReturnValue('enc-blob');
+      cryptoService.decrypt.mockReturnValue(JSON.stringify({ indeed: { secret: 'sekret' } }));
+
+      const out = await service.putEasyApplyConfig(ctx, 'user-1', { provider: 'indeed', secret: 'sekret' });
+
+      expect(cryptoService.encrypt).toHaveBeenCalledWith(JSON.stringify({ indeed: { secret: 'sekret' } }));
+      expect(out.providers.find((p) => p.id === 'indeed')!.configured).toBe(true);
+      expect(JSON.stringify(out)).not.toContain('sekret');
+    });
+
+    it('keeps the existing secret when omitted (blank-on-PUT)', async () => {
+      prisma.organization.findUnique
+        .mockResolvedValueOnce({ easyApplyConfigEncrypted: 'enc-existing' })
+        .mockResolvedValueOnce({ slug: 'acme', easyApplyConfigEncrypted: 'enc-blob' });
+      cryptoService.decrypt.mockReturnValue(JSON.stringify({ indeed: { secret: 'OLD' } }));
+      cryptoService.encrypt.mockReturnValue('enc-blob');
+
+      await service.putEasyApplyConfig(ctx, 'user-1', { provider: 'indeed' });
+
+      expect(cryptoService.encrypt).toHaveBeenCalledWith(JSON.stringify({ indeed: { secret: 'OLD' } }));
+    });
+
+    it('disables a provider (enabled:false) by clearing its config', async () => {
+      prisma.organization.findUnique
+        .mockResolvedValueOnce({ easyApplyConfigEncrypted: 'enc-existing' })
+        .mockResolvedValueOnce({ slug: 'acme', easyApplyConfigEncrypted: null });
+      cryptoService.decrypt.mockReturnValue(JSON.stringify({ indeed: { secret: 'OLD' } }));
+
+      await service.putEasyApplyConfig(ctx, 'user-1', { provider: 'indeed', enabled: false });
+
+      // the only provider removed -> blob empty -> stored as null (nothing encrypted)
+      expect(prisma.organization.update).toHaveBeenCalledWith(expect.objectContaining({ data: { easyApplyConfigEncrypted: null } }));
+    });
+
+    it('rejects enabling a provider with no secret on file and none provided', async () => {
+      prisma.organization.findUnique.mockResolvedValueOnce({ easyApplyConfigEncrypted: null });
+      await expect(service.putEasyApplyConfig(ctx, 'user-1', { provider: 'indeed' })).rejects.toThrow(/secret is required/i);
+    });
+
+    it('getEasyApplyConfig reports per-provider configured + ingest url, never the secret', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ slug: 'acme', easyApplyConfigEncrypted: 'enc-blob' });
+      cryptoService.decrypt.mockReturnValue(JSON.stringify({ indeed: { secret: 'sekret' } }));
+      process.env.API_ORIGIN = 'https://api.example.com';
+
+      const out = await service.getEasyApplyConfig(ctx);
+
+      expect(out.providers.find((p) => p.id === 'indeed')).toMatchObject({
+        configured: true,
+        ingestUrl: 'https://api.example.com/api/v1/public/easy-apply/acme/indeed',
+      });
+      expect(out.providers.find((p) => p.id === 'linkedin')!.configured).toBe(false);
+      expect(JSON.stringify(out)).not.toContain('sekret');
+    });
+  });
 });
 
 describe('UpdateBusinessHoursDto validation', () => {

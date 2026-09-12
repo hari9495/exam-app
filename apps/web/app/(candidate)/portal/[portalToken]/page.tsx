@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { API_BASE } from '../../../../lib/api-client';
-import { PortalView, PortalApplication } from '../../../../lib/types';
+import { PortalView, PortalApplication, PortalOpenJobs } from '../../../../lib/types';
 import { CandidateButton } from '../../components/CandidateButton';
 import { TerminalCard } from '../../components/TerminalCard';
 
@@ -145,6 +145,86 @@ function ResumeCard({ portal, portalToken, onUpdate }: { portal: PortalView; por
   );
 }
 
+// Returning-candidate one-click: the org's other open roles. A role is one-click-appliable when the
+// candidate has a résumé on file and the job needs no consent or apply-only custom fields; otherwise
+// the button routes to the full apply form so those extras can be collected.
+function OpenRolesCard({ portalToken, onApplied }: { portalToken: string; onApplied: () => void }) {
+  const [data, setData] = useState<PortalOpenJobs | null>(null);
+  const [applying, setApplying] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/public/portal/${portalToken}/open-jobs`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((d: PortalOpenJobs | null) => {
+        if (!cancelled) setData(d);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [portalToken]);
+
+  async function quickApply(applyToken: string) {
+    setApplying(applyToken);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/public/portal/${portalToken}/apply/${applyToken}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error('not ok');
+      setData((d) => (d ? { ...d, jobs: d.jobs.filter((j) => j.applyToken !== applyToken) } : d));
+      onApplied(); // refresh the applications list above
+    } catch {
+      setError(applyToken);
+    } finally {
+      setApplying(null);
+    }
+  }
+
+  if (!data?.jobs?.length) return null;
+  const canOneClick = data.hasResume && !data.requiresConsent && data.requiredFieldCount === 0;
+
+  return (
+    <div className="rounded-lg border border-candidate-border bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_10px_28px_-18px_rgba(16,24,40,0.20)]">
+      <h2 className="font-display text-base font-semibold text-candidate-text">Open roles</h2>
+      <p className="mt-1 text-sm text-candidate-text-secondary">
+        {canOneClick ? 'Apply in one click — we reuse your details and résumé.' : 'Apply reusing your saved details.'}
+      </p>
+      <ul className="mt-3 flex flex-col divide-y divide-candidate-border">
+        {data.jobs.map((job) => (
+          <li key={job.applyToken} className="flex items-center justify-between gap-3 py-2.5">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-candidate-text">{job.title}</p>
+              {job.location || job.employmentType ? (
+                <p className="truncate text-xs text-candidate-text-secondary">
+                  {[job.location, job.employmentType?.replace(/_/g, ' ').toLowerCase()].filter(Boolean).join(' · ')}
+                </p>
+              ) : null}
+              {error === job.applyToken ? <p role="alert" className="text-xs text-candidate-danger">Could not apply. Please try again.</p> : null}
+            </div>
+            {canOneClick ? (
+              <CandidateButton onClick={() => quickApply(job.applyToken)} disabled={applying === job.applyToken} className="shrink-0">
+                {applying === job.applyToken ? 'Applying…' : 'Apply'}
+              </CandidateButton>
+            ) : (
+              <Link
+                href={`/apply/${job.applyToken}`}
+                className="shrink-0 rounded-md border border-candidate-border px-3 py-2 text-sm font-medium text-candidate-primary"
+              >
+                Apply
+              </Link>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 const STAGE_LABEL: Record<string, string> = {
   applied: 'Applied',
   screened: 'Screened',
@@ -230,6 +310,16 @@ export default function PortalPage() {
   const [portal, setPortal] = useState<PortalView | null>(null);
   const [failed, setFailed] = useState(false);
 
+  async function loadPortal() {
+    try {
+      const res = await fetch(`${API_BASE}/public/portal/${portalToken}`);
+      if (!res.ok) throw new Error('not ok');
+      setPortal(await res.json());
+    } catch {
+      setFailed(true);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     fetch(`${API_BASE}/public/portal/${portalToken}`)
@@ -264,6 +354,7 @@ export default function PortalPage() {
       </div>
       <DetailsCard portal={portal} portalToken={portalToken} onUpdate={setPortal} />
       <ResumeCard portal={portal} portalToken={portalToken} onUpdate={setPortal} />
+      <OpenRolesCard portalToken={portalToken} onApplied={loadPortal} />
       {portal.applications.length === 0 ? (
         <p className="text-sm text-candidate-text-secondary">You have no applications yet.</p>
       ) : (

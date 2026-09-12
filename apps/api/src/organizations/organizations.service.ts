@@ -25,6 +25,8 @@ import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
 import { UpdateCareersDto } from './dto/update-careers.dto';
 import { UpdateSmsConfigDto } from './dto/update-sms-config.dto';
 import { getSmsProvider } from '../sms/providers';
+import { UpdateEasyApplyConfigDto } from './dto/update-easy-apply-config.dto';
+import { getEasyApplyProvider, listEasyApplyProviders } from '../easy-apply/providers';
 import { UpdateWhatsappConfigDto } from './dto/update-whatsapp-config.dto';
 import { BusinessHours, Holiday } from '@exam-platform/shared';
 import { getWhatsappProvider, listWhatsappProviders, WhatsappConfigField } from '../whatsapp/providers';
@@ -741,6 +743,60 @@ export class OrganizationsService {
       entityId: organizationId,
     });
     return this.getSmsConfig(context);
+  }
+
+  private decryptEasyApplyConfig(encrypted: string | null | undefined): Record<string, { secret?: string }> {
+    if (!encrypted) return {};
+    try {
+      const parsed: unknown = JSON.parse(this.cryptoService.decrypt(encrypted));
+      return parsed && typeof parsed === 'object' ? (parsed as Record<string, { secret?: string }>) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  // External Easy Apply config: one status row per provider (configured = has a stored secret) plus
+  // the ingestion URL the board POSTs to. Never returns the secret itself.
+  async getEasyApplyConfig(context: TenantContext): Promise<{ providers: { id: string; label: string; configured: boolean; ingestUrl: string }[] }> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { slug: true, easyApplyConfigEncrypted: true },
+    });
+    const blob = this.decryptEasyApplyConfig(org?.easyApplyConfigEncrypted);
+    const apiOrigin = process.env.API_ORIGIN ?? 'http://localhost:3001';
+    return {
+      providers: listEasyApplyProviders().map((p) => ({
+        id: p.id,
+        label: p.label,
+        configured: Boolean(blob[p.id]?.secret),
+        ingestUrl: `${apiOrigin}/api/v1/public/easy-apply/${org?.slug ?? ''}/${p.id}`,
+      })),
+    };
+  }
+
+  async putEasyApplyConfig(context: TenantContext, actorUserId: string, dto: UpdateEasyApplyConfigDto): Promise<{ providers: { id: string; label: string; configured: boolean; ingestUrl: string }[] }> {
+    const organizationId = this.requireOrganizationId(context);
+    if (!getEasyApplyProvider(dto.provider)) throw new BadRequestException(`Unknown Easy Apply provider: ${dto.provider}`);
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { easyApplyConfigEncrypted: true } });
+    const blob = this.decryptEasyApplyConfig(org?.easyApplyConfigEncrypted);
+
+    if (dto.enabled === false) {
+      delete blob[dto.provider]; // disable ingestion for this provider
+    } else {
+      const incoming = dto.secret?.trim();
+      const existing = blob[dto.provider]?.secret;
+      const secret = incoming || existing; // blank-on-PUT keeps the stored secret
+      if (!secret) throw new BadRequestException('A shared secret is required to enable this provider');
+      blob[dto.provider] = { secret };
+    }
+
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { easyApplyConfigEncrypted: Object.keys(blob).length ? this.cryptoService.encrypt(JSON.stringify(blob)) : null },
+    });
+    await this.audit.record(context, { actorUserId, action: 'organization.easy_apply_configured', entityType: 'organization', entityId: organizationId, metadata: { provider: dto.provider, enabled: dto.enabled !== false } });
+    return this.getEasyApplyConfig(context);
   }
 
   async updateWebhookUrl(context: TenantContext, actorUserId: string, dto: UpdateWebhookUrlDto): Promise<{ webhookUrl: string }> {
