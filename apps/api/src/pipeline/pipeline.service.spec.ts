@@ -44,6 +44,7 @@ describe('PipelineService', () => {
   let approvals: { getChains: jest.Mock; submit: jest.Mock; isConfigurer: jest.Mock; cancelForSubject: jest.Mock; getSummariesFor: jest.Mock };
   let pipelines: { getDefaultPipeline: jest.Mock; resolveStatus: jest.Mock };
   let fieldPerms: { getHiddenFields: jest.Mock };
+  let jobBoardPoster: { syncJobToPaidBoards: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   const chains = (requisitionEnabled: boolean) => ({
@@ -76,7 +77,9 @@ describe('PipelineService', () => {
     // Empty set by default (matches getHiddenFields' own contract for an ungoverned/admin role) --
     // pre-existing tests below pass role 'org_admin' and don't care about redaction.
     fieldPerms = { getHiddenFields: jest.fn().mockResolvedValue(new Set()) };
-    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, whatsappTemplates as any, candidateWhatsapp as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any);
+    // Paid job-board posting is best-effort and inert by default in these tests (no-op).
+    jobBoardPoster = { syncJobToPaidBoards: jest.fn().mockResolvedValue(undefined) };
+    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, whatsappTemplates as any, candidateWhatsapp as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any, jobBoardPoster as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {
@@ -2427,6 +2430,41 @@ describe('PipelineService', () => {
 
       const lines = csv.trim().split('\r\n');
       expect(lines[1]).toBe('Asha Rao,asha@example.com,555-1111,hired,active,2026-08-01T00:00:00.000Z');
+    });
+  });
+
+  describe('paid job-board sync wiring', () => {
+    it('updateJob reconciles paid boards when jobBoardIds changes', async () => {
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open', applyToken: 't', publicApplyEnabled: true }), update: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+        jobBoardPublication: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn(), createMany: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.updateJob(context, 'user-1', 'job-1', { jobBoardIds: [] });
+
+      expect(jobBoardPoster.syncJobToPaidBoards).toHaveBeenCalledWith(context, 'job-1');
+    });
+
+    it('updateJob does NOT reconcile paid boards on an unrelated field edit', async () => {
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', status: 'open', applyToken: 't', publicApplyEnabled: true }), update: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.updateJob(context, 'user-1', 'job-1', { title: 'New Title' });
+
+      expect(jobBoardPoster.syncJobToPaidBoards).not.toHaveBeenCalled();
+    });
+
+    it('markRequisitionApproved posts to paid boards after opening the job', async () => {
+      const tx = { job: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await service.markRequisitionApproved(context, 'job-1');
+
+      expect(tx.job.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { status: 'open' } }));
+      expect(jobBoardPoster.syncJobToPaidBoards).toHaveBeenCalledWith(context, 'job-1');
     });
   });
 });

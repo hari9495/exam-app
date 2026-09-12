@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
 import { useAuth } from '../auth-context';
-import type { JobBoard } from '../types';
+import type { JobBoard, JobBoardProviderMeta, JobBoardConfig } from '../types';
 
 // Web data layer for GET/POST/PATCH/DELETE /organizations/job-boards (all org:manage_settings).
 // Mirrors useOrgSenderAddresses.ts's fetch-wrapper/invalidation conventions.
@@ -43,5 +43,40 @@ export function useDeleteJobBoard() {
   return useMutation({
     mutationFn: (id: string) => apiFetch(`/organizations/job-boards/${id}`, { method: 'DELETE' }, accessToken ?? undefined),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['job-boards'] }),
+  });
+}
+
+// --- Paid job-board adapters (provider config) ---
+
+export function useJobBoardProviders() {
+  const { accessToken } = useAuth();
+  return useQuery<JobBoardProviderMeta[]>({
+    queryKey: ['job-board-providers'],
+    queryFn: () => apiFetch('/organizations/job-boards/providers', {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken),
+  });
+}
+
+export function useJobBoardConfig(id: string | null) {
+  const { accessToken } = useAuth();
+  return useQuery<JobBoardConfig>({
+    queryKey: ['job-board-config', id],
+    queryFn: () => apiFetch(`/organizations/job-boards/${id}/config`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken && id),
+  });
+}
+
+export interface SaveJobBoardConfigInput { id: string; provider: string; config?: Record<string, unknown>; }
+
+export function useSaveJobBoardConfig() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, provider, config }: SaveJobBoardConfigInput) =>
+      apiFetch(`/organizations/job-boards/${id}/config`, { method: 'PUT', body: JSON.stringify({ provider, config }) }, accessToken ?? undefined) as Promise<JobBoardConfig>,
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['job-boards'] });
+      queryClient.invalidateQueries({ queryKey: ['job-board-config', id] });
+    },
   });
 }

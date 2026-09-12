@@ -82,7 +82,11 @@ export interface OrgSenderAddress { id: string; label: string; address: string; 
 
 // Mirrors apps/api/src/job-boards/job-boards.service.ts's JobBoardWithStats (id/name/feedToken
 // trimmed to what the web needs: the feed link is already resolved to a full feedUrl).
-export interface JobBoard { id: string; name: string; feedUrl: string; publishedJobCount: number; }
+export interface JobBoard { id: string; name: string; feedUrl: string; publishedJobCount: number; provider: string; configured: boolean; }
+
+export interface JobBoardConfigField { key: string; label: string; secret: boolean; required: boolean; placeholder?: string; }
+export interface JobBoardProviderMeta { id: string; label: string; configFields: JobBoardConfigField[]; }
+export interface JobBoardConfig { provider: string; configured: boolean; config: Record<string, unknown>; }
 
 // Agency portal (external recruiting agencies submit candidates against an assigned-jobs
 // allowlist). Shapes mirror apps/api/src/agencies/agencies.service.ts's AgencyWithStats and

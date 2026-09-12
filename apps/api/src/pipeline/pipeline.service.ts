@@ -27,6 +27,7 @@ import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
 import { BlueprintRule, parseRules, parseChecklist, evaluateBlueprint } from './blueprint-rules';
 import { FieldPermissionsService } from '../field-permissions/field-permissions.service';
 import { redactFields, redactMany } from '../field-permissions/redact';
+import { JobBoardPosterService } from '../job-boards/job-board-poster.service';
 
 export interface FeedbackRow {
   id: string;
@@ -178,6 +179,7 @@ export class PipelineService {
     private readonly approvals: ApprovalsService,
     private readonly pipelines: PipelinesService,
     private readonly fieldPerms: FieldPermissionsService,
+    private readonly jobBoardPoster: JobBoardPosterService,
   ) {}
 
   async createJob(
@@ -380,7 +382,7 @@ export class PipelineService {
       jobBoardIds?: string[];
     },
   ): Promise<Job & { customFields?: CustomFieldRead[] }> {
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const result = await this.tenantPrisma.forTenant(context, async (tx) => {
       const organizationId = context.organizationId as string;
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId } });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
@@ -535,6 +537,13 @@ export class PipelineService {
       });
       return { ...updated, customFields: serializeCustomFieldValues(rows, defs) };
     });
+
+    // Post-commit (network calls can't run inside forTenant): reconcile the job's paid job-board
+    // postings when board membership or public visibility may have changed. Best-effort/idempotent.
+    if (dto.jobBoardIds !== undefined || dto.status !== undefined || dto.publicApplyEnabled !== undefined) {
+      await this.jobBoardPoster.syncJobToPaidBoards(context, jobId);
+    }
+    return result;
   }
 
   // Org-scoped status flips for the requisition lifecycle. updateMany (not update) since the
@@ -542,6 +551,9 @@ export class PipelineService {
   // reuses both) -- the organizationId filter keeps them tenant-safe either way.
   async markRequisitionApproved(context: TenantContext, jobId: string): Promise<void> {
     await this.setJobStatus(context, jobId, 'open');
+    // A job going live is the primary "post to paid boards" trigger (reached from both the
+    // auto-approve path and the approvals engine's decide path). Best-effort, post-commit.
+    await this.jobBoardPoster.syncJobToPaidBoards(context, jobId);
   }
 
   async markRequisitionDraft(context: TenantContext, jobId: string): Promise<void> {

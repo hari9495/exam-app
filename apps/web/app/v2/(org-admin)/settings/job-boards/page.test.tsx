@@ -12,10 +12,19 @@ const mockedUseJobBoards = useJobBoardsHooks.useJobBoards as jest.Mock;
 const mockedUseCreateJobBoard = useJobBoardsHooks.useCreateJobBoard as jest.Mock;
 const mockedUseUpdateJobBoard = useJobBoardsHooks.useUpdateJobBoard as jest.Mock;
 const mockedUseDeleteJobBoard = useJobBoardsHooks.useDeleteJobBoard as jest.Mock;
+const mockedUseJobBoardProviders = useJobBoardsHooks.useJobBoardProviders as jest.Mock;
+const mockedUseJobBoardConfig = useJobBoardsHooks.useJobBoardConfig as jest.Mock;
+const mockedUseSaveJobBoardConfig = useJobBoardsHooks.useSaveJobBoardConfig as jest.Mock;
 
 const BOARDS = [
-  { id: 'b1', name: 'LinkedIn', feedUrl: 'https://app.example.com/public/job-boards/tok1/feed.xml', publishedJobCount: 3 },
-  { id: 'b2', name: 'Indeed', feedUrl: 'https://app.example.com/public/job-boards/tok2/feed.xml', publishedJobCount: 0 },
+  { id: 'b1', name: 'LinkedIn', feedUrl: 'https://app.example.com/public/job-boards/tok1/feed.xml', publishedJobCount: 3, provider: 'xml_feed', configured: true },
+  { id: 'b2', name: 'Indeed', feedUrl: 'https://app.example.com/public/job-boards/tok2/feed.xml', publishedJobCount: 0, provider: 'xml_feed', configured: true },
+];
+
+const PROVIDERS = [
+  { id: 'linkedin', label: 'LinkedIn', configFields: [{ key: 'accessToken', label: 'Access token', secret: true, required: true }, { key: 'authorUrn', label: 'Company URN', secret: false, required: true }] },
+  { id: 'indeed', label: 'Indeed', configFields: [{ key: 'apiKey', label: 'API key', secret: true, required: true }] },
+  { id: 'http', label: 'Generic HTTP', configFields: [{ key: 'postUrl', label: 'Post URL', secret: false, required: true }] },
 ];
 
 function renderPage() {
@@ -31,6 +40,7 @@ describe('V2JobBoardsSettingsPage', () => {
   let createMutate: jest.Mock;
   let updateMutate: jest.Mock;
   let deleteMutate: jest.Mock;
+  let saveConfigMutate: jest.Mock;
 
   beforeEach(() => {
     mockedUseAuth.mockReturnValue({ role: 'org_admin', actingSuperAdmin: false });
@@ -44,6 +54,11 @@ describe('V2JobBoardsSettingsPage', () => {
 
     deleteMutate = jest.fn((_input, opts) => opts?.onSuccess?.());
     mockedUseDeleteJobBoard.mockReturnValue({ mutate: deleteMutate, isPending: false });
+
+    mockedUseJobBoardProviders.mockReturnValue({ data: PROVIDERS });
+    mockedUseJobBoardConfig.mockReturnValue({ data: { provider: 'xml_feed', configured: true, config: {} } });
+    saveConfigMutate = jest.fn((_input, opts) => opts?.onSuccess?.());
+    mockedUseSaveJobBoardConfig.mockReturnValue({ mutate: saveConfigMutate, isPending: false });
   });
 
   it('denies access to non org_admin roles', () => {
@@ -103,5 +118,32 @@ describe('V2JobBoardsSettingsPage', () => {
     renderPage();
     fireEvent.click(screen.getByRole('button', { name: /copy linkedin feed link/i }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('https://app.example.com/public/job-boards/tok1/feed.xml'));
+  });
+
+  it('a free-feed board shows no "needs credentials" chip and exposes its feed link', () => {
+    renderPage();
+    expect(screen.queryByText('Needs credentials')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Free XML feed').length).toBe(2);
+  });
+
+  it('configuring a board as an HTTP push provider saves the provider + config', async () => {
+    renderPage();
+    // Open the config dialog for the first board.
+    fireEvent.click(screen.getAllByRole('button', { name: /configure posting/i })[0]);
+    // Switch it to Generic HTTP and fill the post URL.
+    fireEvent.change(screen.getByLabelText('Post jobs via'), { target: { value: 'http' } });
+    fireEvent.change(screen.getByLabelText(/Post URL/), { target: { value: 'https://boards.example.com/jobs' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(saveConfigMutate).toHaveBeenCalled());
+    expect(saveConfigMutate.mock.calls[0][0]).toEqual({ id: 'b1', provider: 'http', config: { postUrl: 'https://boards.example.com/jobs' } });
+  });
+
+  it('a paid board that needs credentials shows the warning chip', () => {
+    mockedUseJobBoards.mockReturnValue({
+      data: [{ id: 'b3', name: 'LinkedIn push', feedUrl: 'x', publishedJobCount: 0, provider: 'linkedin', configured: false }],
+      isLoading: false, isError: false,
+    });
+    renderPage();
+    expect(screen.getByText('Needs credentials')).toBeInTheDocument();
   });
 });
