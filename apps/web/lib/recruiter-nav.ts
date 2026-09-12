@@ -11,23 +11,25 @@ import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, QrCode, Bri
 //
 // Add any new recruiter-visible feature here, and to SUPER_ADMIN_FULL_NAV in super-admin-nav.ts.
 export const RECRUITER_NAV_ITEMS = [
+  // Ungrouped items pin flat at the top; grouped items render under collapsible section headers
+  // (see NAV_GROUP_ORDER in staff-nav.ts). Same groups as SUPER_ADMIN_FULL_NAV, minus Admin/Settings.
   { href: '/today', label: 'Today', icon: Sun },
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/exams', label: 'Exams', icon: FileText },
-  { href: '/questions', label: 'Question Bank', icon: BookOpen },
-  { href: '/candidates', label: 'Candidates', icon: Users },
+  { href: '/candidates', label: 'Candidates', icon: Users, group: 'Hiring' },
+  { href: '/jobs', label: 'Jobs', icon: Briefcase, group: 'Hiring' },
+  { href: '/approvals', label: 'Approvals', icon: CheckSquare, group: 'Hiring' },
+  { href: '/agency-submissions', label: 'Agency Submissions', icon: Building2, group: 'Hiring' },
+  { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode, group: 'Hiring' },
+  { href: '/exams', label: 'Exams', icon: FileText, group: 'Assessments' },
+  { href: '/questions', label: 'Question Bank', icon: BookOpen, group: 'Assessments' },
   // Results (scores, pass/fail, CSV/XLSX/PDF export) previously only appeared for a
   // super-admin impersonating an org, so a plain recruiter had no way to reach the
   // reports console at all -- despite the recruiter role already holding results:view.
-  { href: '/reports', label: 'Results', icon: BarChart3 },
-  { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode },
-  { href: '/jobs', label: 'Jobs', icon: Briefcase },
-  { href: '/agency-submissions', label: 'Agency Submissions', icon: Building2 },
-  { href: '/approvals', label: 'Approvals', icon: CheckSquare },
-  { href: '/analytics/hiring', label: 'Hiring Analytics', icon: TrendingUp },
-  { href: '/message-templates', label: 'Message Templates', icon: Mail },
-  { href: '/sms-templates', label: 'SMS Templates', icon: MessageSquare },
-  { href: '/whatsapp-templates', label: 'WhatsApp Templates', icon: MessageCircle },
-  { href: '/offer-template', label: 'Offer Template', icon: FileSignature },
-  { href: '/calendar', label: 'Calendar', icon: CalendarClock },
+  { href: '/reports', label: 'Results', icon: BarChart3, group: 'Assessments' },
+  { href: '/message-templates', label: 'Message Templates', icon: Mail, group: 'Messaging' },
+  { href: '/sms-templates', label: 'SMS Templates', icon: MessageSquare, group: 'Messaging' },
+  { href: '/whatsapp-templates', label: 'WhatsApp Templates', icon: MessageCircle, group: 'Messaging' },
+  { href: '/offer-template', label: 'Offer Template', icon: FileSignature, group: 'Messaging' },
+  { href: '/calendar', label: 'Calendar', icon: CalendarClock, group: 'Messaging' },
+  { href: '/analytics/hiring', label: 'Hiring Analytics', icon: TrendingUp, group: 'Analytics' },
 ];
