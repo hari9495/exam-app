@@ -1476,6 +1476,11 @@ model JobBoard {
   organizationId String                @map("organization_id") @db.UniqueIdentifier
   name           String                @db.NVarChar(200)
   feedToken      String                @unique @map("feed_token")
+  // Paid job-board adapters (Zoho backlog): a board is either the default free XML-feed board
+  // (pull) or a paid push board with per-org encrypted API creds. configEncrypted holds the
+  // adapter's config blob (AES-256-GCM, same as smtp/sms/ai secrets); null until configured.
+  provider        String               @default("xml_feed") @map("provider") // 'xml_feed' | 'linkedin' | 'indeed' | 'http'
+  configEncrypted String?              @map("config_encrypted") @db.NVarChar(Max)
   createdAt      DateTime              @default(now()) @map("created_at")
   updatedAt      DateTime              @updatedAt @map("updated_at")
   publications   JobBoardPublication[]
@@ -1489,6 +1494,12 @@ model JobBoardPublication {
   jobBoardId     String   @map("job_board_id") @db.UniqueIdentifier
   jobId          String   @map("job_id") @db.UniqueIdentifier
   organizationId String   @map("organization_id") @db.UniqueIdentifier
+  // Paid push tracking: null for free XML-feed boards. externalPostId is the id the board's API
+  // returned, needed to close/remove the posting later. postStatus: pending|posted|failed|removed.
+  externalPostId String?   @map("external_post_id") @db.NVarChar(Max)
+  postStatus     String?   @map("post_status")
+  postError      String?   @map("post_error") @db.NVarChar(Max)
+  postedAt       DateTime? @map("posted_at")
   createdAt      DateTime @default(now()) @map("created_at")
   jobBoard       JobBoard @relation(fields: [jobBoardId], references: [id], onDelete: Cascade)
   job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)

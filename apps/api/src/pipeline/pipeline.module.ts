@@ -6,6 +6,7 @@ import { JobsModule } from '../jobs/jobs.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ApprovalsModule } from '../approvals/approvals.module';
 import { FieldPermissionsModule } from '../field-permissions/field-permissions.module';
+import { JobBoardsModule } from '../job-boards/job-boards.module';
 import { PipelineController } from './pipeline.controller';
 import { PipelinesConfigController } from './pipelines-config.controller';
 import { PipelineService } from './pipeline.service';
@@ -18,7 +19,9 @@ import { PipelinesService } from './pipelines.service';
   // getHiddenFields for board/job/csv field-hiding; CandidateSmsModule/CandidateWhatsappModule ->
   // the stage-move SMS + WhatsApp hooks (beside the email hook from CandidateEmailsModule) -- no
   // circular import, each only imports its own provider module.
-  imports: [CandidateEmailsModule, CandidateSmsModule, CandidateWhatsappModule, JobsModule, NotificationsModule, ApprovalsModule, FieldPermissionsModule],
+  // JobBoardsModule -> JobBoardPosterService, to push a job to the org's paid boards when it goes
+  // live and retract it when it closes (no circular import; JobBoardsModule imports only CryptoModule).
+  imports: [CandidateEmailsModule, CandidateSmsModule, CandidateWhatsappModule, JobsModule, NotificationsModule, ApprovalsModule, FieldPermissionsModule, JobBoardsModule],
   controllers: [PipelineController, PipelinesConfigController],
   providers: [PipelineService, PipelinesService],
   exports: [PipelineService, PipelinesService],

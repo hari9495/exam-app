@@ -8,16 +8,21 @@
 // Imports Button/TextField/Dialog directly from their files rather than the ui-v2 barrel -- the
 // barrel re-exports DataTable, which pulls in @tanstack/react-table (ESM-only) and breaks under
 // jest; this page doesn't need a DataTable anyway.
-import { useState } from 'react';
-import { Plus, Trash2, Check, Copy } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Plus, Trash2, Check, Copy, Settings2 } from 'lucide-react';
 import { useAuth } from '../../../../../lib/auth-context';
 import {
   useJobBoards, useCreateJobBoard, useUpdateJobBoard, useDeleteJobBoard,
+  useJobBoardProviders, useJobBoardConfig, useSaveJobBoardConfig,
 } from '../../../../../lib/hooks/useJobBoards';
 import type { JobBoard } from '../../../../../lib/types';
 import { Button } from '../../../../../components/ui-v2/Button';
 import { TextField } from '../../../../../components/ui-v2/TextField';
 import { Dialog } from '../../../../../components/ui-v2/Dialog';
+
+// Free default + the paid push providers. Labels are shown in the provider selector; the paid
+// providers' config fields come from the API (useJobBoardProviders).
+const PROVIDER_LABELS: Record<string, string> = { xml_feed: 'Free XML feed', linkedin: 'LinkedIn', indeed: 'Indeed', http: 'Generic HTTP' };
 
 const muted = 'var(--muted)';
 const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid color-mix(in srgb, var(--ink) 12%, var(--hair))', borderRadius: 14, padding: '16px 20px', marginBottom: 12, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
@@ -65,11 +70,94 @@ function NewBoardDialog({ onClose, notify }: { onClose: () => void; notify: (typ
   );
 }
 
+// Configure which provider a board posts through, and its (encrypted) API credentials. Secret
+// fields render blank when already configured and are only re-sent when the admin types a new value
+// (blank-on-PUT merge server-side) -- so an unchanged secret is never round-tripped to the browser.
+function BoardConfigDialog({ board, onClose, notify }: { board: JobBoard; onClose: () => void; notify: (type: 'success' | 'error', text: string) => void }) {
+  const { data: providers } = useJobBoardProviders();
+  const { data: current } = useJobBoardConfig(board.id);
+  const save = useSaveJobBoardConfig();
+  const [provider, setProvider] = useState(board.provider);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  // Seed non-secret fields from the loaded config once it arrives (secrets stay blank).
+  useEffect(() => {
+    if (current && current.provider === board.provider) {
+      const seed: Record<string, string> = {};
+      for (const [k, v] of Object.entries(current.config)) if (typeof v === 'string') seed[k] = v;
+      setValues(seed);
+    }
+  }, [current, board.provider]);
+
+  const meta = providers?.find((p) => p.id === provider);
+  const alreadyConfigured = current?.provider === provider && current?.configured;
+
+  function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    // For a paid provider, send only the fields the admin actually filled (blank secrets are kept
+    // server-side). xml_feed sends no config.
+    const config = provider === 'xml_feed' ? undefined : Object.fromEntries(Object.entries(values).filter(([, v]) => v.trim() !== ''));
+    save.mutate(
+      { id: board.id, provider, config },
+      {
+        onSuccess: () => { notify('success', 'Posting settings saved.'); onClose(); },
+        onError: (err) => setError(errorMessage(err, 'Failed to save posting settings.')),
+      },
+    );
+  }
+
+  return (
+    <Dialog open onClose={onClose} title={`Posting — ${board.name}`} width={460}>
+      <form onSubmit={handleSave}>
+        <label htmlFor={`prov-${board.id}`} className="v2-label">Post jobs via</label>
+        <select
+          id={`prov-${board.id}`}
+          value={provider}
+          onChange={(e) => { setProvider(e.target.value); setValues({}); }}
+          style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', marginBottom: 6 }}
+        >
+          {['xml_feed', 'linkedin', 'indeed', 'http'].map((id) => <option key={id} value={id}>{PROVIDER_LABELS[id] ?? id}</option>)}
+        </select>
+        <p style={{ ...desc, marginTop: 0, marginBottom: 12 }}>
+          {provider === 'xml_feed'
+            ? 'Jobs are exposed on this board’s public feed link for the board to pull.'
+            : 'Jobs are pushed to this provider’s API when they go live, and retracted when closed.'}
+        </p>
+
+        {provider !== 'xml_feed' && meta?.configFields.map((f) => (
+          <div key={f.key} style={{ marginBottom: 10 }}>
+            <label htmlFor={`cfg-${board.id}-${f.key}`} className="v2-label">{f.label}{f.required ? '' : ' (optional)'}</label>
+            <input
+              id={`cfg-${board.id}-${f.key}`}
+              type={f.secret ? 'password' : 'text'}
+              value={values[f.key] ?? ''}
+              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+              placeholder={f.secret && alreadyConfigured ? '•••••• (leave blank to keep current)' : f.placeholder}
+              autoComplete="off"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)' }}
+            />
+          </div>
+        ))}
+
+        {error && <p role="alert" style={{ marginTop: 8, fontSize: 12.5, color: 'var(--danger)' }}>{error}</p>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+          <button type="button" onClick={onClose} className="v2-hoverbtn" style={secondaryBtn}>Cancel</button>
+          <Button type="submit" loading={save.isPending}>Save</Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
 function BoardRow({ board, notify }: { board: JobBoard; notify: (type: 'success' | 'error', text: string) => void }) {
   const update = useUpdateJobBoard();
   const del = useDeleteJobBoard();
   const [name, setName] = useState(board.name);
   const [copied, setCopied] = useState(false);
+  const [configuring, setConfiguring] = useState(false);
+  const isPaid = board.provider !== 'xml_feed';
 
   function handleNameBlur() {
     if (!name.trim() || name === board.name) return;
@@ -107,12 +195,32 @@ function BoardRow({ board, notify }: { board: JobBoard; notify: (type: 'success'
           <button type="button" style={dangerIconBtn} onClick={handleDelete} aria-label={`Delete ${board.name}`}><Trash2 size={15} /></button>
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
-        <input readOnly value={board.feedUrl} aria-label={`${board.name} feed url`} onFocus={(e) => e.target.select()} className="v2-mono" style={monoInput} />
-        <button type="button" onClick={handleCopy} className="v2-hoverbtn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 14px', borderRadius: 9, border: '1px solid var(--hair)', background: 'var(--paper)', color: 'var(--ink)', cursor: 'pointer', whiteSpace: 'nowrap' }} aria-label={`Copy ${board.name} feed link`}>
-          {copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy link'}
+
+      {/* Posting method: free feed vs paid push provider, with a configure control. */}
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+        <span style={{ fontSize: 12.5, color: muted }}>Posting via</span>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)' }}>{PROVIDER_LABELS[board.provider] ?? board.provider}</span>
+        {isPaid && (
+          <span style={{ fontSize: 11.5, fontWeight: 600, borderRadius: 99, padding: '2px 9px', background: board.configured ? 'color-mix(in srgb, #15803d 14%, transparent)' : 'color-mix(in srgb, var(--danger) 12%, transparent)', color: board.configured ? '#15803d' : 'var(--danger)' }}>
+            {board.configured ? 'Configured' : 'Needs credentials'}
+          </span>
+        )}
+        <button type="button" onClick={() => setConfiguring(true)} className="v2-hoverbtn" style={{ ...secondaryBtn, marginLeft: 'auto', padding: '7px 12px' }} aria-label={`Configure posting for ${board.name}`}>
+          <Settings2 size={14} /> Configure
         </button>
       </div>
+
+      {/* The public feed link is the pull mechanism for the free XML-feed provider only. */}
+      {!isPaid && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+          <input readOnly value={board.feedUrl} aria-label={`${board.name} feed url`} onFocus={(e) => e.target.select()} className="v2-mono" style={monoInput} />
+          <button type="button" onClick={handleCopy} className="v2-hoverbtn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, padding: '9px 14px', borderRadius: 9, border: '1px solid var(--hair)', background: 'var(--paper)', color: 'var(--ink)', cursor: 'pointer', whiteSpace: 'nowrap' }} aria-label={`Copy ${board.name} feed link`}>
+            {copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy link'}
+          </button>
+        </div>
+      )}
+
+      {configuring && <BoardConfigDialog board={board} onClose={() => setConfiguring(false)} notify={notify} />}
     </div>
   );
 }
