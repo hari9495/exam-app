@@ -38,6 +38,7 @@ export const SUPER_ADMIN_FULL_NAV = [
   { href: '/settings/apply-consent', label: 'Applicant Consent', icon: FileCheck },
   { href: '/settings/careers', label: 'Careers Site', icon: Globe },
   { href: '/settings/job-boards', label: 'Job Boards', icon: Rss },
+  { href: '/settings/easy-apply', label: 'Easy Apply', icon: Rss },
   { href: '/settings/agencies', label: 'Agencies', icon: Building2 },
   { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode },
   { href: '/jobs', label: 'Jobs', icon: Briefcase },

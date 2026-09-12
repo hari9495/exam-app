@@ -3,7 +3,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 // Mocked so parseResume's PDF→text step is deterministic without a real PDF binary.
 import pdfParse from 'pdf-parse';
 import { PublicApplicationsService } from './public-applications.service';
-import { PrismaService, TenantPrismaService, BlobStorageService, AiApiKeyResolverService, AiNotConfiguredError } from '@exam-platform/shared';
+import { PrismaService, TenantPrismaService, BlobStorageService, AiApiKeyResolverService, AiNotConfiguredError, OrgSecretsCryptoService } from '@exam-platform/shared';
 import { QuotaService } from '../billing/quota.service';
 import { JobsService } from '../jobs/jobs.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
@@ -35,6 +35,7 @@ describe('PublicApplicationsService', () => {
   let integrationEvents: { emit: jest.Mock };
   let aiApiKeyResolver: { resolve: jest.Mock };
   let quota: { assertWithinLimit: jest.Mock };
+  let crypto: { encrypt: jest.Mock; decrypt: jest.Mock };
 
   const openJob = {
     id: 'job-1',
@@ -57,6 +58,10 @@ describe('PublicApplicationsService', () => {
     integrationEvents = { emit: jest.fn() };
     aiApiKeyResolver = { resolve: jest.fn() };
     quota = { assertWithinLimit: jest.fn() };
+    crypto = {
+      encrypt: jest.fn().mockImplementation((s: string) => `enc(${s})`),
+      decrypt: jest.fn().mockImplementation((s: string) => s.replace(/^enc\((.*)\)$/, '$1')),
+    };
     mockPdfParse.mockReset();
 
     const moduleRef = await Test.createTestingModule({
@@ -69,6 +74,7 @@ describe('PublicApplicationsService', () => {
         { provide: IntegrationEventsService, useValue: integrationEvents },
         { provide: AiApiKeyResolverService, useValue: aiApiKeyResolver },
         { provide: QuotaService, useValue: quota },
+        { provide: OrgSecretsCryptoService, useValue: crypto },
       ],
     }).compile();
     service = moduleRef.get(PublicApplicationsService);
@@ -1227,6 +1233,141 @@ describe('PublicApplicationsService', () => {
       );
 
       await expect(service.parseResume('bad-token', { resumeBase64: pdfB64 })).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getPortalOpenJobs (one-click)', () => {
+    it('lists open roles not yet applied to, with one-click readiness flags', async () => {
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c: unknown, fn: (tx: any) => unknown) =>
+          fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: 'org-1', erasedAt: null }) } }),
+        )
+        .mockImplementationOnce((_c: unknown, fn: (tx: any) => unknown) =>
+          fn({
+            candidateProfile: { findUnique: jest.fn().mockResolvedValue({ resumePath: 'x.pdf' }) },
+            pipelineEntry: { findMany: jest.fn().mockResolvedValue([{ jobId: 'job-applied' }]) },
+            job: { findMany: jest.fn().mockResolvedValue([{ applyToken: 'tok-2', title: 'Frontend', location: 'Remote', employmentType: 'full_time' }]) },
+            customFieldDefinition: { count: jest.fn().mockResolvedValue(0) },
+          }),
+        );
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: null });
+
+      const out = await service.getPortalOpenJobs('ptok-1');
+
+      expect(out).toEqual({
+        hasResume: true,
+        requiresConsent: false,
+        requiredFieldCount: 0,
+        jobs: [{ applyToken: 'tok-2', title: 'Frontend', location: 'Remote', employmentType: 'full_time' }],
+      });
+    });
+  });
+
+  describe('quickApply (one-click re-apply)', () => {
+    function portalThenJob(candidateOrg = 'org-1') {
+      tenantPrisma.forTenant
+        .mockImplementationOnce((_c: unknown, fn: (tx: any) => unknown) =>
+          fn({ candidate: { findUnique: jest.fn().mockResolvedValue({ id: 'cand-1', organizationId: candidateOrg, erasedAt: null }) } }),
+        )
+        .mockImplementationOnce((_c: unknown, fn: (tx: any) => unknown) => fn({ job: { findUnique: jest.fn().mockResolvedValue(openJob) } }));
+    }
+
+    it('reuses the résumé + existing custom fields, creates a reapply entry, emits candidate.applied', async () => {
+      portalThenJob();
+      const writeTx = withRecomputeMocks({
+        candidateProfile: { findUnique: jest.fn().mockResolvedValue({ resumePath: 'x.pdf' }) },
+        candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'Jane' }), update: jest.fn().mockResolvedValue({}) },
+        pipeline: { findFirst: jest.fn().mockResolvedValue(null) },
+        pipelineEntry: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          upsert: jest.fn().mockResolvedValue({ applicationToken: 'tok-new' }),
+        },
+        customFieldValue: { findMany: jest.fn().mockResolvedValue([]) },
+      });
+      tenantPrisma.forTenant.mockImplementationOnce((_c: unknown, fn: (tx: any) => unknown) => fn(writeTx));
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: null, applyConsentVersion: 1 });
+
+      const out = await service.quickApply('ptok-1', 'valid-token', {});
+
+      expect(out).toEqual({ statusToken: 'tok-new', portalToken: 'ptok-1', alreadyApplied: false });
+      expect(writeTx.pipelineEntry.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ create: expect.objectContaining({ enteredVia: 'reapply' }), update: {} }),
+      );
+      expect(integrationEvents.emit).toHaveBeenCalledWith('org-1', 'candidate.applied', expect.objectContaining({ source: 'portal_quick_apply' }));
+    });
+
+    it('does not emit for a re-click on a role already applied to', async () => {
+      portalThenJob();
+      const writeTx = withRecomputeMocks({
+        candidateProfile: { findUnique: jest.fn().mockResolvedValue({ resumePath: 'x.pdf' }) },
+        candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'Jane' }), update: jest.fn().mockResolvedValue({}) },
+        pipeline: { findFirst: jest.fn().mockResolvedValue(null) },
+        pipelineEntry: {
+          findUnique: jest.fn().mockResolvedValue({ applicationToken: 'tok-old' }),
+          upsert: jest.fn().mockResolvedValue({ applicationToken: 'tok-old' }),
+        },
+        customFieldValue: { findMany: jest.fn().mockResolvedValue([]) },
+      });
+      tenantPrisma.forTenant.mockImplementationOnce((_c: unknown, fn: (tx: any) => unknown) => fn(writeTx));
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: null, applyConsentVersion: 1 });
+
+      const out = await service.quickApply('ptok-1', 'valid-token', {});
+      expect(out.alreadyApplied).toBe(true);
+      expect(integrationEvents.emit).not.toHaveBeenCalled();
+    });
+
+    it('refuses when the candidate has no résumé on file', async () => {
+      portalThenJob();
+      tenantPrisma.forTenant.mockImplementationOnce((_c: unknown, fn: (tx: any) => unknown) =>
+        fn({ candidateProfile: { findUnique: jest.fn().mockResolvedValue({ resumePath: null }) }, candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'Jane' }) } }),
+      );
+      prisma.organization.findUnique.mockResolvedValue({ applyConsentText: null, applyConsentVersion: 1 });
+
+      await expect(service.quickApply('ptok-1', 'valid-token', {})).rejects.toThrow(BadRequestException);
+    });
+
+    it('refuses a portal token from a different org than the job (no cross-org apply)', async () => {
+      portalThenJob('org-2'); // candidate in org-2, job in org-1
+      await expect(service.quickApply('ptok-1', 'valid-token', {})).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('easyApplyIngest (external Easy Apply)', () => {
+    const configuredOrg = (secret: string) =>
+      tenantPrisma.forTenant.mockImplementationOnce((_c: unknown, fn: (tx: any) => unknown) =>
+        fn({ organization: { findFirst: jest.fn().mockResolvedValue({ easyApplyConfigEncrypted: `enc(${JSON.stringify({ indeed: { secret } })})` }) } }),
+      );
+
+    it('is inert (404) when the org has no Easy Apply config', async () => {
+      tenantPrisma.forTenant.mockImplementationOnce((_c: unknown, fn: (tx: any) => unknown) =>
+        fn({ organization: { findFirst: jest.fn().mockResolvedValue({ easyApplyConfigEncrypted: null }) } }),
+      );
+      await expect(service.easyApplyIngest('acme', 'indeed', 'sec', {})).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects an unknown provider with a generic 404', async () => {
+      await expect(service.easyApplyIngest('acme', 'nope', 'sec', {})).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects a wrong secret with the same generic 404 (no oracle)', async () => {
+      configuredOrg('sekret');
+      await expect(service.easyApplyIngest('acme', 'indeed', 'WRONG', {})).rejects.toThrow(NotFoundException);
+    });
+
+    it('verifies the secret, normalizes, and funnels into apply()', async () => {
+      configuredOrg('sekret');
+      const applySpy = jest.spyOn(service, 'apply').mockResolvedValue({ statusToken: 't', portalToken: 'p' });
+      const payload = { applyToken: 'tok-abc', applicant: { name: 'Jane Doe', email: 'jane@x.com', phone: '555' }, resumeBase64: 'AA==' };
+
+      const out = await service.easyApplyIngest('acme', 'indeed', 'sekret', payload);
+
+      expect(out).toEqual({ statusToken: 't', portalToken: 'p' });
+      expect(applySpy).toHaveBeenCalledWith('tok-abc', expect.objectContaining({ name: 'Jane Doe', email: 'jane@x.com', phone: '555', resumeBase64: 'AA==' }));
+    });
+
+    it('returns a 400 for a verified-but-malformed payload', async () => {
+      configuredOrg('sekret');
+      await expect(service.easyApplyIngest('acme', 'indeed', 'sekret', { applicant: {} })).rejects.toThrow(BadRequestException);
     });
   });
 });

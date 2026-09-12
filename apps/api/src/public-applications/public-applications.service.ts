@@ -1,7 +1,8 @@
 import { randomUUID } from 'crypto';
 import pdfParse from 'pdf-parse';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { PrismaService, TenantPrismaService, BlobStorageService, AiApiKeyResolverService, AiNotConfiguredError } from '@exam-platform/shared';
+import { PrismaService, TenantPrismaService, BlobStorageService, AiApiKeyResolverService, AiNotConfiguredError, OrgSecretsCryptoService } from '@exam-platform/shared';
+import { getEasyApplyProvider } from '../easy-apply/providers';
 import { QuotaService } from '../billing/quota.service';
 import { ParseResumeDto } from './dto/parse-resume.dto';
 import { JobsService } from '../jobs/jobs.service';
@@ -13,8 +14,9 @@ import { ApplyDto } from './dto/apply.dto';
 import { UpdatePortalProfileDto } from './dto/update-portal-profile.dto';
 import { UploadPortalResumeDto } from './dto/upload-portal-resume.dto';
 import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
-import { upsertCustomFieldValues, CustomFieldDefinitionLite } from '../custom-fields/custom-field-values';
+import { upsertCustomFieldValues, serializeCustomFieldValues, CustomFieldDefinitionLite } from '../custom-fields/custom-field-values';
 import { resolveConsentStamp } from '../common/consent-check';
+import { QuickApplyDto } from './dto/quick-apply.dto';
 
 // Job-feed fields are wrapped in CDATA (the aggregator-standard for free-text). The only way to
 // break out of CDATA is the literal "]]>", so split it so it can never terminate the section early.
@@ -85,6 +87,7 @@ export class PublicApplicationsService {
     private readonly integrationEvents: IntegrationEventsService,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
     private readonly quota: QuotaService,
+    private readonly crypto: OrgSecretsCryptoService,
   ) {}
 
   private async resolveJob(applyToken: string) {
@@ -556,6 +559,171 @@ export class PublicApplicationsService {
       await this.jobsService.enqueue(context, 'resume_parse', JSON.stringify({ candidateId: candidate.id }), attributionUserId);
     }
     return this.getPortal(portalToken);
+  }
+
+  // Returning-candidate one-click: the org's other open roles this candidate hasn't applied to yet,
+  // plus the flags the portal UI needs to know whether an apply is truly one-click (résumé on file,
+  // no consent required, no apply-visible custom fields) or should fall back to the full form.
+  async getPortalOpenJobs(portalToken: string) {
+    const candidate = await this.resolvePortalCandidate(portalToken);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: candidate.organizationId },
+      select: { applyConsentText: true },
+    });
+    return this.tenantPrisma.forTenant({ organizationId: candidate.organizationId, isSuperAdmin: true }, async (tx) => {
+      const profile = await tx.candidateProfile.findUnique({ where: { candidateId: candidate.id }, select: { resumePath: true } });
+      const applied = await tx.pipelineEntry.findMany({ where: { candidateId: candidate.id }, select: { jobId: true } });
+      const appliedJobIds = applied.map((e) => e.jobId);
+      const jobs = await tx.job.findMany({
+        where: {
+          organizationId: candidate.organizationId,
+          status: 'open',
+          publicApplyEnabled: true,
+          applyToken: { not: null },
+          id: { notIn: appliedJobIds.length ? appliedJobIds : ['00000000-0000-0000-0000-000000000000'] },
+        },
+        select: { applyToken: true, title: true, location: true, employmentType: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      const requiredFieldCount = await tx.customFieldDefinition.count({
+        where: { organizationId: candidate.organizationId, entityType: 'candidate', showOnApply: true, required: true, archivedAt: null },
+      });
+      return {
+        hasResume: Boolean(profile?.resumePath),
+        requiresConsent: Boolean(org?.applyConsentText && org.applyConsentText.trim()),
+        requiredFieldCount,
+        jobs: jobs.map((j) => ({ applyToken: j.applyToken as string, title: j.title, location: j.location, employmentType: j.employmentType })),
+      };
+    });
+  }
+
+  // One-click re-apply: a returning candidate (resolved by portal token) applies to another open
+  // role reusing their existing name/email/phone/résumé and any custom-field values already on file.
+  // Mirrors apply() but skips the résumé upload + candidate-by-email upsert -- the candidate already
+  // exists. Consent + required apply fields are still enforced (the endpoint refuses rather than
+  // silently skipping them); the portal UI falls back to the full form when it gets a 400.
+  async quickApply(portalToken: string, applyToken: string, dto: QuickApplyDto): Promise<{ statusToken: string; portalToken: string; alreadyApplied: boolean }> {
+    const candidate = await this.resolvePortalCandidate(portalToken);
+    const job = await this.resolveJob(applyToken);
+    // The candidate's portal token must belong to the SAME org as the job -- a token from org A can
+    // never apply to org B's role. Same generic message as resolveJob (no cross-org oracle).
+    if (job.organizationId !== candidate.organizationId) {
+      throw new NotFoundException('This role is not accepting applications');
+    }
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: job.organizationId },
+      select: { applyConsentText: true, applyConsentVersion: true },
+    });
+    // Throws BadRequestException before any write if consent is required and not accepted.
+    const consentStamp = resolveConsentStamp(org?.applyConsentText, org?.applyConsentVersion ?? 1, dto.consentAccepted);
+
+    const context = { organizationId: job.organizationId, isSuperAdmin: true };
+    const result = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const profile = await tx.candidateProfile.findUnique({ where: { candidateId: candidate.id }, select: { resumePath: true } });
+      if (!profile?.resumePath) {
+        throw new BadRequestException('Add a résumé to your profile before applying');
+      }
+      const candidateRow = await tx.candidate.findUnique({ where: { id: candidate.id }, select: { name: true } });
+      if (Object.keys(consentStamp).length) {
+        await tx.candidate.update({ where: { id: candidate.id }, data: consentStamp });
+      }
+
+      // Custom fields: upsertCustomFieldValues treats its input as the COMPLETE set (omitted keys
+      // are cleared), so merge the candidate's EXISTING values with any newly-provided ones before
+      // writing -- otherwise a one-click apply would wipe values from a prior application and fail
+      // the required check. Required-but-missing still throws (caught by the UI as "needs the form").
+      const applyDefs = (await tx.customFieldDefinition.findMany({
+        where: { organizationId: job.organizationId, entityType: 'candidate', showOnApply: true, archivedAt: null },
+        select: { id: true, key: true, label: true, fieldType: true, optionsJson: true, required: true },
+      })) as CustomFieldDefinitionLite[];
+      if (applyDefs.length) {
+        const existingRows = await tx.customFieldValue.findMany({
+          where: { organizationId: job.organizationId, entityType: 'candidate', entityId: candidate.id },
+          select: { definitionId: true, valueText: true, valueNumber: true, valueDate: true },
+        });
+        const merged: Record<string, unknown> = {};
+        for (const r of serializeCustomFieldValues(existingRows, applyDefs)) {
+          if (r.value !== null) merged[r.definitionId] = r.value;
+        }
+        for (const [k, v] of Object.entries(dto.customFields ?? {})) merged[k] = v;
+        await upsertCustomFieldValues(tx, job.organizationId, 'candidate', candidate.id, applyDefs, merged);
+      }
+
+      const pipeline = job.pipelineId
+        ? await tx.pipeline.findFirst({
+            where: { id: job.pipelineId },
+            include: { stages: { orderBy: { position: 'asc' }, include: { statuses: { orderBy: { position: 'asc' } } } } },
+          })
+        : null;
+      const activeStage = pipeline?.stages.find((s: { category: string }) => s.category === 'active') ?? pipeline?.stages[0];
+      const statusId = activeStage?.statuses[0]?.id;
+
+      const existingEntry = await tx.pipelineEntry.findUnique({
+        where: { jobId_candidateId: { jobId: job.id, candidateId: candidate.id } },
+        select: { applicationToken: true },
+      });
+      const entry = await tx.pipelineEntry.upsert({
+        where: { jobId_candidateId: { jobId: job.id, candidateId: candidate.id } },
+        create: { organizationId: job.organizationId, jobId: job.id, candidateId: candidate.id, enteredVia: 'reapply', applicationToken: randomUUID(), statusId },
+        update: {}, // already applied -> keep the existing entry + token untouched (same as apply())
+      });
+      await recomputeGlobalStage(tx, job.organizationId, candidate.id);
+      return { statusToken: entry.applicationToken!, alreadyApplied: Boolean(existingEntry), candidateName: candidateRow?.name ?? '' };
+    });
+
+    // A genuinely new application (not a re-click on a role already applied to) is worth surfacing.
+    if (!result.alreadyApplied) {
+      await this.integrationEvents.emit(job.organizationId, 'candidate.applied', {
+        subject: result.candidateName,
+        source: 'portal_quick_apply',
+        linkPath: `/candidates/${candidate.id}`,
+      });
+    }
+    return { statusToken: result.statusToken, portalToken, alreadyApplied: result.alreadyApplied };
+  }
+
+  // External Easy Apply ingestion (Indeed / LinkedIn): the board POSTs an application to our public
+  // endpoint with a per-org shared secret. We verify the secret, normalize the payload, and funnel
+  // it through the SAME apply() path as a direct application -- so candidate upsert, résumé upload,
+  // custom-field enforcement and pipeline placement are all identical. Inert until the org has
+  // configured that provider's secret; a bad/absent secret or unknown provider returns the same
+  // generic 404 as resolveJob (never an oracle for which orgs/providers are wired up).
+  async easyApplyIngest(orgSlug: string, provider: string, providedSecret: string | undefined, payload: unknown): Promise<{ statusToken: string; portalToken: string }> {
+    const notAvailable = new NotFoundException('Easy Apply is not available');
+    const adapter = getEasyApplyProvider(provider);
+    if (!adapter) throw notAvailable;
+
+    const org = await this.tenantPrisma.forTenant(
+      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
+      (tx) => tx.organization.findFirst({ where: { slug: orgSlug }, select: { easyApplyConfigEncrypted: true } }),
+    );
+    if (!org?.easyApplyConfigEncrypted) throw notAvailable;
+    let storedSecret: string | undefined;
+    try {
+      const blob = JSON.parse(this.crypto.decrypt(org.easyApplyConfigEncrypted)) as Record<string, { secret?: string }>;
+      storedSecret = blob?.[provider]?.secret;
+    } catch {
+      throw notAvailable;
+    }
+    if (!storedSecret || !adapter.verify(storedSecret, providedSecret)) throw notAvailable;
+
+    let normalized;
+    try {
+      normalized = adapter.normalize(payload);
+    } catch (err) {
+      throw new BadRequestException(err instanceof Error ? err.message : 'Malformed Easy Apply payload');
+    }
+    // Reuse the standard apply pipeline verbatim -- the only difference from a direct application is
+    // how we got here (a verified board webhook instead of the public form).
+    return this.apply(normalized.applyToken, {
+      name: normalized.name,
+      email: normalized.email,
+      phone: normalized.phone,
+      resumeBase64: normalized.resumeBase64,
+      customFields: normalized.customFields,
+      consentAccepted: normalized.consentAccepted,
+    });
   }
 
   // Cross-tenant candidate-by-unsubscribeToken resolution, same LOOKUP_ORG/isSuperAdmin bypass
