@@ -11,6 +11,10 @@ export interface StaffNavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  // Optional sidebar section. Items with no group are pinned flat at the top of the nav (quick
+  // access — Today/Dashboard); grouped items render under collapsible section headers. See
+  // NAV_GROUP_ORDER in lib/staff-nav.ts for the render order.
+  group?: string;
 }
 
 interface StaffSidebarProps {

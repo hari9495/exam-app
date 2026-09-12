@@ -1,6 +1,10 @@
 import { SUPER_ADMIN_FULL_NAV } from './super-admin-nav';
 import { RECRUITER_NAV_ITEMS } from './recruiter-nav';
 
+// The order collapsible sidebar sections render in (below the ungrouped, pinned top items).
+// A nav item's `group` must be one of these; the Sidebar ignores a group not listed here.
+export const NAV_GROUP_ORDER = ['Hiring', 'Assessments', 'Messaging', 'Analytics', 'Admin', 'Settings'] as const;
+
 // Staff surfaces rebuilt in v2: their nav hrefs get a /v2 prefix at render so the link points at the
 // real page AND the Sidebar's startsWith() active-highlight matches the /v2 URL. Everything an
 // org_admin can reach now has a v2 page, so admin/settings routes are prefixed here too. They used
