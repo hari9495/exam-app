@@ -10,6 +10,7 @@ import { RespondInterviewDto } from './dto/respond-interview.dto';
 import { renderInterviewTemplate, formatSlot } from './interview-render';
 import { buildInterviewIcs } from './interview-ics';
 import { generateBookableSlots, BusyInterval } from './booking-slots';
+import { CalendarSyncService, PushEventResult } from '../calendar-sync/calendar-sync.service';
 
 const LOGO_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -44,7 +45,29 @@ export class InterviewsService {
     private readonly blobStorage: BlobStorageService,
     private readonly audit: AuditService,
     private readonly integrationEvents: IntegrationEventsService,
+    private readonly calendarSync: CalendarSyncService,
   ) {}
+
+  // Best-effort inbound sync: external busy times for this interview's panelists over the booking
+  // window, so self-book slots avoid times a panelist is already booked on their own calendar.
+  // Reads panelist ids in its own short tx (outside any write tx), then makes the network calls --
+  // never inside a forTenant callback. Returns [] on any failure (external busy is purely additive).
+  private async getExternalBusyForInterview(
+    context: TenantContext,
+    interviewId: string,
+    windowStart: Date,
+    windowEnd: Date,
+  ): Promise<BusyInterval[]> {
+    const panelistRows = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.interviewPanelist.findMany({ where: { interviewId }, select: { userId: true } }),
+    );
+    return this.calendarSync.getExternalBusyForUsers(
+      context,
+      panelistRows.map((p) => p.userId),
+      windowStart,
+      windowEnd,
+    );
+  }
 
   async createInterview(
     context: TenantContext,
@@ -152,11 +175,18 @@ export class InterviewsService {
 
   async cancel(context: TenantContext, actorUserId: string, interviewId: string): Promise<Interview> {
     const orgId = context.organizationId as string;
-    const { updated, cancelNotice } = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const { updated, cancelNotice, externalEvent } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const interview = await tx.interview.findFirst({ where: { id: interviewId, organizationId: orgId } });
       if (!interview) throw new NotFoundException(`Interview ${interviewId} not found`);
 
       const updated = await tx.interview.update({ where: { id: interviewId }, data: { status: 'cancelled' } });
+
+      // If this interview was pushed to an organizer's connected calendar, remember the handle so we
+      // can retract that event too (below, outside the tx -- it's a network call).
+      const externalEvent =
+        interview.externalEventId && interview.externalEventProvider && interview.externalEventOwnerId
+          ? { provider: interview.externalEventProvider, eventId: interview.externalEventId, ownerId: interview.externalEventOwnerId }
+          : null;
       await this.audit.record(context, {
         actorUserId,
         action: 'interview.cancelled',
@@ -194,7 +224,7 @@ export class InterviewsService {
           };
         }
       }
-      return { updated, cancelNotice };
+      return { updated, cancelNotice, externalEvent };
     });
 
     // Retract the calendar event: a METHOD:CANCEL invite (same UID, higher SEQUENCE) tells the
@@ -225,6 +255,12 @@ export class InterviewsService {
           attachments: [icsAttachment],
         });
       }
+    }
+
+    // Retract the pushed calendar event too (best-effort, never throws). The METHOD:CANCEL ICS above
+    // handles attendees' own copies; this removes the source event from the organizer's calendar.
+    if (externalEvent) {
+      await this.calendarSync.deleteInterviewEvent(context, externalEvent.ownerId, externalEvent.provider, externalEvent.eventId);
     }
     return updated;
   }
@@ -436,9 +472,16 @@ export class InterviewsService {
     // sits at status:'proposed' the whole time it's awaiting a booking (see createInterview),
     // exactly like a today's-shape proposed interview -- confirmedSlotId is what actually flips.
     const isPendingSelfBook = interview.bookingMode === 'self_book' && interview.confirmedSlotId === null;
+    const context = { organizationId: interview.organizationId, isSuperAdmin: true };
+
+    // External busy times (best-effort, network) fetched OUTSIDE the tx below. Same set is used by
+    // respondPublic's book re-validation, so a slot offered here is re-derived identically at POST.
+    const externalBusy = isPendingSelfBook
+      ? await this.getExternalBusyForInterview(context, interview.id, interview.bookingWindowStart!, interview.bookingWindowEnd!)
+      : [];
 
     const details = await this.tenantPrisma.forTenant(
-      { organizationId: interview.organizationId, isSuperAdmin: true },
+      context,
       async (tx) => {
         const entry = await tx.pipelineEntry.findUnique({
           where: { id: interview.pipelineEntryId },
@@ -455,7 +498,7 @@ export class InterviewsService {
 
         let availableSlots: { startsAt: string; endsAt: string }[] | undefined;
         if (isPendingSelfBook) {
-          const busyIntervals = await this.getBusyIntervals(
+          const internalBusy = await this.getBusyIntervals(
             tx,
             interview.organizationId,
             panelistRows.map((p) => p.userId),
@@ -468,7 +511,7 @@ export class InterviewsService {
             slotDurationMinutes: interview.slotDurationMinutes!,
             businessHours,
             holidays,
-            busyIntervals,
+            busyIntervals: [...internalBusy, ...externalBusy],
             now: new Date().toISOString(),
           });
         }
@@ -553,6 +596,13 @@ export class InterviewsService {
       book: 'interview.confirmed',
     } as const;
 
+    // Book re-validation must see the SAME external busy set getPublicInterview offered, and network
+    // calls can't run inside the write tx -- so fetch it here, before the tx opens, and thread it in.
+    const externalBusy =
+      dto.action === 'book'
+        ? await this.getExternalBusyForInterview(context, interview.id, interview.bookingWindowStart!, interview.bookingWindowEnd!)
+        : [];
+
     const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
       const respondedAt = new Date();
       const data: Record<string, unknown> = { status: statusByAction[dto.action], respondedAt };
@@ -568,7 +618,7 @@ export class InterviewsService {
           where: { interviewId: interview.id },
           select: { userId: true },
         });
-        const busyIntervals = await this.getBusyIntervals(
+        const internalBusy = await this.getBusyIntervals(
           tx,
           interview.organizationId,
           panelistRows.map((p) => p.userId),
@@ -581,7 +631,7 @@ export class InterviewsService {
           slotDurationMinutes: interview.slotDurationMinutes!,
           businessHours,
           holidays,
-          busyIntervals,
+          busyIntervals: [...internalBusy, ...externalBusy],
           now: new Date().toISOString(),
         });
         const isMember = available.some((s) => s.startsAt === dto.startsAt && s.endsAt === dto.endsAt);
@@ -641,13 +691,15 @@ export class InterviewsService {
         : null;
 
       let panelists: { email: string; name: string | null }[] = [];
+      let panelistUserIds: string[] = [];
       if (dto.action === 'confirm' || dto.action === 'book') {
         const panelistRows = await tx.interviewPanelist.findMany({
           where: { interviewId: interview.id },
           select: { userId: true },
         });
-        panelists = panelistRows.length
-          ? await tx.user.findMany({ where: { id: { in: panelistRows.map((p) => p.userId) } }, select: { email: true, name: true } })
+        panelistUserIds = panelistRows.map((p) => p.userId);
+        panelists = panelistUserIds.length
+          ? await tx.user.findMany({ where: { id: { in: panelistUserIds } }, select: { email: true, name: true } })
           : [];
       }
 
@@ -658,10 +710,47 @@ export class InterviewsService {
         orgName: org?.name ?? '',
         recruiterEmail: recruiter?.email,
         panelists,
+        panelistUserIds,
       };
     });
 
     if (dto.action === 'confirm' || dto.action === 'book') {
+      // Push the event to an organizer's connected calendar and get the auto Meet/Teams link, so it
+      // can go into the confirmation emails below. Best-effort: any failure (no connection, no OAuth
+      // app, API error) leaves calendarPush null and the flow continues exactly as before -- calendar
+      // sync must never block a confirmation. Runs post-commit, outside any write tx (network call).
+      let calendarPush: PushEventResult | null = null;
+      try {
+        calendarPush = await this.calendarSync.pushInterviewEvent(context, {
+          organizerUserIds: [interview.sentByUserId, ...notify.panelistUserIds].filter((id): id is string => Boolean(id)),
+          summary: `Interview: ${notify.candidateName} — ${notify.jobTitle}`,
+          description: interview.recruiterNote ?? '',
+          location: interview.location,
+          startsAt: chosenSlot!.startsAt,
+          endsAt: chosenSlot!.endsAt,
+          timeZone: interview.timeZone,
+          attendeeEmails: [notify.candidateEmail, notify.recruiterEmail, ...notify.panelists.map((p) => p.email)].filter(
+            (e): e is string => Boolean(e),
+          ),
+        });
+        if (calendarPush) {
+          await this.tenantPrisma.forTenant(context, (tx) =>
+            tx.interview.update({
+              where: { id: interview.id },
+              data: {
+                externalEventProvider: calendarPush!.provider,
+                externalEventId: calendarPush!.eventId,
+                externalEventOwnerId: calendarPush!.ownerId,
+                meetingUrl: calendarPush!.meetingUrl,
+              },
+            }),
+          );
+        }
+      } catch {
+        // best-effort -- never let a calendar failure break the confirmation
+      }
+      const joinLine = calendarPush?.meetingUrl ? `\n\nJoin link: ${calendarPush.meetingUrl}` : '';
+
       // candidateName/jobTitle are attacker-controlled (candidate name comes from the public
       // apply form) so they are only ever interpolated into plain bodyText and rendered via
       // buildCandidateEmailHtml, which HTML-escapes it -- never hand-built into raw HTML. The
@@ -683,7 +772,7 @@ export class InterviewsService {
         html: buildCandidateEmailHtml({
           logoUrl: null,
           orgName: notify.orgName || null,
-          bodyText: `Your interview for ${notify.jobTitle} at ${notify.orgName} is confirmed for ${when}.\n\nLocation: ${interview.location}`,
+          bodyText: `Your interview for ${notify.jobTitle} at ${notify.orgName} is confirmed for ${when}.\n\nLocation: ${interview.location}${joinLine}`,
         }),
         organizationId: interview.organizationId,
         attachments: [icsAttachment],
@@ -696,7 +785,7 @@ export class InterviewsService {
           html: buildCandidateEmailHtml({
             logoUrl: null,
             orgName: null,
-            bodyText: `${notify.candidateName} confirmed for ${when}.\n\nLocation: ${interview.location}`,
+            bodyText: `${notify.candidateName} confirmed for ${when}.\n\nLocation: ${interview.location}${joinLine}`,
           }),
           organizationId: interview.organizationId,
           attachments: [icsAttachment],

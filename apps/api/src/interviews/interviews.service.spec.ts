@@ -8,6 +8,7 @@ describe('InterviewsService', () => {
   let blobStorage: { signIfOurs: jest.Mock };
   let audit: { record: jest.Mock };
   let integrationEvents: { emit: jest.Mock };
+  let calendarSync: { getExternalBusyForUsers: jest.Mock; pushInterviewEvent: jest.Mock; deleteInterviewEvent: jest.Mock };
   let tx: {
     pipelineEntry: Record<string, jest.Mock>;
     interview: Record<string, jest.Mock>;
@@ -56,7 +57,20 @@ describe('InterviewsService', () => {
     blobStorage = { signIfOurs: jest.fn().mockResolvedValue(null) };
     audit = { record: jest.fn() };
     integrationEvents = { emit: jest.fn() };
-    service = new InterviewsService(tenantPrisma as any, emailService as any, blobStorage as any, audit as any, integrationEvents as any);
+    // Calendar sync is best-effort and inert by default in these tests: no external busy, no push.
+    calendarSync = {
+      getExternalBusyForUsers: jest.fn().mockResolvedValue([]),
+      pushInterviewEvent: jest.fn().mockResolvedValue(null),
+      deleteInterviewEvent: jest.fn().mockResolvedValue(undefined),
+    };
+    service = new InterviewsService(
+      tenantPrisma as any,
+      emailService as any,
+      blobStorage as any,
+      audit as any,
+      integrationEvents as any,
+      calendarSync as any,
+    );
   });
 
   describe('createInterview', () => {
@@ -304,6 +318,30 @@ describe('InterviewsService', () => {
       const ics = emailService.send.mock.calls[0][0].attachments[0].content.toString();
       expect(ics).toContain('METHOD:CANCEL');
       expect(ics).toContain('UID:interview-1');
+    });
+
+    it('retracts the pushed calendar event when one was recorded', async () => {
+      tx.interview.findFirst.mockResolvedValue({
+        id: 'interview-1', organizationId: 'org-1', status: 'confirmed', confirmedSlotId: 'slot-1',
+        pipelineEntryId: 'entry-1', sentByUserId: 'recruiter-1', location: 'Room 1', recruiterNote: 'Panel', timeZone: 'UTC',
+        externalEventProvider: 'google', externalEventId: 'evt-1', externalEventOwnerId: 'recruiter-1',
+      });
+      tx.interview.update.mockResolvedValue({ id: 'interview-1', status: 'cancelled', timeZone: 'UTC' });
+      tx.interviewSlot.findUnique.mockResolvedValue({ startsAt: new Date('2026-09-01T14:00:00Z'), endsAt: new Date('2026-09-01T15:00:00Z') });
+      tx.pipelineEntry.findUnique.mockResolvedValue({ candidate: { name: 'Asha Rao', email: 'asha@example.com' }, job: { title: 'Backend Engineer' } });
+      tx.interviewPanelist.findMany.mockResolvedValue([]);
+      tx.user.findUnique.mockResolvedValue({ email: 'recruiter@example.com' });
+      tx.user.findMany.mockResolvedValue([]);
+
+      await service.cancel(context, 'user-1', 'interview-1');
+
+      expect(calendarSync.deleteInterviewEvent).toHaveBeenCalledWith(context, 'recruiter-1', 'google', 'evt-1');
+    });
+
+    it('does not call calendar delete when the interview has no pushed event', async () => {
+      tx.interview.findFirst.mockResolvedValue({ id: 'interview-1', organizationId: 'org-1', status: 'proposed', confirmedSlotId: null });
+      await service.cancel(context, 'user-1', 'interview-1');
+      expect(calendarSync.deleteInterviewEvent).not.toHaveBeenCalled();
     });
   });
 
@@ -652,6 +690,65 @@ describe('InterviewsService', () => {
       expect(ics).toContain('SUMMARY:Interview: Asha Rao');
 
       expect(out).toMatchObject({ status: 'confirmed', confirmedSlotId: 'slot-1' });
+    });
+
+    it('confirm: pushes the event to a connected organizer, stores the event handle + meeting url, and puts the join link in the emails', async () => {
+      calendarSync.pushInterviewEvent.mockResolvedValue({
+        provider: 'google', eventId: 'evt-1', meetingUrl: 'https://meet.google.com/abc', ownerId: 'recruiter-1',
+      });
+
+      await service.respondPublic('interview-token-1', { action: 'confirm', slotId: 'slot-1' } as any);
+
+      expect(calendarSync.pushInterviewEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 'org-1' }),
+        expect.objectContaining({
+          organizerUserIds: ['recruiter-1', 'panelist-1'],
+          attendeeEmails: expect.arrayContaining(['asha@example.com', 'recruiter@example.com', 'panelist@example.com']),
+        }),
+      );
+      // The event handle is persisted so cancel can retract it and the UI can show the link.
+      expect(tx.interview.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'interview-1' },
+          data: expect.objectContaining({
+            externalEventProvider: 'google', externalEventId: 'evt-1', externalEventOwnerId: 'recruiter-1',
+            meetingUrl: 'https://meet.google.com/abc',
+          }),
+        }),
+      );
+      // The Meet link is in the candidate confirmation email.
+      expect(emailService.send.mock.calls[0][0].html).toContain('https://meet.google.com/abc');
+    });
+
+    it('confirm: a null calendar push (no connection / inert) stores nothing and still confirms', async () => {
+      calendarSync.pushInterviewEvent.mockResolvedValue(null);
+      await service.respondPublic('interview-token-1', { action: 'confirm', slotId: 'slot-1' } as any);
+      // No external-event columns written (only the confirmedSlotId update path runs via updateMany).
+      const wroteExternal = tx.interview.update.mock.calls.some(
+        ([arg]) => (arg as any)?.data?.externalEventId !== undefined,
+      );
+      expect(wroteExternal).toBe(false);
+      expect(emailService.send).toHaveBeenCalled();
+    });
+
+    it('book: merges external calendar busy into the slot re-validation set', async () => {
+      calendarSync.getExternalBusyForUsers.mockResolvedValue([
+        { startsAt: '2026-09-01T14:00:00.000Z', endsAt: '2026-09-01T15:00:00.000Z' },
+      ]);
+      tx.interview.findUnique.mockResolvedValue(
+        baseResolvedInterview({
+          bookingMode: 'self_book',
+          bookingWindowStart: new Date('2026-09-01T00:00:00.000Z'),
+          bookingWindowEnd: new Date('2026-09-08T00:00:00.000Z'),
+          slotDurationMinutes: 60,
+        }),
+      );
+      await expect(
+        service.respondPublic('interview-token-1', {
+          action: 'book', startsAt: '2026-09-01T14:00:00.000Z', endsAt: '2026-09-01T15:00:00.000Z',
+        } as any),
+      ).rejects.toThrow(ConflictException); // the slot is now externally busy -> no longer offered
+      expect(calendarSync.getExternalBusyForUsers).toHaveBeenCalled();
     });
 
     it('emits interview.confirmed with the candidate name, confirmed slot start time, and a deep link, after the emails are sent', async () => {

@@ -1,4 +1,4 @@
-import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, QrCode, Briefcase, TrendingUp, Mail, MessageSquare, MessageCircle, FileSignature, CheckSquare, Building2 } from 'lucide-react';
+import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, QrCode, Briefcase, TrendingUp, Mail, MessageSquare, MessageCircle, FileSignature, CheckSquare, Building2, CalendarClock } from 'lucide-react';
 
 // The recruiter-scoped nav, shared by BOTH shells that can render it: the (recruiter) route group
 // and the (panel) group, which owns /reports and shows this same sidebar to a recruiter or
@@ -29,4 +29,5 @@ export const RECRUITER_NAV_ITEMS = [
   { href: '/sms-templates', label: 'SMS Templates', icon: MessageSquare },
   { href: '/whatsapp-templates', label: 'WhatsApp Templates', icon: MessageCircle },
   { href: '/offer-template', label: 'Offer Template', icon: FileSignature },
+  { href: '/calendar', label: 'Calendar', icon: CalendarClock },
 ];

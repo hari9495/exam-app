@@ -1,4 +1,4 @@
-import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode, Briefcase, TrendingUp, Mail, MessageSquare, MessageCircle, FileSignature, CreditCard, CheckSquare, GitPullRequestArrow, Kanban, Clock, SlidersHorizontal, EyeOff, Trash2, MailCheck, Send, FileCheck, Globe, Lock, Rss, Building2 } from 'lucide-react';
+import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode, Briefcase, TrendingUp, Mail, MessageSquare, MessageCircle, FileSignature, CreditCard, CheckSquare, GitPullRequestArrow, Kanban, Clock, SlidersHorizontal, EyeOff, Trash2, MailCheck, Send, FileCheck, Globe, Lock, Rss, Building2, CalendarClock } from 'lucide-react';
 
 // The COMPLETE union of org-scoped staff features. A super_admin acting into an org sees this exact
 // nav in EVERY staff shell (recruiter / org-admin / panel), so no feature is ever hidden by whichever
@@ -48,4 +48,5 @@ export const SUPER_ADMIN_FULL_NAV = [
   { href: '/sms-templates', label: 'SMS Templates', icon: MessageSquare },
   { href: '/whatsapp-templates', label: 'WhatsApp Templates', icon: MessageCircle },
   { href: '/offer-template', label: 'Offer Template', icon: FileSignature },
+  { href: '/calendar', label: 'Calendar', icon: CalendarClock },
 ];
