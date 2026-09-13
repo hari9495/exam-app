@@ -12,6 +12,7 @@ import { LinkedExams } from '../LinkedExams';
 import { AddCandidateModal } from '../AddCandidateModal';
 import { PipelineBoard } from '../PipelineBoard';
 import { FitCriteriaEditor } from '../FitCriteriaEditor';
+import { ScreeningSection } from '../ScreeningSection';
 import { RequisitionSection } from '../RequisitionSection';
 import { useJob, useUpdateJob } from '../../../../../lib/hooks/usePipeline';
 import { useJobBoards } from '../../../../../lib/hooks/useJobBoards';
@@ -201,6 +202,11 @@ export default function V2JobPage() {
           {canManage && (
             <JobSection title="Fit criteria" description="Describe the ideal candidate and set an optional weighted scoring rubric.">
               <FitCriteriaEditor job={job} jobId={jobId} />
+            </JobSection>
+          )}
+          {canManage && (
+            <JobSection title="Résumé screening" description="Rank all applicants by AI fit score against this role.">
+              <ScreeningSection jobId={jobId} />
             </JobSection>
           )}
           {job.customFields.length > 0 && (

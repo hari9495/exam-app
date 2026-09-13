@@ -221,6 +221,33 @@ export function useFitAssessment(entryId: string, opts: { poll: boolean }) {
   });
 }
 
+export interface FitScreeningRow {
+  entryId: string;
+  candidateId: string;
+  candidateName: string;
+  status: string;
+  overallScore: number | null;
+  summary: string | null;
+  strengths: string[];
+  concerns: string[];
+  scoredAt: string | null;
+  stale: boolean;
+}
+
+// Ranked screening list for a whole job. Polls while any row is still scoring so the table fills in.
+export function useJobFitScreening(jobId: string, enabled: boolean) {
+  const { accessToken } = useAuth();
+  return useQuery<FitScreeningRow[]>({
+    queryKey: ['jobs', jobId, 'fit-screening'],
+    queryFn: () => apiFetch(`/jobs/${jobId}/fit-assessments`, {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken && jobId && enabled),
+    refetchInterval: (query) => {
+      const rows = query.state.data as FitScreeningRow[] | undefined;
+      return rows?.some((r) => r.status === 'pending' || r.status === 'processing') ? 2500 : false;
+    },
+  });
+}
+
 export function useScoreEntry(jobId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
