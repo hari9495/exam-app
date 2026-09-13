@@ -31,3 +31,25 @@ export function topKSimilar<T>(query: number[], items: { item: T; vector: number
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, Math.max(0, k));
 }
+
+export interface ScoredPair<T> {
+  a: T;
+  b: T;
+  score: number;
+}
+
+// Every unordered pair whose cosine similarity is >= threshold, highest first, capped at `limit`.
+// O(n^2) over the upper triangle — the caller bounds n (this is a brute-force duplicate scan). Pairs
+// with mismatched vector lengths are skipped.
+export function topSimilarPairs<T>(items: { item: T; vector: number[] }[], threshold: number, limit: number): ScoredPair<T>[] {
+  const pairs: ScoredPair<T>[] = [];
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      if (items[i].vector.length !== items[j].vector.length) continue;
+      const score = cosineSimilarity(items[i].vector, items[j].vector);
+      if (score >= threshold) pairs.push({ a: items[i].item, b: items[j].item, score });
+    }
+  }
+  pairs.sort((x, y) => y.score - x.score);
+  return pairs.slice(0, Math.max(0, limit));
+}

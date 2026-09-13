@@ -5,6 +5,7 @@ import {
   EmbeddingResolverService,
   EmbeddingNotConfiguredError,
   topKSimilar,
+  topSimilarPairs,
 } from '@exam-platform/shared';
 import { QuotaService } from '../billing/quota.service';
 import { JobsService } from '../jobs/jobs.service';
@@ -16,11 +17,24 @@ export interface CandidateMatch {
   score: number;
 }
 
+export interface DuplicatePair {
+  a: { candidateId: string; name: string; title: string | null };
+  b: { candidateId: string; name: string; title: string | null };
+  score: number;
+}
+
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 // ponytail: brute-force cosine over an org's embedded profiles loaded into memory. Fine at org scale
 // (hundreds–few-thousand); move to a native vector index if a single tenant ever outgrows it.
 const clampLimit = (n?: number) => Math.min(Math.max(n ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
+
+// Near-duplicate defaults. Two résumés of the same person embed at ~0.95+; distinct people sit well
+// below. The O(n^2) pair scan is bounded by DUP_MAX_SCAN so one huge tenant can't stall the request.
+const DUP_DEFAULT_THRESHOLD = 0.92;
+const DUP_MAX_PAIRS = 200;
+const DUP_MAX_SCAN = 2000;
+const clampThreshold = (n?: number) => Math.min(Math.max(n ?? DUP_DEFAULT_THRESHOLD, 0.5), 1);
 
 type ProfileRow = { candidateId: string; embeddingJson: string | null; parsedTitle: string | null; candidate: { name: string } };
 const toItem = (r: ProfileRow) => ({ item: { candidateId: r.candidateId, name: r.candidate.name, title: r.parsedTitle }, vector: JSON.parse(r.embeddingJson as string) as number[] });
@@ -92,6 +106,23 @@ export class CandidateSearchService {
       await this.jobs.enqueue(context, 'candidate_embed', JSON.stringify({ candidateId }), userId);
     }
     return { queued: ids.length };
+  }
+
+  // Org-wide near-duplicate scan: every pair of embedded candidates at/above `threshold`, highest
+  // first. Pure vector compare over stored embeddings — no provider call, no credit. Bounded scan.
+  async findDuplicates(context: TenantContext, opts: { threshold?: number; limit?: number }): Promise<{ pairs: DuplicatePair[]; scanned: number; capped: boolean }> {
+    const rows = await this.loadEmbeddedProfiles(context);
+    const capped = rows.length > DUP_MAX_SCAN;
+    const scanRows = capped ? rows.slice(0, DUP_MAX_SCAN) : rows;
+    const threshold = clampThreshold(opts.threshold);
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), DUP_MAX_PAIRS);
+
+    const pairs = topSimilarPairs(scanRows.map(toItem), threshold, limit).map((p) => ({
+      a: p.a,
+      b: p.b,
+      score: Math.round(p.score * 1000) / 1000,
+    }));
+    return { pairs, scanned: scanRows.length, capped };
   }
 
   private loadEmbeddedProfiles(context: TenantContext) {

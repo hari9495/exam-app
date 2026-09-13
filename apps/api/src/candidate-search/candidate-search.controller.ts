@@ -30,4 +30,13 @@ export class CandidateSearchController {
   backfill(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
     return this.search.backfill(tenant, userId);
   }
+
+  @Get('candidates/duplicates')
+  @RequirePermissions('pipeline:manage')
+  duplicates(@CurrentTenant() tenant: TenantContext, @Query('threshold') threshold?: string, @Query('limit') limit?: string) {
+    return this.search.findDuplicates(tenant, {
+      threshold: threshold ? Number(threshold) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
 }
