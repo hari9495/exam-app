@@ -87,6 +87,35 @@ describe('CandidateSearchService', () => {
     });
   });
 
+  describe('findDuplicates', () => {
+    it('returns near-duplicate pairs above the threshold, no provider call or credit', async () => {
+      const dupRows = [
+        { candidateId: 'a', embeddingJson: JSON.stringify([1, 0]), parsedTitle: 'Dev', candidate: { name: 'Ada' } },
+        { candidateId: 'a2', embeddingJson: JSON.stringify([0.999, 0.02]), parsedTitle: 'Dev', candidate: { name: 'Ada L.' } },
+        { candidateId: 'b', embeddingJson: JSON.stringify([0, 1]), parsedTitle: 'PM', candidate: { name: 'Bev' } },
+      ];
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ candidateProfile: { findMany: jest.fn().mockResolvedValue(dupRows) } }));
+
+      const out = await service.findDuplicates(context, { threshold: 0.9 });
+      expect(out.scanned).toBe(3);
+      expect(out.capped).toBe(false);
+      expect(out.pairs).toHaveLength(1);
+      expect([out.pairs[0].a.candidateId, out.pairs[0].b.candidateId].sort()).toEqual(['a', 'a2']);
+      expect(provider.embed).not.toHaveBeenCalled();
+      expect(quota.assertWithinLimit).not.toHaveBeenCalled();
+    });
+
+    it('returns no pairs when nothing clears the threshold', async () => {
+      const rows2 = [
+        { candidateId: 'a', embeddingJson: JSON.stringify([1, 0]), parsedTitle: null, candidate: { name: 'A' } },
+        { candidateId: 'b', embeddingJson: JSON.stringify([0, 1]), parsedTitle: null, candidate: { name: 'B' } },
+      ];
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ candidateProfile: { findMany: jest.fn().mockResolvedValue(rows2) } }));
+      const out = await service.findDuplicates(context, {});
+      expect(out.pairs).toEqual([]);
+    });
+  });
+
   describe('backfill', () => {
     it('enqueues a candidate_embed job per parsed profile', async () => {
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ candidateProfile: { findMany: jest.fn().mockResolvedValue([{ candidateId: 'a' }, { candidateId: 'b' }]) } }));

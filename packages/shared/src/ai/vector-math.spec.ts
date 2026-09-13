@@ -1,4 +1,4 @@
-import { cosineSimilarity, topKSimilar } from './vector-math';
+import { cosineSimilarity, topKSimilar, topSimilarPairs } from './vector-math';
 import { buildEmbeddingText, embeddingHash } from './embedding-text';
 
 describe('cosineSimilarity', () => {
@@ -29,6 +29,32 @@ describe('topKSimilar', () => {
   it('skips items whose vector length differs from the query', () => {
     const out = topKSimilar([1, 0], [{ item: 'x', vector: [1, 0, 0] }, { item: 'y', vector: [1, 0] }], 5);
     expect(out.map((s) => s.item)).toEqual(['y']);
+  });
+});
+
+describe('topSimilarPairs', () => {
+  const items = [
+    { item: 'a', vector: [1, 0] },
+    { item: 'a2', vector: [0.999, 0.01] }, // near-duplicate of a
+    { item: 'b', vector: [0, 1] },
+  ];
+  it('returns only pairs at or above the threshold, highest first', () => {
+    const pairs = topSimilarPairs(items, 0.9, 10);
+    expect(pairs).toHaveLength(1);
+    expect([pairs[0].a, pairs[0].b].sort()).toEqual(['a', 'a2']);
+    expect(pairs[0].score).toBeGreaterThan(0.9);
+  });
+  it('emits each unordered pair once and respects the limit', () => {
+    const all = [
+      { item: '1', vector: [1, 0] },
+      { item: '2', vector: [1, 0] },
+      { item: '3', vector: [1, 0] },
+    ];
+    expect(topSimilarPairs(all, 0.5, 10)).toHaveLength(3); // 1-2, 1-3, 2-3
+    expect(topSimilarPairs(all, 0.5, 2)).toHaveLength(2);
+  });
+  it('skips pairs with mismatched vector lengths', () => {
+    expect(topSimilarPairs([{ item: 'x', vector: [1, 0] }, { item: 'y', vector: [1, 0, 0] }], 0, 10)).toEqual([]);
   });
 });
 

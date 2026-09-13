@@ -7,7 +7,7 @@ import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal, Upload, Power, Trash2, Send, Plus, Pencil, ListFilter, Check, UserPlus, Users, Sparkles } from 'lucide-react';
 import { useCandidates, useCreateCandidate, useUpdateCandidate, useDeleteCandidate } from '../../../../lib/hooks/useCandidates';
-import { useSemanticCandidateSearch } from '../../../../lib/hooks/useCandidateSearch';
+import { useSemanticCandidateSearch, useDuplicateCandidates } from '../../../../lib/hooks/useCandidateSearch';
 import { useExams } from '../../../../lib/hooks/useExams';
 import { useBulkInvite } from '../../../../lib/hooks/useInvitations';
 import { GLOBAL_STAGES, type Candidate, type GlobalStage } from '../../../../lib/types';
@@ -79,6 +79,49 @@ function SemanticSearchPanel() {
                   ))}
                 </ul>
               )
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Org-wide near-duplicate scan over candidate embeddings. Collapsed by default; inert (empty) until
+// candidates are embedded (Settings → Integrations).
+function DuplicatesPanel() {
+  const [show, setShow] = useState(false);
+  const { data, isLoading, isError } = useDuplicateCandidates(show);
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => setShow((v) => !v)} aria-expanded={show}>
+        <Users size={14} /> {show ? 'Hide duplicate scan' : 'Scan for duplicates'}
+      </button>
+      {show && (
+        <div style={{ marginTop: 10, background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 12, padding: 14 }}>
+          {isLoading && <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>Scanning candidate pool…</p>}
+          {isError && <p role="alert" style={{ fontSize: 13, color: 'var(--danger)', margin: 0 }}>Could not scan for duplicates.</p>}
+          {data && (
+            data.pairs.length === 0 ? (
+              <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
+                No likely duplicates among {data.scanned} embedded candidate{data.scanned === 1 ? '' : 's'}.
+              </p>
+            ) : (
+              <>
+                <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 8px' }}>
+                  {data.pairs.length} likely duplicate pair{data.pairs.length === 1 ? '' : 's'} across {data.scanned} embedded candidate{data.scanned === 1 ? '' : 's'}{data.capped ? ' (scan capped)' : ''}.
+                </p>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {data.pairs.map((p) => (
+                    <li key={`${p.a.candidateId}-${p.b.candidateId}`} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, fontSize: 13, padding: '6px 8px', borderRadius: 8, background: 'color-mix(in srgb, var(--danger) 5%, transparent)' }}>
+                      <span style={{ color: 'var(--ink)' }}>
+                        <strong style={{ fontWeight: 600 }}>{p.a.name}</strong>{p.a.title ? ` (${p.a.title})` : ''} ↔ <strong style={{ fontWeight: 600 }}>{p.b.name}</strong>{p.b.title ? ` (${p.b.title})` : ''}
+                      </span>
+                      <span className="v2-mono" style={{ color: 'var(--muted)', fontSize: 12 }}>{Math.round(p.score * 100)}%</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )
           )}
         </div>
       )}
@@ -241,6 +284,8 @@ export default function V2CandidatesPage() {
       )}
 
       <SemanticSearchPanel />
+
+      <DuplicatesPanel />
 
       <DataTable
         columns={columns} data={rows} getRowId={(r) => r.id}

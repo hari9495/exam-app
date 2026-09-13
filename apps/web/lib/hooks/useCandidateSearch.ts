@@ -28,3 +28,20 @@ export function useSimilarCandidates(candidateId: string, enabled: boolean) {
     enabled: Boolean(accessToken && candidateId && enabled),
   });
 }
+
+export interface DuplicatePair {
+  a: { candidateId: string; name: string; title: string | null };
+  b: { candidateId: string; name: string; title: string | null };
+  score: number;
+}
+
+// Org-wide near-duplicate scan. Fetches only once triggered (enabled), and never auto-refetches.
+export function useDuplicateCandidates(enabled: boolean) {
+  const { accessToken } = useAuth();
+  return useQuery<{ pairs: DuplicatePair[]; scanned: number; capped: boolean }>({
+    queryKey: ['candidate-duplicates'],
+    queryFn: () => apiFetch('/candidates/duplicates', {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken && enabled),
+    staleTime: 60_000,
+  });
+}

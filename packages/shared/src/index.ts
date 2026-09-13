@@ -17,7 +17,7 @@ export * from './ai/openai-compatible-provider';
 export * from './ai/embedding-provider';
 // cosineSimilarity is intentionally NOT re-exported here (face/ already exports that name); the app
 // only needs topKSimilar, and the internal cosine is covered by vector-math's own spec.
-export { topKSimilar, type Scored } from './ai/vector-math';
+export { topKSimilar, topSimilarPairs, type Scored, type ScoredPair } from './ai/vector-math';
 export * from './ai/embedding-text';
 export * from './network/ip-range';
 export * from './storage/storage.module';
