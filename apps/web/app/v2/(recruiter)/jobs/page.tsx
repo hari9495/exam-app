@@ -6,8 +6,9 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Plus, MoreHorizontal, ListFilter, Check, Trash2 } from 'lucide-react';
+import { Plus, MoreHorizontal, ListFilter, Check, Trash2, Sparkles } from 'lucide-react';
 import { useJobs, useCreateJob, useDeleteJob } from '../../../../lib/hooks/usePipeline';
+import { useGenerateJobDescription } from '../../../../lib/hooks/useAiDrafting';
 import { usePipelines } from '../../../../lib/hooks/usePipelines';
 import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
 import { useCustomFields } from '../../../../lib/hooks/useCustomFields';
@@ -72,6 +73,7 @@ export default function V2JobsPage() {
   // Uncontrolled until the user picks one — defaults to the org's default pipeline once loaded.
   const selectedPipelineId = pipelineId || pipelines?.find((p) => p.isDefault)?.id || '';
   const createJob = useCreateJob();
+  const genDesc = useGenerateJobDescription();
   const deleteJob = useDeleteJob();
   const q = search.trim().toLowerCase();
   const rows = q ? (jobs ?? []).filter((j) => j.title.toLowerCase().includes(q)) : (jobs ?? []);
@@ -159,7 +161,23 @@ export default function V2JobsPage() {
         <form onSubmit={handleCreate}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <TextField id="job-title" label="Job title" value={title} onChange={setTitle} required autoComplete="off" />
-            <TextField id="job-desc" label="Description (optional)" value={description} onChange={setDescription} autoComplete="off" />
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                <label htmlFor="job-desc" className="v2-label" style={{ margin: 0 }}>Description (optional)</label>
+                <button
+                  type="button"
+                  onClick={() => genDesc.mutate({ title: title.trim(), notes: department.trim() ? `Department: ${department.trim()}` : undefined }, { onSuccess: (r) => setDescription(r.description) })}
+                  disabled={genDesc.isPending || !title.trim()}
+                  className="v2-hoverbtn"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '4px 8px', borderRadius: 7, border: '1px solid var(--org-primary)', background: 'var(--paper)', color: 'var(--org-primary)', cursor: 'pointer', opacity: genDesc.isPending || !title.trim() ? 0.6 : 1 }}
+                  title={!title.trim() ? 'Enter a job title first' : undefined}
+                >
+                  <Sparkles size={12} /> {genDesc.isPending ? 'Generating…' : 'Generate with AI'}
+                </button>
+              </div>
+              <textarea id="job-desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={5} autoComplete="off" style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
+              {genDesc.isError && <p role="alert" style={{ fontSize: 12, color: 'var(--danger)', margin: '4px 0 0' }}>{genDesc.error instanceof Error ? genDesc.error.message : 'Failed to generate.'}</p>}
+            </div>
             <TextField id="job-department" label="Department (optional)" value={department} onChange={setDepartment} autoComplete="off" />
             <div>
               <label className="v2-label">Hiring manager (optional)</label>

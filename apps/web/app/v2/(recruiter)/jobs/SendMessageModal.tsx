@@ -5,9 +5,11 @@
 // renderPreview, templateValue), the SendMessageInitial interface, and the mutation payload are
 // verbatim from the old file (format only).
 import { useEffect, useState } from 'react';
+import { Sparkles } from 'lucide-react';
 import { Dialog, TextField, Combobox, Button, dt } from '../../../../components/ui-v2';
 import { useToast } from '../../../../components/ui';
 import { useMessageTemplates, useSendMessage } from '../../../../lib/hooks/useCandidateMessages';
+import { useGenerateOutreachEmail } from '../../../../lib/hooks/useAiDrafting';
 import { useIntegrations } from '../../../../lib/hooks/useIntegrations';
 import { useOrgSenderAddresses } from '../../../../lib/hooks/useOrgSenderAddresses';
 import { CandidateEmailTemplate } from '../../../../lib/types';
@@ -64,6 +66,8 @@ export function SendMessageModal({ entryId, candidateId, candidateName, onClose,
   const [selectValue, setSelectValue] = useState(initial?.templateId ?? '');
   const [subject, setSubject] = useState(initial?.subject ?? '');
   const [body, setBody] = useState(initial?.body ?? '');
+  const [aiIntent, setAiIntent] = useState('');
+  const draftEmail = useGenerateOutreachEmail(entryId);
   const [senderAddressId, setSenderAddressId] = useState('');
 
   // Defaults the picker to the org's default sender once senders load, without ever overriding a
@@ -138,6 +142,26 @@ export function SendMessageModal({ entryId, candidateId, candidateName, onClose,
           </div>
         )}
         <TextField id="msg-subject" label="Subject" value={subject} onChange={setSubject} required />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <div style={{ flex: 1 }}>
+            <label htmlFor="ai-intent" className="v2-label">Draft with AI — what do you want to say?</label>
+            <input
+              id="ai-intent" value={aiIntent} onChange={(e) => setAiIntent(e.target.value)}
+              placeholder="e.g. invite to a first-round interview next week"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', fontSize: 13, borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', outline: 'none' }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => draftEmail.mutate({ intent: aiIntent.trim() }, { onSuccess: (r) => { setSubject(r.subject); setBody(r.body); } })}
+            disabled={draftEmail.isPending || !aiIntent.trim()}
+            className="v2-hoverbtn"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--org-primary)', background: 'var(--paper)', color: 'var(--org-primary)', cursor: 'pointer', opacity: draftEmail.isPending || !aiIntent.trim() ? 0.6 : 1, whiteSpace: 'nowrap' }}
+          >
+            <Sparkles size={13} /> {draftEmail.isPending ? 'Drafting…' : 'Draft'}
+          </button>
+        </div>
+        {draftEmail.isError && <p role="alert" style={{ fontSize: 12, color: 'var(--danger)', margin: 0 }}>{draftEmail.error instanceof Error ? draftEmail.error.message : 'Failed to draft.'}</p>}
         <div>
           <label htmlFor="message-body" className="v2-label">Body</label>
           <textarea
