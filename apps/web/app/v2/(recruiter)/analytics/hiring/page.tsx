@@ -6,7 +6,9 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { ColumnDef } from '@tanstack/react-table';
+import { Sparkles } from 'lucide-react';
 import { useHiringAnalytics } from '../../../../../lib/hooks/useHiringAnalytics';
+import { useGenerateFunnelNarrative } from '../../../../../lib/hooks/useAiDrafting';
 import { useJobs } from '../../../../../lib/hooks/usePipeline';
 import { type HiringJobRow, type HiringSourceRow, type JobStatus } from '../../../../../lib/types';
 import { DataTable, DT_FEATURES, SortHead, Pill, Panel, Combobox } from '../../../../../components/ui-v2';
@@ -53,6 +55,38 @@ const numCell = (value: React.ReactNode, muted = false) => <div className="v2-mo
 const rightSortHead = (label: string) => ({ column }: { column: { getIsSorted: () => false | 'asc' | 'desc'; toggleSorting: (d: boolean) => void } }) => (
   <div style={{ textAlign: 'right' }}><SortHead label={label} sorted={column.getIsSorted()} onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')} /></div>
 );
+
+// AI read of the funnel — one button, one paragraph + up to three highlights. Inert (friendly
+// 400) until the org configures an AI key.
+function FunnelNarrativeCard({ stages, jobTitle }: { stages: { name: string; count: number }[]; jobTitle?: string }) {
+  const gen = useGenerateFunnelNarrative();
+  return (
+    <div style={{ marginTop: 14, borderTop: '1px solid var(--hair)', paddingTop: 12 }}>
+      {!gen.data && (
+        <button
+          type="button"
+          onClick={() => gen.mutate({ jobTitle, totalCandidates: stages[0]?.count, stages })}
+          disabled={gen.isPending}
+          className="v2-hoverbtn"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '7px 11px', borderRadius: 8, border: '1px solid var(--org-primary)', background: 'var(--paper)', color: 'var(--org-primary)', cursor: 'pointer', opacity: gen.isPending ? 0.6 : 1 }}
+        >
+          <Sparkles size={14} /> {gen.isPending ? 'Reading the funnel…' : 'Summarize with AI'}
+        </button>
+      )}
+      {gen.isError && <p role="alert" style={{ fontSize: 12.5, color: 'var(--danger)', margin: '4px 0 0' }}>{gen.error instanceof Error ? gen.error.message : 'Failed to summarize.'}</p>}
+      {gen.data && (
+        <div>
+          <p style={{ fontSize: 13, color: 'var(--ink)', margin: 0, lineHeight: 1.5 }}>{gen.data.narrative}</p>
+          {gen.data.highlights.length > 0 && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 12.5, color: 'var(--muted)' }}>
+              {gen.data.highlights.map((h, i) => <li key={i}>{h}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function V2HiringAnalyticsPage() {
   const [windowDays, setWindowDays] = useState('90');
@@ -116,6 +150,12 @@ export default function V2HiringAnalyticsPage() {
                   );
                 })}
               </div>
+            )}
+            {data.funnel.length > 0 && (
+              <FunnelNarrativeCard
+                stages={data.funnel.map((r) => ({ name: funnelStageLabel(r.stage), count: r.reached }))}
+                jobTitle={jobId !== 'all' ? jobOptions.find((o) => o.value === jobId)?.label : undefined}
+              />
             )}
           </Panel>
 

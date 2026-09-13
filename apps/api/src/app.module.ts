@@ -48,6 +48,7 @@ import { ItemAnalyticsModule } from './analytics/item-analytics.module';
 import { PipelineAnalyticsModule } from './analytics/pipeline-analytics.module';
 import { OffersModule } from './offers/offers.module';
 import { InterviewsModule } from './interviews/interviews.module';
+import { AiModule } from './ai/ai.module';
 import { CandidateFitModule } from './candidate-fit/candidate-fit.module';
 import { BillingModule } from './billing/billing.module';
 import { IntegrationsModule } from './integrations/integrations.module';
@@ -117,6 +118,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     PipelineAnalyticsModule,
     OffersModule,
     InterviewsModule,
+    AiModule,
     CandidateFitModule,
     BillingModule,
     IntegrationsModule,

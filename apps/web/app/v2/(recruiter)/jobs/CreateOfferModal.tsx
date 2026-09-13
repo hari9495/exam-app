@@ -4,9 +4,11 @@
 // primitives. All hooks, state, handlers (ensureOffer/handlePreview/handleSend), the offerId reuse
 // logic, the template-seeding useEffect, and the mutation payloads are verbatim (format only).
 import { useEffect, useState } from 'react';
+import { Sparkles } from 'lucide-react';
 import { Dialog, TextField, Button, dt } from '../../../../components/ui-v2';
 import { useToast } from '../../../../components/ui';
 import { useCreateOffer, useSendOffer, useSubmitOffer, useOfferTemplates, usePreviewOfferPdf } from '../../../../lib/hooks/useOffers';
+import { useGenerateOfferLetter } from '../../../../lib/hooks/useAiDrafting';
 import { useIntegrations } from '../../../../lib/hooks/useIntegrations';
 import { useApprovalGateStatus } from '../../../../lib/hooks/useApprovals';
 
@@ -33,6 +35,7 @@ export function CreateOfferModal({ entryId, candidateId, onClose }: CreateOfferM
   const defaultTemplate = templates?.find((t) => t.isDefault) ?? templates?.[0];
   const createOffer = useCreateOffer(entryId, candidateId);
   const sendOffer = useSendOffer(candidateId);
+  const draftOffer = useGenerateOfferLetter(entryId);
   const submitOffer = useSubmitOffer();
   const previewPdf = usePreviewOfferPdf();
   // Best-effort, same as SendMessageModal: a plain recruiter gets a 403 on this org-admin
@@ -151,7 +154,19 @@ export function CreateOfferModal({ entryId, candidateId, onClose }: CreateOfferM
         )}
         <TextField id="offer-subject" label="Subject" value={subject} onChange={setSubject} />
         <div>
-          <label htmlFor="offer-body" className="v2-label">Letter body</label>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <label htmlFor="offer-body" className="v2-label">Letter body</label>
+            <button
+              type="button"
+              onClick={() => draftOffer.mutate({ salary: compensation.trim() || undefined, startDate: startDate.trim() || undefined }, { onSuccess: (r) => setBody(r.body) })}
+              disabled={draftOffer.isPending}
+              className="v2-hoverbtn"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, padding: '5px 9px', borderRadius: 8, border: '1px solid var(--org-primary)', background: 'var(--paper)', color: 'var(--org-primary)', cursor: 'pointer', opacity: draftOffer.isPending ? 0.6 : 1 }}
+            >
+              <Sparkles size={13} /> {draftOffer.isPending ? 'Drafting…' : 'Draft with AI'}
+            </button>
+          </div>
+          {draftOffer.isError && <p role="alert" style={{ fontSize: 12, color: 'var(--danger)', margin: '4px 0 0' }}>{draftOffer.error instanceof Error ? draftOffer.error.message : 'Failed to draft.'}</p>}
           <textarea id="offer-body" value={body} onChange={(e) => setBody(e.target.value)} rows={10} style={{ ...input, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
         </div>
       </div>
