@@ -242,6 +242,7 @@ export interface Exam {
   allowedIpRange: string | null;
   enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
+  webcamAiAnalysisEnabled: boolean;
   webcamRecordOnly: boolean;
   proctoringEnforcement: 'warn' | 'block';
   proctoringStrikeLimit: number;

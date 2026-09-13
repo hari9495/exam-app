@@ -459,6 +459,10 @@ model Exam {
   // resolveProctoringFields), so a stale/duplicated row can't leave monitoring silently active.
   enableAntiCheating            Boolean       @default(true) @map("enable_anti_cheating")
   webcamProctoringEnabled       Boolean       @default(true) @map("webcam_proctoring_enabled")
+  // Opt-in: send a sample of the stored webcam snapshots to a vision LLM at settlement to flag
+  // suspicious behaviour (another person, a phone, looking away, no candidate). Default OFF -- the
+  // org explicitly enables sending frames to the model; flag-for-review only, never auto-strike.
+  webcamAiAnalysisEnabled       Boolean       @default(false) @map("webcam_ai_analysis_enabled")
   // Overrides proctoringEnforcement for webcam violations only: when true, webcam events
   // are still detected, recorded and counted, but never pause or block the exam --
   // regardless of the enforcement mode below, which still governs the "Watch for" browser

@@ -88,6 +88,11 @@ export class CreateExamDto {
   @IsBoolean()
   webcamProctoringEnabled?: boolean;
 
+  // Opt-in AI vision analysis of stored webcam snapshots at settlement (flag-for-review only).
+  @IsOptional()
+  @IsBoolean()
+  webcamAiAnalysisEnabled?: boolean;
+
   // Overrides proctoringEnforcement for webcam violations only -- see the schema comment
   // on Exam.webcamRecordOnly for the full semantics.
   @IsOptional()

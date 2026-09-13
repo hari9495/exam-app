@@ -1,6 +1,7 @@
 export interface ProctoringConfigSource {
   enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
+  webcamAiAnalysisEnabled: boolean;
   webcamRecordOnly: boolean;
   proctoringEnforcement: string;
   proctoringStrikeLimit: number;
@@ -15,6 +16,8 @@ export interface ProctoringConfigSource {
 export interface ExamProctoringConfig {
   enableAntiCheating: boolean;
   webcamEnabled: boolean;
+  // Opt-in AI vision analysis of stored webcam snapshots at settlement. Requires webcamEnabled.
+  webcamAiAnalysisEnabled: boolean;
   // Overrides `enforcement` for webcam violations only -- see registerWebcamViolation.
   webcamRecordOnly: boolean;
   enforcement: 'warn' | 'block';
@@ -71,6 +74,7 @@ export function resolveProctoringConfig(
     return {
       enableAntiCheating: false,
       webcamEnabled: false,
+      webcamAiAnalysisEnabled: false,
       webcamRecordOnly: false,
       enforcement: 'warn',
       strikeLimit: Math.max(1, exam.proctoringStrikeLimit),
@@ -84,6 +88,8 @@ export function resolveProctoringConfig(
   return {
     enableAntiCheating: true,
     webcamEnabled: exam.webcamProctoringEnabled,
+    // Gated on webcam capture being on -- no snapshots means nothing to analyse.
+    webcamAiAnalysisEnabled: exam.webcamProctoringEnabled && exam.webcamAiAnalysisEnabled,
     // Never widened by a bypass -- a bypass already forces enforcement to 'warn' below,
     // which covers webcam too; this only matters when NOT bypassed.
     webcamRecordOnly: exam.webcamRecordOnly,
