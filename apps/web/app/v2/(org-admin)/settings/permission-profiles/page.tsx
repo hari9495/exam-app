@@ -14,7 +14,8 @@ import {
   usePermissionProfiles, useAssignablePermissions, useCreatePermissionProfile,
   useUpdatePermissionProfile, useDeletePermissionProfile,
 } from '../../../../../lib/hooks/usePermissionProfiles';
-import type { PermissionProfile, AssignablePermission } from '../../../../../lib/types';
+import type { PermissionProfile, AssignablePermission, FieldEntity, UserFieldLevel, UserFieldPermissionConfig } from '../../../../../lib/types';
+import { GOVERNED_FIELDS } from '../../../../../lib/types';
 import { Button } from '../../../../../components/ui-v2/Button';
 import { TextField } from '../../../../../components/ui-v2/TextField';
 import { Dialog } from '../../../../../components/ui-v2/Dialog';
@@ -131,11 +132,98 @@ function EditPermissionsDialog({ profile, assignable, onClose, notify }: { profi
   );
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  email: 'Email', phone: 'Phone',
+  salaryMin: 'Salary (min)', salaryMax: 'Salary (max)', salaryCurrency: 'Salary currency',
+  headcount: 'Headcount', department: 'Department', fitCriteria: 'Fit criteria', fitRubric: 'Fit rubric',
+};
+const ENTITY_LABELS: Record<FieldEntity, string> = { candidate: 'Candidate', job: 'Job' };
+
+// Count of fields this profile overrides (for the row summary).
+function fieldRuleCount(cfg: UserFieldPermissionConfig): number {
+  return (Object.keys(GOVERNED_FIELDS) as FieldEntity[]).reduce((n, e) => n + Object.keys(cfg[e] ?? {}).length, 0);
+}
+
+// Per-user field overrides for one profile. '' = Inherit the role rule (field omitted from payload);
+// otherwise an explicit editable/readonly/hidden override applied on top of the role config.
+function FieldRulesDialog({ profile, onClose, notify }: { profile: PermissionProfile; onClose: () => void; notify: (type: 'success' | 'error', text: string) => void }) {
+  const update = useUpdatePermissionProfile();
+  const [rules, setRules] = useState<Record<string, UserFieldLevel | ''>>(() => {
+    const seed: Record<string, UserFieldLevel | ''> = {};
+    for (const entity of Object.keys(GOVERNED_FIELDS) as FieldEntity[]) {
+      for (const field of GOVERNED_FIELDS[entity]) seed[`${entity}.${field}`] = profile.fieldPermissions?.[entity]?.[field] ?? '';
+    }
+    return seed;
+  });
+
+  function setRule(entity: FieldEntity, field: string, value: UserFieldLevel | '') {
+    setRules((prev) => ({ ...prev, [`${entity}.${field}`]: value }));
+  }
+
+  function handleSave() {
+    const cfg: UserFieldPermissionConfig = {};
+    for (const entity of Object.keys(GOVERNED_FIELDS) as FieldEntity[]) {
+      const slice: Record<string, UserFieldLevel> = {};
+      for (const field of GOVERNED_FIELDS[entity]) {
+        const v = rules[`${entity}.${field}`];
+        if (v) slice[field] = v; // '' (Inherit) is omitted so the role rule applies
+      }
+      if (Object.keys(slice).length) cfg[entity] = slice;
+    }
+    update.mutate(
+      { id: profile.id, fieldPermissions: cfg },
+      {
+        onSuccess: () => { notify('success', 'Field rules updated.'); onClose(); },
+        onError: (err) => notify('error', errorMessage(err, 'Failed to update field rules.')),
+      },
+    );
+  }
+
+  return (
+    <Dialog open onClose={onClose} title={`Field rules — ${profile.name}`} width={520}>
+      <p style={{ ...desc, marginTop: 0, marginBottom: 12 }}>
+        Override what users on this profile can see or edit, per field. <strong>Inherit</strong> keeps their role&apos;s rule; the other options apply on top of it — including <strong>Editable</strong>, which grants access the role hides.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxHeight: 360, overflowY: 'auto' }}>
+        {(Object.keys(GOVERNED_FIELDS) as FieldEntity[]).map((entity) => (
+          <div key={entity}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: muted, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>{ENTITY_LABELS[entity]}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {GOVERNED_FIELDS[entity].map((field) => (
+                <label key={field} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 13, color: 'var(--ink)' }}>
+                  <span>{FIELD_LABELS[field] ?? field}</span>
+                  <select
+                    aria-label={`${entity} ${field} rule`}
+                    value={rules[`${entity}.${field}`]}
+                    onChange={(e) => setRule(entity, field, e.target.value as UserFieldLevel | '')}
+                    style={{ fontSize: 13, padding: '5px 8px', borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 14%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)', minWidth: 130 }}
+                  >
+                    <option value="">Inherit</option>
+                    <option value="editable">Editable</option>
+                    <option value="readonly">Read-only</option>
+                    <option value="hidden">Hidden</option>
+                  </select>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+        <button type="button" onClick={onClose} className="v2-hoverbtn" style={secondaryBtn}>Cancel</button>
+        <Button onClick={handleSave} loading={update.isPending}>Save</Button>
+      </div>
+    </Dialog>
+  );
+}
+
 function ProfileRow({ profile, assignable, notify }: { profile: PermissionProfile; assignable: AssignablePermission[]; notify: (type: 'success' | 'error', text: string) => void }) {
   const update = useUpdatePermissionProfile();
   const del = useDeletePermissionProfile();
   const [name, setName] = useState(profile.name);
   const [editingPermissions, setEditingPermissions] = useState(false);
+  const [editingFieldRules, setEditingFieldRules] = useState(false);
+  const fieldRules = fieldRuleCount(profile.fieldPermissions ?? {});
 
   function handleRename() {
     if (!name.trim() || name === profile.name) return;
@@ -162,13 +250,17 @@ function ProfileRow({ profile, assignable, notify }: { profile: PermissionProfil
           <button type="button" style={secondaryBtn} onClick={() => setEditingPermissions(true)} aria-label={`Edit permissions of ${profile.name}`}>
             Permissions
           </button>
+          <button type="button" style={secondaryBtn} onClick={() => setEditingFieldRules(true)} aria-label={`Edit field rules of ${profile.name}`}>
+            Field rules
+          </button>
           <button type="button" style={dangerIconBtn} onClick={handleDelete} aria-label={`Delete ${profile.name}`}><Trash2 size={15} /></button>
         </div>
       </div>
       <p style={{ ...desc, marginTop: 8 }}>
-        {profile.permissions.length} permission{profile.permissions.length === 1 ? '' : 's'} · {profile.assignedUserCount} user{profile.assignedUserCount === 1 ? '' : 's'} assigned
+        {profile.permissions.length} permission{profile.permissions.length === 1 ? '' : 's'} · {fieldRules} field rule{fieldRules === 1 ? '' : 's'} · {profile.assignedUserCount} user{profile.assignedUserCount === 1 ? '' : 's'} assigned
       </p>
       {editingPermissions && <EditPermissionsDialog profile={profile} assignable={assignable} onClose={() => setEditingPermissions(false)} notify={notify} />}
+      {editingFieldRules && <FieldRulesDialog profile={profile} onClose={() => setEditingFieldRules(false)} notify={notify} />}
     </div>
   );
 }

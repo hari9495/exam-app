@@ -1,11 +1,16 @@
 import {
   GOVERNABLE_ROLES,
   GOVERNED_FIELDS,
+  USER_FIELD_LEVELS,
   parseFieldPermissions,
   validateFieldPermissions,
+  parseUserFieldPermissions,
+  validateUserFieldPermissions,
   hiddenFieldsFor,
   lockedFieldsFor,
   lockedFieldEdits,
+  resolveHiddenFields,
+  resolveLockedFields,
 } from './field-permissions';
 
 describe('parseFieldPermissions', () => {
@@ -167,6 +172,84 @@ describe('lockedFieldsFor + lockedFieldEdits', () => {
     const rubric = [{ label: 'a', weight: 1 }];
     expect(lockedFieldEdits(new Set(['fitRubric']), { fitRubric: [...rubric] }, { fitRubric: rubric })).toEqual([]);
     expect(lockedFieldEdits(new Set(['fitRubric']), { fitRubric: [{ label: 'b', weight: 2 }] }, { fitRubric: rubric })).toEqual(['fitRubric']);
+  });
+});
+
+describe('parseUserFieldPermissions', () => {
+  it('returns {} for null / invalid / non-object', () => {
+    expect(parseUserFieldPermissions(null)).toEqual({});
+    expect(parseUserFieldPermissions('{bad')).toEqual({});
+    expect(parseUserFieldPermissions('[1,2]')).toEqual({});
+  });
+
+  it('parses the flat entity->field->level form (no role dimension)', () => {
+    const json = JSON.stringify({ candidate: { email: 'editable', phone: 'hidden' }, job: { salaryMin: 'readonly' } });
+    expect(parseUserFieldPermissions(json)).toEqual({
+      candidate: { email: 'editable', phone: 'hidden' },
+      job: { salaryMin: 'readonly' },
+    });
+  });
+
+  it('drops unknown entities / fields / levels leniently', () => {
+    const json = JSON.stringify({ candidate: { email: 'bogus', ssn: 'hidden' }, widget: { x: 'hidden' } });
+    expect(parseUserFieldPermissions(json)).toEqual({});
+  });
+});
+
+describe('validateUserFieldPermissions', () => {
+  it('accepts editable/readonly/hidden per field', () => {
+    const input = { candidate: { email: 'editable', phone: 'readonly' } };
+    expect(validateUserFieldPermissions(input)).toEqual({ candidate: { email: 'editable', phone: 'readonly' } });
+  });
+
+  it('accepts an empty object', () => {
+    expect(validateUserFieldPermissions({})).toEqual({});
+  });
+
+  it('rejects unknown entity / field / level and non-object input', () => {
+    expect(() => validateUserFieldPermissions({ widget: { x: 'hidden' } })).toThrow();
+    expect(() => validateUserFieldPermissions({ candidate: { ssn: 'hidden' } })).toThrow();
+    expect(() => validateUserFieldPermissions({ candidate: { email: 'bogus' } })).toThrow();
+    expect(() => validateUserFieldPermissions('nope')).toThrow();
+    expect(() => validateUserFieldPermissions([1])).toThrow();
+  });
+
+  it('exposes the three user levels', () => {
+    expect(USER_FIELD_LEVELS).toEqual(['editable', 'readonly', 'hidden']);
+  });
+});
+
+describe('resolveHiddenFields / resolveLockedFields (per-field override)', () => {
+  const orgCfg = validateFieldPermissions({
+    candidate: { recruiter: { email: 'hidden', phone: 'readonly' } },
+    job: { recruiter: { salaryMin: 'hidden' } },
+  });
+
+  it('with no user override, resolves exactly like the role config', () => {
+    expect(resolveHiddenFields(orgCfg, {}, 'candidate', 'recruiter')).toEqual(new Set(['email']));
+    expect(resolveLockedFields(orgCfg, {}, 'candidate', 'recruiter')).toEqual(new Set(['email', 'phone']));
+  });
+
+  it('lets a profile GRANT access the role hides (editable override un-hides + un-locks)', () => {
+    const userCfg = validateUserFieldPermissions({ candidate: { email: 'editable' } });
+    expect(resolveHiddenFields(orgCfg, userCfg, 'candidate', 'recruiter')).toEqual(new Set());
+    expect(resolveLockedFields(orgCfg, userCfg, 'candidate', 'recruiter')).toEqual(new Set(['phone']));
+  });
+
+  it('lets a profile TIGHTEN a field the role leaves open', () => {
+    const userCfg = validateUserFieldPermissions({ job: { headcount: 'hidden' } });
+    expect(resolveHiddenFields(orgCfg, userCfg, 'job', 'recruiter')).toEqual(new Set(['salaryMin', 'headcount']));
+  });
+
+  it('inherits the role level for any field the profile does not mention', () => {
+    const userCfg = validateUserFieldPermissions({ candidate: { phone: 'hidden' } }); // email untouched
+    expect(resolveHiddenFields(orgCfg, userCfg, 'candidate', 'recruiter')).toEqual(new Set(['email', 'phone']));
+  });
+
+  it('returns empty for a non-governable role even with a user override present', () => {
+    const userCfg = validateUserFieldPermissions({ candidate: { email: 'hidden' } });
+    expect(resolveHiddenFields(orgCfg, userCfg, 'candidate', 'org_admin')).toEqual(new Set());
+    expect(resolveLockedFields(orgCfg, userCfg, 'candidate', 'org_admin')).toEqual(new Set());
   });
 });
 

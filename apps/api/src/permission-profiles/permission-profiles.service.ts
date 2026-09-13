@@ -1,6 +1,14 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, PermissionProfile } from '@prisma/client';
-import { PrismaService, TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
+import {
+  PrismaService,
+  TenantPrismaService,
+  TenantContext,
+  AuditService,
+  UserFieldPermissionConfig,
+  parseUserFieldPermissions,
+  validateUserFieldPermissions,
+} from '@exam-platform/shared';
 import { assignablePermissions, isAssignableKey, AssignablePermission } from '../rbac/assignable-permissions';
 import { UpsertPermissionProfileDto, UpdatePermissionProfileDto } from './dto/upsert-permission-profile.dto';
 
@@ -9,6 +17,7 @@ export interface PermissionProfileDto {
   organizationId: string;
   name: string;
   permissions: string[];
+  fieldPermissions: UserFieldPermissionConfig;
   assignedUserCount: number;
   createdAt: Date;
   updatedAt: Date;
@@ -45,6 +54,7 @@ export class PermissionProfilesService {
 
   async create(context: TenantContext, actorUserId: string, dto: UpsertPermissionProfileDto): Promise<PermissionProfileDto> {
     await this.validatePermissions(dto.permissions);
+    const fieldPermissions = this.validateFieldPermissions(dto.fieldPermissions);
 
     let created: PermissionProfile;
     try {
@@ -54,6 +64,7 @@ export class PermissionProfilesService {
             organizationId: context.organizationId as string,
             name: dto.name,
             permissionsJson: JSON.stringify(dto.permissions),
+            fieldPermissionsJson: fieldPermissions ? JSON.stringify(fieldPermissions) : null,
           },
         }),
       );
@@ -75,6 +86,7 @@ export class PermissionProfilesService {
     if (dto.permissions !== undefined) {
       await this.validatePermissions(dto.permissions);
     }
+    const fieldPermissions = dto.fieldPermissions !== undefined ? this.validateFieldPermissions(dto.fieldPermissions) : undefined;
 
     let result: { row: PermissionProfile; assignedUserCount: number };
     try {
@@ -86,6 +98,10 @@ export class PermissionProfilesService {
         const data: Prisma.PermissionProfileUpdateInput = {};
         if (dto.name !== undefined) data.name = dto.name;
         if (dto.permissions !== undefined) data.permissionsJson = JSON.stringify(dto.permissions);
+        // undefined = leave field rules untouched; {} clears them to null (inherit role).
+        if (fieldPermissions !== undefined) {
+          data.fieldPermissionsJson = Object.keys(fieldPermissions).length ? JSON.stringify(fieldPermissions) : null;
+        }
         const row = await tx.permissionProfile.update({ where: { id }, data });
         const assignedUserCount = await tx.user.count({ where: { permissionProfileId: id } });
         return { row, assignedUserCount };
@@ -144,6 +160,16 @@ export class PermissionProfilesService {
     }
   }
 
+  // Delegates to the shared strict validator; re-wraps its Error as a 400.
+  private validateFieldPermissions(input: Record<string, unknown> | undefined): UserFieldPermissionConfig | undefined {
+    if (input === undefined) return undefined;
+    try {
+      return validateUserFieldPermissions(input);
+    } catch (error) {
+      throw new BadRequestException((error as Error).message);
+    }
+  }
+
   private mapDuplicateName(error: unknown, name: string | undefined): unknown {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return new ConflictException(`A permission profile named "${name}" already exists`);
@@ -157,6 +183,7 @@ export class PermissionProfilesService {
       organizationId: profile.organizationId,
       name: profile.name,
       permissions: JSON.parse(profile.permissionsJson),
+      fieldPermissions: parseUserFieldPermissions(profile.fieldPermissionsJson),
       assignedUserCount,
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
 import { useAuth } from '../auth-context';
-import type { PermissionProfile, AssignablePermission } from '../types';
+import type { PermissionProfile, AssignablePermission, UserFieldPermissionConfig } from '../types';
 
 // Web data layer for the permission-profiles endpoints (org-admin CRUD gated behind
 // org:manage_users). Mirrors useUserGroups.ts's fetch-wrapper/invalidation conventions.
@@ -26,7 +26,7 @@ export function useAssignablePermissions() {
   });
 }
 
-export interface CreatePermissionProfileInput { name: string; permissions: string[]; }
+export interface CreatePermissionProfileInput { name: string; permissions: string[]; fieldPermissions?: UserFieldPermissionConfig; }
 
 export function useCreatePermissionProfile() {
   const { accessToken } = useAuth();
@@ -38,7 +38,7 @@ export function useCreatePermissionProfile() {
   });
 }
 
-export interface UpdatePermissionProfileInput { id: string; name?: string; permissions?: string[]; }
+export interface UpdatePermissionProfileInput { id: string; name?: string; permissions?: string[]; fieldPermissions?: UserFieldPermissionConfig; }
 
 export function useUpdatePermissionProfile() {
   const { accessToken } = useAuth();

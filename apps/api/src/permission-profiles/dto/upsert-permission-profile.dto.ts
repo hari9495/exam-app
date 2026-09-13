@@ -1,4 +1,4 @@
-import { IsArray, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpsertPermissionProfileDto {
   @IsString()
@@ -8,6 +8,12 @@ export class UpsertPermissionProfileDto {
   @IsArray()
   @IsString({ each: true })
   permissions!: string[];
+
+  // Per-user field rules (entity->field->level). Shape validated in the service via
+  // validateUserFieldPermissions. Omitted/undefined = no field overrides.
+  @IsOptional()
+  @IsObject()
+  fieldPermissions?: Record<string, unknown>;
 }
 
 // PATCH variant: both fields optional so a caller can rename without resending the permission
@@ -22,4 +28,8 @@ export class UpdatePermissionProfileDto {
   @IsArray()
   @IsString({ each: true })
   permissions?: string[];
+
+  @IsOptional()
+  @IsObject()
+  fieldPermissions?: Record<string, unknown>;
 }

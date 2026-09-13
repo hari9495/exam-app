@@ -91,6 +91,104 @@ export function validateFieldPermissions(input: unknown): FieldPermissionConfig 
   return out;
 }
 
+// --- Per-user field rules (attached to a permission profile) ---------------------------------
+// A profile's field rules are NOT role-keyed (a profile is assigned to specific users): entity ->
+// field -> level. Unlike the org/role config, a profile may explicitly set a field 'editable' to
+// GRANT access the role hides -- so absence here means "inherit the role rule", distinct from an
+// explicit 'editable' override.
+export const USER_FIELD_LEVELS = ['editable', 'readonly', 'hidden'] as const;
+export type UserFieldLevel = (typeof USER_FIELD_LEVELS)[number];
+export type UserFieldPermissionConfig = Partial<Record<FieldEntity, Record<string, UserFieldLevel>>>;
+
+function isUserLevel(v: unknown): v is UserFieldLevel {
+  return typeof v === 'string' && (USER_FIELD_LEVELS as readonly string[]).includes(v);
+}
+
+// Lenient normalize (reads): drops unknown entity/field/level, never throws.
+export function parseUserFieldPermissions(json: string | null | undefined): UserFieldPermissionConfig {
+  if (!json) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  const out: UserFieldPermissionConfig = {};
+  for (const entity of Object.keys(GOVERNED_FIELDS) as FieldEntity[]) {
+    const byField = (parsed as Record<string, unknown>)[entity];
+    if (!byField || typeof byField !== 'object' || Array.isArray(byField)) continue;
+    const allowed = GOVERNED_FIELDS[entity] as readonly string[];
+    const levels: Record<string, UserFieldLevel> = {};
+    for (const [f, lvl] of Object.entries(byField as Record<string, unknown>)) {
+      if (allowed.includes(f) && isUserLevel(lvl)) levels[f] = lvl;
+    }
+    if (Object.keys(levels).length) out[entity] = levels;
+  }
+  return out;
+}
+
+// Strict validate (writes): rejects unknown entity/field/level. Returns the canonical object form.
+export function validateUserFieldPermissions(input: unknown): UserFieldPermissionConfig {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('config must be an object');
+  const out: UserFieldPermissionConfig = {};
+  for (const [entity, byField] of Object.entries(input as Record<string, unknown>)) {
+    if (!(entity in GOVERNED_FIELDS)) throw new Error(`unknown entity ${entity}`);
+    if (!byField || typeof byField !== 'object' || Array.isArray(byField)) throw new Error(`invalid fields map for ${entity}`);
+    const allowed = GOVERNED_FIELDS[entity as FieldEntity] as readonly string[];
+    const levels: Record<string, UserFieldLevel> = {};
+    for (const [f, lvl] of Object.entries(byField as Record<string, unknown>)) {
+      if (!allowed.includes(f)) throw new Error(`field ${f} is not governable on ${entity}`);
+      if (!isUserLevel(lvl)) throw new Error(`level for ${entity}.${f} must be one of ${USER_FIELD_LEVELS.join(', ')}`);
+      levels[f] = lvl;
+    }
+    if (Object.keys(levels).length) out[entity as FieldEntity] = levels;
+  }
+  return out;
+}
+
+// Effective role-slice after overlaying a user profile's per-field overrides onto the role config.
+// Per-field override: the profile's level wins for a field it names (including 'editable', which
+// removes any restriction); an unnamed field inherits the role's level. Returns only restrictive
+// levels (readonly/hidden) so it plugs straight into the role-shaped helpers below.
+function effectiveSlice(
+  orgCfg: FieldPermissionConfig,
+  userCfg: UserFieldPermissionConfig,
+  entity: FieldEntity,
+  role: string,
+): Record<string, FieldLevel> {
+  const roleSlice = orgCfg[entity]?.[role] ?? {};
+  const userSlice = userCfg[entity] ?? {};
+  const out: Record<string, FieldLevel> = {};
+  for (const field of GOVERNED_FIELDS[entity] as readonly string[]) {
+    const lvl = userSlice[field] ?? roleSlice[field]; // UserFieldLevel | FieldLevel | undefined
+    if (lvl === 'readonly' || lvl === 'hidden') out[field] = lvl; // 'editable'/undefined => full access
+  }
+  return out;
+}
+
+// Read-path hidden set for a user, honouring their profile overrides (empty userCfg == role-only).
+export function resolveHiddenFields(
+  orgCfg: FieldPermissionConfig,
+  userCfg: UserFieldPermissionConfig,
+  entity: FieldEntity,
+  role: string,
+): Set<string> {
+  if (!(GOVERNABLE_ROLES as readonly string[]).includes(role)) return new Set();
+  return hiddenFieldsFor({ [entity]: { [role]: effectiveSlice(orgCfg, userCfg, entity, role) } }, entity, role);
+}
+
+// Write-path locked set for a user, honouring their profile overrides.
+export function resolveLockedFields(
+  orgCfg: FieldPermissionConfig,
+  userCfg: UserFieldPermissionConfig,
+  entity: FieldEntity,
+  role: string,
+): Set<string> {
+  if (!(GOVERNABLE_ROLES as readonly string[]).includes(role)) return new Set();
+  return lockedFieldsFor({ [entity]: { [role]: effectiveSlice(orgCfg, userCfg, entity, role) } }, entity, role);
+}
+
 function fieldsAtLevels(cfg: FieldPermissionConfig, entity: FieldEntity, role: string, levels: readonly FieldLevel[]): Set<string> {
   if (!(GOVERNABLE_ROLES as readonly string[]).includes(role)) return new Set();
   const allowed = GOVERNED_FIELDS[entity] as readonly string[];
