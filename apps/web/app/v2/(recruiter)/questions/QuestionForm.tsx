@@ -5,10 +5,11 @@
 // hooks (infra). Layout: side-label sections (21st Form Layout #4347) on the left + a sticky live
 // candidate preview on the right. Used by the v2 new/edit question pages.
 import { useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Sparkles } from 'lucide-react';
 import { CodeEditor } from '../../../../components/ui/CodeEditor';
 import { type Question, type QuestionType, type Difficulty, type Tag, type CodeLanguage, CODE_LANGUAGE_OPTIONS } from '../../../../lib/types';
 import { type QuestionInput, useUploadQuestionImage, useCodeLanguages } from '../../../../lib/hooks/useQuestions';
+import { useSuggestQuestionTags, useGenerateDistractors } from '../../../../lib/hooks/useQuestionAi';
 import { monacoLanguageFor } from '../../../../lib/monaco-language';
 import { Combobox, Cb, dt } from '../../../../components/ui-v2';
 import { VIZ } from '../../../../components/ui-v2/viz';
@@ -105,6 +106,12 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
   const [topic, setTopic] = useState(initialQuestion?.topic ?? '');
   const [category, setCategory] = useState(initialQuestion?.category ?? '');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialQuestion?.tags?.map((t) => t.id) ?? []);
+  // AI-suggested NEW tag names the author accepted (created on save via the name-based tag upsert), and
+  // the pending suggestions still on offer.
+  const [aiExtraTags, setAiExtraTags] = useState<string[]>([]);
+  const [pendingTagSuggestions, setPendingTagSuggestions] = useState<string[]>([]);
+  const suggestTags = useSuggestQuestionTags();
+  const genDistractors = useGenerateDistractors();
   const [languageMode, setLanguageMode] = useState<'fixed' | 'any'>(initialQuestion?.languageMode ?? 'fixed');
   const [allowedLanguages, setAllowedLanguages] = useState<string[]>(initialQuestion?.allowedLanguages ?? []);
   const [starterCode, setStarterCode] = useState(initialQuestion?.starterCode ?? '');
@@ -125,12 +132,34 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
   const addOption = () => setOptions((c) => [...c, { text: '', isCorrect: false }]);
   const removeOption = (i: number) => setOptions((c) => c.filter((_, j) => j !== i));
 
+  function handleSuggestTags() {
+    suggestTags.mutate(
+      { text, options: options.map((o) => o.text).filter(Boolean) },
+      {
+        onSuccess: (r) => {
+          setSelectedTagIds((c) => [...new Set([...c, ...r.existing.map((e) => e.tagId)])]);
+          setPendingTagSuggestions(r.suggested.filter((s) => !aiExtraTags.includes(s)));
+        },
+      },
+    );
+  }
+  const acceptSuggestedTag = (name: string) => { setAiExtraTags((c) => [...new Set([...c, name])]); setPendingTagSuggestions((c) => c.filter((s) => s !== name)); };
+  const removeExtraTag = (name: string) => setAiExtraTags((c) => c.filter((s) => s !== name));
+
+  function handleGenerateDistractors() {
+    const correctAnswers = options.filter((o) => o.isCorrect).map((o) => o.text.trim()).filter(Boolean);
+    genDistractors.mutate(
+      { stem: text, correctAnswers, count: 3 },
+      { onSuccess: (r) => setOptions((c) => [...c, ...r.distractors.map((d) => ({ text: d, isCorrect: false }))]) },
+    );
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     onSubmit({
       type, text, difficulty, marks: Number(marks), negativeMarks: Number(negativeMarks),
       topic: topic.trim() || undefined, category: category.trim() || undefined,
-      tags: tags.filter((t) => selectedTagIds.includes(t.id)).map((t) => t.name),
+      tags: [...new Set([...tags.filter((t) => selectedTagIds.includes(t.id)).map((t) => t.name), ...aiExtraTags])],
       languageMode: type === 'code' ? languageMode : undefined,
       allowedLanguages: type === 'code' && languageMode === 'fixed' ? allowedLanguages : undefined,
       starterCode: type === 'code' && languageMode === 'fixed' && allowedLanguages.length === 1 ? starterCode : undefined,
@@ -181,7 +210,20 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
           <QuestionImageUpload label={`Option ${index + 1} image (optional)`} value={option.imageUrl ?? ''} onChange={(url) => updateOptionImage(index, url)} />
         </div>
       ))}
-      {type !== 'true_false' && <button type="button" onClick={addOption} className="v2-hoverbtn" style={{ ...dt.toolBtn, alignSelf: 'flex-start' }}>Add option</button>}
+      {type !== 'true_false' && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button type="button" onClick={addOption} className="v2-hoverbtn" style={{ ...dt.toolBtn, alignSelf: 'flex-start' }}>Add option</button>
+          <button
+            type="button" onClick={handleGenerateDistractors}
+            disabled={genDistractors.isPending || !text.trim() || !options.some((o) => o.isCorrect && o.text.trim())}
+            className="v2-hoverbtn" style={{ ...dt.toolBtn, alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+            title={!options.some((o) => o.isCorrect && o.text.trim()) ? 'Mark the correct answer first' : undefined}
+          >
+            <Sparkles size={13} /> {genDistractors.isPending ? 'Generating…' : 'Generate distractors (AI)'}
+          </button>
+          {genDistractors.isError && <span role="alert" style={{ fontSize: 12, color: 'var(--danger)' }}>{genDistractors.error instanceof Error ? genDistractors.error.message : 'Failed.'}</span>}
+        </div>
+      )}
       <details style={{ borderTop: '1px solid var(--hair)', paddingTop: 12, marginTop: 2 }}>
         <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--muted)', listStyle: 'revert' }}>Code snippet &amp; question image (optional)</summary>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
@@ -222,10 +264,18 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
               <Field label="Topic (optional)"><input value={topic} onChange={(e) => setTopic(e.target.value)} style={textInput} /></Field>
               <Field label="Category (optional)"><input value={category} onChange={(e) => setCategory(e.target.value)} style={textInput} /></Field>
             </div>
-            {tags.length > 0 && (
-              <div>
-                <label className="v2-label">Tags</label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px 16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <label className="v2-label" style={{ margin: 0 }}>Tags</label>
+                <button
+                  type="button" onClick={handleSuggestTags} disabled={suggestTags.isPending || !text.trim()}
+                  className="v2-hoverbtn" style={{ ...dt.toolBtn, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 9px', fontSize: 12.5 }}
+                >
+                  <Sparkles size={13} /> {suggestTags.isPending ? 'Suggesting…' : 'Suggest tags (AI)'}
+                </button>
+              </div>
+              {tags.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px 16px', marginTop: 6 }}>
                   {tags.map((tag) => (
                     <label key={tag.id} style={rowLabel}>
                       <Cb checked={selectedTagIds.includes(tag.id)} onChange={(checked) => setSelectedTagIds((c) => (checked ? [...c, tag.id] : c.filter((id) => id !== tag.id)))} />
@@ -233,8 +283,23 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
                     </label>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+              {suggestTags.isError && <p role="alert" style={{ fontSize: 12, color: 'var(--danger)', margin: '6px 0 0' }}>{suggestTags.error instanceof Error ? suggestTags.error.message : 'Failed to suggest tags.'}</p>}
+              {(aiExtraTags.length > 0 || pendingTagSuggestions.length > 0) && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  {aiExtraTags.map((name) => (
+                    <button key={name} type="button" onClick={() => removeExtraTag(name)} title="Remove" style={{ fontSize: 12, padding: '4px 9px', borderRadius: 999, border: '1px solid var(--org-primary)', background: 'color-mix(in srgb, var(--org-primary) 10%, transparent)', color: 'var(--org-primary)', cursor: 'pointer' }}>
+                      {name} ✕ <span style={{ color: 'var(--muted)' }}>(new)</span>
+                    </button>
+                  ))}
+                  {pendingTagSuggestions.map((name) => (
+                    <button key={name} type="button" onClick={() => acceptSuggestedTag(name)} title="Add this new tag" style={{ fontSize: 12, padding: '4px 9px', borderRadius: 999, border: '1px dashed color-mix(in srgb, var(--ink) 30%, var(--hair))', background: 'var(--paper)', color: 'var(--muted)', cursor: 'pointer' }}>
+                      + {name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </Section>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 2 }}>
             <button type="submit" className="v2-hoverbtn" disabled={submitting} style={{ ...primaryBtn, opacity: submitting ? 0.6 : 1, cursor: submitting ? 'not-allowed' : 'pointer' }}>{submitting ? 'Saving…' : submitLabel}</button>
