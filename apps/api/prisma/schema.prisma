@@ -1475,6 +1475,25 @@ model PermissionProfile {
   @@map("permission_profiles")
 }
 
+// Per-org override of a staff role's default permission set (Salesforce-style role editing). When a
+// row exists for (org, role), it REPLACES the global role_permissions default for users of that role
+// in that org (resolved in PermissionsGuard). No row = the global seed default. Only the editable
+// roles (hiring_manager/recruiter/panel) ever get a row — the API refuses the rest. Tenant-scoped
+// (organization_id) -> RLS-paired migration. permissionsJson is a JSON string[] of permission keys,
+// same shape as PermissionProfile.
+model OrgRolePermission {
+  id              String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  organizationId  String   @map("organization_id") @db.UniqueIdentifier
+  role            String
+  permissionsJson String   @map("permissions_json") @db.NVarChar(Max)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([organizationId, role])
+  @@index([organizationId])
+  @@map("org_role_permissions")
+}
+
 model JobBoard {
   id             String                @id @default(uuid()) @db.UniqueIdentifier
   organizationId String                @map("organization_id") @db.UniqueIdentifier

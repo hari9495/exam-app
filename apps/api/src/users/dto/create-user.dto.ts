@@ -1,4 +1,5 @@
 import { IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { CREATABLE_ROLES } from '../../rbac/roles';
 
 export class CreateUserDto {
   @IsEmail()
@@ -18,6 +19,6 @@ export class CreateUserDto {
   @MinLength(8)
   password?: string;
 
-  @IsIn(['org_admin', 'recruiter', 'panel'])
+  @IsIn(CREATABLE_ROLES)
   role!: string;
 }

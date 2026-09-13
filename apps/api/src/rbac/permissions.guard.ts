@@ -42,7 +42,7 @@ export class PermissionsGuard implements CanActivate {
     // deleted/racing profile) fails closed to an empty grant set instead of falling back to role.
     const grantedKeys = user.permissionProfileId
       ? await this.resolveProfileGrants(user.permissionProfileId, user.organizationId ?? null)
-      : await this.resolveRoleGrants(user.role, allKeys);
+      : await this.resolveRoleGrants(user.role, user.organizationId ?? null, allKeys);
 
     if (hasAllRequirement && !requiredAll!.every((key) => grantedKeys.has(key))) {
       throw new ForbiddenException(`Missing required permission(s): ${requiredAll!.join(', ')}`);
@@ -63,7 +63,19 @@ export class PermissionsGuard implements CanActivate {
     return new Set(JSON.parse(profile.permissionsJson) as string[]);
   }
 
-  private async resolveRoleGrants(role: string, keys: string[]): Promise<Set<string>> {
+  private async resolveRoleGrants(role: string, organizationId: string | null, keys: string[]): Promise<Set<string>> {
+    // A per-org override REPLACES the global role default for that role in that org (Salesforce-style
+    // role editing). No override row -> the global role_permissions default. Only editable roles ever
+    // have a row (the role-permissions API refuses the rest), so org_admin/super_admin always fall
+    // through to their fixed global defaults here.
+    if (organizationId) {
+      const override = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+        tx.orgRolePermission.findUnique({ where: { organizationId_role: { organizationId, role } }, select: { permissionsJson: true } }),
+      );
+      if (override) {
+        return new Set(JSON.parse(override.permissionsJson) as string[]);
+      }
+    }
     const grants = await this.prisma.rolePermission.findMany({
       where: { role, permission: { key: { in: keys } } },
       select: { permission: { select: { key: true } } },

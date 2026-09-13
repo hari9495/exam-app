@@ -395,9 +395,9 @@ export class AuthService {
       }
     } else if (caller.role === 'org_admin') {
       const inOrg = target.organizationId === caller.organizationId;
-      const impersonatable = target.role === 'recruiter' || target.role === 'panel';
+      const impersonatable = target.role === 'recruiter' || target.role === 'panel' || target.role === 'hiring_manager';
       if (!inOrg || !impersonatable) {
-        throw new ForbiddenException('You can only impersonate recruiter or panel users in your own organization');
+        throw new ForbiddenException('You can only impersonate recruiter, hiring manager, or panel users in your own organization');
       }
     } else {
       throw new ForbiddenException('You are not allowed to impersonate users');
