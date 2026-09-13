@@ -8,7 +8,9 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { useMyInterviews } from '../../../../lib/hooks/useInterviews';
 import type { Interview, InterviewStatus } from '../../../../lib/types';
 import { DataTable, DT_FEATURES, dt, SortHead, Pill } from '../../../../components/ui-v2';
+import { Dialog } from '../../../../components/ui-v2/Dialog';
 import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
+import { ScorecardPanel } from '../../../../components/interviews/InterviewAi';
 
 const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
 
@@ -41,6 +43,7 @@ function timeLabel(interview: Interview): string {
 
 export default function V2PanelInterviewsPage() {
   const [search, setSearch] = useState('');
+  const [scorecardFor, setScorecardFor] = useState<string | null>(null);
   const { data: interviews, isLoading, isError } = useMyInterviews();
   const q = search.trim().toLowerCase();
   const rows = q
@@ -63,6 +66,19 @@ export default function V2PanelInterviewsPage() {
     { id: 'time', accessorFn: (i) => i.slots[0]?.startsAt ?? '', header: sortHead('Time'), cell: ({ row }) => <span style={{ color: 'var(--ink)' }}>{timeLabel(row.original)}</span> },
     { id: 'location', accessorFn: (i) => i.location, header: sortHead('Location'), cell: ({ row }) => <span style={dt.muted}>{row.original.location}</span> },
     { id: 'status', accessorFn: (i) => i.status, header: sortHead('Status'), cell: ({ row }) => <Pill c={STATUS_TONE[row.original.status] ?? 'var(--muted)'} label={row.original.status} /> },
+    {
+      id: 'actions', enableSorting: false, header: () => <span style={dt.muted}>Feedback</span>,
+      cell: ({ row }) => (
+        <button
+          type="button"
+          onClick={() => setScorecardFor(row.original.id)}
+          aria-label={`Generate scorecard for interview ${row.original.id}`}
+          style={{ fontSize: 12.5, fontWeight: 500, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--org-primary)', background: 'var(--paper)', color: 'var(--org-primary)', cursor: 'pointer' }}
+        >
+          Scorecard
+        </button>
+      ),
+    },
   ];
 
   return (
@@ -85,8 +101,17 @@ export default function V2PanelInterviewsPage() {
         columns={columns} data={rows} getRowId={(i) => i.id}
         search={search} onSearchChange={setSearch} searchPlaceholder="Search interviews…"
         isLoading={isLoading} isError={isError} errorMessage="Failed to load interviews." emptyMessage={q ? 'No matches.' : 'No interviews assigned yet.'}
-        columnLabels={{ time: 'Time', location: 'Location', status: 'Status' }}
+        columnLabels={{ time: 'Time', location: 'Location', status: 'Status', actions: 'Feedback' }}
       />
+
+      {scorecardFor && (
+        <Dialog open onClose={() => setScorecardFor(null)} title="Interview scorecard" width={560}>
+          <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 12px' }}>
+            Paste your notes and turn them into a structured scorecard you can review and share.
+          </p>
+          <ScorecardPanel interviewId={scorecardFor} />
+        </Dialog>
+      )}
     </div>
   );
 }

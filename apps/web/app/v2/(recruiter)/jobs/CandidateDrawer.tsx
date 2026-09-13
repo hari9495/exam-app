@@ -37,6 +37,7 @@ import { SendSmsModal } from './SendSmsModal';
 import { SendWhatsappModal } from './SendWhatsappModal';
 import { CreateOfferModal } from './CreateOfferModal';
 import { ScheduleInterviewModal } from './ScheduleInterviewModal';
+import { InterviewQuestionsPanel } from '../../../../components/interviews/InterviewAi';
 
 const muted = 'var(--muted)';
 const ink = 'var(--ink)';
@@ -531,6 +532,7 @@ function InterviewsSection({ entryId, candidateId }: { entryId: string; candidat
   const cancelInterview = useCancelInterview(candidateId);
   const { toast } = useToast();
   const [scheduling, setScheduling] = useState(false);
+  const [showKit, setShowKit] = useState(false);
 
   function handleCancel(interviewId: string) {
     cancelInterview.mutate(interviewId, {
@@ -567,6 +569,12 @@ function InterviewsSection({ entryId, candidateId }: { entryId: string; candidat
           ))}
         </ul>
       )}
+      <div style={{ marginTop: 10, borderTop: '1px solid var(--hair)', paddingTop: 10 }}>
+        <button type="button" onClick={() => setShowKit((v) => !v)} style={linkBtn} aria-expanded={showKit}>
+          {showKit ? 'Hide AI interview questions' : 'Suggest interview questions (AI)'}
+        </button>
+        {showKit && <div style={{ marginTop: 10 }}><InterviewQuestionsPanel entryId={entryId} /></div>}
+      </div>
       {scheduling && <ScheduleInterviewModal entryId={entryId} candidateId={candidateId} onClose={() => setScheduling(false)} />}
     </div>
   );

@@ -57,6 +57,43 @@ export function useMyInterviews() {
   });
 }
 
+// --- AI interview kit (inert until the org configures an AI key) ---------------------------------
+
+export type InterviewQuestionCategory = 'technical' | 'behavioral' | 'role_specific' | 'culture';
+export interface GeneratedInterviewQuestion {
+  question: string;
+  category: InterviewQuestionCategory;
+  rationale: string;
+}
+
+// Generate a tailored interview-question kit for a pipeline entry. Not cached -- each click is a
+// fresh generation the recruiter can re-run.
+export function useGenerateInterviewQuestions(entryId: string) {
+  const { accessToken } = useAuth();
+  return useMutation<{ questions: GeneratedInterviewQuestion[] }, Error, { count?: number; focus?: string }>({
+    mutationFn: (input) =>
+      apiFetch(`/pipeline/entries/${entryId}/interview-questions`, { method: 'POST', body: JSON.stringify(input) }, accessToken ?? undefined) as Promise<{ questions: GeneratedInterviewQuestion[] }>,
+  });
+}
+
+export type ScorecardRecommendation = 'strong_yes' | 'yes' | 'no' | 'strong_no';
+export interface InterviewScorecard {
+  recommendation: ScorecardRecommendation;
+  summary: string;
+  competencies: { name: string; rating: number; justification: string }[];
+  strengths: string[];
+  concerns: string[];
+}
+
+// Turn an interviewer's raw notes into a structured scorecard for one interview.
+export function useGenerateScorecard(interviewId: string) {
+  const { accessToken } = useAuth();
+  return useMutation<InterviewScorecard, Error, { notes: string }>({
+    mutationFn: (input) =>
+      apiFetch(`/interviews/${interviewId}/scorecard`, { method: 'POST', body: JSON.stringify(input) }, accessToken ?? undefined) as Promise<InterviewScorecard>,
+  });
+}
+
 export function useCancelInterview(candidateId: string) {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
