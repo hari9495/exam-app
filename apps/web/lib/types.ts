@@ -528,6 +528,7 @@ export interface CareersPageResponse {
   orgName: string;
   headline: string | null;
   intro: string | null;
+  assistantEnabled: boolean;
   logoUrl: string | null;
   bannerUrl: string | null;
   primaryColor: string | null;
@@ -543,6 +544,7 @@ export interface CareersSettingsResponse {
   headline: string | null;
   intro: string | null;
   bannerUrl: string | null;
+  assistantEnabled: boolean;
 }
 
 export interface PortalApplication {

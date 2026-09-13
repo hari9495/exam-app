@@ -132,6 +132,7 @@ export interface CareersSettingsResponse {
   headline: string | null;
   intro: string | null;
   bannerUrl: string | null;
+  assistantEnabled: boolean;
 }
 
 export interface WhatsappConfigResponse {
@@ -1039,13 +1040,14 @@ export class OrganizationsService {
     const organizationId = this.requireOrganizationId(context);
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { careersEnabled: true, careersHeadline: true, careersIntro: true, careersBannerPath: true },
+      select: { careersEnabled: true, careersHeadline: true, careersIntro: true, careersBannerPath: true, careersAssistantEnabled: true },
     });
     return {
       enabled: org?.careersEnabled ?? false,
       headline: org?.careersHeadline ?? null,
       intro: org?.careersIntro ?? null,
       bannerUrl: org?.careersBannerPath ? ((await this.blobStorage.signIfOurs(org.careersBannerPath)) as string | null) : null,
+      assistantEnabled: org?.careersAssistantEnabled ?? false,
     };
   }
 
@@ -1061,6 +1063,7 @@ export class OrganizationsService {
         careersEnabled: dto.enabled,
         ...(dto.headline !== undefined && { careersHeadline: norm(dto.headline) }),
         ...(dto.intro !== undefined && { careersIntro: norm(dto.intro) }),
+        ...(dto.assistantEnabled !== undefined && { careersAssistantEnabled: dto.assistantEnabled }),
       },
     });
     await this.audit.record(context, { actorUserId, action: 'organization.careers_updated', entityType: 'organization', entityId: organizationId });

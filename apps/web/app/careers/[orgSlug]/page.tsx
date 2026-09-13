@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { API_BASE } from '../../../lib/api-client';
 import { CareersJob, CareersPageResponse } from '../../../lib/types';
 import { CareersJobList } from './CareersJobList';
+import { CareersAssistant } from './CareersAssistant';
 
 // Public, unauthenticated -- same idiom as the apply/walk-in pages: raw fetch (no auth header),
 // no-store so branding/job-list edits show up immediately, null (not throw) on any failure so the
@@ -106,6 +107,7 @@ export default async function CareersPage({ params }: { params: Promise<{ orgSlu
       <div className="mx-auto max-w-3xl px-6 py-10">
         <CareersJobList jobs={data.jobs} />
       </div>
+      {data.assistantEnabled ? <CareersAssistant orgSlug={orgSlug} orgName={data.orgName} /> : null}
     </div>
   );
 }

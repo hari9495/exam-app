@@ -7,6 +7,7 @@ import { UpdatePortalProfileDto } from './dto/update-portal-profile.dto';
 import { UploadPortalResumeDto } from './dto/upload-portal-resume.dto';
 import { QuickApplyDto } from './dto/quick-apply.dto';
 import { UnsubscribeDto } from './dto/unsubscribe.dto';
+import { CareersAssistantDto } from './dto/careers-assistant.dto';
 import { PublicApplicationsThrottlerGuard } from './public-applications.throttler.guard';
 import { STRICT_WALK_IN_THROTTLE } from '../rate-limit-tiers';
 
@@ -31,6 +32,13 @@ export class PublicApplicationsController {
   @Get('careers/:orgSlug')
   getCareers(@Param('orgSlug') orgSlug: string) {
     return this.service.getCareers(orgSlug);
+  }
+
+  // Public careers AI assistant. Triggers an AI call, so it stays under the strict walk-in throttle
+  // (controller-level); the service is opt-in per org, quota-capped, and fail-soft.
+  @Post('careers/:orgSlug/assistant')
+  careersAssistant(@Param('orgSlug') orgSlug: string, @Body() dto: CareersAssistantDto) {
+    return this.service.careersAssistant(orgSlug, dto);
   }
 
   // Distinct segment from jobs-feed.xml and jobs/:applyToken -- no route collision.
