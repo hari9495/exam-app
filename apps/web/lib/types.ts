@@ -165,6 +165,15 @@ export interface QuestionOption {
   imageUrl: string | null;
 }
 
+// Mirror of packages/shared code-tests.ts (web can't import shared values). Auto-grading test
+// cases for a code question.
+export interface CodeTestCase {
+  stdin: string;
+  expectedStdout: string;
+  weight: number;
+  hidden: boolean;
+}
+
 export interface Question {
   id: string;
   type: QuestionType;
@@ -182,6 +191,7 @@ export interface Question {
   allowStdin: boolean;
   snippetCode: string | null;
   snippetLanguage: CodeLanguage | null;
+  codeTests?: CodeTestCase[];
   imageUrl: string | null;
   createdAt: string;
   options: QuestionOption[];

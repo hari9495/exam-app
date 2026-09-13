@@ -2,6 +2,24 @@ import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Min, ValidateNes
 import { Type } from 'class-transformer';
 import { VALID_CODE_LANGUAGES } from '../question-validation';
 
+export class CodeTestCaseDto {
+  @IsOptional()
+  @IsString()
+  stdin?: string;
+
+  @IsString()
+  expectedStdout!: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  weight?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  hidden?: boolean;
+}
+
 export class QuestionOptionDto {
   @IsString()
   text!: string;
@@ -79,4 +97,12 @@ export class CreateQuestionDto {
   @ValidateNested({ each: true })
   @Type(() => QuestionOptionDto)
   options!: QuestionOptionDto[];
+
+  // Auto-grading test cases for a code question (ignored for non-code types). Shape re-validated in
+  // the service via the shared validateCodeTests.
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CodeTestCaseDto)
+  codeTests?: CodeTestCaseDto[];
 }

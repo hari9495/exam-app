@@ -130,6 +130,7 @@ export interface QuestionInput {
   snippetCode?: string;
   snippetLanguage?: string;
   imageUrl?: string;
+  codeTests?: { stdin: string; expectedStdout: string; weight: number; hidden: boolean }[];
   options: { text: string; isCorrect: boolean; imageUrl?: string }[];
 }
 

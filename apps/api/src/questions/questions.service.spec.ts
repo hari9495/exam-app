@@ -83,6 +83,7 @@ describe('QuestionsService', () => {
       ...created,
       imageUrl: null,
       allowedLanguages: [],
+      codeTests: [],
       options: created.options.map((option) => ({ ...option, imageUrl: null })),
     });
     expect(tenantPrisma.forTenant).toHaveBeenCalledWith(context, expect.any(Function));

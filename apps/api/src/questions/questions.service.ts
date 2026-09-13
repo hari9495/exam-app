@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, Question, QuestionOption, QuestionTag, Tag } from '@prisma/client';
-import { TenantPrismaService, answerKeyDiffers, optionRowsDiffer } from '@exam-platform/shared';
+import { TenantPrismaService, answerKeyDiffers, optionRowsDiffer, validateCodeTests, parseCodeTests, CodeTestCase } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
@@ -23,7 +23,20 @@ import {
 } from './bulk-upload-parser';
 
 type QuestionWithRelations = Question & { options?: QuestionOption[]; tags: (QuestionTag & { tag: Tag })[] };
-type QuestionResponse = Omit<QuestionWithRelations, 'tags'> & { tags: { id: string; name: string }[] };
+type QuestionResponse = Omit<QuestionWithRelations, 'tags'> & { tags: { id: string; name: string }[]; codeTests: CodeTestCase[] };
+
+// Validate + serialize code test cases for storage. Only code questions carry them; anything else
+// stores null. Throws BadRequest on a malformed shape.
+function serializeCodeTests(type: string, codeTests: unknown): string | null {
+  if (type !== 'code') return null;
+  let tests: CodeTestCase[];
+  try {
+    tests = validateCodeTests(codeTests);
+  } catch (error) {
+    throw new BadRequestException((error as Error).message);
+  }
+  return tests.length ? JSON.stringify(tests) : null;
+}
 
 interface QuestionFilters {
   topic?: string;
@@ -114,6 +127,7 @@ export class QuestionsService {
           allowedLanguages: dto.allowedLanguages ? JSON.stringify(dto.allowedLanguages) : null,
           starterCode: dto.starterCode ?? null,
           allowStdin: dto.allowStdin ?? false,
+          codeTestsJson: serializeCodeTests(dto.type, dto.codeTests),
           snippetCode: dto.type === 'code' ? null : dto.snippetCode ?? null,
           snippetLanguage: dto.type === 'code' ? null : dto.snippetLanguage ?? null,
           imageUrl: dto.type === 'code' ? null : toStoredImageUrl(dto.imageUrl),
@@ -262,6 +276,7 @@ export class QuestionsService {
           allowedLanguages: dto.allowedLanguages ? JSON.stringify(dto.allowedLanguages) : null,
           starterCode: dto.starterCode ?? null,
           allowStdin: dto.allowStdin ?? false,
+          codeTestsJson: serializeCodeTests(dto.type, dto.codeTests),
           snippetCode: dto.type === 'code' ? null : dto.snippetCode ?? null,
           snippetLanguage: dto.type === 'code' ? null : dto.snippetLanguage ?? null,
           imageUrl: dto.type === 'code' ? null : toStoredImageUrl(dto.imageUrl),
@@ -531,6 +546,6 @@ export class QuestionsService {
         allowedLanguages = [];
       }
     }
-    return { ...rest, imageUrl, options, allowedLanguages, tags: tags.map((qt) => ({ id: qt.tag.id, name: qt.tag.name })) } as unknown as QuestionResponse;
+    return { ...rest, imageUrl, options, allowedLanguages, codeTests: parseCodeTests(rest.codeTestsJson), tags: tags.map((qt) => ({ id: qt.tag.id, name: qt.tag.name })) } as unknown as QuestionResponse;
   }
 }
