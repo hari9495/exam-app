@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { Attempt, Prisma } from '@prisma/client';
 import { gradeAnswer, computeResult, computeRemainingSeconds, GradableSection } from './grading';
 import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
@@ -12,6 +12,7 @@ import { getProctoringEventSeverity } from '../attempts/proctoring-severity';
 import { resolveProctoringConfig } from '../attempts/proctoring-config';
 import { sanitizeMetadataOrDrop } from '../attempts/sanitize-metadata';
 import { FaceVerificationService } from '../face/face-verification.service';
+import { CodeAutogradeService } from './code-autograde.service';
 
 const BROWSER_ACTIVITY_COOLDOWN_MS = 60_000;
 
@@ -116,6 +117,7 @@ export class AttemptSettlementService {
     private readonly integrityAnalysis: IntegrityAnalysisService,
     private readonly apiInternalClient: ApiInternalClient,
     private readonly faceVerification: FaceVerificationService,
+    @Inject(forwardRef(() => CodeAutogradeService)) private readonly codeAutograde: CodeAutogradeService,
   ) {}
 
   remainingSeconds(
@@ -267,6 +269,17 @@ export class AttemptSettlementService {
         await this.integrityAnalysis.analyze(finalized.id);
       } catch (error) {
         this.logger.error('Integrity analysis failed to start', error as Error);
+      }
+      // Auto-grade code questions that carry test cases (runs candidate code against them, outside
+      // any tx). Grades the test-backed ones and, if nothing manual is left, finalizes the attempt
+      // (which re-runs insight with the correct score). Questions without tests stay in the manual
+      // queue. Inert when no code question has tests.
+      if (hasCodeQuestions) {
+        try {
+          await this.codeAutograde.grade(finalized.id);
+        } catch (error) {
+          this.logger.error('Code auto-grade failed to start', error as Error);
+        }
       }
       // Skip insight generation for attempts pending manual grading — at this point the Result
       // is computed from MCQ-only scoredQuestions (code questions excluded) and passFail is null,

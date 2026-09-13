@@ -7,6 +7,7 @@ import { AttemptInsightService } from '../attempt-insight/attempt-insight.servic
 import { IntegrityAnalysisService } from '../integrity/integrity-analysis.service';
 import { ApiInternalClient } from '../api-internal-client/api-internal.client';
 import { FaceVerificationService } from '../face/face-verification.service';
+import { CodeAutogradeService } from './code-autograde.service';
 import { getProctoringEventSeverity } from '../attempts/proctoring-severity';
 
 // Faithfully emulates SQL Server's NULL semantics for the cooldown `where` clause, not just
@@ -83,6 +84,7 @@ describe('AttemptSettlementService', () => {
       integrityAnalysis as unknown as IntegrityAnalysisService,
       apiInternalClient as unknown as ApiInternalClient,
       faceVerification as unknown as FaceVerificationService,
+      { grade: jest.fn().mockResolvedValue(undefined) } as unknown as CodeAutogradeService,
     );
   });
 

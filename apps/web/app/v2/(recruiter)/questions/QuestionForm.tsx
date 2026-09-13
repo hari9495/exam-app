@@ -116,6 +116,11 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
   const [allowedLanguages, setAllowedLanguages] = useState<string[]>(initialQuestion?.allowedLanguages ?? []);
   const [starterCode, setStarterCode] = useState(initialQuestion?.starterCode ?? '');
   const [allowStdin, setAllowStdin] = useState(initialQuestion?.allowStdin ?? false);
+  // Auto-grading test cases (code questions). weight kept as a string for the input; empty list = the
+  // question is graded manually, as before.
+  const [codeTests, setCodeTests] = useState<{ stdin: string; expectedStdout: string; weight: string }[]>(
+    initialQuestion?.codeTests?.map((t) => ({ stdin: t.stdin, expectedStdout: t.expectedStdout, weight: String(t.weight) })) ?? [],
+  );
   const [snippetCode, setSnippetCode] = useState(initialQuestion?.snippetCode ?? '');
   const [snippetLanguage, setSnippetLanguage] = useState<CodeLanguage>(initialQuestion?.snippetLanguage ?? 'javascript');
   const [imageUrl, setImageUrl] = useState(initialQuestion?.imageUrl ?? '');
@@ -154,6 +159,11 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
     );
   }
 
+  const addTest = () => setCodeTests((c) => [...c, { stdin: '', expectedStdout: '', weight: '1' }]);
+  const removeTest = (i: number) => setCodeTests((c) => c.filter((_, j) => j !== i));
+  const updateTest = (i: number, field: 'stdin' | 'expectedStdout' | 'weight', v: string) =>
+    setCodeTests((c) => c.map((t, j) => (j === i ? { ...t, [field]: v } : t)));
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     onSubmit({
@@ -164,6 +174,11 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
       allowedLanguages: type === 'code' && languageMode === 'fixed' ? allowedLanguages : undefined,
       starterCode: type === 'code' && languageMode === 'fixed' && allowedLanguages.length === 1 ? starterCode : undefined,
       allowStdin: type === 'code' ? allowStdin : undefined,
+      codeTests: type === 'code'
+        ? codeTests
+            .filter((t) => t.expectedStdout.trim().length > 0)
+            .map((t) => ({ stdin: t.stdin, expectedStdout: t.expectedStdout, weight: Math.max(1, parseInt(t.weight, 10) || 1), hidden: true }))
+        : undefined,
       snippetCode: type === 'code' ? undefined : snippetCode || undefined,
       snippetLanguage: type === 'code' ? undefined : (snippetCode ? snippetLanguage : undefined),
       imageUrl: type === 'code' ? undefined : imageUrl || undefined,
@@ -195,6 +210,37 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
         <Field label="Starter code"><CodeEditor ariaLabel="Starter Code" language={monacoLanguageFor(allowedLanguages[0])} value={starterCode} onChange={setStarterCode} height="220px" /></Field>
       )}
       <label style={rowLabel}><Cb checked={allowStdin} onChange={setAllowStdin} /> Allow candidates to provide input (stdin)</label>
+      <div style={{ borderTop: '1px solid var(--hair)', paddingTop: 12 }}>
+        <label className="v2-label">Auto-grading test cases (optional)</label>
+        <p style={{ fontSize: 12, color: 'var(--muted)', margin: '2px 0 10px' }}>
+          Each test feeds stdin to the candidate&apos;s program and checks its output. Score = passed weight ÷ total weight × marks. Leave empty to grade this question manually. Tests are hidden from candidates.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {codeTests.map((t, i) => (
+            <div key={i} style={{ border: '1px solid var(--hair)', borderRadius: 9, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)' }}>Test {i + 1}</span>
+                <button type="button" onClick={() => removeTest(i)} aria-label={`Remove test ${i + 1}`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)' }}><Trash2 size={15} /></button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div>
+                  <label className="v2-label" style={{ fontSize: 11.5 }}>Input (stdin)</label>
+                  <textarea aria-label={`Test ${i + 1} input`} value={t.stdin} onChange={(e) => updateTest(i, 'stdin', e.target.value)} rows={2} style={{ ...textInput, resize: 'vertical', fontFamily: 'monospace', fontSize: 12.5 }} />
+                </div>
+                <div>
+                  <label className="v2-label" style={{ fontSize: 11.5 }}>Expected output</label>
+                  <textarea aria-label={`Test ${i + 1} expected output`} value={t.expectedStdout} onChange={(e) => updateTest(i, 'expectedStdout', e.target.value)} rows={2} style={{ ...textInput, resize: 'vertical', fontFamily: 'monospace', fontSize: 12.5 }} />
+                </div>
+              </div>
+              <div style={{ width: 120 }}>
+                <label className="v2-label" style={{ fontSize: 11.5 }}>Weight</label>
+                <input type="number" min={1} aria-label={`Test ${i + 1} weight`} value={t.weight} onChange={(e) => updateTest(i, 'weight', e.target.value)} style={textInput} />
+              </div>
+            </div>
+          ))}
+          <button type="button" onClick={addTest} className="v2-hoverbtn" style={{ ...dt.toolBtn, alignSelf: 'flex-start' }}>Add test case</button>
+        </div>
+      </div>
     </>
   ) : (
     <>

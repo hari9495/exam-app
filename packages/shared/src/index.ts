@@ -28,6 +28,7 @@ export * from './system-events/system-events.module';
 export * from './system-events/system-events.service';
 export * from './system-events/system-events-exception.filter';
 export * from './grading/select-counted-answers';
+export * from './grading/code-tests';
 export * from './integrations/event-types';
 export * from './face/similarity';
 export * from './face/embedding-codec';

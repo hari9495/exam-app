@@ -335,6 +335,9 @@ model Question {
   allowedLanguages   String?               @map("allowed_languages") @db.NVarChar(Max)
   starterCode        String?               @map("starter_code") @db.NVarChar(Max)
   allowStdin         Boolean               @default(false) @map("allow_stdin")
+  // Auto-grading test cases for a code question (JSON array of {stdin, expectedStdout, weight,
+  // hidden}). Null/empty = the question is graded manually, as before.
+  codeTestsJson      String?               @map("code_tests_json") @db.NVarChar(Max)
   snippetCode        String?               @map("snippet_code") @db.NVarChar(Max)
   snippetLanguage    String?               @map("snippet_language")
   imageUrl           String?               @map("image_url")
