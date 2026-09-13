@@ -1,6 +1,5 @@
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsEmail, IsIn } from 'class-validator';
-
-const CREATABLE_ROLES = ['org_admin', 'recruiter', 'panel'] as const;
+import { CREATABLE_ROLES } from '../../rbac/roles';
 
 export class BulkCreateUsersDto {
   @IsArray()

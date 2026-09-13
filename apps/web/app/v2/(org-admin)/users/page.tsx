@@ -20,12 +20,13 @@ import type { StaffUser } from '../../../../lib/types';
 import { DataTable, DT_FEATURES, dt, SortHead, Pill, Cb, Dropdown, DropdownItem, Dialog, TextField, Combobox, Button } from '../../../../components/ui-v2';
 import { VIZ, STATUS } from '../../../../components/ui-v2/viz';
 
-const ROLE_COLOR: Record<string, string> = { org_admin: VIZ.violet, recruiter: VIZ.azure, panel: 'var(--muted)', super_admin: VIZ.amber };
-const ROLE_LABEL: Record<string, string> = { org_admin: 'Org Admin', recruiter: 'Recruiter', panel: 'Interview Panel', super_admin: 'Super Admin' };
+const ROLE_COLOR: Record<string, string> = { org_admin: VIZ.violet, recruiter: VIZ.azure, hiring_manager: VIZ.teal, panel: 'var(--muted)', super_admin: VIZ.amber };
+const ROLE_LABEL: Record<string, string> = { org_admin: 'Org Admin', recruiter: 'Recruiter', hiring_manager: 'Hiring Manager', panel: 'Interview Panel', super_admin: 'Super Admin' };
 const ROLE_FILTER_OPTIONS = [
   { value: 'all', label: 'All roles' },
   { value: 'org_admin', label: 'Org Admin' },
   { value: 'recruiter', label: 'Recruiter' },
+  { value: 'hiring_manager', label: 'Hiring Manager' },
   { value: 'panel', label: 'Interview Panel' },
 ];
 const STATUS_FILTER_OPTIONS = [
@@ -36,6 +37,7 @@ const STATUS_FILTER_OPTIONS = [
 const ROLE_OPTIONS = [
   { value: 'org_admin', label: 'Org Admin' },
   { value: 'recruiter', label: 'Recruiter' },
+  { value: 'hiring_manager', label: 'Hiring Manager' },
   { value: 'panel', label: 'Interview Panel' },
 ];
 const NO_MANAGER = '';
@@ -54,7 +56,7 @@ function canImpersonate(target: StaffUser, currentUserRole: string | null, isAct
   if (target.id === currentUserId) return false;
   if (target.role === 'super_admin') return false;
   if (isActingSuperAdmin) return true;
-  return currentUserRole === 'org_admin' && (target.role === 'recruiter' || target.role === 'panel');
+  return currentUserRole === 'org_admin' && (target.role === 'recruiter' || target.role === 'panel' || target.role === 'hiring_manager');
 }
 
 const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };

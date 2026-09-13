@@ -41,6 +41,7 @@ export const SUPER_ADMIN_FULL_NAV = [
   { href: '/settings/custom-fields', label: 'Custom Fields', icon: SlidersHorizontal, group: 'Settings' },
   { href: '/settings/field-permissions', label: 'Field permissions', icon: EyeOff, group: 'Settings' },
   { href: '/settings/user-groups', label: 'User Groups', icon: Users, group: 'Settings' },
+  { href: '/settings/roles', label: 'Roles & Permissions', icon: Lock, group: 'Settings' },
   { href: '/settings/permission-profiles', label: 'Permission Profiles', icon: Lock, group: 'Settings' },
   { href: '/settings/record-visibility', label: 'Record Visibility', icon: EyeOff, group: 'Settings' },
   { href: '/settings/recycle-bin', label: 'Recycle Bin', icon: Trash2, group: 'Settings' },

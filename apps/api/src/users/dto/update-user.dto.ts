@@ -1,10 +1,9 @@
 import { IsIn, IsOptional, IsString, IsUUID, MaxLength, ValidateIf } from 'class-validator';
-
-const EDITABLE_ROLES = ['org_admin', 'recruiter', 'panel'] as const;
+import { CREATABLE_ROLES } from '../../rbac/roles';
 
 export class UpdateUserDto {
   @IsOptional()
-  @IsIn(EDITABLE_ROLES)
+  @IsIn(CREATABLE_ROLES)
   role?: string;
 
   @IsOptional()

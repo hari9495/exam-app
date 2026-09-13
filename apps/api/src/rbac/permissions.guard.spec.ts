@@ -214,4 +214,48 @@ describe('PermissionsGuard', () => {
       ).rejects.toThrow(ForbiddenException);
     });
   });
+
+  describe('per-org role override (Salesforce-style role editing)', () => {
+    it('grants from the org override, ignoring the global role default, when a row exists', async () => {
+      const reflector = { get: jest.fn().mockReturnValue(['candidate:manage']) } as unknown as Reflector;
+      // global default lacks it -- if the guard used the global table, this would deny.
+      const prisma = { rolePermission: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tenantPrisma = { forTenant: jest.fn().mockResolvedValue({ permissionsJson: JSON.stringify(['candidate:manage']) }) };
+      const guard = new PermissionsGuard(reflector, prisma as any, tenantPrisma as any);
+
+      const result = await guard.canActivate(
+        mockContext({ role: 'hiring_manager', organizationId: 'org-1', permissionProfileId: null }),
+      );
+      expect(result).toBe(true);
+      // override short-circuits -> the global role table is never queried
+      expect(prisma.rolePermission.findMany).not.toHaveBeenCalled();
+      expect(tenantPrisma.forTenant).toHaveBeenCalledWith({ organizationId: 'org-1', isSuperAdmin: false }, expect.any(Function));
+    });
+
+    it('denies when the org override omits the key, even if the global default would grant it', async () => {
+      const reflector = { get: jest.fn().mockReturnValue(['pipeline:manage']) } as unknown as Reflector;
+      const prisma = { rolePermission: { findMany: jest.fn().mockResolvedValue([{ permission: { key: 'pipeline:manage' } }]) } };
+      const tenantPrisma = { forTenant: jest.fn().mockResolvedValue({ permissionsJson: JSON.stringify(['org:view']) }) };
+      const guard = new PermissionsGuard(reflector, prisma as any, tenantPrisma as any);
+
+      await expect(
+        guard.canActivate(mockContext({ role: 'recruiter', organizationId: 'org-1', permissionProfileId: null })),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.rolePermission.findMany).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the global role default when the org has no override row', async () => {
+      const reflector = { get: jest.fn().mockReturnValue(['candidate:manage']) } as unknown as Reflector;
+      const prisma = { rolePermission: { findMany: jest.fn().mockResolvedValue([{ permission: { key: 'candidate:manage' } }]) } };
+      const tenantPrisma = { forTenant: jest.fn().mockResolvedValue(null) }; // no override row
+      const guard = new PermissionsGuard(reflector, prisma as any, tenantPrisma as any);
+
+      const result = await guard.canActivate(
+        mockContext({ role: 'recruiter', organizationId: 'org-1', permissionProfileId: null }),
+      );
+      expect(result).toBe(true);
+      expect(tenantPrisma.forTenant).toHaveBeenCalled(); // checked for an override
+      expect(prisma.rolePermission.findMany).toHaveBeenCalled(); // then fell back to global
+    });
+  });
 });
