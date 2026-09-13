@@ -9,8 +9,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Plus, MoreHorizontal, ListFilter, Check, Trash2, CircleCheck, CircleX, RotateCcw } from 'lucide-react';
-import { useQuestions, useArchiveQuestion, useRestoreQuestion, useFlaggedQuestions } from '../../../../lib/hooks/useQuestions';
+import { Plus, MoreHorizontal, ListFilter, Check, Trash2, CircleCheck, CircleX, RotateCcw, Scale } from 'lucide-react';
+import { useQuestions, useArchiveQuestion, useRestoreQuestion, useFlaggedQuestions, useDifficultyCalibration } from '../../../../lib/hooks/useQuestions';
 import { TYPE_LABEL, DIFFICULTY_LABEL, DIFFICULTY_LEVEL } from '../../../../lib/question-display';
 import type { GroupBy, GroupByField } from '../../../../lib/question-grouping';
 import type { Question, QuestionType } from '../../../../lib/types';
@@ -27,6 +27,45 @@ const TYPE_COLOR: Record<QuestionType, string> = { single_mcq: VIZ.azure, multi_
 const PLACEHOLDER: Record<GroupByField, string> = { topic: 'No topic', category: 'No category', difficulty: 'No difficulty', tag: 'No tags' };
 const DIFF_ORDER = ['Easy', 'Medium', 'Hard'];
 const truncCell: React.CSSProperties = { display: 'block', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+
+const DIFF_LABEL: Record<string, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+
+// Difficulty calibration: questions whose declared difficulty disagrees with observed performance.
+// Pure stats over item-analytics; fetched on demand. Collapsed by default.
+function DifficultyCalibrationPanel() {
+  const [show, setShow] = useState(false);
+  const { data, isLoading, isError } = useDifficultyCalibration(show);
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => setShow((v) => !v)} aria-expanded={show}>
+        <Scale size={14} /> {show ? 'Hide difficulty calibration' : 'Difficulty calibration'}
+      </button>
+      {show && (
+        <div style={{ marginTop: 10, background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 12, padding: 14 }}>
+          {isLoading && <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>Analysing responses…</p>}
+          {isError && <p role="alert" style={{ fontSize: 13, color: 'var(--danger)', margin: 0 }}>Failed to load calibration.</p>}
+          {data && data.length === 0 && <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>Every question with enough responses is labeled about right.</p>}
+          {data && data.length > 0 && (
+            <>
+              <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 8px' }}>{data.length} question{data.length === 1 ? '' : 's'} labeled differently from how candidates actually performed (needs ≥20 responses).</p>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {data.map((r) => (
+                  <li key={r.questionId} style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontSize: 13, padding: '7px 9px', borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--paper)' }}>
+                    <span style={{ flex: 1, minWidth: 0, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.text}</span>
+                    <span style={{ fontSize: 12, color: r.verdict === 'harder_than_labeled' ? 'var(--danger)' : '#b45309', whiteSpace: 'nowrap' }}>
+                      {DIFF_LABEL[r.declared] ?? r.declared} → {DIFF_LABEL[r.observed]}
+                    </span>
+                    <span className="v2-mono" style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{Math.round(r.percentCorrect * 100)}% · n={r.responses}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function V2QuestionsPage() {
   const queryClient = useQueryClient();
@@ -174,6 +213,8 @@ export default function V2QuestionsPage() {
       {hiddenFlaggedCount > 0 && rows.length > 0 && (
         <p style={{ marginBottom: 12, fontSize: 12.5, color: 'var(--muted)' }}>Showing {rows.length} of {flagged?.length ?? 0} flagged — the rest sit outside this view (a different status, or beyond the first 100).</p>
       )}
+
+      <DifficultyCalibrationPanel />
 
       <DataTable
         columns={columns} data={rows} getRowId={(r) => r.id}

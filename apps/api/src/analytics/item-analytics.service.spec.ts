@@ -76,3 +76,30 @@ describe('ItemAnalyticsService.flagged', () => {
     expect(result[0].text).toBe('Which of these is a monad?');
   });
 });
+
+describe('ItemAnalyticsService.difficultyCalibration', () => {
+  // Single $queryRaw call for this method (no option fetch), so seed one result set.
+  function calWith(rows: unknown[]) {
+    const queryRaw = jest.fn().mockResolvedValueOnce(rows);
+    const tenantPrisma = { forTenant: jest.fn((_c: unknown, fn: (tx: unknown) => unknown) => fn({ $queryRaw: queryRaw })) };
+    return new ItemAnalyticsService(tenantPrisma as never);
+  }
+
+  it('returns only mismatches, worst drift first, with the observed band + verdict', async () => {
+    const service = calWith([
+      { question_id: 'q-aligned', n: 40, p: 0.9, difficulty: 'easy', text: 'aligned' }, // easy & observed easy -> dropped
+      { question_id: 'q-hardlabel', n: 50, p: 0.95, difficulty: 'hard', text: 'too easy' }, // hard but everyone passes -> gap 2
+      { question_id: 'q-drift', n: 30, p: 0.65, difficulty: 'easy', text: 'a bit hard' }, // easy -> observed medium -> gap 1
+    ]);
+    const out = await service.difficultyCalibration(context);
+
+    expect(out.map((r) => r.questionId)).toEqual(['q-hardlabel', 'q-drift']); // aligned dropped; gap 2 before gap 1
+    expect(out[0]).toMatchObject({ declared: 'hard', observed: 'easy', verdict: 'easier_than_labeled', gap: 2, responses: 50 });
+    expect(out[1]).toMatchObject({ declared: 'easy', observed: 'medium', verdict: 'harder_than_labeled', gap: 1 });
+  });
+
+  it('returns [] when every question is well-calibrated', async () => {
+    const service = calWith([{ question_id: 'q1', n: 40, p: 0.9, difficulty: 'easy', text: 't' }]);
+    expect(await service.difficultyCalibration(context)).toEqual([]);
+  });
+});

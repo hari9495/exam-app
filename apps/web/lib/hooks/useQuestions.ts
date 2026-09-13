@@ -82,6 +82,29 @@ export function useFlaggedQuestions() {
   });
 }
 
+export interface DifficultyCalibrationRow {
+  questionId: string;
+  text: string;
+  responses: number;
+  percentCorrect: number;
+  declared: string;
+  observed: 'easy' | 'medium' | 'hard';
+  verdict: 'aligned' | 'easier_than_labeled' | 'harder_than_labeled';
+  gap: number;
+}
+
+// Questions whose declared difficulty disagrees with observed performance. Fetched on demand
+// (enabled) and cached a while — an org-wide stats sweep, filter-independent.
+export function useDifficultyCalibration(enabled: boolean) {
+  const { accessToken } = useAuth();
+  return useQuery<DifficultyCalibrationRow[]>({
+    queryKey: ['difficulty-calibration'],
+    queryFn: () => apiFetch('/analytics/questions/difficulty-calibration', {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken) && enabled,
+    staleTime: 10 * 60_000,
+  });
+}
+
 export function useTags() {
   const { accessToken } = useAuth();
   return useQuery<Tag[]>({
