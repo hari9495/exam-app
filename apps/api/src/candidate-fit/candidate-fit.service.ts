@@ -18,6 +18,19 @@ export interface FitAssessmentView {
   stale: boolean;
 }
 
+export interface FitScreeningRow {
+  entryId: string;
+  candidateId: string;
+  candidateName: string;
+  status: string;
+  overallScore: number | null;
+  summary: string | null;
+  strengths: string[];
+  concerns: string[];
+  scoredAt: Date | null;
+  stale: boolean;
+}
+
 @Injectable()
 export class CandidateFitService {
   constructor(
@@ -148,6 +161,48 @@ export class CandidateFitService {
         error: a.error,
         stale: a.status === 'done' && currentHash !== null && a.criteriaHash !== currentHash,
       };
+    });
+  }
+
+  // Ranked screening view for a whole job: every candidate's fit, best score first (scored rows
+  // first, then in-flight/skipped/failed). Reuses the same stored assessments as getForEntry.
+  async listForJob(context: TenantContext, jobId: string): Promise<FitScreeningRow[]> {
+    const orgId = context.organizationId as string;
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const job = await tx.job.findFirst({ where: { id: jobId, organizationId: orgId } });
+      if (!job) throw new NotFoundException(`Job ${jobId} not found`);
+      const currentHash = computeCriteriaHash({ title: job.title, description: job.description, fitCriteria: job.fitCriteria, fitRubric: job.fitRubric });
+
+      const assessments = await tx.candidateFitAssessment.findMany({ where: { jobId, organizationId: orgId } });
+      if (assessments.length === 0) return [];
+      const candidates = await tx.candidate.findMany({
+        where: { id: { in: assessments.map((a) => a.candidateId) }, organizationId: orgId },
+        select: { id: true, name: true },
+      });
+      const nameById = new Map(candidates.map((c) => [c.id, c.name]));
+
+      const rows: FitScreeningRow[] = assessments.map((a) => ({
+        entryId: a.entryId,
+        candidateId: a.candidateId,
+        candidateName: nameById.get(a.candidateId) ?? 'Unknown candidate',
+        status: a.status,
+        overallScore: a.overallScore,
+        summary: a.summary,
+        strengths: parseJsonArray(a.strengths),
+        concerns: parseJsonArray(a.concerns),
+        scoredAt: a.scoredAt,
+        stale: a.status === 'done' && a.criteriaHash !== currentHash,
+      }));
+
+      // Scored rows first, highest score first; everything else (pending/skipped/failed) after, by name.
+      rows.sort((x, y) => {
+        const xs = x.status === 'done' && x.overallScore !== null;
+        const ys = y.status === 'done' && y.overallScore !== null;
+        if (xs && ys) return (y.overallScore as number) - (x.overallScore as number);
+        if (xs !== ys) return xs ? -1 : 1;
+        return x.candidateName.localeCompare(y.candidateName);
+      });
+      return rows;
     });
   }
 }

@@ -110,4 +110,32 @@ describe('CandidateFitService', () => {
       expect(view!.overallScore).toBe(80);
     });
   });
+
+  describe('listForJob', () => {
+    it('throws NotFound when the job is missing', async () => {
+      tx.job.findFirst.mockResolvedValue(null);
+      await expect(service.listForJob(context, 'nope')).rejects.toThrow(NotFoundException);
+    });
+
+    it('ranks scored candidates by score desc, with unscored last, and joins names', async () => {
+      const currentHash = computeCriteriaHash({ title: job.title, description: job.description, fitCriteria: job.fitCriteria, fitRubric: job.fitRubric });
+      tx.candidateFitAssessment.findMany.mockResolvedValue([
+        { entryId: 'e1', candidateId: 'c1', jobId: 'job-1', status: 'done', overallScore: 70, summary: 's1', strengths: '["x"]', concerns: '[]', scoredAt: new Date(), criteriaHash: currentHash },
+        { entryId: 'e2', candidateId: 'c2', jobId: 'job-1', status: 'done', overallScore: 92, summary: 's2', strengths: '[]', concerns: '[]', scoredAt: new Date(), criteriaHash: 'OLD' },
+        { entryId: 'e3', candidateId: 'c3', jobId: 'job-1', status: 'pending', overallScore: null, summary: null, strengths: null, concerns: null, scoredAt: null, criteriaHash: null },
+      ]);
+      tx.candidate = { findMany: jest.fn().mockResolvedValue([{ id: 'c1', name: 'Ada' }, { id: 'c2', name: 'Bev' }, { id: 'c3', name: 'Cy' }]) };
+
+      const rows = await service.listForJob(context, 'job-1');
+      expect(rows.map((r) => r.candidateId)).toEqual(['c2', 'c1', 'c3']); // 92, 70, then pending
+      expect(rows[0]).toMatchObject({ candidateName: 'Bev', overallScore: 92, stale: true }); // OLD hash => stale
+      expect(rows[1]).toMatchObject({ candidateName: 'Ada', stale: false });
+      expect(rows[2]).toMatchObject({ candidateName: 'Cy', status: 'pending', overallScore: null });
+    });
+
+    it('returns [] when nothing has been scored', async () => {
+      tx.candidateFitAssessment.findMany.mockResolvedValue([]);
+      expect(await service.listForJob(context, 'job-1')).toEqual([]);
+    });
+  });
 });

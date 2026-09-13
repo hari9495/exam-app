@@ -29,4 +29,10 @@ export class CandidateFitController {
   getForEntry(@CurrentTenant() tenant: TenantContext, @Param('entryId') entryId: string) {
     return this.fit.getForEntry(tenant, entryId);
   }
+
+  @Get('jobs/:jobId/fit-assessments')
+  @RequirePermissions('results:view')
+  listForJob(@CurrentTenant() tenant: TenantContext, @Param('jobId') jobId: string) {
+    return this.fit.listForJob(tenant, jobId);
+  }
 }
