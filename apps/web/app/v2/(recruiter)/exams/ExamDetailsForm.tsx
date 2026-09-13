@@ -25,6 +25,7 @@ export interface ExamDetailsValue {
   allowedIpRange?: string | null;
   enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
+  webcamAiAnalysisEnabled: boolean;
   webcamRecordOnly: boolean;
   proctoringEnforcement: 'warn' | 'block';
   proctoringStrikeLimit: number;
@@ -120,6 +121,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
   const [allowedIpRange, setAllowedIpRange] = useState(initialExam?.allowedIpRange ?? '');
   const [enableAntiCheating, setEnableAntiCheating] = useState(initialExam?.enableAntiCheating ?? true);
   const [webcamProctoringEnabled, setWebcamProctoringEnabled] = useState(initialExam?.webcamProctoringEnabled ?? true);
+  const [webcamAiAnalysisEnabled, setWebcamAiAnalysisEnabled] = useState(initialExam?.webcamAiAnalysisEnabled ?? false);
   const [webcamRecordOnly, setWebcamRecordOnly] = useState(initialExam?.webcamRecordOnly ?? false);
   const [proctoringEnforcement, setProctoringEnforcement] = useState<'warn' | 'block'>(initialExam?.proctoringEnforcement ?? 'block');
   const [proctoringStrikeLimit, setProctoringStrikeLimit] = useState(String(initialExam?.proctoringStrikeLimit ?? 3));
@@ -164,6 +166,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
       allowedIpRange: allowedIpRange.trim() ? allowedIpRange.trim() : initialExam?.allowedIpRange ? null : undefined,
       enableAntiCheating,
       webcamProctoringEnabled,
+      webcamAiAnalysisEnabled,
       webcamRecordOnly,
       proctoringEnforcement,
       proctoringStrikeLimit: Number(proctoringStrikeLimit),
@@ -242,6 +245,10 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
                 <div style={{ paddingLeft: 26, paddingTop: 8 }}>
                   <CheckRow label="Record only — never pause for webcam violations" checked={webcamRecordOnly} onChange={setWebcamRecordOnly} />
                   <p style={{ ...help, paddingTop: 4 }}>Webcam violations (no face, multiple faces, head turned) are still detected and recorded as evidence, but never pause or block the exam. The rules below still pause/block as configured.</p>
+                  <div style={{ paddingTop: 10 }}>
+                    <CheckRow label="AI review of webcam snapshots after the exam" checked={webcamAiAnalysisEnabled} onChange={setWebcamAiAnalysisEnabled} />
+                    <p style={{ ...help, paddingTop: 4 }}>After the exam, a sample of the captured webcam snapshots is sent to your configured AI provider to flag likely issues (another person, a phone, looking away). Flags are for reviewer attention only and never auto-penalise. Requires an AI provider configured in Settings → Integrations.</p>
+                  </div>
                 </div>
               )}
             </div>

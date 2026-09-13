@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { AttemptSettlementService } from './attempt-settlement.service';
 import { AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
+import { WebcamVisionService } from '../proctoring-analysis/webcam-vision.service';
 import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
 import { IntegrityAnalysisService } from '../integrity/integrity-analysis.service';
 import { ApiInternalClient } from '../api-internal-client/api-internal.client';
@@ -43,6 +44,7 @@ describe('AttemptSettlementService', () => {
   let service: AttemptSettlementService;
   let broadcaster: { emitAttemptStatus: jest.Mock; emitMessageSent: jest.Mock };
   let attemptAnalysis: { analyze: jest.Mock };
+  let webcamVision: { analyze: jest.Mock };
   let attemptInsight: { analyze: jest.Mock };
   let integrityAnalysis: { analyze: jest.Mock };
   let apiInternalClient: { dispatchWebhook: jest.Mock };
@@ -54,6 +56,7 @@ describe('AttemptSettlementService', () => {
     passCriteriaPercent: 50,
     enableAntiCheating: true,
     webcamProctoringEnabled: true,
+    webcamAiAnalysisEnabled: false,
     webcamRecordOnly: false,
     proctoringEnforcement: 'block',
     proctoringStrikeLimit: 3,
@@ -67,6 +70,7 @@ describe('AttemptSettlementService', () => {
   beforeEach(() => {
     broadcaster = { emitAttemptStatus: jest.fn().mockResolvedValue(undefined), emitMessageSent: jest.fn().mockResolvedValue(undefined) };
     attemptAnalysis = { analyze: jest.fn().mockResolvedValue(undefined) };
+    webcamVision = { analyze: jest.fn().mockResolvedValue(undefined) };
     attemptInsight = { analyze: jest.fn().mockResolvedValue(undefined) };
     integrityAnalysis = { analyze: jest.fn().mockResolvedValue(undefined) };
     apiInternalClient = { dispatchWebhook: jest.fn().mockResolvedValue(undefined) };
@@ -74,6 +78,7 @@ describe('AttemptSettlementService', () => {
     service = new AttemptSettlementService(
       broadcaster as unknown as AttemptStatusBroadcaster,
       attemptAnalysis as unknown as AttemptAnalysisService,
+      webcamVision as unknown as WebcamVisionService,
       attemptInsight as unknown as AttemptInsightService,
       integrityAnalysis as unknown as IntegrityAnalysisService,
       apiInternalClient as unknown as ApiInternalClient,
@@ -1598,6 +1603,7 @@ describe('AttemptSettlementService', () => {
       passCriteriaPercent: 40,
       enableAntiCheating: true,
       webcamProctoringEnabled: true,
+      webcamAiAnalysisEnabled: false,
       webcamRecordOnly: false,
       proctoringEnforcement: 'block',
       proctoringStrikeLimit: 2,

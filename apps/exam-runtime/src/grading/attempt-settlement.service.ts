@@ -3,6 +3,7 @@ import { Attempt, Prisma } from '@prisma/client';
 import { gradeAnswer, computeResult, computeRemainingSeconds, GradableSection } from './grading';
 import { ATTEMPT_STATUS_BROADCASTER, AttemptStatusBroadcaster } from '../monitoring/attempt-status-broadcaster';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
+import { WebcamVisionService } from '../proctoring-analysis/webcam-vision.service';
 import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
 import { IntegrityAnalysisService } from '../integrity/integrity-analysis.service';
 import { WebcamViolationReason } from '../attempts/dto/webcam-violation.dto';
@@ -92,6 +93,7 @@ export interface SettlementExam {
   passCriteriaPercent: number;
   enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
+  webcamAiAnalysisEnabled: boolean;
   webcamRecordOnly: boolean;
   proctoringEnforcement: string;
   proctoringStrikeLimit: number;
@@ -109,6 +111,7 @@ export class AttemptSettlementService {
   constructor(
     @Inject(ATTEMPT_STATUS_BROADCASTER) private readonly broadcaster: AttemptStatusBroadcaster,
     private readonly attemptAnalysis: AttemptAnalysisService,
+    private readonly webcamVision: WebcamVisionService,
     private readonly attemptInsight: AttemptInsightService,
     private readonly integrityAnalysis: IntegrityAnalysisService,
     private readonly apiInternalClient: ApiInternalClient,
@@ -251,6 +254,12 @@ export class AttemptSettlementService {
         await this.attemptAnalysis.analyze(finalized.id);
       } catch (error) {
         this.logger.error('Proctoring analysis failed to start', error as Error);
+      }
+      // Opt-in AI vision pass over the stored webcam snapshots (inert unless the exam enables it).
+      try {
+        await this.webcamVision.analyze(finalized.id);
+      } catch (error) {
+        this.logger.error('Webcam vision analysis failed to start', error as Error);
       }
       // Integrity analysis runs unconditionally (unlike insight below) — telemetry, paste, and
       // similarity evidence don't depend on grading, so it's useful even for pending_manual_grade.

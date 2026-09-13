@@ -4,6 +4,7 @@ function source(overrides: Partial<Parameters<typeof resolveProctoringConfig>[0]
   return {
     enableAntiCheating: true,
     webcamProctoringEnabled: true,
+    webcamAiAnalysisEnabled: false,
     webcamRecordOnly: false,
     proctoringEnforcement: 'block',
     proctoringStrikeLimit: 3,
@@ -21,6 +22,7 @@ describe('resolveProctoringConfig', () => {
     expect(resolveProctoringConfig(source())).toEqual({
       enableAntiCheating: true,
       webcamEnabled: true,
+      webcamAiAnalysisEnabled: false,
       webcamRecordOnly: false,
       enforcement: 'block',
       strikeLimit: 3,
@@ -40,6 +42,7 @@ describe('resolveProctoringConfig', () => {
     expect(config).toEqual({
       enableAntiCheating: false,
       webcamEnabled: false,
+      webcamAiAnalysisEnabled: false,
       webcamRecordOnly: false,
       enforcement: 'warn',
       strikeLimit: 3,
@@ -68,6 +71,14 @@ describe('resolveProctoringConfig', () => {
   it('surfaces screenCaptureEnabled on the resolved config', () => {
     expect(resolveProctoringConfig(source({ screenCaptureEnabled: true })).screenCaptureEnabled).toBe(true);
     expect(resolveProctoringConfig(source({ screenCaptureEnabled: false })).screenCaptureEnabled).toBe(false);
+  });
+
+  it('enables webcam AI analysis only when both webcam proctoring and the AI toggle are on', () => {
+    expect(resolveProctoringConfig(source({ webcamProctoringEnabled: true, webcamAiAnalysisEnabled: true })).webcamAiAnalysisEnabled).toBe(true);
+    // AI toggle on but webcam off => off (nothing to analyse)
+    expect(resolveProctoringConfig(source({ webcamProctoringEnabled: false, webcamAiAnalysisEnabled: true })).webcamAiAnalysisEnabled).toBe(false);
+    // master off forces it off too
+    expect(resolveProctoringConfig(source({ enableAntiCheating: false, webcamProctoringEnabled: true, webcamAiAnalysisEnabled: true })).webcamAiAnalysisEnabled).toBe(false);
   });
 
   it('parses the disabled-signal JSON array', () => {
@@ -122,6 +133,7 @@ describe('proctoring bypass', () => {
   const blockingExam = {
     enableAntiCheating: true,
     webcamProctoringEnabled: true,
+    webcamAiAnalysisEnabled: false,
     webcamRecordOnly: false,
     proctoringEnforcement: 'block',
     proctoringStrikeLimit: 5,

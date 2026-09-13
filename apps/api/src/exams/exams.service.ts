@@ -167,6 +167,7 @@ export class ExamsService {
   private resolveProctoringFields(dto: {
     enableAntiCheating?: boolean;
     webcamProctoringEnabled?: boolean;
+    webcamAiAnalysisEnabled?: boolean;
     webcamRecordOnly?: boolean;
     proctoringEnforcement?: string;
     proctoringStrikeLimit?: number;
@@ -176,6 +177,7 @@ export class ExamsService {
   }): {
     enableAntiCheating?: boolean;
     webcamProctoringEnabled?: boolean;
+    webcamAiAnalysisEnabled?: boolean;
     webcamRecordOnly?: boolean;
     proctoringEnforcement?: string;
     proctoringStrikeLimit?: number;
@@ -187,15 +189,20 @@ export class ExamsService {
       return {
         enableAntiCheating: false,
         webcamProctoringEnabled: false,
+        webcamAiAnalysisEnabled: false,
         webcamRecordOnly: false,
         disabledProctoringSignalsJson: JSON.stringify(TOGGLEABLE_PROCTORING_SIGNALS),
         screenCaptureEnabled: false,
         lockdownRequired: false,
       };
     }
+    // Webcam AI analysis is meaningless without webcam capture: force it off whenever webcam
+    // proctoring is being turned off in the same write, so the row can't lie to the runtime gate.
+    const webcamOff = dto.webcamProctoringEnabled === false;
     return {
       ...(dto.enableAntiCheating !== undefined ? { enableAntiCheating: dto.enableAntiCheating } : {}),
       ...(dto.webcamProctoringEnabled !== undefined ? { webcamProctoringEnabled: dto.webcamProctoringEnabled } : {}),
+      ...(webcamOff ? { webcamAiAnalysisEnabled: false } : dto.webcamAiAnalysisEnabled !== undefined ? { webcamAiAnalysisEnabled: dto.webcamAiAnalysisEnabled } : {}),
       ...(dto.webcamRecordOnly !== undefined ? { webcamRecordOnly: dto.webcamRecordOnly } : {}),
       ...(dto.proctoringEnforcement !== undefined ? { proctoringEnforcement: dto.proctoringEnforcement } : {}),
       ...(dto.proctoringStrikeLimit !== undefined ? { proctoringStrikeLimit: dto.proctoringStrikeLimit } : {}),
@@ -695,6 +702,7 @@ export class ExamsService {
           feedbackVisibility: exam.feedbackVisibility,
           enableAntiCheating: exam.enableAntiCheating,
           webcamProctoringEnabled: exam.webcamProctoringEnabled,
+          webcamAiAnalysisEnabled: exam.webcamAiAnalysisEnabled,
           webcamRecordOnly: exam.webcamRecordOnly,
           proctoringEnforcement: exam.proctoringEnforcement,
           proctoringStrikeLimit: exam.proctoringStrikeLimit,

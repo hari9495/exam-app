@@ -40,6 +40,10 @@ const SEVERITY_BY_EVENT_TYPE: Record<string, Severity> = {
   // messaging app / extra browser window is worth recruiter attention but is far more
   // false-positive-prone than remote-access UI, so it flags at medium and never strikes.
   background_app_detected: 'medium',
+  // Server-generated only (AI webcam vision at settlement). Flag-for-review, never strike-worthy --
+  // a vision false positive (shadow, sibling walking past) must never auto-punish. Medium so it
+  // surfaces in the recruiter timeline without forcing high_concern on its own.
+  webcam_ai_flag: 'medium',
   right_click: 'low',
   refresh_warning: 'low',
   idle_timeout: 'low',
