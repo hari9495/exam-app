@@ -33,6 +33,39 @@ Two things that genuinely break if you get them wrong: **grandfather-before-enfo
 
 ---
 
+## Recommended approach (the "best" path, not just the correct one)
+
+**Verify baseline → rehearse on a restored snapshot → one coordinated deploy in a maintenance
+window → smoke → enable config gradually.** Rationale:
+
+- **One coordinated deploy, not a split/rolling one.** The delta is ~90 migrations but a single
+  linear chain, and three things all want quiesced traffic at the same moment: grandfather must
+  fully precede the new code (gate 1), the destructive column drop (gate 3), and the
+  record-visibility RLS filter swap (gate 4). Splitting the chain *adds* risk — it creates windows
+  where new code runs on an old schema or vice versa. Keep it one unit; the only thing you isolate
+  is doing all of it inside a short **maintenance window** (this is a single-VM / pm2 app, so a
+  brief window is simpler and safer than chasing zero-downtime).
+- **Rehearse the whole chain on a restored snapshot — highest-value step.** A 90-migration delta
+  against SQL Server is exactly where a surprise hides; find it on a throwaway copy, not in the
+  window. See the rehearsal checklist below.
+- **Ship dark, enable after.** Every provider/AI feature is inert until configured, so the deploy
+  is low behavior-change. Bring prod up, confirm health, *then* set config (Post-deploy
+  configuration) and pilot the AI features on one test org before announcing.
+
+### Rehearsal checklist (run once, before the real window)
+
+1. Restore the Phase-0 prod snapshot to a throwaway DB (same SQL Server version as prod).
+2. Point a shell at it and run the real sequence end to end: `prisma migrate deploy` →
+   `prisma db seed` → `npm run build` → the static copy.
+3. Confirm `prisma migrate status` shows the chain fully applied with no drift, and the seed logs
+   "Seed complete".
+4. Boot the built app against the restored DB and run the smoke tests (below). Pay attention to the
+   grandfather check and an org_admin opening pipeline/approvals/user-groups/Roles config.
+5. Time it. That runtime (plus a margin) is your maintenance-window length.
+6. Only after a clean rehearsal, schedule the real window (non-exam day).
+
+---
+
 ## Phase 0 — before you touch prod
 
 - **Confirm the baseline.** The whole plan assumes prod is at `20260801120000` (remote-access /
