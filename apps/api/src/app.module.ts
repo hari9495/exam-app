@@ -44,6 +44,7 @@ import { AuditQueryModule } from './audit/audit-query.module';
 import { SystemEventsQueryModule } from './system-events/system-events.module';
 import { PublicApiModule } from './public-api/public-api.module';
 import { FaceEnrolmentModule } from './face-enrolment/face-enrolment.module';
+import { ProctoringRetentionModule } from './proctoring-retention/proctoring-retention.module';
 import { ItemAnalyticsModule } from './analytics/item-analytics.module';
 import { PipelineAnalyticsModule } from './analytics/pipeline-analytics.module';
 import { OffersModule } from './offers/offers.module';
@@ -115,6 +116,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     PublicApplicationsModule,
     PublicApiModule,
     FaceEnrolmentModule,
+    ProctoringRetentionModule,
     ItemAnalyticsModule,
     PipelineAnalyticsModule,
     OffersModule,
