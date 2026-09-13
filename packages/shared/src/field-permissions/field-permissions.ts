@@ -1,7 +1,7 @@
-export const GOVERNABLE_ROLES = ['recruiter', 'panel'] as const;
+export const GOVERNABLE_ROLES = ['recruiter', 'panel', 'hiring_manager'] as const;
 export const GOVERNED_FIELDS = {
   candidate: ['email', 'phone'] as const,
-  job: ['salaryMin', 'salaryMax', 'salaryCurrency', 'headcount'] as const,
+  job: ['salaryMin', 'salaryMax', 'salaryCurrency', 'headcount', 'department', 'fitCriteria', 'fitRubric'] as const,
 } as const;
 export type FieldEntity = keyof typeof GOVERNED_FIELDS;
 export type FieldPermissionConfig = Partial<Record<FieldEntity, Record<string, string[]>>>;

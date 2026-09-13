@@ -126,11 +126,18 @@ describe('hiddenFieldsFor', () => {
 
 describe('registry constants', () => {
   it('exposes the expected governable roles', () => {
-    expect(GOVERNABLE_ROLES).toEqual(['recruiter', 'panel']);
+    expect(GOVERNABLE_ROLES).toEqual(['recruiter', 'panel', 'hiring_manager']);
   });
 
   it('exposes the expected governed fields', () => {
     expect(GOVERNED_FIELDS.candidate).toEqual(['email', 'phone']);
-    expect(GOVERNED_FIELDS.job).toEqual(['salaryMin', 'salaryMax', 'salaryCurrency', 'headcount']);
+    expect(GOVERNED_FIELDS.job).toEqual(['salaryMin', 'salaryMax', 'salaryCurrency', 'headcount', 'department', 'fitCriteria', 'fitRubric']);
+  });
+
+  it('governs the new fields + role: hides fitRubric from hiring_manager', () => {
+    const cfg = validateFieldPermissions({ job: { hiring_manager: ['department', 'fitRubric'] } });
+    expect(hiddenFieldsFor(cfg, 'job', 'hiring_manager')).toEqual(new Set(['department', 'fitRubric']));
+    // an ungoverned role still gets nothing
+    expect(hiddenFieldsFor(cfg, 'job', 'org_admin')).toEqual(new Set());
   });
 });

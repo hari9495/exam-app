@@ -296,10 +296,11 @@ export interface Holiday {
 
 // Kept in sync by hand with @exam-platform/shared's field-permissions/field-permissions.ts (same
 // runtime-import restriction as GLOBAL_STAGES/Weekday above).
-export const GOVERNABLE_ROLES = ['recruiter', 'panel'] as const;
+// Mirror of packages/shared field-permissions.ts (web can't import shared values) -- keep in sync.
+export const GOVERNABLE_ROLES = ['recruiter', 'panel', 'hiring_manager'] as const;
 export const GOVERNED_FIELDS = {
   candidate: ['email', 'phone'],
-  job: ['salaryMin', 'salaryMax', 'salaryCurrency', 'headcount'],
+  job: ['salaryMin', 'salaryMax', 'salaryCurrency', 'headcount', 'department', 'fitCriteria', 'fitRubric'],
 } as const;
 export type FieldEntity = keyof typeof GOVERNED_FIELDS;
 export type FieldPermissionConfig = Partial<Record<FieldEntity, Record<string, string[]>>>;

@@ -21,6 +21,14 @@ const td: React.CSSProperties = { padding: '8px 10px', borderBottom: '1px solid 
 
 const ENTITIES = Object.keys(GOVERNED_FIELDS) as FieldEntity[];
 const ENTITY_LABELS: Record<FieldEntity, string> = { candidate: 'Candidate', job: 'Job' };
+const ROLE_LABELS: Record<string, string> = { recruiter: 'Recruiter', panel: 'Interview Panel', hiring_manager: 'Hiring Manager' };
+const FIELD_LABELS: Record<string, string> = {
+  email: 'Email', phone: 'Phone',
+  salaryMin: 'Salary (min)', salaryMax: 'Salary (max)', salaryCurrency: 'Salary currency', headcount: 'Headcount',
+  department: 'Department', fitCriteria: 'Fit criteria', fitRubric: 'Fit rubric',
+};
+const roleLabel = (r: string) => ROLE_LABELS[r] ?? r;
+const fieldLabel = (f: string) => FIELD_LABELS[f] ?? f;
 type Role = (typeof GOVERNABLE_ROLES)[number];
 
 type HiddenState = Record<FieldEntity, Record<Role, Set<string>>>;
@@ -113,14 +121,14 @@ export default function V2FieldPermissionsSettingsPage() {
               <tr>
                 <th style={th}>Field</th>
                 {GOVERNABLE_ROLES.map((role) => (
-                  <th key={role} style={th}>{role}</th>
+                  <th key={role} style={th}>{roleLabel(role)}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {GOVERNED_FIELDS[entity].map((field) => (
                 <tr key={field}>
-                  <td style={td}>{field}</td>
+                  <td style={td}>{fieldLabel(field)}</td>
                   {GOVERNABLE_ROLES.map((role) => (
                     <td key={role} style={td}>
                       <input
