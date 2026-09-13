@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PipelineService } from './pipeline.service';
 import { computeCriteriaHash } from '../candidate-fit/candidate-fit.core';
 
@@ -43,7 +43,7 @@ describe('PipelineService', () => {
   let notifications: { createMentions: jest.Mock; notify: jest.Mock };
   let approvals: { getChains: jest.Mock; submit: jest.Mock; isConfigurer: jest.Mock; cancelForSubject: jest.Mock; getSummariesFor: jest.Mock };
   let pipelines: { getDefaultPipeline: jest.Mock; resolveStatus: jest.Mock };
-  let fieldPerms: { getHiddenFields: jest.Mock };
+  let fieldPerms: { getHiddenFields: jest.Mock; getLockedFields: jest.Mock };
   let jobBoardPoster: { syncJobToPaidBoards: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
@@ -76,7 +76,7 @@ describe('PipelineService', () => {
     };
     // Empty set by default (matches getHiddenFields' own contract for an ungoverned/admin role) --
     // pre-existing tests below pass role 'org_admin' and don't care about redaction.
-    fieldPerms = { getHiddenFields: jest.fn().mockResolvedValue(new Set()) };
+    fieldPerms = { getHiddenFields: jest.fn().mockResolvedValue(new Set()), getLockedFields: jest.fn().mockResolvedValue(new Set()) };
     // Paid job-board posting is best-effort and inert by default in these tests (no-op).
     jobBoardPoster = { syncJobToPaidBoards: jest.fn().mockResolvedValue(undefined) };
     service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, whatsappTemplates as any, candidateWhatsapp as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any, jobBoardPoster as any);
@@ -2465,6 +2465,38 @@ describe('PipelineService', () => {
 
       expect(tx.job.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { status: 'open' } }));
       expect(jobBoardPoster.syncJobToPaidBoards).toHaveBeenCalledWith(context, 'job-1');
+    });
+  });
+
+  describe('updateJob field-level write enforcement', () => {
+    it('rejects changing a field that is read-only for the caller role', async () => {
+      fieldPerms.getLockedFields.mockResolvedValue(new Set(['salaryMin']));
+      const update = jest.fn();
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', salaryMin: 100, fitRubric: null }), update } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.updateJob(context, 'user-1', 'job-1', { salaryMin: 200 } as any, 'recruiter')).rejects.toThrow(ForbiddenException);
+      expect(fieldPerms.getLockedFields).toHaveBeenCalledWith(context, 'recruiter', 'job');
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('allows a no-op resend of a read-only field (unchanged value)', async () => {
+      fieldPerms.getLockedFields.mockResolvedValue(new Set(['salaryMin']));
+      const tx = {
+        job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', salaryMin: 100, fitRubric: null }), update: jest.fn().mockResolvedValue({ id: 'job-1' }) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.updateJob(context, 'user-1', 'job-1', { salaryMin: 100, title: 'New' } as any, 'recruiter')).resolves.toBeDefined();
+      expect(tx.job.update).toHaveBeenCalled();
+    });
+
+    it('does not enforce when no role is provided (internal caller)', async () => {
+      const tx = { job: { findFirst: jest.fn().mockResolvedValue({ id: 'job-1', salaryMin: 100, fitRubric: null }), update: jest.fn().mockResolvedValue({ id: 'job-1' }) } };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+      await expect(service.updateJob(context, 'user-1', 'job-1', { salaryMin: 999 } as any)).resolves.toBeDefined();
+      expect(fieldPerms.getLockedFields).not.toHaveBeenCalled();
     });
   });
 });

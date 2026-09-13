@@ -9,6 +9,7 @@ import {
   parseFieldPermissions,
   validateFieldPermissions,
   hiddenFieldsFor,
+  lockedFieldsFor,
 } from '@exam-platform/shared';
 
 @Injectable()
@@ -26,6 +27,17 @@ export class FieldPermissionsService {
       select: { fieldPermissionsJson: true },
     });
     return hiddenFieldsFor(parseFieldPermissions(org?.fieldPermissionsJson), entity, role);
+  }
+
+  // Fields this role may not edit (readonly OR hidden) -- enforced on write paths.
+  async getLockedFields(context: TenantContext, role: string, entity: FieldEntity): Promise<Set<string>> {
+    if (!(GOVERNABLE_ROLES as readonly string[]).includes(role)) return new Set();
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { fieldPermissionsJson: true },
+    });
+    return lockedFieldsFor(parseFieldPermissions(org?.fieldPermissionsJson), entity, role);
   }
 
   async getConfig(context: TenantContext): Promise<FieldPermissionConfig> {
