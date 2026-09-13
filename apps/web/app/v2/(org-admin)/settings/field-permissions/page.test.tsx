@@ -76,4 +76,16 @@ describe('V2FieldPermissionsSettingsPage', () => {
     const payload = mutate.mock.calls[0][0] as FieldPermissionConfig;
     expect(payload.candidate).toBeUndefined();
   });
+
+  it('governs the hiring_manager role and the new job fields', () => {
+    (useFieldPermissions as jest.Mock).mockReturnValue({ data: {}, isLoading: false });
+    render(<V2FieldPermissionsSettingsPage />);
+    expect(screen.getByLabelText('candidate email hidden from hiring_manager')).toBeInTheDocument();
+    for (const field of ['department', 'fitCriteria', 'fitRubric']) {
+      expect(screen.getByLabelText(`job ${field} hidden from hiring_manager`)).toBeInTheDocument();
+    }
+    // and the friendlier labels render (the role column appears in both entity tables)
+    expect(screen.getAllByText('Hiring Manager').length).toBeGreaterThan(0);
+    expect(screen.getByText('Fit rubric')).toBeInTheDocument();
+  });
 });
