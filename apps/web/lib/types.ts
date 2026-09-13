@@ -73,7 +73,7 @@ export interface MyGroups { groupIds: string[]; coMemberUserIds: string[]; }
 // Custom Permission Profiles (Zoho-style org-defined permission sets, assignable per user in
 // place of their role default). Shapes mirror the permission-profiles API responses verbatim
 // (see apps/api/src/permission-profiles/permission-profiles.service.ts + assignable-permissions.ts).
-export interface PermissionProfile { id: string; name: string; permissions: string[]; assignedUserCount: number; }
+export interface PermissionProfile { id: string; name: string; permissions: string[]; fieldPermissions: UserFieldPermissionConfig; assignedUserCount: number; }
 export interface AssignablePermission { key: string; description: string; }
 
 // Org Sender Addresses (Zoho-style configurable From addresses). Shapes mirror the
@@ -307,6 +307,12 @@ export const FIELD_LEVELS = ['readonly', 'hidden'] as const;
 export type FieldLevel = (typeof FIELD_LEVELS)[number];
 // entity -> role -> field -> level (absent field = editable / full access).
 export type FieldPermissionConfig = Partial<Record<FieldEntity, Record<string, Record<string, FieldLevel>>>>;
+
+// Per-user field rules attached to a permission profile: entity -> field -> level. 'editable' is an
+// explicit GRANT that un-hides a field the role restricts; an absent field inherits the role rule.
+export const USER_FIELD_LEVELS = ['editable', 'readonly', 'hidden'] as const;
+export type UserFieldLevel = (typeof USER_FIELD_LEVELS)[number];
+export type UserFieldPermissionConfig = Partial<Record<FieldEntity, Record<string, UserFieldLevel>>>;
 
 export interface Candidate {
   id: string;

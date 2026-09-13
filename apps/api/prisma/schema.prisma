@@ -1466,6 +1466,9 @@ model PermissionProfile {
   organizationId  String   @map("organization_id") @db.UniqueIdentifier
   name            String   @db.NVarChar(200)
   permissionsJson String   @map("permissions_json") @db.NVarChar(Max)
+  // Optional per-user field rules (entity->field->level). Overlaid per-field on the org role config
+  // for users assigned this profile. Null = inherit role field rules entirely.
+  fieldPermissionsJson String? @map("field_permissions_json") @db.NVarChar(Max)
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
   users           User[]

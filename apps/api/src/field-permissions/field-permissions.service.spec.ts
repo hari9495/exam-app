@@ -1,22 +1,32 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
-import { PrismaService, AuditService } from '@exam-platform/shared';
+import { PrismaService, TenantPrismaService, AuditService } from '@exam-platform/shared';
 import { FieldPermissionsService } from './field-permissions.service';
 
 describe('FieldPermissionsService', () => {
   let service: FieldPermissionsService;
   let prisma: { organization: { findUnique: jest.Mock; update: jest.Mock } };
+  let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
 
   const tenant = { organizationId: 'org-1', isSuperAdmin: false };
 
+  // Helper: make forTenant hand the callback a tx whose permissionProfile.findFirst returns `profile`.
+  const withProfile = (profile: { fieldPermissionsJson: string | null } | null) => {
+    tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn({ permissionProfile: { findFirst: jest.fn().mockResolvedValue(profile) } }),
+    );
+  };
+
   beforeEach(async () => {
     prisma = { organization: { findUnique: jest.fn(), update: jest.fn() } };
+    tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
     const moduleRef = await Test.createTestingModule({
       providers: [
         FieldPermissionsService,
         { provide: PrismaService, useValue: prisma },
+        { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AuditService, useValue: audit },
       ],
     }).compile();
@@ -80,6 +90,51 @@ describe('FieldPermissionsService', () => {
       const result = await service.getLockedFields(tenant, 'org_admin', 'job');
       expect(result).toEqual(new Set());
       expect(prisma.organization.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('per-user profile field overrides', () => {
+    const withProfileTenant = { organizationId: 'org-1', isSuperAdmin: false, permissionProfileId: 'profile-1' };
+
+    it('does NOT read a profile when the context has no permissionProfileId', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        fieldPermissionsJson: JSON.stringify({ candidate: { recruiter: { email: 'hidden' } } }),
+      });
+      const result = await service.getHiddenFields(tenant, 'recruiter', 'candidate');
+      expect(result).toEqual(new Set(['email']));
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
+
+    it("lets a profile GRANT access the role hides (editable override un-hides)", async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        fieldPermissionsJson: JSON.stringify({ candidate: { recruiter: { email: 'hidden' } } }),
+      });
+      withProfile({ fieldPermissionsJson: JSON.stringify({ candidate: { email: 'editable' } }) });
+      const result = await service.getHiddenFields(withProfileTenant, 'recruiter', 'candidate');
+      expect(result).toEqual(new Set());
+    });
+
+    it('lets a profile TIGHTEN a field the role leaves open (write lock)', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ fieldPermissionsJson: null });
+      withProfile({ fieldPermissionsJson: JSON.stringify({ job: { salaryMin: 'readonly' } }) });
+      const result = await service.getLockedFields(withProfileTenant, 'recruiter', 'job');
+      expect(result).toEqual(new Set(['salaryMin']));
+    });
+
+    it('inherits the role rule for a field the profile does not mention', async () => {
+      prisma.organization.findUnique.mockResolvedValue({
+        fieldPermissionsJson: JSON.stringify({ candidate: { recruiter: { email: 'hidden', phone: 'hidden' } } }),
+      });
+      withProfile({ fieldPermissionsJson: JSON.stringify({ candidate: { phone: 'editable' } }) });
+      const result = await service.getHiddenFields(withProfileTenant, 'recruiter', 'candidate');
+      expect(result).toEqual(new Set(['email'])); // email inherited hidden; phone granted
+    });
+
+    it('does not touch the profile for a non-governable role', async () => {
+      const result = await service.getHiddenFields(withProfileTenant, 'org_admin', 'candidate');
+      expect(result).toEqual(new Set());
+      expect(prisma.organization.findUnique).not.toHaveBeenCalled();
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
     });
   });
 

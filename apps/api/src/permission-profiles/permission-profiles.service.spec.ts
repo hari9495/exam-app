@@ -71,6 +71,7 @@ describe('PermissionProfilesService', () => {
           organizationId: 'org-1',
           name: 'Recruiter Lite',
           permissions: ['pipeline:manage'],
+          fieldPermissions: {},
           assignedUserCount: 3,
           createdAt: 1,
           updatedAt: 2,
@@ -98,7 +99,7 @@ describe('PermissionProfilesService', () => {
       const result = await service.create(context, 'user-1', { name: 'Recruiter Lite', permissions: ['pipeline:manage'] });
 
       expect(tx.permissionProfile.create).toHaveBeenCalledWith({
-        data: { organizationId: 'org-1', name: 'Recruiter Lite', permissionsJson: '["pipeline:manage"]' },
+        data: { organizationId: 'org-1', name: 'Recruiter Lite', permissionsJson: '["pipeline:manage"]', fieldPermissionsJson: null },
       });
       expect(audit.record).toHaveBeenCalledWith(
         context,
@@ -106,6 +107,41 @@ describe('PermissionProfilesService', () => {
       );
       expect(result.assignedUserCount).toBe(0);
       expect(result.permissions).toEqual(['pipeline:manage']);
+    });
+
+    it('validates and persists field rules when supplied', async () => {
+      const tx = {
+        permissionProfile: {
+          create: jest.fn().mockResolvedValue({
+            id: 'p1', organizationId: 'org-1', name: 'Sr Recruiter',
+            permissionsJson: '["pipeline:manage"]',
+            fieldPermissionsJson: '{"candidate":{"email":"editable"}}',
+            createdAt: 1, updatedAt: 2,
+          }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await service.create(context, 'user-1', {
+        name: 'Sr Recruiter', permissions: ['pipeline:manage'], fieldPermissions: { candidate: { email: 'editable' } },
+      });
+
+      expect(tx.permissionProfile.create).toHaveBeenCalledWith({
+        data: {
+          organizationId: 'org-1', name: 'Sr Recruiter', permissionsJson: '["pipeline:manage"]',
+          fieldPermissionsJson: '{"candidate":{"email":"editable"}}',
+        },
+      });
+      expect(result.fieldPermissions).toEqual({ candidate: { email: 'editable' } });
+    });
+
+    it('rejects invalid field rules with BadRequest without touching the DB', async () => {
+      const tx = { permissionProfile: { create: jest.fn() } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      await expect(
+        service.create(context, 'user-1', { name: 'X', permissions: ['pipeline:manage'], fieldPermissions: { candidate: { ssn: 'hidden' } } }),
+      ).rejects.toThrow(BadRequestException);
+      expect(tx.permissionProfile.create).not.toHaveBeenCalled();
     });
 
     it('rejects a non-assignable key without touching the DB', async () => {
@@ -158,6 +194,34 @@ describe('PermissionProfilesService', () => {
       });
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'permission_profile.updated', entityId: 'p1' }));
       expect(result.assignedUserCount).toBe(1);
+    });
+
+    it('persists supplied field rules and leaves them untouched when omitted', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'Old', permissionsJson: '[]', createdAt: 1, updatedAt: 2 });
+      const tx = {
+        permissionProfile: { findFirst: jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'Old' }), update },
+        user: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.update(context, 'user-1', 'p1', { fieldPermissions: { job: { salaryMin: 'hidden' } } });
+      expect(update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { fieldPermissionsJson: '{"job":{"salaryMin":"hidden"}}' } });
+
+      update.mockClear();
+      await service.update(context, 'user-1', 'p1', { name: 'Renamed' });
+      expect(update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { name: 'Renamed' } });
+    });
+
+    it('clears field rules to null when passed an empty object', async () => {
+      const update = jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'Old', permissionsJson: '[]', createdAt: 1, updatedAt: 2 });
+      const tx = {
+        permissionProfile: { findFirst: jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'Old' }), update },
+        user: { count: jest.fn().mockResolvedValue(0) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.update(context, 'user-1', 'p1', { fieldPermissions: {} });
+      expect(update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { fieldPermissionsJson: null } });
     });
 
     it('rejects a non-assignable key', async () => {

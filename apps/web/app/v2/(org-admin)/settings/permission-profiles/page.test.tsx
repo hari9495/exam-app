@@ -15,7 +15,7 @@ const mockedUseUpdatePermissionProfile = usePermissionProfilesHooks.useUpdatePer
 const mockedUseDeletePermissionProfile = usePermissionProfilesHooks.useDeletePermissionProfile as jest.Mock;
 
 const PROFILES = [
-  { id: 'p1', name: 'Recruiter Lite', permissions: ['jobs:view'], assignedUserCount: 2 },
+  { id: 'p1', name: 'Recruiter Lite', permissions: ['jobs:view'], fieldPermissions: { candidate: { email: 'hidden' } }, assignedUserCount: 2 },
 ];
 
 const ASSIGNABLE = [
@@ -102,6 +102,29 @@ describe('V2PermissionProfilesSettingsPage', () => {
 
     await waitFor(() => expect(updateMutate).toHaveBeenCalledWith(
       { id: 'p1', permissions: ['jobs:view', 'jobs:edit'] },
+      expect.anything(),
+    ));
+  });
+
+  it('shows the field-rule count in the row summary', () => {
+    renderPage();
+    expect(screen.getByText(/1 field rule\b/)).toBeInTheDocument();
+  });
+
+  it('editing field rules seeds from the profile and saves the assembled override map', async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: /edit field rules of recruiter lite/i }));
+
+    const dialog = screen.getByRole('dialog');
+    // seeded: candidate email = hidden; candidate phone = inherit ('')
+    expect(within(dialog).getByLabelText('candidate email rule')).toHaveValue('hidden');
+    expect(within(dialog).getByLabelText('candidate phone rule')).toHaveValue('');
+    // grant salaryMin editable on the job entity
+    fireEvent.change(within(dialog).getByLabelText('job salaryMin rule'), { target: { value: 'editable' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(updateMutate).toHaveBeenCalledWith(
+      { id: 'p1', fieldPermissions: { candidate: { email: 'hidden' }, job: { salaryMin: 'editable' } } },
       expect.anything(),
     ));
   });

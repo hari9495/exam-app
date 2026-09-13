@@ -3,4 +3,5 @@ export interface TenantContext {
   isSuperAdmin: boolean;
   userId?: string | null;
   role?: string | null;
+  permissionProfileId?: string | null;
 }
