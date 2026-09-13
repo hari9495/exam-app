@@ -2,6 +2,8 @@ import { JobDescriptionClient } from './clients/job-description.client';
 import { OfferLetterClient } from './clients/offer-letter.client';
 import { OutreachEmailClient } from './clients/outreach-email.client';
 import { FunnelNarrativeClient } from './clients/funnel-narrative.client';
+import { QuestionTagsClient } from './clients/question-tags.client';
+import { QuestionDistractorsClient } from './clients/question-distractors.client';
 
 const provider = (payload: Record<string, unknown>) => ({ generateStructured: jest.fn().mockResolvedValue(payload), ping: jest.fn() });
 
@@ -41,5 +43,26 @@ describe('drafting clients', () => {
     expect(out.narrative).toBe('Most drop at screen');
     expect(out.highlights).toEqual(['tighten screening']);
     expect(p.generateStructured.mock.calls[0][0].prompt).toContain('Applied: 100');
+  });
+});
+
+describe('question-bank clients', () => {
+  it('QuestionTagsClient normalizes matched/suggested arrays and includes available tags in the prompt', async () => {
+    const p = provider({ matched: ['SQL', '  ', 5], suggested: ['Joins'] });
+    const out = await new QuestionTagsClient().generate({ text: 'Explain a LEFT JOIN', availableTags: ['SQL', 'Indexes'] }, p);
+    expect(out.matched).toEqual(['SQL']); // blanks + non-strings dropped
+    expect(out.suggested).toEqual(['Joins']);
+    expect(p.generateStructured.mock.calls[0][0].prompt).toContain('SQL, Indexes');
+  });
+
+  it('QuestionDistractorsClient trims/caps to count and excludes the correct answer from the prompt intent', async () => {
+    const p = provider({ distractors: ['3', '5', '22', '  ', 'extra'] });
+    const out = await new QuestionDistractorsClient().generate({ stem: '2+2?', correctAnswers: ['4'], count: 3 }, p);
+    expect(out.distractors).toEqual(['3', '5', '22']);
+    expect(p.generateStructured.mock.calls[0][0].prompt).toContain('do NOT reproduce');
+  });
+
+  it('QuestionDistractorsClient throws on a malformed payload', async () => {
+    await expect(new QuestionDistractorsClient().generate({ stem: 'q', correctAnswers: ['a'], count: 2 }, provider({ distractors: 'nope' }))).rejects.toThrow();
   });
 });
