@@ -30,6 +30,7 @@ import { STATUS } from '../../../../../components/ui-v2/viz';
 import { ApiUsageCard } from './ApiUsageCard';
 import { SmsConfigSection } from './SmsConfigSection';
 import { WhatsappConfigCard } from './WhatsappConfigCard';
+import { EmbeddingConfigCard } from './EmbeddingConfigCard';
 
 // Section-sidebar layout (21st.dev "Settings Card with Sidebar" #25323, retoned Azure): a left
 // icon-nav swaps the right panel so each integration gets its own focused space.
@@ -363,6 +364,7 @@ export default function V2IntegrationsSettingsPage() {
         </section>
 
         )}
+        {active === 'ai' && <EmbeddingConfigCard />}
         {active === 'api' && (
         <section style={card}>
           <h2 style={sectionTitle}>Public API</h2>

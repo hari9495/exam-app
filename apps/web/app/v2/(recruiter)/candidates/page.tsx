@@ -5,8 +5,9 @@
 // Delete; Add/Edit form modals. Search + status + pagination server-side.
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Upload, Power, Trash2, Send, Plus, Pencil, ListFilter, Check, UserPlus, Users } from 'lucide-react';
+import { MoreHorizontal, Upload, Power, Trash2, Send, Plus, Pencil, ListFilter, Check, UserPlus, Users, Sparkles } from 'lucide-react';
 import { useCandidates, useCreateCandidate, useUpdateCandidate, useDeleteCandidate } from '../../../../lib/hooks/useCandidates';
+import { useSemanticCandidateSearch } from '../../../../lib/hooks/useCandidateSearch';
 import { useExams } from '../../../../lib/hooks/useExams';
 import { useBulkInvite } from '../../../../lib/hooks/useInvitations';
 import { GLOBAL_STAGES, type Candidate, type GlobalStage } from '../../../../lib/types';
@@ -37,6 +38,53 @@ function Avatar({ name, i }: { name: string; i: number }) {
   return <span style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600, boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent)', background: `color-mix(in srgb, ${c} 15%, var(--surface))`, color: c }}>{initials(name)}</span>;
 }
 function csvCell(v: string) { return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
+
+// Natural-language candidate search over embeddings. Collapsed by default; inert (friendly 400)
+// until the org configures an embeddings provider in Settings → Integrations.
+function SemanticSearchPanel() {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const gen = useSemanticCandidateSearch();
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <Sparkles size={14} /> {open ? 'Hide semantic search' : 'Semantic search'}
+      </button>
+      {open && (
+        <div style={{ marginTop: 10, background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 12, padding: 14 }}>
+          <form
+            onSubmit={(e) => { e.preventDefault(); if (query.trim()) gen.mutate({ query: query.trim() }); }}
+            style={{ display: 'flex', gap: 8 }}
+          >
+            <input
+              value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Semantic candidate search"
+              placeholder="Describe who you're looking for, e.g. senior React engineer with fintech experience"
+              style={{ flex: 1, minWidth: 0, fontSize: 13, padding: '9px 11px', borderRadius: 8, border: '1px solid color-mix(in srgb, var(--ink) 14%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)' }}
+            />
+            <button type="submit" className="v2-hoverbtn" style={dt.primaryBtn} disabled={gen.isPending || !query.trim()}>
+              {gen.isPending ? 'Searching…' : 'Search'}
+            </button>
+          </form>
+          {gen.isError && <p role="alert" style={{ fontSize: 12.5, color: 'var(--danger)', margin: '8px 0 0' }}>{gen.error instanceof Error ? gen.error.message : 'Search failed.'}</p>}
+          {gen.data && (
+            gen.data.results.length === 0
+              ? <p style={{ fontSize: 13, color: 'var(--muted)', margin: '10px 0 0' }}>No matches — try different wording, or run a backfill in Settings → Integrations.</p>
+              : (
+                <ul style={{ listStyle: 'none', padding: 0, margin: '10px 0 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {gen.data.results.map((r) => (
+                    <li key={r.candidateId} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, fontSize: 13, padding: '6px 8px', borderRadius: 8, background: 'color-mix(in srgb, var(--org-primary) 4%, transparent)' }}>
+                      <span style={{ color: 'var(--ink)' }}><strong style={{ fontWeight: 600 }}>{r.name}</strong>{r.title ? ` — ${r.title}` : ''}</span>
+                      <span className="v2-mono" style={{ color: 'var(--muted)', fontSize: 12 }}>{Math.round(r.score * 100)}%</span>
+                    </li>
+                  ))}
+                </ul>
+              )
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function V2CandidatesPage() {
   const [page, setPage] = useState(1);
@@ -191,6 +239,8 @@ export default function V2CandidatesPage() {
       {notice && (
         <div role="status" style={{ marginBottom: 12, fontSize: 13, padding: '9px 13px', borderRadius: 9, border: `1px solid ${notice.type === 'success' ? 'color-mix(in srgb, #15803d 30%, transparent)' : 'color-mix(in srgb, var(--danger) 30%, transparent)'}`, background: notice.type === 'success' ? 'color-mix(in srgb, #15803d 8%, transparent)' : 'color-mix(in srgb, var(--danger) 8%, transparent)', color: notice.type === 'success' ? STATUS.ok : 'var(--danger)' }}>{notice.text}</div>
       )}
+
+      <SemanticSearchPanel />
 
       <DataTable
         columns={columns} data={rows} getRowId={(r) => r.id}

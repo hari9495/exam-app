@@ -1039,6 +1039,9 @@ export interface IntegrationsResponse {
   aiBaseUrl: string | null;
   aiModelFast: string | null;
   aiModelStandard: string | null;
+  embeddingConfigured: boolean;
+  embeddingBaseUrl: string | null;
+  embeddingModel: string | null;
   smtpHost: string | null;
   smtpPort: number | null;
   emailFromAddress: string | null;

@@ -11,6 +11,7 @@ import {
 import { JobProcessor } from './job-processor.interface';
 import { QuotaService } from '../../billing/quota.service';
 import { QuotaExceededException } from '../../billing/quota-exceeded.exception';
+import { JobsService } from '../jobs.service';
 
 // AI extracts free text out of the résumé; truncate before sending it so a huge PDF cannot blow
 // past the model's context window or run up token cost on filler pages.
@@ -50,6 +51,7 @@ export class ResumeParseProcessor implements JobProcessor {
     private readonly blobStorage: BlobStorageService,
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
     private readonly quota: QuotaService,
+    private readonly jobs: JobsService,
   ) {}
 
   async process(input: unknown, context: TenantContext, aiJobId: string): Promise<unknown> {
@@ -102,6 +104,18 @@ export class ResumeParseProcessor implements JobProcessor {
           },
         });
       });
+
+      // Chain a semantic-search embedding refresh (best-effort; inert when the org has no embeddings
+      // provider — the embed job skips). Reuse this job's createdBy since the worker context has no
+      // userId and AiJob.createdBy is a required UUID.
+      try {
+        const parent = await this.tenantPrisma.forTenant(context, (tx) =>
+          tx.aiJob.findUnique({ where: { id: aiJobId }, select: { createdBy: true } }),
+        );
+        if (parent) await this.jobs.enqueue(context, 'candidate_embed', JSON.stringify({ candidateId }), parent.createdBy);
+      } catch (error) {
+        this.logger.warn(`Failed to enqueue candidate_embed for ${candidateId}: ${(error as Error).message}`);
+      }
       return { ok: true };
     } catch (error) {
       // Quota-exceeded is not a parse failure to retry away -- let it propagate so the AiJob

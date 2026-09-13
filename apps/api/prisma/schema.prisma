@@ -46,6 +46,11 @@ model Organization {
   aiBaseUrl              String?           @map("ai_base_url")
   aiModelFast            String?           @map("ai_model_fast")
   aiModelStandard        String?           @map("ai_model_standard")
+  // Generic, bring-your-own embeddings provider (OpenAI-compatible /embeddings), decoupled from the
+  // chat provider above. Null = semantic search inert for this org.
+  embeddingApiKeyEncrypted String?         @map("embedding_api_key_encrypted")
+  embeddingBaseUrl         String?         @map("embedding_base_url")
+  embeddingModel           String?         @map("embedding_model")
   apiKeyHash             String?           @map("api_key_hash")
   apiKeyPrefix           String?           @map("api_key_prefix")
   apiKeyCreatedAt        DateTime?         @map("api_key_created_at")
@@ -573,6 +578,12 @@ model CandidateProfile {
   parsedTitle           String?   @map("parsed_title")
   parsedYearsExperience Int?      @map("parsed_years_experience")
   parsedAt              DateTime? @map("parsed_at")
+  // Semantic-search embedding of the parsed résumé text. embeddingHash guards re-embeds (text+model);
+  // embeddingModel records which model produced the vector so a model switch re-embeds everyone.
+  embeddingJson        String?   @map("embedding_json") @db.NVarChar(Max)
+  embeddingModel       String?   @map("embedding_model")
+  embeddingHash        String?   @map("embedding_hash")
+  embeddedAt           DateTime? @map("embedded_at")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
   candidate             Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: NoAction)

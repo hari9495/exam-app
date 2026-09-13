@@ -7,12 +7,18 @@ export * from './audit/audit.service';
 export * from './crypto/crypto.module';
 export * from './crypto/org-secrets-crypto.service';
 export * from './crypto/ai-api-key-resolver.service';
+export * from './crypto/embedding-resolver.service';
 export * from './crypto/refresh-token-hash';
 export * from './network/trust-proxy';
 export * from './network/auth-cookie';
 export * from './ai/ai-provider';
 export * from './ai/anthropic-provider';
 export * from './ai/openai-compatible-provider';
+export * from './ai/embedding-provider';
+// cosineSimilarity is intentionally NOT re-exported here (face/ already exports that name); the app
+// only needs topKSimilar, and the internal cosine is covered by vector-math's own spec.
+export { topKSimilar, type Scored } from './ai/vector-math';
+export * from './ai/embedding-text';
 export * from './network/ip-range';
 export * from './storage/storage.module';
 export * from './storage/blob-storage.service';

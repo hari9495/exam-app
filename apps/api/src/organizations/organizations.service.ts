@@ -8,7 +8,7 @@ import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { OrgSecretsCryptoService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
-import { AiProvider, AnthropicProvider, OpenAiCompatibleProvider } from '@exam-platform/shared';
+import { AiProvider, AnthropicProvider, OpenAiCompatibleProvider, OpenAiCompatibleEmbeddingProvider } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { buildSmtpTransportOptions } from '../email/smtp-transport';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
@@ -16,6 +16,7 @@ import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
 import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
 import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
+import { UpdateEmbeddingConfigDto } from './dto/update-embedding-config.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
@@ -87,6 +88,9 @@ export interface IntegrationsResponse {
   aiBaseUrl: string | null;
   aiModelFast: string | null;
   aiModelStandard: string | null;
+  embeddingConfigured: boolean;
+  embeddingBaseUrl: string | null;
+  embeddingModel: string | null;
   smtpHost: string | null;
   smtpPort: number | null;
   emailFromAddress: string | null;
@@ -521,6 +525,7 @@ export class OrganizationsService {
       select: {
         smtpHost: true, smtpPort: true, emailFromAddress: true, aiApiKeyEncrypted: true, smtpPasswordEncrypted: true,
         aiProvider: true, aiBaseUrl: true, aiModelFast: true, aiModelStandard: true,
+        embeddingApiKeyEncrypted: true, embeddingBaseUrl: true, embeddingModel: true,
         apiKeyHash: true, apiKeyPrefix: true, apiKeyCreatedAt: true, webhookUrl: true,
       },
     });
@@ -531,6 +536,9 @@ export class OrganizationsService {
       aiBaseUrl: org?.aiBaseUrl ?? null,
       aiModelFast: org?.aiModelFast ?? null,
       aiModelStandard: org?.aiModelStandard ?? null,
+      embeddingConfigured: Boolean(org?.embeddingApiKeyEncrypted),
+      embeddingBaseUrl: org?.embeddingBaseUrl ?? null,
+      embeddingModel: org?.embeddingModel ?? null,
       smtpHost: org?.smtpHost ?? null,
       smtpPort: org?.smtpPort ?? null,
       emailFromAddress: org?.emailFromAddress ?? null,
@@ -644,6 +652,40 @@ export class OrganizationsService {
       entityId: organizationId,
     });
     return { aiKeyConfigured: true };
+  }
+
+  async updateEmbeddingConfig(
+    context: TenantContext,
+    actorUserId: string,
+    dto: UpdateEmbeddingConfigDto,
+  ): Promise<{ embeddingConfigured: boolean }> {
+    const organizationId = this.requireOrganizationId(context);
+
+    // Verify the config at save time (embeds a tiny string) so a bad endpoint/key/model surfaces here
+    // rather than silently failing every future search.
+    const provider = new OpenAiCompatibleEmbeddingProvider(dto.apiKey, dto.baseUrl, dto.model);
+    try {
+      const [vector] = await provider.embed(['connection test']);
+      if (!vector?.length) throw new Error('the endpoint returned no vector');
+    } catch (error) {
+      throw new BadRequestException(`That embeddings configuration was rejected: ${(error as Error).message}`);
+    }
+
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        embeddingApiKeyEncrypted: this.cryptoService.encrypt(dto.apiKey),
+        embeddingBaseUrl: dto.baseUrl,
+        embeddingModel: dto.model,
+      },
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.embedding_configured',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return { embeddingConfigured: true };
   }
 
   // Decrypts+parses the stored SMS config blob. Guards both a missing blob and a
