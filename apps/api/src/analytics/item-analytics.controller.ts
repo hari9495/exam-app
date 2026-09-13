@@ -18,6 +18,13 @@ export class ItemAnalyticsController {
     return this.analytics.flagged(tenant);
   }
 
+  // Literal path, declared before :id (same reason as flagged).
+  @Get('difficulty-calibration')
+  @RequirePermissions('question_bank:manage')
+  difficultyCalibration(@CurrentTenant() tenant: TenantContext) {
+    return this.analytics.difficultyCalibration(tenant);
+  }
+
   @Get(':id')
   @RequirePermissions('question_bank:manage')
   forQuestion(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {

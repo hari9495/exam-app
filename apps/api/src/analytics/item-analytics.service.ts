@@ -9,6 +9,9 @@ import {
   MIN_RESPONSES,
   pointBiserial,
   classifyFlags,
+  calibrateDifficulty,
+  DifficultyLabel,
+  CalibrationVerdict,
 } from '@exam-platform/shared';
 
 export interface QuestionAnalytics {
@@ -24,6 +27,18 @@ export interface QuestionAnalytics {
 
 interface AggregateRow { question_id: string; n: number; p: number; m1: number | null; m0: number | null; sd_rest: number; text?: string }
 interface OptionRow { option_id: string; text: string; is_correct: boolean; selections: number; order_index: number }
+interface CalibrationAggRow { question_id: string; n: number; p: number; difficulty: string; text: string }
+
+export interface DifficultyCalibrationRow {
+  questionId: string;
+  text: string;
+  responses: number;
+  percentCorrect: number;
+  declared: string;
+  observed: DifficultyLabel;
+  verdict: CalibrationVerdict;
+  gap: number;
+}
 
 // Only used to sort flagged() output by worst flag first: classifyFlags always pushes
 // miskeyed_suspect/weak_discrimination before the p-value/distractor flags, so flags[0] is
@@ -122,6 +137,46 @@ export class ItemAnalyticsService {
         .map((r) => ({ ...this.assemble(r, []), text: r.text }))
         .filter((a) => a.flags.length > 0)
         .sort((a, b) => SEVERITY_ORDER[a.flags[0].severity] - SEVERITY_ORDER[b.flags[0].severity]);
+    });
+  }
+
+  // Difficulty calibration: for every question with enough responses, compare the author's declared
+  // difficulty to the observed band (from proportion-correct) and return only the MISMATCHES,
+  // worst drift first. Pure stats -- no AI, no option fetch (one query regardless of bank size).
+  async difficultyCalibration(context: TenantContext): Promise<DifficultyCalibrationRow[]> {
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const rows = await tx.$queryRaw<CalibrationAggRow[]>`
+        SELECT e.question_id,
+               COUNT(*)                          AS n,
+               AVG(CAST(e.is_correct AS FLOAT))  AS p,
+               MAX(e.difficulty)                 AS difficulty,
+               MAX(e.text)                       AS text
+        FROM (
+          SELECT ans.question_id, ans.is_correct,
+                 q.difficulty AS difficulty,
+                 CAST(q.text AS NVARCHAR(300)) AS text
+          FROM answers   ans
+          JOIN attempts  att ON att.id = ans.attempt_id
+          JOIN results   res ON res.attempt_id = att.id
+          JOIN questions q   ON q.id = ans.question_id
+          WHERE att.submitted_at IS NOT NULL
+            AND (q.answer_key_changed_at IS NULL OR att.submitted_at >= q.answer_key_changed_at)
+            AND ans.is_correct IS NOT NULL
+            AND q.type IN ('single_mcq', 'multi_mcq', 'true_false')
+        ) e
+        GROUP BY e.question_id
+        HAVING COUNT(*) >= ${MIN_RESPONSES}`;
+
+      return rows
+        .map((r) => {
+          const percentCorrect = Number(r.p);
+          const { observed, verdict, gap } = calibrateDifficulty(r.difficulty, percentCorrect);
+          return { questionId: r.question_id, text: r.text, responses: Number(r.n), percentCorrect, declared: r.difficulty, observed, verdict, gap };
+        })
+        .filter((row) => row.verdict !== 'aligned')
+        // Worst drift first (easy↔hard before one-band), then the most extreme p (furthest from the
+        // ~0.65 medium centre) within an equal gap.
+        .sort((a, b) => b.gap - a.gap || Math.abs(b.percentCorrect - 0.65) - Math.abs(a.percentCorrect - 0.65));
     });
   }
 
