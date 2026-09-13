@@ -81,10 +81,10 @@ describe('PipelineController', () => {
     expect(service.getJob).toHaveBeenCalledWith(tenant, 'job-1', 'org_admin');
   });
 
-  it('updateJob delegates to the service with the actor, job id, and dto', async () => {
+  it('updateJob delegates to the service with the actor, job id, dto, and role', async () => {
     const dto = { title: 'Senior Backend Engineer' };
-    await controller.updateJob(tenant, 'user-1', 'job-1', dto as any);
-    expect(service.updateJob).toHaveBeenCalledWith(tenant, 'user-1', 'job-1', dto);
+    await controller.updateJob(tenant, 'user-1', 'recruiter', 'job-1', dto as any);
+    expect(service.updateJob).toHaveBeenCalledWith(tenant, 'user-1', 'job-1', dto, 'recruiter');
   });
 
   it('deleteJob delegates to the service with the actor and job id', async () => {

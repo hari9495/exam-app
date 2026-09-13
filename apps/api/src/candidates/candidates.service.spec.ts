@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
 import { BlobServiceClient, ContainerClient, StorageSharedKeyCredential } from '@azure/storage-blob';
 import { CandidatesService } from './candidates.service';
 import { TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
@@ -20,7 +20,7 @@ describe('CandidatesService', () => {
   let audit: { record: jest.Mock };
   let blobStorage: { deleteByUrl: jest.Mock; signIfOurs: jest.Mock };
   let quota: { checkSoftLimit: jest.Mock };
-  let fieldPerms: { getHiddenFields: jest.Mock };
+  let fieldPerms: { getHiddenFields: jest.Mock; getLockedFields: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
 
   beforeEach(async () => {
@@ -36,7 +36,10 @@ describe('CandidatesService', () => {
     // Empty set by default (matches getHiddenFields' own contract for an ungoverned/admin role)
     // so every pre-existing test below -- none of which cares about redaction -- sees unredacted
     // output unless a test overrides this mock.
-    fieldPerms = { getHiddenFields: jest.fn().mockResolvedValue(new Set()) };
+    fieldPerms = {
+      getHiddenFields: jest.fn().mockResolvedValue(new Set()),
+      getLockedFields: jest.fn().mockResolvedValue(new Set()),
+    };
     const moduleRef = await Test.createTestingModule({
       providers: [
         CandidatesService,
@@ -280,6 +283,36 @@ describe('CandidatesService', () => {
         entityId: 'cand-1',
         metadata: { fields: ['name'] },
       });
+    });
+
+    it('rejects changing a read-only field for the caller role and does not write', async () => {
+      fieldPerms.getLockedFields.mockResolvedValue(new Set(['phone']));
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', phone: '111', erasedAt: null }),
+          update: jest.fn(),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await expect(
+        service.update(context, 'user-1', 'cand-1', { phone: '222' }, 'recruiter'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(tx.candidate.update).not.toHaveBeenCalled();
+    });
+
+    it('allows a no-op resend of a read-only field', async () => {
+      fieldPerms.getLockedFields.mockResolvedValue(new Set(['phone']));
+      const tx = {
+        candidate: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'cand-1', email: 'a@test.com', phone: '111', erasedAt: null }),
+          update: jest.fn().mockResolvedValue({ id: 'cand-1', name: 'Alice B' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.update(context, 'user-1', 'cand-1', { phone: '111', name: 'Alice B' }, 'recruiter');
+      expect(tx.candidate.update).toHaveBeenCalled();
     });
 
     it('deactivates a candidate by writing the inactive status', async () => {

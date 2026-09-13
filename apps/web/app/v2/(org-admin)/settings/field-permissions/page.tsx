@@ -1,16 +1,15 @@
 'use client';
 
-// v2 Settings -> Field permissions. Per-role visibility for a fixed set of governed candidate/job
-// fields (redacted server-side by field-permissions.service.ts for recruiter/panel roles). Layout
-// mirrors settings/business-hours (org-primary tokens, inline success/error notice); the
+// v2 Settings -> Field permissions. Per-role access level for a fixed set of governed candidate/job
+// fields: Editable (default), Read-only (visible but write-blocked), or Hidden (redacted on read).
+// Enforced server-side by field-permissions.service.ts for recruiter/panel/hiring_manager. The
 // (org-admin) layout already gates entry to org_admin / acting super_admin, so no extra role check
 // is needed here (same as settings/sso).
 import { useEffect, useState } from 'react';
-import { GOVERNABLE_ROLES, GOVERNED_FIELDS, type FieldEntity, type FieldPermissionConfig } from '../../../../../lib/types';
+import { GOVERNABLE_ROLES, GOVERNED_FIELDS, type FieldEntity, type FieldLevel, type FieldPermissionConfig } from '../../../../../lib/types';
 import { useFieldPermissions, useUpdateFieldPermissions } from '../../../../../lib/hooks/useFieldPermissions';
 // Imported directly from Button.tsx, not the ui-v2 barrel: the barrel re-exports DataTable,
-// which pulls in @tanstack/react-table's ESM build and breaks under this repo's jest transform
-// (see the "Cannot use import statement outside a module" failure that surfaces otherwise).
+// which pulls in @tanstack/react-table's ESM build and breaks under this repo's jest transform.
 import { Button } from '../../../../../components/ui-v2/Button';
 
 const muted = 'var(--muted)';
@@ -31,35 +30,36 @@ const roleLabel = (r: string) => ROLE_LABELS[r] ?? r;
 const fieldLabel = (f: string) => FIELD_LABELS[f] ?? f;
 type Role = (typeof GOVERNABLE_ROLES)[number];
 
-type HiddenState = Record<FieldEntity, Record<Role, Set<string>>>;
+// entity -> role -> field -> level (absent field = editable)
+type LevelState = Record<FieldEntity, Record<Role, Record<string, FieldLevel>>>;
 
-function emptyHiddenState(): HiddenState {
+function emptyLevels(): LevelState {
   return ENTITIES.reduce((acc, entity) => {
     acc[entity] = GOVERNABLE_ROLES.reduce((roleAcc, role) => {
-      roleAcc[role] = new Set<string>();
+      roleAcc[role] = {};
       return roleAcc;
-    }, {} as Record<Role, Set<string>>);
+    }, {} as Record<Role, Record<string, FieldLevel>>);
     return acc;
-  }, {} as HiddenState);
+  }, {} as LevelState);
 }
 
-function hiddenStateFromConfig(config: FieldPermissionConfig): HiddenState {
-  const state = emptyHiddenState();
+function levelsFromConfig(config: FieldPermissionConfig): LevelState {
+  const state = emptyLevels();
   for (const entity of ENTITIES) {
     for (const role of GOVERNABLE_ROLES) {
-      state[entity][role] = new Set(config[entity]?.[role] ?? []);
+      state[entity][role] = { ...(config[entity]?.[role] ?? {}) };
     }
   }
   return state;
 }
 
-function configFromHiddenState(state: HiddenState): FieldPermissionConfig {
+function configFromLevels(state: LevelState): FieldPermissionConfig {
   const config: FieldPermissionConfig = {};
   for (const entity of ENTITIES) {
-    const byRole: Record<string, string[]> = {};
+    const byRole: Record<string, Record<string, FieldLevel>> = {};
     for (const role of GOVERNABLE_ROLES) {
-      const fields = Array.from(state[entity][role]);
-      if (fields.length > 0) byRole[role] = fields;
+      const fields = state[entity][role];
+      if (Object.keys(fields).length > 0) byRole[role] = fields;
     }
     if (Object.keys(byRole).length > 0) config[entity] = byRole;
   }
@@ -71,36 +71,36 @@ type Notice = { type: 'success' | 'error'; text: string } | null;
 export default function V2FieldPermissionsSettingsPage() {
   const { data, isLoading, isError } = useFieldPermissions();
   const update = useUpdateFieldPermissions();
-  const [hidden, setHidden] = useState<HiddenState>(emptyHiddenState);
+  const [levels, setLevels] = useState<LevelState>(emptyLevels);
   const [notice, setNotice] = useState<Notice>(null);
   const notify = (type: 'success' | 'error', text: string) => { setNotice({ type, text }); setTimeout(() => setNotice(null), 4000); };
 
   useEffect(() => {
     if (!data) return;
-    setHidden(hiddenStateFromConfig(data));
+    setLevels(levelsFromConfig(data));
   }, [data]);
 
-  function toggle(entity: FieldEntity, role: Role, field: string) {
-    setHidden((prev) => {
-      const next = new Set(prev[entity][role]);
-      if (next.has(field)) next.delete(field);
-      else next.add(field);
-      return { ...prev, [entity]: { ...prev[entity], [role]: next } };
+  function setLevel(entity: FieldEntity, role: Role, field: string, level: FieldLevel | '') {
+    setLevels((prev) => {
+      const roleMap = { ...prev[entity][role] };
+      if (level === '') delete roleMap[field];
+      else roleMap[field] = level;
+      return { ...prev, [entity]: { ...prev[entity], [role]: roleMap } };
     });
   }
 
   function handleSave() {
-    update.mutate(configFromHiddenState(hidden), {
+    update.mutate(configFromLevels(levels), {
       onSuccess: () => notify('success', 'Field permissions saved.'),
       onError: (err) => notify('error', err instanceof Error ? err.message : 'Failed to save field permissions.'),
     });
   }
 
   return (
-    <div style={{ maxWidth: 780 }}>
+    <div style={{ maxWidth: 820 }}>
       <div style={{ marginBottom: 16 }}>
         <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>Field permissions</h1>
-        <p style={{ ...desc, marginTop: 6 }}>Hide sensitive candidate and job fields from selected roles.</p>
+        <p style={{ ...desc, marginTop: 6 }}>Set each field&apos;s access per role: Editable, Read-only (visible but can&apos;t change), or Hidden (redacted).</p>
       </div>
 
       {notice && (
@@ -115,7 +115,7 @@ export default function V2FieldPermissionsSettingsPage() {
       {ENTITIES.map((entity) => (
         <div key={entity} style={{ ...card, marginBottom: 16 }}>
           <h2 style={{ fontFamily: 'var(--font-disp)', fontSize: 15, fontWeight: 600, color: 'var(--ink)', margin: 0 }}>{ENTITY_LABELS[entity]}</h2>
-          <p style={desc}>Check a box to hide that field from that role.</p>
+          <p style={desc}>Choose the access level for each field and role.</p>
           <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 10 }}>
             <thead>
               <tr>
@@ -131,13 +131,16 @@ export default function V2FieldPermissionsSettingsPage() {
                   <td style={td}>{fieldLabel(field)}</td>
                   {GOVERNABLE_ROLES.map((role) => (
                     <td key={role} style={td}>
-                      <input
-                        type="checkbox"
-                        aria-label={`${entity} ${field} hidden from ${role}`}
-                        checked={hidden[entity][role].has(field)}
-                        onChange={() => toggle(entity, role, field)}
-                        style={{ width: 15, height: 15, accentColor: 'var(--org-primary)' }}
-                      />
+                      <select
+                        aria-label={`${entity} ${field} access for ${role}`}
+                        value={levels[entity][role][field] ?? ''}
+                        onChange={(e) => setLevel(entity, role, field, e.target.value as FieldLevel | '')}
+                        style={{ fontSize: 12.5, padding: '4px 6px', borderRadius: 7, border: '1px solid color-mix(in srgb, var(--ink) 15%, var(--hair))', background: 'var(--paper)', color: 'var(--ink)' }}
+                      >
+                        <option value="">Editable</option>
+                        <option value="readonly">Read-only</option>
+                        <option value="hidden">Hidden</option>
+                      </select>
                     </td>
                   ))}
                 </tr>

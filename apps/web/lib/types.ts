@@ -303,7 +303,10 @@ export const GOVERNED_FIELDS = {
   job: ['salaryMin', 'salaryMax', 'salaryCurrency', 'headcount', 'department', 'fitCriteria', 'fitRubric'],
 } as const;
 export type FieldEntity = keyof typeof GOVERNED_FIELDS;
-export type FieldPermissionConfig = Partial<Record<FieldEntity, Record<string, string[]>>>;
+export const FIELD_LEVELS = ['readonly', 'hidden'] as const;
+export type FieldLevel = (typeof FIELD_LEVELS)[number];
+// entity -> role -> field -> level (absent field = editable / full access).
+export type FieldPermissionConfig = Partial<Record<FieldEntity, Record<string, Record<string, FieldLevel>>>>;
 
 export interface Candidate {
   id: string;

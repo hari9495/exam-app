@@ -1,4 +1,5 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { lockedFieldEdits } from '@exam-platform/shared';
 import { Candidate, CandidateProfile } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
@@ -262,7 +263,11 @@ export class CandidatesService {
     actorUserId: string,
     candidateId: string,
     dto: UpdateCandidateDto,
+    // Caller's role, for field-level write enforcement (a read-only/hidden candidate field can't be
+    // changed). Optional: undefined skips enforcement; the controller always passes it.
+    role?: string,
   ): Promise<Candidate & { customFields?: CustomFieldRead[] }> {
+    const lockedFields = role ? await this.fieldPerms.getLockedFields(context, role, 'candidate') : new Set<string>();
     const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
       const organizationId = context.organizationId as string;
       const candidate = await tx.candidate.findFirst({
@@ -275,6 +280,12 @@ export class CandidatesService {
       // letting them be edited back would undo the erasure.
       if (candidate.erasedAt) {
         throw new ConflictException('An erased candidate cannot be edited');
+      }
+
+      // Field-level write enforcement: reject changing a candidate field this role may not edit.
+      if (lockedFields.size) {
+        const violations = lockedFieldEdits(lockedFields, dto as Record<string, unknown>, candidate as Record<string, unknown>);
+        if (violations.length) throw new ForbiddenException(`These fields are read-only for your role: ${violations.join(', ')}`);
       }
 
       if (dto.email && dto.email !== candidate.email) {

@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Job, PipelineEntry, PipelineFeedback } from '@prisma/client';
-import { TenantPrismaService, TenantContext, AuditService, StageCategory, STAGE_CATEGORIES } from '@exam-platform/shared';
+import { TenantPrismaService, TenantContext, AuditService, StageCategory, STAGE_CATEGORIES, lockedFieldEdits } from '@exam-platform/shared';
 import { EntryExamResult, deriveEntryExamResults, averageRating } from './derive-entry-exam-results';
 import {
   upsertCustomFieldValues,
@@ -381,11 +381,25 @@ export class PipelineService {
       customFields?: Record<string, string | number | null>;
       jobBoardIds?: string[];
     },
+    // The caller's role, for field-level write enforcement (read-only/hidden governed fields can't
+    // be changed). Optional: undefined skips enforcement (internal callers / ungoverned roles like
+    // org_admin). The controller always passes it.
+    role?: string,
   ): Promise<Job & { customFields?: CustomFieldRead[] }> {
+    const lockedJobFields = role ? await this.fieldPerms.getLockedFields(context, role, 'job') : new Set<string>();
     const result = await this.tenantPrisma.forTenant(context, async (tx) => {
       const organizationId = context.organizationId as string;
       const job = await tx.job.findFirst({ where: { id: jobId, organizationId } });
       if (!job) throw new NotFoundException(`Job ${jobId} not found`);
+
+      // Field-level write enforcement: reject an attempt to CHANGE a field this role may not edit.
+      // fitRubric is stored as a JSON string but arrives as an array, so normalize current to the
+      // patch's shape before the structural compare.
+      if (lockedJobFields.size) {
+        const current = { ...job, fitRubric: job.fitRubric ? JSON.parse(job.fitRubric) : null };
+        const violations = lockedFieldEdits(lockedJobFields, dto as Record<string, unknown>, current as Record<string, unknown>);
+        if (violations.length) throw new ForbiddenException(`These fields are read-only for your role: ${violations.join(', ')}`);
+      }
 
       // Gate bypass guard: a requisition becomes 'open' only through the approvals engine
       // (submitRequisition -> ApprovalsService.decide), never via a direct PATCH. closed<->open

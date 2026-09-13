@@ -46,10 +46,11 @@ export class CandidatesController {
   update(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
+    @CurrentUserRole() role: string,
     @Param('id') id: string,
     @Body() dto: UpdateCandidateDto,
   ) {
-    return this.candidatesService.update(tenant, userId, id, dto);
+    return this.candidatesService.update(tenant, userId, id, dto, role);
   }
 
   @Delete(':id')

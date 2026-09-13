@@ -4,6 +4,8 @@ import {
   parseFieldPermissions,
   validateFieldPermissions,
   hiddenFieldsFor,
+  lockedFieldsFor,
+  lockedFieldEdits,
 } from './field-permissions';
 
 describe('parseFieldPermissions', () => {
@@ -35,27 +37,38 @@ describe('parseFieldPermissions', () => {
     expect(parseFieldPermissions('42')).toEqual({});
   });
 
-  it('parses a valid config object', () => {
+  it('parses a new object-form config (per-field level)', () => {
+    const json = JSON.stringify({ candidate: { panel: { email: 'hidden', phone: 'readonly' } } });
+    expect(parseFieldPermissions(json)).toEqual({ candidate: { panel: { email: 'hidden', phone: 'readonly' } } });
+  });
+
+  it('normalizes a legacy array config to all-hidden object form', () => {
     const json = JSON.stringify({ candidate: { panel: ['email'] } });
-    expect(parseFieldPermissions(json)).toEqual({ candidate: { panel: ['email'] } });
+    expect(parseFieldPermissions(json)).toEqual({ candidate: { panel: { email: 'hidden' } } });
+  });
+
+  it('drops unknown levels / fields / roles leniently on read', () => {
+    const json = JSON.stringify({ candidate: { panel: { email: 'bogus', phone: 'readonly' }, admin: { email: 'hidden' } } });
+    expect(parseFieldPermissions(json)).toEqual({ candidate: { panel: { phone: 'readonly' } } });
   });
 });
 
 describe('validateFieldPermissions', () => {
-  it('accepts a valid config', () => {
-    const input = { candidate: { panel: ['email'] } };
-    expect(validateFieldPermissions(input)).toEqual({ candidate: { panel: ['email'] } });
+  it('accepts a new object-form config with per-field levels', () => {
+    const input = { candidate: { panel: { email: 'hidden', phone: 'readonly' } } };
+    expect(validateFieldPermissions(input)).toEqual({ candidate: { panel: { email: 'hidden', phone: 'readonly' } } });
+  });
+
+  it('accepts + normalizes a legacy array config to all-hidden', () => {
+    expect(validateFieldPermissions({ candidate: { panel: ['email'] } })).toEqual({ candidate: { panel: { email: 'hidden' } } });
   });
 
   it('accepts an empty object', () => {
     expect(validateFieldPermissions({})).toEqual({});
   });
 
-  it('dedupes repeated fields for a role', () => {
-    const input = { candidate: { panel: ['email', 'email', 'phone'] } };
-    const result = validateFieldPermissions(input);
-    expect(result.candidate?.panel).toHaveLength(2);
-    expect(new Set(result.candidate?.panel)).toEqual(new Set(['email', 'phone']));
+  it('rejects an invalid level', () => {
+    expect(() => validateFieldPermissions({ candidate: { panel: { email: 'bogus' } } })).toThrow();
   });
 
   it('throws on non-object input', () => {
@@ -117,10 +130,43 @@ describe('hiddenFieldsFor', () => {
   });
 
   it('drops stale fields no longer present in GOVERNED_FIELDS', () => {
-    // simulate a config carrying a field that used to be governed but has since
-    // been removed from the registry
-    const stale = { candidate: { panel: ['email', 'ssn'] } } as unknown as ReturnType<typeof validateFieldPermissions>;
+    // a config carrying a field that used to be governed but has since been removed from the registry
+    const stale = { candidate: { panel: { email: 'hidden', ssn: 'hidden' } } } as unknown as ReturnType<typeof validateFieldPermissions>;
     expect(hiddenFieldsFor(stale, 'candidate', 'panel')).toEqual(new Set(['email']));
+  });
+
+  it('does NOT report a readonly field as hidden', () => {
+    const cfg2 = validateFieldPermissions({ candidate: { panel: { email: 'readonly', phone: 'hidden' } } });
+    expect(hiddenFieldsFor(cfg2, 'candidate', 'panel')).toEqual(new Set(['phone']));
+  });
+});
+
+describe('lockedFieldsFor + lockedFieldEdits', () => {
+  const cfg = validateFieldPermissions({ job: { recruiter: { salaryMin: 'readonly', salaryMax: 'hidden', department: 'readonly' } } });
+
+  it('locks both readonly AND hidden fields for edits', () => {
+    expect(lockedFieldsFor(cfg, 'job', 'recruiter')).toEqual(new Set(['salaryMin', 'salaryMax', 'department']));
+  });
+
+  it('is empty for an ungoverned role', () => {
+    expect(lockedFieldsFor(cfg, 'job', 'org_admin')).toEqual(new Set());
+  });
+
+  it('flags only locked fields whose value actually changes', () => {
+    const locked = new Set(['salaryMin', 'department']);
+    const current = { salaryMin: 100, department: 'Eng', title: 'x' };
+    // salaryMin changed, department unchanged (no-op resend), title not locked
+    expect(lockedFieldEdits(locked, { salaryMin: 200, department: 'Eng', title: 'y' }, current)).toEqual(['salaryMin']);
+  });
+
+  it('ignores locked fields absent from the patch', () => {
+    expect(lockedFieldEdits(new Set(['salaryMin']), { title: 'y' }, { salaryMin: 100 })).toEqual([]);
+  });
+
+  it('compares array/object fields structurally (fit rubric no-op resend is not an edit)', () => {
+    const rubric = [{ label: 'a', weight: 1 }];
+    expect(lockedFieldEdits(new Set(['fitRubric']), { fitRubric: [...rubric] }, { fitRubric: rubric })).toEqual([]);
+    expect(lockedFieldEdits(new Set(['fitRubric']), { fitRubric: [{ label: 'b', weight: 2 }] }, { fitRubric: rubric })).toEqual(['fitRubric']);
   });
 });
 

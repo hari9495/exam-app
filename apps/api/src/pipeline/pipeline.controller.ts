@@ -44,10 +44,11 @@ export class PipelineController {
   updateJob(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
+    @CurrentUserRole() role: string,
     @Param('id') id: string,
     @Body() dto: UpdateJobDto,
   ) {
-    return this.pipelineService.updateJob(tenant, userId, id, dto);
+    return this.pipelineService.updateJob(tenant, userId, id, dto, role);
   }
 
   @Delete('jobs/:id')
