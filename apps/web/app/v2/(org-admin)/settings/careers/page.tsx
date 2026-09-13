@@ -41,6 +41,7 @@ export default function V2CareersSettingsPage() {
   const { organizationSlug } = useAuth();
 
   const [enabled, setEnabled] = useState(false);
+  const [assistantEnabled, setAssistantEnabled] = useState(false);
   const [headline, setHeadline] = useState('');
   const [intro, setIntro] = useState('');
   const [bannerFile, setBannerFile] = useState<File | null>(null);
@@ -51,13 +52,14 @@ export default function V2CareersSettingsPage() {
   useEffect(() => {
     if (!data) return;
     setEnabled(data.enabled);
+    setAssistantEnabled(data.assistantEnabled);
     setHeadline(data.headline ?? '');
     setIntro(data.intro ?? '');
   }, [data]);
 
   function handleSave() {
     update.mutate(
-      { enabled, headline: headline.trim() ? headline : null, intro: intro.trim() ? intro : null },
+      { enabled, assistantEnabled, headline: headline.trim() ? headline : null, intro: intro.trim() ? intro : null },
       {
         onSuccess: () => notify('success', 'Careers settings saved.'),
         onError: (err) => notify('error', err instanceof Error ? err.message : 'Failed to save careers settings.'),
@@ -154,6 +156,20 @@ export default function V2CareersSettingsPage() {
             style={textareaStyle}
             placeholder="A short description of what it's like to work here."
           />
+        </div>
+
+        <div style={{ marginTop: 16, borderTop: '1px solid var(--hair)', paddingTop: 16 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13, color: ink, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={assistantEnabled}
+              onChange={(e) => setAssistantEnabled(e.target.checked)}
+              aria-label="Enable AI assistant on the careers site"
+              style={{ width: 15, height: 15, accentColor: 'var(--org-primary, #0053e2)' }}
+            />
+            AI assistant on the careers site
+          </label>
+          <p style={desc}>Adds a chat widget that answers candidate questions about your open roles, grounded only on what&apos;s listed here. Uses your configured AI provider and its credits; leave off if AI isn&apos;t configured.</p>
         </div>
 
         <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>

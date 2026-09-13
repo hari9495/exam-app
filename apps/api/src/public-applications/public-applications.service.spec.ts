@@ -905,6 +905,7 @@ describe('PublicApplicationsService', () => {
       id: 'org-1',
       name: 'Acme',
       careersEnabled: true,
+      careersAssistantEnabled: true,
       careersHeadline: 'Join us',
       careersIntro: 'We build things',
       careersBannerPath: 'banners/acme.png',
@@ -968,6 +969,7 @@ describe('PublicApplicationsService', () => {
         orgName: 'Acme',
         headline: 'Join us',
         intro: 'We build things',
+        assistantEnabled: true,
         logoUrl: 'logos/acme.png?sig=abc',
         bannerUrl: 'banners/acme.png?sig=abc',
         primaryColor: '#111111',
@@ -1045,6 +1047,59 @@ describe('PublicApplicationsService', () => {
       expect(blobStorage.signIfOurs).not.toHaveBeenCalled();
       expect(result.logoUrl).toBeNull();
       expect(result.bannerUrl).toBeNull();
+    });
+  });
+
+  describe('careersAssistant', () => {
+    const org = { id: 'org-1', name: 'Acme', careersEnabled: true, careersAssistantEnabled: true, careersHeadline: 'Join us', careersIntro: 'We build things' };
+    const jobs = [{ title: 'Backend Engineer', description: 'Own our APIs', department: 'Engineering', location: 'Remote', employmentType: 'FULL_TIME', salaryMin: 100000, salaryMax: 150000, salaryCurrency: 'USD' }];
+
+    function wire(orgRow: unknown, jobRows: unknown[] = jobs, create = jest.fn()) {
+      tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ organization: { findFirst: jest.fn().mockResolvedValue(orgRow) }, job: { findMany: jest.fn().mockResolvedValue(jobRows) }, aiCreditUsage: { create } }),
+      );
+    }
+
+    it('throws NotFound when the org is missing or careers is disabled', async () => {
+      wire(null);
+      await expect(service.careersAssistant('nope', { question: 'hi' })).rejects.toThrow(NotFoundException);
+    });
+
+    it('returns disabled (no AI) when the assistant is off', async () => {
+      wire({ ...org, careersAssistantEnabled: false });
+      const out = await service.careersAssistant('acme', { question: 'What roles are open?' });
+      expect(out).toEqual({ answer: null, status: 'disabled' });
+      expect(aiApiKeyResolver.resolve).not.toHaveBeenCalled();
+    });
+
+    it('returns unavailable (no charge) when the org has no AI key', async () => {
+      wire(org);
+      aiApiKeyResolver.resolve.mockRejectedValue(new AiNotConfiguredError('no key'));
+      const out = await service.careersAssistant('acme', { question: 'Tell me about the backend role' });
+      expect(out).toEqual({ answer: null, status: 'unavailable' });
+      expect(quota.assertWithinLimit).not.toHaveBeenCalled();
+    });
+
+    it('answers, grounds the prompt on listed roles, and records usage', async () => {
+      const create = jest.fn();
+      wire(org, jobs, create);
+      const generateStructured = jest.fn().mockResolvedValue({ answer: 'We have a Backend Engineer role open.' });
+      aiApiKeyResolver.resolve.mockResolvedValue({ generateStructured });
+      quota.assertWithinLimit.mockResolvedValue(undefined);
+
+      const out = await service.careersAssistant('acme', { question: 'What engineering roles are open?' });
+      expect(out).toEqual({ answer: 'We have a Backend Engineer role open.', status: 'ok' });
+      expect(generateStructured.mock.calls[0][0].prompt).toContain('Backend Engineer');
+      expect(generateStructured.mock.calls[0][0].prompt).toContain('untrusted');
+      expect(create).toHaveBeenCalledWith({ data: { organizationId: 'org-1', source: 'careers_assistant', credits: 1, sourceId: null } });
+    });
+
+    it('is fail-soft when the model throws', async () => {
+      wire(org);
+      aiApiKeyResolver.resolve.mockResolvedValue({ generateStructured: jest.fn().mockRejectedValue(new Error('model down')) });
+      quota.assertWithinLimit.mockResolvedValue(undefined);
+      const out = await service.careersAssistant('acme', { question: 'hi' });
+      expect(out).toEqual({ answer: null, status: 'unavailable' });
     });
   });
 

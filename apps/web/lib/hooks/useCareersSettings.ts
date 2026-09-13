@@ -18,6 +18,7 @@ interface UpdateCareersSettingsInput {
   enabled: boolean;
   headline?: string | null;
   intro?: string | null;
+  assistantEnabled?: boolean;
 }
 
 export function useUpdateCareersSettings() {

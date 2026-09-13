@@ -77,6 +77,8 @@ model Organization {
   careersHeadline        String?           @map("careers_headline")
   careersIntro           String?           @map("careers_intro") @db.NVarChar(Max)
   careersBannerPath      String?           @map("careers_banner_path")
+  // Opt-in public AI assistant on the careers site (default off — it is public AI spend).
+  careersAssistantEnabled Boolean          @default(false) @map("careers_assistant_enabled")
   smsEnabled             Boolean           @default(false) @map("sms_enabled")
   smsProvider            String            @default("twilio") @map("sms_provider")
   smsConfigEncrypted     String?           @map("sms_config_encrypted") @db.NVarChar(Max)
