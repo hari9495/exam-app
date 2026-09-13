@@ -48,6 +48,26 @@ export function useUpdateAiKey() {
   });
 }
 
+interface UpdateEmbeddingConfigInput { apiKey: string; baseUrl: string; model: string }
+
+export function useUpdateEmbeddingConfig() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateEmbeddingConfigInput): Promise<{ embeddingConfigured: boolean }> =>
+      apiFetch('/organizations/integrations/embedding-config', { method: 'PATCH', body: JSON.stringify(input) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['integrations'] }),
+  });
+}
+
+export function useBackfillEmbeddings() {
+  const { accessToken } = useAuth();
+  return useMutation({
+    mutationFn: (): Promise<{ queued: number }> =>
+      apiFetch('/candidates/embeddings/backfill', { method: 'POST' }, accessToken ?? undefined),
+  });
+}
+
 export function useGenerateApiKey() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();

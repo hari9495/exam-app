@@ -11,6 +11,7 @@ describe('ResumeParseProcessor', () => {
   let blobStorage: { downloadToBuffer: jest.Mock };
   let aiApiKeyResolver: { resolve: jest.Mock };
   let quota: { assertWithinLimit: jest.Mock };
+  let jobs: { enqueue: jest.Mock };
   const aiProvider = { generateStructured: jest.fn(), ping: jest.fn() };
   const context = { organizationId: 'org-1', isSuperAdmin: false };
   const profile = { candidateId: 'cand-1', resumePath: 'resumes/cand-1.pdf' };
@@ -21,7 +22,8 @@ describe('ResumeParseProcessor', () => {
     blobStorage = { downloadToBuffer: jest.fn() };
     aiApiKeyResolver = { resolve: jest.fn() };
     quota = { assertWithinLimit: jest.fn().mockResolvedValue(undefined) };
-    processor = new ResumeParseProcessor(tenantPrisma as never, blobStorage as never, aiApiKeyResolver as never, quota as never);
+    jobs = { enqueue: jest.fn().mockResolvedValue({}) };
+    processor = new ResumeParseProcessor(tenantPrisma as never, blobStorage as never, aiApiKeyResolver as never, quota as never, jobs as never);
   });
 
   it('parses the résumé and writes parsedSummary/parsedSkills/parsedTitle/parsedYearsExperience with parseStatus=done', async () => {
@@ -29,7 +31,7 @@ describe('ResumeParseProcessor', () => {
     const update = jest.fn().mockResolvedValue({});
     const create = jest.fn().mockResolvedValue({});
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
-      fn({ candidateProfile: { findUnique, update }, aiCreditUsage: { create } }),
+      fn({ candidateProfile: { findUnique, update }, aiCreditUsage: { create }, aiJob: { findUnique: jest.fn().mockResolvedValue({ createdBy: 'user-1' }) } }),
     );
     aiApiKeyResolver.resolve.mockResolvedValue(aiProvider);
     blobStorage.downloadToBuffer.mockResolvedValue(Buffer.from('%PDF-1.4 fake bytes'));
@@ -111,7 +113,7 @@ describe('ResumeParseProcessor', () => {
     const update = jest.fn().mockResolvedValue({});
     const create = jest.fn().mockResolvedValue({});
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
-      fn({ candidateProfile: { findUnique, update }, aiCreditUsage: { create } }),
+      fn({ candidateProfile: { findUnique, update }, aiCreditUsage: { create }, aiJob: { findUnique: jest.fn().mockResolvedValue({ createdBy: 'user-1' }) } }),
     );
     aiApiKeyResolver.resolve.mockResolvedValue(aiProvider);
     blobStorage.downloadToBuffer.mockResolvedValue(Buffer.from('%PDF-1.4 fake bytes'));
@@ -143,7 +145,7 @@ describe('ResumeParseProcessor', () => {
     const update = jest.fn().mockResolvedValue({});
     const create = jest.fn().mockResolvedValue({});
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
-      fn({ candidateProfile: { findUnique, update }, aiCreditUsage: { create } }),
+      fn({ candidateProfile: { findUnique, update }, aiCreditUsage: { create }, aiJob: { findUnique: jest.fn().mockResolvedValue({ createdBy: 'user-1' }) } }),
     );
     aiApiKeyResolver.resolve.mockResolvedValue(aiProvider);
     blobStorage.downloadToBuffer.mockResolvedValue(Buffer.from('%PDF-1.4 fake bytes'));
@@ -163,7 +165,7 @@ describe('ResumeParseProcessor', () => {
     const update = jest.fn().mockResolvedValue({});
     const create = jest.fn().mockResolvedValue({});
     tenantPrisma.forTenant.mockImplementation((_ctx, fn) =>
-      fn({ candidateProfile: { findUnique, update }, aiCreditUsage: { create } }),
+      fn({ candidateProfile: { findUnique, update }, aiCreditUsage: { create }, aiJob: { findUnique: jest.fn().mockResolvedValue({ createdBy: 'user-1' }) } }),
     );
     aiApiKeyResolver.resolve.mockResolvedValue(aiProvider);
     blobStorage.downloadToBuffer.mockResolvedValue(Buffer.from('%PDF-1.4 fake bytes'));

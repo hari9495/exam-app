@@ -1097,6 +1097,7 @@ describe('OrganizationsService', () => {
 
       expect(result).toEqual({
         smtpConfigured: false, aiKeyConfigured: false, aiProvider: 'anthropic', aiBaseUrl: null, aiModelFast: null, aiModelStandard: null,
+        embeddingConfigured: false, embeddingBaseUrl: null, embeddingModel: null,
         smtpHost: null, smtpPort: null, emailFromAddress: null,
         apiKeyConfigured: false, apiKeyPrefix: null, apiKeyCreatedAt: null,
         webhookConfigured: false, webhookUrl: null,
@@ -1109,6 +1110,7 @@ describe('OrganizationsService', () => {
         smtpHost: 'smtp.customer.test', smtpPort: 465, emailFromAddress: 'no-reply@customer.test',
         aiApiKeyEncrypted: 'encrypted-blob', smtpPasswordEncrypted: 'also-encrypted',
         aiProvider: 'anthropic', aiBaseUrl: null, aiModelFast: null, aiModelStandard: null,
+        embeddingApiKeyEncrypted: null, embeddingBaseUrl: null, embeddingModel: null,
         apiKeyHash: 'hashed-key', apiKeyPrefix: 'pk_live_abcd', apiKeyCreatedAt,
         webhookUrl: 'https://customer.test/webhook',
       });
@@ -1117,6 +1119,7 @@ describe('OrganizationsService', () => {
 
       expect(result).toEqual({
         smtpConfigured: true, aiKeyConfigured: true, aiProvider: 'anthropic', aiBaseUrl: null, aiModelFast: null, aiModelStandard: null,
+        embeddingConfigured: false, embeddingBaseUrl: null, embeddingModel: null,
         smtpHost: 'smtp.customer.test', smtpPort: 465, emailFromAddress: 'no-reply@customer.test',
         apiKeyConfigured: true, apiKeyPrefix: 'pk_live_abcd', apiKeyCreatedAt,
         webhookConfigured: true, webhookUrl: 'https://customer.test/webhook',

@@ -13,6 +13,7 @@ import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateBrandingColorsDto } from './dto/update-branding-colors.dto';
 import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
 import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
+import { UpdateEmbeddingConfigDto } from './dto/update-embedding-config.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
@@ -89,6 +90,12 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   updateAiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateAiKeyDto) {
     return this.organizationsService.updateAiKey(tenant, userId, dto);
+  }
+
+  @Patch('integrations/embedding-config')
+  @RequirePermissions('org:manage_settings')
+  updateEmbeddingConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateEmbeddingConfigDto) {
+    return this.organizationsService.updateEmbeddingConfig(tenant, userId, dto);
   }
 
   @Post('integrations/api-key')

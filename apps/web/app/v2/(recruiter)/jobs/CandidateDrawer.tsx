@@ -30,6 +30,7 @@ import { useCandidates } from '../../../../lib/hooks/useCandidates';
 import { useCandidateOffers, useWithdrawOffer, useSendOffer, useSubmitOffer, useCancelOffer } from '../../../../lib/hooks/useOffers';
 import { useApprovalGateStatus } from '../../../../lib/hooks/useApprovals';
 import { useCandidateInterviews, useCancelInterview } from '../../../../lib/hooks/useInterviews';
+import { useSimilarCandidates } from '../../../../lib/hooks/useCandidateSearch';
 import { BoardEntryRow, EntryExamResult, CandidateProfile, Offer, OfferStatus, Interview, InterviewStatus, PipelineStageConfig } from '../../../../lib/types';
 import { collectChecklistItems } from '../../../../lib/blueprintChecklist';
 import { SendMessageModal } from './SendMessageModal';
@@ -527,6 +528,39 @@ function interviewTimeLabel(interview: Interview): string | null {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: interview.timeZone }).format(new Date(slot.startsAt));
 }
 
+// Find-similar over embeddings. Fetches only after the recruiter asks (enabled toggle), so opening a
+// drawer doesn't fire a query for every candidate. Inert (empty 'not_embedded') until embeddings run.
+function SimilarCandidatesSection({ candidateId }: { candidateId: string }) {
+  const [show, setShow] = useState(false);
+  const { data, isLoading, isError } = useSimilarCandidates(candidateId, show);
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <h3 style={{ ...sectionH, margin: 0 }}>Similar candidates</h3>
+        {!show && <button type="button" onClick={() => setShow(true)} className="v2-hoverbtn" style={dt.toolBtn}>Find similar</button>}
+      </div>
+      {show && isLoading && <p style={{ fontSize: 13, color: muted, margin: 0 }}>Finding…</p>}
+      {show && isError && <p style={{ fontSize: 13, color: 'var(--danger)', margin: 0 }}>Could not load similar candidates.</p>}
+      {show && data && (
+        data.status === 'not_embedded'
+          ? <p style={{ fontSize: 13, color: muted, margin: 0 }}>This candidate isn&apos;t embedded yet — upload a résumé or run a backfill in Settings → Integrations.</p>
+          : data.results.length === 0
+            ? <p style={{ fontSize: 13, color: muted, margin: 0 }}>No similar candidates found.</p>
+            : (
+              <ul style={{ display: 'flex', flexDirection: 'column', gap: 6, listStyle: 'none', padding: 0, margin: 0 }}>
+                {data.results.map((r) => (
+                  <li key={r.candidateId} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, fontSize: 13 }}>
+                    <span style={{ color: ink }}><strong style={{ fontWeight: 500 }}>{r.name}</strong>{r.title ? ` — ${r.title}` : ''}</span>
+                    <span className="v2-mono" style={{ color: muted, fontSize: 12 }}>{Math.round(r.score * 100)}%</span>
+                  </li>
+                ))}
+              </ul>
+            )
+      )}
+    </div>
+  );
+}
+
 function InterviewsSection({ entryId, candidateId }: { entryId: string; candidateId: string }) {
   const { data: interviews, isLoading } = useCandidateInterviews(candidateId);
   const cancelInterview = useCancelInterview(candidateId);
@@ -811,6 +845,8 @@ export function CandidateDrawer({ jobId, row, stages, onClose }: { jobId: string
         <ChecklistSection row={row} jobId={jobId} stages={stages} />
 
         <div style={card}><FitSection entryId={row.entryId} jobId={jobId} /></div>
+
+        <div style={card}><SimilarCandidatesSection candidateId={row.candidateId} /></div>
 
         <div style={card}>
           <h3 style={sectionH}>Exam results</h3>
