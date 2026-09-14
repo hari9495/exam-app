@@ -92,6 +92,9 @@ model Organization {
   // HRIS/ATS export: on candidate hire, POST a structured employee record to the org's HRIS inbound
   // API / iPaaS endpoint. Bring-your-own endpoint + auth token; inert until enabled + a target URL
   // is set. hrisAuthHeaderEncrypted holds the full Authorization header value (e.g. "Bearer xxx").
+  // Daily staff reminder sweep (pending grading, stale invites, expiring offers, upcoming
+  // interviews, feedback owed) — opt-in per org; per-user email opt-out via userNotificationPreference.
+  remindersEnabled        Boolean          @default(false) @map("reminders_enabled")
   hrisExportEnabled       Boolean          @default(false) @map("hris_export_enabled")
   hrisProvider            String           @default("generic") @map("hris_provider")
   hrisTargetUrl           String?          @map("hris_target_url")

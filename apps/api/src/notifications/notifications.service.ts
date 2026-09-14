@@ -115,6 +115,57 @@ export class NotificationsService {
     }
   }
 
+  // System notification (no human actor) — used by the daily reminder sweep. Same bell-row +
+  // per-user-email-preference behavior as notify(), but the caller supplies the email subject/html
+  // (reminders aren't "{actor} did X") and actorUserId is null. Best-effort email, post-commit.
+  async notifySystem(
+    context: TenantContext,
+    recipientUserIds: string[],
+    type: string,
+    target: MentionTarget,
+    email: { subject: string; html: string },
+  ): Promise<void> {
+    const ids = [...new Set(recipientUserIds)].filter((id) => Boolean(id));
+    if (ids.length === 0) return;
+
+    const outbox = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const valid = await tx.user.findMany({
+        where: { id: { in: ids }, organizationId: context.organizationId as string },
+        select: { id: true, email: true },
+      });
+      const box: { to: string; prefMap: Map<string, boolean> }[] = [];
+      for (const u of valid) {
+        await tx.userNotification.create({
+          data: {
+            organizationId: context.organizationId as string,
+            recipientUserId: u.id,
+            actorUserId: null,
+            type,
+            entityType: target.entityType,
+            entityId: target.entityId,
+            contextText: target.contextText ?? null,
+            linkPath: target.linkPath,
+          },
+        });
+        if (u.email) {
+          const prefMap = await this.resolveEmailEnabledByType(tx, u.id);
+          box.push({ to: u.email, prefMap });
+        }
+      }
+      return box;
+    });
+
+    if (outbox.length === 0) return;
+    try {
+      const sends = outbox
+        .filter((entry) => entry.prefMap.get(type) ?? true)
+        .map((entry) => this.emailService.send({ to: entry.to, subject: email.subject, html: email.html, organizationId: context.organizationId as string }));
+      await Promise.allSettled(sends);
+    } catch (error) {
+      this.logger.error('Failed to send reminder email(s)', error as Error);
+    }
+  }
+
   // Renders an org-configured approval email template: plain-text subject (no escaping needed --
   // never inserted into HTML), HTML body built from the same shell + footer as the generic
   // renderNotificationEmail, with every substituted value HTML-escaped before substitution so a

@@ -1775,6 +1775,26 @@ describe('OrganizationsService', () => {
     });
   });
 
+  describe('reminder settings', () => {
+    const context = { organizationId: 'org-1', isSuperAdmin: false };
+
+    it('getReminderSettings returns the org toggle (default false)', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ remindersEnabled: true });
+      expect(await service.getReminderSettings(context)).toEqual({ remindersEnabled: true });
+
+      prisma.organization.findUnique.mockResolvedValue(null);
+      expect(await service.getReminderSettings(context)).toEqual({ remindersEnabled: false });
+    });
+
+    it('updateReminderSettings persists the toggle and audits', async () => {
+      prisma.organization.update.mockResolvedValue({ remindersEnabled: true });
+      const result = await service.updateReminderSettings(context, 'user-1', { enabled: true });
+      expect(prisma.organization.update).toHaveBeenCalledWith({ where: { id: 'org-1' }, data: { remindersEnabled: true }, select: { remindersEnabled: true } });
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'organization.reminder_settings_updated' }));
+      expect(result).toEqual({ remindersEnabled: true });
+    });
+  });
+
   describe('updatePipelineSettings', () => {
     const context = { organizationId: 'org-1', isSuperAdmin: false };
 

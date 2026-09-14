@@ -1,4 +1,4 @@
-import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode, Briefcase, TrendingUp, Mail, MessageSquare, MessageCircle, FileSignature, CreditCard, CheckSquare, GitPullRequestArrow, Kanban, Clock, SlidersHorizontal, EyeOff, Trash2, MailCheck, Send, FileCheck, Globe, Lock, Rss, Building2, CalendarClock } from 'lucide-react';
+import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode, Briefcase, TrendingUp, Mail, MessageSquare, MessageCircle, FileSignature, CreditCard, CheckSquare, GitPullRequestArrow, Kanban, Clock, SlidersHorizontal, EyeOff, Trash2, MailCheck, Send, FileCheck, Globe, Lock, Rss, Building2, CalendarClock, Bell } from 'lucide-react';
 
 // The COMPLETE union of org-scoped staff features. A super_admin acting into an org sees this exact
 // nav in EVERY staff shell (recruiter / org-admin / panel), so no feature is ever hidden by whichever
@@ -44,6 +44,7 @@ export const SUPER_ADMIN_FULL_NAV = [
   { href: '/settings/roles', label: 'Roles & Permissions', icon: Lock, group: 'Settings' },
   { href: '/settings/permission-profiles', label: 'Permission Profiles', icon: Lock, group: 'Settings' },
   { href: '/settings/record-visibility', label: 'Record Visibility', icon: EyeOff, group: 'Settings' },
+  { href: '/settings/reminders', label: 'Reminders', icon: Bell, group: 'Settings' },
   { href: '/settings/recycle-bin', label: 'Recycle Bin', icon: Trash2, group: 'Settings' },
   { href: '/settings/sender-addresses', label: 'Sender Addresses', icon: Send, group: 'Settings' },
   { href: '/settings/apply-consent', label: 'Applicant Consent', icon: FileCheck, group: 'Settings' },

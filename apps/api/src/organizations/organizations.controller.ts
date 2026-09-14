@@ -19,6 +19,7 @@ import { UpdateHrisConfigDto } from './dto/update-hris-config.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
+import { UpdateReminderSettingsDto } from './dto/update-reminder-settings.dto';
 import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
 import { ApiUsageQueryDto } from './dto/api-usage-query.dto';
@@ -174,6 +175,18 @@ export class OrganizationsController {
   @RequirePermissions('pipelines:configure')
   getPipelineSettings(@CurrentTenant() tenant: TenantContext) {
     return this.organizationsService.getPipelineSettings(tenant);
+  }
+
+  @Get('reminder-settings')
+  @RequirePermissions('org:manage_settings')
+  getReminderSettings(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.getReminderSettings(tenant);
+  }
+
+  @Patch('reminder-settings')
+  @RequirePermissions('org:manage_settings')
+  updateReminderSettings(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateReminderSettingsDto) {
+    return this.organizationsService.updateReminderSettings(tenant, userId, dto);
   }
 
   @Patch('pipeline-settings')
