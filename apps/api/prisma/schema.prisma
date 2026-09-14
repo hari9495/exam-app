@@ -209,6 +209,11 @@ model User {
   name                String?
   timeZone            String?              @map("time_zone")
   emailSignature      String?              @map("email_signature") @db.NVarChar(Max)
+  // Notification email cadence: 'immediate' (default = one email per event, today's behavior),
+  // 'daily' (batched into one daily digest by the digest sweep), or 'off' (no notification emails at
+  // all; the in-app bell is unaffected). lastDigestSentAt anchors the once-per-day digest sweep.
+  notificationDigest  String               @default("immediate") @map("notification_digest")
+  lastDigestSentAt    DateTime?            @map("last_digest_sent_at")
   passwordHash        String               @map("password_hash")
   role                String
   status              String               @default("active")

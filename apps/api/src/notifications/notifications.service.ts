@@ -4,6 +4,8 @@ import { NOTIFICATION_TYPES, NOTIFICATION_TYPE_BY_KEY } from './notification-typ
 import { renderNotificationEmail, escapeHtml, buildNotificationEmailFooter } from './notification-email-render';
 import { EmailService } from '../email/email.service';
 
+export const DIGEST_MODES = ['immediate', 'daily', 'off'];
+
 export interface NotificationView {
   id: string;
   type: string;
@@ -53,9 +55,9 @@ export class NotificationsService {
     const { outbox, actorName, approvalTemplate } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const valid = await tx.user.findMany({
         where: { id: { in: ids }, organizationId: context.organizationId as string },
-        select: { id: true, email: true, name: true },
+        select: { id: true, email: true, name: true, notificationDigest: true },
       });
-      const outbox: { to: string; prefMap: Map<string, boolean> }[] = [];
+      const outbox: { to: string; prefMap: Map<string, boolean>; digest: string }[] = [];
       let actorName: string | null = null;
       if (valid.length > 0) {
         const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { name: true } });
@@ -82,7 +84,7 @@ export class NotificationsService {
         });
         if (u.email) {
           const prefMap = await this.resolveEmailEnabledByType(tx, u.id);
-          outbox.push({ to: u.email, prefMap });
+          outbox.push({ to: u.email, prefMap, digest: u.notificationDigest });
         }
       }
       return { outbox, actorName, approvalTemplate };
@@ -95,7 +97,9 @@ export class NotificationsService {
       const appBaseUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
       const typeDef = NOTIFICATION_TYPE_BY_KEY.get(type);
       const sends = outbox
-        .filter((entry) => entry.prefMap.get(type) ?? true)
+        // Only 'immediate' users get a per-event email; 'daily' is batched by the digest sweep and
+        // 'off' gets none. The per-type opt-out still applies on top.
+        .filter((entry) => entry.digest === 'immediate' && (entry.prefMap.get(type) ?? true))
         .map((entry) => {
           // Behavior-preserving fallback: no template, disabled template, or a non-approval type
           // all fall straight through to the existing generic render -- byte-for-byte unchanged.
@@ -131,9 +135,9 @@ export class NotificationsService {
     const outbox = await this.tenantPrisma.forTenant(context, async (tx) => {
       const valid = await tx.user.findMany({
         where: { id: { in: ids }, organizationId: context.organizationId as string },
-        select: { id: true, email: true },
+        select: { id: true, email: true, notificationDigest: true },
       });
-      const box: { to: string; prefMap: Map<string, boolean> }[] = [];
+      const box: { to: string; prefMap: Map<string, boolean>; digest: string }[] = [];
       for (const u of valid) {
         await tx.userNotification.create({
           data: {
@@ -149,7 +153,7 @@ export class NotificationsService {
         });
         if (u.email) {
           const prefMap = await this.resolveEmailEnabledByType(tx, u.id);
-          box.push({ to: u.email, prefMap });
+          box.push({ to: u.email, prefMap, digest: u.notificationDigest });
         }
       }
       return box;
@@ -158,7 +162,9 @@ export class NotificationsService {
     if (outbox.length === 0) return;
     try {
       const sends = outbox
-        .filter((entry) => entry.prefMap.get(type) ?? true)
+        // Same cadence gate as notify(): 'immediate' only; 'daily' is batched by the digest sweep
+        // (the bell row created above is what the digest collects), 'off' gets none.
+        .filter((entry) => entry.digest === 'immediate' && (entry.prefMap.get(type) ?? true))
         .map((entry) => this.emailService.send({ to: entry.to, subject: email.subject, html: email.html, organizationId: context.organizationId as string }));
       await Promise.allSettled(sends);
     } catch (error) {
@@ -272,6 +278,22 @@ export class NotificationsService {
       }
     });
     return { success: true };
+  }
+
+  // Per-user email cadence. 'immediate' (default) | 'daily' (digest sweep) | 'off' (mute all).
+  async getDigestMode(context: TenantContext, userId: string): Promise<{ mode: string }> {
+    const user = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.user.findUnique({ where: { id: userId }, select: { notificationDigest: true } }),
+    );
+    return { mode: user?.notificationDigest ?? 'immediate' };
+  }
+
+  async setDigestMode(context: TenantContext, userId: string, mode: string): Promise<{ mode: string }> {
+    if (!DIGEST_MODES.includes(mode)) throw new BadRequestException('Unknown digest mode');
+    await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.user.update({ where: { id: userId }, data: { notificationDigest: mode } }),
+    );
+    return { mode };
   }
 
   // tx-scoped: returns ONLY the user's opt-out rows; caller treats a missing type as ON.

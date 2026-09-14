@@ -67,7 +67,7 @@ describe('NotificationsService', () => {
     });
 
     it('emails opted-in recipients after creating bell rows, best-effort', async () => {
-      tx.user.findMany.mockResolvedValue([{ id: 'u2', email: 'u2@x.test', name: 'U Two' }]);
+      tx.user.findMany.mockResolvedValue([{ id: 'u2', email: 'u2@x.test', name: 'U Two', notificationDigest: 'immediate' }]);
       tx.userNotificationPreference.findMany.mockResolvedValue([]); // all ON
       email.send.mockResolvedValue({ success: true });
 
@@ -80,7 +80,7 @@ describe('NotificationsService', () => {
     });
 
     it('does not throw when send fails', async () => {
-      tx.user.findMany.mockResolvedValue([{ id: 'u2', email: 'u2@x.test', name: 'U Two' }]);
+      tx.user.findMany.mockResolvedValue([{ id: 'u2', email: 'u2@x.test', name: 'U Two', notificationDigest: 'immediate' }]);
       tx.userNotificationPreference.findMany.mockResolvedValue([]);
       email.send.mockRejectedValue(new Error('smtp down'));
 
@@ -89,7 +89,7 @@ describe('NotificationsService', () => {
     });
 
     it('skips email for an opted-out recipient but still creates the bell row', async () => {
-      tx.user.findMany.mockResolvedValue([{ id: 'u2', email: 'u2@x.test', name: 'U Two' }]);
+      tx.user.findMany.mockResolvedValue([{ id: 'u2', email: 'u2@x.test', name: 'U Two', notificationDigest: 'immediate' }]);
       tx.userNotificationPreference.findMany.mockResolvedValue([{ type: 'mention', emailEnabled: false }]);
 
       await service.notify(context, 'u1', ['u2'], 'mention', target);
@@ -105,6 +105,21 @@ describe('NotificationsService', () => {
       expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
       expect(email.send).not.toHaveBeenCalled();
     });
+
+    it('suppresses the immediate email for a daily-digest recipient but still creates the bell row', async () => {
+      tx.user.findMany.mockResolvedValue([{ id: 'u2', email: 'u2@x.test', name: 'U Two', notificationDigest: 'daily' }]);
+      tx.userNotificationPreference.findMany.mockResolvedValue([]);
+      await service.notify(context, 'u1', ['u2'], 'mention', target);
+      expect(tx.userNotification.create).toHaveBeenCalled();
+      expect(email.send).not.toHaveBeenCalled();
+    });
+
+    it('suppresses the immediate email for an off recipient', async () => {
+      tx.user.findMany.mockResolvedValue([{ id: 'u2', email: 'u2@x.test', name: 'U Two', notificationDigest: 'off' }]);
+      tx.userNotificationPreference.findMany.mockResolvedValue([]);
+      await service.notify(context, 'u1', ['u2'], 'mention', target);
+      expect(email.send).not.toHaveBeenCalled();
+    });
   });
 
   describe('notifySystem (reminders)', () => {
@@ -115,7 +130,7 @@ describe('NotificationsService', () => {
     };
     beforeEach(() => {
       tx = {
-        user: { findMany: jest.fn().mockResolvedValue([{ id: 'u2', email: 'u2@x.test' }]) },
+        user: { findMany: jest.fn().mockResolvedValue([{ id: 'u2', email: 'u2@x.test', notificationDigest: 'immediate' }]) },
         userNotification: { create: jest.fn() },
         userNotificationPreference: { findMany: jest.fn().mockResolvedValue([]) },
       };
@@ -159,7 +174,7 @@ describe('NotificationsService', () => {
 
     beforeEach(() => {
       tx = {
-        user: { findMany: jest.fn().mockResolvedValue([{ id: 'u2', email: 'u2@x.test', name: 'U Two' }]), findUnique: jest.fn().mockResolvedValue({ name: '<b>Actor</b>' }) },
+        user: { findMany: jest.fn().mockResolvedValue([{ id: 'u2', email: 'u2@x.test', name: 'U Two', notificationDigest: 'immediate' }]), findUnique: jest.fn().mockResolvedValue({ name: '<b>Actor</b>' }) },
         userNotification: { create: jest.fn() },
         userNotificationPreference: { findMany: jest.fn().mockResolvedValue([]) },
         approvalEmailTemplate: { findFirst: jest.fn() },
@@ -271,6 +286,27 @@ describe('NotificationsService', () => {
 
     it('setPreference rejects an unknown type', async () => {
       await expect(service.setPreference(ctx, 'u1', 'bogus', false)).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('digest mode', () => {
+    const ctx = { organizationId: 'org-1', isSuperAdmin: false } as any;
+
+    it('getDigestMode returns the stored mode, defaulting to immediate', async () => {
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ user: { findUnique: jest.fn().mockResolvedValue({ notificationDigest: 'daily' }) } }));
+      expect(await service.getDigestMode(ctx, 'u1')).toEqual({ mode: 'daily' });
+
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ user: { findUnique: jest.fn().mockResolvedValue(null) } }));
+      expect(await service.getDigestMode(ctx, 'u1')).toEqual({ mode: 'immediate' });
+    });
+
+    it('setDigestMode updates a valid mode and rejects an invalid one', async () => {
+      const update = jest.fn();
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ user: { update } }));
+      expect(await service.setDigestMode(ctx, 'u1', 'daily')).toEqual({ mode: 'daily' });
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'u1' }, data: { notificationDigest: 'daily' } }));
+
+      await expect(service.setDigestMode(ctx, 'u1', 'bogus')).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 });
