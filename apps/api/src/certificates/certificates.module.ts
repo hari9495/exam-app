@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { StorageModule } from '@exam-platform/shared';
 import { CertificatesController } from './certificates.controller';
+import { PublicCertificatesController } from './public-certificates.controller';
 import { CertificateTemplatesService } from './certificate-templates.service';
 import { CertificateService } from './certificate.service';
 
@@ -9,7 +10,7 @@ import { CertificateService } from './certificate.service';
 // are global. The PDF builder is shared (@exam-platform/shared) so exam-runtime renders it identically.
 @Module({
   imports: [StorageModule],
-  controllers: [CertificatesController],
+  controllers: [CertificatesController, PublicCertificatesController],
   providers: [CertificateTemplatesService, CertificateService],
   exports: [CertificateTemplatesService, CertificateService],
 })

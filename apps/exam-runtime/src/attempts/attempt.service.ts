@@ -1655,6 +1655,7 @@ export class AttemptService {
       date: new Date().toLocaleDateString('en-US', { dateStyle: 'long' } as Intl.DateTimeFormatOptions),
       orgName: loaded.org?.name ?? '',
       certificateId: result.id,
+      verifyUrl: `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/verify/${result.id}`,
     });
     const path = await this.blobStorage.upload(`certificates/${organizationId}/${loaded.attempt!.id}.pdf`, pdf, 'application/pdf');
     await this.tenantPrisma.forTenant(context, (tx) => tx.result.update({ where: { id: result.id }, data: { certificatePath: path } }));
