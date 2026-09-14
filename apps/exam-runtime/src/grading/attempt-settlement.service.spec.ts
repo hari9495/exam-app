@@ -684,6 +684,76 @@ describe('AttemptSettlementService', () => {
       expect(result.status).toBe('pending_manual_grade');
     });
 
+    it('routes an attempted essay question to pending_manual_grade instead of auto-scoring it full marks', async () => {
+      const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
+      const tx = {
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
+            { id: 'q2', type: 'essay', marks: 10, negativeMarks: 0, options: [] },
+          ]),
+        },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'answer-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']) },
+            { id: 'answer-2', questionId: 'q2', selectedOptionIdsJson: JSON.stringify([]), answerText: 'My essay answer.', marksAwarded: null },
+          ]),
+          update: jest.fn(),
+        },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'pending_manual_grade' }) },
+        auditLog: { create: jest.fn() },
+      };
+
+      const result = await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+
+      // Regression guard for the pre-feature bug: an essay (empty selected == empty correct) must
+      // NOT be auto-scored isCorrect/full-marks. Only the MCQ row is graded; the essay is left null.
+      expect(tx.answer.update).toHaveBeenCalledTimes(1);
+      expect(tx.answer.update).toHaveBeenCalledWith({ where: { id: 'answer-1' }, data: { isCorrect: true, marksAwarded: 5 } });
+      // Essay excluded from the auto-scored total; passFail deferred.
+      expect(tx.result.create).toHaveBeenCalledWith({
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 5, percentage: 100, passFail: null },
+      });
+      expect(result.status).toBe('pending_manual_grade');
+    });
+
+    it('auto-zeroes an essay question the candidate never answered instead of queueing it for a human', async () => {
+      const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
+      const tx = {
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
+            { id: 'q2', type: 'essay', marks: 10, negativeMarks: 0, options: [] },
+          ]),
+        },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'answer-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']) },
+          ]),
+          update: jest.fn(),
+          create: jest.fn().mockResolvedValue({ id: 'answer-2', questionId: 'q2' }),
+        },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
+      };
+
+      const result = await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+
+      expect(tx.answer.create).toHaveBeenCalledWith({
+        data: {
+          attemptId: 'attempt-1', questionId: 'q2', selectedOptionIdsJson: '[]', answerText: null,
+          marksAwarded: 0, isCorrect: false, gradingFeedback: 'Not attempted.',
+        },
+      });
+      // Nothing left for a human -> settles outright, essay marks count toward maxScore.
+      expect(result.status).toBe('submitted');
+      expect(tx.result.create).toHaveBeenCalledWith({
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 15, percentage: expect.closeTo((5 / 15) * 100, 5), passFail: 'fail' },
+      });
+    });
+
     it('auto-zeroes a code question the candidate never answered instead of queueing it for a human', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
       const tx = {
@@ -925,6 +995,56 @@ describe('AttemptSettlementService', () => {
         data: { score: 13, maxScore: 15, percentage: expect.closeTo((13 / 15) * 100, 5), passFail: 'pass' },
       });
       expect(tx.attempt.update).toHaveBeenCalledWith({ where: { id: 'attempt-1' }, data: { status: 'submitted' } });
+    });
+
+    it('blocks finalize while an attempted essay question is still ungraded, then settles once graded', async () => {
+      const base = {
+        id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', status: 'pending_manual_grade',
+        questionOrderJson: JSON.stringify(['q1', 'q2']),
+      };
+      const questions = [
+        { id: 'q1', type: 'single_mcq', marks: 5 },
+        { id: 'q2', type: 'essay', marks: 10 },
+      ];
+      // Ungraded essay -> throws.
+      const txUngraded = {
+        question: { findMany: jest.fn().mockResolvedValue(questions) },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'answer-1', questionId: 'q1', marksAwarded: 5 },
+            { id: 'answer-2', questionId: 'q2', answerText: 'My essay.', marksAwarded: null },
+          ]),
+          update: jest.fn(),
+        },
+        result: { update: jest.fn() },
+        attempt: { update: jest.fn() },
+        auditLog: { create: jest.fn() },
+      };
+      await expect(
+        service.finalizeManualGrade(txUngraded as unknown as Prisma.TransactionClient, exam, base as any),
+      ).rejects.toThrow(/still need grading/);
+      expect(txUngraded.attempt.update).not.toHaveBeenCalled();
+
+      // Essay now graded 7/10 -> recompute + settle.
+      const txGraded = {
+        question: { findMany: jest.fn().mockResolvedValue(questions) },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'answer-1', questionId: 'q1', marksAwarded: 5 },
+            { id: 'answer-2', questionId: 'q2', answerText: 'My essay.', marksAwarded: 7 },
+          ]),
+        },
+        result: { update: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) },
+        auditLog: { create: jest.fn() },
+      };
+      const finalized = await service.finalizeManualGrade(txGraded as unknown as Prisma.TransactionClient, exam, base as any);
+
+      expect(finalized.status).toBe('submitted');
+      expect(txGraded.result.update).toHaveBeenCalledWith({
+        where: { attemptId: 'attempt-1' },
+        data: { score: 12, maxScore: 15, percentage: expect.closeTo((12 / 15) * 100, 5), passFail: 'pass' },
+      });
     });
 
     // Attempts already queued when auto-zeroing shipped carry blank rows with marksAwarded null.

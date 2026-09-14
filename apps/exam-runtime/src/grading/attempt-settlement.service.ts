@@ -20,12 +20,20 @@ const BROWSER_ACTIVITY_COOLDOWN_MS = 60_000;
 // rather than looking like a human's verdict on submitted work.
 export const NOT_ATTEMPTED_FEEDBACK = 'Not attempted.';
 
-// "Did the candidate write any code here?" -- the single test that decides whether a code
-// question needs a human. Whitespace only counts as nothing; so does starter code the candidate
-// never touched being absent entirely. Mirrored in apps/api's getPendingGrading, which hides the
-// same answers from the grading queue -- one predicate, duplicated rather than shared, because
-// it is one line and the two apps have no common runtime module for it.
-function isAttemptedCode(answer: { answerText: string | null } | undefined): boolean {
+// The question types graded by a human, not by the settlement's auto-scorer: code (free code,
+// optionally test-backed) and essay (free prose). Both store the candidate's work in answerText,
+// carry no options, and route the attempt to pending_manual_grade when attempted. Mirrored in
+// apps/api's getPendingGrading (queue) and attempt.service (candidate store path) -- one small
+// list, duplicated rather than shared, because the two apps have no common runtime module for it.
+export const MANUALLY_GRADED_TYPES = ['code', 'essay'];
+export function isManuallyGraded(type: string): boolean {
+  return MANUALLY_GRADED_TYPES.includes(type);
+}
+
+// "Did the candidate write anything here?" -- the single test that decides whether a manually
+// graded question needs a human. Whitespace only counts as nothing; so does starter code the
+// candidate never touched being absent entirely. Works for any answerText-based type (code + essay).
+function isAttemptedText(answer: { answerText: string | null } | undefined): boolean {
   return Boolean(answer?.answerText && answer.answerText.trim().length > 0);
 }
 
@@ -165,15 +173,20 @@ export class AttemptSettlementService {
     // Only code questions the candidate actually WROTE something for need a human. An untouched
     // one has exactly one defensible mark -- zero -- so awarding it here spares the recruiter
     // clicking through a queue of empty editors. On one real attempt that was 15 of 19 questions.
-    const attemptedCodeQuestions = questions.filter(
-      (question) => question.type === 'code' && isAttemptedCode(answersByQuestionId.get(question.id)),
+    // Attempted manually-graded questions (code OR essay) route the attempt to a human; untouched
+    // ones auto-zero below. hasCodeQuestions is kept SEPARATELY and strictly for the code
+    // auto-grade trigger (essays have no auto-grade), so widening manual routing never turns the
+    // code test-runner loose on prose.
+    const attemptedManualQuestions = questions.filter(
+      (question) => isManuallyGraded(question.type) && isAttemptedText(answersByQuestionId.get(question.id)),
     );
-    const hasCodeQuestions = attemptedCodeQuestions.length > 0;
+    const hasManualQuestions = attemptedManualQuestions.length > 0;
+    const hasCodeQuestions = attemptedManualQuestions.some((question) => question.type === 'code');
     const gradedAnswers: { questionId: string; marksAwarded: number }[] = [];
     for (const question of questions) {
-      if (question.type === 'code') {
+      if (isManuallyGraded(question.type)) {
         const existing = answersByQuestionId.get(question.id);
-        if (!isAttemptedCode(existing)) {
+        if (!isAttemptedText(existing)) {
           // Auto-zero, and record WHY, so the report reads "Not attempted." rather than a bare 0
           // that looks like a human judged the work. The row is still created when absent: the
           // candidate report and finalizeManualGrade() both walk answers, and no row would make
@@ -212,7 +225,7 @@ export class AttemptSettlementService {
       }
     }
 
-    const scoredQuestions = hasCodeQuestions ? questions.filter((question) => question.type !== 'code') : questions;
+    const scoredQuestions = hasManualQuestions ? questions.filter((question) => !isManuallyGraded(question.type)) : questions;
     const sections = toGradableSections(
       attempt.sectionSnapshotJson,
       scoredQuestions.map((question) => question.id),
@@ -224,11 +237,11 @@ export class AttemptSettlementService {
         score: summary.score,
         maxScore: summary.maxScore,
         percentage: summary.percentage,
-        passFail: hasCodeQuestions ? null : summary.passFail,
+        passFail: hasManualQuestions ? null : summary.passFail,
       },
     });
 
-    const finalStatus = hasCodeQuestions ? 'pending_manual_grade' : status;
+    const finalStatus = hasManualQuestions ? 'pending_manual_grade' : status;
     const finalized = await tx.attempt.update({ where: { id: attempt.id }, data: { status: finalStatus, submittedAt: new Date() } });
     // Finding 6 (task-8): called here, BEFORE this transaction commits -- at this point the
     // attempt is not yet reliably "no longer live": if the transaction rolls back after this line
@@ -290,10 +303,10 @@ export class AttemptSettlementService {
         }
       }
       // Skip insight generation for attempts pending manual grading — at this point the Result
-      // is computed from MCQ-only scoredQuestions (code questions excluded) and passFail is null,
+      // is computed from auto-graded questions only (code/essay excluded) and passFail is null,
       // so an insight generated now would reflect an artificially skewed percentage. It's
       // regenerated in finalizeManualGrade() once the full, correct score is known.
-      if (!hasCodeQuestions) {
+      if (!hasManualQuestions) {
         try {
           await this.attemptInsight.analyze(finalized.id);
         } catch (error) {
@@ -390,15 +403,15 @@ export class AttemptSettlementService {
     const answers = await tx.answer.findMany({ where: { attemptId: attempt.id } });
     const answersByQuestionId = new Map(answers.map((answer) => [answer.questionId, answer]));
 
-    const codeQuestions = questions.filter((question) => question.type === 'code');
+    const manualQuestions = questions.filter((question) => isManuallyGraded(question.type));
 
     // Attempts that were already sitting in the queue when auto-zeroing shipped still carry
-    // blank code answers with marksAwarded === null. The queue no longer shows those, so without
+    // blank manual answers with marksAwarded === null. The queue no longer shows those, so without
     // this they would be unfinalizable -- invisible to the recruiter yet still blocking the
     // check below. Settle them here on the same rule settlement uses.
-    for (const question of codeQuestions) {
+    for (const question of manualQuestions) {
       const answer = answersByQuestionId.get(question.id);
-      if (answer && answer.marksAwarded === null && !isAttemptedCode(answer)) {
+      if (answer && answer.marksAwarded === null && !isAttemptedText(answer)) {
         await tx.answer.update({
           where: { id: answer.id },
           data: { marksAwarded: 0, isCorrect: false, gradingFeedback: NOT_ATTEMPTED_FEEDBACK },
@@ -407,12 +420,12 @@ export class AttemptSettlementService {
       }
     }
 
-    const ungraded = codeQuestions.filter((question) => {
+    const ungraded = manualQuestions.filter((question) => {
       const answer = answersByQuestionId.get(question.id);
       return !answer || answer.marksAwarded === null;
     });
     if (ungraded.length > 0) {
-      throw new BadRequestException(`${ungraded.length} code question(s) still need grading before this attempt can be finalized`);
+      throw new BadRequestException(`${ungraded.length} question(s) still need grading before this attempt can be finalized`);
     }
 
     const gradedAnswers = questions.map((question) => ({

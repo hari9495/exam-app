@@ -33,7 +33,7 @@ export class QuestionOptionDto {
 }
 
 export class CreateQuestionDto {
-  @IsIn(['single_mcq', 'multi_mcq', 'true_false', 'code'])
+  @IsIn(['single_mcq', 'multi_mcq', 'true_false', 'code', 'essay'])
   type!: string;
 
   @IsString()
@@ -86,6 +86,12 @@ export class CreateQuestionDto {
   @IsOptional()
   @IsBoolean()
   allowStdin?: boolean;
+
+  // Recruiter-only reference answer / grading notes for an essay question (ignored for other
+  // types). Never shown to candidates; surfaced to the grader in the manual-grading queue.
+  @IsOptional()
+  @IsString()
+  modelAnswer?: string;
 
   @IsOptional()
   @IsString()

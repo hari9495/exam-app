@@ -36,7 +36,7 @@ export function useFinalizeManualGrade() {
   });
 }
 
-export function useCodeReview(attemptId: string, questionId: string) {
+export function useCodeReview(attemptId: string, questionId: string, enabled = true) {
   const { accessToken } = useAuth();
   return useQuery<CodeAnswerReview | null>({
     queryKey: ['code-review', attemptId, questionId],
@@ -50,7 +50,8 @@ export function useCodeReview(attemptId: string, questionId: string) {
         throw error;
       }
     },
-    enabled: Boolean(accessToken) && Boolean(attemptId) && Boolean(questionId),
+    // Code-only: essay questions have no AI review, so callers pass enabled=false for them.
+    enabled: enabled && Boolean(accessToken) && Boolean(attemptId) && Boolean(questionId),
     // Generation is detached server-side (the AI call far outruns the 5s internal timeout that
     // used to 503 it), so the row lands as 'processing' first and flips to completed/failed
     // whenever the model returns. Poll until it settles -- same shape as the invite-email

@@ -244,6 +244,24 @@ describe('validateQuestionPayload', () => {
     ).toThrow('code questions must not have options');
   });
 
+  it('accepts an essay question with no options and no language config', () => {
+    expect(() =>
+      validateQuestionPayload({ type: 'essay', difficulty: 'medium', marks: 8, negativeMarks: 0, options: [] }),
+    ).not.toThrow();
+  });
+
+  it('rejects an essay question with any options', () => {
+    expect(() =>
+      validateQuestionPayload({
+        type: 'essay',
+        difficulty: 'medium',
+        marks: 8,
+        negativeMarks: 0,
+        options: [{ text: 'irrelevant', isCorrect: false }],
+      }),
+    ).toThrow('essay questions must not have options');
+  });
+
   it('rejects a code question with an unknown languageMode', () => {
     expect(() =>
       validateQuestionPayload(

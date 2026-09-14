@@ -6,6 +6,7 @@ export const TYPE_TONE: Record<QuestionType, StatusTone> = {
   multi_mcq: 'info',
   true_false: 'info',
   code: 'purple',
+  essay: 'purple',
 };
 
 export const TYPE_LABEL: Record<QuestionType, string> = {
@@ -13,6 +14,7 @@ export const TYPE_LABEL: Record<QuestionType, string> = {
   multi_mcq: 'Multi-select',
   true_false: 'True/False',
   code: 'Code',
+  essay: 'Essay',
 };
 
 export const DIFFICULTY_LABEL: Record<Difficulty, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };

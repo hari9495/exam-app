@@ -1747,6 +1747,37 @@ describe('AttemptService', () => {
       });
     });
 
+    it('stores answerText for an essay question without options, language, or telemetry', async () => {
+      const essayAttempt = { ...attempt, questionOrderJson: JSON.stringify(['essay-question-1']) };
+      const essayQuestion = { id: 'essay-question-1', type: 'essay', options: [] };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(essayAttempt) },
+        question: { findFirstOrThrow: jest.fn().mockResolvedValue(essayQuestion) },
+        answer: { upsert: jest.fn().mockResolvedValue({}) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(essayAttempt);
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.answer(session, { questionId: 'essay-question-1', selectedOptionIds: [], answerText: 'My considered response.' });
+
+      expect(result).toEqual({ questionId: 'essay-question-1', selectedOptionIds: [], answerText: 'My considered response.', isMarkedForReview: false });
+      expect(tx.answer.upsert).toHaveBeenCalledWith({
+        where: { attemptId_questionId: { attemptId: 'attempt-1', questionId: 'essay-question-1' } },
+        create: {
+          attemptId: 'attempt-1',
+          questionId: 'essay-question-1',
+          selectedOptionIdsJson: JSON.stringify([]),
+          answerText: 'My considered response.',
+          isMarkedForReview: false,
+        },
+        update: {
+          answerText: 'My considered response.',
+          isMarkedForReview: false,
+          answeredAt: expect.any(Date),
+        },
+      });
+    });
+
     it('persists telemetryJson on the code-question upsert when telemetry is provided', async () => {
       const codeAttempt = { ...attempt, questionOrderJson: JSON.stringify(['code-question-1']) };
       const codeQuestion = { id: 'code-question-1', type: 'code', options: [] };

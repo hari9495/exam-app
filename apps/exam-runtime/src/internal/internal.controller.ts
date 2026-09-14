@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Get, HttpCode, Inject, Logger, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
 import { TenantPrismaService } from '@exam-platform/shared';
-import { AttemptSettlementService } from '../grading/attempt-settlement.service';
+import { AttemptSettlementService, isManuallyGraded } from '../grading/attempt-settlement.service';
 import { AttemptAnalysisService } from '../proctoring-analysis/attempt-analysis.service';
 import { AttemptInsightService } from '../attempt-insight/attempt-insight.service';
 import { CodeReviewService } from '../code-review/code-review.service';
@@ -158,8 +158,8 @@ export class InternalController {
       if (!answer) {
         throw new NotFoundException(`No answer found for attempt ${id}, question ${questionId}`);
       }
-      if (answer.question.type !== 'code') {
-        throw new BadRequestException(`Question ${questionId} is not a code question`);
+      if (!isManuallyGraded(answer.question.type)) {
+        throw new BadRequestException(`Question ${questionId} is not a manually graded question`);
       }
       if (dto.marksAwarded > answer.question.marks) {
         throw new BadRequestException(`marksAwarded (${dto.marksAwarded}) cannot exceed the question's marks (${answer.question.marks})`);

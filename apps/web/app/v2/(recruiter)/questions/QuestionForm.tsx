@@ -19,6 +19,7 @@ const TYPE_OPTIONS = [
   { value: 'multi_mcq', label: 'Multiple-correct MCQ' },
   { value: 'true_false', label: 'True / False' },
   { value: 'code', label: 'Code' },
+  { value: 'essay', label: 'Essay / subjective' },
 ];
 const DIFFICULTY_OPTIONS = [{ value: 'easy', label: 'Easy' }, { value: 'medium', label: 'Medium' }, { value: 'hard', label: 'Hard' }];
 const LANGUAGE_OPTIONS = CODE_LANGUAGE_OPTIONS.map((value) => ({ value, label: value }));
@@ -31,7 +32,7 @@ interface QuestionFormProps {
 }
 
 function defaultOptionsFor(type: QuestionType): OptionDraft[] {
-  if (type === 'code') return [];
+  if (type === 'code' || type === 'essay') return [];
   if (type === 'true_false') return [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }];
   return [{ text: '', isCorrect: false }, { text: '', isCorrect: false }];
 }
@@ -104,6 +105,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
   const [marks, setMarks] = useState(String(initialQuestion?.marks ?? 1));
   const [negativeMarks, setNegativeMarks] = useState(String(initialQuestion?.negativeMarks ?? 0));
   const [partialCredit, setPartialCredit] = useState(initialQuestion?.partialCredit ?? false);
+  const [modelAnswer, setModelAnswer] = useState(initialQuestion?.modelAnswer ?? '');
   const [topic, setTopic] = useState(initialQuestion?.topic ?? '');
   const [category, setCategory] = useState(initialQuestion?.category ?? '');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialQuestion?.tags?.map((t) => t.id) ?? []);
@@ -170,6 +172,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
     onSubmit({
       type, text, difficulty, marks: Number(marks), negativeMarks: Number(negativeMarks),
       partialCredit: type === 'multi_mcq' ? partialCredit : undefined,
+      modelAnswer: type === 'essay' ? modelAnswer.trim() || undefined : undefined,
       topic: topic.trim() || undefined, category: category.trim() || undefined,
       tags: [...new Set([...tags.filter((t) => selectedTagIds.includes(t.id)).map((t) => t.name), ...aiExtraTags])],
       languageMode: type === 'code' ? languageMode : undefined,
@@ -244,6 +247,21 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
         </div>
       </div>
     </>
+  ) : type === 'essay' ? (
+    <>
+      <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: 0 }}>
+        Candidates answer in free text. Essay answers are graded manually from the grading queue — there are no options and no auto-scoring.
+      </p>
+      <Field label="Model answer / grading notes (optional)">
+        <textarea
+          value={modelAnswer}
+          onChange={(e) => setModelAnswer(e.target.value)}
+          rows={5}
+          placeholder="A reference answer or rubric shown only to the grader — never to candidates."
+          style={{ ...textInput, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }}
+        />
+      </Field>
+    </>
   ) : (
     <>
       {options.map((option, index) => (
@@ -312,7 +330,10 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
               </div>
             )}
           </Section>
-          <Section title={type === 'code' ? 'Code answer' : 'Answer options'} description={type === 'code' ? 'How candidates write and run code.' : 'The choices candidates pick from.'}>
+          <Section
+            title={type === 'code' ? 'Code answer' : type === 'essay' ? 'Essay answer' : 'Answer options'}
+            description={type === 'code' ? 'How candidates write and run code.' : type === 'essay' ? 'Candidates write free text; you grade it manually.' : 'The choices candidates pick from.'}
+          >
             {answerSection}
           </Section>
           <Section title="Organize" description="Topic, category and tags for filtering.">

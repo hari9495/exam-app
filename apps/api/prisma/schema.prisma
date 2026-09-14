@@ -343,6 +343,9 @@ model Question {
   // Auto-grading test cases for a code question (JSON array of {stdin, expectedStdout, weight,
   // hidden}). Null/empty = the question is graded manually, as before.
   codeTestsJson      String?               @map("code_tests_json") @db.NVarChar(Max)
+  // Recruiter-only reference answer / grading notes for an essay question. Null for other types
+  // and never exposed to candidates; shown to the grader in the manual-grading queue.
+  modelAnswer        String?               @map("model_answer") @db.NVarChar(Max)
   snippetCode        String?               @map("snippet_code") @db.NVarChar(Max)
   snippetLanguage    String?               @map("snippet_language")
   imageUrl           String?               @map("image_url")

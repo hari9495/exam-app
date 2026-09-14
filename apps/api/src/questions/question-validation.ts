@@ -15,7 +15,7 @@ export interface QuestionValidationInput {
   allowedLanguages?: string[];
 }
 
-const VALID_TYPES = ['single_mcq', 'multi_mcq', 'true_false', 'code'];
+const VALID_TYPES = ['single_mcq', 'multi_mcq', 'true_false', 'code', 'essay'];
 const VALID_DIFFICULTIES = ['easy', 'medium', 'hard'];
 // Purely a cosmetic label list for the QCIC feature's decorative `snippetLanguage` field
 // (shown as plain text above a read-only <pre> block, no execution, no highlighting) — NOT
@@ -61,6 +61,11 @@ export function validateQuestionPayload(input: QuestionValidationInput, availabl
       }
     } else if (allowedLanguages && allowedLanguages.length > 0) {
       throw new BadRequestException('Any-mode code questions must not specify allowedLanguages');
+    }
+  } else if (type === 'essay') {
+    // Free-text, manually graded (like code, minus execution). No options, no language config.
+    if (options.length !== 0) {
+      throw new BadRequestException('essay questions must not have options');
     }
   } else if (type === 'true_false') {
     if (options.length !== 2) {

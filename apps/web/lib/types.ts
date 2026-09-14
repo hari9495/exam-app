@@ -19,7 +19,7 @@ export interface PaginatedResponse<T> {
   totalPages: number;
 }
 
-export type QuestionType = 'single_mcq' | 'multi_mcq' | 'true_false' | 'code';
+export type QuestionType = 'single_mcq' | 'multi_mcq' | 'true_false' | 'code' | 'essay';
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type ExamStatus = 'draft' | 'published' | 'archived';
 export type InvitationStatus = 'invited' | 'revoked';
@@ -194,6 +194,8 @@ export interface Question {
   snippetCode: string | null;
   snippetLanguage: CodeLanguage | null;
   codeTests?: CodeTestCase[];
+  // Recruiter-only reference answer / grading notes for an essay question (null otherwise).
+  modelAnswer: string | null;
   imageUrl: string | null;
   createdAt: string;
   options: QuestionOption[];
@@ -1597,10 +1599,14 @@ export interface CandidateLeaderboardResponse {
 
 export interface PendingGradingCodeQuestion {
   questionId: string;
+  /** 'code' | 'essay' — the queue renders code as monospace (+ AI review), essay as prose. */
+  type: string;
   questionText: string;
   /** easy | medium | hard, from the question bank. */
   difficulty: string;
   starterCode: string | null;
+  /** Recruiter-only reference answer for an essay question (null for code). */
+  modelAnswer: string | null;
   codeLanguage: CodeLanguage | null;
   answerText: string | null;
   marks: number;

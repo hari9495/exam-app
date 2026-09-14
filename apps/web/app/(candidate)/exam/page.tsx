@@ -268,7 +268,7 @@ export default function CandidateExamPage() {
   // can be filtered over both the flat `questions` list and a raw `section.questions` array.
   const isQuestionAnswered = (q: AttemptQuestion) => {
     const a = answers.find((ans) => ans.questionId === q.id);
-    if (q.type === 'code') return Boolean(a && a.answerText && a.answerText.trim() !== '');
+    if (q.type === 'code' || q.type === 'essay') return Boolean(a && a.answerText && a.answerText.trim() !== '');
     return Boolean(a && a.selectedOptionIds.length > 0);
   };
   const isQuestionMarkedForReview = (q: (typeof questions)[number]) =>
@@ -342,6 +342,8 @@ export default function CandidateExamPage() {
     setLocalMarkedForReview((prev) => ({ ...prev, [question!.id]: next }));
     if (question!.type === 'code') {
       saveAnswer(question!.id, [], next, codeValue, editorTelemetry.snapshot(), currentCodeLanguage);
+    } else if (question!.type === 'essay') {
+      saveAnswer(question!.id, [], next, codeValue);
     } else {
       saveAnswer(question!.id, selectedOptionIds, next);
     }
@@ -351,6 +353,12 @@ export default function CandidateExamPage() {
     const next = value ?? '';
     setLocalCodeValues((prev) => ({ ...prev, [question!.id]: next }));
     saveAnswer(question!.id, [], currentMarked, next, editorTelemetry.snapshot(), currentCodeLanguage);
+  }
+
+  // Essay: free prose stored in answerText (reuses the code text channel), no language/telemetry.
+  function handleEssayChange(value: string) {
+    setLocalCodeValues((prev) => ({ ...prev, [question!.id]: value }));
+    saveAnswer(question!.id, [], currentMarked, value);
   }
 
   function handleRun() {
@@ -548,7 +556,7 @@ export default function CandidateExamPage() {
               </span>
               <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-candidate-text-tertiary">
                 Question {currentIndex + 1} of {questions.length} ·{' '}
-                {question.type === 'code' ? 'Code' : question.type === 'multi_mcq' ? 'Multiple choice' : 'Single choice'} ·{' '}
+                {question.type === 'code' ? 'Code' : question.type === 'essay' ? 'Essay' : question.type === 'multi_mcq' ? 'Multiple choice' : 'Single choice'} ·{' '}
                 {question.marks} marks
               </span>
             </div>
@@ -653,6 +661,18 @@ export default function CandidateExamPage() {
                 </>
               )}
             </>
+          ) : question.type === 'essay' ? (
+            <div className="flex flex-col gap-1">
+              <textarea
+                aria-label="Your answer"
+                value={codeValue}
+                onChange={(e) => handleEssayChange(e.target.value)}
+                placeholder="Write your answer here…"
+                rows={12}
+                className="w-full rounded-md border border-candidate-border bg-white px-3 py-2 text-sm leading-relaxed text-candidate-text"
+              />
+              <span className="self-end text-xs text-candidate-text-faint">{codeValue.trim().length} characters</span>
+            </div>
           ) : (
             // Two columns once there is real width to use: a single option row stretched
             // across a 2560px screen is mostly empty space with a radio button on the left.
