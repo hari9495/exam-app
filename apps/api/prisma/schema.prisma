@@ -1475,6 +1475,24 @@ model ApprovalEmailTemplate {
   @@map("approval_email_templates")
 }
 
+// Per-org override copy for interview emails (invite/panelist/confirmation/decline/reschedule/cancel).
+// One row per org per fixed eventType; a missing or disabled row falls back to the built-in copy.
+// Mirrors ApprovalEmailTemplate exactly (RLS-protected — see _rls migration).
+model InterviewEmailTemplate {
+  id             String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  eventType      String   @map("event_type") @db.NVarChar(50)
+  subject        String   @db.NVarChar(Max)
+  body           String   @db.NVarChar(Max)
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([organizationId, eventType])
+  @@index([organizationId])
+  @@map("interview_email_templates")
+}
+
 model UserGroup {
   id             String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
   organizationId String   @map("organization_id") @db.UniqueIdentifier

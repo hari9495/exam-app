@@ -11,6 +11,8 @@ import { InterviewsService } from './interviews.service';
 import { InterviewAiService } from './interview-ai.service';
 import { InterviewQuestionsClient } from './interview-questions.client';
 import { InterviewScorecardClient } from './interview-scorecard.client';
+import { InterviewEmailTemplatesController } from './interview-email-templates.controller';
+import { InterviewEmailTemplatesService } from './interview-email-templates.service';
 
 @Module({
   // CalendarSyncModule exports CalendarSyncService, injected by InterviewsService to push/delete
@@ -18,8 +20,8 @@ import { InterviewScorecardClient } from './interview-scorecard.client';
   // CryptoModule (AiApiKeyResolverService) + BillingModule (QuotaService) power the AI interview kit
   // -- both imported explicitly, mirroring JobsModule's AI processors.
   imports: [EmailModule, StorageModule, JobsModule, CalendarSyncModule, CryptoModule, BillingModule],
-  controllers: [InterviewsController, PublicInterviewsController, InterviewAiController],
-  providers: [InterviewsService, InterviewAiService, InterviewQuestionsClient, InterviewScorecardClient],
+  controllers: [InterviewsController, PublicInterviewsController, InterviewAiController, InterviewEmailTemplatesController],
+  providers: [InterviewsService, InterviewAiService, InterviewQuestionsClient, InterviewScorecardClient, InterviewEmailTemplatesService],
   exports: [InterviewsService],
 })
 export class InterviewsModule {}
