@@ -484,6 +484,29 @@ describe('CandidatesService', () => {
     });
   });
 
+  describe('bulkRemove', () => {
+    it('deletes each candidate via remove() and returns a deleted tally', async () => {
+      const removeSpy = jest.spyOn(service, 'remove').mockResolvedValue({ id: 'x' });
+      const result = await service.bulkRemove(context, 'user-1', ['c1', 'c2']);
+      expect(removeSpy).toHaveBeenCalledTimes(2);
+      expect(removeSpy).toHaveBeenCalledWith(context, 'user-1', 'c1');
+      expect(result).toEqual({ deleted: ['c1', 'c2'], skipped: [] });
+      removeSpy.mockRestore();
+    });
+
+    it('captures a blocked candidate (e.g. has invitations) in skipped without failing the batch', async () => {
+      const removeSpy = jest
+        .spyOn(service, 'remove')
+        .mockResolvedValueOnce({ id: 'c1' })
+        .mockRejectedValueOnce(new Error('has 2 invitation(s)'))
+        .mockResolvedValueOnce({ id: 'c3' });
+      const result = await service.bulkRemove(context, 'user-1', ['c1', 'c2', 'c3']);
+      expect(result.deleted).toEqual(['c1', 'c3']);
+      expect(result.skipped).toEqual([{ candidateId: 'c2', reason: 'has 2 invitation(s)' }]);
+      removeSpy.mockRestore();
+    });
+  });
+
   describe('setSmsOptOut', () => {
     it('sets smsOptedOutAt to now when opting out', async () => {
       const tx = {

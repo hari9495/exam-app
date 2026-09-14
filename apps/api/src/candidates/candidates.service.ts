@@ -398,6 +398,27 @@ export class CandidatesService {
     return { id: candidateId };
   }
 
+  // Bulk soft-delete: reuses remove() per candidate so the same guard (invited candidates can't be
+  // deleted) and audit apply. Independent per item — a blocked/missing candidate lands in `skipped`
+  // rather than failing the whole batch (the repo's bulk convention).
+  async bulkRemove(
+    context: TenantContext,
+    actorUserId: string,
+    candidateIds: string[],
+  ): Promise<{ deleted: string[]; skipped: { candidateId: string; reason: string }[] }> {
+    const deleted: string[] = [];
+    const skipped: { candidateId: string; reason: string }[] = [];
+    for (const candidateId of candidateIds) {
+      try {
+        await this.remove(context, actorUserId, candidateId);
+        deleted.push(candidateId);
+      } catch (e) {
+        skipped.push({ candidateId, reason: e instanceof Error ? e.message : 'failed' });
+      }
+    }
+    return { deleted, skipped };
+  }
+
   // WhatsApp opt-in is legally distinct from email/SMS (Candidate.emailOptedOutAt is a
   // separate column) -- a recruiter toggles this independently of the email unsubscribe
   // state. Enforced at send time by candidate-whatsapp, not here.

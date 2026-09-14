@@ -122,6 +122,31 @@ export function usePatchEntry(jobId: string) {
   });
 }
 
+export interface BulkPatchInput {
+  entryIds: string[];
+  action: 'move' | 'reject' | 'assign';
+  statusId?: string;
+  reason?: string;
+  assigneeUserId?: string;
+  assigneeGroupId?: string;
+}
+export interface BulkPatchResult {
+  succeeded: string[];
+  skipped: { entryId: string; reason: string }[];
+}
+
+// POST /entries/bulk -- one action across selected entries (pipeline:manage). Returns a
+// succeeded/skipped tally; the board invalidates + toasts it.
+export function useBulkPatchEntries(jobId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation<BulkPatchResult, Error, BulkPatchInput>({
+    mutationFn: (input) =>
+      apiFetch('/entries/bulk', { method: 'POST', body: JSON.stringify(input) }, accessToken ?? undefined) as Promise<BulkPatchResult>,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs', jobId, 'pipeline'] }),
+  });
+}
+
 // PATCH /entries/:id/checklist -- ticks/unticks one BlueprintRule 'checklist' item (gated
 // pipeline:manage server-side). Mirrors usePatchEntry's invalidation.
 export function useSetChecklistItem(entryId: string, jobId: string) {

@@ -78,3 +78,20 @@ export function useDeleteCandidate() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['candidates'] }),
   });
 }
+
+export interface BulkDeleteCandidatesResult {
+  deleted: string[];
+  skipped: { candidateId: string; reason: string }[];
+}
+
+// POST /candidates/bulk-delete -- soft-deletes selected candidates (candidate:manage). Returns a
+// deleted/skipped tally (invited candidates can't be deleted and land in skipped).
+export function useBulkDeleteCandidates() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation<BulkDeleteCandidatesResult, Error, string[]>({
+    mutationFn: (candidateIds: string[]) =>
+      apiFetch('/candidates/bulk-delete', { method: 'POST', body: JSON.stringify({ candidateIds }) }, accessToken ?? undefined) as Promise<BulkDeleteCandidatesResult>,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['candidates'] }),
+  });
+}

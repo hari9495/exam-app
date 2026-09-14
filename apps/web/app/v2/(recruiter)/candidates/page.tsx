@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal, Upload, Power, Trash2, Send, Plus, Pencil, ListFilter, Check, UserPlus, Users, Sparkles } from 'lucide-react';
-import { useCandidates, useCreateCandidate, useUpdateCandidate, useDeleteCandidate } from '../../../../lib/hooks/useCandidates';
+import { useCandidates, useCreateCandidate, useUpdateCandidate, useDeleteCandidate, useBulkDeleteCandidates } from '../../../../lib/hooks/useCandidates';
 import { useSemanticCandidateSearch, useDuplicateCandidates } from '../../../../lib/hooks/useCandidateSearch';
 import { useExams } from '../../../../lib/hooks/useExams';
 import { useBulkInvite } from '../../../../lib/hooks/useInvitations';
@@ -156,6 +156,7 @@ export default function V2CandidatesPage() {
   const updateCandidate = useUpdateCandidate();
   const deleteCandidate = useDeleteCandidate();
   const bulkInvite = useBulkInvite(examId);
+  const bulkDeleteCandidates = useBulkDeleteCandidates();
 
   function handleToggleStatus(c: Candidate) {
     const next = c.status === 'inactive' ? 'active' : 'inactive';
@@ -175,6 +176,15 @@ export default function V2CandidatesPage() {
     bulkInvite.mutate(ids, {
       onSuccess: (result) => { notify('success', `Invited ${result.created.length} candidate(s).${result.skipped.length ? ` ${result.skipped.length} skipped.` : ''}`); clear(); },
       onError: (e) => notify('error', e instanceof Error ? e.message : 'Failed to send invitations.'),
+    });
+  }
+  function handleBulkDelete(ids: string[], clear: () => void) {
+    bulkDeleteCandidates.mutate(ids, {
+      onSuccess: (r) => {
+        notify('success', `Deleted ${r.deleted.length} candidate(s).${r.skipped.length ? ` ${r.skipped.length} skipped — invited candidates can't be deleted.` : ''}`);
+        clear();
+      },
+      onError: (e) => notify('error', e instanceof Error ? e.message : 'Failed to delete candidates.'),
     });
   }
   function handleAdd(v: CandidateFormValues) {
@@ -300,6 +310,7 @@ export default function V2CandidatesPage() {
             <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               <Combobox options={examOptions} value={examId} onChange={setExamId} placeholder="Choose exam…" width={220} active={!!examId} />
               <button type="button" onClick={() => handleInvite(ids, clear)} disabled={!examId || bulkInvite.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '8px 13px', borderRadius: 8, border: 'none', background: !examId ? 'color-mix(in srgb, var(--org-primary) 40%, var(--surface))' : 'var(--org-primary)', color: '#fff', cursor: !examId ? 'not-allowed' : 'pointer' }}><Send size={14} /> Send invitations</button>
+              <button type="button" onClick={() => handleBulkDelete(ids, clear)} disabled={bulkDeleteCandidates.isPending} className="v2-hoverbtn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '8px 13px', borderRadius: 8, border: '1px solid var(--danger)', background: 'var(--paper)', color: 'var(--danger)', cursor: 'pointer' }}><Trash2 size={14} /> Delete</button>
               <button type="button" onClick={clear} className="v2-hoverbtn" style={dt.toolBtn}>Clear</button>
             </span>
           </div>
