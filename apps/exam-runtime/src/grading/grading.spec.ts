@@ -42,6 +42,63 @@ describe('gradeAnswer', () => {
   });
 });
 
+describe('gradeAnswer — multi_mcq partial credit', () => {
+  const q = (over: Partial<Parameters<typeof gradeAnswer>[0]> = {}) => ({
+    marks: 6,
+    negativeMarks: 2,
+    correctOptionIds: ['opt-a', 'opt-b', 'opt-c'],
+    type: 'multi_mcq',
+    partialCredit: true,
+    ...over,
+  });
+
+  it('still awards full marks (isCorrect true) for an exact match', () => {
+    expect(gradeAnswer(q(), ['opt-c', 'opt-a', 'opt-b'])).toEqual({ isCorrect: true, marksAwarded: 6 });
+  });
+
+  it('awards proportional marks for a strict subset of the correct options', () => {
+    // 6 * (2 - 0) / 3 = 4
+    expect(gradeAnswer(q(), ['opt-a', 'opt-b'])).toEqual({ isCorrect: false, marksAwarded: 4 });
+    // 6 * (1 - 0) / 3 = 2
+    expect(gradeAnswer(q(), ['opt-a'])).toEqual({ isCorrect: false, marksAwarded: 2 });
+  });
+
+  it('penalizes a wrong selection: net = correct - wrong', () => {
+    // one correct + one wrong: 6 * (1 - 1) / 3 = 0
+    expect(gradeAnswer(q(), ['opt-a', 'opt-x'])).toEqual({ isCorrect: false, marksAwarded: 0 });
+    // two correct + one wrong: 6 * (2 - 1) / 3 = 2
+    expect(gradeAnswer(q(), ['opt-a', 'opt-b', 'opt-x'])).toEqual({ isCorrect: false, marksAwarded: 2 });
+  });
+
+  it('floors at 0 — an all-wrong selection never goes negative and never applies negativeMarks', () => {
+    // 6 * (0 - 2) / 3 = -4 -> floored to 0 (NOT -negativeMarks)
+    expect(gradeAnswer(q(), ['opt-x', 'opt-y'])).toEqual({ isCorrect: false, marksAwarded: 0 });
+  });
+
+  it('gives 0 for an empty selection (no penalty for skipping)', () => {
+    expect(gradeAnswer(q(), [])).toEqual({ isCorrect: false, marksAwarded: 0 });
+  });
+
+  it('rounds to the nearest whole mark', () => {
+    // 5 * 1 / 3 = 1.666... -> 2
+    expect(gradeAnswer(q({ marks: 5 }), ['opt-a'])).toEqual({ isCorrect: false, marksAwarded: 2 });
+  });
+
+  it('is opt-in: a multi_mcq without partialCredit stays all-or-nothing', () => {
+    expect(gradeAnswer(q({ partialCredit: false, marks: 4, correctOptionIds: ['opt-a', 'opt-b'] }), ['opt-a'])).toEqual({
+      isCorrect: false,
+      marksAwarded: -2,
+    });
+  });
+
+  it('never applies to non-multi_mcq types even if the flag is set', () => {
+    // single_mcq with partialCredit true must ignore it entirely (all-or-nothing + negativeMarks).
+    expect(
+      gradeAnswer({ marks: 5, negativeMarks: 2, correctOptionIds: ['opt-a'], type: 'single_mcq', partialCredit: true }, ['opt-b']),
+    ).toEqual({ isCorrect: false, marksAwarded: -2 });
+  });
+});
+
 describe('computeResult', () => {
   // A single 100%-weighted section covering every question makes the weighted formula
   // arithmetically identical to the old flat one -- which is what keeps the pre-weighting

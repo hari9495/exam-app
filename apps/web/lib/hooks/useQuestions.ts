@@ -122,6 +122,7 @@ export interface QuestionInput {
   difficulty: Difficulty;
   marks: number;
   negativeMarks?: number;
+  partialCredit?: boolean;
   tags?: string[];
   languageMode?: string;
   allowedLanguages?: string[];

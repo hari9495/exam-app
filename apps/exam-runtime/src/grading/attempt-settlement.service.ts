@@ -197,7 +197,13 @@ export class AttemptSettlementService {
       const selectedOptionIds: string[] = answer ? JSON.parse(answer.selectedOptionIdsJson) : [];
       const correctOptionIds = question.options.filter((option) => option.isCorrect).map((option) => option.id);
       const { isCorrect, marksAwarded } = gradeAnswer(
-        { marks: question.marks, negativeMarks: question.negativeMarks, correctOptionIds },
+        {
+          marks: question.marks,
+          negativeMarks: question.negativeMarks,
+          correctOptionIds,
+          type: question.type,
+          partialCredit: question.partialCredit,
+        },
         selectedOptionIds,
       );
       gradedAnswers.push({ questionId: question.id, marksAwarded });

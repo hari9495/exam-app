@@ -130,6 +130,51 @@ describe('QuestionsService', () => {
     );
   });
 
+  it('persists partialCredit for a multi_mcq question', async () => {
+    const dto = {
+      type: 'multi_mcq',
+      text: 'Select all prime numbers.',
+      difficulty: 'easy',
+      marks: 6,
+      partialCredit: true,
+      options: [
+        { text: '2', isCorrect: true },
+        { text: '3', isCorrect: true },
+        { text: '4', isCorrect: false },
+      ],
+    };
+    const questionCreate = jest.fn().mockResolvedValue({ id: 'q-mm', organizationId: 'org-1', ...dto, tags: [] });
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ tag: { upsert: jest.fn() }, question: { create: questionCreate } }));
+
+    await service.create(context, 'user-1', dto);
+
+    expect(questionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ partialCredit: true }) }),
+    );
+  });
+
+  it('forces partialCredit off for a non-multi_mcq question even if the flag is set', async () => {
+    const dto = {
+      type: 'single_mcq',
+      text: 'Pick the capital of France.',
+      difficulty: 'easy',
+      marks: 5,
+      partialCredit: true,
+      options: [
+        { text: 'Paris', isCorrect: true },
+        { text: 'Lyon', isCorrect: false },
+      ],
+    };
+    const questionCreate = jest.fn().mockResolvedValue({ id: 'q-sm', organizationId: 'org-1', ...dto, tags: [] });
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ tag: { upsert: jest.fn() }, question: { create: questionCreate } }));
+
+    await service.create(context, 'user-1', dto);
+
+    expect(questionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ partialCredit: false }) }),
+    );
+  });
+
   it('creates an any-mode code question without fetching languages for validation of allowedLanguages, but still stores languageMode', async () => {
     const codeDto = {
       type: 'code',

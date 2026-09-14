@@ -59,6 +59,12 @@ export class CreateQuestionDto {
   @Min(0)
   negativeMarks?: number;
 
+  // Opt-in partial credit for a multi_mcq question. Forced false for every other type in the
+  // service. Default false preserves all-or-nothing scoring.
+  @IsOptional()
+  @IsBoolean()
+  partialCredit?: boolean;
+
   @IsOptional()
   @IsArray()
   @IsString({ each: true })

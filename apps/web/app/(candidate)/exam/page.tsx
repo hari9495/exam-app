@@ -664,7 +664,9 @@ export default function CandidateExamPage() {
                     <span className="inline-flex items-center gap-2">
                       <span
                         className={clsx(
-                          'inline-block h-3.5 w-3.5 flex-shrink-0 rounded-full border-2',
+                          'inline-block h-3.5 w-3.5 flex-shrink-0 border-2',
+                          // Square = multi-select (checkbox affordance), round = single-select radio.
+                          question.type === 'multi_mcq' ? 'rounded-[3px]' : 'rounded-full',
                           selected ? 'border-candidate-primary bg-candidate-primary shadow-[inset_0_0_0_2px_white]' : 'border-candidate-text-faint',
                         )}
                         aria-hidden="true"

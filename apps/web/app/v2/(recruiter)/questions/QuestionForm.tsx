@@ -103,6 +103,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
   const [difficulty, setDifficulty] = useState<Difficulty>(initialQuestion?.difficulty ?? 'easy');
   const [marks, setMarks] = useState(String(initialQuestion?.marks ?? 1));
   const [negativeMarks, setNegativeMarks] = useState(String(initialQuestion?.negativeMarks ?? 0));
+  const [partialCredit, setPartialCredit] = useState(initialQuestion?.partialCredit ?? false);
   const [topic, setTopic] = useState(initialQuestion?.topic ?? '');
   const [category, setCategory] = useState(initialQuestion?.category ?? '');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialQuestion?.tags?.map((t) => t.id) ?? []);
@@ -168,6 +169,7 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
     e.preventDefault();
     onSubmit({
       type, text, difficulty, marks: Number(marks), negativeMarks: Number(negativeMarks),
+      partialCredit: type === 'multi_mcq' ? partialCredit : undefined,
       topic: topic.trim() || undefined, category: category.trim() || undefined,
       tags: [...new Set([...tags.filter((t) => selectedTagIds.includes(t.id)).map((t) => t.name), ...aiExtraTags])],
       languageMode: type === 'code' ? languageMode : undefined,
@@ -301,6 +303,14 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
               <div style={{ width: 180 }}><Field label="Marks" required><input type="number" min={1} value={marks} onChange={(e) => setMarks(e.target.value)} required style={textInput} /></Field></div>
               <div style={{ width: 180 }}><Field label="Negative marks"><input type="number" min={0} value={negativeMarks} onChange={(e) => setNegativeMarks(e.target.value)} style={textInput} /></Field></div>
             </div>
+            {type === 'multi_mcq' && (
+              <div style={{ marginTop: 10 }}>
+                <label style={rowLabel}><Cb checked={partialCredit} onChange={setPartialCredit} /> Award partial credit</label>
+                <p style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0 0 25px' }}>
+                  Score proportionally to correct minus incorrect selections (floored at 0). When on, negative marks don&apos;t apply to this question.
+                </p>
+              </div>
+            )}
           </Section>
           <Section title={type === 'code' ? 'Code answer' : 'Answer options'} description={type === 'code' ? 'How candidates write and run code.' : 'The choices candidates pick from.'}>
             {answerSection}

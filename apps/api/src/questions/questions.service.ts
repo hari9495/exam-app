@@ -128,6 +128,9 @@ export class QuestionsService {
           starterCode: dto.starterCode ?? null,
           allowStdin: dto.allowStdin ?? false,
           codeTestsJson: serializeCodeTests(dto.type, dto.codeTests),
+          // Partial credit only ever applies to multi_mcq; force it off for every other type so a
+          // stray flag can't change how a single_mcq/true_false/code question scores.
+          partialCredit: dto.type === 'multi_mcq' ? dto.partialCredit ?? false : false,
           snippetCode: dto.type === 'code' ? null : dto.snippetCode ?? null,
           snippetLanguage: dto.type === 'code' ? null : dto.snippetLanguage ?? null,
           imageUrl: dto.type === 'code' ? null : toStoredImageUrl(dto.imageUrl),
@@ -277,6 +280,7 @@ export class QuestionsService {
           starterCode: dto.starterCode ?? null,
           allowStdin: dto.allowStdin ?? false,
           codeTestsJson: serializeCodeTests(dto.type, dto.codeTests),
+          partialCredit: dto.type === 'multi_mcq' ? dto.partialCredit ?? false : false,
           snippetCode: dto.type === 'code' ? null : dto.snippetCode ?? null,
           snippetLanguage: dto.type === 'code' ? null : dto.snippetLanguage ?? null,
           imageUrl: dto.type === 'code' ? null : toStoredImageUrl(dto.imageUrl),
