@@ -103,6 +103,12 @@ export class AttemptController {
     return this.attemptService.screenShareState(candidate, dto);
   }
 
+  @Post('face-warning-ack')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  faceWarningAck(@CurrentCandidate() candidate: CandidateSession) {
+    return this.attemptService.ackFaceWarning(candidate);
+  }
+
   @Post('screen-analysis')
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   screenAnalysis(@CurrentCandidate() candidate: CandidateSession, @Body() dto: ScreenAnalysisDto) {

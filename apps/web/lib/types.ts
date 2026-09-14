@@ -1325,7 +1325,11 @@ export interface AttemptState {
   browserActivityViolationCount: number;
   // Server-authoritative owner of the current pause -- use this instead of guessing from the
   // violation counters. Null if not paused/blocked, or for a pause predating this field.
-  pausedReason: 'webcam' | 'browser_activity' | 'screen_share' | null;
+  pausedReason: 'webcam' | 'browser_activity' | 'screen_share' | 'face_mismatch' | null;
+  // Stage-3 face enforcement 'warn': ISO timestamp of an unacknowledged non-freezing heads-up, or
+  // null. Distinct from pausedReason -- warn never pauses, so the candidate keeps working while it
+  // shows and clears it via /attempt/face-warning-ack.
+  faceWarningAt: string | null;
   exam: { title: string; proctoring: ExamProctoringConfig };
   // Server-authoritative "must maintain a share to avoid the block" gate -- distinct from
   // exam.proctoring.screenCaptureEnabled, which a bypass deliberately leaves true (a bypass

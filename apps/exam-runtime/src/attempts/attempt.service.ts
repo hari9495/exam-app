@@ -145,6 +145,9 @@ interface AttemptStateResponse {
   // attempt was already paused before this column shipped (no backfill; see resumeFromPause).
   // The client uses this instead of guessing from the violation counters.
   pausedReason: PauseReason | null;
+  // Stage-3 face enforcement 'warn': an unacknowledged non-freezing heads-up (ISO timestamp), or
+  // null. Distinct from pausedReason -- warn never pauses, so it can't ride the pause channel.
+  faceWarningAt: string | null;
   exam: { title: string; proctoring: ExamProctoringConfig };
   // Server-authoritative "must maintain a share" gate for the candidate's blocking overlay --
   // deliberately excludes "is currently sharing" (the client already knows that instantly via
@@ -319,6 +322,7 @@ export class AttemptService {
         webcamViolationCount: settled.webcamViolationCount,
         browserActivityViolationCount: settled.browserActivityViolationCount,
         pausedReason: settled.pausedReason as PauseReason | null,
+        faceWarningAt: settled.faceWarningAt ? settled.faceWarningAt.toISOString() : null,
         exam: { title: exam.title, proctoring: resolveProctoringConfig(exam, settled) },
         screenShareRequired: exam.enableAntiCheating && exam.screenCaptureEnabled && !isProctoringBypassActive(settled),
         sections,
@@ -1186,34 +1190,104 @@ export class AttemptService {
     // which is truthy. Without the length check an empty payload would cost a pointless enrolment
     // read and a sharp() decode per snapshot before skipping anyway.
     if (exam.faceVerificationEnabled && snapshotBuffer && snapshotBuffer.length > 0) {
-      void this.checkFaceMismatch(attemptId, organizationId, snapshotBuffer, snapshotUrl || null, exam.faceMismatchAction).catch(
-        (error) => this.logger.warn(`Face mismatch check failed for attempt ${attemptId}: ${String(error)}`),
-      );
+      void this.checkFaceMismatch(
+        attemptId,
+        organizationId,
+        exam.id,
+        invitation.candidateId,
+        snapshotBuffer,
+        snapshotUrl || null,
+        exam.faceMismatchAction,
+      ).catch((error) => this.logger.warn(`Face mismatch check failed for attempt ${attemptId}: ${String(error)}`));
     }
 
     return { ok: true };
   }
 
-  // Stage-2 gate (task-8 brief): on a confirmed mismatch, only 'flag' may affect the candidate --
-  // and verifySnapshot() already applied it unconditionally by recording the event and
-  // incrementing Attempt.faceMismatchCount, so there is nothing left to do for it here.
-  // warn/pause/block are accepted and stored (resolveFaceIdFields on the API side,
-  // ExamDetailsForm's recruiter control) so recruiters can select them today, but enforcement
-  // beyond flag is deliberately deferred to stage 3 pending threshold calibration and a fairness
-  // check. Pinned by attempt.service.spec.ts: a confirmed mismatch on an exam set to 'block' must
-  // not pause or block anyone yet. Extend this switch, not the gate itself, once stage 3 lands.
+  // Stage-3 face-mismatch enforcement. verifySnapshot() already recorded the face_mismatch event
+  // and incremented Attempt.faceMismatchCount on a confirmed mismatch; this method then applies the
+  // per-exam faceMismatchAction (flag | warn | pause | block). It stays INERT in the current build
+  // because the embedder is unavailable (no onnxruntime-node / weights), so verifySnapshot never
+  // returns confirmed -- enforcement only comes alive once the model lands and thresholds are
+  // calibrated. Default is 'flag', so an uncalibrated threshold can never pause/block by default.
+  //
+  //   flag  -> record only (+ the live recruiter push added below; stage 2 emitted nothing)
+  //   warn  -> non-freezing heads-up: stamp faceWarningAt, timer keeps running (self-clears on ack)
+  //   pause -> pause the attempt (candidate self-resumes via webcamResume), timer freezes
+  //   block -> block the attempt (only a recruiter unblock resumes it)
   private async checkFaceMismatch(
     attemptId: string,
     organizationId: string,
+    examId: string,
+    candidateId: string,
     snapshotBuffer: Buffer,
     snapshotPath: string | null,
     faceMismatchAction: string,
   ): Promise<void> {
     const outcome = await this.faceVerification.verifySnapshot(attemptId, organizationId, snapshotBuffer, snapshotPath);
-    if (!outcome.confirmed || faceMismatchAction === 'flag') return;
-    this.logger.debug(
-      `Confirmed face mismatch on attempt ${attemptId}: action '${faceMismatchAction}' is stored but not yet enforced (stage 3)`,
+    if (!outcome.confirmed) return;
+    // Every confirmed mismatch now pushes a live recruiter flag, regardless of action -- stage 2
+    // recorded the row but never emitted, so face_mismatch reached recruiters only via DB reads
+    // (getRecentAlerts / roster tick) unlike every other live signal.
+    this.monitoringGateway.emitProctoringFlag(examId, {
+      attemptId,
+      candidateId,
+      eventType: 'face_mismatch',
+      severity: getProctoringEventSeverity('face_mismatch'),
+      occurredAt: new Date(),
+    });
+    if (faceMismatchAction === 'flag') return;
+    await this.applyFaceMismatchEnforcement(attemptId, organizationId, examId, candidateId, faceMismatchAction);
+  }
+
+  private async applyFaceMismatchEnforcement(
+    attemptId: string,
+    organizationId: string,
+    examId: string,
+    candidateId: string,
+    action: string,
+  ): Promise<void> {
+    await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { id: attemptId } });
+      // Only act on a live attempt. Never resurrect a terminal one (submitted/expired) and never
+      // downgrade an existing block back to paused -- mirrors registerWebcamViolation's isLive guard.
+      if (!attempt || (attempt.status !== 'in_progress' && attempt.status !== 'paused')) return;
+
+      if (action === 'warn') {
+        // Non-freezing: stamp faceWarningAt only, leave status/pausedAt untouched so the timer keeps
+        // running. No attempt:status broadcast -- the candidate picks it up on its next /current poll.
+        await tx.attempt.update({ where: { id: attemptId }, data: { faceWarningAt: new Date() } });
+        return;
+      }
+
+      // pause | block: reuse the shared pause/block state + candidate overlays. Don't re-stamp the
+      // pause clock when a different owner already paused this attempt (mirrors the wasAlreadyPaused
+      // guard) so resumeFromPause credits the paused wall-clock back correctly.
+      const status = action === 'block' ? 'blocked' : 'paused';
+      const alreadyPaused = attempt.status === 'paused';
+      await tx.attempt.update({
+        where: { id: attemptId },
+        data: {
+          status,
+          ...(alreadyPaused ? {} : { pausedAt: new Date(), pausedReason: 'face_mismatch' as const }),
+        },
+      });
+      if (status === 'blocked') {
+        this.faceVerification.forgetAttempt(attemptId);
+      }
+      this.monitoringGateway.emitAttemptStatus(examId, { attemptId, candidateId, status });
+    });
+  }
+
+  // Candidate acknowledges a 'warn' heads-up. Clears faceWarningAt so it stops surfacing on
+  // /current. updateMany (not a findUnique + update) keeps it a single statement and a no-op when
+  // there is no attempt yet -- there is nothing to enforce or leak either way.
+  async ackFaceWarning(session: CandidateSession): Promise<{ ok: true }> {
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+      tx.attempt.updateMany({ where: { invitationId: invitation.id }, data: { faceWarningAt: null } }),
     );
+    return { ok: true };
   }
 
   async recordFaceEnrolment(session: CandidateSession, dto: FaceEnrolmentDto): Promise<{ status: string }> {
@@ -1324,8 +1398,8 @@ export class AttemptService {
       if (attempt.status !== 'paused') {
         throw new BadRequestException(`Cannot resume — attempt status is "${attempt.status}"`);
       }
-      // webcam and browser_activity are both strike pauses cleared by acknowledgement and share
-      // this one resume action; screen_share is a precondition, only clearable by actually
+      // webcam, browser_activity and face_mismatch ('pause') are all cleared by acknowledgement and
+      // share this one resume action; screen_share is a precondition, only clearable by actually
       // sharing again (screenShareState's active:true path) -- resuming it here would let the
       // candidate wave away a still-unmet "must be sharing" requirement.
       if (attempt.pausedReason === 'screen_share') {

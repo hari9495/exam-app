@@ -2,8 +2,11 @@ import { AlertTriangle, ShieldAlert } from 'lucide-react';
 import { CandidateButton } from './CandidateButton';
 
 interface ProctoringWarningOverlayProps {
-  strike: number;
-  strikeLimit: number;
+  // Optional: the strike ladder (webcam/browser_activity) passes both to show "Warning X/Y".
+  // A face_mismatch 'pause' is a direct action with no strike count, so it omits them and the
+  // count line is hidden.
+  strike?: number;
+  strikeLimit?: number;
   reason?: string;
   onContinue: () => void;
   continuePending: boolean;
@@ -22,6 +25,10 @@ const MESSAGES_BY_REASON: Record<string, { heading: string; body: string }> = {
   },
   no_face: DEFAULT_MESSAGE,
   head_turned: DEFAULT_MESSAGE,
+  face_mismatch: {
+    heading: 'Identity Check Failed',
+    body: "Your face didn't match your enrolment photo. Make sure you're centered and facing the camera, then continue.",
+  },
   tab_switch: { heading: 'Tab Switch Detected', body: 'We noticed you switched away from this exam tab.' },
   window_blur: { heading: 'Switched Application', body: 'We noticed you switched to another application.' },
   fullscreen_exit: { heading: 'Exited Fullscreen', body: 'We noticed you exited fullscreen mode.' },
@@ -43,11 +50,41 @@ export function ProctoringWarningOverlay({ strike, strikeLimit, reason, onContin
         </div>
         <h1 className="mb-1 font-display text-base font-bold text-candidate-text">{heading}</h1>
         <p className="mb-4 text-sm text-candidate-text-secondary">{body}</p>
-        <p className="mb-4 text-xs text-candidate-text-faint">Warning {strike}/{strikeLimit}</p>
+        {strike !== undefined && strikeLimit !== undefined ? (
+          <p className="mb-4 text-xs text-candidate-text-faint">Warning {strike}/{strikeLimit}</p>
+        ) : null}
         <CandidateButton onClick={onContinue} disabled={continuePending}>
           {continuePending ? 'Checking…' : 'Continue'}
         </CandidateButton>
         {continueError ? <p className="mt-2 text-xs text-candidate-danger">Still not detected — reposition and try again.</p> : null}
+      </div>
+    </div>
+  );
+}
+
+interface FaceWarningOverlayProps {
+  onDismiss: () => void;
+  dismissPending: boolean;
+}
+
+// Stage-3 face enforcement 'warn': a one-time heads-up that does NOT pause the exam -- the timer
+// keeps running while this shows, so the candidate dismisses it and carries on. Distinct from the
+// pause overlay above (which freezes the timer and gates on a server-side resume).
+export function FaceWarningOverlay({ onDismiss, dismissPending }: FaceWarningOverlayProps) {
+  return (
+    <div className="fixed inset-0 z-20 flex items-center justify-center bg-candidate-text/40 p-4">
+      <div className="w-full max-w-sm rounded-lg border border-candidate-border bg-white p-6 text-center">
+        <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-candidate-review-bg text-candidate-review">
+          <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+        </div>
+        <h1 className="mb-1 font-display text-base font-bold text-candidate-text">Identity Check Warning</h1>
+        <p className="mb-4 text-sm text-candidate-text-secondary">
+          Your face didn&apos;t clearly match your enrolment photo. Your exam is still running — center yourself and face
+          the camera. Repeated warnings may pause your exam.
+        </p>
+        <CandidateButton onClick={onDismiss} disabled={dismissPending}>
+          {dismissPending ? 'Dismissing…' : 'I understand'}
+        </CandidateButton>
       </div>
     </div>
   );

@@ -29,13 +29,15 @@ function isAttemptedCode(answer: { answerText: string | null } | undefined): boo
   return Boolean(answer?.answerText && answer.answerText.trim().length > 0);
 }
 
-// The three owners a pause can be attributed to. browser_activity is a bucket shared by all
+// The owners a pause can be attributed to. browser_activity is a bucket shared by all
 // nine event types registerBrowserActivityViolation handles (including screen_share_stopped,
-// a strike distinct from screen_share's own precondition pause below). webcam and
-// browser_activity share one resume action (resumeFromPause, called with no reason filter by
-// webcamResume) since both are strike pauses cleared by acknowledgement; screen_share is a
-// precondition, only cleared by screenShareState's active:true path.
-export type PauseReason = 'webcam' | 'browser_activity' | 'screen_share';
+// a strike distinct from screen_share's own precondition pause below). webcam, browser_activity
+// and face_mismatch all share one resume action (resumeFromPause, called with no reason filter by
+// webcamResume) since all are cleared by acknowledgement; screen_share is a precondition, only
+// cleared by screenShareState's active:true path. face_mismatch is set by stage-3 face
+// enforcement (attempt.service.ts#applyFaceMismatchEnforcement) when faceMismatchAction is 'pause'
+// or 'block' -- direct action, not strike-based, so it has no strikeLimit escalation of its own.
+export type PauseReason = 'webcam' | 'browser_activity' | 'screen_share' | 'face_mismatch';
 
 // Mirrors what AttemptService stamps into Attempt.sectionSnapshotJson at attempt-start. Read
 // (rather than re-queried from ExamSection) deliberately: the snapshot is the frozen, per-attempt
