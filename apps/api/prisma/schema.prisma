@@ -95,6 +95,11 @@ model Organization {
   // Daily staff reminder sweep (pending grading, stale invites, expiring offers, upcoming
   // interviews, feedback owed) — opt-in per org; per-user email opt-out via userNotificationPreference.
   remindersEnabled        Boolean          @default(false) @map("reminders_enabled")
+  // Weekly scheduled-report digest — opt-in per org. Recipients are a JSON array of staff user ids;
+  // lastSentAt gates the 7-day cadence (and prevents a restart from re-sending the same week).
+  scheduledReportEnabled       Boolean     @default(false) @map("scheduled_report_enabled")
+  scheduledReportRecipientsJson String?    @map("scheduled_report_recipients_json") @db.NVarChar(Max)
+  scheduledReportLastSentAt     DateTime?  @map("scheduled_report_last_sent_at")
   hrisExportEnabled       Boolean          @default(false) @map("hris_export_enabled")
   hrisProvider            String           @default("generic") @map("hris_provider")
   hrisTargetUrl           String?          @map("hris_target_url")

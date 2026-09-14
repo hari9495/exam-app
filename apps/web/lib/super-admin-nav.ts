@@ -45,6 +45,7 @@ export const SUPER_ADMIN_FULL_NAV = [
   { href: '/settings/permission-profiles', label: 'Permission Profiles', icon: Lock, group: 'Settings' },
   { href: '/settings/record-visibility', label: 'Record Visibility', icon: EyeOff, group: 'Settings' },
   { href: '/settings/reminders', label: 'Reminders', icon: Bell, group: 'Settings' },
+  { href: '/settings/scheduled-reports', label: 'Scheduled Reports', icon: CalendarClock, group: 'Settings' },
   { href: '/settings/recycle-bin', label: 'Recycle Bin', icon: Trash2, group: 'Settings' },
   { href: '/settings/sender-addresses', label: 'Sender Addresses', icon: Send, group: 'Settings' },
   { href: '/settings/apply-consent', label: 'Applicant Consent', icon: FileCheck, group: 'Settings' },

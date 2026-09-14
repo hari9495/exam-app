@@ -20,6 +20,7 @@ import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateReminderSettingsDto } from './dto/update-reminder-settings.dto';
+import { UpdateScheduledReportSettingsDto } from './dto/update-scheduled-report-settings.dto';
 import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
 import { ApiUsageQueryDto } from './dto/api-usage-query.dto';
@@ -187,6 +188,18 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   updateReminderSettings(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateReminderSettingsDto) {
     return this.organizationsService.updateReminderSettings(tenant, userId, dto);
+  }
+
+  @Get('scheduled-report-settings')
+  @RequirePermissions('org:manage_settings')
+  getScheduledReportSettings(@CurrentTenant() tenant: TenantContext) {
+    return this.organizationsService.getScheduledReportSettings(tenant);
+  }
+
+  @Patch('scheduled-report-settings')
+  @RequirePermissions('org:manage_settings')
+  updateScheduledReportSettings(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateScheduledReportSettingsDto) {
+    return this.organizationsService.updateScheduledReportSettings(tenant, userId, dto);
   }
 
   @Patch('pipeline-settings')
