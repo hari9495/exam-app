@@ -12,10 +12,10 @@ import { Modal } from '../../../components/ui';
 import { CandidateButton } from '../components/CandidateButton';
 import { CodeOutputPanel } from '../components/CodeOutputPanel';
 import { QuestionNavigator, flattenQuestions } from '../components/QuestionNavigator';
-import { ProctoringWarningOverlay, ProctoringBlockOverlay } from '../components/ProctoringOverlay';
+import { ProctoringWarningOverlay, ProctoringBlockOverlay, FaceWarningOverlay } from '../components/ProctoringOverlay';
 import { ScreenShareRequiredOverlay } from '../components/ScreenShareRequiredOverlay';
 import { TimerBar } from '../components/TimerBar';
-import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useCodeLanguages, useWebcamResume, useScreenShareState, RunCodeResult } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useCodeLanguages, useWebcamResume, useAckFaceWarning, useScreenShareState, RunCodeResult } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useEditorTelemetry } from '../../../lib/hooks/useEditorTelemetry';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
@@ -179,6 +179,11 @@ export default function CandidateExamPage() {
   // re-checks face presence) -- it's the same generic "clear the pause" transition either way,
   // so the existing webcam-resume endpoint/mutation is reused rather than adding a duplicate one.
   const webcamResume = useWebcamResume();
+  // Stage-3 face 'warn': a non-freezing heads-up. Shown while the attempt is live and the server
+  // has stamped faceWarningAt; dismissing acks it server-side. Pause/block take precedence below.
+  const ackFaceWarning = useAckFaceWarning();
+  const isFacePause = attemptState?.pausedReason === 'face_mismatch';
+  const showFaceWarning = started && Boolean(attemptState?.faceWarningAt);
 
   async function finishSubmit() {
     if (submitAttempt.isPending) return;
@@ -422,15 +427,21 @@ export default function CandidateExamPage() {
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       {isPaused ? (
         <ProctoringWarningOverlay
-          strike={lastViolationSource === 'browser_activity' ? attemptState.browserActivityViolationCount : attemptState.webcamViolationCount}
-          strikeLimit={proctoringConfig?.strikeLimit ?? 3}
-          reason={lastViolationReason}
+          // A face_mismatch pause is a direct action, not a strike -- omit the count. All others
+          // ride the strike ladder and show Warning X/Y.
+          strike={isFacePause ? undefined : lastViolationSource === 'browser_activity' ? attemptState.browserActivityViolationCount : attemptState.webcamViolationCount}
+          strikeLimit={isFacePause ? undefined : proctoringConfig?.strikeLimit ?? 3}
+          reason={isFacePause ? 'face_mismatch' : lastViolationReason}
           onContinue={() => webcamResume.mutate()}
           continuePending={webcamResume.isPending}
           continueError={webcamResume.isError}
         />
       ) : null}
       {isBlocked ? <ProctoringBlockOverlay /> : null}
+      {/* Non-freezing warn: only when live (pause/block overlays above take precedence). */}
+      {showFaceWarning && !isPaused && !isBlocked ? (
+        <FaceWarningOverlay onDismiss={() => ackFaceWarning.mutate()} dismissPending={ackFaceWarning.isPending} />
+      ) : null}
       <div
         data-testid="dimmable-content"
         // @types/react's stable release doesn't type the `inert` DOM attribute yet (only

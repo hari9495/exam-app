@@ -3,7 +3,7 @@ import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { useRouter } from 'next/navigation';
 import * as useAttemptModule from '../../../lib/hooks/useAttempt';
-import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume, useCodeLanguages, useScreenShareState } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useWebcamResume, useAckFaceWarning, useCodeLanguages, useScreenShareState } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
 import { useWebcamMonitor } from '../../../lib/hooks/useWebcamMonitor';
@@ -19,6 +19,7 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useSubmitAttempt: jest.fn(),
   useRunCode: jest.fn(),
   useWebcamResume: jest.fn(),
+  useAckFaceWarning: jest.fn(),
   useLeaderboard: jest.fn(),
   useCodeLanguages: jest.fn(),
   useReportProctoringEvent: jest.fn(() => jest.fn()),
@@ -204,6 +205,7 @@ describe('CandidateExamPage', () => {
     (useRunCode as jest.Mock).mockReturnValue({ mutate: runCodeMutate, isPending: false });
     (useWebcamMonitor as jest.Mock).mockReturnValue(undefined);
     (useWebcamResume as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false, isError: false });
+    (useAckFaceWarning as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
     (useCodeLanguages as jest.Mock).mockReturnValue({ data: [], isLoading: true });
     jest.spyOn(useAttemptModule, 'useLeaderboard').mockReturnValue({ data: { you: { rank: 3, correctCount: 2 }, top: [] }, isLoading: false } as any);
     (useScreenShareState as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false });
@@ -662,6 +664,65 @@ describe('CandidateExamPage', () => {
     expect(screen.getByText(/recruiter needs to unblock/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
     expect(push).not.toHaveBeenCalledWith('/submitted');
+  });
+
+  describe('stage-3 face-mismatch enforcement', () => {
+    it('shows the identity-check pause overlay (no strike count) and self-resumes on Continue for a face_mismatch pause', async () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: { ...attemptState, status: 'paused', pausedReason: 'face_mismatch' },
+        isError: false,
+      });
+      const resumeMutate = jest.fn();
+      (useWebcamResume as jest.Mock).mockReturnValue({ mutate: resumeMutate, isPending: false, isError: false });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.getByText('Identity Check Failed')).toBeInTheDocument();
+      // Direct action, not a strike -- the "Warning X/Y" line must not appear.
+      expect(screen.queryByText(/warning \d+\/\d+/i)).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: /continue/i }));
+      expect(resumeMutate).toHaveBeenCalled();
+    });
+
+    it('shows the generic block overlay for a face_mismatch block', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: { ...attemptState, status: 'blocked', pausedReason: 'face_mismatch' },
+        isError: false,
+      });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.getByText(/recruiter needs to unblock/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /continue/i })).not.toBeInTheDocument();
+    });
+
+    it('shows a non-freezing warn notice while the exam is still in_progress, and acks it on dismiss', async () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: { ...attemptState, status: 'in_progress', faceWarningAt: '2026-09-14T00:00:00.000Z' },
+        isError: false,
+      });
+      const ackMutate = jest.fn();
+      (useAckFaceWarning as jest.Mock).mockReturnValue({ mutate: ackMutate, isPending: false });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.getByText('Identity Check Warning')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: /i understand/i }));
+      expect(ackMutate).toHaveBeenCalled();
+    });
+
+    it('does not show the warn notice once the attempt is paused (pause overlay takes precedence)', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: { ...attemptState, status: 'paused', pausedReason: 'face_mismatch', faceWarningAt: '2026-09-14T00:00:00.000Z' },
+        isError: false,
+      });
+      (useWebcamResume as jest.Mock).mockReturnValue({ mutate: jest.fn(), isPending: false, isError: false });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.queryByText('Identity Check Warning')).not.toBeInTheDocument();
+      expect(screen.getByText('Identity Check Failed')).toBeInTheDocument();
+    });
   });
 
   describe('browser-activity strikes', () => {

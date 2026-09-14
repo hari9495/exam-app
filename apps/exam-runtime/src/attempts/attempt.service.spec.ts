@@ -470,6 +470,7 @@ describe('AttemptService', () => {
         answers: [{ questionId: 'q1', selectedOptionIds: ['opt-a'], isMarkedForReview: false }],
         messages: [],
         feedback: null,
+        faceWarningAt: null,
         organizationName: 'Acme Corp',
         organizationLogoUrl: null,
         organizationPrimaryColor: null,
@@ -2973,21 +2974,109 @@ describe('AttemptService', () => {
       );
     });
 
-    // Stage-2 gate (task-8 brief): flag is the only action allowed to affect the candidate right
-    // now. This is the test the brief explicitly calls for: a confirmed mismatch on an exam set
-    // to 'block' must not block (or pause) anyone yet -- enforcement beyond flag is deferred to
-    // stage 3. Mutating checkFaceMismatch to route 'pause'/'block' through registerWebcamViolation
-    // must make this fail.
-    it('does not pause or block the candidate on a confirmed mismatch even when faceMismatchAction is "block"', async () => {
+    // Stage-3 face-mismatch enforcement. verifySnapshot recorded the event + count; checkFaceMismatch
+    // then applies faceMismatchAction. Every confirmed mismatch also pushes a live recruiter flag now
+    // (stage 2 recorded but never emitted). Enforcement stays inert in prod only because the embedder
+    // is unavailable, so verifySnapshot never returns confirmed -- these tests mock a confirmed one.
+    // Helper: layer the enforcement transaction on top of mockBootstrapThenPlainClient's bootstrap
+    // forTenant. resolveContext consumes the bootstrap (1st forTenant); applyFaceMismatchEnforcement
+    // consumes this (2nd).
+    function stageEnforcementTx(attemptRow: unknown) {
+      const update = jest.fn().mockResolvedValue(attemptRow);
+      tenantPrisma.forTenant.mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ attempt: { findUnique: jest.fn().mockResolvedValue(attemptRow), update } }),
+      );
+      return update;
+    }
+
+    it('on a confirmed mismatch with action "flag": pushes a live recruiter flag but never changes attempt status', async () => {
       const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
-      mockBootstrapThenPlainClient(client, { ...invitationRecord, exam: { ...exam, faceVerificationEnabled: true, faceMismatchAction: 'block' } });
+      mockBootstrapThenPlainClient(client, { ...invitationRecord, exam: { ...exam, faceVerificationEnabled: true, faceMismatchAction: 'flag' } });
       faceVerification.verifySnapshot.mockResolvedValue({ verdict: 'mismatch', score: 0.1, confirmed: true });
 
       const result = await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,YWJj' });
       await new Promise((resolve) => setImmediate(resolve));
 
       expect(result).toEqual({ ok: true });
-      expect(settlement.registerWebcamViolation).not.toHaveBeenCalled();
+      expect(monitoringGateway.emitProctoringFlag).toHaveBeenCalledWith(
+        'exam-1',
+        expect.objectContaining({ attemptId: 'attempt-1', candidateId: 'cand-1', eventType: 'face_mismatch' }),
+      );
+      expect(monitoringGateway.emitAttemptStatus).not.toHaveBeenCalled();
+    });
+
+    it('on a confirmed mismatch with action "warn": stamps faceWarningAt and leaves the exam running (no status change)', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenPlainClient(client, { ...invitationRecord, exam: { ...exam, faceVerificationEnabled: true, faceMismatchAction: 'warn' } });
+      faceVerification.verifySnapshot.mockResolvedValue({ verdict: 'mismatch', score: 0.1, confirmed: true });
+      const update = stageEnforcementTx({ id: 'attempt-1', status: 'in_progress', pausedReason: null });
+
+      await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,YWJj' });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(update).toHaveBeenCalledWith({ where: { id: 'attempt-1' }, data: { faceWarningAt: expect.any(Date) } });
+      expect(monitoringGateway.emitAttemptStatus).not.toHaveBeenCalled();
+      expect(monitoringGateway.emitProctoringFlag).toHaveBeenCalled();
+    });
+
+    it('on a confirmed mismatch with action "pause": pauses the attempt with pausedReason face_mismatch and broadcasts', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenPlainClient(client, { ...invitationRecord, exam: { ...exam, faceVerificationEnabled: true, faceMismatchAction: 'pause' } });
+      faceVerification.verifySnapshot.mockResolvedValue({ verdict: 'mismatch', score: 0.1, confirmed: true });
+      const update = stageEnforcementTx({ id: 'attempt-1', status: 'in_progress', pausedReason: null });
+
+      await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,YWJj' });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'attempt-1' },
+        data: { status: 'paused', pausedAt: expect.any(Date), pausedReason: 'face_mismatch' },
+      });
+      expect(monitoringGateway.emitAttemptStatus).toHaveBeenCalledWith('exam-1', { attemptId: 'attempt-1', candidateId: 'cand-1', status: 'paused' });
+    });
+
+    it('on a confirmed mismatch with action "block": blocks the attempt, forgets its voter state, and broadcasts', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenPlainClient(client, { ...invitationRecord, exam: { ...exam, faceVerificationEnabled: true, faceMismatchAction: 'block' } });
+      faceVerification.verifySnapshot.mockResolvedValue({ verdict: 'mismatch', score: 0.1, confirmed: true });
+      const update = stageEnforcementTx({ id: 'attempt-1', status: 'in_progress', pausedReason: null });
+
+      await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,YWJj' });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'attempt-1' },
+        data: { status: 'blocked', pausedAt: expect.any(Date), pausedReason: 'face_mismatch' },
+      });
+      expect(monitoringGateway.emitAttemptStatus).toHaveBeenCalledWith('exam-1', { attemptId: 'attempt-1', candidateId: 'cand-1', status: 'blocked' });
+      expect(faceVerification.forgetAttempt).toHaveBeenCalledWith('attempt-1');
+    });
+
+    it('does not resurrect a terminal attempt: no status change when an enforced action arrives on a submitted attempt', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenPlainClient(client, { ...invitationRecord, exam: { ...exam, faceVerificationEnabled: true, faceMismatchAction: 'block' } });
+      faceVerification.verifySnapshot.mockResolvedValue({ verdict: 'mismatch', score: 0.1, confirmed: true });
+      const update = stageEnforcementTx({ id: 'attempt-1', status: 'submitted', pausedReason: null });
+
+      await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,YWJj' });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(update).not.toHaveBeenCalled();
+      expect(monitoringGateway.emitAttemptStatus).not.toHaveBeenCalled();
+      // The recruiter flag still fires -- a terminal attempt can still carry evidence.
+      expect(monitoringGateway.emitProctoringFlag).toHaveBeenCalled();
+    });
+
+    it('does nothing on an unconfirmed verdict: no recruiter flag and no enforcement', async () => {
+      const client = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
+      mockBootstrapThenPlainClient(client, { ...invitationRecord, exam: { ...exam, faceVerificationEnabled: true, faceMismatchAction: 'block' } });
+      faceVerification.verifySnapshot.mockResolvedValue({ verdict: 'uncertain', score: 0.5, confirmed: false });
+
+      await service.webcamSnapshot(session, { snapshot: 'data:image/jpeg;base64,YWJj' });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(monitoringGateway.emitProctoringFlag).not.toHaveBeenCalled();
+      expect(monitoringGateway.emitAttemptStatus).not.toHaveBeenCalled();
     });
 
     // Finding 1 (task-8, CRITICAL): checkFaceMismatch is fire-and-forget (`void ...`), relative
@@ -3496,6 +3585,33 @@ describe('AttemptService', () => {
       const result = await service.webcamResume(session);
 
       expect(result).toEqual({ status: 'in_progress' });
+    });
+
+    // A stage-3 face 'pause' shares this same acknowledgement resume (only screen_share is fenced
+    // off) -- the candidate's Continue click self-resumes a face pause exactly like a webcam one.
+    it('still resumes an attempt paused for face_mismatch', async () => {
+      const attempt = { id: 'attempt-1', status: 'paused', pausedReason: 'face_mismatch' };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
+      mockBootstrapThenScoped(tx);
+      settlement.resumeFromPause = jest.fn().mockResolvedValue({ ...attempt, status: 'in_progress' });
+
+      const result = await service.webcamResume(session);
+
+      expect(result).toEqual({ status: 'in_progress' });
+      expect(settlement.resumeFromPause).toHaveBeenCalledWith(tx, attempt);
+    });
+  });
+
+  describe('ackFaceWarning', () => {
+    it('clears faceWarningAt for the caller\'s attempt', async () => {
+      const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+      const tx = { attempt: { updateMany } };
+      mockBootstrapThenScoped(tx);
+
+      const result = await service.ackFaceWarning(session);
+
+      expect(result).toEqual({ ok: true });
+      expect(updateMany).toHaveBeenCalledWith({ where: { invitationId: 'inv-1' }, data: { faceWarningAt: null } });
     });
   });
 

@@ -710,6 +710,11 @@ model Attempt {
   proctoringBypassReason        String?             @map("proctoring_bypass_reason")
   proctoringBypassRevokedAt     DateTime?           @map("proctoring_bypass_revoked_at")
   faceMismatchCount             Int                 @default(0) @map("face_mismatch_count")
+  // Stage-3 face-mismatch enforcement: a non-freezing "warn" heads-up. Set when a confirmed
+  // mismatch fires on an exam whose faceMismatchAction is 'warn'; the candidate sees a one-time
+  // dismissible notice (timer keeps running) and clears it via /attempt/face-warning-ack. pause
+  // and block reuse status/pausedReason instead; only warn needs its own field.
+  faceWarningAt                 DateTime?           @map("face_warning_at")
   invitation                    Invitation          @relation(fields: [invitationId], references: [id], onDelete: Cascade)
   answers                       Answer[]
   result                        Result?

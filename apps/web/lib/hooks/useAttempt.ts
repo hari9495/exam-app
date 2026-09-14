@@ -263,6 +263,18 @@ export function useWebcamResume() {
   });
 }
 
+// Stage-3 face enforcement 'warn': candidate acknowledges the non-freezing heads-up, clearing
+// faceWarningAt server-side so it stops surfacing on /current.
+export function useAckFaceWarning() {
+  const { accessToken } = useCandidateAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (): Promise<{ ok: true }> =>
+      withRetry(() => candidateApiFetch('/attempt/face-warning-ack', { method: 'POST', body: JSON.stringify({}) }, accessToken ?? undefined)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
+  });
+}
+
 export function useFaceEnrolment() {
   const { accessToken } = useCandidateAuth();
   return useMutation({
