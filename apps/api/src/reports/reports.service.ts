@@ -21,6 +21,8 @@ export interface ExamResultsSummary {
   averagePercentage: number;
   scoreDistribution: { rangeLabel: string; count: number }[];
   attemptDuration: { avgMinutes: number; minMinutes: number; maxMinutes: number } | null;
+  // 'immediate' | 'manual' -- drives whether the results page shows the release controls.
+  resultsReleaseMode: string;
 }
 
 export interface QuestionAccuracyRow {
@@ -129,11 +131,17 @@ export interface FaceMismatchEntry {
 export interface CandidateDetail {
   candidateId: string;
   candidateName: string;
+  attemptId: string | null;
   status: string;
   score: number | null;
   maxScore: number | null;
   percentage: number | null;
   passFail: string | null;
+  // Per-attempt release state so the report panel can show + toggle it. `released` is the effective
+  // visibility (override, or the exam's mode); releaseOverride is the raw per-attempt setting.
+  releaseOverride: string | null;
+  releasedAt: Date | null;
+  released: boolean;
   submittedAt: Date | null;
   proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
   integrityAnalysis: IntegritySummary;
@@ -200,6 +208,8 @@ export class ReportsService {
       averagePercentage,
       scoreDistribution,
       attemptDuration,
+      // Carried on every row by getResults; identical across an exam's rows.
+      resultsReleaseMode: rows[0]?.resultsReleaseMode ?? 'immediate',
     };
   }
 
@@ -348,14 +358,25 @@ export class ReportsService {
       throw new NotFoundException(`Candidate ${candidateId} not found on exam ${examId}`);
     }
 
+    const released =
+      row.releaseOverride === 'released'
+        ? true
+        : row.releaseOverride === 'held'
+          ? false
+          : (row.resultsReleaseMode ?? 'immediate') !== 'manual';
+
     const base = {
       candidateId: row.candidateId,
       candidateName: row.candidateName,
+      attemptId: row.attemptId,
       status: row.status,
       score: row.score,
       maxScore: row.maxScore,
       percentage: row.percentage,
       passFail: row.passFail,
+      releaseOverride: row.releaseOverride ?? null,
+      releasedAt: row.releasedAt ?? null,
+      released,
       submittedAt: row.submittedAt,
       proctoringAnalysis: row.proctoringAnalysis,
       integrityAnalysis: this.toIntegritySummary(row),

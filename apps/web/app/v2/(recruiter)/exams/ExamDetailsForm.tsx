@@ -17,6 +17,7 @@ export interface ExamDetailsValue {
   passCriteriaPercent: number;
   randomizeOrder: boolean;
   feedbackVisibility: FeedbackVisibility;
+  resultsReleaseMode: 'immediate' | 'manual';
   schedulingEnabled: boolean;
   availabilityWindowStart?: string;
   availabilityWindowEnd?: string;
@@ -112,6 +113,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
   const [passCriteriaPercent, setPassCriteriaPercent] = useState(String(initialExam?.passCriteriaPercent ?? 40));
   const [randomizeOrder, setRandomizeOrder] = useState(initialExam?.randomizeOrder ?? false);
   const [feedbackVisibility, setFeedbackVisibility] = useState<FeedbackVisibility>(initialExam?.feedbackVisibility ?? 'pass_fail');
+  const [resultsReleaseMode, setResultsReleaseMode] = useState<'immediate' | 'manual'>(initialExam?.resultsReleaseMode ?? 'immediate');
   const [schedulingEnabled, setSchedulingEnabled] = useState(initialExam?.schedulingEnabled ?? false);
   const [availabilityWindowStart, setAvailabilityWindowStart] = useState(initialExam?.availabilityWindowStart ? toDatetimeLocalValue(initialExam.availabilityWindowStart) : '');
   const [availabilityWindowEnd, setAvailabilityWindowEnd] = useState(initialExam?.availabilityWindowEnd ? toDatetimeLocalValue(initialExam.availabilityWindowEnd) : '');
@@ -158,6 +160,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
       passCriteriaPercent: Number(passCriteriaPercent),
       randomizeOrder,
       feedbackVisibility,
+      resultsReleaseMode,
       schedulingEnabled,
       availabilityWindowStart: schedulingEnabled ? new Date(availabilityWindowStart).toISOString() : undefined,
       availabilityWindowEnd: schedulingEnabled ? new Date(availabilityWindowEnd).toISOString() : undefined,
@@ -201,6 +204,16 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
                 { value: 'breakdown', label: 'Per-section breakdown' },
               ]} />
           </Field>
+        </div>
+        <div style={{ maxWidth: 380 }}>
+          <Field label="Results release">
+            <Combobox width="100%" value={resultsReleaseMode} onChange={(v) => setResultsReleaseMode(v as 'immediate' | 'manual')}
+              options={[
+                { value: 'immediate', label: 'Immediate — shown once the attempt is settled' },
+                { value: 'manual', label: 'Manual — withheld until you release results' },
+              ]} />
+          </Field>
+          <p style={{ ...help, paddingTop: 4 }}>In manual mode candidates see &quot;results not yet released&quot; until you release them from the Results page (per candidate, or all at once).</p>
         </div>
         <Field label="Instructions"><textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={3} style={{ ...input, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} /></Field>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>

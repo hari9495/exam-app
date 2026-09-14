@@ -11,7 +11,7 @@ import Link from 'next/link';
 import type { ColumnDef } from '@tanstack/react-table';
 import { ListFilter, Check } from 'lucide-react';
 import { useExam, useExams } from '../../../../../lib/hooks/useExams';
-import { useResultsSummary, useQuestionAccuracy, useResultsList, useResultsExport } from '../../../../../lib/hooks/usePanelReports';
+import { useResultsSummary, useQuestionAccuracy, useResultsList, useResultsExport, useReleaseExamResults } from '../../../../../lib/hooks/usePanelReports';
 import { RESULT_STATUS_LABEL, RESULT_STATUS_TONE } from '../../../../../lib/candidate-status';
 import { ExamResultRow } from '../../../../../lib/types';
 import { IntegrityBadge, useToast } from '../../../../../components/ui';
@@ -68,8 +68,10 @@ export default function V2ExamReportPage() {
   const { data: accuracyRows } = useQuestionAccuracy(examId);
   const { data: results, isLoading: resultsLoading } = useResultsList(examId);
   const exportMutation = useResultsExport(examId);
+  const releaseExam = useReleaseExamResults(examId);
   const { toast } = useToast();
   const [subTab, setSubTab] = useState('candidates');
+  const [notifyOnRelease, setNotifyOnRelease] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [integrityFilter, setIntegrityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -86,6 +88,14 @@ export default function V2ExamReportPage() {
 
   function toggleSelected(invitationId: string) {
     setSelectedIds((current) => (current.includes(invitationId) ? current.filter((id) => id !== invitationId) : [...current, invitationId]));
+  }
+
+  function handleReleaseAll() {
+    if (!window.confirm(`Release results to all candidates for this exam${notifyOnRelease ? ', and email them their outcome' : ''}?`)) return;
+    releaseExam.mutate(notifyOnRelease, {
+      onSuccess: (r) => toast(r.released > 0 ? `Released ${r.released} result${r.released === 1 ? '' : 's'}.` : 'All results were already released.'),
+      onError: (error) => toast(error instanceof Error ? error.message : 'Failed to release results.', 'error'),
+    });
   }
 
   async function handleExport(format: 'csv' | 'xlsx' | 'pdf') {
@@ -149,6 +159,15 @@ export default function V2ExamReportPage() {
                 onClick={() => router.push(`/v2/reports/${examId}/compare?invitationIds=${selectedIds.join(',')}`)}>Compare selected</button>
             </div>
           </div>
+          {summary?.resultsReleaseMode === 'manual' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 13px', borderRadius: 9, border: '1px solid var(--hair)', background: 'var(--surface)' }}>
+              <span style={{ fontSize: 12.5, color: 'var(--ink)' }}>Results are withheld until released.</span>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: 'var(--ink)', cursor: 'pointer' }}>
+                <Cb checked={notifyOnRelease} onChange={setNotifyOnRelease} /> Email candidates their result
+              </label>
+              <button type="button" className="v2-hoverbtn" style={{ ...dt.primaryBtn, marginLeft: 'auto', opacity: releaseExam.isPending ? 0.6 : 1 }} disabled={releaseExam.isPending} onClick={handleReleaseAll}>Release all results</button>
+            </div>
+          )}
           <DataTable columns={columns} data={visibleResults} getRowId={(r) => r.invitationId}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search candidates…"
             isLoading={resultsLoading} emptyMessage={filtersActive ? 'No candidates match your search or filters.' : 'No candidates invited yet.'}

@@ -12,6 +12,7 @@ import {
   useAttemptInsight,
   useRegenerateAttemptInsight,
   useResultsList,
+  useSetAttemptResultRelease,
 } from '../../../../lib/hooks/usePanelReports';
 import { useSystemEvents } from '../../../../lib/hooks/useSystemEvents';
 import { plainEnglish } from '../../../../lib/system-event-message';
@@ -19,7 +20,7 @@ import type { WebcamTimelineEntry, FaceMismatchEntry } from '../../../../lib/typ
 import { useToast, IntegrityBadge } from '../../../../components/ui';
 import { AuditHistoryLink } from '../../../../components/AuditHistoryLink';
 import { TabActivitySummaryCard, TabActivityBanner, hasTabActivityContent } from '../../../../components/TabActivity';
-import { Dialog, Button, Pill, dt } from '../../../../components/ui-v2';
+import { Dialog, Button, Pill, Cb, dt } from '../../../../components/ui-v2';
 import { STATUS, VIZ, rateColor } from '../../../../components/ui-v2/viz';
 
 const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: 18, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
@@ -63,6 +64,8 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
   // silently stays hidden, so panel members see no error for a report they can't access.
   const systemEventsQuery = useSystemEvents({ attemptId: attemptId ?? undefined }, { enabled: Boolean(attemptId) });
   const technicalIssues = systemEventsQuery.data?.data ?? [];
+  const setRelease = useSetAttemptResultRelease(examId);
+  const [notifyRelease, setNotifyRelease] = useState(false);
   const { toast } = useToast();
   const [selectedSnapshot, setSelectedSnapshot] = useState<WebcamTimelineEntry | null>(null);
   const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null);
@@ -113,6 +116,24 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
           <IntegrityBadge level={integrity?.level} />
         </div>
       </div>
+
+      {candidate.attemptId && (candidate.percentage !== null || candidate.passFail !== null) && (
+        <div className="print:hidden" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: -12, marginBottom: 20, padding: '9px 13px', borderRadius: 9, border: '1px solid var(--hair)', background: 'var(--surface)' }}>
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: candidate.released ? STATUS.ok : 'var(--muted)' }}>
+            {candidate.released ? 'Results visible to candidate' : 'Results withheld from candidate'}
+          </span>
+          {candidate.released ? (
+            <button type="button" className="v2-hoverbtn" style={{ ...dt.toolBtn, marginLeft: 'auto' }} disabled={setRelease.isPending}
+              onClick={() => setRelease.mutate({ attemptId: candidate.attemptId as string, action: 'hold' }, { onSuccess: () => toast('Result withheld.'), onError: (e) => toast(e instanceof Error ? e.message : 'Failed to update.', 'error') })}>Withhold</button>
+          ) : (
+            <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: 'var(--ink)', cursor: 'pointer' }}><Cb checked={notifyRelease} onChange={setNotifyRelease} /> Email candidate</label>
+              <button type="button" className="v2-hoverbtn" style={{ ...dt.primaryBtn, opacity: setRelease.isPending ? 0.6 : 1 }} disabled={setRelease.isPending}
+                onClick={() => setRelease.mutate({ attemptId: candidate.attemptId as string, action: 'release', notify: notifyRelease }, { onSuccess: () => toast('Result released.'), onError: (e) => toast(e instanceof Error ? e.message : 'Failed to release.', 'error') })}>Release result</button>
+            </span>
+          )}
+        </div>
+      )}
 
       {integrity && (integrity.narrative || integrity.flags.length > 0) && (
         <div style={{ marginBottom: 24 }}>

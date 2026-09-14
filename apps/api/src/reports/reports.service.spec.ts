@@ -377,8 +377,9 @@ describe('ReportsService', () => {
       const detail = await service.getCandidateDetail(context, 'exam-1', 'cand-2');
 
       expect(detail).toEqual({
-        candidateId: 'cand-2', candidateName: 'Bob', status: 'invited',
+        candidateId: 'cand-2', candidateName: 'Bob', attemptId: null, status: 'invited',
         score: null, maxScore: null, percentage: null, passFail: null, submittedAt: null,
+        releaseOverride: null, releasedAt: null, released: true,
         proctoringAnalysis: null, integrityAnalysis: null, sections: [], webcamTimeline: [],
         tabActivitySummary: [], faceEnrolment: null, faceMismatches: [],
       });
