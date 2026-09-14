@@ -175,6 +175,47 @@ describe('QuestionsService', () => {
     );
   });
 
+  it('persists modelAnswer for an essay question and stores no options', async () => {
+    const dto = {
+      type: 'essay',
+      text: 'Discuss the tradeoffs of optimistic locking.',
+      difficulty: 'hard',
+      marks: 10,
+      modelAnswer: 'Mention lost-update prevention, retry cost, and contention.',
+      options: [],
+    };
+    const questionCreate = jest.fn().mockResolvedValue({ id: 'q-essay', organizationId: 'org-1', ...dto, tags: [] });
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ tag: { upsert: jest.fn() }, question: { create: questionCreate } }));
+
+    await service.create(context, 'user-1', dto);
+
+    expect(questionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ modelAnswer: 'Mention lost-update prevention, retry cost, and contention.' }) }),
+    );
+  });
+
+  it('forces modelAnswer null for a non-essay question even if provided', async () => {
+    const dto = {
+      type: 'single_mcq',
+      text: 'Pick one.',
+      difficulty: 'easy',
+      marks: 5,
+      modelAnswer: 'should be ignored',
+      options: [
+        { text: 'A', isCorrect: true },
+        { text: 'B', isCorrect: false },
+      ],
+    };
+    const questionCreate = jest.fn().mockResolvedValue({ id: 'q-sm2', organizationId: 'org-1', ...dto, tags: [] });
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ tag: { upsert: jest.fn() }, question: { create: questionCreate } }));
+
+    await service.create(context, 'user-1', dto);
+
+    expect(questionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ modelAnswer: null }) }),
+    );
+  });
+
   it('creates an any-mode code question without fetching languages for validation of allowedLanguages, but still stores languageMode', async () => {
     const codeDto = {
       type: 'code',

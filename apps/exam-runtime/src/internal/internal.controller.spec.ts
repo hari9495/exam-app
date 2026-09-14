@@ -454,12 +454,29 @@ describe('InternalController', () => {
       await expect(controller.gradeCodeAnswer('attempt-1', 'question-1', { marksAwarded: 5 })).rejects.toThrow(NotFoundException);
     });
 
-    it('throws BadRequestException when the question is not a code question', async () => {
+    it('grades an essay answer the same way (manually graded, not code-specific)', async () => {
+      const answer = { id: 'answer-1', attemptId: 'attempt-1', questionId: 'question-1', question: { type: 'essay', marks: 10 } };
+      const tx = {
+        answer: {
+          findFirst: jest.fn().mockResolvedValue(answer),
+          update: jest.fn().mockResolvedValue({ id: 'answer-1', marksAwarded: 7, gradingFeedback: 'Clear argument' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      const result = await controller.gradeCodeAnswer('attempt-1', 'question-1', { marksAwarded: 7, feedback: 'Clear argument' });
+
+      expect(tx.answer.update).toHaveBeenCalledWith({ where: { id: 'answer-1' }, data: { marksAwarded: 7, gradingFeedback: 'Clear argument' } });
+      expect(result).toEqual({ questionId: 'question-1', marksAwarded: 7, gradingFeedback: 'Clear argument' });
+    });
+
+    it('throws BadRequestException when the question is not a manually graded question (e.g. MCQ)', async () => {
       const answer = { id: 'answer-1', attemptId: 'attempt-1', questionId: 'question-1', question: { type: 'single_mcq', marks: 10 } };
       const tx = { answer: { findFirst: jest.fn().mockResolvedValue(answer), update: jest.fn() } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       await expect(controller.gradeCodeAnswer('attempt-1', 'question-1', { marksAwarded: 5 })).rejects.toThrow(BadRequestException);
+      expect(tx.answer.update).not.toHaveBeenCalled();
     });
   });
 

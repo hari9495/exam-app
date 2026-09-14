@@ -20,7 +20,7 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
   const [marks, setMarks] = useState(question.marksAwarded !== null ? String(question.marksAwarded) : '');
   const [feedback, setFeedback] = useState(question.gradingFeedback ?? '');
   const gradeAnswer = useGradeCodeAnswer(attemptId);
-  const { data: review, isLoading: reviewLoading } = useCodeReview(attemptId, question.questionId);
+  const { data: review, isLoading: reviewLoading } = useCodeReview(attemptId, question.questionId, question.type === 'code');
   const regenerateReview = useRegenerateCodeReview();
   const { toast } = useToast();
 
@@ -55,22 +55,36 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
           <Pill c={DIFFICULTY_COLOR[question.difficulty] ?? 'var(--muted)'} label={question.difficulty} />
         </span>
       </div>
-      <pre style={{ margin: '0 0 12px', overflowX: 'auto', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--hair)', padding: 12, fontSize: 12 }} className="v2-mono">{question.answerText ?? '(no submission)'}</pre>
+      {question.type === 'essay' ? (
+        <div style={{ margin: '0 0 12px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--hair)', padding: 12, fontSize: 13, lineHeight: 1.55, color: 'var(--ink)' }}>{question.answerText ?? '(no submission)'}</div>
+      ) : (
+        <pre style={{ margin: '0 0 12px', overflowX: 'auto', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--hair)', padding: 12, fontSize: 12 }} className="v2-mono">{question.answerText ?? '(no submission)'}</pre>
+      )}
 
-      <div style={{ marginBottom: 12 }}>
-        {reviewLoading ? (
-          <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>Loading AI review…</p>
-        ) : review?.status === 'processing' ? (
-          <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>Generating AI review… this can take up to a minute.</p>
-        ) : review?.status === 'completed' ? (
-          <p style={{ fontSize: 12, color: 'var(--ink)', margin: 0, border: '1px solid var(--hair)', borderRadius: 8, padding: 8 }}>AI suggested {review.suggestedMarks} / {question.marks} — {review.summary}</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
-            {review?.status === 'failed' && <p style={{ fontSize: 12, color: 'var(--danger)', margin: 0 }}>The AI review didn&apos;t complete. You can try again, or grade this answer yourself.</p>}
-            <button type="button" className="v2-hoverbtn" style={dt.toolBtn} disabled={regenerateReview.isPending} onClick={handleGenerateReview}>{review?.status === 'failed' ? 'Try again' : 'Generate AI review'}</button>
-          </div>
-        )}
-      </div>
+      {question.type === 'essay' && question.modelAnswer ? (
+        <details style={{ marginBottom: 12 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>Model answer / grading notes</summary>
+          <div style={{ marginTop: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', borderRadius: 8, border: '1px dashed var(--hair)', padding: 10, fontSize: 12.5, lineHeight: 1.5, color: 'var(--ink)' }}>{question.modelAnswer}</div>
+        </details>
+      ) : null}
+
+      {/* AI review is a code-only suggestion; essays have no equivalent. */}
+      {question.type === 'code' ? (
+        <div style={{ marginBottom: 12 }}>
+          {reviewLoading ? (
+            <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>Loading AI review…</p>
+          ) : review?.status === 'processing' ? (
+            <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>Generating AI review… this can take up to a minute.</p>
+          ) : review?.status === 'completed' ? (
+            <p style={{ fontSize: 12, color: 'var(--ink)', margin: 0, border: '1px solid var(--hair)', borderRadius: 8, padding: 8 }}>AI suggested {review.suggestedMarks} / {question.marks} — {review.summary}</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+              {review?.status === 'failed' && <p style={{ fontSize: 12, color: 'var(--danger)', margin: 0 }}>The AI review didn&apos;t complete. You can try again, or grade this answer yourself.</p>}
+              <button type="button" className="v2-hoverbtn" style={dt.toolBtn} disabled={regenerateReview.isPending} onClick={handleGenerateReview}>{review?.status === 'failed' ? 'Try again' : 'Generate AI review'}</button>
+            </div>
+          )}
+        </div>
+      ) : null}
 
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
         <div>

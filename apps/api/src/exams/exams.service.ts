@@ -79,12 +79,21 @@ function countIntegrityFlags(flagsJson: string | null): number {
   }
 }
 
+// The manually graded question types surfaced in the grading queue. Mirrors
+// MANUALLY_GRADED_TYPES in exam-runtime's attempt-settlement.service.ts (duplicated: the two apps
+// share no runtime module).
+export const MANUALLY_GRADED_QUESTION_TYPES = ['code', 'essay'];
+
 export interface PendingGradingCodeQuestion {
   questionId: string;
+  /** 'code' | 'essay' -- the queue renders code as monospace with an AI-review block, essay as prose. */
+  type: string;
   questionText: string;
   /** easy | medium | hard, from the question bank -- context for how strictly to mark. */
   difficulty: string;
   starterCode: string | null;
+  /** Recruiter-only reference answer for an essay question (null for code). */
+  modelAnswer: string | null;
   codeLanguage: string | null;
   answerText: string | null;
   marks: number;
@@ -1233,13 +1242,17 @@ export class ExamsService {
               // them meant clicking "Save grade: 0" through a run of empty editors before the
               // Finalize button unlocked. Filtering on answerText rather than marksAwarded matters:
               // a question the recruiter has already graded 0 must stay visible so they can revise it.
-              // Predicate mirrors isAttemptedCode() in exam-runtime's attempt-settlement.service.ts.
-              .filter((answer) => answer.question.type === 'code' && Boolean(answer.answerText?.trim()))
+              // Predicate mirrors isAttemptedText()/MANUALLY_GRADED_TYPES in exam-runtime's
+              // attempt-settlement.service.ts -- code AND essay are the manually graded types.
+              .filter((answer) => MANUALLY_GRADED_QUESTION_TYPES.includes(answer.question.type) && Boolean(answer.answerText?.trim()))
               .map((answer) => ({
                 questionId: answer.questionId,
+                type: answer.question.type,
                 questionText: answer.question.text,
                 difficulty: answer.question.difficulty,
                 starterCode: answer.question.starterCode,
+                // Recruiter-only reference answer for essays (null for code). Never sent to candidates.
+                modelAnswer: answer.question.modelAnswer,
                 codeLanguage: answer.codeLanguage,
                 answerText: answer.answerText,
                 marks: answer.question.marks,

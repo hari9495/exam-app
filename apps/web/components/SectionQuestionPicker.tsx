@@ -21,6 +21,7 @@ const TYPE_LABELS: Record<QuestionType, string> = {
   multi_mcq: 'Multiple choice',
   true_false: 'True / false',
   code: 'Coding',
+  essay: 'Essay',
 };
 
 const DIFFICULTY_VARIANT: Record<Difficulty, 'success' | 'warning' | 'danger'> = {

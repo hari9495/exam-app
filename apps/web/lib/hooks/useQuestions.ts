@@ -123,6 +123,7 @@ export interface QuestionInput {
   marks: number;
   negativeMarks?: number;
   partialCredit?: boolean;
+  modelAnswer?: string;
   tags?: string[];
   languageMode?: string;
   allowedLanguages?: string[];

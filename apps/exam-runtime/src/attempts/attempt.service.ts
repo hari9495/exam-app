@@ -518,6 +518,30 @@ export class AttemptService {
         };
       }
 
+      if (question.type === 'essay') {
+        // Free prose, manually graded. Stored in answerText like code, minus the language/telemetry
+        // machinery. No options, so no selection validation. Never auto-gradable.
+        await tx.answer.upsert({
+          where: { attemptId_questionId: { attemptId: settled.id, questionId: dto.questionId } },
+          create: {
+            attemptId: settled.id,
+            questionId: dto.questionId,
+            selectedOptionIdsJson: JSON.stringify([]),
+            answerText: dto.answerText ?? null,
+            isMarkedForReview,
+          },
+          update: {
+            answerText: dto.answerText ?? null,
+            isMarkedForReview,
+            answeredAt: new Date(),
+          },
+        });
+        return {
+          response: { questionId: dto.questionId, selectedOptionIds: [], answerText: dto.answerText ?? null, isMarkedForReview },
+          isAutoGradable: false,
+        };
+      }
+
       // An empty selection means "no answer yet, possibly just toggling markedForReview" — skip option validation.
       if (dto.selectedOptionIds.length > 0) {
         this.validateSelection(question, dto.selectedOptionIds);

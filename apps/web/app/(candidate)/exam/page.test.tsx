@@ -472,6 +472,44 @@ describe('CandidateExamPage', () => {
     expect(saveAnswer).toHaveBeenCalledWith('q1', [], false, expect.any(String), expect.any(Object), 'javascript');
   });
 
+  describe('essay question', () => {
+    const essayAttemptState = {
+      ...codeAttemptState,
+      sections: [{ ...codeAttemptState.sections[0], questions: [{ id: 'q1', text: 'Discuss the CAP theorem.', type: 'essay', marks: 8, options: [] }] }],
+    };
+
+    it('renders a free-text textarea (not a Monaco editor) for an essay question', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: essayAttemptState, isError: false });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.getByText('Question 1 of 1 · Essay · 8 marks')).toBeInTheDocument();
+      expect(screen.getByLabelText('Your answer')).toBeInTheDocument();
+      expect(screen.queryByLabelText('code-editor')).not.toBeInTheDocument();
+    });
+
+    it('pre-fills the textarea with the saved answerText when resuming', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({
+        data: { ...essayAttemptState, answers: [{ questionId: 'q1', selectedOptionIds: [], answerText: 'My saved essay.', isMarkedForReview: false }] },
+        isError: false,
+      });
+
+      render(<CandidateExamPage />);
+
+      expect(screen.getByLabelText('Your answer')).toHaveValue('My saved essay.');
+    });
+
+    it('saves essay text via saveAnswer as answerText with no language or telemetry', async () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: essayAttemptState, isError: false });
+
+      render(<CandidateExamPage />);
+      await userEvent.type(screen.getByLabelText('Your answer'), 'x');
+
+      // Exactly four args — no telemetry object, no codeLanguage (unlike the code path above).
+      expect(saveAnswer).toHaveBeenCalledWith('q1', [], false, expect.any(String));
+    });
+  });
+
   it('does not wipe answerText when toggling mark-for-review on a code question', async () => {
     (useAttemptQuery as jest.Mock).mockReturnValue({
       data: { ...codeAttemptState, answers: [{ questionId: 'q1', selectedOptionIds: [], answerText: 'function add(a, b) { return a + b; }', isMarkedForReview: false }] },
