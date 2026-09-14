@@ -183,6 +183,8 @@ export interface Question {
   difficulty: Difficulty;
   marks: number;
   negativeMarks: number;
+  // Opt-in partial credit for a multi_mcq question (see grading). Always false for other types.
+  partialCredit: boolean;
   status: 'active' | 'draft' | 'archived';
   aiGenerated: boolean;
   languageMode: 'fixed' | 'any';

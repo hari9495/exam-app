@@ -171,6 +171,39 @@ describe('AttemptSettlementService', () => {
       });
       expect(result.status).toBe('auto_submitted');
     });
+
+    it('awards proportional partial credit for a multi_mcq with partialCredit enabled', async () => {
+      const attempt = {
+        id: 'attempt-1',
+        status: 'in_progress',
+        startedAt: new Date(Date.now() - 60 * 60_000),
+        questionOrderJson: JSON.stringify(['q1']),
+      };
+      const tx = {
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'q1', type: 'multi_mcq', marks: 6, negativeMarks: 0, partialCredit: true,
+              options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: true }, { id: 'opt-c', isCorrect: true }, { id: 'opt-d', isCorrect: false }],
+            },
+          ]),
+        },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'answer-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a', 'opt-b']) }, // 2 of 3 correct, no wrong
+          ]),
+          update: jest.fn(),
+        },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'auto_submitted' }) },
+        auditLog: { create: jest.fn() },
+      };
+
+      await service.settleIfExpired(tx as unknown as Prisma.TransactionClient, exam, attempt as any);
+
+      // 6 * (2 - 0) / 3 = 4, isCorrect false (not an exact match).
+      expect(tx.answer.update).toHaveBeenCalledWith({ where: { id: 'answer-1' }, data: { isCorrect: false, marksAwarded: 4 } });
+    });
   });
 
   describe('finalize section weighting', () => {

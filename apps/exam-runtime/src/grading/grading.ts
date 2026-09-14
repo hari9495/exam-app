@@ -4,6 +4,13 @@ export interface GradableQuestion {
   marks: number;
   negativeMarks: number;
   correctOptionIds: string[];
+  // Question type -- only 'multi_mcq' can use partial credit. single_mcq/true_false are exactly
+  // one correct option, so their partial path never differs from all-or-nothing. Optional so
+  // existing callers (and the unit tests) keep the historical all-or-nothing behavior by default.
+  type?: string;
+  // Opt-in per-question. When true on a multi_mcq, a non-exact selection earns proportional credit
+  // instead of scoring 0 / -negativeMarks. Ignored for every other type.
+  partialCredit?: boolean;
 }
 
 export interface GradedAnswer {
@@ -17,6 +24,22 @@ export function gradeAnswer(question: GradableQuestion, selectedOptionIds: strin
   const isCorrect = selectedSet.size === correctSet.size && [...selectedSet].every((id) => correctSet.has(id));
   if (isCorrect) {
     return { isCorrect, marksAwarded: question.marks };
+  }
+  // Partial credit for multi-select (opt-in): proportional to net-correct, floored at 0, so a
+  // wrong pick cancels a right one and guessing everything can never beat answering carefully.
+  // isCorrect stays false -- a partial answer is not a correct answer, it just carries some marks.
+  // This REPLACES the negativeMarks path for these questions: the penalty is already baked into
+  // (correct - wrong), so we don't also subtract negativeMarks. Selecting nothing yields 0 (no
+  // penalty for skipping), same as the all-or-nothing path below.
+  if (question.type === 'multi_mcq' && question.partialCredit && correctSet.size > 0) {
+    let correctSelected = 0;
+    let wrongSelected = 0;
+    for (const id of selectedSet) {
+      if (correctSet.has(id)) correctSelected += 1;
+      else wrongSelected += 1;
+    }
+    const raw = (question.marks * (correctSelected - wrongSelected)) / correctSet.size;
+    return { isCorrect, marksAwarded: Math.max(0, Math.round(raw)) };
   }
   const attempted = selectedOptionIds.length > 0;
   // Use `0 - x` rather than unary `-x`: when negativeMarks is 0, unary negation yields -0,

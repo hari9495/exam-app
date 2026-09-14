@@ -328,6 +328,11 @@ model Question {
   difficulty         String
   marks              Int
   negativeMarks      Int                   @default(0) @map("negative_marks")
+  // Opt-in partial credit for a multi_mcq question. When true, a non-exact selection earns
+  // proportional marks (correct - wrong, floored at 0) instead of all-or-nothing. Only meaningful
+  // for multi_mcq; forced false for every other type in the write path. Default false preserves
+  // the existing all-or-nothing behavior for every current question.
+  partialCredit      Boolean               @default(false) @map("partial_credit")
   status             String                @default("active")
   aiGenerated        Boolean               @default(false) @map("ai_generated")
   aiJobId            String?               @map("ai_job_id") @db.UniqueIdentifier
