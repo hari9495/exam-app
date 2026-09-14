@@ -107,6 +107,40 @@ describe('NotificationsService', () => {
     });
   });
 
+  describe('notifySystem (reminders)', () => {
+    let tx: {
+      user: { findMany: jest.Mock };
+      userNotification: { create: jest.Mock };
+      userNotificationPreference: { findMany: jest.Mock };
+    };
+    beforeEach(() => {
+      tx = {
+        user: { findMany: jest.fn().mockResolvedValue([{ id: 'u2', email: 'u2@x.test' }]) },
+        userNotification: { create: jest.fn() },
+        userNotificationPreference: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+    });
+
+    it('creates an actor-less bell row and emails opted-in recipients with the supplied copy', async () => {
+      await service.notifySystem(context, ['u2'], 'reminder.offer_expiring', target, { subject: 'Offer expiring', html: '<p>x</p>' });
+      expect(tx.userNotification.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ actorUserId: null, type: 'reminder.offer_expiring' }) }));
+      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'u2@x.test', subject: 'Offer expiring', organizationId: 'org-1' }));
+    });
+
+    it('skips the email for a recipient opted out of that reminder type but still creates the bell row', async () => {
+      tx.userNotificationPreference.findMany.mockResolvedValue([{ type: 'reminder.offer_expiring', emailEnabled: false }]);
+      await service.notifySystem(context, ['u2'], 'reminder.offer_expiring', target, { subject: 'Offer expiring', html: '<p>x</p>' });
+      expect(tx.userNotification.create).toHaveBeenCalled();
+      expect(email.send).not.toHaveBeenCalled();
+    });
+
+    it('no-ops on an empty recipient list', async () => {
+      await service.notifySystem(context, [], 'reminder.offer_expiring', target, { subject: 's', html: 'h' });
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
+  });
+
   describe('notify: approval-template render branch', () => {
     let tx: {
       user: { findMany: jest.Mock; findUnique: jest.Mock };

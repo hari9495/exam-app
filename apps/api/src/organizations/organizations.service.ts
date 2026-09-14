@@ -21,6 +21,7 @@ import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
+import { UpdateReminderSettingsDto } from './dto/update-reminder-settings.dto';
 import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
 import { UpdateCareersDto } from './dto/update-careers.dto';
@@ -1018,6 +1019,28 @@ export class OrganizationsService {
       entityId: organizationId,
     });
     return { autoArchiveSiblingsOnHire: org.autoArchiveSiblingsOnHire };
+  }
+
+  async getReminderSettings(context: TenantContext): Promise<{ remindersEnabled: boolean }> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { remindersEnabled: true } });
+    return { remindersEnabled: org?.remindersEnabled ?? false };
+  }
+
+  async updateReminderSettings(context: TenantContext, actorUserId: string, dto: UpdateReminderSettingsDto): Promise<{ remindersEnabled: boolean }> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { remindersEnabled: dto.enabled },
+      select: { remindersEnabled: true },
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.reminder_settings_updated',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return { remindersEnabled: org.remindersEnabled };
   }
 
   async getBusinessHours(context: TenantContext): Promise<BusinessHoursResponse> {

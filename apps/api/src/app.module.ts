@@ -59,6 +59,7 @@ import { ApprovalsModule } from './approvals/approvals.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { FieldPermissionsModule } from './field-permissions/field-permissions.module';
 import { RecycleBinModule } from './recycle-bin/recycle-bin.module';
+import { RemindersModule } from './reminders/reminders.module';
 import { ApiUsageModule } from './api-usage/api-usage.module';
 import { PermissionProfilesModule } from './permission-profiles/permission-profiles.module';
 import { JobBoardsModule } from './job-boards/job-boards.module';
@@ -131,6 +132,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     CustomFieldsModule,
     FieldPermissionsModule,
     RecycleBinModule,
+    RemindersModule,
     ApiUsageModule,
     PermissionProfilesModule,
     JobBoardsModule,
