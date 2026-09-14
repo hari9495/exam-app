@@ -14,12 +14,17 @@ import {
   CustomFieldInputMap,
 } from '../types';
 
-export function useJobs(status?: JobStatus) {
+export function useJobs(status?: JobStatus, search?: string) {
   const { accessToken } = useAuth();
+  const query = new URLSearchParams();
+  if (status) query.set('status', status);
+  if (search) query.set('search', search);
+  const qs = query.toString();
   return useQuery<JobListItem[]>({
-    queryKey: ['jobs', { status }],
-    queryFn: () => apiFetch(`/jobs${status ? `?status=${status}` : ''}`, {}, accessToken ?? undefined),
+    queryKey: ['jobs', { status, search }],
+    queryFn: () => apiFetch(`/jobs${qs ? `?${qs}` : ''}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
+    placeholderData: (prev) => prev,
   });
 }
 

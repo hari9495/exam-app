@@ -30,8 +30,13 @@ export class PipelineController {
 
   @Get('jobs')
   @RequirePermissions('results:view')
-  listJobs(@CurrentTenant() tenant: TenantContext, @CurrentUserRole() role: string, @Query('status') status?: 'open' | 'closed') {
-    return this.pipelineService.listJobs(tenant, status, role);
+  listJobs(
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentUserRole() role: string,
+    @Query('status') status?: 'open' | 'closed',
+    @Query('search') search?: string,
+  ) {
+    return this.pipelineService.listJobs(tenant, status, role, search);
   }
 
   @Get('jobs/:id')

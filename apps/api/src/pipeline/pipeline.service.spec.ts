@@ -1153,6 +1153,21 @@ describe('PipelineService', () => {
     });
   });
 
+  it('listJobs adds a title-contains filter when a search term is given', async () => {
+    const tx = {
+      job: { findMany: jest.fn().mockResolvedValue([]) },
+      pipeline: { findMany: jest.fn().mockResolvedValue([]) },
+      pipelineEntry: { groupBy: jest.fn().mockResolvedValue([]) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+
+    await service.listJobs(context, 'open', 'org_admin', 'eng');
+
+    expect(tx.job.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ organizationId: 'org-1', status: 'open', title: { contains: 'eng' } }) }),
+    );
+  });
+
   it('listJobs batches the approval summary lookup in one call and attaches it per row', async () => {
     const tx = {
       job: { findMany: jest.fn().mockResolvedValue([{ id: 'job-1' }, { id: 'job-2' }]) },

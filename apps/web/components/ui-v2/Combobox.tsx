@@ -10,10 +10,26 @@ export interface ComboOption { value: string; label: string }
 
 export function Combobox({
   options, value, onChange, placeholder = 'Select', width = 190, active = false,
-}: { options: ComboOption[]; value: string; onChange: (v: string) => void; placeholder?: string; width?: number | string; active?: boolean }) {
+  onSearch, loading = false, selectedLabel,
+}: {
+  options: ComboOption[];
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  width?: number | string;
+  active?: boolean;
+  // Async (server-side) mode: when provided, the typed query is handed to the parent (which fetches
+  // the matching `options`) and NO local filtering is done. `loading` shows a searching state.
+  // `selectedLabel` lets the trigger show the chosen option's label even when it isn't in the
+  // current server result set (the parent knows it from the selected record).
+  onSearch?: (q: string) => void;
+  loading?: boolean;
+  selectedLabel?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const ref = useRef<HTMLDivElement>(null);
+  const asyncMode = Boolean(onSearch);
 
   useEffect(() => {
     if (!open) return;
@@ -23,7 +39,14 @@ export function Combobox({
   }, [open]);
 
   const current = options.find((o) => o.value === value);
-  const filtered = q ? options.filter((o) => o.label.toLowerCase().includes(q.toLowerCase())) : options;
+  const triggerLabel = current?.label ?? (value ? selectedLabel : undefined) ?? placeholder;
+  // In async mode the parent has already server-filtered; never filter again locally.
+  const filtered = asyncMode ? options : q ? options.filter((o) => o.label.toLowerCase().includes(q.toLowerCase())) : options;
+
+  function handleInput(v: string) {
+    setQ(v);
+    if (onSearch) onSearch(v);
+  }
 
   return (
     <div ref={ref} style={{ position: 'relative', width }}>
@@ -38,25 +61,27 @@ export function Combobox({
           color: active ? 'var(--org-primary)' : 'var(--ink)', fontWeight: active ? 600 : 400,
         }}
       >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{current ? current.label : placeholder}</span>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{triggerLabel}</span>
         <ChevronDown size={15} style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
       </button>
       {open && (
         <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, minWidth: '100%', width: 'max-content', maxWidth: 320, background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 10, boxShadow: '0 12px 32px -12px rgba(11,18,32,.28)', zIndex: 50, overflow: 'hidden' }}>
           <div style={{ padding: 8, borderBottom: '1px solid var(--hair)' }}>
             <input
-              autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…"
+              autoFocus value={q} onChange={(e) => handleInput(e.target.value)} placeholder="Search…"
               style={{ width: '100%', border: '1px solid var(--hair)', borderRadius: 7, padding: '7px 9px', fontSize: 13, background: 'var(--surface)', color: 'var(--ink)', outline: 'none', boxSizing: 'border-box' }}
             />
           </div>
           <ul style={{ maxHeight: 240, overflowY: 'auto', padding: 6, margin: 0, listStyle: 'none' }}>
-            {filtered.length === 0 ? (
-              <li style={{ padding: 8, color: 'var(--muted)', fontSize: 13 }}>No results</li>
+            {asyncMode && loading ? (
+              <li style={{ padding: 8, color: 'var(--muted)', fontSize: 13 }}>Searching…</li>
+            ) : filtered.length === 0 ? (
+              <li style={{ padding: 8, color: 'var(--muted)', fontSize: 13 }}>{asyncMode && !q ? 'Type to search' : 'No results'}</li>
             ) : filtered.map((o) => (
               <li
                 key={o.value} className="wf-opt"
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => { onChange(o.value); setOpen(false); setQ(''); }}
+                onClick={() => { onChange(o.value); setOpen(false); setQ(''); if (onSearch) onSearch(''); }}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 9px', borderRadius: 7, fontSize: 13, cursor: 'pointer', color: 'var(--ink)', background: o.value === value ? 'color-mix(in srgb, var(--org-primary) 10%, transparent)' : 'transparent' }}
               >
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label}</span>

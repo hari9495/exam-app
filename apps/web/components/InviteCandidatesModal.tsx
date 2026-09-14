@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useCandidates } from '../lib/hooks/useCandidates';
 import { useBulkInvite } from '../lib/hooks/useInvitations';
+import { useDebouncedValue } from '../lib/hooks/useDebouncedValue';
 import { Modal, Checkbox, Button, useToast } from './ui';
 
 interface InviteCandidatesModalProps {
@@ -14,11 +15,10 @@ interface InviteCandidatesModalProps {
 
 export function InviteCandidatesModal({ examId, open, onClose, existingCandidateIds }: InviteCandidatesModalProps) {
   const [search, setSearch] = useState('');
-  // ponytail: pageSize:100 is the server's max -- an org with >100 matching
-  // candidates silently can't invite #101+ in one go. Upgrade path: replace
-  // with a real paginated/typeahead picker if this becomes a real constraint.
-  // status:'active' keeps deactivated candidates out of the invite path.
-  const { data: candidatesResponse } = useCandidates({ pageSize: 100, search: search || undefined, status: 'active' });
+  // Server-side search (debounced): the typed term finds any active candidate, so #101+ are reachable
+  // by name/email rather than capped by the page. status:'active' keeps deactivated candidates out.
+  const debouncedSearch = useDebouncedValue(search, 250);
+  const { data: candidatesResponse } = useCandidates({ pageSize: 50, search: debouncedSearch || undefined, status: 'active' });
   const candidates = (candidatesResponse?.data ?? []).filter((candidate) => !existingCandidateIds.includes(candidate.id));
   const bulkInvite = useBulkInvite(examId);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);

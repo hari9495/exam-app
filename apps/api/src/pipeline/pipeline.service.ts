@@ -266,10 +266,14 @@ export class PipelineService {
     return (await this.pipelines.getDefaultPipeline(context)).id;
   }
 
-  async listJobs(context: TenantContext, status: 'open' | 'closed' | undefined, role: string): Promise<JobWithCounts[]> {
+  async listJobs(context: TenantContext, status: 'open' | 'closed' | undefined, role: string, search?: string): Promise<JobWithCounts[]> {
     const jobs = await this.tenantPrisma.forTenant(context, async (tx) => {
       const jobs = await tx.job.findMany({
-        where: { organizationId: context.organizationId as string, ...(status ? { status } : {}) },
+        where: {
+          organizationId: context.organizationId as string,
+          ...(status ? { status } : {}),
+          ...(search ? { title: { contains: search } } : {}),
+        },
         orderBy: { createdAt: 'desc' },
       });
 

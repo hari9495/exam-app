@@ -5,17 +5,14 @@
 import { useState } from 'react';
 import { Download, Upload } from 'lucide-react';
 import { useBulkUploadInvite, useDownloadBulkUploadInviteTemplate, BulkUploadInviteResult } from '../../../../lib/hooks/useInvitations';
-import { useExams } from '../../../../lib/hooks/useExams';
 import { useToast } from '../../../../components/ui';
-import { Combobox, Dialog, dt } from '../../../../components/ui-v2';
+import { Dialog, dt } from '../../../../components/ui-v2';
+import { ExamPicker } from '../../../../components/pickers/ExamPicker';
 
 export function BulkUploadInviteDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [examId, setExamId] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<BulkUploadInviteResult | null>(null);
-  // ponytail: pageSize:100 is the server's max — >100 published exams can't invite to #101+ here.
-  const { data: publishedExamsResponse } = useExams('published', { pageSize: 100 });
-  const publishedExams = publishedExamsResponse?.data;
   const { toast } = useToast();
   const bulkUploadInvite = useBulkUploadInvite();
   const downloadTemplate = useDownloadBulkUploadInviteTemplate();
@@ -38,15 +35,13 @@ export function BulkUploadInviteDialog({ open, onClose }: { open: boolean; onClo
     });
   }
 
-  const examOptions = [{ value: '', label: 'Select an exam…' }, ...(publishedExams ?? []).map((exam) => ({ value: exam.id, label: exam.title }))];
-
   return (
     <Dialog open={open} onClose={onClose} title="Bulk upload & invite candidates" width={520}>
       <form onSubmit={handleUpload} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>Fields marked <span style={{ color: 'var(--danger)' }}>*</span> are required.</p>
         <div>
           <label className="v2-label">Exam to invite to <span style={{ color: 'var(--danger)' }}>*</span></label>
-          <Combobox options={examOptions} value={examId} onChange={setExamId} width="100%" />
+          <ExamPicker status="published" value={examId} onChange={setExamId} placeholder="Select an exam…" width="100%" />
         </div>
         <div>
           <button type="button" onClick={handleDownloadTemplate} disabled={downloadTemplate.isPending} className="v2-hoverbtn" style={dt.toolBtn}><Download size={14} /> Download template</button>

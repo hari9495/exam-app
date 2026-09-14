@@ -10,7 +10,8 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { ColumnDef } from '@tanstack/react-table';
 import { ListFilter, Check } from 'lucide-react';
-import { useExam, useExams } from '../../../../../lib/hooks/useExams';
+import { useExam } from '../../../../../lib/hooks/useExams';
+import { ExamPicker } from '../../../../../components/pickers/ExamPicker';
 import { useResultsSummary, useQuestionAccuracy, useResultsList, useResultsExport, useReleaseExamResults } from '../../../../../lib/hooks/usePanelReports';
 import { RESULT_STATUS_LABEL, RESULT_STATUS_TONE } from '../../../../../lib/candidate-status';
 import { ExamResultRow } from '../../../../../lib/types';
@@ -59,11 +60,6 @@ export default function V2ExamReportPage() {
   const { examId } = useParams<{ examId: string }>();
   const router = useRouter();
   const { data: exam } = useExam(examId);
-  const { data: examsResponse } = useExams(undefined, { pageSize: 100 });
-  const examOptions = (examsResponse?.data ?? []).map((item) => ({ value: item.id, label: item.title }));
-  if (exam && !examOptions.some((option) => option.value === exam.id)) {
-    examOptions.unshift({ value: exam.id, label: exam.title });
-  }
   const { data: summary, isLoading: summaryLoading } = useResultsSummary(examId);
   const { data: accuracyRows } = useQuestionAccuracy(examId);
   const { data: results, isLoading: resultsLoading } = useResultsList(examId);
@@ -149,7 +145,7 @@ export default function V2ExamReportPage() {
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10 }}>
             <div style={{ minWidth: 220 }}>
               <label className="v2-label">Exam</label>
-              <Combobox width="100%" value={examId} onChange={(nextExamId) => nextExamId !== examId && router.push(`/v2/reports/${nextExamId}`)} options={examOptions} />
+              <ExamPicker width="100%" value={examId} initialLabel={exam?.title} onChange={(nextExamId) => nextExamId && nextExamId !== examId && router.push(`/v2/reports/${nextExamId}`)} />
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
               <button type="button" className="v2-hoverbtn" style={dt.toolBtn} onClick={() => handleExport('csv')} disabled={exportMutation.isPending}>Export CSV</button>
