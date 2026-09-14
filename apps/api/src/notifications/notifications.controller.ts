@@ -5,6 +5,7 @@ import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { NotificationsService } from './notifications.service';
 import { UpdateNotificationPreferenceDto } from './dto/update-notification-preference.dto';
+import { UpdateDigestModeDto } from './dto/update-digest-mode.dto';
 
 // Every route is the CURRENT user's own inbox -- no extra permission beyond being authenticated;
 // the service scopes every query to recipientUserId so one staffer never sees another's inbox.
@@ -45,5 +46,15 @@ export class NotificationsController {
     @Body() dto: UpdateNotificationPreferenceDto,
   ) {
     return this.service.setPreference(tenant, userId, dto.type, dto.emailEnabled);
+  }
+
+  @Get('digest')
+  getDigestMode(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
+    return this.service.getDigestMode(tenant, userId);
+  }
+
+  @Patch('digest')
+  setDigestMode(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateDigestModeDto) {
+    return this.service.setDigestMode(tenant, userId, dto.mode);
   }
 }

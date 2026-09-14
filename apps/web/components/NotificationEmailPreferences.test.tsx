@@ -14,6 +14,8 @@ let isLoading = false;
 jest.mock('../lib/hooks/useNotificationPreferences', () => ({
   useNotificationPreferences: () => ({ data: preferences, isLoading }),
   useUpdateNotificationPreference: () => ({ mutate: updateMutate }),
+  useDigestMode: () => ({ data: { mode: 'immediate' } }),
+  useUpdateDigestMode: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 
 describe('NotificationEmailPreferences', () => {

@@ -33,3 +33,25 @@ export function useUpdateNotificationPreference() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notification-preferences'] }),
   });
 }
+
+// Per-user email cadence over the per-type prefs above: 'immediate' | 'daily' | 'off'.
+export type DigestMode = 'immediate' | 'daily' | 'off';
+
+export function useDigestMode() {
+  const { accessToken } = useAuth();
+  return useQuery<{ mode: DigestMode }>({
+    queryKey: ['notification-digest-mode'],
+    queryFn: () => apiFetch('/notifications/digest', {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken),
+  });
+}
+
+export function useUpdateDigestMode() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (mode: DigestMode) =>
+      apiFetch('/notifications/digest', { method: 'PATCH', body: JSON.stringify({ mode }) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notification-digest-mode'] }),
+  });
+}
