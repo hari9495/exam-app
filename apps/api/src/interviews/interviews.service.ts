@@ -1,13 +1,15 @@
 import { randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Interview, Prisma } from '@prisma/client';
-import { TenantPrismaService, TenantContext, AuditService, BlobStorageService, BusinessHours, Holiday } from '@exam-platform/shared';
+import { TenantPrismaService, TenantContext, AuditService, BlobStorageService, BusinessHours, Holiday, renderTemplateString } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { buildCandidateEmailHtml } from '../candidate-emails/candidate-email-render';
 import { CreateInterviewDto } from './dto/create-interview.dto';
 import { RespondInterviewDto } from './dto/respond-interview.dto';
-import { renderInterviewTemplate, formatSlot } from './interview-render';
+import { formatSlot } from './interview-render';
+import { InterviewEmailTemplatesService, ResolvedInterviewTemplate } from './interview-email-templates.service';
+import { InterviewEmailEventType } from './interview-email-types';
 import { buildInterviewIcs } from './interview-ics';
 import { generateBookableSlots, BusyInterval } from './booking-slots';
 import { CalendarSyncService, PushEventResult } from '../calendar-sync/calendar-sync.service';
@@ -20,16 +22,6 @@ const LOGO_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 // into the pure slot generator (booking-slots.ts) -- a 0/negative duration must never reach it,
 // even from a caller that bypasses the HTTP ValidationPipe.
 const ALLOWED_SLOT_DURATIONS = [15, 30, 45, 60];
-
-const DEFAULT_INVITE_SUBJECT = 'Interview invitation: {{jobTitle}} at {{orgName}}';
-const DEFAULT_INVITE_BODY =
-  "Hi {{candidateName}},\n\n" +
-  "You're invited to interview for {{jobTitle}} at {{orgName}}.\n\n" +
-  'Proposed times:\n{{interviewTimes}}\n\n' +
-  'Location: {{interviewLocation}}\n\n' +
-  'Panel: {{panelNames}}\n\n' +
-  'Please confirm your preferred time here: {{confirmLink}}\n\n' +
-  'Best,\n{{recruiterName}}';
 
 @Injectable()
 export class InterviewsService {
@@ -46,7 +38,21 @@ export class InterviewsService {
     private readonly audit: AuditService,
     private readonly integrationEvents: IntegrationEventsService,
     private readonly calendarSync: CalendarSyncService,
+    private readonly emailTemplates: InterviewEmailTemplatesService,
   ) {}
+
+  // Render one event's resolved template (org override or built-in default) with its vars. Subject
+  // stays plain text; the body is passed through buildCandidateEmailHtml by the caller, which
+  // HTML-escapes it (candidateName/jobTitle are attacker-controlled) — so no value is ever
+  // hand-built into raw HTML.
+  private applyTemplate(
+    templates: Record<InterviewEmailEventType, ResolvedInterviewTemplate>,
+    eventType: InterviewEmailEventType,
+    vars: Record<string, string>,
+  ): { subject: string; body: string } {
+    const copy = templates[eventType];
+    return { subject: renderTemplateString(copy.subject, vars), body: renderTemplateString(copy.body, vars) };
+  }
 
   // Best-effort inbound sync: external busy times for this interview's panelists over the booking
   // window, so self-book slots avoid times a panelist is already booked on their own calendar.
@@ -242,15 +248,19 @@ export class InterviewsService {
       });
       const icsAttachment = { filename: 'interview.ics', content: Buffer.from(ics) };
       const when = formatSlot(cancelNotice.startsAt, cancelNotice.endsAt, updated.timeZone);
+      const templates = await this.emailTemplates.resolveMap(context);
+      const cancel = this.applyTemplate(templates, 'cancellation', {
+        candidateName: cancelNotice.candidateName,
+        jobTitle: cancelNotice.jobTitle,
+        orgName: cancelNotice.orgName,
+        interviewTime: when,
+        interviewLocation: cancelNotice.location,
+      });
       for (const to of cancelNotice.recipients) {
         await this.emailService.send({
           to,
-          subject: `Interview cancelled: ${cancelNotice.jobTitle}`,
-          html: buildCandidateEmailHtml({
-            logoUrl: null,
-            orgName: cancelNotice.orgName || null,
-            bodyText: `The interview for ${cancelNotice.jobTitle}${cancelNotice.orgName ? ` at ${cancelNotice.orgName}` : ''} scheduled for ${when} has been cancelled.`,
-          }),
+          subject: cancel.subject,
+          html: buildCandidateEmailHtml({ logoUrl: null, orgName: cancelNotice.orgName || null, bodyText: cancel.body }),
           organizationId: orgId,
           attachments: [icsAttachment],
         });
@@ -322,7 +332,8 @@ export class InterviewsService {
     const confirmLink = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/interview/${prep.interviewToken}`;
     const interviewTimes = prep.interview.slots.map((s) => formatSlot(s.startsAt, s.endsAt, prep.interview.timeZone)).join('\n');
     const panelNames = prep.panelists.map((p) => p.name).join(', ');
-    const rendered = renderInterviewTemplate(DEFAULT_INVITE_SUBJECT, DEFAULT_INVITE_BODY, {
+    const templates = await this.emailTemplates.resolveMap(context);
+    const inviteVars = {
       candidateName: prep.candidate.name,
       jobTitle: prep.job.title,
       orgName: prep.org?.name ?? '',
@@ -331,30 +342,30 @@ export class InterviewsService {
       interviewLocation: prep.interview.location,
       panelNames,
       confirmLink,
-    });
-    const bodyText = prep.interview.recruiterNote ? `${rendered.body}\n\n${prep.interview.recruiterNote}` : rendered.body;
+    };
+    const invite = this.applyTemplate(templates, 'invite', inviteVars);
+    // recruiterNote is appended AFTER the rendered body (not a token) so it survives a custom template.
+    const bodyText = prep.interview.recruiterNote ? `${invite.body}\n\n${prep.interview.recruiterNote}` : invite.body;
     const logoUrl = prep.org?.logoPath ? await this.blobStorage.signIfOurs(prep.org.logoPath, LOGO_SIGN_TTL_MS) : null;
     const html = buildCandidateEmailHtml({ logoUrl: logoUrl as string | null, orgName: prep.org?.name ?? null, bodyText });
     const result = await this.emailService.send({
       to: prep.candidate.email,
-      subject: rendered.subject,
+      subject: invite.subject,
       html,
       organizationId: orgId,
     });
 
+    const panelistMsg = this.applyTemplate(templates, 'panelist_invite', {
+      candidateName: prep.candidate.name,
+      jobTitle: prep.job.title,
+      interviewTimes,
+      interviewLocation: prep.interview.location,
+    });
     for (const panelist of prep.panelists) {
       await this.emailService.send({
         to: panelist.email,
-        subject: `Interview panel assignment: ${prep.candidate.name} for ${prep.job.title}`,
-        html: buildCandidateEmailHtml({
-          logoUrl: null,
-          orgName: null,
-          bodyText:
-            `You are assigned to interview ${prep.candidate.name} for ${prep.job.title}.\n` +
-            `Proposed times:\n${interviewTimes}\n` +
-            `Location: ${prep.interview.location}\n` +
-            `(Pending the candidate's confirmation.)`,
-        }),
+        subject: panelistMsg.subject,
+        html: buildCandidateEmailHtml({ logoUrl: null, orgName: null, bodyText: panelistMsg.body }),
         organizationId: orgId,
       });
     }
@@ -714,6 +725,8 @@ export class InterviewsService {
       };
     });
 
+    const templates = await this.emailTemplates.resolveMap(context);
+
     if (dto.action === 'confirm' || dto.action === 'book') {
       // Push the event to an organizer's connected calendar and get the auto Meet/Teams link, so it
       // can go into the confirmation emails below. Best-effort: any failure (no connection, no OAuth
@@ -766,41 +779,49 @@ export class InterviewsService {
       const icsAttachment = { filename: 'interview.ics', content: Buffer.from(ics) };
       const when = formatSlot(chosenSlot!.startsAt, chosenSlot!.endsAt, interview.timeZone);
 
+      // joinLine (calendar Meet/Teams link) is appended AFTER the rendered body so it survives a
+      // custom template.
+      const cc = this.applyTemplate(templates, 'confirmation_candidate', {
+        candidateName: notify.candidateName,
+        jobTitle: notify.jobTitle,
+        orgName: notify.orgName,
+        interviewTime: when,
+        interviewLocation: interview.location,
+      });
       await this.emailService.send({
         to: notify.candidateEmail,
-        subject: `Interview confirmed: ${notify.jobTitle}`,
-        html: buildCandidateEmailHtml({
-          logoUrl: null,
-          orgName: notify.orgName || null,
-          bodyText: `Your interview for ${notify.jobTitle} at ${notify.orgName} is confirmed for ${when}.\n\nLocation: ${interview.location}${joinLine}`,
-        }),
+        subject: cc.subject,
+        html: buildCandidateEmailHtml({ logoUrl: null, orgName: notify.orgName || null, bodyText: `${cc.body}${joinLine}` }),
         organizationId: interview.organizationId,
         attachments: [icsAttachment],
       });
 
+      const cp = this.applyTemplate(templates, 'confirmation_panelist', {
+        candidateName: notify.candidateName,
+        jobTitle: notify.jobTitle,
+        interviewTime: when,
+        interviewLocation: interview.location,
+      });
       for (const panelist of notify.panelists) {
         await this.emailService.send({
           to: panelist.email,
-          subject: `Interview confirmed: ${notify.candidateName} for ${notify.jobTitle}`,
-          html: buildCandidateEmailHtml({
-            logoUrl: null,
-            orgName: null,
-            bodyText: `${notify.candidateName} confirmed for ${when}.\n\nLocation: ${interview.location}${joinLine}`,
-          }),
+          subject: cp.subject,
+          html: buildCandidateEmailHtml({ logoUrl: null, orgName: null, bodyText: `${cp.body}${joinLine}` }),
           organizationId: interview.organizationId,
           attachments: [icsAttachment],
         });
       }
 
       if (notify.recruiterEmail) {
+        const cr = this.applyTemplate(templates, 'confirmation_recruiter', {
+          candidateName: notify.candidateName,
+          jobTitle: notify.jobTitle,
+          interviewTime: when,
+        });
         await this.emailService.send({
           to: notify.recruiterEmail,
-          subject: `Interview confirmed: ${notify.candidateName}`,
-          html: buildCandidateEmailHtml({
-            logoUrl: null,
-            orgName: null,
-            bodyText: `${notify.candidateName} confirmed the interview for ${notify.jobTitle} (${when}).`,
-          }),
+          subject: cr.subject,
+          html: buildCandidateEmailHtml({ logoUrl: null, orgName: null, bodyText: cr.body }),
           organizationId: interview.organizationId,
         });
       }
@@ -811,16 +832,17 @@ export class InterviewsService {
         linkPath: `/interviews/${interview.id}`,
       });
     } else if (notify.recruiterEmail) {
-      const verb = dto.action === 'decline' ? 'declined' : 'requested a reschedule for';
-      const noteText = dto.action === 'reschedule' && dto.note ? `\n\nCandidate's note: ${dto.note}` : '';
+      const eventType: InterviewEmailEventType = dto.action === 'decline' ? 'candidate_declined' : 'candidate_reschedule';
+      const candidateNote = dto.action === 'reschedule' && dto.note ? `\n\nCandidate's note: ${dto.note}` : '';
+      const r = this.applyTemplate(templates, eventType, {
+        candidateName: notify.candidateName,
+        jobTitle: notify.jobTitle,
+        candidateNote,
+      });
       await this.emailService.send({
         to: notify.recruiterEmail,
-        subject: `Interview ${dto.action === 'decline' ? 'declined' : 'reschedule requested'}: ${notify.candidateName}`,
-        html: buildCandidateEmailHtml({
-          logoUrl: null,
-          orgName: null,
-          bodyText: `${notify.candidateName} ${verb} the interview for ${notify.jobTitle}.${noteText}`,
-        }),
+        subject: r.subject,
+        html: buildCandidateEmailHtml({ logoUrl: null, orgName: null, bodyText: r.body }),
         organizationId: interview.organizationId,
       });
     }

@@ -23,6 +23,7 @@ const V2_ROUTES = new Set([
   '/settings/scheduled-reports',
   '/settings/recycle-bin',
   '/settings/approval-emails',
+  '/settings/interview-emails',
   '/settings/sender-addresses',
   '/settings/apply-consent',
   '/settings/careers',

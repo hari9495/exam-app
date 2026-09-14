@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { InterviewsService } from './interviews.service';
+import { INTERVIEW_EMAIL_DEFAULTS } from './interview-email-types';
 
 describe('InterviewsService', () => {
   let service: InterviewsService;
@@ -9,6 +10,7 @@ describe('InterviewsService', () => {
   let audit: { record: jest.Mock };
   let integrationEvents: { emit: jest.Mock };
   let calendarSync: { getExternalBusyForUsers: jest.Mock; pushInterviewEvent: jest.Mock; deleteInterviewEvent: jest.Mock };
+  let emailTemplates: { resolveMap: jest.Mock };
   let tx: {
     pipelineEntry: Record<string, jest.Mock>;
     interview: Record<string, jest.Mock>;
@@ -63,6 +65,9 @@ describe('InterviewsService', () => {
       pushInterviewEvent: jest.fn().mockResolvedValue(null),
       deleteInterviewEvent: jest.fn().mockResolvedValue(undefined),
     };
+    // Return the built-in defaults so the existing email-copy assertions hold (a custom template
+    // would change the copy; with no org template the send sites render the same default strings).
+    emailTemplates = { resolveMap: jest.fn().mockResolvedValue(INTERVIEW_EMAIL_DEFAULTS) };
     service = new InterviewsService(
       tenantPrisma as any,
       emailService as any,
@@ -70,6 +75,7 @@ describe('InterviewsService', () => {
       audit as any,
       integrationEvents as any,
       calendarSync as any,
+      emailTemplates as any,
     );
   });
 
