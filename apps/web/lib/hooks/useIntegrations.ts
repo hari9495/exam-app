@@ -98,6 +98,23 @@ export function useUpdateWebhookUrl() {
   });
 }
 
+export interface HrisConfigInput {
+  enabled: boolean;
+  provider?: string;
+  targetUrl?: string;
+  authHeader?: string;
+}
+
+export function useUpdateHrisConfig() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: HrisConfigInput): Promise<{ hrisExportConfigured: boolean; hrisExportEnabled: boolean }> =>
+      apiFetch('/organizations/integrations/hris-config', { method: 'PATCH', body: JSON.stringify(input) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['integrations'] }),
+  });
+}
+
 export function useGenerateWebhookSecret() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();

@@ -45,6 +45,7 @@ describe('PipelineService', () => {
   let pipelines: { getDefaultPipeline: jest.Mock; resolveStatus: jest.Mock };
   let fieldPerms: { getHiddenFields: jest.Mock; getLockedFields: jest.Mock };
   let jobBoardPoster: { syncJobToPaidBoards: jest.Mock };
+  let hrisExport: { exportOnHire: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   const chains = (requisitionEnabled: boolean) => ({
@@ -79,7 +80,9 @@ describe('PipelineService', () => {
     fieldPerms = { getHiddenFields: jest.fn().mockResolvedValue(new Set()), getLockedFields: jest.fn().mockResolvedValue(new Set()) };
     // Paid job-board posting is best-effort and inert by default in these tests (no-op).
     jobBoardPoster = { syncJobToPaidBoards: jest.fn().mockResolvedValue(undefined) };
-    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, whatsappTemplates as any, candidateWhatsapp as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any, jobBoardPoster as any);
+    // HRIS export is best-effort + inert by default (no-op) in these tests.
+    hrisExport = { exportOnHire: jest.fn().mockResolvedValue(undefined) };
+    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, whatsappTemplates as any, candidateWhatsapp as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any, jobBoardPoster as any, hrisExport as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {
@@ -1493,7 +1496,7 @@ describe('PipelineService', () => {
         pipelineEntry: {
           findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', job: { pipelineId: 'p1' }, status: { stage: { category: 'offer' } } }),
           update,
-          findUnique: jest.fn().mockResolvedValue({ candidateId: 'cand-1', candidate: { name: 'Asha Rao' }, job: { title: 'Backend Engineer' } }),
+          findUnique: jest.fn().mockResolvedValue({ candidateId: 'cand-1', jobId: 'job-1', candidate: { name: 'Asha Rao' }, job: { title: 'Backend Engineer' } }),
         },
       };
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(withRecomputeMocks(tx)));
@@ -1506,6 +1509,8 @@ describe('PipelineService', () => {
         'candidate.hired',
         expect.objectContaining({ subject: 'Asha Rao', roleTitle: 'Backend Engineer', linkPath: '/candidates/cand-1' }),
       );
+      // The structured HRIS export is triggered on the same hire, with candidate + job ids.
+      expect(hrisExport.exportOnHire).toHaveBeenCalledWith('org-1', 'cand-1', 'job-1');
     });
 
     it("on hire, archives the candidate's other active entries when the org toggle is on", async () => {
@@ -1563,6 +1568,7 @@ describe('PipelineService', () => {
       await service.patchEntry(context, 'user-1', 'en1', { statusId: 'st-int' });
 
       expect(integrationEvents.emit).not.toHaveBeenCalled();
+      expect(hrisExport.exportOnHire).not.toHaveBeenCalled();
     });
 
     it('does not re-emit candidate.hired when the entry is already in a hired-category status (idempotent)', async () => {

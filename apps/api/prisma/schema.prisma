@@ -89,6 +89,13 @@ model Organization {
   whatsappEnabled         Boolean          @default(false) @map("whatsapp_enabled")
   whatsappProvider        String           @default("twilio") @map("whatsapp_provider")
   whatsappConfigEncrypted String?          @map("whatsapp_config_encrypted") @db.NVarChar(Max)
+  // HRIS/ATS export: on candidate hire, POST a structured employee record to the org's HRIS inbound
+  // API / iPaaS endpoint. Bring-your-own endpoint + auth token; inert until enabled + a target URL
+  // is set. hrisAuthHeaderEncrypted holds the full Authorization header value (e.g. "Bearer xxx").
+  hrisExportEnabled       Boolean          @default(false) @map("hris_export_enabled")
+  hrisProvider            String           @default("generic") @map("hris_provider")
+  hrisTargetUrl           String?          @map("hris_target_url")
+  hrisAuthHeaderEncrypted String?          @map("hris_auth_header_encrypted") @db.NVarChar(Max)
   users                  User[]
   auditLogs              AuditLog[]
   webhookDeliveries      WebhookDelivery[]
@@ -138,6 +145,25 @@ model IntegrationDelivery {
   lastAttemptAt  DateTime? @map("last_attempt_at")
 
   @@map("integration_deliveries")
+}
+
+// One row per HRIS export attempt-set for a hired candidate. Mirrors IntegrationDelivery +
+// WebhookDelivery (super-admin accessed, not RLS): payloadJson snapshots the employee record at
+// hire so a later candidate edit can't rewrite what was exported.
+model HrisExportDelivery {
+  id             String    @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  organizationId String    @map("organization_id") @db.UniqueIdentifier
+  candidateId    String    @map("candidate_id") @db.UniqueIdentifier
+  payloadJson    String    @map("payload_json") @db.NVarChar(Max)
+  status         String    @default("pending")
+  httpStatusCode Int?      @map("http_status_code")
+  attemptCount   Int       @default(0) @map("attempt_count")
+  errorDetail    String?   @map("error_detail") @db.NVarChar(Max)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  lastAttemptAt  DateTime? @map("last_attempt_at")
+
+  @@index([organizationId, createdAt])
+  @@map("hris_export_deliveries")
 }
 
 model WebhookDelivery {

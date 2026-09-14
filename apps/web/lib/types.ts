@@ -1067,6 +1067,10 @@ export interface IntegrationsResponse {
   apiKeyCreatedAt: string | null;
   webhookConfigured: boolean;
   webhookUrl: string | null;
+  hrisExportConfigured: boolean;
+  hrisExportEnabled: boolean;
+  hrisProvider: string;
+  hrisTargetUrl: string | null;
 }
 
 // Mirrors apps/api/src/billing/usage.service.ts OrgUsage -- what GET /organizations/billing/usage
