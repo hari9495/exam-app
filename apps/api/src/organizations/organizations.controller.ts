@@ -15,6 +15,7 @@ import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
 import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { UpdateEmbeddingConfigDto } from './dto/update-embedding-config.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
+import { UpdateHrisConfigDto } from './dto/update-hris-config.dto';
 import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
@@ -152,6 +153,12 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   generateWebhookSecret(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
     return this.organizationsService.generateWebhookSecret(tenant, userId);
+  }
+
+  @Patch('integrations/hris-config')
+  @RequirePermissions('org:manage_settings')
+  updateHrisConfig(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateHrisConfigDto) {
+    return this.organizationsService.updateHrisConfig(tenant, userId, dto);
   }
 
   @Get('integrations/webhook-deliveries')

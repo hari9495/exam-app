@@ -24,13 +24,14 @@ import {
   useTestConnectedApp,
 } from '../../../../../lib/hooks/useConnectedApps';
 import type { WebhookDeliveryRow, ConnectedAppRow } from '../../../../../lib/types';
-import { Mail, MessageSquare, MessageCircle, Sparkles, KeyRound, Webhook, Plug } from 'lucide-react';
+import { Mail, MessageSquare, MessageCircle, Sparkles, KeyRound, Webhook, Plug, Building2 } from 'lucide-react';
 import { Button, TextField, PasswordField, Combobox, Dialog, DataTable, DT_FEATURES, dt, Cb, SortHead, Pill } from '../../../../../components/ui-v2';
 import { STATUS } from '../../../../../components/ui-v2/viz';
 import { ApiUsageCard } from './ApiUsageCard';
 import { SmsConfigSection } from './SmsConfigSection';
 import { WhatsappConfigCard } from './WhatsappConfigCard';
 import { EmbeddingConfigCard } from './EmbeddingConfigCard';
+import { HrisConfigCard } from './HrisConfigCard';
 
 // Section-sidebar layout (21st.dev "Settings Card with Sidebar" #25323, retoned Azure): a left
 // icon-nav swaps the right panel so each integration gets its own focused space.
@@ -42,6 +43,7 @@ const SECTIONS = [
   { id: 'api', label: 'Public API', icon: KeyRound },
   { id: 'webhooks', label: 'Webhooks', icon: Webhook },
   { id: 'apps', label: 'Connected apps', icon: Plug },
+  { id: 'hris', label: 'HRIS / ATS export', icon: Building2 },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]['id'];
 
@@ -430,6 +432,7 @@ export default function V2IntegrationsSettingsPage() {
 
         )}
         {active === 'apps' && <ConnectedAppsSection notify={notify} />}
+        {active === 'hris' && <HrisConfigCard />}
         </div>
       </div>
     </div>

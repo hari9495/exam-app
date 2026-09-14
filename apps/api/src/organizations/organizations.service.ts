@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Organization } from '@prisma/client';
+import { Organization, Prisma } from '@prisma/client';
 import { randomBytes, createHash, X509Certificate } from 'crypto';
 import * as argon2 from 'argon2';
 import * as nodemailer from 'nodemailer';
@@ -29,6 +29,8 @@ import { getSmsProvider } from '../sms/providers';
 import { UpdateEasyApplyConfigDto } from './dto/update-easy-apply-config.dto';
 import { getEasyApplyProvider, listEasyApplyProviders } from '../easy-apply/providers';
 import { UpdateWhatsappConfigDto } from './dto/update-whatsapp-config.dto';
+import { UpdateHrisConfigDto } from './dto/update-hris-config.dto';
+import { isAllowedWebhookUrl } from '../integrations/webhook-url-allowlist';
 import { BusinessHours, Holiday } from '@exam-platform/shared';
 import { getWhatsappProvider, listWhatsappProviders, WhatsappConfigField } from '../whatsapp/providers';
 
@@ -99,6 +101,10 @@ export interface IntegrationsResponse {
   apiKeyCreatedAt: Date | null;
   webhookConfigured: boolean;
   webhookUrl: string | null;
+  hrisExportConfigured: boolean;
+  hrisExportEnabled: boolean;
+  hrisProvider: string;
+  hrisTargetUrl: string | null;
 }
 
 export interface PipelineSettingsResponse {
@@ -528,6 +534,7 @@ export class OrganizationsService {
         aiProvider: true, aiBaseUrl: true, aiModelFast: true, aiModelStandard: true,
         embeddingApiKeyEncrypted: true, embeddingBaseUrl: true, embeddingModel: true,
         apiKeyHash: true, apiKeyPrefix: true, apiKeyCreatedAt: true, webhookUrl: true,
+        hrisExportEnabled: true, hrisProvider: true, hrisTargetUrl: true,
       },
     });
     return {
@@ -548,6 +555,10 @@ export class OrganizationsService {
       apiKeyCreatedAt: org?.apiKeyCreatedAt ?? null,
       webhookConfigured: org?.webhookUrl !== null && org?.webhookUrl !== undefined,
       webhookUrl: org?.webhookUrl ?? null,
+      hrisExportConfigured: Boolean(org?.hrisTargetUrl),
+      hrisExportEnabled: org?.hrisExportEnabled ?? false,
+      hrisProvider: org?.hrisProvider ?? 'generic',
+      hrisTargetUrl: org?.hrisTargetUrl ?? null,
     };
   }
 
@@ -853,6 +864,50 @@ export class OrganizationsService {
       entityId: organizationId,
     });
     return { webhookUrl: dto.url };
+  }
+
+  async updateHrisConfig(
+    context: TenantContext,
+    actorUserId: string,
+    dto: UpdateHrisConfigDto,
+  ): Promise<{ hrisExportConfigured: boolean; hrisExportEnabled: boolean }> {
+    const organizationId = this.requireOrganizationId(context);
+
+    const existing = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { hrisTargetUrl: true },
+    });
+
+    // Validate a supplied URL the same way the generic-webhook target is validated: https + a
+    // public host (delivery re-checks with a DNS-resolving SSRF guard).
+    if (dto.targetUrl) {
+      if (!isAllowedWebhookUrl('webhook', dto.targetUrl)) {
+        throw new BadRequestException('That does not look like a valid https HRIS endpoint URL');
+      }
+    }
+
+    const effectiveTargetUrl = dto.targetUrl !== undefined ? dto.targetUrl || null : existing?.hrisTargetUrl ?? null;
+    if (dto.enabled && !effectiveTargetUrl) {
+      throw new BadRequestException('Set a target URL before enabling HRIS export');
+    }
+
+    const data: Prisma.OrganizationUpdateInput = { hrisExportEnabled: dto.enabled };
+    if (dto.provider !== undefined) data.hrisProvider = dto.provider;
+    if (dto.targetUrl !== undefined) data.hrisTargetUrl = dto.targetUrl || null;
+    // authHeader: a non-empty value is (re-)encrypted; an explicit empty string clears it; omitted
+    // leaves the stored token untouched (so toggling enable/disable doesn't require re-entering it).
+    if (dto.authHeader !== undefined) {
+      data.hrisAuthHeaderEncrypted = dto.authHeader ? this.cryptoService.encrypt(dto.authHeader) : null;
+    }
+
+    await this.prisma.organization.update({ where: { id: organizationId }, data });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.hris_export_configured',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return { hrisExportConfigured: Boolean(effectiveTargetUrl), hrisExportEnabled: dto.enabled };
   }
 
   async getSsoSettings(context: TenantContext): Promise<SsoSettingsResponse> {

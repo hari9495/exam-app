@@ -28,6 +28,7 @@ import { BlueprintRule, parseRules, parseChecklist, evaluateBlueprint } from './
 import { FieldPermissionsService } from '../field-permissions/field-permissions.service';
 import { redactFields, redactMany } from '../field-permissions/redact';
 import { JobBoardPosterService } from '../job-boards/job-board-poster.service';
+import { HrisExportService } from '../hris/hris-export.service';
 
 export interface FeedbackRow {
   id: string;
@@ -180,6 +181,7 @@ export class PipelineService {
     private readonly pipelines: PipelinesService,
     private readonly fieldPerms: FieldPermissionsService,
     private readonly jobBoardPoster: JobBoardPosterService,
+    private readonly hrisExport: HrisExportService,
   ) {}
 
   async createJob(
@@ -955,7 +957,7 @@ export class PipelineService {
         const info = await this.tenantPrisma.forTenant(context, (tx) =>
           tx.pipelineEntry.findUnique({
             where: { id: entryId },
-            select: { candidateId: true, candidate: { select: { name: true } }, job: { select: { title: true } } },
+            select: { candidateId: true, jobId: true, candidate: { select: { name: true } }, job: { select: { title: true } } },
           }),
         );
         if (info) {
@@ -964,6 +966,15 @@ export class PipelineService {
             roleTitle: info.job?.title ?? '',
             linkPath: `/candidates/${info.candidateId}`,
           });
+          // Structured HRIS/ATS export on hire — separate from the generic event fan-out above
+          // because it carries a full employee record (not the thin event summary) and posts with
+          // the org's HRIS auth token. Own guard so a config/network failure can't affect the
+          // persisted hire; the service is inert unless the org enabled HRIS export + set a URL.
+          try {
+            await this.hrisExport.exportOnHire(context.organizationId as string, info.candidateId, info.jobId);
+          } catch (e) {
+            this.logger.error(`HRIS export failed for entry ${entryId}`, e as Error);
+          }
         }
       } catch (e) {
         this.logger.error(`candidate.hired emit failed for entry ${entryId}`, e as Error);

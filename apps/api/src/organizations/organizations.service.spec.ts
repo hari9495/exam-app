@@ -1101,6 +1101,7 @@ describe('OrganizationsService', () => {
         smtpHost: null, smtpPort: null, emailFromAddress: null,
         apiKeyConfigured: false, apiKeyPrefix: null, apiKeyCreatedAt: null,
         webhookConfigured: false, webhookUrl: null,
+        hrisExportConfigured: false, hrisExportEnabled: false, hrisProvider: 'generic', hrisTargetUrl: null,
       });
     });
 
@@ -1123,6 +1124,7 @@ describe('OrganizationsService', () => {
         smtpHost: 'smtp.customer.test', smtpPort: 465, emailFromAddress: 'no-reply@customer.test',
         apiKeyConfigured: true, apiKeyPrefix: 'pk_live_abcd', apiKeyCreatedAt,
         webhookConfigured: true, webhookUrl: 'https://customer.test/webhook',
+        hrisExportConfigured: false, hrisExportEnabled: false, hrisProvider: 'generic', hrisTargetUrl: null,
       });
       expect(result).not.toHaveProperty('smtpPasswordEncrypted');
       expect(result).not.toHaveProperty('aiApiKeyEncrypted');
@@ -1132,6 +1134,53 @@ describe('OrganizationsService', () => {
     it('throws BadRequestException when the caller has no organization context', async () => {
       await expect(service.getIntegrations({ organizationId: null, isSuperAdmin: true })).rejects.toThrow(BadRequestException);
       expect(prisma.organization.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateHrisConfig', () => {
+    const ctx = { organizationId: 'org-1', isSuperAdmin: false };
+
+    it('saves the target URL + encrypted auth header and enables export', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ hrisTargetUrl: null });
+      cryptoService.encrypt.mockReturnValue('enc-header');
+      prisma.organization.update.mockResolvedValue({});
+
+      const result = await service.updateHrisConfig(ctx, 'user-1', {
+        enabled: true,
+        targetUrl: 'https://hris.example.com/inbound',
+        authHeader: 'Bearer secret-token',
+      });
+
+      expect(cryptoService.encrypt).toHaveBeenCalledWith('Bearer secret-token');
+      expect(prisma.organization.update).toHaveBeenCalledWith({
+        where: { id: 'org-1' },
+        data: { hrisExportEnabled: true, hrisTargetUrl: 'https://hris.example.com/inbound', hrisAuthHeaderEncrypted: 'enc-header' },
+      });
+      expect(result).toEqual({ hrisExportConfigured: true, hrisExportEnabled: true });
+    });
+
+    it('rejects a non-https / disallowed target URL', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ hrisTargetUrl: null });
+      await expect(
+        service.updateHrisConfig(ctx, 'user-1', { enabled: true, targetUrl: 'http://insecure.example.com/in' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses to enable when there is no target URL (none supplied and none stored)', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ hrisTargetUrl: null });
+      await expect(service.updateHrisConfig(ctx, 'user-1', { enabled: true })).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('can disable without re-supplying the URL, and leaves the stored token untouched when authHeader is omitted', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ hrisTargetUrl: 'https://hris.example.com/in' });
+      prisma.organization.update.mockResolvedValue({});
+
+      await service.updateHrisConfig(ctx, 'user-1', { enabled: false });
+
+      expect(cryptoService.encrypt).not.toHaveBeenCalled();
+      expect(prisma.organization.update).toHaveBeenCalledWith({ where: { id: 'org-1' }, data: { hrisExportEnabled: false } });
     });
   });
 

@@ -7,6 +7,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { ApprovalsModule } from '../approvals/approvals.module';
 import { FieldPermissionsModule } from '../field-permissions/field-permissions.module';
 import { JobBoardsModule } from '../job-boards/job-boards.module';
+import { HrisModule } from '../hris/hris.module';
 import { PipelineController } from './pipeline.controller';
 import { PipelinesConfigController } from './pipelines-config.controller';
 import { PipelineService } from './pipeline.service';
@@ -21,7 +22,7 @@ import { PipelinesService } from './pipelines.service';
   // circular import, each only imports its own provider module.
   // JobBoardsModule -> JobBoardPosterService, to push a job to the org's paid boards when it goes
   // live and retract it when it closes (no circular import; JobBoardsModule imports only CryptoModule).
-  imports: [CandidateEmailsModule, CandidateSmsModule, CandidateWhatsappModule, JobsModule, NotificationsModule, ApprovalsModule, FieldPermissionsModule, JobBoardsModule],
+  imports: [CandidateEmailsModule, CandidateSmsModule, CandidateWhatsappModule, JobsModule, NotificationsModule, ApprovalsModule, FieldPermissionsModule, JobBoardsModule, HrisModule],
   controllers: [PipelineController, PipelinesConfigController],
   providers: [PipelineService, PipelinesService],
   exports: [PipelineService, PipelinesService],
