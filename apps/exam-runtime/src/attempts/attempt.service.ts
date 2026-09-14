@@ -128,7 +128,9 @@ interface AttemptSectionFeedback {
 }
 
 interface AttemptFeedback {
-  status: 'pending_review' | 'settled';
+  // 'awaiting_release': settled, but the exam is in manual-release mode and this attempt hasn't been
+  // released yet -- the candidate sees "results not yet released", no score/passFail.
+  status: 'pending_review' | 'awaiting_release' | 'settled';
   visibility: string;
   passFail: 'pass' | 'fail' | null;
   percentage: number | null;
@@ -1397,7 +1399,7 @@ export class AttemptService {
   async getLeaderboard(session: CandidateSession): Promise<CandidateLeaderboardResponse> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
     const attempt = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
-      tx.attempt.findUnique({ where: { invitationId: invitation.id } }),
+      tx.attempt.findUnique({ where: { invitationId: invitation.id }, include: { result: true } }),
     );
     // Live, in-exam ranking stays always-on (accepted trade-off from the original Live
     // Leaderboard design). Once the attempt is no longer live, this is post-submission
@@ -1405,7 +1407,15 @@ export class AttemptService {
     // candidate to see their own score, mirroring buildFeedback()'s enforcement.
     const isLive = !attempt || attempt.status === 'in_progress' || attempt.status === 'paused' || attempt.status === 'blocked';
     const canSeeOwnScore = exam.feedbackVisibility === 'score' || exam.feedbackVisibility === 'breakdown';
-    if (!isLive && !canSeeOwnScore) {
+    // A withheld result (manual-release mode, not yet released) must not leak via the leaderboard
+    // either -- same release gate as buildFeedback().
+    const released =
+      attempt?.result?.releaseOverride === 'released'
+        ? true
+        : attempt?.result?.releaseOverride === 'held'
+          ? false
+          : exam.resultsReleaseMode !== 'manual';
+    if (!isLive && (!canSeeOwnScore || !released)) {
       return { you: null, top: [] };
     }
     return this.leaderboardService.computeCandidateView({ organizationId, isSuperAdmin: false }, exam.id, invitation.id);
@@ -1754,7 +1764,7 @@ export class AttemptService {
 
   private async buildFeedback(
     tx: Prisma.TransactionClient,
-    exam: { feedbackVisibility: string },
+    exam: { feedbackVisibility: string; resultsReleaseMode: string },
     attempt: { id: string; status: string; sectionSnapshotJson: string },
   ): Promise<AttemptFeedback | null> {
     if (attempt.status === 'in_progress' || attempt.status === 'paused' || attempt.status === 'blocked') {
@@ -1765,6 +1775,17 @@ export class AttemptService {
     }
 
     const result = await tx.result.findUnique({ where: { attemptId: attempt.id } });
+    // Result release gate: a per-attempt override wins; otherwise the exam's mode decides. In manual
+    // mode an unreleased settled result is withheld from the candidate entirely.
+    const released =
+      result?.releaseOverride === 'released'
+        ? true
+        : result?.releaseOverride === 'held'
+          ? false
+          : exam.resultsReleaseMode !== 'manual';
+    if (!released) {
+      return { status: 'awaiting_release', visibility: exam.feedbackVisibility, passFail: null, percentage: null, sections: null };
+    }
     const visibility = exam.feedbackVisibility;
     const passFail =
       visibility === 'pass_fail' || visibility === 'score' || visibility === 'breakdown'

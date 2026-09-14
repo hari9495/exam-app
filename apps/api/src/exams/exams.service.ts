@@ -51,6 +51,11 @@ export interface ExamResultRow {
   maxScore: number | null;
   percentage: number | null;
   passFail: string | null;
+  // Optional so the many partial ExamResultRow literals in tests/exporters need not set them; the
+  // real mapper (toResultRow) always populates them.
+  releaseOverride?: string | null;
+  releasedAt?: Date | null;
+  resultsReleaseMode?: string;
   submittedAt: Date | null;
   proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
   integrityAnalysis: { status: string; level: string | null; flagsJson: string | null; narrative: string | null } | null;
@@ -262,6 +267,7 @@ export class ExamsService {
           passCriteriaPercent: dto.passCriteriaPercent,
           randomizeOrder: dto.randomizeOrder,
           feedbackVisibility: dto.feedbackVisibility,
+          resultsReleaseMode: dto.resultsReleaseMode,
           schedulingEnabled: scheduling.schedulingEnabled,
           availabilityWindowStart: scheduling.availabilityWindowStart,
           availabilityWindowEnd: scheduling.availabilityWindowEnd,
@@ -486,6 +492,7 @@ export class ExamsService {
           ...(dto.passCriteriaPercent !== undefined ? { passCriteriaPercent: dto.passCriteriaPercent } : {}),
           ...(dto.randomizeOrder !== undefined ? { randomizeOrder: dto.randomizeOrder } : {}),
           ...(dto.feedbackVisibility !== undefined ? { feedbackVisibility: dto.feedbackVisibility } : {}),
+          ...(dto.resultsReleaseMode !== undefined ? { resultsReleaseMode: dto.resultsReleaseMode } : {}),
           ...(dto.walkInEnabled !== undefined ? { walkInEnabled: dto.walkInEnabled } : {}),
           ...(dto.walkInListed !== undefined ? { walkInListed: dto.walkInListed } : {}),
           ...(dto.allowedIpRange !== undefined ? { allowedIpRange: dto.allowedIpRange || null } : {}),
@@ -709,6 +716,7 @@ export class ExamsService {
           passCriteriaPercent: exam.passCriteriaPercent,
           randomizeOrder: exam.randomizeOrder,
           feedbackVisibility: exam.feedbackVisibility,
+          resultsReleaseMode: exam.resultsReleaseMode,
           enableAntiCheating: exam.enableAntiCheating,
           webcamProctoringEnabled: exam.webcamProctoringEnabled,
           webcamAiAnalysisEnabled: exam.webcamAiAnalysisEnabled,
@@ -1117,7 +1125,7 @@ export class ExamsService {
   }
 
   async getResults(context: TenantContext, examId: string): Promise<ExamResultRow[]> {
-    const { invitations, advancedInvitations } = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const { invitations, advancedInvitations, resultsReleaseMode } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
       if (!exam) {
         throw new NotFoundException(`Exam ${examId} not found`);
@@ -1139,7 +1147,7 @@ export class ExamsService {
         orderBy: [{ invitedAt: 'desc' }, { id: 'desc' }],
       });
 
-      return { invitations, advancedInvitations };
+      return { invitations, advancedInvitations, resultsReleaseMode: exam.resultsReleaseMode };
     });
 
     // Newest-first above, so the first entry per candidate is the latest advance -- the one a
@@ -1160,7 +1168,7 @@ export class ExamsService {
       .map((invitation) => invitation.attempt!.id);
 
     if (attemptIdsToSettle.length === 0) {
-      return invitations.map((invitation) => this.toResultRow(nextRoundByCandidate, invitation, invitation.attempt));
+      return invitations.map((invitation) => this.toResultRow(nextRoundByCandidate, invitation, invitation.attempt, resultsReleaseMode));
     }
 
     await this.examRuntime.settleIfExpiredBatch(attemptIdsToSettle);
@@ -1178,7 +1186,7 @@ export class ExamsService {
       const attempt = originalAttempt && settledAttempts.has(originalAttempt.id)
         ? settledAttempts.get(originalAttempt.id)!
         : originalAttempt;
-      return this.toResultRow(nextRoundByCandidate, invitation, attempt);
+      return this.toResultRow(nextRoundByCandidate, invitation, attempt, resultsReleaseMode);
     });
   }
 
@@ -1274,24 +1282,28 @@ export class ExamsService {
           id: string;
           status: string;
           submittedAt: Date | null;
-          result: { score: number; maxScore: number; percentage: number; passFail: string | null } | null;
+          result: { score: number; maxScore: number; percentage: number; passFail: string | null; releaseOverride: string | null; releasedAt: Date | null } | null;
           proctoringAnalysis: { status: string; riskLevel: string | null; summary: string | null } | null;
           integrityAnalysis?: { status: string; level: string | null; flagsJson: string | null; narrative: string | null } | null;
           faceEnrolment?: { status: string } | null;
         }
       | null
       | undefined,
+    resultsReleaseMode: string,
   ): ExamResultRow {
     return {
       candidateId: invitation.candidateId,
       candidateName: invitation.candidate.name,
       invitationId: invitation.id,
+      resultsReleaseMode,
       attemptId: attempt?.id ?? null,
       status: attempt?.status ?? invitation.status,
       score: attempt?.result?.score ?? null,
       maxScore: attempt?.result?.maxScore ?? null,
       percentage: attempt?.result?.percentage ?? null,
       passFail: attempt?.result?.passFail ?? null,
+      releaseOverride: attempt?.result?.releaseOverride ?? null,
+      releasedAt: attempt?.result?.releasedAt ?? null,
       submittedAt: attempt?.submittedAt ?? null,
       proctoringAnalysis: attempt?.proctoringAnalysis
         ? { status: attempt.proctoringAnalysis.status, riskLevel: attempt.proctoringAnalysis.riskLevel, summary: attempt.proctoringAnalysis.summary }

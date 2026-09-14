@@ -2,6 +2,7 @@ import { ArrayUnique, IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsNotEmpty, Is
 import { IsIpOrCidr } from './is-ip-or-cidr.decorator';
 
 const FEEDBACK_VISIBILITY_VALUES = ['none', 'pass_fail', 'score', 'breakdown'] as const;
+export const RESULTS_RELEASE_MODE_VALUES = ['immediate', 'manual'] as const;
 
 export const PROCTORING_ENFORCEMENT_VALUES = ['warn', 'block'] as const;
 
@@ -52,6 +53,10 @@ export class CreateExamDto {
   @IsOptional()
   @IsIn(FEEDBACK_VISIBILITY_VALUES)
   feedbackVisibility?: string;
+
+  @IsOptional()
+  @IsIn(RESULTS_RELEASE_MODE_VALUES)
+  resultsReleaseMode?: string;
 
   @IsOptional()
   @IsBoolean()

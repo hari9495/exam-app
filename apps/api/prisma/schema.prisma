@@ -478,6 +478,9 @@ model Exam {
   passCriteriaPercent           Int           @default(40) @map("pass_criteria_percent")
   randomizeOrder                Boolean       @default(false) @map("randomize_order")
   feedbackVisibility            String        @default("pass_fail") @map("feedback_visibility")
+  // 'immediate' (default, behavior-preserving): a settled result is shown to the candidate at once.
+  // 'manual': the result is withheld until a recruiter releases it (per-attempt override on Result).
+  resultsReleaseMode            String        @default("immediate") @map("results_release_mode")
   schedulingEnabled             Boolean       @default(false) @map("scheduling_enabled")
   availabilityWindowStart       DateTime?     @map("availability_window_start")
   availabilityWindowEnd         DateTime?     @map("availability_window_end")
@@ -812,6 +815,11 @@ model Result {
   percentage Float
   passFail   String?  @map("pass_fail")
   computedAt DateTime @default(now()) @map("computed_at")
+  // Per-attempt release override, layered over Exam.resultsReleaseMode. 'released'/'held' force the
+  // outcome either way; null = inherit the exam's mode. releasedAt is stamped when it first becomes
+  // visible (for display + email idempotency).
+  releaseOverride String?   @map("release_override")
+  releasedAt      DateTime? @map("released_at")
   attempt    Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   @@map("results")

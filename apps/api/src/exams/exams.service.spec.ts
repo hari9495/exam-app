@@ -2421,7 +2421,8 @@ describe('ExamsService', () => {
       expect(result).toEqual([
         {
           candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: null,
-          status: 'invited', score: null, maxScore: null, percentage: null, passFail: null, submittedAt: null,
+          status: 'invited', score: null, maxScore: null, percentage: null, passFail: null,
+          releaseOverride: null, releasedAt: null, submittedAt: null,
           proctoringAnalysis: null, integrityAnalysis: null, integrityLevel: null, integrityFlagCount: 0,
           faceEnrolmentStatus: null, nextRound: null,
         },
@@ -2520,7 +2521,8 @@ describe('ExamsService', () => {
       expect(result).toEqual([
         {
           candidateId: 'cand-1', candidateName: 'Alice', invitationId: 'inv-1', attemptId: 'attempt-1',
-          status: 'submitted', score: 8, maxScore: 10, percentage: 80, passFail: 'pass', submittedAt,
+          status: 'submitted', score: 8, maxScore: 10, percentage: 80, passFail: 'pass',
+          releaseOverride: null, releasedAt: null, submittedAt,
           proctoringAnalysis: null, integrityAnalysis: null, integrityLevel: null, integrityFlagCount: 0,
           faceEnrolmentStatus: null, nextRound: null,
         },

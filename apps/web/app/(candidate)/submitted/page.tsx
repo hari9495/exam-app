@@ -10,6 +10,7 @@ export default function CandidateSubmittedPage() {
   const feedback = current && isAttemptStarted(current) ? current.feedback : null;
 
   const isPending = feedback?.status === 'pending_review';
+  const isAwaitingRelease = feedback?.status === 'awaiting_release';
   // A result is shown only when the exam's feedback setting isn't "none" and there's something to show.
   const hasResult =
     !!feedback &&
@@ -21,9 +22,11 @@ export default function CandidateSubmittedPage() {
   // no longer also claims the result is coming later from the recruiter.
   const body = isPending
     ? 'Your exam has been submitted. Some answers need manual review — your result will follow.'
-    : hasResult
-      ? 'Your exam has been submitted. Here is your result:'
-      : 'Your exam has been submitted. Results will be reviewed by the recruiter.';
+    : isAwaitingRelease
+      ? "Your exam has been submitted. Your results haven't been released yet — you'll be able to see them once the recruiter releases them."
+      : hasResult
+        ? 'Your exam has been submitted. Here is your result:'
+        : 'Your exam has been submitted. Results will be reviewed by the recruiter.';
 
   return (
     <TerminalCard tone="success" title="Exam submitted" body={body}>

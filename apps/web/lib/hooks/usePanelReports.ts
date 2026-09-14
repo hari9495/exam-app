@@ -100,6 +100,32 @@ export function useRegenerateAttemptInsight() {
   });
 }
 
+// Result release. All three invalidate the exam's results queries so the summary/list/report reflect
+// the new release state. notify asks the API to email candidates their outcome (recruiter's choice).
+export function useReleaseExamResults(examId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (notify: boolean) =>
+      apiFetch(`/exams/${examId}/results/release`, { method: 'POST', body: JSON.stringify({ notify }) }, accessToken ?? undefined) as Promise<{ released: number }>,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['results', examId] }),
+  });
+}
+
+export function useSetAttemptResultRelease(examId: string) {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ attemptId, action, notify }: { attemptId: string; action: 'release' | 'hold'; notify?: boolean }) =>
+      apiFetch(
+        `/attempts/${attemptId}/results/${action}`,
+        { method: 'POST', body: JSON.stringify(action === 'release' ? { notify: notify ?? false } : {}) },
+        accessToken ?? undefined,
+      ) as Promise<{ status: 'released' | 'held' }>,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['results', examId] }),
+  });
+}
+
 export function useResultsExport(examId: string) {
   const { accessToken } = useAuth();
   return useMutation({

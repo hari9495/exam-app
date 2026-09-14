@@ -9,7 +9,9 @@ import { AttemptFeedback } from '../../../lib/types';
 // The backend (buildFeedback) already nulls out whatever a given visibility must hide, so this
 // component just renders whichever fields are present. pending_review is handled by the page copy.
 export function ResultSummary({ feedback }: { feedback: AttemptFeedback }) {
-  if (feedback.status === 'pending_review' || feedback.visibility === 'none') {
+  // pending_review and awaiting_release carry no score to show; the submitted page renders the
+  // explanatory copy for both.
+  if (feedback.status === 'pending_review' || feedback.status === 'awaiting_release' || feedback.visibility === 'none') {
     return null;
   }
   const hasResult = feedback.passFail !== null || feedback.percentage !== null || feedback.sections !== null;

@@ -248,6 +248,7 @@ export interface Exam {
   passCriteriaPercent: number;
   randomizeOrder: boolean;
   feedbackVisibility: FeedbackVisibility;
+  resultsReleaseMode: 'immediate' | 'manual';
   schedulingEnabled: boolean;
   availabilityWindowStart: string | null;
   availabilityWindowEnd: string | null;
@@ -1318,7 +1319,7 @@ export interface AttemptSectionFeedback {
 }
 
 export interface AttemptFeedback {
-  status: 'pending_review' | 'settled';
+  status: 'pending_review' | 'awaiting_release' | 'settled';
   visibility: 'none' | 'pass_fail' | 'score' | 'breakdown';
   passFail: 'pass' | 'fail' | null;
   percentage: number | null;
@@ -1379,6 +1380,7 @@ export interface ExamResultsSummary {
   averagePercentage: number;
   scoreDistribution: ScoreDistributionBucket[];
   attemptDuration: AttemptDurationStats | null;
+  resultsReleaseMode: 'immediate' | 'manual';
 }
 
 export interface QuestionAccuracyRow {
@@ -1423,6 +1425,8 @@ export interface ExamResultRow {
   maxScore: number | null;
   percentage: number | null;
   passFail: string | null;
+  releaseOverride?: string | null;
+  releasedAt?: string | null;
   submittedAt: string | null;
   proctoringAnalysis: ProctoringAnalysisSummary | null;
   integrityLevel: string | null;
@@ -1509,11 +1513,15 @@ export interface FaceMismatchEntry {
 export interface CandidateDetail {
   candidateId: string;
   candidateName: string;
+  attemptId: string | null;
   status: string;
   score: number | null;
   maxScore: number | null;
   percentage: number | null;
   passFail: string | null;
+  releaseOverride: string | null;
+  releasedAt: string | null;
+  released: boolean;
   submittedAt: string | null;
   proctoringAnalysis: ProctoringAnalysisSummary | null;
   integrityAnalysis: IntegritySummary | null;
