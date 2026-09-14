@@ -22,6 +22,7 @@ import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateReminderSettingsDto } from './dto/update-reminder-settings.dto';
+import { UpdateScheduledReportSettingsDto } from './dto/update-scheduled-report-settings.dto';
 import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
 import { UpdateCareersDto } from './dto/update-careers.dto';
@@ -1041,6 +1042,56 @@ export class OrganizationsService {
       entityId: organizationId,
     });
     return { remindersEnabled: org.remindersEnabled };
+  }
+
+  async getScheduledReportSettings(context: TenantContext): Promise<{ enabled: boolean; recipientUserIds: string[] }> {
+    const organizationId = this.requireOrganizationId(context);
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { scheduledReportEnabled: true, scheduledReportRecipientsJson: true },
+    });
+    let recipientUserIds: string[] = [];
+    if (org?.scheduledReportRecipientsJson) {
+      try {
+        const arr = JSON.parse(org.scheduledReportRecipientsJson);
+        if (Array.isArray(arr)) recipientUserIds = arr.filter((x): x is string => typeof x === 'string');
+      } catch {
+        recipientUserIds = [];
+      }
+    }
+    return { enabled: org?.scheduledReportEnabled ?? false, recipientUserIds };
+  }
+
+  async updateScheduledReportSettings(
+    context: TenantContext,
+    actorUserId: string,
+    dto: UpdateScheduledReportSettingsDto,
+  ): Promise<{ enabled: boolean; recipientUserIds: string[] }> {
+    const organizationId = this.requireOrganizationId(context);
+    const recipientUserIds = [...new Set(dto.recipientUserIds ?? [])];
+    // Only accept ids that are actual staff of this org, so a stale/foreign id can never be stored.
+    if (recipientUserIds.length > 0) {
+      const valid = await this.tenantPrisma.forTenant(context, (tx) =>
+        tx.user.findMany({ where: { id: { in: recipientUserIds }, organizationId }, select: { id: true } }),
+      );
+      const validIds = new Set(valid.map((u: { id: string }) => u.id));
+      const unknown = recipientUserIds.filter((id) => !validIds.has(id));
+      if (unknown.length > 0) throw new BadRequestException('One or more recipients are not members of this organization');
+    }
+    if (dto.enabled && recipientUserIds.length === 0) {
+      throw new BadRequestException('Add at least one recipient before enabling the weekly report');
+    }
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { scheduledReportEnabled: dto.enabled, scheduledReportRecipientsJson: JSON.stringify(recipientUserIds) },
+    });
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'organization.scheduled_report_settings_updated',
+      entityType: 'organization',
+      entityId: organizationId,
+    });
+    return { enabled: dto.enabled, recipientUserIds };
   }
 
   async getBusinessHours(context: TenantContext): Promise<BusinessHoursResponse> {

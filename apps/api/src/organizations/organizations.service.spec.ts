@@ -1795,6 +1795,34 @@ describe('OrganizationsService', () => {
     });
   });
 
+  describe('scheduled report settings', () => {
+    const context = { organizationId: 'org-1', isSuperAdmin: false };
+
+    it('getScheduledReportSettings parses the recipient JSON', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ scheduledReportEnabled: true, scheduledReportRecipientsJson: JSON.stringify(['u1', 'u2']) });
+      expect(await service.getScheduledReportSettings(context)).toEqual({ enabled: true, recipientUserIds: ['u1', 'u2'] });
+    });
+
+    it('updateScheduledReportSettings validates recipients belong to the org and persists', async () => {
+      tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: any) => fn({ user: { findMany: jest.fn().mockResolvedValue([{ id: 'u1' }]) } }));
+      prisma.organization.update.mockResolvedValue({});
+      const result = await service.updateScheduledReportSettings(context, 'user-1', { enabled: true, recipientUserIds: ['u1'] });
+      expect(prisma.organization.update).toHaveBeenCalledWith({ where: { id: 'org-1' }, data: { scheduledReportEnabled: true, scheduledReportRecipientsJson: JSON.stringify(['u1']) } });
+      expect(result).toEqual({ enabled: true, recipientUserIds: ['u1'] });
+    });
+
+    it('rejects a recipient that is not a member of the org', async () => {
+      tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: any) => fn({ user: { findMany: jest.fn().mockResolvedValue([]) } }));
+      await expect(service.updateScheduledReportSettings(context, 'user-1', { enabled: true, recipientUserIds: ['ghost'] })).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses to enable with no recipients', async () => {
+      await expect(service.updateScheduledReportSettings(context, 'user-1', { enabled: true, recipientUserIds: [] })).rejects.toThrow(BadRequestException);
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('updatePipelineSettings', () => {
     const context = { organizationId: 'org-1', isSuperAdmin: false };
 

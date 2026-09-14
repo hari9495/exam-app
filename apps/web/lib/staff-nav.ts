@@ -20,6 +20,7 @@ const V2_ROUTES = new Set([
   '/settings/approvals', '/settings/pipelines', '/settings/business-hours', '/settings/custom-fields', '/settings/field-permissions', '/settings/user-groups', '/settings/roles', '/settings/permission-profiles',
   '/settings/record-visibility',
   '/settings/reminders',
+  '/settings/scheduled-reports',
   '/settings/recycle-bin',
   '/settings/approval-emails',
   '/settings/sender-addresses',
