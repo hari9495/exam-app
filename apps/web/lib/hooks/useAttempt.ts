@@ -24,6 +24,15 @@ export function useAttemptQuery() {
   });
 }
 
+// Candidate download of their own pass certificate (get-or-generate on the server, returns a signed
+// URL to open). Only shown when the attempt feedback reports certificateAvailable.
+export function useCandidateCertificate() {
+  const { accessToken } = useCandidateAuth();
+  return useMutation({
+    mutationFn: () => candidateApiFetch('/attempt/certificate', {}, accessToken ?? undefined) as Promise<{ url: string }>,
+  });
+}
+
 export function useStartAttempt() {
   const { accessToken } = useCandidateAuth();
   const queryClient = useQueryClient();

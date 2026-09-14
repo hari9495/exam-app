@@ -29,6 +29,11 @@ export class AttemptController {
     return this.attemptService.getCurrent(candidate);
   }
 
+  @Get('certificate')
+  getCertificate(@CurrentCandidate() candidate: CandidateSession) {
+    return this.attemptService.getCertificate(candidate);
+  }
+
   @Post('start')
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   start(@CurrentCandidate() candidate: CandidateSession, @Body() dto: StartAttemptDto, @Req() req: Request) {

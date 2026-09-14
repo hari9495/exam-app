@@ -14,6 +14,8 @@ import {
   encodeEmbedding,
   extractBase64FromDataUri,
   ALLOWED_DATA_URI_CONTENT_TYPES,
+  buildCertificatePdf,
+  CERTIFICATE_DEFAULT,
 } from '@exam-platform/shared';
 import { FaceEmbedderService } from '../face/face-embedder.service';
 import { FaceVerificationService } from '../face/face-verification.service';
@@ -135,6 +137,10 @@ interface AttemptFeedback {
   passFail: 'pass' | 'fail' | null;
   percentage: number | null;
   sections: AttemptSectionFeedback[] | null;
+  // The candidate passed, results are released, and the exam issues certificates -> a certificate is
+  // downloadable via GET /attempt/certificate. Independent of feedbackVisibility (a certificate is an
+  // explicit opt-in reward for passing).
+  certificateAvailable: boolean;
 }
 
 interface AttemptStateResponse {
@@ -1612,6 +1618,49 @@ export class AttemptService {
     return result;
   }
 
+  // Candidate download of their own pass certificate. Requires the exam to issue certificates, the
+  // candidate to have passed, and results to be released. Get-or-generate: the PDF is minted on first
+  // download (shared buildCertificatePdf, identical to the recruiter path) and reused after.
+  async getCertificate(session: CandidateSession): Promise<{ url: string }> {
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    if (!exam.certificatesEnabled) throw new BadRequestException('Certificates are not enabled for this exam');
+    const context = { organizationId, isSuperAdmin: false };
+
+    const loaded = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id }, include: { result: true } });
+      const org = await tx.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+      const template = await tx.certificateTemplate.findUnique({ where: { organizationId } });
+      return { attempt, org, template };
+    });
+
+    const result = loaded.attempt?.result;
+    if (!result || result.passFail !== 'pass') throw new ForbiddenException('A certificate is only available for a passing result');
+    const released =
+      result.releaseOverride === 'released' ? true : result.releaseOverride === 'held' ? false : exam.resultsReleaseMode !== 'manual';
+    if (!released) throw new ForbiddenException('Results have not been released yet');
+
+    const CERT_SIGN_TTL_MS = 60 * 60 * 1000;
+    if (result.certificatePath) {
+      return { url: (await this.blobStorage.signIfOurs(result.certificatePath, CERT_SIGN_TTL_MS)) as string };
+    }
+
+    const copy =
+      loaded.template && loaded.template.enabled
+        ? { title: loaded.template.title, bodyText: loaded.template.bodyText, signatoryName: loaded.template.signatoryName }
+        : CERTIFICATE_DEFAULT;
+    const pdf = await buildCertificatePdf(copy, {
+      candidateName: invitation.candidate.name,
+      examTitle: exam.title,
+      scorePercent: String(Math.round(result.percentage)),
+      date: new Date().toLocaleDateString('en-US', { dateStyle: 'long' } as Intl.DateTimeFormatOptions),
+      orgName: loaded.org?.name ?? '',
+      certificateId: result.id,
+    });
+    const path = await this.blobStorage.upload(`certificates/${organizationId}/${loaded.attempt!.id}.pdf`, pdf, 'application/pdf');
+    await this.tenantPrisma.forTenant(context, (tx) => tx.result.update({ where: { id: result.id }, data: { certificatePath: path } }));
+    return { url: (await this.blobStorage.signIfOurs(path, CERT_SIGN_TTL_MS)) as string };
+  }
+
   private async resolveContext(invitationId: string) {
     const invitation = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
       tx.invitation.findUnique({ where: { id: invitationId }, include: { exam: true, candidate: true } }),
@@ -1764,14 +1813,14 @@ export class AttemptService {
 
   private async buildFeedback(
     tx: Prisma.TransactionClient,
-    exam: { feedbackVisibility: string; resultsReleaseMode: string },
+    exam: { feedbackVisibility: string; resultsReleaseMode: string; certificatesEnabled: boolean },
     attempt: { id: string; status: string; sectionSnapshotJson: string },
   ): Promise<AttemptFeedback | null> {
     if (attempt.status === 'in_progress' || attempt.status === 'paused' || attempt.status === 'blocked') {
       return null;
     }
     if (attempt.status === 'pending_manual_grade') {
-      return { status: 'pending_review', visibility: exam.feedbackVisibility, passFail: null, percentage: null, sections: null };
+      return { status: 'pending_review', visibility: exam.feedbackVisibility, passFail: null, percentage: null, sections: null, certificateAvailable: false };
     }
 
     const result = await tx.result.findUnique({ where: { attemptId: attempt.id } });
@@ -1784,8 +1833,9 @@ export class AttemptService {
           ? false
           : exam.resultsReleaseMode !== 'manual';
     if (!released) {
-      return { status: 'awaiting_release', visibility: exam.feedbackVisibility, passFail: null, percentage: null, sections: null };
+      return { status: 'awaiting_release', visibility: exam.feedbackVisibility, passFail: null, percentage: null, sections: null, certificateAvailable: false };
     }
+    const certificateAvailable = exam.certificatesEnabled && result?.passFail === 'pass';
     const visibility = exam.feedbackVisibility;
     const passFail =
       visibility === 'pass_fail' || visibility === 'score' || visibility === 'breakdown'
@@ -1822,7 +1872,7 @@ export class AttemptService {
       });
     }
 
-    return { status: 'settled', visibility, passFail, percentage, sections };
+    return { status: 'settled', visibility, passFail, percentage, sections, certificateAvailable };
   }
 
   private async broadcastLeaderboard(organizationId: string, examId: string): Promise<void> {

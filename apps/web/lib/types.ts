@@ -249,6 +249,7 @@ export interface Exam {
   randomizeOrder: boolean;
   feedbackVisibility: FeedbackVisibility;
   resultsReleaseMode: 'immediate' | 'manual';
+  certificatesEnabled: boolean;
   schedulingEnabled: boolean;
   availabilityWindowStart: string | null;
   availabilityWindowEnd: string | null;
@@ -1324,6 +1325,9 @@ export interface AttemptFeedback {
   passFail: 'pass' | 'fail' | null;
   percentage: number | null;
   sections: AttemptSectionFeedback[] | null;
+  // Optional web-side so partial test fixtures need not set it; the API always sends it. Read
+  // defensively (feedback?.certificateAvailable).
+  certificateAvailable?: boolean;
 }
 
 export interface AttemptState {
