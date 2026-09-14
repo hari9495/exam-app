@@ -11,6 +11,7 @@ import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { UpdateCandidateDto } from './dto/update-candidate.dto';
 import { UpdateSmsOptOutDto } from './dto/update-sms-opt-out.dto';
 import { BulkUploadCandidatesDto } from './dto/bulk-upload-candidates.dto';
+import { BulkDeleteCandidatesDto } from './dto/bulk-delete-candidates.dto';
 import { UpdateWhatsappOptOutDto } from './dto/update-whatsapp-opt-out.dto';
 
 @Controller('candidates')
@@ -83,6 +84,12 @@ export class CandidatesController {
   @RequirePermissions('candidate:manage')
   bulkUpload(@CurrentTenant() tenant: TenantContext, @Body() dto: BulkUploadCandidatesDto) {
     return this.candidatesService.bulkUpload(tenant, dto.csvContent);
+  }
+
+  @Post('bulk-delete')
+  @RequirePermissions('candidate:manage')
+  bulkDelete(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: BulkDeleteCandidatesDto) {
+    return this.candidatesService.bulkRemove(tenant, userId, dto.candidateIds);
   }
 
   @Get(':id/export')

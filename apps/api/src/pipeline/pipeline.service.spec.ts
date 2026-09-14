@@ -2505,4 +2505,50 @@ describe('PipelineService', () => {
       expect(fieldPerms.getLockedFields).not.toHaveBeenCalled();
     });
   });
+
+  describe('bulkPatchEntries', () => {
+    it('moves each entry via patchEntry and returns a succeeded tally', async () => {
+      const patchSpy = jest.spyOn(service, 'patchEntry').mockResolvedValue({} as any);
+      const result = await service.bulkPatchEntries(context, 'user-1', { entryIds: ['e1', 'e2'], action: 'move', statusId: 'st-1' });
+      expect(patchSpy).toHaveBeenCalledTimes(2);
+      expect(patchSpy).toHaveBeenCalledWith(context, 'user-1', 'e1', { statusId: 'st-1', reason: undefined });
+      expect(result).toEqual({ succeeded: ['e1', 'e2'], skipped: [] });
+      patchSpy.mockRestore();
+    });
+
+    it('rejects each entry via patchEntry with rejected:true', async () => {
+      const patchSpy = jest.spyOn(service, 'patchEntry').mockResolvedValue({} as any);
+      await service.bulkPatchEntries(context, 'user-1', { entryIds: ['e1'], action: 'reject', reason: 'spam' });
+      expect(patchSpy).toHaveBeenCalledWith(context, 'user-1', 'e1', { rejected: true, reason: 'spam' });
+      patchSpy.mockRestore();
+    });
+
+    it('assigns each entry via assignEntry', async () => {
+      const assignSpy = jest.spyOn(service, 'assignEntry').mockResolvedValue({ success: true });
+      await service.bulkPatchEntries(context, 'user-1', { entryIds: ['e1'], action: 'assign', assigneeUserId: 'u-9' });
+      expect(assignSpy).toHaveBeenCalledWith(context, 'user-1', 'e1', { userId: 'u-9', groupId: null });
+      assignSpy.mockRestore();
+    });
+
+    it('captures a per-entry failure in skipped without failing the batch', async () => {
+      const patchSpy = jest
+        .spyOn(service, 'patchEntry')
+        .mockResolvedValueOnce({} as any)
+        .mockRejectedValueOnce(new Error('blocked by blueprint'))
+        .mockResolvedValueOnce({} as any);
+      const result = await service.bulkPatchEntries(context, 'user-1', { entryIds: ['e1', 'e2', 'e3'], action: 'move', statusId: 'st-1' });
+      expect(result.succeeded).toEqual(['e1', 'e3']);
+      expect(result.skipped).toEqual([{ entryId: 'e2', reason: 'blocked by blueprint' }]);
+      patchSpy.mockRestore();
+    });
+
+    it('skips a move with no statusId', async () => {
+      const patchSpy = jest.spyOn(service, 'patchEntry');
+      const result = await service.bulkPatchEntries(context, 'user-1', { entryIds: ['e1'], action: 'move' });
+      expect(result.succeeded).toEqual([]);
+      expect(result.skipped[0].reason).toMatch(/statusId is required/);
+      expect(patchSpy).not.toHaveBeenCalled();
+      patchSpy.mockRestore();
+    });
+  });
 });

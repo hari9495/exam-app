@@ -11,6 +11,7 @@ import {
 } from '../custom-fields/custom-field-values';
 import { AddEntryDto } from './dto/add-entry.dto';
 import { PatchEntryDto } from './dto/patch-entry.dto';
+import { BulkPatchEntriesDto } from './dto/bulk-patch-entries.dto';
 import { AddFeedbackDto } from './dto/add-feedback.dto';
 import { CandidateEmailTemplatesService } from '../candidate-emails/candidate-email-templates.service';
 import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
@@ -1222,6 +1223,40 @@ export class PipelineService {
       }
     }
     return { success: true };
+  }
+
+  // Bulk apply one action across selected entries, reusing the single-entry choke points
+  // (patchEntry/assignEntry) so every per-entry rule — blueprint gate, hire fan-out, stage-move
+  // comms, audit — runs exactly as it does one at a time. Each entry is independent: a failure
+  // (blueprint block, a status from a different pipeline, a vanished entry) is captured in `skipped`
+  // rather than failing the batch. The per-entry pendingMessage/comms review is intentionally
+  // dropped here — a bulk move can't open 200 compose modals; server-side triggered comms still fire.
+  async bulkPatchEntries(
+    context: TenantContext,
+    actorUserId: string,
+    dto: BulkPatchEntriesDto,
+  ): Promise<{ succeeded: string[]; skipped: { entryId: string; reason: string }[] }> {
+    const succeeded: string[] = [];
+    const skipped: { entryId: string; reason: string }[] = [];
+    for (const entryId of dto.entryIds) {
+      try {
+        if (dto.action === 'assign') {
+          await this.assignEntry(context, actorUserId, entryId, {
+            userId: dto.assigneeUserId ?? null,
+            groupId: dto.assigneeGroupId ?? null,
+          });
+        } else if (dto.action === 'reject') {
+          await this.patchEntry(context, actorUserId, entryId, { rejected: true, reason: dto.reason });
+        } else {
+          if (!dto.statusId) throw new BadRequestException('statusId is required to move entries');
+          await this.patchEntry(context, actorUserId, entryId, { statusId: dto.statusId, reason: dto.reason });
+        }
+        succeeded.push(entryId);
+      } catch (e) {
+        skipped.push({ entryId, reason: e instanceof Error ? e.message : 'failed' });
+      }
+    }
+    return { succeeded, skipped };
   }
 
   // Ticks (or unticks) one checklist item on the entry's blueprintChecklistJson blob, merging

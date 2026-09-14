@@ -14,6 +14,7 @@ import { PatchEntryDto } from './dto/patch-entry.dto';
 import { LinkExamDto } from './dto/link-exam.dto';
 import { AddFeedbackDto } from './dto/add-feedback.dto';
 import { AssignEntryDto } from './dto/assign-entry.dto';
+import { BulkPatchEntriesDto } from './dto/bulk-patch-entries.dto';
 import { SetChecklistItemDto } from './dto/set-checklist-item.dto';
 
 @Controller()
@@ -109,6 +110,12 @@ export class PipelineController {
   @RequirePermissions('pipeline:manage')
   deleteEntry(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.pipelineService.deleteEntry(tenant, userId, id);
+  }
+
+  @Post('entries/bulk')
+  @RequirePermissions('pipeline:manage')
+  bulkPatchEntries(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: BulkPatchEntriesDto) {
+    return this.pipelineService.bulkPatchEntries(tenant, userId, dto);
   }
 
   @Post('jobs/:id/exams')

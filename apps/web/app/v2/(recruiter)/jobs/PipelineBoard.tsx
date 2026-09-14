@@ -14,8 +14,9 @@
 // no drag-and-drop here (never was), so this dropdown is still the only way to move a card.
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useJobPipeline, usePatchEntry, useScoreJob } from '../../../../lib/hooks/usePipeline';
+import { useJobPipeline, usePatchEntry, useScoreJob, useBulkPatchEntries } from '../../../../lib/hooks/usePipeline';
 import { useMyGroups } from '../../../../lib/hooks/useUserGroups';
+import { useUsers } from '../../../../lib/hooks/useUsers';
 import { isInMyTeam } from '../../../../lib/boardFilters';
 import { BoardEntryRow, EntryExamResult, PatchEntryResult, PipelineStageConfig } from '../../../../lib/types';
 import { useAuth } from '../../../../lib/auth-context';
@@ -25,7 +26,7 @@ import { CandidateDrawer } from './CandidateDrawer';
 import { SendMessageModal, SendMessageInitial } from './SendMessageModal';
 import { SendSmsModal, SendSmsInitial } from './SendSmsModal';
 import { SendWhatsappModal, SendWhatsappInitial } from './SendWhatsappModal';
-import { Cb, dt } from '../../../../components/ui-v2';
+import { Cb, dt, Combobox } from '../../../../components/ui-v2';
 import { STATUS, VIZ } from '../../../../components/ui-v2/viz';
 
 const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 };
@@ -69,15 +70,20 @@ interface PipelineCardProps {
   row: BoardEntryRow;
   canManage: boolean;
   statusGroups: { id: string; name: string; options: { value: string; label: string }[] }[];
+  selected: boolean;
+  onToggleSelect: (entryId: string) => void;
   onOpen: (row: BoardEntryRow) => void;
   onStatusChange: (entryId: string, statusId: string) => void;
   onReject: (entryId: string) => void;
 }
 
-function PipelineCard({ row, canManage, statusGroups, onOpen, onStatusChange, onReject }: PipelineCardProps) {
+function PipelineCard({ row, canManage, statusGroups, selected, onToggleSelect, onOpen, onStatusChange, onReject }: PipelineCardProps) {
   return (
-    <div className="v2-cardhover" style={card}>
-      <button type="button" onClick={() => onOpen(row)} style={{ textAlign: 'left', background: 'none', border: 'none', padding: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--org-primary)', cursor: 'pointer' }}>{row.candidateName}</button>
+    <div className="v2-cardhover" style={{ ...card, ...(selected ? { borderColor: 'var(--org-primary)', boxShadow: '0 0 0 1px var(--org-primary)' } : {}) }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {canManage && <Cb checked={selected} onChange={() => onToggleSelect(row.entryId)} />}
+        <button type="button" onClick={() => onOpen(row)} style={{ textAlign: 'left', background: 'none', border: 'none', padding: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--org-primary)', cursor: 'pointer' }}>{row.candidateName}</button>
+      </div>
       {/* Chips row only when there's something to show — no orphan "—" placeholder. */}
       {(row.examResults.length > 0 || row.fitScore != null) && (
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
@@ -120,8 +126,14 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
   const { data: currentUser } = useCurrentUser();
   const { data: myGroups } = useMyGroups();
   const patchEntry = usePatchEntry(jobId);
+  const bulkPatch = useBulkPatchEntries(jobId);
   const scoreJob = useScoreJob(jobId);
+  const { data: usersResp } = useUsers({ pageSize: 200 });
   const { toast } = useToast();
+  // Multi-select for bulk actions (move / reject / assign). Set of entryIds across all columns.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkStatusId, setBulkStatusId] = useState('');
+  const [bulkAssignee, setBulkAssignee] = useState('');
   const [sortByFit, setSortByFit] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
   const [teamOnly, setTeamOnly] = useState(false);
@@ -164,6 +176,49 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
     patchEntry.mutate({ entryId, rejected: true, reason: reason.trim() || undefined }, { onSuccess: (result) => openComposeIfPending(entryId, result), onError: (error) => toast(error instanceof Error ? error.message : 'Failed to reject candidate.', 'error') });
   }
 
+  function toggleSelect(entryId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(entryId)) next.delete(entryId);
+      else next.add(entryId);
+      return next;
+    });
+  }
+  function clearSelection() {
+    setSelected(new Set());
+    setBulkStatusId('');
+    setBulkAssignee('');
+  }
+  // Flatten every status into one option list (stage-prefixed) for the bulk "move to" picker —
+  // moving to an archived-category status is how bulk-archive is expressed.
+  const bulkStatusOptions = useMemo(
+    () => statusGroups.flatMap((g) => g.options.map((o) => ({ value: o.value, label: `${g.name} · ${o.label}` }))),
+    [statusGroups],
+  );
+  const assigneeOptions = useMemo(
+    () => (usersResp?.data ?? []).map((u) => ({ value: u.id, label: u.name || u.email })),
+    [usersResp],
+  );
+  function applyBulk(action: 'move' | 'reject' | 'assign', extra: { statusId?: string; reason?: string; assigneeUserId?: string }) {
+    const entryIds = [...selected];
+    if (entryIds.length === 0) return;
+    bulkPatch.mutate(
+      { entryIds, action, ...extra },
+      {
+        onSuccess: (r) => {
+          toast(`${r.succeeded.length} candidate(s) updated${r.skipped.length ? `, ${r.skipped.length} skipped` : ''}.`, r.skipped.length ? 'error' : 'success');
+          clearSelection();
+        },
+        onError: (e) => toast(e instanceof Error ? e.message : 'Bulk action failed.', 'error'),
+      },
+    );
+  }
+  function handleBulkReject() {
+    const reason = window.prompt(`Reason for rejecting ${selected.size} candidate(s) (optional)`);
+    if (reason === null) return;
+    applyBulk('reject', { reason: reason.trim() || undefined });
+  }
+
   if (isLoading) return <div style={card}><p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>Loading…</p></div>;
   if (isError || !board) return <div style={card}><p role="alert" style={{ fontSize: 13, color: 'var(--danger)', margin: 0 }}>Failed to load the pipeline.</p></div>;
 
@@ -177,6 +232,21 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
         </div>
         <button type="button" onClick={() => scoreJob.mutate()} disabled={scoreJob.isPending} className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: scoreJob.isPending ? 0.5 : 1 }}>{scoreJob.isPending ? 'Scoring…' : 'Score candidates'}</button>
       </div>
+      {selected.size > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 14, padding: '10px 14px', borderRadius: 10, border: '1px solid var(--org-primary)', background: 'color-mix(in srgb, var(--org-primary) 6%, var(--paper))' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--org-primary)' }}>{selected.size} selected</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Combobox options={bulkStatusOptions} value={bulkStatusId} onChange={setBulkStatusId} placeholder="Move to…" width={220} active={!!bulkStatusId} />
+            <button type="button" disabled={!bulkStatusId || bulkPatch.isPending} onClick={() => applyBulk('move', { statusId: bulkStatusId })} className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: !bulkStatusId || bulkPatch.isPending ? 0.5 : 1 }}>Move</button>
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Combobox options={assigneeOptions} value={bulkAssignee} onChange={setBulkAssignee} placeholder="Assign to…" width={200} active={!!bulkAssignee} />
+            <button type="button" disabled={!bulkAssignee || bulkPatch.isPending} onClick={() => applyBulk('assign', { assigneeUserId: bulkAssignee })} className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: !bulkAssignee || bulkPatch.isPending ? 0.5 : 1 }}>Assign</button>
+          </span>
+          <button type="button" disabled={bulkPatch.isPending} onClick={handleBulkReject} className="v2-hoverbtn" style={{ ...dt.toolBtn, color: 'var(--danger)', borderColor: 'var(--danger)' }}>Reject</button>
+          <button type="button" onClick={clearSelection} className="v2-hoverbtn" style={{ ...dt.toolBtn, marginLeft: 'auto' }}>Clear</button>
+        </div>
+      )}
       {/* Kanban scrolls horizontally instead of crushing the stage columns below ~200px each
           (which spilled the card footer controls out of the card on narrow/minimized screens). */}
       <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
@@ -189,7 +259,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
                 <h3 style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)', margin: 0 }}>{stage.name} ({shown.length})</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {(sortByFit ? sortByFitScore(shown) : shown).map((row) => (
-                    <PipelineCard key={row.entryId} row={row} canManage={canManage} statusGroups={statusGroups} onOpen={setOpenRow} onStatusChange={handleStatusChange} onReject={handleReject} />
+                    <PipelineCard key={row.entryId} row={row} canManage={canManage} statusGroups={statusGroups} selected={selected.has(row.entryId)} onToggleSelect={toggleSelect} onOpen={setOpenRow} onStatusChange={handleStatusChange} onReject={handleReject} />
                   ))}
                   {shown.length === 0 && <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>No candidates.</p>}
                 </div>
