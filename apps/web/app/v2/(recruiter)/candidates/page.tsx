@@ -8,10 +8,10 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal, Upload, Power, Trash2, Send, Plus, Pencil, ListFilter, Check, UserPlus, Users, Sparkles, Mail } from 'lucide-react';
 import { useCandidates, useCreateCandidate, useUpdateCandidate, useDeleteCandidate, useBulkDeleteCandidates } from '../../../../lib/hooks/useCandidates';
 import { useSemanticCandidateSearch, useDuplicateCandidates } from '../../../../lib/hooks/useCandidateSearch';
-import { useExams } from '../../../../lib/hooks/useExams';
+import { ExamPicker } from '../../../../components/pickers/ExamPicker';
 import { useBulkInvite } from '../../../../lib/hooks/useInvitations';
 import { GLOBAL_STAGES, type Candidate, type GlobalStage } from '../../../../lib/types';
-import { DataTable, DT_FEATURES, dt, SortHead, Pill, Combobox, Dropdown, DropdownItem, Dialog } from '../../../../components/ui-v2';
+import { DataTable, DT_FEATURES, dt, SortHead, Pill, Dropdown, DropdownItem, Dialog } from '../../../../components/ui-v2';
 import { VIZ, STATUS } from '../../../../components/ui-v2/viz';
 import { CandidateFormDialog, type CandidateFormValues } from './CandidateFormDialog';
 import { BulkUploadInviteDialog } from './BulkUploadInviteDialog';
@@ -151,8 +151,6 @@ export default function V2CandidatesPage() {
     globalStage: stageFilter === 'all' ? undefined : stageFilter,
   });
   const rows = resp?.data ?? [];
-  const { data: pubExams } = useExams('published', { pageSize: 100 });
-  const examOptions = (pubExams?.data ?? []).map((e) => ({ value: e.id, label: e.title }));
   const createCandidate = useCreateCandidate();
   const updateCandidate = useUpdateCandidate();
   const deleteCandidate = useDeleteCandidate();
@@ -312,7 +310,7 @@ export default function V2CandidatesPage() {
           <div style={dt.bulkBar}>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--org-primary)' }}>{ids.length} selected</span>
             <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <Combobox options={examOptions} value={examId} onChange={setExamId} placeholder="Choose exam…" width={220} active={!!examId} />
+              <ExamPicker status="published" value={examId} onChange={setExamId} placeholder="Choose exam…" width={220} />
               <button type="button" onClick={() => handleInvite(ids, clear)} disabled={!examId || bulkInvite.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '8px 13px', borderRadius: 8, border: 'none', background: !examId ? 'color-mix(in srgb, var(--org-primary) 40%, var(--surface))' : 'var(--org-primary)', color: '#fff', cursor: !examId ? 'not-allowed' : 'pointer' }}><Send size={14} /> Send invitations</button>
               <button type="button" onClick={() => setBulkEmail({ ids, clear })} className="v2-hoverbtn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '8px 13px', borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--paper)', color: 'var(--ink)', cursor: 'pointer' }}><Mail size={14} /> Email</button>
               <button type="button" onClick={() => handleBulkDelete(ids, clear)} disabled={bulkDeleteCandidates.isPending} className="v2-hoverbtn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '8px 13px', borderRadius: 8, border: '1px solid var(--danger)', background: 'var(--paper)', color: 'var(--danger)', cursor: 'pointer' }}><Trash2 size={14} /> Delete</button>

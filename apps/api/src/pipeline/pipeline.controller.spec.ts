@@ -73,7 +73,12 @@ describe('PipelineController', () => {
 
   it('listJobs delegates to the service with the status filter', async () => {
     await controller.listJobs(tenant, 'org_admin', 'open');
-    expect(service.listJobs).toHaveBeenCalledWith(tenant, 'open', 'org_admin');
+    expect(service.listJobs).toHaveBeenCalledWith(tenant, 'open', 'org_admin', undefined);
+  });
+
+  it('listJobs forwards the search term to the service', async () => {
+    await controller.listJobs(tenant, 'org_admin', undefined, 'eng');
+    expect(service.listJobs).toHaveBeenCalledWith(tenant, undefined, 'org_admin', 'eng');
   });
 
   it('getJob delegates to the service with the job id', async () => {

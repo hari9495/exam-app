@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Search } from 'lucide-react';
 import { useQuestions, useTags } from '../lib/hooks/useQuestions';
+import { useDebouncedValue } from '../lib/hooks/useDebouncedValue';
 import { useReplaceSectionQuestions } from '../lib/hooks/useExamSections';
 import { Modal, Checkbox, Button, Badge, Input, Select, useToast } from '../components/ui';
 import { DIFFICULTY_LABEL } from '../lib/question-display';
@@ -70,10 +71,14 @@ function matchesFilters(
 }
 
 export function SectionQuestionPicker({ examId, sectionId, open, onClose, existingQuestionIds }: SectionQuestionPickerProps) {
-  // ponytail: pageSize:100 is the server's max -- an org with >100 active
-  // questions silently can't attach #101+ here. Upgrade path: replace with a
-  // real paginated/typeahead picker if this becomes a real constraint.
-  const { data: questionsResponse } = useQuestions({ pageSize: 100 });
+  const [query, setQuery] = useState('');
+  // Text search runs server-side (debounced), so a question is findable by name/text no matter how
+  // many the org has -- fixing the old pageSize:100 cap where #101+ couldn't be attached. The
+  // returned page is refined further client-side by the live query + the type/difficulty/tag filters.
+  // ponytail: the non-text filters still narrow only within the returned page; add server filter
+  // params if browsing purely by type/tag past 100 becomes a real constraint.
+  const debouncedQuery = useDebouncedValue(query, 250);
+  const { data: questionsResponse } = useQuestions({ pageSize: 100, search: debouncedQuery || undefined });
   const allQuestions = questionsResponse?.data;
   const { data: tagsData } = useTags();
   const allTags = Array.isArray(tagsData) ? tagsData : [];
@@ -81,7 +86,6 @@ export function SectionQuestionPicker({ examId, sectionId, open, onClose, existi
   // Holds only the NEW picks. Questions already in the section are hidden below,
   // and merged back in at save time, so this list never carries them.
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [difficultyFilter, setDifficultyFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
