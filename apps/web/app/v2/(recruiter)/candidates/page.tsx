@@ -5,7 +5,7 @@
 // Delete; Add/Edit form modals. Search + status + pagination server-side.
 import { useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { MoreHorizontal, Upload, Power, Trash2, Send, Plus, Pencil, ListFilter, Check, UserPlus, Users, Sparkles } from 'lucide-react';
+import { MoreHorizontal, Upload, Power, Trash2, Send, Plus, Pencil, ListFilter, Check, UserPlus, Users, Sparkles, Mail } from 'lucide-react';
 import { useCandidates, useCreateCandidate, useUpdateCandidate, useDeleteCandidate, useBulkDeleteCandidates } from '../../../../lib/hooks/useCandidates';
 import { useSemanticCandidateSearch, useDuplicateCandidates } from '../../../../lib/hooks/useCandidateSearch';
 import { useExams } from '../../../../lib/hooks/useExams';
@@ -16,6 +16,7 @@ import { VIZ, STATUS } from '../../../../components/ui-v2/viz';
 import { CandidateFormDialog, type CandidateFormValues } from './CandidateFormDialog';
 import { BulkUploadInviteDialog } from './BulkUploadInviteDialog';
 import { ReEngageModal } from './ReEngageModal';
+import { BulkEmailModal } from '../jobs/BulkEmailModal';
 
 const STATUS_OPTS = [{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }, { value: 'all', label: 'All' }];
 const COLUMN_LABELS: Record<string, string> = { email: 'Email', phone: 'Phone', createdAt: 'Added', globalStage: 'Stage' };
@@ -157,6 +158,9 @@ export default function V2CandidatesPage() {
   const deleteCandidate = useDeleteCandidate();
   const bulkInvite = useBulkInvite(examId);
   const bulkDeleteCandidates = useBulkDeleteCandidates();
+  // Captured from the DataTable bulk-bar render prop so the modal (rendered outside it) can reach the
+  // selected candidate ids + the clear-selection callback.
+  const [bulkEmail, setBulkEmail] = useState<{ ids: string[]; clear: () => void } | null>(null);
 
   function handleToggleStatus(c: Candidate) {
     const next = c.status === 'inactive' ? 'active' : 'inactive';
@@ -310,6 +314,7 @@ export default function V2CandidatesPage() {
             <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               <Combobox options={examOptions} value={examId} onChange={setExamId} placeholder="Choose exam…" width={220} active={!!examId} />
               <button type="button" onClick={() => handleInvite(ids, clear)} disabled={!examId || bulkInvite.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '8px 13px', borderRadius: 8, border: 'none', background: !examId ? 'color-mix(in srgb, var(--org-primary) 40%, var(--surface))' : 'var(--org-primary)', color: '#fff', cursor: !examId ? 'not-allowed' : 'pointer' }}><Send size={14} /> Send invitations</button>
+              <button type="button" onClick={() => setBulkEmail({ ids, clear })} className="v2-hoverbtn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '8px 13px', borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--paper)', color: 'var(--ink)', cursor: 'pointer' }}><Mail size={14} /> Email</button>
               <button type="button" onClick={() => handleBulkDelete(ids, clear)} disabled={bulkDeleteCandidates.isPending} className="v2-hoverbtn" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '8px 13px', borderRadius: 8, border: '1px solid var(--danger)', background: 'var(--paper)', color: 'var(--danger)', cursor: 'pointer' }}><Trash2 size={14} /> Delete</button>
               <button type="button" onClick={clear} className="v2-hoverbtn" style={dt.toolBtn}>Clear</button>
             </span>
@@ -328,6 +333,14 @@ export default function V2CandidatesPage() {
         </div>
       </Dialog>
 
+      {bulkEmail && (
+        <BulkEmailModal
+          mode="candidates"
+          ids={bulkEmail.ids}
+          onClose={() => setBulkEmail(null)}
+          onEnqueued={bulkEmail.clear}
+        />
+      )}
       <BulkUploadInviteDialog open={bulkOpen} onClose={() => setBulkOpen(false)} />
       <CandidateFormDialog open={addOpen} mode="add" submitting={createCandidate.isPending} error={formError} onClose={() => setAddOpen(false)} onSubmit={handleAdd} />
       <CandidateFormDialog open={!!editing} mode="edit" initial={editing ? { name: editing.name, email: editing.email ?? '', phone: editing.phone, customFields: editing.customFields } : undefined} submitting={updateCandidate.isPending} error={formError} onClose={() => setEditing(null)} onSubmit={handleEditSubmit} />

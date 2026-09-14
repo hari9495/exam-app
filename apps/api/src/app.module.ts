@@ -33,6 +33,7 @@ import { WalkInGroupsModule } from './walk-in-groups/walk-in-groups.module';
 import { DrivesModule } from './drives/drives.module';
 import { PipelineModule } from './pipeline/pipeline.module';
 import { CandidateEmailsModule } from './candidate-emails/candidate-emails.module';
+import { BulkCandidateEmailModule } from './bulk-candidate-email/bulk-candidate-email.module';
 import { CandidateSmsModule } from './candidate-sms/candidate-sms.module';
 import { CandidateWhatsappModule } from './candidate-whatsapp/candidate-whatsapp.module';
 import { AttemptsAdminModule } from './attempts-admin/attempts-admin.module';
@@ -109,6 +110,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     DrivesModule,
     PipelineModule,
     CandidateEmailsModule,
+    BulkCandidateEmailModule,
     CandidateSmsModule,
     CandidateWhatsappModule,
     AttemptsAdminModule,

@@ -1171,6 +1171,27 @@ model CandidateEmail {
   @@map("candidate_emails")
 }
 
+// A recruiter-triggered batch send to many selected candidates. Each batch enqueues one BullMQ job
+// that loops the target pipeline entries through CandidateEmailsService.sendMessage (source:'manual'),
+// tallying the outcome here so the web can poll live progress. The per-send audit + candidate_emails
+// rows are still written by sendMessage; this row is only the batch-level tally.
+model CandidateEmailBatch {
+  id               String   @id @default(uuid()) @db.UniqueIdentifier
+  organizationId   String   @map("organization_id") @db.UniqueIdentifier
+  createdByUserId  String?  @map("created_by_user_id") @db.UniqueIdentifier
+  subject          String   @db.NVarChar(Max)
+  status           String   @default("pending") // 'pending' | 'processing' | 'completed'
+  total            Int      @default(0)
+  sent             Int      @default(0)
+  skipped          Int      @default(0)
+  failed           Int      @default(0)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([organizationId, createdAt])
+  @@map("candidate_email_batches")
+}
+
 model CandidateSmsTemplate {
   id             String   @id @default(uuid()) @db.UniqueIdentifier
   organizationId String   @map("organization_id") @db.UniqueIdentifier

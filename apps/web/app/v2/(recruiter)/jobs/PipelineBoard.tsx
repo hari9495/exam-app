@@ -24,6 +24,7 @@ import { useCurrentUser } from '../../../../lib/hooks/useCurrentUser';
 import { useToast } from '../../../../components/ui';
 import { CandidateDrawer } from './CandidateDrawer';
 import { SendMessageModal, SendMessageInitial } from './SendMessageModal';
+import { BulkEmailModal } from './BulkEmailModal';
 import { SendSmsModal, SendSmsInitial } from './SendSmsModal';
 import { SendWhatsappModal, SendWhatsappInitial } from './SendWhatsappModal';
 import { Cb, dt, Combobox } from '../../../../components/ui-v2';
@@ -134,6 +135,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkStatusId, setBulkStatusId] = useState('');
   const [bulkAssignee, setBulkAssignee] = useState('');
+  const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
   const [sortByFit, setSortByFit] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
   const [teamOnly, setTeamOnly] = useState(false);
@@ -243,6 +245,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
             <Combobox options={assigneeOptions} value={bulkAssignee} onChange={setBulkAssignee} placeholder="Assign to…" width={200} active={!!bulkAssignee} />
             <button type="button" disabled={!bulkAssignee || bulkPatch.isPending} onClick={() => applyBulk('assign', { assigneeUserId: bulkAssignee })} className="v2-hoverbtn" style={{ ...dt.toolBtn, opacity: !bulkAssignee || bulkPatch.isPending ? 0.5 : 1 }}>Assign</button>
           </span>
+          <button type="button" disabled={bulkPatch.isPending} onClick={() => setBulkEmailOpen(true)} className="v2-hoverbtn" style={dt.toolBtn}>Send email</button>
           <button type="button" disabled={bulkPatch.isPending} onClick={handleBulkReject} className="v2-hoverbtn" style={{ ...dt.toolBtn, color: 'var(--danger)', borderColor: 'var(--danger)' }}>Reject</button>
           <button type="button" onClick={clearSelection} className="v2-hoverbtn" style={{ ...dt.toolBtn, marginLeft: 'auto' }}>Clear</button>
         </div>
@@ -271,6 +274,7 @@ export function PipelineBoard({ jobId }: { jobId: string }) {
 
       {openRow && <CandidateDrawer jobId={jobId} row={openRow} stages={board.pipeline.stages} onClose={() => setOpenRow(null)} />}
       {composeFor && <SendMessageModal entryId={composeFor.entryId} candidateId={composeFor.candidateId} candidateName={composeFor.candidateName} initial={composeFor.initial} onClose={() => setComposeFor(null)} />}
+      {bulkEmailOpen && <BulkEmailModal mode="entries" ids={[...selected]} onClose={() => setBulkEmailOpen(false)} onEnqueued={clearSelection} />}
       {composeSmsFor && <SendSmsModal entryId={composeSmsFor.entryId} candidateId={composeSmsFor.candidateId} candidateName={composeSmsFor.candidateName} initial={composeSmsFor.initial} onClose={() => setComposeSmsFor(null)} />}
       {composeWhatsappFor && <SendWhatsappModal entryId={composeWhatsappFor.entryId} candidateId={composeWhatsappFor.candidateId} candidateName={composeWhatsappFor.candidateName} initial={composeWhatsappFor.initial} onClose={() => setComposeWhatsappFor(null)} />}
     </div>
