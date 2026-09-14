@@ -18,6 +18,7 @@ export interface ExamDetailsValue {
   randomizeOrder: boolean;
   feedbackVisibility: FeedbackVisibility;
   resultsReleaseMode: 'immediate' | 'manual';
+  certificatesEnabled: boolean;
   schedulingEnabled: boolean;
   availabilityWindowStart?: string;
   availabilityWindowEnd?: string;
@@ -114,6 +115,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
   const [randomizeOrder, setRandomizeOrder] = useState(initialExam?.randomizeOrder ?? false);
   const [feedbackVisibility, setFeedbackVisibility] = useState<FeedbackVisibility>(initialExam?.feedbackVisibility ?? 'pass_fail');
   const [resultsReleaseMode, setResultsReleaseMode] = useState<'immediate' | 'manual'>(initialExam?.resultsReleaseMode ?? 'immediate');
+  const [certificatesEnabled, setCertificatesEnabled] = useState(initialExam?.certificatesEnabled ?? false);
   const [schedulingEnabled, setSchedulingEnabled] = useState(initialExam?.schedulingEnabled ?? false);
   const [availabilityWindowStart, setAvailabilityWindowStart] = useState(initialExam?.availabilityWindowStart ? toDatetimeLocalValue(initialExam.availabilityWindowStart) : '');
   const [availabilityWindowEnd, setAvailabilityWindowEnd] = useState(initialExam?.availabilityWindowEnd ? toDatetimeLocalValue(initialExam.availabilityWindowEnd) : '');
@@ -161,6 +163,7 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
       randomizeOrder,
       feedbackVisibility,
       resultsReleaseMode,
+      certificatesEnabled,
       schedulingEnabled,
       availabilityWindowStart: schedulingEnabled ? new Date(availabilityWindowStart).toISOString() : undefined,
       availabilityWindowEnd: schedulingEnabled ? new Date(availabilityWindowEnd).toISOString() : undefined,
@@ -221,6 +224,10 @@ export function ExamDetailsForm({ initialExam, onSubmit, submitLabel, submitting
           <div style={{ width: 180 }}><Field label="Pass criteria (%)"><input type="number" min={0} max={100} value={passCriteriaPercent} onChange={(e) => setPassCriteriaPercent(e.target.value)} style={input} /></Field></div>
         </div>
         <CheckRow label="Randomize question order for candidates" checked={randomizeOrder} onChange={setRandomizeOrder} />
+        <div>
+          <CheckRow label="Issue a certificate to candidates who pass" checked={certificatesEnabled} onChange={setCertificatesEnabled} />
+          <p style={{ ...help, paddingLeft: 26, paddingTop: 4 }}>Passing candidates can download a PDF certificate once their results are released. Customize the wording under Settings → Certificate.</p>
+        </div>
       </Section>
 
       <Section title="Scheduling & Access" description="When the exam is open, and who is allowed to take it." locked={locked} alwaysEditable={hideWalkInField && walkInSlot ? walkInSlot : undefined}>

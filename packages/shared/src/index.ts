@@ -27,6 +27,7 @@ export * from './seb/seb-config';
 export * from './system-events/system-events.module';
 export * from './system-events/system-events.service';
 export * from './system-events/system-events-exception.filter';
+export * from './certificates/certificate-pdf';
 export * from './grading/select-counted-answers';
 export * from './grading/code-tests';
 export * from './integrations/event-types';

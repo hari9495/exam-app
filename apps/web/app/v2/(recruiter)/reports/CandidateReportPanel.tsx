@@ -13,7 +13,9 @@ import {
   useRegenerateAttemptInsight,
   useResultsList,
   useSetAttemptResultRelease,
+  useCandidateCertificate,
 } from '../../../../lib/hooks/usePanelReports';
+import { useExam } from '../../../../lib/hooks/useExams';
 import { useSystemEvents } from '../../../../lib/hooks/useSystemEvents';
 import { plainEnglish } from '../../../../lib/system-event-message';
 import type { WebcamTimelineEntry, FaceMismatchEntry } from '../../../../lib/types';
@@ -65,6 +67,8 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
   const systemEventsQuery = useSystemEvents({ attemptId: attemptId ?? undefined }, { enabled: Boolean(attemptId) });
   const technicalIssues = systemEventsQuery.data?.data ?? [];
   const setRelease = useSetAttemptResultRelease(examId);
+  const { data: exam } = useExam(examId);
+  const certificate = useCandidateCertificate();
   const [notifyRelease, setNotifyRelease] = useState(false);
   const { toast } = useToast();
   const [selectedSnapshot, setSelectedSnapshot] = useState<WebcamTimelineEntry | null>(null);
@@ -112,6 +116,20 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
             <Download size={16} style={{ marginRight: 6 }} />
             Export report
           </button>
+          {exam?.certificatesEnabled && candidate.passFail === 'pass' && candidate.attemptId && (
+            <button type="button" className="v2-hoverbtn print:hidden" style={{ ...dt.toolBtn }} disabled={certificate.isPending}
+              onClick={async () => {
+                try {
+                  const { url } = await certificate.mutateAsync(candidate.attemptId as string);
+                  window.open(url, '_blank', 'noopener');
+                } catch (e) {
+                  toast(e instanceof Error ? e.message : 'Failed to generate certificate.', 'error');
+                }
+              }}>
+              <Download size={16} style={{ marginRight: 6 }} />
+              Certificate
+            </button>
+          )}
           {candidate.passFail && <Pill c={candidate.passFail === 'pass' ? STATUS.ok : STATUS.bad} label={candidate.passFail} />}
           <IntegrityBadge level={integrity?.level} />
         </div>

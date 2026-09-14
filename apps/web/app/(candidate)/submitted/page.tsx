@@ -1,12 +1,15 @@
 'use client';
 
+import { useState } from 'react';
 import { TerminalCard } from '../components/TerminalCard';
 import { ResultSummary } from '../components/ResultSummary';
-import { useAttemptQuery } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useCandidateCertificate } from '../../../lib/hooks/useAttempt';
 import { isAttemptStarted } from '../../../lib/types';
 
 export default function CandidateSubmittedPage() {
   const { data: current } = useAttemptQuery();
+  const certificate = useCandidateCertificate();
+  const [certError, setCertError] = useState<string | null>(null);
   const feedback = current && isAttemptStarted(current) ? current.feedback : null;
 
   const isPending = feedback?.status === 'pending_review';
@@ -31,6 +34,27 @@ export default function CandidateSubmittedPage() {
   return (
     <TerminalCard tone="success" title="Exam submitted" body={body}>
       {hasResult && feedback ? <ResultSummary feedback={feedback} /> : null}
+      {feedback?.certificateAvailable ? (
+        <div className="mt-4 flex flex-col items-center gap-2">
+          <button
+            type="button"
+            disabled={certificate.isPending}
+            onClick={async () => {
+              setCertError(null);
+              try {
+                const { url } = await certificate.mutateAsync();
+                window.open(url, '_blank', 'noopener');
+              } catch (e) {
+                setCertError(e instanceof Error ? e.message : 'Could not download your certificate.');
+              }
+            }}
+            className="inline-flex items-center rounded bg-candidate-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {certificate.isPending ? 'Preparing…' : 'Download certificate'}
+          </button>
+          {certError ? <p className="text-xs text-candidate-danger">{certError}</p> : null}
+        </div>
+      ) : null}
     </TerminalCard>
   );
 }

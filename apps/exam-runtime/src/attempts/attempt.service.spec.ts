@@ -708,7 +708,7 @@ describe('AttemptService', () => {
 
       const result = await service.getCurrent(session);
 
-      expect((result as any).feedback).toEqual({ status: 'pending_review', visibility: 'breakdown', passFail: null, percentage: null, sections: null });
+      expect((result as any).feedback).toEqual({ status: 'pending_review', visibility: 'breakdown', passFail: null, percentage: null, sections: null, certificateAvailable: false });
     });
 
     it('returns pass/fail only when feedbackVisibility is pass_fail', async () => {

@@ -60,6 +60,10 @@ export class CreateExamDto {
 
   @IsOptional()
   @IsBoolean()
+  certificatesEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   schedulingEnabled?: boolean;
 
   @IsOptional()

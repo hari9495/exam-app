@@ -24,6 +24,7 @@ const V2_ROUTES = new Set([
   '/settings/recycle-bin',
   '/settings/approval-emails',
   '/settings/interview-emails',
+  '/settings/certificate',
   '/settings/sender-addresses',
   '/settings/apply-consent',
   '/settings/careers',

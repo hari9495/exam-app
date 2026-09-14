@@ -481,6 +481,8 @@ model Exam {
   // 'immediate' (default, behavior-preserving): a settled result is shown to the candidate at once.
   // 'manual': the result is withheld until a recruiter releases it (per-attempt override on Result).
   resultsReleaseMode            String        @default("immediate") @map("results_release_mode")
+  // Issue a downloadable certificate to candidates who pass this exam (inert until enabled).
+  certificatesEnabled           Boolean       @default(false) @map("certificates_enabled")
   schedulingEnabled             Boolean       @default(false) @map("scheduling_enabled")
   availabilityWindowStart       DateTime?     @map("availability_window_start")
   availabilityWindowEnd         DateTime?     @map("availability_window_end")
@@ -820,6 +822,9 @@ model Result {
   // visible (for display + email idempotency).
   releaseOverride String?   @map("release_override")
   releasedAt      DateTime? @map("released_at")
+  // Blob path of the generated pass certificate, minted lazily on first download (recruiter or
+  // candidate) and reused thereafter.
+  certificatePath String?   @map("certificate_path")
   attempt    Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   @@map("results")
@@ -1198,6 +1203,22 @@ model CandidateEmailBatch {
 
   @@index([organizationId, createdAt])
   @@map("candidate_email_batches")
+}
+
+// Per-org customizable certificate copy (one row per org). The visual layout is fixed (buildCertificatePdf
+// in @exam-platform/shared); the org edits the title/body/signatory text with {{merge}} fields. A
+// missing or disabled row falls back to CERTIFICATE_DEFAULT.
+model CertificateTemplate {
+  id             String   @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String   @unique @map("organization_id") @db.UniqueIdentifier
+  title          String   @db.NVarChar(300)
+  bodyText       String   @map("body_text") @db.NVarChar(Max)
+  signatoryName  String?  @map("signatory_name") @db.NVarChar(200)
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("certificate_templates")
 }
 
 model CandidateSmsTemplate {

@@ -126,6 +126,16 @@ export function useSetAttemptResultRelease(examId: string) {
   });
 }
 
+// Recruiter certificate download: get-or-generate the passing candidate's certificate, returns a
+// signed URL to open. Allowed before release (preview); the API still enforces enabled + passed.
+export function useCandidateCertificate() {
+  const { accessToken } = useAuth();
+  return useMutation({
+    mutationFn: (attemptId: string) =>
+      apiFetch(`/attempts/${attemptId}/certificate`, {}, accessToken ?? undefined) as Promise<{ url: string }>,
+  });
+}
+
 export function useResultsExport(examId: string) {
   const { accessToken } = useAuth();
   return useMutation({

@@ -2,7 +2,10 @@ import { render, screen } from '@testing-library/react';
 import { useAttemptQuery } from '../../../lib/hooks/useAttempt';
 import CandidateSubmittedPage from './page';
 
-jest.mock('../../../lib/hooks/useAttempt', () => ({ useAttemptQuery: jest.fn() }));
+jest.mock('../../../lib/hooks/useAttempt', () => ({
+  useAttemptQuery: jest.fn(),
+  useCandidateCertificate: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+}));
 
 describe('CandidateSubmittedPage', () => {
   it('shows the static submitted message with no extra data when feedback is null (still in progress / loading)', () => {

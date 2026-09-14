@@ -37,6 +37,7 @@ export const SUPER_ADMIN_FULL_NAV = [
   { href: '/settings/approvals', label: 'Approval chains', icon: GitPullRequestArrow, group: 'Settings' },
   { href: '/settings/approval-emails', label: 'Approval Emails', icon: MailCheck, group: 'Settings' },
   { href: '/settings/interview-emails', label: 'Interview Emails', icon: Mail, group: 'Settings' },
+  { href: '/settings/certificate', label: 'Certificate', icon: FileCheck, group: 'Settings' },
   { href: '/settings/pipelines', label: 'Pipelines', icon: Kanban, group: 'Settings' },
   { href: '/settings/business-hours', label: 'Business hours', icon: Clock, group: 'Settings' },
   { href: '/settings/custom-fields', label: 'Custom Fields', icon: SlidersHorizontal, group: 'Settings' },
