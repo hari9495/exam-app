@@ -1,4 +1,7 @@
 import PDFDocument from 'pdfkit';
+// qrcode is a workspace dependency (declared in apps/web) hoisted to the root node_modules, so it
+// resolves from here without being re-declared. Used to embed the verification QR on the certificate.
+import QRCode from 'qrcode';
 import { renderTemplateString } from '../templates/render-template-string';
 
 // Per-org editable copy for a pass certificate. The visual layout below is fixed; only these text
@@ -25,11 +28,16 @@ export interface CertificateVars {
   date: string;
   orgName: string;
   certificateId: string;
+  // Public verification page URL for this certificate. When set, a "Verify at …" line + a scannable
+  // QR are printed in the footer so a holder can confirm the certificate is genuine.
+  verifyUrl?: string;
 }
 
 // Renders the certificate to a PDF Buffer. Layout is deliberately simple + centered (mirrors the
 // offer-letter pdfkit approach); the org's title/body/signatory text is merged in.
-export function buildCertificatePdf(template: CertificateTemplateCopy, vars: CertificateVars): Promise<Buffer> {
+export async function buildCertificatePdf(template: CertificateTemplateCopy, vars: CertificateVars): Promise<Buffer> {
+  // Generated before opening the doc so it can be drawn synchronously inside the stream.
+  const qrBuffer = vars.verifyUrl ? await QRCode.toBuffer(vars.verifyUrl, { margin: 1, width: 120 }) : null;
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 60 });
     const chunks: Buffer[] = [];
@@ -66,6 +74,13 @@ export function buildCertificatePdf(template: CertificateTemplateCopy, vars: Cer
       width: inner,
       align: 'center',
     });
+    if (vars.verifyUrl) {
+      doc.fontSize(9).fillColor('#999').text(`Verify at ${vars.verifyUrl}`, 60, doc.page.height - 58, { width: inner, align: 'center' });
+    }
+    if (qrBuffer) {
+      // Bottom-right, inside the border.
+      doc.image(qrBuffer, width - 60 - 62, doc.page.height - 122, { width: 62 });
+    }
 
     doc.end();
   });

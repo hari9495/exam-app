@@ -69,3 +69,65 @@ describe('CertificateService.getCertificateUrl', () => {
     await expect(service.getCertificateUrl(context, 'x', { requireReleased: false })).rejects.toThrow(NotFoundException);
   });
 });
+
+describe('CertificateService.verifyCertificate (public)', () => {
+  let tx: any;
+  let tenantPrisma: any;
+  let service: CertificateService;
+
+  function resultRow(over: any = {}) {
+    return {
+      passFail: 'pass',
+      percentage: 88,
+      releaseOverride: null,
+      releasedAt: new Date('2026-09-14T00:00:00.000Z'),
+      computedAt: new Date('2026-09-13T00:00:00.000Z'),
+      attempt: {
+        invitation: {
+          candidate: { name: 'Ada Lovelace' },
+          exam: { title: 'Algorithms', certificatesEnabled: true, resultsReleaseMode: 'immediate', organizationId: 'org-1', ...(over.exam ?? {}) },
+        },
+      },
+      ...(over.result ?? {}),
+    };
+  }
+
+  beforeEach(() => {
+    tx = {
+      result: { findUnique: jest.fn().mockResolvedValue(resultRow()) },
+      organization: { findUnique: jest.fn().mockResolvedValue({ name: 'Acme' }) },
+    };
+    tenantPrisma = { forTenant: jest.fn(async (_c: unknown, fn: any) => fn(tx)) };
+    service = new CertificateService(tenantPrisma, {} as any, {} as any);
+  });
+
+  it('returns the certificate facts for a genuine, released pass', async () => {
+    const res = await service.verifyCertificate('r1');
+    expect(res).toEqual({ valid: true, candidateName: 'Ada Lovelace', examTitle: 'Algorithms', orgName: 'Acme', scorePercent: 88, issuedAt: '2026-09-14T00:00:00.000Z' });
+  });
+
+  it('is invalid when the exam does not issue certificates', async () => {
+    tx.result.findUnique.mockResolvedValue(resultRow({ exam: { certificatesEnabled: false } }));
+    expect(await service.verifyCertificate('r1')).toEqual({ valid: false });
+  });
+
+  it('is invalid for a non-passing result', async () => {
+    tx.result.findUnique.mockResolvedValue(resultRow({ result: { passFail: 'fail' } }));
+    expect(await service.verifyCertificate('r1')).toEqual({ valid: false });
+  });
+
+  it('is invalid when results are withheld (manual mode, no override)', async () => {
+    tx.result.findUnique.mockResolvedValue(resultRow({ exam: { resultsReleaseMode: 'manual' } }));
+    expect(await service.verifyCertificate('r1')).toEqual({ valid: false });
+  });
+
+  it('is invalid for an unknown id', async () => {
+    tx.result.findUnique.mockResolvedValue(null);
+    expect(await service.verifyCertificate('nope')).toEqual({ valid: false });
+  });
+
+  it('is invalid (never throws) for a malformed id that errors the lookup', async () => {
+    tx.result.findUnique.mockRejectedValue(new Error('invalid uuid'));
+    expect(await service.verifyCertificate('!!!')).toEqual({ valid: false });
+  });
+});
