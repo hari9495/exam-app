@@ -1,4 +1,4 @@
-import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode, Briefcase, TrendingUp, Mail, MessageSquare, MessageCircle, FileSignature, CreditCard, CheckSquare, GitPullRequestArrow, Kanban, Clock, SlidersHorizontal, EyeOff, Trash2, MailCheck, Send, FileCheck, Globe, Lock, Rss, Building2, CalendarClock, Bell, UserPlus, ClipboardList } from 'lucide-react';
+import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode, Briefcase, TrendingUp, Mail, MessageSquare, MessageCircle, FileSignature, CreditCard, CheckSquare, GitPullRequestArrow, Kanban, Clock, SlidersHorizontal, EyeOff, Trash2, MailCheck, Send, FileCheck, Globe, Lock, Rss, Building2, CalendarClock, Bell, UserPlus, ClipboardList, Compass } from 'lucide-react';
 
 // The COMPLETE union of org-scoped staff features. A super_admin acting into an org sees this exact
 // nav in EVERY staff shell (recruiter / org-admin / panel), so no feature is ever hidden by whichever
@@ -16,6 +16,7 @@ export const SUPER_ADMIN_FULL_NAV = [
   { href: '/agency-submissions', label: 'Agency Submissions', icon: Building2, group: 'Hiring' },
   { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode, group: 'Hiring' },
   { href: '/referrals', label: 'Referrals', icon: UserPlus, group: 'Hiring' },
+  { href: '/internal-mobility', label: 'Internal Mobility', icon: Compass, group: 'Hiring' },
   { href: '/exams', label: 'Exams', icon: FileText, group: 'Assessments' },
   { href: '/questions', label: 'Question Bank', icon: BookOpen, group: 'Assessments' },
   { href: '/reports', label: 'Results', icon: BarChart3, group: 'Assessments' },
