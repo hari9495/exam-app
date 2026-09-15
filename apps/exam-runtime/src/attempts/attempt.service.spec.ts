@@ -467,7 +467,7 @@ describe('AttemptService', () => {
             }],
           },
         ],
-        answers: [{ questionId: 'q1', selectedOptionIds: ['opt-a'], isMarkedForReview: false }],
+        answers: [{ questionId: 'q1', selectedOptionIds: ['opt-a'], isMarkedForReview: false, answerFiles: [] }],
         messages: [],
         feedback: null,
         faceWarningAt: null,

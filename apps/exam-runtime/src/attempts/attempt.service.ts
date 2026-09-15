@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Attempt, Prisma } from '@prisma/client';
 import {
@@ -86,12 +87,20 @@ interface SectionSnapshotEntry {
   questionIds: string[];
 }
 
+interface AttemptAnswerFileSummary {
+  id: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+}
+
 interface AttemptAnswerSummary {
   questionId: string;
   selectedOptionIds: string[];
   answerText: string | null;
   codeLanguage: string | null;
   isMarkedForReview: boolean;
+  answerFiles: AttemptAnswerFileSummary[];
 }
 
 interface AttemptMessageSummary {
@@ -193,6 +202,52 @@ export interface SebRequestContext {
 // current ones need it for the transaction-timeout reason anymore -- that reason returns instantly
 // if an upload is ever moved back inside a transaction.
 const SCREENSHOT_UPLOAD_TIMEOUT_MS = 3000;
+
+// file_upload answers: fixed global policy (no per-question config). One built-in content-type
+// allowlist + a size cap, enforced server-side on every uploaded file. Kept intentionally narrow
+// (common docs/images/archives) — candidate-supplied files land in our blob container.
+const ANSWER_FILE_MAX_BYTES = 10 * 1024 * 1024; // 10 MB per file
+const ANSWER_FILE_MAX_COUNT = 10; // per question
+const ANSWER_FILE_ALLOWED_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/plain',
+  'text/csv',
+  'image/png',
+  'image/jpeg',
+  'application/zip',
+  'application/x-zip-compressed',
+]);
+
+interface AnswerFile {
+  id: string;
+  path: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+}
+
+function parseAnswerFiles(json: string | null | undefined): AnswerFile[] {
+  if (!json) return [];
+  try {
+    const arr = JSON.parse(json);
+    return Array.isArray(arr) ? (arr as AnswerFile[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+// Strip any path components + keep a reasonable length; the stored name is candidate-supplied and is
+// only ever shown as a label / used in a Content-Disposition, never as a filesystem path.
+function sanitizeAnswerFileName(name: string): string {
+  const base = (name || 'file').replace(/[/\\]/g, '_').replace(/[\x00-\x1f]/g, '').trim();
+  return (base || 'file').slice(0, 200);
+}
 
 // Server-authoritative screen-capture cap, enforced against Attempt.screenCaptureCount (see
 // decideScreenCapture/commitScreenCapture below) -- not the client's own MAX_CAPTURES in
@@ -340,6 +395,13 @@ export class AttemptService {
           answerText: answer.answerText,
           codeLanguage: answer.codeLanguage,
           isMarkedForReview: answer.isMarkedForReview,
+          // Candidate-facing: never expose the internal blob path.
+          answerFiles: parseAnswerFiles(answer.answerFilesJson).map((f) => ({
+            id: f.id,
+            fileName: f.fileName,
+            contentType: f.contentType,
+            size: f.size,
+          })),
         })),
         messages: unreadMessages.map((message) => ({ id: message.id, body: message.body, sentAt: message.sentAt })),
         feedback,
@@ -550,6 +612,21 @@ export class AttemptService {
         };
       }
 
+      if (question.type === 'file_upload') {
+        // The uploaded files themselves go through the dedicated answer-file endpoint (uploads must
+        // run outside a tx). Here we only persist a markedForReview toggle, never touching
+        // answerFilesJson. Manually graded; never auto-gradable.
+        await tx.answer.upsert({
+          where: { attemptId_questionId: { attemptId: settled.id, questionId: dto.questionId } },
+          create: { attemptId: settled.id, questionId: dto.questionId, selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview },
+          update: { isMarkedForReview, answeredAt: new Date() },
+        });
+        return {
+          response: { questionId: dto.questionId, selectedOptionIds: [], answerText: null, isMarkedForReview },
+          isAutoGradable: false,
+        };
+      }
+
       // An empty selection means "no answer yet, possibly just toggling markedForReview" — skip option validation.
       if (dto.selectedOptionIds.length > 0) {
         this.validateSelection(question, dto.selectedOptionIds);
@@ -587,6 +664,86 @@ export class AttemptService {
     }
 
     return response;
+  }
+
+  // Candidate uploads one file for a file_upload question. Validates the fixed global policy (type +
+  // size), then follows the same decide/upload/commit split the proctoring uploads use: the blob
+  // upload runs with NO Prisma transaction open (it's the slow part), bracketed by two short txs.
+  async uploadAnswerFile(
+    session: CandidateSession,
+    dto: { questionId: string; fileName: string; dataUri: string },
+  ): Promise<{ files: { id: string; fileName: string; contentType: string; size: number }[] }> {
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    const context = { organizationId, isSuperAdmin: false };
+
+    const parsed = extractBase64FromDataUri(dto.dataUri);
+    if (!parsed) throw new BadRequestException('Invalid file data');
+    if (!ANSWER_FILE_ALLOWED_TYPES.has(parsed.contentType)) {
+      throw new BadRequestException('That file type is not allowed');
+    }
+    const buffer = Buffer.from(parsed.base64, 'base64');
+    if (buffer.length === 0) throw new BadRequestException('The file is empty');
+    if (buffer.length > ANSWER_FILE_MAX_BYTES) throw new BadRequestException('The file exceeds the 10 MB limit');
+
+    // Phase 1 (short tx): validate the attempt is live and the question accepts uploads + isn't full.
+    const attemptId = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      const settled = await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
+      if (settled.status !== 'in_progress') throw new BadRequestException(`Cannot upload — attempt status is "${settled.status}"`);
+      const questionIds: string[] = JSON.parse(settled.questionOrderJson);
+      if (!questionIds.includes(dto.questionId)) throw new BadRequestException(`Question ${dto.questionId} is not part of this attempt`);
+      const question = await tx.question.findFirstOrThrow({ where: { id: dto.questionId } });
+      if (question.type !== 'file_upload') throw new BadRequestException('This question does not accept file uploads');
+      const existing = await tx.answer.findUnique({ where: { attemptId_questionId: { attemptId: settled.id, questionId: dto.questionId } } });
+      if (parseAnswerFiles(existing?.answerFilesJson).length >= ANSWER_FILE_MAX_COUNT) {
+        throw new BadRequestException(`You can upload at most ${ANSWER_FILE_MAX_COUNT} files for this question`);
+      }
+      return settled.id;
+    });
+
+    // Phase 2 (no tx): the slow upload.
+    const fileName = sanitizeAnswerFileName(dto.fileName);
+    const fileId = randomUUID();
+    const path = await this.blobStorage.upload(`answer-files/${organizationId}/${attemptId}/${dto.questionId}/${fileId}-${fileName}`, buffer, parsed.contentType);
+
+    // Phase 3 (short tx): append to the answer's file list.
+    const files = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const existing = await tx.answer.findUnique({ where: { attemptId_questionId: { attemptId, questionId: dto.questionId } } });
+      const list = parseAnswerFiles(existing?.answerFilesJson);
+      list.push({ id: fileId, path, fileName, contentType: parsed.contentType, size: buffer.length });
+      const answerFilesJson = JSON.stringify(list);
+      await tx.answer.upsert({
+        where: { attemptId_questionId: { attemptId, questionId: dto.questionId } },
+        create: { attemptId, questionId: dto.questionId, selectedOptionIdsJson: '[]', answerFilesJson },
+        update: { answerFilesJson, answeredAt: new Date() },
+      });
+      return list;
+    });
+    return { files: files.map((f) => ({ id: f.id, fileName: f.fileName, contentType: f.contentType, size: f.size })) };
+  }
+
+  // Candidate removes a previously uploaded file (before submit) by its id.
+  async removeAnswerFile(session: CandidateSession, dto: { questionId: string; fileId: string }): Promise<{ files: { id: string; fileName: string; contentType: string; size: number }[] }> {
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    const context = { organizationId, isSuperAdmin: false };
+    const { files, removed } = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      const settled = await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
+      if (settled.status !== 'in_progress') throw new BadRequestException(`Cannot change files — attempt status is "${settled.status}"`);
+      const existing = await tx.answer.findUnique({ where: { attemptId_questionId: { attemptId: settled.id, questionId: dto.questionId } } });
+      const list = parseAnswerFiles(existing?.answerFilesJson);
+      const removed = list.find((f) => f.id === dto.fileId) ?? null;
+      const next = list.filter((f) => f.id !== dto.fileId);
+      if (existing) {
+        await tx.answer.update({ where: { id: existing.id }, data: { answerFilesJson: JSON.stringify(next), answeredAt: new Date() } });
+      }
+      return { files: next, removed };
+    });
+    // Best-effort blob cleanup so a removed file doesn't linger; never fail the request over it.
+    if (removed) void this.blobStorage.deleteByUrl(removed.path).catch(() => undefined);
+    return { files: files.map((f) => ({ id: f.id, fileName: f.fileName, contentType: f.contentType, size: f.size })) };
   }
 
   async runCode(session: CandidateSession, dto: RunCodeDto): Promise<PistonExecuteResult & { runsRemaining: number }> {

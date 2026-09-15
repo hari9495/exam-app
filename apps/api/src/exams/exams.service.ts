@@ -87,7 +87,31 @@ function countIntegrityFlags(flagsJson: string | null): number {
 // The manually graded question types surfaced in the grading queue. Mirrors
 // MANUALLY_GRADED_TYPES in exam-runtime's attempt-settlement.service.ts (duplicated: the two apps
 // share no runtime module).
-export const MANUALLY_GRADED_QUESTION_TYPES = ['code', 'essay'];
+export const MANUALLY_GRADED_QUESTION_TYPES = ['code', 'essay', 'file_upload'];
+
+export interface StoredAnswerFile {
+  id: string;
+  path: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+}
+
+export function parseStoredAnswerFiles(json: string | null | undefined): StoredAnswerFile[] {
+  if (!json) return [];
+  try {
+    const arr = JSON.parse(json);
+    return Array.isArray(arr) ? (arr as StoredAnswerFile[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+// A manual answer counts as "attempted" if code/essay has prose OR a file_upload has ≥1 file.
+// Mirrors isAttemptedManual() in exam-runtime's attempt-settlement.service.ts.
+function isAttemptedManualAnswer(type: string, answerText: string | null, answerFilesJson: string | null): boolean {
+  return type === 'file_upload' ? parseStoredAnswerFiles(answerFilesJson).length > 0 : Boolean(answerText?.trim());
+}
 
 export interface PendingGradingCodeQuestion {
   questionId: string;
@@ -101,10 +125,19 @@ export interface PendingGradingCodeQuestion {
   modelAnswer: string | null;
   codeLanguage: string | null;
   answerText: string | null;
+  /** Uploaded files for a file_upload question (signed download URLs); empty for other types. */
+  answerFiles: PendingGradingAnswerFile[];
   marks: number;
   marksAwarded: number | null;
   gradingFeedback: string | null;
   tabActivity: QuestionTabActivityEntry[];
+}
+
+export interface PendingGradingAnswerFile {
+  fileName: string;
+  contentType: string;
+  size: number;
+  url: string | null;
 }
 
 export interface PendingGradingRow {
@@ -388,39 +421,40 @@ export class ExamsService {
     return { ...result, sections };
   }
 
-  // Grading is only ever needed for 'code' questions -- every other type auto-grades
-  // (see AttemptSettlementService.finalize's own hasCodeQuestions check). Fixed
+  // Grading is needed for the manually-graded types (code, essay, file_upload) -- every
+  // other type auto-grades (see AttemptSettlementService.finalize's own check). Fixed
   // sections are checked directly; a pool section draws randomly at attempt time, so
-  // it's treated as code-capable if any question CURRENTLY matching its filters is
-  // code -- the same AND-tagIds query publish() already uses to validate pool
+  // it's treated as manual-capable if any question CURRENTLY matching its filters is a
+  // manual type -- the same AND-tagIds query publish() already uses to validate pool
   // availability. The trailing pending-grade count covers the one case that check
-  // can miss: a pool's tag composition changed after an attempt already drew a code
+  // can miss: a pool's tag composition changed after an attempt already drew a manual
   // question from it, and that attempt is still sitting there waiting to be graded.
   private async computeRequiresManualGrading(
     tx: Prisma.TransactionClient,
     context: TenantContext,
     exam: { id: string; sections: ExamSectionWithQuestions[] },
   ): Promise<boolean> {
-    const hasFixedCodeQuestion = exam.sections.some(
-      (section) => section.selectionMode === 'fixed' && section.questions.some((q) => q.question.type === 'code'),
+    const hasFixedManualQuestion = exam.sections.some(
+      (section) =>
+        section.selectionMode === 'fixed' && section.questions.some((q) => MANUALLY_GRADED_QUESTION_TYPES.includes(q.question.type)),
     );
-    if (hasFixedCodeQuestion) {
+    if (hasFixedManualQuestion) {
       return true;
     }
 
     for (const section of exam.sections) {
       if (section.selectionMode !== 'pool') continue;
       const tagIds = (section.poolTags ?? []).map((poolTag) => poolTag.tagId);
-      const codeMatchCount = await tx.question.count({
+      const manualMatchCount = await tx.question.count({
         where: {
           organizationId: context.organizationId as string,
           status: 'active',
-          type: 'code',
+          type: { in: MANUALLY_GRADED_QUESTION_TYPES },
           ...(section.poolDifficulty ? { difficulty: section.poolDifficulty } : {}),
           AND: tagIds.map((tagId) => ({ tags: { some: { tagId } } })),
         },
       });
-      if (codeMatchCount > 0) {
+      if (manualMatchCount > 0) {
         return true;
       }
     }
@@ -1247,30 +1281,44 @@ export class ExamsService {
               ? { status: attempt.proctoringAnalysis.status, riskLevel: attempt.proctoringAnalysis.riskLevel, summary: attempt.proctoringAnalysis.summary }
               : null,
             tabActivitySummary: tabActivity.summary,
-            codeQuestions: attempt.answers
-              // Code questions the candidate never wrote in are auto-zeroed at settlement and are
-              // deliberately NOT listed here -- there is nothing for a human to judge, and showing
-              // them meant clicking "Save grade: 0" through a run of empty editors before the
-              // Finalize button unlocked. Filtering on answerText rather than marksAwarded matters:
-              // a question the recruiter has already graded 0 must stay visible so they can revise it.
-              // Predicate mirrors isAttemptedText()/MANUALLY_GRADED_TYPES in exam-runtime's
-              // attempt-settlement.service.ts -- code AND essay are the manually graded types.
-              .filter((answer) => MANUALLY_GRADED_QUESTION_TYPES.includes(answer.question.type) && Boolean(answer.answerText?.trim()))
-              .map((answer) => ({
-                questionId: answer.questionId,
-                type: answer.question.type,
-                questionText: answer.question.text,
-                difficulty: answer.question.difficulty,
-                starterCode: answer.question.starterCode,
-                // Recruiter-only reference answer for essays (null for code). Never sent to candidates.
-                modelAnswer: answer.question.modelAnswer,
-                codeLanguage: answer.codeLanguage,
-                answerText: answer.answerText,
-                marks: answer.question.marks,
-                marksAwarded: answer.marksAwarded,
-                gradingFeedback: answer.gradingFeedback,
-                tabActivity: tabActivity.byQuestionId.get(answer.questionId) ?? [],
-              })),
+            codeQuestions: await Promise.all(
+              attempt.answers
+                // Questions the candidate never attempted are auto-zeroed at settlement and are
+                // deliberately NOT listed here -- there is nothing for a human to judge, and showing
+                // them meant clicking "Save grade: 0" through a run of empty editors before the
+                // Finalize button unlocked. Filtering on attempted rather than marksAwarded matters:
+                // a question the recruiter has already graded 0 must stay visible so they can revise it.
+                // Predicate mirrors isAttemptedManual()/MANUALLY_GRADED_TYPES in exam-runtime's
+                // attempt-settlement.service.ts -- code, essay AND file_upload are manually graded.
+                .filter(
+                  (answer) =>
+                    MANUALLY_GRADED_QUESTION_TYPES.includes(answer.question.type) &&
+                    isAttemptedManualAnswer(answer.question.type, answer.answerText, answer.answerFilesJson),
+                )
+                .map(async (answer) => ({
+                  questionId: answer.questionId,
+                  type: answer.question.type,
+                  questionText: answer.question.text,
+                  difficulty: answer.question.difficulty,
+                  starterCode: answer.question.starterCode,
+                  // Recruiter-only reference answer for essays (null for code). Never sent to candidates.
+                  modelAnswer: answer.question.modelAnswer,
+                  codeLanguage: answer.codeLanguage,
+                  answerText: answer.answerText,
+                  answerFiles: await Promise.all(
+                    parseStoredAnswerFiles(answer.answerFilesJson).map(async (file) => ({
+                      fileName: file.fileName,
+                      contentType: file.contentType,
+                      size: file.size,
+                      url: (await this.blobStorage.signIfOurs(file.path)) as string | null,
+                    })),
+                  ),
+                  marks: answer.question.marks,
+                  marksAwarded: answer.marksAwarded,
+                  gradingFeedback: answer.gradingFeedback,
+                  tabActivity: tabActivity.byQuestionId.get(answer.questionId) ?? [],
+                })),
+            ),
           };
         }),
       );

@@ -11,6 +11,7 @@ import { StartAttemptDto } from './dto/start-attempt.dto';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { ClientErrorDto } from './dto/client-error.dto';
 import { RunCodeDto } from './dto/run-code.dto';
+import { UploadAnswerFileDto, RemoveAnswerFileDto } from './dto/answer-file.dto';
 import { WebcamViolationDto } from './dto/webcam-violation.dto';
 import { WebcamSnapshotDto } from './dto/webcam-snapshot.dto';
 import { FaceEnrolmentDto } from './dto/face-enrolment.dto';
@@ -58,6 +59,18 @@ export class AttemptController {
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   answer(@CurrentCandidate() candidate: CandidateSession, @Body() dto: AnswerDto) {
     return this.attemptService.answer(candidate, dto);
+  }
+
+  @Post('answer-file')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  uploadAnswerFile(@CurrentCandidate() candidate: CandidateSession, @Body() dto: UploadAnswerFileDto) {
+    return this.attemptService.uploadAnswerFile(candidate, dto);
+  }
+
+  @Post('answer-file/remove')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  removeAnswerFile(@CurrentCandidate() candidate: CandidateSession, @Body() dto: RemoveAnswerFileDto) {
+    return this.attemptService.removeAnswerFile(candidate, dto);
   }
 
   @Post('submit')

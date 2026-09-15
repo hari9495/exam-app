@@ -33,7 +33,7 @@ export class QuestionOptionDto {
 }
 
 export class CreateQuestionDto {
-  @IsIn(['single_mcq', 'multi_mcq', 'true_false', 'code', 'essay'])
+  @IsIn(['single_mcq', 'multi_mcq', 'true_false', 'code', 'essay', 'file_upload'])
   type!: string;
 
   @IsString()

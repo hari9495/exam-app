@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { TenantPrismaService, TenantContext, BlobStorageService, selectCountedAnswers } from '@exam-platform/shared';
-import { ExamsService, ExamResultRow, SETTLED_ATTEMPT_STATUSES } from '../exams/exams.service';
+import { ExamsService, ExamResultRow, SETTLED_ATTEMPT_STATUSES, MANUALLY_GRADED_QUESTION_TYPES, parseStoredAnswerFiles } from '../exams/exams.service';
 import { signProctoringEvidence } from '../common/sign-proctoring-evidence';
 import { computeTabActivity, TAB_ACTIVITY_EVENT_TYPES, TabActivityEvent, TabActivityEventTypeSummary, QuestionTabActivityEntry } from './tab-activity';
 
@@ -71,14 +71,24 @@ interface CandidateDetailQuestion {
   isCorrect: boolean | null;
   marksAwarded: number | null;
   counted: boolean;
-  // Code questions only. Once an attempt is finalized its status leaves pending_manual_grade,
-  // so the grading queue stops listing it and the submitted code had nowhere left to be read.
-  // Carrying it on the report keeps the work reviewable after grading, which is when a second
-  // opinion is actually wanted. Null for every other question type.
+  // Manually-graded questions only (code/essay carry answerText; file_upload carries answerFiles).
+  // Once an attempt is finalized its status leaves pending_manual_grade, so the grading queue stops
+  // listing it and the submitted work had nowhere left to be read. Carrying it on the report keeps
+  // the work reviewable after grading, which is when a second opinion is actually wanted. Null/empty
+  // for every other question type.
   answerText: string | null;
   codeLanguage: string | null;
+  /** Signed download URLs for a file_upload answer; empty for other types. */
+  answerFiles: ReportAnswerFile[];
   gradingFeedback: string | null;
   tabActivity: QuestionTabActivityEntry[];
+}
+
+export interface ReportAnswerFile {
+  fileName: string;
+  contentType: string;
+  size: number;
+  url: string | null;
 }
 
 interface CandidateDetailSection extends SectionScore {
@@ -481,50 +491,69 @@ export class ReportsService {
       const sectionScores = this.computeSectionScores(sectionSnapshot, marksAwardedByQuestionId, marksByQuestionId);
       const sectionScoreById = new Map(sectionScores.map((score) => [score.sectionId, score]));
 
-      const sections: CandidateDetailSection[] = sectionSnapshot.map((section) => {
-        const scoreEntry = sectionScoreById.get(section.sectionId)!;
-        const countedIds = new Set(
-          selectCountedAnswers(
-            section.questionIds.map((questionId) => ({
-              questionId,
-              marks: marksByQuestionId.get(questionId) ?? 0,
-              marksAwarded: marksAwardedByQuestionId.get(questionId) ?? 0,
-            })),
-            section.requiredCount,
-          ).countedQuestionIds,
-        );
-        return {
-          sectionId: section.sectionId,
-          title: section.title,
-          score: scoreEntry.score,
-          maxScore: scoreEntry.maxScore,
-          weightPercent: scoreEntry.weightPercent,
-          requiredCount: scoreEntry.requiredCount,
-          questions: section.questionIds.map((questionId) => {
-            const question = questionsById.get(questionId);
-            const answer = answersByQuestionId.get(questionId);
-            return {
-              questionId,
-              questionText: question?.text ?? '',
-              type: question?.type ?? '',
-              marks: question?.marks ?? 0,
-              negativeMarks: question?.negativeMarks ?? 0,
-              options: question?.options.map((option) => ({ id: option.id, text: option.text })) ?? [],
-              selectedOptionIds: answer ? JSON.parse(answer.selectedOptionIdsJson) : [],
-              correctOptionIds: question?.options.filter((option) => option.isCorrect).map((option) => option.id) ?? [],
-              isCorrect: answer?.isCorrect ?? null,
-              marksAwarded: answer?.marksAwarded ?? null,
-              counted: countedIds.has(questionId),
-              // Only for code: an MCQ's "answer" is already fully described by selectedOptionIds,
-              // and answerText is unused there, so sending it would be noise on every row.
-              answerText: question?.type === 'code' ? (answer?.answerText ?? null) : null,
-              codeLanguage: question?.type === 'code' ? (answer?.codeLanguage ?? null) : null,
-              gradingFeedback: question?.type === 'code' ? (answer?.gradingFeedback ?? null) : null,
-              tabActivity: tabActivity.byQuestionId.get(questionId) ?? [],
-            };
-          }),
-        };
-      });
+      const sections: CandidateDetailSection[] = await Promise.all(
+        sectionSnapshot.map(async (section) => {
+          const scoreEntry = sectionScoreById.get(section.sectionId)!;
+          const countedIds = new Set(
+            selectCountedAnswers(
+              section.questionIds.map((questionId) => ({
+                questionId,
+                marks: marksByQuestionId.get(questionId) ?? 0,
+                marksAwarded: marksAwardedByQuestionId.get(questionId) ?? 0,
+              })),
+              section.requiredCount,
+            ).countedQuestionIds,
+          );
+          return {
+            sectionId: section.sectionId,
+            title: section.title,
+            score: scoreEntry.score,
+            maxScore: scoreEntry.maxScore,
+            weightPercent: scoreEntry.weightPercent,
+            requiredCount: scoreEntry.requiredCount,
+            questions: await Promise.all(
+              section.questionIds.map(async (questionId) => {
+                const question = questionsById.get(questionId);
+                const answer = answersByQuestionId.get(questionId);
+                const type = question?.type ?? '';
+                const isManual = MANUALLY_GRADED_QUESTION_TYPES.includes(type);
+                return {
+                  questionId,
+                  questionText: question?.text ?? '',
+                  type,
+                  marks: question?.marks ?? 0,
+                  negativeMarks: question?.negativeMarks ?? 0,
+                  options: question?.options.map((option) => ({ id: option.id, text: option.text })) ?? [],
+                  selectedOptionIds: answer ? JSON.parse(answer.selectedOptionIdsJson) : [],
+                  correctOptionIds: question?.options.filter((option) => option.isCorrect).map((option) => option.id) ?? [],
+                  isCorrect: answer?.isCorrect ?? null,
+                  marksAwarded: answer?.marksAwarded ?? null,
+                  counted: countedIds.has(questionId),
+                  // code/essay carry the written work; an MCQ's "answer" is already fully described by
+                  // selectedOptionIds, so answerText would be noise on every row.
+                  answerText: type === 'code' || type === 'essay' ? (answer?.answerText ?? null) : null,
+                  codeLanguage: type === 'code' ? (answer?.codeLanguage ?? null) : null,
+                  answerFiles:
+                    type === 'file_upload'
+                      ? await Promise.all(
+                          parseStoredAnswerFiles(answer?.answerFilesJson).map(async (file) => ({
+                            fileName: file.fileName,
+                            contentType: file.contentType,
+                            size: file.size,
+                            // Private container: sign on read, never persist the signed value.
+                            url: (await this.blobStorage.signIfOurs(file.path)) as string | null,
+                          })),
+                        )
+                      : [],
+                  // Recruiter feedback applies to any manually-graded type.
+                  gradingFeedback: isManual ? (answer?.gradingFeedback ?? null) : null,
+                  tabActivity: tabActivity.byQuestionId.get(questionId) ?? [],
+                };
+              }),
+            ),
+          };
+        }),
+      );
 
       const faceEnrolment: CandidateFaceEnrolment | null = attempt.faceEnrolment
         ? {

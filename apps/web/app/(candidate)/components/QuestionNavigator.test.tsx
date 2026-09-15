@@ -25,7 +25,7 @@ function question(id: string, overrides: Partial<AttemptQuestion> = {}): Attempt
 }
 
 function answer(questionId: string, overrides: Partial<AttemptAnswerSummary> = {}): AttemptAnswerSummary {
-  return { questionId, selectedOptionIds: [], answerText: null, codeLanguage: null, isMarkedForReview: false, ...overrides };
+  return { questionId, selectedOptionIds: [], answerText: null, codeLanguage: null, isMarkedForReview: false, answerFiles: [], ...overrides };
 }
 
 const sections: AttemptSection[] = [

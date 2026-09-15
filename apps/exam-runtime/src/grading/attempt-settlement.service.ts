@@ -25,7 +25,7 @@ export const NOT_ATTEMPTED_FEEDBACK = 'Not attempted.';
 // carry no options, and route the attempt to pending_manual_grade when attempted. Mirrored in
 // apps/api's getPendingGrading (queue) and attempt.service (candidate store path) -- one small
 // list, duplicated rather than shared, because the two apps have no common runtime module for it.
-export const MANUALLY_GRADED_TYPES = ['code', 'essay'];
+export const MANUALLY_GRADED_TYPES = ['code', 'essay', 'file_upload'];
 export function isManuallyGraded(type: string): boolean {
   return MANUALLY_GRADED_TYPES.includes(type);
 }
@@ -35,6 +35,24 @@ export function isManuallyGraded(type: string): boolean {
 // candidate never touched being absent entirely. Works for any answerText-based type (code + essay).
 function isAttemptedText(answer: { answerText: string | null } | undefined): boolean {
   return Boolean(answer?.answerText && answer.answerText.trim().length > 0);
+}
+
+// file_upload stores its work as a JSON array of uploaded files rather than answerText, so "attempted"
+// means at least one file was uploaded. hasAnswerFiles tolerates null/garbage JSON (treats it as none).
+function hasAnswerFiles(json: string | null | undefined): boolean {
+  if (!json) return false;
+  try {
+    const arr = JSON.parse(json);
+    return Array.isArray(arr) && arr.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+// The manually-graded "attempted" test, dispatched by type: file_upload checks its file list, every
+// other manual type (code, essay) checks answerText.
+function isAttemptedManual(type: string, answer: { answerText: string | null; answerFilesJson?: string | null } | undefined): boolean {
+  return type === 'file_upload' ? hasAnswerFiles(answer?.answerFilesJson) : isAttemptedText(answer);
 }
 
 // The owners a pause can be attributed to. browser_activity is a bucket shared by all
@@ -178,7 +196,7 @@ export class AttemptSettlementService {
     // auto-grade trigger (essays have no auto-grade), so widening manual routing never turns the
     // code test-runner loose on prose.
     const attemptedManualQuestions = questions.filter(
-      (question) => isManuallyGraded(question.type) && isAttemptedText(answersByQuestionId.get(question.id)),
+      (question) => isManuallyGraded(question.type) && isAttemptedManual(question.type, answersByQuestionId.get(question.id)),
     );
     const hasManualQuestions = attemptedManualQuestions.length > 0;
     const hasCodeQuestions = attemptedManualQuestions.some((question) => question.type === 'code');
@@ -186,7 +204,7 @@ export class AttemptSettlementService {
     for (const question of questions) {
       if (isManuallyGraded(question.type)) {
         const existing = answersByQuestionId.get(question.id);
-        if (!isAttemptedText(existing)) {
+        if (!isAttemptedManual(question.type, existing)) {
           // Auto-zero, and record WHY, so the report reads "Not attempted." rather than a bare 0
           // that looks like a human judged the work. The row is still created when absent: the
           // candidate report and finalizeManualGrade() both walk answers, and no row would make
@@ -196,7 +214,7 @@ export class AttemptSettlementService {
             await tx.answer.update({ where: { id: existing.id }, data: scored });
           } else {
             await tx.answer.create({
-              data: { attemptId: attempt.id, questionId: question.id, selectedOptionIdsJson: '[]', answerText: null, ...scored },
+              data: { attemptId: attempt.id, questionId: question.id, selectedOptionIdsJson: '[]', answerText: null, answerFilesJson: null, ...scored },
             });
           }
           gradedAnswers.push({ questionId: question.id, marksAwarded: 0 });
@@ -411,7 +429,7 @@ export class AttemptSettlementService {
     // check below. Settle them here on the same rule settlement uses.
     for (const question of manualQuestions) {
       const answer = answersByQuestionId.get(question.id);
-      if (answer && answer.marksAwarded === null && !isAttemptedText(answer)) {
+      if (answer && answer.marksAwarded === null && !isAttemptedManual(question.type, answer)) {
         await tx.answer.update({
           where: { id: answer.id },
           data: { marksAwarded: 0, isCorrect: false, gradingFeedback: NOT_ATTEMPTED_FEEDBACK },

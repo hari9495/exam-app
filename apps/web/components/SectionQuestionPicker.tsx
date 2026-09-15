@@ -23,6 +23,7 @@ const TYPE_LABELS: Record<QuestionType, string> = {
   true_false: 'True / false',
   code: 'Coding',
   essay: 'Essay',
+  file_upload: 'File upload',
 };
 
 const DIFFICULTY_VARIANT: Record<Difficulty, 'success' | 'warning' | 'danger'> = {

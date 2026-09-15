@@ -57,6 +57,25 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
       </div>
       {question.type === 'essay' ? (
         <div style={{ margin: '0 0 12px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--hair)', padding: 12, fontSize: 13, lineHeight: 1.55, color: 'var(--ink)' }}>{question.answerText ?? '(no submission)'}</div>
+      ) : question.type === 'file_upload' ? (
+        <div style={{ margin: '0 0 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {question.answerFiles.length === 0 ? (
+            <span style={{ fontSize: 13, color: 'var(--muted)' }}>(no files)</span>
+          ) : (
+            question.answerFiles.map((file, i) => (
+              <a
+                key={i}
+                href={file.url ?? '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', padding: '8px 12px', fontSize: 13, color: 'var(--org-primary)', textDecoration: 'none' }}
+              >
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.fileName}</span>
+                <span style={{ flexShrink: 0, fontSize: 11.5, color: 'var(--muted)' }}>{Math.max(1, Math.round(file.size / 1024))} KB</span>
+              </a>
+            ))
+          )}
+        </div>
       ) : (
         <pre style={{ margin: '0 0 12px', overflowX: 'auto', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--hair)', padding: 12, fontSize: 12 }} className="v2-mono">{question.answerText ?? '(no submission)'}</pre>
       )}

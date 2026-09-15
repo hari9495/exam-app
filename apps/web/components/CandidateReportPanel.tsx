@@ -437,21 +437,47 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                         <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">Not counted</span>
                       )}
                     </p>
-                    {question.type === 'code' ? (
-                      // A code question has no options, so the loop below would render nothing and
-                      // the submission would be invisible here -- the only place it can still be
-                      // read once grading has finalized the attempt.
+                    {question.type === 'code' || question.type === 'essay' || question.type === 'file_upload' ? (
+                      // These types have no options, so the loop below would render nothing and the
+                      // submission would be invisible here -- the only place it can still be read
+                      // once grading has finalized the attempt.
                       <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-2 text-xs text-gray-500">
-                          <span>{question.codeLanguage ?? 'code'}</span>
+                          <span>{question.type === 'code' ? (question.codeLanguage ?? 'code') : question.type === 'essay' ? 'essay' : 'files'}</span>
                           <span>·</span>
                           <span>
                             {question.marksAwarded ?? 0}/{question.marks}
                           </span>
                         </div>
-                        <pre className="overflow-x-auto rounded bg-gray-50 p-3 text-xs text-gray-800">
-                          {question.answerText?.trim() ? question.answerText : 'Not attempted.'}
-                        </pre>
+                        {question.type === 'file_upload' ? (
+                          question.answerFiles.length === 0 ? (
+                            <p className="text-sm text-gray-500">Not attempted.</p>
+                          ) : (
+                            <div className="flex flex-col gap-1.5">
+                              {question.answerFiles.map((file, i) => (
+                                <a
+                                  key={i}
+                                  href={file.url ?? '#'}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-2 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-candidate-primary no-underline"
+                                >
+                                  <Download className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                                  <span className="min-w-0 flex-1 truncate">{file.fileName}</span>
+                                  <span className="flex-shrink-0 text-xs text-gray-500">{Math.max(1, Math.round(file.size / 1024))} KB</span>
+                                </a>
+                              ))}
+                            </div>
+                          )
+                        ) : question.type === 'essay' ? (
+                          <div className="whitespace-pre-wrap break-words rounded bg-gray-50 p-3 text-sm text-gray-800">
+                            {question.answerText?.trim() ? question.answerText : 'Not attempted.'}
+                          </div>
+                        ) : (
+                          <pre className="overflow-x-auto rounded bg-gray-50 p-3 text-xs text-gray-800">
+                            {question.answerText?.trim() ? question.answerText : 'Not attempted.'}
+                          </pre>
+                        )}
                         {question.gradingFeedback && (
                           <p className="rounded border border-gray-200 p-2 text-xs text-gray-700">
                             <span className="font-medium">Feedback: </span>

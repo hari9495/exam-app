@@ -19,7 +19,17 @@ export interface PaginatedResponse<T> {
   totalPages: number;
 }
 
-export type QuestionType = 'single_mcq' | 'multi_mcq' | 'true_false' | 'code' | 'essay';
+export type QuestionType = 'single_mcq' | 'multi_mcq' | 'true_false' | 'code' | 'essay' | 'file_upload';
+
+/** A file the candidate uploaded for a file_upload answer (server-signed download URL on read). */
+export interface AnswerFile {
+  id: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+  /** Present on recruiter/report views (signed); absent on the candidate's own in-exam list. */
+  url?: string | null;
+}
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type ExamStatus = 'draft' | 'published' | 'archived';
 export type InvitationStatus = 'invited' | 'revoked';
@@ -1268,6 +1278,8 @@ export interface AttemptAnswerSummary {
   answerText: string | null;
   codeLanguage: string | null;
   isMarkedForReview: boolean;
+  /** Uploaded files for a file_upload answer (no signed url here — the candidate's own list). */
+  answerFiles: AnswerFile[];
 }
 
 export interface AttemptMessageSummary {
@@ -1477,9 +1489,11 @@ export interface CandidateDetailQuestion {
   isCorrect: boolean | null;
   marksAwarded: number | null;
   counted: boolean;
-  /** Code questions only -- null for every other type. See reports.service.ts. */
+  /** code/essay carry answerText; file_upload carries answerFiles; null/empty otherwise. */
   answerText: string | null;
   codeLanguage: string | null;
+  /** Signed download URLs for a file_upload answer; empty for other types. */
+  answerFiles: AnswerFile[];
   gradingFeedback: string | null;
   /** Estimated from answer-save timing, not an exact link -- see tab-activity.ts. */
   tabActivity: QuestionTabActivityEntry[];
@@ -1615,7 +1629,7 @@ export interface CandidateLeaderboardResponse {
 
 export interface PendingGradingCodeQuestion {
   questionId: string;
-  /** 'code' | 'essay' — the queue renders code as monospace (+ AI review), essay as prose. */
+  /** 'code' | 'essay' | 'file_upload' — code renders monospace, essay as prose, file_upload as links. */
   type: string;
   questionText: string;
   /** easy | medium | hard, from the question bank. */
@@ -1625,6 +1639,8 @@ export interface PendingGradingCodeQuestion {
   modelAnswer: string | null;
   codeLanguage: CodeLanguage | null;
   answerText: string | null;
+  /** Signed download URLs for a file_upload answer; empty for other types. */
+  answerFiles: AnswerFile[];
   marks: number;
   marksAwarded: number | null;
   gradingFeedback: string | null;
