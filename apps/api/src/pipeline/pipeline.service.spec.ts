@@ -47,6 +47,7 @@ describe('PipelineService', () => {
   let jobBoardPoster: { syncJobToPaidBoards: jest.Mock };
   let hrisExport: { exportOnHire: jest.Mock };
   let drip: { enrolOnStageChange: jest.Mock; exitCandidate: jest.Mock };
+  let surveys: { triggerOnStageChange: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   const chains = (requisitionEnabled: boolean) => ({
@@ -85,7 +86,9 @@ describe('PipelineService', () => {
     hrisExport = { exportOnHire: jest.fn().mockResolvedValue(undefined) };
     // Drip enrol/exit hooks are best-effort + inert by default (no-op) in these tests.
     drip = { enrolOnStageChange: jest.fn().mockResolvedValue(undefined), exitCandidate: jest.fn().mockResolvedValue(undefined) };
-    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, whatsappTemplates as any, candidateWhatsapp as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any, jobBoardPoster as any, hrisExport as any, drip as any);
+    // Survey trigger hook is best-effort + inert by default (no-op) in these tests.
+    surveys = { triggerOnStageChange: jest.fn().mockResolvedValue(undefined) };
+    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, whatsappTemplates as any, candidateWhatsapp as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any, jobBoardPoster as any, hrisExport as any, drip as any, surveys as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {

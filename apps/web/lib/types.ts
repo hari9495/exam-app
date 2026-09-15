@@ -1143,6 +1143,41 @@ export interface DripCampaign {
   enrolments?: { active: number; completed: number; exited: number };
 }
 
+// Candidate-experience surveys. Mirrors apps/api/src/surveys/*.
+export interface SurveyQuestion {
+  type: 'rating' | 'text';
+  prompt: string;
+}
+
+export interface SurveyDefinition {
+  id: string;
+  name: string;
+  enabled: boolean;
+  triggerStage: string | null;
+  questions: SurveyQuestion[];
+  createdAt: string;
+  updatedAt: string;
+  invited?: number;
+  submitted?: number;
+}
+
+export interface SurveySummaryQuestion {
+  prompt: string;
+  type: 'rating' | 'text';
+  count: number;
+  averageRating?: number;
+  distribution?: Record<string, number>;
+  responses?: string[];
+}
+
+export interface SurveySummary {
+  survey: { id: string; name: string };
+  totalInvited: number;
+  totalSubmitted: number;
+  responseRate: number;
+  questions: SurveySummaryQuestion[];
+}
+
 // Self-serve billing. Mirrors apps/api/src/billing/billing-checkout.service.ts.
 export interface PurchasablePlan {
   id: string;

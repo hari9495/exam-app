@@ -4,12 +4,15 @@ export interface MergeContext {
   orgName: string;
   recruiterName: string;
   statusLink: string;
+  // Only survey invites set this; other senders (SMS/WhatsApp/email) omit it, so {{surveyLink}}
+  // resolves to '' for them.
+  surveyLink?: string;
 }
 
-const TOKEN = /\{\{(candidateName|jobTitle|orgName|recruiterName|statusLink)\}\}/g;
+const TOKEN = /\{\{(candidateName|jobTitle|orgName|recruiterName|statusLink|surveyLink)\}\}/g;
 
 export function renderTemplate(subject: string, body: string, ctx: MergeContext): { subject: string; body: string } {
-  const sub = (s: string) => s.replace(TOKEN, (_m, k: keyof MergeContext) => ctx[k]);
+  const sub = (s: string) => s.replace(TOKEN, (_m, k: keyof MergeContext) => ctx[k] ?? '');
   return { subject: sub(subject), body: sub(body) };
 }
 

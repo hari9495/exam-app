@@ -12,8 +12,11 @@ export interface SendMessageInput {
   templateId?: string | null;
   subject: string;
   body: string;
-  source: 'manual' | 'stage_prompt' | 'stage_auto' | 'drip';
+  source: 'manual' | 'stage_prompt' | 'stage_auto' | 'drip' | 'survey';
   senderAddressId?: string;
+  // Rendered into {{surveyLink}}. Set by the surveys module for a survey invite; the token is minted
+  // by that caller (unlike statusLink, which this service lazy-mints on the pipeline entry).
+  surveyLink?: string;
 }
 
 @Injectable()
@@ -102,6 +105,7 @@ export class CandidateEmailsService {
       orgName: org?.name ?? '',
       recruiterName: actorName,
       statusLink,
+      surveyLink: input.surveyLink ?? '',
     });
     const signature = appendSignature && actorUserId ? (actorSignature ?? '').trim() : '';
     const bodyWithSignature = signature ? `${rendered.body}\n\n--\n${signature}` : rendered.body;
