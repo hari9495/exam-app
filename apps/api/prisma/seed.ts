@@ -21,6 +21,11 @@ export const PERMISSIONS = [
   { key: 'approvals:configure', description: 'Configure approval chains and staff reporting managers' },
   { key: 'pipelines:configure', description: 'Configure hiring pipelines' },
   { key: 'users:manage_groups', description: 'Create and manage user groups' },
+  // Read-only counterparts to candidate:manage / question_bank:manage. Held by the auditor role so a
+  // compliance viewer can see the candidate list + question bank without any write capability. The
+  // list/detail GET routes accept EITHER the :manage or the :view key (RequireAnyPermission).
+  { key: 'candidate:view', description: 'View candidates (read-only)' },
+  { key: 'question_bank:view', description: 'View the question bank (read-only)' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -51,6 +56,11 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   // but has no settings/users/billing access. Pair with Record-level visibility to scope them to
   // their own jobs. This is the seeded DEFAULT — an org admin can retune it in Roles & Permissions.
   hiring_manager: ['org:view', 'results:view', 'interview:view_assigned', 'pipeline:manage', 'candidate:manage'],
+  // auditor: compliance read-only. Sees candidates, jobs/pipelines, exams, results/reports, the
+  // question bank, and the audit log — but holds ZERO write keys, so every mutation route (all gated
+  // on a :manage key) denies it. Deliberately NOT in EDITABLE_ROLES: its grants stay fixed read-only,
+  // so an org admin can't accidentally hand it write access.
+  auditor: ['org:view', 'results:view', 'audit:view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned'],
 };
 
 async function main() {
@@ -180,11 +190,15 @@ async function main() {
   console.log('Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026, panel@demo-org.test / Passw0rd!2026 (org slug: demo-org)');
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+// Only run when invoked as a script (prisma db seed / ts-node). Guarded so importing this module for
+// its exported PERMISSIONS / ROLE_PERMISSIONS (e.g. in tests) doesn't connect to the DB or exit.
+if (require.main === module) {
+  main()
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}
