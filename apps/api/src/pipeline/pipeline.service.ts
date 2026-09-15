@@ -68,6 +68,7 @@ export interface BoardRow {
   fitStatus: string | null;
   assignedUserId: string | null;
   assigneeName: string | null;
+  referredByName: string | null;
   assignedGroupId: string | null;
   assignedGroupName: string | null;
   fitStale: boolean;
@@ -688,12 +689,12 @@ export class PipelineService {
       const currentHash = computeCriteriaHash({
         title: job.title, description: job.description, fitCriteria: job.fitCriteria, fitRubric: job.fitRubric,
       });
-      // Resolve assignee display names in one batched query.
-      const assigneeIds = [...new Set(entries.map((e) => e.assignedUserId).filter((id): id is string => Boolean(id)))];
-      const assignees = assigneeIds.length
-        ? await tx.user.findMany({ where: { id: { in: assigneeIds } }, select: { id: true, name: true } })
+      // Resolve assignee + referrer display names in one batched query (both are User ids).
+      const userIds = [...new Set(entries.flatMap((e) => [e.assignedUserId, e.referrerUserId]).filter((id): id is string => Boolean(id)))];
+      const boardUsers = userIds.length
+        ? await tx.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
         : [];
-      const assigneeName = new Map(assignees.map((a: { id: string; name: string | null }) => [a.id, a.name]));
+      const assigneeName = new Map(boardUsers.map((a: { id: string; name: string | null }) => [a.id, a.name]));
       const groupIds = [...new Set(entries.map((e) => e.assignedGroupId).filter((id): id is string => Boolean(id)))];
       const groups = groupIds.length
         ? await tx.userGroup.findMany({ where: { id: { in: groupIds } }, select: { id: true, name: true } })
@@ -744,6 +745,7 @@ export class PipelineService {
           fitStale: e.fitAssessment?.status === 'done' && e.fitAssessment.criteriaHash !== currentHash,
           assignedUserId: e.assignedUserId,
           assigneeName: e.assignedUserId ? (assigneeName.get(e.assignedUserId) ?? null) : null,
+          referredByName: e.referrerUserId ? (assigneeName.get(e.referrerUserId) ?? null) : null,
           customFields: serializeCustomFieldValues(customFieldValuesByCandidate.get(e.candidateId) ?? [], customFieldDefs),
           assignedGroupId: e.assignedGroupId,
           assignedGroupName: e.assignedGroupId ? (groupName.get(e.assignedGroupId) ?? null) : null,

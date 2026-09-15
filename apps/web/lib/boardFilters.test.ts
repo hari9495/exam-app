@@ -20,6 +20,7 @@ function row(overrides: Partial<BoardEntryRow>): BoardEntryRow {
     fitStale: false,
     assignedUserId: null,
     assigneeName: null,
+    referredByName: null,
     assignedGroupId: null,
     assignedGroupName: null,
     blueprintChecklist: {},
