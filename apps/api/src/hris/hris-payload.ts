@@ -9,7 +9,18 @@ export interface HrisHireData {
   offer: { compensation: string; startDate: string } | null;
 }
 
-export function buildHrisEmployeePayload(data: HrisHireData): Record<string, unknown> {
+// The snapshotted shape stored in HrisExportDelivery.payloadJson and handed to a connector's
+// buildRequest at send time (the generic connector posts it verbatim; vendor connectors re-map it).
+export interface HrisEmployeePayload {
+  event: 'candidate.hired';
+  hiredAt: string;
+  organizationId: string;
+  candidate: { id: string; name: string; email: string; phone: string | null };
+  job: { id: string; title: string; department: string | null };
+  offer: { compensation: string; startDate: string } | null;
+}
+
+export function buildHrisEmployeePayload(data: HrisHireData): HrisEmployeePayload {
   return {
     event: 'candidate.hired',
     hiredAt: data.hiredAt.toISOString(),

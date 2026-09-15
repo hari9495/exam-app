@@ -5,6 +5,8 @@ import { TenantPrismaService, OrgSecretsCryptoService } from '@exam-platform/sha
 import { REDIS_CONNECTION } from '../jobs/redis-connection';
 import { HRIS_EXPORTS_QUEUE_NAME } from './hris-exports.queue';
 import { assertAllowedWebhookUrl, assertPublicWebhookTarget } from '../integrations/webhook-url-allowlist';
+import { getHrisConnector } from './providers';
+import type { HrisEmployeePayload } from './hris-payload';
 
 const SUPER_ADMIN_CONTEXT = { organizationId: null, isSuperAdmin: true };
 
@@ -13,7 +15,7 @@ export interface HrisExportJobData {
 }
 
 interface DeliveryRow { id: string; organizationId: string; payloadJson: string }
-interface OrgHrisConfig { hrisExportEnabled: boolean; hrisTargetUrl: string | null; hrisAuthHeaderEncrypted: string | null }
+interface OrgHrisConfig { hrisExportEnabled: boolean; hrisProvider: string; hrisTargetUrl: string | null; hrisAuthHeaderEncrypted: string | null }
 
 @Injectable()
 export class HrisExportWorkerService implements OnModuleDestroy {
@@ -44,11 +46,12 @@ export class HrisExportWorkerService implements OnModuleDestroy {
     const org = await this.tenantPrisma.forTenant(SUPER_ADMIN_CONTEXT, (tx) =>
       tx.organization.findUnique({
         where: { id: delivery.organizationId },
-        select: { hrisExportEnabled: true, hrisTargetUrl: true, hrisAuthHeaderEncrypted: true },
+        select: { hrisExportEnabled: true, hrisProvider: true, hrisTargetUrl: true, hrisAuthHeaderEncrypted: true },
       }),
     );
-    if (!org?.hrisExportEnabled || !org.hrisTargetUrl) {
-      // Disabled/unconfigured between enqueue and run: mark failed, do not retry.
+    if (!org?.hrisExportEnabled) {
+      // Disabled between enqueue and run: mark failed, do not retry. (A vendor connector may have no
+      // targetUrl — the connector's buildRequest validates the rest of the config below.)
       await this.markFailed(deliveryId, 'HRIS export disabled or unconfigured');
       return;
     }
@@ -57,21 +60,30 @@ export class HrisExportWorkerService implements OnModuleDestroy {
 
   // Extracted for unit tests (no Redis needed).
   async deliver(delivery: DeliveryRow, org: OrgHrisConfig): Promise<void> {
-    const url = org.hrisTargetUrl as string;
-    // https + public-host allowlist (save-time already checked; re-checked here), then a DNS-resolve
-    // SSRF guard so the target can't point at internal/metadata addresses. redirect:'error' stops a
-    // redirect from bouncing past the guard.
-    assertAllowedWebhookUrl('webhook', url);
-    await assertPublicWebhookTarget(url);
+    // Resolve the vendor connector and let it map the hire payload to the right endpoint/auth/body.
+    // Generic posts the payload verbatim (unchanged behaviour); vendors re-shape it for their API.
+    const connector = getHrisConnector(org.hrisProvider);
+    const secret = org.hrisAuthHeaderEncrypted ? this.cryptoService.decrypt(org.hrisAuthHeaderEncrypted) : null;
+    const payload = JSON.parse(delivery.payloadJson) as HrisEmployeePayload;
 
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (org.hrisAuthHeaderEncrypted) {
-      headers['Authorization'] = this.cryptoService.decrypt(org.hrisAuthHeaderEncrypted);
+    let request: { url: string; method: 'POST'; headers: Record<string, string>; body: string };
+    try {
+      request = connector.buildRequest(payload, { targetUrl: org.hrisTargetUrl, secret });
+    } catch (e) {
+      // A config error won't fix on retry, but marking the attempt failed (and rethrowing) lets the
+      // normal retry-ceiling path terminate it — same as a persistent HTTP failure.
+      await this.recordAttempt(delivery, false, undefined, (e as Error).message);
+      throw e;
     }
+
+    // https + public-host allowlist, then a DNS-resolve SSRF guard so the target can't point at
+    // internal/metadata addresses. redirect:'error' stops a redirect from bouncing past the guard.
+    assertAllowedWebhookUrl('webhook', request.url);
+    await assertPublicWebhookTarget(request.url);
 
     let response: { ok: boolean; status: number };
     try {
-      response = await fetch(url, { method: 'POST', redirect: 'error', headers, body: delivery.payloadJson });
+      response = await fetch(request.url, { method: request.method, redirect: 'error', headers: request.headers, body: request.body });
     } catch (e) {
       await this.recordAttempt(delivery, false, undefined, (e as Error).message);
       throw e;

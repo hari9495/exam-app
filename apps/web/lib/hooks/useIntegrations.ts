@@ -101,8 +101,12 @@ export function useUpdateWebhookUrl() {
 export interface HrisConfigInput {
   enabled: boolean;
   provider?: string;
-  targetUrl?: string;
-  authHeader?: string;
+  targetUrl?: string; // generic / workday
+  authHeader?: string; // generic
+  apiKey?: string; // greenhouse / lever / bamboohr / workday
+  subdomain?: string; // bamboohr
+  onBehalfOf?: string; // greenhouse
+  performAs?: string; // lever
 }
 
 export function useUpdateHrisConfig() {

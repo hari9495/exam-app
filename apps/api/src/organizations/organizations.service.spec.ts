@@ -1154,7 +1154,7 @@ describe('OrganizationsService', () => {
       expect(cryptoService.encrypt).toHaveBeenCalledWith('Bearer secret-token');
       expect(prisma.organization.update).toHaveBeenCalledWith({
         where: { id: 'org-1' },
-        data: { hrisExportEnabled: true, hrisTargetUrl: 'https://hris.example.com/inbound', hrisAuthHeaderEncrypted: 'enc-header' },
+        data: { hrisExportEnabled: true, hrisProvider: 'generic', hrisTargetUrl: 'https://hris.example.com/inbound', hrisAuthHeaderEncrypted: 'enc-header' },
       });
       expect(result).toEqual({ hrisExportConfigured: true, hrisExportEnabled: true });
     });
@@ -1180,7 +1180,7 @@ describe('OrganizationsService', () => {
       await service.updateHrisConfig(ctx, 'user-1', { enabled: false });
 
       expect(cryptoService.encrypt).not.toHaveBeenCalled();
-      expect(prisma.organization.update).toHaveBeenCalledWith({ where: { id: 'org-1' }, data: { hrisExportEnabled: false } });
+      expect(prisma.organization.update).toHaveBeenCalledWith({ where: { id: 'org-1' }, data: { hrisExportEnabled: false, hrisProvider: 'generic' } });
     });
   });
 
