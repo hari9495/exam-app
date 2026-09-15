@@ -29,7 +29,7 @@ export const NAV_GROUP_ORDER = ['Hiring', 'Assessments', 'Messaging', 'Analytics
 // moment you opened a settings page.
 const V2_ROUTES = new Set([
   '/today', '/dashboard', '/exams', '/questions', '/candidates', '/reports',
-  '/walk-in-groups', '/jobs', '/agency-submissions', '/approvals', '/referrals', '/analytics/hiring',
+  '/walk-in-groups', '/jobs', '/agency-submissions', '/approvals', '/referrals', '/internal-mobility', '/analytics/hiring',
   '/message-templates', '/sms-templates', '/whatsapp-templates', '/offer-template', '/campaigns', '/surveys', '/calendar',
   '/users', '/audit-log', '/system-logs', '/data-rights',
   '/settings/branding', '/settings/integrations', '/settings/sso', '/settings/billing',

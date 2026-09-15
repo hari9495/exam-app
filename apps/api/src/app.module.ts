@@ -36,6 +36,7 @@ import { CandidateEmailsModule } from './candidate-emails/candidate-emails.modul
 import { BulkCandidateEmailModule } from './bulk-candidate-email/bulk-candidate-email.module';
 import { DripModule } from './drip/drip.module';
 import { ReferralsModule } from './referrals/referrals.module';
+import { InternalApplicationsModule } from './internal-applications/internal-applications.module';
 import { SurveysModule } from './surveys/surveys.module';
 import { ResultReleaseModule } from './result-release/result-release.module';
 import { CertificatesModule } from './certificates/certificates.module';
@@ -119,6 +120,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     BulkCandidateEmailModule,
     DripModule,
     ReferralsModule,
+    InternalApplicationsModule,
     SurveysModule,
     ResultReleaseModule,
     CertificatesModule,

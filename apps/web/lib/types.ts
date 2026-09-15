@@ -1124,6 +1124,15 @@ export interface ReferralRow {
   createdAt: string;
 }
 
+// Internal-mobility self-apply. Mirrors apps/api/src/internal-applications/*. Reuses ReferableJob
+// for the open-roles list.
+export interface InternalApplicationRow {
+  entryId: string;
+  jobTitle: string;
+  status: string;
+  appliedAt: string;
+}
+
 // Candidate nurture / drip campaigns. Mirrors apps/api/src/drip/*.
 export interface DripStep {
   subject: string;

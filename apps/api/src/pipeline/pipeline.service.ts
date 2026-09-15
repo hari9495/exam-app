@@ -747,7 +747,9 @@ export class PipelineService {
           fitStale: e.fitAssessment?.status === 'done' && e.fitAssessment.criteriaHash !== currentHash,
           assignedUserId: e.assignedUserId,
           assigneeName: e.assignedUserId ? (assigneeName.get(e.assignedUserId) ?? null) : null,
-          referredByName: e.referrerUserId ? (assigneeName.get(e.referrerUserId) ?? null) : null,
+          // referrerUserId is reused to attribute a self-applicant (enteredVia='internal'), so
+          // suppress the "referred by" label there -- they weren't referred, they applied.
+          referredByName: e.referrerUserId && e.enteredVia !== 'internal' ? (assigneeName.get(e.referrerUserId) ?? null) : null,
           customFields: serializeCustomFieldValues(customFieldValuesByCandidate.get(e.candidateId) ?? [], customFieldDefs),
           assignedGroupId: e.assignedGroupId,
           assignedGroupName: e.assignedGroupId ? (groupName.get(e.assignedGroupId) ?? null) : null,
