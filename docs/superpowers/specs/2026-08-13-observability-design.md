@@ -167,6 +167,15 @@ Configuration:
 
 All are gitignored and must be re-applied after any redeploy that regenerates `.env` files.
 
+### 6a. Source maps (de-minification) — added 2026-09-15
+
+So production stack traces show original source rather than minified/compiled output. All build-time and, like the DSN, **inert until configured** (no auth token → no upload, build unaffected).
+
+- **`apps/web`** (Next.js): the `@sentry/nextjs` build plugin uploads the client + server maps to Sentry, then deletes them so the client bundle never ships source. Gated on `SENTRY_AUTH_TOKEN` in `next.config.js` (`sourcemaps.disable = !SENTRY_AUTH_TOKEN`, `deleteSourcemapsAfterUpload: true`, `widenClientFileUpload: true`). Needs `SENTRY_ORG`, `SENTRY_PROJECT` (default `exam-web`), and `SENTRY_RELEASE` at build time. `@sentry/cli` is already bundled with `@sentry/nextjs` — no new dependency.
+- **`apps/api` + `apps/exam-runtime`** (NestJS/tsc): no upload. `tsconfig` already emits `.js.map` (`sourceMap: true`), the runtime Docker stages already copy the whole `dist` (maps included), and the container `CMD` now runs `node --enable-source-maps …` so V8 applies the maps to `error.stack` and `@sentry/node` reports original TypeScript positions. `SentryReporter.init()` also tags events with `SENTRY_RELEASE` when set (metadata only).
+
+**Build-time vars** (build stage / CI only — never the runtime pm2 env): `SENTRY_AUTH_TOKEN` (secret, `project:releases` scope), `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_RELEASE` (use the git SHA). The `Dockerfile` build stage accepts them as `ARG`s (thrown away with the stage, so no shipped image carries the token). In a Docker build the `.git` dir is absent, so `SENTRY_RELEASE` must be passed explicitly (e.g. `--build-arg SENTRY_RELEASE=$(git rev-parse HEAD)`) or the web release can't be auto-detected. See `.env.example`.
+
 ### 7. Log rotation
 
 `pm2 install pm2-logrotate`, configured to 10MB max size, 30 files retained, compression on. Caps the current unbounded growth and provides the local retention window.
