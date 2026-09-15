@@ -8,6 +8,7 @@ import { NotificationDigestService } from './notification-digest.service';
   imports: [EmailModule],
   controllers: [NotificationsController],
   providers: [NotificationsService, NotificationDigestService],
-  exports: [NotificationsService], // PipelineModule injects this to create @mention notifications
+  // PipelineModule injects NotificationsService; ScheduledSweepsModule dispatches the digest sweep.
+  exports: [NotificationsService, NotificationDigestService],
 })
 export class NotificationsModule {}

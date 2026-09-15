@@ -1,15 +1,12 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { ENTITY_TYPES, EntityType } from './recycle-bin.service';
 
 export const RETENTION_DAYS = 30;
-const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 // Hard-deletes recycle-bin rows (Candidate/Job/Pipeline/WalkInGroup) soft-deleted more than 30
-// days ago -- on boot and then daily. Mirrors system-events-retention.service.ts's shape (plain
-// interval, not a queue job -- same reasoning applies here).
-// ponytail: single-process interval; move to a repeatable queue job if api ever scales out.
+// days ago. Scheduled as a nightly BullMQ job scheduler by ScheduledSweepsModule.
 //
 // Per-row delete, not one deleteMany per model: Job.pipelineId->Pipeline and
 // CandidateEmail.candidateId->Candidate are `onDelete: NoAction` FKs, so a soft-deleted row can
@@ -18,21 +15,10 @@ const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // rows. Deleting id-by-id inside its own try/catch lets every other due row purge regardless, and
 // leaves a blocked row soft-deleted (exactly as undeletable as it was before this feature existed).
 @Injectable()
-export class RecycleBinRetentionService implements OnModuleInit, OnModuleDestroy {
+export class RecycleBinRetentionService {
   private readonly logger = new Logger(RecycleBinRetentionService.name);
-  private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly tenantPrisma: TenantPrismaService) {}
-
-  onModuleInit(): void {
-    void this.prune();
-    this.timer = setInterval(() => void this.prune(), PRUNE_INTERVAL_MS);
-    this.timer.unref?.();
-  }
-
-  onModuleDestroy(): void {
-    if (this.timer) clearInterval(this.timer);
-  }
 
   async prune(now = new Date()): Promise<number> {
     const cutoff = new Date(now.getTime() - RETENTION_DAYS * 24 * 60 * 60 * 1000);

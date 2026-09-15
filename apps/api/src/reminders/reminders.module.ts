@@ -8,5 +8,6 @@ import { RemindersService } from './reminders.service';
 @Module({
   imports: [CryptoModule, NotificationsModule],
   providers: [RemindersService],
+  exports: [RemindersService], // ScheduledSweepsModule dispatches the daily sweep
 })
 export class RemindersModule {}

@@ -6,6 +6,6 @@ import { RecycleBinRetentionService } from './recycle-bin-retention.service';
 @Module({
   controllers: [RecycleBinController],
   providers: [RecycleBinService, RecycleBinRetentionService],
-  exports: [RecycleBinService],
+  exports: [RecycleBinService, RecycleBinRetentionService], // sweep dispatched by ScheduledSweepsModule
 })
 export class RecycleBinModule {}

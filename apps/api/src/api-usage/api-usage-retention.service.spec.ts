@@ -30,18 +30,4 @@ describe('ApiUsageRetentionService', () => {
     await expect(service.prune()).resolves.toBe(0);
   });
 
-  it('starts and stops its daily timer with the module lifecycle', () => {
-    jest.useFakeTimers();
-    const pruneSpy = jest.spyOn(service, 'prune').mockResolvedValue(0);
-
-    service.onModuleInit();
-    expect(pruneSpy).toHaveBeenCalledTimes(1); // boot-time prune
-    jest.advanceTimersByTime(24 * 60 * 60 * 1000);
-    expect(pruneSpy).toHaveBeenCalledTimes(2);
-
-    service.onModuleDestroy();
-    jest.advanceTimersByTime(24 * 60 * 60 * 1000);
-    expect(pruneSpy).toHaveBeenCalledTimes(2);
-    jest.useRealTimers();
-  });
 });

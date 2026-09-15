@@ -1,37 +1,25 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { EmailService } from '../email/email.service';
 import { renderDigestHtml, renderDigestCsv } from './report-digest';
 
-const SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const SUPER_ADMIN = { organizationId: null, isSuperAdmin: true };
 
-// Weekly scheduled-report digest. Runs the sweep daily (same OnModuleInit + unref'd setInterval
-// shape as RemindersService) but sends per org only when its last send was 7+ days ago — so the
-// cadence is weekly and a restart can't re-send the same week. Opt-in per org.
+// Weekly scheduled-report digest. The sweep runs nightly (scheduled by ScheduledSweepsModule) but
+// sends per org only when its last send was 7+ days ago — so the cadence is weekly and a restart or
+// a duplicate run can't re-send the same week. Opt-in per org.
 // ponytail: fixed 7-day cadence, no configurable day/frequency; add a cadence column if needed.
 @Injectable()
-export class ScheduledReportsService implements OnModuleInit, OnModuleDestroy {
+export class ScheduledReportsService {
   private readonly logger = new Logger(ScheduledReportsService.name);
-  private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly dashboard: DashboardService,
     private readonly email: EmailService,
   ) {}
-
-  onModuleInit(): void {
-    void this.sweep();
-    this.timer = setInterval(() => void this.sweep(), SWEEP_INTERVAL_MS);
-    this.timer.unref?.();
-  }
-
-  onModuleDestroy(): void {
-    if (this.timer) clearInterval(this.timer);
-  }
 
   async sweep(now = new Date()): Promise<void> {
     let orgs: { id: string; name: string; scheduledReportRecipientsJson: string | null; scheduledReportLastSentAt: Date | null }[] = [];

@@ -6,5 +6,6 @@ import { SystemEventsRetentionService } from './system-events-retention.service'
 @Module({
   controllers: [SystemEventsController],
   providers: [SystemEventsQueryService, SystemEventsRetentionService],
+  exports: [SystemEventsRetentionService], // ScheduledSweepsModule dispatches the daily prune
 })
 export class SystemEventsQueryModule {}

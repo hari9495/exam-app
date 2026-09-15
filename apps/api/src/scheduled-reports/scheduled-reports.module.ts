@@ -9,5 +9,6 @@ import { ScheduledReportsService } from './scheduled-reports.service';
 @Module({
   imports: [CryptoModule, DashboardModule, EmailModule],
   providers: [ScheduledReportsService],
+  exports: [ScheduledReportsService], // ScheduledSweepsModule dispatches the daily sweep
 })
 export class ScheduledReportsModule {}
