@@ -30,7 +30,7 @@ export const NAV_GROUP_ORDER = ['Hiring', 'Assessments', 'Messaging', 'Analytics
 const V2_ROUTES = new Set([
   '/today', '/dashboard', '/exams', '/questions', '/candidates', '/reports',
   '/walk-in-groups', '/jobs', '/agency-submissions', '/approvals', '/analytics/hiring',
-  '/message-templates', '/sms-templates', '/whatsapp-templates', '/offer-template', '/calendar',
+  '/message-templates', '/sms-templates', '/whatsapp-templates', '/offer-template', '/campaigns', '/calendar',
   '/users', '/audit-log', '/system-logs', '/data-rights',
   '/settings/branding', '/settings/integrations', '/settings/sso', '/settings/billing',
   '/settings/approvals', '/settings/pipelines', '/settings/business-hours', '/settings/custom-fields', '/settings/field-permissions', '/settings/user-groups', '/settings/roles', '/settings/permission-profiles',

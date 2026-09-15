@@ -11,6 +11,7 @@ import { RecycleBinRetentionService } from '../recycle-bin/recycle-bin-retention
 import { ApiUsageRetentionService } from '../api-usage/api-usage-retention.service';
 import { FaceRetentionService } from '../face-enrolment/face-retention.service';
 import { ProctoringRetentionService } from '../proctoring-retention/proctoring-retention.service';
+import { DripService } from '../drip/drip.service';
 
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -36,6 +37,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     apiUsageRetention: ApiUsageRetentionService,
     faceRetention: FaceRetentionService,
     proctoringRetention: ProctoringRetentionService,
+    drip: DripService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -47,6 +49,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'api-usage-retention': () => apiUsageRetention.prune(),
       'face-retention': () => faceRetention.prune(),
       'proctoring-retention': () => proctoringRetention.prune(),
+      'drip-steps': () => drip.sweep(),
     };
     this.worker = new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), { connection: this.connection });
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

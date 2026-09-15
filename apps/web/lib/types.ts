@@ -1102,6 +1102,25 @@ export interface OrgUsage {
   proctoringMinutes: DimensionUsage;
 }
 
+// Candidate nurture / drip campaigns. Mirrors apps/api/src/drip/*.
+export interface DripStep {
+  subject: string;
+  body: string;
+  delayDays: number;
+}
+
+export interface DripCampaign {
+  id: string;
+  name: string;
+  enabled: boolean;
+  targetGlobalStage: string | null;
+  steps: DripStep[];
+  createdAt: string;
+  updatedAt: string;
+  activeEnrolments?: number;
+  enrolments?: { active: number; completed: number; exited: number };
+}
+
 // Self-serve billing. Mirrors apps/api/src/billing/billing-checkout.service.ts.
 export interface PurchasablePlan {
   id: string;
