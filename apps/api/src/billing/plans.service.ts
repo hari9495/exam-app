@@ -16,6 +16,7 @@ export class PlansService {
         name: dto.name, seatLimit: dto.seatLimit, candidateLimit: dto.candidateLimit,
         aiCreditLimit: dto.aiCreditLimit, proctoringMinutesLimit: dto.proctoringMinutesLimit,
         priceLabel: dto.priceLabel ?? null, isPublic: dto.isPublic ?? true,
+        stripeProductId: dto.stripeProductId ?? null, stripePriceId: dto.stripePriceId ?? null,
       },
     });
     await this.audit.record(context, { actorUserId, action: 'plan.created', entityType: 'plan', entityId: plan.id, metadata: { name: dto.name } });
@@ -29,6 +30,7 @@ export class PlansService {
         name: dto.name, seatLimit: dto.seatLimit, candidateLimit: dto.candidateLimit,
         aiCreditLimit: dto.aiCreditLimit, proctoringMinutesLimit: dto.proctoringMinutesLimit,
         priceLabel: dto.priceLabel ?? null, isPublic: dto.isPublic ?? true,
+        stripeProductId: dto.stripeProductId ?? null, stripePriceId: dto.stripePriceId ?? null,
       },
     });
     await this.audit.record(context, { actorUserId, action: 'plan.updated', entityType: 'plan', entityId: id, metadata: { ...dto } });

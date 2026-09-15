@@ -1102,6 +1102,30 @@ export interface OrgUsage {
   proctoringMinutes: DimensionUsage;
 }
 
+// Self-serve billing. Mirrors apps/api/src/billing/billing-checkout.service.ts.
+export interface PurchasablePlan {
+  id: string;
+  name: string;
+  priceLabel: string | null;
+  billingInterval: string;
+  seatLimit: number;
+  candidateLimit: number;
+  aiCreditLimit: number;
+  proctoringMinutesLimit: number;
+  current: boolean;
+}
+
+export interface BillingInvoice {
+  id: string;
+  number: string | null;
+  status: string | null;
+  amountPaid: number;
+  currency: string;
+  createdAt: string;
+  hostedInvoiceUrl: string | null;
+  invoicePdf: string | null;
+}
+
 // Mirrors apps/api/src/billing/dto/plan.dto.ts UpsertPlanDto + the Prisma Plan model, as returned
 // by GET/POST/PATCH /platform/plans (super-admin plan catalog).
 export interface Plan {

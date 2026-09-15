@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
-import { json, urlencoded } from 'express';
+import { json, urlencoded, raw } from 'express';
 import { configureTrustProxy } from '@exam-platform/shared';
 import { AppModule } from './app.module';
 import { InternalAppModule } from './internal-app.module';
@@ -16,6 +16,10 @@ const JSON_BODY_LIMIT = '7mb';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
   configureTrustProxy(app);
+  // The Stripe webhook must verify an HMAC over the EXACT raw request bytes, so it needs the raw
+  // Buffer, not parsed JSON. Mount express.raw on just that path BEFORE the global json() below
+  // (json() skips a body express.raw already consumed). Path includes the global 'api/v1' prefix.
+  app.use('/api/v1/billing/stripe/webhook', raw({ type: 'application/json' }));
   app.use(json({ limit: JSON_BODY_LIMIT }));
   app.use(urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
   app.use(cookieParser());
