@@ -489,21 +489,46 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                       <span style={{ marginLeft: 8, borderRadius: 6, background: 'var(--surface)', color: 'var(--muted)', padding: '1px 6px', fontSize: 11 }}>Not counted</span>
                     )}
                   </p>
-                  {question.type === 'code' ? (
-                    // A code question has no options, so the loop below would render nothing and
-                    // the submission would be invisible here -- the only place it can still be
-                    // read once grading has finalized the attempt.
+                  {question.type === 'code' || question.type === 'essay' || question.type === 'file_upload' ? (
+                    // These types have no options, so the loop below would render nothing and the
+                    // submission would be invisible here -- the only place it can still be read once
+                    // grading has finalized the attempt.
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--muted)' }}>
-                        <span>{question.codeLanguage ?? 'code'}</span>
+                        <span>{question.type === 'code' ? (question.codeLanguage ?? 'code') : question.type === 'essay' ? 'essay' : 'files'}</span>
                         <span>·</span>
                         <span>
                           {question.marksAwarded ?? 0}/{question.marks}
                         </span>
                       </div>
-                      <pre style={{ overflowX: 'auto', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', padding: 12, fontSize: 12 }}>
-                        {question.answerText?.trim() ? question.answerText : 'Not attempted.'}
-                      </pre>
+                      {question.type === 'file_upload' ? (
+                        question.answerFiles.length === 0 ? (
+                          <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>Not attempted.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {question.answerFiles.map((file, i) => (
+                              <a
+                                key={i}
+                                href={file.url ?? '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 8, border: '1px solid var(--hair)', background: 'var(--surface)', padding: '8px 12px', fontSize: 13, color: 'var(--org-primary)', textDecoration: 'none' }}
+                              >
+                                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.fileName}</span>
+                                <span style={{ flexShrink: 0, fontSize: 11.5, color: 'var(--muted)' }}>{Math.max(1, Math.round(file.size / 1024))} KB</span>
+                              </a>
+                            ))}
+                          </div>
+                        )
+                      ) : question.type === 'essay' ? (
+                        <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', padding: 12, fontSize: 13, lineHeight: 1.55 }}>
+                          {question.answerText?.trim() ? question.answerText : 'Not attempted.'}
+                        </div>
+                      ) : (
+                        <pre style={{ overflowX: 'auto', borderRadius: 8, background: 'var(--surface)', color: 'var(--ink)', padding: 12, fontSize: 12 }}>
+                          {question.answerText?.trim() ? question.answerText : 'Not attempted.'}
+                        </pre>
+                      )}
                       {question.gradingFeedback && (
                         <p style={{ border: '1px solid var(--hair)', borderRadius: 8, padding: 8, fontSize: 12, color: 'var(--ink)' }}>
                           <span style={{ fontWeight: 500 }}>Feedback: </span>

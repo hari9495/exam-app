@@ -15,7 +15,7 @@ import { QuestionNavigator, flattenQuestions } from '../components/QuestionNavig
 import { ProctoringWarningOverlay, ProctoringBlockOverlay, FaceWarningOverlay } from '../components/ProctoringOverlay';
 import { ScreenShareRequiredOverlay } from '../components/ScreenShareRequiredOverlay';
 import { TimerBar } from '../components/TimerBar';
-import { useAttemptQuery, useAnswerMutation, useSubmitAttempt, useRunCode, useCodeLanguages, useWebcamResume, useAckFaceWarning, useScreenShareState, RunCodeResult } from '../../../lib/hooks/useAttempt';
+import { useAttemptQuery, useAnswerMutation, useAnswerFileMutation, useSubmitAttempt, useRunCode, useCodeLanguages, useWebcamResume, useAckFaceWarning, useScreenShareState, RunCodeResult } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useEditorTelemetry } from '../../../lib/hooks/useEditorTelemetry';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
@@ -26,6 +26,43 @@ import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 import { reportClientError } from '../../../lib/client-error-reporter';
 import { AttemptAnswerSummary, AttemptQuestion, isAttemptStarted } from '../../../lib/types';
 import { monacoLanguageFor } from '../../../lib/monaco-language';
+
+// Fixed global file-upload policy — mirrors ANSWER_FILE_* in the exam-runtime attempt.service.ts.
+// The server re-validates; these just give the candidate an instant, friendlier rejection.
+const ANSWER_FILE_MAX_BYTES = 10 * 1024 * 1024;
+const ANSWER_FILE_MAX_COUNT = 10;
+const ANSWER_FILE_ACCEPT =
+  '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.zip';
+const ANSWER_FILE_ALLOWED_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/plain',
+  'text/csv',
+  'image/png',
+  'image/jpeg',
+  'application/zip',
+  'application/x-zip-compressed',
+]);
+
+function readFileAsDataUri(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function markButtonClasses(marked: boolean | undefined) {
   return clsx(
@@ -55,6 +92,8 @@ export default function CandidateExamPage() {
   const { accessToken, isLoading: authLoading } = useCandidateAuth();
   const { data: current, isError } = useAttemptQuery();
   const { saveAnswer, flush } = useAnswerMutation();
+  const answerFile = useAnswerFileMutation();
+  const [fileError, setFileError] = useState<string | null>(null);
   const submitAttempt = useSubmitAttempt();
   const runCode = useRunCode();
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -268,6 +307,7 @@ export default function CandidateExamPage() {
   // can be filtered over both the flat `questions` list and a raw `section.questions` array.
   const isQuestionAnswered = (q: AttemptQuestion) => {
     const a = answers.find((ans) => ans.questionId === q.id);
+    if (q.type === 'file_upload') return Boolean(a && a.answerFiles && a.answerFiles.length > 0);
     if (q.type === 'code' || q.type === 'essay') return Boolean(a && a.answerText && a.answerText.trim() !== '');
     return Boolean(a && a.selectedOptionIds.length > 0);
   };
@@ -359,6 +399,50 @@ export default function CandidateExamPage() {
   function handleEssayChange(value: string) {
     setLocalCodeValues((prev) => ({ ...prev, [question!.id]: value }));
     saveAnswer(question!.id, [], currentMarked, value);
+  }
+
+  async function handleFilePick(files: FileList | null) {
+    if (!question || !files || files.length === 0) return;
+    const questionId = question.id;
+    const alreadyUploaded = (existingAnswer?.answerFiles ?? []).length;
+    setFileError(null);
+    // Upload sequentially so the count check stays honest and errors point at one file.
+    let uploadedSoFar = alreadyUploaded;
+    for (const file of Array.from(files)) {
+      if (uploadedSoFar >= ANSWER_FILE_MAX_COUNT) {
+        setFileError(`You can upload at most ${ANSWER_FILE_MAX_COUNT} files for this question.`);
+        break;
+      }
+      if (file.size === 0) {
+        setFileError(`"${file.name}" is empty.`);
+        continue;
+      }
+      if (file.size > ANSWER_FILE_MAX_BYTES) {
+        setFileError(`"${file.name}" is larger than 10 MB.`);
+        continue;
+      }
+      if (file.type && !ANSWER_FILE_ALLOWED_TYPES.has(file.type)) {
+        setFileError(`"${file.name}" is not an allowed file type.`);
+        continue;
+      }
+      try {
+        const dataUri = await readFileAsDataUri(file);
+        await answerFile.upload.mutateAsync({ questionId, fileName: file.name, dataUri });
+        uploadedSoFar += 1;
+      } catch (error) {
+        setFileError(error instanceof Error ? error.message : `Couldn't upload "${file.name}".`);
+      }
+    }
+  }
+
+  async function handleFileRemove(fileId: string) {
+    if (!question) return;
+    setFileError(null);
+    try {
+      await answerFile.remove.mutateAsync({ questionId: question.id, fileId });
+    } catch (error) {
+      setFileError(error instanceof Error ? error.message : "Couldn't remove that file.");
+    }
   }
 
   function handleRun() {
@@ -556,7 +640,7 @@ export default function CandidateExamPage() {
               </span>
               <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-candidate-text-tertiary">
                 Question {currentIndex + 1} of {questions.length} ·{' '}
-                {question.type === 'code' ? 'Code' : question.type === 'essay' ? 'Essay' : question.type === 'multi_mcq' ? 'Multiple choice' : 'Single choice'} ·{' '}
+                {question.type === 'code' ? 'Code' : question.type === 'essay' ? 'Essay' : question.type === 'file_upload' ? 'File upload' : question.type === 'multi_mcq' ? 'Multiple choice' : 'Single choice'} ·{' '}
                 {question.marks} marks
               </span>
             </div>
@@ -672,6 +756,60 @@ export default function CandidateExamPage() {
                 className="w-full rounded-md border border-candidate-border bg-white px-3 py-2 text-sm leading-relaxed text-candidate-text"
               />
               <span className="self-end text-xs text-candidate-text-faint">{codeValue.trim().length} characters</span>
+            </div>
+          ) : question.type === 'file_upload' ? (
+            <div className="flex flex-col gap-3">
+              {(existingAnswer?.answerFiles ?? []).length > 0 ? (
+                <ul className="flex flex-col gap-2">
+                  {(existingAnswer?.answerFiles ?? []).map((file) => (
+                    <li
+                      key={file.id}
+                      className="flex items-center justify-between gap-3 rounded-md border border-candidate-border bg-candidate-bg px-3 py-2 text-sm"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-candidate-text" title={file.fileName}>
+                        {file.fileName}
+                      </span>
+                      <span className="flex-shrink-0 text-xs text-candidate-text-faint">{formatFileSize(file.size)}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleFileRemove(file.id)}
+                        disabled={answerFile.remove.isPending}
+                        aria-label={`Remove ${file.fileName}`}
+                        className="flex-shrink-0 rounded px-2 py-1 text-xs font-medium text-candidate-text-secondary hover:bg-candidate-border/40 disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-candidate-text-faint">No files uploaded yet.</p>
+              )}
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-candidate-text-secondary">
+                  Upload files (up to {ANSWER_FILE_MAX_COUNT}, 10 MB each — documents, spreadsheets, images, PDFs or ZIPs)
+                </span>
+                <input
+                  type="file"
+                  multiple
+                  accept={ANSWER_FILE_ACCEPT}
+                  aria-label="Upload files for your answer"
+                  disabled={answerFile.upload.isPending || (existingAnswer?.answerFiles ?? []).length >= ANSWER_FILE_MAX_COUNT}
+                  onChange={(e) => {
+                    void handleFilePick(e.target.files);
+                    e.target.value = '';
+                  }}
+                  className="text-sm text-candidate-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-candidate-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:opacity-90 disabled:opacity-50"
+                />
+              </label>
+              {answerFile.upload.isPending ? (
+                <span className="text-xs text-candidate-text-faint">Uploading…</span>
+              ) : null}
+              {fileError ? (
+                <span role="alert" className="text-xs text-candidate-danger">
+                  {fileError}
+                </span>
+              ) : null}
             </div>
           ) : (
             // Two columns once there is real width to use: a single option row stretched

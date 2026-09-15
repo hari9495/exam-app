@@ -7,6 +7,7 @@ export const TYPE_TONE: Record<QuestionType, StatusTone> = {
   true_false: 'info',
   code: 'purple',
   essay: 'purple',
+  file_upload: 'purple',
 };
 
 export const TYPE_LABEL: Record<QuestionType, string> = {
@@ -15,6 +16,7 @@ export const TYPE_LABEL: Record<QuestionType, string> = {
   true_false: 'True/False',
   code: 'Code',
   essay: 'Essay',
+  file_upload: 'File upload',
 };
 
 export const DIFFICULTY_LABEL: Record<Difficulty, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };

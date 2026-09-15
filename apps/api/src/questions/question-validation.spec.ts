@@ -262,6 +262,24 @@ describe('validateQuestionPayload', () => {
     ).toThrow('essay questions must not have options');
   });
 
+  it('accepts a file_upload question with no options', () => {
+    expect(() =>
+      validateQuestionPayload({ type: 'file_upload', difficulty: 'medium', marks: 8, negativeMarks: 0, options: [] }),
+    ).not.toThrow();
+  });
+
+  it('rejects a file_upload question with any options', () => {
+    expect(() =>
+      validateQuestionPayload({
+        type: 'file_upload',
+        difficulty: 'medium',
+        marks: 8,
+        negativeMarks: 0,
+        options: [{ text: 'irrelevant', isCorrect: false }],
+      }),
+    ).toThrow('file_upload questions must not have options');
+  });
+
   it('rejects a code question with an unknown languageMode', () => {
     expect(() =>
       validateQuestionPayload(

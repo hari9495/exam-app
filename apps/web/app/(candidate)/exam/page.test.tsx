@@ -16,6 +16,10 @@ jest.mock('next/navigation', () => ({ useRouter: jest.fn() }));
 jest.mock('../../../lib/hooks/useAttempt', () => ({
   useAttemptQuery: jest.fn(),
   useAnswerMutation: jest.fn(),
+  useAnswerFileMutation: jest.fn(() => ({
+    upload: { mutateAsync: jest.fn(), isPending: false },
+    remove: { mutateAsync: jest.fn(), isPending: false },
+  })),
   useSubmitAttempt: jest.fn(),
   useRunCode: jest.fn(),
   useWebcamResume: jest.fn(),

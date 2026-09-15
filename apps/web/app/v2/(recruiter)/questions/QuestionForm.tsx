@@ -20,6 +20,7 @@ const TYPE_OPTIONS = [
   { value: 'true_false', label: 'True / False' },
   { value: 'code', label: 'Code' },
   { value: 'essay', label: 'Essay / subjective' },
+  { value: 'file_upload', label: 'File upload' },
 ];
 const DIFFICULTY_OPTIONS = [{ value: 'easy', label: 'Easy' }, { value: 'medium', label: 'Medium' }, { value: 'hard', label: 'Hard' }];
 const LANGUAGE_OPTIONS = CODE_LANGUAGE_OPTIONS.map((value) => ({ value, label: value }));
@@ -32,7 +33,7 @@ interface QuestionFormProps {
 }
 
 function defaultOptionsFor(type: QuestionType): OptionDraft[] {
-  if (type === 'code' || type === 'essay') return [];
+  if (type === 'code' || type === 'essay' || type === 'file_upload') return [];
   if (type === 'true_false') return [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }];
   return [{ text: '', isCorrect: false }, { text: '', isCorrect: false }];
 }
@@ -81,6 +82,10 @@ function LivePreview({ type, text, options, marks, difficulty }: { type: Questio
       <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 12, whiteSpace: 'pre-wrap' }}>{text.trim() || <span style={{ color: 'var(--muted)', fontWeight: 400 }}>Question text…</span>}</div>
       {type === 'code' ? (
         <div style={{ fontSize: 13, color: 'var(--muted)' }}>Code question — candidates write and run code in the editor.</div>
+      ) : type === 'essay' ? (
+        <div style={{ fontSize: 13, color: 'var(--muted)' }}>Essay question — candidates answer in free text.</div>
+      ) : type === 'file_upload' ? (
+        <div style={{ fontSize: 13, color: 'var(--muted)' }}>File-upload question — candidates attach files (up to 10, 10&nbsp;MB each).</div>
       ) : options.length === 0 ? (
         <div style={{ fontSize: 13, color: 'var(--muted)' }}>Add options to preview them.</div>
       ) : options.map((o, i) => (
@@ -262,6 +267,11 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
         />
       </Field>
     </>
+  ) : type === 'file_upload' ? (
+    <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: 0, lineHeight: 1.5 }}>
+      Candidates upload files (documents, spreadsheets, images, PDFs or ZIPs — up to 10 files, 10&nbsp;MB each)
+      and you grade them manually from the grading queue. There are no options and no auto-scoring.
+    </p>
   ) : (
     <>
       {options.map((option, index) => (
@@ -331,8 +341,8 @@ export function QuestionForm({ initialQuestion, tags, onSubmit, submitLabel, sub
             )}
           </Section>
           <Section
-            title={type === 'code' ? 'Code answer' : type === 'essay' ? 'Essay answer' : 'Answer options'}
-            description={type === 'code' ? 'How candidates write and run code.' : type === 'essay' ? 'Candidates write free text; you grade it manually.' : 'The choices candidates pick from.'}
+            title={type === 'code' ? 'Code answer' : type === 'essay' ? 'Essay answer' : type === 'file_upload' ? 'File upload' : 'Answer options'}
+            description={type === 'code' ? 'How candidates write and run code.' : type === 'essay' ? 'Candidates write free text; you grade it manually.' : type === 'file_upload' ? 'Candidates attach files; you grade them manually.' : 'The choices candidates pick from.'}
           >
             {answerSection}
           </Section>

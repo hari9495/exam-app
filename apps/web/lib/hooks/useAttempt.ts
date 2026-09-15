@@ -5,7 +5,7 @@ import { useCandidateAuth } from '../candidate-auth-context';
 import { useToast } from '../../components/ui';
 import { isRetryableError, withRetry } from '../retry';
 import { reportClientError } from '../client-error-reporter';
-import { AttemptCurrent, ProctoringEventType, CandidateLeaderboardResponse, AnswerTelemetry } from '../types';
+import { AttemptCurrent, ProctoringEventType, CandidateLeaderboardResponse, AnswerTelemetry, AnswerFile } from '../types';
 
 const ANSWER_DEBOUNCE_MS = 800;
 
@@ -113,6 +113,25 @@ export function useAnswerMutation() {
   }
 
   return { saveAnswer, flush };
+}
+
+// file_upload answers: the files go through their own endpoint (uploads must run outside the
+// answer tx). Upload/remove both return the new file list and re-sync /current so the picker and
+// the answered-count update immediately.
+export function useAnswerFileMutation() {
+  const { accessToken } = useCandidateAuth();
+  const queryClient = useQueryClient();
+  const upload = useMutation({
+    mutationFn: (body: { questionId: string; fileName: string; dataUri: string }): Promise<{ files: AnswerFile[] }> =>
+      candidateApiFetch('/attempt/answer-file', { method: 'POST', body: JSON.stringify(body) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
+  });
+  const remove = useMutation({
+    mutationFn: (body: { questionId: string; fileId: string }): Promise<{ files: AnswerFile[] }> =>
+      candidateApiFetch('/attempt/answer-file/remove', { method: 'POST', body: JSON.stringify(body) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
+  });
+  return { upload, remove };
 }
 
 export function useSubmitAttempt() {

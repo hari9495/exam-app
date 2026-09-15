@@ -791,6 +791,9 @@ model Answer {
   isCorrect             Boolean?          @map("is_correct")
   marksAwarded          Int?              @map("marks_awarded")
   answerText            String?           @map("answer_text") @db.NVarChar(Max)
+  // file_upload answers: JSON array of { path, fileName, contentType, size } — the candidate's
+  // uploaded files (blob paths). Manually graded like code/essay; "attempted" = non-empty array.
+  answerFilesJson       String?           @map("answer_files_json") @db.NVarChar(Max)
   gradingFeedback       String?           @map("grading_feedback") @db.NVarChar(Max)
   codeLanguage          String?           @map("code_language")
   telemetryJson         String?           @map("telemetry_json") @db.NVarChar(Max)

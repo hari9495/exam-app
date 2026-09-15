@@ -12,7 +12,7 @@ import { dt } from '../../../../../../components/ui-v2';
 
 const backLink: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--muted)', textDecoration: 'none' };
 const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, padding: 18 };
-const QUESTION_TYPE_LABEL: Record<Question['type'], string> = { single_mcq: 'Single choice', multi_mcq: 'Multiple choice', true_false: 'True / False', code: 'Code', essay: 'Essay / subjective' };
+const QUESTION_TYPE_LABEL: Record<Question['type'], string> = { single_mcq: 'Single choice', multi_mcq: 'Multiple choice', true_false: 'True / False', code: 'Code', essay: 'Essay / subjective', file_upload: 'File upload' };
 
 function CodeBlock({ lang, code }: { lang: string; code: string }) {
   return (

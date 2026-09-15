@@ -355,7 +355,7 @@ describe('ReportsService', () => {
         options: [{ id: 'opt-a', text: 'A' }, { id: 'opt-b', text: 'B' }],
         selectedOptionIds: ['opt-a'], correctOptionIds: ['opt-a'],
         isCorrect: true, marksAwarded: 5, counted: true,
-        answerText: null, codeLanguage: null, gradingFeedback: null,
+        answerText: null, codeLanguage: null, answerFiles: [], gradingFeedback: null,
         tabActivity: [],
       });
       expect(detail.sections[0].questions[1]).toEqual({
@@ -363,7 +363,7 @@ describe('ReportsService', () => {
         options: [{ id: 'opt-c2', text: 'C' }],
         selectedOptionIds: [], correctOptionIds: ['opt-c2'],
         isCorrect: null, marksAwarded: null, counted: true,
-        answerText: null, codeLanguage: null, gradingFeedback: null,
+        answerText: null, codeLanguage: null, answerFiles: [], gradingFeedback: null,
         tabActivity: [],
       });
       expect(detail.sections[1]).toMatchObject({ sectionId: 'sec-2', title: 'Section Two', score: 0, maxScore: 3 });

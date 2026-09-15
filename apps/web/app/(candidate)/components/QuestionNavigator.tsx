@@ -22,12 +22,14 @@ export function flattenQuestions(sections: AttemptSection[]) {
   );
 }
 
-// A question counts as answered differently by type: MCQs need a selected option, code
-// questions need non-empty code. Kept in one place because both the grid colours and the
-// per-section progress counts read it.
+// A question counts as answered differently by type: MCQs need a selected option, code/essay
+// need non-empty text, file_upload needs at least one file. Kept in one place because both the
+// grid colours and the per-section progress counts read it. Mirrors isQuestionAnswered in the
+// exam page (the submit dialog's own tally).
 function isAnswered(question: { type: string }, answer: AttemptAnswerSummary | undefined) {
   if (!answer) return false;
-  if (question.type === 'code') return Boolean(answer.answerText && answer.answerText.trim() !== '');
+  if (question.type === 'file_upload') return (answer.answerFiles?.length ?? 0) > 0;
+  if (question.type === 'code' || question.type === 'essay') return Boolean(answer.answerText && answer.answerText.trim() !== '');
   return answer.selectedOptionIds.length > 0;
 }
 
