@@ -1,8 +1,7 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { NotificationsService, MentionTarget } from '../notifications/notifications.service';
 
-const SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SUPER_ADMIN = { organizationId: null, isSuperAdmin: true };
 
@@ -18,27 +17,16 @@ const FEEDBACK_OWED_DAYS = 1; // interview ended 1-2 days ago
 const INTERVIEW_UPCOMING_MS = DAY_MS; // starts within the next 24h
 
 // Daily staff-reminder sweep. Opt-in per org (Organization.remindersEnabled); per-user email
-// opt-out via userNotificationPreference (NotificationsService.notifySystem honors it). Mirrors the
-// retention services' scheduling shape (OnModuleInit + unref'd setInterval, not a queue job).
+// opt-out via userNotificationPreference (NotificationsService.notifySystem honors it). Scheduled
+// as a nightly BullMQ job scheduler by ScheduledSweepsModule (jobs/scheduled-sweeps.*).
 @Injectable()
-export class RemindersService implements OnModuleInit, OnModuleDestroy {
+export class RemindersService {
   private readonly logger = new Logger(RemindersService.name);
-  private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifications: NotificationsService,
   ) {}
-
-  onModuleInit(): void {
-    void this.sweep();
-    this.timer = setInterval(() => void this.sweep(), SWEEP_INTERVAL_MS);
-    this.timer.unref?.();
-  }
-
-  onModuleDestroy(): void {
-    if (this.timer) clearInterval(this.timer);
-  }
 
   async sweep(now = new Date()): Promise<void> {
     let orgs: { id: string }[] = [];

@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { BlobStorageService, TenantPrismaService } from '@exam-platform/shared';
 
 // Webcam snapshots + screen captures are proctoring evidence; once the review window has passed they
@@ -6,33 +6,20 @@ import { BlobStorageService, TenantPrismaService } from '@exam-platform/shared';
 // (face-retention.service); this closes the same gap for the webcam-snapshots/ and screen-captures/
 // blobs referenced by ProctoringEvent.metadataJson. Same fixed window for consistency.
 const RETENTION_DAYS = 90;
-const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // Bound each metadata-rewrite tx so a big sweep never holds one long interactive transaction.
 const WRITE_CHUNK = 50;
 
 // Deletes webcam/screen proctoring images (and strips their URLs from metadataJson, keeping any other
-// event metadata) RETENTION_DAYS after the event -- on boot and then daily. Same single-process
-// interval pattern as FaceRetentionService / SystemEventsRetentionService.
-// ponytail: single-process interval; move to a repeatable queue job if the api ever scales out.
+// event metadata) RETENTION_DAYS after the event. Scheduled as a nightly BullMQ job scheduler by
+// ScheduledSweepsModule.
 @Injectable()
-export class ProctoringRetentionService implements OnModuleInit, OnModuleDestroy {
+export class ProctoringRetentionService {
   private readonly logger = new Logger(ProctoringRetentionService.name);
-  private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly blobStorage: BlobStorageService,
   ) {}
-
-  onModuleInit(): void {
-    void this.prune();
-    this.timer = setInterval(() => void this.prune(), PRUNE_INTERVAL_MS);
-    this.timer.unref?.();
-  }
-
-  onModuleDestroy(): void {
-    if (this.timer) clearInterval(this.timer);
-  }
 
   async prune(now: Date = new Date()): Promise<number> {
     const cutoff = new Date(now.getTime() - RETENTION_DAYS * 24 * 60 * 60 * 1000);

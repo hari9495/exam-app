@@ -5,6 +5,6 @@ import { ApiUsageService } from './api-usage.service';
 
 @Module({
   providers: [ApiUsageService, ApiUsageInterceptor, ApiUsageRetentionService],
-  exports: [ApiUsageService, ApiUsageInterceptor],
+  exports: [ApiUsageService, ApiUsageInterceptor, ApiUsageRetentionService], // sweep dispatched by ScheduledSweepsModule
 })
 export class ApiUsageModule {}

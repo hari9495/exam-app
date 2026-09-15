@@ -1,11 +1,11 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { NotificationsService } from './notifications.service';
 import { NOTIFICATION_TYPE_BY_KEY } from './notification-types';
 import { escapeHtml, buildNotificationEmailFooter } from './notification-email-render';
 
-const SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 // Send at most once per ~day: a user is due when their last digest is older than this (slightly under
 // 24h so a daily sweep never skips a day on minor drift). First-ever digest (null anchor) is due.
 const DIGEST_DUE_MS = 23 * 60 * 60 * 1000;
@@ -15,28 +15,17 @@ const MAX_ITEMS = 100;
 // Daily notification-digest sweep. Users on notificationDigest='daily' get one email batching the
 // unread notifications created since their last digest, instead of an email per event (notify() /
 // notifySystem suppress the immediate send for them). Opt-in per user; the in-app bell is unaffected.
-// Mirrors the retention/reminders services' scheduling shape (OnModuleInit + unref'd setInterval,
-// not a queue job) -- single-process, best-effort.
+// Scheduled as a nightly BullMQ job scheduler by ScheduledSweepsModule; the DIGEST_DUE_MS anchor
+// keeps a duplicate/early run from double-sending.
 @Injectable()
-export class NotificationDigestService implements OnModuleInit, OnModuleDestroy {
+export class NotificationDigestService {
   private readonly logger = new Logger(NotificationDigestService.name);
-  private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly emailService: EmailService,
     private readonly notifications: NotificationsService,
   ) {}
-
-  onModuleInit(): void {
-    void this.sweep();
-    this.timer = setInterval(() => void this.sweep(), SWEEP_INTERVAL_MS);
-    this.timer.unref?.();
-  }
-
-  onModuleDestroy(): void {
-    if (this.timer) clearInterval(this.timer);
-  }
 
   async sweep(now = new Date()): Promise<void> {
     let orgs: { id: string }[] = [];
@@ -85,7 +74,7 @@ export class NotificationDigestService implements OnModuleInit, OnModuleDestroy 
     now: Date,
   ): Promise<void> {
     // First digest looks back one day; subsequent ones cover everything since the last send.
-    const since = user.lastDigestSentAt ?? new Date(now.getTime() - SWEEP_INTERVAL_MS);
+    const since = user.lastDigestSentAt ?? new Date(now.getTime() - DAY_MS);
     const { items, actorNameById, prefMap } = await this.tenantPrisma.forTenant(ctx, async (tx) => {
       const rows = await tx.userNotification.findMany({
         where: { recipientUserId: user.id, readAt: null, createdAt: { gte: since } },
