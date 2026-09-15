@@ -41,6 +41,11 @@ export class SentryReporter {
       Sentry.init({
         dsn,
         environment: process.env.SENTRY_ENVIRONMENT ?? 'production',
+        // Optional build stamp (e.g. the git SHA the image was built from). Tags every event with
+        // the version so Sentry can attribute regressions and group by release; harmless when unset.
+        // Source-map de-minification for the node apps comes from `node --enable-source-maps` at
+        // runtime (dist ships its .js.map), not from uploaded release artifacts, so this is metadata.
+        ...(process.env.SENTRY_RELEASE ? { release: process.env.SENTRY_RELEASE } : {}),
         // Never rely on the SDK default here: the filter is careful never to read request
         // bodies, headers or cookies, and default PII would attach them anyway.
         sendDefaultPii: false,

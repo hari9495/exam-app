@@ -43,6 +43,18 @@ describe('SentryReporter', () => {
     expect(Sentry.init).toHaveBeenCalledWith(expect.objectContaining({ sendDefaultPii: false }));
   });
 
+  it('tags events with SENTRY_RELEASE when set, and omits release when unset', () => {
+    process.env.SENTRY_DSN = 'https://key@example.invalid/1';
+    process.env.SENTRY_RELEASE = 'abc123';
+    new SentryReporter('api').init();
+    expect(Sentry.init).toHaveBeenCalledWith(expect.objectContaining({ release: 'abc123' }));
+
+    jest.clearAllMocks();
+    delete process.env.SENTRY_RELEASE;
+    new SentryReporter('api').init();
+    expect((Sentry.init as jest.Mock).mock.calls[0][0]).not.toHaveProperty('release');
+  });
+
   // I1: events that never pass through capture()/buildSentryPayload (e.g. raised by the SDK's
   // own default integrations) still need a severity_band or they match neither alert rule.
   it.each([

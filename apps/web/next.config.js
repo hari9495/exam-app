@@ -69,16 +69,31 @@ const nextConfig = {
   },
 };
 
-// ponytail: no auth token is configured, so the Sentry build plugin can't
-// upload source maps anyway -- `sourcemaps.disable` makes that explicit
-// instead of relying on the absence of a token.
+// Source-map upload is gated on SENTRY_AUTH_TOKEN. A production/CI build that sets the token (plus
+// SENTRY_ORG / SENTRY_PROJECT) uploads the client + server maps to Sentry so browser stack traces
+// de-minify, then deletes them so the client bundle never ships source. Any build WITHOUT a token
+// (local dev, and any environment where Sentry is not configured) leaves upload disabled and the
+// build otherwise untouched -- same inert-until-configured stance as the DSN gating in
+// instrumentation*.ts.
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
 module.exports = withSentryConfig(nextConfig, {
   silent: true,
-  // ponytail: disable telemetry. The bundler plugin defaults telemetry to true
-  // and phones home on every production build regardless of DSN configuration;
-  // silent:true only suppresses the console message, not the network call.
+  // ponytail: disable telemetry. The bundler plugin defaults telemetry to true and phones home on
+  // every production build regardless of DSN configuration; silent:true only suppresses the console
+  // message, not the network call.
   telemetry: false,
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT || 'exam-web',
+  authToken: sentryAuthToken,
+  // The build sets SENTRY_RELEASE (e.g. the git SHA); the plugin injects the same value into the
+  // client + server bundles so the runtime release matches the uploaded artifacts. In a Docker
+  // build the .git dir is absent, so the plugin can't auto-detect a release -- set SENTRY_RELEASE
+  // explicitly there. Left unset (local git build), the plugin falls back to its own detection.
+  ...(process.env.SENTRY_RELEASE ? { release: { name: process.env.SENTRY_RELEASE } } : {}),
+  // Upload every client bundle, not only the directly-imported ones, so every browser frame maps.
+  widenClientFileUpload: true,
   sourcemaps: {
-    disable: true,
+    disable: !sentryAuthToken,
+    deleteSourcemapsAfterUpload: true,
   },
 });
