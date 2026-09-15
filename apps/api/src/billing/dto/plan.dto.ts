@@ -8,6 +8,10 @@ export class UpsertPlanDto {
   @IsInt() @Min(0) proctoringMinutesLimit!: number;
   @IsOptional() @IsString() @MaxLength(50) priceLabel?: string;
   @IsOptional() @IsBoolean() isPublic?: boolean;
+  // Stripe wiring (set by a platform admin): the Stripe Price a self-serve checkout subscribes to,
+  // and its parent Product. A plan without stripePriceId is not purchasable (admin-assigned only).
+  @IsOptional() @IsString() @MaxLength(255) stripeProductId?: string;
+  @IsOptional() @IsString() @MaxLength(255) stripePriceId?: string;
 }
 
 export class AssignPlanDto {

@@ -195,10 +195,17 @@ On each soft-dimension `checkSoftLimit` that crosses 80% or 100%, if no `Billing
 | Web console | `(org-admin)/settings/*` pattern, `useIntegrations.ts` hook pattern, nav in `super-admin-nav.ts` |
 | Async (Phase 2 Stripe webhooks) | existing BullMQ queue/worker + outbound-webhook HMAC pattern |
 
-## Deferred to Phase 2 (Stripe)
+## Phase 2 (Stripe) — IMPLEMENTED 2026-09-15
 
-- Stripe customer/subscription creation, self-serve Checkout, plan up/downgrade with proration.
-- Raw-body public Stripe webhook controller + HMAC-verifying guard (note: `apps/api/src/main.ts` globally applies `express.json` — the Stripe path needs `express.raw` mounted before it, or `rawBody: true`).
-- `billingStatus` driven by Stripe events (`past_due`/`canceled` → suspend/downgrade).
-- PDF invoices/receipts (reuse the offers `buildOfferPdf` pdfkit pattern).
-- The seam columns (`stripeCustomerId`, `stripeSubscriptionId`, `Plan.stripePriceId`) added now stay null until then.
+Self-serve checkout shipped. Uses Stripe's REST API over `fetch` + node `crypto` (the `stripe` SDK is intentionally NOT a dependency — matches the outbound-webhook HMAC style). Inert until `STRIPE_SECRET_KEY` is set (endpoints 503; the billing page hides its upgrade/manage controls).
+
+- **`StripeClient`** (`apps/api/src/billing/stripe.client.ts`) — customers, Checkout sessions (subscription mode), Billing Portal sessions, invoice listing, and `constructEvent` (HMAC-SHA256 signature verify + replay-tolerance over the raw body).
+- **`BillingCheckoutService`** — ensures a Stripe customer per org (persists `stripeCustomerId`), creates Checkout/Portal sessions, lists invoices, and fulfils webhooks: `checkout.session.completed` → activate on the chosen plan; `customer.subscription.updated` → map status→`billingStatus` and re-point the plan by Stripe price (portal plan change/proration handled by Stripe); `customer.subscription.deleted` → `canceled` + downgrade to `trial`. Idempotent.
+- **Endpoints** (public `AppModule`): authenticated `GET/POST /organizations/billing/{plans,checkout,portal,invoices}` (gated `org:manage_billing`); public **`POST /billing/stripe/webhook`** (no JWT — signature is the auth). `main.ts` mounts `express.raw` on `/api/v1/billing/stripe/webhook` before the global `json()`.
+- **Plans → Stripe:** `Plan.stripePriceId`/`stripeProductId` are set by a platform admin via `PATCH /platform/plans/:id` (`UpsertPlanDto` now accepts them). A plan is purchasable only once it has a `stripePriceId`.
+- **Web:** the org-admin billing page gained a plan picker (Checkout), a "Manage subscription" button (Portal), and an invoice list — all hidden when no purchasable plans exist.
+- **Env** (platform, `apps/api`): `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (see `.env.example`); reuses `WEB_ORIGIN` for return URLs.
+
+Not built (deliberately out of scope): in-house PDF invoice generation (invoices come from Stripe's `hosted_invoice_url`/`invoice_pdf` instead); dunning/`billingStatus`-driven feature suspension beyond the existing quota enforcement.
+
+DEPLOY: set the two `STRIPE_*` env vars, create Stripe Products/Prices, set each paid plan's `stripePriceId`, and register the webhook endpoint (`/api/v1/billing/stripe/webhook`) in the Stripe dashboard to obtain `STRIPE_WEBHOOK_SECRET`. Until then everything stays inert (as with Phase 1's grandfather-unlimited plan).
