@@ -12,6 +12,7 @@ import { Modal } from '../../../components/ui';
 import { CandidateButton } from '../components/CandidateButton';
 import { CodeOutputPanel } from '../components/CodeOutputPanel';
 import { QuestionNavigator, flattenQuestions } from '../components/QuestionNavigator';
+import { SpokenAnswerRecorder } from '../components/SpokenAnswerRecorder';
 import { ProctoringWarningOverlay, ProctoringBlockOverlay, FaceWarningOverlay } from '../components/ProctoringOverlay';
 import { ScreenShareRequiredOverlay } from '../components/ScreenShareRequiredOverlay';
 import { TimerBar } from '../components/TimerBar';
@@ -307,7 +308,7 @@ export default function CandidateExamPage() {
   // can be filtered over both the flat `questions` list and a raw `section.questions` array.
   const isQuestionAnswered = (q: AttemptQuestion) => {
     const a = answers.find((ans) => ans.questionId === q.id);
-    if (q.type === 'file_upload') return Boolean(a && a.answerFiles && a.answerFiles.length > 0);
+    if (q.type === 'file_upload' || q.type === 'spoken') return Boolean(a && a.answerFiles && a.answerFiles.length > 0);
     if (q.type === 'code' || q.type === 'essay') return Boolean(a && a.answerText && a.answerText.trim() !== '');
     return Boolean(a && a.selectedOptionIds.length > 0);
   };
@@ -640,7 +641,7 @@ export default function CandidateExamPage() {
               </span>
               <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-candidate-text-tertiary">
                 Question {currentIndex + 1} of {questions.length} ·{' '}
-                {question.type === 'code' ? 'Code' : question.type === 'essay' ? 'Essay' : question.type === 'file_upload' ? 'File upload' : question.type === 'multi_mcq' ? 'Multiple choice' : 'Single choice'} ·{' '}
+                {question.type === 'code' ? 'Code' : question.type === 'essay' ? 'Essay' : question.type === 'file_upload' ? 'File upload' : question.type === 'spoken' ? 'Spoken' : question.type === 'multi_mcq' ? 'Multiple choice' : 'Single choice'} ·{' '}
                 {question.marks} marks
               </span>
             </div>
@@ -811,6 +812,15 @@ export default function CandidateExamPage() {
                 </span>
               ) : null}
             </div>
+          ) : question.type === 'spoken' ? (
+            <SpokenAnswerRecorder
+              key={question.id}
+              existing={existingAnswer?.answerFiles?.[0]}
+              uploading={answerFile.upload.isPending}
+              disabled={answerFile.upload.isPending || answerFile.remove.isPending}
+              onUpload={(fileName, dataUri) => answerFile.upload.mutateAsync({ questionId: question.id, fileName, dataUri }).then(() => undefined)}
+              onRemove={(fileId) => answerFile.remove.mutateAsync({ questionId: question.id, fileId }).then(() => undefined)}
+            />
           ) : (
             // Two columns once there is real width to use: a single option row stretched
             // across a 2560px screen is mostly empty space with a radio button on the left.

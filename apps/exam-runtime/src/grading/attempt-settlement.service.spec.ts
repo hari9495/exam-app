@@ -784,6 +784,36 @@ describe('AttemptSettlementService', () => {
       expect(result.status).toBe('pending_manual_grade');
     });
 
+    it('routes an attempted spoken question (recording uploaded) to pending_manual_grade', async () => {
+      const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
+      const tx = {
+        question: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
+            { id: 'q2', type: 'spoken', marks: 10, negativeMarks: 0, options: [] },
+          ]),
+        },
+        answer: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'answer-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']) },
+            // A spoken attempt is "attempted" via a non-empty answerFilesJson (the recording), not answerText.
+            { id: 'answer-2', questionId: 'q2', selectedOptionIdsJson: '[]', answerText: null, answerFilesJson: JSON.stringify([{ id: 'r1', path: 'p', fileName: 'recording.webm', contentType: 'audio/webm', size: 2048 }]), marksAwarded: null },
+          ]),
+          update: jest.fn(),
+        },
+        result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+        attempt: { update: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'pending_manual_grade' }) },
+        auditLog: { create: jest.fn() },
+      };
+
+      const result = await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
+
+      // Only the MCQ is auto-graded; the attempted spoken answer is left null for a human.
+      expect(tx.answer.update).toHaveBeenCalledTimes(1);
+      expect(tx.answer.update).toHaveBeenCalledWith({ where: { id: 'answer-1' }, data: { isCorrect: true, marksAwarded: 5 } });
+      expect(result.status).toBe('pending_manual_grade');
+    });
+
     it('auto-zeroes a file_upload question with no files uploaded instead of queueing it for a human', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
       const tx = {

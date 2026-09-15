@@ -15,7 +15,7 @@ export interface QuestionValidationInput {
   allowedLanguages?: string[];
 }
 
-const VALID_TYPES = ['single_mcq', 'multi_mcq', 'true_false', 'code', 'essay', 'file_upload'];
+const VALID_TYPES = ['single_mcq', 'multi_mcq', 'true_false', 'code', 'essay', 'file_upload', 'spoken'];
 const VALID_DIFFICULTIES = ['easy', 'medium', 'hard'];
 // Purely a cosmetic label list for the QCIC feature's decorative `snippetLanguage` field
 // (shown as plain text above a read-only <pre> block, no execution, no highlighting) — NOT
@@ -71,6 +71,11 @@ export function validateQuestionPayload(input: QuestionValidationInput, availabl
     // Candidate uploads files, manually graded. No options, no language config (fixed global policy).
     if (options.length !== 0) {
       throw new BadRequestException('file_upload questions must not have options');
+    }
+  } else if (type === 'spoken') {
+    // Candidate records/uploads an audio answer, manually graded. No options, no language config.
+    if (options.length !== 0) {
+      throw new BadRequestException('spoken questions must not have options');
     }
   } else if (type === 'true_false') {
     if (options.length !== 2) {

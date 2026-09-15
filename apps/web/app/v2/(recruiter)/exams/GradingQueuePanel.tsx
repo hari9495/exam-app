@@ -57,6 +57,18 @@ function CodeQuestionGrader({ attemptId, question }: { attemptId: string; questi
       </div>
       {question.type === 'essay' ? (
         <div style={{ margin: '0 0 12px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--hair)', padding: 12, fontSize: 13, lineHeight: 1.55, color: 'var(--ink)' }}>{question.answerText ?? '(no submission)'}</div>
+      ) : question.type === 'spoken' ? (
+        <div style={{ margin: '0 0 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {question.answerFiles.length === 0 ? (
+            <span style={{ fontSize: 13, color: 'var(--muted)' }}>(no recording)</span>
+          ) : (
+            question.answerFiles.map((file, i) => (
+              <audio key={i} controls preload="metadata" src={file.url ?? undefined} style={{ width: '100%' }}>
+                <a href={file.url ?? '#'} target="_blank" rel="noopener noreferrer">Download recording</a>
+              </audio>
+            ))
+          )}
+        </div>
       ) : question.type === 'file_upload' ? (
         <div style={{ margin: '0 0 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
           {question.answerFiles.length === 0 ? (

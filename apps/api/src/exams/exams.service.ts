@@ -87,7 +87,9 @@ function countIntegrityFlags(flagsJson: string | null): number {
 // The manually graded question types surfaced in the grading queue. Mirrors
 // MANUALLY_GRADED_TYPES in exam-runtime's attempt-settlement.service.ts (duplicated: the two apps
 // share no runtime module).
-export const MANUALLY_GRADED_QUESTION_TYPES = ['code', 'essay', 'file_upload'];
+export const MANUALLY_GRADED_QUESTION_TYPES = ['code', 'essay', 'file_upload', 'spoken'];
+// The manual types storing work as answerFilesJson (a file/recording list) rather than answerText.
+const FILE_BACKED_MANUAL_TYPES = ['file_upload', 'spoken'];
 
 export interface StoredAnswerFile {
   id: string;
@@ -107,10 +109,11 @@ export function parseStoredAnswerFiles(json: string | null | undefined): StoredA
   }
 }
 
-// A manual answer counts as "attempted" if code/essay has prose OR a file_upload has ≥1 file.
-// Mirrors isAttemptedManual() in exam-runtime's attempt-settlement.service.ts.
+// A manual answer counts as "attempted" if code/essay has prose OR a file-backed type
+// (file_upload, spoken) has ≥1 file/recording. Mirrors isAttemptedManual() in exam-runtime's
+// attempt-settlement.service.ts.
 function isAttemptedManualAnswer(type: string, answerText: string | null, answerFilesJson: string | null): boolean {
-  return type === 'file_upload' ? parseStoredAnswerFiles(answerFilesJson).length > 0 : Boolean(answerText?.trim());
+  return FILE_BACKED_MANUAL_TYPES.includes(type) ? parseStoredAnswerFiles(answerFilesJson).length > 0 : Boolean(answerText?.trim());
 }
 
 export interface PendingGradingCodeQuestion {

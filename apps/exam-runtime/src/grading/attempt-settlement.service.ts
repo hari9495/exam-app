@@ -21,11 +21,14 @@ const BROWSER_ACTIVITY_COOLDOWN_MS = 60_000;
 export const NOT_ATTEMPTED_FEEDBACK = 'Not attempted.';
 
 // The question types graded by a human, not by the settlement's auto-scorer: code (free code,
-// optionally test-backed) and essay (free prose). Both store the candidate's work in answerText,
-// carry no options, and route the attempt to pending_manual_grade when attempted. Mirrored in
+// optionally test-backed), essay (free prose), file_upload (attached files) and spoken (a recorded
+// audio answer). code/essay store work in answerText; file_upload/spoken store it in answerFilesJson.
+// All carry no options and route the attempt to pending_manual_grade when attempted. Mirrored in
 // apps/api's getPendingGrading (queue) and attempt.service (candidate store path) -- one small
 // list, duplicated rather than shared, because the two apps have no common runtime module for it.
-export const MANUALLY_GRADED_TYPES = ['code', 'essay', 'file_upload'];
+export const MANUALLY_GRADED_TYPES = ['code', 'essay', 'file_upload', 'spoken'];
+// The manual types that store their work as answerFilesJson (a file/recording list) rather than answerText.
+const FILE_BACKED_MANUAL_TYPES = ['file_upload', 'spoken'];
 export function isManuallyGraded(type: string): boolean {
   return MANUALLY_GRADED_TYPES.includes(type);
 }
@@ -49,10 +52,10 @@ function hasAnswerFiles(json: string | null | undefined): boolean {
   }
 }
 
-// The manually-graded "attempted" test, dispatched by type: file_upload checks its file list, every
-// other manual type (code, essay) checks answerText.
+// The manually-graded "attempted" test, dispatched by type: the file-backed types (file_upload,
+// spoken) check their file/recording list, every other manual type (code, essay) checks answerText.
 function isAttemptedManual(type: string, answer: { answerText: string | null; answerFilesJson?: string | null } | undefined): boolean {
-  return type === 'file_upload' ? hasAnswerFiles(answer?.answerFilesJson) : isAttemptedText(answer);
+  return FILE_BACKED_MANUAL_TYPES.includes(type) ? hasAnswerFiles(answer?.answerFilesJson) : isAttemptedText(answer);
 }
 
 // The owners a pause can be attributed to. browser_activity is a bucket shared by all
