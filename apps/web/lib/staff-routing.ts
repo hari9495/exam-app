@@ -7,6 +7,8 @@ export function roleToLandingPath(role: string | undefined): string {
       return '/v2/users';
     case 'panel':
       return '/v2/panel/reports';
+    case 'auditor':
+      return '/v2/reports';
     default:
       return '/v2/today';
   }

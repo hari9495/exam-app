@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequirePermissions, RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { CurrentUserRole } from '../auth/current-user-role.decorator';
@@ -26,7 +26,7 @@ export class CandidatesController {
   }
 
   @Get()
-  @RequirePermissions('candidate:manage')
+  @RequireAnyPermission('candidate:manage', 'candidate:view')
   list(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserRole() role: string,

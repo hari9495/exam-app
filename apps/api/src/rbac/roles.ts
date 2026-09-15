@@ -10,6 +10,7 @@ export function isEditableRole(role: string): role is EditableRole {
   return (EDITABLE_ROLES as readonly string[]).includes(role);
 }
 
-// Roles an org admin may assign to a staff user (create/edit user). Includes org_admin and the
-// three editable roles; excludes super_admin (platform-only, never handed out through the UI).
-export const CREATABLE_ROLES = ['org_admin', 'hiring_manager', 'recruiter', 'panel'] as const;
+// Roles an org admin may assign to a staff user (create/edit user). Includes org_admin, the three
+// editable roles, and the fixed read-only auditor; excludes super_admin (platform-only). auditor is
+// intentionally absent from EDITABLE_ROLES so its read-only grant set can't be edited to add writes.
+export const CREATABLE_ROLES = ['org_admin', 'hiring_manager', 'recruiter', 'panel', 'auditor'] as const;

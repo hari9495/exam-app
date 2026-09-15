@@ -9,6 +9,8 @@ export function staffLandingPath(role: string | null | undefined): string {
       return '/v2/users';
     case 'panel':
       return '/v2/panel/reports';
+    case 'auditor':
+      return '/v2/reports'; // compliance viewer lands on results
     default:
       return '/v2/today'; // recruiter
   }

@@ -10,6 +10,9 @@ describe('roleToLandingPath', () => {
   it('routes panel to /v2/panel/reports', () => {
     expect(roleToLandingPath('panel')).toBe('/v2/panel/reports');
   });
+  it('routes auditor to /v2/reports', () => {
+    expect(roleToLandingPath('auditor')).toBe('/v2/reports');
+  });
   it('routes recruiter (default) to /v2/today', () => {
     expect(roleToLandingPath('recruiter')).toBe('/v2/today');
   });

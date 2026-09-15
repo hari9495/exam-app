@@ -21,13 +21,14 @@ import { DataTable, DT_FEATURES, dt, SortHead, Pill, Cb, Dropdown, DropdownItem,
 import { VIZ, STATUS } from '../../../../components/ui-v2/viz';
 
 const ROLE_COLOR: Record<string, string> = { org_admin: VIZ.violet, recruiter: VIZ.azure, hiring_manager: VIZ.teal, panel: 'var(--muted)', super_admin: VIZ.amber };
-const ROLE_LABEL: Record<string, string> = { org_admin: 'Org Admin', recruiter: 'Recruiter', hiring_manager: 'Hiring Manager', panel: 'Interview Panel', super_admin: 'Super Admin' };
+const ROLE_LABEL: Record<string, string> = { org_admin: 'Org Admin', recruiter: 'Recruiter', hiring_manager: 'Hiring Manager', panel: 'Interview Panel', auditor: 'Auditor (read-only)', super_admin: 'Super Admin' };
 const ROLE_FILTER_OPTIONS = [
   { value: 'all', label: 'All roles' },
   { value: 'org_admin', label: 'Org Admin' },
   { value: 'recruiter', label: 'Recruiter' },
   { value: 'hiring_manager', label: 'Hiring Manager' },
   { value: 'panel', label: 'Interview Panel' },
+  { value: 'auditor', label: 'Auditor (read-only)' },
 ];
 const STATUS_FILTER_OPTIONS = [
   { value: 'all', label: 'All statuses' },
@@ -39,6 +40,7 @@ const ROLE_OPTIONS = [
   { value: 'recruiter', label: 'Recruiter' },
   { value: 'hiring_manager', label: 'Hiring Manager' },
   { value: 'panel', label: 'Interview Panel' },
+  { value: 'auditor', label: 'Auditor (read-only)' },
 ];
 const NO_MANAGER = '';
 const ROLE_DEFAULT_PROFILE = '';
@@ -56,7 +58,7 @@ function canImpersonate(target: StaffUser, currentUserRole: string | null, isAct
   if (target.id === currentUserId) return false;
   if (target.role === 'super_admin') return false;
   if (isActingSuperAdmin) return true;
-  return currentUserRole === 'org_admin' && (target.role === 'recruiter' || target.role === 'panel' || target.role === 'hiring_manager');
+  return currentUserRole === 'org_admin' && (target.role === 'recruiter' || target.role === 'panel' || target.role === 'hiring_manager' || target.role === 'auditor');
 }
 
 const card: React.CSSProperties = { background: 'var(--paper)', border: '1px solid var(--hair)', borderRadius: 14, boxShadow: '0 1px 2px rgba(11,18,32,.04), 0 12px 32px -18px rgba(11,18,32,.22)' };
@@ -243,7 +245,7 @@ export default function V2UsersPage() {
   async function handleImpersonate(target: StaffUser) {
     if (!confirm(`Log in as ${target.email}? You will act as this user until you return.`)) return;
     await impersonate(target.id);
-    router.push(target.role === 'org_admin' ? '/users' : target.role === 'panel' ? '/reports' : '/dashboard');
+    router.push(target.role === 'org_admin' ? '/users' : target.role === 'panel' || target.role === 'auditor' ? '/reports' : '/dashboard');
   }
 
   const columns: ColumnDef<typeof DT_FEATURES, StaffUser>[] = [

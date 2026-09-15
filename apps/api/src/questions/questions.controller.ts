@@ -4,7 +4,7 @@ import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequirePermissions, RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
@@ -61,7 +61,7 @@ export class QuestionsController {
   }
 
   @Get()
-  @RequirePermissions('question_bank:manage')
+  @RequireAnyPermission('question_bank:manage', 'question_bank:view')
   list(
     @CurrentTenant() tenant: TenantContext,
     @Query('topic') topic?: string,
@@ -76,13 +76,13 @@ export class QuestionsController {
   }
 
   @Get('code-languages')
-  @RequirePermissions('question_bank:manage')
+  @RequireAnyPermission('question_bank:manage', 'question_bank:view')
   listCodeLanguages() {
     return this.questionsService.listAvailableLanguages();
   }
 
   @Get(':id')
-  @RequirePermissions('question_bank:manage')
+  @RequireAnyPermission('question_bank:manage', 'question_bank:view')
   findOne(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.questionsService.findOne(tenant, id);
   }
