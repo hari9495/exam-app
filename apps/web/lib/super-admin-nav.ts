@@ -22,6 +22,7 @@ export const SUPER_ADMIN_FULL_NAV = [
   { href: '/sms-templates', label: 'SMS Templates', icon: MessageSquare, group: 'Messaging' },
   { href: '/whatsapp-templates', label: 'WhatsApp Templates', icon: MessageCircle, group: 'Messaging' },
   { href: '/offer-template', label: 'Offer Template', icon: FileSignature, group: 'Messaging' },
+  { href: '/campaigns', label: 'Campaigns', icon: Send, group: 'Messaging' },
   { href: '/calendar', label: 'Calendar', icon: CalendarClock, group: 'Messaging' },
   { href: '/analytics/hiring', label: 'Hiring Analytics', icon: TrendingUp, group: 'Analytics' },
   { href: '/users', label: 'Staff Users', icon: Users, group: 'Admin' },

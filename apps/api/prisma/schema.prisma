@@ -1213,6 +1213,48 @@ model CandidateEmailBatch {
   @@map("candidate_email_batches")
 }
 
+// A candidate nurture / drip campaign: an ordered list of email steps (stepsJson) sent to enrolled
+// candidates on a schedule. steps = [{ subject, body, delayDays }] where delayDays is days after the
+// previous step (step 0 = days after enrolment). targetGlobalStage != null auto-enrols a candidate when
+// they enter that talent-pool global stage (via pipeline patchEntry); null = manual enrol only. The
+// 'drip-steps' scheduled sweep sends due steps via CandidateEmailsService.sendMessage(source:'drip').
+model DripCampaign {
+  id                String   @id @default(uuid()) @db.UniqueIdentifier
+  organizationId    String   @map("organization_id") @db.UniqueIdentifier
+  name              String   @db.NVarChar(200)
+  enabled           Boolean  @default(false)
+  targetGlobalStage String?  @map("target_global_stage") // e.g. 'available'; null = manual enrol only
+  stepsJson         String   @default("[]") @map("steps_json") @db.NVarChar(Max)
+  createdByUserId   String?  @map("created_by_user_id") @db.UniqueIdentifier
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@index([organizationId])
+  @@map("drip_campaigns")
+}
+
+// One candidate's progress through a DripCampaign. The 'drip-steps' sweep finds active enrolments with
+// nextStepDueAt <= now, sends steps[currentStepIndex] against the pipeline entry, advances the index +
+// nextStepDueAt, and completes at the end. Exits on hire (pipeline hook) or when a send is skipped
+// because the candidate opted out. @@unique keeps auto-enrol idempotent (one enrolment per campaign+candidate).
+model DripEnrolment {
+  id               String    @id @default(uuid()) @db.UniqueIdentifier
+  organizationId   String    @map("organization_id") @db.UniqueIdentifier
+  campaignId       String    @map("campaign_id") @db.UniqueIdentifier
+  candidateId      String    @map("candidate_id") @db.UniqueIdentifier
+  entryId          String    @map("entry_id") @db.UniqueIdentifier
+  currentStepIndex Int       @default(0) @map("current_step_index")
+  status           String    @default("active") // 'active' | 'completed' | 'exited'
+  nextStepDueAt    DateTime  @map("next_step_due_at")
+  enrolledAt       DateTime  @default(now()) @map("enrolled_at")
+  lastSentAt       DateTime? @map("last_sent_at")
+  exitReason       String?   @map("exit_reason")
+
+  @@unique([campaignId, candidateId])
+  @@index([organizationId, status, nextStepDueAt])
+  @@map("drip_enrolments")
+}
+
 // Per-org customizable certificate copy (one row per org). The visual layout is fixed (buildCertificatePdf
 // in @exam-platform/shared); the org edits the title/body/signatory text with {{merge}} fields. A
 // missing or disabled row falls back to CERTIFICATE_DEFAULT.

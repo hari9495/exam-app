@@ -33,4 +33,7 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'api-usage-retention', cron: '0 4 * * *' },
   { id: 'face-retention', cron: '30 4 * * *' },
   { id: 'proctoring-retention', cron: '0 5 * * *' },
+  // Hourly (not nightly): drip steps have per-step day delays but should go out promptly once due,
+  // and each run is bounded (SWEEP_BATCH). Sends due nurture-campaign steps.
+  { id: 'drip-steps', cron: '0 * * * *' },
 ];

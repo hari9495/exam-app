@@ -12,7 +12,7 @@ export interface SendMessageInput {
   templateId?: string | null;
   subject: string;
   body: string;
-  source: 'manual' | 'stage_prompt' | 'stage_auto';
+  source: 'manual' | 'stage_prompt' | 'stage_auto' | 'drip';
   senderAddressId?: string;
 }
 

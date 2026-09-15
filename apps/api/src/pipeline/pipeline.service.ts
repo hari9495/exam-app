@@ -30,6 +30,7 @@ import { FieldPermissionsService } from '../field-permissions/field-permissions.
 import { redactFields, redactMany } from '../field-permissions/redact';
 import { JobBoardPosterService } from '../job-boards/job-board-poster.service';
 import { HrisExportService } from '../hris/hris-export.service';
+import { DripService } from '../drip/drip.service';
 
 export interface FeedbackRow {
   id: string;
@@ -183,6 +184,7 @@ export class PipelineService {
     private readonly fieldPerms: FieldPermissionsService,
     private readonly jobBoardPoster: JobBoardPosterService,
     private readonly hrisExport: HrisExportService,
+    private readonly drip: DripService,
   ) {}
 
   async createJob(
@@ -980,6 +982,12 @@ export class PipelineService {
           } catch (e) {
             this.logger.error(`HRIS export failed for entry ${entryId}`, e as Error);
           }
+          // Stop any active nurture drips for a hired candidate. Own guard; never affects the hire.
+          try {
+            await this.drip.exitCandidate(context, info.candidateId, 'hired');
+          } catch (e) {
+            this.logger.error(`Drip exit-on-hire failed for entry ${entryId}`, e as Error);
+          }
         }
       } catch (e) {
         this.logger.error(`candidate.hired emit failed for entry ${entryId}`, e as Error);
@@ -1036,6 +1044,13 @@ export class PipelineService {
       } catch (e) {
         this.logger.error(`Post-commit WhatsApp comms resolution failed for entry ${entryId}`, e as Error);
       }
+    }
+
+    // Auto-enrol into any enabled drip campaign targeting the candidate's NEW global stage (recomputed
+    // inside the committed tx above). Skipped on hire (that candidate is exiting drips, not joining).
+    // Fire-and-forget in its own guard so it can't affect the stage move.
+    if (!didHire) {
+      this.drip.enrolOnStageChange(context, entryId).catch((e) => this.logger.error(`Drip enrol-on-stage failed for entry ${entryId}`, e as Error));
     }
 
     return {
