@@ -33,6 +33,7 @@ import { getEasyApplyProvider, listEasyApplyProviders } from '../easy-apply/prov
 import { UpdateWhatsappConfigDto } from './dto/update-whatsapp-config.dto';
 import { UpdateHrisConfigDto } from './dto/update-hris-config.dto';
 import { isAllowedWebhookUrl } from '../integrations/webhook-url-allowlist';
+import { getHrisConnector } from '../hris/providers';
 import { BusinessHours, Holiday } from '@exam-platform/shared';
 import { getWhatsappProvider, listWhatsappProviders, WhatsappConfigField } from '../whatsapp/providers';
 
@@ -877,29 +878,44 @@ export class OrganizationsService {
 
     const existing = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { hrisTargetUrl: true },
+      select: { hrisProvider: true, hrisTargetUrl: true, hrisAuthHeaderEncrypted: true },
     });
 
-    // Validate a supplied URL the same way the generic-webhook target is validated: https + a
-    // public host (delivery re-checks with a DNS-resolving SSRF guard).
-    if (dto.targetUrl) {
-      if (!isAllowedWebhookUrl('webhook', dto.targetUrl)) {
+    const provider = dto.provider ?? existing?.hrisProvider ?? 'generic';
+    const providerChanged = dto.provider !== undefined && dto.provider !== existing?.hrisProvider;
+    const connector = getHrisConnector(provider);
+
+    const data: Prisma.OrganizationUpdateInput = { hrisExportEnabled: dto.enabled, hrisProvider: provider };
+    let configured = Boolean(existing?.hrisTargetUrl || existing?.hrisAuthHeaderEncrypted);
+
+    // Re-derive the persisted config through the connector when enabling, changing provider, or when
+    // any config field was submitted. A pure disable (enabled:false, no fields) leaves config as-is.
+    const hasConfigInput = [dto.targetUrl, dto.authHeader, dto.apiKey, dto.subdomain, dto.onBehalfOf, dto.performAs].some((v) => v !== undefined);
+    if (dto.enabled || providerChanged || hasConfigInput) {
+      // On a provider change, don't merge the previous vendor's secret; otherwise decrypt the current
+      // secret so an unchanged field can be preserved.
+      let existingConfig: { targetUrl: string | null; secret: string | null } | null = null;
+      if (!providerChanged && existing) {
+        let secret: string | null = null;
+        try {
+          secret = existing.hrisAuthHeaderEncrypted ? this.cryptoService.decrypt(existing.hrisAuthHeaderEncrypted) : null;
+        } catch {
+          secret = null; // corrupt/rotated blob -> treat as unset; the connector will require re-entry
+        }
+        existingConfig = { targetUrl: existing.hrisTargetUrl, secret };
+      }
+
+      // Connector validates its own required fields (throws BadRequestException on missing/invalid).
+      const prepared = connector.prepareConfig(dto, existingConfig);
+
+      // A URL the org supplies (generic/workday) is validated https + public here; vendor fixed hosts
+      // have no targetUrl and are re-checked by the DNS SSRF guard at delivery.
+      if (prepared.targetUrl && !isAllowedWebhookUrl('webhook', prepared.targetUrl)) {
         throw new BadRequestException('That does not look like a valid https HRIS endpoint URL');
       }
-    }
-
-    const effectiveTargetUrl = dto.targetUrl !== undefined ? dto.targetUrl || null : existing?.hrisTargetUrl ?? null;
-    if (dto.enabled && !effectiveTargetUrl) {
-      throw new BadRequestException('Set a target URL before enabling HRIS export');
-    }
-
-    const data: Prisma.OrganizationUpdateInput = { hrisExportEnabled: dto.enabled };
-    if (dto.provider !== undefined) data.hrisProvider = dto.provider;
-    if (dto.targetUrl !== undefined) data.hrisTargetUrl = dto.targetUrl || null;
-    // authHeader: a non-empty value is (re-)encrypted; an explicit empty string clears it; omitted
-    // leaves the stored token untouched (so toggling enable/disable doesn't require re-entering it).
-    if (dto.authHeader !== undefined) {
-      data.hrisAuthHeaderEncrypted = dto.authHeader ? this.cryptoService.encrypt(dto.authHeader) : null;
+      data.hrisTargetUrl = prepared.targetUrl;
+      data.hrisAuthHeaderEncrypted = prepared.secret ? this.cryptoService.encrypt(prepared.secret) : null;
+      configured = Boolean(prepared.targetUrl || prepared.secret);
     }
 
     await this.prisma.organization.update({ where: { id: organizationId }, data });
@@ -908,8 +924,9 @@ export class OrganizationsService {
       action: 'organization.hris_export_configured',
       entityType: 'organization',
       entityId: organizationId,
+      metadata: { provider },
     });
-    return { hrisExportConfigured: Boolean(effectiveTargetUrl), hrisExportEnabled: dto.enabled };
+    return { hrisExportConfigured: configured, hrisExportEnabled: dto.enabled };
   }
 
   async getSsoSettings(context: TenantContext): Promise<SsoSettingsResponse> {

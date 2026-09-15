@@ -1,24 +1,49 @@
 import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { HRIS_PROVIDER_IDS } from '../../hris/providers';
 
 export class UpdateHrisConfigDto {
   @IsBoolean()
   enabled!: boolean;
 
-  // Only 'generic' today (a structured employee-record POST). Kept as an enum so payload-shape
-  // presets can be added later without a breaking change.
+  // Which connector: 'generic' (a structured employee-record POST to a URL) or a vendor preset
+  // (greenhouse | lever | bamboohr | workday). The connector validates its own required fields.
   @IsOptional()
-  @IsIn(['generic'])
+  @IsIn(HRIS_PROVIDER_IDS)
   provider?: string;
 
+  // generic / workday: the endpoint URL. Empty string clears; omitted leaves unchanged.
   @IsOptional()
   @IsString()
   @MaxLength(2000)
   targetUrl?: string;
 
-  // The full Authorization header value to send (e.g. "Bearer xxx" or "Basic yyy"). Empty string
-  // clears the stored token; omitted leaves it unchanged.
+  // generic: the full Authorization header value ("Bearer xxx" / "Basic yyy"). Empty clears; omitted unchanged.
   @IsOptional()
   @IsString()
   @MaxLength(4000)
   authHeader?: string;
+
+  // Vendor API key / token (greenhouse, lever, bamboohr, workday). Omitted keeps the existing value.
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  apiKey?: string;
+
+  // BambooHR company subdomain.
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  subdomain?: string;
+
+  // Greenhouse On-Behalf-Of user id.
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  onBehalfOf?: string;
+
+  // Lever perform_as user id.
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  performAs?: string;
 }

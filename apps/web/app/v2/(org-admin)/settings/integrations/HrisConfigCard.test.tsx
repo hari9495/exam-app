@@ -27,7 +27,7 @@ describe('HrisConfigCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /save & enable/i }));
 
     await waitFor(() => expect(mutate).toHaveBeenCalledWith(
-      { enabled: true, targetUrl: 'https://hris.example.com/in', authHeader: 'Bearer tok' },
+      { enabled: true, provider: 'generic', targetUrl: 'https://hris.example.com/in', authHeader: 'Bearer tok' },
       expect.anything(),
     ));
   });
@@ -44,7 +44,7 @@ describe('HrisConfigCard', () => {
   it('shows the enabled summary and a disable toggle when configured + enabled', () => {
     mockedUseIntegrations.mockReturnValue({ data: { hrisExportConfigured: true, hrisExportEnabled: true, hrisProvider: 'generic', hrisTargetUrl: 'https://hris.example.com/in' } });
     render(<HrisConfigCard />);
-    expect(screen.getByText(/Enabled — on hire/i)).toBeInTheDocument();
+    expect(screen.getByText(/Enabled — Generic endpoint/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /disable export/i }));
     expect(mutate).toHaveBeenCalledWith({ enabled: false }, expect.anything());
   });

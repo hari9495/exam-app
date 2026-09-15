@@ -1,6 +1,10 @@
 # Integrations 2e (part 2) — Bidirectional ATS/HRIS Connector — Design + Plan
 
-Status: DESIGN ONLY. Deferred until an integration credential exists. 2e-part-1 (un-gated) is MERGED: the `candidate.hired` event + candidate/pipeline CSV export, on top of the already-shipped outbound path (2a events + 2b generic webhooks + Zapier). Those already let a customer push applications/hires/CSV into Greenhouse/Lever/Workday/BambooHR **today** with no code from us. This part is the genuinely-new capability: **inbound + structured bidirectional sync**.
+Status: PARTIALLY IMPLEMENTED 2026-09-15 — **outbound per-vendor push connectors shipped** (PR: feat/ats-connectors). The genuinely-new **inbound + bidirectional sync** in this doc (§4 AtsConnection/AtsSyncMap, §6 pull methods, Merge/Finch aggregator) remains DESIGN ONLY, deferred until an aggregator credential exists.
+
+**What shipped (outbound push on hire):** the generic HRIS export (2e-part-1) grew a connector registry — `apps/api/src/hris/providers/` (`generic`, `greenhouse`, `lever`, `bamboohr`, `workday`) — resolved by the existing `Organization.hrisProvider`. On hire, the worker maps the `candidate.hired` payload to each vendor's API (Greenhouse Harvest create-candidate, Lever create-opportunity, BambooHR add-employee, Workday best-effort Bearer POST) using the org's encrypted credentials. No new dependency, no schema change (reused `hrisProvider` + `hrisTargetUrl` + the encrypted `hrisAuthHeaderEncrypted` blob), inert until configured. This is the "fallback: build per-provider" path from §2, done for the push direction only. Greenhouse/Lever/BambooHR are built to their documented REST APIs; Workday is a labelled beta (SOAP/per-tenant can't be validated without a tenant — SOAP-only tenants should use the generic endpoint + an iPaaS).
+
+2e-part-1 (un-gated) is MERGED: the `candidate.hired` event + candidate/pipeline CSV export, on top of the already-shipped outbound path (2a events + 2b generic webhooks + Zapier).
 
 ## 1. Goal
 
