@@ -1098,6 +1098,45 @@ model Referral {
   @@map("referrals")
 }
 
+// Candidate-experience survey: an org defines a short question set (rating 1-5 + free text) and either
+// sends it manually or auto-fires it when a candidate reaches a target global stage (e.g. 'rejected').
+// questionsJson = [{ type: 'rating' | 'text', prompt }]. triggerStage null = manual send only.
+model SurveyDefinition {
+  id              String   @id @default(uuid()) @db.UniqueIdentifier
+  organizationId  String   @map("organization_id") @db.UniqueIdentifier
+  name            String   @db.NVarChar(200)
+  enabled         Boolean  @default(false)
+  triggerStage    String?  @map("trigger_stage") // a GlobalStage (e.g. 'rejected','hired'); null = manual only
+  questionsJson   String   @default("[]") @map("questions_json") @db.NVarChar(Max)
+  createdByUserId String?  @map("created_by_user_id") @db.UniqueIdentifier
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([organizationId])
+  @@map("survey_definitions")
+}
+
+// One candidate's invite + response to a SurveyDefinition, keyed to their pipeline entry. The token IS
+// the authorization for the un-authed public response page. answersJson snapshots [{prompt,type,value}]
+// at submit time so aggregates survive later edits to the definition. @@unique keeps one invite per
+// survey+entry (repeated stage changes / re-sends don't spam).
+model SurveyResponse {
+  id             String    @id @default(uuid()) @db.UniqueIdentifier
+  organizationId String    @map("organization_id") @db.UniqueIdentifier
+  surveyId       String    @map("survey_id") @db.UniqueIdentifier
+  candidateId    String    @map("candidate_id") @db.UniqueIdentifier
+  entryId        String    @map("entry_id") @db.UniqueIdentifier
+  token          String    @unique @map("token")
+  status         String    @default("pending") // 'pending' | 'submitted'
+  answersJson    String?   @map("answers_json") @db.NVarChar(Max)
+  invitedAt      DateTime  @default(now()) @map("invited_at")
+  submittedAt    DateTime? @map("submitted_at")
+
+  @@unique([surveyId, entryId])
+  @@index([organizationId, surveyId])
+  @@map("survey_responses")
+}
+
 model CandidateFitAssessment {
   id              String    @id @default(uuid()) @db.UniqueIdentifier
   organizationId  String    @map("organization_id") @db.UniqueIdentifier

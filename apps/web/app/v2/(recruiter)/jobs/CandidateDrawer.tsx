@@ -28,6 +28,7 @@ import { useCandidateSmsMessages, useResendSms, useSetSmsOptOut, useCandidateCon
 import { useCandidateWhatsapp, useResendWhatsapp, useSetCandidateWhatsappOptOut } from '../../../../lib/hooks/useCandidateWhatsapp';
 import { useCandidates } from '../../../../lib/hooks/useCandidates';
 import { useCandidateOffers, useWithdrawOffer, useSendOffer, useSubmitOffer, useCancelOffer } from '../../../../lib/hooks/useOffers';
+import { useSurveys, useSendSurvey } from '../../../../lib/hooks/useSurveys';
 import { useApprovalGateStatus } from '../../../../lib/hooks/useApprovals';
 import { useCandidateInterviews, useCancelInterview } from '../../../../lib/hooks/useInterviews';
 import { useSimilarCandidates } from '../../../../lib/hooks/useCandidateSearch';
@@ -273,6 +274,52 @@ function MessagesSection({ entryId, candidateId, candidateName }: { entryId: str
         </ul>
       )}
       {composing && <SendMessageModal entryId={entryId} candidateId={candidateId} candidateName={candidateName} onClose={() => setComposing(false)} />}
+    </div>
+  );
+}
+
+// Manual survey send: list the org's surveys and send one to this candidate's pipeline entry. The
+// per-response token + email go out via the backend; auto-fire surveys still send on stage change.
+function SurveysSection({ entryId }: { entryId: string }) {
+  const { data: surveys, isLoading } = useSurveys();
+  const send = useSendSurvey();
+  const { toast } = useToast();
+  const [sent, setSent] = useState<Record<string, string>>({});
+
+  const sendable = (surveys ?? []).filter((s) => s.questions.length > 0);
+
+  function handleSend(id: string) {
+    send.mutate({ id, entryId }, {
+      onSuccess: (res) => {
+        const msg = res.sent ? 'Sent' : res.reason === 'already_sent' ? 'Already sent' : res.reason === 'opted_out' ? 'Candidate opted out' : 'Not sent';
+        setSent((prev) => ({ ...prev, [id]: msg }));
+        toast(res.sent ? 'Survey sent.' : msg);
+      },
+      onError: (e) => toast(e instanceof Error ? e.message : 'Failed to send survey.', 'error'),
+    });
+  }
+
+  return (
+    <div>
+      <h3 style={{ ...sectionH, margin: '0 0 8px' }}>Surveys</h3>
+      {isLoading ? (
+        <p style={{ fontSize: 13, color: muted, margin: 0 }}>Loading…</p>
+      ) : sendable.length === 0 ? (
+        <p style={{ fontSize: 13, color: muted, margin: 0 }}>No surveys yet. Create one under Surveys to gather candidate feedback.</p>
+      ) : (
+        <ul style={{ display: 'flex', flexDirection: 'column', gap: 8, listStyle: 'none', padding: 0, margin: 0 }}>
+          {sendable.map((s) => (
+            <li key={s.id} style={{ ...listItem, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 500, color: ink }}>{s.name}</span>
+              {sent[s.id] ? (
+                <span style={{ fontSize: 12, color: muted }}>{sent[s.id]}</span>
+              ) : (
+                <button type="button" onClick={() => handleSend(s.id)} disabled={send.isPending} style={{ ...linkBtn, opacity: send.isPending ? 0.5 : 1 }}>Send</button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -898,6 +945,7 @@ export function CandidateDrawer({ jobId, row, stages, onClose }: { jobId: string
         <div style={card}><MessagesSection entryId={row.entryId} candidateId={row.candidateId} candidateName={row.candidateName} /></div>
         <div style={card}><SmsSection entryId={row.entryId} candidateId={row.candidateId} candidateName={row.candidateName} candidateEmail={row.candidateEmail} /></div>
         <div style={card}><WhatsappSection entryId={row.entryId} candidateId={row.candidateId} candidateName={row.candidateName} candidateEmail={row.candidateEmail} /></div>
+        <div style={card}><SurveysSection entryId={row.entryId} /></div>
         <div style={card}><OffersSection entryId={row.entryId} candidateId={row.candidateId} /></div>
         <div style={card}><InterviewsSection entryId={row.entryId} candidateId={row.candidateId} /></div>
       </div>

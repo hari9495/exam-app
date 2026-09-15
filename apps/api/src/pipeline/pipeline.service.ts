@@ -31,6 +31,7 @@ import { redactFields, redactMany } from '../field-permissions/redact';
 import { JobBoardPosterService } from '../job-boards/job-board-poster.service';
 import { HrisExportService } from '../hris/hris-export.service';
 import { DripService } from '../drip/drip.service';
+import { SurveysService } from '../surveys/surveys.service';
 
 export interface FeedbackRow {
   id: string;
@@ -186,6 +187,7 @@ export class PipelineService {
     private readonly jobBoardPoster: JobBoardPosterService,
     private readonly hrisExport: HrisExportService,
     private readonly drip: DripService,
+    private readonly surveys: SurveysService,
   ) {}
 
   async createJob(
@@ -1054,6 +1056,11 @@ export class PipelineService {
     if (!didHire) {
       this.drip.enrolOnStageChange(context, entryId).catch((e) => this.logger.error(`Drip enrol-on-stage failed for entry ${entryId}`, e as Error));
     }
+
+    // Auto-fire any enabled candidate-experience survey whose triggerStage matches the candidate's
+    // NEW global stage (recomputed inside the committed tx above) -- including 'rejected'. Fires on
+    // hire too (a survey can target 'hired'). Fire-and-forget in its own guard; can't affect the move.
+    this.surveys.triggerOnStageChange(context, entryId).catch((e) => this.logger.error(`Survey trigger-on-stage failed for entry ${entryId}`, e as Error));
 
     return {
       entry,

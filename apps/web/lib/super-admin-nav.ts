@@ -1,4 +1,4 @@
-import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode, Briefcase, TrendingUp, Mail, MessageSquare, MessageCircle, FileSignature, CreditCard, CheckSquare, GitPullRequestArrow, Kanban, Clock, SlidersHorizontal, EyeOff, Trash2, MailCheck, Send, FileCheck, Globe, Lock, Rss, Building2, CalendarClock, Bell, UserPlus } from 'lucide-react';
+import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, History, ShieldCheck, Settings, Plug, KeyRound, TerminalSquare, QrCode, Briefcase, TrendingUp, Mail, MessageSquare, MessageCircle, FileSignature, CreditCard, CheckSquare, GitPullRequestArrow, Kanban, Clock, SlidersHorizontal, EyeOff, Trash2, MailCheck, Send, FileCheck, Globe, Lock, Rss, Building2, CalendarClock, Bell, UserPlus, ClipboardList } from 'lucide-react';
 
 // The COMPLETE union of org-scoped staff features. A super_admin acting into an org sees this exact
 // nav in EVERY staff shell (recruiter / org-admin / panel), so no feature is ever hidden by whichever
@@ -24,6 +24,7 @@ export const SUPER_ADMIN_FULL_NAV = [
   { href: '/whatsapp-templates', label: 'WhatsApp Templates', icon: MessageCircle, group: 'Messaging' },
   { href: '/offer-template', label: 'Offer Template', icon: FileSignature, group: 'Messaging' },
   { href: '/campaigns', label: 'Campaigns', icon: Send, group: 'Messaging' },
+  { href: '/surveys', label: 'Surveys', icon: ClipboardList, group: 'Messaging' },
   { href: '/calendar', label: 'Calendar', icon: CalendarClock, group: 'Messaging' },
   { href: '/analytics/hiring', label: 'Hiring Analytics', icon: TrendingUp, group: 'Analytics' },
   { href: '/users', label: 'Staff Users', icon: Users, group: 'Admin' },
