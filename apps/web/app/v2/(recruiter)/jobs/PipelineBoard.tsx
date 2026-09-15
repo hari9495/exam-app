@@ -104,6 +104,7 @@ function PipelineCard({ row, canManage, statusGroups, selected, onToggleSelect, 
         <span>Added via {row.enteredVia}</span>
       </div>
       {row.assigneeName && <p style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--org-primary)', margin: 0 }}>Assigned to {row.assigneeName}</p>}
+      {row.referredByName && <p style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--org-primary)', margin: 0 }}>Referred by {row.referredByName}</p>}
       {canManage && (
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderTop: '1px solid var(--hair)', paddingTop: 8 }}>
           <select aria-label={`Status for ${row.candidateName}`} value={row.statusId} onChange={(e) => onStatusChange(row.entryId, e.target.value)} style={stageSelect}>

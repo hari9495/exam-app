@@ -492,6 +492,7 @@ export interface BoardEntryRow {
   fitStale: boolean;
   assignedUserId: string | null;
   assigneeName: string | null;
+  referredByName: string | null;
   // Populated by GET /jobs/:id/pipeline; rendered read-only in CandidateDrawer.
   customFields?: CustomFieldRead[];
   assignedGroupId: string | null;
@@ -1100,6 +1101,27 @@ export interface OrgUsage {
   candidates: DimensionUsage;
   aiCredits: DimensionUsage;
   proctoringMinutes: DimensionUsage;
+}
+
+// Employee referral portal. Mirrors apps/api/src/referrals/*.
+export interface ReferableJob {
+  id: string;
+  title: string;
+  location: string | null;
+  department: string | null;
+}
+
+export interface ReferralRow {
+  id: string;
+  candidateName: string;
+  candidateEmail: string;
+  jobTitle: string;
+  status: string;
+  rewardStatus: string;
+  rewardNote: string | null;
+  note: string | null;
+  referrerName?: string;
+  createdAt: string;
 }
 
 // Candidate nurture / drip campaigns. Mirrors apps/api/src/drip/*.

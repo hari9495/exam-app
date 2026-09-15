@@ -1,4 +1,4 @@
-import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, QrCode, Briefcase, TrendingUp, Mail, MessageSquare, MessageCircle, FileSignature, CheckSquare, Building2, CalendarClock, Send } from 'lucide-react';
+import { Sun, LayoutDashboard, FileText, BookOpen, Users, BarChart3, QrCode, Briefcase, TrendingUp, Mail, MessageSquare, MessageCircle, FileSignature, CheckSquare, Building2, CalendarClock, Send, UserPlus } from 'lucide-react';
 
 // The recruiter-scoped nav, shared by BOTH shells that can render it: the (recruiter) route group
 // and the (panel) group, which owns /reports and shows this same sidebar to a recruiter or
@@ -20,6 +20,7 @@ export const RECRUITER_NAV_ITEMS = [
   { href: '/approvals', label: 'Approvals', icon: CheckSquare, group: 'Hiring' },
   { href: '/agency-submissions', label: 'Agency Submissions', icon: Building2, group: 'Hiring' },
   { href: '/walk-in-groups', label: 'Walk-in Groups', icon: QrCode, group: 'Hiring' },
+  { href: '/referrals', label: 'Referrals', icon: UserPlus, group: 'Hiring' },
   { href: '/exams', label: 'Exams', icon: FileText, group: 'Assessments' },
   { href: '/questions', label: 'Question Bank', icon: BookOpen, group: 'Assessments' },
   // Results (scores, pass/fail, CSV/XLSX/PDF export) previously only appeared for a
