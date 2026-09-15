@@ -280,6 +280,24 @@ describe('validateQuestionPayload', () => {
     ).toThrow('file_upload questions must not have options');
   });
 
+  it('accepts a spoken question with no options', () => {
+    expect(() =>
+      validateQuestionPayload({ type: 'spoken', difficulty: 'medium', marks: 8, negativeMarks: 0, options: [] }),
+    ).not.toThrow();
+  });
+
+  it('rejects a spoken question with any options', () => {
+    expect(() =>
+      validateQuestionPayload({
+        type: 'spoken',
+        difficulty: 'medium',
+        marks: 8,
+        negativeMarks: 0,
+        options: [{ text: 'irrelevant', isCorrect: false }],
+      }),
+    ).toThrow('spoken questions must not have options');
+  });
+
   it('rejects a code question with an unknown languageMode', () => {
     expect(() =>
       validateQuestionPayload(

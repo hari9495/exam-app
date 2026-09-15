@@ -489,19 +489,31 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                       <span style={{ marginLeft: 8, borderRadius: 6, background: 'var(--surface)', color: 'var(--muted)', padding: '1px 6px', fontSize: 11 }}>Not counted</span>
                     )}
                   </p>
-                  {question.type === 'code' || question.type === 'essay' || question.type === 'file_upload' ? (
+                  {question.type === 'code' || question.type === 'essay' || question.type === 'file_upload' || question.type === 'spoken' ? (
                     // These types have no options, so the loop below would render nothing and the
                     // submission would be invisible here -- the only place it can still be read once
                     // grading has finalized the attempt.
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--muted)' }}>
-                        <span>{question.type === 'code' ? (question.codeLanguage ?? 'code') : question.type === 'essay' ? 'essay' : 'files'}</span>
+                        <span>{question.type === 'code' ? (question.codeLanguage ?? 'code') : question.type === 'essay' ? 'essay' : question.type === 'spoken' ? 'recording' : 'files'}</span>
                         <span>·</span>
                         <span>
                           {question.marksAwarded ?? 0}/{question.marks}
                         </span>
                       </div>
-                      {question.type === 'file_upload' ? (
+                      {question.type === 'spoken' ? (
+                        question.answerFiles.length === 0 ? (
+                          <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>Not attempted.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {question.answerFiles.map((file, i) => (
+                              <audio key={i} controls preload="metadata" src={file.url ?? undefined} style={{ width: '100%' }}>
+                                <a href={file.url ?? '#'} target="_blank" rel="noopener noreferrer">Download recording</a>
+                              </audio>
+                            ))}
+                          </div>
+                        )
+                      ) : question.type === 'file_upload' ? (
                         question.answerFiles.length === 0 ? (
                           <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>Not attempted.</p>
                         ) : (

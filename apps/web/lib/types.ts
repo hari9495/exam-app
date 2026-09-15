@@ -19,7 +19,7 @@ export interface PaginatedResponse<T> {
   totalPages: number;
 }
 
-export type QuestionType = 'single_mcq' | 'multi_mcq' | 'true_false' | 'code' | 'essay' | 'file_upload';
+export type QuestionType = 'single_mcq' | 'multi_mcq' | 'true_false' | 'code' | 'essay' | 'file_upload' | 'spoken';
 
 /** A file the candidate uploaded for a file_upload answer (server-signed download URL on read). */
 export interface AnswerFile {

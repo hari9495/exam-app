@@ -534,7 +534,7 @@ export class ReportsService {
                   answerText: type === 'code' || type === 'essay' ? (answer?.answerText ?? null) : null,
                   codeLanguage: type === 'code' ? (answer?.codeLanguage ?? null) : null,
                   answerFiles:
-                    type === 'file_upload'
+                    type === 'file_upload' || type === 'spoken'
                       ? await Promise.all(
                           parseStoredAnswerFiles(answer?.answerFilesJson).map(async (file) => ({
                             fileName: file.fileName,

@@ -24,6 +24,7 @@ const TYPE_LABELS: Record<QuestionType, string> = {
   code: 'Coding',
   essay: 'Essay',
   file_upload: 'File upload',
+  spoken: 'Spoken',
 };
 
 const DIFFICULTY_VARIANT: Record<Difficulty, 'success' | 'warning' | 'danger'> = {

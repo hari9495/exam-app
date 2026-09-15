@@ -437,19 +437,31 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                         <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">Not counted</span>
                       )}
                     </p>
-                    {question.type === 'code' || question.type === 'essay' || question.type === 'file_upload' ? (
+                    {question.type === 'code' || question.type === 'essay' || question.type === 'file_upload' || question.type === 'spoken' ? (
                       // These types have no options, so the loop below would render nothing and the
                       // submission would be invisible here -- the only place it can still be read
                       // once grading has finalized the attempt.
                       <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-2 text-xs text-gray-500">
-                          <span>{question.type === 'code' ? (question.codeLanguage ?? 'code') : question.type === 'essay' ? 'essay' : 'files'}</span>
+                          <span>{question.type === 'code' ? (question.codeLanguage ?? 'code') : question.type === 'essay' ? 'essay' : question.type === 'spoken' ? 'recording' : 'files'}</span>
                           <span>·</span>
                           <span>
                             {question.marksAwarded ?? 0}/{question.marks}
                           </span>
                         </div>
-                        {question.type === 'file_upload' ? (
+                        {question.type === 'spoken' ? (
+                          question.answerFiles.length === 0 ? (
+                            <p className="text-sm text-gray-500">Not attempted.</p>
+                          ) : (
+                            <div className="flex flex-col gap-1.5">
+                              {question.answerFiles.map((file, i) => (
+                                <audio key={i} controls preload="metadata" src={file.url ?? undefined} className="w-full">
+                                  <a href={file.url ?? '#'} target="_blank" rel="noopener noreferrer">Download recording</a>
+                                </audio>
+                              ))}
+                            </div>
+                          )
+                        ) : question.type === 'file_upload' ? (
                           question.answerFiles.length === 0 ? (
                             <p className="text-sm text-gray-500">Not attempted.</p>
                           ) : (

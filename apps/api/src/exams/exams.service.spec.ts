@@ -401,7 +401,7 @@ describe('ExamsService', () => {
 
       expect(result.requiresManualGrading).toBe(true);
       expect(tx.question.count).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ type: { in: ['code', 'essay', 'file_upload'] }, difficulty: 'medium' }) }),
+        expect.objectContaining({ where: expect.objectContaining({ type: { in: ['code', 'essay', 'file_upload', 'spoken'] }, difficulty: 'medium' }) }),
       );
     });
 

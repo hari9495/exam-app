@@ -92,6 +92,8 @@ interface AttemptAnswerFileSummary {
   fileName: string;
   contentType: string;
   size: number;
+  // Short-lived signed URL for the candidate to replay/preview their own upload; never the raw path.
+  url: string | null;
 }
 
 interface AttemptAnswerSummary {
@@ -224,12 +226,47 @@ const ANSWER_FILE_ALLOWED_TYPES = new Set([
   'application/x-zip-compressed',
 ]);
 
+// spoken answers: candidate records audio in-browser (or uploads an audio file as a fallback).
+// Single take — a new recording/upload REPLACES the previous one (maxCount 1, replaceExisting).
+// Larger cap than a document since it holds up to ~10 minutes of recorded audio.
+const ANSWER_AUDIO_MAX_BYTES = 30 * 1024 * 1024; // ~10 min of recorded audio, generous headroom
+const ANSWER_AUDIO_ALLOWED_TYPES = new Set([
+  'audio/webm', // MediaRecorder default (opus) on Chromium/Firefox
+  'audio/ogg',
+  'audio/mp4', // MediaRecorder on Safari
+  'audio/x-m4a',
+  'audio/aac',
+  'audio/mpeg', // uploaded .mp3
+  'audio/wav',
+  'audio/x-wav',
+]);
+
 interface AnswerFile {
   id: string;
   path: string;
   fileName: string;
   contentType: string;
   size: number;
+}
+
+interface AnswerFilePolicy {
+  allowed: Set<string>;
+  maxBytes: number;
+  maxCount: number;
+  // spoken is a single take: a new upload replaces the existing recording rather than appending.
+  replaceExisting: boolean;
+}
+
+// The two file-backed answer types share storage (Answer.answerFilesJson) and the upload endpoint;
+// they differ only in this policy. Returns null for any other question type.
+function answerFilePolicyFor(type: string): AnswerFilePolicy | null {
+  if (type === 'file_upload') {
+    return { allowed: ANSWER_FILE_ALLOWED_TYPES, maxBytes: ANSWER_FILE_MAX_BYTES, maxCount: ANSWER_FILE_MAX_COUNT, replaceExisting: false };
+  }
+  if (type === 'spoken') {
+    return { allowed: ANSWER_AUDIO_ALLOWED_TYPES, maxBytes: ANSWER_AUDIO_MAX_BYTES, maxCount: 1, replaceExisting: true };
+  }
+  return null;
 }
 
 function parseAnswerFiles(json: string | null | undefined): AnswerFile[] {
@@ -389,20 +426,26 @@ export class AttemptService {
         exam: { title: exam.title, proctoring: resolveProctoringConfig(exam, settled) },
         screenShareRequired: exam.enableAntiCheating && exam.screenCaptureEnabled && !isProctoringBypassActive(settled),
         sections,
-        answers: answers.map((answer) => ({
-          questionId: answer.questionId,
-          selectedOptionIds: JSON.parse(answer.selectedOptionIdsJson),
-          answerText: answer.answerText,
-          codeLanguage: answer.codeLanguage,
-          isMarkedForReview: answer.isMarkedForReview,
-          // Candidate-facing: never expose the internal blob path.
-          answerFiles: parseAnswerFiles(answer.answerFilesJson).map((f) => ({
-            id: f.id,
-            fileName: f.fileName,
-            contentType: f.contentType,
-            size: f.size,
+        answers: await Promise.all(
+          answers.map(async (answer) => ({
+            questionId: answer.questionId,
+            selectedOptionIds: JSON.parse(answer.selectedOptionIdsJson),
+            answerText: answer.answerText,
+            codeLanguage: answer.codeLanguage,
+            isMarkedForReview: answer.isMarkedForReview,
+            // Candidate-facing: never expose the internal blob path, but DO hand back a short-lived
+            // signed URL so the candidate can replay/preview their own recording (spoken) or file.
+            answerFiles: await Promise.all(
+              parseAnswerFiles(answer.answerFilesJson).map(async (f) => ({
+                id: f.id,
+                fileName: f.fileName,
+                contentType: f.contentType,
+                size: f.size,
+                url: (await this.blobStorage.signIfOurs(f.path)) as string | null,
+              })),
+            ),
           })),
-        })),
+        ),
         messages: unreadMessages.map((message) => ({ id: message.id, body: message.body, sentAt: message.sentAt })),
         feedback,
         organizationName,
@@ -612,10 +655,10 @@ export class AttemptService {
         };
       }
 
-      if (question.type === 'file_upload') {
-        // The uploaded files themselves go through the dedicated answer-file endpoint (uploads must
-        // run outside a tx). Here we only persist a markedForReview toggle, never touching
-        // answerFilesJson. Manually graded; never auto-gradable.
+      if (answerFilePolicyFor(question.type)) {
+        // file_upload / spoken: the uploaded file(s) or recording go through the dedicated
+        // answer-file endpoint (uploads must run outside a tx). Here we only persist a
+        // markedForReview toggle, never touching answerFilesJson. Manually graded; never auto-gradable.
         await tx.answer.upsert({
           where: { attemptId_questionId: { attemptId: settled.id, questionId: dto.questionId } },
           create: { attemptId: settled.id, questionId: dto.questionId, selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview },
@@ -666,9 +709,11 @@ export class AttemptService {
     return response;
   }
 
-  // Candidate uploads one file for a file_upload question. Validates the fixed global policy (type +
-  // size), then follows the same decide/upload/commit split the proctoring uploads use: the blob
-  // upload runs with NO Prisma transaction open (it's the slow part), bracketed by two short txs.
+  // Candidate uploads one file (file_upload) or recording (spoken). Validates the per-type global
+  // policy (content type + size + count), then follows the same decide/upload/commit split the
+  // proctoring uploads use: the blob upload runs with NO Prisma transaction open (it's the slow
+  // part), bracketed by two short txs. For spoken (replaceExisting), a new recording replaces the
+  // previous one — the old blob is deleted best-effort after commit.
   async uploadAnswerFile(
     session: CandidateSession,
     dto: { questionId: string; fileName: string; dataUri: string },
@@ -678,15 +723,15 @@ export class AttemptService {
 
     const parsed = extractBase64FromDataUri(dto.dataUri);
     if (!parsed) throw new BadRequestException('Invalid file data');
-    if (!ANSWER_FILE_ALLOWED_TYPES.has(parsed.contentType)) {
-      throw new BadRequestException('That file type is not allowed');
-    }
+    // MediaRecorder hands back e.g. "audio/webm;codecs=opus" — match + store the base type only.
+    const contentType = parsed.contentType.split(';')[0].trim();
     const buffer = Buffer.from(parsed.base64, 'base64');
     if (buffer.length === 0) throw new BadRequestException('The file is empty');
-    if (buffer.length > ANSWER_FILE_MAX_BYTES) throw new BadRequestException('The file exceeds the 10 MB limit');
 
-    // Phase 1 (short tx): validate the attempt is live and the question accepts uploads + isn't full.
-    const attemptId = await this.tenantPrisma.forTenant(context, async (tx) => {
+    // Phase 1 (short tx): validate the attempt is live and the question + policy accept this upload.
+    // All checks are in-memory (no blob), so the policy/type/size validation lives here where the
+    // question type is known.
+    const { attemptId, replaceExisting } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
       if (!attempt) throw new NotFoundException('No attempt has been started');
       const settled = await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
@@ -694,32 +739,44 @@ export class AttemptService {
       const questionIds: string[] = JSON.parse(settled.questionOrderJson);
       if (!questionIds.includes(dto.questionId)) throw new BadRequestException(`Question ${dto.questionId} is not part of this attempt`);
       const question = await tx.question.findFirstOrThrow({ where: { id: dto.questionId } });
-      if (question.type !== 'file_upload') throw new BadRequestException('This question does not accept file uploads');
-      const existing = await tx.answer.findUnique({ where: { attemptId_questionId: { attemptId: settled.id, questionId: dto.questionId } } });
-      if (parseAnswerFiles(existing?.answerFilesJson).length >= ANSWER_FILE_MAX_COUNT) {
-        throw new BadRequestException(`You can upload at most ${ANSWER_FILE_MAX_COUNT} files for this question`);
+      const policy = answerFilePolicyFor(question.type);
+      if (!policy) throw new BadRequestException('This question does not accept file uploads');
+      const isSpoken = question.type === 'spoken';
+      if (!policy.allowed.has(contentType)) {
+        throw new BadRequestException(isSpoken ? 'That audio format is not supported' : 'That file type is not allowed');
       }
-      return settled.id;
+      if (buffer.length > policy.maxBytes) {
+        throw new BadRequestException(`The ${isSpoken ? 'recording' : 'file'} exceeds the ${Math.round(policy.maxBytes / (1024 * 1024))} MB limit`);
+      }
+      const existing = await tx.answer.findUnique({ where: { attemptId_questionId: { attemptId: settled.id, questionId: dto.questionId } } });
+      if (!policy.replaceExisting && parseAnswerFiles(existing?.answerFilesJson).length >= policy.maxCount) {
+        throw new BadRequestException(`You can upload at most ${policy.maxCount} files for this question`);
+      }
+      return { attemptId: settled.id, replaceExisting: policy.replaceExisting };
     });
 
     // Phase 2 (no tx): the slow upload.
     const fileName = sanitizeAnswerFileName(dto.fileName);
     const fileId = randomUUID();
-    const path = await this.blobStorage.upload(`answer-files/${organizationId}/${attemptId}/${dto.questionId}/${fileId}-${fileName}`, buffer, parsed.contentType);
+    const path = await this.blobStorage.upload(`answer-files/${organizationId}/${attemptId}/${dto.questionId}/${fileId}-${fileName}`, buffer, contentType);
 
-    // Phase 3 (short tx): append to the answer's file list.
-    const files = await this.tenantPrisma.forTenant(context, async (tx) => {
+    // Phase 3 (short tx): append (file_upload) or replace (spoken single take) the file list.
+    const { files, replacedPaths } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const existing = await tx.answer.findUnique({ where: { attemptId_questionId: { attemptId, questionId: dto.questionId } } });
-      const list = parseAnswerFiles(existing?.answerFilesJson);
-      list.push({ id: fileId, path, fileName, contentType: parsed.contentType, size: buffer.length });
+      const current = parseAnswerFiles(existing?.answerFilesJson);
+      const replacedPaths = replaceExisting ? current.map((f) => f.path) : [];
+      const list = replaceExisting ? [] : current;
+      list.push({ id: fileId, path, fileName, contentType, size: buffer.length });
       const answerFilesJson = JSON.stringify(list);
       await tx.answer.upsert({
         where: { attemptId_questionId: { attemptId, questionId: dto.questionId } },
         create: { attemptId, questionId: dto.questionId, selectedOptionIdsJson: '[]', answerFilesJson },
         update: { answerFilesJson, answeredAt: new Date() },
       });
-      return list;
+      return { files: list, replacedPaths };
     });
+    // Best-effort: drop the blob(s) a single-take re-record replaced; never fail the request over it.
+    for (const p of replacedPaths) void this.blobStorage.deleteByUrl(p).catch(() => undefined);
     return { files: files.map((f) => ({ id: f.id, fileName: f.fileName, contentType: f.contentType, size: f.size })) };
   }
 
