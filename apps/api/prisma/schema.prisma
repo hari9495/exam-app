@@ -198,7 +198,7 @@ model SsoLoginCode {
   id        String   @id @default(uuid()) @db.Uuid
   codeHash  String   @unique @map("code_hash") @db.VarChar(1000)
   userId    String   @map("user_id") @db.Uuid
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -312,13 +312,7 @@ model AuditLog {
   organizationId String?       @map("organization_id") @db.Uuid
   organization   Organization? @relation(fields: [organizationId], references: [id])
   actorUserId    String?       @map("actor_user_id") @db.Uuid
-  // onDelete: NoAction here is a schema-validator-only annotation, not the real DB behavior.
-  // Prisma's generate/validate step flags this relation and the organization relation above as
-  // two ambiguous SetNull-cascade paths into AuditLog (Organization -> AuditLog directly, and
-  // Organization -> User -> AuditLog.actor), even though the actual FK constraint -- defined by
-  // this project's hand-written migration, never auto-generated from this annotation -- really is
-  // ON DELETE SET NULL ON UPDATE NO ACTION, exactly as applied and already accepted by SQL Server.
-  actor          User?         @relation(fields: [actorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  actor          User?         @relation(fields: [actorUserId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   action         String        @db.VarChar(1000)
   entityType     String        @map("entity_type") @db.VarChar(1000)
   entityId       String?       @map("entity_id") @db.VarChar(1000)
@@ -506,14 +500,7 @@ model Exam {
   // exactly its member exams regardless of walkInListed, which only governs the
   // org-wide default picker.
   walkInGroupId                 String?       @map("walk_in_group_id") @db.Uuid
-  // onDelete/onUpdate declared NoAction here only to satisfy Prisma's client-generation
-  // cyclic-referential-actions check (adding WalkInGroup.jobId in 20260820090000 created a
-  // second path Job -> WalkInGroup -> Exam -> JobExam alongside the direct Job -> JobExam
-  // cascade, which Prisma's validator rejects even though SQL Server itself accepted the
-  // new FK). The REAL deployed constraint (20260805020000_walk_in_groups) is still
-  // ON DELETE SET NULL ON UPDATE CASCADE -- this annotation doesn't change DB behavior,
-  // it only breaks the graph Prisma walks at generate time.
-  walkInGroup                   WalkInGroup?  @relation(fields: [walkInGroupId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  walkInGroup                   WalkInGroup?  @relation(fields: [walkInGroupId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   allowedIpRange                String?       @map("allowed_ip_range") @db.VarChar(1000)
   // Master switch for every anti-cheating measure below. Off forces webcam/screen-capture/
   // lockdown to false and every browser-behavior signal disabled at write time (exams.service's
