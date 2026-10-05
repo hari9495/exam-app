@@ -243,6 +243,10 @@ export class AttemptsAdminService {
   }
 
   async regenerateCodeReview(context: TenantContext, actorUserId: string, attemptId: string, questionId: string): Promise<CodeAnswerReview> {
+    // answers carry no organization_id, so row-level security does not scope the lookup below --
+    // without this check any exam:manage user could reset and re-run (and bill) another org's review.
+    await this.requireOwnedAttempt(context, attemptId);
+
     const answer = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.answer.findFirst({ where: { attemptId, questionId } }),
     );
