@@ -17,7 +17,7 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
   let planId: string;
   let orgId: string;
   let recruiterAccessToken: string;
-  let orgAdminAccessToken: string;
+  let panelAccessToken: string;
   let examId: string;
   const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
 
@@ -39,11 +39,11 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
     orgId = org.id;
 
     const recruiterHash = await argon2.hash('RecruiterPassw0rd!');
-    const orgAdminHash = await argon2.hash('OrgAdminPassw0rd!');
+    const panelHash = await argon2.hash('PanelPassw0rd!');
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
       Promise.all([
         tx.user.create({ data: { organizationId: orgId, email: 'recruiter@ci-anticheat.test', passwordHash: recruiterHash, role: 'recruiter' } }),
-        tx.user.create({ data: { organizationId: orgId, email: 'orgadmin@ci-anticheat.test', passwordHash: orgAdminHash, role: 'org_admin' } }),
+        tx.user.create({ data: { organizationId: orgId, email: 'panel@ci-anticheat.test', passwordHash: panelHash, role: 'panel' } }),
       ]),
     );
 
@@ -54,10 +54,10 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
         .expect(200)
     ).body.accessToken;
 
-    orgAdminAccessToken = (
+    panelAccessToken = (
       await request(adminHttp)
         .post('/api/v1/auth/staff/login')
-        .send({ organizationSlug: org.slug, email: 'orgadmin@ci-anticheat.test', password: 'OrgAdminPassw0rd!' })
+        .send({ organizationSlug: org.slug, email: 'panel@ci-anticheat.test', password: 'PanelPassw0rd!' })
         .expect(200)
     ).body.accessToken;
 
@@ -185,7 +185,7 @@ describe('Session Enforcement & Anti-Cheat HTTP flow', () => {
 
     await request(adminHttp)
       .get(`/api/v1/attempts/${attemptId}/proctoring-events`)
-      .set('Authorization', `Bearer ${orgAdminAccessToken}`)
+      .set('Authorization', `Bearer ${panelAccessToken}`)
       .expect(403);
   });
 

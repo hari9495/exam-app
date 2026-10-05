@@ -105,7 +105,7 @@ describe('Audit log + access review', () => {
       .set('Authorization', `Bearer ${orgAAdminToken}`)
       .expect(200);
 
-    expect(listResponse.body).toEqual(
+    expect(listResponse.body.data).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ action: 'exam.archived', entityType: 'exam', entityId: examId }),
       ]),
@@ -132,15 +132,17 @@ describe('Audit log + access review', () => {
       .query({ entityType: 'organization', action: 'organization.branding_updated' })
       .set('Authorization', `Bearer ${orgBAdminToken}`)
       .expect(200);
-    expect(orgBAuditResponse.body.length).toBeGreaterThan(0);
-    const orgBEntryId = orgBAuditResponse.body[0].id;
+    expect(orgBAuditResponse.body.data.length).toBeGreaterThan(0);
+    const orgBEntryId = orgBAuditResponse.body.data[0].id;
 
+    // Same filter as org B's query, so the result is not just a first page that happens to omit it.
     const orgAAuditResponse = await request(app.getHttpServer())
       .get('/api/v1/audit-logs')
+      .query({ entityType: 'organization', action: 'organization.branding_updated' })
       .set('Authorization', `Bearer ${orgAAdminToken}`)
       .expect(200);
 
-    expect(orgAAuditResponse.body.some((entry: { id: string }) => entry.id === orgBEntryId)).toBe(false);
+    expect(orgAAuditResponse.body.data.some((entry: { id: string }) => entry.id === orgBEntryId)).toBe(false);
   });
 
   it('rejects recruiter and panel roles with 403 (no audit:view permission)', async () => {

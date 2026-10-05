@@ -5,6 +5,7 @@ import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
 import { AppModule } from '../src/app.module';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
+import { EmailService } from '../src/email/email.service';
 
 describe('Dashboard summary', () => {
   let app: INestApplication;
@@ -13,9 +14,14 @@ describe('Dashboard summary', () => {
   let planId: string;
   let orgId: string;
   let recruiterToken: string;
+  // Inviting a candidate dispatches an email; never reach a real SMTP server from a test.
+  const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(EmailService)
+      .useValue(fakeEmailService)
+      .compile();
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
@@ -107,7 +113,7 @@ describe('Dashboard summary', () => {
       .expect(201);
 
     const summaryResponse = await request(app.getHttpServer())
-      .get('/api/v1/dashboard/summary')
+      .get('/api/v1/dashboard/summary?window=all')
       .set('Authorization', `Bearer ${recruiterToken}`)
       .expect(200);
 

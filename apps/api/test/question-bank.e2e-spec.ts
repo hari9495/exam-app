@@ -87,7 +87,7 @@ describe('Question Bank HTTP flow', () => {
   let planId: string;
   let orgId: string;
   let recruiterAccessToken: string;
-  let orgAdminAccessToken: string;
+  let panelAccessToken: string;
   let questionId: string;
 
   beforeAll(async () => {
@@ -108,11 +108,11 @@ describe('Question Bank HTTP flow', () => {
     orgId = org.id;
 
     const recruiterHash = await argon2.hash('RecruiterPassw0rd!');
-    const orgAdminHash = await argon2.hash('OrgAdminPassw0rd!');
+    const panelHash = await argon2.hash('PanelPassw0rd!');
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
       Promise.all([
         tx.user.create({ data: { organizationId: orgId, email: 'recruiter@qb-http.test', passwordHash: recruiterHash, role: 'recruiter' } }),
-        tx.user.create({ data: { organizationId: orgId, email: 'orgadmin@qb-http.test', passwordHash: orgAdminHash, role: 'org_admin' } }),
+        tx.user.create({ data: { organizationId: orgId, email: 'panel@qb-http.test', passwordHash: panelHash, role: 'panel' } }),
       ]),
     );
 
@@ -122,11 +122,11 @@ describe('Question Bank HTTP flow', () => {
       .expect(200);
     recruiterAccessToken = recruiterLogin.body.accessToken;
 
-    const orgAdminLogin = await request(app.getHttpServer())
+    const panelLogin = await request(app.getHttpServer())
       .post('/api/v1/auth/staff/login')
-      .send({ organizationSlug: org.slug, email: 'orgadmin@qb-http.test', password: 'OrgAdminPassw0rd!' })
+      .send({ organizationSlug: org.slug, email: 'panel@qb-http.test', password: 'PanelPassw0rd!' })
       .expect(200);
-    orgAdminAccessToken = orgAdminLogin.body.accessToken;
+    panelAccessToken = panelLogin.body.accessToken;
   });
 
   afterAll(async () => {
@@ -158,7 +158,7 @@ describe('Question Bank HTTP flow', () => {
   it('rejects a non-permitted role from creating a question', async () => {
     await request(app.getHttpServer())
       .post('/api/v1/questions')
-      .set('Authorization', `Bearer ${orgAdminAccessToken}`)
+      .set('Authorization', `Bearer ${panelAccessToken}`)
       .send({
         type: 'true_false',
         text: 'Should be forbidden',

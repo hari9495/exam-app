@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { EmailService } from '../src/email/email.service';
 
 describe('Full Phase 0 flow: create org -> create user -> login -> protected route', () => {
   let app: INestApplication;
@@ -15,9 +16,14 @@ describe('Full Phase 0 flow: create org -> create user -> login -> protected rou
   let orgId: string;
   let orgSlug: string;
   let superAdminId: string;
+  // Creating an org emails its bootstrap admin; never reach a real SMTP server from a test.
+  const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(EmailService)
+      .useValue(fakeEmailService)
+      .compile();
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));

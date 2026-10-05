@@ -100,7 +100,7 @@ describe('AI Question Generation flow', () => {
     const generateResponse = await request(adminHttp)
       .post('/api/v1/questions/ai-generate')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
-      .send({ topic: 'JavaScript closures', difficulty: 'medium', questionTypes: ['single_mcq'], count: 1 })
+      .send({ topic: 'JavaScript closures', difficulty: 'medium', questionTypes: ['single_mcq'], count: 1, marks: 2, negativeMarks: 1, tagIds: [] })
       .expect(201);
 
     const { aiJobId } = generateResponse.body;
@@ -134,7 +134,7 @@ describe('AI Question Generation flow', () => {
       .post(`/api/v1/questions/${questionId}/publish`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(201);
-    expect(publishResponse.body.status).toBe('active');
+    expect(publishResponse.body).toMatchObject({ status: 'active', marks: 2, negativeMarks: 1 });
 
     const activeListAfterPublish = await request(adminHttp)
       .get('/api/v1/questions')
@@ -149,7 +149,7 @@ describe('AI Question Generation flow', () => {
     const generateResponse = await request(adminHttp)
       .post('/api/v1/questions/ai-generate')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
-      .send({ topic: 'Networking', difficulty: 'hard', questionTypes: ['single_mcq'], count: 3 })
+      .send({ topic: 'Networking', difficulty: 'hard', questionTypes: ['single_mcq'], count: 3, marks: 1, negativeMarks: 0, tagIds: [] })
       .expect(201);
 
     const finalStatus = await pollJob(generateResponse.body.aiJobId);
@@ -161,7 +161,7 @@ describe('AI Question Generation flow', () => {
     await request(adminHttp)
       .post('/api/v1/questions/ai-generate')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
-      .send({ topic: 'Networking', difficulty: 'hard', questionTypes: ['single_mcq'], count: 21 })
+      .send({ topic: 'Networking', difficulty: 'hard', questionTypes: ['single_mcq'], count: 21, marks: 1, negativeMarks: 0, tagIds: [] })
       .expect(400);
   });
 });

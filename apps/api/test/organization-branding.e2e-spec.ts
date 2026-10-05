@@ -6,6 +6,11 @@ import { randomUUID } from 'crypto';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { BlobStorageService } from '@exam-platform/shared';
+import { createFakeBlobStorage, FAKE_BLOB_CONTAINER_URL } from './fixtures/fake-blob-storage';
+
+// Logos go to Azure Blob Storage; the fake records what the app stored instead of calling Azure.
+const fakeBlobStorage = createFakeBlobStorage();
 
 describe('Organization branding flow', () => {
   let app: INestApplication;
@@ -17,7 +22,10 @@ describe('Organization branding flow', () => {
   let orgAdminAccessToken: string;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(BlobStorageService)
+      .useValue(fakeBlobStorage)
+      .compile();
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
@@ -62,7 +70,14 @@ describe('Organization branding flow', () => {
       .set('Authorization', `Bearer ${orgAdminAccessToken}`)
       .expect(200);
 
-    expect(response.body).toEqual({ logoUrl: null, primaryColor: null, accentColor: null });
+    expect(response.body).toEqual({
+      name: 'CI Branding Org',
+      logoUrl: null,
+      primaryColor: null,
+      accentColor: null,
+      textColor: null,
+      loginWatermarkEnabled: false,
+    });
   });
 
   it('updates brand colors and reflects them on the next read', async () => {
@@ -77,7 +92,14 @@ describe('Organization branding flow', () => {
       .set('Authorization', `Bearer ${orgAdminAccessToken}`)
       .expect(200);
 
-    expect(response.body).toEqual({ logoUrl: null, primaryColor: '#1a73e8', accentColor: '#fbbc04' });
+    expect(response.body).toEqual({
+      name: 'CI Branding Org',
+      logoUrl: null,
+      primaryColor: '#1a73e8',
+      accentColor: '#fbbc04',
+      textColor: null,
+      loginWatermarkEnabled: false,
+    });
   });
 
   it('rejects an invalid hex color', async () => {
@@ -88,7 +110,7 @@ describe('Organization branding flow', () => {
       .expect(400);
   });
 
-  it('uploads a logo, serves it via /uploads, and rejects a non-image file', async () => {
+  it('uploads a logo to blob storage, returns its URL, and rejects a non-image file', async () => {
     const pngBuffer = Buffer.from('89504e470d0a1a0a', 'hex');
 
     const uploadResponse = await request(app.getHttpServer())
@@ -97,24 +119,33 @@ describe('Organization branding flow', () => {
       .attach('file', pngBuffer, { filename: 'logo.png', contentType: 'image/png' })
       .expect(201);
 
-    expect(uploadResponse.body.logoUrl).toContain(`/uploads/logos/${orgId}.png`);
-
-    const servedResponse = await request(app.getHttpServer()).get(`/uploads/logos/${orgId}.png`).expect(200);
-    expect(Buffer.compare(servedResponse.body, pngBuffer)).toBe(0);
-    expect(servedResponse.headers['x-content-type-options']).toBe('nosniff');
-    expect(servedResponse.headers['content-security-policy']).toBe("default-src 'none'");
+    expect(fakeBlobStorage.upload).toHaveBeenCalledTimes(1);
+    const [blobPath] = fakeBlobStorage.upload.mock.calls[0];
+    expect(blobPath).toMatch(new RegExp(`^logos/${orgId}-\\d+\\.png$`));
+    const stored = fakeBlobStorage.blobs.get(blobPath)!;
+    expect(Buffer.compare(stored.data, pngBuffer)).toBe(0);
+    expect(stored.contentType).toBe('image/png');
+    expect(uploadResponse.body.logoUrl).toBe(`${FAKE_BLOB_CONTAINER_URL}/${blobPath}`);
 
     await request(app.getHttpServer())
       .post('/api/v1/organizations/branding/logo')
       .set('Authorization', `Bearer ${orgAdminAccessToken}`)
       .attach('file', Buffer.from('%PDF-1.4'), { filename: 'not-a-logo.pdf', contentType: 'application/pdf' })
       .expect(400);
+    expect(fakeBlobStorage.upload).toHaveBeenCalledTimes(1);
   });
 
   it('exposes the same branding publicly by slug, and 404s for an unknown slug', async () => {
     const response = await request(app.getHttpServer()).get(`/api/v1/organizations/by-slug/${orgSlug}/branding`).expect(200);
 
-    expect(response.body).toEqual({ logoUrl: expect.stringContaining(`/uploads/logos/${orgId}.png`), primaryColor: '#1a73e8', accentColor: '#fbbc04' });
+    expect(response.body).toEqual({
+      name: 'CI Branding Org',
+      logoUrl: `${FAKE_BLOB_CONTAINER_URL}/${fakeBlobStorage.upload.mock.calls[0][0]}`,
+      primaryColor: '#1a73e8',
+      accentColor: '#fbbc04',
+      textColor: null,
+      loginWatermarkEnabled: false,
+    });
 
     await request(app.getHttpServer()).get('/api/v1/organizations/by-slug/no-such-org/branding').expect(404);
   });
