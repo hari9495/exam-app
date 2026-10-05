@@ -49,3 +49,4 @@ export * from './record-visibility/record-visibility';
 export * from './soft-delete/soft-delete';
 export * from './soft-delete/soft-delete.extension';
 export * from './templates/render-template-string';
+export * from './rbac/permission-grants';
