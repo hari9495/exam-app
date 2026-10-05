@@ -67,7 +67,7 @@ function isAnswerCorrect(correctOptionIds: string[], selectedOptionIds: string[]
 // the exam's own poll/answer requests. A load test at 1000 reproduced exactly
 // this. The ranking is identical for all viewers of an exam, so it is computed
 // at most once per TTL and shared. See ADO #6828.
-const LEADERBOARD_CACHE_TTL_MS = 15_000;
+export const LEADERBOARD_CACHE_TTL_MS = 15_000;
 
 @Injectable()
 export class LeaderboardService {
