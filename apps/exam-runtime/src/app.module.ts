@@ -94,6 +94,7 @@ import { ServerBusyRetryAfterFilter } from './server-busy-retry-after.filter';
         return new HealthService({
           checkDb: () => prisma.$queryRaw`SELECT 1`,
           checkRedis: () => redis.ping(),
+          close: () => redis.disconnect(),
         });
       },
       inject: [PrismaService],

@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, OnApplicationShutdown, Optional } from '@nestjs/common';
 import Redis from 'ioredis';
 
 export const MAX_RUNS_PER_QUESTION = 30;
@@ -10,8 +10,10 @@ export interface RunCounterStore {
 }
 
 @Injectable()
-export class RunLimiter {
+export class RunLimiter implements OnApplicationShutdown {
   private readonly store: RunCounterStore;
+  // Only a client this class created is its to close; an injected store belongs to the caller.
+  private readonly ownedClient?: Redis;
 
   // RunCounterStore is a TypeScript interface, so Nest's DI has no runtime token to resolve it
   // against — with @Optional(), that's fine: Nest injects undefined here in normal app wiring
@@ -19,7 +21,14 @@ export class RunLimiter {
   // always falls through to a real ioredis connection when instantiated by Nest. Unit tests
   // bypass DI entirely and call `new RunLimiter(fakeStore)` directly (see run-limiter.spec.ts).
   constructor(@Optional() store?: RunCounterStore) {
-    this.store = store ?? new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
+    if (!store) {
+      this.ownedClient = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
+    }
+    this.store = store ?? (this.ownedClient as Redis);
+  }
+
+  onApplicationShutdown(): void {
+    this.ownedClient?.disconnect();
   }
 
   async checkAndIncrement(attemptId: string, questionId: string): Promise<{ allowed: boolean; remaining: number }> {

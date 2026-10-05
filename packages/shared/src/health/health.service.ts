@@ -4,6 +4,8 @@ export interface HealthDeps {
   now?: () => number;
   cacheMs?: number;
   timeoutMs?: number;
+  // Releases whatever the checks hold open (e.g. the Redis client), on app shutdown.
+  close?: () => void;
 }
 
 // Liveness for external uptime monitoring. Deliberately NOT run through
@@ -23,6 +25,10 @@ export class HealthService {
     this.now = deps.now ?? (() => Date.now());
     this.cacheMs = deps.cacheMs ?? 10_000;
     this.timeoutMs = deps.timeoutMs ?? 2_000;
+  }
+
+  onApplicationShutdown(): void {
+    this.deps.close?.();
   }
 
   async check(): Promise<boolean> {
