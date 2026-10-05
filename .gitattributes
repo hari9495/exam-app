@@ -1,2 +1,4 @@
 # Shell scripts run inside Linux containers (docker/postgres/init); CRLF would break them.
 *.sh text eol=lf
+# Prisma checksums migration files byte-for-byte; keep them LF on every checkout.
+**/prisma/migrations/**/*.sql text eol=lf

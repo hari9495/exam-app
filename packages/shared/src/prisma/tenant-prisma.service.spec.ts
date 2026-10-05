@@ -22,78 +22,64 @@ describe('TenantPrismaService', () => {
     return { service, filteredTransaction, rawTransaction, extends: extends_ };
   }
 
-  // $executeRaw is a tagged-template call: jest records each invocation as
-  // [templateStrings, ...interpolatedValues]. The reset statements hard-code
-  // NULL/0 as literal SQL text (no interpolation), so the raw joined text is
-  // what to assert on -- this fails if the reset is reordered, targets the
-  // wrong session-context key, or resets to the wrong value.
-  function resetSql(executeRaw: jest.Mock, callIndex: number) {
-    return (executeRaw.mock.calls[callIndex][0] as string[]).join('');
+  // $executeRaw is a tagged-template call: jest records [templateStrings, ...values]. The SQL text
+  // is fixed; the values are what a bug would get wrong, so assert on both.
+  function contextCall(executeRaw: jest.Mock) {
+    const [strings, ...values] = executeRaw.mock.calls[0];
+    return { sql: (strings as string[]).join('?'), values };
   }
 
-  // Set calls interpolate a value (org id, super-admin flag, user id,
-  // governed flag), so unlike resetSql this also returns the interpolated
-  // arg (calls[i][1]) alongside the literal SQL text around it.
-  function setCall(executeRaw: jest.Mock, callIndex: number) {
-    const call = executeRaw.mock.calls[callIndex];
-    return { sql: (call[0] as string[]).join(''), value: call[1] };
+  function expectTransactionLocalContext(executeRaw: jest.Mock, values: unknown[]) {
+    // One round trip, nothing else: there is no reset step any more -- set_config(..., true) is
+    // discarded by Postgres at COMMIT/ROLLBACK, so a pooled connection never keeps a tenant.
+    expect(executeRaw).toHaveBeenCalledTimes(1);
+    const call = contextCall(executeRaw);
+    for (const key of ['app.current_org', 'app.is_super_admin', 'app.current_user_id', 'app.record_visibility_governed']) {
+      expect(call.sql).toContain(`set_config('${key}', ?, true)`);
+    }
+    expect(call.sql).not.toMatch(/false|SET\s+app|sp_set_session_context/i);
+    expect(call.values).toEqual(values);
   }
 
-  // With no userId on the context, forTenant skips the app_current_user SET
-  // entirely -- so the base fixture context always produces 3 set calls
-  // (org, super-admin, governed) + 4 reset calls (governed, user, super-admin,
-  // org) = 7 total. A context that also carries userId adds one more set
-  // call (app_current_user) for 8 total.
-  const UNGOVERNED_TOTAL_CALLS = 7;
-
-  it('returns the callback result and resets session context to null/0 on success', async () => {
-    const executeRaw = jest.fn().mockResolvedValue(undefined);
+  it('sets the tenant context transaction-locally in one parameterised call and returns the result', async () => {
+    const executeRaw = jest.fn().mockResolvedValue(1);
     const tx = { $executeRaw: executeRaw };
     const { service, filteredTransaction, rawTransaction } = makeService((cb) => cb(tx));
 
     const result = await service.forTenant(context, async () => 'ok');
 
     expect(result).toBe('ok');
-    // set org, set super-admin, set governed (no userId -> no app_current_user set),
-    // reset governed, reset user, reset super-admin, reset org
-    expect(executeRaw).toHaveBeenCalledTimes(UNGOVERNED_TOTAL_CALLS);
-    // Super-admin is cleared first (mirrors "clear the more dangerous flag
-    // first"), then org, then the record-visibility bit, then the user id --
-    // the record-visibility keys are strictly less dangerous to strand than
-    // super-admin/org, so they clear last.
-    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
-    expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
-    expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
-    expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
+    expectTransactionLocalContext(executeRaw, ['org-1', 'off', '', 'off']);
     // Routing: forTenant must run through the soft-delete-filtered client's $transaction, never
-    // the raw one -- that's the whole point of the recycle-bin fix (the redirect must land on the
-    // tx-scoped client, and this is the tx forTenant is supposed to open in the first place).
+    // the raw one -- that's the whole point of the recycle-bin fix.
     expect(filteredTransaction).toHaveBeenCalledTimes(1);
     expect(rawTransaction).not.toHaveBeenCalled();
   });
 
-  it('still resets session context to null/0 when the callback throws a non-P2028 error', async () => {
-    const executeRaw = jest.fn().mockResolvedValue(undefined);
-    const tx = { $executeRaw: executeRaw };
-    const { service } = makeService((cb) => cb(tx));
+  it('sets the context before the callback runs', async () => {
+    const order: string[] = [];
+    const executeRaw = jest.fn(async () => order.push('context'));
+    const { service } = makeService((cb) => cb({ $executeRaw: executeRaw }));
+
+    await service.forTenant(context, async () => order.push('callback'));
+
+    expect(order).toEqual(['context', 'callback']);
+  });
+
+  it('propagates a non-P2028 callback error unchanged', async () => {
+    const executeRaw = jest.fn().mockResolvedValue(1);
+    const { service } = makeService((cb) => cb({ $executeRaw: executeRaw }));
 
     await expect(
       service.forTenant(context, async () => {
         throw new Error('boom');
       }),
     ).rejects.toThrow('boom');
-
-    expect(executeRaw).toHaveBeenCalledTimes(UNGOVERNED_TOTAL_CALLS);
-    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
-    expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
-    expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
-    expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
+    expect(executeRaw).toHaveBeenCalledTimes(1);
   });
 
-  it('still resets session context when the callback throws an HttpException (business-logic 4xx/409)', async () => {
-    const executeRaw = jest.fn().mockResolvedValue(undefined);
-    const tx = { $executeRaw: executeRaw };
-    const { service } = makeService((cb) => cb(tx));
+  it('propagates an HttpException (business-logic 4xx/409) exactly as thrown', async () => {
+    const { service } = makeService((cb) => cb({ $executeRaw: jest.fn().mockResolvedValue(1) }));
     const conflict = new HttpException('Attempt already submitted', HttpStatus.CONFLICT);
 
     let caught: unknown;
@@ -108,69 +94,42 @@ describe('TenantPrismaService', () => {
     // Must come back out exactly as thrown -- not turned into "server busy".
     expect(caught).toBe(conflict);
     expect((caught as HttpException).getStatus()).toBe(HttpStatus.CONFLICT);
-    expect(executeRaw).toHaveBeenCalledTimes(UNGOVERNED_TOTAL_CALLS);
-    expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
-    expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
-    expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
-    expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
   });
 
-  describe('record-visibility session context (app_current_user / app_record_visibility_governed)', () => {
-    it('sets app_current_user and app_record_visibility_governed=1 for a governed role (recruiter), and resets both', async () => {
-      const executeRaw = jest.fn().mockResolvedValue(undefined);
-      const tx = { $executeRaw: executeRaw };
-      const { service } = makeService((cb) => cb(tx));
-      const governedContext = { organizationId: 'org-1', isSuperAdmin: false, userId: 'U1', role: 'recruiter' };
+  it('never runs the callback when setting the context fails', async () => {
+    const fn = jest.fn();
+    const { service } = makeService((cb) => cb({ $executeRaw: jest.fn().mockRejectedValue(new Error('db down')) }));
 
-      const result = await service.forTenant(governedContext, async () => 'ok');
+    await expect(service.forTenant(context, fn)).rejects.toThrow('db down');
+    expect(fn).not.toHaveBeenCalled();
+  });
 
-      expect(result).toBe('ok');
-      // org, super-admin, user, governed (set) + governed, user, super-admin, org (reset)
-      expect(executeRaw).toHaveBeenCalledTimes(8);
-      const userSet = setCall(executeRaw, 2);
-      expect(userSet.sql).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = ");
-      expect(userSet.value).toBe('U1');
-      const governedSet = setCall(executeRaw, 3);
-      expect(governedSet.sql).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = ");
-      expect(governedSet.value).toBe(1);
-      // Reset order: super-admin, org, then the record-visibility keys (governed, user) last.
-      expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
-      expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
-      expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
-      expect(resetSql(executeRaw, 7)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
+  describe('record-visibility context (app.current_user_id / app.record_visibility_governed)', () => {
+    it('sets the user id and governed=on for a governed role (recruiter)', async () => {
+      const executeRaw = jest.fn().mockResolvedValue(1);
+      const { service } = makeService((cb) => cb({ $executeRaw: executeRaw }));
+
+      await service.forTenant({ organizationId: 'org-1', isSuperAdmin: false, userId: 'U1', role: 'recruiter' }, async () => 'ok');
+
+      expectTransactionLocalContext(executeRaw, ['org-1', 'off', 'U1', 'on']);
     });
 
-    it('sets app_record_visibility_governed=0 for a non-governed role (org_admin) even with a userId present', async () => {
-      const executeRaw = jest.fn().mockResolvedValue(undefined);
-      const tx = { $executeRaw: executeRaw };
-      const { service } = makeService((cb) => cb(tx));
-      const adminContext = { organizationId: 'org-1', isSuperAdmin: true, userId: 'U2', role: 'org_admin' };
+    it('sets governed=off for a non-governed role (org_admin) even with a userId, and super-admin on', async () => {
+      const executeRaw = jest.fn().mockResolvedValue(1);
+      const { service } = makeService((cb) => cb({ $executeRaw: executeRaw }));
 
-      await service.forTenant(adminContext, async () => 'ok');
+      await service.forTenant({ organizationId: 'org-1', isSuperAdmin: true, userId: 'U2', role: 'org_admin' }, async () => 'ok');
 
-      const governedSet = setCall(executeRaw, 3);
-      expect(governedSet.sql).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = ");
-      expect(governedSet.value).toBe(0);
+      expectTransactionLocalContext(executeRaw, ['org-1', 'on', 'U2', 'off']);
     });
 
-    it('skips the app_current_user SET when the context has no userId', async () => {
-      const executeRaw = jest.fn().mockResolvedValue(undefined);
-      const tx = { $executeRaw: executeRaw };
-      const { service } = makeService((cb) => cb(tx));
-      const noUserContext = { organizationId: 'org-1', isSuperAdmin: false, role: 'recruiter' };
+    it('sets empty org/user values (which match nothing) when the context has none', async () => {
+      const executeRaw = jest.fn().mockResolvedValue(1);
+      const { service } = makeService((cb) => cb({ $executeRaw: executeRaw }));
 
-      await service.forTenant(noUserContext, async () => 'ok');
+      await service.forTenant({ organizationId: null, isSuperAdmin: false, role: 'recruiter' }, async () => 'ok');
 
-      // org, super-admin, governed (set; no app_current_user set at all) +
-      // super-admin, org, governed, user (reset) = 7 total.
-      expect(executeRaw).toHaveBeenCalledTimes(UNGOVERNED_TOTAL_CALLS);
-      const governedSet = setCall(executeRaw, 2);
-      expect(governedSet.sql).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = ");
-      expect(governedSet.value).toBe(1);
-      // No call anywhere sets app_current_user to a real value -- only the
-      // unconditional reset (to NULL) touches that key.
-      const userSets = executeRaw.mock.calls.filter((call) => (call[0] as string[]).join('').includes('app_current_user') && (call[0] as string[]).join('') !== "EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
-      expect(userSets).toHaveLength(0);
+      expectTransactionLocalContext(executeRaw, ['', 'off', '', 'on']);
     });
   });
 
@@ -243,79 +202,15 @@ describe('TenantPrismaService', () => {
     await expect(service.forTenant(context, async () => 'unreachable')).rejects.toBe(genericError);
   });
 
-  describe('when the session-context reset itself fails', () => {
-    // Simulates the P2028-expiry hazard: the callback ran against a
-    // transaction that's now dead, so the first reset $executeRaw call
-    // (app_is_super_admin, which runs first) rejects and short-circuits the
-    // remaining three sequential reset awaits.
-    function makeResetFailingTx() {
-      const resetError = new Error('Transaction already closed');
-      const executeRaw = jest
-        .fn()
-        .mockResolvedValueOnce(undefined) // set org
-        .mockResolvedValueOnce(undefined) // set super-admin
-        .mockResolvedValueOnce(undefined) // set governed (no userId in base `context` -> no app_current_user set)
-        .mockRejectedValueOnce(resetError); // reset super-admin (runs first, throws)
-      return { tx: { $executeRaw: executeRaw }, executeRaw, resetError };
-    }
-
-    it('still returns the callback result when the reset throws, and logs the failure', async () => {
-      const { tx, executeRaw } = makeResetFailingTx();
-      const { service } = makeService((cb) => cb(tx));
-      const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-
-      const result = await service.forTenant(context, async () => 'ok');
-
-      // The caller must see the callback's own result -- not have it replaced
-      // or masked by the reset failure. Only 4 calls: set org, set
-      // super-admin, set governed, reset super-admin (which throws and
-      // short-circuits the remaining three reset statements).
-      expect(result).toBe('ok');
-      expect(executeRaw).toHaveBeenCalledTimes(4);
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('TENANT_SESSION_CONTEXT_RESET_FAILED'));
-      // No connection string, org id, or candidate data in the log line.
-      expect(errorSpy.mock.calls[0][0]).not.toMatch(/org-1/);
-      errorSpy.mockRestore();
-    });
-
-    it('still surfaces the callback error (not the reset error) when both throw, and logs the reset failure', async () => {
-      const { tx, executeRaw } = makeResetFailingTx();
-      const { service } = makeService((cb) => cb(tx));
-      const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-      const callbackError = new Error('callback boom');
-
-      let caught: unknown;
-      try {
-        await service.forTenant(context, async () => {
-          throw callbackError;
-        });
-      } catch (error) {
-        caught = error;
-      }
-
-      // The caller must see the callback's own error -- the reset's error
-      // must not mask it.
-      expect(caught).toBe(callbackError);
-      expect(executeRaw).toHaveBeenCalledTimes(4);
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('TENANT_SESSION_CONTEXT_RESET_FAILED'));
-      errorSpy.mockRestore();
-    });
-  });
-
   describe('forTenantIncludingDeleted', () => {
-    it('sets and resets session context identically to forTenant, and returns the callback result', async () => {
-      const executeRaw = jest.fn().mockResolvedValue(undefined);
-      const tx = { $executeRaw: executeRaw };
-      const { service } = makeService((cb) => cb(tx));
+    it('sets the context identically to forTenant, and returns the callback result', async () => {
+      const executeRaw = jest.fn().mockResolvedValue(1);
+      const { service } = makeService((cb) => cb({ $executeRaw: executeRaw }));
 
       const result = await service.forTenantIncludingDeleted(context, async () => 'ok');
 
       expect(result).toBe('ok');
-      expect(executeRaw).toHaveBeenCalledTimes(UNGOVERNED_TOTAL_CALLS);
-      expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
-      expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
-      expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
-      expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
+      expectTransactionLocalContext(executeRaw, ['org-1', 'off', '', 'off']);
     });
 
     // Routing: forTenantIncludingDeleted must run through the RAW client's $transaction, never
@@ -331,22 +226,14 @@ describe('TenantPrismaService', () => {
       expect(filteredTransaction).not.toHaveBeenCalled();
     });
 
-    it('still resets session context when the callback throws', async () => {
-      const executeRaw = jest.fn().mockResolvedValue(undefined);
-      const tx = { $executeRaw: executeRaw };
-      const { service } = makeService((cb) => cb(tx));
+    it('propagates a callback error unchanged', async () => {
+      const { service } = makeService((cb) => cb({ $executeRaw: jest.fn().mockResolvedValue(1) }));
 
       await expect(
         service.forTenantIncludingDeleted(context, async () => {
           throw new Error('boom');
         }),
       ).rejects.toThrow('boom');
-
-      expect(executeRaw).toHaveBeenCalledTimes(UNGOVERNED_TOTAL_CALLS);
-      expect(resetSql(executeRaw, 3)).toBe("EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0");
-      expect(resetSql(executeRaw, 4)).toBe("EXEC sp_set_session_context @key = N'app_current_org', @value = NULL");
-      expect(resetSql(executeRaw, 5)).toBe("EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0");
-      expect(resetSql(executeRaw, 6)).toBe("EXEC sp_set_session_context @key = N'app_current_user', @value = NULL");
     });
 
     it('maps a P2028 rejection to the same 503 as forTenant', async () => {
@@ -374,8 +261,7 @@ describe('TenantPrismaService', () => {
   // ADO #6809: webcamSnapshot's two queries moved off forTenant onto the plain client (isolation
   // comes from an ID chain already resolved through the candidate's own invitationId, not from
   // organizationId/RLS, and neither query needs multi-statement atomicity). withoutTenantScope
-  // must still take a connection per call (no $transaction wrapper, no session-context
-  // set/reset) while mapping pool exhaustion to the same 503 as forTenant -- but since a plain
+  // must still take a connection per call (no $transaction wrapper, no session context) while mapping pool exhaustion to the same 503 as forTenant -- but since a plain
   // query never opens an interactive transaction, the pool-exhausted rejection it actually gets
   // is P2024 ("timed out fetching a new connection"), not forTenant's P2028. Round-1 fix: the
   // shared mapping now matches both codes (see rethrowMappingPoolExhaustion).

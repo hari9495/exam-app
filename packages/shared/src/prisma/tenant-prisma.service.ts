@@ -9,7 +9,7 @@ import { isRecordVisibilityGoverned } from '../record-visibility/record-visibili
 // `$executeRaw`/`$transaction` as the base `PrismaService` -- the extension only adds
 // `query.$allModels` hooks, it doesn't remove or retype anything -- but TypeScript doesn't know
 // that; `ReturnType<PrismaService['$extends']>` is a distinct (unnamed) type from
-// `Prisma.TransactionClient`. Only `$executeRaw` is needed for session-context set/reset, so
+// `Prisma.TransactionClient`. Only `$executeRaw` is needed to set the session context, so
 // that's all the shared helper below asks for -- it's satisfied by both the filtered tx
 // (forTenant) and the raw tx (forTenantIncludingDeleted) without needing the boundary cast that
 // `fn(tx)` requires (see forTenant).
@@ -67,32 +67,14 @@ export class TenantPrismaService {
     try {
       return await this.filtered.$transaction(async (tx: any) => {
         await this.setSessionContext(tx, context);
-        try {
-          // Boundary cast: `tx` here is the soft-delete-extended client's transaction type
-          // (`ReturnType<PrismaService['$extends']>`'s own `$transaction` callback param), not
-          // nominally `Prisma.TransactionClient`. At runtime it's a strict superset -- the
-          // extension only adds `query.$allModels` hooks, every model delegate and method
-          // `Prisma.TransactionClient` declares is still there -- so this cast is safe and is
-          // what keeps `forTenant`'s public signature (`fn: (tx: Prisma.TransactionClient) =>
-          // ...`) unchanged for its ~100 existing callers instead of retyping every call site.
-          return await fn(tx as unknown as Prisma.TransactionClient);
-        } finally {
-          // sp_set_session_context is scoped to the physical connection, not the
-          // transaction, and is not undone by rollback. Prisma returns this
-          // connection to its pool once this callback resolves, so without this
-          // reset a later query that bypasses forTenant on the same pooled
-          // connection would silently inherit this request's tenant context.
-          //
-          // This can itself fail -- e.g. a P2028 transaction-expiry means the
-          // callback already ran against a now-dead transaction, and these
-          // resets fail right along with it. resetSessionContext() swallows
-          // that failure internally (see its own comment) precisely so this
-          // `finally` never throws: if it did, a throw here would replace
-          // fn(tx)'s successful return value, or mask fn(tx)'s own error, with
-          // the reset's error instead. Callers must see fn(tx)'s outcome and
-          // nothing else.
-          await this.resetSessionContext(tx);
-        }
+        // Boundary cast: `tx` here is the soft-delete-extended client's transaction type
+        // (`ReturnType<PrismaService['$extends']>`'s own `$transaction` callback param), not
+        // nominally `Prisma.TransactionClient`. At runtime it's a strict superset -- the
+        // extension only adds `query.$allModels` hooks, every model delegate and method
+        // `Prisma.TransactionClient` declares is still there -- so this cast is safe and is
+        // what keeps `forTenant`'s public signature (`fn: (tx: Prisma.TransactionClient) =>
+        // ...`) unchanged for its ~100 existing callers instead of retyping every call site.
+        return fn(tx as unknown as Prisma.TransactionClient);
       }, options);
     } catch (error) {
       this.rethrowMappingPoolExhaustion(error);
@@ -100,7 +82,7 @@ export class TenantPrismaService {
   }
 
   // Recycle-bin bypass: identical to forTenant (same tenant scoping via the same session
-  // set/reset, same options, same pool-exhaustion mapping) except it runs against the RAW,
+  // context, same options, same pool-exhaustion mapping) except it runs against the RAW,
   // unfiltered client -- so a soft-deleted Candidate/Job/Pipeline/WalkInGroup row is visible
   // here instead of being filtered out. For the recycle-bin list/restore/purge endpoints
   // (Tasks 4-6) only -- everything else keeps using forTenant so deleted rows stay hidden.
@@ -112,30 +94,26 @@ export class TenantPrismaService {
     try {
       return await this.prisma.$transaction(async (tx) => {
         await this.setSessionContext(tx, context);
-        try {
-          return await fn(tx);
-        } finally {
-          await this.resetSessionContext(tx);
-        }
+        return fn(tx);
       }, options);
     } catch (error) {
       this.rethrowMappingPoolExhaustion(error);
     }
   }
 
-  // Shared by forTenant and forTenantIncludingDeleted -- same keys, values, and ordering either
-  // way, so tenant scoping behaves identically regardless of which client is filtering reads.
-  // Sets all four keys resetSessionContext clears: org + super-admin (RLS), the optional user id,
-  // and the record-visibility-governed bit (isRecordVisibilityGoverned(role) -- recruiters are
-  // governed, admins/system/public fail open). Keeping the record-visibility set here (not only in
-  // forTenant) means the recycle-bin bypass also scopes the WHERE-clause row filter correctly.
+  // Shared by forTenant and forTenantIncludingDeleted, so tenant scoping is identical whichever
+  // client filters reads. One parameterised round trip; is_local = true makes every setting
+  // transaction-scoped, so it is discarded at COMMIT/ROLLBACK and a pooled connection can never
+  // carry one request's tenant into the next (no reset step to forget or fail). RLS policies read
+  // these via app_current_org()/app_is_super_admin()/app_current_user_id() (see the tenant_rls
+  // migration); an absent value is '' and matches nothing. The governed bit only drives the
+  // record-visibility policy (recruiters are governed; admins/system/public fail open).
   private async setSessionContext(tx: SessionContextClient, context: TenantContext): Promise<void> {
-    await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_org', @value = ${context.organizationId}`;
-    await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_is_super_admin', @value = ${context.isSuperAdmin ? 1 : 0}`;
-    if (context.userId) {
-      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_user', @value = ${context.userId}`;
-    }
-    await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = ${isRecordVisibilityGoverned(context.role) ? 1 : 0}`;
+    await tx.$executeRaw`SELECT
+      set_config('app.current_org', ${context.organizationId ?? ''}, true),
+      set_config('app.is_super_admin', ${context.isSuperAdmin ? 'on' : 'off'}, true),
+      set_config('app.current_user_id', ${context.userId ?? ''}, true),
+      set_config('app.record_visibility_governed', ${isRecordVisibilityGoverned(context.role) ? 'on' : 'off'}, true)`;
   }
 
   // For call sites whose isolation already comes from an ID chain resolved
@@ -190,40 +168,5 @@ export class TenantPrismaService {
       throw new HttpException(POOL_EXHAUSTED_RESPONSE, HttpStatus.SERVICE_UNAVAILABLE);
     }
     throw error;
-  }
-
-  // Best-effort clear of the connection-scoped session context. Shared by forTenant and
-  // forTenantIncludingDeleted -- same keys, values, and ordering either way. Must never
-  // throw: it runs in both callers' `finally`, and a throw there would
-  // overwrite fn(tx)'s own result/error (see the call site's comment).
-  //
-  // A failure here means the pooled connection may still carry
-  // app_current_org for whoever gets it next -- there is no known way to
-  // evict/discard just this connection from the pool (see the investigation
-  // in the round's report; Prisma's JS client exposes no per-connection
-  // handle or eviction hook without a driver adapter, which this project
-  // doesn't use, and $disconnect() would tear down the whole shared pool).
-  // So this can only make the failure visible, not fix it: log a distinctly
-  // grep-able line -- no connection string, org id, or candidate data -- so
-  // it can be counted and alerted on.
-  private async resetSessionContext(tx: SessionContextClient): Promise<void> {
-    try {
-      // Order matters: these are sequential awaits in one try, so a failure on
-      // the first short-circuits the rest, leaving whichever ones haven't run
-      // yet still set on the pooled connection. RLS ORs "is super admin"
-      // with "org matches" -- a stray app_is_super_admin=1 bypasses RLS on
-      // every tenant, while a stray app_current_org only scopes to one org.
-      // Clear the more dangerous flag first so a partial failure never
-      // strands it. The record-visibility bit is strictly less dangerous to
-      // strand than either: it only gates a WHERE-clause row filter, not RLS
-      // itself, so it (and the plain user id after it) are cleared last.
-      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 0`;
-      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_org', @value = NULL`;
-      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_record_visibility_governed', @value = 0`;
-      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_user', @value = NULL`;
-    } catch (resetError) {
-      const message = resetError instanceof Error ? resetError.message : String(resetError);
-      this.logger.error(`TENANT_SESSION_CONTEXT_RESET_FAILED: pooled connection may retain tenant context -- ${message}`);
-    }
   }
 }
