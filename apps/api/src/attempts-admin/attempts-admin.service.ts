@@ -297,7 +297,7 @@ export class AttemptsAdminService {
 
   // A super_admin's TenantContext carries organizationId: null (they belong to no
   // single org) -- filtering on `organizationId: null` would never match a real
-  // attempt and 404 every super_admin action. RLS (app_is_super_admin session
+  // attempt and 404 every super_admin action. RLS (app.is_super_admin tenant
   // context) already scopes their access correctly, so this app-level filter only
   // needs to apply for non-super-admin callers.
   private attemptOwnershipWhere(context: TenantContext, attemptId: string) {

@@ -35,10 +35,9 @@ type Row = { attempt_id: string; level: string | null; analyzed_at: Date; narrat
 
 async function snapshot(tenantPrisma: TenantPrismaService): Promise<Row[]> {
   return tenantPrisma.forTenant(SUPER_ADMIN, (tx) =>
-    tx.$queryRawUnsafe<Row[]>(
-      'SELECT ia.attempt_id, ia.level, ia.analyzed_at, ia.narrative FROM integrity_analyses ia ' +
-        'JOIN attempts a ON a.id = ia.attempt_id WHERE a.submitted_at IS NOT NULL',
-    ),
+    tx.$queryRaw<Row[]>`
+      SELECT ia.attempt_id, ia.level, ia.analyzed_at, ia.narrative FROM integrity_analyses ia
+      JOIN attempts a ON a.id = ia.attempt_id WHERE a.submitted_at IS NOT NULL`,
   );
 }
 

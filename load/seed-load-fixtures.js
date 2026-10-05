@@ -22,15 +22,13 @@ const QUESTION_COUNT = 5;
  * TenantPrismaService; this mirrors it as super-admin because seeding legitimately
  * spans creating the org and then writing inside it.
  *
- * sp_set_session_context is scoped to the physical connection, so every statement has
- * to run inside one interactive transaction -- separate calls can land on different
- * pooled connections and silently lose the context.
+ * The context is transaction-local (set_config(..., true)), so every statement has to
+ * run inside this one interactive transaction -- anything outside it sees no context.
  */
 async function asSuperAdmin(prisma, fn) {
   return prisma.$transaction(
     async (tx) => {
-      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_current_org', @value = NULL`;
-      await tx.$executeRaw`EXEC sp_set_session_context @key = N'app_is_super_admin', @value = 1`;
+      await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`;
       return fn(tx);
     },
     { timeout: 600_000, maxWait: 60_000 },

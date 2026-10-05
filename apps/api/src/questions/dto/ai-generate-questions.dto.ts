@@ -29,8 +29,8 @@ export class AiGenerateQuestionsDto {
   @Max(100)
   negativeMarks!: number;
 
-  // Capped because these go straight into a Prisma `in` clause. SQL Server's ~2100-parameter
-  // limit would otherwise surface as a 500 from deep inside the driver rather than a 400 naming
+  // Capped because these go straight into a Prisma `in` clause. An unbounded list would otherwise
+  // surface as a 500 from deep inside the driver rather than a 400 naming
   // the problem. 50 is far more tags than any real question carries.
   @IsArray()
   @ArrayMaxSize(50)

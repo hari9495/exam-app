@@ -13,20 +13,17 @@ async function main() {
     async (tx) => {
       // Bypass RLS: exam_sections isn't itself RLS-protected, but this query's nested
       // `question` include joins through the `questions` table, which IS RLS-protected
-      // (see apps/api/prisma/migrations/20260707130003_question_bank_rls). With no session
-      // context set, that join is silently filtered to zero rows -- no error, no warning.
-      // Same pattern as apps/api/prisma/seed.ts main().
-      await tx.$executeRawUnsafe(
-        "EXEC sp_set_session_context @key=N'app_is_super_admin', @value=1",
-      );
+      // (see apps/api/prisma/migrations/*_tenant_rls). With no context set, that join is
+      // silently filtered to zero rows -- no error, no warning. Transaction-local, like
+      // apps/api/prisma/seed.ts main().
+      await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`;
 
       // Raw, not `where: { weightPercent: null }`: once the follow-up NOT NULL migration lands,
       // the generated Prisma types no longer admit a null filter on this column, so the typed
       // form stops compiling -- even though a not-yet-migrated database can still hold NULLs,
       // which is exactly the case this script exists to repair.
-      const nullRows = await tx.$queryRawUnsafe<{ id: string }[]>(
-        'SELECT [id] FROM [dbo].[exam_sections] WHERE [weight_percent] IS NULL',
-      );
+      const nullRows = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM exam_sections WHERE weight_percent IS NULL`;
       if (nullRows.length === 0) {
         console.log('Nothing to do: every exam_sections row already has a weight_percent.');
         return;
