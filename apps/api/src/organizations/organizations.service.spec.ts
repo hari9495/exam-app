@@ -1647,6 +1647,18 @@ describe('OrganizationsService', () => {
       );
     });
 
+    it.each([
+      ['plain http', 'http://example.com/hook'],
+      ['a loopback IP literal', 'https://127.0.0.1/hook'],
+      ['a private IP literal', 'https://10.0.0.5/hook'],
+      ['the cloud metadata address', 'https://169.254.169.254/latest'],
+    ])('rejects %s without saving', async (_label, url) => {
+      await expect(service.updateWebhookUrl({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', { url })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.organization.update).not.toHaveBeenCalled();
+    });
+
     it('throws BadRequestException when the caller has no organization context', async () => {
       await expect(
         service.updateWebhookUrl({ organizationId: null, isSuperAdmin: true }, 'user-1', { url: 'https://example.com/hook' }),
