@@ -281,7 +281,7 @@ describe('ExamsService', () => {
 
     expect(tx.exam.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ title: { contains: 'Backend' } }),
+        where: expect.objectContaining({ title: { contains: 'Backend', mode: 'insensitive' } }),
         skip: 1,
         take: 1,
       }),

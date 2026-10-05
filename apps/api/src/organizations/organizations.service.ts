@@ -264,7 +264,7 @@ export class OrganizationsService {
     const where = {
       status: { not: 'deleted' },
       ...(filters.search
-        ? { OR: [{ name: { contains: filters.search } }, { slug: { contains: filters.search } }] }
+        ? { OR: [{ name: { contains: filters.search, mode: 'insensitive' as const } }, { slug: { contains: filters.search, mode: 'insensitive' as const } }] }
         : {}),
     };
     const [organizations, total] = await Promise.all([

@@ -305,7 +305,7 @@ describe('OrganizationsService', () => {
       await service.list({ search: 'acm' });
 
       expect(prisma.organization.findMany).toHaveBeenCalledWith({
-        where: { status: { not: 'deleted' }, OR: [{ name: { contains: 'acm' } }, { slug: { contains: 'acm' } }] },
+        where: { status: { not: 'deleted' }, OR: [{ name: { contains: 'acm', mode: 'insensitive' } }, { slug: { contains: 'acm', mode: 'insensitive' } }] },
         select: LIST_SELECT,
         orderBy: { createdAt: 'desc' },
         skip: 0,

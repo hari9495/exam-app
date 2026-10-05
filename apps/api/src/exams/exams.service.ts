@@ -334,7 +334,7 @@ export class ExamsService {
       const where = {
         organizationId: context.organizationId as string,
         ...(filters.status ? { status: filters.status } : { status: { not: 'archived' } }),
-        ...(filters.search ? { title: { contains: filters.search } } : {}),
+        ...(filters.search ? { title: { contains: filters.search, mode: 'insensitive' as const } } : {}),
       };
       const [exams, total] = await Promise.all([
         tx.exam.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip, take }),

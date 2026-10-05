@@ -1170,7 +1170,7 @@ describe('PipelineService', () => {
     await service.listJobs(context, 'open', 'org_admin', 'eng');
 
     expect(tx.job.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ organizationId: 'org-1', status: 'open', title: { contains: 'eng' } }) }),
+      expect.objectContaining({ where: expect.objectContaining({ organizationId: 'org-1', status: 'open', title: { contains: 'eng', mode: 'insensitive' } }) }),
     );
   });
 

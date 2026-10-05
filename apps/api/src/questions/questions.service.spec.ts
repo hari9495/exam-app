@@ -442,7 +442,7 @@ describe('QuestionsService', () => {
 
     expect(tx.question.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ text: { contains: 'linked list' } }),
+        where: expect.objectContaining({ text: { contains: 'linked list', mode: 'insensitive' } }),
         skip: 0,
         take: 10,
       }),
