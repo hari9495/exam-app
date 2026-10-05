@@ -60,9 +60,8 @@ describe('Audit log + access review', () => {
   });
 
   afterAll(async () => {
-    await tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
-      tx.auditLog.deleteMany({ where: { organizationId: { in: [orgAId, orgBId] } } }),
-    );
+    // audit_logs is append-only (the app role has no DELETE on it); deleting the org below
+    // nulls these rows' organization_id via ON DELETE SET NULL instead.
     await tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
       tx.refreshToken.deleteMany({ where: { user: { organizationId: { in: [orgAId, orgBId] } } } }),
     ).catch(() => undefined);

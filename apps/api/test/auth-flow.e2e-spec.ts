@@ -35,12 +35,9 @@ describe('Full Phase 0 flow: create org -> create user -> login -> protected rou
 
   afterAll(async () => {
     // Deleting an Organization cascades to an implicit `UPDATE users SET organization_id = NULL`
-    // for its attached users (ON DELETE SET NULL), which is itself gated by the RLS block
-    // predicate on dbo.users. That predicate requires app_is_super_admin = 1 in
-    // SESSION_CONTEXT, so the delete must go through tenantPrisma.forTenant with
-    // isSuperAdmin: true — a plain prisma.organization.delete() has no session context set
-    // and is rejected by the database, silently leaking orphaned rows (previously masked by
-    // the .catch(() => undefined) below).
+    // for its attached users (ON DELETE SET NULL). users is RLS-forced, so cleanup runs through
+    // tenantPrisma.forTenant with isSuperAdmin: true -- a plain prisma call has no tenant
+    // context and would see (and delete) none of these rows, silently leaking them.
     //
     // The cascade only nulls out organization_id on the users row — it does not delete the
     // user. Left alone, these become permanent `(organization_id: NULL, email: ...)` rows.
