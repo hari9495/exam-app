@@ -4,8 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
-import { useStaffLogin } from '../../lib/hooks/useStaffLogin';
 import YxSignInPage from './sign-in/page';
+import YxForgotPasswordPage from './forgot-password/page';
 import YxMySecurityPage from './(app)/me/security/page';
 import YxLoginActivityPage from './(app)/admin/login-activity/page';
 import YxSecuritySettingsPage from './(app)/settings/security/page';
@@ -14,7 +14,7 @@ import YxAppLayout from './(app)/layout';
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn(), YX_SSO_RETURN_KEY: 'yxSsoReturn' }));
-jest.mock('../../lib/hooks/useStaffLogin', () => ({ useStaffLogin: jest.fn() }));
+jest.mock('../../lib/bot-challenge', () => ({ botChallengeToken: async () => null }));
 jest.mock('../../lib/hooks/useCurrentUser', () => ({ useCurrentUser: () => ({ data: { name: 'Divya Raghunathan', email: 'divya.r@kaverifoods.in' } }) }));
 jest.mock('@simplewebauthn/browser', () => ({ startAuthentication: jest.fn(), startRegistration: jest.fn() }));
 
@@ -33,10 +33,13 @@ const FLOOR = {
   maxConcurrentSessions: { min: 1, max: 100 },
   ipAllowlistMaxEntries: 100,
   breakGlassAccounts: { minWhenSsoOnly: 2, max: 10 },
+  maxFailedAttempts: { min: 3, max: 10 },
+  lockMinutes: { min: 15, max: 1440 },
 };
 const POLICY = {
   mfaScope: 'sensitive_roles', allowedFactors: ['passkey', 'totp'], sessionIdleMinutes: null, sessionAbsoluteMinutes: null, maxConcurrentSessions: null,
   passwordMinLength: 12, ipAllowlistDesk: [], ipAllowlistAdmin: [], ipAllowlistApi: [], ssoOnly: false, breakGlassUserIds: [], otpSignInChannels: [],
+  maxFailedAttempts: 10, lockMinutes: 15,
 };
 
 const api = apiFetch as jest.Mock;
@@ -57,31 +60,139 @@ beforeEach(() => {
   (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'org_admin', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
 });
 
-describe('/yx/sign-in', () => {
-  const login = () => ({
-    organizationSlug: 'kaveri-foods', setOrganizationSlug: jest.fn(), email: '', setEmail: jest.fn(), password: '', setPassword: jest.fn(),
-    identifier: '', setIdentifier: jest.fn(), otpCode: '', setOtpCode: jest.fn(), otpMode: false, toggleOtpMode: jest.fn(), resetOtp: jest.fn(),
-    otpSent: null, sendOtp: jest.fn(), verifyOtp: jest.fn(), handleSubmit: jest.fn(), error: null, submitting: false,
-    branding: { name: 'Kaveri Foods Pvt Ltd' }, ssoProviders: [{ id: 'p-1', name: 'Kaveri Workspace', type: 'oidc_google' }], startSso: jest.fn(),
-    challenge: null, verifySecondFactor: jest.fn(), secondFactorPasskeyOptions: jest.fn(), sendSecondFactorCode: jest.fn(), cancelChallenge: jest.fn(),
+describe('/yx/sign-in (email first, no company code)', () => {
+  const token = (payload: object) => `h.${btoa(JSON.stringify(payload)).replace(/=+$/, '')}.s`;
+  const KAVERI = { id: 'c-1', name: 'Kaveri Foods Pvt Ltd', logoUrl: null };
+  const CASTINGS = { id: 'c-2', name: 'Hosur Precision Castings', logoUrl: null };
+  let push: jest.Mock;
+  let login: jest.Mock;
+  const assign = jest.fn();
+
+  beforeAll(() => {
+    Object.defineProperty(window, 'location', { configurable: true, value: { ...window.location, assign } });
+  });
+  beforeEach(() => {
+    push = jest.fn();
+    login = jest.fn();
+    assign.mockReset();
+    (useRouter as jest.Mock).mockReturnValue({ push, replace: jest.fn() });
+    (useAuth as jest.Mock).mockReturnValue({ login });
+  });
+  const typeIdentifier = async (value: string) => {
+    await userEvent.type(screen.getByLabelText(/Work email or mobile number/), value);
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  };
+
+  it('asks for the email first, then the password; one company signs straight in', async () => {
+    route({
+      'GET /auth/remembered-company': { company: null },
+      'POST /auth/identify': { next: 'password', providers: [] },
+      'POST /auth/staff/login': { accessToken: token({ role: 'recruiter' }) },
+    });
+    render(<YxSignInPage />);
+    expect(screen.queryByLabelText(/company/i)).toBeNull();
+    await typeIdentifier('divya.r@kaverifoods.in');
+    expect(api).toHaveBeenCalledWith('/auth/identify', { method: 'POST', body: JSON.stringify({ identifier: 'divya.r@kaverifoods.in' }) });
+    await userEvent.type(await screen.findByLabelText(/^Password/), 'correct horse battery');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/today'));
+    expect(api).toHaveBeenCalledWith('/auth/staff/login', { method: 'POST', body: JSON.stringify({ identifier: 'divya.r@kaverifoods.in', password: 'correct horse battery' }) });
+    expect(login).toHaveBeenCalledWith('', expect.any(String));
   });
 
-  it('wires the YukthiX sign-in to the existing login flow', async () => {
-    const s = login();
-    (useStaffLogin as jest.Mock).mockReturnValue(s);
+  it('a credential that opens several companies: "Choose your company", then that company', async () => {
+    route({
+      'GET /auth/remembered-company': { company: null },
+      'POST /auth/identify': { next: 'password', providers: [] },
+      'POST /auth/staff/login': { selectionRequired: true, selectionToken: 't'.repeat(43), companies: [KAVERI, CASTINGS], expiresInSeconds: 120 },
+      'POST /auth/staff/select-company': { accessToken: token({ role: 'org_admin' }) },
+    });
     render(<YxSignInPage />);
-    expect(useStaffLogin).toHaveBeenCalledWith({ enrolPath: '/yx/setup-mfa', yx: true });
-    expect(screen.getByText('to Kaveri Foods Pvt Ltd')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Continue with Google' }));
-    expect(s.startSso).toHaveBeenCalledWith('p-1');
-    await userEvent.click(screen.getByRole('radio', { name: 'One-time code' }));
-    expect(s.toggleOtpMode).toHaveBeenCalledTimes(1);
+    await typeIdentifier('divya.r@kaverifoods.in');
+    await userEvent.type(await screen.findByLabelText(/^Password/), 'correct horse battery');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(await screen.findByRole('heading', { name: 'Choose your company' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: CASTINGS.name }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/users'));
+    expect(api).toHaveBeenCalledWith('/auth/staff/select-company', { method: 'POST', body: JSON.stringify({ selectionToken: 't'.repeat(43), organizationId: 'c-2' }) });
   });
 
-  it('shows the second step while a challenge is pending', () => {
-    (useStaffLogin as jest.Mock).mockReturnValue({ ...login(), challenge: { mfaRequired: true, mfaToken: 't', factors: ['totp'] } });
+  it('a failed choice (expired, used) starts the sign-in again with the reason', async () => {
+    route({
+      'GET /auth/remembered-company': { company: null },
+      'POST /auth/identify': { next: 'password', providers: [] },
+      'POST /auth/staff/login': { selectionRequired: true, selectionToken: 't'.repeat(43), companies: [KAVERI, CASTINGS], expiresInSeconds: 120 },
+      'POST /auth/staff/select-company': new Error('Your sign-in has expired. Please sign in again.'),
+    });
     render(<YxSignInPage />);
-    expect(screen.getByRole('heading', { name: "Confirm it's you" })).toBeInTheDocument();
+    await typeIdentifier('divya.r@kaverifoods.in');
+    await userEvent.type(await screen.findByLabelText(/^Password/), 'pw');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await userEvent.click(await screen.findByRole('button', { name: KAVERI.name }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your sign-in has expired');
+    expect(screen.getByLabelText(/Work email or mobile number/)).toBeInTheDocument();
+  });
+
+  it('a domain that uses single sign-on goes straight to the company sign-in page', async () => {
+    route({
+      'GET /auth/remembered-company': { company: null },
+      'POST /auth/identify': { next: 'sso', url: 'https://idp.example.test/start' },
+    });
+    render(<YxSignInPage />);
+    await typeIdentifier('divya.r@kaverifoods.in');
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://idp.example.test/start'));
+    expect(screen.getByRole('status')).toHaveTextContent("Taking you to your company's sign-in page");
+    expect(window.sessionStorage.getItem('yxSsoReturn')).toBe('1');
+  });
+
+  it('shows the remembered company, and "Not your company?" forgets it', async () => {
+    route({ 'GET /auth/remembered-company': { company: { name: KAVERI.name, logoUrl: null } }, 'DELETE /auth/remembered-company': null });
+    render(<YxSignInPage />);
+    expect(await screen.findByText(KAVERI.name)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Not your company?' }));
+    await waitFor(() => expect(screen.queryByText(KAVERI.name)).toBeNull());
+    expect(api).toHaveBeenCalledWith('/auth/remembered-company', { method: 'DELETE' });
+  });
+
+  it('one-time code instead of the password', async () => {
+    route({
+      'GET /auth/remembered-company': { company: null },
+      'POST /auth/identify': { next: 'password', providers: [] },
+      'POST /auth/otp/start': { otpToken: 'o'.repeat(43), expiresInSeconds: 300, resendAfterSeconds: 60 },
+      'POST /auth/otp/verify': { accessToken: token({ role: 'panel' }) },
+    });
+    render(<YxSignInPage />);
+    await typeIdentifier('divya.r@kaverifoods.in');
+    await userEvent.click(await screen.findByRole('button', { name: 'Email me a code instead' }));
+    await userEvent.type(await screen.findByLabelText(/6-digit code/), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/panel/reports'));
+    expect(api).toHaveBeenCalledWith('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ identifier: 'divya.r@kaverifoods.in', otpToken: 'o'.repeat(43), code: '123456' }) });
+  });
+
+  it('shows the second step while a challenge is pending', async () => {
+    route({
+      'GET /auth/remembered-company': { company: null },
+      'POST /auth/identify': { next: 'password', providers: [] },
+      'POST /auth/staff/login': { mfaRequired: true, mfaToken: 'm', factors: ['totp'] },
+    });
+    render(<YxSignInPage />);
+    await typeIdentifier('divya.r@kaverifoods.in');
+    await userEvent.type(await screen.findByLabelText(/^Password/), 'pw');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(await screen.findByRole('heading', { name: "Confirm it's you" })).toBeInTheDocument();
+  });
+});
+
+describe('/yx/forgot-password', () => {
+  it('asks for the work email only', async () => {
+    route({ 'POST /auth/forgot-password': { message: 'ok' } });
+    render(<YxForgotPasswordPage />);
+    expect(screen.queryByLabelText(/company/i)).toBeNull();
+    await userEvent.type(screen.getByLabelText(/Work email/), 'divya.r@kaverifoods.in');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me a reset link' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('we sent it a reset link');
+    expect(api).toHaveBeenCalledWith('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email: 'divya.r@kaverifoods.in' }) });
   });
 });
 
