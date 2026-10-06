@@ -1,4 +1,5 @@
 import { IsIn, IsISO8601, IsNumberString, IsOptional, IsUUID } from 'class-validator';
+import { LOGIN_METHODS } from '../sessions.service';
 
 class PageQueryDto {
   @IsOptional()
@@ -17,8 +18,9 @@ export class SessionsQueryDto extends PageQueryDto {
 }
 
 export class MyLoginHistoryQueryDto extends PageQueryDto {
+  // 'unsuccessful' = every result except success (the "Failed" filter in Me › Security).
   @IsOptional()
-  @IsIn(['success', 'failed', 'locked', 'mfa_failed'])
+  @IsIn(['success', 'failed', 'locked', 'mfa_failed', 'unsuccessful'])
   result?: string;
 
   @IsOptional()
@@ -36,6 +38,6 @@ export class LoginEventsQueryDto extends MyLoginHistoryQueryDto {
   userId?: string;
 
   @IsOptional()
-  @IsIn(['password', 'saml'])
+  @IsIn(LOGIN_METHODS)
   method?: string;
 }

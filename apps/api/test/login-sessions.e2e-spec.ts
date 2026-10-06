@@ -352,6 +352,11 @@ describe('Staff sessions, login events and lockout (P12 YX-IAM-06/07/10)', () =>
       const res = await get('/security/login-events?result=failed&pageSize=100', adminA.access).expect(200);
       expect(res.body.data.every((e: { result: string }) => e.result === 'failed')).toBe(true);
       expect(res.body.data.some((e: { identifier: string }) => e.identifier === ADMIN_B.toLowerCase())).toBe(false);
+      const unsuccessful = await get('/security/login-events?result=unsuccessful&method=password&pageSize=100', adminA.access).expect(200);
+      expect(unsuccessful.body.data.length).toBeGreaterThan(0);
+      expect(unsuccessful.body.data.every((e: { result: string; method: string }) => e.result !== 'success' && e.method === 'password')).toBe(true);
+      await get('/security/login-events?method=oidc', adminA.access).expect(200);
+      await get('/security/login-events?method=bogus', adminA.access).expect(400);
       await get('/security/login-events?result=bogus', adminA.access).expect(400);
       await get('/security/login-events?userId=not-a-uuid', adminA.access).expect(400);
     });

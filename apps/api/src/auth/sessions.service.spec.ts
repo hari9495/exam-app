@@ -202,6 +202,11 @@ describe('SessionsService', () => {
     expect(tx.loginEvent.findMany.mock.calls[0][0].where).toEqual({ organizationId: 'org-9', result: 'failed' });
   });
 
+  it("'unsuccessful' lists every result except success", async () => {
+    await service.listLoginEvents(ORG, { result: 'unsuccessful', method: 'oidc' });
+    expect(tx.loginEvent.findMany.mock.calls[0][0].where).toMatchObject({ result: { not: 'success' }, method: 'oidc' });
+  });
+
   it('escapes attacker-controlled request data in notification emails', async () => {
     service.notifyNewDevice(USER, { ...META, userAgent: '<img src=x onerror=alert(1)>' });
     await new Promise((r) => setImmediate(r));
