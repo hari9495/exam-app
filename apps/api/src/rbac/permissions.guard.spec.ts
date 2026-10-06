@@ -382,6 +382,14 @@ describe('PermissionsGuard', () => {
       expect(metadata).toMatchObject({ factor: 'totp', route: 'PATCH /x' });
     });
 
+    it('a fresh AAL2 from a one-time code (fallback factor) meets the MFA floor but never a step-up (YX-IAM-03)', async () => {
+      const otpSession = { ...AAL2, mfaMethod: 'otp', mfaVerifiedAt: new Date(Date.now() - 60 * 1000) };
+      const stepUp = build({ [PERMISSIONS_KEY]: ['exam:manage'], [STEP_UP_REQUIRED]: true });
+      expect(await outcome(stepUp.canActivate(ctx({ role: 'recruiter', organizationId: ORG, session: otpSession })))).toBe(STEP_UP_REQUIRED_CODE);
+      const floor = build({ [PERMISSIONS_KEY]: ['exam:manage'], [SENSITIVE_ROLE_ACTION]: true });
+      expect(await outcome(floor.canActivate(ctx({ role: 'recruiter', organizationId: ORG, session: { ...otpSession, mfaEnrolmentDueAt: new Date(0) } })))).toBe('allowed');
+    });
+
     it('a stricter STEP_UP_WINDOW_MINUTES shortens the window; a laxer one is clamped to 15 min', async () => {
       const guard = build({ [PERMISSIONS_KEY]: ['org:manage_settings'], [STEP_UP_REQUIRED]: true });
       const tenMinutesAgo = { ...AAL2, mfaVerifiedAt: new Date(Date.now() - 10 * 60 * 1000) };

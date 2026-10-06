@@ -28,6 +28,8 @@ import {
   resolvePermissionGrants,
 } from '@exam-platform/shared';
 import { LOGIN_PROTECTION_REDIS } from './login-protection.service';
+import { OTP_RESEND_COOLDOWN_SECONDS, OTP_TTL_SECONDS, OtpService, maskMobile, normaliseMobileNumber } from './otp.service';
+import type { OtpMobileChannel } from './otp-sender';
 import { SessionsService } from './sessions.service';
 import { assertStepUp } from '../rbac/permissions.guard';
 import type { MfaFactor, MfaProofDto } from './dto/mfa.dto';
@@ -45,12 +47,14 @@ export interface MfaUser {
   status: string;
   permissionProfileId: string | null;
   mfaEnrolmentDueAt: Date;
+  mobileNumber?: string | null;
+  mobileVerifiedAt?: Date | null;
 }
 
 // What is kept between the first factor and the second (Redis, 5 min, keyed by sha256(token)).
 export interface PendingLogin {
   userId: string;
-  method: 'password' | 'saml';
+  method: 'password' | 'saml' | 'otp_email' | 'otp_sms' | 'otp_whatsapp';
   orgSlug: string;
   identifier: string;
   breakGlass: boolean;
@@ -116,6 +120,7 @@ export class MfaService {
     private readonly audit: AuditService,
     private readonly sessions: SessionsService,
     @Inject(LOGIN_PROTECTION_REDIS) private readonly redis: Redis,
+    private readonly otp: OtpService,
   ) {}
 
   // Fail closed: without its store, no challenge can be checked, so no MFA step proceeds.
@@ -134,7 +139,17 @@ export class MfaService {
     return this.tenantPrisma.forTenant(SUPER, (tx) =>
       tx.user.findUnique({
         where: { id: userId },
-        select: { id: true, email: true, organizationId: true, role: true, status: true, permissionProfileId: true, mfaEnrolmentDueAt: true },
+        select: {
+          id: true,
+          email: true,
+          organizationId: true,
+          role: true,
+          status: true,
+          permissionProfileId: true,
+          mfaEnrolmentDueAt: true,
+          mobileNumber: true,
+          mobileVerifiedAt: true,
+        },
       }),
     );
   }
@@ -183,6 +198,7 @@ export class MfaService {
       allowedFactors: await this.allowedFactors(user),
       assuranceLevel: session.assuranceLevel,
       mfaVerifiedAt: session.mfaVerifiedAt,
+      mobileNumber: user.mobileVerifiedAt ? (user.mobileNumber ?? null) : null,
     };
   }
 
@@ -477,5 +493,66 @@ export class MfaService {
       metadata: { factor: target.type },
     });
     this.sessions.notifySecurityChange(user, 'Two-step verification removed from your YukthiX account', `A ${target.type === 'totp' ? 'authenticator app' : 'passkey'} was removed from your account.`);
+  }
+
+  // ---- verified mobile number (OTP sign-in by mobile, SMS / WhatsApp fallback factor) ------
+
+  // A number signs in or receives fallback codes only once a code sent to it comes back. Adding
+  // or removing one is a security change: with a factor enrolled it needs a fresh step-up, so a
+  // hijacked session cannot route codes to the attacker's phone.
+  private async assertMayChangeMobile(user: MfaUser, session: SessionAssurance) {
+    if (await this.hasFactor(user)) assertStepUp({ session });
+  }
+
+  private mobileKey = (sessionId: string) => `auth:otp:mobile:${sessionId}`;
+
+  async startMobileVerification(user: MfaUser, session: SessionAssurance, sessionId: string, raw: string, channel: OtpMobileChannel, ip: string | null) {
+    const mobileNumber = normaliseMobileNumber(raw);
+    if (!mobileNumber) throw new BadRequestException('Enter a valid mobile number, with the country code if it is not an Indian number');
+    if (!this.otp.channelAvailable(channel)) throw new BadRequestException('Codes by text message are not available right now');
+    await this.assertMayChangeMobile(user, session);
+    await this.otp.reserveSend(`mobile\u0000${user.id}`, ip);
+    const code = await this.otp.issue(this.mobileKey(sessionId), { userId: user.id, mobileNumber });
+    this.otp.deliver(channel, mobileNumber, code, 'mobile', user.organizationId);
+    return { mobileNumber, expiresInSeconds: OTP_TTL_SECONDS, resendAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS };
+  }
+
+  async confirmMobile(user: MfaUser, session: SessionAssurance, sessionId: string, code: string) {
+    await this.assertMayChangeMobile(user, session);
+    const proven = await this.otp.check(this.mobileKey(sessionId), code);
+    if (!proven || proven.userId !== user.id) throw new BadRequestException('That code is not right or has expired. Ask for a new one.');
+    try {
+      await this.tenantPrisma.forTenant(contextFor(user), (tx) =>
+        tx.user.update({ where: { id: user.id }, data: { mobileNumber: proven.mobileNumber, mobileVerifiedAt: new Date() } }),
+      );
+    } catch (error) {
+      if ((error as { code?: string }).code === 'P2002') throw new ConflictException('This mobile number is already used by another account in your organisation');
+      throw error;
+    }
+    await this.audit.record(contextFor(user), {
+      actorUserId: user.id,
+      action: 'user.mobile_verified',
+      entityType: 'user',
+      entityId: user.id,
+      metadata: { mobile: maskMobile(proven.mobileNumber) },
+    });
+    this.sessions.notifySecurityChange(user, 'Mobile number added to your YukthiX account', `The mobile number ${maskMobile(proven.mobileNumber)} was verified on your account and can now receive sign-in codes.`);
+    return { mobileNumber: proven.mobileNumber };
+  }
+
+  async removeMobile(user: MfaUser, session: SessionAssurance): Promise<void> {
+    if (!user.mobileNumber) throw new NotFoundException('No mobile number is set');
+    await this.assertMayChangeMobile(user, session);
+    await this.tenantPrisma.forTenant(contextFor(user), (tx) =>
+      tx.user.update({ where: { id: user.id }, data: { mobileNumber: null, mobileVerifiedAt: null } }),
+    );
+    await this.audit.record(contextFor(user), {
+      actorUserId: user.id,
+      action: 'user.mobile_removed',
+      entityType: 'user',
+      entityId: user.id,
+      metadata: { mobile: maskMobile(user.mobileNumber) },
+    });
+    this.sessions.notifySecurityChange(user, 'Mobile number removed from your YukthiX account', `The mobile number ${maskMobile(user.mobileNumber)} was removed from your account.`);
   }
 }

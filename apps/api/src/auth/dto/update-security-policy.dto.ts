@@ -91,4 +91,11 @@ export class UpdateSecurityPolicyDto {
   @ArrayUnique()
   @IsUUID('all', { each: true })
   breakGlassUserIds?: string[];
+
+  // One-time-code sign-in channels (AAL1); [] turns OTP sign-in off.
+  @Present()
+  @IsArray()
+  @ArrayUnique()
+  @IsIn(FLOOR.otpSignInChannels, { each: true })
+  otpSignInChannels?: string[];
 }

@@ -20,6 +20,9 @@ import { SecurityPolicyController } from './security-policy.controller';
 import { MfaService } from './mfa.service';
 import { MfaResetService } from './mfa-reset.service';
 import { MfaController } from './mfa.controller';
+import { OtpService } from './otp.service';
+import { OtpController } from './otp.controller';
+import { OTP_SMS_SENDER, createOtpSmsSender } from './otp-sender';
 
 // Its own connection, fast-failing: the shared BullMQ-style connection (maxRetriesPerRequest:
 // null) would park sign-in requests forever during a Redis outage instead of failing closed.
@@ -43,8 +46,10 @@ function createLoginProtectionRedis(): Redis {
     MfaService,
     MfaResetService,
     { provide: LOGIN_PROTECTION_REDIS, useFactory: createLoginProtectionRedis },
+    OtpService,
+    { provide: OTP_SMS_SENDER, useFactory: createOtpSmsSender },
   ],
-  controllers: [AuthController, SamlController, SessionsController, SecurityPolicyController, MfaController],
+  controllers: [AuthController, SamlController, SessionsController, SecurityPolicyController, MfaController, OtpController],
   exports: [AuthService],
 })
 export class AuthModule {}

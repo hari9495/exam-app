@@ -1,19 +1,21 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
-import { randomBytes, createHash, randomUUID } from 'crypto';
+import { randomBytes, createHash, randomUUID, timingSafeEqual } from 'crypto';
 // argon2 above is retained deliberately: it still hashes PASSWORDS (lines 54,
 // 112), which are the low-entropy input it exists for. Only refresh tokens moved
 // to SHA-256 -- see refresh-token-hash.ts for why.
 import {
   DEFAULT_SECURITY_POLICY,
   NETWORK_NOT_ALLOWED_MESSAGE,
+  OTP_FALLBACK_BARRED_PERMISSIONS,
   PrismaService,
   hashRefreshToken,
   ipAllowedForSurface,
   isLegacyArgon2Hash,
   loadTenantSecurityPolicy,
   refreshTokenMatches,
+  resolvePermissionGrants,
   revokeStaffSessions,
   staffDeskIpAllowed,
 } from '@exam-platform/shared';
@@ -24,11 +26,13 @@ import { AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { ClientMeta, SessionUser, SessionsService } from './sessions.service';
+import { ClientMeta, LoginMethod, SessionUser, SessionsService } from './sessions.service';
 import { LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
 import { PasswordPolicyService } from './password-policy.service';
 import { MfaService, MfaUser, PENDING_LOGIN_TTL_SECONDS, PendingLogin } from './mfa.service';
-import { MfaLoginDto } from './dto/mfa.dto';
+import { MfaLoginDto, MfaProofDto } from './dto/mfa.dto';
+import { MfaOtpSendDto, OtpStartDto, OtpVerifyDto } from './dto/otp.dto';
+import { OTP_CHANNELS, OTP_RESEND_COOLDOWN_SECONDS, OTP_TTL_SECONDS, OtpChannel, OtpService, parseOtpIdentifier } from './otp.service';
 
 interface TokenPair {
   accessToken: string;
@@ -50,6 +54,22 @@ export interface MfaChallenge {
 }
 
 export type LoginOutcome = SignedIn | MfaChallenge;
+
+// A code was (or, for an unknown account, seemingly was) sent. Identical for every identifier.
+export interface OtpSent {
+  otpToken?: string;
+  expiresInSeconds: number;
+  resendAfterSeconds: number;
+}
+
+export const OTP_SIGN_IN_OFF_MESSAGE = 'Sign-in with a one-time code is not turned on for this organisation';
+const OTP_INVALID_MESSAGE = 'That code is not right or has expired. Ask for a new one.';
+const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+const sameHash = (a: string | undefined, b: string) =>
+  typeof a === 'string' && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+// One live sign-in code per (organisation, identifier): a new request replaces the previous code.
+const otpSignInKey = (orgSlug: string, identifier: string) => `auth:otp:signin:${sha256(`${orgSlug}\u0000${identifier}`)}`;
+const otpMfaKey = (mfaToken: string) => `auth:otp:mfa:${sha256(mfaToken)}`;
 export const isMfaChallenge = (outcome: LoginOutcome): outcome is MfaChallenge => 'mfaRequired' in outcome;
 
 const PASSWORD_RESET_EXPIRY_MINUTES = 15;
@@ -91,6 +111,7 @@ export class AuthService {
     private readonly loginProtection: LoginProtectionService,
     private readonly passwordPolicy: PasswordPolicyService,
     private readonly mfa: MfaService,
+    private readonly otp: OtpService,
   ) {}
 
   // Password sign-in (YX-IAM-06/07/10). Unknown organisation, unknown email and wrong password
@@ -179,12 +200,13 @@ export class AuthService {
     meta: ClientMeta,
     mfaFactor?: string,
   ): Promise<SignedIn> {
-    if (login.method === 'password') {
+    if (login.method !== 'saml') {
       await this.loginProtection.registerSuccess(login.orgSlug, login.identifier, meta.ip);
     }
     const reason = login.breakGlass ? 'break_glass' : mfaFactor ? `mfa_${mfaFactor}` : undefined;
     const tokens: SignedIn = await this.startSession(user, login.method, meta, login.identifier, reason, mfaFactor);
-    if (login.method === 'password') {
+    if (login.method !== 'saml') {
+      const metadata = { ...(login.method !== 'password' ? { method: login.method } : {}), ...(mfaFactor ? { mfa: mfaFactor } : {}) };
       await this.audit.record(
         { organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' },
         {
@@ -192,7 +214,7 @@ export class AuthService {
           action: login.breakGlass ? 'login.break_glass' : 'login.success',
           entityType: 'user',
           entityId: user.id,
-          ...(mfaFactor ? { metadata: { mfa: mfaFactor } } : {}),
+          ...(Object.keys(metadata).length ? { metadata } : {}),
         },
       );
     }
@@ -215,6 +237,7 @@ export class AuthService {
   ): Promise<MfaChallenge> {
     const account = (await this.mfa.loadUser(userId))!;
     const factors = [...new Set((await this.mfa.activeFactors(account)).map((f) => f.type)), 'recovery_code'];
+    if ((await this.otpFallbackChannels(account, login.method)).length > 0) factors.push('otp');
     const mfaToken = await this.mfa.createPendingLogin({
       ...login,
       userId,
@@ -257,8 +280,15 @@ export class AuthService {
       throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
     }
 
-    const challenge = dto.factor === 'passkey' ? await this.mfa.takeLoginChallenge(dto.mfaToken) : null;
-    const factor = await this.mfa.verifyProof(user, dto, challenge);
+    let factor: string | null;
+    if (dto.factor === 'otp') {
+      // Fallback factor (YX-IAM-03): only while it is still allowed for this account and sign-in.
+      const allowed = (await this.otpFallbackChannels(user, pending.method)).length > 0;
+      factor = allowed && /^\d{6}$/.test(dto.code ?? '') && (await this.otp.check(otpMfaKey(dto.mfaToken), dto.code!)) ? 'otp' : null;
+    } else {
+      const challenge = dto.factor === 'passkey' ? await this.mfa.takeLoginChallenge(dto.mfaToken) : null;
+      factor = await this.mfa.verifyProof(user, dto as MfaProofDto, challenge);
+    }
     if (!factor || !(await this.mfa.consumePendingLogin(dto.mfaToken))) {
       const { locked } = await this.loginProtection.registerFailure('mfa', user.id, meta.ip);
       await this.sessions.recordLoginEvent({
@@ -272,6 +302,146 @@ export class AuthService {
     }
     await this.loginProtection.registerSuccess('mfa', user.id, meta.ip);
     return this.finishSignIn(user, pending, meta, factor);
+  }
+
+  // ---- one-time-code sign-in (P12 §3 AAL1; M04 Q2) -----------------------------------------
+
+  // Step 1: send a code to the account's email or verified mobile number. The answer, the
+  // counters and the work done are the same whether or not such an account exists (no
+  // enumeration); only organisation-level settings (OTP off, network not allowed) are refused.
+  async startOtpLogin(dto: OtpStartDto, meta: ClientMeta): Promise<OtpSent> {
+    const parsed = parseOtpIdentifier(dto.identifier);
+    if (!parsed) throw new BadRequestException('Enter an email address or a mobile number');
+    const channel: OtpChannel = dto.channel ?? (parsed.kind === 'email' ? 'email' : 'sms');
+    if (channel === 'email' && parsed.kind !== 'email') throw new BadRequestException('A code by email needs an email address');
+    if (channel !== 'email' && parsed.kind !== 'mobile') throw new BadRequestException('A code by text message needs a mobile number');
+    if (!this.otp.channelAvailable(channel)) throw new BadRequestException('Codes by text message are not available right now');
+    const method = `otp_${channel}` as const;
+
+    const orgSlug = dto.organizationSlug.trim().toLowerCase();
+    const org = await this.prisma.organization.findUnique({ where: { slug: orgSlug } });
+    const organizationId = org && isOrganizationActive(org.status) ? org.id : null;
+    if (organizationId) {
+      const policy = await loadTenantSecurityPolicy(this.tenantPrisma, organizationId);
+      // SSO-only (YX-IAM-04) turns every other way in off; break-glass stays password + MFA.
+      if (policy.ssoOnly || !policy.otpSignInChannels.includes(channel)) throw new BadRequestException(OTP_SIGN_IN_OFF_MESSAGE);
+      if (!ipAllowedForSurface(policy, 'desk', meta.ip)) {
+        await this.sessions.recordLoginEvent({ organizationId, identifier: parsed.value, result: 'failed', method, reason: 'ip_not_allowed', meta });
+        throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
+      }
+    }
+
+    const block = await this.loginProtection.check(orgSlug, parsed.value, meta.ip);
+    if (block) {
+      await this.sessions.recordLoginEvent({ organizationId, identifier: parsed.value, result: 'locked', method, reason: `${block.scope}_locked`, meta });
+      throw new TooManyLoginAttemptsException(block.retryAfterSeconds);
+    }
+    await this.otp.reserveSend(`signin\u0000${orgSlug}\u0000${parsed.value}`, meta.ip);
+
+    const user = organizationId
+      ? await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+          tx.user.findFirst({
+            where:
+              parsed.kind === 'email'
+                ? { organizationId, email: parsed.value }
+                : { organizationId, mobileNumber: parsed.value, mobileVerifiedAt: { not: null } },
+            select: { id: true, email: true, status: true, mobileNumber: true },
+          }),
+        )
+      : null;
+    const recipient = user?.status === 'active' ? user : null;
+    const otpToken = randomBytes(32).toString('base64url');
+    // Unknown accounts get a code too (never sent, no user), so the stored state, the token and
+    // the later verify path cannot tell the two apart.
+    const code = await this.otp.issue(otpSignInKey(orgSlug, parsed.value), {
+      userId: recipient?.id ?? '',
+      organizationId: organizationId ?? '',
+      channel,
+      tokenHash: sha256(otpToken),
+      deviceIdHash: sha256(meta.deviceId),
+    });
+    if (recipient) {
+      this.otp.deliver(channel, channel === 'email' ? recipient.email : recipient.mobileNumber!, code, 'sign_in', organizationId);
+    }
+    return { otpToken, expiresInSeconds: OTP_TTL_SECONDS, resendAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS };
+  }
+
+  // Step 2: the code, from the device that asked for it, with the token step 1 returned. Wrong
+  // codes count toward the same per-account / per-IP lockout as wrong passwords; an account with
+  // a second factor still owes it.
+  async completeOtpLogin(dto: OtpVerifyDto, meta: ClientMeta): Promise<LoginOutcome> {
+    const parsed = parseOtpIdentifier(dto.identifier);
+    if (!parsed) throw new BadRequestException('Enter an email address or a mobile number');
+    const orgSlug = dto.organizationSlug.trim().toLowerCase();
+    const key = otpSignInKey(orgSlug, parsed.value);
+    const record = await this.otp.peek(key);
+    const method = `otp_${record?.channel ?? (parsed.kind === 'email' ? 'email' : 'sms')}` as PendingLogin['method'];
+    const event = { organizationId: record?.organizationId || null, identifier: parsed.value, method, meta };
+
+    const block = await this.loginProtection.check(orgSlug, parsed.value, meta.ip);
+    if (block) {
+      await this.sessions.recordLoginEvent({ ...event, result: 'locked', reason: `${block.scope}_locked` });
+      throw new TooManyLoginAttemptsException(block.retryAfterSeconds);
+    }
+
+    const mine = record && sameHash(record.tokenHash, sha256(dto.otpToken)) && sameHash(record.deviceIdHash, sha256(meta.deviceId));
+    const proven = mine ? await this.otp.check(key, dto.code) : null;
+    const user = proven?.userId ? await this.mfa.loadUser(proven.userId) : null;
+    if (!proven || !user) {
+      const { locked } = await this.loginProtection.registerFailure(orgSlug, parsed.value, meta.ip);
+      await this.sessions.recordLoginEvent({ ...event, userId: record?.userId || null, result: 'failed', reason: locked ? 'otp_invalid+lockout_started' : 'otp_invalid' });
+      const holder = locked && record?.userId ? await this.mfa.loadUser(record.userId) : null;
+      if (holder) this.sessions.notifyLocked(holder, meta);
+      throw new UnauthorizedException(OTP_INVALID_MESSAGE);
+    }
+
+    // The code is spent; whatever could have changed since it was sent is checked again.
+    const refuse = async (reason: string, error: Error): Promise<never> => {
+      await this.sessions.recordLoginEvent({ ...event, userId: user.id, result: 'failed', reason });
+      throw error;
+    };
+    const org = user.organizationId ? await this.prisma.organization.findUnique({ where: { id: user.organizationId } }) : null;
+    if (user.status !== 'active') return refuse('account_inactive', new UnauthorizedException('This account has been deactivated'));
+    if (!org || !isOrganizationActive(org.status)) return refuse('organization_inactive', new UnauthorizedException(ORGANIZATION_INACTIVE_MESSAGE));
+    const policy = await loadTenantSecurityPolicy(this.tenantPrisma, org.id);
+    if (policy.ssoOnly || !policy.otpSignInChannels.includes(proven.channel)) {
+      return refuse('otp_disabled', new BadRequestException(OTP_SIGN_IN_OFF_MESSAGE));
+    }
+    if (!ipAllowedForSurface(policy, 'desk', meta.ip)) return refuse('ip_not_allowed', new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE));
+    if (parsed.kind === 'mobile' && !(user.mobileVerifiedAt && user.mobileNumber === parsed.value)) {
+      return refuse('mobile_changed', new UnauthorizedException(OTP_INVALID_MESSAGE));
+    }
+
+    const login = { method, orgSlug, identifier: parsed.value, breakGlass: false };
+    return (await this.mfa.hasFactor(user)) ? this.challengeSecondFactor(user.id, login, meta) : this.finishSignIn(user, login, meta);
+  }
+
+  // OTP as the fallback second factor (YX-IAM-03): SMS / WhatsApp to a verified mobile number,
+  // where the company allows OTP. Never by email (a password reset already goes there, so
+  // password + email code would be one factor), never after a one-time-code first step (one
+  // channel is not two factors), and never for System / Payroll Admin or YukthiX staff.
+  async otpFallbackChannels(user: MfaUser, firstFactor: PendingLogin['method']): Promise<OtpChannel[]> {
+    if (firstFactor.startsWith('otp_') || user.role === 'super_admin' || !user.organizationId || !user.mobileNumber || !user.mobileVerifiedAt) {
+      return [];
+    }
+    if (!(await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId)).allowedFactors.includes('otp')) return [];
+    const grants = await resolvePermissionGrants(this.prisma, this.tenantPrisma, user, [...OTP_FALLBACK_BARRED_PERMISSIONS]);
+    if (OTP_FALLBACK_BARRED_PERMISSIONS.some((key) => grants.has(key))) return [];
+    return OTP_CHANNELS.filter((channel) => channel !== 'email' && this.otp.channelAvailable(channel));
+  }
+
+  // Sends the fallback code for a pending sign-in (same device only).
+  async sendMfaOtp(dto: MfaOtpSendDto, meta: ClientMeta): Promise<OtpSent> {
+    const pending = await this.mfa.loadPendingLogin(dto.mfaToken, meta.deviceId);
+    const user = pending && (await this.mfa.loadUser(pending.userId));
+    if (!pending || !user) throw new UnauthorizedException('Your sign-in has expired. Please sign in again.');
+    if (!(await this.otpFallbackChannels(user, pending.method)).includes(dto.channel)) {
+      throw new BadRequestException('A one-time code cannot be used for your second step. Use your passkey, authenticator app or a recovery code.');
+    }
+    await this.otp.reserveSend(`mfa\u0000${user.id}`, meta.ip);
+    const code = await this.otp.issue(otpMfaKey(dto.mfaToken), { userId: user.id });
+    this.otp.deliver(dto.channel, user.mobileNumber!, code, 'mfa', user.organizationId);
+    return { expiresInSeconds: OTP_TTL_SECONDS, resendAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS };
   }
 
   private async rejectLogin(
@@ -298,7 +468,7 @@ export class AuthService {
   // Session + token pair + login history + new-device alert, for every successful sign-in path.
   private async startSession(
     user: SessionUser & { permissionProfileId?: string | null },
-    method: 'password' | 'saml',
+    method: LoginMethod,
     meta: ClientMeta,
     identifier: string,
     reason?: string,

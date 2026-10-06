@@ -108,7 +108,7 @@ describe('MfaService', () => {
     audit = { record: jest.fn() };
     sessions = { notifySecurityChange: jest.fn() };
     const tenantPrisma = { forTenant: jest.fn(async (_ctx: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
-    service = new MfaService({} as never, tenantPrisma as never, crypto, audit as never, sessions as never, redis as never);
+    service = new MfaService({} as never, tenantPrisma as never, crypto, audit as never, sessions as never, redis as never, {} as never);
     (loadTenantSecurityPolicy as jest.Mock).mockResolvedValue(DEFAULT_SECURITY_POLICY);
     (resolvePermissionGrants as jest.Mock).mockResolvedValue(new Set(['org:manage_users']));
   });

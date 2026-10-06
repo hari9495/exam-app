@@ -5,13 +5,14 @@ import * as argon2 from 'argon2';
 import { createHash } from 'crypto';
 import { AuthService, SignedIn } from './auth.service';
 import { MfaService } from './mfa.service';
-import { DEFAULT_SECURITY_POLICY, PrismaService, SecurityPolicySettings, loadTenantSecurityPolicy, staffDeskIpAllowed } from '@exam-platform/shared';
+import { DEFAULT_SECURITY_POLICY, PrismaService, SecurityPolicySettings, loadTenantSecurityPolicy, resolvePermissionGrants, staffDeskIpAllowed } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { SessionsService } from './sessions.service';
 import { LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
 import { PasswordPolicyService } from './password-policy.service';
+import { OtpService } from './otp.service';
 
 // The company security policy is read through the shared (cached) loader; stub it per test so a
 // test controls the policy without the cache leaking between tests. Default: no policy row.
@@ -21,10 +22,12 @@ jest.mock('@exam-platform/shared', () => {
     ...actual,
     loadTenantSecurityPolicy: jest.fn(async () => actual.DEFAULT_SECURITY_POLICY),
     staffDeskIpAllowed: jest.fn(async () => true),
+    resolvePermissionGrants: jest.fn(async () => new Set()),
   };
 });
 const policyLoader = loadTenantSecurityPolicy as jest.Mock;
 const deskIpAllowed = staffDeskIpAllowed as jest.Mock;
+const grants = resolvePermissionGrants as jest.Mock;
 const setPolicy = (overrides: Partial<SecurityPolicySettings>) =>
   policyLoader.mockImplementation(async () => ({ ...DEFAULT_SECURITY_POLICY, ...overrides }));
 
@@ -59,6 +62,7 @@ describe('AuthService', () => {
   let emailService: { send: jest.Mock };
   let jwt: JwtService;
   let mfa: Record<string, jest.Mock>;
+  let otp: Record<string, jest.Mock>;
 
   beforeEach(async () => {
     // No second factor enrolled unless a test says so; MFA not required.
@@ -72,6 +76,14 @@ describe('AuthService', () => {
       consumePendingLogin: jest.fn().mockResolvedValue(true),
       takeLoginChallenge: jest.fn().mockResolvedValue(null),
       verifyProof: jest.fn().mockResolvedValue(null),
+    };
+    otp = {
+      channelAvailable: jest.fn().mockReturnValue(true),
+      reserveSend: jest.fn().mockResolvedValue(undefined),
+      issue: jest.fn().mockResolvedValue('123456'),
+      peek: jest.fn().mockResolvedValue(null),
+      check: jest.fn().mockResolvedValue(null),
+      deliver: jest.fn(),
     };
     prisma = {
       organization: { findUnique: jest.fn() },
@@ -123,6 +135,7 @@ describe('AuthService', () => {
         { provide: LoginProtectionService, useValue: loginProtection },
         { provide: PasswordPolicyService, useValue: passwordPolicy },
         { provide: MfaService, useValue: mfa },
+        { provide: OtpService, useValue: otp },
         JwtService,
       ],
     }).compile();
@@ -1096,6 +1109,7 @@ describe('AuthService', () => {
       setPolicy({ ssoOnly: true, breakGlassUserIds: ['user-1', 'bg-2'] });
       await withUser();
       mfa.hasFactor.mockResolvedValue(true);
+      mfa.loadUser.mockResolvedValue({ id: 'user-1', email: 'admin@demo-org.test', organizationId: 'org-1', role: 'org_admin', status: 'active' });
       const challenge = await signIn();
       expect(challenge).toMatchObject({ mfaRequired: true, mfaToken: 'pending-token' });
       expect(sessions.create).not.toHaveBeenCalled();
@@ -1103,7 +1117,6 @@ describe('AuthService', () => {
 
       // The pending state is what createPendingLogin stored; the factor checks out.
       mfa.loadPendingLogin.mockResolvedValue({ ...mfa.createPendingLogin.mock.calls[0][0] });
-      mfa.loadUser.mockResolvedValue({ id: 'user-1', email: 'admin@demo-org.test', organizationId: 'org-1', role: 'org_admin', status: 'active' });
       mfa.verifyProof.mockResolvedValue('totp');
       await service.completeMfaLogin({ mfaToken: 'pending-token', factor: 'totp', code: '123456' }, META);
       expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), 'password', META, 'totp');
@@ -1269,6 +1282,226 @@ describe('AuthService', () => {
       expect(outcome).toMatchObject({ mfaRequired: true });
       expect(mfa.createPendingLogin).toHaveBeenCalledWith(expect.objectContaining({ method: 'saml', identifier: 'u@x.test' }));
       expect(sessions.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('one-time-code sign-in (P12 §3 AAL1, M04 Q2) and the OTP fallback factor (YX-IAM-03)', () => {
+    const ORG = { id: 'org-1', status: 'active' };
+    const EMAIL = 'field@demo-org.test';
+    const MOBILE = '+919876543210';
+    const USER = { id: 'user-1', email: EMAIL, organizationId: 'org-1', role: 'recruiter', status: 'active', permissionProfileId: null, mfaEnrolmentDueAt: new Date(), mobileNumber: MOBILE, mobileVerifiedAt: new Date() };
+    const sha = (v: string) => createHash('sha256').update(v).digest('hex');
+    const start = (identifier = EMAIL, extra: object = {}, meta = META) => service.startOtpLogin({ organizationSlug: 'Demo-Org', identifier, ...extra }, meta);
+    const verify = (code = '123456', otpToken = 'T'.repeat(43), identifier = EMAIL, meta = META) =>
+      service.completeOtpLogin({ organizationSlug: 'demo-org', identifier, otpToken, code }, meta);
+    // What startOtpLogin stored for this browser and token.
+    const stored = (overrides: object = {}) => ({ userId: 'user-1', organizationId: 'org-1', channel: 'email', tokenHash: sha('T'.repeat(43)), deviceIdHash: sha(META.deviceId), ...overrides });
+
+    beforeEach(() => {
+      setPolicy({ otpSignInChannels: ['email', 'sms', 'whatsapp'], allowedFactors: ['passkey', 'totp', 'otp'] });
+      prisma.organization.findUnique.mockResolvedValue(ORG);
+      mfa.loadUser.mockResolvedValue(USER);
+      grants.mockResolvedValue(new Set());
+    });
+
+    describe('step 1: asking for a code', () => {
+      it('a known account gets a code by email; the answer carries only a token and timings', async () => {
+        tenantPrisma.forTenant.mockResolvedValueOnce({ id: 'user-1', email: EMAIL, status: 'active', mobileNumber: null });
+        const sent = await start(` ${EMAIL.toUpperCase()} `);
+        expect(sent).toEqual({ otpToken: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/), expiresInSeconds: 300, resendAfterSeconds: 60 });
+        expect(otp.reserveSend).toHaveBeenCalledWith(`signin\u0000demo-org\u0000${EMAIL}`, META.ip);
+        expect(otp.issue).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ userId: 'user-1', channel: 'email', tokenHash: sha(sent.otpToken!), deviceIdHash: sha(META.deviceId) }));
+        expect(otp.deliver).toHaveBeenCalledWith('email', EMAIL, '123456', 'sign_in', 'org-1');
+      });
+
+      it('no enumeration: an unknown account, an inactive one and an unknown organisation get the same answer and the same limits, and nothing is sent', async () => {
+        tenantPrisma.forTenant.mockResolvedValueOnce({ id: 'user-2', email: EMAIL, status: 'deactivated', mobileNumber: null });
+        const inactive = await start();
+        tenantPrisma.forTenant.mockResolvedValueOnce(null);
+        const unknown = await start('nobody@demo-org.test');
+        prisma.organization.findUnique.mockResolvedValue(null);
+        const noOrg = await start();
+        for (const answer of [inactive, unknown, noOrg]) {
+          expect(Object.keys(answer).sort()).toEqual(['expiresInSeconds', 'otpToken', 'resendAfterSeconds']);
+        }
+        expect(otp.reserveSend).toHaveBeenCalledTimes(3);
+        expect(otp.issue).toHaveBeenCalledTimes(3);
+        for (const [, data] of otp.issue.mock.calls) expect(data.userId).toBe('');
+        expect(otp.deliver).not.toHaveBeenCalled();
+      });
+
+      it('a mobile number is normalised to E.164 and matched only against verified numbers', async () => {
+        tenantPrisma.forTenant.mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+          fn({ user: { findFirst: async (args: { where: unknown }) => (expect(args.where).toEqual({ organizationId: 'org-1', mobileNumber: MOBILE, mobileVerifiedAt: { not: null } }), USER) } }),
+        );
+        await start('098765 43210', { channel: 'whatsapp' });
+        expect(otp.deliver).toHaveBeenCalledWith('whatsapp', MOBILE, '123456', 'sign_in', 'org-1');
+      });
+
+      it('refuses what the company has not turned on, SSO-only companies, and channels with no provider', async () => {
+        setPolicy({ otpSignInChannels: ['email'] });
+        await expect(start(MOBILE)).rejects.toThrow('not turned on');
+        setPolicy({ otpSignInChannels: [] });
+        await expect(start()).rejects.toThrow('not turned on');
+        setPolicy({ otpSignInChannels: ['email'], ssoOnly: true });
+        await expect(start()).rejects.toThrow('not turned on');
+        setPolicy({ otpSignInChannels: ['sms'] });
+        otp.channelAvailable.mockReturnValue(false);
+        await expect(start(MOBILE)).rejects.toThrow('not available');
+        expect(otp.issue).not.toHaveBeenCalled();
+      });
+
+      it('rejects identifiers that are neither an email nor a mobile number, and mismatched channels', async () => {
+        await expect(start('not-an-identifier')).rejects.toThrow(BadRequestException);
+        await expect(start('12')).rejects.toThrow(BadRequestException);
+        await expect(start(EMAIL, { channel: 'sms' })).rejects.toThrow('needs a mobile number');
+        await expect(start(MOBILE, { channel: 'email' })).rejects.toThrow('needs an email address');
+      });
+
+      it('outside the desk IP allow-list: 403 before any account lookup, logged', async () => {
+        setPolicy({ otpSignInChannels: ['email'], ipAllowlistDesk: ['198.51.100.0/24'] });
+        await expect(start()).rejects.toThrow(ForbiddenException);
+        expect(otp.reserveSend).not.toHaveBeenCalled();
+        expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed', method: 'otp_email', reason: 'ip_not_allowed' }));
+      });
+
+      it('a locked account or IP gets no code', async () => {
+        loginProtection.check.mockResolvedValue({ scope: 'account', retryAfterSeconds: 900 });
+        await expect(start()).rejects.toThrow(TooManyLoginAttemptsException);
+        expect(otp.reserveSend).not.toHaveBeenCalled();
+        expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'locked', method: 'otp_email' }));
+      });
+    });
+
+    describe('step 2: the code', () => {
+      it('the right code from the same browser signs an account without a factor in at AAL1 and clears its lockout', async () => {
+        otp.peek.mockResolvedValue(stored());
+        otp.check.mockResolvedValue(stored());
+        tenantPrisma.forTenant.mockResolvedValueOnce(undefined); // lastLoginAt
+        const outcome = (await verify()) as SignedIn;
+        expect(outcome.accessToken).toEqual(expect.any(String));
+        expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), 'otp_email', META, undefined);
+        expect(loginProtection.registerSuccess).toHaveBeenCalledWith('demo-org', EMAIL, META.ip);
+        expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'success', method: 'otp_email' }));
+        expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'login.success', metadata: { method: 'otp_email' } }));
+      });
+
+      it('an account with a second factor still owes it; the OTP fallback is not offered after an OTP first step', async () => {
+        otp.peek.mockResolvedValue(stored());
+        otp.check.mockResolvedValue(stored());
+        mfa.hasFactor.mockResolvedValue(true);
+        const outcome = await verify();
+        expect(outcome).toEqual({ mfaRequired: true, mfaToken: 'pending-token', factors: ['totp', 'recovery_code'], expiresInSeconds: 300 });
+        expect(mfa.createPendingLogin).toHaveBeenCalledWith(expect.objectContaining({ method: 'otp_email', userId: 'user-1' }));
+        expect(sessions.create).not.toHaveBeenCalled();
+      });
+
+      it('a wrong code counts toward the lockout and is logged; the lock emails the holder', async () => {
+        otp.peek.mockResolvedValue(stored());
+        await expect(verify('000000')).rejects.toThrow(UnauthorizedException);
+        expect(loginProtection.registerFailure).toHaveBeenCalledWith('demo-org', EMAIL, META.ip);
+        expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed', method: 'otp_email', reason: 'otp_invalid' }));
+        loginProtection.registerFailure.mockResolvedValue({ failures: 10, locked: true });
+        await expect(verify('000000')).rejects.toThrow(UnauthorizedException);
+        expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), META);
+        expect(sessions.create).not.toHaveBeenCalled();
+      });
+
+      it('another browser, a forged token, or an expired / never-issued code is refused without the code even being tried', async () => {
+        otp.peek.mockResolvedValue(stored());
+        await expect(verify('123456', 'X'.repeat(43))).rejects.toThrow(UnauthorizedException);
+        await expect(verify('123456', 'T'.repeat(43), EMAIL, { ...META, deviceId: 'e'.repeat(43) })).rejects.toThrow(UnauthorizedException);
+        otp.peek.mockResolvedValue(null);
+        await expect(verify()).rejects.toThrow(UnauthorizedException);
+        expect(otp.check).not.toHaveBeenCalled();
+        expect(loginProtection.registerFailure).toHaveBeenCalledTimes(3);
+      });
+
+      it('a right guess of the decoy code stored for an unknown account still signs nobody in', async () => {
+        otp.peek.mockResolvedValue(stored({ userId: '' }));
+        otp.check.mockResolvedValue(stored({ userId: '' }));
+        await expect(verify()).rejects.toThrow(UnauthorizedException);
+        expect(sessions.create).not.toHaveBeenCalled();
+      });
+
+      it('a locked account is refused before the code is checked', async () => {
+        otp.peek.mockResolvedValue(stored());
+        loginProtection.check.mockResolvedValue({ scope: 'ip', retryAfterSeconds: 600 });
+        await expect(verify()).rejects.toThrow(TooManyLoginAttemptsException);
+        expect(otp.check).not.toHaveBeenCalled();
+      });
+
+      it('re-checks after the code: OTP turned off, account deactivated, mobile number changed', async () => {
+        otp.peek.mockResolvedValue(stored());
+        otp.check.mockResolvedValue(stored());
+        setPolicy({ otpSignInChannels: [] });
+        await expect(verify()).rejects.toThrow('not turned on');
+        expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed', reason: 'otp_disabled' }));
+
+        setPolicy({ otpSignInChannels: ['email', 'sms'] });
+        mfa.loadUser.mockResolvedValue({ ...USER, status: 'deactivated' });
+        await expect(verify()).rejects.toThrow('deactivated');
+
+        mfa.loadUser.mockResolvedValue({ ...USER, mobileNumber: '+919000000000' });
+        otp.peek.mockResolvedValue(stored({ channel: 'sms' }));
+        otp.check.mockResolvedValue(stored({ channel: 'sms' }));
+        await expect(verify('123456', 'T'.repeat(43), MOBILE)).rejects.toThrow(UnauthorizedException);
+        expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ reason: 'mobile_changed', method: 'otp_sms' }));
+        expect(sessions.create).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('fallback second factor (YX-IAM-03)', () => {
+      it('SMS / WhatsApp to a verified mobile, never email, where the company allows OTP', async () => {
+        expect(await service.otpFallbackChannels(USER, 'password')).toEqual(['sms', 'whatsapp']);
+        expect(await service.otpFallbackChannels(USER, 'saml')).toEqual(['sms', 'whatsapp']);
+        setPolicy({ allowedFactors: ['passkey', 'totp'] });
+        expect(await service.otpFallbackChannels(USER, 'password')).toEqual([]);
+      });
+
+      it('never for System / Payroll Admin, YukthiX staff, unverified numbers, or after an OTP first step', async () => {
+        grants.mockResolvedValue(new Set(['org:manage_users']));
+        expect(await service.otpFallbackChannels(USER, 'password')).toEqual([]);
+        grants.mockResolvedValue(new Set(['org:manage_billing']));
+        expect(await service.otpFallbackChannels(USER, 'password')).toEqual([]);
+        grants.mockResolvedValue(new Set());
+        expect(await service.otpFallbackChannels({ ...USER, role: 'super_admin' }, 'password')).toEqual([]);
+        expect(await service.otpFallbackChannels({ ...USER, mobileVerifiedAt: null }, 'password')).toEqual([]);
+        expect(await service.otpFallbackChannels(USER, 'otp_email')).toEqual([]);
+      });
+
+      it('is offered at the second step and, once sent, a right code opens an AAL2 session marked otp', async () => {
+        const PENDING = { userId: 'user-1', method: 'password', orgSlug: 'demo-org', identifier: EMAIL, breakGlass: false, deviceIdHash: 'x' };
+        mfa.loadPendingLogin.mockResolvedValue(PENDING);
+        await expect(service.sendMfaOtp({ mfaToken: 'M'.repeat(43), channel: 'sms' }, META)).resolves.toEqual({ expiresInSeconds: 300, resendAfterSeconds: 60 });
+        expect(otp.reserveSend).toHaveBeenCalledWith('mfa\u0000user-1', META.ip);
+        expect(otp.deliver).toHaveBeenCalledWith('sms', MOBILE, '123456', 'mfa', 'org-1');
+
+        otp.check.mockResolvedValue({ userId: 'user-1' });
+        tenantPrisma.forTenant.mockResolvedValueOnce(undefined); // lastLoginAt
+        await service.completeMfaLogin({ mfaToken: 'M'.repeat(43), factor: 'otp', code: '123456' }, META);
+        expect(otp.check).toHaveBeenCalledWith(`auth:otp:mfa:${sha('M'.repeat(43))}`, '123456');
+        expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), 'password', META, 'otp');
+        expect(mfa.verifyProof).not.toHaveBeenCalled();
+      });
+
+      it('a barred account can neither be sent a code nor use one, and the attempt counts toward the lockout', async () => {
+        mfa.loadPendingLogin.mockResolvedValue({ userId: 'user-1', method: 'password', orgSlug: 'demo-org', identifier: EMAIL, breakGlass: false, deviceIdHash: 'x' });
+        grants.mockResolvedValue(new Set(['org:manage_settings']));
+        await expect(service.sendMfaOtp({ mfaToken: 'M'.repeat(43), channel: 'sms' }, META)).rejects.toThrow(BadRequestException);
+        expect(otp.issue).not.toHaveBeenCalled();
+        otp.check.mockResolvedValue({ userId: 'user-1' });
+        await expect(service.completeMfaLogin({ mfaToken: 'M'.repeat(43), factor: 'otp', code: '123456' }, META)).rejects.toThrow(UnauthorizedException);
+        expect(otp.check).not.toHaveBeenCalled();
+        expect(loginProtection.registerFailure).toHaveBeenCalledWith('mfa', 'user-1', META.ip);
+        expect(sessions.create).not.toHaveBeenCalled();
+      });
+
+      it('an expired or other-device pending sign-in cannot send a code', async () => {
+        mfa.loadPendingLogin.mockResolvedValue(null);
+        await expect(service.sendMfaOtp({ mfaToken: 'M'.repeat(43), channel: 'sms' }, META)).rejects.toThrow(UnauthorizedException);
+        expect(otp.reserveSend).not.toHaveBeenCalled();
+      });
     });
   });
 });

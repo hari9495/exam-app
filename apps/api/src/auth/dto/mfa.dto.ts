@@ -55,23 +55,29 @@ export class PasskeyAttestationDto extends CredentialBaseDto {
 export const MFA_FACTORS = ['totp', 'passkey', 'recovery_code'] as const;
 export type MfaFactor = (typeof MFA_FACTORS)[number];
 
-// A second-factor proof: a 6-digit TOTP code, a recovery code, or a passkey assertion.
-export class MfaProofDto {
-  @IsIn(MFA_FACTORS)
-  factor!: MfaFactor;
+// The proof fields shared by step-up and the sign-in second step; `factor` is set by each.
+class ProofFieldsDto {
+  factor!: string;
 
   // TOTP: 6 digits; recovery code: xxxx-xxxx-xxxx-xxxx (case and dashes forgiven). The service
   // checks which.
-  @ValidateIf((o: MfaProofDto) => o.factor !== 'passkey')
+  @ValidateIf((o: ProofFieldsDto) => o.factor !== 'passkey')
   @IsString()
   @Matches(/^[A-Za-z0-9 -]{6,40}$/)
   code?: string;
 
-  @ValidateIf((o: MfaProofDto) => o.factor === 'passkey')
+  @ValidateIf((o: ProofFieldsDto) => o.factor === 'passkey')
   @ValidateNested()
   @Type(() => PasskeyAssertionDto)
   @IsNotEmptyObject()
   credential?: PasskeyAssertionDto;
+}
+
+// A second-factor proof: a 6-digit TOTP code, a recovery code, or a passkey assertion (step-up
+// never accepts a one-time code, YX-IAM-03).
+export class MfaProofDto extends ProofFieldsDto {
+  @IsIn(MFA_FACTORS)
+  factor!: MfaFactor;
 }
 
 // The pending-sign-in token from the password / SSO step (never a session).
@@ -79,7 +85,13 @@ export class MfaTokenDto {
   @IsString() @Matches(B64URL) @MinLength(43) @MaxLength(43) mfaToken!: string;
 }
 
-export class MfaLoginDto extends MfaProofDto {
+// The sign-in second step also takes the fallback one-time code (factor 'otp', 6 digits).
+export const MFA_LOGIN_FACTORS = [...MFA_FACTORS, 'otp'] as const;
+
+export class MfaLoginDto extends ProofFieldsDto {
+  @IsIn(MFA_LOGIN_FACTORS)
+  factor!: (typeof MFA_LOGIN_FACTORS)[number];
+
   @IsString() @Matches(B64URL) @MinLength(43) @MaxLength(43) mfaToken!: string;
 }
 
