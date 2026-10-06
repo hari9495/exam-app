@@ -4,6 +4,7 @@ import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireStepUp } from '../auth/step-up.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
@@ -101,8 +102,10 @@ export class OrganizationsController {
     return this.organizationsService.updateEmbeddingConfig(tenant, userId, dto);
   }
 
+  // Creating an API key and changing the identity provider are step-up actions (P12 §3).
   @Post('integrations/api-key')
   @RequirePermissions('org:manage_settings')
+  @RequireStepUp()
   generateApiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
     return this.organizationsService.generateApiKey(tenant, userId);
   }
@@ -246,6 +249,7 @@ export class OrganizationsController {
 
   @Patch('sso')
   @RequirePermissions('org:manage_settings')
+  @RequireStepUp()
   updateSsoSettings(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateSsoSettingsDto) {
     return this.organizationsService.updateSsoSettings(tenant, userId, dto);
   }

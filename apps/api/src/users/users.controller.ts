@@ -16,7 +16,8 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { PermissionsGuard } from '../rbac/permissions.guard';
+import { PermissionsGuard, assertStepUp } from '../rbac/permissions.guard';
+import { RequireStepUp } from '../auth/step-up.decorator';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
@@ -34,15 +35,19 @@ import { BulkCreateUsersDto } from './dto/bulk-create-users.dto';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  // Granting the admin role, or changing anyone's role / permission profile, is a step-up action
+  // (P12 §3, YX-IAM-02).
   @Post()
   @RequirePermissions('org:manage_users')
-  create(@CurrentTenant() tenant: TenantContext, @Body() dto: CreateUserDto) {
+  create(@CurrentTenant() tenant: TenantContext, @Body() dto: CreateUserDto, @Req() req: Request) {
+    if (dto.role === 'org_admin') assertStepUp(req.user as never);
     return this.usersService.create(tenant, dto);
   }
 
   @Post('bulk')
   @RequirePermissions('org:manage_users')
-  bulkCreate(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: BulkCreateUsersDto) {
+  bulkCreate(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: BulkCreateUsersDto, @Req() req: Request) {
+    if (dto.role === 'org_admin') assertStepUp(req.user as never);
     return this.usersService.bulkCreate(tenant, dto, userId);
   }
 
@@ -89,12 +94,14 @@ export class UsersController {
 
   @Post('super-admins/invite')
   @RequirePermissions('platform:manage_organizations')
+  @RequireStepUp()
   inviteSuperAdmin(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: SuperAdminEmailDto) {
     return this.usersService.inviteSuperAdmin(tenant, userId, dto);
   }
 
   @Post('super-admins/promote')
   @RequirePermissions('platform:manage_organizations')
+  @RequireStepUp()
   promoteSuperAdmin(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: SuperAdminEmailDto) {
     return this.usersService.promoteSuperAdmin(tenant, userId, dto);
   }
@@ -128,7 +135,14 @@ export class UsersController {
 
   @Patch(':id')
   @RequirePermissions('org:manage_users')
-  update(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Body() dto: UpdateUserDto, @CurrentUserId() userId: string) {
+  update(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') id: string,
+    @Body() dto: UpdateUserDto,
+    @CurrentUserId() userId: string,
+    @Req() req: Request,
+  ) {
+    if (dto.role !== undefined || dto.permissionProfileId !== undefined) assertStepUp(req.user as never);
     return this.usersService.update(tenant, id, dto, userId);
   }
 

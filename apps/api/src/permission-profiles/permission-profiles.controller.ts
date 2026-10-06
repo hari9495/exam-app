@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@n
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireStepUp } from '../auth/step-up.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
@@ -25,14 +26,17 @@ export class PermissionProfilesController {
     return this.profiles.assignablePermissions();
   }
 
+  // Permission changes are step-up actions (P12 §3, YX-IAM-02).
   @Post()
   @RequirePermissions('org:manage_users')
+  @RequireStepUp()
   create(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpsertPermissionProfileDto) {
     return this.profiles.create(tenant, userId, dto);
   }
 
   @Patch(':id')
   @RequirePermissions('org:manage_users')
+  @RequireStepUp()
   update(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
@@ -44,6 +48,7 @@ export class PermissionProfilesController {
 
   @Delete(':id')
   @RequirePermissions('org:manage_users')
+  @RequireStepUp()
   remove(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.profiles.remove(tenant, userId, id);
   }

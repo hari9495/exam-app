@@ -2,11 +2,15 @@ import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PermissionsGuard } from './permissions.guard';
 import { PERMISSIONS_KEY, PERMISSIONS_ANY_KEY } from './permissions.decorator';
-import { DEFAULT_SECURITY_POLICY, invalidateTenantSecurityPolicy } from '@exam-platform/shared';
+import { DEFAULT_SECURITY_POLICY, MFA_REQUIRED_CODE, STEP_UP_REQUIRED_CODE, invalidateTenantSecurityPolicy } from '@exam-platform/shared';
+import { SENSITIVE_ROLE_ACTION, STEP_UP_REQUIRED } from '../auth/step-up.decorator';
+
+// Every staff request carries its session's assurance (JwtStrategy). Default: AAL2, just verified.
+const AAL2 = { assuranceLevel: 'aal2', mfaVerifiedAt: new Date(), mfaMethod: 'totp', mfaEnrolmentDueAt: new Date(0) };
 
 function mockContext(user: unknown): ExecutionContext {
   return {
-    switchToHttp: () => ({ getRequest: () => ({ user }) }),
+    switchToHttp: () => ({ getRequest: () => ({ user: user && { session: AAL2, ...(user as object) } }) }),
     getHandler: () => ({}),
   } as unknown as ExecutionContext;
 }
@@ -273,7 +277,7 @@ describe('PermissionsGuard', () => {
       return new PermissionsGuard(reflector, prisma as any, tenantPrisma as any);
     };
     const ctx = (user: object, ip: string) =>
-      ({ switchToHttp: () => ({ getRequest: () => ({ user, ip }) }), getHandler: () => ({}) }) as unknown as ExecutionContext;
+      ({ switchToHttp: () => ({ getRequest: () => ({ user: { session: AAL2, ...user }, ip }) }), getHandler: () => ({}) }) as unknown as ExecutionContext;
     const admin = { role: 'org_admin', organizationId: ORG, permissionProfileId: null };
     beforeEach(() => invalidateTenantSecurityPolicy(ORG));
 
@@ -295,5 +299,110 @@ describe('PermissionsGuard', () => {
       ).resolves.toBe(true);
     });
   });
-});
 
+  describe('MFA floor (YX-IAM-01) and step-up (YX-IAM-02)', () => {
+    const ORG = 'org-mfa';
+    const auditLogs = { create: jest.fn() };
+    const HOUR = 3600 * 1000;
+    const AAL1_IN_GRACE = { assuranceLevel: 'aal1', mfaVerifiedAt: null, mfaMethod: null, mfaEnrolmentDueAt: new Date(Date.now() + 24 * HOUR) };
+    const AAL1_PAST_DUE = { ...AAL1_IN_GRACE, mfaEnrolmentDueAt: new Date(Date.now() - HOUR) };
+    const build = (meta: Record<string, unknown>, policy: Partial<typeof DEFAULT_SECURITY_POLICY> = {}) => {
+      const required = (meta[PERMISSIONS_KEY] as string[] | undefined) ?? [];
+      const reflector = { get: jest.fn((key: string) => meta[key]) } as unknown as Reflector;
+      const prisma = { rolePermission: { findMany: jest.fn().mockResolvedValue(required.map((key) => ({ permission: { key } }))) } };
+      const tx = {
+        tenantSecurityPolicy: { findUnique: jest.fn().mockResolvedValue({ ...DEFAULT_SECURITY_POLICY, ...policy, organizationId: ORG }) },
+        orgRolePermission: { findUnique: jest.fn().mockResolvedValue(null) },
+        user: { findUnique: jest.fn().mockResolvedValue(null) },
+        auditLog: auditLogs,
+      };
+      const tenantPrisma = { forTenant: jest.fn(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
+      return new PermissionsGuard(reflector, prisma as any, tenantPrisma as any);
+    };
+    const ctx = (user: object) =>
+      ({
+        switchToHttp: () => ({ getRequest: () => ({ user, ip: '203.0.113.1', method: 'PATCH', path: '/x', route: { path: '/x' } }) }),
+        getHandler: () => ({}),
+      }) as unknown as ExecutionContext;
+    const admin = (session: object) => ({ userId: 'u-1', role: 'org_admin', organizationId: ORG, permissionProfileId: null, session });
+    const outcome = async (promise: Promise<unknown>) => {
+      try {
+        await promise;
+        return 'allowed';
+      } catch (error) {
+        return ((error as ForbiddenException).getResponse() as { code?: string }).code ?? 'forbidden';
+      }
+    };
+    beforeEach(() => {
+      invalidateTenantSecurityPolicy(ORG);
+      auditLogs.create.mockClear();
+    });
+
+    it('a sensitive-role permission needs AAL2 once the enrolment grace is over', async () => {
+      const guard = build({ [PERMISSIONS_KEY]: ['org:manage_users'] });
+      expect(await outcome(guard.canActivate(ctx(admin(AAL1_PAST_DUE))))).toBe(MFA_REQUIRED_CODE);
+      expect(await outcome(guard.canActivate(ctx(admin(AAL1_IN_GRACE))))).toBe('allowed');
+      expect(await outcome(guard.canActivate(ctx(admin(AAL2))))).toBe('allowed');
+    });
+
+    it('everyday permissions stay usable at AAL1, unless the company requires MFA for everyone', async () => {
+      expect(await outcome(build({ [PERMISSIONS_KEY]: ['exam:manage'] }).canActivate(ctx(admin(AAL1_PAST_DUE))))).toBe('allowed');
+      invalidateTenantSecurityPolicy(ORG);
+      const strict = build({ [PERMISSIONS_KEY]: ['exam:manage'] }, { mfaScope: 'all' });
+      expect(await outcome(strict.canActivate(ctx(admin(AAL1_PAST_DUE))))).toBe(MFA_REQUIRED_CODE);
+    });
+
+    it('proctor / evaluator actions (@SensitiveRoleAction) need AAL2 past the grace', async () => {
+      const guard = build({ [PERMISSIONS_KEY]: ['exam:manage'], [SENSITIVE_ROLE_ACTION]: true });
+      expect(await outcome(guard.canActivate(ctx(admin(AAL1_PAST_DUE))))).toBe(MFA_REQUIRED_CODE);
+    });
+
+    it('platform staff need AAL2 for anything gated, even acting inside a company', async () => {
+      const guard = build({ [PERMISSIONS_KEY]: ['candidate:manage'] });
+      const staff = { userId: 's-1', role: 'super_admin', organizationId: ORG, actingSuperAdmin: true, session: AAL1_PAST_DUE };
+      expect(await outcome(guard.canActivate(ctx(staff)))).toBe(MFA_REQUIRED_CODE);
+    });
+
+    it('a request without session state fails closed', async () => {
+      const guard = build({ [PERMISSIONS_KEY]: ['exam:manage'] });
+      expect(await outcome(guard.canActivate(ctx({ role: 'recruiter', organizationId: ORG })))).toBe(MFA_REQUIRED_CODE);
+    });
+
+    it('a step-up action needs AAL2 proven within the window, and the step-up is audited', async () => {
+      const guard = build({ [PERMISSIONS_KEY]: ['org:manage_settings'], [STEP_UP_REQUIRED]: true });
+      const stale = { ...AAL2, mfaVerifiedAt: new Date(Date.now() - 16 * 60 * 1000) };
+      expect(await outcome(guard.canActivate(ctx(admin(stale))))).toBe(STEP_UP_REQUIRED_CODE);
+      expect(await outcome(guard.canActivate(ctx(admin(AAL1_IN_GRACE))))).toBe(STEP_UP_REQUIRED_CODE); // no grace for step-up
+      expect(auditLogs.create).not.toHaveBeenCalled();
+
+      const fresh = { ...AAL2, mfaVerifiedAt: new Date(Date.now() - 60 * 1000) };
+      expect(await outcome(guard.canActivate(ctx(admin(fresh))))).toBe('allowed');
+      expect(auditLogs.create).toHaveBeenCalledWith({ data: expect.objectContaining({ organizationId: ORG, action: 'step_up.used', actorUserId: 'u-1' }) });
+      const metadata = JSON.parse(auditLogs.create.mock.calls[0][0].data.metadataJson);
+      expect(metadata).toMatchObject({ factor: 'totp', route: 'PATCH /x' });
+    });
+
+    it('a stricter STEP_UP_WINDOW_MINUTES shortens the window; a laxer one is clamped to 15 min', async () => {
+      const guard = build({ [PERMISSIONS_KEY]: ['org:manage_settings'], [STEP_UP_REQUIRED]: true });
+      const tenMinutesAgo = { ...AAL2, mfaVerifiedAt: new Date(Date.now() - 10 * 60 * 1000) };
+      const twentyMinutesAgo = { ...AAL2, mfaVerifiedAt: new Date(Date.now() - 20 * 60 * 1000) };
+      try {
+        process.env.STEP_UP_WINDOW_MINUTES = '5';
+        expect(await outcome(guard.canActivate(ctx(admin(tenMinutesAgo))))).toBe(STEP_UP_REQUIRED_CODE);
+        process.env.STEP_UP_WINDOW_MINUTES = '60';
+        expect(await outcome(guard.canActivate(ctx(admin(twentyMinutesAgo))))).toBe(STEP_UP_REQUIRED_CODE);
+      } finally {
+        delete process.env.STEP_UP_WINDOW_MINUTES;
+      }
+    });
+
+    it('a missing permission is reported before MFA or step-up', async () => {
+      const meta: Record<string, unknown> = { [PERMISSIONS_KEY]: ['org:manage_users'], [STEP_UP_REQUIRED]: true };
+      const reflector = { get: jest.fn((key: string) => meta[key]) } as unknown as Reflector;
+      const prisma = { rolePermission: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tenantPrisma = { forTenant: jest.fn().mockResolvedValue(null) };
+      const guard = new PermissionsGuard(reflector, prisma as any, tenantPrisma as any);
+      await expect(guard.canActivate(ctx({ role: 'recruiter', organizationId: ORG, session: AAL1_PAST_DUE }))).rejects.toThrow('Missing required permission');
+    });
+  });
+});

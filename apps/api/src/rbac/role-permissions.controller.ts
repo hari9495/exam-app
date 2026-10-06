@@ -3,6 +3,7 @@ import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from './permissions.guard';
 import { RequirePermissions } from './permissions.decorator';
+import { RequireStepUp } from '../auth/step-up.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { RolePermissionsService } from './role-permissions.service';
@@ -21,8 +22,10 @@ export class RolePermissionsController {
     return this.service.getMatrix(tenant);
   }
 
+  // Changing what a role can do is a step-up action (P12 §3, YX-IAM-02).
   @Put(':role')
   @RequirePermissions('org:manage_users')
+  @RequireStepUp()
   setRole(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
@@ -34,6 +37,7 @@ export class RolePermissionsController {
 
   @Delete(':role')
   @RequirePermissions('org:manage_users')
+  @RequireStepUp()
   resetRole(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('role') role: string) {
     return this.service.resetRole(tenant, userId, role);
   }
