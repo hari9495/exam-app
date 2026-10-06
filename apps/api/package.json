@@ -34,6 +34,7 @@
     "csv-parse": "^7.0.1",
     "csv-stringify": "^6.5.1",
     "exceljs": "^4.4.0",
+    "free-email-domains": "1.12.20",
     "ioredis": "5.10.1",
     "ipaddr.js": "1.9.1",
     "libphonenumber-js": "^1.13.14",

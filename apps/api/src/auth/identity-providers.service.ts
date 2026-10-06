@@ -1,9 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { IdentityProvider, Prisma } from '@prisma/client';
 import { X509Certificate } from 'crypto';
 import { AuditService, OrgSecretsCryptoService, TenantContext, TenantPrismaService, loadTenantSecurityPolicy, revokeStaffSessions } from '@exam-platform/shared';
 import { CreateIdentityProviderDto, UpdateIdentityProviderDto } from './dto/identity-provider.dto';
-import { GOOGLE_ISSUER, assertIssuerUrl, entraIssuer } from './identity-providers';
+import { DOMAIN_VERIFICATION_PREFIX, GOOGLE_ISSUER, assertIssuerUrl, entraIssuer, isPublicMailDomain } from './identity-providers';
 import { SsoService } from './sso.service';
 import { OidcService } from './oidc.service';
 import { SessionsService } from './sessions.service';
@@ -53,6 +53,17 @@ const AUDITED: (keyof Settings)[] = [
   'mfaTrusted',
 ];
 
+// DNS TXT lookups for domain ownership; injectable so tests answer without the network.
+export const DNS_TXT_RESOLVER = 'DNS_TXT_RESOLVER';
+export type TxtResolver = (name: string) => Promise<string[][]>;
+
+// Removes the company's verified domains that none of its providers maps any more (a claim lives
+// only as long as the mapping).
+async function pruneVerifiedDomains(tx: Prisma.TransactionClient, organizationId: string): Promise<void> {
+  const mapped = await tx.identityProviderDomain.findMany({ where: { organizationId }, select: { domain: true } });
+  await tx.verifiedDomain.deleteMany({ where: { organizationId, domain: { notIn: mapped.map((d) => d.domain) } } });
+}
+
 // Settings › People & Access › Security › SSO providers (P12 §6.3, §7): several SAML / Google /
 // Entra / generic OIDC providers per company, each with its email domains and JIT rule.
 @Injectable()
@@ -64,6 +75,7 @@ export class IdentityProvidersService {
     private readonly sso: SsoService,
     private readonly oidc: OidcService,
     private readonly sessions: SessionsService,
+    @Inject(DNS_TXT_RESOLVER) private readonly resolveTxt: TxtResolver,
   ) {}
 
   // Whoever controls a sign-in provider can sign in as anyone at its domains, so every change
@@ -134,6 +146,7 @@ export class IdentityProvidersService {
     const sessionsRevoked = await this.tenantPrisma.forTenant(context, async (tx) => {
       const revoked = await revokeStaffSessions(tx, { identityProviderId: id }, 'identity_provider_removed');
       await tx.identityProvider.delete({ where: { id } });
+      await pruneVerifiedDomains(tx, organizationId);
       return revoked;
     });
     // YX-IAM-10: every IdP change is logged.
@@ -166,6 +179,8 @@ export class IdentityProvidersService {
       if (dto[key] !== undefined) (next as Record<string, unknown>)[key] = dto[key];
     }
     const domains = dto.domains ? [...new Set(dto.domains)] : beforeDomains;
+    const publicDomain = dto.domains?.find(isPublicMailDomain);
+    if (publicDomain) throw new BadRequestException(`${publicDomain} is a public email domain. Single sign-on needs your company's own domain.`);
 
     if (type === 'saml') {
       if (dto.oidcIssuer !== undefined || dto.oidcClientId !== undefined || dto.oidcClientSecret !== undefined || dto.entraTenantId !== undefined) {
@@ -255,6 +270,7 @@ export class IdentityProvidersService {
         if (domains.length) {
           await tx.identityProviderDomain.createMany({ data: domains.map((domain) => ({ organizationId, domain, identityProviderId: row.id })) });
         }
+        await pruneVerifiedDomains(tx, organizationId);
         if (disabling) sessionsRevoked = await revokeStaffSessions(tx, { identityProviderId: row.id }, 'identity_provider_disabled');
         return row.id;
       });
@@ -280,6 +296,49 @@ export class IdentityProvidersService {
       );
     }
     return savedId;
+  }
+
+  // ---- domain ownership (email-first routing) -------------------------------------------------
+
+  // The TXT value this company must publish on `domain`.
+  verificationValue(organizationId: string, domain: string): string {
+    return DOMAIN_VERIFICATION_PREFIX + this.crypto.hmac('domain-verification', `${organizationId}\u0000${domain}`).slice(0, 32);
+  }
+
+  // The company's provider domains: verified or not, and the TXT record that proves each.
+  async domains(context: TenantContext) {
+    const organizationId = this.orgOf(context);
+    const { mapped, verified } = await this.tenantPrisma.forTenant(context, async (tx) => ({
+      mapped: await tx.identityProviderDomain.findMany({ where: { organizationId }, select: { domain: true }, orderBy: { domain: 'asc' } }),
+      verified: await tx.verifiedDomain.findMany({ where: { organizationId } }),
+    }));
+    return mapped.map(({ domain }) => ({
+      domain,
+      verifiedAt: verified.find((v) => v.domain === domain)?.verifiedAt ?? null,
+      txtRecord: { name: domain, value: this.verificationValue(organizationId, domain) },
+    }));
+  }
+
+  // Looks the TXT record up now. Found: the domain routes email-first sign-ins to this company's
+  // provider (unless another company has verified it too). Public mail domains are never claimable.
+  async verifyDomain(context: TenantContext, actorUserId: string, domain: string) {
+    const organizationId = this.orgOf(context);
+    if (isPublicMailDomain(domain)) throw new BadRequestException(`${domain} is a public email domain and cannot be verified.`);
+    const mapped = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.identityProviderDomain.findUnique({ where: { organizationId_domain: { organizationId, domain } } }),
+    );
+    if (!mapped) throw new NotFoundException('Add this domain to one of your identity providers first');
+    const expected = this.verificationValue(organizationId, domain);
+    const records = await this.resolveTxt(domain).catch(() => [] as string[][]);
+    if (!records.some((chunks) => chunks.join('') === expected)) {
+      throw new BadRequestException(`No TXT record "${expected}" on ${domain} yet. DNS changes can take a few hours; try again later.`);
+    }
+    const row = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.verifiedDomain.upsert({ where: { organizationId_domain: { organizationId, domain } }, create: { organizationId, domain }, update: { verifiedAt: new Date() } }),
+    );
+    await this.audit.record(context, { actorUserId, action: 'identity_provider.domain_verified', entityType: 'organization', entityId: organizationId, metadata: { domain } });
+    this.alertAdmins(organizationId, actorUserId, `The domain ${domain} was verified: people with an @${domain} email now go straight to your identity provider.`);
+    return { domain, verifiedAt: row.verifiedAt };
   }
 
   // SSO-only (YX-IAM-04) needs a provider to sign in with; the last one cannot be switched off.

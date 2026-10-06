@@ -105,10 +105,12 @@ export class CreateIdentityProviderDto extends UpdateIdentityProviderDto {
 
 // Sign-in: pick the provider by id (a "Sign in with ..." button) or by the email's domain.
 export class SsoStartDto {
+  // Optional: the web address or the remembered company name it otherwise.
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(200)
-  organizationSlug!: string;
+  organizationSlug?: string;
 
   @IsOptional()
   @IsEmail()
@@ -118,4 +120,12 @@ export class SsoStartDto {
   @IsOptional()
   @IsUUID()
   providerId?: string;
+}
+
+// Domain ownership check (DNS TXT) for email-first routing.
+export class VerifyDomainDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
+  @IsFQDN({ require_tld: true, allow_underscores: false })
+  @MaxLength(253)
+  domain!: string;
 }

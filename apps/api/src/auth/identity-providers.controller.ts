@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -7,7 +7,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from './current-tenant.decorator';
 import { RequireStepUp } from './step-up.decorator';
 import { IdentityProvidersService } from './identity-providers.service';
-import { CreateIdentityProviderDto, UpdateIdentityProviderDto } from './dto/identity-provider.dto';
+import { CreateIdentityProviderDto, UpdateIdentityProviderDto, VerifyDomainDto } from './dto/identity-provider.dto';
 
 // Settings › People & Access › Security › SSO providers (P12 §7; YX-IAM-04/05). Bearer-token
 // authenticated only (no cookie auth, no CSRF surface). Changing an identity provider is
@@ -29,6 +29,21 @@ export class IdentityProvidersController {
   @RequirePermissions('org:manage_settings')
   list(@CurrentTenant() ctx: TenantContext) {
     return this.providers.list(ctx);
+  }
+
+  // Domain ownership for email-first routing: the TXT record to publish, and the check.
+  @Get('domains')
+  @RequirePermissions('org:manage_settings')
+  domains(@CurrentTenant() ctx: TenantContext) {
+    return this.providers.domains(ctx);
+  }
+
+  @Post('domains/verify')
+  @HttpCode(200)
+  @RequirePermissions('org:manage_settings', 'org:manage_users')
+  @RequireStepUp()
+  verifyDomain(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: VerifyDomainDto) {
+    return this.providers.verifyDomain(ctx, this.actor(req), dto.domain);
   }
 
   @Post()
