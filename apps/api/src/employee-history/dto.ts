@@ -250,6 +250,17 @@ export class AsOfQueryDto {
   @IsOptional()
   @IsISO8601({ strict: true })
   recordedAt?: string;
+
+  /** R1: pay is sent only when asked for ("Show pay"), and each look is recorded. */
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  pay?: 'true' | 'false';
+}
+
+export class HistoryQueryDto {
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  pay?: 'true' | 'false';
 }
 
 export class SegmentsQueryDto {

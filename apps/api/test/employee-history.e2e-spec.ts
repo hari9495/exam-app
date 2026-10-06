@@ -214,9 +214,12 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
 
     it('as on a date: the facts in force, nothing before joining, pay only with pay access', async () => {
       const hr = (await api('hrA', 'get', `/people/employees/${ids.arjun}/as-of`).expect(200)).body;
-      expect(hr).toMatchObject({ asOf: today, assignment: { designation: { name: 'Quality Analyst' }, manager: { id: ids.divya, name: 'Divya' }, location: { state: 'IN-KA', timezone: 'Asia/Kolkata' } }, status: { status: 'confirmed' }, payVisible: false, compensation: null });
-      const pay = (await api('payrollA', 'get', `/people/employees/${ids.arjun}/as-of`).expect(200)).body;
-      expect(pay).toMatchObject({ payVisible: true, compensation: { currency: 'INR', annualCtc: '600000.00', validFrom: joinArjun } });
+      expect(hr).toMatchObject({ asOf: today, assignment: { designation: { name: 'Quality Analyst' }, manager: { id: ids.divya, name: 'Divya' }, location: { state: 'IN-KA', timezone: 'Asia/Kolkata' } }, status: { status: 'confirmed' }, payAccess: false, compensation: null });
+      // R1 "Show pay": even with pay access, amounts come only when asked for, and each look is recorded.
+      expect((await api('payrollA', 'get', `/people/employees/${ids.arjun}/as-of`).expect(200)).body).toMatchObject({ payAccess: true, compensation: null });
+      const pay = (await api('payrollA', 'get', `/people/employees/${ids.arjun}/as-of?pay=true`).expect(200)).body;
+      expect(pay).toMatchObject({ payAccess: true, compensation: { currency: 'INR', annualCtc: '600000.00', validFrom: joinArjun } });
+      expect((await api('hrA', 'get', `/people/employees/${ids.arjun}/as-of?pay=true`).expect(200)).body).toMatchObject({ payAccess: false, compensation: null });
       const before = (await api('hrA', 'get', `/people/employees/${ids.arjun}/as-of?date=${addDays(joinArjun, -1)}`).expect(200)).body;
       expect(before).toMatchObject({ assignment: null, status: null });
       const divya = (await api('hrA', 'get', `/people/employees/${ids.divya}/as-of`).expect(200)).body;
@@ -293,7 +296,7 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       await markSteppedUp(tenantPrisma, token.approverA);
       await api('approverA', 'post', `/people/changes/${ids.increment}/approve`).send({}).expect(201);
       const in60 = addDays(today, 60);
-      const ctcOn = async (date: string) => (await api('payrollA', 'get', `/people/employees/${ids.arjun}/as-of?date=${date}`).expect(200)).body.compensation.annualCtc;
+      const ctcOn = async (date: string) => (await api('payrollA', 'get', `/people/employees/${ids.arjun}/as-of?date=${date}&pay=true`).expect(200)).body.compensation.annualCtc;
       expect(await ctcOn(in60)).toBe('660000.00');
       // A market correction before it: the increment keeps its 10 % on the new base.
       const raised = await api('payrollA', 'post', '/people/changes').send({ employeeId: ids.arjun, changeType: 'salary_revision', effectiveDate: addDays(today, 45), payload: { compensation: { annualCtc: '700000' } }, reason: 'Market correction' }).expect(201);
@@ -432,10 +435,10 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
 
   describe('who sees what (P02 §4.3, YX-SEC-06, YX-HIS-10; R1)', () => {
     it('the person sees their own record and pay; their manager the record without pay; others nothing', async () => {
-      const self = (await api('arjunA', 'get', `/people/employees/${ids.arjun}/as-of`).expect(200)).body;
-      expect(self).toMatchObject({ payVisible: true, compensation: { annualCtc: '600000.00' } });
-      const mgr = (await api('divyaA', 'get', `/people/employees/${ids.arjun}/as-of`).expect(200)).body;
-      expect(mgr).toMatchObject({ payVisible: false, compensation: null, assignment: { designation: { name: 'Quality Analyst' } } });
+      const self = (await api('arjunA', 'get', `/people/employees/${ids.arjun}/as-of?pay=true`).expect(200)).body;
+      expect(self).toMatchObject({ payAccess: true, compensation: { annualCtc: '600000.00' } });
+      const mgr = (await api('divyaA', 'get', `/people/employees/${ids.arjun}/as-of?pay=true`).expect(200)).body;
+      expect(mgr).toMatchObject({ payAccess: false, compensation: null, assignment: { designation: { name: 'Quality Analyst' } } });
       // Lakshmi's subtree includes Arjun through Divya, but Lakshmi has no login here; Kavya manages Ravi, not Arjun.
       await api('kavyaA', 'get', `/people/employees/${ids.arjun}/as-of`).expect(404);
       await api('kavyaA', 'get', `/people/employees/${ids.ravi}/as-of`).expect(200);
@@ -458,7 +461,7 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       await api('kavyaA', 'get', `/people/employees/${ids.arjun}/as-of?date=${move}`).expect(200);
       await api('kavyaA', 'get', `/people/employees/${ids.arjun}/as-of?date=${today}`).expect(404);
       // The manager's timeline: current rows and changes inside their period only, never pay.
-      const timeline = (await api('kavyaA', 'get', `/people/employees/${ids.arjun}/history`).expect(200)).body;
+      const timeline = (await api('kavyaA', 'get', `/people/employees/${ids.arjun}/history?pay=true`).expect(200)).body;
       expect(timeline.compensation).toEqual([]);
       expect(timeline.assignment.every((r: { supersededAt: string | null; validTo: string | null }) => !r.supersededAt && (r.validTo === null || r.validTo >= move))).toBe(true);
       expect(timeline.changes.every((c: { effectiveDate: string }) => c.effectiveDate >= move)).toBe(true);
@@ -485,7 +488,7 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
         [addDays(today, 60), to, 'Quality Lead', '770000.00'],
       ]);
       const noPay = (await api('hrA', 'get', `/people/employees/${ids.arjun}/segments?from=${from}&to=${to}`).expect(200)).body;
-      expect(noPay.payVisible).toBe(false);
+      expect(noPay.payAccess).toBe(false);
       expect(noPay.segments.map((s: { from: string }) => s.from)).toEqual([from]);
       expect(noPay.segments[0].compensation).toBeNull();
       await api('hrA', 'get', `/people/employees/${ids.arjun}/segments?from=${to}&to=${from}`).expect(400);

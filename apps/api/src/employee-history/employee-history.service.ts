@@ -281,7 +281,7 @@ export class EmployeeHistoryService {
   }
 
   /** P06 §4.7 asOf(employee, date): the dated facts in force, as corrected now or as recorded at T (Q1). */
-  asOf(ctx: TenantContext, v: Viewer, employeeId: string, date: string | undefined, recordedAt: string | undefined) {
+  asOf(ctx: TenantContext, v: Viewer, employeeId: string, date: string | undefined, recordedAt: string | undefined, withPay = false) {
     return this.run(ctx, async (tx, c) => {
       const a = await this.access(tx, c, v, employeeId);
       const on = date ?? todayIst();
@@ -293,15 +293,16 @@ export class EmployeeHistoryService {
       const row = rows.assignment.find((r) => covers(isoDate(r.validFrom), iso(r.validTo), on));
       const st = rows.status.find((r) => covers(isoDate(r.validFrom), iso(r.validTo), on));
       const pay = rows.compensation.find((r) => covers(isoDate(r.validFrom), iso(r.validTo), on));
-      if (a.pay && pay) await this.auditPayView(tx, c, a, employeeId, 'as_of');
+      const showPay = a.pay && withPay;
+      if (showPay && pay) await this.auditPayView(tx, c, a, employeeId, 'as_of');
       return {
         employee: await this.header(tx, c, employeeId, e),
         asOf: on,
         recordedAt: recordedAt ?? null,
         assignment: facts.assignment && row ? { validFrom: isoDate(row.validFrom), validTo: iso(row.validTo), changeId: row.changeId, ...this.describe(facts.assignment, await this.names(tx, c, [facts.assignment])) } : null,
         status: st ? { status: st.status, validFrom: isoDate(st.validFrom), validTo: iso(st.validTo), changeId: st.changeId } : null,
-        payVisible: a.pay,
-        compensation: a.pay && pay ? { currency: pay.currency, annualCtc: pay.annualCtc.toFixed(2), validFrom: isoDate(pay.validFrom), validTo: iso(pay.validTo), changeId: pay.changeId } : null,
+        payAccess: a.pay,
+        compensation: showPay && pay ? { currency: pay.currency, annualCtc: pay.annualCtc.toFixed(2), validFrom: isoDate(pay.validFrom), validTo: iso(pay.validTo), changeId: pay.changeId } : null,
       };
     });
   }
@@ -310,7 +311,7 @@ export class EmployeeHistoryService {
    * The timeline (P06 §7): every change, and every row of every fact with who superseded it and why
    * (YX-HIS-07). A manager sees only current rows and changes inside the periods they managed.
    */
-  history(ctx: TenantContext, v: Viewer, employeeId: string) {
+  history(ctx: TenantContext, v: Viewer, employeeId: string, withPay = false) {
     return this.run(ctx, async (tx, c) => {
       const a = await this.access(tx, c, v, employeeId);
       const e = await this.employmentOf(tx, c, employeeId);
@@ -330,14 +331,15 @@ export class EmployeeHistoryService {
         supersededAt: r.supersededAt,
         supersededBy: r.supersededByChangeId ? { changeId: r.supersededByChangeId, type: byId.get(r.supersededByChangeId)?.changeType ?? null, reason: byId.get(r.supersededByChangeId)?.reason ?? null } : null,
       });
-      if (a.pay && rows.compensation.length) await this.auditPayView(tx, c, a, employeeId, 'history');
+      const showPay = a.pay && withPay;
+      if (showPay && rows.compensation.length) await this.auditPayView(tx, c, a, employeeId, 'history');
       return {
         employee: await this.header(tx, c, employeeId, e),
-        payVisible: a.pay,
-        changes: changes.map((ch) => this.changeView(ch, a.pay)),
+        payAccess: a.pay,
+        changes: changes.map((ch) => this.changeView(ch, showPay)),
         assignment: rows.assignment.filter((r) => overlaps(r.validFrom, r.validTo)).map((r) => ({ ...common(r), ...this.describe(assignmentValues(r), names) })),
         status: rows.status.filter((r) => overlaps(r.validFrom, r.validTo)).map((r) => ({ ...common(r), status: r.status })),
-        compensation: a.pay ? rows.compensation.map((r) => ({ ...common(r), currency: r.currency, annualCtc: r.annualCtc.toFixed(2) })) : [],
+        compensation: showPay ? rows.compensation.map((r) => ({ ...common(r), currency: r.currency, annualCtc: r.annualCtc.toFixed(2) })) : [],
       };
     });
   }
@@ -369,7 +371,7 @@ export class EmployeeHistoryService {
       const names = await this.names(tx, c, all.flatMap((f) => (f.assignment ? [f.assignment] : [])));
       return {
         employee: await this.header(tx, c, employeeId, e),
-        payVisible: a.pay,
+        payAccess: a.pay,
         segments: sorted.map((s, i) => {
           const f = all[i];
           return {
