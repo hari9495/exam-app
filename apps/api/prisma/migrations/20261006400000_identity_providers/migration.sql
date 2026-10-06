@@ -17,8 +17,6 @@ CREATE TABLE "identity_providers" (
     "entra_tenant_id" UUID,
     "jit_enabled" BOOLEAN NOT NULL DEFAULT false,
     "jit_role" VARCHAR(32),
-    -- acr / AuthnContextClassRef values that mean "the IdP did MFA" (on top of the built-in ones).
-    "mfa_claim_values" VARCHAR(255)[] NOT NULL DEFAULT ARRAY[]::VARCHAR(255)[],
     "created_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 

@@ -76,7 +76,7 @@ export class SsoController {
     if ('reason' in resolved) return fail(resolved.reason, 'not_provisioned');
 
     try {
-      const code = await this.sso.mintLoginCode(resolved.user.id, 'oidc', oidcMfaAsserted(provider, claims));
+      const code = await this.sso.mintLoginCode(resolved.user.id, 'oidc', oidcMfaAsserted(claims));
       res.redirect(ssoCallbackUrl(`code=${code}`));
     } catch {
       await fail('sso_code_error');

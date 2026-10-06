@@ -1290,7 +1290,6 @@ export interface IdentityProvider {
   entraTenantId: string | null;
   jitEnabled: boolean;
   jitRole: string | null;
-  mfaClaimValues: string[];
 }
 
 export interface WebhookDeliveryRow {

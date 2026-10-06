@@ -14,7 +14,6 @@ describe('SamlStrategy', () => {
     samlEntityId: 'https://idp.example.com/entity',
     samlSsoUrl: 'https://idp.example.com/sso',
     samlCertificate: '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----',
-    mfaClaimValues: [],
     domains: [],
     ...over,
   });

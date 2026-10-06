@@ -50,13 +50,15 @@ export function oidcEmail(provider: Pick<IdentityProvider, 'type' | 'entraTenant
   return typeof email === 'string' && EMAIL_RE.test(email) ? email.toLowerCase() : null;
 }
 
-export function oidcMfaAsserted(provider: Pick<IdentityProvider, 'mfaClaimValues'>, claims: OidcClaims): boolean {
+// Only these fixed values count: a company cannot declare a password-only sign-in to be MFA,
+// which would waive the floor for its sensitive roles (YX-IAM-01).
+export function oidcMfaAsserted(claims: OidcClaims): boolean {
   const acr = typeof claims.acr === 'string' ? claims.acr : null;
-  return (Array.isArray(claims.amr) && claims.amr.includes('mfa')) || (acr !== null && [...OIDC_MFA_ACR_VALUES, ...provider.mfaClaimValues].includes(acr));
+  return (Array.isArray(claims.amr) && claims.amr.includes('mfa')) || (acr !== null && OIDC_MFA_ACR_VALUES.includes(acr));
 }
 
 // SAML: the assertion's AuthnContextClassRef, or Entra's authnmethodsreferences attribute.
-export function samlMfaAsserted(provider: Pick<IdentityProvider, 'mfaClaimValues'>, assertion: unknown, attributes: Record<string, unknown>): boolean {
+export function samlMfaAsserted(assertion: unknown, attributes: Record<string, unknown>): boolean {
   const values: string[] = [];
   // xml2js shape: { ..., AuthnContextClassRef: ['value' | { _: 'value' }] } at any depth.
   const walk = (node: unknown, inClassRef: boolean): void => {
@@ -71,8 +73,7 @@ export function samlMfaAsserted(provider: Pick<IdentityProvider, 'mfaClaimValues
   walk(assertion, false);
   const methods = attributes['http://schemas.microsoft.com/claims/authnmethodsreferences'];
   values.push(...([] as unknown[]).concat(methods ?? []).filter((v): v is string => typeof v === 'string'));
-  const accepted = [...SAML_MFA_CONTEXT_VALUES, ...provider.mfaClaimValues];
-  return values.some((value) => accepted.includes(value));
+  return values.some((value) => SAML_MFA_CONTEXT_VALUES.includes(value));
 }
 
 @Injectable()

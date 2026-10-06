@@ -275,7 +275,7 @@ export class SamlStrategy implements OnModuleInit {
       return;
     }
     const assertion = typeof profile.getAssertion === 'function' ? profile.getAssertion() : null;
-    const mfaAsserted = samlMfaAsserted(provider, assertion, (profile.attributes as Record<string, unknown> | undefined) ?? {});
+    const mfaAsserted = samlMfaAsserted(assertion, (profile.attributes as Record<string, unknown> | undefined) ?? {});
     done(null, { ...resolved.user, mfaAsserted });
   }
 }

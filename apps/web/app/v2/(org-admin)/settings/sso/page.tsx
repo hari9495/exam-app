@@ -48,7 +48,6 @@ interface Draft {
   entraTenantId: string;
   jitEnabled: boolean;
   jitRole: string;
-  mfaClaimValues: string;
 }
 
 const list = (v: string) => v.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
@@ -66,7 +65,6 @@ const draftOf = (p?: IdentityProvider): Draft => ({
   entraTenantId: p?.entraTenantId ?? '',
   jitEnabled: p?.jitEnabled ?? false,
   jitRole: p?.jitRole ?? 'panel',
-  mfaClaimValues: p?.mfaClaimValues.join(', ') ?? '',
 });
 
 export default function V2SsoSettingsPage() {
@@ -91,7 +89,6 @@ export default function V2SsoSettingsPage() {
       domains: list(draft.domains),
       jitEnabled: draft.jitEnabled,
       ...(draft.jitEnabled ? { jitRole: draft.jitRole } : {}),
-      mfaClaimValues: list(draft.mfaClaimValues),
     };
     if (!draft.id) Object.assign(input, { type: draft.type });
     if (draft.type === 'saml') {
@@ -219,7 +216,6 @@ export default function V2SsoSettingsPage() {
                   <p style={{ ...desc, fontSize: 12 }}>Never an administrator, or any role with security or exam-supervision permissions.</p>
                 </div>
               )}
-              <TextField id="idp-mfa" label="Values that mean your IdP did MFA (optional, acr / AuthnContextClassRef)" value={draft.mfaClaimValues} onChange={(mfaClaimValues) => set({ mfaClaimValues })} />
 
               <div style={{ display: 'flex', gap: 10 }}>
                 <Button type="submit" loading={save.isPending}>{draft.id ? 'Save' : 'Add provider'}</Button>

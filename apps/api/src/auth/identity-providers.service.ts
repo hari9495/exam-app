@@ -22,7 +22,6 @@ const SELECT = {
   entraTenantId: true,
   jitEnabled: true,
   jitRole: true,
-  mfaClaimValues: true,
   createdAt: true,
   updatedAt: true,
   domains: { select: { domain: true }, orderBy: { domain: 'asc' } },
@@ -48,7 +47,6 @@ const AUDITED: (keyof Settings)[] = [
   'entraTenantId',
   'jitEnabled',
   'jitRole',
-  'mfaClaimValues',
 ];
 
 // Settings › People & Access › Security › SSO providers (P12 §6.3, §7): several SAML / Google /
@@ -94,7 +92,6 @@ export class IdentityProvidersService {
       entraTenantId: null,
       jitEnabled: false,
       jitRole: null,
-      mfaClaimValues: [],
     };
     const { settings, domains } = await this.prepare(organizationId, type, base, [], dto);
     const id = await this.write(context, actorUserId, organizationId, null, type, base, settings, domains);
@@ -141,7 +138,7 @@ export class IdentityProvidersService {
   // issuer rules, valid certificate, JIT floor, and (on activation) that a generic issuer answers.
   private async prepare(organizationId: string, type: string, before: Settings, beforeDomains: string[], dto: UpdateIdentityProviderDto) {
     const next: Settings = { ...before };
-    for (const key of ['name', 'status', 'jitEnabled', 'jitRole', 'mfaClaimValues'] as const) {
+    for (const key of ['name', 'status', 'jitEnabled', 'jitRole'] as const) {
       if (dto[key] !== undefined) (next as Record<string, unknown>)[key] = dto[key];
     }
     const domains = dto.domains ? [...new Set(dto.domains)] : beforeDomains;

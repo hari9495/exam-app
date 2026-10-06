@@ -2014,7 +2014,6 @@ model IdentityProvider {
   entraTenantId             String?                  @map("entra_tenant_id") @db.Uuid
   jitEnabled                Boolean                  @default(false) @map("jit_enabled")
   jitRole                   String?                  @map("jit_role") @db.VarChar(32)
-  mfaClaimValues            String[]                 @default([]) @map("mfa_claim_values") @db.VarChar(255)
   createdAt                 DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                 DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   domains                   IdentityProviderDomain[]

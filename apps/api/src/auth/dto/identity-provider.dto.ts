@@ -90,13 +90,6 @@ export class UpdateIdentityProviderDto {
   @IsOptional()
   @IsIn(JIT_ROLES)
   jitRole?: string | null;
-
-  @Present()
-  @IsArray()
-  @ArrayMaxSize(10)
-  @IsString({ each: true })
-  @MaxLength(255, { each: true })
-  mfaClaimValues?: string[];
 }
 
 export class CreateIdentityProviderDto extends UpdateIdentityProviderDto {

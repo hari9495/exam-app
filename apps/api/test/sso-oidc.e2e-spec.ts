@@ -185,6 +185,9 @@ describe('OIDC single sign-on and identity providers (P12 Part 1e, YX-IAM-04/05)
       await admin('patch', `/${providerId}`).send({ jitRole: 'recruiter' }).expect(400);
       await admin('patch', `/${providerId}`).send({ jitRole: 'org_admin' }).expect(400);
       await admin('post', '').send({ type: 'oidc_google', name: 'Google', domains: [DOMAIN] }).expect(409);
+      // A company cannot declare its own "MFA" values: that would let a password-only IdP sign-in
+      // count as AAL2 and waive the floor for sensitive roles (YX-IAM-01).
+      await admin('patch', `/${providerId}`).send({ mfaClaimValues: ['urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport'] }).expect(400);
     });
 
     it('lists active providers for the login page by name and type only', async () => {

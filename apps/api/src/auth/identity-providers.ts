@@ -14,9 +14,9 @@ export const entraIssuer = (tenantId: string) => `https://login.microsoftonline.
 // overrides) holds no sensitive permission -- checked when saved and again at provisioning.
 export const JIT_ROLES: readonly string[] = CREATABLE_ROLES.filter((role) => role !== 'org_admin');
 
-// "The IdP did MFA", beyond the company's own configured values. OIDC: amr contains "mfa"
-// (RFC 8176) or one of these acr values. SAML: one of these AuthnContextClassRef / Entra
-// authnmethodsreferences values.
+// "The IdP did MFA" (P12 §3: SSO is AAL2 only where the IdP enforces MFA). OIDC: amr contains
+// "mfa" (RFC 8176) or one of these acr values. SAML: one of these AuthnContextClassRef / Entra /
+// ADFS authnmethodsreferences values. Fixed: not configurable by a company (YX-IAM-01).
 export const OIDC_MFA_ACR_VALUES: readonly string[] = ['https://refeds.org/profile/mfa', 'http://schemas.openid.net/pape/policies/2007/06/multi-factor'];
 export const SAML_MFA_CONTEXT_VALUES: readonly string[] = ['https://refeds.org/profile/mfa', 'http://schemas.microsoft.com/claims/multipleauthn'];
 

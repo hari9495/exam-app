@@ -31,7 +31,6 @@ describe('IdentityProvidersService', () => {
     entraTenantId: null,
     jitEnabled: false,
     jitRole: null,
-    mfaClaimValues: [],
     createdAt: new Date(),
     updatedAt: new Date(),
     domains: [],

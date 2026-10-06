@@ -31,29 +31,28 @@ describe('oidcEmail: which address an ID token vouches for (YX-IAM-04)', () => {
 });
 
 describe('IdP-asserted MFA (P12 §3: SSO is AAL2 only where the IdP enforces MFA)', () => {
-  const provider = { mfaClaimValues: ['urn:acme:mfa'] };
-
-  it('OIDC: amr "mfa", a known MFA acr, or one the company configured', () => {
-    expect(oidcMfaAsserted(provider, { amr: ['pwd', 'mfa'] } as any)).toBe(true);
-    expect(oidcMfaAsserted(provider, { acr: 'https://refeds.org/profile/mfa' } as any)).toBe(true);
-    expect(oidcMfaAsserted(provider, { acr: 'urn:acme:mfa' } as any)).toBe(true);
-    expect(oidcMfaAsserted(provider, { amr: ['pwd'], acr: '1' } as any)).toBe(false);
-    expect(oidcMfaAsserted(provider, {} as any)).toBe(false);
+  it('OIDC: amr "mfa" or a known MFA acr; nothing else (a company cannot redefine MFA)', () => {
+    expect(oidcMfaAsserted({ amr: ['pwd', 'mfa'] } as any)).toBe(true);
+    expect(oidcMfaAsserted({ acr: 'https://refeds.org/profile/mfa' } as any)).toBe(true);
+    expect(oidcMfaAsserted({ acr: 'urn:acme:mfa' } as any)).toBe(false);
+    expect(oidcMfaAsserted({ amr: ['pwd'], acr: '1' } as any)).toBe(false);
+    expect(oidcMfaAsserted({ amr: 'mfa' } as any)).toBe(false);
+    expect(oidcMfaAsserted({} as any)).toBe(false);
   });
 
   it('SAML: AuthnContextClassRef (any xml2js shape) or Entra authnmethodsreferences', () => {
     const assertion = (ref: unknown) => ({ Assertion: { AuthnStatement: [{ AuthnContext: [{ AuthnContextClassRef: [ref] }] }] } });
-    expect(samlMfaAsserted(provider, assertion('http://schemas.microsoft.com/claims/multipleauthn'), {})).toBe(true);
-    expect(samlMfaAsserted(provider, assertion({ _: 'urn:acme:mfa', $: { x: 'y' } }), {})).toBe(true);
-    expect(samlMfaAsserted(provider, assertion('urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport'), {})).toBe(false);
+    expect(samlMfaAsserted(assertion('http://schemas.microsoft.com/claims/multipleauthn'), {})).toBe(true);
+    expect(samlMfaAsserted(assertion({ _: 'https://refeds.org/profile/mfa', $: { x: 'y' } }), {})).toBe(true);
+    expect(samlMfaAsserted(assertion('urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport'), {})).toBe(false);
     expect(
-      samlMfaAsserted(provider, assertion('urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport'), {
+      samlMfaAsserted(assertion('urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport'), {
         'http://schemas.microsoft.com/claims/authnmethodsreferences': ['http://schemas.microsoft.com/ws/2008/06/identity/authenticationmethod/password', 'http://schemas.microsoft.com/claims/multipleauthn'],
       }),
     ).toBe(true);
     // A value elsewhere in the assertion (e.g. an attribute named like it) is not the class ref.
-    expect(samlMfaAsserted(provider, { Assertion: { Subject: ['http://schemas.microsoft.com/claims/multipleauthn'] } }, {})).toBe(false);
-    expect(samlMfaAsserted(provider, null, {})).toBe(false);
+    expect(samlMfaAsserted({ Assertion: { Subject: ['http://schemas.microsoft.com/claims/multipleauthn'] } }, {})).toBe(false);
+    expect(samlMfaAsserted(null, {})).toBe(false);
   });
 });
 
