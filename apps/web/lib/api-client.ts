@@ -63,10 +63,16 @@ async function doFetch(path: string, options: RequestInit, accessToken?: string)
   }
 }
 
+const DETAIL_FIELDS = ['personIds', 'clashes'] as const;
+
 async function throwForResponse(response: Response): Promise<never> {
   const body = await errorBody(response);
-  const error = new Error(humanizeHttpError(response.status, body.message as string | undefined)) as Error & { status?: number; code?: string };
+  const error = new Error(humanizeHttpError(response.status, body.message as string | undefined)) as Error & { status?: number; code?: string; body?: Record<string, unknown> };
   error.status = response.status;
+  // Structured refusals screens act on (POSSIBLE_SAME_PERSON's personIds, EMPLOYEE_CODE_CLASHES' clashes).
+  // An allowlist: other fields (a password-reset token) never ride along on the error object.
+  const details = Object.fromEntries(DETAIL_FIELDS.filter((k) => k in body).map((k) => [k, body[k]]));
+  if (Object.keys(details).length) error.body = details;
   if (typeof body.code === 'string') error.code = body.code;
   if (body.code === PASSWORD_CHANGE_REQUIRED && typeof body.resetToken === 'string' && /^[0-9a-f]{64}$/.test(body.resetToken) && typeof window !== 'undefined') {
     window.location.assign(`/reset-password/${body.resetToken}`);

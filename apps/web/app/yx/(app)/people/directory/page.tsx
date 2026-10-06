@@ -3,8 +3,10 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DirectoryScreen, type DirectoryPage, type DirectoryQuery, type OrgChartData, type PersonRecord, type Ref } from '@yukthix/ui/workforce';
-import { loadState, useYxPermissions } from '../../../../../lib/yx-org';
-import { usePeople, usePeopleRead } from '../../../../../lib/yx-people';
+import type { HireInput } from '@yukthix/ui/history';
+import type { LegalEntity } from '@yukthix/ui/org';
+import { loadState, useOrg, useYxPermissions } from '../../../../../lib/yx-org';
+import { chartPeople, useChangeOptions, usePeople, usePeopleRead, usePeopleWrite } from '../../../../../lib/yx-people';
 
 const id = encodeURIComponent;
 const START: DirectoryQuery = { q: '', legalEntityId: null, departmentId: null, locationId: null, offset: 0 };
@@ -27,6 +29,12 @@ export default function YxDirectoryPage() {
     const nodes = chart.data?.nodes ?? [];
     return { legalEntities: distinct(nodes.map((n) => n.legalEntity)), departments: distinct(nodes.map((n) => n.department)), locations: distinct(nodes.map((n) => n.location)) };
   }, [chart.data]);
+  // Add person (P01 §4.4, PPL-36): HR who may raise changes; the API checks the grant reaches the entity,
+  // location or department, and pay needs the salary grant there too (R1).
+  const canHire = perms.has('employee.change.manage');
+  const options = useChangeOptions(useMemo(() => chartPeople(chart.data), [chart.data]), perms.has('employee.salary.manage'), canHire);
+  const entities = useOrg<LegalEntity[]>('/legal-entities', canHire);
+  const write = usePeopleWrite();
   const loadPerson = useCallback((personId: string) => read<PersonRecord>(`/employees/${id(personId)}/person`), [read]);
   return (
     <DirectoryScreen
@@ -39,6 +47,17 @@ export default function YxDirectoryPage() {
       isHr={isHr}
       loadPerson={isHr ? loadPerson : undefined}
       onOpenHistory={isHr ? (personId) => router.push(`/yx/people/history?person=${id(personId)}`) : undefined}
+      onOpenProfile={isHr ? (personId) => router.push(`/yx/people/profile?person=${id(personId)}`) : undefined}
+      addPerson={
+        canHire
+          ? {
+              options,
+              legalEntities: (entities.data ?? []).map((e) => ({ value: e.id, label: e.name })),
+              onSubmit: (input: HireInput) => write<{ id: string }>('POST', '/employees', input),
+              onCreated: (personId) => router.push(`/yx/people/history?person=${id(personId)}`),
+            }
+          : undefined
+      }
     />
   );
 }

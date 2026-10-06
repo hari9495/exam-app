@@ -22,6 +22,7 @@ const ORG: SecurityShellLink[] = [
   { id: 'entities', label: 'Legal entities', href: '/yx/settings/legal-entities', group: 'Organisation' },
   { id: 'locations', label: 'Locations', href: '/yx/settings/locations', group: 'Organisation' },
   { id: 'structure', label: 'Structure', href: '/yx/settings/structure', group: 'Organisation' },
+  { id: 'company-rules', label: 'Company rules', href: '/yx/settings/company-rules', group: 'Organisation' },
 ];
 const DIRECTORY: SecurityShellLink = { id: 'directory', label: 'Directory', href: '/yx/people/directory', group: 'People' };
 const ORG_CHART: SecurityShellLink = { id: 'org-chart', label: 'Org chart', href: '/yx/people/org-chart', group: 'People' };
@@ -33,6 +34,7 @@ const BULK: SecurityShellLink = { id: 'bulk-changes', label: 'Bulk changes', hre
 const PROFILE: SecurityShellLink = { id: 'profile', label: 'Profile', href: '/yx/people/profile', group: 'People' };
 const ID_CHANGES: SecurityShellLink = { id: 'profile-requests', label: 'Identity and bank changes', href: '/yx/people/profile-requests', group: 'People' };
 const ACCESS: SecurityShellLink = { id: 'access', label: 'Roles & access', href: '/yx/settings/access', group: 'Access' };
+const ACCESS_SETTINGS: SecurityShellLink = { id: 'access-settings', label: 'Access and privacy', href: '/yx/settings/access-settings', group: 'Access' };
 const PRIVACY: SecurityShellLink = { id: 'privacy', label: 'Who accessed my data', href: '/yx/me/privacy' };
 
 // Links follow the role; the API still checks every permission (audit:view, org:manage_users,
@@ -90,6 +92,8 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...(idDesk ? [ID_CHANGES] : []),
     ...org,
     ...(perms.has('access.role.manage') ? [ACCESS] : []),
+    // Read by anyone who reads the structure; changed with org.settings.manage (+ access.role.manage for guarded keys).
+    ...(org.length && (perms.has('org.structure.view') || perms.has('org.settings.manage')) ? [ACCESS_SETTINGS] : []),
   ];
   const security = [...linksFor(role, actingSuperAdmin), ...(employee ? [PRIVACY] : [])];
   const links = staff.length ? [...security.map((l) => ({ ...l, group: 'Security' })), ...staff] : security;

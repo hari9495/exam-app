@@ -48,6 +48,15 @@ describe('apiFetch', () => {
     await expect(apiFetch('/exams/missing')).rejects.toThrow('This exam was deleted by a recruiter');
   });
 
+  it('carries allowlisted refusal details (POSSIBLE_SAME_PERSON personIds), never other body fields', async () => {
+    global.fetch = jest.fn(
+      async () => new Response(JSON.stringify({ code: 'POSSIBLE_SAME_PERSON', message: 'Check it is the same person', personIds: ['p1'], resetToken: 'a'.repeat(64) }), { status: 409 }),
+    ) as unknown as typeof fetch;
+    const error = (await apiFetch('/people/employees', { method: 'POST' }).catch((e) => e)) as { code?: string; body?: Record<string, unknown> };
+    expect(error.code).toBe('POSSIBLE_SAME_PERSON');
+    expect(error.body).toEqual({ personIds: ['p1'] });
+  });
+
   it('replaces framework-default messages with a sentence for people', async () => {
     // "Not Found" is NestJS's default -- normal people should never see it.
     global.fetch = jest.fn(async () => new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 })) as unknown as typeof fetch;
