@@ -34,7 +34,7 @@ export function Select({ label, value, onChange, options, required }: SelectProp
       <RadixSelect.Root value={value} onValueChange={onChange}>
         <RadixSelect.Trigger
           aria-label={label}
-          className="flex items-center justify-between rounded-lg border border-rule bg-paper px-3 py-2 font-body text-sm text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
+          className="flex items-center justify-between rounded-lg border border-rule bg-paper px-3 py-2 font-body text-sm text-ink focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/15"
         >
           <RadixSelect.Value>{selected?.label ?? ''}</RadixSelect.Value>
           <RadixSelect.Icon><ChevronDown size={14} /></RadixSelect.Icon>
@@ -46,7 +46,7 @@ export function Select({ label, value, onChange, options, required }: SelectProp
                 <RadixSelect.Item
                   key={option.value}
                   value={option.value}
-                  className="cursor-pointer px-3 py-2 font-body text-sm text-ink outline-none data-[highlighted]:bg-ground"
+                  className="cursor-pointer px-3 py-2 font-body text-sm text-ink outline-hidden data-highlighted:bg-ground"
                 >
                   <RadixSelect.ItemText>{option.label}</RadixSelect.ItemText>
                 </RadixSelect.Item>

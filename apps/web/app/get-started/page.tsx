@@ -93,7 +93,7 @@ export default function GetStartedPage() {
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   rows={2}
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                  className="w-full rounded-sm border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-hidden"
                 />
               </div>
               <Button type="submit" loading={submitting}>

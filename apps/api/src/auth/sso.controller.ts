@@ -1,9 +1,13 @@
-import { Body, Controller, Get, HttpCode, NotFoundException, Param, Post, Req, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, NotFoundException, Param, Post, Req, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { SsoStartDto } from './dto/identity-provider.dto';
-import { NO_SSO_MESSAGE } from './identity-providers';
+import { IdentifyDto } from './dto/login.dto';
+import { NO_SSO_MESSAGE, emailDomain } from './identity-providers';
+import { CompanyScopeService } from './company-scope';
+import { parseOtpIdentifier } from './otp.service';
+import type { ProviderWithDomains } from './sso.service';
 import { OidcService } from './oidc.service';
 import { SessionsService, resolveClientMeta } from './sessions.service';
 import { SsoService, oidcEmail, oidcMfaAsserted } from './sso.service';
@@ -19,7 +23,43 @@ export class SsoController {
     private readonly sso: SsoService,
     private readonly oidc: OidcService,
     private readonly sessions: SessionsService,
+    private readonly scope: CompanyScopeService,
   ) {}
+
+  // Step 1 of the YukthiX sign-in (no company code): where this email or number goes next. To an
+  // identity provider when the company is known (web address / remembered company) and maps the
+  // email's domain, or -- no company known -- when the domain is verified by exactly one company.
+  // Otherwise the password / code step, with the known company's "Continue with ..." providers.
+  // The answer depends on the company and the domain only, never on whether an account exists.
+  @Post('identify')
+  @HttpCode(200)
+  @Throttle(STRICT_AUTH_THROTTLE)
+  async identify(@Body() dto: IdentifyDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const parsed = parseOtpIdentifier(dto.identifier);
+    if (!parsed) throw new BadRequestException('Enter an email address or a mobile number');
+    const email = parsed.kind === 'email' ? parsed.value : undefined;
+    const slug = await this.scope.slugFor(req);
+    if (slug) {
+      const org = await this.sso.organizationBySlug(slug);
+      const providers = org ? await this.sso.activeProviders(org.id) : [];
+      const owner = email ? providers.find((p) => p.domains.some((d) => d.domain === emailDomain(email))) : undefined;
+      if (org && owner) return { next: 'sso', url: await this.redirectUrl(org, owner, req, res, email) };
+      return { next: 'password', providers: providers.map(({ id, name, type }) => ({ id, name, type })) };
+    }
+    const routed = email ? await this.sso.routeByVerifiedDomain(email) : null;
+    if (routed) return { next: 'sso', url: await this.redirectUrl(routed.org, routed.provider, req, res, email) };
+    return { next: 'password', providers: [] };
+  }
+
+  // The device cookie (minted here if new) binds the whole sign-in to this browser: OIDC keeps it
+  // with the state, SAML with the AuthnRequest ID when the browser opens /login next.
+  private async redirectUrl(org: { slug: string }, provider: ProviderWithDomains, req: Request, res: Response, email?: string): Promise<string> {
+    const { deviceId } = resolveClientMeta(req, res);
+    if (provider.type === 'saml') {
+      return `${process.env.API_ORIGIN}/api/v1/auth/saml/${encodeURIComponent(org.slug)}/login?RelayState=${provider.id}`;
+    }
+    return this.oidc.begin(provider, deviceId, email);
+  }
 
   // "Sign in with ..." buttons for a company's login page. Names and types only.
   @Get('sso/:organizationSlug/providers')
@@ -36,16 +76,11 @@ export class SsoController {
   @HttpCode(200)
   @Throttle(STRICT_AUTH_THROTTLE)
   async start(@Body() dto: SsoStartDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const org = await this.sso.organizationBySlug(dto.organizationSlug);
+    const slug = await this.scope.slugFor(req, dto.organizationSlug);
+    const org = slug ? await this.sso.organizationBySlug(slug) : null;
     if (!org) throw new NotFoundException(NO_SSO_MESSAGE);
     const provider = await this.sso.route(org.id, { providerId: dto.providerId, email: dto.email });
-    // The device cookie (minted here if new) binds the whole sign-in to this browser: OIDC keeps it
-    // with the state, SAML with the AuthnRequest ID when the browser opens /login next.
-    const { deviceId } = resolveClientMeta(req, res);
-    if (provider.type === 'saml') {
-      return { url: `${process.env.API_ORIGIN}/api/v1/auth/saml/${encodeURIComponent(org.slug)}/login?RelayState=${provider.id}` };
-    }
-    return { url: await this.oidc.begin(provider, deviceId, dto.email) };
+    return { url: await this.redirectUrl(org, provider, req, res, dto.email) };
   }
 
   // The IdP sends the browser back here. Every outcome is a login event; the browser only ever

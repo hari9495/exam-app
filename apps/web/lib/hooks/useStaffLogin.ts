@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '../api-client';
+import { goTo } from '../navigate';
 import { botChallengeToken } from '../bot-challenge';
 import { useAuth, SSO_PENDING_SLUG_KEY, YX_SSO_RETURN_KEY } from '../auth-context';
 import { decodeJwtPayload } from '../jwt';
@@ -206,7 +207,7 @@ export function useStaffLogin({ enrolPath = '/profile?mfa=setup', yx = false }: 
         method: 'POST',
         body: JSON.stringify({ organizationSlug, providerId, ...(email.includes('@') ? { email } : {}) }),
       });
-      window.location.assign(url);
+      goTo(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Single sign-on is not available right now');
       setSubmitting(false);

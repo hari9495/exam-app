@@ -23,7 +23,7 @@ function readFileAsBase64(file: File): Promise<string> {
 }
 
 const INPUT_CLASS =
-  'w-full rounded border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none focus:ring-2 focus:ring-candidate-primary/20';
+  'w-full rounded-sm border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-hidden focus:ring-2 focus:ring-candidate-primary/20';
 
 function DetailsCard({ portal, portalToken, onUpdate }: { portal: PortalView; portalToken: string; onUpdate: (p: PortalView) => void }) {
   const [name, setName] = useState(portal.candidateName);

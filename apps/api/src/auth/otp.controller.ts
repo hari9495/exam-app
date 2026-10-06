@@ -9,6 +9,7 @@ import { signInResponse } from './auth.controller';
 import { MfaService } from './mfa.service';
 import { resolveClientMeta } from './sessions.service';
 import { assertHuman } from './bot-challenge';
+import { CompanyScopeService } from './company-scope';
 import { MfaOtpSendDto, MobileCodeDto, MobileNumberDto, OtpStartDto, OtpVerifyDto } from './dto/otp.dto';
 
 interface RequestUser {
@@ -27,6 +28,7 @@ export class OtpController {
   constructor(
     private readonly auth: AuthService,
     private readonly mfa: MfaService,
+    private readonly scope: CompanyScopeService,
   ) {}
 
   @Post('otp/start')
@@ -34,14 +36,16 @@ export class OtpController {
   @Throttle(STRICT_AUTH_THROTTLE)
   async start(@Body() dto: OtpStartDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await assertHuman(dto.challengeToken, req.ip ?? null);
-    return this.auth.startOtpLogin(dto, resolveClientMeta(req, res));
+    const organizationSlug = await this.scope.slugFor(req, dto.organizationSlug);
+    return this.auth.startOtpLogin({ ...dto, organizationSlug }, resolveClientMeta(req, res));
   }
 
   @Post('otp/verify')
   @HttpCode(200)
   @Throttle(STRICT_AUTH_THROTTLE)
   async verify(@Body() dto: OtpVerifyDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    return signInResponse(await this.auth.completeOtpLogin(dto, resolveClientMeta(req, res)), res);
+    const organizationSlug = await this.scope.slugFor(req, dto.organizationSlug);
+    return signInResponse(await this.auth.completeOtpLogin({ ...dto, organizationSlug }, resolveClientMeta(req, res)), res);
   }
 
   @Post('mfa/otp/send')

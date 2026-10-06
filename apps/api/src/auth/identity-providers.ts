@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import freeEmailDomains from 'free-email-domains';
 import type { Prisma } from '@prisma/client';
 import { CREATABLE_ROLES } from '../rbac/roles';
 import { assertPublicHttpsHost } from '../common/ssrf';
@@ -23,6 +24,17 @@ export const SAML_MFA_CONTEXT_VALUES: readonly string[] = ['https://refeds.org/p
 export const NO_SSO_MESSAGE = 'Single sign-on is not set up for this account';
 
 export const emailDomain = (email: string) => email.slice(email.lastIndexOf('@') + 1).toLowerCase();
+
+// Public mailbox providers (Gmail, Outlook, Yahoo...) and throwaway domains: no company can map one
+// to its identity provider or claim it for email-first routing. The maintained free-email-domains
+// list (HubSpot + disposable lists), plus the big providers' country variants it may lag on.
+const PUBLIC_MAIL_DOMAINS = new Set<string>(freeEmailDomains);
+const PUBLIC_MAIL_FAMILIES = /^(gmail|googlemail|yahoo|ymail|rocketmail|hotmail|outlook|live|msn|aol|rediffmail|icloud|proton|protonmail)\.[a-z]{2,3}(\.[a-z]{2})?$/;
+export const isPublicMailDomain = (domain: string) => PUBLIC_MAIL_DOMAINS.has(domain) || PUBLIC_MAIL_FAMILIES.test(domain);
+
+// Domain ownership (DNS TXT on the domain itself). The value is an HMAC of (company, domain) under
+// the server key: stable, nothing stored, and no other company can produce or reuse it.
+export const DOMAIN_VERIFICATION_PREFIX = 'yukthix-domain-verification=';
 
 // Is any provider switched on? Drives SSO-only, the login page and unusable passwords for new staff.
 export async function hasActiveIdentityProvider(tx: Prisma.TransactionClient, organizationId: string): Promise<boolean> {

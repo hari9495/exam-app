@@ -258,7 +258,7 @@ export function ProfileForm() {
                 value={timeZone}
                 onChange={(e) => setTimeZone(e.target.value)}
                 disabled={!user}
-                className="w-full rounded-lg border border-rule bg-paper px-3 py-2.5 font-body text-sm text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
+                className="w-full rounded-lg border border-rule bg-paper px-3 py-2.5 font-body text-sm text-ink focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/15"
               >
                 <option value="">Use browser default</option>
                 {timeZoneOptions.map((tz) => (
@@ -280,7 +280,7 @@ export function ProfileForm() {
                 rows={4}
                 disabled={!user}
                 placeholder="Appended to candidate emails you send manually"
-                className="w-full rounded-lg border border-rule bg-paper px-3 py-2.5 font-body text-sm text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15"
+                className="w-full rounded-lg border border-rule bg-paper px-3 py-2.5 font-body text-sm text-ink focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/15"
               />
             </div>
             <div className="sm:col-span-2">

@@ -24,7 +24,7 @@ export function CodeEditor({ language, value, onChange, ariaLabel, height = '200
           <span className="h-2.5 w-2.5 rounded-full bg-[#FFBD2E]" />
           <span className="h-2.5 w-2.5 rounded-full bg-[#27C93F]" />
         </span>
-        <span className="rounded bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-gray-300">{language}</span>
+        <span className="rounded-sm bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-gray-300">{language}</span>
       </div>
       <Editor
         height={height}

@@ -170,7 +170,7 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
                 value={emailsText}
                 onChange={(e) => setEmailsText(e.target.value)}
                 rows={6}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                className="w-full rounded-sm border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-hidden"
               />
             </div>
             <Select label="Role" value={bulkRole} onChange={setBulkRole} options={ROLE_OPTIONS} required />

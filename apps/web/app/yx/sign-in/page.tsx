@@ -1,15 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { MfaChallengeScreen, SignInScreen, type SignInFields, type SignInMethod } from '@yukthix/ui/auth';
-import { useStaffLogin } from '../../../lib/hooks/useStaffLogin';
+import { MfaChallengeScreen, SignInScreen } from '@yukthix/ui/auth';
+import { useYxSignIn } from '../../../lib/hooks/useYxSignIn';
 import { passkeyAssertion } from '../../../lib/yx-security';
 
-// YukthiX staff sign-in (P12 §6.1): password, one-time code or single sign-on, then the second
-// step when the account has one. All the API work is the existing useStaffLogin flow.
+// YukthiX staff sign-in (P12 §6.1), no company code: email or mobile first, then the company's
+// sign-in page, a password or a one-time code, a company choice when the credential opens several,
+// and the second step when the account has one.
 export default function YxSignInPage() {
-  const s = useStaffLogin({ enrolPath: '/yx/setup-mfa', yx: true });
-  const [method, setMethod] = useState<SignInMethod>('sso');
+  const s = useYxSignIn();
 
   if (s.challenge) {
     return (
@@ -23,36 +22,25 @@ export default function YxSignInPage() {
     );
   }
 
-  const fields: SignInFields = { organization: s.organizationSlug, email: s.email, password: s.password, identifier: s.identifier, code: s.otpCode };
-  const setters: Record<keyof SignInFields, (v: string) => void> = {
-    organization: s.setOrganizationSlug,
-    email: s.setEmail,
-    password: s.setPassword,
-    identifier: s.setIdentifier,
-    code: s.setOtpCode,
-  };
-  const changeMethod = (m: SignInMethod) => {
-    if ((m === 'code') !== s.otpMode) s.toggleOtpMode();
-    setMethod(m);
-  };
-
   return (
     <SignInScreen
-      fields={fields}
-      onFieldChange={(k, v) => setters[k](v)}
-      method={method}
-      onMethodChange={changeMethod}
-      orgName={s.branding?.name}
-      providers={s.ssoProviders}
-      codeSent={Boolean(s.otpSent)}
-      busy={s.submitting}
+      step={s.step}
+      fields={s.fields}
+      onFieldChange={s.setField}
+      company={s.company}
+      onForgetCompany={() => void s.forgetCompany()}
+      providers={s.providers}
+      companies={s.companies}
+      busy={s.busy}
       error={s.error}
-      onPasswordSubmit={() => void s.handleSubmit()}
-      onSendCode={(channel) => void s.sendOtp(channel)}
-      onVerifyCode={() => void s.verifyOtp()}
-      onCodeRestart={s.resetOtp}
-      onSso={(providerId) => void s.startSso(providerId)}
-      forgotPasswordHref="/forgot-password"
+      onIdentify={() => void s.identify()}
+      onPasswordSubmit={() => void s.signIn()}
+      onSendCode={(channel) => void s.sendCode(channel)}
+      onVerifyCode={() => void s.verifyCode()}
+      onRestart={s.restart}
+      onSso={(providerId) => void s.sso(providerId)}
+      onPickCompany={(id) => void s.pickCompany(id)}
+      forgotPasswordHref="/yx/forgot-password"
     />
   );
 }

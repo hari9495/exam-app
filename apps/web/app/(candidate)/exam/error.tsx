@@ -24,7 +24,7 @@ export default function ExamError({ error, reset }: { error: Error & { digest?: 
         <button
           type="button"
           onClick={reset}
-          className="rounded-lg bg-ink px-4 py-2 font-body text-sm font-semibold text-paper transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/30"
+          className="rounded-lg bg-ink px-4 py-2 font-body text-sm font-semibold text-paper transition-opacity hover:opacity-90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ink/30"
         >
           Reload the exam
         </button>
