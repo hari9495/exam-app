@@ -8,7 +8,7 @@ import { useStaffLogin } from './useStaffLogin';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn() }));
 jest.mock('../api-client', () => ({ apiFetch: jest.fn() }));
-jest.mock('../auth-context', () => ({ useAuth: jest.fn(), SSO_PENDING_SLUG_KEY: 'k' }));
+jest.mock('../auth-context', () => ({ useAuth: jest.fn(), SSO_PENDING_SLUG_KEY: 'k', YX_SSO_RETURN_KEY: 'yx' }));
 jest.mock('./useBranding', () => ({ useBranding: () => ({ data: undefined }) }));
 jest.mock('./useDocumentBranding', () => ({ useDocumentBranding: () => undefined }));
 
@@ -130,6 +130,45 @@ describe('useStaffLogin', () => {
       api.mockResolvedValueOnce({ expiresInSeconds: 300, resendAfterSeconds: 60 });
       await act(() => hook.result.current.sendSecondFactorCode('sms'));
       expect(api).toHaveBeenLastCalledWith('/auth/mfa/otp/send', { method: 'POST', body: JSON.stringify({ mfaToken: 'pending', channel: 'sms' }) });
+    });
+  });
+
+  // The YukthiX sign-in page (/yx/sign-in).
+  describe('yx option', () => {
+    it('sends an account that must enrol to the YukthiX set-up page', async () => {
+      api.mockResolvedValueOnce({ accessToken: fakeJwt({ role: 'org_admin' }), mfa: { required: true, enrolmentDueAt: '2026-10-20T00:00:00Z' } });
+      const hook = renderHook(() => useStaffLogin({ enrolPath: '/yx/setup-mfa', yx: true }));
+      await act(() => hook.result.current.handleSubmit());
+      expect(push).toHaveBeenCalledWith('/yx/setup-mfa');
+    });
+
+    it('marks an SSO start from the YukthiX page, and clears the mark from the classic page', async () => {
+      const assign = jest.fn();
+      Object.defineProperty(window, 'location', { value: { ...window.location, assign }, configurable: true });
+      api.mockResolvedValue({ url: 'https://idp.example.test/start' });
+      const yx = renderHook(() => useStaffLogin({ yx: true }));
+      act(() => yx.result.current.setEmail('a@acme.test'));
+      await act(() => yx.result.current.startSso());
+      expect(window.sessionStorage.getItem('yx')).toBe('1');
+      expect(JSON.parse(api.mock.calls[0][1].body)).toEqual({ organizationSlug: '', email: 'a@acme.test' });
+      const classic = renderHook(() => useStaffLogin());
+      await act(() => classic.result.current.startSso('p-1'));
+      expect(window.sessionStorage.getItem('yx')).toBeNull();
+      expect(assign).toHaveBeenCalledWith('https://idp.example.test/start');
+    });
+
+    it('resetOtp goes back to asking for a code without leaving code mode', async () => {
+      api.mockResolvedValueOnce({ otpToken: 't1' });
+      const hook = renderHook(() => useStaffLogin());
+      act(() => {
+        hook.result.current.toggleOtpMode();
+        hook.result.current.setIdentifier('a@acme.test');
+      });
+      await act(() => hook.result.current.sendOtp());
+      expect(hook.result.current.otpSent).not.toBeNull();
+      act(() => hook.result.current.resetOtp());
+      expect(hook.result.current.otpSent).toBeNull();
+      expect(hook.result.current.otpMode).toBe(true);
     });
   });
 });

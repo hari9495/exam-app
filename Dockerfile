@@ -7,6 +7,7 @@ COPY apps/api/package.json apps/api/package.json
 COPY apps/exam-runtime/package.json apps/exam-runtime/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json
+COPY packages/yx-ui/package.json packages/yx-ui/package.json
 RUN npm ci --ignore-scripts
 
 FROM base AS build

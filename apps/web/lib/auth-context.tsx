@@ -34,6 +34,10 @@ const SLUG_STORAGE_KEY = 'organizationSlug';
 // real session existed.
 export const SSO_PENDING_SLUG_KEY = 'ssoPendingOrganizationSlug';
 
+// Set by the YukthiX sign-in page (/yx/sign-in) before the SSO redirect, so the callback finishes in
+// the YukthiX screens (second step, first-login enrolment) rather than the classic ones.
+export const YX_SSO_RETURN_KEY = 'yxSsoReturn';
+
 // A super_admin "switch into org" mints an access-only acting token; a token refresh (on mount,
 // on any 401, or a page reload) reissues the BASE super_admin token and would silently drop the
 // acting state, bouncing the user out of the org console. Persisting the acting org id lets

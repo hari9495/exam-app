@@ -11,6 +11,7 @@ jest.mock('../../../lib/api-client', () => ({ apiFetch: jest.fn() }));
 jest.mock('../../../lib/auth-context', () => ({
   useAuth: jest.fn(),
   SSO_PENDING_SLUG_KEY: 'ssoPendingOrganizationSlug',
+  YX_SSO_RETURN_KEY: 'yxSsoReturn',
 }));
 
 describe('SsoCallbackPage', () => {
@@ -147,5 +148,30 @@ describe('SsoCallbackPage', () => {
     (apiFetch as jest.Mock).mockResolvedValue({ accessToken: fakeJwt({ role: 'org_admin' }), mfa: { required: true, enrolmentDueAt: '2026-10-20T00:00:00Z' } });
     render(<SsoCallbackPage />);
     await waitFor(() => expect(push).toHaveBeenCalledWith('/profile?mfa=setup'));
+  });
+
+  // Started from /yx/sign-in: the second step and enrolment are the YukthiX screens.
+  it('finishes a YukthiX sign-in in the YukthiX second-step screen', async () => {
+    window.sessionStorage.setItem('yxSsoReturn', '1');
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('code=abc123'));
+    const accessToken = fakeJwt({ sub: 'u1', role: 'org_admin' });
+    (apiFetch as jest.Mock)
+      .mockResolvedValueOnce({ mfaRequired: true, mfaToken: 'pending', factors: ['totp'] })
+      .mockResolvedValueOnce({ accessToken });
+
+    render(<SsoCallbackPage />);
+    expect(await screen.findByRole('heading', { name: "Confirm it's you" })).toBeInTheDocument();
+    expect(window.sessionStorage.getItem('yxSsoReturn')).toBeNull();
+    await userEvent.type(screen.getByLabelText(/6-digit code from your authenticator app/), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/users'));
+  });
+
+  it('sends a YukthiX sign-in that must enrol to the YukthiX set-up page', async () => {
+    window.sessionStorage.setItem('yxSsoReturn', '1');
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('code=abc123'));
+    (apiFetch as jest.Mock).mockResolvedValue({ accessToken: fakeJwt({ role: 'org_admin' }), mfa: { required: true, enrolmentDueAt: '2026-10-20T00:00:00Z' } });
+    render(<SsoCallbackPage />);
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/setup-mfa'));
   });
 });

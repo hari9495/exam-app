@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '../api-client';
-import { useAuth, SSO_PENDING_SLUG_KEY } from '../auth-context';
+import { useAuth, SSO_PENDING_SLUG_KEY, YX_SSO_RETURN_KEY } from '../auth-context';
 import { decodeJwtPayload } from '../jwt';
 import { useBranding } from './useBranding';
 import { useDocumentBranding } from './useDocumentBranding';
@@ -37,7 +37,9 @@ interface SignedIn {
   mfa?: { required: boolean; enrolmentDueAt: string };
 }
 
-export function useStaffLogin() {
+// enrolPath: where an account that must still set up a second step goes after signing in.
+// yx: the YukthiX sign-in page, so the SSO callback finishes in the YukthiX screens too.
+export function useStaffLogin({ enrolPath = '/profile?mfa=setup', yx = false }: { enrolPath?: string; yx?: boolean } = {}) {
   const router = useRouter();
   const { login } = useAuth();
   const [organizationSlug, setOrganizationSlug] = useState('');
@@ -83,8 +85,8 @@ export function useStaffLogin() {
     };
   }, [debouncedSlug]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
@@ -129,8 +131,8 @@ export function useStaffLogin() {
     }
   }
 
-  async function verifyOtp(e: React.FormEvent) {
-    e.preventDefault();
+  async function verifyOtp(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!otpSent) return;
     setError(null);
     setSubmitting(true);
@@ -150,6 +152,13 @@ export function useStaffLogin() {
     }
   }
 
+  // Back to "send a code" without leaving one-time-code mode.
+  const resetOtp = () => {
+    setOtpSent(null);
+    setOtpCode('');
+    setError(null);
+  };
+
   const toggleOtpMode = () => {
     setOtpMode(!otpMode);
     setOtpSent(null);
@@ -161,7 +170,7 @@ export function useStaffLogin() {
   function finish(result: SignedIn) {
     login(organizationSlug, result.accessToken);
     const payload = decodeJwtPayload(result.accessToken);
-    router.push(result.mfa?.required ? '/profile?mfa=setup' : roleToLandingPath(payload?.role as string | undefined));
+    router.push(result.mfa?.required ? enrolPath : roleToLandingPath(payload?.role as string | undefined));
   }
 
   const mfaPost = (path: string, body: object) =>
@@ -181,11 +190,14 @@ export function useStaffLogin() {
 
   // The API picks the provider (or the one owning the typed email's domain) and, for OIDC, binds
   // the sign-in to this browser before handing back the identity provider's URL.
-  const startSso = async (providerId: string) => {
+  // No providerId: the API picks the provider that owns the email's domain.
+  const startSso = async (providerId?: string) => {
     setError(null);
     setSubmitting(true);
     try {
       window.sessionStorage.setItem(SSO_PENDING_SLUG_KEY, organizationSlug);
+      if (yx) window.sessionStorage.setItem(YX_SSO_RETURN_KEY, '1');
+      else window.sessionStorage.removeItem(YX_SSO_RETURN_KEY);
       const { url } = await apiFetch('/auth/sso/start', {
         method: 'POST',
         body: JSON.stringify({ organizationSlug, providerId, ...(email.includes('@') ? { email } : {}) }),
@@ -209,6 +221,6 @@ export function useStaffLogin() {
     ssoProviders, startSso,
     handleSubmit,
     challenge, verifySecondFactor, secondFactorPasskeyOptions, sendSecondFactorCode, cancelChallenge,
-    otpMode, toggleOtpMode, identifier, setIdentifier, otpCode, setOtpCode, otpSent, sendOtp, verifyOtp,
+    otpMode, toggleOtpMode, resetOtp, identifier, setIdentifier, otpCode, setOtpCode, otpSent, sendOtp, verifyOtp,
   };
 }

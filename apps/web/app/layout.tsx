@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
+// YukthiX design system: tokens and .yx-* components (the /yx pages and the step-up prompt).
+import '@yukthix/ui/styles.css';
 import { AuthProvider } from '../lib/auth-context';
 import { QueryProvider } from '../lib/query-provider';
 import { ToastProvider } from '../components/ui';

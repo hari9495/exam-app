@@ -4,6 +4,8 @@ const { withSentryConfig } = require('@sentry/nextjs');
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  // The YukthiX design system (packages/yx-ui) ships TypeScript source.
+  transpilePackages: ['@yukthix/ui'],
   experimental: {
     // Next 16 splits 404 handling: app/not-found.tsx only renders for notFound()
     // calls inside a MATCHED route, while a completely unmatched URL (a typo'd
