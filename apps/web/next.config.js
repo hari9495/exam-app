@@ -21,6 +21,10 @@ const nextConfig = {
   // each console's routes to /v2. /reports now targets the dedicated /v2/panel/reports (its own
   // path, which admits the panel role), which resolves the old redirect loop. permanent:false keeps
   // this reversible.
+  // The SSO callback carries a one-time code in its fragment; nothing about it may leak onward.
+  async headers() {
+    return [{ source: '/sso/callback', headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] }];
+  },
   async redirects() {
     const routes = ['/dashboard', '/exams', '/questions', '/candidates', '/walk-in-groups', '/jobs', '/analytics/hiring', '/message-templates', '/offer-template'];
     return [

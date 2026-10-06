@@ -1290,6 +1290,8 @@ export interface IdentityProvider {
   entraTenantId: string | null;
   jitEnabled: boolean;
   jitRole: string | null;
+  // The IdP's own MFA claim counts as the second factor (never for break-glass accounts).
+  mfaTrusted: boolean;
 }
 
 export interface WebhookDeliveryRow {

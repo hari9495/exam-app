@@ -14,6 +14,9 @@ export function setUnauthorizedHandler(handler: (() => Promise<string | null>) |
 // goes through the refresh retry below.
 export const MFA_REQUIRED = 'MFA_REQUIRED';
 export const STEP_UP_REQUIRED = 'STEP_UP_REQUIRED';
+// The password was found in a breach on re-check (P12 YX-IAM-08): sign-in hands out a single-use
+// reset token instead of a session, and the browser goes straight to choosing a new password.
+export const PASSWORD_CHANGE_REQUIRED = 'PASSWORD_CHANGE_REQUIRED';
 
 // Asks the person to confirm it is them (StepUpProvider); resolves true once they have, and the
 // request that needed it is sent again.
@@ -65,6 +68,9 @@ async function throwForResponse(response: Response): Promise<never> {
   const error = new Error(humanizeHttpError(response.status, body.message as string | undefined)) as Error & { status?: number; code?: string };
   error.status = response.status;
   if (typeof body.code === 'string') error.code = body.code;
+  if (body.code === PASSWORD_CHANGE_REQUIRED && typeof body.resetToken === 'string' && /^[0-9a-f]{64}$/.test(body.resetToken) && typeof window !== 'undefined') {
+    window.location.assign(`/reset-password/${body.resetToken}`);
+  }
   throw error;
 }
 

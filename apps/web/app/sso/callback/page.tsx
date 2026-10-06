@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '../../../lib/api-client';
 import { useAuth, SSO_PENDING_SLUG_KEY } from '../../../lib/auth-context';
@@ -12,11 +12,18 @@ import { YX_SSO_RETURN_KEY } from '../../../lib/auth-context';
 import { passkeyAssertion } from '../../../lib/yx-security';
 
 const GENERIC_ERROR = 'Sign-in failed. Please try again or use your password.';
+
+// The API puts the one-time code (or the error) in the URL fragment, which never reaches a server,
+// a log or a Referer header (ASVS V3.1.1). Read it once and wipe it from the address bar and history.
+function takeCallbackParams(): URLSearchParams {
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  window.history.replaceState(null, '', window.location.pathname);
+  return params;
+}
 const ERROR_REDIRECT_DELAY_MS = 3000;
 
 function SsoCallbackRedeemer() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { login } = useAuth();
   const [error, setError] = useState<string | null>(null);
   // The IdP's sign-in is a first factor; an enrolled YukthiX factor is still owed (P12 YX-IAM-01).
@@ -42,6 +49,7 @@ function SsoCallbackRedeemer() {
   }, [error, router, signInPath]);
 
   useEffect(() => {
+    const searchParams = takeCallbackParams();
     const ssoError = searchParams.get('ssoError');
     if (ssoError) {
       setError(
@@ -74,8 +82,9 @@ function SsoCallbackRedeemer() {
       .catch((err: Error) => {
         setError(err.message || GENERIC_ERROR);
       });
+    // Runs once: the code is single-use and has just been wiped from the URL.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, []);
 
   if (challenge) {
     const post = (path: string, body: object) =>

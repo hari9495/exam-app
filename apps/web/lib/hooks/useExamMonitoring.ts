@@ -66,14 +66,20 @@ export function useExamMonitoring(examId: string): UseExamMonitoringResult {
       transports: ['websocket'],
     });
     socketRef.current = socket;
+    let connectedWith: string | null = null;
 
     socket.on('connect', () => {
+      connectedWith = tokenRef.current;
       setConnectionStatus('connected');
       socket.emit('join-exam', { examId });
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason: string) => {
       setConnectionStatus('disconnected');
+      // The server re-checks every socket each roster tick and drops one whose access token has
+      // expired or whose session ended (P12 YX-IAM-06). Come back once a newer token exists; a
+      // revoked session gets no new token, so it stays out.
+      if (reason === 'io server disconnect' && tokenRef.current && tokenRef.current !== connectedWith) socket.connect();
     });
 
     socket.on('connect_error', () => {

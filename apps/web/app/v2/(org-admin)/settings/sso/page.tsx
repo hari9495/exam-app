@@ -48,6 +48,7 @@ interface Draft {
   entraTenantId: string;
   jitEnabled: boolean;
   jitRole: string;
+  mfaTrusted: boolean;
 }
 
 const list = (v: string) => v.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
@@ -65,6 +66,7 @@ const draftOf = (p?: IdentityProvider): Draft => ({
   entraTenantId: p?.entraTenantId ?? '',
   jitEnabled: p?.jitEnabled ?? false,
   jitRole: p?.jitRole ?? 'panel',
+  mfaTrusted: p?.mfaTrusted ?? false,
 });
 
 export default function V2SsoSettingsPage() {
@@ -89,6 +91,7 @@ export default function V2SsoSettingsPage() {
       domains: list(draft.domains),
       jitEnabled: draft.jitEnabled,
       ...(draft.jitEnabled ? { jitRole: draft.jitRole } : {}),
+      mfaTrusted: draft.mfaTrusted,
     };
     if (!draft.id) Object.assign(input, { type: draft.type });
     if (draft.type === 'saml') {
@@ -216,6 +219,14 @@ export default function V2SsoSettingsPage() {
                   <p style={{ ...desc, fontSize: 12 }}>Never an administrator, or any role with security or exam-supervision permissions.</p>
                 </div>
               )}
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: ink }}>
+                <input type="checkbox" checked={draft.mfaTrusted} onChange={(e) => set({ mfaTrusted: e.target.checked })} />
+                Trust this provider&apos;s own two-step verification
+              </label>
+              <p style={{ ...desc, fontSize: 12, marginTop: -8 }}>
+                When it reports that it did MFA, people skip the YukthiX second step. Only turn this on for a provider that enforces MFA. Break-glass accounts always use their YukthiX factor.
+              </p>
 
               <div style={{ display: 'flex', gap: 10 }}>
                 <Button type="submit" loading={save.isPending}>{draft.id ? 'Save' : 'Add provider'}</Button>

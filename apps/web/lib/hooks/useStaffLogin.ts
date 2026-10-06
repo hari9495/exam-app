@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '../api-client';
+import { botChallengeToken } from '../bot-challenge';
 import { useAuth, SSO_PENDING_SLUG_KEY, YX_SSO_RETURN_KEY } from '../auth-context';
 import { decodeJwtPayload } from '../jwt';
 import { useBranding } from './useBranding';
@@ -90,12 +91,14 @@ export function useStaffLogin({ enrolPath = '/profile?mfa=setup', yx = false }: 
     setError(null);
     setSubmitting(true);
     try {
+      const challengeToken = await botChallengeToken();
       const result = await apiFetch('/auth/staff/login', {
         method: 'POST',
         body: JSON.stringify({
           organizationSlug: organizationSlug || undefined,
           email,
           password,
+          ...(challengeToken ? { challengeToken } : {}),
         }),
       });
       if (result.mfaRequired) {
@@ -119,9 +122,10 @@ export function useStaffLogin({ enrolPath = '/profile?mfa=setup', yx = false }: 
     setError(null);
     setSubmitting(true);
     try {
+      const challengeToken = await botChallengeToken();
       const sent = await apiFetch('/auth/otp/start', {
         method: 'POST',
-        body: JSON.stringify({ organizationSlug, identifier: identifier.trim(), ...(channel ? { channel } : {}) }),
+        body: JSON.stringify({ organizationSlug, identifier: identifier.trim(), ...(channel ? { channel } : {}), ...(challengeToken ? { challengeToken } : {}) }),
       });
       setOtpSent({ otpToken: sent.otpToken, identifier: identifier.trim() });
       setOtpCode('');
