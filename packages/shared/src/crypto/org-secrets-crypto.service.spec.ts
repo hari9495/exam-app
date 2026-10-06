@@ -24,6 +24,16 @@ describe('OrgSecretsCryptoService', () => {
     expect(() => service.encrypt('anything')).toThrow('ORG_SECRETS_ENCRYPTION_KEY is not set');
   });
 
+  it('hmac: deterministic per purpose and value, separated by purpose and by key, never the value', () => {
+    const mac = service.hmac('otp', 'abc:123456');
+    expect(mac).toMatch(/^[0-9a-f]{64}$/);
+    expect(service.hmac('otp', 'abc:123456')).toBe(mac);
+    expect(service.hmac('otp', 'abc:123457')).not.toBe(mac);
+    expect(service.hmac('other', 'abc:123456')).not.toBe(mac);
+    process.env.ORG_SECRETS_ENCRYPTION_KEY = '1'.repeat(64);
+    expect(service.hmac('otp', 'abc:123456')).not.toBe(mac);
+  });
+
   it('throws when decrypting a tampered blob (auth tag mismatch)', () => {
     const blob = service.encrypt('sensitive-value');
     const [iv, authTag, ciphertext] = blob.split('.');

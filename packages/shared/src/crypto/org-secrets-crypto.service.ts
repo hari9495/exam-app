@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { randomBytes, createCipheriv, createDecipheriv } from 'crypto';
+import { randomBytes, createCipheriv, createDecipheriv, createHmac, hkdfSync } from 'crypto';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH_BYTES = 12;
@@ -24,6 +24,14 @@ export class OrgSecretsCryptoService {
     const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
     const authTag = cipher.getAuthTag();
     return [iv.toString('base64'), authTag.toString('base64'), ciphertext.toString('base64')].join('.');
+  }
+
+  // Keyed hash for short secrets that must be stored but never recovered (one-time codes): a
+  // plain sha256 of a 6-digit code is reversed by trying all 10^6. The HMAC key is derived from
+  // the same master key by HKDF, separated per `purpose`, so it is never the encryption key itself.
+  hmac(purpose: string, value: string): string {
+    const key = Buffer.from(hkdfSync('sha256', this.getKey(), Buffer.alloc(0), `yukthix:hmac:${purpose}`, 32));
+    return createHmac('sha256', key).update(value).digest('hex');
   }
 
   decrypt(blob: string): string {

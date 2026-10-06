@@ -18,6 +18,15 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).
 export const SENSITIVE_ROLE_PERMISSIONS: readonly string[] = [...MFA_SENSITIVE_PERMISSIONS, 'exam:manage'];
 
+// System Admin and Payroll Admin (P12 YX-IAM-03): a one-time code by email / SMS / WhatsApp is
+// never accepted as their second factor -- passkey, authenticator app or recovery code only.
+export const OTP_FALLBACK_BARRED_PERMISSIONS: readonly string[] = [
+  'platform:manage_organizations',
+  'org:manage_users',
+  'org:manage_settings',
+  'org:manage_billing',
+];
+
 export const MFA_ENROLMENT_GRACE_DAYS = 14;
 export const MFA_REQUIRED_CODE = 'MFA_REQUIRED';
 export const STEP_UP_REQUIRED_CODE = 'STEP_UP_REQUIRED';
@@ -43,11 +52,13 @@ export function mfaSatisfied(session: SessionAssurance, now = Date.now()): boole
   return session.assuranceLevel === 'aal2' || session.mfaEnrolmentDueAt.getTime() > now;
 }
 
-// Step-up met: AAL2 proven on this session within the step-up window. No grace: an account
-// without a factor cannot step up, so it cannot take step-up actions.
+// Step-up met: AAL2 proven on this session within the step-up window, by a passkey, authenticator
+// app or recovery code -- a one-time code (fallback factor, YX-IAM-03) never counts as a step-up.
+// No grace: an account without a factor cannot step up, so it cannot take step-up actions.
 export function stepUpSatisfied(session: SessionAssurance, now = Date.now()): boolean {
   return (
     session.assuranceLevel === 'aal2' &&
+    session.mfaMethod !== 'otp' &&
     session.mfaVerifiedAt !== null &&
     now - session.mfaVerifiedAt.getTime() <= stepUpWindowSeconds() * 1000
   );

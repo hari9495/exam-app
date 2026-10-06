@@ -19,6 +19,8 @@ export const TENANT_SECURITY_FLOOR = {
   factors: ['passkey', 'totp', 'otp'],
   // OTP is a fallback only (YX-IAM-03): at least one of these must stay allowed.
   primaryFactors: ['passkey', 'totp'],
+  // One-time-code sign-in (AAL1) channels a company may turn on; off unless it does.
+  otpSignInChannels: ['email', 'sms', 'whatsapp'],
 } as const;
 
 export type SecurityPolicySettings = Omit<TenantSecurityPolicy, 'organizationId' | 'updatedAt' | 'updatedByUserId'>;
@@ -36,6 +38,7 @@ export const DEFAULT_SECURITY_POLICY: SecurityPolicySettings = Object.freeze({
   ipAllowlistApi: [],
   ssoOnly: false,
   breakGlassUserIds: [],
+  otpSignInChannels: [],
 });
 
 // Read on every staff request (IP allow-lists), so cached per process.
