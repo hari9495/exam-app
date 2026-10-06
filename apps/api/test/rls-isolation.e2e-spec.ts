@@ -109,6 +109,49 @@ describe('PostgreSQL row-level security (app role)', () => {
     expect(b?.ipAllowlistDesk).toEqual(['203.0.113.0/24']);
   });
 
+  // P12 Part 1c: second factors, recovery codes and MFA-reset requests are tenant data; factors and
+  // reset requests are never deleted by the app (revoked / completed instead).
+  it('authenticators, recovery_codes and mfa_reset_requests are forced-RLS tenant tables', async () => {
+    const rows = await prisma.$queryRaw<{ table: string; forced: boolean; policies: bigint; can_update: boolean; can_delete: boolean }[]>`
+      SELECT c.relname AS table, (c.relrowsecurity AND c.relforcerowsecurity) AS forced,
+             (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies,
+             has_table_privilege(c.oid, 'UPDATE') AS can_update, has_table_privilege(c.oid, 'DELETE') AS can_delete
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+      WHERE c.relname IN ('authenticators', 'recovery_codes', 'mfa_reset_requests') ORDER BY c.relname`;
+    expect(rows).toEqual([
+      { table: 'authenticators', forced: true, policies: BigInt(1), can_update: true, can_delete: false },
+      { table: 'mfa_reset_requests', forced: true, policies: BigInt(1), can_update: true, can_delete: false },
+      { table: 'recovery_codes', forced: true, policies: BigInt(1), can_update: true, can_delete: true },
+    ]);
+  });
+
+  it("(b) org A cannot read, revoke, burn or plant org B's factors, recovery codes or reset requests", async () => {
+    await tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, async (tx) => {
+      await tx.authenticator.create({ data: { organizationId: orgB, userId: userB, type: 'totp', label: 'B phone', secretEncrypted: 'x.y.z' } });
+      await tx.recoveryCode.create({ data: { organizationId: orgB, userId: userB, codeHash: 'b'.repeat(64) } });
+    });
+    const seenByA = await tenantPrisma.forTenant(asA(), async (tx) => ({
+      factors: await tx.authenticator.count({ where: { userId: userB } }),
+      codes: await tx.recoveryCode.count({ where: { userId: userB } }),
+      revoked: await tx.$executeRaw`UPDATE authenticators SET revoked_at = now() WHERE user_id = ${userB}::uuid`,
+      burnt: await tx.$executeRaw`UPDATE recovery_codes SET used_at = now() WHERE user_id = ${userB}::uuid`,
+      wiped: await tx.$executeRaw`DELETE FROM recovery_codes WHERE user_id = ${userB}::uuid`,
+    }));
+    expect(seenByA).toEqual({ factors: 0, codes: 0, revoked: 0, burnt: 0, wiped: 0 });
+    await expect(
+      tenantPrisma.forTenant(asA(), (tx) => tx.authenticator.create({ data: { organizationId: orgB, userId: userB, type: 'totp', label: 'planted', secretEncrypted: 'x.y.z' } })),
+    ).rejects.toThrow(RLS_VIOLATION);
+    await expect(
+      tenantPrisma.forTenant(asA(), (tx) =>
+        tx.mfaResetRequest.create({ data: { organizationId: orgB, targetUserId: userB, requestedByUserId: randomUUID(), reason: 'cross-tenant', expiresAt: new Date() } }),
+      ),
+    ).rejects.toThrow(RLS_VIOLATION);
+    // Even inside its own tenant the app cannot delete a factor: it may only revoke one.
+    await expect(
+      tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, (tx) => tx.$executeRaw`DELETE FROM authenticators WHERE user_id = ${userB}::uuid`),
+    ).rejects.toThrow(/permission denied/);
+  });
+
   it("(b) org A cannot read org B's sessions or login events", async () => {
     const absolute = new Date(Date.now() + 3_600_000);
     await tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, async (tx) => {

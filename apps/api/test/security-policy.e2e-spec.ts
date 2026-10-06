@@ -10,6 +10,7 @@ import { PrismaService, TenantPrismaService, invalidateTenantSecurityPolicy } fr
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import type { hibp as HibpControl } from './fixtures/offline-hibp';
+import { markSteppedUp } from './fixtures/step-up';
 
 // P12 Part 1b end to end, against the real database (forced RLS, app role) and real Redis:
 // password floor + breached check (YX-IAM-08), the company security policy and its admin API
@@ -51,6 +52,8 @@ describe('Password floor and tenant security policy (P12 YX-IAM-04/06/08/09)', (
 
   async function signIn(slug: string, emailAddr: string, ip = freshIp()) {
     const res = await login(slug, emailAddr, { ip }).expect(200);
+    // Policy changes are step-up actions; that gate has its own suite (mfa.e2e-spec.ts).
+    await markSteppedUp(tenantPrisma, res.body.accessToken);
     const cookies = res.headers['set-cookie'] as unknown as string[];
     const refreshCookie = cookies.find((c) => c.startsWith('refresh_token='))!.split(';')[0];
     return { access: res.body.accessToken as string, refreshCookie, sid: (jwt.decode(res.body.accessToken) as { sid: string }).sid, ip };
@@ -383,7 +386,28 @@ describe('Password floor and tenant security policy (P12 YX-IAM-04/06/08/09)', (
       const wrong = await login(orgA().slug, RECRUITER_A, { password: 'not-the-password' }).expect(401);
       expect(refused.body).toEqual(wrong.body);
 
-      await login(orgA().slug, ADMIN_A).expect(200);
+      // Break-glass accounts must have MFA (YX-IAM-04): without a factor, the wrong-password response.
+      expect((await login(orgA().slug, ADMIN_A).expect(401)).body).toEqual(wrong.body);
+
+      // With one (an authenticator app plus a recovery code, planted directly), the second factor completes it.
+      const recoveryCode = 'abcd-efgh-ijkm-npqr';
+      const factor = await tenantPrisma.forTenant(SUPER, async (tx) => {
+        await tx.recoveryCode.create({ data: { organizationId: orgA().id, userId: users[ADMIN_A], codeHash: createHash('sha256').update(recoveryCode.replace(/-/g, '')).digest('hex') } });
+        return tx.authenticator.create({ data: { organizationId: orgA().id, userId: users[ADMIN_A], type: 'totp', label: 'test', secretEncrypted: 'unused.in.this.test' } });
+      });
+      try {
+        const ip = freshIp();
+        const first = await login(orgA().slug, ADMIN_A, { ip }).expect(200);
+        expect(first.body.mfaRequired).toBe(true);
+        const device = ((first.headers['set-cookie'] as unknown as string[]) ?? []).find((c) => c.startsWith('yx_device='))!.split(';')[0];
+        await request(server()).post('/api/v1/auth/mfa/verify').set('Cookie', device).set('X-Forwarded-For', ip)
+          .send({ mfaToken: first.body.mfaToken, factor: 'recovery_code', code: recoveryCode }).expect(200);
+      } finally {
+        await tenantPrisma.forTenant(SUPER, async (tx) => {
+          await tx.authenticator.update({ where: { id: factor.id }, data: { revokedAt: new Date() } });
+          await tx.recoveryCode.deleteMany({ where: { userId: users[ADMIN_A] } });
+        });
+      }
       await new Promise((r) => setTimeout(r, 200));
       const alerted = email.send.mock.calls.map((c) => c[0]).filter((m) => m.subject === 'Break-glass sign-in to your YukthiX organisation');
       expect(alerted.map((m) => m.to).sort()).toEqual([ADMIN_A, ADMIN2_A].sort());
