@@ -8,7 +8,7 @@ import { ErrorSummary, FormField, FormSection, type FormErrorItem } from '../../
 import { Text } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
-import { Select } from '../../components/select';
+import { MultiSelect, Select } from '../../components/select';
 import { dayKey } from '../../lib/dates';
 import { formatMoney } from '../../lib/format';
 import { dateLabel, daysBetweenIso, useRun } from '../org/org-kit';
@@ -122,6 +122,8 @@ const FIELDS: Record<Exclude<ChangeType, 'join'>, Field[]> = {
   correction: ['locationId', 'departmentId', 'designationId', 'gradeId', 'employmentTypeId', 'managerEmployeeId'],
 };
 const PAY_TYPES = new Set(['promotion', 'salary_revision', 'correction']);
+/** M01 Q5: dotted-line managers move with a manager change or a transfer. */
+const DOTTED_TYPES = new Set(['manager_change', 'transfer']);
 const FIELD_LABEL: Record<Field, string> = {
   locationId: 'Location',
   departmentId: 'Department',
@@ -137,6 +139,8 @@ export interface ChangeDraft {
   changeType: Exclude<ChangeType, 'join'> | null;
   effectiveDate: Date | null;
   values: Partial<Record<Field, string | null>>;
+  /** null: dotted-line managers stay as they are; a list replaces them. */
+  dotted: string[] | null;
   payMode: 'amount' | 'percent';
   pay: string;
   confirm: boolean;
@@ -160,6 +164,7 @@ export function changeInput(d: ChangeDraft, o: Pick<ChangeOptions, 'canPay' | 'r
       if (f === 'costCentreId') assignment.costCentres = [{ costCentreId: v, percent: '100' }];
       else assignment[f] = v;
     }
+    if (d.dotted !== null && DOTTED_TYPES.has(type)) assignment.dottedLineManagerIds = d.dotted;
     if (Object.keys(assignment).length) payload.assignment = assignment;
     if (type === 'confirmation' || (type === 'correction' && d.confirm)) payload.status = 'confirmed';
     const pay = d.pay.trim();
@@ -195,7 +200,7 @@ export interface ChangeDrawerProps {
 
 /** Pick the kind of change, the date and the new values; preview the impact; send it for approval. */
 export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose }: ChangeDrawerProps) {
-  const [draft, setDraft] = useState<ChangeDraft>({ employeeId: employeeId ?? null, changeType: null, effectiveDate: null, values: {}, payMode: 'amount', pay: '', confirm: false, reason: '', overrideReason: '' });
+  const [draft, setDraft] = useState<ChangeDraft>({ employeeId: employeeId ?? null, changeType: null, effectiveDate: null, values: {}, dotted: null, payMode: 'amount', pay: '', confirm: false, reason: '', overrideReason: '' });
   const [impact, setImpact] = useState<Impact | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -217,7 +222,7 @@ export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose
       gradeId: forEntity(options.grades, entity),
       employmentTypeId: forEntity(options.employmentTypes, entity),
       costCentreId: forEntity(options.costCentres, entity),
-      managerEmployeeId: options.people.filter((p) => p.id !== draft.employeeId).map((p) => ({ value: p.id, label: `${p.name}${p.employeeCode ? ` · ${p.employeeCode}` : ''}` })),
+      managerEmployeeId: (options.managers ?? options.people).filter((p) => p.id !== draft.employeeId).map((p) => ({ value: p.id, label: `${p.name}${p.employeeCode ? ` · ${p.employeeCode}` : ''}` })),
     }),
     [options, entity, draft.employeeId],
   );
@@ -230,7 +235,7 @@ export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose
     if (!input || !impact) return setShowErrors(true);
     void run('submit', () => onSubmit(input)).then((ok) => ok && onClose());
   };
-  const types = RAISABLE.filter((t) => t !== 'salary_revision' || options.canPay);
+  const types = (options.types ?? RAISABLE).filter((t) => t !== 'salary_revision' || options.canPay);
   return (
     <Drawer
       open
@@ -256,7 +261,7 @@ export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose
             </FormField>
           )}
           <FormField id="ch-type" label="Kind of change" required error={errorOf('ch-type')}>
-            <Select value={draft.changeType} onChange={(v) => set({ changeType: v, values: {}, pay: '', confirm: false })} options={types.map((t) => ({ value: t, label: TYPE_LABEL[t] }))} aria-label="Kind of change" />
+            <Select value={draft.changeType} onChange={(v) => set({ changeType: v, values: {}, dotted: null, pay: '', confirm: false })} options={types.map((t) => ({ value: t, label: TYPE_LABEL[t] }))} aria-label="Kind of change" />
           </FormField>
           <FormField id="ch-date" label="Takes effect on" required helper="The day starts at midnight where the person works." error={errorOf('ch-date')}>
             <DatePicker value={draft.effectiveDate} onChange={(effectiveDate) => set({ effectiveDate })} aria-label="Takes effect on" />
@@ -273,6 +278,16 @@ export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose
                 <Select value={draft.values[f] ?? null} onChange={(v) => set({ values: { ...draft.values, [f]: v } })} options={choices[f]} searchable clearable placeholder="No change" aria-label={FIELD_LABEL[f]} />
               </FormField>
             ))}
+            {DOTTED_TYPES.has(draft.changeType) && (
+              <FormField label="Dotted-line managers" helper="They see the person and give feedback; they do not approve requests.">
+                <Segment label="Dotted-line managers" options={[{ value: 'keep' as const, label: 'No change' }, { value: 'set' as const, label: 'Set new ones' }]} value={draft.dotted === null ? 'keep' : 'set'} onChange={(v) => set({ dotted: v === 'keep' ? null : [] })} />
+              </FormField>
+            )}
+            {DOTTED_TYPES.has(draft.changeType) && draft.dotted !== null && (
+              <FormField id="ch-dotted" label="New dotted-line managers" optional helper="Leave empty to remove them all.">
+                <MultiSelect value={draft.dotted} onChange={(dotted) => set({ dotted })} options={choices.managerEmployeeId} searchable aria-label="New dotted-line managers" />
+              </FormField>
+            )}
             {draft.changeType === 'confirmation' && <Text as="p" tone="secondary">The probation ends and the person is confirmed from this date.</Text>}
             {draft.changeType === 'correction' && (
               <FormField label="Employment status">

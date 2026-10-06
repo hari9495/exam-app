@@ -7,7 +7,7 @@ import { changeInput, ImpactPanel, type ChangeDraft } from './history-kit';
 import { AS_OF, AS_OF_PAY, CHANGES, HISTORY, IMPACT, OPTIONS, PEOPLE, TODAY_ISO } from './data';
 
 const ok = () => vi.fn().mockResolvedValue(undefined);
-const draft = (over: Partial<ChangeDraft>): ChangeDraft => ({ employeeId: 'p-arjun', changeType: 'promotion', effectiveDate: new Date(2026, 10, 1), values: {}, payMode: 'amount', pay: '', confirm: false, reason: 'Promotion', overrideReason: '', ...over });
+const draft = (over: Partial<ChangeDraft>): ChangeDraft => ({ employeeId: 'p-arjun', changeType: 'promotion', effectiveDate: new Date(2026, 10, 1), values: {}, dotted: null, payMode: 'amount', pay: '', confirm: false, reason: 'Promotion', overrideReason: '', ...over });
 
 function History(over: Partial<PersonHistoryScreenProps>) {
   return (

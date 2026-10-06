@@ -40,6 +40,8 @@ export interface AssignmentFacts {
   employmentType: Ref | null;
   manager: { id: string; name: string | null } | null;
   costCentres: (Ref & { percent: string })[];
+  /** M01 Q5: visibility and feedback only. */
+  dottedLineManagers?: { id: string; name: string | null }[];
 }
 
 export interface Money {
@@ -90,6 +92,7 @@ export interface ChangePayload {
     employmentTypeId?: string;
     managerEmployeeId?: string | null;
     costCentres?: CostCentreShare[];
+    dottedLineManagerIds?: string[];
   };
   status?: EmploymentStatus;
   compensation?: { currency?: string; annualCtc?: string; increasePercent?: string };
@@ -110,6 +113,8 @@ export interface ChangeRecord {
   decidedAt: string | null;
   decisionNote: string | null;
   touchesPay: boolean;
+  /** Raised in a bulk batch: decided with the batch while it is open (M01 §3.3). */
+  batchId?: string | null;
   payload: ChangePayload;
   impact: Impact | null;
 }
@@ -163,4 +168,8 @@ export interface ChangeOptions {
   /** Start of the financial year: earlier dates need the override reason (YX-HIS-12). */
   retroLimit: string;
   today: string;
+  /** Kinds of change offered (a manager raising for their team gets fewer, YX-SEC-27). Default: all. */
+  types?: Exclude<ChangeType, 'join'>[];
+  /** Who can be chosen as manager or dotted-line manager. Default: `people`. */
+  managers?: PersonOption[];
 }

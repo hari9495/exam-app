@@ -137,6 +137,12 @@ export function PersonHistoryScreen({ state, onRetry, people, personId, onPickPe
                     <dd>{a.location.name ?? '—'}</dd>
                     <dt>Manager</dt>
                     <dd>{a.manager?.name ?? 'None'}</dd>
+                    {Boolean(a.dottedLineManagers?.length) && (
+                      <>
+                        <dt>Dotted-line managers</dt>
+                        <dd>{a.dottedLineManagers!.map((m) => m.name ?? '—').join(', ')}</dd>
+                      </>
+                    )}
                     <dt>Employment type</dt>
                     <dd>{a.employmentType?.name ?? '—'}</dd>
                     <dt>Cost centres</dt>

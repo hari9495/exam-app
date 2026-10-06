@@ -1,9 +1,9 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { Activity, Building2, CalendarClock, History, House, MapPin, MessageSquare, Network, Settings, ShieldCheck } from 'lucide-react';
+import { Activity, BookUser, Building2, CalendarClock, ClipboardCheck, FileStack, GitFork, History, House, MapPin, MessageSquare, Network, Settings, ShieldCheck, Users } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import { AppShell, MobileTabBar, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, type DensityChoice, type ThemeChoice } from '../../components/shell';
 
-export type SecurityPage = 'me' | 'activity' | 'settings' | 'sms' | 'entities' | 'locations' | 'structure' | 'job-history' | 'job-changes';
+export type SecurityPage = 'me' | 'activity' | 'settings' | 'sms' | 'entities' | 'locations' | 'structure' | 'directory' | 'org-chart' | 'team' | 'job-history' | 'job-changes' | 'probation' | 'bulk-changes';
 
 export interface SecurityShellLink {
   id: SecurityPage;
@@ -30,7 +30,7 @@ export interface SecurityShellProps {
   children: ReactNode;
 }
 
-const ICONS = { me: ShieldCheck, activity: Activity, settings: Settings, sms: MessageSquare, entities: Building2, locations: MapPin, structure: Network, 'job-history': History, 'job-changes': CalendarClock } as const;
+const ICONS = { me: ShieldCheck, activity: Activity, settings: Settings, sms: MessageSquare, entities: Building2, locations: MapPin, structure: Network, directory: BookUser, 'org-chart': GitFork, team: Users, 'job-history': History, 'job-changes': CalendarClock, probation: ClipboardCheck, 'bulk-changes': FileStack } as const;
 
 /** App frame for the security pages: rail, "Security" panel, profile menu; bottom tabs on phones. */
 export function SecurityShell({ active, links, homeHref, title = 'Security', profileHref, name, email, onSignOut, onNavigate, children }: SecurityShellProps) {

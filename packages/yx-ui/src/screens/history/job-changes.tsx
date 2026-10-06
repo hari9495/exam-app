@@ -31,6 +31,8 @@ export interface JobChangesScreenProps {
   canApprove: boolean;
   canManage: boolean;
   personHref: (employeeId: string) => string;
+  /** A change raised in a bulk batch is decided with its batch (M01 §3.3). */
+  batchHref?: (batchId: string) => string;
   onPreview: (id: string) => Promise<Impact>;
   /** confirmRebase: the approver has seen the recalculated later changes. */
   onApprove: (id: string, confirmRebase: boolean) => Promise<void>;
@@ -124,7 +126,7 @@ const VIEWS: { value: ChangesView; label: string }[] = [
   { value: 'done', label: 'Done' },
 ];
 
-export function JobChangesScreen({ state, onRetry, today, rows, defaultView = 'pending', canApprove, canManage, personHref, onPreview, onApprove, onReject, onCancel, onReschedule, newChange }: JobChangesScreenProps) {
+export function JobChangesScreen({ state, onRetry, today, rows, defaultView = 'pending', canApprove, canManage, personHref, batchHref, onPreview, onApprove, onReject, onCancel, onReschedule, newChange }: JobChangesScreenProps) {
   const [view, setView] = useState<ChangesView>(defaultView);
   const [reviewing, setReviewing] = useState<ChangeRecord | null>(null);
   const [ask, setAsk] = useState<Ask | null>(null);
@@ -185,11 +187,22 @@ export function JobChangesScreen({ state, onRetry, today, rows, defaultView = 'p
                 description={newChange ? 'Raise a promotion, transfer or correction with New change.' : undefined}
               />
             }
-            rowButtons={canApprove ? (r) => (r.status === 'pending' ? <Button size="sm" variant="review" onClick={() => setReviewing(r)}>Review</Button> : null) : undefined}
+            rowButtons={
+              canApprove
+                ? (r) =>
+                    r.status !== 'pending' ? null : r.batchId && batchHref ? (
+                      <Button size="sm" variant="review" asChild>
+                        <a href={batchHref(r.batchId)}>Review batch</a>
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="review" onClick={() => setReviewing(r)}>Review</Button>
+                    )
+                : undefined
+            }
             rowActions={
               canManage
                 ? (r) =>
-                    r.status === 'pending' || r.status === 'scheduled' ? (
+                    (r.status === 'pending' && !r.batchId) || r.status === 'scheduled' ? (
                       <>
                         <MenuItem onSelect={() => setAsk({ kind: 'reschedule', row: r })}>Move to another date</MenuItem>
                         <MenuItem destructive onSelect={() => setAsk({ kind: 'cancel', row: r })}>Cancel change</MenuItem>
