@@ -1,14 +1,16 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { Activity, House, MessageSquare, Settings, ShieldCheck } from 'lucide-react';
+import { Activity, Building2, House, MapPin, MessageSquare, Network, Settings, ShieldCheck } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import { AppShell, MobileTabBar, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, type DensityChoice, type ThemeChoice } from '../../components/shell';
 
-export type SecurityPage = 'me' | 'activity' | 'settings' | 'sms';
+export type SecurityPage = 'me' | 'activity' | 'settings' | 'sms' | 'entities' | 'locations' | 'structure';
 
 export interface SecurityShellLink {
   id: SecurityPage;
   label: string;
   href: string;
+  /** Panel group heading, e.g. Organisation; links without one come first. */
+  group?: string;
 }
 
 export interface SecurityShellProps {
@@ -16,6 +18,8 @@ export interface SecurityShellProps {
   /** Only the pages this person may open. */
   links: SecurityShellLink[];
   homeHref: string;
+  /** Panel and rail name (default Security). */
+  title?: string;
   /** Profile and notification preferences. */
   profileHref: string;
   name: string;
@@ -26,10 +30,11 @@ export interface SecurityShellProps {
   children: ReactNode;
 }
 
-const ICONS = { me: ShieldCheck, activity: Activity, settings: Settings, sms: MessageSquare } as const;
+const ICONS = { me: ShieldCheck, activity: Activity, settings: Settings, sms: MessageSquare, entities: Building2, locations: MapPin, structure: Network } as const;
 
 /** App frame for the security pages: rail, "Security" panel, profile menu; bottom tabs on phones. */
-export function SecurityShell({ active, links, homeHref, profileHref, name, email, onSignOut, onNavigate, children }: SecurityShellProps) {
+export function SecurityShell({ active, links, homeHref, title = 'Security', profileHref, name, email, onSignOut, onNavigate, children }: SecurityShellProps) {
+  const groups = [...new Set(links.map((l) => l.group))];
   const [theme, setTheme] = useState<ThemeChoice>('light');
   const [density, setDensity] = useState<DensityChoice>('comfortable');
   useEffect(() => {
@@ -49,21 +54,25 @@ export function SecurityShell({ active, links, homeHref, profileHref, name, emai
         <SideRail
           items={[
             { id: 'home', label: 'Home', icon: House, href: homeHref },
-            { id: 'security', label: 'Security', icon: ShieldCheck, href: links[0]?.href },
+            { id: 'security', label: title, icon: title === 'Security' ? ShieldCheck : Settings, href: links[0]?.href },
           ]}
           activeId="security"
           logo={<Monogram />}
         />
       }
       panel={
-        <SidePanel title="Security">
-          <PanelGroup>
-            {links.map((l) => (
-              <PanelLink key={l.id} href={l.href} icon={ICONS[l.id]} active={l.id === active} onClick={go(l.href)}>
-                {l.label}
-              </PanelLink>
-            ))}
-          </PanelGroup>
+        <SidePanel title={title}>
+          {groups.map((group) => (
+            <PanelGroup key={group ?? ''} label={group}>
+              {links
+                .filter((l) => l.group === group)
+                .map((l) => (
+                  <PanelLink key={l.id} href={l.href} icon={ICONS[l.id]} active={l.id === active} onClick={go(l.href)}>
+                    {l.label}
+                  </PanelLink>
+                ))}
+            </PanelGroup>
+          ))}
         </SidePanel>
       }
       topBar={
