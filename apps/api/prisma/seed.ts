@@ -42,6 +42,8 @@ export const PERMISSIONS = [
   { key: 'employee.change.retro_override', description: 'Go back before the company retro limit, with a reason' },
   { key: 'employee.salary.view', description: 'View employee pay (CTC)' },
   { key: 'employee.salary.manage', description: 'Change employee pay (CTC)' },
+  // P02 YX-SEC-27 / M01 §3.10: managers raise job changes for their team; HR approves.
+  { key: 'request.raise_on_behalf', description: 'Raise promotions, transfers and manager changes for people in your team' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
