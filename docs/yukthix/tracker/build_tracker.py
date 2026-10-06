@@ -267,6 +267,70 @@ def main():
     br = [[str(r.name), sh(['git', 'branch', '--show-current'], r).strip(), sh(['git', 'log', '-1', '--format=%h %s (%cs)'], r).strip()] for r in roots]
     sheet(wb, 'Code scanned', ['Checkout', 'Branch', 'Last commit'], br, [24, 28, 90], keep)
 
+    # Backlog (DevOps style: Epic > Feature > Story), Plan and Coverage
+    items = [it for f in sorted((HERE / 'stories').glob('*.json')) for it in json.loads(f.read_text(encoding='utf-8'))]
+    n_back = 0
+    if items:
+        byid = {it['id']: it for it in items}
+        def chain(it):
+            seen, out = set(), []
+            while it and it['id'] not in seen:
+                seen.add(it['id']); out.append(it); it = byid.get(it.get('parent', ''))
+            return out[::-1]
+        def key(it):
+            return [(c.get('order', 9999), c['id']) for c in chain(it)]
+        items.sort(key=key)
+        brows = []
+        for it in items:
+            ch = chain(it)
+            epic = next((c['title'] for c in ch if c['type'] == 'Epic'), '')
+            feat = next((c['title'] for c in ch if c['type'] == 'Feature'), '')
+            pad = {'Epic': '', 'Feature': '    ', 'Story': '        '}.get(it['type'], '')
+            brows.append([it['id'], it.get('order'), it['type'], pad + it['title'], epic, feat, it.get('state', 'New'), None, None,
+                          it.get('phase', ''), it.get('points'), it.get('priority'), it.get('story', ''),
+                          '\n'.join('• ' + a for a in it.get('acceptance', [])), ', '.join(it.get('rules', [])),
+                          ', '.join(it.get('docs', [])), ', '.join(it.get('depends', [])), it.get('evidence', ''), None])
+        bh = ['ID', 'Order', 'Type', 'Title', 'Epic', 'Feature', 'State (start)', 'State (you)', 'State', 'Phase', 'Points',
+              'Priority', 'User story', 'Acceptance criteria', 'Rules', 'Design docs', 'Depends on', 'Evidence', 'Notes (you)']
+        ws = sheet(wb, 'Backlog', bh, brows, [11, 7, 8, 55, 30, 30, 10, 12, 10, 18, 7, 7, 60, 80, 30, 14, 16, 40, 30], keep, wrap=(4, 13, 14, 15, 18))
+        n_back = len(brows) + 1
+        for i, r in enumerate(brows, 2):
+            ws[f'I{i}'] = f'=IF(H{i}<>"",H{i},G{i})'
+            if r[2] in ('Epic', 'Feature'):
+                for c in ws[i]:
+                    c.font = Font(bold=True)
+                    c.fill = PatternFill('solid', fgColor=FILLS['blue' if r[2] == 'Epic' else 'grey'])
+        dropdown(ws, 'H', ['New', 'Active', 'Done', 'Removed'], len(brows))
+        colour(ws, f'I2:I{n_back}', {'Done': 'green', 'Active': 'amber'})
+        # Plan: phases in build order
+        phases = {}
+        for r in brows:
+            if r[2] == 'Story':
+                p_ = phases.setdefault(r[9] or '(no phase)', {'order': r[1] if r[1] is not None else 9999, 'epics': set()})
+                p_['order'] = min(p_['order'], r[1] if r[1] is not None else 9999); p_['epics'].add(r[4])
+        BANDS = [(100, 'Step 0'), (200, 'Step 1'), (300, 'UI prototype'), (400, 'Step 2'), (500, 'Step 3'), (600, 'Step 3b'),
+                 (700, 'Step 4'), (800, 'Step 5'), (1500, 'Step 6+ HR modules'), (2000, 'ATS & assessments'), (10 ** 9, 'Later')]
+        band = lambda o: next(n for lim, n in BANDS if o < lim)
+        prow = []
+        for ph, v in sorted(phases.items(), key=lambda kv: kv[1]['order']):
+            prow.append([ph, band(v['order']), v['order'], '; '.join(sorted(v['epics'])), None, None, None, None, None, None])
+        ph_h = ['Phase', 'Roadmap step', 'Starts at order', 'Epics', 'Stories', 'Points', 'Done', 'Active', 'New', '% done (points)']
+        ws = sheet(wb, 'Plan', ph_h, prow, [30, 18, 10, 60, 9, 9, 8, 8, 8, 12], keep, wrap=(4,))
+        rng = lambda col: f"Backlog!${col}$2:${col}${n_back}"
+        for i in range(2, len(prow) + 2):
+            st = f'{rng("J")},$A{i},{rng("C")},"Story"'
+            ws[f'E{i}'] = f'=COUNTIFS({st})'
+            ws[f'F{i}'] = f'=SUMIFS({rng("K")},{st})'
+            for col, state in (('G', 'Done'), ('H', 'Active'), ('I', 'New')):
+                ws[f'{col}{i}'] = f'=COUNTIFS({st},{rng("I")},"{state}")'
+            ws[f'J{i}'] = f'=IF(F{i}=0,"",SUMIFS({rng("K")},{st},{rng("I")},"Done")/F{i})'
+            ws[f'J{i}'].number_format = '0%'
+        # Coverage: every design rule must sit in at least one story
+        in_stories = {r for it in items for r in it.get('rules', [])}
+        cov = [[rid, r['doc'], r['text'][:300], 'Not in any story'] for rid, r in sorted(rules.items()) if rid not in in_stories]
+        cov += [[rid, '', '', 'Story cites a rule the docs do not define'] for rid in sorted(in_stories - set(rules))]
+        sheet(wb, 'Coverage', ['Rule ID', 'Doc', 'Rule', 'Problem'], cov, [16, 8, 90, 34], keep, wrap=(3,))
+
     # Summary (first sheet)
     ws = wb.create_sheet('Summary', 0)
     ws['A1'] = 'YukthiX product tracker'
@@ -284,6 +348,14 @@ def main():
              ('Screen files', len(srows)), ('Screen files wired to the API', sum(1 for s in srows if s[3] == 'Yes')),
              ('Storybook stories', sum(stories.values())),
              ('', None), ('Design', None), ('Design docs', len(drows)), ('PRs (YukthiX branches)', len(prs))]
+    if n_back:
+        b = lambda col: f'Backlog!${col}$2:${col}${n_back}'
+        rows += [('', None), ('Backlog', None), ('Epics', f'=COUNTIF({b("C")},"Epic")'), ('Features', f'=COUNTIF({b("C")},"Feature")'),
+                 ('Stories', f'=COUNTIF({b("C")},"Story")')]
+        rows += [(f'Stories {st}', f'=COUNTIFS({b("C")},"Story",{b("I")},"{st}")') for st in ('Done', 'Active', 'New')]
+        rows += [('Story points total', f'=SUMIFS({b("K")},{b("C")},"Story")'),
+                 ('% points done', f'=SUMIFS({b("K")},{b("C")},"Story",{b("I")},"Done")/SUMIFS({b("K")},{b("C")},"Story")'),
+                 ('Rules not covered by a story', f"=COUNTA(Coverage!A2:A{len(rules) + 50})")]
     for i, (k, v) in enumerate(rows, 4):
         ws[f'A{i}'], ws[f'B{i}'] = k, v
         if v is None and k: ws[f'A{i}'].font = Font(bold=True)
