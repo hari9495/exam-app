@@ -31,7 +31,7 @@ import { PasswordPolicyService } from '../auth/password-policy.service';
 // business being in a staff-list row -- only the "me" endpoints need it (see ProfileUser).
 // notificationDigest/lastDigestSentAt are the user's own email-cadence prefs, managed via the
 // /notifications/digest endpoints -- not part of the staff-user surface, so kept out of SafeUser.
-export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath' | 'emailSignature' | 'notificationDigest' | 'lastDigestSentAt' | 'passwordRecheckPending' | 'mfaEnrolmentDueAt' | 'mobileNumber' | 'mobileVerifiedAt'>;
+export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath' | 'emailSignature' | 'notificationDigest' | 'lastDigestSentAt' | 'passwordRecheckPending' | 'passwordChangeRequired' | 'mfaEnrolmentDueAt' | 'mobileNumber' | 'mobileVerifiedAt'>;
 
 // The staff pickers advertise "Search staff by name or email", but this filter matched email
 // only, so typing a person's NAME silently returned nothing -- the audit-log actor picker looked
@@ -330,11 +330,27 @@ export class UsersService {
         },
         select: SAFE_USER_SELECT,
       });
+      // Privileges ride in the access token (role, permission profile), so a change ends every
+      // session and refresh family of the person: the new privileges apply from their next
+      // sign-in, and a demoted admin keeps nothing for the rest of the token's life (ASVS V3.3).
+      const privilegeChanges = {
+        ...(dto.role !== undefined && dto.role !== target.role ? { role: { from: target.role, to: dto.role } } : {}),
+        ...(dto.permissionProfileId !== undefined && dto.permissionProfileId !== target.permissionProfileId
+          ? { permissionProfileId: { from: target.permissionProfileId, to: dto.permissionProfileId } }
+          : {}),
+      };
+      let sessionsRevoked = 0;
+      if (Object.keys(privilegeChanges).length) {
+        await tx.refreshToken.updateMany({ where: { userId: targetUserId, revokedAt: null }, data: { revokedAt: new Date() } });
+        sessionsRevoked = await revokeStaffSessions(tx, { userId: targetUserId }, 'privileges_changed');
+      }
+      // YX-IAM-10: who granted what -- from and to.
       await this.audit.record(context, {
         actorUserId,
         action: 'user.updated',
         entityType: 'user',
         entityId: targetUserId,
+        ...(Object.keys(privilegeChanges).length ? { metadata: { changes: privilegeChanges, sessionsRevoked } } : {}),
       });
       if (dto.permissionProfileId !== undefined) {
         await this.audit.record(context, {
@@ -466,9 +482,10 @@ export class UsersService {
     }
 
     const passwordHash = await argon2.hash(randomBytes(32).toString('hex'));
+    // YukthiX staff (P12 Q1/Q7): no enrolment grace -- a security key before any staff action.
     const newAdmin = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.user.create({
-        data: { organizationId: null, email: dto.email, passwordHash, role: 'super_admin' },
+        data: { organizationId: null, email: dto.email, passwordHash, role: 'super_admin', mfaEnrolmentDueAt: new Date() },
         select: SUPER_ADMIN_SELECT,
       }),
     );
@@ -516,13 +533,18 @@ export class UsersService {
       throw new ConflictException(`"${dto.email}" is already a super_admin`);
     }
 
-    const promoted = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.user.update({
+    // Staff (P12 Q1/Q7): no enrolment grace, and the person signs in again as staff -- their old
+    // tenant sessions (and tokens claiming the old role) end here.
+    const promoted = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const row = await tx.user.update({
         where: { id: user.id },
-        data: { organizationId: null, role: 'super_admin' },
+        data: { organizationId: null, role: 'super_admin', mfaEnrolmentDueAt: new Date() },
         select: SUPER_ADMIN_SELECT,
-      }),
-    );
+      });
+      await tx.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+      await revokeStaffSessions(tx, { userId: user.id }, 'privileges_changed');
+      return row;
+    });
 
     this.dispatchPromotionEmail(dto.email).catch((error) =>
       this.logger.error(`Failed to dispatch super_admin promotion email to ${dto.email}`, error as Error),
@@ -533,6 +555,7 @@ export class UsersService {
       action: 'user.super_admin_promoted',
       entityType: 'user',
       entityId: promoted.id,
+      metadata: { changes: { role: { from: user.role, to: 'super_admin' }, organizationId: { from: user.organizationId, to: null } } },
     });
     return promoted;
   }

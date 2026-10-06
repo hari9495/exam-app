@@ -809,7 +809,8 @@ describe('UsersService', () => {
 
     expect(result.email).toBe('new@platform.test');
     expect(createCall).toEqual(
-      expect.objectContaining({ data: expect.objectContaining({ organizationId: null, email: 'new@platform.test', role: 'super_admin' }) }),
+      // Staff (Q1/Q7): no MFA enrolment grace.
+      expect.objectContaining({ data: expect.objectContaining({ organizationId: null, email: 'new@platform.test', role: 'super_admin', mfaEnrolmentDueAt: expect.any(Date) }) }),
     );
     expect(tokenCreateCall).toEqual(
       expect.objectContaining({ data: expect.objectContaining({ userId: 'new-sa' }) }),
@@ -862,12 +863,14 @@ describe('UsersService', () => {
     tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
       fn({
         user: {
-          findMany: async () => [{ id: 'u-1', role: 'org_admin' }],
+          findMany: async () => [{ id: 'u-1', role: 'org_admin', organizationId: 'org-9' }],
           update: async (args: unknown) => {
             updateCall = args;
             return { id: 'u-1', email: 'promote@x.test', createdAt: new Date('2026-01-01T00:00:00.000Z') };
           },
         },
+        refreshToken: { updateMany: async () => ({ count: 0 }) },
+        session: { updateMany: async () => ({ count: 0 }) },
       }),
     );
 
@@ -881,12 +884,19 @@ describe('UsersService', () => {
     expect(updateCall).toEqual(
       expect.objectContaining({
         where: { id: 'u-1' },
-        data: expect.objectContaining({ organizationId: null, role: 'super_admin' }),
+        // Staff (Q1/Q7): no MFA enrolment grace -- due now.
+        data: expect.objectContaining({ organizationId: null, role: 'super_admin', mfaEnrolmentDueAt: expect.any(Date) }),
       }),
     );
     expect(audit.record).toHaveBeenCalledWith(
       { organizationId: null, isSuperAdmin: true },
-      { actorUserId: 'actor-1', action: 'user.super_admin_promoted', entityType: 'user', entityId: 'u-1' },
+      {
+        actorUserId: 'actor-1',
+        action: 'user.super_admin_promoted',
+        entityType: 'user',
+        entityId: 'u-1',
+        metadata: { changes: { role: { from: 'org_admin', to: 'super_admin' }, organizationId: { from: 'org-9', to: null } } },
+      },
     );
   });
 
@@ -978,18 +988,62 @@ describe('UsersService', () => {
   describe('update', () => {
     const ctx = { organizationId: 'org1', isSuperAdmin: false };
 
+    const sessionTx = () => ({
+      refreshToken: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      session: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
+    });
+
     it('updates role and name for an in-org staff user', async () => {
       const tx = {
         user: {
-          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1', permissionProfileId: null }),
           update: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'panel', name: 'Al', organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() }),
         },
+        ...sessionTx(),
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
       const result = await service.update(ctx, 't1', { role: 'panel', name: 'Al' }, 'admin1');
       expect(result.role).toBe('panel');
       expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 't1' }, data: { role: 'panel', name: 'Al' } }));
       expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.updated', entityId: 't1', actorUserId: 'admin1' }));
+    });
+
+    // Regression: a demoted admin's access token kept role=org_admin until it expired. A role or
+    // profile change now ends every session and refresh family of the person, and the audit
+    // entry records who granted what, from and to (YX-IAM-10).
+    it('a role change ends the person\'s sessions and refresh tokens and audits from -> to', async () => {
+      const tx = {
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'org_admin', organizationId: 'org1', permissionProfileId: null }),
+          update: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter' }),
+        },
+        ...sessionTx(),
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await service.update(ctx, 't1', { role: 'recruiter' }, 'admin1');
+      expect(tx.session.updateMany).toHaveBeenCalledWith({
+        where: { userId: 't1', revokedAt: null },
+        data: { revokedAt: expect.any(Date), revokedReason: 'privileges_changed' },
+      });
+      expect(tx.refreshToken.updateMany).toHaveBeenCalledWith({ where: { userId: 't1', revokedAt: null }, data: { revokedAt: expect.any(Date) } });
+      expect(audit.record).toHaveBeenCalledWith(
+        ctx,
+        expect.objectContaining({ action: 'user.updated', metadata: { changes: { role: { from: 'org_admin', to: 'recruiter' } }, sessionsRevoked: 2 } }),
+      );
+    });
+
+    it('a name-only change, or the same role again, leaves sessions alone', async () => {
+      const tx = {
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1', permissionProfileId: null }),
+          update: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter' }),
+        },
+        ...sessionTx(),
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await service.update(ctx, 't1', { name: 'New', role: 'recruiter' }, 'admin1');
+      expect(tx.session.updateMany).not.toHaveBeenCalled();
+      expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
     });
 
     it('refuses to modify a super_admin target', async () => {
@@ -1038,8 +1092,9 @@ describe('UsersService', () => {
 
     it('assigns a same-org permission profile and audits it', async () => {
       const tx = {
+        ...sessionTx(),
         user: {
-          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1', permissionProfileId: null }),
           update: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', name: 'Al', organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date(), permissionProfileId: 'profile1' }),
         },
         permissionProfile: {
@@ -1056,6 +1111,12 @@ describe('UsersService', () => {
       expect(audit.record).toHaveBeenCalledWith(
         ctx,
         expect.objectContaining({ action: 'user.permission_profile_assigned', entityId: 't1', actorUserId: 'admin1' }),
+      );
+      // The profile's grants ride in the token: the person's sessions end with the change.
+      expect(tx.session.updateMany).toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(
+        ctx,
+        expect.objectContaining({ action: 'user.updated', metadata: expect.objectContaining({ changes: { permissionProfileId: { from: null, to: 'profile1' } } }) }),
       );
     });
 
@@ -1078,8 +1139,9 @@ describe('UsersService', () => {
 
     it('clears a user\'s permission profile when passed null', async () => {
       const tx = {
+        ...sessionTx(),
         user: {
-          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1', permissionProfileId: 'profile1' }),
           update: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', name: 'Al', organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date(), permissionProfileId: null }),
         },
         permissionProfile: { findFirst: jest.fn() },
