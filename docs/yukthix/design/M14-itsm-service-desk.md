@@ -537,7 +537,9 @@
 | @mention notifications | US-B-089, US-C-015 |
 | Published uptime commitment with service credits; premium support tier | APX-G, P13, US-B-117/118 |
 
-### Needs a founder decision
+### Founder decisions on the gap check
+
+> **Decided 7 Oct 2026:** D1 → Q6, D2 → Q7, D3 / D4 / D5 / D7 → Q8, D6 → Q9 (see Decisions). **D8 is still open.**
 
 These clash with Q1 or Q4, or touch systems Q4 did not cover. No stories are made for them (D8 only decides the price of a role that is built).
 
@@ -561,6 +563,10 @@ These clash with Q1 or Q4, or touch systems Q4 did not cover. No stories are mad
 | Q3 | Device discovery | **osquery** (open source, Apache 2.0, Linux Foundation) packaged with the company's enrolment key; our API implements osquery's built-in TLS enrol / config / logger endpoints, so no agent code of our own runs on devices. Plus imports from Intune, Jamf and Google Workspace, and an optional office probe (read-only SNMP + ARP; **not nmap**, whose licence forbids bundling in a paid product). Per-company enrolment secret, per-device key (revocable), TLS with our certificate pinned, code-signed Windows / macOS installers (go-live item), no personal data (no browsing history or files). |
 | Q4 | Remote actions | **None, ever: inventory only.** The agent runs only our fixed read-only query pack; no remote commands, scripts or ad-hoc live queries. A breach of YukthiX can never control customer devices. Remote control stays with the company's own MDM. |
 | Q5 | Build order inside step 3b | Every feature is built; order only. **3b-1 Core:** incidents / tickets, queues, SLA / OLA + business hours, portal + in-app help drawer, email-to-ticket, knowledge base + public help centre, CSAT, external requesters, YukthiX's own support in the platform console (we use it first), core reports. **3b-2 ESM:** service catalogue with forms and approvals, HR / Admin / Facilities / Finance desks, automation rules, live chat, WhatsApp, Teams / Slack. **3b-3 ITIL:** problem, change / CAB + calendar, release, assets + CMDB, osquery discovery + MDM import + office probe, licences, vendors / contracts / procurement. **3b-4 Operations:** monitoring events, on-call + paging, status page, major incident, AI (routing, suggested replies, virtual agent), projects, facilities booking, importers, integrations marketplace. |
+| Q6 | Actions on devices (gap D1) | **Q4 stays.** The desk shows read-only device data and a button that opens the company's own MDM console (Intune, Jamf…) on that device; the person acts there. No lock, wipe, script or runbook is ever run by YukthiX. Launch links to the company's own remote-support tool are allowed (the session runs in their tool). |
+| Q7 | Identity-provider actions (gap D2) | **Allowed with controls:** password reset, account unlock, create / disable users, group and licence changes in Microsoft Entra ID or Google Workspace, from approved requests. Off by default; uses the company's own app registration with the fewest permissions; approval per action, step-up for the agent, full audit, no passwords stored by YukthiX. They act on identity systems, never on devices. |
+| Q8 | Packaging (gaps D3, D4, D5, D7) | **One plan stays:** no free tier (30-day trial), no add-on SKUs sold alone, no day passes for now, cloud only (data region choice and bring-your-own-key encryption instead of an on-premises edition). |
+| Q9 | AI (gap D6) | **AI is not inside the ₹999 price.** A company can **bring its own AI key** (P10 BYO key) and use every AI feature at no extra charge from YukthiX; to use **YukthiX's AI** it **buys AI credits** (P10 metering, YX-AI-03). This is the one priced extra on top of the single plan. Credit pack sizes and prices: set in P14 before the build of 3b-4. |
 
 ## Still to decide (in the detailed design)
 - Live chat transport (WebSocket gateway already in the API vs a managed service).

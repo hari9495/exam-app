@@ -5122,5 +5122,118 @@
   "priority": 3,
   "depends": [],
   "evidence": ""
+ },
+ {
+  "id": "FT-G-019",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Identity actions from approved requests (Entra ID / Google Workspace)",
+  "docs": [
+   "M14 Q7"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 591.0,
+  "priority": 2
+ },
+ {
+  "type": "Story",
+  "state": "New",
+  "phase": "Step 3b-4",
+  "docs": [
+   "M14 Q6/Q7"
+  ],
+  "rules": [],
+  "depends": [],
+  "evidence": "",
+  "id": "US-G-206",
+  "parent": "FT-G-019",
+  "title": "Company admin connects its identity provider with least permissions",
+  "order": 591.1,
+  "points": 5,
+  "priority": 2,
+  "story": "As a company admin, I want to connect our Entra ID or Google Workspace using our own app registration, so that the desk can act on accounts only within the permissions we grant.",
+  "acceptance": [
+   "Given identity actions are off by default, when an admin turns them on, then step-up is required and the change is audited (M14 Q7)",
+   "Given the connection screen, then only the company's own app registration is accepted and the requested permissions are listed one by one",
+   "Given a permission the action list does not need, then it is not requested",
+   "Given the connection is removed, then every identity action is disabled at once"
+  ]
+ },
+ {
+  "type": "Story",
+  "state": "New",
+  "phase": "Step 3b-4",
+  "docs": [
+   "M14 Q6/Q7"
+  ],
+  "rules": [],
+  "depends": [
+   "US-G-206"
+  ],
+  "evidence": "",
+  "id": "US-G-207",
+  "parent": "FT-G-019",
+  "title": "Password reset and account unlock after approval",
+  "order": 591.2,
+  "points": 5,
+  "priority": 2,
+  "story": "As an employee, I want my locked account unlocked or password reset through an approved request, so that I get back to work without waiting for IT to do it by hand.",
+  "acceptance": [
+   "Given an approved unlock or reset request, when the agent confirms with step-up, then the action runs in the identity provider and the result is written on the ticket (M14 Q7)",
+   "Given a reset, then YukthiX never sees or stores the new password; the provider sends the user its own reset flow or a one-time temporary password shown once",
+   "Given the action fails, then the ticket shows the provider's error and nothing is retried silently",
+   "Given any run, then the audit records who approved, who ran it, the target account and the time"
+  ]
+ },
+ {
+  "type": "Story",
+  "state": "New",
+  "phase": "Step 3b-4",
+  "docs": [
+   "M14 Q6/Q7"
+  ],
+  "rules": [],
+  "depends": [
+   "US-G-206"
+  ],
+  "evidence": "",
+  "id": "US-G-208",
+  "parent": "FT-G-019",
+  "title": "Create / disable users and change groups and licences from approved requests",
+  "order": 591.3,
+  "points": 8,
+  "priority": 2,
+  "story": "As an IT agent, I want onboarding, offboarding and access requests to create or disable accounts and change groups and licences after approval, so that access is granted and removed on time.",
+  "acceptance": [
+   "Given an approved request, when the fulfilment step runs, then the account, group or licence change is made in the provider and linked to the ticket (M14 Q7)",
+   "Given an exit in M01, when the exit date arrives, then disabling the account is raised as an approved task, not run without approval",
+   "Given the agent lacks the identity-action permission, then the action button is not shown",
+   "Given every change, then step-up and a full audit entry are required"
+  ]
+ },
+ {
+  "type": "Story",
+  "state": "New",
+  "phase": "Step 3b-4",
+  "docs": [
+   "M14 Q6",
+   "M14 Q4"
+  ],
+  "rules": [],
+  "depends": [],
+  "evidence": "",
+  "id": "US-G-209",
+  "parent": "FT-G-019",
+  "title": "Open the device in the company's own MDM console (read-only in YukthiX)",
+  "order": 591.4,
+  "points": 2,
+  "priority": 2,
+  "story": "As an IT agent, I want a button on the asset that opens the same device in our Intune or Jamf console, so that I can lock or wipe it there while YukthiX stays read-only.",
+  "acceptance": [
+   "Given an asset matched to an MDM record, then the asset page shows a link that opens that device in the company's MDM console (M14 Q6)",
+   "Given any agent, then no lock, wipe, script or remote command can be sent from YukthiX (M14 Q4)",
+   "Given the link is used, then the click is audited on the asset with the agent and time"
+  ]
  }
 ]
