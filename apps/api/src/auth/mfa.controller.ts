@@ -133,7 +133,8 @@ export class MfaController {
   }
 
   // Re-verify with a second factor; step-up actions are then allowed for the step-up window.
-  // Guessing shares the sign-in second-factor lockout for this account.
+  // Guessing has its own lockout ('stepup'), counted before the proof is checked (atomic), and
+  // separate from the sign-in second step: a stolen session cannot lock its owner out of signing in.
   @Post('auth/mfa/step-up')
   @HttpCode(200)
   @Throttle(STRICT_AUTH_THROTTLE)
@@ -145,16 +146,16 @@ export class MfaController {
     if (!(await this.mfa.hasFactor(user))) {
       throw new BadRequestException('Set up a passkey or an authenticator app first');
     }
-    const block = await this.loginProtection.check('mfa', user.id, ip);
-    if (block) throw new TooManyLoginAttemptsException(block.retryAfterSeconds);
+    const reserved = await this.loginProtection.reserve('stepup', user.id, ip);
+    if (reserved.block) throw new TooManyLoginAttemptsException(reserved.block.retryAfterSeconds);
     const challenge = dto.factor === 'passkey' ? await this.mfa.takeStepUpChallenge(me.sessionId) : null;
     const factor = await this.mfa.verifyProof(user, dto, challenge);
     if (!factor) {
-      await this.loginProtection.registerFailure('mfa', user.id, ip);
+      await this.loginProtection.registerFailure('stepup', user.id, ip, reserved);
       await this.audit.record(ctx, { actorUserId: user.id, action: 'mfa.step_up_failed', entityType: 'session', entityId: me.sessionId, metadata: { factor: dto.factor } });
       throw new UnauthorizedException('That verification did not work. Try again.');
     }
-    await this.loginProtection.registerSuccess('mfa', user.id, ip);
+    await this.loginProtection.registerSuccess('stepup', user.id, ip);
     const verifiedAt = await this.mfa.elevateSession(user, me.sessionId, factor);
     await this.audit.record(ctx, { actorUserId: user.id, action: 'mfa.step_up', entityType: 'session', entityId: me.sessionId, metadata: { factor } });
     return { stepUpValidUntil: new Date(verifiedAt.getTime() + stepUpWindowSeconds() * 1000) };
