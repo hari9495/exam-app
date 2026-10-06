@@ -1,16 +1,107 @@
 [
- {"id": "W-001", "area": "Step 2 · Org & employee core", "item": "Parts 2c employee record, 2d access & field visibility, 2e People/Settings screens wired; then independent security review, fix every finding, push feat/yukthix-org", "status": "In progress", "next": "Background build running; open a PR stacked on #130 when green"},
- {"id": "W-002", "area": "CI · dependencies", "item": "Upgrade jest 29 → 30 and tailwind 3 → 4 so the strict audit gate (high/critical) passes on the full tree; push #129 with the security fix 377eca4c", "status": "In progress", "next": "Background job on feat/yukthix-login"},
- {"id": "W-003", "area": "Branches", "item": "Merge feat/yukthix-login into feat/yukthix-workspace (#130); resolve GO-LIVE-CHECKLIST.md (login branch created its own copy)", "status": "Open", "next": "After W-002 is green"},
- {"id": "W-004", "area": "Branches", "item": "Merge order to main: #128 PostgreSQL → #129 login → #130 workspace → step 2 PR", "status": "Open", "next": "Founder approval per PR"},
- {"id": "W-005", "area": "Security review", "item": "Email-first sign-in: platform staff (super admin) accounts appear as a 'YukthiX' choice in the company picker when email and password match. Staff should sign in only through the locked-down console path with hardware keys (P12)", "status": "Open", "next": "Decide and fix before merge of #129"},
- {"id": "W-006", "area": "Security review", "item": "Verified email domains are never re-checked; a lapsed domain keeps routing to SSO until removed. Add a periodic DNS re-check", "status": "Open", "next": "Fix in login branch"},
- {"id": "W-007", "area": "UI", "item": "1,039 prototype buttons outside pay/auth have no action yet; each is wired when its backend step lands (scan-dead-buttons.mjs per wired screen must be 0)", "status": "Open", "next": "Per step"},
- {"id": "W-008", "area": "UI · Payroll", "item": "Payroll screen fixes parked by founder until the payroll backend (step 5)", "status": "Parked", "next": "Step 5"},
- {"id": "W-009", "area": "Step 3 · Platform console", "item": "Companies & lifecycle, plans & prices, shared channel accounts (move the shared Zoho SMS account here), support sessions, audit", "status": "Not started", "next": "After step 2"},
- {"id": "W-010", "area": "Step 3b · Service Desk (M14)", "item": "Full ITSM + ESM in four phases (core → ESM → ITIL → operations); one open decision: live chat transport", "status": "Not started", "next": "Write the detailed M14 design before the build"},
- {"id": "W-011", "area": "Steps 4–6+", "item": "Time & leave (4), payroll & statutory (5), then lifecycle, expenses, performance, learning, engage, benefits, projects, contract labour, ATS, mobile", "status": "Not started", "next": "See Roadmap sheet"},
- {"id": "W-012", "area": "Infrastructure (P13)", "item": "Gap register A3: infrastructure & operations parked for the engineering team (P13 team brief)", "status": "Parked", "next": "Engineering team"},
- {"id": "W-013", "area": "Deferred items", "item": "105 items deferred by earlier build jobs (sheet 'Deferred'): each must be closed, moved to a step, or accepted with a reason", "status": "Open", "next": "Triage in the Deferred sheet"},
- {"id": "W-014", "area": "Rules not linked", "item": "Rules whose step is done but that no code or test cites (Rules sheet status 'Verify'): confirm each is built and add the rule ID to its test, or build it", "status": "Open", "next": "Triage in the Rules sheet"}
+ {
+  "id": "W-001",
+  "area": "Step 2 · Org & employee core",
+  "item": "Parts 2c employee record, 2d access & field visibility, 2e People/Settings screens wired; then independent security review, fix every finding, push feat/yukthix-org",
+  "status": "In progress",
+  "next": "Background build running; open a PR stacked on #130 when green"
+ },
+ {
+  "id": "W-002",
+  "area": "CI · dependencies",
+  "item": "Upgrade jest 29 → 30 and tailwind 3 → 4 so the strict audit gate (high/critical) passes on the full tree; push #129 with the security fix 377eca4c",
+  "status": "Done",
+  "next": "Jest 30 + Tailwind 4 + security patches pushed to #129 (CI passing) and merged into #130; being ported to #128"
+ },
+ {
+  "id": "W-003",
+  "area": "Branches",
+  "item": "Merge feat/yukthix-login into feat/yukthix-workspace (#130); resolve GO-LIVE-CHECKLIST.md (login branch created its own copy)",
+  "status": "Done",
+  "next": "Merged 7 Oct 2026 (e27b49c9); checklist kept both versions (item 11 + sign-in section)"
+ },
+ {
+  "id": "W-004",
+  "area": "Branches",
+  "item": "Merge order to main: #128 PostgreSQL → #129 login → #130 workspace → step 2 PR",
+  "status": "Open",
+  "next": "Founder approval per PR"
+ },
+ {
+  "id": "W-005",
+  "area": "Security review",
+  "item": "Email-first sign-in: platform staff (super admin) accounts appear as a 'YukthiX' choice in the company picker when email and password match. Staff should sign in only through the locked-down console path with hardware keys (P12)",
+  "status": "Open",
+  "next": "Decide and fix before merge of #129"
+ },
+ {
+  "id": "W-006",
+  "area": "Security review",
+  "item": "Verified email domains are never re-checked; a lapsed domain keeps routing to SSO until removed. Add a periodic DNS re-check",
+  "status": "Open",
+  "next": "Fix in login branch"
+ },
+ {
+  "id": "W-007",
+  "area": "UI",
+  "item": "1,039 prototype buttons outside pay/auth have no action yet; each is wired when its backend step lands (scan-dead-buttons.mjs per wired screen must be 0)",
+  "status": "Open",
+  "next": "Per step"
+ },
+ {
+  "id": "W-008",
+  "area": "UI · Payroll",
+  "item": "Payroll screen fixes parked by founder until the payroll backend (step 5)",
+  "status": "Parked",
+  "next": "Step 5"
+ },
+ {
+  "id": "W-009",
+  "area": "Step 3 · Platform console",
+  "item": "Companies & lifecycle, plans & prices, shared channel accounts (move the shared Zoho SMS account here), support sessions, audit",
+  "status": "Not started",
+  "next": "After step 2"
+ },
+ {
+  "id": "W-010",
+  "area": "Step 3b · Service Desk (M14)",
+  "item": "Full ITSM + ESM in four phases (core → ESM → ITIL → operations); one open decision: live chat transport",
+  "status": "Not started",
+  "next": "Write the detailed M14 design before the build"
+ },
+ {
+  "id": "W-011",
+  "area": "Steps 4–6+",
+  "item": "Time & leave (4), payroll & statutory (5), then lifecycle, expenses, performance, learning, engage, benefits, projects, contract labour, ATS, mobile",
+  "status": "Not started",
+  "next": "See Roadmap sheet"
+ },
+ {
+  "id": "W-012",
+  "area": "Infrastructure (P13)",
+  "item": "Gap register A3: infrastructure & operations parked for the engineering team (P13 team brief)",
+  "status": "Parked",
+  "next": "Engineering team"
+ },
+ {
+  "id": "W-013",
+  "area": "Deferred items",
+  "item": "105 items deferred by earlier build jobs (sheet 'Deferred'): each must be closed, moved to a step, or accepted with a reason",
+  "status": "Open",
+  "next": "Triage in the Deferred sheet"
+ },
+ {
+  "id": "W-014",
+  "area": "Rules not linked",
+  "item": "Rules whose step is done but that no code or test cites (Rules sheet status 'Verify'): confirm each is built and add the rule ID to its test, or build it",
+  "status": "Open",
+  "next": "Triage in the Rules sheet"
+ },
+ {
+  "id": "W-015",
+  "area": "CI · dependencies",
+  "item": "Port the same dependency fixes (security patches, Jest 30, Tailwind 4) to #128 PostgreSQL so its CI passes",
+  "status": "In progress",
+  "next": "Background job on feat/yukthix-postgres"
+ }
 ]
