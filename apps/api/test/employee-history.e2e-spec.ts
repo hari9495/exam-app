@@ -169,6 +169,7 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
             givenName: 'Divya',
             joinedOn: joinOld,
             userId: users.divyaA,
+            workEmail: `divyaA-${runId}@hist.test`,
             employeeCode: 'KF-0057',
             assignment: { ...join({}).assignment, designationId: ids.lead, gradeId: ids.g3, managerEmployeeId: ids.lakshmi, costCentres: [{ costCentreId: ids.cc1, percent: '60' }, { costCentreId: ids.cc2, percent: '40' }] },
           }),
@@ -178,11 +179,11 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       // R1: pay on a join needs pay access.
       await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Arjun', joinedOn: joinArjun, compensation: { annualCtc: '600000' } })).expect(403);
       const arjun = await api('payrollA', 'post', '/people/employees')
-        .send(join({ givenName: 'Arjun', familyName: 'Kulkarni', joinedOn: joinArjun, userId: users.arjunA, assignment: { ...join({}).assignment, managerEmployeeId: ids.divya }, compensation: { annualCtc: '600000' } }))
+        .send(join({ givenName: 'Arjun', familyName: 'Kulkarni', joinedOn: joinArjun, userId: users.arjunA, workEmail: `arjunA-${runId}@hist.test`, assignment: { ...join({}).assignment, managerEmployeeId: ids.divya }, compensation: { annualCtc: '600000' } }))
         .expect(201);
       ids.arjun = arjun.body.id;
       expect(arjun.body.employeeCode).toBe('E0002');
-      ids.kavya = (await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Kavya', joinedOn: joinOld, userId: users.kavyaA, assignment: { ...join({}).assignment, managerEmployeeId: ids.lakshmi } })).expect(201)).body.id;
+      ids.kavya = (await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Kavya', joinedOn: joinOld, userId: users.kavyaA, workEmail: `kavyaA-${runId}@hist.test`, assignment: { ...join({}).assignment, managerEmployeeId: ids.lakshmi } })).expect(201)).body.id;
       ids.ravi = (await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Ravi', joinedOn: joinOld, assignment: { ...join({}).assignment, managerEmployeeId: ids.kavya } })).expect(201)).body.id;
       // The other entity runs its own code series (YX-ORG-16 default: per legal entity).
       const tn = await api('hrA', 'post', '/people/employees')
@@ -204,7 +205,11 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       // Another company's entity, or a manager there.
       await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: today, legalEntityId: ids.bEntity })).expect(400);
       await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: today, assignment: { ...join({}).assignment, managerEmployeeId: randomUUID() } })).expect(400);
-      await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: today, userId: users.arjunA })).expect(409);
+      await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: today, userId: users.arjunA, workEmail: `arjunA-${runId}@hist.test` })).expect(409);
+      // A login gives its holder the person's own view (pay included): never one's own, only the matching email.
+      await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: today, userId: users.hrA, workEmail: `hrA-${runId}@hist.test` })).expect(403);
+      await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: today, userId: users.outsiderA, workEmail: 'someone.else@hist.test' })).expect(400);
+      await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: today, userId: users.outsiderA })).expect(400);
       // YX-ORG-09: the manager must be employed on every day managed.
       await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: addDays(joinArjun, -30), assignment: { ...join({}).assignment, managerEmployeeId: ids.arjun } })).expect(400);
       await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: today, assignment: { ...join({}).assignment, costCentres: [{ costCentreId: ids.cc1, percent: '50' }] } })).expect(400);
@@ -327,6 +332,12 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       expect((await api('hrA', 'get', `/people/employees/${ids.arjun}/as-of?date=${in30}`).expect(200)).body.assignment.designation.name).toBe('Quality Analyst');
       // Pay on a change is only edited with pay access.
       await api('hrA', 'put', `/people/changes/${ids.increment}`).send({ effectiveDate: addDays(today, 61) }).expect(403);
+      // YX-SEC-11: whoever rewrites a change has made it, so they cannot approve it.
+      const raised = await api('payrollA', 'post', '/people/changes').send({ employeeId: ids.ravi, changeType: 'redesignation', effectiveDate: addDays(today, 15), payload: { assignment: { designationId: ids.lab } }, reason: 'Lab move' }).expect(201);
+      await api('hrA', 'put', `/people/changes/${raised.body.id}`).send({ payload: { assignment: { designationId: ids.lead } } }).expect(200);
+      await markSteppedUp(tenantPrisma, token.hrA);
+      await api('hrA', 'post', `/people/changes/${raised.body.id}/approve`).send({}).expect(403);
+      await api('hrA', 'post', `/people/changes/${raised.body.id}/cancel`).send({ reason: 'Not needed' }).expect(201);
     });
 
     it('cancelling: needs a reason; a scheduled one is withdrawn; an effective one cannot be cancelled', async () => {
@@ -341,7 +352,7 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       await api('hrA', 'put', `/people/changes/${raised.body.id}`).send({ reason: 'again' }).expect(409);
       const joinChange = (await api('hrA', 'get', `/people/changes?employeeId=${ids.arjun}&status=effective`).expect(200)).body[0];
       await api('hrA', 'post', `/people/changes/${joinChange.id}/cancel`).send({ reason: 'nope nope' }).expect(409);
-      expect((await auditActions('employee.change.cancelled')).map((a) => a.metadata.reason)).toEqual(['Lab move postponed']);
+      expect((await auditActions('employee.change.cancelled')).map((a) => a.metadata.reason)).toEqual(['Not needed', 'Lab move postponed']);
     });
 
     it('rejecting: by someone else, with a reason; a pending change only', async () => {
@@ -437,6 +448,11 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
     it('the person sees their own record and pay; their manager the record without pay; others nothing', async () => {
       const self = (await api('arjunA', 'get', `/people/employees/${ids.arjun}/as-of?pay=true`).expect(200)).body;
       expect(self).toMatchObject({ payAccess: true, compensation: { annualCtc: '600000.00' } });
+      // The person sees approved changes only; requests being decided are HR's business.
+      await api('hrA', 'post', '/people/changes').send({ employeeId: ids.arjun, changeType: 'redesignation', effectiveDate: addDays(today, 100), payload: { assignment: { designationId: ids.lab } }, reason: 'Pending idea' }).expect(201);
+      const own = (await api('arjunA', 'get', `/people/employees/${ids.arjun}/history`).expect(200)).body;
+      expect(own.changes.every((c: { status: string; impact: unknown }) => (c.status === 'effective' || c.status === 'scheduled') && c.impact === null)).toBe(true);
+      expect((await api('hrA', 'get', `/people/employees/${ids.arjun}/history`).expect(200)).body.changes.some((c: { status: string }) => c.status === 'pending')).toBe(true);
       const mgr = (await api('divyaA', 'get', `/people/employees/${ids.arjun}/as-of?pay=true`).expect(200)).body;
       expect(mgr).toMatchObject({ payAccess: false, compensation: null, assignment: { designation: { name: 'Quality Analyst' } } });
       // Lakshmi's subtree includes Arjun through Divya, but Lakshmi has no login here; Kavya manages Ravi, not Arjun.

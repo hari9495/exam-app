@@ -62,6 +62,8 @@ export interface Viewer {
 }
 
 interface Access {
+  /** employee.profile.view: every change, whatever its state. */
+  hr: boolean;
   /** HR or the person themselves: every date. */
   full: boolean;
   self: boolean;
@@ -188,7 +190,7 @@ export class EmployeeHistoryService {
     // Not found, or not theirs to see: the same answer, so existence is not leaked.
     if (!employee || (!hr && !self && periods.length === 0)) throw new NotFoundException('Employee not found');
     // Founder rule R1: pay only with pay access, or one's own; never while acting for someone else.
-    return { full: hr || self, self, periods, pay: !v.actingForOther && (self || has(v, 'employee.salary.view')) };
+    return { hr, full: hr || self, self, periods, pay: !v.actingForOther && (self || has(v, 'employee.salary.view')) };
   }
 
   private visibleOn(a: Access, date: string): boolean {
@@ -317,11 +319,12 @@ export class EmployeeHistoryService {
       const e = await this.employmentOf(tx, c, employeeId);
       const rows = await this.rows(tx, c, e.id, { includeSuperseded: a.full });
       const overlaps = (from: Date, to: Date | null) => a.full || a.periods.some(([f, t]) => (t === null || isoDate(from) <= t) && (to === null || f <= isoDate(to)));
-      const changes = (await tx.employeeChange.findMany({ where: { organizationId: c.organizationId, employmentId: e.id }, orderBy: [{ effectiveDate: 'asc' }, { seq: 'asc' }] })).filter((ch) =>
-        a.full ? true : ch.status === 'effective' || ch.status === 'scheduled' ? this.visibleOn(a, isoDate(ch.effectiveDate)) : false,
-      );
+      // Requests still being decided (or turned down) are HR's business; the person and their managers see
+      // approved changes only, a manager only inside the periods they managed.
+      const all = await tx.employeeChange.findMany({ where: { organizationId: c.organizationId, employmentId: e.id }, orderBy: [{ effectiveDate: 'asc' }, { seq: 'asc' }] });
+      const changes = all.filter((ch) => a.hr || ((ch.status === 'effective' || ch.status === 'scheduled') && this.visibleOn(a, isoDate(ch.effectiveDate))));
       const names = await this.names(tx, c, rows.assignment.map(assignmentValues));
-      const byId = new Map(changes.map((ch) => [ch.id, ch]));
+      const byId = new Map(all.map((ch) => [ch.id, ch]));
       const common = (r: FactRow) => ({
         id: r.id,
         validFrom: isoDate(r.validFrom),
@@ -336,7 +339,8 @@ export class EmployeeHistoryService {
       return {
         employee: await this.header(tx, c, employeeId, e),
         payAccess: a.pay,
-        changes: changes.map((ch) => this.changeView(ch, showPay)),
+        // An impact speaks about other dates (later changes it recalculated): HR only.
+        changes: changes.map((ch) => ({ ...this.changeView(ch, showPay), ...(a.hr ? {} : { impact: null }) })),
         assignment: rows.assignment.filter((r) => overlaps(r.validFrom, r.validTo)).map((r) => ({ ...common(r), ...this.describe(assignmentValues(r), names) })),
         status: rows.status.filter((r) => overlaps(r.validFrom, r.validTo)).map((r) => ({ ...common(r), status: r.status })),
         compensation: showPay ? rows.compensation.map((r) => ({ ...common(r), currency: r.currency, annualCtc: r.annualCtc.toFixed(2) })) : [],
@@ -876,7 +880,8 @@ export class EmployeeHistoryService {
           payload: payload as Prisma.InputJsonObject,
           ...(dto.reason ? { reason: dto.reason.trim() } : {}),
           ...(dto.overrideReason ? { overrideReason: dto.overrideReason.trim() } : {}),
-          ...(routing ? { status: 'pending', decidedBy: null, decidedAt: null, impact: Prisma.DbNull } : {}),
+          // YX-SEC-11: whoever rewrites the change has made it, so they cannot approve it.
+          ...(routing ? { status: 'pending', requestedBy: c.userId, decidedBy: null, decidedAt: null, impact: Prisma.DbNull } : {}),
         },
       });
       // Back to approval: withdraw its rows; later changes fall back onto the values before it.
@@ -929,8 +934,12 @@ export class EmployeeHistoryService {
       if (!entity) throw new BadRequestException('No such legal entity in this company.');
       if (entity.archivedAt) throw new BadRequestException('That legal entity is archived.');
       if (dto.userId) {
-        const user = await tx.user.findFirst({ where: { id: dto.userId, organizationId: c.organizationId }, select: { id: true } });
+        // The login gives its holder the person's own view, pay included: never one's own login, and only the
+        // login whose email is the record's work email.
+        if (dto.userId === c.userId) throw new ForbiddenException('You cannot link your own login to a record you create.');
+        const user = await tx.user.findFirst({ where: { id: dto.userId, organizationId: c.organizationId }, select: { email: true } });
         if (!user) throw new BadRequestException('No such login in this company.');
+        if (!dto.workEmail || user.email.toLowerCase() !== dto.workEmail.toLowerCase()) throw new BadRequestException("A login is linked only when its email is the person's work email.");
       }
       const person = await tx.employee.create({
         data: {
