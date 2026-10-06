@@ -82,6 +82,33 @@ describe('PostgreSQL row-level security (app role)', () => {
     ]);
   });
 
+  // P12 Part 1b: the company security policy (IP allow-lists, SSO-only, session limits) is tenant data.
+  it('tenant_security_policies is a forced-RLS tenant table', async () => {
+    const [row] = await prisma.$queryRaw<{ forced: boolean; policies: bigint }[]>`
+      SELECT (c.relrowsecurity AND c.relforcerowsecurity) AS forced,
+             (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+      WHERE c.relname = 'tenant_security_policies'`;
+    expect(row).toEqual({ forced: true, policies: BigInt(1) });
+  });
+
+  it("(b) org A cannot read, change or plant org B's security policy", async () => {
+    await tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, (tx) =>
+      tx.tenantSecurityPolicy.create({ data: { organizationId: orgB, ipAllowlistDesk: ['203.0.113.0/24'] } }),
+    );
+    const seenByA = await tenantPrisma.forTenant(asA(), async (tx) => ({
+      read: await tx.tenantSecurityPolicy.count({ where: { organizationId: orgB } }),
+      opened: await tx.$executeRaw`UPDATE tenant_security_policies SET ip_allowlist_desk = '{}' WHERE organization_id = ${orgB}::uuid`,
+      deleted: await tx.$executeRaw`DELETE FROM tenant_security_policies WHERE organization_id = ${orgB}::uuid`,
+    }));
+    expect(seenByA).toEqual({ read: 0, opened: 0, deleted: 0 });
+    await expect(
+      tenantPrisma.forTenant(asA(), (tx) => tx.tenantSecurityPolicy.upsert({ where: { organizationId: orgB }, create: { organizationId: orgB }, update: {} })),
+    ).rejects.toThrow(RLS_VIOLATION);
+    const b = await tenantPrisma.forTenant(SUPER, (tx) => tx.tenantSecurityPolicy.findUnique({ where: { organizationId: orgB } }));
+    expect(b?.ipAllowlistDesk).toEqual(['203.0.113.0/24']);
+  });
+
   it("(b) org A cannot read org B's sessions or login events", async () => {
     const absolute = new Date(Date.now() + 3_600_000);
     await tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, async (tx) => {
