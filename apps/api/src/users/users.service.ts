@@ -30,7 +30,7 @@ import { PasswordPolicyService } from '../auth/password-policy.service';
 // business being in a staff-list row -- only the "me" endpoints need it (see ProfileUser).
 // notificationDigest/lastDigestSentAt are the user's own email-cadence prefs, managed via the
 // /notifications/digest endpoints -- not part of the staff-user surface, so kept out of SafeUser.
-export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath' | 'emailSignature' | 'notificationDigest' | 'lastDigestSentAt' | 'passwordRecheckPending'>;
+export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath' | 'emailSignature' | 'notificationDigest' | 'lastDigestSentAt' | 'passwordRecheckPending' | 'mfaEnrolmentDueAt'>;
 
 // The staff pickers advertise "Search staff by name or email", but this filter matched email
 // only, so typing a person's NAME silently returned nothing -- the audit-log actor picker looked

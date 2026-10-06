@@ -229,6 +229,9 @@ model User {
   // Set when the breached-password check could not run as this password was chosen (HIBP
   // unreachable, fail-open); the next successful sign-in re-checks it (YX-IAM-08).
   passwordRecheckPending Boolean              @default(false) @map("password_recheck_pending")
+  // MFA must be enrolled by then wherever it is required (P12 §8: 14-day grace for existing
+  // accounts); an approved MFA reset sets it to now().
+  mfaEnrolmentDueAt      DateTime             @default(dbgenerated("(now() + '14 days'::interval)")) @map("mfa_enrolment_due_at") @db.Timestamptz(3)
   managerId              String?              @map("manager_id") @db.Uuid
   permissionProfileId    String?              @map("permission_profile_id") @db.Uuid
   permissionProfile      PermissionProfile?   @relation(fields: [permissionProfileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -238,6 +241,9 @@ model User {
   passwordResetTokens    PasswordResetToken[]
   ssoLoginCodes          SsoLoginCode[]
   auditLogs              AuditLog[]
+  authenticators         Authenticator[]
+  recoveryCodes          RecoveryCode[]
+  mfaResetRequests       MfaResetRequest[]
 
   @@unique([organizationId, email])
   @@map("users")
@@ -302,10 +308,71 @@ model Session {
   absoluteExpiresAt  DateTime  @map("absolute_expires_at") @db.Timestamptz(3)
   revokedAt          DateTime? @map("revoked_at") @db.Timestamptz(3)
   revokedReason      String?   @map("revoked_reason") @db.VarChar(64)
+  // Last AAL2 proof on this session (second factor at sign-in, enrolment, step-up) and its factor.
+  mfaVerifiedAt      DateTime? @map("mfa_verified_at") @db.Timestamptz(3)
+  mfaMethod          String?   @map("mfa_method") @db.VarChar(32)
 
   @@index([userId, createdAt])
   @@index([organizationId, lastSeenAt])
   @@map("sessions")
+}
+
+// A second factor (P12 §4, YX-IAM-03): a WebAuthn passkey or a TOTP app. Revoked, never deleted.
+model Authenticator {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String?   @map("organization_id") @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 'passkey' | 'totp'
+  type            String    @db.VarChar(16)
+  label           String    @db.VarChar(64)
+  // passkey: base64url credential id, COSE public key, signature counter, transports
+  credentialId    String?   @unique @map("credential_id") @db.VarChar(1024)
+  publicKey       Bytes?    @map("public_key")
+  signCount       BigInt    @default(0) @map("sign_count")
+  transports      String[]  @default([]) @db.VarChar(32)
+  // totp: AES-256-GCM encrypted base32 secret; last accepted time step (replay protection)
+  secretEncrypted String?   @map("secret_encrypted") @db.Text
+  totpLastStep    BigInt?   @map("totp_last_step")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt      DateTime? @map("last_used_at") @db.Timestamptz(3)
+  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  @@index([userId])
+  @@map("authenticators")
+}
+
+// Single-use recovery codes (YX-IAM-11): sha256 only, shown to the user once.
+model RecoveryCode {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String?   @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash       String    @map("code_hash") @db.Char(64)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  usedAt         DateTime? @map("used_at") @db.Timestamptz(3)
+
+  @@unique([userId, codeHash])
+  @@map("recovery_codes")
+}
+
+// Admin-initiated MFA reset (YX-IAM-11). For a sensitive-role user a second admin must approve.
+model MfaResetRequest {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  targetUserId      String    @map("target_user_id") @db.Uuid
+  targetUser        User      @relation(fields: [targetUserId], references: [id], onDelete: Cascade)
+  requestedByUserId String    @map("requested_by_user_id") @db.Uuid
+  approvedByUserId  String?   @map("approved_by_user_id") @db.Uuid
+  // 'pending' | 'completed' | 'expired'
+  status            String    @default("pending") @db.VarChar(16)
+  reason            String    @db.VarChar(500)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz(3)
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(3)
+
+  @@index([organizationId, status])
+  @@map("mfa_reset_requests")
 }
 
 // A company's security settings (P12 §4, Q8). One row per organisation; no row = YukthiX defaults.
