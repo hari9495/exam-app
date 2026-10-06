@@ -236,6 +236,7 @@ describe('/yx/settings/security', () => {
     route({
       'GET /security/policy': { policy: POLICY, floor: FLOOR, updatedAt: null },
       'GET /security/identity-providers': [],
+      'GET /security/identity-providers/domains': [],
       'GET /users': { data: [], total: 0, page: 1, pageSize: 100, totalPages: 1 },
       'PATCH /security/policy': { policy: { ...POLICY, mfaScope: 'all' }, floor: FLOOR, updatedAt: NOW },
     });
@@ -245,10 +246,28 @@ describe('/yx/settings/security', () => {
     await waitFor(() => expect(api).toHaveBeenCalledWith('/security/policy', { method: 'PATCH', body: JSON.stringify({ mfaScope: 'all' }) }, 'tok'));
   });
 
+  it("checks a company email domain's TXT record", async () => {
+    const IDP = { id: 'p-1', name: 'Kaveri staff directory', type: 'saml', status: 'active', domains: ['kaveri.co.in'], jitEnabled: false };
+    const DOMAIN = { domain: 'kaveri.co.in', verifiedAt: null, txtRecord: { name: 'kaveri.co.in', value: 'yukthix-domain-verification=b' } };
+    route({
+      'GET /security/policy': { policy: POLICY, floor: FLOOR, updatedAt: null },
+      'GET /security/identity-providers': [IDP],
+      'GET /security/identity-providers/domains': [DOMAIN],
+      'GET /users': { data: [], total: 0, page: 1, pageSize: 100, totalPages: 1 },
+      'POST /security/identity-providers/domains/verify': { domain: 'kaveri.co.in', verifiedAt: NOW },
+    });
+    wrap(<YxSecuritySettingsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Check record' }));
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith('/security/identity-providers/domains/verify', { method: 'POST', body: JSON.stringify({ domain: 'kaveri.co.in' }) }, 'tok'),
+    );
+  });
+
   it('shows "no access" on a plain 403', async () => {
     route({
       'GET /security/policy': Object.assign(new Error('Forbidden'), { status: 403 }),
       'GET /security/identity-providers': [],
+      'GET /security/identity-providers/domains': [],
       'GET /users': { data: [], total: 0, page: 1, pageSize: 100, totalPages: 1 },
     });
     wrap(<YxSecuritySettingsPage />);

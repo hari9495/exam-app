@@ -123,6 +123,27 @@ describe('SignInScreen (email first, no company code)', () => {
   });
 });
 
+describe('SecuritySettingsScreen email domains', () => {
+  it('shows each domain, the TXT record to add, and checks it', async () => {
+    const onVerifyDomain = vi.fn().mockRejectedValueOnce(new Error('No TXT record on kaveri.co.in yet.')).mockResolvedValueOnce(undefined);
+    const domains = [
+      { domain: 'kaverifoods.in', verifiedAt: '2026-09-20T10:00:00+05:30', txtRecord: { name: 'kaverifoods.in', value: 'yukthix-domain-verification=a' } },
+      { domain: 'kaveri.co.in', verifiedAt: null, txtRecord: { name: 'kaveri.co.in', value: 'yukthix-domain-verification=b' } },
+    ];
+    render(<SecuritySettingsScreen state="ready" policy={POLICY} floor={FLOOR} providers={IDPS} admins={ADMINS} providersHref="#" onSave={vi.fn()} domains={domains} onVerifyDomain={onVerifyDomain} />);
+    const list = screen.getByRole('list', { name: 'Email domains' });
+    expect(within(list).getByText('Verified')).toBeInTheDocument();
+    expect(within(list).getByText('yukthix-domain-verification=b')).toBeInTheDocument();
+    expect(within(list).queryByText('yukthix-domain-verification=a')).toBeNull();
+    const check = within(list).getByRole('button', { name: 'Check record' });
+    await userEvent.click(check);
+    expect(onVerifyDomain).toHaveBeenCalledWith('kaveri.co.in');
+    expect(await screen.findByText('No TXT record on kaveri.co.in yet.')).toBeInTheDocument();
+    await userEvent.click(check);
+    expect(onVerifyDomain).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('ForgotPasswordScreen', () => {
   it('asks for the work email only, and answers the same whether or not an account exists', async () => {
     const onSubmit = vi.fn();

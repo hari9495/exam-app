@@ -69,6 +69,14 @@ export interface SsoProviderOption {
   type: 'saml' | 'oidc_google' | 'oidc_entra' | 'oidc_generic';
 }
 
+/** A company email domain and whether the company has proven it owns it (DNS TXT). */
+export interface EmailDomainRow {
+  domain: string;
+  verifiedAt: string | null;
+  /** The TXT record to publish on the domain itself. */
+  txtRecord: { name: string; value: string };
+}
+
 export interface IdentityProviderRow extends SsoProviderOption {
   status: 'active' | 'disabled';
   domains: string[];

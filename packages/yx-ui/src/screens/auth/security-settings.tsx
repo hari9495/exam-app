@@ -9,8 +9,8 @@ import { NumberField, TextArea } from '../../components/inputs';
 import { Segment } from '../../components/segment';
 import { MultiSelect } from '../../components/select';
 import { Breadcrumbs, PageHeader } from '../../components/shell';
-import { when } from './kit';
-import type { IdentityProviderRow, PersonOption, SecurityFloor, SecurityPolicy } from './types';
+import { useStep, when } from './kit';
+import type { EmailDomainRow, IdentityProviderRow, PersonOption, SecurityFloor, SecurityPolicy } from './types';
 
 /** YukthiX defaults when a company leaves a session limit unset. */
 export const SESSION_DEFAULTS = { idleMinutes: 30, absoluteMinutes: 720 };
@@ -84,6 +84,48 @@ export interface SecuritySettingsScreenProps {
   providersHref: string;
   /** Saves the changed fields; the host asks the person to confirm it's them (step-up). */
   onSave: (changes: Partial<SecurityPolicy>) => Promise<void>;
+  /** The providers' email domains and their ownership check. */
+  domains?: EmailDomainRow[];
+  /** Looks the domain's TXT record up now (step-up); rejects with the reason when it is not there yet. */
+  onVerifyDomain?: (domain: string) => Promise<void>;
+}
+
+/** Verified domains send people with that email straight to the identity provider (email-first sign-in). */
+function EmailDomains({ domains, onVerify }: { domains: EmailDomainRow[]; onVerify?: (domain: string) => Promise<void> }) {
+  const { busy, error, run } = useStep();
+  const [checking, setChecking] = useState<string | null>(null);
+  const verify = (domain: string) => {
+    setChecking(domain);
+    void run(() => onVerify!(domain)).finally(() => setChecking(null));
+  };
+  return (
+    <div className="yx-auth__stack">
+      <Text as="p" tone="secondary" size="sm">
+        People whose email is at a verified domain go straight to your identity provider when they sign in. To verify one, add the TXT record shown to the domain's DNS, then check it.
+      </Text>
+      <ul className="yx-auth__list" aria-label="Email domains">
+        {domains.map((d) => (
+          <li key={d.domain} className="yx-auth__item">
+            <div className="yx-auth__item-main">
+              <span className="yx-auth__badges">
+                <Text weight="medium">{d.domain}</Text>
+                <Badge tone={d.verifiedAt ? 'success' : 'neutral'}>{d.verifiedAt ? 'Verified' : 'Not verified'}</Badge>
+              </span>
+              {!d.verifiedAt && (
+                <Text tone="secondary" size="sm" className="yx-auth__key">
+                  TXT record on {d.txtRecord.name}: <Text mono size="sm">{d.txtRecord.value}</Text>
+                </Text>
+              )}
+            </div>
+            {!d.verifiedAt && onVerify && (
+              <Button size="sm" loading={checking === d.domain} disabled={busy && checking !== d.domain} onClick={() => verify(d.domain)}>Check record</Button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+    </div>
+  );
 }
 
 /** Settings › People & Access › 2.3 Security (P12 §7, Q8): every limit shows the YukthiX minimum beside it. */
@@ -109,7 +151,7 @@ export function SecuritySettingsScreen(props: SecuritySettingsScreenProps) {
   );
 }
 
-function SecurityForm({ policy, floor, providers, admins, providersHref, onSave }: SecuritySettingsScreenProps & { policy: SecurityPolicy; floor: SecurityFloor }) {
+function SecurityForm({ policy, floor, providers, admins, providersHref, onSave, domains, onVerifyDomain }: SecuritySettingsScreenProps & { policy: SecurityPolicy; floor: SecurityFloor }) {
   const [saved, setSaved] = useState(policy);
   const [draft, setDraft] = useState(policy);
   // IP lists are edited as text so a half-typed line isn't lost; parsed on every change.
@@ -207,6 +249,7 @@ function SecurityForm({ policy, floor, providers, admins, providersHref, onSave 
               ))}
             </ul>
             <div><Button asChild size="sm"><a href={providersHref}>Manage identity providers</a></Button></div>
+            {domains && domains.length > 0 && <EmailDomains domains={domains} onVerify={onVerifyDomain} />}
           </>
         )}
         <Checkbox
