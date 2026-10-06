@@ -2,78 +2,123 @@ import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { SignInScreen, type SignInFields, type SignInMethod, type SignInScreenProps } from './sign-in';
+import { SignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
 import { MfaChallengeScreen, MfaEnrolScreen, StepUpDialog } from './mfa';
 import { MeSecurityScreen, type MeSecurityScreenProps } from './me-security';
 import { LoginActivityScreen, NO_FILTERS, type LoginActivityScreenProps } from './login-activity';
 import { SecuritySettingsScreen, policyChanges, policyErrors, type SecuritySettingsScreenProps } from './security-settings';
 import { deviceLabel, errorText } from './kit';
-import { ADMINS, FLOOR, IDPS, MFA_ENROLLED, MFA_NONE, MY_HISTORY, MY_SESSIONS, NOW, ORG_EVENTS, ORG_SESSIONS, PEOPLE, POLICY, PROVIDERS, RECOVERY_CODES, TOTP_SETUP } from './data';
+import { ADMINS, COMPANIES, FLOOR, IDPS, MFA_ENROLLED, MFA_NONE, MY_HISTORY, MY_SESSIONS, NOW, ORG_EVENTS, ORG_SESSIONS, PEOPLE, POLICY, PROVIDERS, RECOVERY_CODES, TOTP_SETUP } from './data';
 
 function SignIn(over: Partial<SignInScreenProps> & { start?: Partial<SignInFields> }) {
   const { start, ...rest } = over;
-  const [fields, setFields] = useState<SignInFields>({ organization: 'kaveri-foods', email: '', password: '', identifier: '', code: '', ...start });
-  const [method, setMethod] = useState<SignInMethod>(over.method ?? 'sso');
+  const [fields, setFields] = useState<SignInFields>({ identifier: '', password: '', code: '', ...start });
+  const [step, setStep] = useState<SignInStep>(over.step ?? 'identify');
   return (
     <SignInScreen
       fields={fields}
       onFieldChange={(k, v) => setFields((f) => ({ ...f, [k]: v }))}
-      providers={PROVIDERS}
-      codeSent={false}
+      providers={[]}
+      onIdentify={() => setStep('password')}
       onPasswordSubmit={vi.fn()}
       onSendCode={vi.fn()}
       onVerifyCode={vi.fn()}
-      onCodeRestart={vi.fn()}
+      onRestart={() => setStep('identify')}
       onSso={vi.fn()}
+      onPickCompany={vi.fn()}
       forgotPasswordHref="/forgot-password"
       {...rest}
-      method={method}
-      onMethodChange={setMethod}
+      step={step}
     />
   );
 }
 
-describe('SignInScreen', () => {
-  it('offers each identity provider and routes by email domain', async () => {
-    const onSso = vi.fn();
-    render(<SignIn onSso={onSso} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Continue with Google' }));
-    expect(onSso).toHaveBeenCalledWith(PROVIDERS[0].id);
+const DIVYA = { identifier: 'divya.r@kaverifoods.in' };
+const KAVERI = { name: 'Kaveri Foods Pvt Ltd', logoUrl: null };
+
+describe('SignInScreen (email first, no company code)', () => {
+  it('asks only for an email or mobile number first, never a company code', async () => {
+    const onIdentify = vi.fn();
+    render(<SignIn onIdentify={onIdentify} />);
+    expect(screen.queryByLabelText(/company/i)).toBeNull();
+    expect(screen.queryByLabelText(/password/i)).toBeNull();
     const go = screen.getByRole('button', { name: 'Continue' });
     expect(go).toBeDisabled();
-    await userEvent.type(screen.getByLabelText('Work email'), 'divya.r@kaverifoods.in');
+    await userEvent.type(screen.getByLabelText(/Work email or mobile number/), DIVYA.identifier);
     await userEvent.click(go);
-    expect(onSso).toHaveBeenLastCalledWith();
+    expect(onIdentify).toHaveBeenCalledOnce();
   });
 
-  it('is a pick-one segment, and hides single sign-on when the company has none', async () => {
-    render(<SignIn providers={[]} method="password" />);
-    const group = screen.getByRole('radiogroup', { name: 'Sign in with' });
-    expect(within(group).getAllByRole('radio').map((r) => r.textContent)).toEqual(['Password', 'One-time code']);
-    expect(screen.queryByRole('button', { name: /Continue with/ })).toBeNull();
-  });
-
-  it('submits the password form', async () => {
+  it('then the password, with the email shown and a way back', async () => {
     const onPasswordSubmit = vi.fn();
-    render(<SignIn method="password" onPasswordSubmit={onPasswordSubmit} />);
-    await userEvent.type(screen.getByLabelText(/Work email/), 'divya.r@kaverifoods.in');
+    render(<SignIn onPasswordSubmit={onPasswordSubmit} />);
+    await userEvent.type(screen.getByLabelText(/Work email or mobile number/), DIVYA.identifier);
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByText(DIVYA.identifier)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText(/^Password/), 'correct horse battery');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(onPasswordSubmit).toHaveBeenCalledOnce();
+    expect(screen.getByRole('link', { name: 'Forgot your password?' })).toHaveAttribute('href', '/forgot-password');
+    await userEvent.click(screen.getByRole('button', { name: 'Change' }));
+    expect(screen.getByLabelText(/Work email or mobile number/)).toBeInTheDocument();
   });
 
-  it('texts a code to a mobile number, or sends it on WhatsApp', async () => {
+  it('offers a code instead: by email for an address, by text or WhatsApp for a mobile number', async () => {
     const onSendCode = vi.fn();
-    render(<SignIn method="code" onSendCode={onSendCode} />);
-    await userEvent.type(screen.getByLabelText(/Work email or mobile number/), '+919845012345');
-    await userEvent.click(screen.getByRole('button', { name: 'Text me a code' }));
-    expect(onSendCode).toHaveBeenCalledWith('sms');
-    await userEvent.click(screen.getByRole('button', { name: 'Send it on WhatsApp' }));
+    const { unmount } = render(<SignIn step="password" start={DIVYA} onSendCode={onSendCode} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Email me a code instead' }));
+    expect(onSendCode).toHaveBeenLastCalledWith(undefined);
+    expect(screen.queryByRole('button', { name: /WhatsApp/ })).toBeNull();
+    unmount();
+    render(<SignIn step="password" start={{ identifier: '+919845012345' }} onSendCode={onSendCode} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Text me a code instead' }));
+    expect(onSendCode).toHaveBeenLastCalledWith('sms');
+    await userEvent.click(screen.getByRole('button', { name: 'Send a code on WhatsApp' }));
     expect(onSendCode).toHaveBeenLastCalledWith('whatsapp');
   });
 
+  it('shows the remembered company with "Not your company?", and its providers', async () => {
+    const onForgetCompany = vi.fn();
+    const onSso = vi.fn();
+    render(<SignIn company={KAVERI} onForgetCompany={onForgetCompany} providers={PROVIDERS} onSso={onSso} />);
+    expect(screen.getByRole('status')).toHaveTextContent('Signing in to Kaveri Foods Pvt Ltd');
+    await userEvent.click(screen.getByRole('button', { name: 'Not your company?' }));
+    expect(onForgetCompany).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByRole('button', { name: 'Continue with Google' }));
+    expect(onSso).toHaveBeenCalledWith(PROVIDERS[0].id);
+  });
+
+  it('a company from the web address has no "Not your company?" button', () => {
+    render(<SignIn company={KAVERI} />);
+    expect(screen.queryByRole('button', { name: 'Not your company?' })).toBeNull();
+  });
+
+  it('"Choose your company" lists the companies by name and picks one', async () => {
+    const onPickCompany = vi.fn();
+    render(<SignIn step="choose-company" start={DIVYA} companies={COMPANIES} onPickCompany={onPickCompany} />);
+    expect(screen.getByRole('heading', { level: 1, name: 'Choose your company' })).toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'Companies' });
+    expect(within(list).getAllByRole('button')).toHaveLength(COMPANIES.length);
+    for (const c of COMPANIES) expect(within(list).getByRole('button', { name: c.name })).toBeInTheDocument();
+    await userEvent.click(within(list).getByRole('button', { name: COMPANIES[1].name }));
+    expect(onPickCompany).toHaveBeenCalledWith(COMPANIES[1].id);
+  });
+
+  it('says it is going to the company sign-in page', () => {
+    render(<SignIn step="redirecting" />);
+    expect(screen.getByRole('status')).toHaveTextContent("Taking you to your company's sign-in page");
+  });
+
+  it('asks for the code after one was sent', async () => {
+    const onVerifyCode = vi.fn();
+    render(<SignIn step="code" start={DIVYA} onVerifyCode={onVerifyCode} />);
+    await userEvent.type(screen.getByLabelText(/6-digit code/), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(onVerifyCode).toHaveBeenCalledOnce();
+  });
+
   it('announces errors', () => {
-    render(<SignIn method="password" error="Invalid email or password." />);
+    render(<SignIn step="password" start={DIVYA} error="Invalid email or password." />);
     expect(screen.getByRole('alert')).toHaveTextContent('Invalid email or password.');
   });
 });

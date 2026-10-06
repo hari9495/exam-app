@@ -10,6 +10,12 @@ const EDGE_MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/537.3
 
 export const ORG_NAME = 'Kaveri Foods Pvt Ltd';
 
+/** One person, one account in each of two companies (email-first sign-in picker). Fictional. */
+export const COMPANIES = [
+  { id: 'c0a8f1e2-0000-4000-8000-000000000001', name: ORG_NAME, logoUrl: null },
+  { id: 'c0a8f1e2-0000-4000-8000-000000000002', name: 'Hosur Precision Castings', logoUrl: null },
+];
+
 export const PROVIDERS: SsoProviderOption[] = [
   { id: 'b3f1c2a4-0000-4000-8000-000000000001', name: 'Kaveri Workspace', type: 'oidc_google' },
   { id: 'b3f1c2a4-0000-4000-8000-000000000002', name: 'Kaveri staff directory', type: 'saml' },

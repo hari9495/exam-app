@@ -1,50 +1,62 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
-import { SignInScreen, type SignInFields, type SignInMethod, type SignInScreenProps } from './sign-in';
+import { SignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
 import { MfaChallengeScreen, MfaEnrolScreen } from './mfa';
-import { NOW, ORG_NAME, PROVIDERS, RECOVERY_CODES, TOTP_SETUP } from './data';
+import { COMPANIES, NOW, ORG_NAME, PROVIDERS, RECOVERY_CODES, TOTP_SETUP } from './data';
 
 const meta: Meta = { title: 'Screens/Security/Sign in', parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj;
 
 const wait = (ms = 600) => new Promise<void>((r) => setTimeout(r, ms));
+const KAVERI = { name: ORG_NAME, logoUrl: null };
 
+// Email first, no company code: identify -> password / code -> (several companies) choose one.
 function SignIn({ start = {}, ...over }: Partial<SignInScreenProps> & { start?: Partial<SignInFields> }) {
-  const [fields, setFields] = useState<SignInFields>({ organization: 'kaveri-foods', email: '', password: '', identifier: '', code: '', ...start });
-  const [method, setMethod] = useState<SignInMethod>(over.method ?? 'sso');
-  const [codeSent, setCodeSent] = useState(over.codeSent ?? false);
+  const [fields, setFields] = useState<SignInFields>({ identifier: '', password: '', code: '', ...start });
+  const [step, setStep] = useState<SignInStep>(over.step ?? 'identify');
+  const [company, setCompany] = useState(over.company ?? null);
   return (
     <SignInScreen
       fields={fields}
       onFieldChange={(k, v) => setFields((f) => ({ ...f, [k]: v }))}
-      orgName={ORG_NAME}
-      providers={PROVIDERS}
-      onPasswordSubmit={() => {}}
-      onSendCode={() => setCodeSent(true)}
-      onVerifyCode={() => {}}
-      onCodeRestart={() => setCodeSent(false)}
-      onSso={() => {}}
+      providers={[]}
+      companies={COMPANIES}
+      onIdentify={() => setStep('password')}
+      onPasswordSubmit={() => setStep('choose-company')}
+      onSendCode={() => setStep('code')}
+      onVerifyCode={() => setStep('choose-company')}
+      onRestart={() => setStep('identify')}
+      onSso={() => setStep('redirecting')}
+      onPickCompany={() => {}}
+      onForgetCompany={() => setCompany(null)}
       forgotPasswordHref="#forgot"
       {...over}
-      method={method}
-      onMethodChange={setMethod}
-      codeSent={codeSent}
+      step={step}
+      company={company}
     />
   );
 }
 
-export const SingleSignOn: S = { name: 'Sign in · single sign-on', render: () => <SignIn /> };
-export const Password: S = { name: 'Sign in · password', render: () => <SignIn method="password" start={{ email: 'divya.r@kaverifoods.in' }} /> };
-export const OneTimeCode: S = { name: 'Sign in · one-time code', render: () => <SignIn method="code" start={{ identifier: '+91 98450 12345' }} /> };
-export const CodeSent: S = { name: 'Sign in · code sent', render: () => <SignIn method="code" codeSent start={{ identifier: 'divya.r@kaverifoods.in' }} /> };
-export const Loading: S = { name: 'Sign in · signing in', render: () => <SignIn method="password" busy start={{ email: 'divya.r@kaverifoods.in', password: 'correct horse battery' }} /> };
+const DIVYA = { identifier: 'divya.r@kaverifoods.in' };
+export const Identify: S = { name: 'Sign in · email or mobile first', render: () => <SignIn /> };
+export const Remembered: S = { name: 'Sign in · remembered company', render: () => <SignIn company={KAVERI} providers={PROVIDERS} /> };
+export const Password: S = { name: 'Sign in · password', render: () => <SignIn step="password" start={DIVYA} /> };
+export const PasswordMobile: S = { name: 'Sign in · password, mobile number', render: () => <SignIn step="password" start={{ identifier: '+91 98450 12345' }} /> };
+export const CodeSent: S = { name: 'Sign in · code sent', render: () => <SignIn step="code" start={DIVYA} /> };
+export const Redirecting: S = { name: 'Sign in · going to single sign-on', render: () => <SignIn step="redirecting" start={DIVYA} /> };
+export const ChooseCompany: S = { name: 'Sign in · choose your company', render: () => <SignIn step="choose-company" start={DIVYA} /> };
+export const Loading: S = { name: 'Sign in · signing in', render: () => <SignIn step="password" busy start={{ ...DIVYA, password: 'correct horse battery' }} /> };
 export const Error: S = {
   name: 'Sign in · wrong password',
-  render: () => <SignIn method="password" error="Invalid email or password." start={{ email: 'divya.r@kaverifoods.in', password: 'not the password' }} />,
+  render: () => <SignIn step="password" error="Invalid email or password." start={{ ...DIVYA, password: 'not the password' }} />,
 };
-export const NoSso: S = { name: 'Sign in · company without single sign-on', render: () => <SignIn method="password" providers={[]} orgName={null} start={{ organization: '' }} /> };
-export const Phone: S = { name: 'Sign in · phone', globals: { viewport: { value: 'phone' } }, render: () => <SignIn /> };
+export const Phone: S = { name: 'Sign in · phone', globals: { viewport: { value: 'phone' } }, render: () => <SignIn company={KAVERI} providers={PROVIDERS} /> };
+export const PhoneChoose: S = {
+  name: 'Sign in · choose your company, phone',
+  globals: { viewport: { value: 'phone' } },
+  render: () => <SignIn step="choose-company" start={DIVYA} />,
+};
 
 const challenge = { getPasskey: () => wait(), submit: () => wait(), sendCode: () => wait(), onStartAgain: () => {} };
 export const Challenge: S = { name: 'Second step · passkey and app', render: () => <MfaChallengeScreen factors={['passkey', 'totp', 'otp']} {...challenge} /> };
