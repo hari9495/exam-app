@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '../../../lib/api-client';
 import { useAuth } from '../../../lib/auth-context';
@@ -121,5 +122,30 @@ describe('SsoCallbackPage', () => {
     expect(push).toHaveBeenCalledWith('/login');
 
     jest.useRealTimers();
+  });
+
+  // An enrolled YukthiX factor is still owed after the IdP (P12 YX-IAM-01).
+  it('asks for the second factor when the exchange returns a challenge, then signs in', async () => {
+    window.sessionStorage.setItem('ssoPendingOrganizationSlug', 'acme');
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('code=abc123'));
+    const accessToken = fakeJwt({ sub: 'u1', role: 'org_admin' });
+    (apiFetch as jest.Mock)
+      .mockResolvedValueOnce({ mfaRequired: true, mfaToken: 'pending', factors: ['totp', 'recovery_code'] })
+      .mockResolvedValueOnce({ accessToken });
+
+    render(<SsoCallbackPage />);
+    await userEvent.type(await screen.findByLabelText('Code from your authenticator app'), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Verify' }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/users'));
+    expect(apiFetch).toHaveBeenLastCalledWith('/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ mfaToken: 'pending', factor: 'totp', code: '123456' }) });
+    expect(login).toHaveBeenCalledWith('acme', accessToken);
+  });
+
+  it('sends an account that must enrol MFA to set it up', async () => {
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('code=abc123'));
+    (apiFetch as jest.Mock).mockResolvedValue({ accessToken: fakeJwt({ role: 'org_admin' }), mfa: { required: true, enrolmentDueAt: '2026-10-20T00:00:00Z' } });
+    render(<SsoCallbackPage />);
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/profile?mfa=setup'));
   });
 });

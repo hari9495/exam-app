@@ -8,6 +8,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
 import { ProfileForm } from '../../components/ProfileForm';
 import { NotificationEmailPreferences } from '../../components/NotificationEmailPreferences';
+import { TwoStepSection } from '../../components/auth/TwoStepSection';
 
 const HOME_BY_ROLE: Record<string, string> = {
   recruiter: '/dashboard',
@@ -45,6 +46,9 @@ export default function ProfilePage() {
         </div>
         <main className="mx-auto max-w-2xl p-8">
           <ProfileForm />
+          <div className="mt-6">
+            <TwoStepSection />
+          </div>
           <div className="mt-6">
             <NotificationEmailPreferences />
           </div>

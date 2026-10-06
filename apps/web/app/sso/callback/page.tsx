@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { apiFetch } from '../../../lib/api-client';
 import { useAuth, SSO_PENDING_SLUG_KEY } from '../../../lib/auth-context';
 import { decodeJwtPayload } from '../../../lib/jwt';
+import { MfaProof, SecondFactorForm } from '../../../components/auth/SecondFactorForm';
 
 const GENERIC_ERROR = 'Sign-in failed. Please try again or use your password.';
 const ERROR_REDIRECT_DELAY_MS = 3000;
@@ -15,6 +16,18 @@ function SsoCallbackRedeemer() {
   const searchParams = useSearchParams();
   const { login } = useAuth();
   const [error, setError] = useState<string | null>(null);
+  // The IdP's sign-in is a first factor; an enrolled YukthiX factor is still owed (P12 YX-IAM-01).
+  const [challenge, setChallenge] = useState<{ mfaToken: string; factors: string[]; slug: string } | null>(null);
+
+  function finish(slug: string, result: { accessToken: string; mfa?: { required: boolean } }) {
+    login(slug, result.accessToken);
+    const payload = decodeJwtPayload(result.accessToken);
+    if (result.mfa?.required) {
+      router.push('/profile?mfa=setup');
+      return;
+    }
+    router.push(payload?.role === 'org_admin' ? '/users' : payload?.role === 'panel' ? '/reports' : '/dashboard');
+  }
 
   useEffect(() => {
     if (!error) return;
@@ -45,15 +58,37 @@ function SsoCallbackRedeemer() {
         // navigated to the IdP, since that in-memory form state doesn't survive the redirect.
         const stashedSlug = window.sessionStorage.getItem(SSO_PENDING_SLUG_KEY) ?? '';
         window.sessionStorage.removeItem(SSO_PENDING_SLUG_KEY);
-        login(stashedSlug, result.accessToken);
-        const payload = decodeJwtPayload(result.accessToken);
-        router.push(payload?.role === 'org_admin' ? '/users' : payload?.role === 'panel' ? '/reports' : '/dashboard');
+        if (result.mfaRequired) {
+          setChallenge({ mfaToken: result.mfaToken, factors: result.factors, slug: stashedSlug });
+          return;
+        }
+        finish(stashedSlug, result);
       })
       .catch((err: Error) => {
         setError(err.message || GENERIC_ERROR);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  if (challenge) {
+    const post = (path: string, body: object) =>
+      apiFetch(path, { method: 'POST', body: JSON.stringify({ mfaToken: challenge.mfaToken, ...body }) });
+    return (
+      <main className="flex min-h-screen items-center justify-center px-6">
+        <div className="flex w-full max-w-sm flex-col gap-4">
+          <div>
+            <h1 className="text-lg font-semibold">Two-step verification</h1>
+            <p className="text-sm text-muted">Confirm it&apos;s you to finish signing in.</p>
+          </div>
+          <SecondFactorForm
+            factors={challenge.factors}
+            getPasskeyOptions={() => post('/auth/mfa/passkey-options', {})}
+            submit={async (proof: MfaProof) => finish(challenge.slug, await post('/auth/mfa/verify', proof))}
+          />
+        </div>
+      </main>
+    );
+  }
 
   if (error) {
     return (

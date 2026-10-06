@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { useStaffLogin } from '../../../lib/hooks/useStaffLogin';
 import { BRAND } from '../../../lib/brand';
 import { Button, TextField, PasswordField, FormAlert, WorkfoxMark } from '../../../components/ui-v2';
+import { SecondFactorForm } from '../../../components/auth/SecondFactorForm';
 
 const PROOF = [
   'Proctored, timed, integrity-scored',
@@ -41,6 +42,19 @@ export default function V2LoginPage() {
             {BRAND.productName}
           </span>
 
+          {s.challenge ? (
+            <>
+              <div>
+                <h1 className="v2-title">Two-step verification</h1>
+                <p style={{ fontSize: 13, color: 'var(--muted)', margin: '3px 0 0' }}>Confirm it&apos;s you to finish signing in.</p>
+              </div>
+              <SecondFactorForm factors={s.challenge.factors} getPasskeyOptions={s.secondFactorPasskeyOptions} submit={s.verifySecondFactor} />
+              <button type="button" className="v2-link" style={{ alignSelf: 'flex-start', background: 'none', border: 0, padding: 0 }} onClick={s.cancelChallenge}>
+                Start again
+              </button>
+            </>
+          ) : (
+          <>
           <div>
             <h1 className="v2-title">Sign in</h1>
             <p style={{ fontSize: 13, color: 'var(--muted)', margin: '3px 0 0' }}>
@@ -82,6 +96,8 @@ export default function V2LoginPage() {
               </>
             )}
           </form>
+          </>
+          )}
         </motion.div>
       </div>
 

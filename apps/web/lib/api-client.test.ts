@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchBlob, setUnauthorizedHandler } from './api-client';
+import { apiFetch, apiFetchBlob, setStepUpHandler, setUnauthorizedHandler } from './api-client';
 
 describe('apiFetch', () => {
   const originalFetch = global.fetch;
@@ -84,6 +84,50 @@ describe('apiFetch', () => {
     } catch (error) {
       expect((error as Error & { status?: number }).status).toBe(404);
     }
+  });
+});
+
+describe('apiFetch and the MFA floor (P12 YX-IAM-01/02)', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = originalFetch;
+    setUnauthorizedHandler(null);
+    setStepUpHandler(null);
+  });
+
+  it('does not refresh the token for MFA_REQUIRED (a token refresh cannot fix it) and exposes the code', async () => {
+    global.fetch = jest.fn(async () => new Response(JSON.stringify({ code: 'MFA_REQUIRED', message: 'Set up two-step verification to continue.' }), { status: 403 })) as unknown as typeof fetch;
+    const refresh = jest.fn(async () => 'new');
+    setUnauthorizedHandler(refresh);
+    await expect(apiFetch('/security/sessions', {}, 'tok')).rejects.toMatchObject({ status: 403, code: 'MFA_REQUIRED', message: 'Set up two-step verification to continue.' });
+    expect(refresh).not.toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('a wrong second-factor code is not treated as an expired session', async () => {
+    global.fetch = jest.fn(async () => new Response(JSON.stringify({ message: 'That verification did not work. Try again.' }), { status: 401 })) as unknown as typeof fetch;
+    const refresh = jest.fn(async () => 'new');
+    setUnauthorizedHandler(refresh);
+    await expect(apiFetch('/auth/mfa/verify', { method: 'POST' })).rejects.toThrow('That verification did not work');
+    await expect(apiFetch('/auth/mfa/step-up', { method: 'POST' }, 'tok')).rejects.toThrow('That verification did not work');
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('retries a STEP_UP_REQUIRED action once the step-up handler confirms, with the same token', async () => {
+    let stepped = false;
+    const auth: (string | undefined)[] = [];
+    global.fetch = jest.fn(async (_url, options) => {
+      auth.push((options?.headers as Record<string, string>)?.Authorization);
+      return stepped ? new Response(JSON.stringify({ ok: true }), { status: 200 }) : new Response(JSON.stringify({ code: 'STEP_UP_REQUIRED' }), { status: 403 });
+    }) as unknown as typeof fetch;
+    setStepUpHandler(async () => (stepped = true));
+    await expect(apiFetch('/security/policy', { method: 'PATCH' }, 'tok')).resolves.toEqual({ ok: true });
+    expect(auth).toEqual(['Bearer tok', 'Bearer tok']);
+  });
+
+  it('returns null for 204 No Content instead of failing to parse it', async () => {
+    global.fetch = jest.fn(async () => new Response(null, { status: 204 })) as unknown as typeof fetch;
+    await expect(apiFetch('/auth/sessions/x', { method: 'DELETE' }, 'tok')).resolves.toBeNull();
   });
 });
 
