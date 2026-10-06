@@ -30,87 +30,88 @@ model Plan {
 }
 
 model Organization {
-  id                            String            @id @default(uuid()) @db.Uuid
-  name                          String            @db.VarChar(1000)
-  slug                          String            @unique @db.Citext
-  region                        String            @default("us") @db.VarChar(1000)
-  status                        String            @default("active") @db.VarChar(1000)
-  logoPath                      String?           @map("logo_path") @db.VarChar(1000)
-  primaryColor                  String?           @map("primary_color") @db.VarChar(1000)
-  accentColor                   String?           @map("accent_color") @db.VarChar(1000)
-  textColor                     String?           @map("text_color") @db.VarChar(1000)
-  loginWatermarkEnabled         Boolean           @default(false) @map("login_watermark_enabled")
-  smtpHost                      String?           @map("smtp_host") @db.VarChar(1000)
-  smtpPort                      Int?              @map("smtp_port")
-  smtpUser                      String?           @map("smtp_user") @db.VarChar(1000)
-  smtpPasswordEncrypted         String?           @map("smtp_password_encrypted") @db.VarChar(1000)
-  emailFromAddress              String?           @map("email_from_address") @db.VarChar(1000)
-  aiApiKeyEncrypted             String?           @map("ai_api_key_encrypted") @db.VarChar(1000)
-  aiProvider                    String            @default("anthropic") @map("ai_provider") @db.VarChar(1000)
-  aiBaseUrl                     String?           @map("ai_base_url") @db.VarChar(1000)
-  aiModelFast                   String?           @map("ai_model_fast") @db.VarChar(1000)
-  aiModelStandard               String?           @map("ai_model_standard") @db.VarChar(1000)
+  id                            String                @id @default(uuid()) @db.Uuid
+  name                          String                @db.VarChar(1000)
+  slug                          String                @unique @db.Citext
+  region                        String                @default("us") @db.VarChar(1000)
+  status                        String                @default("active") @db.VarChar(1000)
+  logoPath                      String?               @map("logo_path") @db.VarChar(1000)
+  primaryColor                  String?               @map("primary_color") @db.VarChar(1000)
+  accentColor                   String?               @map("accent_color") @db.VarChar(1000)
+  textColor                     String?               @map("text_color") @db.VarChar(1000)
+  loginWatermarkEnabled         Boolean               @default(false) @map("login_watermark_enabled")
+  smtpHost                      String?               @map("smtp_host") @db.VarChar(1000)
+  smtpPort                      Int?                  @map("smtp_port")
+  smtpUser                      String?               @map("smtp_user") @db.VarChar(1000)
+  smtpPasswordEncrypted         String?               @map("smtp_password_encrypted") @db.VarChar(1000)
+  emailFromAddress              String?               @map("email_from_address") @db.VarChar(1000)
+  aiApiKeyEncrypted             String?               @map("ai_api_key_encrypted") @db.VarChar(1000)
+  aiProvider                    String                @default("anthropic") @map("ai_provider") @db.VarChar(1000)
+  aiBaseUrl                     String?               @map("ai_base_url") @db.VarChar(1000)
+  aiModelFast                   String?               @map("ai_model_fast") @db.VarChar(1000)
+  aiModelStandard               String?               @map("ai_model_standard") @db.VarChar(1000)
   // Generic, bring-your-own embeddings provider (OpenAI-compatible /embeddings), decoupled from the
   // chat provider above. Null = semantic search inert for this org.
-  embeddingApiKeyEncrypted      String?           @map("embedding_api_key_encrypted") @db.VarChar(1000)
-  embeddingBaseUrl              String?           @map("embedding_base_url") @db.VarChar(1000)
-  embeddingModel                String?           @map("embedding_model") @db.VarChar(1000)
-  apiKeyHash                    String?           @map("api_key_hash") @db.VarChar(1000)
-  apiKeyPrefix                  String?           @map("api_key_prefix") @db.VarChar(1000)
-  apiKeyCreatedAt               DateTime?         @map("api_key_created_at") @db.Timestamptz(3)
-  webhookUrl                    String?           @map("webhook_url") @db.VarChar(1000)
-  webhookSecretEncrypted        String?           @map("webhook_secret_encrypted") @db.VarChar(1000)
-  samlEnabled                   Boolean           @default(false) @map("saml_enabled")
-  samlIdpEntityId               String?           @map("saml_idp_entity_id") @db.VarChar(1000)
-  samlIdpSsoUrl                 String?           @map("saml_idp_sso_url") @db.VarChar(1000)
-  samlIdpCertificate            String?           @map("saml_idp_certificate") @db.Text
-  autoArchiveSiblingsOnHire     Boolean           @default(true) @map("auto_archive_siblings_on_hire")
-  businessHoursJson             String?           @map("business_hours_json") @db.Text
-  holidaysJson                  String?           @map("holidays_json") @db.Text
-  fieldPermissionsJson          String?           @map("field_permissions_json") @db.Text
-  recordVisibilityEnabled       Boolean           @default(false) @map("record_visibility_enabled")
-  planId                        String            @map("plan_id") @db.Uuid
-  plan                          Plan              @relation(fields: [planId], references: [id])
-  billingStatus                 String            @default("active") @map("billing_status") @db.VarChar(1000)
-  stripeCustomerId              String?           @map("stripe_customer_id") @db.VarChar(1000)
-  stripeSubscriptionId          String?           @map("stripe_subscription_id") @db.VarChar(1000)
-  createdAt                     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  applyConsentText              String?           @map("apply_consent_text") @db.Text
-  applyConsentVersion           Int               @default(1) @map("apply_consent_version")
-  careersEnabled                Boolean           @default(false) @map("careers_enabled")
-  careersHeadline               String?           @map("careers_headline") @db.VarChar(1000)
-  careersIntro                  String?           @map("careers_intro") @db.Text
-  careersBannerPath             String?           @map("careers_banner_path") @db.VarChar(1000)
+  embeddingApiKeyEncrypted      String?               @map("embedding_api_key_encrypted") @db.VarChar(1000)
+  embeddingBaseUrl              String?               @map("embedding_base_url") @db.VarChar(1000)
+  embeddingModel                String?               @map("embedding_model") @db.VarChar(1000)
+  apiKeyHash                    String?               @map("api_key_hash") @db.VarChar(1000)
+  apiKeyPrefix                  String?               @map("api_key_prefix") @db.VarChar(1000)
+  apiKeyCreatedAt               DateTime?             @map("api_key_created_at") @db.Timestamptz(3)
+  webhookUrl                    String?               @map("webhook_url") @db.VarChar(1000)
+  webhookSecretEncrypted        String?               @map("webhook_secret_encrypted") @db.VarChar(1000)
+  samlEnabled                   Boolean               @default(false) @map("saml_enabled")
+  samlIdpEntityId               String?               @map("saml_idp_entity_id") @db.VarChar(1000)
+  samlIdpSsoUrl                 String?               @map("saml_idp_sso_url") @db.VarChar(1000)
+  samlIdpCertificate            String?               @map("saml_idp_certificate") @db.Text
+  autoArchiveSiblingsOnHire     Boolean               @default(true) @map("auto_archive_siblings_on_hire")
+  businessHoursJson             String?               @map("business_hours_json") @db.Text
+  holidaysJson                  String?               @map("holidays_json") @db.Text
+  fieldPermissionsJson          String?               @map("field_permissions_json") @db.Text
+  recordVisibilityEnabled       Boolean               @default(false) @map("record_visibility_enabled")
+  planId                        String                @map("plan_id") @db.Uuid
+  plan                          Plan                  @relation(fields: [planId], references: [id])
+  billingStatus                 String                @default("active") @map("billing_status") @db.VarChar(1000)
+  stripeCustomerId              String?               @map("stripe_customer_id") @db.VarChar(1000)
+  stripeSubscriptionId          String?               @map("stripe_subscription_id") @db.VarChar(1000)
+  createdAt                     DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  applyConsentText              String?               @map("apply_consent_text") @db.Text
+  applyConsentVersion           Int                   @default(1) @map("apply_consent_version")
+  careersEnabled                Boolean               @default(false) @map("careers_enabled")
+  careersHeadline               String?               @map("careers_headline") @db.VarChar(1000)
+  careersIntro                  String?               @map("careers_intro") @db.Text
+  careersBannerPath             String?               @map("careers_banner_path") @db.VarChar(1000)
   // Opt-in public AI assistant on the careers site (default off — it is public AI spend).
-  careersAssistantEnabled       Boolean           @default(false) @map("careers_assistant_enabled")
-  smsEnabled                    Boolean           @default(false) @map("sms_enabled")
-  smsProvider                   String            @default("twilio") @map("sms_provider") @db.VarChar(1000)
-  smsConfigEncrypted            String?           @map("sms_config_encrypted") @db.Text
+  careersAssistantEnabled       Boolean               @default(false) @map("careers_assistant_enabled")
+  smsEnabled                    Boolean               @default(false) @map("sms_enabled")
+  smsProvider                   String                @default("twilio") @map("sms_provider") @db.VarChar(1000)
+  smsConfigEncrypted            String?               @map("sms_config_encrypted") @db.Text
   // External Easy Apply (Indeed/LinkedIn) ingestion creds, encrypted JSON keyed by provider:
   // { "<provider>": { "secret": "..." } }. A provider is enabled iff it has a stored secret;
   // the feature is inert until an org configures one. Same on/off shape as the SMS config blob.
-  easyApplyConfigEncrypted      String?           @map("easy_apply_config_encrypted") @db.Text
-  whatsappEnabled               Boolean           @default(false) @map("whatsapp_enabled")
-  whatsappProvider              String            @default("twilio") @map("whatsapp_provider") @db.VarChar(1000)
-  whatsappConfigEncrypted       String?           @map("whatsapp_config_encrypted") @db.Text
+  easyApplyConfigEncrypted      String?               @map("easy_apply_config_encrypted") @db.Text
+  whatsappEnabled               Boolean               @default(false) @map("whatsapp_enabled")
+  whatsappProvider              String                @default("twilio") @map("whatsapp_provider") @db.VarChar(1000)
+  whatsappConfigEncrypted       String?               @map("whatsapp_config_encrypted") @db.Text
   // HRIS/ATS export: on candidate hire, POST a structured employee record to the org's HRIS inbound
   // API / iPaaS endpoint. Bring-your-own endpoint + auth token; inert until enabled + a target URL
   // is set. hrisAuthHeaderEncrypted holds the full Authorization header value (e.g. "Bearer xxx").
   // Daily staff reminder sweep (pending grading, stale invites, expiring offers, upcoming
   // interviews, feedback owed) — opt-in per org; per-user email opt-out via userNotificationPreference.
-  remindersEnabled              Boolean           @default(false) @map("reminders_enabled")
+  remindersEnabled              Boolean               @default(false) @map("reminders_enabled")
   // Weekly scheduled-report digest — opt-in per org. Recipients are a JSON array of staff user ids;
   // lastSentAt gates the 7-day cadence (and prevents a restart from re-sending the same week).
-  scheduledReportEnabled        Boolean           @default(false) @map("scheduled_report_enabled")
-  scheduledReportRecipientsJson String?           @map("scheduled_report_recipients_json") @db.Text
-  scheduledReportLastSentAt     DateTime?         @map("scheduled_report_last_sent_at") @db.Timestamptz(3)
-  hrisExportEnabled             Boolean           @default(false) @map("hris_export_enabled")
-  hrisProvider                  String            @default("generic") @map("hris_provider") @db.VarChar(1000)
-  hrisTargetUrl                 String?           @map("hris_target_url") @db.VarChar(1000)
-  hrisAuthHeaderEncrypted       String?           @map("hris_auth_header_encrypted") @db.Text
+  scheduledReportEnabled        Boolean               @default(false) @map("scheduled_report_enabled")
+  scheduledReportRecipientsJson String?               @map("scheduled_report_recipients_json") @db.Text
+  scheduledReportLastSentAt     DateTime?             @map("scheduled_report_last_sent_at") @db.Timestamptz(3)
+  hrisExportEnabled             Boolean               @default(false) @map("hris_export_enabled")
+  hrisProvider                  String                @default("generic") @map("hris_provider") @db.VarChar(1000)
+  hrisTargetUrl                 String?               @map("hris_target_url") @db.VarChar(1000)
+  hrisAuthHeaderEncrypted       String?               @map("hris_auth_header_encrypted") @db.Text
   users                         User[]
   auditLogs                     AuditLog[]
   webhookDeliveries             WebhookDelivery[]
+  securityPolicy                TenantSecurityPolicy?
 
   @@map("organizations")
 }
@@ -206,34 +207,37 @@ model SsoLoginCode {
 }
 
 model User {
-  id                  String               @id @default(uuid()) @db.Uuid
-  organizationId      String?              @map("organization_id") @db.Uuid
-  organization        Organization?        @relation(fields: [organizationId], references: [id])
-  email               String               @db.Citext
-  name                String?              @db.VarChar(1000)
-  timeZone            String?              @map("time_zone") @db.VarChar(1000)
-  emailSignature      String?              @map("email_signature") @db.Text
+  id                     String               @id @default(uuid()) @db.Uuid
+  organizationId         String?              @map("organization_id") @db.Uuid
+  organization           Organization?        @relation(fields: [organizationId], references: [id])
+  email                  String               @db.Citext
+  name                   String?              @db.VarChar(1000)
+  timeZone               String?              @map("time_zone") @db.VarChar(1000)
+  emailSignature         String?              @map("email_signature") @db.Text
   // Notification email cadence: 'immediate' (default = one email per event, today's behavior),
   // 'daily' (batched into one daily digest by the digest sweep), or 'off' (no notification emails at
   // all; the in-app bell is unaffected). lastDigestSentAt anchors the once-per-day digest sweep.
-  notificationDigest  String               @default("immediate") @map("notification_digest") @db.VarChar(1000)
-  lastDigestSentAt    DateTime?            @map("last_digest_sent_at") @db.Timestamptz(3)
-  passwordHash        String               @map("password_hash") @db.VarChar(1000)
-  role                String               @db.VarChar(1000)
-  status              String               @default("active") @db.VarChar(1000)
+  notificationDigest     String               @default("immediate") @map("notification_digest") @db.VarChar(1000)
+  lastDigestSentAt       DateTime?            @map("last_digest_sent_at") @db.Timestamptz(3)
+  passwordHash           String               @map("password_hash") @db.VarChar(1000)
+  role                   String               @db.VarChar(1000)
+  status                 String               @default("active") @db.VarChar(1000)
   // Blob path, not a URL. The container is private, so every read has to be
   // SAS-signed on the way out -- see UsersService.toProfileResponse.
-  avatarPath          String?              @map("avatar_path") @db.VarChar(1000)
-  lastLoginAt         DateTime?            @map("last_login_at") @db.Timestamptz(3)
-  managerId           String?              @map("manager_id") @db.Uuid
-  permissionProfileId String?              @map("permission_profile_id") @db.Uuid
-  permissionProfile   PermissionProfile?   @relation(fields: [permissionProfileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
-  refreshTokens       RefreshToken[]
-  sessions            Session[]
-  passwordResetTokens PasswordResetToken[]
-  ssoLoginCodes       SsoLoginCode[]
-  auditLogs           AuditLog[]
+  avatarPath             String?              @map("avatar_path") @db.VarChar(1000)
+  lastLoginAt            DateTime?            @map("last_login_at") @db.Timestamptz(3)
+  // Set when the breached-password check could not run as this password was chosen (HIBP
+  // unreachable, fail-open); the next successful sign-in re-checks it (YX-IAM-08).
+  passwordRecheckPending Boolean              @default(false) @map("password_recheck_pending")
+  managerId              String?              @map("manager_id") @db.Uuid
+  permissionProfileId    String?              @map("permission_profile_id") @db.Uuid
+  permissionProfile      PermissionProfile?   @relation(fields: [permissionProfileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt              DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  refreshTokens          RefreshToken[]
+  sessions               Session[]
+  passwordResetTokens    PasswordResetToken[]
+  ssoLoginCodes          SsoLoginCode[]
+  auditLogs              AuditLog[]
 
   @@unique([organizationId, email])
   @@map("users")
@@ -302,6 +306,34 @@ model Session {
   @@index([userId, createdAt])
   @@index([organizationId, lastSeenAt])
   @@map("sessions")
+}
+
+// A company's security settings (P12 §4, Q8). One row per organisation; no row = YukthiX defaults.
+// Every value may only be stricter than the YukthiX floor: enforced by the API (TENANT_SECURITY_FLOOR)
+// and again by CHECK constraints in the migration.
+model TenantSecurityPolicy {
+  organizationId         String       @id @map("organization_id") @db.Uuid
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // 'sensitive_roles' (floor) | 'all'
+  mfaScope               String       @default("sensitive_roles") @map("mfa_scope") @db.VarChar(16)
+  // subset of passkey / totp / otp; always includes passkey or totp (OTP is fallback only)
+  allowedFactors         String[]     @default(["passkey", "totp"]) @map("allowed_factors") @db.VarChar(16)
+  // null = platform default (30 min idle, 12 h absolute)
+  sessionIdleMinutes     Int?         @map("session_idle_minutes")
+  sessionAbsoluteMinutes Int?         @map("session_absolute_minutes")
+  // null = no limit; otherwise the oldest live sessions beyond it are signed out at sign-in
+  maxConcurrentSessions  Int?         @map("max_concurrent_sessions")
+  passwordMinLength      Int          @default(12) @map("password_min_length")
+  // IPs / CIDRs; empty = no restriction for that surface
+  ipAllowlistDesk        String[]     @default([]) @map("ip_allowlist_desk")
+  ipAllowlistAdmin       String[]     @default([]) @map("ip_allowlist_admin")
+  ipAllowlistApi         String[]     @default([]) @map("ip_allowlist_api")
+  ssoOnly                Boolean      @default(false) @map("sso_only")
+  breakGlassUserIds      String[]     @default([]) @map("break_glass_user_ids") @db.Uuid
+  updatedAt              DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedByUserId        String?      @map("updated_by_user_id") @db.Uuid
+
+  @@map("tenant_security_policies")
 }
 
 // Every staff sign-in attempt (P12 §4, YX-IAM-10). Append-only for the app role (P08 pattern:
