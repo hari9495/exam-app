@@ -146,7 +146,7 @@ export class MfaController {
     if (!(await this.mfa.hasFactor(user))) {
       throw new BadRequestException('Set up a passkey or an authenticator app first');
     }
-    const reserved = await this.loginProtection.reserve('stepup', user.id, ip);
+    const reserved = await this.loginProtection.reserve('stepup', user.id, ip, { lockout: await this.auth.lockoutFor(user.organizationId) });
     if (reserved.block) throw new TooManyLoginAttemptsException(reserved.block.retryAfterSeconds);
     const challenge = dto.factor === 'passkey' ? await this.mfa.takeStepUpChallenge(me.sessionId) : null;
     const factor = await this.mfa.verifyProof(user, dto, challenge);

@@ -411,6 +411,10 @@ model TenantSecurityPolicy {
   breakGlassUserIds      String[]     @default([]) @map("break_glass_user_ids") @db.Uuid
   // OTP sign-in channels the company allows: subset of email / sms / whatsapp; empty = off
   otpSignInChannels      String[]     @default([]) @map("otp_sign_in_channels") @db.VarChar(16)
+  // Account lockout (YX-IAM-07): lock on the Nth consecutive failure (3-10), first lock for M
+  // minutes (15-1440), doubling per further lock up to 24 h
+  maxFailedAttempts      Int          @default(10) @map("max_failed_attempts")
+  lockMinutes            Int          @default(15) @map("lock_minutes")
   updatedAt              DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   updatedByUserId        String?      @map("updated_by_user_id") @db.Uuid
 
@@ -426,7 +430,7 @@ model LoginEvent {
   userId         String?  @map("user_id") @db.Uuid
   // The identifier that was typed (lower-cased email), kept even when no user matched.
   identifier     String?  @db.VarChar(320)
-  // 'success' | 'failed' | 'locked' | 'mfa_failed' | 'code_sent'
+  // 'success' | 'failed' | 'locked' | 'mfa_failed' | 'code_sent' | 'unlocked'
   result         String   @db.VarChar(16)
   // 'password' | 'saml' | 'otp_email' | 'otp_sms' | 'otp_whatsapp' (second-factor failures: the factor)
   method         String   @db.VarChar(32)

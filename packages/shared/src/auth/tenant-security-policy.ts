@@ -21,6 +21,10 @@ export const TENANT_SECURITY_FLOOR = {
   primaryFactors: ['passkey', 'totp'],
   // One-time-code sign-in (AAL1) channels a company may turn on; off unless it does.
   otpSignInChannels: ['email', 'sms', 'whatsapp'],
+  // Account lockout (YX-IAM-07): lock no later than the 10th consecutive failure, for no less than
+  // 15 minutes (the first lock; later ones double, capped at 24 h). Migration 20261006600000.
+  maxFailedAttempts: { min: 3, max: 10 },
+  lockMinutes: { min: 15, max: 24 * 60 },
 } as const;
 
 export type SecurityPolicySettings = Omit<TenantSecurityPolicy, 'organizationId' | 'updatedAt' | 'updatedByUserId'>;
@@ -39,6 +43,8 @@ export const DEFAULT_SECURITY_POLICY: SecurityPolicySettings = Object.freeze({
   ssoOnly: false,
   breakGlassUserIds: [],
   otpSignInChannels: [],
+  maxFailedAttempts: TENANT_SECURITY_FLOOR.maxFailedAttempts.max,
+  lockMinutes: TENANT_SECURITY_FLOOR.lockMinutes.min,
 });
 
 // Read on every staff request (IP allow-lists), so cached per process.

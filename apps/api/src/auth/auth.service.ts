@@ -28,7 +28,7 @@ import { escapeHtml } from '../notifications/notification-email-render';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ClientMeta, LoginMethod, SessionUser, SessionsService } from './sessions.service';
-import { LoginAttempt, LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
+import { LockoutSettings, LoginAttempt, LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
 import { PasswordPolicyService } from './password-policy.service';
 import { MfaService, MfaUser, PENDING_LOGIN_TTL_SECONDS, PendingLogin } from './mfa.service';
 import { MfaLoginDto, MfaProofDto } from './dto/mfa.dto';
@@ -154,10 +154,13 @@ export class AuthService {
     // Counted BEFORE the password is checked (atomic; a parallel burst cannot outrun the lock).
     // Break-glass accounts (YX-IAM-04) get the delay but not the long lock: their admins are
     // alerted instead, so nobody can keep them locked out during an SSO outage.
+    // The company's lockout settings apply to every identifier under its slug -- real account or not,
+    // organisation active or not -- so the lock behaviour reveals nothing about either.
     const listedBreakGlass = Boolean(user && policy.breakGlassUserIds.includes(user.id));
-    const reserved = await this.loginProtection.reserve(orgSlug, identifier, meta.ip, { deviceId: meta.deviceId, lockExempt: listedBreakGlass });
+    const lockout = await this.lockoutFor(org?.id ?? null);
+    const reserved = await this.loginProtection.reserve(orgSlug, identifier, meta.ip, { deviceId: meta.deviceId, lockExempt: listedBreakGlass, lockout });
     if (reserved.block) {
-      await this.sessions.recordLoginEvent({ ...attempt, organizationId: org?.id ?? null, result: 'locked', reason: `${reserved.block.scope}_locked` });
+      await this.sessions.recordLoginEvent({ ...attempt, organizationId: org?.id ?? null, userId: user?.id ?? null, result: 'locked', reason: `${reserved.block.scope}_locked` });
       throw new TooManyLoginAttemptsException(reserved.block.retryAfterSeconds);
     }
 
@@ -199,6 +202,12 @@ export class AuthService {
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
     return hasFactor ? this.challengeSecondFactor(user.id, login, meta) : this.finishSignIn(user, login, meta);
+  }
+
+  // A company's lockout settings (YX-IAM-07); YukthiX's for platform staff and unknown organisations.
+  async lockoutFor(organizationId: string | null): Promise<LockoutSettings> {
+    const { maxFailedAttempts, lockMinutes } = organizationId ? await loadTenantSecurityPolicy(this.tenantPrisma, organizationId) : DEFAULT_SECURITY_POLICY;
+    return { maxFailedAttempts, lockMinutes };
   }
 
   // Everything after the last factor: lockout cleared, session + tokens, audit, alerts.
@@ -290,7 +299,11 @@ export class AuthService {
     const event = { organizationId: user.organizationId, userId: user.id, identifier: pending.identifier, meta };
     // Counted before the proof is checked (atomic): parallel guesses with one mfaToken cannot
     // outrun the lock.
-    const reserved = await this.loginProtection.reserve('mfa', user.id, meta.ip, { deviceId: meta.deviceId, lockExempt: pending.breakGlass });
+    const reserved = await this.loginProtection.reserve('mfa', user.id, meta.ip, {
+      deviceId: meta.deviceId,
+      lockExempt: pending.breakGlass,
+      lockout: await this.lockoutFor(user.organizationId),
+    });
     if (reserved.block) {
       await this.sessions.recordLoginEvent({ ...event, result: 'locked', method: dto.factor, reason: `mfa_${reserved.block.scope}_locked` });
       throw new TooManyLoginAttemptsException(reserved.block.retryAfterSeconds);
@@ -406,10 +419,12 @@ export class AuthService {
     const method = `otp_${record?.channel ?? (parsed.kind === 'email' ? 'email' : 'sms')}` as PendingLogin['method'];
     const event = { organizationId: record?.organizationId || null, identifier: parsed.value, method, meta };
 
-    // Counted before the code is checked (atomic; see LoginProtectionService).
-    const reserved = await this.loginProtection.reserve(orgSlug, parsed.value, meta.ip, { deviceId: meta.deviceId });
+    // Counted before the code is checked (atomic; see LoginProtectionService), under the lockout
+    // settings of the organisation the slug names -- the same counter and settings as passwords.
+    const slugOrg = await this.prisma.organization.findUnique({ where: { slug: orgSlug }, select: { id: true } });
+    const reserved = await this.loginProtection.reserve(orgSlug, parsed.value, meta.ip, { deviceId: meta.deviceId, lockout: await this.lockoutFor(slugOrg?.id ?? null) });
     if (reserved.block) {
-      await this.sessions.recordLoginEvent({ ...event, result: 'locked', reason: `${reserved.block.scope}_locked` });
+      await this.sessions.recordLoginEvent({ ...event, userId: record?.userId || null, result: 'locked', reason: `${reserved.block.scope}_locked` });
       throw new TooManyLoginAttemptsException(reserved.block.retryAfterSeconds);
     }
 

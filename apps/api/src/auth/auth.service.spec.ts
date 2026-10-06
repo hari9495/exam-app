@@ -40,6 +40,8 @@ jest.mock('argon2', () => {
 const META = { ip: '203.0.113.9', userAgent: 'jest-agent', deviceId: 'd'.repeat(43) };
 const SESSION_ID = '44444444-4444-4444-8444-444444444444';
 
+const DEFAULT_LOCKOUT = { maxFailedAttempts: 10, lockMinutes: 15 };
+
 describe('AuthService', () => {
   let service: AuthService;
   let prisma: {
@@ -932,12 +934,23 @@ describe('AuthService', () => {
       await expect(attempt).rejects.toBeInstanceOf(TooManyLoginAttemptsException);
       await expect(attempt).rejects.toMatchObject({ retryAfterSeconds: 900 });
       // The attempt is reserved (counted atomically) before any password work, on this device.
-      expect(loginProtection.reserve).toHaveBeenCalledWith('demo-org', 'admin@demo-org.test', META.ip, { deviceId: META.deviceId, lockExempt: false });
+      expect(loginProtection.reserve).toHaveBeenCalledWith('demo-org', 'admin@demo-org.test', META.ip, { deviceId: META.deviceId, lockExempt: false, lockout: DEFAULT_LOCKOUT });
       expect(verify).not.toHaveBeenCalled(); // no password check
       expect(sessions.recordLoginEvent).toHaveBeenCalledWith(
         expect.objectContaining({ organizationId: 'org-1', result: 'locked', reason: 'account_locked', identifier: 'admin@demo-org.test' }),
       );
       expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it("counts under the company's lockout settings, and the default for an unknown organisation (YX-IAM-07)", async () => {
+      setPolicy({ maxFailedAttempts: 3, lockMinutes: 60 });
+      tenantPrisma.forTenant.mockResolvedValueOnce(null); // unknown account: same settings as a real one
+      await expect(service.login(DTO, META)).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(loginProtection.reserve).toHaveBeenLastCalledWith('demo-org', 'admin@demo-org.test', META.ip, expect.objectContaining({ lockout: { maxFailedAttempts: 3, lockMinutes: 60 } }));
+
+      prisma.organization.findUnique.mockResolvedValue(null);
+      await expect(service.login(DTO, META)).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(loginProtection.reserve).toHaveBeenLastCalledWith('demo-org', 'admin@demo-org.test', META.ip, expect.objectContaining({ lockout: DEFAULT_LOCKOUT }));
     });
 
     it('a correct password does not get through a lock either', async () => {
@@ -1035,7 +1048,7 @@ describe('AuthService', () => {
       loginProtection.registerFailure.mockResolvedValue({ failures: 10, locked: true });
 
       await expect(service.login({ ...DTO, password: 'wrong' }, META)).rejects.toThrow('Invalid credentials');
-      expect(loginProtection.reserve).toHaveBeenCalledWith('demo-org', 'admin@demo-org.test', META.ip, { deviceId: META.deviceId, lockExempt: true });
+      expect(loginProtection.reserve).toHaveBeenCalledWith('demo-org', 'admin@demo-org.test', META.ip, { deviceId: META.deviceId, lockExempt: true, lockout: DEFAULT_LOCKOUT });
       expect(sessions.notifyAdmins).toHaveBeenCalledWith('org-1', 'Repeated failed sign-ins to a break-glass account', expect.stringContaining('admin@demo-org.test'));
       expect(sessions.notifyLocked).not.toHaveBeenCalled();
     });
@@ -1193,7 +1206,7 @@ describe('AuthService', () => {
       await service.completeMfaLogin({ mfaToken: 'pending-token', factor: 'totp', code: '123456' }, META);
       expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), 'password', META, 'totp', null);
       // The second step of a break-glass sign-in is not long-locked either.
-      expect(loginProtection.reserve).toHaveBeenCalledWith('mfa', 'user-1', META.ip, { deviceId: META.deviceId, lockExempt: true });
+      expect(loginProtection.reserve).toHaveBeenCalledWith('mfa', 'user-1', META.ip, { deviceId: META.deviceId, lockExempt: true, lockout: DEFAULT_LOCKOUT });
       expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'login.break_glass', metadata: { mfa: 'totp' } }));
       expect(sessions.notifyBreakGlass).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), META);
       expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'success', reason: 'break_glass' }));
@@ -1294,7 +1307,7 @@ describe('AuthService', () => {
       mfa.verifyProof.mockResolvedValue(null);
       await expect(service.completeMfaLogin(PROOF, META)).rejects.toThrow(UnauthorizedException);
       // Counted before the proof was checked (reserve), then the failure is registered on it.
-      expect(loginProtection.reserve).toHaveBeenCalledWith('mfa', 'user-1', META.ip, { deviceId: META.deviceId, lockExempt: false });
+      expect(loginProtection.reserve).toHaveBeenCalledWith('mfa', 'user-1', META.ip, { deviceId: META.deviceId, lockExempt: false, lockout: DEFAULT_LOCKOUT });
       expect(loginProtection.registerFailure).toHaveBeenCalledWith('mfa', 'user-1', META.ip, { block: null, failures: 1, lockExempt: false });
       expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'mfa_failed', method: 'totp', reason: 'mfa_invalid' }));
       expect(mfa.consumePendingLogin).not.toHaveBeenCalled();
@@ -1548,7 +1561,7 @@ describe('AuthService', () => {
       it('a wrong code counts toward the lockout and is logged; the lock emails the holder', async () => {
         otp.peek.mockResolvedValue(stored());
         await expect(verify('000000')).rejects.toThrow(UnauthorizedException);
-        expect(loginProtection.reserve).toHaveBeenCalledWith('demo-org', EMAIL, META.ip, { deviceId: META.deviceId });
+        expect(loginProtection.reserve).toHaveBeenCalledWith('demo-org', EMAIL, META.ip, { deviceId: META.deviceId, lockout: DEFAULT_LOCKOUT });
         expect(loginProtection.registerFailure).toHaveBeenCalledWith('demo-org', EMAIL, META.ip, { block: null, failures: 1, lockExempt: false });
         expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed', method: 'otp_email', reason: 'otp_invalid' }));
         loginProtection.registerFailure.mockResolvedValue({ failures: 10, locked: true });

@@ -1,6 +1,7 @@
 import {
   DEFAULT_SECURITY_POLICY,
   SecurityPolicySettings,
+  TENANT_SECURITY_FLOOR,
   invalidateTenantSecurityPolicy,
   ipAllowedForSurface,
   loadTenantSecurityPolicy,
@@ -11,6 +12,11 @@ import {
 const policy = (overrides: Partial<SecurityPolicySettings>): SecurityPolicySettings => ({ ...DEFAULT_SECURITY_POLICY, ...overrides });
 
 describe('tenant security policy (P12 Q8, YX-IAM-06/09)', () => {
+  it('a company without a policy locks at the floor: on the 10th failure, for 15 minutes (YX-IAM-07)', () => {
+    expect(TENANT_SECURITY_FLOOR).toMatchObject({ maxFailedAttempts: { min: 3, max: 10 }, lockMinutes: { min: 15, max: 1440 } });
+    expect(DEFAULT_SECURITY_POLICY).toMatchObject({ maxFailedAttempts: 10, lockMinutes: 15 });
+  });
+
   const saved = { ...process.env };
   afterEach(() => {
     process.env = { ...saved };
