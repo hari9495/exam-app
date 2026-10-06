@@ -19,6 +19,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'employee_code.scope': { label: 'Employee codes are unique', scopes: ['tenant'], dated: false, values: ['legal_entity', 'tenant'], default: 'legal_entity' },
   // YX-ORG-15: whether a new structure master starts shared or entity-only.
   'org.master.default_ownership': { label: 'New masters are', scopes: ['tenant'], dated: false, values: ['shared', 'entity_only'], default: 'shared' },
+  // P06 YX-HIS-12: how far back a past-dated change may go without a System Admin override (Q5:
+  // default the start of the current financial year; the company may widen it).
+  'employee_change.retro_limit': { label: 'Past-dated changes may go back to', scopes: ['tenant'], dated: false, values: ['current_fy', 'previous_fy'], default: 'current_fy' },
   // P01 §4.6 / D1 (M02): attendance mode and the missing-punch effect, both dated.
   'attendance.mode': {
     label: 'Attendance mode',

@@ -42,7 +42,7 @@ interface RequestUser {
  * Changes are made by the signed-in person themselves; Confidential and pay data are never shown to
  * YukthiX staff acting in a company or to an impersonation (P02 YX-SEC-20: masked in support access).
  */
-function ownSession(req: Request): void {
+export function ownSession(req: Request): void {
   const user = req.user as RequestUser | undefined;
   if (user?.impersonatorUserId || user?.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else');
 }

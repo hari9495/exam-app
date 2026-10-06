@@ -8,14 +8,15 @@ import { ScopeContext, ScopeType, SETTINGS, SettingDef, SettingRow, resolveSetti
 // P01 §4.6 scoped settings (YX-ORG-12, YX-ORG-18): overrides per scope, resolved most-specific first, every
 // value shown with where it comes from.
 
-/** The table behind each scope that exists today; pay groups (M03) and employees (step 2b) come later. */
-const SCOPE_MODEL: Partial<Record<ScopeType, 'legalEntity' | 'location' | 'department' | 'employmentType' | 'grade' | 'designation'>> = {
+/** The table behind each scope that exists today; pay groups arrive with M03. */
+const SCOPE_MODEL: Partial<Record<ScopeType, 'legalEntity' | 'location' | 'department' | 'employmentType' | 'grade' | 'designation' | 'employee'>> = {
   legal_entity: 'legalEntity',
   location: 'location',
   department: 'department',
   employment_type: 'employmentType',
   grade: 'grade',
   designation: 'designation',
+  employee: 'employee',
 };
 
 type Row = { id: string; scopeType: string; scopeId: string; key: string; value: unknown; validFrom: Date | null; updatedAt: Date };
@@ -107,6 +108,26 @@ export class OrgSettingsService {
     if (def.dated && !q.asOf) throw new BadRequestException(`${def.label} is dated: give the date being processed (asOf).`);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const context: ScopeContext = { tenant: c.organizationId };
+      if (q.employeeId) {
+        if (q.legalEntityId || q.locationId || q.departmentId || q.employmentTypeId || q.gradeId || q.designationId) {
+          throw new BadRequestException('Give the employee or the scopes, not both.');
+        }
+        // YX-ORG-18: the employee's scopes are read from the assignment in force on the as-of date.
+        const on = asDate(q.asOf ?? todayIst());
+        const a = await tx.employeeAssignment.findFirst({
+          where: { organizationId: c.organizationId, employeeId: q.employeeId, supersededAt: null, validFrom: { lte: on }, OR: [{ validTo: null }, { validTo: { gte: on } }] },
+        });
+        if (!a) throw new NotFoundException('That employee has no assignment on that date.');
+        Object.assign(context, {
+          employee: q.employeeId,
+          designation: a.designationId,
+          grade: a.gradeId ?? undefined,
+          employment_type: a.employmentTypeId,
+          department: a.departmentId,
+          location: a.locationId,
+          legal_entity: a.legalEntityId,
+        });
+      }
       const given: [ScopeType, string | undefined][] = [
         ['legal_entity', q.legalEntityId],
         ['location', q.locationId],

@@ -360,4 +360,6 @@ export class ResolveSettingQueryDto {
   @IsOptional() @IsUUID() employmentTypeId?: string;
   @IsOptional() @IsUUID() gradeId?: string;
   @IsOptional() @IsUUID() designationId?: string;
+  /** Brings in the employee's assignment in force on asOf (today for plain keys), YX-ORG-18. */
+  @IsOptional() @IsUUID() employeeId?: string;
 }
