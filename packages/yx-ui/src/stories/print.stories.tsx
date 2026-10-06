@@ -88,17 +88,25 @@ export const PayslipWithLop: S = {
   ),
 };
 
-const OFFER_BODY = `
-<p>Dear Meera,</p>
-<p>We are pleased to offer you the position of <strong>Accounts executive</strong> in the Finance team at our Coimbatore head office, reporting to Sana Nizami, Finance manager.</p>
-<p>Your annual cost to company will be <strong>${formatINR(540000)}</strong> (${numberToIndianWords(540000)}). The salary breakup is in Annexure A.</p>
-<ul>
-  <li>Date of joining: on or before 3 November 2026</li>
-  <li>Probation: 6 months</li>
-  <li>Working days: Monday to Saturday, 9:00 am to 5:30 pm, with the second and fourth Saturdays off</li>
-</ul>
-<p>Please sign and return this letter by 10 October 2026 to accept the offer. Bring the documents listed in the joining checklist on your first day.</p>
-<p>We look forward to working with you.</p>`;
+const OFFER_BODY = (
+  <>
+    <p>Dear Meera,</p>
+    <p>
+      We are pleased to offer you the position of <strong>Accounts executive</strong> in the Finance team at our Coimbatore head office, reporting to Sana
+      Nizami, Finance manager.
+    </p>
+    <p>
+      Your annual cost to company will be <strong>{formatINR(540000)}</strong> ({numberToIndianWords(540000)}). The salary breakup is in Annexure A.
+    </p>
+    <ul>
+      <li>Date of joining: on or before 3 November 2026</li>
+      <li>Probation: 6 months</li>
+      <li>Working days: Monday to Saturday, 9:00 am to 5:30 pm, with the second and fourth Saturdays off</li>
+    </ul>
+    <p>Please sign and return this letter by 10 October 2026 to accept the offer. Bring the documents listed in the joining checklist on your first day.</p>
+    <p>We look forward to working with you.</p>
+  </>
+);
 
 export const OfferLetter: S = {
   render: () => (
@@ -109,7 +117,7 @@ export const OfferLetter: S = {
         reference: 'NF/HR/OFF/2026/0412',
         recipient: { name: 'Meera Iyer', lines: ['14, Bharathi Street, Ram Nagar', 'Coimbatore 641009'] },
         subject: 'Offer of employment',
-        bodyHtml: OFFER_BODY,
+        body: OFFER_BODY,
         signatory: { name: 'Priya Raghavan', designation: 'Head of People' },
         annexures: [
           <div key="a" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

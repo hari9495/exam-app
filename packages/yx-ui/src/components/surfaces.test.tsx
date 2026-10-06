@@ -14,10 +14,33 @@ import {
   type ExamQuestionState,
 } from './exam';
 import { CareersPage, PageBuilder, contrastWithWhite, moveSection, normaliseHex, resolveTenantAccent, type CareersConfig } from './careers';
-import { maskTail, numberToIndianWords } from './print';
+import { LetterDocument, maskTail, numberToIndianWords } from './print';
 import { Logo, PoweredBy } from './brand';
 
 const Q = (answered: boolean, markedForReview = false): ExamQuestionState => ({ answered, markedForReview });
+
+// Regression: the letter body was a raw-HTML sink (dangerouslySetInnerHTML). Content is React
+// nodes now, so markup arriving as text -- a tenant template, a name -- is shown, never run.
+describe('LetterDocument', () => {
+  it('renders HTML-looking text as text, never as markup', () => {
+    const payload = '<img src=x onerror="alert(1)"><script>alert(2)</script>';
+    const { container } = render(
+      <LetterDocument
+        data={{
+          company: { name: 'Acme', address: ['1 Road'] },
+          date: new Date('2026-10-06'),
+          reference: 'R/1',
+          recipient: { name: payload, lines: [] },
+          subject: 'Offer',
+          body: <p>{payload}</p>,
+          signatory: { name: 'P', designation: 'HR' },
+        }}
+      />,
+    );
+    expect(container.querySelector('img, script')).toBeNull();
+    expect(screen.getAllByText(payload, { exact: false }).length).toBeGreaterThan(0);
+  });
+});
 
 describe('ExamTimer', () => {
   it('formats mm:ss and switches phase at 5 minutes and 1 minute', () => {

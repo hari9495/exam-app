@@ -391,10 +391,10 @@ export interface LetterData {
   recipient: { name: string; lines: string[] };
   subject: string;
   /**
-   * Body HTML from the P05 letter template, already merged and SANITISED on the server
-   * (allow-list: p, strong, em, ul, ol, li, table, br). Never pass user-typed HTML here.
+   * The letter body as React content (paragraphs, lists, tables). Structured, never an HTML
+   * string: a raw-HTML sink here would turn any tenant-controlled template or name into stored XSS.
    */
-  bodyHtml: string;
+  body: ReactNode;
   signatory: { name: string; designation: string; /** Signature image slot, or "Signed digitally" text. */ signature?: ReactNode };
   /** Extra pages, e.g. an annexure with the salary breakup. */
   annexures?: ReactNode[];
@@ -419,7 +419,7 @@ export function LetterDocument({ data }: { data: LetterData }) {
           ))}
         </address>
         <p className="yx-print__subject">Subject: {data.subject}</p>
-        <div className="yx-print__body" dangerouslySetInnerHTML={{ __html: data.bodyHtml }} />
+        <div className="yx-print__body">{data.body}</div>
         <div className="yx-print__signature">
           <p>For {data.company.name}</p>
           <div className="yx-print__sign-slot">{data.signatory.signature ?? <span className="yx-print__muted">Signed digitally</span>}</div>
