@@ -39,6 +39,7 @@ describe('one-time codes (P12 §3, M04 Q2)', () => {
     const sms = {
       channels: new Set<OtpMobileChannel>(['sms', 'whatsapp']),
       sent,
+      routable: jest.fn(async (_channel: OtpMobileChannel, organizationId: string | null) => organizationId !== 'org-without-sms'),
       send: jest.fn(async (req: OtpSmsRequest): Promise<OtpSmsResult> => {
         sent.push(req);
         return result;
@@ -82,6 +83,15 @@ describe('one-time codes (P12 §3, M04 Q2)', () => {
         expect.objectContaining({ organizationId: 'org-1', to: '+919876543210', channel: 'sms', code: '012345', purpose: 'verification code', minutes: 5, recipientUserId: 'u-1' }),
       ]);
       expect(sms.sent[0].idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
+    });
+
+    it('a text channel counts as available only where a text could actually go', async () => {
+      const otp = service({});
+      expect(await otp.channelAvailable('email', 'org-without-sms')).toBe(true);
+      // Before any organisation is known: a platform fact only.
+      expect(await otp.channelAvailable('sms')).toBe(true);
+      expect(await otp.channelAvailable('sms', 'org-1')).toBe(true);
+      expect(await otp.channelAvailable('sms', 'org-without-sms')).toBe(false);
     });
 
     it('a code that cannot go by text goes to the fallback email when the flow allows one (YX-NTF-07)', async () => {

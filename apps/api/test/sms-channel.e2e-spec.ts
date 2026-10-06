@@ -395,6 +395,9 @@ describe('SMS channel (P04 §4.4/§4.5a; YX-NTF-07/10/11/12/13/14)', () => {
       expect(hits).toEqual([]);
       expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: `field-${runId}@sms.test` }));
       expect(await lastFieldDelivery()).toMatchObject({ status: 'fallback', error: 'no_approved_template: Pending DLT: template is pending, not approved' });
+      // Nobody is offered a texted second step or number check that can't arrive.
+      expect(await channel.hasRoute(org.A.id)).toBe(false);
+      expect(await channel.hasRoute(org.B.id)).toBe(true); // B: the shared account (development sink here)
     });
 
     it('over the monthly cap: email instead, and the admins are told once', async () => {

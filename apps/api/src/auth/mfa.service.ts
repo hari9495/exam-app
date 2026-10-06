@@ -587,7 +587,7 @@ export class MfaService {
   async startMobileVerification(user: MfaUser, session: SessionAssurance, sessionId: string, raw: string, channel: OtpMobileChannel, ip: string | null) {
     const mobileNumber = normaliseMobileNumber(raw);
     if (!mobileNumber) throw new BadRequestException('Enter a valid mobile number, with the country code if it is not an Indian number');
-    if (!this.otp.channelAvailable(channel)) throw new BadRequestException('Codes by text message are not available right now');
+    if (!(await this.otp.channelAvailable(channel, user.organizationId))) throw new BadRequestException('Codes by text message are not available right now');
     await this.assertMayChangeMobile(user, session);
     await this.otp.reserveSend(`mobile\u0000${user.id}`, ip);
     const code = await this.otp.issue(this.mobileKey(sessionId), { userId: user.id, mobileNumber });

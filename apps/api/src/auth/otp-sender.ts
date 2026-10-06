@@ -24,6 +24,8 @@ export interface OtpSmsSender {
   // Channels this provider can deliver. A channel it lacks is refused before any account lookup.
   readonly channels: ReadonlySet<OtpMobileChannel>;
   send(request: OtpSmsRequest): Promise<OtpSmsResult>;
+  /** Whether a text to this company (null = platform) could go now: an account with an approved template. */
+  routable(channel: OtpMobileChannel, organizationId: string | null): Promise<boolean>;
 }
 
 export const OTP_SMS_SENDER = 'OTP_SMS_SENDER';

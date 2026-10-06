@@ -12,6 +12,11 @@ export class ChannelOtpSender implements OtpSmsSender {
 
   constructor(private readonly channel: SmsChannelService) {}
 
+  async routable(channel: OtpMobileChannel, organizationId: string | null): Promise<boolean> {
+    if (!this.channels.has(channel)) return false;
+    return channel === 'whatsapp' || this.channel.hasRoute(organizationId);
+  }
+
   async send(req: OtpSmsRequest): Promise<OtpSmsResult> {
     if (req.channel === 'whatsapp') {
       if (!this.channels.has('whatsapp')) return { delivered: false, reason: 'whatsapp_unavailable' };

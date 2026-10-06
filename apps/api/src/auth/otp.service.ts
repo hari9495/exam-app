@@ -85,8 +85,13 @@ export class OtpService {
     }
   }
 
-  channelAvailable(channel: OtpChannel): boolean {
-    return channel === 'email' || this.sms.channels.has(channel);
+  // Without an organisation (undefined): only whether the platform has the channel at all -- asked
+  // before any account lookup, so it reveals nothing about a company. With one (null = platform
+  // staff): whether a text could actually go there now, so nobody is offered a code that can't arrive.
+  async channelAvailable(channel: OtpChannel, organizationId?: string | null): Promise<boolean> {
+    if (channel === 'email') return true;
+    if (!this.sms.channels.has(channel)) return false;
+    return organizationId === undefined || this.sms.routable(channel, organizationId);
   }
 
   // Throws 429 unless a code may be sent now to `subject` (any stable identifier: org + email /

@@ -353,7 +353,7 @@ export class AuthService {
     const channel: OtpChannel = dto.channel ?? (parsed.kind === 'email' ? 'email' : 'sms');
     if (channel === 'email' && parsed.kind !== 'email') throw new BadRequestException('A code by email needs an email address');
     if (channel !== 'email' && parsed.kind !== 'mobile') throw new BadRequestException('A code by text message needs a mobile number');
-    if (!this.otp.channelAvailable(channel)) throw new BadRequestException('Codes by text message are not available right now');
+    if (!(await this.otp.channelAvailable(channel))) throw new BadRequestException('Codes by text message are not available right now');
     const method = `otp_${channel}` as const;
 
     const orgSlug = dto.organizationSlug.trim().toLowerCase();
@@ -479,7 +479,9 @@ export class AuthService {
     if (!(await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId)).allowedFactors.includes('otp')) return [];
     const grants = await resolvePermissionGrants(this.prisma, this.tenantPrisma, user, [...OTP_FALLBACK_BARRED_PERMISSIONS]);
     if (OTP_FALLBACK_BARRED_PERMISSIONS.some((key) => grants.has(key))) return [];
-    return OTP_CHANNELS.filter((channel) => channel !== 'email' && this.otp.channelAvailable(channel));
+    const texted = OTP_CHANNELS.filter((channel) => channel !== 'email');
+    const ready = await Promise.all(texted.map((channel) => this.otp.channelAvailable(channel, user.organizationId)));
+    return texted.filter((_, i) => ready[i]);
   }
 
   // Sends the fallback code for a pending sign-in (same device only).

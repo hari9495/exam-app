@@ -13,6 +13,7 @@ export function trackOtpSends(builder: TestingModuleBuilder): { builder: Testing
       const inner = new ChannelOtpSender(channel);
       return {
         channels: inner.channels,
+        routable: (channel, organizationId) => inner.routable(channel, organizationId),
         send: (req: OtpSmsRequest) => {
           const sending = inner.send(req);
           inflight.add(sending);
