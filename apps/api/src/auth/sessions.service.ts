@@ -23,13 +23,24 @@ export interface ClientMeta {
   ip: string | null;
   userAgent: string | null;
   deviceId: string;
+  // ISO country of the client IP, from the edge proxy's geo header (GEO_COUNTRY_HEADER), if any.
+  country?: string | null;
+}
+
+// The country the trusted edge proxy (Cloudflare `cf-ipcountry`, Azure Front Door, ...) resolved for
+// the client IP. Only set when GEO_COUNTRY_HEADER names the header; a direct client could forge it,
+// so it must only be configured behind a proxy that overwrites it. Two letters or nothing.
+export function clientCountry(req: Request): string | null {
+  const header = process.env.GEO_COUNTRY_HEADER?.trim().toLowerCase();
+  const value = header ? req.get(header)?.trim().toUpperCase() : undefined;
+  return value && /^[A-Z]{2}$/.test(value) && value !== 'XX' && value !== 'T1' ? value : null;
 }
 
 // Sign-in methods (saml / oidc: an identity provider; otp_*: one-time code by that channel); the MFA factors appear on second-factor
 // failures (result mfa_failed).
 export const LOGIN_METHODS = ['password', 'saml', 'oidc', 'otp_email', 'otp_sms', 'otp_whatsapp', 'totp', 'passkey', 'recovery_code', 'otp'] as const;
 export type LoginMethod = (typeof LOGIN_METHODS)[number];
-export type LoginResult = 'success' | 'failed' | 'locked' | 'mfa_failed';
+export type LoginResult = 'success' | 'failed' | 'locked' | 'mfa_failed' | 'code_sent';
 
 export interface SessionUser {
   id: string;
@@ -56,7 +67,7 @@ export function resolveClientMeta(req: Request, res: Response): ClientMeta {
     });
   }
   const userAgent = req.get('user-agent');
-  return { ip: req.ip ?? null, userAgent: userAgent ? userAgent.slice(0, 512) : null, deviceId };
+  return { ip: req.ip ?? null, userAgent: userAgent ? userAgent.slice(0, 512) : null, deviceId, country: clientCountry(req) };
 }
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -127,12 +138,15 @@ export class SessionsService {
   // "new device": there is nothing to compare against). Lifetime and the concurrent-session cap
   // follow the company's security policy within the floor (YX-IAM-06, Q8).
   // `mfaFactor`: the second factor proven at sign-in; the session then starts at AAL2.
+  // `identityProviderId`: the IdP that signed it in (SSO), so disabling that IdP ends it.
+  // `newCountry`: a known device, but a country this user has never signed in from.
   async create(
     user: SessionUser,
     method: LoginMethod,
     meta: ClientMeta,
     mfaFactor?: string,
-  ): Promise<{ id: string; absoluteExpiresAt: Date; newDevice: boolean }> {
+    identityProviderId: string | null = null,
+  ): Promise<{ id: string; absoluteExpiresAt: Date; newDevice: boolean; newCountry: boolean }> {
     const policy = user.organizationId ? await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId) : DEFAULT_SECURITY_POLICY;
     const { idleSeconds, absoluteSeconds } = sessionLimitsFor(policy);
     const now = Date.now();
@@ -140,6 +154,15 @@ export class SessionsService {
     const result = await this.tenantPrisma.forTenant(contextFor(user), async (tx) => {
       const seenDevice = await tx.session.findFirst({ where: { userId: user.id, deviceIdHash }, select: { id: true } });
       const seenAny = seenDevice ?? (await tx.session.findFirst({ where: { userId: user.id }, select: { id: true } }));
+      const country = meta.country ?? null;
+      // Compared only against sessions whose country is known, so turning the header on does not
+      // alert everyone once.
+      const [anyCountry, seenCountry] = country
+        ? await Promise.all([
+            tx.session.findFirst({ where: { userId: user.id, geo: { not: null } }, select: { id: true } }),
+            tx.session.findFirst({ where: { userId: user.id, geo: country }, select: { id: true } }),
+          ])
+        : [null, null];
       const session = await tx.session.create({
         data: {
           organizationId: user.organizationId,
@@ -148,6 +171,8 @@ export class SessionsService {
           deviceIdHash,
           userAgent: meta.userAgent,
           ipAddress: meta.ip,
+          geo: country,
+          identityProviderId,
           idleTimeoutSeconds: idleSeconds,
           idleExpiresAt: new Date(now + idleSeconds * 1000),
           absoluteExpiresAt: new Date(now + absoluteSeconds * 1000),
@@ -167,7 +192,7 @@ export class SessionsService {
         const ids = excess.map((s) => s.id);
         evicted = ids.length ? await revokeStaffSessions(tx, { id: { in: ids } }, 'concurrent_limit') : 0;
       }
-      return { session: { ...session, newDevice: !seenDevice && Boolean(seenAny) }, evicted };
+      return { session: { ...session, newDevice: !seenDevice && Boolean(seenAny), newCountry: Boolean(anyCountry && !seenCountry) }, evicted };
     });
     if (result.evicted > 0) {
       await this.audit.record(contextFor(user), {
@@ -237,6 +262,7 @@ export class SessionsService {
               ipAddress: input.meta.ip,
               userAgent: input.meta.userAgent,
               deviceIdHash: sha256(input.meta.deviceId),
+              geo: input.meta.country ?? null,
               newDevice: input.newDevice ?? false,
             },
           }),
@@ -358,6 +384,16 @@ export class SessionsService {
       user,
       'New sign-in to your YukthiX account',
       `<p>Your account was just signed in to from a device we have not seen before.</p>${this.describe(meta)}` +
+        '<p>If this was you, no action is needed. If not, open <b>Me &rsaquo; Security</b>, sign out that session and change your password.</p>',
+    );
+  }
+
+  // A known device, but a country this account has never signed in from (ASVS V2.2 / YX-IAM-07).
+  notifyNewCountry(user: SessionUser, meta: ClientMeta): void {
+    this.send(
+      user,
+      'Sign-in to your YukthiX account from a new country',
+      `<p>Your account was just signed in to from a country it has not been used from before (${escapeHtml(meta.country ?? 'unknown')}).</p>${this.describe(meta)}` +
         '<p>If this was you, no action is needed. If not, open <b>Me &rsaquo; Security</b>, sign out that session and change your password.</p>',
     );
   }

@@ -13,4 +13,10 @@ export class LoginDto {
   // Generous (older accounts may predate the 128 cap) but bounded: argon2 work per attempt.
   @MaxLength(1024)
   password!: string;
+
+  // Bot-challenge (Turnstile) token, when the challenge is configured (see bot-challenge.ts).
+  @IsOptional()
+  @IsString()
+  @MaxLength(4096)
+  challengeToken?: string;
 }

@@ -24,10 +24,11 @@ import { isOrganizationActive, ORGANIZATION_INACTIVE_MESSAGE } from '@exam-platf
 import { LoginDto } from './dto/login.dto';
 import { AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { escapeHtml } from '../notifications/notification-email-render';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ClientMeta, LoginMethod, SessionUser, SessionsService } from './sessions.service';
-import { LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
+import { LoginAttempt, LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
 import { PasswordPolicyService } from './password-policy.service';
 import { MfaService, MfaUser, PENDING_LOGIN_TTL_SECONDS, PendingLogin } from './mfa.service';
 import { MfaLoginDto, MfaProofDto } from './dto/mfa.dto';
@@ -73,6 +74,8 @@ const otpMfaKey = (mfaToken: string) => `auth:otp:mfa:${sha256(mfaToken)}`;
 export const isMfaChallenge = (outcome: LoginOutcome): outcome is MfaChallenge => 'mfaRequired' in outcome;
 
 const PASSWORD_RESET_EXPIRY_MINUTES = 15;
+export const PASSWORD_CHANGE_REQUIRED_CODE = 'PASSWORD_CHANGE_REQUIRED';
+const INVALID_CREDENTIALS = 'Invalid credentials';
 
 // Verified against when no account matched, so an unknown email costs the same argon2 work as
 // a wrong password and response timing cannot enumerate accounts. Same default parameters as
@@ -114,73 +117,77 @@ export class AuthService {
     private readonly otp: OtpService,
   ) {}
 
-  // Password sign-in (YX-IAM-06/07/10). Unknown organisation, unknown email and wrong password
-  // are indistinguishable to the caller -- same 401, same argon2 cost, same lockout counters --
-  // and every attempt, including blocked ones, lands in login_events.
+  // Password sign-in (YX-IAM-06/07/10). Unknown organisation, suspended organisation, a network
+  // outside the desk allow-list, unknown email and wrong password are indistinguishable to the
+  // caller -- same 401, same argon2 cost -- so neither accounts nor organisations (or their
+  // settings) can be enumerated; and every attempt, including blocked ones, lands in login_events.
   async login(dto: LoginDto, meta: ClientMeta): Promise<LoginOutcome> {
     const identifier = dto.email.trim().toLowerCase();
     const orgSlug = dto.organizationSlug?.trim().toLowerCase() ?? '';
     const attempt = { identifier, method: 'password' as const, meta };
 
     const org = dto.organizationSlug ? await this.prisma.organization.findUnique({ where: { slug: dto.organizationSlug } }) : null;
+    const orgActive = Boolean(org && isOrganizationActive(org.status));
+    const organizationId = orgActive ? org!.id : null;
+    const policy = organizationId ? await loadTenantSecurityPolicy(this.tenantPrisma, organizationId) : DEFAULT_SECURITY_POLICY;
 
-    const block = await this.loginProtection.check(orgSlug, identifier, meta.ip);
-    if (block) {
-      await this.sessions.recordLoginEvent({ ...attempt, organizationId: org?.id ?? null, result: 'locked', reason: `${block.scope}_locked` });
-      throw new TooManyLoginAttemptsException(block.retryAfterSeconds);
-    }
-
-    let organizationId: string | null = null;
-    let policy = DEFAULT_SECURITY_POLICY;
-    if (dto.organizationSlug) {
-      if (!org) {
-        await argon2.verify(await getDummyPasswordHash(), dto.password);
-        return this.rejectLogin(orgSlug, attempt, null, null, 'unknown_organization');
-      }
-      if (!isOrganizationActive(org.status)) {
-        await this.sessions.recordLoginEvent({ ...attempt, organizationId: org.id, result: 'failed', reason: 'organization_inactive' });
-        throw new UnauthorizedException(ORGANIZATION_INACTIVE_MESSAGE);
-      }
-      organizationId = org.id;
-      policy = await loadTenantSecurityPolicy(this.tenantPrisma, org.id);
-      if (!ipAllowedForSurface(policy, 'desk', meta.ip)) {
-        await this.sessions.recordLoginEvent({ ...attempt, organizationId, result: 'failed', reason: 'ip_not_allowed' });
-        throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
-      }
+    // Desk IP allow-list (YX-IAM-09): refused like a wrong password, after the same work, and not
+    // counted (no guess was checked). The admin sees the real reason in login activity.
+    if (organizationId && !ipAllowedForSurface(policy, 'desk', meta.ip)) {
+      await argon2.verify(await getDummyPasswordHash(), dto.password);
+      await this.sessions.recordLoginEvent({ ...attempt, organizationId, result: 'failed', reason: 'ip_not_allowed' });
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
     const isSuperAdminLookup = !dto.organizationSlug;
-    const user = await this.tenantPrisma.forTenant(
-      { organizationId, isSuperAdmin: isSuperAdminLookup },
-      (tx) =>
-        tx.user.findFirst({
-          where: isSuperAdminLookup
-            ? { email: dto.email, role: 'super_admin', organizationId: null }
-            : { email: dto.email, organizationId },
-        }),
-    );
+    const user =
+      organizationId || isSuperAdminLookup
+        ? await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: isSuperAdminLookup }, (tx) =>
+            tx.user.findFirst({
+              where: isSuperAdminLookup
+                ? { email: dto.email, role: 'super_admin', organizationId: null }
+                : { email: dto.email, organizationId },
+            }),
+          )
+        : null;
+
+    // Counted BEFORE the password is checked (atomic; a parallel burst cannot outrun the lock).
+    // Break-glass accounts (YX-IAM-04) get the delay but not the long lock: their admins are
+    // alerted instead, so nobody can keep them locked out during an SSO outage.
+    const listedBreakGlass = Boolean(user && policy.breakGlassUserIds.includes(user.id));
+    const reserved = await this.loginProtection.reserve(orgSlug, identifier, meta.ip, { deviceId: meta.deviceId, lockExempt: listedBreakGlass });
+    if (reserved.block) {
+      await this.sessions.recordLoginEvent({ ...attempt, organizationId: org?.id ?? null, result: 'locked', reason: `${reserved.block.scope}_locked` });
+      throw new TooManyLoginAttemptsException(reserved.block.retryAfterSeconds);
+    }
 
     const passwordOk = await argon2.verify(user?.passwordHash ?? (await getDummyPasswordHash()), dto.password);
     if (!user || !passwordOk) {
-      return this.rejectLogin(orgSlug, attempt, organizationId, user, user ? 'bad_password' : 'unknown_user');
+      const reason = !dto.organizationSlug || orgActive ? (user ? 'bad_password' : 'unknown_user') : org ? 'organization_inactive' : 'unknown_organization';
+      return this.rejectLogin(orgSlug, attempt, org?.id ?? null, user, reason, reserved);
     }
 
     // SSO-only (YX-IAM-04): password sign-in is off except for the named break-glass accounts. A
     // correct password from anyone else gets exactly the wrong-password response, so the switch
     // is no password oracle.
-    const breakGlass = policy.ssoOnly && policy.breakGlassUserIds.includes(user.id);
+    const breakGlass = policy.ssoOnly && listedBreakGlass;
     if (policy.ssoOnly && !breakGlass) {
-      return this.rejectLogin(orgSlug, attempt, organizationId, user, 'sso_only');
+      return this.rejectLogin(orgSlug, attempt, organizationId, user, 'sso_only', reserved);
     }
 
     if (user.status !== 'active') {
       await this.sessions.recordLoginEvent({ ...attempt, organizationId, userId: user.id, result: 'failed', reason: 'account_inactive' });
       throw new UnauthorizedException('This account has been deactivated');
     }
+    // The password is right: its guess counter is cleared (the device is trusted only once the
+    // whole sign-in, second factor included, has succeeded).
+    await this.loginProtection.registerSuccess(orgSlug, identifier, meta.ip);
 
-    // The password is proven: re-check one whose breach check could not run when it was set.
+    // The password is proven: re-check one whose breach check could not run when it was set. Awaited
+    // (bounded by the breach check's timeout; flagged accounts only): a password found breached now
+    // must be changed before this very sign-in opens a session (YX-IAM-08).
     if (user.passwordRecheckPending) {
-      void this.passwordPolicy.recheckAfterLogin(user, dto.password);
+      await this.passwordPolicy.recheckAfterLogin(user, dto.password);
     }
 
     // Second factor (YX-IAM-01/03): anyone with one enrolled must use it. Break-glass sign-in is
@@ -188,7 +195,8 @@ export class AuthService {
     const login = { method: 'password' as const, orgSlug, identifier, breakGlass };
     const hasFactor = await this.mfa.hasFactor(user);
     if (breakGlass && !hasFactor) {
-      return this.rejectLogin(orgSlug, attempt, organizationId, user, 'break_glass_without_mfa');
+      await this.sessions.recordLoginEvent({ ...attempt, organizationId, userId: user.id, result: 'failed', reason: 'break_glass_without_mfa' });
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
     return hasFactor ? this.challengeSecondFactor(user.id, login, meta) : this.finishSignIn(user, login, meta);
   }
@@ -196,16 +204,28 @@ export class AuthService {
   // Everything after the last factor: lockout cleared, session + tokens, audit, alerts.
   private async finishSignIn(
     user: SessionUser & { permissionProfileId?: string | null },
-    login: Pick<PendingLogin, 'method' | 'orgSlug' | 'identifier' | 'breakGlass'>,
+    login: Pick<PendingLogin, 'method' | 'orgSlug' | 'identifier' | 'breakGlass' | 'identityProviderId'>,
     meta: ClientMeta,
     mfaFactor?: string,
   ): Promise<SignedIn> {
     const viaIdp = login.method === 'saml' || login.method === 'oidc';
     if (!viaIdp) {
-      await this.loginProtection.registerSuccess(login.orgSlug, login.identifier, meta.ip);
+      await this.loginProtection.registerSuccess(login.orgSlug, login.identifier, meta.ip, { deviceId: meta.deviceId, trustDevice: true });
+    }
+    // A password found in a breach on re-check (YX-IAM-08) is changed before any session opens:
+    // the client is sent to the reset page with a fresh single-use token. Only after every factor.
+    if (login.method === 'password' && (await this.mfa.loadUser(user.id))?.passwordChangeRequired) {
+      const resetToken = await this.createResetToken(user.id);
+      await this.sessions.recordLoginEvent({ organizationId: user.organizationId, userId: user.id, identifier: login.identifier, result: 'failed', method: 'password', reason: 'password_change_required', meta });
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: PASSWORD_CHANGE_REQUIRED_CODE,
+        message: 'Your password appears in a known data breach. Choose a new one to continue.',
+        resetToken,
+      });
     }
     const reason = login.breakGlass ? 'break_glass' : mfaFactor ? `mfa_${mfaFactor}` : undefined;
-    const tokens: SignedIn = await this.startSession(user, login.method, meta, login.identifier, reason, mfaFactor);
+    const tokens: SignedIn = await this.startSession(user, login.method, meta, login.identifier, reason, mfaFactor, login.identityProviderId ?? null);
     if (!viaIdp) {
       const metadata = { ...(login.method !== 'password' ? { method: login.method } : {}), ...(mfaFactor ? { mfa: mfaFactor } : {}) };
       await this.audit.record(
@@ -233,11 +253,12 @@ export class AuthService {
 
   private async challengeSecondFactor(
     userId: string,
-    login: Pick<PendingLogin, 'method' | 'orgSlug' | 'identifier' | 'breakGlass'>,
+    login: Pick<PendingLogin, 'method' | 'orgSlug' | 'identifier' | 'breakGlass' | 'identityProviderId'>,
     meta: ClientMeta,
   ): Promise<MfaChallenge> {
     const account = (await this.mfa.loadUser(userId))!;
-    const factors = [...new Set((await this.mfa.activeFactors(account)).map((f) => f.type)), 'recovery_code'];
+    const factors = [...new Set((await this.mfa.usableFactors(account)).map((f) => f.type))];
+    if (account.role !== 'super_admin') factors.push('recovery_code'); // staff: security key only (Q7)
     if ((await this.otpFallbackChannels(account, login.method)).length > 0) factors.push('otp');
     const mfaToken = await this.mfa.createPendingLogin({
       ...login,
@@ -267,10 +288,12 @@ export class AuthService {
       throw new UnauthorizedException('Your sign-in has expired. Please sign in again.');
     }
     const event = { organizationId: user.organizationId, userId: user.id, identifier: pending.identifier, meta };
-    const block = await this.loginProtection.check('mfa', user.id, meta.ip);
-    if (block) {
-      await this.sessions.recordLoginEvent({ ...event, result: 'locked', method: dto.factor, reason: `mfa_${block.scope}_locked` });
-      throw new TooManyLoginAttemptsException(block.retryAfterSeconds);
+    // Counted before the proof is checked (atomic): parallel guesses with one mfaToken cannot
+    // outrun the lock.
+    const reserved = await this.loginProtection.reserve('mfa', user.id, meta.ip, { deviceId: meta.deviceId, lockExempt: pending.breakGlass });
+    if (reserved.block) {
+      await this.sessions.recordLoginEvent({ ...event, result: 'locked', method: dto.factor, reason: `mfa_${reserved.block.scope}_locked` });
+      throw new TooManyLoginAttemptsException(reserved.block.retryAfterSeconds);
     }
     if (user.status !== 'active') {
       await this.sessions.recordLoginEvent({ ...event, result: 'failed', method: pending.method, reason: 'account_inactive' });
@@ -291,25 +314,26 @@ export class AuthService {
       factor = await this.mfa.verifyProof(user, dto as MfaProofDto, challenge);
     }
     if (!factor || !(await this.mfa.consumePendingLogin(dto.mfaToken))) {
-      const { locked } = await this.loginProtection.registerFailure('mfa', user.id, meta.ip);
+      const { locked } = await this.loginProtection.registerFailure('mfa', user.id, meta.ip, reserved);
       await this.sessions.recordLoginEvent({
         ...event,
         result: 'mfa_failed',
         method: dto.factor,
         reason: locked ? 'mfa_invalid+lockout_started' : 'mfa_invalid',
       });
-      if (locked) this.sessions.notifyLocked(user, meta);
+      if (locked) this.alertLocked(user, meta, pending.breakGlass);
       throw new UnauthorizedException('That verification did not work. Try again.');
     }
-    await this.loginProtection.registerSuccess('mfa', user.id, meta.ip);
+    await this.loginProtection.registerSuccess('mfa', user.id, meta.ip, { deviceId: meta.deviceId, trustDevice: true });
     return this.finishSignIn(user, pending, meta, factor);
   }
 
   // ---- one-time-code sign-in (P12 §3 AAL1; M04 Q2) -----------------------------------------
 
   // Step 1: send a code to the account's email or verified mobile number. The answer, the
-  // counters and the work done are the same whether or not such an account exists (no
-  // enumeration); only organisation-level settings (OTP off, network not allowed) are refused.
+  // counters and the work done are the same whether or not such an account -- or organisation,
+  // or an organisation with OTP sign-in on / this network allowed -- exists (no enumeration);
+  // the real reason is in the login event.
   async startOtpLogin(dto: OtpStartDto, meta: ClientMeta): Promise<OtpSent> {
     const parsed = parseOtpIdentifier(dto.identifier);
     if (!parsed) throw new BadRequestException('Enter an email address or a mobile number');
@@ -321,18 +345,19 @@ export class AuthService {
 
     const orgSlug = dto.organizationSlug.trim().toLowerCase();
     const org = await this.prisma.organization.findUnique({ where: { slug: orgSlug } });
-    const organizationId = org && isOrganizationActive(org.status) ? org.id : null;
+    let organizationId = org && isOrganizationActive(org.status) ? org.id : null;
     if (organizationId) {
       const policy = await loadTenantSecurityPolicy(this.tenantPrisma, organizationId);
       // SSO-only (YX-IAM-04) turns every other way in off; break-glass stays password + MFA.
-      if (policy.ssoOnly || !policy.otpSignInChannels.includes(channel)) throw new BadRequestException(OTP_SIGN_IN_OFF_MESSAGE);
-      if (!ipAllowedForSurface(policy, 'desk', meta.ip)) {
-        await this.sessions.recordLoginEvent({ organizationId, identifier: parsed.value, result: 'failed', method, reason: 'ip_not_allowed', meta });
-        throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
+      const refused =
+        policy.ssoOnly || !policy.otpSignInChannels.includes(channel) ? 'otp_disabled' : !ipAllowedForSurface(policy, 'desk', meta.ip) ? 'ip_not_allowed' : null;
+      if (refused) {
+        await this.sessions.recordLoginEvent({ organizationId, identifier: parsed.value, result: 'failed', method, reason: refused, meta });
+        organizationId = null; // answered exactly like an unknown organisation: nothing is sent
       }
     }
 
-    const block = await this.loginProtection.check(orgSlug, parsed.value, meta.ip);
+    const block = await this.loginProtection.check(orgSlug, parsed.value, meta.ip, meta.deviceId);
     if (block) {
       await this.sessions.recordLoginEvent({ organizationId, identifier: parsed.value, result: 'locked', method, reason: `${block.scope}_locked`, meta });
       throw new TooManyLoginAttemptsException(block.retryAfterSeconds);
@@ -363,6 +388,8 @@ export class AuthService {
     });
     if (recipient) {
       this.otp.deliver(channel, channel === 'email' ? recipient.email : recipient.mobileNumber!, code, 'sign_in', organizationId);
+      // YX-IAM-10: every code actually sent is a login event (SMS-pumping / targeting signal).
+      await this.sessions.recordLoginEvent({ organizationId, userId: recipient.id, identifier: parsed.value, result: 'code_sent', method, meta });
     }
     return { otpToken, expiresInSeconds: OTP_TTL_SECONDS, resendAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS };
   }
@@ -379,24 +406,27 @@ export class AuthService {
     const method = `otp_${record?.channel ?? (parsed.kind === 'email' ? 'email' : 'sms')}` as PendingLogin['method'];
     const event = { organizationId: record?.organizationId || null, identifier: parsed.value, method, meta };
 
-    const block = await this.loginProtection.check(orgSlug, parsed.value, meta.ip);
-    if (block) {
-      await this.sessions.recordLoginEvent({ ...event, result: 'locked', reason: `${block.scope}_locked` });
-      throw new TooManyLoginAttemptsException(block.retryAfterSeconds);
+    // Counted before the code is checked (atomic; see LoginProtectionService).
+    const reserved = await this.loginProtection.reserve(orgSlug, parsed.value, meta.ip, { deviceId: meta.deviceId });
+    if (reserved.block) {
+      await this.sessions.recordLoginEvent({ ...event, result: 'locked', reason: `${reserved.block.scope}_locked` });
+      throw new TooManyLoginAttemptsException(reserved.block.retryAfterSeconds);
     }
 
     const mine = record && sameHash(record.tokenHash, sha256(dto.otpToken)) && sameHash(record.deviceIdHash, sha256(meta.deviceId));
     const proven = mine ? await this.otp.check(key, dto.code) : null;
     const user = proven?.userId ? await this.mfa.loadUser(proven.userId) : null;
     if (!proven || !user) {
-      const { locked } = await this.loginProtection.registerFailure(orgSlug, parsed.value, meta.ip);
+      const { locked } = await this.loginProtection.registerFailure(orgSlug, parsed.value, meta.ip, reserved);
       await this.sessions.recordLoginEvent({ ...event, userId: record?.userId || null, result: 'failed', reason: locked ? 'otp_invalid+lockout_started' : 'otp_invalid' });
       const holder = locked && record?.userId ? await this.mfa.loadUser(record.userId) : null;
       if (holder) this.sessions.notifyLocked(holder, meta);
       throw new UnauthorizedException(OTP_INVALID_MESSAGE);
     }
 
-    // The code is spent; whatever could have changed since it was sent is checked again.
+    // The code is spent and right: its guess counter is cleared. Whatever could have changed since
+    // it was sent is checked again.
+    await this.loginProtection.registerSuccess(orgSlug, parsed.value, meta.ip);
     const refuse = async (reason: string, error: Error): Promise<never> => {
       await this.sessions.recordLoginEvent({ ...event, userId: user.id, result: 'failed', reason });
       throw error;
@@ -442,6 +472,7 @@ export class AuthService {
     await this.otp.reserveSend(`mfa\u0000${user.id}`, meta.ip);
     const code = await this.otp.issue(otpMfaKey(dto.mfaToken), { userId: user.id });
     this.otp.deliver(dto.channel, user.mobileNumber!, code, 'mfa', user.organizationId);
+    await this.sessions.recordLoginEvent({ organizationId: user.organizationId, userId: user.id, identifier: pending.identifier, result: 'code_sent', method: 'otp', reason: `mfa_${dto.channel}`, meta });
     return { expiresInSeconds: OTP_TTL_SECONDS, resendAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS };
   }
 
@@ -451,8 +482,9 @@ export class AuthService {
     organizationId: string | null,
     user: SessionUser | null,
     reason: string,
+    reserved: LoginAttempt,
   ): Promise<never> {
-    const { locked } = await this.loginProtection.registerFailure(orgSlug, attempt.identifier, attempt.meta.ip);
+    const { locked } = await this.loginProtection.registerFailure(orgSlug, attempt.identifier, attempt.meta.ip, reserved);
     await this.sessions.recordLoginEvent({
       ...attempt,
       organizationId,
@@ -461,9 +493,24 @@ export class AuthService {
       reason: locked ? `${reason}+lockout_started` : reason,
     });
     if (locked && user) {
-      this.sessions.notifyLocked(user, attempt.meta);
+      this.alertLocked(user, attempt.meta, reserved.lockExempt);
     }
-    throw new UnauthorizedException('Invalid credentials');
+    throw new UnauthorizedException(INVALID_CREDENTIALS);
+  }
+
+  // The lock threshold was reached: the holder is told; for a break-glass account (never locked)
+  // every admin of the company is told instead, since someone is guessing at the way in of last resort.
+  private alertLocked(user: SessionUser, meta: ClientMeta, breakGlass: boolean): void {
+    if (breakGlass && user.organizationId) {
+      this.sessions.notifyAdmins(
+        user.organizationId,
+        'Repeated failed sign-ins to a break-glass account',
+        `<p>Someone has repeatedly failed to sign in to the break-glass account <b>${escapeHtml(user.email)}</b>.</p>` +
+          `<p>IP address: ${escapeHtml(meta.ip ?? 'unknown')}</p><p>Review <b>Admin &rsaquo; Login activity</b>.</p>`,
+      );
+      return;
+    }
+    this.sessions.notifyLocked(user, meta);
   }
 
   // Session + token pair + login history + new-device alert, for every successful sign-in path.
@@ -474,8 +521,9 @@ export class AuthService {
     identifier: string,
     reason?: string,
     mfaFactor?: string,
+    identityProviderId: string | null = null,
   ): Promise<TokenPair> {
-    const session = await this.sessions.create(user, method, meta, mfaFactor);
+    const session = await this.sessions.create(user, method, meta, mfaFactor, identityProviderId);
     const tokens = await this.issueTokenPair(user.id, user.organizationId, user.role, user.permissionProfileId ?? null, session);
     await this.recordLogin(user.id, user.organizationId, user.role);
     await this.sessions.recordLoginEvent({
@@ -491,6 +539,8 @@ export class AuthService {
     });
     if (session.newDevice) {
       this.sessions.notifyNewDevice(user, meta);
+    } else if (session.newCountry) {
+      this.sessions.notifyNewCountry(user, meta);
     }
     return tokens;
   }
@@ -508,12 +558,7 @@ export class AuthService {
       return;
     }
 
-    const rawToken = randomBytes(32).toString('hex');
-    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-    const expiresAt = new Date();
-    expiresAt.setMinutes(expiresAt.getMinutes() + PASSWORD_RESET_EXPIRY_MINUTES);
-
-    await this.prisma.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
+    const rawToken = await this.createResetToken(user.id);
 
     // Fire-and-forget, matching the invitation-email pattern in InvitationsService:
     // email delivery is a notification side effect, not something the caller should
@@ -521,6 +566,15 @@ export class AuthService {
     this.dispatchResetEmail(user.email, rawToken, org.id).catch((error) =>
       this.logger.error(`Failed to dispatch password reset email to ${user.email}`, error as Error),
     );
+  }
+
+  // A single-use reset token (stored as sha256 only), valid PASSWORD_RESET_EXPIRY_MINUTES.
+  private async createResetToken(userId: string): Promise<string> {
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000);
+    await this.prisma.passwordResetToken.create({ data: { userId, tokenHash, expiresAt } });
+    return rawToken;
   }
 
   private async dispatchResetEmail(email: string, rawToken: string, organizationId: string): Promise<void> {
@@ -542,7 +596,7 @@ export class AuthService {
     }
 
     const owner = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
-      tx.user.findUnique({ where: { id: resetToken.userId }, select: { organizationId: true, role: true } }),
+      tx.user.findUnique({ where: { id: resetToken.userId }, select: { organizationId: true, role: true, email: true, organization: { select: { slug: true } } } }),
     );
     // Before the token is consumed: a rejected password leaves the link usable for another try.
     const { passwordHash, passwordRecheckPending } = await this.passwordPolicy.hashNewPassword(
@@ -556,14 +610,25 @@ export class AuthService {
     // silently matches zero rows on `users`, making tx.user.update() a no-op. Same
     // pattern as the reuse-detection branch in refresh() below.
     await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
-      await tx.user.update({ where: { id: resetToken.userId }, data: { passwordHash, passwordRecheckPending } });
-      await tx.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } });
+      // Compare-and-set: of two concurrent resets with one link, exactly one wins.
+      const { count } = await tx.passwordResetToken.updateMany({
+        where: { id: resetToken.id, usedAt: null, expiresAt: { gt: new Date() } },
+        data: { usedAt: new Date() },
+      });
+      if (count !== 1) throw new BadRequestException('This reset link is invalid or has expired');
+      await tx.user.update({ where: { id: resetToken.userId }, data: { passwordHash, passwordRecheckPending, passwordChangeRequired: false } });
       await tx.refreshToken.updateMany({
         where: { userId: resetToken.userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
       await revokeStaffSessions(tx, { userId: resetToken.userId }, 'password_reset');
     });
+    // Sign-ins half done with the old password stop working, and the owner's lock is lifted.
+    await this.mfa.cancelPendingLogins(resetToken.userId);
+    if (owner) {
+      await this.loginProtection.registerSuccess(owner.organization?.slug ?? '', owner.email.toLowerCase(), null);
+      await this.loginProtection.registerSuccess('mfa', resetToken.userId, null);
+    }
 
     await this.audit.record(
       { organizationId: owner?.organizationId ?? null, isSuperAdmin: owner?.role === 'super_admin' },
@@ -750,7 +815,7 @@ export class AuthService {
   async issueTokensForSso(
     user: SessionUser & { permissionProfileId: string | null },
     meta: ClientMeta,
-    sso: { method: 'saml' | 'oidc'; mfaAsserted: boolean } = { method: 'saml', mfaAsserted: false },
+    sso: { method: 'saml' | 'oidc'; mfaAsserted: boolean; identityProviderId?: string | null } = { method: 'saml', mfaAsserted: false },
   ): Promise<LoginOutcome> {
     if (!(await staffDeskIpAllowed(this.tenantPrisma, user, meta.ip))) {
       await this.sessions.recordLoginEvent({
@@ -764,8 +829,13 @@ export class AuthService {
       });
       throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
     }
-    const login = { method: sso.method, orgSlug: '', identifier: user.email.toLowerCase(), breakGlass: false };
-    if (sso.mfaAsserted) {
+    const login = { method: sso.method, orgSlug: '', identifier: user.email.toLowerCase(), breakGlass: false, identityProviderId: sso.identityProviderId ?? null };
+    // IdP-asserted MFA (only from a provider an admin trusts for it) never stands in for the
+    // YukthiX factor of a break-glass account: those are the way in when the IdP is the problem.
+    const breakGlass = user.organizationId
+      ? (await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId)).breakGlassUserIds.includes(user.id)
+      : false;
+    if (sso.mfaAsserted && !breakGlass) {
       return this.finishSignIn(user, login, meta, 'idp');
     }
     if (await this.mfa.hasFactor(user)) {

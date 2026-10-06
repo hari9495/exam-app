@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 import { signInResponse } from './auth.controller';
 import { MfaService } from './mfa.service';
 import { resolveClientMeta } from './sessions.service';
+import { assertHuman } from './bot-challenge';
 import { MfaOtpSendDto, MobileCodeDto, MobileNumberDto, OtpStartDto, OtpVerifyDto } from './dto/otp.dto';
 
 interface RequestUser {
@@ -31,7 +32,8 @@ export class OtpController {
   @Post('otp/start')
   @HttpCode(200)
   @Throttle(STRICT_AUTH_THROTTLE)
-  start(@Body() dto: OtpStartDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async start(@Body() dto: OtpStartDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    await assertHuman(dto.challengeToken, req.ip ?? null);
     return this.auth.startOtpLogin(dto, resolveClientMeta(req, res));
   }
 

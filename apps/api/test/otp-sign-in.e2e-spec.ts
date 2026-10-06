@@ -199,10 +199,16 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
   });
 
   describe('sign-in by email code (AAL1)', () => {
+    // Answered exactly like an unknown organisation (no organisation recon); nothing is sent.
     it('is off unless the company turns it on', async () => {
-      const res = await startOtp(browser(), OFF().slug, FIELD).expect(400);
-      expect(res.body.message).toMatch(/not turned on/);
+      const off = await startOtp(browser(), OFF().slug, FIELD).expect(200);
+      const unknown = await startOtp(browser(), `no-such-org-${runId}`, FIELD).expect(200);
+      expect(Object.keys(off.body).sort()).toEqual(Object.keys(unknown.body).sort());
       expect(email.send).not.toHaveBeenCalled();
+      const [event] = await tenantPrisma.forTenant(SUPER, (tx) =>
+        tx.loginEvent.findMany({ where: { organizationId: OFF().id, reason: 'otp_disabled' }, orderBy: { createdAt: 'desc' }, take: 1 }),
+      );
+      expect(event).toBeDefined();
     });
 
     it('a code by email opens an AAL1 session with a refresh cookie, recorded as otp_email', async () => {
@@ -351,9 +357,10 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     it('the desk IP allow-list applies before anything is sent', async () => {
       await setPolicy(B().id, { ipAllowlistDesk: ['198.51.100.0/24'] });
       try {
-        const res = await startOtp(browser(), B().slug, FIELD_B).expect(403);
-        expect(res.body.message).toMatch(/not allowed from your network/);
+        await startOtp(browser(), B().slug, FIELD_B).expect(200); // the unknown-organisation answer
         expect(email.send).not.toHaveBeenCalled();
+        const events = await tenantPrisma.forTenant(SUPER, (tx) => tx.loginEvent.count({ where: { organizationId: B().id, reason: 'ip_not_allowed' } }));
+        expect(events).toBeGreaterThan(0);
       } finally {
         await setPolicy(B().id, { ipAllowlistDesk: [] });
       }
@@ -505,8 +512,10 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
       expect(res.body.floor.otpSignInChannels).toEqual(['email', 'sms', 'whatsapp']);
       const [audit] = await auditActions(A().id, 'security_policy.updated');
       expect(JSON.parse(audit.metadataJson!).changes.otpSignInChannels).toEqual({ from: ['email', 'sms', 'whatsapp'], to: ['email'] });
-      // SMS sign-in is now off for this company.
-      expect((await startOtp(browser(), A().slug, mobile(1)).expect(400)).body.message).toMatch(/not turned on/);
+      // SMS sign-in is now off for this company: nothing is sent, the reason is logged.
+      const before = await tenantPrisma.forTenant(SUPER, (tx) => tx.loginEvent.count({ where: { organizationId: A().id, reason: 'otp_disabled' } }));
+      await startOtp(browser(), A().slug, mobile(1)).expect(200);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.loginEvent.count({ where: { organizationId: A().id, reason: 'otp_disabled' } }))).toBe(before + 1);
       await patch({ otpSignInChannels: ['carrier-pigeon'] }).expect(400);
       await expect(
         tenantPrisma.forTenant(SUPER, (tx) => tx.$executeRaw`UPDATE tenant_security_policies SET otp_sign_in_channels = ARRAY['fax']::varchar(16)[] WHERE organization_id = ${A().id}::uuid`),

@@ -183,7 +183,7 @@ describe('Password floor and tenant security policy (P12 YX-IAM-04/06/08/09)', (
       );
     });
 
-    it('breach service down: fail open but flag; the next sign-in re-checks and alerts on a breached password', async () => {
+    it('breach service down: fail open but flag; the next sign-in re-checks, alerts, and makes a breached password be changed', async () => {
       const admin = await signIn(orgA().slug, ADMIN_A);
       const victim = emailOf(`flagged-${randomUUID().slice(0, 6)}`);
       const weakButLong = 'sunshine-sunshine-1';
@@ -196,12 +196,19 @@ describe('Password floor and tenant security policy (P12 YX-IAM-04/06/08/09)', (
       hibp.down = false;
       hibp.corpus.add(weakButLong);
       try {
-        await login(orgA().slug, victim, { password: weakButLong }).expect(200); // sign-in is not blocked
-        await new Promise((r) => setTimeout(r, 300)); // the re-check runs after the response
+        // Regression (ASVS V2.1.7): the breached password used to keep working after an email.
+        // Now no session opens; a single-use reset token sends the browser to choose a new one.
+        const forced = await login(orgA().slug, victim, { password: weakButLong }).expect(403);
+        expect(forced.body).toMatchObject({ code: 'PASSWORD_CHANGE_REQUIRED', resetToken: expect.stringMatching(/^[0-9a-f]{64}$/) });
+        expect(forced.body.accessToken).toBeUndefined();
         const after = await tenantPrisma.forTenant(SUPER, (tx) => tx.user.findUniqueOrThrow({ where: { id: flagged.id } }));
-        expect(after.passwordRecheckPending).toBe(false);
+        expect(after).toMatchObject({ passwordRecheckPending: false, passwordChangeRequired: true });
         expect(await auditActions(orgA().id, 'password.breached_on_recheck')).toEqual([expect.objectContaining({ entityId: flagged.id })]);
         expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: victim, subject: 'Please change your YukthiX password' }));
+        // Every later sign-in with it is refused the same way, until it is changed.
+        await login(orgA().slug, victim, { password: weakButLong }).expect(403);
+        await request(server()).post('/api/v1/auth/reset-password').send({ token: forced.body.resetToken, newPassword: 'a-much-better-passphrase-77' }).expect(200);
+        await login(orgA().slug, victim, { password: 'a-much-better-passphrase-77' }).expect(200);
       } finally {
         hibp.corpus.delete(weakButLong);
       }
@@ -308,10 +315,14 @@ describe('Password floor and tenant security policy (P12 YX-IAM-04/06/08/09)', (
   });
 
   describe('IP allow-lists (YX-IAM-09)', () => {
-    it('desk: sign-in from outside is refused before credentials are checked; inside works', async () => {
+    // Outside the list the answer is the wrong-password one, whatever the password: an outsider
+    // learns neither that the organisation restricts networks nor whether a password is right.
+    it('desk: sign-in from outside is refused like a wrong password, right password or not; inside works', async () => {
       await setPolicy(orgA().id, { ipAllowlistDesk: [OFFICE] });
-      const outside = await login(orgA().slug, RECRUITER_A, { password: 'definitely-wrong', ip: freshIp() }).expect(403);
-      expect(outside.body.message).toContain('not allowed from your network');
+      const wrong = await login(orgA().slug, RECRUITER_A, { password: 'definitely-wrong', ip: freshIp() }).expect(401);
+      const right = await login(orgA().slug, RECRUITER_A, { ip: freshIp() }).expect(401);
+      expect(right.body).toEqual(wrong.body);
+      expect(right.body.message).toBe('Invalid credentials');
       await login(orgA().slug, RECRUITER_A, { ip: officeIp() }).expect(200);
 
       const events = await tenantPrisma.forTenant(SUPER, (tx) =>
@@ -343,7 +354,9 @@ describe('Password floor and tenant security policy (P12 YX-IAM-04/06/08/09)', (
       await call('get', '/security/sessions', admin.access, admin.ip).expect(403); // org:manage_users
       await call('get', '/security/policy', admin.access, admin.ip).expect(403); // org:manage_settings
       await call('get', '/auth/sessions', admin.access, admin.ip).expect(200); // own sessions: desk only
-      await call('get', '/security/login-events', admin.access, admin.ip).expect(200); // audit:view is not admin-console
+      // The audit trail / login activity is admin-console too (it used to be reachable from anywhere).
+      await call('get', '/security/login-events', admin.access, admin.ip).expect(403); // audit:view
+      await call('get', '/security/login-events', admin.access, '192.0.2.7').expect(200);
       await call('get', '/security/policy', admin.access, '192.0.2.7').expect(200);
     });
 

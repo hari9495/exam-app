@@ -9,6 +9,8 @@ export class OtpStartDto {
   @IsString() @MinLength(1) @MaxLength(100) organizationSlug!: string;
   @IsString() @MinLength(3) @MaxLength(320) identifier!: string;
   @IsOptional() @IsIn(['email', 'sms', 'whatsapp']) channel?: 'email' | 'sms' | 'whatsapp';
+  // Bot-challenge (Turnstile) token, when configured (see bot-challenge.ts).
+  @IsOptional() @IsString() @MaxLength(4096) challengeToken?: string;
 }
 
 // Step 2: the same organisation and identifier, the token step 1 returned, and the code.

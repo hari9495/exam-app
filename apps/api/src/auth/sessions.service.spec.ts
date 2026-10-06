@@ -10,7 +10,7 @@ describe('resolveClientMeta', () => {
     const deviceId = 'A'.repeat(43);
     const r = res();
     const meta = resolveClientMeta({ cookies: { [DEVICE_COOKIE]: deviceId }, ip: '203.0.113.1', get: () => 'UA' } as any, r as any);
-    expect(meta).toEqual({ ip: '203.0.113.1', userAgent: 'UA', deviceId });
+    expect(meta).toEqual({ ip: '203.0.113.1', userAgent: 'UA', deviceId, country: null });
     expect(r.cookie).not.toHaveBeenCalled();
   });
 

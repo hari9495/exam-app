@@ -97,19 +97,48 @@ describe('PasswordPolicyService', () => {
     });
   });
 
+  // ASVS V2.1.7: the check fails open (an outage must not lock people out of resets), so a
+  // lasting outage is an incident -- an error-level alert, not just a warning per request.
+  describe('breach-service outage', () => {
+    it('alerts (error) once the outage has lasted 15 minutes, not before, and not on every request', async () => {
+      const error = jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined);
+      jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+      const now = jest.spyOn(Date, 'now');
+      fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+
+      now.mockReturnValue(1_000_000);
+      expect(await service.isBreached('kite-mango-7')).toBeNull();
+      now.mockReturnValue(1_000_000 + 14 * 60_000);
+      await service.isBreached('kite-mango-7');
+      expect(error).not.toHaveBeenCalled();
+      now.mockReturnValue(1_000_000 + 15 * 60_000);
+      await service.isBreached('kite-mango-7');
+      await service.isBreached('kite-mango-7');
+      expect(error).toHaveBeenCalledTimes(1);
+
+      // Recovery resets it.
+      fetchMock.mockImplementation(async (url) => new Response(rangeFor(String(url))));
+      await service.isBreached('kite-mango-7');
+      expect((service as any).unavailableSince).toBeNull();
+      now.mockRestore();
+    });
+  });
+
   describe('recheckAfterLogin', () => {
     const USER = { id: 'user-1', email: 'u@x.test', organizationId: 'org-1', role: 'recruiter' };
 
     it('clears the flag when the password is clean, and tells nobody', async () => {
       await service.recheckAfterLogin(USER, 'kite-mango-7');
-      expect(tx.user.update).toHaveBeenCalledWith({ where: { id: 'user-1' }, data: { passwordRecheckPending: false } });
+      expect(tx.user.update).toHaveBeenCalledWith({ where: { id: 'user-1' }, data: { passwordRecheckPending: false, passwordChangeRequired: false } });
       expect(email.send).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
     });
 
-    it('clears the flag, audits and emails the user when the password is breached', async () => {
+    // Regression: a breached password found on re-check used to get only an email; it is now
+    // marked so the next sign-in must change it (YX-IAM-08, ASVS V2.1.7).
+    it('requires a password change at next sign-in, audits and emails the user when the password is breached', async () => {
       await service.recheckAfterLogin(USER, BREACHED);
-      expect(tx.user.update).toHaveBeenCalled();
+      expect(tx.user.update).toHaveBeenCalledWith({ where: { id: 'user-1' }, data: { passwordRecheckPending: false, passwordChangeRequired: true } });
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
         expect.objectContaining({ action: 'password.breached_on_recheck', entityId: 'user-1' }),

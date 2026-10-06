@@ -9,6 +9,9 @@ import { EmailService } from '../email/email.service';
 // Add-Padding makes every response a similar size so the prefix's popularity does not leak.
 const PWNED_RANGE_URL = 'https://api.pwnedpasswords.com/range/';
 const PWNED_TIMEOUT_MS = 3000;
+// The breach check failing for this long is an incident (alert), not just a warning: passwords
+// are being accepted unchecked (fail-open, re-checked at next sign-in).
+const PWNED_OUTAGE_ALERT_MS = 15 * 60 * 1000;
 
 export const BREACHED_PASSWORD_MESSAGE =
   'This password has appeared in a known data breach, so it is easy to guess. Please choose a different one.';
@@ -26,6 +29,9 @@ export interface NewPasswordHash {
 @Injectable()
 export class PasswordPolicyService {
   private readonly logger = new Logger(PasswordPolicyService.name);
+  // Since when the breach service has been failing (null = it answered last time).
+  private unavailableSince: number | null = null;
+  private lastOutageAlert = 0;
 
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
@@ -75,9 +81,11 @@ export class PasswordPolicyService {
       });
       if (!res.ok) {
         this.logger.warn(`Breached-password check unavailable (HTTP ${res.status}); accepting and flagging for re-check`);
+        this.noteUnavailable();
         return null;
       }
       const body = await res.text();
+      this.unavailableSince = null;
       // Lines are "SUFFIX:COUNT"; padding lines carry count 0 and are not real matches.
       return body.split('\n').some((line) => {
         const [candidate, count] = line.trim().split(':');
@@ -85,13 +93,27 @@ export class PasswordPolicyService {
       });
     } catch (error) {
       this.logger.warn(`Breached-password check unavailable (${(error as Error).name}); accepting and flagging for re-check`);
+      this.noteUnavailable();
       return null;
     }
   }
 
+  // Error-level (Sentry alert) once the outage has lasted PWNED_OUTAGE_ALERT_MS, then at most once
+  // per that interval while it lasts.
+  private noteUnavailable(now = Date.now()): void {
+    this.unavailableSince ??= now;
+    if (now - this.unavailableSince >= PWNED_OUTAGE_ALERT_MS && now - this.lastOutageAlert >= PWNED_OUTAGE_ALERT_MS) {
+      this.lastOutageAlert = now;
+      this.logger.error(
+        `Breached-password check has been unavailable for ${Math.round((now - this.unavailableSince) / 60000)} min: new passwords are accepted unchecked (flagged for re-check)`,
+      );
+    }
+  }
+
   // After a successful password sign-in by an account flagged at set time: re-run the check now
-  // that the plaintext is in hand again. Clean -> clear the flag. Breached -> clear the flag, audit
-  // it and tell the user to change it. Still unreachable -> leave the flag for next time.
+  // that the plaintext is in hand again. Clean -> clear the flag. Breached -> the password must be
+  // changed at the next sign-in (password_change_required, YX-IAM-08), audit it and tell the user.
+  // Still unreachable -> leave the flag for next time.
   // Fire-and-forget from the caller; never throws.
   async recheckAfterLogin(
     user: { id: string; email: string; organizationId: string | null; role: string },
@@ -102,7 +124,7 @@ export class PasswordPolicyService {
       if (breached === null) return;
       const context = { organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' };
       await this.tenantPrisma.forTenant(context, (tx) =>
-        tx.user.update({ where: { id: user.id }, data: { passwordRecheckPending: false } }),
+        tx.user.update({ where: { id: user.id }, data: { passwordRecheckPending: false, passwordChangeRequired: breached } }),
       );
       if (!breached) return;
       await this.audit.record(context, {
@@ -116,7 +138,7 @@ export class PasswordPolicyService {
         subject: 'Please change your YukthiX password',
         html:
           '<p>The password on your YukthiX account appears in a known data breach, so it is easy for others to guess.</p>' +
-          '<p>Please change it now from <b>Me &rsaquo; Security</b>, choosing a password you do not use anywhere else.</p>',
+          '<p>You will be asked to choose a new one the next time you sign in. You can also change it now from <b>Me &rsaquo; Security</b>; choose a password you do not use anywhere else.</p>',
         organizationId: user.organizationId ?? undefined,
       });
     } catch (error) {
