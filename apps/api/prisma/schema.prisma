@@ -193,15 +193,19 @@ model WebhookDelivery {
 }
 
 model SsoLoginCode {
-  id          String   @id @default(uuid()) @db.Uuid
-  codeHash    String   @unique @map("code_hash") @db.VarChar(1000)
-  userId      String   @map("user_id") @db.Uuid
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  expiresAt   DateTime @map("expires_at") @db.Timestamptz(3)
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id                 String   @id @default(uuid()) @db.Uuid
+  codeHash           String   @unique @map("code_hash") @db.VarChar(1000)
+  userId             String   @map("user_id") @db.Uuid
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  expiresAt          DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   // 'saml' | 'oidc'; mfaAsserted: the IdP said it did MFA (the session then starts at AAL2)
-  method      String   @default("saml") @db.VarChar(16)
-  mfaAsserted Boolean  @default(false) @map("mfa_asserted")
+  method             String   @default("saml") @db.VarChar(16)
+  mfaAsserted        Boolean  @default(false) @map("mfa_asserted")
+  // The provider that vouched, and sha256 of the device cookie of the browser that started the
+  // sign-in: only that browser may redeem the code (login CSRF).
+  identityProviderId String?  @map("identity_provider_id") @db.Uuid
+  deviceIdHash       String?  @map("device_id_hash") @db.VarChar(64)
 
   @@map("sso_login_codes")
 }
@@ -229,6 +233,8 @@ model User {
   // Set when the breached-password check could not run as this password was chosen (HIBP
   // unreachable, fail-open); the next successful sign-in re-checks it (YX-IAM-08).
   passwordRecheckPending Boolean              @default(false) @map("password_recheck_pending")
+  // The re-check found the password in a breach corpus: the next sign-in must change it.
+  passwordChangeRequired Boolean              @default(false) @map("password_change_required")
   // MFA must be enrolled by then wherever it is required (P12 §8: 14-day grace for existing
   // accounts); an approved MFA reset sets it to now().
   mfaEnrolmentDueAt      DateTime             @default(dbgenerated("(now() + '14 days'::interval)")) @map("mfa_enrolment_due_at") @db.Timestamptz(3)
@@ -290,30 +296,33 @@ model RefreshToken {
 // revoking this row kills its access and refresh tokens at once. Rows are never deleted by
 // the app; revoked_at/revoked_reason record why a session ended.
 model Session {
-  id                 String    @id @default(uuid()) @db.Uuid
-  organizationId     String?   @map("organization_id") @db.Uuid
-  userId             String    @map("user_id") @db.Uuid
-  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                 String            @id @default(uuid()) @db.Uuid
+  organizationId     String?           @map("organization_id") @db.Uuid
+  userId             String            @map("user_id") @db.Uuid
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   // 'password' | 'saml'
-  method             String    @db.VarChar(32)
+  method             String            @db.VarChar(32)
   // 'aal1' | 'aal2' (P12 §3)
-  assuranceLevel     String    @default("aal1") @map("assurance_level") @db.VarChar(16)
+  assuranceLevel     String            @default("aal1") @map("assurance_level") @db.VarChar(16)
   // sha256 of the opaque device cookie; never the raw value.
-  deviceIdHash       String?   @map("device_id_hash") @db.VarChar(64)
-  userAgent          String?   @map("user_agent") @db.VarChar(512)
-  ipAddress          String?   @map("ip_address") @db.VarChar(64)
-  // No geo-IP lookup exists yet; populated once one does.
-  geo                String?   @db.VarChar(128)
-  idleTimeoutSeconds Int       @map("idle_timeout_seconds")
-  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  lastSeenAt         DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(3)
-  idleExpiresAt      DateTime  @map("idle_expires_at") @db.Timestamptz(3)
-  absoluteExpiresAt  DateTime  @map("absolute_expires_at") @db.Timestamptz(3)
-  revokedAt          DateTime? @map("revoked_at") @db.Timestamptz(3)
-  revokedReason      String?   @map("revoked_reason") @db.VarChar(64)
+  deviceIdHash       String?           @map("device_id_hash") @db.VarChar(64)
+  userAgent          String?           @map("user_agent") @db.VarChar(512)
+  ipAddress          String?           @map("ip_address") @db.VarChar(64)
+  // ISO country from the edge proxy's geo header (GEO_COUNTRY_HEADER); null when not configured.
+  geo                String?           @db.VarChar(128)
+  idleTimeoutSeconds Int               @map("idle_timeout_seconds")
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSeenAt         DateTime          @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  idleExpiresAt      DateTime          @map("idle_expires_at") @db.Timestamptz(3)
+  absoluteExpiresAt  DateTime          @map("absolute_expires_at") @db.Timestamptz(3)
+  revokedAt          DateTime?         @map("revoked_at") @db.Timestamptz(3)
+  revokedReason      String?           @map("revoked_reason") @db.VarChar(64)
   // Last AAL2 proof on this session (second factor at sign-in, enrolment, step-up) and its factor.
-  mfaVerifiedAt      DateTime? @map("mfa_verified_at") @db.Timestamptz(3)
-  mfaMethod          String?   @map("mfa_method") @db.VarChar(32)
+  mfaVerifiedAt      DateTime?         @map("mfa_verified_at") @db.Timestamptz(3)
+  mfaMethod          String?           @map("mfa_method") @db.VarChar(32)
+  // The identity provider that signed this session in (SSO only): disabling it ends the session.
+  identityProviderId String?           @map("identity_provider_id") @db.Uuid
+  identityProvider   IdentityProvider? @relation(fields: [identityProviderId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
   @@index([organizationId, lastSeenAt])
@@ -417,7 +426,7 @@ model LoginEvent {
   userId         String?  @map("user_id") @db.Uuid
   // The identifier that was typed (lower-cased email), kept even when no user matched.
   identifier     String?  @db.VarChar(320)
-  // 'success' | 'failed' | 'locked' | 'mfa_failed'
+  // 'success' | 'failed' | 'locked' | 'mfa_failed' | 'code_sent'
   result         String   @db.VarChar(16)
   // 'password' | 'saml' | 'otp_email' | 'otp_sms' | 'otp_whatsapp' (second-factor failures: the factor)
   method         String   @db.VarChar(32)
@@ -2014,9 +2023,12 @@ model IdentityProvider {
   entraTenantId             String?                  @map("entra_tenant_id") @db.Uuid
   jitEnabled                Boolean                  @default(false) @map("jit_enabled")
   jitRole                   String?                  @map("jit_role") @db.VarChar(32)
+  // The IdP's own MFA claim (amr / acr / AuthnContextClassRef) counts only when an admin trusts it.
+  mfaTrusted                Boolean                  @default(false) @map("mfa_trusted")
   createdAt                 DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                 DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   domains                   IdentityProviderDomain[]
+  sessions                  Session[]
 
   @@unique([id, organizationId])
   @@index([organizationId])
