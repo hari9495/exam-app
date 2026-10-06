@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>YukthiX HR Suite — Working Spec</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* YukthiX spec — inlined into index.html by build.py.
+   Colour is structural: every product has one hue, carried by [data-p]
+   onto headings, contents entries, map nodes and § link chips. */
+
+:root{
+  --bg:#F3F4F7; --surface:#FFFFFF; --rail:#ECEEF2;
+  --ink:#111723; --ink-2:#414B5C; --muted:#727C8C;
+  --rule:#DEE2E8; --rule-2:#C8CED8;
+
+  --c-proctoring:#6A46F2; --c-ats:#08806F; --c-hrms:#C2610A;
+  --c-analytics:#C92C62; --c-platform:#3D4B62; --c-none:#414B5C;
+
+  --ok:#15804A; --note-bg:#FFF6E3; --note-rule:#DDA024; --scope-bg:#EEF0F4;
+
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+
+  --pc:var(--c-none);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0D1016; --surface:#151921; --rail:#11141B;
+    --ink:#E7EAF0; --ink-2:#B1B9C6; --muted:#838C9B;
+    --rule:#252B36; --rule-2:#353C49;
+    --c-proctoring:#A58FFF; --c-ats:#40C4AE; --c-hrms:#F09A4B;
+    --c-analytics:#F27BA3; --c-platform:#9EABC1; --c-none:#B1B9C6;
+    --ok:#4FCB86; --note-bg:#2A2313; --note-rule:#C3952C; --scope-bg:#1B1F28;
+    color-scheme:dark;
+  }
+}
+[data-p="proctoring"]{--pc:var(--c-proctoring)}
+[data-p="ats"]{--pc:var(--c-ats)}
+[data-p="hrms"]{--pc:var(--c-hrms)}
+[data-p="analytics"]{--pc:var(--c-analytics)}
+[data-p="platform"]{--pc:var(--c-platform)}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+/* app.js builds the page on load; hide the raw content until it has. */
+.js body:not(.ready){visibility:hidden}
+@media (prefers-reduced-motion:no-preference){ html{scroll-behavior:smooth} }
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:16px;line-height:1.62;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:4px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip{position:absolute;left:12px;top:-60px;z-index:50;background:var(--ink);color:var(--bg);
+  padding:8px 14px;border-radius:6px;text-decoration:none}
+.skip:focus{top:12px}
+
+/* ---------- progress: tinted by the product you are reading ---------- */
+.progress{position:fixed;inset:0 0 auto 0;height:3px;z-index:40;pointer-events:none}
+.progress span{display:block;height:100%;background:var(--pc);transform-origin:0 50%;
+  transform:scaleX(var(--progress,0))}
+
+/* ---------- shell ---------- */
+.shell{display:grid;grid-template-columns:292px minmax(0,1fr);min-height:100vh}
+.rail{background:var(--rail);border-right:1px solid var(--rule);position:sticky;top:0;
+  height:100vh;overflow-y:auto;padding:26px 0 28px;display:flex;flex-direction:column}
+.page{padding:64px clamp(20px,5vw,72px) 160px;max-width:1260px;min-width:0}
+.doc{max-width:840px}
+
+/* ---------- rail ---------- */
+.brand{padding:0 22px 18px}
+.brand-name{font-family:var(--display);font-weight:700;font-size:19px;letter-spacing:-.02em;line-height:1.15}
+.brand-sub{font:500 11px/1.4 var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:4px}
+
+.filter{position:relative;display:block;margin:0 16px 14px}
+.filter input{width:100%;padding:8px 34px 8px 11px;font:inherit;font-size:13.5px;color:var(--ink);
+  background:var(--surface);border:1px solid var(--rule);border-radius:8px;-webkit-appearance:none}
+.filter input::placeholder{color:var(--muted)}
+.filter input:focus{outline:2px solid var(--ink);outline-offset:-1px;border-color:transparent}
+.filter kbd{position:absolute;right:8px;top:50%;transform:translateY(-50%);font:500 11px/1 var(--mono);
+  color:var(--muted);border:1px solid var(--rule-2);border-radius:4px;padding:3px 6px}
+.filter input:focus + kbd,.filter input:not(:placeholder-shown) + kbd{display:none}
+.filter-empty{margin:4px 22px;font-size:13px;color:var(--muted)}
+.built{margin:auto 22px 0;padding-top:28px;font:11px/1.5 var(--mono);color:var(--muted)}
+
+.rail nav{padding:0 10px}
+.rail nav ul{list-style:none;margin:0;padding:0}
+.rail nav ul ul{margin-left:17px;padding-left:4px;border-left:1px solid var(--rule)}
+.rail nav li.branch:not(.open) > ul{display:none}
+.rail .row{display:flex;align-items:flex-start}
+.rail .tw,.rail .tw-space{flex:0 0 20px;height:28px}
+.rail .tw{border:0;background:none;padding:0;cursor:pointer;color:var(--muted);border-radius:4px;position:relative}
+.rail .tw::before{content:"";position:absolute;left:7px;top:11px;width:5px;height:5px;
+  border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform .15s}
+.rail li.open > .row > .tw::before{transform:rotate(45deg);top:9px}
+.rail .tw:hover{color:var(--ink)}
+.rail nav a{flex:1;min-width:0;display:flex;gap:7px;align-items:baseline;padding:4px 8px;border-radius:6px;
+  text-decoration:none;color:var(--ink-2);font-size:13px;line-height:1.4}
+.rail nav a:hover{background:color-mix(in srgb,var(--ink) 6%,transparent);color:var(--ink)}
+.rail .tn{font:500 11px/1.4 var(--mono);color:var(--pc);flex:none}
+.rail .tt{min-width:0}
+.rail li.l2 > .row > a{font-weight:600;color:var(--ink);font-size:13.5px}
+.rail li.l3 > .row > a{font-size:13.5px}
+.rail nav a.active{background:color-mix(in srgb,var(--pc) 13%,transparent);color:var(--ink);
+  box-shadow:inset 2px 0 0 var(--pc)}
+.rail li.later > .row > a{color:var(--muted);font-weight:500}
+.rail .tag{margin-left:auto;font:500 10px/1.6 var(--mono);text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted);border:1px solid var(--rule-2);border-radius:999px;padding:0 6px}
+
+/* ---------- hero ---------- */
+.hero{margin-bottom:44px}
+.eyebrow{margin:0 0 14px;font:500 12px/1.4 var(--mono);text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+  display:flex;flex-wrap:wrap;gap:6px 18px}
+.eyebrow span:first-child{color:var(--ink)}
+.hero h1{font-family:var(--display);font-weight:750;font-size:clamp(38px,6vw,64px);line-height:.98;
+  letter-spacing:-.035em;margin:0 0 22px}
+.facts{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px 22px;
+  font-size:13.5px;color:var(--ink-2)}
+.facts b{font:600 13.5px var(--mono);color:var(--ink)}
+
+/* ---------- system map ---------- */
+.map{margin:0 0 104px}
+.map-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 28px;
+  padding-top:22px;border-top:1px solid var(--rule)}
+.map-head h2{font-family:var(--display);font-weight:700;font-size:24px;letter-spacing:-.02em;margin:0 0 4px}
+.map-head p{margin:0;font-size:14px;color:var(--ink-2);max-width:62ch}
+.map-legend{display:flex;align-items:center;gap:16px;font-size:12.5px;color:var(--ink-2)}
+.lg{display:inline-flex;align-items:center;gap:7px}
+.lg::before{content:"";width:22px;border-top:2px solid var(--ink-2)}
+.lg-in::before{border-top-style:dashed}
+.map-toggle{font:500 12.5px var(--sans);color:var(--ink);background:var(--surface);border:1px solid var(--rule-2);
+  border-radius:999px;padding:5px 12px;cursor:pointer}
+.map-toggle:hover{border-color:var(--ink-2)}
+.map-toggle[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.trace{margin:14px 0 14px;min-height:1.6em;font-size:13.5px;color:var(--muted)}
+
+.map-canvas{position:relative}
+.wires{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;z-index:2}
+.wire{fill:none;stroke:var(--wc);stroke-width:1.75;stroke-linecap:round}
+.wire.in{stroke-dasharray:5 4}
+.wire.all{opacity:.4;stroke-width:1.25}
+.wire-end{fill:var(--wc)}
+.wire-end.all{opacity:.5}
+@media (prefers-reduced-motion:no-preference){
+  .wire,.wire-end{animation:wire-in .22s ease-out}
+  @keyframes wire-in{from{opacity:0}}
+}
+
+.products{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:start}
+.col,.foundation{background:var(--surface);border:1px solid var(--rule);border-top:3px solid var(--pc);border-radius:10px}
+.foundation{margin-top:12px}
+.col-head{display:block;padding:12px 12px 10px;text-decoration:none;color:var(--ink);border-radius:8px 8px 0 0}
+.col-title{display:flex;align-items:baseline;gap:8px}
+.col-title .num{font:500 12px var(--mono);color:var(--pc)}
+.col-title .nm{font-family:var(--display);font-weight:700;font-size:19px;letter-spacing:-.015em}
+.col-meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-top:6px}
+.count{font:12px var(--mono);color:var(--muted)}
+.col-body{padding:0 6px 8px}
+.foundation-body{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px 12px;padding:0 6px 10px}
+.map-group + .map-group{margin-top:6px}
+.foundation-body .map-group + .map-group{margin-top:0}
+.map-group-label{font:500 10.5px/1 var(--mono);text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+  padding:10px 8px 5px}
+.chip{display:flex;gap:8px;align-items:baseline;padding:4px 8px;border-radius:6px;text-decoration:none;
+  color:var(--ink-2);font-size:12.5px;line-height:1.35}
+.chip .num{font:500 10.5px var(--mono);color:var(--pc);flex:0 0 3.3em}
+.chip:hover,.col-head:hover{background:color-mix(in srgb,var(--pc) 9%,transparent);color:var(--ink)}
+
+.node{transition:opacity .15s}
+.map-canvas.tracing .node{opacity:.3}
+.map-canvas.tracing .node.is-src,.map-canvas.tracing .node.is-out,.map-canvas.tracing .node.is-in{opacity:1;color:var(--ink)}
+.node.is-src{background:color-mix(in srgb,var(--pc) 16%,transparent);box-shadow:inset 0 0 0 1.5px var(--pc)}
+.node.is-out{background:color-mix(in srgb,var(--pc) 11%,transparent)}
+.node.is-in{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--pc) 70%,transparent)}
+
+/* ---------- pills ---------- */
+.pill{display:inline-flex;align-items:center;gap:6px;font:600 10.5px/1 var(--mono);text-transform:uppercase;
+  letter-spacing:.06em;padding:4px 8px;border-radius:999px;white-space:nowrap;vertical-align:middle;
+  background:color-mix(in srgb,var(--muted) 14%,transparent);color:var(--ink-2)}
+.pill-near-ready{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.pill-near-ready::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill-proposed{background:color-mix(in srgb,var(--note-rule) 20%,transparent);color:color-mix(in srgb,var(--note-rule) 60%,var(--ink))}
+.pill-to-define{background:transparent;box-shadow:inset 0 0 0 1px var(--rule-2);color:var(--muted)}
+
+/* ---------- document headings ---------- */
+.doc h2,.doc h3,.doc h4,.doc h5{scroll-margin-top:28px;position:relative}
+.doc .num{font-family:var(--mono);font-weight:500;color:var(--pc)}
+.doc h2.chapter{font-family:var(--display);font-weight:750;font-size:40px;line-height:1.05;letter-spacing:-.03em;
+  margin:112px 0 22px;padding-top:26px;border-top:2px solid var(--ink);display:flex;align-items:baseline;gap:14px}
+.doc h2.chapter:first-child{margin-top:0}
+.doc h2.chapter .num{font-size:15px;color:var(--muted)}
+.doc h3.product{font-family:var(--display);font-weight:700;font-size:30px;letter-spacing:-.02em;line-height:1.15;
+  margin:80px 0 12px;padding-left:16px;border-left:4px solid var(--pc);display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.doc h3.product .num{font-size:15px}
+.doc h4.section{font-size:20px;font-weight:600;letter-spacing:-.01em;line-height:1.3;margin:48px 0 10px;
+  display:flex;align-items:baseline;gap:10px}
+.doc h4.section .num{font-size:13px;min-width:3.4em}
+.doc h4.group{font:600 12px/1.3 var(--mono);text-transform:uppercase;letter-spacing:.09em;color:var(--pc);
+  margin:52px 0 6px;display:flex;align-items:center;gap:12px}
+.doc h4.group::after{content:"";flex:1;border-top:1px solid color-mix(in srgb,var(--pc) 35%,transparent)}
+.doc h5.module{font-size:17px;font-weight:600;line-height:1.35;margin:28px 0 8px;display:flex;align-items:baseline;gap:10px}
+.doc h5.module .num{font-size:12.5px;min-width:3.6em}
+.module-desc{color:var(--ink-2)}
+
+.anchor{margin-left:6px;color:var(--muted);text-decoration:none;font:400 .8em var(--sans);opacity:0;transition:opacity .12s}
+.doc :is(h2,h3,h4,h5):hover .anchor,.anchor:focus-visible{opacity:1}
+.anchor.copied{opacity:1}
+.anchor.copied::after{content:"Link copied";margin-left:8px;font:500 11px var(--mono);color:var(--ok);letter-spacing:0;text-transform:none}
+
+/* ---------- cross-references ---------- */
+.xref{font:500 .84em var(--mono);color:var(--pc);text-decoration:none;white-space:nowrap;
+  background:color-mix(in srgb,var(--pc) 10%,transparent);padding:1px 5px;border-radius:4px}
+.xref:hover{background:color-mix(in srgb,var(--pc) 20%,transparent)}
+.refs{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 14px;font-size:12.5px}
+.refs-group{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.refs-label{font:500 10.5px var(--mono);text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.xref-full{font:500 12.5px var(--sans);color:var(--ink);display:inline-flex;gap:6px;align-items:baseline;
+  padding:2px 9px;border-radius:999px;border:1px solid color-mix(in srgb,var(--pc) 35%,transparent);
+  background:color-mix(in srgb,var(--pc) 7%,transparent)}
+.xref-full .num{font-size:11px}
+
+/* ---------- text ---------- */
+.doc p{margin:0 0 15px;max-width:72ch}
+.doc strong{font-weight:600}
+.doc ul,.doc ol{margin:0 0 18px;padding-left:20px;max-width:72ch}
+.doc li{margin:0 0 5px}
+.doc li::marker{color:var(--rule-2)}
+.doc hr{border:0;margin:0}
+.doc a:not(.xref):not(.anchor){color:var(--ink);text-decoration-color:var(--rule-2);text-underline-offset:3px}
+.doc code{font-family:var(--mono);font-size:.86em;background:color-mix(in srgb,var(--ink) 7%,transparent);padding:1px 5px;border-radius:4px}
+
+/* ---------- tables ---------- */
+.tbl{overflow-x:auto;margin:6px 0 24px;background:var(--surface);border:1px solid var(--rule);border-radius:10px}
+.doc table{border-collapse:collapse;width:100%;font-size:14.5px}
+.doc th{text-align:left;font:500 11px/1.3 var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+  padding:11px 14px;border-bottom:1px solid var(--rule);vertical-align:bottom;white-space:nowrap}
+.doc td{padding:10px 14px;border-bottom:1px solid var(--rule);vertical-align:top}
+.doc tbody tr:last-child td{border-bottom:0}
+.doc td:first-child{font-weight:500}
+.doc td.mark{color:var(--pc);font-size:17px;line-height:1.3}
+.doc tbody tr:target td{background:color-mix(in srgb,var(--pc) 10%,transparent)}
+
+/* ---------- flow (Step tables) ---------- */
+.flow{list-style:none;padding:0!important;margin:10px 0 28px!important;max-width:none!important;
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:22px 0;counter-reset:none}
+.flow li{position:relative;margin:0;padding:22px 14px 0 0;border-top:2px solid var(--rule-2)}
+.flow li:last-child{border-top-color:transparent;background:linear-gradient(var(--rule-2),var(--rule-2)) 0 -2px/28px 2px no-repeat}
+.flow .step{position:absolute;top:-13px;left:0;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
+  font:600 11.5px var(--mono);background:var(--bg);color:var(--ink);border:2px solid var(--ink)}
+.flow .step-body{display:flex;flex-direction:column;gap:4px;font-size:14px;line-height:1.45}
+.owner{align-self:flex-start;font:500 10.5px/1.5 var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.owner-ai{color:var(--c-proctoring);background:color-mix(in srgb,var(--c-proctoring) 12%,transparent);padding:0 6px;border-radius:4px}
+
+/* ---------- dependency arrows ---------- */
+.deps{list-style:none;padding:0!important;margin:10px 0 24px!important;max-width:none!important;
+  display:grid;grid-template-columns:auto auto auto 1fr;gap:0 14px;align-items:center}
+.deps li{display:contents}
+.deps li > span{padding:10px 0;border-bottom:1px solid var(--rule)}
+.deps li:last-child > span{border-bottom:0}
+.dep-arrow{color:var(--muted);text-align:center}
+.dep-why{color:var(--ink-2);font-size:14.5px}
+.deps .sr{padding:0!important;border:0!important}
+
+/* ---------- callouts ---------- */
+.doc blockquote{margin:22px 0;padding:14px 18px;border-radius:0 8px 8px 0;max-width:72ch}
+.doc blockquote p{margin:0}
+.doc blockquote.note{background:var(--note-bg);border-left:3px solid var(--note-rule)}
+.doc blockquote.scope{background:var(--scope-bg);border-left:3px solid var(--muted);color:var(--ink-2)}
+.empty{padding:16px 18px;border:1.5px dashed var(--rule-2);border-radius:10px;color:var(--ink-2);font-size:14.5px;max-width:72ch}
+.empty strong{color:var(--ink)}
+
+/* ---------- mobile contents drawer ---------- */
+.menu,.scrim{display:none}
+
+@media (max-width:1180px){
+  .products{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:1000px){
+  .shell{grid-template-columns:1fr}
+  .rail{position:fixed;inset:0 auto 0 0;width:min(320px,86vw);z-index:30;transform:translateX(-100%);
+    transition:transform .2s ease;box-shadow:0 0 40px rgba(0,0,0,.2)}
+  .nav-open .rail{transform:none}
+  .nav-open .scrim{display:block;position:fixed;inset:0;z-index:25;background:rgba(10,14,20,.35)}
+  .menu{display:block;position:fixed;right:16px;bottom:16px;z-index:35;font:600 14px var(--sans);
+    color:var(--bg);background:var(--ink);border:0;border-radius:999px;padding:11px 18px;
+    box-shadow:0 6px 20px rgba(0,0,0,.22);cursor:pointer}
+  .page{padding:40px 20px 120px}
+  .doc h2.chapter{font-size:32px}
+  .doc h3.product{font-size:25px}
+}
+@media (max-width:640px){
+  .products{grid-template-columns:1fr}
+  .flow{grid-template-columns:1fr;gap:0}
+  .flow li,.flow li:last-child{border-top:0;border-left:2px solid var(--rule-2);background:none;padding:0 0 18px 24px;margin-left:11px}
+  .flow li:last-child{border-left-color:transparent}
+  .flow .step{top:0;left:-13px}
+  .deps{grid-template-columns:auto auto 1fr}
+  .dep-why{grid-column:1/-1;padding-top:0!important}
+  .deps li > span:not(.dep-why){border-bottom:0}
+}
+@media (prefers-reduced-motion:reduce){ .rail{transition:none} .node,.anchor{transition:none} }
+
+/* ---------- print ---------- */
+@media print{
+  .rail,.map,.menu,.progress,.scrim,.anchor{display:none!important}
+  .shell{display:block}
+  body{background:#fff;font-size:11pt}
+  .page{padding:0;max-width:none}
+  .doc h3,.doc h4,.doc h5{page-break-after:avoid}
+  .tbl,.doc blockquote,.flow{page-break-inside:avoid}
+}
+
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="progress" aria-hidden="true"><span></span></div>
+<div class="shell">
+  <aside class="rail" id="rail">
+    <div class="brand">
+      <div class="brand-name">YukthiX HR Suite</div>
+      <div class="brand-sub">Working Spec</div>
+    </div>
+    <label class="filter">
+      <span class="sr">Filter sections</span>
+      <input id="filter" type="search" placeholder="Filter by name or number" autocomplete="off">
+      <kbd aria-hidden="true">/</kbd>
+    </label>
+    <nav aria-label="Contents"><ul><li class="l2 branch open" data-p=""><div class="row"><button class="tw" type="button" aria-expanded="true" aria-label="Show sections in Features"></button><a href="#1-features"><span class="tn">1</span> <span class="tt">Features</span></a></div><ul><li class="l3 branch" data-p="proctoring"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Proctoring"></button><a href="#11-proctoring"><span class="tn">1.1</span> <span class="tt">Proctoring</span></a></div><ul><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#111-question-bank"><span class="tn">1.1.1</span> <span class="tt">Question Bank</span></a></div></li><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#112-test-builder"><span class="tn">1.1.2</span> <span class="tt">Test Builder</span></a></div></li><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#113-coding-assessment"><span class="tn">1.1.3</span> <span class="tt">Coding Assessment</span></a></div></li><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#114-scheduling-invitations"><span class="tn">1.1.4</span> <span class="tt">Scheduling &amp; Invitations</span></a></div></li><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#115-pre-test-experience"><span class="tn">1.1.5</span> <span class="tt">Pre-Test Experience</span></a></div></li><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#116-proctoring-controls"><span class="tn">1.1.6</span> <span class="tt">Proctoring Controls</span></a></div></li><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#117-ai-assistance-detection"><span class="tn">1.1.7</span> <span class="tt">AI-Assistance Detection</span></a></div></li><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#118-session-continuity"><span class="tn">1.1.8</span> <span class="tt">Session Continuity</span></a></div></li><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#119-monitoring-review"><span class="tn">1.1.9</span> <span class="tt">Monitoring &amp; Review</span></a></div></li><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#1110-integrity-checks"><span class="tn">1.1.10</span> <span class="tt">Integrity Checks</span></a></div></li><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#1111-incident-management"><span class="tn">1.1.11</span> <span class="tt">Incident Management</span></a></div></li><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#1112-scoring-outcomes"><span class="tn">1.1.12</span> <span class="tt">Scoring &amp; Outcomes</span></a></div></li><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#1113-psychometrics-item-analysis"><span class="tn">1.1.13</span> <span class="tt">Psychometrics &amp; Item Analysis</span></a></div></li><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#1114-accessibility-accommodations"><span class="tn">1.1.14</span> <span class="tt">Accessibility &amp; Accommodations</span></a></div></li><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#1115-privacy-consent-fairness"><span class="tn">1.1.15</span> <span class="tt">Privacy, Consent &amp; Fairness</span></a></div></li><li class="l4" data-p="proctoring"><div class="row"><span class="tw-space"></span><a href="#1116-integrations"><span class="tn">1.1.16</span> <span class="tt">Integrations</span></a></div></li></ul></li><li class="l3 branch" data-p="ats"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in ATS"></button><a href="#12-ats"><span class="tn">1.2</span> <span class="tt">ATS</span></a></div><ul><li class="l4" data-p="ats"><div class="row"><span class="tw-space"></span><a href="#121-shared-capabilities"><span class="tn">1.2.1</span> <span class="tt">Shared Capabilities</span></a></div></li><li class="l4" data-p="ats"><div class="row"><span class="tw-space"></span><a href="#122-internal-ats"><span class="tn">1.2.2</span> <span class="tt">Internal ATS</span></a></div></li><li class="l4" data-p="ats"><div class="row"><span class="tw-space"></span><a href="#123-external-ats"><span class="tn">1.2.3</span> <span class="tt">External ATS</span></a></div></li><li class="l4" data-p="ats"><div class="row"><span class="tw-space"></span><a href="#124-client-helpdesk"><span class="tn">1.2.4</span> <span class="tt">Client Helpdesk</span></a></div></li></ul></li><li class="l3 branch" data-p="hrms"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in HRMS"></button><a href="#13-hrms"><span class="tn">1.3</span> <span class="tt">HRMS</span></a></div><ul><li class="l4 branch" data-p="hrms"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Employee record"></button><a href="#employee-record"> <span class="tt">Employee record</span></a></div><ul><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#131-core-hr"><span class="tn">1.3.1</span> <span class="tt">Core HR</span></a></div></li><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#132-onboarding"><span class="tn">1.3.2</span> <span class="tt">Onboarding</span></a></div></li></ul></li><li class="l4 branch" data-p="hrms"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Time &amp; pay"></button><a href="#time-pay"> <span class="tt">Time &amp; pay</span></a></div><ul><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#133-leave-management"><span class="tn">1.3.3</span> <span class="tt">Leave Management</span></a></div></li><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#134-time-attendance"><span class="tn">1.3.4</span> <span class="tt">Time &amp; Attendance</span></a></div></li><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#135-payroll"><span class="tn">1.3.5</span> <span class="tt">Payroll</span></a></div></li><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#136-benefits-administration"><span class="tn">1.3.6</span> <span class="tt">Benefits Administration</span></a></div></li><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#137-expense-travel-reimbursement"><span class="tn">1.3.7</span> <span class="tt">Expense, Travel &amp; Reimbursement</span></a></div></li></ul></li><li class="l4 branch" data-p="hrms"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Growth"></button><a href="#growth"> <span class="tt">Growth</span></a></div><ul><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#138-performance-management"><span class="tn">1.3.8</span> <span class="tt">Performance Management</span></a></div></li><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#139-learning-development"><span class="tn">1.3.9</span> <span class="tt">Learning &amp; Development</span></a></div></li></ul></li><li class="l4 branch" data-p="hrms"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Service &amp; support"></button><a href="#service-support"> <span class="tt">Service &amp; support</span></a></div><ul><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#1310-asset-management"><span class="tn">1.3.10</span> <span class="tt">Asset Management</span></a></div></li><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#1311-employee-self-service"><span class="tn">1.3.11</span> <span class="tt">Employee Self-Service</span></a></div></li><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#1312-employee-helpdesk"><span class="tn">1.3.12</span> <span class="tt">Employee Helpdesk</span></a></div></li></ul></li><li class="l4 branch" data-p="hrms"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Exit &amp; governance"></button><a href="#exit-governance"> <span class="tt">Exit &amp; governance</span></a></div><ul><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#1313-offboarding"><span class="tn">1.3.13</span> <span class="tt">Offboarding</span></a></div></li><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#1314-alumni-portal"><span class="tn">1.3.14</span> <span class="tt">Alumni Portal</span></a></div></li><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#1315-compliance-documents"><span class="tn">1.3.15</span> <span class="tt">Compliance &amp; Documents</span></a></div></li><li class="l5" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#1316-engage-engagement-recognition-internal-communication"><span class="tn">1.3.16</span> <span class="tt">Engage — Engagement, Recognition &amp; Internal Communication</span></a></div></li></ul></li><li class="l4" data-p="hrms"><div class="row"><span class="tw-space"></span><a href="#data-dependencies"> <span class="tt">Data dependencies</span></a></div></li></ul></li><li class="l3 branch" data-p="analytics"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Analytics"></button><a href="#14-analytics"><span class="tn">1.4</span> <span class="tt">Analytics</span></a></div><ul><li class="l4 branch" data-p="analytics"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Delivery"></button><a href="#delivery"> <span class="tt">Delivery</span></a></div><ul><li class="l5" data-p="analytics"><div class="row"><span class="tw-space"></span><a href="#141-report-builder"><span class="tn">1.4.1</span> <span class="tt">Report Builder</span></a></div></li><li class="l5" data-p="analytics"><div class="row"><span class="tw-space"></span><a href="#142-dashboards"><span class="tn">1.4.2</span> <span class="tt">Dashboards</span></a></div></li><li class="l5" data-p="analytics"><div class="row"><span class="tw-space"></span><a href="#143-scheduled-reports-exports"><span class="tn">1.4.3</span> <span class="tt">Scheduled Reports &amp; Exports</span></a></div></li></ul></li><li class="l4 branch" data-p="analytics"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Domains"></button><a href="#domains"> <span class="tt">Domains</span></a></div><ul><li class="l5" data-p="analytics"><div class="row"><span class="tw-space"></span><a href="#144-assessment"><span class="tn">1.4.4</span> <span class="tt">Assessment</span></a></div></li><li class="l5" data-p="analytics"><div class="row"><span class="tw-space"></span><a href="#145-recruitment"><span class="tn">1.4.5</span> <span class="tt">Recruitment</span></a></div></li><li class="l5" data-p="analytics"><div class="row"><span class="tw-space"></span><a href="#146-staffing-revenue"><span class="tn">1.4.6</span> <span class="tt">Staffing &amp; revenue</span></a></div></li><li class="l5" data-p="analytics"><div class="row"><span class="tw-space"></span><a href="#147-workforce"><span class="tn">1.4.7</span> <span class="tt">Workforce</span></a></div></li><li class="l5" data-p="analytics"><div class="row"><span class="tw-space"></span><a href="#148-payroll-compliance"><span class="tn">1.4.8</span> <span class="tt">Payroll &amp; compliance</span></a></div></li></ul></li></ul></li></ul></li><li class="l2 branch open" data-p="platform"><div class="row"><button class="tw" type="button" aria-expanded="true" aria-label="Show sections in Architecture"></button><a href="#2-architecture"><span class="tn">2</span> <span class="tt">Architecture</span></a></div><ul><li class="l3 branch" data-p="platform"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Platform Foundation"></button><a href="#21-platform-foundation"><span class="tn">2.1</span> <span class="tt">Platform Foundation</span></a></div><ul><li class="l4 branch" data-p="platform"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Identity &amp; access"></button><a href="#identity-access"> <span class="tt">Identity &amp; access</span></a></div><ul><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#211-tenant-organisation-setup"><span class="tn">2.1.1</span> <span class="tt">Tenant &amp; Organisation Setup</span></a></div></li><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#212-authentication-security"><span class="tn">2.1.2</span> <span class="tt">Authentication &amp; Security</span></a></div></li><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#213-rbac-data-visibility"><span class="tn">2.1.3</span> <span class="tt">RBAC &amp; Data Visibility</span></a></div></li></ul></li><li class="l4 branch" data-p="platform"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Configuration"></button><a href="#configuration"> <span class="tt">Configuration</span></a></div><ul><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#214-workflow-approval-engine"><span class="tn">2.1.4</span> <span class="tt">Workflow &amp; Approval Engine</span></a></div></li><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#215-custom-fields-form-builder"><span class="tn">2.1.5</span> <span class="tt">Custom Fields &amp; Form Builder</span></a></div></li><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#216-localisation"><span class="tn">2.1.6</span> <span class="tt">Localisation</span></a></div></li></ul></li><li class="l4 branch" data-p="platform"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Content &amp; communication"></button><a href="#content-communication"> <span class="tt">Content &amp; communication</span></a></div><ul><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#217-notification-engine"><span class="tn">2.1.7</span> <span class="tt">Notification Engine</span></a></div></li><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#218-document-management-e-signature"><span class="tn">2.1.8</span> <span class="tt">Document Management &amp; E-Signature</span></a></div></li><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#219-letter-template-generator"><span class="tn">2.1.9</span> <span class="tt">Letter &amp; Template Generator</span></a></div></li><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#2110-global-search"><span class="tn">2.1.10</span> <span class="tt">Global Search</span></a></div></li></ul></li><li class="l4 branch" data-p="platform"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Data &amp; integration"></button><a href="#data-integration"> <span class="tt">Data &amp; integration</span></a></div><ul><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#2111-import-export-data-migration"><span class="tn">2.1.11</span> <span class="tt">Import, Export &amp; Data Migration</span></a></div></li><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#2112-open-api-webhooks"><span class="tn">2.1.12</span> <span class="tt">Open API &amp; Webhooks</span></a></div></li><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#2113-integration-hub"><span class="tn">2.1.13</span> <span class="tt">Integration Hub</span></a></div></li><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#2114-ai-layer"><span class="tn">2.1.14</span> <span class="tt">AI Layer</span></a></div></li></ul></li><li class="l4 branch" data-p="platform"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Governance"></button><a href="#governance"> <span class="tt">Governance</span></a></div><ul><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#2115-audit-log"><span class="tn">2.1.15</span> <span class="tt">Audit Log</span></a></div></li><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#2116-privacy-data-governance"><span class="tn">2.1.16</span> <span class="tt">Privacy &amp; Data Governance</span></a></div></li></ul></li><li class="l4 branch" data-p="platform"><div class="row"><button class="tw" type="button" aria-expanded="false" aria-label="Show sections in Commercial &amp; access"></button><a href="#commercial-access"> <span class="tt">Commercial &amp; access</span></a></div><ul><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#2117-billing-subscription"><span class="tn">2.1.17</span> <span class="tt">Billing &amp; Subscription</span></a></div></li><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#2118-mobile-app-pwa"><span class="tn">2.1.18</span> <span class="tt">Mobile App / PWA</span></a></div></li><li class="l5" data-p="platform"><div class="row"><span class="tw-space"></span><a href="#2119-sandbox-environment"><span class="tn">2.1.19</span> <span class="tt">Sandbox Environment</span></a></div></li></ul></li></ul></li></ul></li><li class="l2 later" data-p=""><div class="row"><span class="tw-space"></span><a href="#3-infrastructure"><span class="tn">3</span> <span class="tt">Infrastructure</span><span class="tag">later</span></a></div></li><li class="l2" data-p=""><div class="row"><span class="tw-space"></span><a href="#4-timeline"><span class="tn">4</span> <span class="tt">Timeline</span></a></div></li><li class="l2" data-p=""><div class="row"><span class="tw-space"></span><a href="#5-decisions"><span class="tn">5</span> <span class="tt">Decisions</span></a></div></li></ul></nav>
+    <p class="filter-empty" hidden>No sections match. Try a module number, such as 1.3.5.</p>
+    <p class="built">Built from spec.md · 28 September 2026, 20:45</p>
+  </aside>
+  <div class="scrim"></div>
+  <main class="page" id="main">
+    <header class="hero">
+      <p class="eyebrow"><span>Working Spec</span><span>Last updated 24 September 2026</span></p>
+      <h1>YukthiX HR Suite</h1>
+      <ul class="facts"><li><b>4</b> products</li><li><b>44</b> modules</li><li><b>19</b> platform services</li><li><b>23</b> cross-references</li><li><b>10</b> between products</li><li><b>4 of 5</b> chapters drafted</li></ul>
+    </header>
+    <section class="map" aria-labelledby="map-title">
+  <div class="map-head">
+    <div>
+      <h2 id="map-title">System map</h2>
+      <p>Four products on one shared platform. Each product keeps its colour throughout the spec, so a link's colour shows which product it points into.</p>
+    </div>
+    <div class="map-legend">
+      <span class="lg lg-out">Links to</span><span class="lg lg-in">Linked from</span>
+      <button class="map-toggle" type="button" aria-pressed="false">Show all links</button>
+    </div>
+  </div>
+  <p class="trace" aria-live="polite">Hover over or tab to a module to see its cross-references. Select it to open that section.</p>
+  <div class="map-canvas">
+    <svg class="wires" aria-hidden="true"></svg>
+    <div class="products"><div class="col" data-p="proctoring"><a class="node col-head" href="#11-proctoring" data-num="1.1"><span class="col-title"><span class="num">1.1</span><span class="nm">Proctoring</span></span><span class="col-meta"><span class="pill pill-near-ready">Near ready</span><span class="count">16 modules</span></span></a><div class="col-body"><div class="map-group"><div class="chips"><a class="node chip" href="#111-question-bank" data-num="1.1.1"><span class="num">1.1.1</span><span class="nm">Question Bank</span></a><a class="node chip" href="#112-test-builder" data-num="1.1.2"><span class="num">1.1.2</span><span class="nm">Test Builder</span></a><a class="node chip" href="#113-coding-assessment" data-num="1.1.3"><span class="num">1.1.3</span><span class="nm">Coding Assessment</span></a><a class="node chip" href="#114-scheduling-invitations" data-num="1.1.4"><span class="num">1.1.4</span><span class="nm">Scheduling &amp; Invitations</span></a><a class="node chip" href="#115-pre-test-experience" data-num="1.1.5"><span class="num">1.1.5</span><span class="nm">Pre-Test Experience</span></a><a class="node chip" href="#116-proctoring-controls" data-num="1.1.6"><span class="num">1.1.6</span><span class="nm">Proctoring Controls</span></a><a class="node chip" href="#117-ai-assistance-detection" data-num="1.1.7"><span class="num">1.1.7</span><span class="nm">AI-Assistance Detection</span></a><a class="node chip" href="#118-session-continuity" data-num="1.1.8"><span class="num">1.1.8</span><span class="nm">Session Continuity</span></a><a class="node chip" href="#119-monitoring-review" data-num="1.1.9"><span class="num">1.1.9</span><span class="nm">Monitoring &amp; Review</span></a><a class="node chip" href="#1110-integrity-checks" data-num="1.1.10"><span class="num">1.1.10</span><span class="nm">Integrity Checks</span></a><a class="node chip" href="#1111-incident-management" data-num="1.1.11"><span class="num">1.1.11</span><span class="nm">Incident Management</span></a><a class="node chip" href="#1112-scoring-outcomes" data-num="1.1.12"><span class="num">1.1.12</span><span class="nm">Scoring &amp; Outcomes</span></a><a class="node chip" href="#1113-psychometrics-item-analysis" data-num="1.1.13"><span class="num">1.1.13</span><span class="nm">Psychometrics &amp; Item Analysis</span></a><a class="node chip" href="#1114-accessibility-accommodations" data-num="1.1.14"><span class="num">1.1.14</span><span class="nm">Accessibility &amp; Accommodations</span></a><a class="node chip" href="#1115-privacy-consent-fairness" data-num="1.1.15"><span class="num">1.1.15</span><span class="nm">Privacy, Consent &amp; Fairness</span></a><a class="node chip" href="#1116-integrations" data-num="1.1.16"><span class="num">1.1.16</span><span class="nm">Integrations</span></a></div></div></div></div><div class="col" data-p="ats"><a class="node col-head" href="#12-ats" data-num="1.2"><span class="col-title"><span class="num">1.2</span><span class="nm">ATS</span></span><span class="col-meta"><span class="pill pill-to-build">To build</span><span class="count">4 modules</span></span></a><div class="col-body"><div class="map-group"><div class="chips"><a class="node chip" href="#121-shared-capabilities" data-num="1.2.1"><span class="num">1.2.1</span><span class="nm">Shared Capabilities</span></a><a class="node chip" href="#122-internal-ats" data-num="1.2.2"><span class="num">1.2.2</span><span class="nm">Internal ATS</span></a><a class="node chip" href="#123-external-ats" data-num="1.2.3"><span class="num">1.2.3</span><span class="nm">External ATS</span></a><a class="node chip" href="#124-client-helpdesk" data-num="1.2.4"><span class="num">1.2.4</span><span class="nm">Client Helpdesk</span></a></div></div></div></div><div class="col" data-p="hrms"><a class="node col-head" href="#13-hrms" data-num="1.3"><span class="col-title"><span class="num">1.3</span><span class="nm">HRMS</span></span><span class="col-meta"><span class="pill pill-to-build">To build</span><span class="count">16 modules</span></span></a><div class="col-body"><div class="map-group"><div class="map-group-label">Employee record</div><div class="chips"><a class="node chip" href="#131-core-hr" data-num="1.3.1"><span class="num">1.3.1</span><span class="nm">Core HR</span></a><a class="node chip" href="#132-onboarding" data-num="1.3.2"><span class="num">1.3.2</span><span class="nm">Onboarding</span></a></div></div><div class="map-group"><div class="map-group-label">Time &amp; pay</div><div class="chips"><a class="node chip" href="#133-leave-management" data-num="1.3.3"><span class="num">1.3.3</span><span class="nm">Leave Management</span></a><a class="node chip" href="#134-time-attendance" data-num="1.3.4"><span class="num">1.3.4</span><span class="nm">Time &amp; Attendance</span></a><a class="node chip" href="#135-payroll" data-num="1.3.5"><span class="num">1.3.5</span><span class="nm">Payroll</span></a><a class="node chip" href="#136-benefits-administration" data-num="1.3.6"><span class="num">1.3.6</span><span class="nm">Benefits Administration</span></a><a class="node chip" href="#137-expense-travel-reimbursement" data-num="1.3.7"><span class="num">1.3.7</span><span class="nm">Expense, Travel &amp; Reimbursement</span></a></div></div><div class="map-group"><div class="map-group-label">Growth</div><div class="chips"><a class="node chip" href="#138-performance-management" data-num="1.3.8"><span class="num">1.3.8</span><span class="nm">Performance Management</span></a><a class="node chip" href="#139-learning-development" data-num="1.3.9"><span class="num">1.3.9</span><span class="nm">Learning &amp; Development</span></a></div></div><div class="map-group"><div class="map-group-label">Service &amp; support</div><div class="chips"><a class="node chip" href="#1310-asset-management" data-num="1.3.10"><span class="num">1.3.10</span><span class="nm">Asset Management</span></a><a class="node chip" href="#1311-employee-self-service" data-num="1.3.11"><span class="num">1.3.11</span><span class="nm">Employee Self-Service</span></a><a class="node chip" href="#1312-employee-helpdesk" data-num="1.3.12"><span class="num">1.3.12</span><span class="nm">Employee Helpdesk</span></a></div></div><div class="map-group"><div class="map-group-label">Exit &amp; governance</div><div class="chips"><a class="node chip" href="#1313-offboarding" data-num="1.3.13"><span class="num">1.3.13</span><span class="nm">Offboarding</span></a><a class="node chip" href="#1314-alumni-portal" data-num="1.3.14"><span class="num">1.3.14</span><span class="nm">Alumni Portal</span></a><a class="node chip" href="#1315-compliance-documents" data-num="1.3.15"><span class="num">1.3.15</span><span class="nm">Compliance &amp; Documents</span></a><a class="node chip" href="#1316-engage-engagement-recognition-internal-communication" data-num="1.3.16"><span class="num">1.3.16</span><span class="nm">Engage — Engagement, Recognition &amp; Internal Communication</span></a></div></div></div></div><div class="col" data-p="analytics"><a class="node col-head" href="#14-analytics" data-num="1.4"><span class="col-title"><span class="num">1.4</span><span class="nm">Analytics</span></span><span class="col-meta"><span class="pill pill-to-build">To build</span><span class="count">8 modules</span></span></a><div class="col-body"><div class="map-group"><div class="map-group-label">Delivery</div><div class="chips"><a class="node chip" href="#141-report-builder" data-num="1.4.1"><span class="num">1.4.1</span><span class="nm">Report Builder</span></a><a class="node chip" href="#142-dashboards" data-num="1.4.2"><span class="num">1.4.2</span><span class="nm">Dashboards</span></a><a class="node chip" href="#143-scheduled-reports-exports" data-num="1.4.3"><span class="num">1.4.3</span><span class="nm">Scheduled Reports &amp; Exports</span></a></div></div><div class="map-group"><div class="map-group-label">Domains</div><div class="chips"><a class="node chip" href="#144-assessment" data-num="1.4.4"><span class="num">1.4.4</span><span class="nm">Assessment</span></a><a class="node chip" href="#145-recruitment" data-num="1.4.5"><span class="num">1.4.5</span><span class="nm">Recruitment</span></a><a class="node chip" href="#146-staffing-revenue" data-num="1.4.6"><span class="num">1.4.6</span><span class="nm">Staffing &amp; revenue</span></a><a class="node chip" href="#147-workforce" data-num="1.4.7"><span class="num">1.4.7</span><span class="nm">Workforce</span></a><a class="node chip" href="#148-payroll-compliance" data-num="1.4.8"><span class="num">1.4.8</span><span class="nm">Payroll &amp; compliance</span></a></div></div></div></div></div>
+    <div class="foundation" data-p="platform"><a class="node col-head" href="#21-platform-foundation" data-num="2.1"><span class="col-title"><span class="num">2.1</span><span class="nm">Platform Foundation</span></span><span class="col-meta"><span class="count">19 shared services · used by every product</span></span></a><div class="foundation-body"><div class="map-group"><div class="map-group-label">Identity &amp; access</div><div class="chips"><a class="node chip" href="#211-tenant-organisation-setup" data-num="2.1.1"><span class="num">2.1.1</span><span class="nm">Tenant &amp; Organisation Setup</span></a><a class="node chip" href="#212-authentication-security" data-num="2.1.2"><span class="num">2.1.2</span><span class="nm">Authentication &amp; Security</span></a><a class="node chip" href="#213-rbac-data-visibility" data-num="2.1.3"><span class="num">2.1.3</span><span class="nm">RBAC &amp; Data Visibility</span></a></div></div><div class="map-group"><div class="map-group-label">Configuration</div><div class="chips"><a class="node chip" href="#214-workflow-approval-engine" data-num="2.1.4"><span class="num">2.1.4</span><span class="nm">Workflow &amp; Approval Engine</span></a><a class="node chip" href="#215-custom-fields-form-builder" data-num="2.1.5"><span class="num">2.1.5</span><span class="nm">Custom Fields &amp; Form Builder</span></a><a class="node chip" href="#216-localisation" data-num="2.1.6"><span class="num">2.1.6</span><span class="nm">Localisation</span></a></div></div><div class="map-group"><div class="map-group-label">Content &amp; communication</div><div class="chips"><a class="node chip" href="#217-notification-engine" data-num="2.1.7"><span class="num">2.1.7</span><span class="nm">Notification Engine</span></a><a class="node chip" href="#218-document-management-e-signature" data-num="2.1.8"><span class="num">2.1.8</span><span class="nm">Document Management &amp; E-Signature</span></a><a class="node chip" href="#219-letter-template-generator" data-num="2.1.9"><span class="num">2.1.9</span><span class="nm">Letter &amp; Template Generator</span></a><a class="node chip" href="#2110-global-search" data-num="2.1.10"><span class="num">2.1.10</span><span class="nm">Global Search</span></a></div></div><div class="map-group"><div class="map-group-label">Data &amp; integration</div><div class="chips"><a class="node chip" href="#2111-import-export-data-migration" data-num="2.1.11"><span class="num">2.1.11</span><span class="nm">Import, Export &amp; Data Migration</span></a><a class="node chip" href="#2112-open-api-webhooks" data-num="2.1.12"><span class="num">2.1.12</span><span class="nm">Open API &amp; Webhooks</span></a><a class="node chip" href="#2113-integration-hub" data-num="2.1.13"><span class="num">2.1.13</span><span class="nm">Integration Hub</span></a><a class="node chip" href="#2114-ai-layer" data-num="2.1.14"><span class="num">2.1.14</span><span class="nm">AI Layer</span></a></div></div><div class="map-group"><div class="map-group-label">Governance</div><div class="chips"><a class="node chip" href="#2115-audit-log" data-num="2.1.15"><span class="num">2.1.15</span><span class="nm">Audit Log</span></a><a class="node chip" href="#2116-privacy-data-governance" data-num="2.1.16"><span class="num">2.1.16</span><span class="nm">Privacy &amp; Data Governance</span></a></div></div><div class="map-group"><div class="map-group-label">Commercial &amp; access</div><div class="chips"><a class="node chip" href="#2117-billing-subscription" data-num="2.1.17"><span class="num">2.1.17</span><span class="nm">Billing &amp; Subscription</span></a><a class="node chip" href="#2118-mobile-app-pwa" data-num="2.1.18"><span class="num">2.1.18</span><span class="nm">Mobile App / PWA</span></a><a class="node chip" href="#2119-sandbox-environment" data-num="2.1.19"><span class="num">2.1.19</span><span class="nm">Sandbox Environment</span></a></div></div></div></div>
+  </div>
+</section>
+    <article class="doc">
+<h2 id="1-features" class="chapter" data-p=""><span class="num">1</span><span class="ttl">Features</span><a class="anchor" href="#1-features" aria-label="Copy link to Features">#</a></h2>
+
+<p>The suite ships as four products on a shared platform (<a class="xref" data-p="platform" href="#21-platform-foundation" title="Platform Foundation">§2.1</a>).</p>
+<div class="tbl"><table><thead><tr><th>#</th><th>Product</th><th>Purpose</th><th>Status</th></tr></thead><tbody>
+<tr><td><a class="xref" data-p="proctoring" href="#11-proctoring">1.1</a></td><td>Proctoring</td><td>Assessments and invigilation for hiring and training</td><td><span class="pill pill-near-ready">Near ready</span></td></tr>
+<tr><td><a class="xref" data-p="ats" href="#12-ats">1.2</a></td><td>ATS</td><td>Applicant tracking — internal hiring and external staffing</td><td><span class="pill pill-to-build">To build</span></td></tr>
+<tr><td><a class="xref" data-p="hrms" href="#13-hrms">1.3</a></td><td>HRMS</td><td>Employee lifecycle from onboarding to alumni</td><td><span class="pill pill-to-build">To build</span></td></tr>
+<tr><td><a class="xref" data-p="analytics" href="#14-analytics">1.4</a></td><td>Analytics</td><td>Reporting across all products</td><td><span class="pill pill-to-build">To build</span></td></tr>
+</tbody></table></div>
+<hr>
+<h3 id="11-proctoring" class="product" data-p="proctoring"><span class="num">1.1</span><span class="ttl">Proctoring</span><span class="pill pill-near-ready">Near ready</span><a class="anchor" href="#11-proctoring" aria-label="Copy link to Proctoring">#</a></h3>
+<div class="refs"><span class="refs-group"><span class="refs-label">Linked from</span><a class="xref xref-full" data-p="hrms" href="#139-learning-development"><span class="num">§1.3.9</span>Learning &amp; Development</a></span></div>
+<p>Online assessment with invigilation. Serves three use cases:</p>
+<div class="tbl"><table><thead><tr><th>Use case</th><th>Description</th></tr></thead><tbody>
+<tr><td>Job screening</td><td>Assessment sent to a candidate against a specific job</td></tr>
+<tr><td>Recruitment drive</td><td>Bulk assessment, e.g. fresher hiring</td></tr>
+<tr><td>Internal training</td><td>Assessment for existing employees</td></tr>
+</tbody></table></div>
+<p><strong>Proctoring modes.</strong> Declared per test. Every control below behaves differently depending on the mode selected.</p>
+<div class="tbl"><table><thead><tr><th>Mode</th><th>Behaviour</th><th>Typical use</th></tr></thead><tbody>
+<tr><td>Open</td><td>No proctoring</td><td>Low-stakes internal training</td></tr>
+<tr><td>AI-only</td><td>Automated detection and flagging, no human</td><td>Volume screening</td></tr>
+<tr><td>Record and review</td><td>Session recorded; human reviews flagged segments afterwards</td><td>Standard hiring</td></tr>
+<tr><td>Live</td><td>Human invigilator watching in real time, 1 : 8–16 candidates</td><td>High-stakes, certification</td></tr>
+</tbody></table></div>
+<h4 id="111-question-bank" class="section" data-p="proctoring"><span class="num">1.1.1</span><span class="ttl">Question Bank</span><a class="anchor" href="#111-question-bank" aria-label="Copy link to Question Bank">#</a></h4>
+<div class="refs"><span class="refs-group"><span class="refs-label">Links to</span><a class="xref xref-full" data-p="proctoring" href="#1113-psychometrics-item-analysis"><span class="num">§1.1.13</span>Psychometrics &amp; Item Analysis</a></span></div>
+<p><strong>Question attributes</strong></p>
+<div class="tbl"><table><thead><tr><th>Attribute</th><th>Notes</th></tr></thead><tbody>
+<tr><td>Type</td><td>MCQ, multi-select, descriptive, coding with compiler, file upload, video response</td></tr>
+<tr><td>Skill / category</td><td>Taxonomy — e.g. Java, Salesforce Development, AI/ML. Hierarchical: domain → skill → sub-skill</td></tr>
+<tr><td>Difficulty</td><td>Level on a fixed scale, independent of marks</td></tr>
+<tr><td>Default marks</td><td>Bank-level default, overridable per test</td></tr>
+<tr><td>Negative marks</td><td>Optional, per question</td></tr>
+<tr><td>Expected time</td><td>Used for duration calculation and adaptive pacing</td></tr>
+<tr><td>Tags</td><td>Free-form, for reuse and filtering</td></tr>
+<tr><td>Status</td><td>Draft, under review, approved, retired</td></tr>
+<tr><td>Version</td><td>Edits create a new version; live tests stay pinned</td></tr>
+<tr><td>Usage statistics</td><td>Times served, percentage correct — feeds psychometrics (<a class="xref" data-p="proctoring" href="#1113-psychometrics-item-analysis" title="Psychometrics &amp; Item Analysis">§1.1.13</a>)</td></tr>
+</tbody></table></div>
+<p><strong>Rich content</strong></p>
+<ul>
+<li>Images, audio and video in the question body</li>
+<li>Mathematical notation (LaTeX)</li>
+<li>Formatted code snippets with syntax highlighting</li>
+<li>Attachments and reference material</li>
+</ul>
+<p><strong>Multi-language</strong></p>
+<ul>
+<li>Same question authored in multiple languages</li>
+<li>Candidate selects language at test start</li>
+</ul>
+<p><strong>Bank management</strong></p>
+<ul>
+<li>Collections and folders, with ownership</li>
+<li>Author → reviewer → approver workflow before a question goes live</li>
+<li>Bulk import and export</li>
+<li>Duplicate detection</li>
+<li>Retirement without breaking historical results</li>
+</ul>
+<blockquote class="note"><p><strong>Design note.</strong> Marks and difficulty are separate fields even though they usually correlate. The same hard question may be worth 3 marks in a screening test and 5 in a certification test.</p></blockquote>
+<h4 id="112-test-builder" class="section" data-p="proctoring"><span class="num">1.1.2</span><span class="ttl">Test Builder</span><a class="anchor" href="#112-test-builder" aria-label="Copy link to Test Builder">#</a></h4>
+
+<p><strong>Test modes</strong></p>
+<div class="tbl"><table><thead><tr><th>Mode</th><th>Behaviour</th></tr></thead><tbody>
+<tr><td>Fixed</td><td>Every candidate sees the same questions in the same order</td></tr>
+<tr><td>Randomised</td><td>Questions drawn from a pool against a blueprint</td></tr>
+<tr><td>Adaptive</td><td>Difficulty adjusts to candidate performance</td></tr>
+</tbody></table></div>
+<p><strong>Blueprint</strong></p>
+<ul>
+<li>Questions per skill and per difficulty level</li>
+<li>Total marks and pass mark</li>
+<li>Duration, overall and sectional</li>
+</ul>
+<p><strong>Adaptive rules</strong></p>
+<ul>
+<li>Starting difficulty</li>
+<li>Step up on a correct answer, step down on an incorrect one</li>
+<li>Floor and ceiling difficulty</li>
+<li>Step size and consecutive-answer rules</li>
+<li>Termination — fixed question count, time limit, or confidence threshold</li>
+<li>Minimum pool depth required per skill and difficulty before adaptive mode can run</li>
+</ul>
+<p><strong>Common settings</strong></p>
+<ul>
+<li>Sections and sectional timing</li>
+<li>Randomisation and question pooling</li>
+<li>Negative marking</li>
+<li>Retake and reset policy</li>
+<li>Question navigation — forward-only or free movement, review and flag</li>
+</ul>
+<p><strong>Lifecycle</strong></p>
+<ul>
+<li>Test templates and reusable library</li>
+<li>Versioning, with publish approval</li>
+<li>Archive and retirement</li>
+</ul>
+<h4 id="113-coding-assessment" class="section" data-p="proctoring"><span class="num">1.1.3</span><span class="ttl">Coding Assessment</span><a class="anchor" href="#113-coding-assessment" aria-label="Copy link to Coding Assessment">#</a></h4>
+
+<ul>
+<li>Supported languages and runtime versions</li>
+<li>Visible test cases and hidden test cases</li>
+<li>Partial scoring against test cases passed</li>
+<li>Execution sandbox — CPU, memory, wall-clock and network limits</li>
+<li>Editor features — syntax highlighting, autocomplete policy, theme</li>
+<li>Compile and run history retained as an integrity signal</li>
+<li>Database and SQL question support</li>
+</ul>
+<h4 id="114-scheduling-invitations" class="section" data-p="proctoring"><span class="num">1.1.4</span><span class="ttl">Scheduling &amp; Invitations</span><a class="anchor" href="#114-scheduling-invitations" aria-label="Copy link to Scheduling &amp; Invitations">#</a></h4>
+
+<p><strong>Invitations</strong></p>
+<ul>
+<li>Individual and bulk invites</li>
+<li>Access windows and deadlines</li>
+<li>Timezone handling — resolved in the candidate's local timezone, with the authoring timezone recorded on the test</li>
+<li>Reminder notifications and missed-test alerts</li>
+</ul>
+<p><strong>Candidate scheduling</strong></p>
+<ul>
+<li>Self-scheduling into available slots</li>
+<li>Rescheduling rules and limits</li>
+<li>No-show handling</li>
+</ul>
+<p><strong>Drive mode</strong></p>
+<ul>
+<li>Thousands of concurrent candidates</li>
+<li>Capacity and load planning</li>
+<li>Low-connectivity and offline handling</li>
+</ul>
+<p><strong>Device policy</strong></p>
+<ul>
+<li>Per test: proctored desktop browser only, or any device</li>
+<li>Mobile delivery permitted only where the secure browser is not required</li>
+</ul>
+<h4 id="115-pre-test-experience" class="section" data-p="proctoring"><span class="num">1.1.5</span><span class="ttl">Pre-Test Experience</span><a class="anchor" href="#115-pre-test-experience" aria-label="Copy link to Pre-Test Experience">#</a></h4>
+<div class="refs"><span class="refs-group"><span class="refs-label">Links to</span><a class="xref xref-full" data-p="proctoring" href="#1115-privacy-consent-fairness"><span class="num">§1.1.15</span>Privacy, Consent &amp; Fairness</a></span></div>
+<ul>
+<li>System readiness check — camera, microphone, bandwidth, CPU, browser version, blocked processes</li>
+<li>Practice or demo test, unscored</li>
+<li>Instructions and rules screen with explicit acknowledgement</li>
+<li>360° room scan</li>
+<li>Optional second-device phone camera for high-stakes tests</li>
+<li>Consent capture → <a class="xref" data-p="proctoring" href="#1115-privacy-consent-fairness" title="Privacy, Consent &amp; Fairness">§1.1.15</a></li>
+</ul>
+<h4 id="116-proctoring-controls" class="section" data-p="proctoring"><span class="num">1.1.6</span><span class="ttl">Proctoring Controls</span><a class="anchor" href="#116-proctoring-controls" aria-label="Copy link to Proctoring Controls">#</a></h4>
+<div class="refs"><span class="refs-group"><span class="refs-label">Linked from</span><a class="xref xref-full" data-p="proctoring" href="#117-ai-assistance-detection"><span class="num">§1.1.7</span>AI-Assistance Detection</a></span></div>
+<p><strong>Secure browser</strong></p>
+<ul>
+<li>Proprietary proctored browser, downloaded and installed before the test</li>
+<li>Kiosk mode — no tab switching, no address bar, no developer tools</li>
+<li>Virtual machine and emulator detection</li>
+</ul>
+<p><strong>Identity</strong></p>
+<ul>
+<li>ID document verification</li>
+<li>Face match against the ID at start</li>
+<li>Periodic re-authentication during the test to catch mid-session candidate swaps</li>
+</ul>
+<p><strong>Environment monitoring</strong></p>
+<ul>
+<li>Face detection and multiple-person detection</li>
+<li>Audio monitoring for background voices</li>
+<li>Tab-switch and window-focus detection</li>
+<li>Copy, paste and print blocking</li>
+<li>Screenshot and screen-recording blocking</li>
+</ul>
+<p><strong>Remote-access and screen-share detection</strong></p>
+<ul>
+<li>Active conferencing sessions — Teams, Zoom, Meet, Webex</li>
+<li>Remote-control tools — AnyDesk, TeamViewer, Chrome Remote Desktop, RDP, VNC</li>
+<li>Screen mirroring and casting</li>
+<li>Multiple-display detection</li>
+<li>Virtual camera and virtual audio driver detection</li>
+<li>Blocked-process list, checked at launch and polled during the test</li>
+<li>Configurable action per detection — warn, pause, or terminate</li>
+</ul>
+<h4 id="117-ai-assistance-detection" class="section" data-p="proctoring"><span class="num">1.1.7</span><span class="ttl">AI-Assistance Detection</span><a class="anchor" href="#117-ai-assistance-detection" aria-label="Copy link to AI-Assistance Detection">#</a></h4>
+<div class="refs"><span class="refs-group"><span class="refs-label">Links to</span><a class="xref xref-full" data-p="proctoring" href="#116-proctoring-controls"><span class="num">§1.1.6</span>Proctoring Controls</a></span></div>
+<p>The defining integrity problem for assessments today. Every control in <a class="xref" data-p="proctoring" href="#116-proctoring-controls" title="Proctoring Controls">§1.1.6</a> is defeated by a candidate using an LLM on a second device.</p>
+<ul>
+<li>Response-time anomaly detection — answers returned faster than plausible</li>
+<li>Typing and paste-pattern analysis</li>
+<li>Stylometric comparison of descriptive answers against LLM output signatures</li>
+<li>Second-device detection on the local network</li>
+<li>Follow-up probe questions triggered by suspiciously strong answers</li>
+<li>Signals surfaced as weighted flags for review, never as an automatic fail</li>
+</ul>
+<h4 id="118-session-continuity" class="section" data-p="proctoring"><span class="num">1.1.8</span><span class="ttl">Session Continuity</span><a class="anchor" href="#118-session-continuity" aria-label="Copy link to Session Continuity">#</a></h4>
+
+<ul>
+<li>Auto-save on every answer</li>
+<li>Recovery from power loss and network drop, resuming at the last question</li>
+<li>Time credit for lost time, configurable</li>
+<li>Admin-approved resume with re-authentication</li>
+<li>Scheduled and unscheduled breaks, with rules per test</li>
+</ul>
+<h4 id="119-monitoring-review" class="section" data-p="proctoring"><span class="num">1.1.9</span><span class="ttl">Monitoring &amp; Review</span><a class="anchor" href="#119-monitoring-review" aria-label="Copy link to Monitoring &amp; Review">#</a></h4>
+
+<p><strong>Live proctoring</strong></p>
+<ul>
+<li>Invigilator dashboard with multi-candidate view</li>
+<li>Chat and intervention with a candidate</li>
+<li>Pause or terminate a session</li>
+</ul>
+<p><strong>Record and review</strong></p>
+<ul>
+<li>Session recording — screen, camera, audio</li>
+<li>Reviewer playback, jumping to flagged segments</li>
+</ul>
+<p><strong>Proctor operations</strong></p>
+<ul>
+<li>Proctor accounts and roles</li>
+<li>Assignment, capacity and shift planning</li>
+</ul>
+<p><strong>Retention</strong></p>
+<ul>
+<li>Recording retention period per tenant</li>
+<li>Data residency per tenant</li>
+<li>Chain of custody on all evidence</li>
+</ul>
+<h4 id="1110-integrity-checks" class="section" data-p="proctoring"><span class="num">1.1.10</span><span class="ttl">Integrity Checks</span><a class="anchor" href="#1110-integrity-checks" aria-label="Copy link to Integrity Checks">#</a></h4>
+<div class="refs"><span class="refs-group"><span class="refs-label">Links to</span><a class="xref xref-full" data-p="proctoring" href="#1113-psychometrics-item-analysis"><span class="num">§1.1.13</span>Psychometrics &amp; Item Analysis</a></span></div>
+<ul>
+<li>Plagiarism detection against external sources</li>
+<li>Code-similarity detection</li>
+<li>Cohort collusion — answer-pattern similarity between candidates in the same drive</li>
+<li>Question exposure monitoring → <a class="xref" data-p="proctoring" href="#1113-psychometrics-item-analysis" title="Psychometrics &amp; Item Analysis">§1.1.13</a></li>
+</ul>
+<h4 id="1111-incident-management" class="section" data-p="proctoring"><span class="num">1.1.11</span><span class="ttl">Incident Management</span><a class="anchor" href="#1111-incident-management" aria-label="Copy link to Incident Management">#</a></h4>
+
+<ul>
+<li>Violation taxonomy with severity levels</li>
+<li>Evidence bundle per incident — clip, screenshot, timestamp, detection type</li>
+<li>Reviewer queue and verdict</li>
+<li>Override with recorded reason</li>
+<li>Candidate appeal process</li>
+<li>Tamper-evident audit trail, so a decision is defensible if challenged</li>
+</ul>
+<h4 id="1112-scoring-outcomes" class="section" data-p="proctoring"><span class="num">1.1.12</span><span class="ttl">Scoring &amp; Outcomes</span><a class="anchor" href="#1112-scoring-outcomes" aria-label="Copy link to Scoring &amp; Outcomes">#</a></h4>
+<div class="refs"><span class="refs-group"><span class="refs-label">Links to</span><a class="xref xref-full" data-p="ats" href="#12-ats"><span class="num">§1.2</span>ATS</a><a class="xref xref-full" data-p="hrms" href="#139-learning-development"><span class="num">§1.3.9</span>Learning &amp; Development</a></span></div>
+<p><strong>Automated scoring</strong></p>
+<ul>
+<li>Objective question auto-scoring</li>
+<li>Comparable scoring for adaptive tests — candidates see different questions, so raw totals are not comparable; score must weight difficulty</li>
+<li>Percentile and cut-offs</li>
+<li>Skill-level breakdown, not just a total</li>
+</ul>
+<p><strong>Manual evaluation</strong></p>
+<ul>
+<li>Rubric-based evaluation for descriptive and video answers</li>
+<li>Multiple evaluators per response</li>
+<li>Blind evaluation and inter-rater agreement checks</li>
+</ul>
+<p><strong>Outputs</strong></p>
+<ul>
+<li>Candidate score report, with configurable visibility</li>
+<li>Cohort comparison for drives</li>
+<li>Auto-shortlist into ATS → <a class="xref" data-p="ats" href="#12-ats" title="ATS">§1.2</a></li>
+<li>Certificates for internal training → <a class="xref" data-p="hrms" href="#139-learning-development" title="Learning &amp; Development">§1.3.9</a></li>
+</ul>
+<h4 id="1113-psychometrics-item-analysis" class="section" data-p="proctoring"><span class="num">1.1.13</span><span class="ttl">Psychometrics &amp; Item Analysis</span><a class="anchor" href="#1113-psychometrics-item-analysis" aria-label="Copy link to Psychometrics &amp; Item Analysis">#</a></h4>
+<div class="refs"><span class="refs-group"><span class="refs-label">Linked from</span><a class="xref xref-full" data-p="proctoring" href="#111-question-bank"><span class="num">§1.1.1</span>Question Bank</a><a class="xref xref-full" data-p="proctoring" href="#1110-integrity-checks"><span class="num">§1.1.10</span>Integrity Checks</a></span></div>
+<ul>
+<li>Item analysis — difficulty index and discrimination index</li>
+<li>Distractor analysis for MCQs</li>
+<li>Reliability measures (Cronbach's alpha)</li>
+<li>IRT calibration, which is what makes adaptive scoring statistically defensible</li>
+<li>Question exposure control — cap how often an item is served before rotation</li>
+</ul>
+<h4 id="1114-accessibility-accommodations" class="section" data-p="proctoring"><span class="num">1.1.14</span><span class="ttl">Accessibility &amp; Accommodations</span><a class="anchor" href="#1114-accessibility-accommodations" aria-label="Copy link to Accessibility &amp; Accommodations">#</a></h4>
+
+<ul>
+<li>Screen reader compatibility</li>
+<li>Extra-time accommodations</li>
+<li>Font scaling and contrast options</li>
+<li>Keyboard-only navigation</li>
+<li>Documented accommodation request and approval process</li>
+</ul>
+<h4 id="1115-privacy-consent-fairness" class="section" data-p="proctoring"><span class="num">1.1.15</span><span class="ttl">Privacy, Consent &amp; Fairness</span><a class="anchor" href="#1115-privacy-consent-fairness" aria-label="Copy link to Privacy, Consent &amp; Fairness">#</a></h4>
+<div class="refs"><span class="refs-group"><span class="refs-label">Linked from</span><a class="xref xref-full" data-p="proctoring" href="#115-pre-test-experience"><span class="num">§1.1.5</span>Pre-Test Experience</a></span></div>
+<p>Face and voice data are biometric data under GDPR Article 9, India's DPDP Act and Illinois BIPA. BIPA carries statutory damages per violation and has produced significant settlements against proctoring vendors specifically.</p>
+<p><strong>Consent</strong></p>
+<ul>
+<li>Explicit, granular consent before any biometric capture</li>
+<li>Stated retention period with automatic deletion</li>
+<li>Documented lawful basis per jurisdiction</li>
+<li>Candidate right to withdraw and request erasure</li>
+</ul>
+<p><strong>Fairness</strong></p>
+<ul>
+<li>Manual review fallback whenever face detection fails</li>
+<li>Published accuracy testing across skin tones and demographics</li>
+<li>No candidate auto-failed on a biometric signal alone</li>
+</ul>
+<h4 id="1116-integrations" class="section" data-p="proctoring"><span class="num">1.1.16</span><span class="ttl">Integrations</span><a class="anchor" href="#1116-integrations" aria-label="Copy link to Integrations">#</a></h4>
+<div class="refs"><span class="refs-group"><span class="refs-label">Links to</span><a class="xref xref-full" data-p="ats" href="#12-ats"><span class="num">§1.2</span>ATS</a><a class="xref xref-full" data-p="hrms" href="#139-learning-development"><span class="num">§1.3.9</span>Learning &amp; Development</a></span></div>
+<ul>
+<li>Auto-shortlist handoff into ATS → <a class="xref" data-p="ats" href="#12-ats" title="ATS">§1.2</a></li>
+<li>LMS integration via SCORM and xAPI for the internal training use case</li>
+<li>Certificate issue → <a class="xref" data-p="hrms" href="#139-learning-development" title="Learning &amp; Development">§1.3.9</a></li>
+</ul>
+<hr>
+<h3 id="12-ats" class="product" data-p="ats"><span class="num">1.2</span><span class="ttl">ATS</span><span class="pill pill-to-build">To build</span><a class="anchor" href="#12-ats" aria-label="Copy link to ATS">#</a></h3>
+<div class="refs"><span class="refs-group"><span class="refs-label">Linked from</span><a class="xref xref-full" data-p="proctoring" href="#1112-scoring-outcomes"><span class="num">§1.1.12</span>Scoring &amp; Outcomes</a><a class="xref xref-full" data-p="proctoring" href="#1116-integrations"><span class="num">§1.1.16</span>Integrations</a></span></div>
+<p>Applicant tracking in two modes. Both share a common candidate and interview layer (<a class="xref" data-p="ats" href="#121-shared-capabilities" title="Shared Capabilities">§1.2.1</a>).</p>
+<div class="tbl"><table><thead><tr><th>Mode</th><th>Hiring for</th><th>Example</th></tr></thead><tbody>
+<tr><td>Internal (<a class="xref" data-p="ats" href="#122-internal-ats" title="Internal ATS">§1.2.2</a>)</td><td>The company's own departments</td><td>Prudent hiring developers for Data Science, Cybersecurity</td></tr>
+<tr><td>External (<a class="xref" data-p="ats" href="#123-external-ats" title="External ATS">§1.2.3</a>)</td><td>External client companies</td><td>Prudent's staffing desk filling a client requirement</td></tr>
+</tbody></table></div>
+<h4 id="121-shared-capabilities" class="section" data-p="ats"><span class="num">1.2.1</span><span class="ttl">Shared Capabilities</span><a class="anchor" href="#121-shared-capabilities" aria-label="Copy link to Shared Capabilities">#</a></h4>
+
+<p><strong>Candidate management</strong></p>
+<ul>
+<li>Resume parsing, deduplication, candidate merge</li>
+<li>Talent pool, hotlist, bench</li>
+<li>Candidate portal — application status, document upload</li>
+<li>Candidate consent and data retention (GDPR / DPDP)</li>
+</ul>
+<p><strong>Interviewing</strong></p>
+<ul>
+<li>Scheduling with panel availability and calendar sync</li>
+<li>AI-conducted first round</li>
+<li>Panel interviews, scorecards and feedback</li>
+</ul>
+<p><strong>Communication &amp; verification</strong></p>
+<ul>
+<li>Templates and bulk actions</li>
+<li>Background verification integration</li>
+</ul>
+<p><strong>Reporting</strong></p>
+<ul>
+<li>Recruiter productivity and pipeline dashboards</li>
+</ul>
+<h4 id="122-internal-ats" class="section" data-p="ats"><span class="num">1.2.2</span><span class="ttl">Internal ATS</span><a class="anchor" href="#122-internal-ats" aria-label="Copy link to Internal ATS">#</a></h4>
+<div class="refs"><span class="refs-group"><span class="refs-label">Links to</span><a class="xref xref-full" data-p="hrms" href="#132-onboarding"><span class="num">§1.3.2</span>Onboarding</a></span><span class="refs-group"><span class="refs-label">Linked from</span><a class="xref xref-full" data-p="hrms" href="#131-core-hr"><span class="num">§1.3.1</span>Core HR</a></span></div>
+<p>Departments raise their own hiring needs; a central recruitment team fulfils them.</p>
+<p><strong>Flow</strong></p>
+<ol class="flow">
+<li><span class="step" aria-label="Step 1">1</span><div class="step-body"><span class="owner">Department head</span><span class="act">Opens a position against their department</span></div></li>
+<li><span class="step" aria-label="Step 2">2</span><div class="step-body"><span class="owner">Recruitment team</span><span class="act">Sources profiles</span></div></li>
+<li><span class="step" aria-label="Step 3">3</span><div class="step-body"><span class="owner">Recruitment team</span><span class="act">Screens and shortlists</span></div></li>
+<li><span class="step" aria-label="Step 4">4</span><div class="step-body"><span class="owner owner-ai">AI</span><span class="act">Conducts round-one interview</span></div></li>
+<li><span class="step" aria-label="Step 5">5</span><div class="step-body"><span class="owner">Interview panel</span><span class="act">Conducts round-two interview</span></div></li>
+</ol>
+<p><strong>Capabilities</strong></p>
+<ul>
+<li>Manpower requisition against approved headcount budget</li>
+<li>Career page, branded per tenant</li>
+<li>Job board posting and distribution</li>
+<li>Employee referral management</li>
+<li>Offer management, approval and letter generation</li>
+<li>Handoff on offer acceptance → <a class="xref" data-p="hrms" href="#132-onboarding" title="Onboarding">§1.3.2</a></li>
+</ul>
+<h4 id="123-external-ats" class="section" data-p="ats"><span class="num">1.2.3</span><span class="ttl">External ATS</span><a class="anchor" href="#123-external-ats" aria-label="Copy link to External ATS">#</a></h4>
+<div class="refs"><span class="refs-group"><span class="refs-label">Links to</span><a class="xref xref-full" data-p="hrms" href="#134-time-attendance"><span class="num">§1.3.4</span>Time &amp; Attendance</a></span><span class="refs-group"><span class="refs-label">Linked from</span><a class="xref xref-full" data-p="hrms" href="#131-core-hr"><span class="num">§1.3.1</span>Core HR</a><a class="xref xref-full" data-p="hrms" href="#134-time-attendance"><span class="num">§1.3.4</span>Time &amp; Attendance</a></span></div>
+<p>Staffing delivery against client requirements.</p>
+<p><strong>Flow</strong></p>
+<ol class="flow">
+<li><span class="step" aria-label="Step 1">1</span><div class="step-body"><span class="act">Register the customer — name, points of contact, source</span></div></li>
+<li><span class="step" aria-label="Step 2">2</span><div class="step-body"><span class="act">Register jobs under the customer</span></div></li>
+<li><span class="step" aria-label="Step 3">3</span><div class="step-body"><span class="act">Source candidates against a job; build profile and attach CV</span></div></li>
+<li><span class="step" aria-label="Step 4">4</span><div class="step-body"><span class="act">Submit to the customer contact by email — individually or in bulk</span></div></li>
+<li><span class="step" aria-label="Step 5">5</span><div class="step-body"><span class="act">Conduct interviews</span></div></li>
+<li><span class="step" aria-label="Step 6">6</span><div class="step-body"><span class="act">Track status through submission, interview and outcome</span></div></li>
+</ol>
+<p><strong>Capabilities</strong></p>
+<ul>
+<li>Rate cards, margin and commission tracking</li>
+<li>Contract and placement management</li>
+<li>Contractor and deployed-employee lifecycle</li>
+<li>Timesheet → invoice → billing, sourced from <a class="xref" data-p="hrms" href="#134-time-attendance" title="Time &amp; Attendance">§1.3.4</a></li>
+<li>Client SLA tracking</li>
+</ul>
+<blockquote class="scope"><p>Out of scope: vendor and sub-vendor management.</p></blockquote>
+<h4 id="124-client-helpdesk" class="section" data-p="ats"><span class="num">1.2.4</span><span class="ttl">Client Helpdesk</span><a class="anchor" href="#124-client-helpdesk" aria-label="Copy link to Client Helpdesk">#</a></h4>
+
+<p>Ticketing for external ATS customers, raised by the customer's point of contact against their jobs or submissions.</p>
+<hr>
+<h3 id="13-hrms" class="product" data-p="hrms"><span class="num">1.3</span><span class="ttl">HRMS</span><span class="pill pill-to-build">To build</span><a class="anchor" href="#13-hrms" aria-label="Copy link to HRMS">#</a></h3>
+
+<p>Employee lifecycle management, grouped into five areas.</p>
+<div class="tbl"><table><thead><tr><th>Area</th><th>Sections</th></tr></thead><tbody>
+<tr><td>Employee record</td><td>1.3.1 – 1.3.2</td></tr>
+<tr><td>Time &amp; pay</td><td>1.3.3 – 1.3.7</td></tr>
+<tr><td>Growth</td><td>1.3.8 – 1.3.9</td></tr>
+<tr><td>Service &amp; support</td><td>1.3.10 – 1.3.12</td></tr>
+<tr><td>Exit &amp; governance</td><td>1.3.13 – 1.3.16</td></tr>
+</tbody></table></div>
+<h4 id="employee-record" class="group" data-p="hrms"><span class="ttl">Employee record</span><a class="anchor" href="#employee-record" aria-label="Copy link to Employee record">#</a></h4>
+<h5 id="131-core-hr" class="module" data-p="hrms"><span class="num">1.3.1</span><span class="ttl">Core HR</span><a class="anchor" href="#131-core-hr" aria-label="Copy link to Core HR">#</a></h5>
+<div class="refs"><span class="refs-group"><span class="refs-label">Links to</span><a class="xref xref-full" data-p="ats" href="#122-internal-ats"><span class="num">§1.2.2</span>Internal ATS</a><a class="xref xref-full" data-p="ats" href="#123-external-ats"><span class="num">§1.2.3</span>External ATS</a></span></div>
+<ul>
+<li>Employee master with custom fields — India identity fields (PAN, Aadhaar, UAN, ESIC IP, IFSC) validated and masked</li>
+<li>Locations with state (drives PT, LWF, holiday calendar)</li>
+<li>Org chart and reporting lines</li>
+<li>Probation and confirmation</li>
+<li>Transfers, promotions and job changes, with effective dating and history</li>
+<li>Headcount and workforce planning → feeds <a class="xref" data-p="ats" href="#122-internal-ats" title="Internal ATS">§1.2.2</a></li>
+<li>Succession planning</li>
+<li>Contingent workforce — people placed via <a class="xref" data-p="ats" href="#123-external-ats" title="External ATS">§1.2.3</a></li>
+<li>Manager self-service</li>
+</ul>
+<h5 id="132-onboarding" class="module" data-p="hrms"><span class="num">1.3.2</span><span class="ttl">Onboarding</span><a class="anchor" href="#132-onboarding" aria-label="Copy link to Onboarding">#</a></h5>
+<div class="refs"><span class="refs-group"><span class="refs-label">Links to</span><a class="xref xref-full" data-p="hrms" href="#1310-asset-management"><span class="num">§1.3.10</span>Asset Management</a></span><span class="refs-group"><span class="refs-label">Linked from</span><a class="xref xref-full" data-p="ats" href="#122-internal-ats"><span class="num">§1.2.2</span>Internal ATS</a><a class="xref xref-full" data-p="hrms" href="#1310-asset-management"><span class="num">§1.3.10</span>Asset Management</a></span></div>
+<ul>
+<li>Pre-boarding and document collection</li>
+<li>Background verification</li>
+<li>Asset issue → <a class="xref" data-p="hrms" href="#1310-asset-management" title="Asset Management">§1.3.10</a></li>
+<li>Induction and task checklists</li>
+</ul>
+<h4 id="time-pay" class="group" data-p="hrms"><span class="ttl">Time &amp; pay</span><a class="anchor" href="#time-pay" aria-label="Copy link to Time &amp; pay">#</a></h4>
+<h5 id="133-leave-management" class="module" data-p="hrms"><span class="num">1.3.3</span><span class="ttl">Leave Management</span><a class="anchor" href="#133-leave-management" aria-label="Copy link to Leave Management">#</a></h5>
+<div class="refs"><span class="refs-group"><span class="refs-label">Links to</span><a class="xref xref-full" data-p="hrms" href="#1313-offboarding"><span class="num">§1.3.13</span>Offboarding</a><a class="xref xref-full" data-p="hrms" href="#135-payroll"><span class="num">§1.3.5</span>Payroll</a></span><span class="refs-group"><span class="refs-label">Linked from</span><a class="xref xref-full" data-p="hrms" href="#134-time-attendance"><span class="num">§1.3.4</span>Time &amp; Attendance</a></span></div>
+<ul>
+<li>Leave types, accrual and balances — balances derived from a leave ledger, never stored as a single number</li>
+<li>Leave year configurable per company or legal entity — calendar, financial or custom start month</li>
+<li>Accrual — monthly, quarterly, half-yearly, yearly; per-type rounding with a year-end true-up; reduced by loss-of-pay days; by days worked (1 EL per 20 days, Factories Act)</li>
+<li>Carry forward with cap and expiry</li>
+<li>Sandwich rule per leave type — none, sandwich or always; weekly offs, holidays or both</li>
+<li>Half days — first half or second half; hourly and short leave (permission hours)</li>
+<li>Negative balance per leave type, with a limit; recovered from future accruals, else deducted in F&amp;F → <a class="xref" data-p="hrms" href="#1313-offboarding" title="Offboarding">§1.3.13</a></li>
+<li>Eligibility rules — gender, marital status, employment type, probation</li>
+<li>Mandatory attachments, e.g. medical certificate beyond a set number of days</li>
+<li>Minimum notice and maximum applications per period</li>
+<li>Compensatory off for holiday work, with expiry</li>
+<li>Leave encashment — on exit, at year end, on request; rate from salary components ÷ 26, 30 or days in month → <a class="xref" data-p="hrms" href="#135-payroll" title="Payroll">§1.3.5</a></li>
+<li>Leave adjustment by HR with recorded reason</li>
+<li>Block dates</li>
+<li>Optional holidays — choose N of M</li>
+<li>Approvals and delegation, with team availability shown to the approver</li>
+<li>Employee cancellation and withdrawal of approved leave</li>
+<li>Holiday calendars per location, with per-employee override</li>
+<li>Statutory templates — maternity (26 weeks), state Shops &amp; Establishments rules, state holiday lists</li>
+<li>Year-end wizard — preview, then carry forward, encash and lapse in one run</li>
+<li>Balance projection to a future date</li>
+</ul>
+<h5 id="134-time-attendance" class="module" data-p="hrms"><span class="num">1.3.4</span><span class="ttl">Time &amp; Attendance</span><a class="anchor" href="#134-time-attendance" aria-label="Copy link to Time &amp; Attendance">#</a></h5>
+<div class="refs"><span class="refs-group"><span class="refs-label">Links to</span><a class="xref xref-full" data-p="ats" href="#123-external-ats"><span class="num">§1.2.3</span>External ATS</a><a class="xref xref-full" data-p="hrms" href="#133-leave-management"><span class="num">§1.3.3</span>Leave Management</a><a class="xref xref-full" data-p="hrms" href="#135-payroll"><span class="num">§1.3.5</span>Payroll</a></span><span class="refs-group"><span class="refs-label">Linked from</span><a class="xref xref-full" data-p="ats" href="#123-external-ats"><span class="num">§1.2.3</span>External ATS</a></span></div>
+<ul>
+<li>Clock-in / clock-out, shifts, rosters</li>
+<li>Check-in controls — geofence per location, IP / Wi-Fi restriction, selfie / face match, offline check-in with later sync</li>
+<li>Split shifts and multiple shifts per day; flexi-time and core hours; minimum rest between shifts</li>
+<li>Break rules — unpaid break deduction</li>
+<li>Timesheets — billed to clients via <a class="xref" data-p="ats" href="#123-external-ats" title="External ATS">§1.2.3</a></li>
+<li>Regularisation — missed-punch correction with actual times; WFH and on-duty requests with monthly limits</li>
+<li>Late-coming penalties with monthly grace count</li>
+<li>Overtime with pre-approval, shift and night allowance, Factories Act limits and registers (Form 25)</li>
+<li>Auto comp-off from holiday attendance → <a class="xref" data-p="hrms" href="#133-leave-management" title="Leave Management">§1.3.3</a></li>
+<li>Attendance lock once payroll runs</li>
+<li>Attendance device and biometric integration</li>
+</ul>
+<h5 id="135-payroll" class="module" data-p="hrms"><span class="num">1.3.5</span><span class="ttl">Payroll</span><a class="anchor" href="#135-payroll" aria-label="Copy link to Payroll">#</a></h5>
+<div class="refs"><span class="refs-group"><span class="refs-label">Links to</span><a class="xref xref-full" data-p="hrms" href="#1313-offboarding"><span class="num">§1.3.13</span>Offboarding</a></span><span class="refs-group"><span class="refs-label">Linked from</span><a class="xref xref-full" data-p="hrms" href="#133-leave-management"><span class="num">§1.3.3</span>Leave Management</a><a class="xref xref-full" data-p="hrms" href="#134-time-attendance"><span class="num">§1.3.4</span>Time &amp; Attendance</a></span></div>
+<ul>
+<li>Salary structures and revisions — CTC builder; mid-month revisions split by days; arrears</li>
+<li>Payroll run and payslips — pre-run validation dashboard, maker-checker approval, month-over-month variance report, payroll lock</li>
+<li>Off-cycle and supplementary payroll</li>
+<li>Bank payment files in bank-specific formats</li>
+<li>Tax declarations, investment proofs with HR verification, Form 12BB, previous-employer income (Form 12B), Form 16</li>
+<li>Statutory packs — PF, ESI, PT, LWF, TDS, gratuity, returns and challans; statutory bonus; minimum-wage checks by state and skill</li>
+<li>Statutory rates maintained centrally as dated data — updated without a software release</li>
+<li>Compliance calendar — due dates, reminders, penalty estimates</li>
+<li>Gratuity provisioning</li>
+<li>Loans and advances</li>
+<li>Full and final settlement → <a class="xref" data-p="hrms" href="#1313-offboarding" title="Offboarding">§1.3.13</a></li>
+</ul>
+<h5 id="136-benefits-administration" class="module" data-p="hrms"><span class="num">1.3.6</span><span class="ttl">Benefits Administration</span><a class="anchor" href="#136-benefits-administration" aria-label="Copy link to Benefits Administration">#</a></h5>
+
+<ul>
+<li>Insurance enrolment</li>
+<li>Flexible benefit declarations</li>
+</ul>
+<h5 id="137-expense-travel-reimbursement" class="module" data-p="hrms"><span class="num">1.3.7</span><span class="ttl">Expense, Travel &amp; Reimbursement</span><a class="anchor" href="#137-expense-travel-reimbursement" aria-label="Copy link to Expense, Travel &amp; Reimbursement">#</a></h5>
+
+<ul>
+<li>Expense claims, approvals and policy limits</li>
+<li>Receipt capture with OCR; receipts mandatory above a set amount</li>
+<li>Duplicate and fraud checks</li>
+<li>GST details per bill for input credit</li>
+<li>Mileage claims and per-diem</li>
+<li>Advances with settlement, return and instalment recovery from salary</li>
+<li>Travel requests and bookings</li>
+<li>Corporate card reconciliation</li>
+</ul>
+<h4 id="growth" class="group" data-p="hrms"><span class="ttl">Growth</span><a class="anchor" href="#growth" aria-label="Copy link to Growth">#</a></h4>
+<h5 id="138-performance-management" class="module" data-p="hrms"><span class="num">1.3.8</span><span class="ttl">Performance Management</span><a class="anchor" href="#138-performance-management" aria-label="Copy link to Performance Management">#</a></h5>
+<div class="refs"><span class="refs-group"><span class="refs-label">Linked from</span><a class="xref xref-full" data-p="hrms" href="#139-learning-development"><span class="num">§1.3.9</span>Learning &amp; Development</a></span></div>
+<ul>
+<li>Goals and OKRs</li>
+<li>Review cycles and appraisals — staged workflow; manager rating distinct from peer feedback</li>
+<li>Continuous feedback — 360° with nominated reviewers</li>
+<li>Competency framework and skills assessment</li>
+<li>Calibration and 9-box</li>
+<li>Ratings linked to increments, bonus and promotion</li>
+<li>Performance improvement plans (PIP)</li>
+</ul>
+<h5 id="139-learning-development" class="module" data-p="hrms"><span class="num">1.3.9</span><span class="ttl">Learning &amp; Development</span><a class="anchor" href="#139-learning-development" aria-label="Copy link to Learning &amp; Development">#</a></h5>
+<div class="refs"><span class="refs-group"><span class="refs-label">Links to</span><a class="xref xref-full" data-p="hrms" href="#138-performance-management"><span class="num">§1.3.8</span>Performance Management</a><a class="xref xref-full" data-p="proctoring" href="#11-proctoring"><span class="num">§1.1</span>Proctoring</a></span><span class="refs-group"><span class="refs-label">Linked from</span><a class="xref xref-full" data-p="proctoring" href="#1112-scoring-outcomes"><span class="num">§1.1.12</span>Scoring &amp; Outcomes</a><a class="xref xref-full" data-p="proctoring" href="#1116-integrations"><span class="num">§1.1.16</span>Integrations</a></span></div>
+<ul>
+<li>Training programmes and enrolment — nominations with approval</li>
+<li>Completions and certifications — with expiry and renewal</li>
+<li>Training needs from skill gaps and appraisals → <a class="xref" data-p="hrms" href="#138-performance-management" title="Performance Management">§1.3.8</a></li>
+<li>Assessments delivered through <a class="xref" data-p="proctoring" href="#11-proctoring" title="Proctoring">§1.1</a></li>
+</ul>
+<h4 id="service-support" class="group" data-p="hrms"><span class="ttl">Service &amp; support</span><a class="anchor" href="#service-support" aria-label="Copy link to Service &amp; support">#</a></h4>
+<h5 id="1310-asset-management" class="module" data-p="hrms"><span class="num">1.3.10</span><span class="ttl">Asset Management</span><a class="anchor" href="#1310-asset-management" aria-label="Copy link to Asset Management">#</a></h5>
+<div class="refs"><span class="refs-group"><span class="refs-label">Links to</span><a class="xref xref-full" data-p="hrms" href="#132-onboarding"><span class="num">§1.3.2</span>Onboarding</a><a class="xref xref-full" data-p="hrms" href="#1313-offboarding"><span class="num">§1.3.13</span>Offboarding</a></span><span class="refs-group"><span class="refs-label">Linked from</span><a class="xref xref-full" data-p="hrms" href="#132-onboarding"><span class="num">§1.3.2</span>Onboarding</a></span></div>
+<ul>
+<li>Asset register</li>
+<li>Assignment and return, linked to <a class="xref" data-p="hrms" href="#132-onboarding" title="Onboarding">§1.3.2</a> and <a class="xref" data-p="hrms" href="#1313-offboarding" title="Offboarding">§1.3.13</a></li>
+</ul>
+<h5 id="1311-employee-self-service" class="module" data-p="hrms"><span class="num">1.3.11</span><span class="ttl">Employee Self-Service</span><a class="anchor" href="#1311-employee-self-service" aria-label="Copy link to Employee Self-Service">#</a></h5>
+
+<ul>
+<li>Profile, payslips and documents — Form 16 and letters download</li>
+<li>Profile change requests (address, bank, contacts) with approval</li>
+<li>Requests and approvals</li>
+</ul>
+<h5 id="1312-employee-helpdesk" class="module" data-p="hrms"><span class="num">1.3.12</span><span class="ttl">Employee Helpdesk</span><a class="anchor" href="#1312-employee-helpdesk" aria-label="Copy link to Employee Helpdesk">#</a></h5>
+
+<ul>
+<li>Tickets raised by employees to HR and IT</li>
+</ul>
+<h4 id="exit-governance" class="group" data-p="hrms"><span class="ttl">Exit &amp; governance</span><a class="anchor" href="#exit-governance" aria-label="Copy link to Exit &amp; governance">#</a></h4>
+<h5 id="1313-offboarding" class="module" data-p="hrms"><span class="num">1.3.13</span><span class="ttl">Offboarding</span><a class="anchor" href="#1313-offboarding" aria-label="Copy link to Offboarding">#</a></h5>
+<div class="refs"><span class="refs-group"><span class="refs-label">Linked from</span><a class="xref xref-full" data-p="hrms" href="#133-leave-management"><span class="num">§1.3.3</span>Leave Management</a><a class="xref xref-full" data-p="hrms" href="#135-payroll"><span class="num">§1.3.5</span>Payroll</a><a class="xref xref-full" data-p="hrms" href="#1310-asset-management"><span class="num">§1.3.10</span>Asset Management</a></span></div>
+<ul>
+<li>Resignation and notice period — employee-initiated, early release, buy-out, withdrawal</li>
+<li>Exit clearance</li>
+<li>Full and final settlement — calculated: last salary, notice pay or recovery, leave encashment, gratuity, bonus, deductions, TDS</li>
+<li>Exit interviews and rehire eligibility</li>
+<li>Experience and relieving letters</li>
+</ul>
+<h5 id="1314-alumni-portal" class="module" data-p="hrms"><span class="num">1.3.14</span><span class="ttl">Alumni Portal</span><a class="anchor" href="#1314-alumni-portal" aria-label="Copy link to Alumni Portal">#</a></h5>
+
+<ul>
+<li>Post-exit self-service — payslips, Form 16, experience and relieving letters</li>
+</ul>
+<h5 id="1315-compliance-documents" class="module" data-p="hrms"><span class="num">1.3.15</span><span class="ttl">Compliance &amp; Documents</span><a class="anchor" href="#1315-compliance-documents" aria-label="Copy link to Compliance &amp; Documents">#</a></h5>
+
+<ul>
+<li>Policy management and acknowledgement</li>
+<li>Statutory registers and document expiry tracking</li>
+<li>Grievance, POSH and disciplinary case management — POSH: Internal Committee, confidential (optionally anonymous) complaints, 90-day inquiry tracking, annual report</li>
+</ul>
+<h5 id="1316-engage-engagement-recognition-internal-communication" class="module" data-p="hrms"><span class="num">1.3.16</span><span class="ttl">Engage — Engagement, Recognition &amp; Internal Communication</span><a class="anchor" href="#1316-engage-engagement-recognition-internal-communication" aria-label="Copy link to Engage — Engagement, Recognition &amp; Internal Communication">#</a></h5>
+
+<ul>
+<li>Company announcements with audience targeting and read / acknowledge tracking (simple version ships with the notification engine, wave 1)</li>
+<li>Social feed: posts with text, photos and links to company / location / department / team feeds; comments and reactions</li>
+<li>Polls, surveys, pulse and eNPS (anonymous option)</li>
+<li>Kudos and recognition: peer and manager appreciation tied to company values, badges, optional rewards with approval; recognition visible in performance reviews</li>
+<li>Celebrations posted automatically: birthdays, work anniversaries, promotions, new joiners (respecting privacy opt-outs)</li>
+<li>Moderation: report, hide, admin rules, profanity filter; audit</li>
+<li>Engagement analytics: active users, participation, recognition by value and team</li>
+</ul>
+<h4 id="data-dependencies" class="group" data-p="hrms"><span class="ttl">Data dependencies</span><a class="anchor" href="#data-dependencies" aria-label="Copy link to Data dependencies">#</a></h4>
+<ul class="deps">
+<li><span class="dep-from"><a class="xref" data-p="hrms" href="#133-leave-management" title="Leave Management">§1.3.3</a> Leave</span><span class="dep-arrow" aria-hidden="true">→</span><span class="sr">feeds</span><span class="dep-to"><a class="xref" data-p="hrms" href="#135-payroll" title="Payroll">§1.3.5</a> Payroll</span><span class="dep-why">Loss of pay, encashment</span></li>
+<li><span class="dep-from"><a class="xref" data-p="hrms" href="#134-time-attendance" title="Time &amp; Attendance">§1.3.4</a> Attendance</span><span class="dep-arrow" aria-hidden="true">→</span><span class="sr">feeds</span><span class="dep-to"><a class="xref" data-p="hrms" href="#135-payroll" title="Payroll">§1.3.5</a> Payroll</span><span class="dep-why">Days payable, overtime</span></li>
+<li><span class="dep-from"><a class="xref" data-p="hrms" href="#134-time-attendance" title="Time &amp; Attendance">§1.3.4</a> Timesheets</span><span class="dep-arrow" aria-hidden="true">→</span><span class="sr">feeds</span><span class="dep-to"><a class="xref" data-p="ats" href="#123-external-ats" title="External ATS">§1.2.3</a> External ATS</span><span class="dep-why">Client invoicing</span></li>
+</ul>
+<hr>
+<h3 id="14-analytics" class="product" data-p="analytics"><span class="num">1.4</span><span class="ttl">Analytics</span><span class="pill pill-to-build">To build</span><a class="anchor" href="#14-analytics" aria-label="Copy link to Analytics">#</a></h3>
+
+<p>Cross-product reporting. Serves Proctoring, ATS and HRMS alike.</p>
+<h4 id="delivery" class="group" data-p="analytics"><span class="ttl">Delivery</span><a class="anchor" href="#delivery" aria-label="Copy link to Delivery">#</a></h4>
+<h5 id="141-report-builder" class="module" data-p="analytics"><span class="num">1.4.1</span><span class="ttl">Report Builder</span><a class="anchor" href="#141-report-builder" aria-label="Copy link to Report Builder">#</a></h5>
+
+<p class="module-desc">self-service reports across any module</p>
+<h5 id="142-dashboards" class="module" data-p="analytics"><span class="num">1.4.2</span><span class="ttl">Dashboards</span><a class="anchor" href="#142-dashboards" aria-label="Copy link to Dashboards">#</a></h5>
+
+<p class="module-desc">role-based for executives, HR, recruiters, department heads and managers</p>
+<h5 id="143-scheduled-reports-exports" class="module" data-p="analytics"><span class="num">1.4.3</span><span class="ttl">Scheduled Reports &amp; Exports</span><a class="anchor" href="#143-scheduled-reports-exports" aria-label="Copy link to Scheduled Reports &amp; Exports">#</a></h5>
+
+<p class="module-desc">subscriptions, scheduled delivery, Excel and PDF export</p>
+<h4 id="domains" class="group" data-p="analytics"><span class="ttl">Domains</span><a class="anchor" href="#domains" aria-label="Copy link to Domains">#</a></h4>
+<div class="tbl"><table><thead><tr><th>#</th><th>Domain</th><th>Measures</th></tr></thead><tbody>
+<tr id="144-assessment" data-p="analytics"><td>1.4.4</td><td>Assessment</td><td>Score distribution, percentile, question performance, integrity flags</td></tr>
+<tr id="145-recruitment" data-p="analytics"><td>1.4.5</td><td>Recruitment</td><td>Time to hire, cost per hire, source effectiveness, pipeline conversion, offer acceptance</td></tr>
+<tr id="146-staffing-revenue" data-p="analytics"><td>1.4.6</td><td>Staffing &amp; revenue</td><td>Placements, margin, bench utilisation, SLA performance, billing vs collection</td></tr>
+<tr id="147-workforce" data-p="analytics"><td>1.4.7</td><td>Workforce</td><td>Headcount, attrition, retention, diversity, cost, span of control</td></tr>
+<tr id="148-payroll-compliance" data-p="analytics"><td>1.4.8</td><td>Payroll &amp; compliance</td><td>Cost trends, statutory liability, audit-ready registers</td></tr>
+</tbody></table></div>
+<hr>
+<h2 id="2-architecture" class="chapter" data-p="platform"><span class="num">2</span><span class="ttl">Architecture</span><a class="anchor" href="#2-architecture" aria-label="Copy link to Architecture">#</a></h2>
+
+<h3 id="21-platform-foundation" class="product" data-p="platform"><span class="num">2.1</span><span class="ttl">Platform Foundation</span><a class="anchor" href="#21-platform-foundation" aria-label="Copy link to Platform Foundation">#</a></h3>
+
+<p>Shared services every product depends on.</p>
+<h4 id="identity-access" class="group" data-p="platform"><span class="ttl">Identity &amp; access</span><a class="anchor" href="#identity-access" aria-label="Copy link to Identity &amp; access">#</a></h4>
+<h5 id="211-tenant-organisation-setup" class="module" data-p="platform"><span class="num">2.1.1</span><span class="ttl">Tenant &amp; Organisation Setup</span><a class="anchor" href="#211-tenant-organisation-setup" aria-label="Copy link to Tenant &amp; Organisation Setup">#</a></h5>
+
+<p class="module-desc">company profile, legal entities, locations, departments, designations, grades</p>
+<h5 id="212-authentication-security" class="module" data-p="platform"><span class="num">2.1.2</span><span class="ttl">Authentication &amp; Security</span><a class="anchor" href="#212-authentication-security" aria-label="Copy link to Authentication &amp; Security">#</a></h5>
+
+<p class="module-desc">email/password, Google, Microsoft Entra SSO, SAML, MFA, session management, IP restrictions, login history, encryption at rest and in transit</p>
+<h5 id="213-rbac-data-visibility" class="module" data-p="platform"><span class="num">2.1.3</span><span class="ttl">RBAC &amp; Data Visibility</span><a class="anchor" href="#213-rbac-data-visibility" aria-label="Copy link to RBAC &amp; Data Visibility">#</a></h5>
+
+<p class="module-desc">roles, permissions, record-level visibility rules</p>
+<h4 id="configuration" class="group" data-p="platform"><span class="ttl">Configuration</span><a class="anchor" href="#configuration" aria-label="Copy link to Configuration">#</a></h4>
+<h5 id="214-workflow-approval-engine" class="module" data-p="platform"><span class="num">2.1.4</span><span class="ttl">Workflow &amp; Approval Engine</span><a class="anchor" href="#214-workflow-approval-engine" aria-label="Copy link to Workflow &amp; Approval Engine">#</a></h5>
+
+<p class="module-desc">generic configurable approval chains, built once and reused by every module</p>
+<h5 id="215-custom-fields-form-builder" class="module" data-p="platform"><span class="num">2.1.5</span><span class="ttl">Custom Fields &amp; Form Builder</span><a class="anchor" href="#215-custom-fields-form-builder" aria-label="Copy link to Custom Fields &amp; Form Builder">#</a></h5>
+
+<p class="module-desc">tenant-defined fields on any entity</p>
+<h5 id="216-localisation" class="module" data-p="platform"><span class="num">2.1.6</span><span class="ttl">Localisation</span><a class="anchor" href="#216-localisation" aria-label="Copy link to Localisation">#</a></h5>
+
+<p class="module-desc">multi-language, multi-currency, timezones, date formats, per-country statutory packs</p>
+<h4 id="content-communication" class="group" data-p="platform"><span class="ttl">Content &amp; communication</span><a class="anchor" href="#content-communication" aria-label="Copy link to Content &amp; communication">#</a></h4>
+<h5 id="217-notification-engine" class="module" data-p="platform"><span class="num">2.1.7</span><span class="ttl">Notification Engine</span><a class="anchor" href="#217-notification-engine" aria-label="Copy link to Notification Engine">#</a></h5>
+
+<p class="module-desc">email, SMS, WhatsApp, in-app, with per-tenant templates</p>
+<h5 id="218-document-management-e-signature" class="module" data-p="platform"><span class="num">2.1.8</span><span class="ttl">Document Management &amp; E-Signature</span><a class="anchor" href="#218-document-management-e-signature" aria-label="Copy link to Document Management &amp; E-Signature">#</a></h5>
+
+<p class="module-desc">storage, versioning, access control, e-signature for offers, policies and contracts</p>
+<h5 id="219-letter-template-generator" class="module" data-p="platform"><span class="num">2.1.9</span><span class="ttl">Letter &amp; Template Generator</span><a class="anchor" href="#219-letter-template-generator" aria-label="Copy link to Letter &amp; Template Generator">#</a></h5>
+
+<p class="module-desc">offer, relieving, experience, address proof, salary certificate</p>
+<h5 id="2110-global-search" class="module" data-p="platform"><span class="num">2.1.10</span><span class="ttl">Global Search</span><a class="anchor" href="#2110-global-search" aria-label="Copy link to Global Search">#</a></h5>
+
+<h4 id="data-integration" class="group" data-p="platform"><span class="ttl">Data &amp; integration</span><a class="anchor" href="#data-integration" aria-label="Copy link to Data &amp; integration">#</a></h4>
+<h5 id="2111-import-export-data-migration" class="module" data-p="platform"><span class="num">2.1.11</span><span class="ttl">Import, Export &amp; Data Migration</span><a class="anchor" href="#2111-import-export-data-migration" aria-label="Copy link to Import, Export &amp; Data Migration">#</a></h5>
+
+<p class="module-desc">how a tenant leaves their current system; a deal-closer in sales</p>
+<h5 id="2112-open-api-webhooks" class="module" data-p="platform"><span class="num">2.1.12</span><span class="ttl">Open API &amp; Webhooks</span><a class="anchor" href="#2112-open-api-webhooks" aria-label="Copy link to Open API &amp; Webhooks">#</a></h5>
+
+<h5 id="2113-integration-hub" class="module" data-p="platform"><span class="num">2.1.13</span><span class="ttl">Integration Hub</span><a class="anchor" href="#2113-integration-hub" aria-label="Copy link to Integration Hub">#</a></h5>
+
+<p class="module-desc">calendar and email (Google, Microsoft), Teams and Slack, accounting (Zoho Books, Tally, QuickBooks), biometric devices, background verification providers</p>
+<h5 id="2114-ai-layer" class="module" data-p="platform"><span class="num">2.1.14</span><span class="ttl">AI Layer</span><a class="anchor" href="#2114-ai-layer" aria-label="Copy link to AI Layer">#</a></h5>
+
+<p class="module-desc">per-tenant BYOL key management, model routing and caching, usage metering per tenant and feature</p>
+<h4 id="governance" class="group" data-p="platform"><span class="ttl">Governance</span><a class="anchor" href="#governance" aria-label="Copy link to Governance">#</a></h4>
+<h5 id="2115-audit-log" class="module" data-p="platform"><span class="num">2.1.15</span><span class="ttl">Audit Log</span><a class="anchor" href="#2115-audit-log" aria-label="Copy link to Audit Log">#</a></h5>
+
+<p class="module-desc">who changed what and when; required for enterprise security review</p>
+<h5 id="2116-privacy-data-governance" class="module" data-p="platform"><span class="num">2.1.16</span><span class="ttl">Privacy &amp; Data Governance</span><a class="anchor" href="#2116-privacy-data-governance" aria-label="Copy link to Privacy &amp; Data Governance">#</a></h5>
+
+<p class="module-desc">GDPR and DPDP consent, retention policies, right to erasure, data residency</p>
+<h4 id="commercial-access" class="group" data-p="platform"><span class="ttl">Commercial &amp; access</span><a class="anchor" href="#commercial-access" aria-label="Copy link to Commercial &amp; access">#</a></h4>
+<h5 id="2117-billing-subscription" class="module" data-p="platform"><span class="num">2.1.17</span><span class="ttl">Billing &amp; Subscription</span><a class="anchor" href="#2117-billing-subscription" aria-label="Copy link to Billing &amp; Subscription">#</a></h5>
+
+<p class="module-desc">plans, seats, metered AI, invoices, dunning</p>
+<h5 id="2118-mobile-app-pwa" class="module" data-p="platform"><span class="num">2.1.18</span><span class="ttl">Mobile App / PWA</span><a class="anchor" href="#2118-mobile-app-pwa" aria-label="Copy link to Mobile App / PWA">#</a></h5>
+
+<p class="module-desc">attendance, leave, approvals, self-service</p>
+<h5 id="2119-sandbox-environment" class="module" data-p="platform"><span class="num">2.1.19</span><span class="ttl">Sandbox Environment</span><a class="anchor" href="#2119-sandbox-environment" aria-label="Copy link to Sandbox Environment">#</a></h5>
+
+<p class="module-desc">tenants test payroll and configuration before running live</p>
+<hr>
+<h2 id="3-infrastructure" class="chapter" data-p=""><span class="num">3</span><span class="ttl">Infrastructure</span><a class="anchor" href="#3-infrastructure" aria-label="Copy link to Infrastructure">#</a></h2>
+
+<div class="empty"><strong>Not drafted yet.</strong> Write this chapter in <code>spec.md</code>, then run <code>python3 build.py</code>.</div>
+<h2 id="4-timeline" class="chapter" data-p=""><span class="num">4</span><span class="ttl">Timeline</span><a class="anchor" href="#4-timeline" aria-label="Copy link to Timeline">#</a></h2>
+
+<p>Everything in this spec is in scope for the market launch. Waves set <strong>build order</strong>, not scope. A private pilot with one or two friendly companies starts once wave 3 is ready; public release follows wave 6. Dates are set once Phase 3 designs are sized.</p>
+<ol class="flow">
+<li><span class="step" aria-label="Step 1">1</span><div class="step-body"><span class="act">Platform foundation (<a class="xref" data-p="platform" href="#21-platform-foundation" title="Platform Foundation">§2.1</a>) — tenancy and organisation, RBAC and privacy, audit, workflow engine, notification engine, letters and documents, effective-dated history, statutory rules as data, period locks — and Core HR <a class="xref" data-p="hrms" href="#131-core-hr" title="Core HR">§1.3.1</a></span></div></li>
+<li><span class="step" aria-label="Step 2">2</span><div class="step-body"><span class="act">Leave <a class="xref" data-p="hrms" href="#133-leave-management" title="Leave Management">§1.3.3</a> and Time &amp; Attendance <a class="xref" data-p="hrms" href="#134-time-attendance" title="Time &amp; Attendance">§1.3.4</a>, with basic mobile self-service</span></div></li>
+<li><span class="step" aria-label="Step 3">3</span><div class="step-body"><span class="act">Payroll and India statutory <a class="xref" data-p="hrms" href="#135-payroll" title="Payroll">§1.3.5</a> — private pilot starts</span></div></li>
+<li><span class="step" aria-label="Step 4">4</span><div class="step-body"><span class="act">Onboarding, offboarding and F&amp;F <a class="xref" data-p="hrms" href="#132-onboarding" title="Onboarding">§1.3.2</a>, <a class="xref" data-p="hrms" href="#1313-offboarding" title="Offboarding">§1.3.13</a>, letters, POSH <a class="xref" data-p="hrms" href="#1315-compliance-documents" title="Compliance &amp; Documents">§1.3.15</a></span></div></li>
+<li><span class="step" aria-label="Step 5">5</span><div class="step-body"><span class="act">Expenses <a class="xref" data-p="hrms" href="#137-expense-travel-reimbursement" title="Expense, Travel &amp; Reimbursement">§1.3.7</a>, Performance <a class="xref" data-p="hrms" href="#138-performance-management" title="Performance Management">§1.3.8</a>, Learning <a class="xref" data-p="hrms" href="#139-learning-development" title="Learning &amp; Development">§1.3.9</a>, Helpdesk <a class="xref" data-p="hrms" href="#1312-employee-helpdesk" title="Employee Helpdesk">§1.3.12</a>, disciplinary and policies <a class="xref" data-p="hrms" href="#1315-compliance-documents" title="Compliance &amp; Documents">§1.3.15</a>, Engage <a class="xref" data-p="hrms" href="#1316-engage-engagement-recognition-internal-communication" title="Engage — Engagement, Recognition &amp; Internal Communication">§1.3.16</a></span></div></li>
+<li><span class="step" aria-label="Step 6">6</span><div class="step-body"><span class="act">Differentiators — native apps, selfie and offline check-in, 9-box and enforced distribution (guided calibration ships in wave 5, M06 Q5), corporate cards, alumni portal <a class="xref" data-p="hrms" href="#1314-alumni-portal" title="Alumni Portal">§1.3.14</a> — then public release</span></div></li>
+<li><span class="step" aria-label="Step 7">7</span><div class="step-body"><span class="act">ATS <a class="xref" data-p="ats" href="#12-ats" title="ATS">§1.2</a> on the same platform</span></div></li>
+</ol>
+<h2 id="5-decisions" class="chapter" data-p=""><span class="num">5</span><span class="ttl">Decisions</span><a class="anchor" href="#5-decisions" aria-label="Copy link to Decisions">#</a></h2>
+
+<div class="tbl"><table><thead><tr><th>#</th><th>Decision</th><th>Date</th></tr></thead><tbody>
+<tr><td>D1</td><td>YukthiX is a clean-room rewrite. Frappe HR and India Payroll (GPL-3) are used only as a functional reference, never copied. Reference documents: <code>reference/frappe-hrms-functional-spec/</code></td><td>23 Sep 2026</td></tr>
+<tr><td>D2</td><td>Stack: TypeScript monorepo — Next.js, NestJS, PostgreSQL with Prisma, BullMQ on Redis, PWA</td><td>23 Sep 2026</td></tr>
+<tr><td>D3</td><td>Multi-tenancy: shared database with a tenant key on every row and PostgreSQL row-level security; regional deployments for data residency</td><td>23 Sep 2026</td></tr>
+<tr><td>D4</td><td>Infrastructure stays portable — containers, PostgreSQL, Redis, S3-compatible storage, Terraform. Cloud chosen later on credits and cost</td><td>23 Sep 2026</td></tr>
+<tr><td>D5</td><td>Launch market: Indian SMBs first, then global SMBs</td><td>23 Sep 2026</td></tr>
+<tr><td>D6</td><td>Leave: 6 design decisions and 18 added features — see <a class="xref" data-p="hrms" href="#133-leave-management" title="Leave Management">§1.3.3</a> and the Leave reference document</td><td>23 Sep 2026</td></tr>
+<tr><td>D7</td><td>Scope: everything in this spec ships at market launch; P0 / P1 / P2 are build order only; private pilot during the build</td><td>24 Sep 2026</td></tr>
+<tr><td>D8</td><td>POSH case management is part of the first build wave for compliance</td><td>24 Sep 2026</td></tr>
+<tr><td>D9</td><td>Build waves as in <a class="xref" data-p="" href="#4-timeline" title="Timeline">§4</a>; ATS is built after HRMS wave 5</td><td>24 Sep 2026</td></tr>
+<tr><td>D10</td><td>The existing exam platform (<code>D:\exam app</code>, "Workfox" — Next.js, NestJS, Prisma, BullMQ; 93 models on <code>origin/main</code>) already covers much of Proctoring <a class="xref" data-p="proctoring" href="#11-proctoring" title="Proctoring">§1.1</a>, ATS <a class="xref" data-p="ats" href="#12-ats" title="ATS">§1.2</a> and Platform <a class="xref" data-p="platform" href="#21-platform-foundation" title="Platform Foundation">§2.1</a> — see <code>reference/exam-app-reuse-inventory.md</code>. It is <strong>not yet live</strong>: the only deployment is a test environment with no customer data, so no data migration is needed. It moves from <strong>SQL Server to PostgreSQL before HRMS work starts</strong> — one fresh baseline migration, row-level security rewritten as PostgreSQL policies, raw SQL reviewed, full test suite re-run. D2 and D3 stand.</td><td>24 Sep 2026</td></tr>
+<tr><td>D11</td><td><strong>One codebase:</strong> HRMS is built inside the exam-platform monorepo as its own module area, reusing the shared platform (<a class="xref" data-p="platform" href="#21-platform-foundation" title="Platform Foundation">§2.1</a>) — one login, one tenant account, one bill; products switched on per tenant through billing plans. Services split out only where scaling differs (as the exam runtime already is).</td><td>24 Sep 2026</td></tr>
+<tr><td>D13</td><td><strong>UI approach:</strong> HR screens take Frappe HR's screen layouts and flows as the blueprint (clean-room — no code, logos, icons or copied text) and are built in React in YukthiX's own visual design system, the same one used by Proctoring and ATS. A UI reference per module documents Frappe's screens first.</td><td>24 Sep 2026</td></tr>
+<tr><td>D14</td><td><strong>Engage (<a class="xref" data-p="hrms" href="#1316-engage-engagement-recognition-internal-communication" title="Engage — Engagement, Recognition &amp; Internal Communication">§1.3.16</a>)</strong> is expanded into a full internal-communication and recognition module — social feed, polls and surveys, kudos and recognition, automatic celebrations, moderation — built in <strong>wave 5</strong>. Simple company announcements ship earlier with the notification engine (design P04).</td><td>24 Sep 2026</td></tr>
+<tr><td>D15</td><td><strong>Pricing model: one plan per product + paid add-ons.</strong> HRMS (per employee), ATS (per recruiter / job) and Proctoring (per test taken) each have a single plan with the full product; Analytics is included in each; bundles of several products get a discount. No Basic / Pro / Enterprise tiers. <strong>Add-ons are only:</strong> (1) partner services with a per-use cost — payout API, PAN / bank verification, TDS and PF/ESI partner filing, BGV, Aadhaar eSign, GST e-invoicing, travel booking; (2) usage above fair-use — SMS overage, AI credit top-ups, extra storage, higher API limits / webhook endpoints, YukthiX-provided live proctors (per proctored hour, T04 Q8), licensed question packs (T01 Q7), <strong>Priority Support</strong> (P14 Q8). <strong>Included in the plan:</strong> white-label, embeddable widgets, developer sandbox, standard support (business hours + 24×7 for critical incidents), and the ATS staffing desk. <strong>Amended 26 Sep 2026 (P14 Q8):</strong> a paid <strong>Priority Support</strong> add-on (priority queue, faster targets, phone / WhatsApp, named contact). <strong>Architecture:</strong> API-first (design P11) — REST + GraphQL over one service layer.</td><td>25 Sep 2026</td></tr>
+<tr><td>D16</td><td><strong>UI foundations:</strong> the exam app's <code>ui-v2</code> becomes one shared <code>packages/ui</code> for all four products (also the base of a future component SDK, P11 TR1); designs live as coded components in <strong>Storybook</strong>, Figma added when a designer joins or for a major redesign; <strong>Workfox → YukthiX rename at public launch</strong> (pilot customers in wave 3 still see Workfox).</td><td>25 Sep 2026</td></tr>
+<tr><td>D17</td><td><strong>Configurable by default.</strong> Where HR policy varies between companies, YukthiX provides every option and each company sets its own policy (with per-case override where it makes sense). YukthiX ships only a clearly labelled <strong>starter template</strong> the company edits; it never hard-codes a policy. <strong>Exceptions:</strong> rules fixed by law (statutory calculations, caps, exemptions, consent requirements) are enforced, and the company can only be more generous where the law allows (e.g. maternity top-up). Applies to all design docs.</td><td>26 Sep 2026</td></tr>
+<tr><td>D18</td><td><strong>Price: $1 per user per month, per product</strong> (market-disruption strategy; target market price is $5–6 per user). HRMS $1 per billable employee, ATS $1 per recruiter seat, Proctoring $1 per test attempt started; Analytics included; bundle discount on top. Cost drivers are <strong>add-ons</strong> (storage, AI credits, SMS / WhatsApp, proctoring video storage, partner services, Priority Support). <strong>Small minimum monthly amount per product</strong> (team sets, e.g. equal to 10 users) so tiny invoices don't lose money. Principle: the base price covers infrastructure and running costs only (the founders build the product); every decision must keep the per-user running cost well below $1, and anything that doesn't fit becomes an add-on. INR price set by the team (≈ ₹85). <strong>Clarified by the founder (26 Sep 2026):</strong> every feature YukthiX builds is included in the one price — never Base / Gold / Platinum tiers. Customers pay extra <strong>only</strong> for things from outside the product: (1) <strong>storage</strong> beyond fair use, (2) <strong>AI credits</strong>, (3) <strong>third-party services</strong> (partner pass-through: payout, verification, filing, BGV, eSign, e-invoicing, travel, SMS / WhatsApp message costs, YukthiX proctors, licensed content), (4) <strong>custom third-party connections</strong> built for one customer, (5) <strong>customisation work</strong> for one customer (special reports, letter designs, custom features), (6) <strong>Priority Support</strong>; and (7) <strong>taxes</strong> (GST and others) are added on top of all prices.</td><td>26 Sep 2026 <strong>Amended 27 Sep 2026:</strong> the $1 price is a <strong>market-capture strategy, not a profit price</strong>: the founder builds several products and uses $1 to win customers, proof and investor attention first. India price = $1 equivalent in INR (₹96 at Sep 2026, published, changed only with the 90-day notice in D20). Minimums: HRMS ₹499, ATS ₹999, Proctoring ₹999 in active months. Default payment by bank auto-debit / NEFT with a 2 % bank-rail discount, never a card surcharge. Unit economics: PRICING-UNIT-ECONOMICS.md.</td></tr>
+<tr><td>D19</td><td><strong>Every company rule is editable, using any field.</strong> All company-variable behaviour in the product (policy values, eligibility, validation, approval routing, automations, layout conditions, company pay components) is a rule the company can change or add in the shared <strong>P19 rule builder</strong> (no-code builder + formula editor), using any built-in, custom (P18) or related field. Field API names are fixed; labels can change. <strong>Three layers:</strong> law is a floor (company chooses legal options and applicability per entity with reason, may be more generous, results below the floor are corrected automatically with a warning); company policy is fully editable from a starter template; platform safety (security, audit, tenant isolation, period locks, employees' own documents, consent, statutory calculations) is never editable. Changes are versioned, effective-dated, previewed for impact before activation, and high-risk ones need a second approver.</td><td>26 Sep 2026</td></tr>
+<tr><td>D20</td><td><strong>Customer commitments (market analysis, 26 Sep 2026):</strong> billing from go-live; ≥90 days' price-change notice, annual terms fixed mid-term; ≥6 months' feature-removal notice; renewal reminders 30/7 days; published price list incl. tiny per-product minimum; no planned maintenance in payroll-critical windows; employees keep own documents through exit; offline check-in in wave 2. (P14 YX-BILL-12–14, YX-TEN-07, YX-CONSOLE-07; M02 YX-AT-23/24; M04 YX-MOB-18; M03 YX-PAY-05; P15 YX-MIG-14.)</td><td>26 Sep 2026</td></tr>
+<tr><td>D21</td><td><strong>Brand (brand/BRAND-GUIDELINES.md v1.0, 27 Sep 2026):</strong> promise <strong>"Everything. Included."</strong>; products named YukthiX HR / Hire / Assess / Analytics; personality straightforward, confident, warm, precise; brand colour Azure <code>#3B5FE3</code>; custom wordmark + X monogram by a professional designer; real Indian workplace photography and flat geometric illustration; tenant brand on employee and candidate surfaces with "Powered by YukthiX" on by default (white-label removes it; consent and Secure Client screens stay YukthiX-branded); name story <em>yukti</em> + X, pronounced YOOK-thee-eks.</td><td>27 Sep 2026</td></tr>
+<tr><td>D22</td><td><strong>Law-status corrections (validation pass 3, 28 Sep 2026):</strong> the four Labour Codes are in force from 21 Nov 2025 (dated rule sets, transition by period, wage-definition add-back, floor wage, 2-working-day exit wages, fixed-term gratuity, retrenchment and re-skilling fund, GRC, 40+ health check, women night-shift guard); the Income-tax Act 2025 applies from 1 Apr 2026 (Form 130/131/138/140/144/121, old forms for periods to 31 Mar 2026, section cross-walk by the compliance owner); DPDP Rules 2025 milestones (consent managers Nov 2026, main duties 13 May 2027, 72-hour Board report, logs ≥ 1 year); EU AI Act employment duties from 2 Dec 2027 covering hiring and employee-side AI.</td><td>28 Sep 2026</td></tr>
+<tr><td>D23</td><td><strong>Validation pass 3 Musts (28 Sep 2026):</strong> statutory accident &amp; injury module; PF/ESI supplementary filings after filing; revised Form 130/131; migration imports current-year as-paid lines; one <code>persons</code> record per tenant with roles (DSAR, conversions, total workforce, billing once per person per month); identity chain + partner deepfake detection (flags only); own product analytics on the metric layer (no HR data); P20 growth, trial, help centre and incident messaging; export invoices zero-rated under LUT; synthetic probes; trial = 30 days + one 14-day extension, 30 days read-only, then deletion with certificate.</td><td>28 Sep 2026</td></tr>
+<tr><td>D24</td><td><strong>Validation pass 3 Shoulds (28 Sep 2026):</strong> all included. Wave 3: coverage monitor, PT/LWF state change, ELI, disability field, actuarial export, GST per entity, e-invoice guard, <strong>weekly/fortnightly pay and piece rate (moved from wave 6)</strong>. Wave 4: industrial-relations pack, notice of change, agency CLRA duties, onboarding buddy. Wave 5: incentives/commissions, tips, on-call, BRSR and Board's-report packs, <strong>one skills library (replaces the separate lists of T01 Q2)</strong>, <strong>AI agents that act only with human confirmation</strong>, hybrid office policy, AI course authoring, appraisal-cycle rules, internal-hiring additions. Wave 6: BFSI pack, re-verification, licence gating, IT bench; growth features before public launch (referral = one month credit for both companies). Wave 7: staffing-desk additions. <strong>Pay transparency for every company</strong> (mandatory where law requires, starter ON elsewhere). US AI-hiring laws before the first US AI-interview customer. <strong>New P21 Global readiness</strong>: each global item built before the first customer in its region; accessibility evidence (WCAG 2.2 AA, VPAT) before public launch.</td><td>28 Sep 2026</td></tr>
+<tr><td>D25</td><td><strong>Starter defaults confirmed (28 Sep 2026):</strong> referral credit expires after 12 months (reversed on refund); test result reuse 6 months; appraisal joining cut-off 3 months; permit reminders 90/60/30/7 days; salary split up to 3 accounts; mobile budgets (under 30 MB, cold start under 3 s, crash-free ≥ 99.5 %); injury pay starter full pay for non-ESI staff; talk-to-us threshold 200 employees / 3 entities / 10 recruiters / 2,000 attempts; staff trial extensions ≤ 30 days; probes every 5 minutes. List: design/research/validation-pass-3/SHOULD-DECISIONS.md. Legal "verify" figures stay with the compliance owner.</td><td>28 Sep 2026</td></tr>
+<tr><td>D26</td><td><strong>Workflow Studio and AI assistant (P22, 28 Sep 2026):</strong> full multi-step no-code workflow builder in wave 2 (triggers incl. schedules, inbound email and signed webhooks; branches, waits, loops, approval steps, bulk actions; template gallery; test run, impact preview, versions, undo, limits, kill switch; P19 automations become one-step workflows). Sandboxed JavaScript/TypeScript <strong>script step</strong> in wave 6 (isolated, approved connections only, service identity never broader than the publisher, reviewed and versioned; amends P18's no-custom-code exclusion; component SDK stays TR1). <strong>AI assistant</strong> in wave 5: builds workflows from plain language (never auto-publishes) and runs multi-step jobs after <strong>one plan approval</strong>; money, filings, approvals, rejections, dismissals and pay changes always need a separate confirmation. Included; heavy use beyond fair use and AI credits are add-ons.</td><td>28 Sep 2026</td></tr>
+<tr><td>D27</td><td><strong>Employee &amp; manager assistants and partner marketplaces (P23, 28 Sep 2026; founder selected 9 features; an earlier customer-acquisition P23 was removed the same day at the founder's request):</strong> payslip explainer (rule-based wave 3, AI chat wave 5), AI policy &amp; handbook writer (drafts only, law-floor checked, wave 5), timesheet auto-fill from calendar / Jira / GitHub metadata (never auto-submit, wave 5), AI manager coach (wave 5), review assistant with bias check (advisory, off for EU tenants), employee tax-regime comparison and salary structure optimiser (wave 3), group insurance for small companies only via an IRDAI-licensed partner (wave 5), employee perks marketplace (company switches on; off by default; wave 5).</td><td>28 Sep 2026</td></tr>
+<tr><td>D12</td><td>Product name is <strong>YukthiX</strong>. The exam platform's "Workfox" branding is renamed to YukthiX later.</td><td>24 Sep 2026</td></tr>
+</tbody></table></div>
+    </article>
+  </main>
+</div>
+<button class="menu" type="button" aria-controls="rail" aria-expanded="false">Contents</button>
+<script>window.GRAPH = {"edges": [["1.1.1", "1.1.13"], ["1.1.5", "1.1.15"], ["1.1.7", "1.1.6"], ["1.1.10", "1.1.13"], ["1.1.12", "1.2"], ["1.1.12", "1.3.9"], ["1.1.16", "1.2"], ["1.1.16", "1.3.9"], ["1.2.2", "1.3.2"], ["1.2.3", "1.3.4"], ["1.3.1", "1.2.2"], ["1.3.1", "1.2.3"], ["1.3.2", "1.3.10"], ["1.3.3", "1.3.13"], ["1.3.3", "1.3.5"], ["1.3.4", "1.2.3"], ["1.3.4", "1.3.3"], ["1.3.5", "1.3.13"], ["1.3.9", "1.3.8"], ["1.3.9", "1.1"], ["1.3.10", "1.3.2"], ["1.3.10", "1.3.13"], ["1.3.4", "1.3.5"]], "titles": {"1": "Features", "1.1": "Proctoring", "1.1.1": "Question Bank", "1.1.2": "Test Builder", "1.1.3": "Coding Assessment", "1.1.4": "Scheduling & Invitations", "1.1.5": "Pre-Test Experience", "1.1.6": "Proctoring Controls", "1.1.7": "AI-Assistance Detection", "1.1.8": "Session Continuity", "1.1.9": "Monitoring & Review", "1.1.10": "Integrity Checks", "1.1.11": "Incident Management", "1.1.12": "Scoring & Outcomes", "1.1.13": "Psychometrics & Item Analysis", "1.1.14": "Accessibility & Accommodations", "1.1.15": "Privacy, Consent & Fairness", "1.1.16": "Integrations", "1.2": "ATS", "1.2.1": "Shared Capabilities", "1.2.2": "Internal ATS", "1.2.3": "External ATS", "1.2.4": "Client Helpdesk", "1.3": "HRMS", "1.3.1": "Core HR", "1.3.2": "Onboarding", "1.3.3": "Leave Management", "1.3.4": "Time & Attendance", "1.3.5": "Payroll", "1.3.6": "Benefits Administration", "1.3.7": "Expense, Travel & Reimbursement", "1.3.8": "Performance Management", "1.3.9": "Learning & Development", "1.3.10": "Asset Management", "1.3.11": "Employee Self-Service", "1.3.12": "Employee Helpdesk", "1.3.13": "Offboarding", "1.3.14": "Alumni Portal", "1.3.15": "Compliance & Documents", "1.3.16": "Engage \u2014 Engagement, Recognition & Internal Communication", "1.4": "Analytics", "1.4.1": "Report Builder", "1.4.2": "Dashboards", "1.4.3": "Scheduled Reports & Exports", "1.4.4": "Assessment", "1.4.5": "Recruitment", "1.4.6": "Staffing & revenue", "1.4.7": "Workforce", "1.4.8": "Payroll & compliance", "2": "Architecture", "2.1": "Platform Foundation", "2.1.1": "Tenant & Organisation Setup", "2.1.2": "Authentication & Security", "2.1.3": "RBAC & Data Visibility", "2.1.4": "Workflow & Approval Engine", "2.1.5": "Custom Fields & Form Builder", "2.1.6": "Localisation", "2.1.7": "Notification Engine", "2.1.8": "Document Management & E-Signature", "2.1.9": "Letter & Template Generator", "2.1.10": "Global Search", "2.1.11": "Import, Export & Data Migration", "2.1.12": "Open API & Webhooks", "2.1.13": "Integration Hub", "2.1.14": "AI Layer", "2.1.15": "Audit Log", "2.1.16": "Privacy & Data Governance", "2.1.17": "Billing & Subscription", "2.1.18": "Mobile App / PWA", "2.1.19": "Sandbox Environment", "3": "Infrastructure", "4": "Timeline", "5": "Decisions"}};</script>
+<script>
+/* YukthiX working spec.
+   Turns the plain HTML inside <main id="spec"> into the full page on load:
+   contents rail, system map, cross-reference links, step flows and pills.
+   No build step - edit index.html and reload. */
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const slug = t => t.toLowerCase().replace(/&/g, '').replace(/[^a-z0-9\s-]/g, '').replace(/[\s-]+/g, '-').replace(/^-+|-+$/g, '');
+  const text = el => el.textContent.replace(/\s+/g, ' ').trim();
+
+  const NUM = /^(\d+(?:\.\d+)*)\.?\s+(.+)$/;
+  const MODULE = /^(\d+(?:\.\d+)+)\s+(.+)$/;
+  const ROW_NUM = /^\d+\.\d+\.\d+$/;
+  const XREF = /§(\d+(?:\.\d+)*)/g;
+  const PLACEHOLDER = /^_?\(later\)_?$/i;
+
+  // Product colour keys, matched by section title so chapters can be renumbered freely.
+  const PRODUCT_KEYS = { proctoring: 'proctoring', ats: 'ats', hrms: 'hrms', analytics: 'analytics', 'platform-foundation': 'platform', platform: 'platform' };
+  const ACCESS = { '●': 'Full access', '◐': 'Partial access' };
+  const prefixes = [];  // [section number, product key], filled while indexing
+  const productOf = num => (prefixes.find(([p]) => num && (num === p || num.startsWith(p + '.'))) || [])[1] || '';
+
+  /* =====================================================================
+     Build: plain content -> enhanced page
+     ===================================================================== */
+  function build() {
+    const src = $('#spec');
+    const h1 = $('h1', src);
+    const [name, sub = 'Working spec'] = (h1 ? text(h1) : document.title).split(' — ');
+    if (h1) h1.remove();
+
+    let updated = '';
+    for (const el of [...src.children]) {
+      if (el.tagName === 'H2') break;
+      const m = text(el).match(/^Last updated:\s*(.+)$/i);
+      if (m) updated = m[1];
+      if (m || el.tagName === 'HR') el.remove();
+    }
+
+    const moduleMatch = el => {
+      const s = el.tagName === 'P' && el.firstElementChild;
+      if (!s || s.tagName !== 'STRONG' || !text(el).startsWith(text(s))) return null;
+      return text(s).match(MODULE);
+    };
+
+    // Index every addressable section first, so a § link can point forward.
+    const idx = new Map();
+    let personaNum = null, featuresNum = null;
+    const isPersona = num => !!personaNum && !!num && num.startsWith(personaNum + '.');
+    for (const el of src.children) {
+      if (/^H[2-5]$/.test(el.tagName)) {
+        if (!el.id) el.id = slug(text(el));
+        const m = text(el).match(NUM);
+        if (m && !idx.has(m[1])) idx.set(m[1], { id: el.id, title: m[2] });
+        if (m && PRODUCT_KEYS[slug(m[2])]) prefixes.push([m[1], PRODUCT_KEYS[slug(m[2])]]);
+        if (m && /^personas?$/i.test(m[2])) personaNum = m[1];
+        if (m && el.tagName === 'H2' && /^features$/i.test(m[2])) featuresNum = m[1];
+      } else if (moduleMatch(el)) {
+        const m = moduleMatch(el);
+        if (!idx.has(m[1])) idx.set(m[1], { id: slug(m[0]), title: m[2] });
+      } else if (el.tagName === 'TABLE') {
+        for (const tr of $$('tbody tr', el)) {
+          const [a, b] = tr.cells;
+          if (a && b && ROW_NUM.test(text(a)) && !idx.has(text(a))) {
+            tr.id = slug(text(a) + ' ' + text(b));
+            idx.set(text(a), { id: tr.id, title: text(b) });
+          }
+        }
+      }
+    }
+
+    const toc = [], sections = [], edges = [], status = new Map();
+    let cur = null, h3num = null, group = null;
+
+    const addEdge = (from, to) => {
+      // Chapter-level and parent/child mentions are structure, not dependencies.
+      if (!from || !from.includes('.') || from === to) return;
+      if (to.startsWith(from + '.') || from.startsWith(to + '.')) return;
+      if (!edges.some(([a, b]) => a === from && b === to)) edges.push([from, to]);
+    };
+    const xrefHTML = num => {
+      const s = idx.get(num);
+      return `<a class="xref" data-p="${productOf(num)}" href="#${s.id}" title="${esc(s.title)}">§${esc(num)}</a>`;
+    };
+    function linkify(root, record = true) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const hits = [];
+      while (walker.nextNode()) {
+        const n = walker.currentNode;
+        if (n.nodeValue.includes('§') && !n.parentElement.closest('a, code')) hits.push(n);
+      }
+      for (const n of hits) {
+        const parts = n.nodeValue.split(/(§\d+(?:\.\d+)*)/);
+        if (parts.length === 1) continue;
+        const tmp = document.createElement('span');
+        tmp.innerHTML = parts.map(p => {
+          const num = p.startsWith('§') ? p.slice(1) : '';
+          if (!idx.has(num)) return esc(p);
+          if (record) addEdge(cur, num);
+          return xrefHTML(num);
+        }).join('');
+        n.replaceWith(...tmp.childNodes);
+      }
+    }
+
+    const anchor = (id, label) => `<a class="anchor" href="#${id}" aria-label="Copy link to ${esc(label)}">#</a>`;
+    const pill = t => `<span class="pill pill-${slug(t)}">${esc(t)}</span>`;
+    const makeSlot = num => { const d = document.createElement('div'); d.className = 'refs'; d.dataset.refs = num; return d; };
+    const isPlaceholder = el => el.tagName === 'P' && PLACEHOLDER.test(text(el));
+    const chapterIsEmpty = h2 => {
+      const body = [];
+      for (let el = h2.nextElementSibling; el && !/^H[2-5]$/.test(el.tagName); el = el.nextElementSibling) {
+        if (el.tagName !== 'HR') body.push(el);
+      }
+      return body.length > 0 && body.every(isPlaceholder);
+    };
+
+    for (const el of [...src.children]) {
+      const tag = el.tagName;
+
+      if (/^H[2-5]$/.test(tag)) {
+        const lvl = +tag[1];
+        const label = text(el);
+        const m = label.match(NUM);
+        const [num, title] = m ? [m[1], m[2]] : [null, label];
+        const later = lvl === 2 && chapterIsEmpty(el);
+        if (lvl === 2) { h3num = null; group = null; }
+        if (lvl === 3) h3num = num;
+        if (num) {
+          cur = num;
+          if (lvl <= 4) group = null;
+        } else {
+          cur = h3num;
+          if (lvl === 4) group = title;
+        }
+        const p = productOf(num || h3num || '');
+        el.className = { 2: 'chapter', 3: 'product', 4: num ? 'section' : 'group', 5: num ? 'module' : 'group' }[lvl];
+        el.dataset.p = p;
+        el.innerHTML = (num ? `<span class="num">${esc(num)}</span>` : '') +
+          `<span class="ttl">${esc(title)}</span>` +
+          (lvl === 3 && status.has(num) ? pill(status.get(num)) : '') +
+          anchor(el.id, title);
+        if (num) {
+          if (!isPersona(num)) el.after(makeSlot(num));
+          if (num.includes('.')) sections.push({ num, title, id: el.id, lvl, group });
+        }
+        toc.push({ lvl, id: el.id, num, title, p, later });
+
+      } else if (moduleMatch(el)) {
+        const [whole, num, title] = moduleMatch(el);
+        const id = slug(whole), p = productOf(num);
+        cur = num;
+        const h5 = document.createElement('h5');
+        h5.id = id;
+        h5.className = 'module';
+        h5.dataset.p = p;
+        h5.innerHTML = `<span class="num">${esc(num)}</span><span class="ttl">${esc(title)}</span>${anchor(id, title)}`;
+        el.before(h5);
+        if (!isPersona(num)) h5.after(makeSlot(num));
+        el.firstElementChild.remove();
+        if (el.firstChild && el.firstChild.nodeType === 3) {
+          el.firstChild.nodeValue = el.firstChild.nodeValue.replace(/^\s*[—–-]\s*/, '');
+        }
+        if (text(el)) {
+          el.className = 'module-desc';
+          linkify(el);
+        } else {
+          el.remove();
+        }
+        sections.push({ num, title, id, lvl: 5, group });
+        toc.push({ lvl: 5, id, num, title, p, later: false });
+
+      } else if (isPlaceholder(el)) {
+        el.outerHTML = '<div class="empty"><strong>Not drafted yet.</strong> Write this chapter in <code>index.html</code> and reload.</div>';
+
+      } else if (tag === 'TABLE') {
+        const head = $$('thead th', el).map(th => text(th).toLowerCase());
+        const rows = $$('tbody tr', el);
+        const col = h => head.indexOf(h);
+
+        if (head[0] === 'step') {
+          linkify(el);
+          const oi = col('owner'), ai = head.length - 1;
+          const ol = document.createElement('ol');
+          ol.className = 'flow';
+          ol.innerHTML = rows.map(tr => {
+            const c = tr.cells, step = text(c[0]);
+            const who = oi >= 0 && c[oi]
+              ? `<span class="owner${text(c[oi]) === 'AI' ? ' owner-ai' : ''}">${c[oi].innerHTML}</span>` : '';
+            return `<li><span class="step" aria-label="Step ${esc(step)}">${esc(step)}</span>` +
+              `<div class="step-body">${who}<span class="act">${c[ai] ? c[ai].innerHTML : ''}</span></div></li>`;
+          }).join('');
+          el.replaceWith(ol);
+
+        } else if (head.includes('source') && head.includes('feeds')) {
+          const si = col('source'), fi = col('feeds'), wi = col('why');
+          for (const tr of rows) {
+            for (const [, a] of text(tr.cells[si]).matchAll(XREF)) {
+              for (const [, b] of text(tr.cells[fi]).matchAll(XREF)) addEdge(a, b);
+            }
+          }
+          linkify(el, false);
+          const ul = document.createElement('ul');
+          ul.className = 'deps';
+          ul.innerHTML = rows.map(tr => {
+            const c = tr.cells;
+            return `<li><span class="dep-from">${c[si].innerHTML}</span><span class="dep-arrow" aria-hidden="true">→</span>` +
+              `<span class="sr">feeds</span><span class="dep-to">${c[fi].innerHTML}</span>` +
+              `<span class="dep-why">${wi >= 0 && c[wi] ? c[wi].innerHTML : ''}</span></li>`;
+          }).join('');
+          el.replaceWith(ul);
+
+        } else {
+          const si = col('status'), hi = col('#');
+          linkify(el);
+          // Access marks (● full, ◐ partial) take the colour of the product named in their column.
+          head.forEach((h, i) => {
+            const key = PRODUCT_KEYS[slug(h)];
+            if (!key) return;
+            for (const tr of rows) {
+              const c = tr.cells[i];
+              const label = c && ACCESS[text(c)];
+              if (!label) continue;
+              c.dataset.p = key;
+              c.classList.add('mark');
+              c.innerHTML = `<span role="img" aria-label="${label}" title="${label}">${esc(text(c))}</span>`;
+            }
+          });
+          for (const tr of rows) {
+            const c = tr.cells;
+            const first = c[0] ? text(c[0]) : '';
+            if (hi >= 0 && si >= 0) status.set(first, text(c[si]));
+            if (si >= 0 && c[si]) c[si].innerHTML = pill(text(c[si]));
+            if (hi >= 0 && c[hi] && idx.has(text(c[hi])) && !ROW_NUM.test(text(c[hi]))) {
+              const n = text(c[hi]);
+              c[hi].innerHTML = `<a class="xref" data-p="${productOf(n)}" href="#${idx.get(n).id}">${esc(n)}</a>`;
+            }
+            if (tr.id && ROW_NUM.test(first) && c[1]) {
+              tr.dataset.p = productOf(first);
+              sections.push({ num: first, title: text(c[1]), id: tr.id, lvl: 5, group });
+              toc.push({ lvl: 5, id: tr.id, num: first, title: text(c[1]), p: productOf(first), later: false });
+            }
+          }
+          const wrap = document.createElement('div');
+          wrap.className = 'tbl';
+          el.replaceWith(wrap);
+          wrap.append(el);
+        }
+
+      } else if (tag === 'BLOCKQUOTE') {
+        el.classList.add(/^out of scope/i.test(text(el)) ? 'scope' : 'note');
+        linkify(el);
+
+      } else {
+        linkify(el);
+      }
+    }
+
+    /* ---- "Links to / Linked from" under each section ---- */
+    const chip = num => {
+      const s = idx.get(num);
+      return `<a class="xref xref-full" data-p="${productOf(num)}" href="#${s.id}"><span class="num">§${esc(num)}</span>${esc(s.title)}</a>`;
+    };
+    for (const slot of $$('.refs[data-refs]', src)) {
+      const num = slot.dataset.refs;
+      const outs = edges.filter(([a]) => a === num).map(([, b]) => b);
+      const ins = edges.filter(([, b]) => b === num).map(([a]) => a);
+      const users = ins.filter(isPersona);
+      const from = ins.filter(a => !isPersona(a));
+      if (!outs.length && !ins.length) { slot.remove(); continue; }
+      const group = (label, nums) => nums.length
+        ? `<span class="refs-group"><span class="refs-label">${label}</span>${nums.map(chip).join('')}</span>` : '';
+      slot.innerHTML = group('Links to', outs) + group('Linked from', from) + group('Used by', users);
+    }
+
+    /* ---- contents rail ---- */
+    const root = { lvl: 1, kids: [] };
+    const stack = [root];
+    for (const it of toc) {
+      const node = { ...it, kids: [] };
+      while (stack[stack.length - 1].lvl >= node.lvl) stack.pop();
+      stack[stack.length - 1].kids.push(node);
+      stack.push(node);
+    }
+    const li = n => {
+      const kids = n.kids.length > 0, open = kids && n.lvl === 2;
+      const cls = [`l${n.lvl}`, kids && 'branch', open && 'open', n.later && 'later'].filter(Boolean).join(' ');
+      const tw = kids
+        ? `<button class="tw" type="button" aria-expanded="${open}" aria-label="Show sections in ${esc(n.title)}"></button>`
+        : '<span class="tw-space"></span>';
+      return `<li class="${cls}" data-p="${n.p}"><div class="row">${tw}<a href="#${n.id}">` +
+        (n.num ? `<span class="tn">${esc(n.num)}</span> ` : '') +
+        `<span class="tt">${esc(n.title)}</span>${n.later ? '<span class="tag">later</span>' : ''}</a></div>` +
+        (kids ? `<ul>${n.kids.map(li).join('')}</ul>` : '') + '</li>';
+    };
+
+    /* ---- system map ---- */
+    const children = num => {
+      const depth = num.split('.').length + 1;
+      return sections.filter(s => s.num.startsWith(num + '.') && s.num.split('.').length === depth);
+    };
+    const chips = mods => {
+      const groups = [];
+      for (const s of mods) {
+        if (!groups.length || groups[groups.length - 1].name !== s.group) groups.push({ name: s.group, items: [] });
+        groups[groups.length - 1].items.push(s);
+      }
+      return groups.map(g => `<div class="map-group">` +
+        (g.name ? `<div class="map-group-label">${esc(g.name)}</div>` : '') +
+        `<div class="chips">${g.items.map(s =>
+          `<a class="node chip" href="#${s.id}" data-num="${esc(s.num)}"><span class="num">${esc(s.num)}</span><span class="nm">${esc(s.title)}</span></a>`
+        ).join('')}</div></div>`).join('');
+    };
+    const products = featuresNum ? sections.filter(s => s.lvl === 3 && s.num.startsWith(featuresNum + '.')) : [];
+    const cols = products.map(pr => {
+      const mods = children(pr.num);
+      return `<div class="col" data-p="${productOf(pr.num)}">` +
+        `<a class="node col-head" href="#${pr.id}" data-num="${esc(pr.num)}">` +
+        `<span class="col-title"><span class="num">${esc(pr.num)}</span><span class="nm">${esc(pr.title)}</span></span>` +
+        `<span class="col-meta">${status.has(pr.num) ? pill(status.get(pr.num)) : ''}<span class="count">${mods.length} modules</span></span></a>` +
+        `<div class="col-body">${chips(mods)}</div></div>`;
+    }).join('');
+    const base = sections.find(s => s.lvl === 3 && productOf(s.num) === 'platform');
+    const services = base ? children(base.num) : [];
+    const foundation = base
+      ? `<div class="foundation" data-p="platform"><a class="node col-head" href="#${base.id}" data-num="${esc(base.num)}">` +
+        `<span class="col-title"><span class="num">${esc(base.num)}</span><span class="nm">${esc(base.title)}</span></span>` +
+        `<span class="col-meta"><span class="count">${services.length} shared services · used by every product</span></span></a>` +
+        `<div class="foundation-body">${chips(services)}</div></div>`
+      : '';
+    const mapHTML = `<section class="map" aria-labelledby="map-title">
+      <div class="map-head">
+        <div>
+          <h2 id="map-title">System map</h2>
+          <p>Four products on one shared platform. Each product keeps its colour throughout the spec, so a link's colour shows which product it points into.</p>
+        </div>
+        <div class="map-legend">
+          <span class="lg lg-out">Links to</span><span class="lg lg-in">Linked from</span>
+          <button class="map-toggle" type="button" aria-pressed="false">Show all links</button>
+        </div>
+      </div>
+      <p class="trace" aria-live="polite">Hover over or tab to a module to see its cross-references. Select it to open that section.</p>
+      <div class="map-canvas"><svg class="wires" aria-hidden="true"></svg><div class="products">${cols}</div>${foundation}</div>
+    </section>`;
+
+    /* ---- facts + page shell ---- */
+    const chapters = toc.filter(t => t.lvl === 2);
+    const facts = [
+      [products.length, 'products'],
+      [products.reduce((n, p) => n + children(p.num).length, 0), 'modules'],
+      [services.length, 'platform services'],
+      [sections.filter(s => isPersona(s.num)).length, 'personas'],
+      [edges.filter(([a]) => !isPersona(a)).length, 'cross-references'],
+      [edges.filter(([a, b]) => productOf(a) && productOf(b) && productOf(a) !== productOf(b)).length, 'between products'],
+      [`${chapters.filter(c => !c.later).length} of ${chapters.length}`, 'chapters drafted'],
+    ];
+
+    const shell = document.createElement('div');
+    shell.className = 'shell';
+    shell.innerHTML = `
+      <aside class="rail" id="rail">
+        <div class="brand"><div class="brand-name">${esc(name)}</div><div class="brand-sub">${esc(sub)}</div></div>
+        <label class="filter"><span class="sr">Filter sections</span>
+          <input id="filter" type="search" placeholder="Filter by name or number" autocomplete="off"><kbd aria-hidden="true">/</kbd></label>
+        <nav aria-label="Contents"><ul>${root.kids.map(li).join('')}</ul></nav>
+        <p class="filter-empty" hidden>No sections match. Try a module number, such as 2.3.5.</p>
+        <p class="built">Edit index.html and reload to update this page.</p>
+      </aside>
+      <div class="scrim"></div>
+      <main class="page" id="main">
+        <header class="hero">
+          <p class="eyebrow"><span>${esc(sub)}</span>${updated ? `<span>Last updated ${esc(updated)}</span>` : ''}</p>
+          <h1>${esc(name)}</h1>
+          <ul class="facts">${facts.map(([v, k]) => `<li><b>${esc(v)}</b> ${esc(k)}</li>`).join('')}</ul>
+        </header>
+        ${mapHTML}
+        <article class="doc"></article>
+      </main>`;
+    $('.doc', shell).append(...src.childNodes);
+    src.replaceWith(shell);
+    document.body.insertAdjacentHTML('afterbegin',
+      '<a class="skip" href="#main">Skip to content</a><div class="progress" aria-hidden="true"><span></span></div>');
+    document.body.insertAdjacentHTML('beforeend',
+      '<button class="menu" type="button" aria-controls="rail" aria-expanded="false">Contents</button>');
+
+    return { edges, titles: Object.fromEntries([...idx].map(([k, v]) => [k, v.title])) };
+  }
+
+  /* =====================================================================
+     Interactions
+     ===================================================================== */
+  function interact(graph) {
+    const rail = $('.rail');
+    const nav = $('.rail nav');
+    const box = $('#filter');
+    const noMatch = $('.filter-empty');
+    const bar = $('.progress');
+    const menu = $('.menu');
+
+    /* ---------- contents: expand and collapse ---------- */
+    // Branches follow the reading position; ones opened by hand stay open.
+    const branches = $$('li.branch', nav);
+    const pinned = new Set(branches.filter(li => li.classList.contains('open')));
+    let active = null;
+    let query = '';
+
+    function setOpen(li, open) {
+      li.classList.toggle('open', open);
+      const tw = li.querySelector(':scope > .row > .tw');
+      if (tw) tw.setAttribute('aria-expanded', String(open));
+    }
+    function follow() {
+      if (query) return;
+      branches.forEach(li => setOpen(li, pinned.has(li) || (!!active && li.contains(active))));
+    }
+    function setNav(open) {
+      document.body.classList.toggle('nav-open', open);
+      menu.setAttribute('aria-expanded', String(open));
+    }
+
+    nav.addEventListener('click', e => {
+      const tw = e.target.closest('.tw');
+      if (tw) {
+        const li = tw.closest('li');
+        const open = !li.classList.contains('open');
+        setOpen(li, open);
+        open ? pinned.add(li) : pinned.delete(li);
+      } else if (e.target.closest('a')) {
+        setNav(false);
+      }
+    });
+    menu.addEventListener('click', () => setNav(!document.body.classList.contains('nav-open')));
+    $('.scrim').addEventListener('click', () => setNav(false));
+
+    /* ---------- reading position ---------- */
+    const links = $$('.row > a', nav);
+    const linkFor = new Map(links.map(a => [decodeURIComponent(a.hash.slice(1)), a]));
+    const targets = [...linkFor.keys()].map(id => document.getElementById(id)).filter(Boolean);
+
+    function keepInView(a) {
+      const r = a.getBoundingClientRect();
+      const view = rail.getBoundingClientRect();
+      if (r.top < view.top + 96 || r.bottom > view.bottom - 48) {
+        rail.scrollTop += r.top - view.top - view.height / 3;
+      }
+    }
+    function activate(a) {
+      if (a === active) return;
+      if (active) {
+        active.classList.remove('active');
+        active.removeAttribute('aria-current');
+      }
+      active = a;
+      if (a) {
+        a.classList.add('active');
+        a.setAttribute('aria-current', 'true');
+        bar.dataset.p = a.closest('li').dataset.p || '';
+      }
+      follow();
+      if (a) keepInView(a);
+    }
+
+    let ticking = false;
+    function measure() {
+      ticking = false;
+      let cur = null;
+      for (const t of targets) {
+        if (t.getBoundingClientRect().top <= 120) cur = t;
+        else break;
+      }
+      activate(cur ? linkFor.get(cur.id) : null);
+      const h = document.documentElement;
+      const max = h.scrollHeight - h.clientHeight;
+      bar.style.setProperty('--progress', max > 0 ? Math.min(1, h.scrollTop / max) : 0);
+    }
+    addEventListener('scroll', () => {
+      if (!ticking) { ticking = true; requestAnimationFrame(measure); }
+    }, { passive: true });
+
+    // Ids only exist once the page is built, so honour a #hash in the URL now.
+    const target = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (target) target.scrollIntoView({ behavior: 'instant' });
+    measure();
+
+    /* ---------- filter ---------- */
+    // A match keeps its ancestors visible; a matching branch keeps its children.
+    function applyFilter() {
+      query = box.value.trim().toLowerCase();
+      if (!query) {
+        $$('li', nav).forEach(li => { li.hidden = false; });
+        noMatch.hidden = true;
+        follow();
+        return;
+      }
+      const visit = (li, forced) => {
+        const own = li.querySelector(':scope > .row > a').textContent.toLowerCase().includes(query);
+        let kidMatched = false;
+        for (const kid of $$(':scope > ul > li', li)) {
+          if (visit(kid, forced || own)) kidMatched = true;
+        }
+        li.hidden = !(forced || own || kidMatched);
+        if (li.classList.contains('branch')) setOpen(li, kidMatched);
+        return own || kidMatched;
+      };
+      let any = false;
+      for (const li of $$(':scope > ul > li', nav)) {
+        if (visit(li, false)) any = true;
+      }
+      noMatch.hidden = any;
+    }
+    box.addEventListener('input', applyFilter);
+    box.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        box.value = '';
+        applyFilter();
+        box.blur();
+      } else if (e.key === 'Enter') {
+        const first = links.find(a => !a.closest('li[hidden]') && a.textContent.toLowerCase().includes(query));
+        if (first) {
+          location.hash = first.hash;
+          box.blur();
+          setNav(false);
+        }
+      }
+    });
+    addEventListener('keydown', e => {
+      if (e.key === '/' && !e.target.closest('input, textarea, [contenteditable]')) {
+        e.preventDefault();
+        setNav(true);
+        box.focus();
+      } else if (e.key === 'Escape') {
+        setNav(false);
+      }
+    });
+
+    /* ---------- copy section links ---------- */
+    document.addEventListener('click', e => {
+      const a = e.target.closest('.anchor');
+      if (!a || !navigator.clipboard) return;
+      navigator.clipboard.writeText(location.href.split('#')[0] + a.hash).then(() => {
+        a.classList.add('copied');
+        setTimeout(() => a.classList.remove('copied'), 1400);
+      }, () => {});
+    });
+
+    /* ---------- system map: trace cross-references ---------- */
+    const map = $('.map');
+    if (!map) return;
+
+    const canvas = $('.map-canvas', map);
+    const svg = $('.wires', map);
+    const readout = $('.trace', map);
+    const toggle = $('.map-toggle', map);
+    const hint = readout.textContent;
+    const NS = 'http://www.w3.org/2000/svg';
+
+    const nodes = new Map($$('.node', map).map(n => [n.dataset.num, n]));
+    const outs = new Map();
+    const ins = new Map();
+    const push = (m, k, v) => { if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
+    const edges = graph.edges.filter(([s, d]) => nodes.has(s) && nodes.has(d));
+    edges.forEach(([s, d]) => { push(outs, s, d); push(ins, d, s); });
+
+    const productIn = n => (n.closest('[data-p]') || { dataset: {} }).dataset.p || 'none';
+    const name = num => `${num} ${graph.titles[num] || ''}`.trim();
+
+    // Curve from a to b; the dot marks the end being pointed at.
+    function wire(a, b, kind, colourFrom) {
+      const c = canvas.getBoundingClientRect();
+      const ra = a.getBoundingClientRect();
+      const rb = b.getBoundingClientRect();
+      const ay = ra.top + ra.height / 2 - c.top;
+      const by = rb.top + rb.height / 2 - c.top;
+      let ax, bx, c1, c2;
+      if (Math.abs(ra.left - rb.left) < 24) {
+        ax = ra.right - c.left;
+        bx = rb.right - c.left;
+        const reach = Math.min(70, 18 + Math.abs(by - ay) / 8);
+        c1 = ax + reach;
+        c2 = bx + reach;
+      } else if (rb.left > ra.left) {
+        ax = ra.right - c.left;
+        bx = rb.left - c.left;
+        c1 = c2 = (ax + bx) / 2;
+      } else {
+        ax = ra.left - c.left;
+        bx = rb.right - c.left;
+        c1 = c2 = (ax + bx) / 2;
+      }
+      const colour = `var(--c-${productIn(colourFrom)})`;
+      const path = document.createElementNS(NS, 'path');
+      path.setAttribute('d', `M${ax},${ay} C${c1},${ay} ${c2},${by} ${bx},${by}`);
+      path.setAttribute('class', `wire ${kind}`);
+      path.style.setProperty('--wc', colour);
+      const dot = document.createElementNS(NS, 'circle');
+      dot.setAttribute('cx', bx);
+      dot.setAttribute('cy', by);
+      dot.setAttribute('r', kind === 'all' ? 2.5 : 3.25);
+      dot.setAttribute('class', `wire-end ${kind}`);
+      dot.style.setProperty('--wc', colour);
+      svg.append(path, dot);
+    }
+
+    let current = null;
+    const showAll = () => toggle.getAttribute('aria-pressed') === 'true';
+
+    function reset() {
+      current = null;
+      canvas.classList.remove('tracing');
+      nodes.forEach(n => n.classList.remove('is-src', 'is-out', 'is-in'));
+      svg.replaceChildren();
+      readout.textContent = hint;
+      if (showAll()) edges.forEach(([s, d]) => wire(nodes.get(s), nodes.get(d), 'all', nodes.get(d)));
+    }
+
+    function trace(node) {
+      if (node === current) return;
+      current = node;
+      svg.replaceChildren();
+      nodes.forEach(n => n.classList.remove('is-src', 'is-out', 'is-in'));
+      canvas.classList.add('tracing');
+      node.classList.add('is-src');
+
+      const num = node.dataset.num;
+      const o = outs.get(num) || [];
+      const i = ins.get(num) || [];
+      o.forEach(d => { const t = nodes.get(d); t.classList.add('is-out'); wire(node, t, 'out', t); });
+      i.forEach(s => { const t = nodes.get(s); t.classList.add('is-in'); wire(t, node, 'in', t); });
+
+      if (!o.length && !i.length) {
+        readout.textContent = `${name(num)} has no cross-references in the spec yet.`;
+      } else {
+        const parts = [];
+        if (o.length) parts.push(`links to ${o.map(name).join(', ')}`);
+        if (i.length) parts.push(`linked from ${i.map(name).join(', ')}`);
+        readout.textContent = `${name(num)}: ${parts.join(' · ')}`;
+      }
+    }
+
+    canvas.addEventListener('pointerover', e => {
+      const n = e.target.closest('.node');
+      if (n) trace(n);
+      else if (current) reset();
+    });
+    canvas.addEventListener('pointerleave', reset);
+    canvas.addEventListener('focusin', e => {
+      const n = e.target.closest('.node');
+      if (n) trace(n);
+    });
+    canvas.addEventListener('focusout', e => {
+      if (!canvas.contains(e.relatedTarget)) reset();
+    });
+    toggle.addEventListener('click', () => {
+      toggle.setAttribute('aria-pressed', String(!showAll()));
+      if (!current) reset();
+    });
+    addEventListener('resize', () => {
+      const n = current;
+      reset();
+      if (n) trace(n);
+    });
+  }
+
+  try {
+    interact(build());
+  } catch (err) {
+    console.error('Spec page could not be built:', err);
+  } finally {
+    document.body.classList.add('ready');
+  }
+})();
+
+</script>
+</body>
+</html>

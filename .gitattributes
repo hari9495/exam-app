@@ -2,3 +2,7 @@
 *.sh text eol=lf
 # Prisma checksums migration files byte-for-byte; keep them LF on every checkout.
 **/prisma/migrations/**/*.sql text eol=lf
+docs/yukthix/*.docx filter=lfs diff=lfs merge=lfs -text
+docs/yukthix/*.pdf filter=lfs diff=lfs merge=lfs -text
+packages/yx-ui/tests/__screenshots__/** filter=lfs diff=lfs merge=lfs -text
+docs/yukthix/reference/**/*.png filter=lfs diff=lfs merge=lfs -text
