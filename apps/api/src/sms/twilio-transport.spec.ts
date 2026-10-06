@@ -34,24 +34,44 @@ describe('sendTwilioSms', () => {
   it('returns ok:true with status for a 2xx response', async () => {
     const fetchImpl = mockFetch({ ok: true, status: 201 });
     const result = await sendTwilioSms(input, fetchImpl as never);
-    expect(result).toEqual({ ok: true, status: 201 });
+    expect(result).toMatchObject({ ok: true, status: 201 });
   });
 
   it('returns ok:false with status for a 4xx response', async () => {
     const fetchImpl = mockFetch({ ok: false, status: 401 });
     const result = await sendTwilioSms(input, fetchImpl as never);
-    expect(result).toEqual({ ok: false, status: 401 });
+    expect(result).toMatchObject({ ok: false, status: 401, failure: 'rejected' });
   });
 
   it('returns ok:false with status for a 5xx response', async () => {
     const fetchImpl = mockFetch({ ok: false, status: 500 });
     const result = await sendTwilioSms(input, fetchImpl as never);
-    expect(result).toEqual({ ok: false, status: 500 });
+    expect(result).toMatchObject({ ok: false, status: 500, failure: 'unknown' });
   });
 
   it('returns ok:false when fetch throws (network error)', async () => {
     const fetchImpl = jest.fn().mockRejectedValue(new Error('network down'));
     const result = await sendTwilioSms(input, fetchImpl as never);
-    expect(result).toEqual({ ok: false });
+    expect(result).toMatchObject({ ok: false, failure: 'unknown' });
+  });
+
+  it('reads the message sid as the provider message id', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue({ ok: true, status: 201, json: async () => ({ sid: 'SM0123', status: 'queued' }) });
+    expect(await sendTwilioSms(input, fetchImpl as never)).toEqual({ ok: true, status: 201, providerMsgId: 'SM0123' });
+  });
+
+  it('never follows a redirect and gives up after a timeout', async () => {
+    const fetchImpl = mockFetch({ ok: true, status: 201 });
+    await sendTwilioSms(input, fetchImpl as never);
+    const [, options] = fetchImpl.mock.calls[0];
+    expect(options.redirect).toBe('manual');
+    expect(options.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('a gateway that was never reached, or is busy, may be retried; nothing was sent', async () => {
+    const refused = jest.fn().mockRejectedValue(Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }));
+    expect(await sendTwilioSms(input, refused as never)).toMatchObject({ ok: false, failure: 'unavailable' });
+    expect(await sendTwilioSms(input, mockFetch({ ok: false, status: 429 }) as never)).toMatchObject({ failure: 'unavailable' });
+    expect(await sendTwilioSms(input, mockFetch({ ok: false, status: 503 }) as never)).toMatchObject({ failure: 'unavailable' });
   });
 });

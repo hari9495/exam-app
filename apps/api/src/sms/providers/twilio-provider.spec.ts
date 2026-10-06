@@ -55,7 +55,7 @@ describe('twilioProvider.send', () => {
 
     const result = await twilioProvider.send(config, args, fetchImpl as never);
 
-    expect(result).toEqual({ ok: true, status: 201 });
+    expect(result).toMatchObject({ ok: true, status: 201 });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, options] = fetchImpl.mock.calls[0];
     expect(url).toBe('https://api.twilio.com/2010-04-01/Accounts/AC123/Messages.json');
@@ -70,6 +70,6 @@ describe('twilioProvider.send', () => {
   it('propagates a failed send result', async () => {
     const fetchImpl = mockFetch({ ok: false, status: 500 });
     const result = await twilioProvider.send(config, args, fetchImpl as never);
-    expect(result).toEqual({ ok: false, status: 500 });
+    expect(result).toMatchObject({ ok: false, status: 500 });
   });
 });

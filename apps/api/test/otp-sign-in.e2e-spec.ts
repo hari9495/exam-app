@@ -13,7 +13,9 @@ import { base32 } from '@scure/base';
 import { OrgSecretsCryptoService, PrismaService, STEP_UP_REQUIRED_CODE, TenantPrismaService, invalidateTenantSecurityPolicy } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
-import { InMemoryOtpSmsSender, OTP_SMS_SENDER } from '../src/auth/otp-sender';
+import { DevSmsSink, devSmsSink } from '../src/sms/providers';
+import { trackOtpSends } from './fixtures/sms';
+import { OTP_SMS_SENDER } from '../src/auth/otp-sender';
 import { OTP_MAX_ATTEMPTS, OtpService } from '../src/auth/otp.service';
 import { markSteppedUp } from './fixtures/step-up';
 
@@ -26,7 +28,8 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
   let tenantPrisma: TenantPrismaService;
   let prisma: PrismaService;
   let redis: Redis;
-  let sms: InMemoryOtpSmsSender;
+  const sms: DevSmsSink = devSmsSink;
+  let settle: () => Promise<void>;
   const jwt = new JwtService({});
   const email = { send: jest.fn().mockResolvedValue({ success: true }) };
   const SUPER = { organizationId: null, isSuperAdmin: true };
@@ -64,7 +67,11 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     const call = [...email.send.mock.calls].reverse().find(([m]) => m.to === to && /code/.test(m.subject));
     return call?.[0].html.match(/<b>(\d{6})<\/b>/)?.[1];
   };
-  const lastSmsCode = (to: string) => [...sms.sent].reverse().find((m) => m.to === to)?.text.slice(0, 6);
+  // Codes go out fire-and-forget: wait for sends already started, then read the dev sink.
+  const lastSmsCode = async (to: string) => {
+    await settle();
+    return [...sms.sent].reverse().find((m) => m.to === to)?.text.slice(0, 6);
+  };
 
   // A browser: one device cookie and one client IP.
   interface Browser {
@@ -105,7 +112,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     const b = browser();
     const identifier = opts.identifier ?? who;
     const started = await startOtp(b, slug, identifier, opts.channel).expect(200);
-    const code = opts.identifier ? lastSmsCode(identifier)! : lastEmailCode(who)!;
+    const code = opts.identifier ? (await lastSmsCode(identifier))! : lastEmailCode(who)!;
     const res = await verifyOtp(b, slug, identifier, started.body.otpToken, code).expect(200);
     await resetLimits(slug, identifier);
     return { b, res, code, otpToken: started.body.otpToken as string };
@@ -142,7 +149,9 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
   let adminSecret: string;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(EmailService).useValue(email).compile();
+    const tracked = trackOtpSends(Test.createTestingModule({ imports: [AppModule] }).overrideProvider(EmailService).useValue(email));
+    settle = tracked.settle;
+    const moduleRef = await tracked.builder.compile();
     app = moduleRef.createNestApplication();
     app.use(cookieParser());
     app.getHttpAdapter().getInstance().set('trust proxy', true);
@@ -151,7 +160,6 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     await app.init();
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
-    sms = moduleRef.get(OTP_SMS_SENDER);
     redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
 
     planId = (await prisma.plan.create({ data: { name: `otp-plan-${runId}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
@@ -378,6 +386,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     it('an unverified number signs nobody in and nothing is texted', async () => {
       const before = sms.sent.length;
       await startOtp(browser(), A().slug, mobile(1)).expect(200);
+      await settle();
       expect(sms.sent.length).toBe(before);
       await resetLimits(A().slug, mobile(1));
     });
@@ -388,8 +397,9 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
       const national = `0${mobile(1).slice(3)}`; // typed as written in India
       const started = await post(b, '/auth/otp/mobile', { mobileNumber: national }, access).expect(200);
       expect(started.body).toMatchObject({ mobileNumber: mobile(1), expiresInSeconds: 300 });
-      await post(b, '/auth/otp/mobile/verify', { code: lastSmsCode(mobile(1)) === '000000' ? '111111' : '000000' }, access).expect(400);
-      await post(b, '/auth/otp/mobile/verify', { code: lastSmsCode(mobile(1)) }, access).expect(200);
+      const texted = await lastSmsCode(mobile(1));
+      await post(b, '/auth/otp/mobile/verify', { code: texted === '000000' ? '111111' : '000000' }, access).expect(400);
+      await post(b, '/auth/otp/mobile/verify', { code: texted }, access).expect(200);
       const row = await tenantPrisma.forTenant(SUPER, (tx) => tx.user.findUniqueOrThrow({ where: { id: users[MOBILE_USER] } }));
       expect(row).toMatchObject({ mobileNumber: mobile(1), mobileVerifiedAt: expect.any(Date) });
       expect(await auditActions(A().id, 'user.mobile_verified')).toEqual([expect.objectContaining({ actorUserId: users[MOBILE_USER] })]);
@@ -404,13 +414,16 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
       expect(await session(sidOf(bySms.res.body.accessToken))).toMatchObject({ method: 'otp_sms', assuranceLevel: 'aal1' });
       const byWa = await signInByCode(A().slug, MOBILE_USER, { identifier: mobile(1), channel: 'whatsapp' });
       expect(sms.sent.at(-1)).toMatchObject({ to: mobile(1), channel: 'whatsapp' });
+      // The SMS sign-in recorded the request as an authentication-only opt-in (YX-NTF-14).
+      const consents = await tenantPrisma.forTenant(SUPER, (tx) => tx.channelConsent.findMany({ where: { recipientId: users[MOBILE_USER], channel: 'sms' } }));
+      expect(consents).toEqual([expect.objectContaining({ scope: 'authentication_only', source: 'otp_prompt', addressMasked: expect.stringMatching(/^\+91•+\d\d$/), withdrawnAt: null })]);
       expect(await session(sidOf(byWa.res.body.accessToken))).toMatchObject({ method: 'otp_whatsapp' });
     });
 
     it('a number verified by one account cannot be verified by another in the same company', async () => {
       const { b, res } = await signInByCode(A().slug, FIELD);
       await post(b, '/auth/otp/mobile', { mobileNumber: mobile(1) }, res.body.accessToken).expect(200);
-      await post(b, '/auth/otp/mobile/verify', { code: lastSmsCode(mobile(1)) }, res.body.accessToken).expect(409);
+      await post(b, '/auth/otp/mobile/verify', { code: await lastSmsCode(mobile(1)) }, res.body.accessToken).expect(409);
     });
 
     it('with a factor enrolled, changing the number needs a fresh step-up (and an OTP-proven session never counts)', async () => {
@@ -418,7 +431,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
       const first = await post(b, '/auth/staff/login', { organizationSlug: A().slug, email: TWO_STEP, password: PASSWORD }).expect(200);
       const sendRes = await post(b, '/auth/mfa/otp/send', { mfaToken: first.body.mfaToken, channel: 'sms' }).expect(200);
       expect(sendRes.body).toEqual({ expiresInSeconds: 300, resendAfterSeconds: 60 });
-      const signedIn = await post(b, '/auth/mfa/verify', { mfaToken: first.body.mfaToken, factor: 'otp', code: lastSmsCode(mobile(3)) }).expect(200);
+      const signedIn = await post(b, '/auth/mfa/verify', { mfaToken: first.body.mfaToken, factor: 'otp', code: await lastSmsCode(mobile(3)) }).expect(200);
       const res = await post(b, '/auth/otp/mobile', { mobileNumber: mobile(9) }, signedIn.body.accessToken).expect(403);
       expect(res.body.code).toBe(STEP_UP_REQUIRED_CODE);
       const removed = await request(server()).delete('/api/v1/auth/otp/mobile').set('Authorization', `Bearer ${signedIn.body.accessToken}`).set('X-Forwarded-For', b.ip).expect(403);
@@ -449,7 +462,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
       // Never by email.
       await post(b, '/auth/mfa/otp/send', { mfaToken: first.body.mfaToken, channel: 'email' }).expect(400);
       await post(b, '/auth/mfa/otp/send', { mfaToken: first.body.mfaToken, channel: 'whatsapp' }).expect(200);
-      const code = lastSmsCode(mobile(3))!;
+      const code = (await lastSmsCode(mobile(3)))!;
       // Wrong code: counted toward the second-step lockout and logged.
       await post(b, '/auth/mfa/verify', { mfaToken: first.body.mfaToken, factor: 'otp', code: code === '000000' ? '111111' : '000000' }).expect(401);
       expect(await events(TWO_STEP)).toEqual(expect.arrayContaining([expect.objectContaining({ result: 'mfa_failed', method: 'otp', reason: 'mfa_invalid' })]));
@@ -472,6 +485,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
       expect(first.body.factors).toEqual(['totp', 'recovery_code']);
       await post(b, '/auth/mfa/otp/send', { mfaToken: first.body.mfaToken, channel: 'sms' }).expect(400);
       await post(b, '/auth/mfa/verify', { mfaToken: first.body.mfaToken, factor: 'otp', code: '123456' }).expect(401);
+      await settle();
       expect(sms.sent.some((m) => m.to === mobile(4))).toBe(false);
       await redis.del(`auth:lp:acct:fail:${sha(`mfa\u0000${users[ADMIN]}`)}`, `auth:lp:acct:block:${sha(`mfa\u0000${users[ADMIN]}`)}`);
     });
@@ -493,7 +507,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
       const { res: other } = await passwordLogin(A().slug, TWO_STEP);
       await post({ ip: b.ip }, '/auth/mfa/otp/send', { mfaToken: first.body.mfaToken, channel: 'sms' }).expect(401); // no device cookie
       await post(b, '/auth/mfa/otp/send', { mfaToken: first.body.mfaToken, channel: 'sms' }).expect(200);
-      const code = lastSmsCode(mobile(3))!;
+      const code = (await lastSmsCode(mobile(3)))!;
       await post(b, '/auth/mfa/verify', { mfaToken: other.body.mfaToken, factor: 'otp', code }).expect(401);
       await redis.del(`auth:otp:cool:${limitKey(`mfa\u0000${users[TWO_STEP]}`)}`);
       await redis.del(`auth:lp:acct:fail:${sha(`mfa\u0000${users[TWO_STEP]}`)}`, `auth:lp:acct:block:${sha(`mfa\u0000${users[TWO_STEP]}`)}`);
@@ -528,7 +542,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     it('without its Redis store no code is issued (503), and nothing is sent', async () => {
       const down = new Redis('redis://127.0.0.1:1', { maxRetriesPerRequest: 0, lazyConnect: true, retryStrategy: () => null });
       down.on('error', () => undefined);
-      const otp = new OtpService(app.get(OrgSecretsCryptoService), email as never, sms, down);
+      const otp = new OtpService(app.get(OrgSecretsCryptoService), email as never, app.get(OTP_SMS_SENDER), down);
       await expect(otp.reserveSend('x', null)).rejects.toThrow('temporarily unavailable');
       await expect(otp.issue('k', {})).rejects.toThrow('temporarily unavailable');
       expect(email.send).not.toHaveBeenCalled();

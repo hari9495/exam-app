@@ -109,6 +109,11 @@ model Organization {
   webhookDeliveries             WebhookDelivery[]
   securityPolicy                TenantSecurityPolicy?
   identityProviders             IdentityProvider[]
+  channelAccounts               ChannelAccount[]
+  notificationDeliveries        NotificationDelivery[]
+  channelConsents               ChannelConsent[]
+  notificationPolicy            TenantNotificationPolicy?
+  smsUsage                      SmsUsageMonthly[]
 
   @@map("organizations")
 }
@@ -2048,4 +2053,114 @@ model IdentityProviderDomain {
   @@id([organizationId, domain])
   @@index([identityProviderId])
   @@map("identity_provider_domains")
+}
+
+// ---- P04 notification engine: SMS channel (migration 20261006700000_sms_channel) ----------------
+
+// A gateway account. organizationId null = the YukthiX shared account (readable by the platform only).
+model ChannelAccount {
+  id               String                 @id @default(uuid()) @db.Uuid
+  organizationId   String?                @map("organization_id") @db.Uuid
+  organization     Organization?          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // 'sms'
+  channel          String                 @default("sms") @db.VarChar(16)
+  // 'http' | 'twilio' | 'dev'
+  provider         String                 @db.VarChar(16)
+  name             String                 @db.VarChar(100)
+  // AES-256-GCM (OrgSecretsCryptoService) JSON config incl. secrets; never returned by the API
+  configEncrypted  String                 @map("config_encrypted") @db.Text
+  sender           String?                @db.VarChar(20)
+  dltEntityId      String?                @map("dlt_entity_id") @db.VarChar(30)
+  // { otp: { dltTemplateId, body, variables, status } }
+  templates        Json                   @default("{}")
+  priority         Int                    @default(100)
+  // 'active' | 'disabled'
+  status           String                 @default("active") @db.VarChar(16)
+  createdByUserId  String?                @map("created_by_user_id") @db.Uuid
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deliveries       NotificationDelivery[]
+
+  @@index([organizationId, channel, priority])
+  @@map("channel_accounts")
+}
+
+model NotificationDelivery {
+  id               String          @id @default(uuid()) @db.Uuid
+  organizationId   String?         @map("organization_id") @db.Uuid
+  organization     Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  notificationId   String?         @map("notification_id") @db.Uuid
+  // 'sms' | 'email'
+  channel          String          @db.VarChar(16)
+  // 'otp' | 'test'
+  kind             String          @db.VarChar(16)
+  idempotencyKey   String          @unique @map("idempotency_key") @db.VarChar(128)
+  addressMasked    String          @map("address_masked") @db.VarChar(40)
+  addressHash      String          @map("address_hash") @db.VarChar(64)
+  // 'pending' | 'sent' | 'delivered' | 'failed' | 'fallback' | 'unknown' | 'opted_out'
+  status           String          @default("pending") @db.VarChar(16)
+  channelAccountId String?         @map("channel_account_id") @db.Uuid
+  channelAccount   ChannelAccount? @relation(fields: [channelAccountId], references: [id], onDelete: SetNull)
+  provider         String?         @db.VarChar(16)
+  providerMsgId    String?         @map("provider_msg_id") @db.VarChar(200)
+  attempts         Int             @default(0)
+  error            String?         @db.VarChar(500)
+  costUnits        Int             @default(0) @map("cost_units")
+  sentAt           DateTime?       @map("sent_at") @db.Timestamptz(3)
+  deliveredAt      DateTime?       @map("delivered_at") @db.Timestamptz(3)
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([channelAccountId, providerMsgId])
+  @@map("notification_deliveries")
+}
+
+// Append-only opt-in record (APX-A §5): the app may only stamp withdrawnAt once.
+model ChannelConsent {
+  id               String        @id @default(uuid()) @db.Uuid
+  organizationId   String?       @map("organization_id") @db.Uuid
+  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipientType    String        @map("recipient_type") @db.VarChar(32)
+  recipientId      String?       @map("recipient_id") @db.Uuid
+  // 'sms' | 'whatsapp'
+  channel          String        @db.VarChar(16)
+  addressHash      String        @map("address_hash") @db.VarChar(64)
+  addressMasked    String?       @map("address_masked") @db.VarChar(40)
+  // 'all_service' | 'authentication_only'
+  scope            String        @default("all_service") @db.VarChar(32)
+  source           String        @db.VarChar(32)
+  textVersion      String        @map("text_version") @db.VarChar(32)
+  language         String        @default("en") @db.VarChar(8)
+  capturedAt       DateTime      @default(now()) @map("captured_at") @db.Timestamptz(3)
+  capturedBy       String?       @map("captured_by") @db.Uuid
+  evidence         Json?
+  withdrawnAt      DateTime?     @map("withdrawn_at") @db.Timestamptz(3)
+  withdrawalSource String?       @map("withdrawal_source") @db.VarChar(32)
+
+  @@index([organizationId, channel, addressHash])
+  @@map("channel_consents")
+}
+
+model TenantNotificationPolicy {
+  organizationId   String       @id @map("organization_id") @db.Uuid
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  smsSharedAccount Boolean      @default(true) @map("sms_shared_account")
+  // null = no cap
+  smsMonthlyCap    Int?         @map("sms_monthly_cap")
+  updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedByUserId  String?      @map("updated_by_user_id") @db.Uuid
+
+  @@map("tenant_notification_policies")
+}
+
+model SmsUsageMonthly {
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  month          DateTime     @db.Date
+  sentCount      Int          @default(0) @map("sent_count")
+  capAlertedAt   DateTime?    @map("cap_alerted_at") @db.Timestamptz(3)
+
+  @@id([organizationId, month])
+  @@map("sms_usage_monthly")
 }

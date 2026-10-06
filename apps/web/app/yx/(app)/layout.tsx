@@ -14,11 +14,14 @@ import { roleToLandingPath } from '../../../lib/staff-routing';
 const ME: SecurityShellLink = { id: 'me', label: 'My security', href: '/yx/me/security' };
 const ACTIVITY: SecurityShellLink = { id: 'activity', label: 'Login activity', href: '/yx/admin/login-activity' };
 const SETTINGS: SecurityShellLink = { id: 'settings', label: 'Security settings', href: '/yx/settings/security' };
+const SMS: SecurityShellLink = { id: 'sms', label: 'Text messages (SMS)', href: '/yx/settings/sms' };
 
 // Links follow the role; the API still checks every permission (audit:view, org:manage_users,
-// org:manage_settings) and the pages show "no access" on a 403.
+// org:manage_settings) and the pages show "no access" on a 403. Platform staff outside any company
+// manage the YukthiX shared SMS account.
 function linksFor(role: string | null, acting: boolean): SecurityShellLink[] {
-  if (acting || role === 'org_admin') return [ME, ACTIVITY, SETTINGS];
+  if (acting || role === 'org_admin') return [ME, ACTIVITY, SETTINGS, SMS];
+  if (role === 'super_admin') return [ME, SMS];
   if (role === 'auditor') return [ME, ACTIVITY];
   return [ME];
 }
