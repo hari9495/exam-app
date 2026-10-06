@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '../../../lib/api-client';
@@ -48,7 +48,12 @@ function SsoCallbackRedeemer() {
     return () => clearTimeout(timer);
   }, [error, router, signInPath]);
 
+  // The code is single-use and wiped from the URL on first read: run once, even when React
+  // re-runs effects (Strict Mode).
+  const started = useRef(false);
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
     const searchParams = takeCallbackParams();
     const ssoError = searchParams.get('ssoError');
     if (ssoError) {
