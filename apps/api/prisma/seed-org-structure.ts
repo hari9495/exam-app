@@ -12,6 +12,9 @@ async function ensure<T>(find: () => Promise<T | null>, create: () => Promise<T>
 }
 
 const IST = 'Asia/Kolkata';
+// P02 §4.2 templates as permission profiles: Payroll Admin holds pay; HR Admin runs records without pay.
+const PAYROLL_ADMIN = ['org:view', 'org.structure.view', 'org.entity.statutory.manage', 'pay.range.view', 'pay.range.manage', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage'];
+const HR_ADMIN = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro'];
 const FROM = new Date('2026-04-01T00:00:00.000Z');
 
 export async function seedOrgStructure(tx: Tx, organizationId: string, passwordHash: string): Promise<void> {
@@ -96,6 +99,7 @@ export async function seedOrgStructure(tx: Tx, organizationId: string, passwordH
 
   // ---- designations ----
   for (const [name, code, jobFamily, owner] of [
+    ['Managing Director', 'MD', 'Leadership', null],
     ['Production Supervisor', 'PROD-SUP', 'Operations', tn.id],
     ['Quality Analyst', 'QA-ANALYST', 'Quality', null],
     ['Senior QA Engineer', 'SR-QA-ENG', 'Quality', null],
@@ -176,12 +180,23 @@ export async function seedOrgStructure(tx: Tx, organizationId: string, passwordH
     () => tx.permissionProfile.findFirst({ where: { ...org, name: 'Payroll Admin' } }),
     () =>
       tx.permissionProfile.create({
-        data: { ...org, name: 'Payroll Admin', permissionsJson: JSON.stringify(['org:view', 'org.structure.view', 'org.entity.statutory.manage', 'pay.range.view', 'pay.range.manage']) },
+        data: { ...org, name: 'Payroll Admin', permissionsJson: JSON.stringify(PAYROLL_ADMIN) },
       }),
   );
+  // Earlier seeds created the profile with fewer keys: keep it in step.
+  await tx.permissionProfile.update({ where: { id: profile.id }, data: { permissionsJson: JSON.stringify(PAYROLL_ADMIN) } });
   await tx.user.upsert({
     where: { organizationId_email: { organizationId, email: 'payroll@demo-org.test' } },
     update: {},
     create: { ...org, email: 'payroll@demo-org.test', name: 'Suresh Pillai', passwordHash, role: 'panel', permissionProfileId: profile.id },
+  });
+  const hrProfile = await ensure(
+    () => tx.permissionProfile.findFirst({ where: { ...org, name: 'HR Admin' } }),
+    () => tx.permissionProfile.create({ data: { ...org, name: 'HR Admin', permissionsJson: JSON.stringify(HR_ADMIN) } }),
+  );
+  await tx.user.upsert({
+    where: { organizationId_email: { organizationId, email: 'hr@demo-org.test' } },
+    update: {},
+    create: { ...org, email: 'hr@demo-org.test', name: 'Lakshmi Venkatesan', passwordHash, role: 'panel', permissionProfileId: hrProfile.id },
   });
 }
