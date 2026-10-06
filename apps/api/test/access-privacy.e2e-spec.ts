@@ -441,6 +441,9 @@ describe('Access, visibility and privacy (P02 §4.2–4.6; R1)', () => {
       await api('orgTn', 'put', `/org/legal-entities/${ids.kf}`).send({ name: 'Hacked' }).expect(400); // validated first
       await api('orgTn', 'post', `/org/legal-entities/${ids.kf}/archive`).expect(404);
       await api('orgTn', 'post', `/org/legal-entities/${ids.tn}/default`).expect(403); // the default entity is a company matter
+      // India's states and the open regions are public reference data: anyone signed in reads them (own address, §4.5).
+      expect((await api('outsider', 'get', '/org/reference').expect(200)).body.states.length).toBeGreaterThan(30);
+      await request(server()).get('/api/v1/org/reference').expect(401);
     });
 
     it('pay ranges: only the entities the pay grant reaches (R1)', async () => {

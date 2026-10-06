@@ -359,7 +359,8 @@ export class ProfileService {
       const p = JSON.parse(this.open(c, r.employeeId, r.proposedEnc)) as Proposal;
       const conflicts = await this.duplicates(tx, c, v, r.employeeId, kind, p);
       if (conflicts.length && !overrideReason) {
-        throw new ConflictException({ statusCode: 409, code: 'DUPLICATE_IDENTIFIER', message: `Another active employee already has this ${LABEL[kind]} (YX-EMP-02). Check it, or give a reason to approve anyway.`, conflicts });
+        const who = conflicts.map((x) => (x.employeeCode ? `${x.name} (${x.employeeCode})` : x.name)).join(', ');
+        throw new ConflictException({ statusCode: 409, code: 'DUPLICATE_IDENTIFIER', message: `${who} already ${conflicts.length > 1 ? 'have' : 'has'} this ${LABEL[kind]}. Check it, or give a reason to approve anyway.`, conflicts });
       }
       const now = new Date();
       if (BANK[kind]) {

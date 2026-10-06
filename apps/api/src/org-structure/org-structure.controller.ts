@@ -68,9 +68,11 @@ export class OrgStructureController {
     return kind === 'cost-centres' ? (body.legalEntityId ?? null) : (body.ownerLegalEntityId ?? null);
   }
 
-  /** Lists the screens need: India's states and the open data regions. */
+  /**
+   * Lists the screens need: India's states and the open data regions. Public reference data (no company
+   * record in it), so every signed-in user may read it, e.g. for their own address (P02 §4.5).
+   */
   @Get('reference')
-  @RequireAnyPermission(...VIEW)
   reference() {
     return {
       states: Object.entries(IN_STATES).map(([code, name]) => ({ code, name, country: 'IN' })),
