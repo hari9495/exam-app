@@ -27,13 +27,13 @@ export default function RouteError({ error, reset }: { error: Error & { digest?:
           <button
             type="button"
             onClick={reset}
-            className="rounded-lg bg-ink px-4 py-2 font-body text-sm font-semibold text-paper transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/30"
+            className="rounded-lg bg-ink px-4 py-2 font-body text-sm font-semibold text-paper transition-opacity hover:opacity-90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ink/30"
           >
             Try again
           </button>
           <Link
             href="/"
-            className="rounded-lg border border-rule px-4 py-2 font-body text-sm font-semibold text-ink transition-colors hover:bg-ground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/30"
+            className="rounded-lg border border-rule px-4 py-2 font-body text-sm font-semibold text-ink transition-colors hover:bg-ground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ink/30"
           >
             Back to Prudent Hire
           </Link>

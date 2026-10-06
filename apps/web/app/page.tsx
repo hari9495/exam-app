@@ -7,13 +7,13 @@ import { Reveal } from './Reveal';
 // The one place chroma is spent on the navy surfaces: a light "paper" button for the primary
 // action (primary blue on navy is too low-contrast), and quiet rule outlines for everything else.
 const PRIMARY_LINK_CLASSES =
-  'rounded-lg bg-[#f4f7fb] px-6 py-3 font-body text-sm font-semibold text-[#001E60] transition hover:opacity-90';
+  'rounded-lg bg-[#f4f7fb] px-6 py-3 font-body text-sm font-semibold text-brand-navy transition hover:opacity-90';
 const OUTLINE_LINK_CLASSES =
   'rounded-lg border border-white/25 px-6 py-3 font-body text-sm font-medium text-[#dbe3f0] transition hover:border-white/50 hover:bg-white/5';
 const NAV_LOGIN_CLASSES =
   'rounded-lg border border-white/25 px-5 py-2.5 font-body text-sm font-medium text-[#dbe3f0] transition hover:border-white/50 hover:bg-white/5';
 const NAV_CTA_CLASSES =
-  'rounded-lg bg-[#f4f7fb] px-5 py-2.5 font-body text-sm font-semibold text-[#001E60] transition hover:opacity-90';
+  'rounded-lg bg-[#f4f7fb] px-5 py-2.5 font-body text-sm font-semibold text-brand-navy transition hover:opacity-90';
 
 const NAV_LINKS = [
   { href: '#features', label: 'Features' },
@@ -121,9 +121,9 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 export default function Home() {
   return (
     <main className="bg-ground">
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-[#001E60] px-6 py-4 md:px-16">
+      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-brand-navy px-6 py-4 md:px-16">
         <div className="flex items-center gap-2.5">
-          <PrudentMark className="h-7 aspect-[100/148] text-white" />
+          <PrudentMark className="h-7 aspect-100/148 text-white" />
           <span className="font-display text-lg font-bold tracking-tight text-white">Prudent Hire</span>
         </div>
         <nav className="hidden items-center gap-7 font-body text-sm font-medium text-[#a7b3c8] md:flex">
@@ -146,7 +146,7 @@ export default function Home() {
       <LandingHero>
         {/* A clean navy stage, no diagonal clip -- the display type carries it, the way the login
             panel does. A single lit hairline along the bottom seams it to the proof strip. */}
-        <div className="relative overflow-hidden bg-[#001E60] shadow-[inset_0_-1px_0_rgba(255,255,255,0.06)]">
+        <div className="relative overflow-hidden bg-brand-navy shadow-[inset_0_-1px_0_rgba(255,255,255,0.06)]">
           <div className="relative z-10 grid w-full grid-cols-1 items-center gap-12 px-6 py-16 md:grid-cols-2 md:px-16 md:py-24">
             <div className="flex w-fit flex-col items-start gap-5">
               <p className="flex items-center gap-2 font-body text-[11px] font-semibold uppercase tracking-[0.11em] text-[#8ea0c2]">
@@ -173,7 +173,7 @@ export default function Home() {
                 {TRUST_ITEMS.map((item) => (
                   <span
                     key={item}
-                    className="rounded border border-white/15 bg-white/[0.04] px-3 py-1 font-body text-xs font-medium text-[#a7b3c8]"
+                    className="rounded-sm border border-white/15 bg-white/4 px-3 py-1 font-body text-xs font-medium text-[#a7b3c8]"
                   >
                     {item}
                   </span>
@@ -194,10 +194,10 @@ export default function Home() {
                 <div className="p-4">
                   <div className="mb-3.5 flex items-center justify-between">
                     <span className="flex items-center gap-1.5 font-body text-xs font-bold text-ink">
-                      <span className="h-3.5 w-3.5 rounded-sm bg-primary" aria-hidden="true" />
+                      <span className="h-3.5 w-3.5 rounded-xs bg-primary" aria-hidden="true" />
                       Acme Corp: Backend Round
                     </span>
-                    <span className="rounded border border-primary/25 bg-primary/10 px-2 py-0.5 font-body text-[11px] font-semibold text-primary">
+                    <span className="rounded-sm border border-primary/25 bg-primary/10 px-2 py-0.5 font-body text-[11px] font-semibold text-primary">
                       18:42 left
                     </span>
                   </div>
@@ -206,13 +206,13 @@ export default function Home() {
                       Q3. Which HTTP status best fits a successful async job enqueue?
                     </p>
                     <div className="flex gap-1.5 font-body text-[11px]">
-                      <span className="flex-1 rounded border-[1.5px] border-primary bg-primary/10 px-2 py-1 text-center font-semibold text-primary">
+                      <span className="flex-1 rounded-sm border-[1.5px] border-primary bg-primary/10 px-2 py-1 text-center font-semibold text-primary">
                         202 Accepted
                       </span>
-                      <span className="flex-1 rounded border border-rule px-2 py-1 text-center text-muted">
+                      <span className="flex-1 rounded-sm border border-rule px-2 py-1 text-center text-muted">
                         200 OK
                       </span>
-                      <span className="flex-1 rounded border border-rule px-2 py-1 text-center text-muted">
+                      <span className="flex-1 rounded-sm border border-rule px-2 py-1 text-center text-muted">
                         201 Created
                       </span>
                     </div>
@@ -274,7 +274,7 @@ export default function Home() {
           <p className="mb-10 max-w-xl font-body text-sm text-muted">Five steps, most of which run themselves.</p>
         </Reveal>
         <div className="relative grid gap-8 md:grid-cols-5">
-          <div className="absolute left-[10%] right-[10%] top-[18px] hidden h-px bg-rule md:block" aria-hidden="true" />
+          <div className="absolute left-[10%] right-[10%] top-4.5 hidden h-px bg-rule md:block" aria-hidden="true" />
           {WALKTHROUGH_STEPS.map(({ number, title, body }, i) => (
             <Reveal key={title} delay={i * 0.08}>
               <div className="relative flex flex-col gap-2">
@@ -289,7 +289,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="features" className="bg-[#001E60] px-6 py-16 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] md:px-16">
+      <section id="features" className="bg-brand-navy px-6 py-16 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] md:px-16">
         <Reveal>
           <p className="mb-3 font-body text-[11px] font-semibold uppercase tracking-[0.11em] text-[#8ea0c2]">What&apos;s under the hood</p>
           <h2 className="mb-10 font-display text-2xl font-bold tracking-[-0.02em] text-[#f4f7fb] md:text-3xl">What&apos;s Actually Under The Hood</h2>
@@ -297,8 +297,8 @@ export default function Home() {
         <div className="grid gap-4 md:grid-cols-2">
           {FEATURE_DEEP_DIVES.map(({ icon: Icon, kicker, title, body }, i) => (
             <Reveal key={title} delay={i * 0.06}>
-              <div className="h-full rounded-lg border border-white/10 bg-white/[0.04] p-7 transition-colors hover:border-white/20">
-                <span className="mb-5 flex h-12 w-12 items-center justify-center rounded-lg border border-white/15 bg-white/[0.06] text-[#dbe3f0]">
+              <div className="h-full rounded-lg border border-white/10 bg-white/4 p-7 transition-colors hover:border-white/20">
+                <span className="mb-5 flex h-12 w-12 items-center justify-center rounded-lg border border-white/15 bg-white/6 text-[#dbe3f0]">
                   <Icon size={22} aria-hidden="true" />
                 </span>
                 <p className="mb-2 font-body text-[11px] font-semibold uppercase tracking-[0.11em] text-[#8ea0c2]">{kicker}</p>
@@ -357,7 +357,7 @@ export default function Home() {
       </section>
 
       <Reveal>
-        <section className="bg-[#001E60] px-6 py-20 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] md:px-16">
+        <section className="bg-brand-navy px-6 py-20 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] md:px-16">
           <p className="mb-4 font-body text-[11px] font-semibold uppercase tracking-[0.11em] text-[#8ea0c2]">Get started today</p>
           <h2 className="mb-3 font-display text-2xl font-bold tracking-[-0.02em] text-[#f4f7fb] md:text-3xl">
             Ready To Run An Exam Instead Of Another Call?
@@ -372,7 +372,7 @@ export default function Home() {
       </Reveal>
 
       <footer className="flex items-center justify-center gap-2 bg-[#000D28] px-6 py-8 font-body text-sm text-white/35 md:px-16">
-        <PrudentMark className="h-5 aspect-[100/148] text-white/35" />
+        <PrudentMark className="h-5 aspect-100/148 text-white/35" />
         <span>&copy; 2026 Prudent Consulting</span>
       </footer>
     </main>

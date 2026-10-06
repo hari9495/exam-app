@@ -48,7 +48,7 @@ export default function CandidateSubmittedPage() {
                 setCertError(e instanceof Error ? e.message : 'Could not download your certificate.');
               }
             }}
-            className="inline-flex items-center rounded bg-candidate-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            className="inline-flex items-center rounded-sm bg-candidate-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
             {certificate.isPending ? 'Preparing…' : 'Download certificate'}
           </button>

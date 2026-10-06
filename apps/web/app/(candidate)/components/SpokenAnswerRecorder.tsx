@@ -181,7 +181,7 @@ export function SpokenAnswerRecorder({ existing, disabled, uploading, onUpload, 
               type="button"
               onClick={() => onRemove(existing.id)}
               disabled={busy || recording}
-              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-candidate-text-secondary hover:bg-candidate-border/40 disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium text-candidate-text-secondary hover:bg-candidate-border/40 disabled:opacity-50"
             >
               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Remove
             </button>

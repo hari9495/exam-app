@@ -99,7 +99,7 @@ export function Sidebar({
         {orgLogoUrl ? (
           <img src={orgLogoUrl} alt="" className="w-8 h-8 rounded-[6px] object-contain shrink-0" />
         ) : (
-          <div className="w-8 h-8 rounded-[6px] flex items-center justify-center font-semibold text-[13px] shadow-sm shrink-0"
+          <div className="w-8 h-8 rounded-[6px] flex items-center justify-center font-semibold text-[13px] shadow-xs shrink-0"
             style={{ background: 'var(--org-primary)', color: 'var(--org-on-primary)' }}>
             {orgInitial}
           </div>

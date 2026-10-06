@@ -68,7 +68,7 @@ export function StaffSidebar({ navItems, pathname, orgName, orgLogoUrl, orgIniti
         aria-label="Open navigation"
         aria-expanded={open}
         onClick={() => setOpen(true)}
-        className="fixed left-3 top-3 z-30 rounded-lg border border-rule bg-paper p-2 text-ink transition-colors hover:bg-ground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/30 md:hidden print:hidden"
+        className="fixed left-3 top-3 z-30 rounded-lg border border-rule bg-paper p-2 text-ink transition-colors hover:bg-ground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ink/30 md:hidden print:hidden"
       >
         <Menu size={18} />
       </button>
@@ -90,7 +90,7 @@ export function StaffSidebar({ navItems, pathname, orgName, orgLogoUrl, orgIniti
       >
         <div className="flex h-16 items-center gap-2 border-b border-white/10 px-4">
           {orgLogoUrl ? (
-            <img src={orgLogoUrl} alt="Organization logo" className="max-h-7 max-w-7 rounded" />
+            <img src={orgLogoUrl} alt="Organization logo" className="max-h-7 max-w-7 rounded-sm" />
           ) : (
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-on-primary">
               {orgInitial}
@@ -101,7 +101,7 @@ export function StaffSidebar({ navItems, pathname, orgName, orgLogoUrl, orgIniti
             type="button"
             aria-label="Close navigation"
             onClick={() => setOpen(false)}
-            className="ml-auto shrink-0 rounded-md p-1 text-white/60 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 md:hidden"
+            className="ml-auto shrink-0 rounded-md p-1 text-white/60 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white/40 md:hidden"
           >
             <X size={16} />
           </button>
@@ -134,7 +134,7 @@ export function StaffSidebar({ navItems, pathname, orgName, orgLogoUrl, orgIniti
           })}
         </ul>
         <div className="flex h-16 shrink-0 items-center justify-end px-4">
-          <PrudentMark className="h-8 aspect-[100/148] text-white/20" />
+          <PrudentMark className="h-8 aspect-100/148 text-white/20" />
         </div>
       </nav>
     </>

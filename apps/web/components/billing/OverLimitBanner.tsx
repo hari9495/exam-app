@@ -42,7 +42,7 @@ export function OverLimitBanner() {
         type="button"
         aria-label="Dismiss"
         onClick={() => setDismissed(true)}
-        className="rounded p-1 hover:bg-status-danger/10"
+        className="rounded-sm p-1 hover:bg-status-danger/10"
       >
         <X size={16} />
       </button>

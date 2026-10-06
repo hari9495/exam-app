@@ -55,7 +55,7 @@ export function AuthPageLayout({
     >
       <header className="inv-header flex items-center px-6 py-4 md:px-16">
         <Link href="/" className="flex items-center gap-2.5" style={{ color: 'var(--ink)' }}>
-          <PrudentMark className="h-7 aspect-[100/148]" />
+          <PrudentMark className="h-7 aspect-100/148" />
           <span className="inv-wordmark text-lg">Prudent Hire</span>
         </Link>
       </header>

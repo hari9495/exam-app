@@ -55,7 +55,7 @@ export function CareersAssistant({ orgSlug, orgName }: { orgSlug: string; orgNam
   }
 
   return (
-    <div className="fixed bottom-5 right-5 z-40 flex h-[28rem] w-[min(22rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-2xl">
+    <div className="fixed bottom-5 right-5 z-40 flex h-112 w-[min(22rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-2xl">
       <div className="flex items-center justify-between px-4 py-3 text-white" style={{ backgroundColor: 'var(--careers-primary, #0053e2)' }}>
         <span className="text-sm font-semibold">Ask about roles at {orgName}</span>
         <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="text-white/90 hover:text-white">✕</button>
@@ -83,7 +83,7 @@ export function CareersAssistant({ orgSlug, orgName }: { orgSlug: string; orgNam
           maxLength={500}
           placeholder="Ask a question…"
           aria-label="Ask a question"
-          className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-400"
+          className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-hidden focus:border-gray-400"
         />
         <button
           type="submit"

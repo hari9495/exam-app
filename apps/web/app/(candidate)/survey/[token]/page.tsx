@@ -118,7 +118,7 @@ export default function SurveyResponsePage() {
                   onChange={(e) => setAnswer(i, e.target.value || null)}
                   rows={3}
                   maxLength={5000}
-                  className="mt-2 w-full rounded-lg border border-candidate-border bg-white p-3 text-sm text-candidate-text outline-none focus:border-candidate-primary"
+                  className="mt-2 w-full rounded-lg border border-candidate-border bg-white p-3 text-sm text-candidate-text outline-hidden focus:border-candidate-primary"
                   placeholder="Your answer (optional)"
                 />
               )}

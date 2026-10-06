@@ -52,7 +52,7 @@ export function PracticeStep({ onDone }: { onDone: () => void }) {
               <span className="h-2.5 w-2.5 rounded-full bg-[#FFBD2E]" />
               <span className="h-2.5 w-2.5 rounded-full bg-[#27C93F]" />
             </span>
-            <span className="rounded bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-candidate-text-faint">javascript</span>
+            <span className="rounded-sm bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-candidate-text-faint">javascript</span>
           </div>
           <Editor
             height="128px"

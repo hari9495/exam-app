@@ -31,7 +31,7 @@ export function Checkbox({ label, checked, onChange, hideLabel, disabled }: Chec
         // mt-0.5 lines the box up with the label's first line of text -- items-start
         // alone puts its top edge flush with the label block, which sits a couple of
         // pixels above where a single line of text actually starts.
-        className="mt-0.5 h-4 w-4 shrink-0 rounded border border-rule data-[state=checked]:border-primary data-[state=checked]:bg-primary disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-0.5 h-4 w-4 shrink-0 rounded-sm border border-rule data-[state=checked]:border-primary data-[state=checked]:bg-primary disabled:cursor-not-allowed disabled:opacity-50"
       >
         <RadixCheckbox.Indicator className="flex items-center justify-center text-white text-xs">✓</RadixCheckbox.Indicator>
       </RadixCheckbox.Root>
