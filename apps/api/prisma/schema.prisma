@@ -2340,3 +2340,130 @@ model Setting {
 
   @@map("settings")
 }
+
+// ---- P01 §4.4 employee core + P06 effective-dated history (migration 20261008000000_employee_history) ----
+// Dated fact tables (assignments, status periods, compensations) are written only through approved
+// employee changes (YX-HIS-01) and never updated except to supersede a row (YX-HIS-07): the database
+// enforces both (trigger + column grants). Overlap exclusions and partial indexes live in the migration.
+
+model Employee {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  givenName      String   @map("given_name") @db.VarChar(100)
+  familyName     String?  @map("family_name") @db.VarChar(100)
+  preferredName  String?  @map("preferred_name") @db.VarChar(100)
+  workEmail      String?  @map("work_email") @db.Citext
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("employees")
+}
+
+model Employment {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  employeeCode   String    @map("employee_code") @db.Citext
+  codeScopeKey   String    @map("code_scope_key") @db.Uuid
+  joinedOn       DateTime  @map("joined_on") @db.Date
+  exitedOn       DateTime? @map("exited_on") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("employments")
+}
+
+model EmployeeChange {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  employmentId   String    @map("employment_id") @db.Uuid
+  seq            BigInt    @default(autoincrement())
+  changeType     String    @map("change_type") @db.VarChar(32)
+  effectiveDate  DateTime  @map("effective_date") @db.Date
+  status         String    @db.VarChar(16)
+  payload        Json
+  impact         Json?
+  reason         String    @db.VarChar(1000)
+  overrideReason String?   @map("override_reason") @db.VarChar(1000)
+  requestedBy    String?   @map("requested_by") @db.Uuid
+  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionNote   String?   @map("decision_note") @db.VarChar(1000)
+  appliedAt      DateTime? @map("applied_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("employee_changes")
+}
+
+model EmployeeAssignment {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  legalEntityId        String    @map("legal_entity_id") @db.Uuid
+  employeeId           String    @map("employee_id") @db.Uuid
+  employmentId         String    @map("employment_id") @db.Uuid
+  validFrom            DateTime  @map("valid_from") @db.Date
+  validTo              DateTime? @map("valid_to") @db.Date
+  locationId           String    @map("location_id") @db.Uuid
+  departmentId         String    @map("department_id") @db.Uuid
+  designationId        String    @map("designation_id") @db.Uuid
+  gradeId              String?   @map("grade_id") @db.Uuid
+  employmentTypeId     String    @map("employment_type_id") @db.Uuid
+  managerEmployeeId    String?   @map("manager_employee_id") @db.Uuid
+  changeId             String    @map("change_id") @db.Uuid
+  recordedAt           DateTime  @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  supersededAt         DateTime? @map("superseded_at") @db.Timestamptz(3)
+  supersededByChangeId String?   @map("superseded_by_change_id") @db.Uuid
+
+  @@map("employee_assignments")
+}
+
+model AssignmentCostCentre {
+  organizationId String  @map("organization_id") @db.Uuid
+  legalEntityId  String  @map("legal_entity_id") @db.Uuid
+  assignmentId   String  @map("assignment_id") @db.Uuid
+  costCentreId   String  @map("cost_centre_id") @db.Uuid
+  percent        Decimal @db.Decimal(5, 2)
+
+  @@id([assignmentId, costCentreId])
+  @@map("assignment_cost_centres")
+}
+
+model EmploymentStatusPeriod {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  employmentId         String    @map("employment_id") @db.Uuid
+  validFrom            DateTime  @map("valid_from") @db.Date
+  validTo              DateTime? @map("valid_to") @db.Date
+  status               String    @db.VarChar(16)
+  changeId             String    @map("change_id") @db.Uuid
+  recordedAt           DateTime  @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  supersededAt         DateTime? @map("superseded_at") @db.Timestamptz(3)
+  supersededByChangeId String?   @map("superseded_by_change_id") @db.Uuid
+
+  @@map("employment_status_periods")
+}
+
+model Compensation {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  employmentId         String    @map("employment_id") @db.Uuid
+  validFrom            DateTime  @map("valid_from") @db.Date
+  validTo              DateTime? @map("valid_to") @db.Date
+  currency             String    @db.Char(3)
+  annualCtc            Decimal   @map("annual_ctc") @db.Decimal(14, 2)
+  changeId             String    @map("change_id") @db.Uuid
+  recordedAt           DateTime  @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  supersededAt         DateTime? @map("superseded_at") @db.Timestamptz(3)
+  supersededByChangeId String?   @map("superseded_by_change_id") @db.Uuid
+
+  @@map("compensations")
+}
