@@ -177,6 +177,79 @@ describe('PostgreSQL row-level security (app role)', () => {
     ).rejects.toThrow(/users_mobile_verified_check/);
   });
 
+  // P12 Part 1e: a company's sign-in identity providers (with OIDC client secrets) and the email
+  // domains routed to them are tenant data.
+  it('identity_providers and identity_provider_domains are forced-RLS tenant tables', async () => {
+    const rows = await prisma.$queryRaw<{ table: string; forced: boolean; policies: bigint }[]>`
+      SELECT c.relname AS table, (c.relrowsecurity AND c.relforcerowsecurity) AS forced,
+             (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+      WHERE c.relname IN ('identity_providers', 'identity_provider_domains') ORDER BY c.relname`;
+    expect(rows).toEqual([
+      { table: 'identity_provider_domains', forced: true, policies: BigInt(1) },
+      { table: 'identity_providers', forced: true, policies: BigInt(1) },
+    ]);
+  });
+
+  it("(b) org A cannot read, change, remove, plant or borrow org B's identity providers and domains", async () => {
+    const DOMAIN = `b-${randomUUID().slice(0, 8)}.test`;
+    const providerB = await tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, async (tx) => {
+      const p = await tx.identityProvider.create({
+        data: { organizationId: orgB, type: 'oidc_google', name: 'B Google', status: 'active', oidcIssuer: 'https://accounts.google.com', oidcClientId: 'b', oidcClientSecretEncrypted: 'x.y.z' },
+      });
+      await tx.identityProviderDomain.create({ data: { organizationId: orgB, domain: DOMAIN, identityProviderId: p.id } });
+      return p;
+    });
+    const seenByA = await tenantPrisma.forTenant(asA(), async (tx) => ({
+      providers: await tx.identityProvider.count({ where: { id: providerB.id } }),
+      domains: await tx.identityProviderDomain.count({ where: { domain: DOMAIN } }),
+      disabled: await tx.$executeRaw`UPDATE identity_providers SET status = 'disabled' WHERE id = ${providerB.id}::uuid`,
+      removed: await tx.$executeRaw`DELETE FROM identity_providers WHERE id = ${providerB.id}::uuid`,
+      unmapped: await tx.$executeRaw`DELETE FROM identity_provider_domains WHERE domain = ${DOMAIN}`,
+    }));
+    expect(seenByA).toEqual({ providers: 0, domains: 0, disabled: 0, removed: 0, unmapped: 0 });
+    await expect(
+      tenantPrisma.forTenant(asA(), (tx) =>
+        tx.identityProvider.create({ data: { organizationId: orgB, type: 'oidc_google', name: 'planted', oidcIssuer: 'https://accounts.google.com' } }),
+      ),
+    ).rejects.toThrow(RLS_VIOLATION);
+    await expect(
+      tenantPrisma.forTenant(asA(), (tx) => tx.identityProviderDomain.create({ data: { organizationId: orgB, domain: `x-${DOMAIN}`, identityProviderId: providerB.id } })),
+    ).rejects.toThrow(RLS_VIOLATION);
+    // Org A cannot route its own domain to org B's provider (composite key: same company only).
+    await expect(
+      tenantPrisma.forTenant(asA(), (tx) => tx.identityProviderDomain.create({ data: { organizationId: orgA, domain: `y-${DOMAIN}`, identityProviderId: providerB.id } })),
+    ).rejects.toThrow(/identity_provider_domains_provider_fkey|Foreign key constraint/);
+    // The same domain may be mapped in each company.
+    const providerA = await tenantPrisma.forTenant(asA(), (tx) =>
+      tx.identityProvider.create({ data: { organizationId: orgA, type: 'oidc_google', name: 'A Google', oidcIssuer: 'https://accounts.google.com' } }),
+    );
+    await expect(
+      tenantPrisma.forTenant(asA(), (tx) => tx.identityProviderDomain.create({ data: { organizationId: orgA, domain: DOMAIN, identityProviderId: providerA.id } })),
+    ).resolves.toEqual(expect.objectContaining({ domain: DOMAIN }));
+    const b = await tenantPrisma.forTenant(SUPER, (tx) => tx.identityProvider.findUniqueOrThrow({ where: { id: providerB.id } }));
+    expect(b.status).toBe('active');
+  });
+
+  it('the identity-provider floor is enforced by the database: JIT never grants an admin role, Google and Entra issuers are pinned', async () => {
+    const inA = (sql: Prisma.Sql) => tenantPrisma.forTenant(asA(), (tx) => tx.$executeRaw(sql));
+    await expect(
+      inA(Prisma.sql`INSERT INTO identity_providers (id, organization_id, type, name, oidc_issuer, jit_enabled, jit_role)
+                     VALUES (gen_random_uuid(), ${orgA}::uuid, 'oidc_google', 'x', 'https://accounts.google.com', true, 'org_admin')`),
+    ).rejects.toThrow(/identity_providers_jit_check/);
+    await expect(
+      inA(Prisma.sql`INSERT INTO identity_providers (id, organization_id, type, name, oidc_issuer)
+                     VALUES (gen_random_uuid(), ${orgA}::uuid, 'oidc_google', 'x', 'https://evil.example.com')`),
+    ).rejects.toThrow(/identity_providers_issuer_check/);
+    await expect(
+      inA(Prisma.sql`INSERT INTO identity_providers (id, organization_id, type, name, oidc_issuer, entra_tenant_id)
+                     VALUES (gen_random_uuid(), ${orgA}::uuid, 'oidc_entra', 'x', 'https://login.microsoftonline.com/common/v2.0', ${randomUUID()}::uuid)`),
+    ).rejects.toThrow(/identity_providers_issuer_check/);
+    await expect(
+      inA(Prisma.sql`INSERT INTO identity_providers (id, organization_id, type, name, status) VALUES (gen_random_uuid(), ${orgA}::uuid, 'saml', 'x', 'active')`),
+    ).rejects.toThrow(/identity_providers_shape_check/);
+  });
+
   it("(b) org A cannot read org B's sessions or login events", async () => {
     const absolute = new Date(Date.now() + 3_600_000);
     await tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, async (tx) => {

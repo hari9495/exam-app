@@ -71,8 +71,12 @@ export function buildSignedSamlResponse(params: {
   destination: string; // must match the ACS callbackUrl
   inResponseTo: string; // required: SamlStrategy configures validateInResponseTo: 'always'
   privateKey: string;
+  issuer?: string; // the IdP's entity ID (default 'test-idp')
+  authnContextClassRef?: string; // how the IdP authenticated the user (default: password)
 }): string {
   const { nameId, audience, destination, inResponseTo, privateKey } = params;
+  const issuer = params.issuer ?? 'test-idp';
+  const classRef = params.authnContextClassRef ?? 'urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport';
   const responseId = `_${randomUUID()}`;
   const assertionId = `_${randomUUID()}`;
   const issueInstant = new Date().toISOString();
@@ -80,7 +84,7 @@ export function buildSignedSamlResponse(params: {
 
   const assertionXml =
     `<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="${assertionId}" Version="2.0" IssueInstant="${issueInstant}">` +
-    `<saml:Issuer>test-idp</saml:Issuer>` +
+    `<saml:Issuer>${issuer}</saml:Issuer>` +
     `<saml:Subject>` +
     `<saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">${nameId}</saml:NameID>` +
     `<saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">` +
@@ -91,7 +95,7 @@ export function buildSignedSamlResponse(params: {
     `<saml:AudienceRestriction><saml:Audience>${audience}</saml:Audience></saml:AudienceRestriction>` +
     `</saml:Conditions>` +
     `<saml:AuthnStatement AuthnInstant="${issueInstant}">` +
-    `<saml:AuthnContext><saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml:AuthnContextClassRef></saml:AuthnContext>` +
+    `<saml:AuthnContext><saml:AuthnContextClassRef>${classRef}</saml:AuthnContextClassRef></saml:AuthnContext>` +
     `</saml:AuthnStatement>` +
     `</saml:Assertion>`;
 
@@ -100,7 +104,7 @@ export function buildSignedSamlResponse(params: {
   const responseXml =
     `<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ` +
     `ID="${responseId}" Version="2.0" IssueInstant="${issueInstant}" Destination="${destination}" InResponseTo="${inResponseTo}">` +
-    `<saml:Issuer>test-idp</saml:Issuer>` +
+    `<saml:Issuer>${issuer}</saml:Issuer>` +
     `<samlp:Status><samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success" /></samlp:Status>` +
     signedAssertion +
     `</samlp:Response>`;

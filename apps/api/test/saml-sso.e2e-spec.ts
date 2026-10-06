@@ -8,6 +8,7 @@ import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { SamlCacheProvider } from '../src/auth/saml-cache.provider';
 import { getTestIdp, buildSignedSamlResponse, TestIdp } from './fixtures/saml-test-idp';
 import { markSteppedUp } from './fixtures/step-up';
+import { generate } from 'selfsigned';
 
 describe('SAML SSO end-to-end flow', () => {
   let app: INestApplication;
@@ -20,6 +21,7 @@ describe('SAML SSO end-to-end flow', () => {
   let orgSlug: string;
   let orgAdminAccessToken: string;
   let preProvisionedUserId: string;
+  let firstProviderId: string;
 
   // The SamlStrategy config (see resolveOrgSamlConfig in saml.strategy.ts) sets
   // validateInResponseTo: ValidateInResponseTo.always -- so every ACS callback,
@@ -77,15 +79,18 @@ describe('SAML SSO end-to-end flow', () => {
     );
     preProvisionedUserId = recruiter.id;
 
-    await request(app.getHttpServer())
-      .patch('/api/v1/organizations/sso')
+    // The company's SAML identity provider (P12 Part 1e), set up the way an admin does it: no email
+    // domains, i.e. it signs in existing accounts only, exactly like the pre-1e single SAML set-up.
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/security/identity-providers')
       .set('Authorization', `Bearer ${orgAdminAccessToken}`)
-      .send({ samlIdpEntityId: 'test-idp', samlIdpSsoUrl: 'https://test-idp.example.com/sso', samlIdpCertificate: testIdp.cert })
-      .expect(200);
+      .send({ type: 'saml', name: 'Test IdP', samlEntityId: 'test-idp', samlSsoUrl: 'https://test-idp.example.com/sso', samlCertificate: testIdp.cert })
+      .expect(201);
+    firstProviderId = created.body.id;
     await request(app.getHttpServer())
-      .patch('/api/v1/organizations/sso')
+      .patch(`/api/v1/security/identity-providers/${firstProviderId}`)
       .set('Authorization', `Bearer ${orgAdminAccessToken}`)
-      .send({ samlEnabled: true })
+      .send({ status: 'active' })
       .expect(200);
   }, 30000);
 
@@ -97,7 +102,10 @@ describe('SAML SSO end-to-end flow', () => {
       .forTenant({ organizationId: orgId, isSuperAdmin: true }, (tx) => tx.refreshToken.deleteMany({ where: { user: { organizationId: orgId } } }))
       .catch(() => undefined);
     await tenantPrisma
-      .forTenant({ organizationId: orgId, isSuperAdmin: true }, (tx) => tx.user.deleteMany({ where: { organizationId: orgId } }))
+      .forTenant({ organizationId: orgId, isSuperAdmin: true }, async (tx) => {
+        await tx.session.deleteMany({ where: { organizationId: orgId } });
+        await tx.user.deleteMany({ where: { organizationId: orgId } });
+      })
       .catch(() => undefined);
     await prisma.organization.delete({ where: { id: orgId } }).catch(() => undefined);
     await prisma.plan.delete({ where: { id: planId } }).catch(() => undefined);
@@ -165,5 +173,128 @@ describe('SAML SSO end-to-end flow', () => {
       .post('/api/v1/auth/staff/login')
       .send({ organizationSlug: orgSlug, email: 'orgadmin@ci-saml.test', password: 'OrgAdminPassw0rd!' })
       .expect(200);
+  });
+
+  // ---- P12 Part 1e: IdP-asserted MFA, several SAML IdPs, domains, JIT (YX-IAM-04/05) ----------
+
+  async function callback(nameId: string, options: { issuer?: string; authnContextClassRef?: string; relayState?: string; key?: string } = {}) {
+    const signedResponse = buildSignedSamlResponse({
+      nameId,
+      audience: metadataAudience(),
+      destination: callbackDestination(),
+      inResponseTo: await mintCachedRequestId(),
+      privateKey: options.key ?? testIdp.privateKey,
+      issuer: options.issuer,
+      authnContextClassRef: options.authnContextClassRef,
+    });
+    return request(app.getHttpServer())
+      .post(`/api/v1/auth/saml/${orgSlug}/callback`)
+      .type('form')
+      .send({ SAMLResponse: Buffer.from(signedResponse).toString('base64'), ...(options.relayState ? { RelayState: options.relayState } : {}) });
+  }
+  const sessionOf = async (accessToken: string) => {
+    const { sid } = JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64').toString('utf8'));
+    return tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.session.findUniqueOrThrow({ where: { id: sid } }));
+  };
+
+  it('an IdP that asserts MFA (AuthnContextClassRef) opens an AAL2 session; a password-only assertion stays AAL1', async () => {
+    const mfa = await callback('alice@ci-saml.test', { authnContextClassRef: 'http://schemas.microsoft.com/claims/multipleauthn' });
+    const mfaCode = new URL(mfa.headers.location).searchParams.get('code');
+    const mfaLogin = await request(app.getHttpServer()).post('/api/v1/auth/sso/exchange').send({ code: mfaCode }).expect(200);
+    expect(await sessionOf(mfaLogin.body.accessToken)).toEqual(expect.objectContaining({ assuranceLevel: 'aal2', mfaMethod: 'idp', method: 'saml' }));
+
+    const plain = await callback('alice@ci-saml.test');
+    const plainCode = new URL(plain.headers.location).searchParams.get('code');
+    const plainLogin = await request(app.getHttpServer()).post('/api/v1/auth/sso/exchange').send({ code: plainCode }).expect(200);
+    expect(await sessionOf(plainLogin.body.accessToken)).toEqual(expect.objectContaining({ assuranceLevel: 'aal1' }));
+  });
+
+  it('a sign-in code is single-use (replay refused)', async () => {
+    const response = await callback('alice@ci-saml.test');
+    const code = new URL(response.headers.location).searchParams.get('code');
+    await request(app.getHttpServer()).post('/api/v1/auth/sso/exchange').send({ code }).expect(200);
+    await request(app.getHttpServer()).post('/api/v1/auth/sso/exchange').send({ code }).expect(401);
+  });
+
+  it('a response signed with another key is refused, and the failure is a login event', async () => {
+    const other = await generate([{ name: 'commonName', value: 'attacker.example.com' }]);
+    const response = await callback('alice@ci-saml.test', { key: other.private });
+    expect(response.headers.location).toContain('ssoError=invalid_response');
+    const event = await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
+      tx.loginEvent.findFirst({ where: { organizationId: orgId, method: 'saml', result: 'failed' }, orderBy: { createdAt: 'desc' } }),
+    );
+    expect(event?.reason).toBe('saml_invalid_response');
+  });
+
+  describe('a second SAML IdP for other.test, with JIT', () => {
+    let secondProviderId: string;
+
+    beforeAll(async () => {
+      const second = await request(app.getHttpServer())
+        .post('/api/v1/security/identity-providers')
+        .set('Authorization', `Bearer ${orgAdminAccessToken}`)
+        .send({
+          type: 'saml',
+          name: 'Second IdP',
+          status: 'active',
+          samlEntityId: 'second-idp',
+          samlSsoUrl: 'https://second-idp.example.com/sso',
+          samlCertificate: testIdp.cert,
+          domains: ['other.test'],
+          jitEnabled: true,
+          jitRole: 'panel',
+        })
+        .expect(201);
+      secondProviderId = second.body.id;
+    });
+
+    it('sign-in is routed by email domain; the old provider-less login link no longer guesses', async () => {
+      const start = await request(app.getHttpServer()).post('/api/v1/auth/sso/start').send({ organizationSlug: orgSlug, email: 'bo@other.test' }).expect(200);
+      expect(start.body.url).toContain(`RelayState=${secondProviderId}`);
+
+      const loginUrl = new URL(start.body.url);
+      const login = await request(app.getHttpServer()).get(loginUrl.pathname + loginUrl.search);
+      expect(login.status).toBe(302);
+      expect(login.headers.location).toMatch(/^https:\/\/second-idp\.example\.com\/sso\?SAMLRequest=/);
+
+      // Two SAML IdPs and no RelayState: refused, not guessed.
+      expect((await callback('alice@ci-saml.test')).headers.location).toContain('ssoError=invalid_response');
+      await request(app.getHttpServer()).post('/api/v1/auth/sso/start').send({ organizationSlug: orgSlug, email: 'bo@unknown.test' }).expect(404);
+    });
+
+    it('JIT creates a new account at other.test in the non-sensitive role; the IdP cannot speak for other domains', async () => {
+      const jit = await callback('newbie@other.test', { issuer: 'second-idp', relayState: secondProviderId });
+      const code = new URL(jit.headers.location).searchParams.get('code');
+      expect(code).toEqual(expect.any(String));
+      const created = await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
+        tx.user.findFirstOrThrow({ where: { organizationId: orgId, email: 'newbie@other.test' } }),
+      );
+      expect(created.role).toBe('panel');
+
+      // ci-saml.test belongs to no provider's list, and this one has a list: refused.
+      const foreign = await callback('alice@ci-saml.test', { issuer: 'second-idp', relayState: secondProviderId });
+      expect(foreign.headers.location).toContain('ssoError=not_provisioned');
+      // The first IdP cannot sign in or create anyone at other.test, which the second owns.
+      const crossed = await callback('another@other.test', { relayState: firstProviderId });
+      expect(crossed.headers.location).toContain('ssoError=not_provisioned');
+      await expect(
+        tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.user.count({ where: { email: 'another@other.test' } })),
+      ).resolves.toBe(0);
+    });
+
+    it('RelayState cannot point a response at a provider whose entity ID it does not carry', async () => {
+      const response = await callback('newbie@other.test', { issuer: 'test-idp', relayState: secondProviderId });
+      expect(response.headers.location).toContain('ssoError=not_provisioned');
+    });
+
+    it('JIT refuses to be configured with an admin role or a role holding sensitive permissions', async () => {
+      for (const jitRole of ['org_admin', 'recruiter']) {
+        await request(app.getHttpServer())
+          .patch(`/api/v1/security/identity-providers/${secondProviderId}`)
+          .set('Authorization', `Bearer ${orgAdminAccessToken}`)
+          .send({ jitRole })
+          .expect(400);
+      }
+    });
   });
 });

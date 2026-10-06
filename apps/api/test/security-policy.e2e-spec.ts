@@ -121,7 +121,7 @@ describe('Password floor and tenant security policy (P12 YX-IAM-04/06/08/09)', (
     const ids = orgs.map((o) => o.id);
     await tenantPrisma.forTenant(SUPER, async (tx) => {
       await tx.tenantSecurityPolicy.deleteMany({ where: { organizationId: { in: ids } } });
-      await tx.organization.updateMany({ where: { id: { in: ids } }, data: { samlEnabled: false } });
+      await tx.identityProvider.deleteMany({ where: { organizationId: { in: ids } } });
     });
     ids.forEach(invalidateTenantSecurityPolicy);
   });
@@ -362,7 +362,20 @@ describe('Password floor and tenant security policy (P12 YX-IAM-04/06/08/09)', (
 
   describe('SSO-only with break-glass accounts (YX-IAM-04)', () => {
     beforeEach(async () => {
-      await tenantPrisma.forTenant(SUPER, (tx) => tx.organization.update({ where: { id: orgA().id }, data: { samlEnabled: true } }));
+      // An active identity provider (P12 Part 1e) is what "SSO is set up" means.
+      await tenantPrisma.forTenant(SUPER, (tx) =>
+        tx.identityProvider.create({
+          data: {
+            organizationId: orgA().id,
+            type: 'oidc_google',
+            name: 'Google',
+            status: 'active',
+            oidcIssuer: 'https://accounts.google.com',
+            oidcClientId: 'client',
+            oidcClientSecretEncrypted: 'not-used-here',
+          },
+        }),
+      );
     });
 
     it('turning it on needs two active admins named as break-glass', async () => {
