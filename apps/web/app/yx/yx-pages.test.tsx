@@ -33,10 +33,12 @@ const FLOOR = {
   maxConcurrentSessions: { min: 1, max: 100 },
   ipAllowlistMaxEntries: 100,
   breakGlassAccounts: { minWhenSsoOnly: 2, max: 10 },
+  maxFailedAttempts: { min: 3, max: 10 },
+  lockMinutes: { min: 15, max: 1440 },
 };
 const POLICY = {
   mfaScope: 'sensitive_roles', allowedFactors: ['passkey', 'totp'], sessionIdleMinutes: null, sessionAbsoluteMinutes: null, maxConcurrentSessions: null,
-  passwordMinLength: 12, ipAllowlistDesk: [], ipAllowlistAdmin: [], ipAllowlistApi: [], ssoOnly: false, breakGlassUserIds: [], otpSignInChannels: [],
+  passwordMinLength: 12, ipAllowlistDesk: [], ipAllowlistAdmin: [], ipAllowlistApi: [], ssoOnly: false, breakGlassUserIds: [], otpSignInChannels: [], maxFailedAttempts: 10, lockMinutes: 15,
 };
 
 const api = apiFetch as jest.Mock;
