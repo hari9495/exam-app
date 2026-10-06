@@ -6,7 +6,17 @@ import { useAuth } from './auth-context';
 // API glue for Settings › Organisation (P01). The screens in @yukthix/ui/org stay presentational.
 
 /** Keys the YukthiX navigation and screens care about; the API checks each call anyway. */
-export const YX_KEYS = ['org.structure.view', 'org.settings.manage', 'org.entity.statutory.manage', 'pay.range.view', 'pay.range.manage'] as const;
+export const YX_KEYS = [
+  'org.structure.view',
+  'org.settings.manage',
+  'org.entity.statutory.manage',
+  'pay.range.view',
+  'pay.range.manage',
+  'employee.profile.view',
+  'employee.change.manage',
+  'employee.change.approve',
+  'employee.salary.manage',
+] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 
 export function useYxPermissions() {

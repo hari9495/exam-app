@@ -57,7 +57,7 @@ describe('/yx layout: organisation pages follow the grants, not the role', () =>
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
     const nav = await screen.findByRole('navigation', { name: 'Settings' });
     await waitFor(() => expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['My security', 'Legal entities', 'Locations', 'Structure']));
-    expect(api).toHaveBeenCalledWith(`${PERMS_PATH}?keys=org.structure.view,org.settings.manage,org.entity.statutory.manage,pay.range.view,pay.range.manage`, {}, 'tok');
+    expect(api).toHaveBeenCalledWith(`${PERMS_PATH}?keys=org.structure.view,org.settings.manage,org.entity.statutory.manage,pay.range.view,pay.range.manage,employee.profile.view,employee.change.manage,employee.change.approve,employee.salary.manage`, {}, 'tok');
   });
 });
 
