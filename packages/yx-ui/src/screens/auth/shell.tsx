@@ -1,9 +1,9 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { Activity, House, Settings, ShieldCheck } from 'lucide-react';
+import { Activity, House, MessageSquare, Settings, ShieldCheck } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import { AppShell, MobileTabBar, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, type DensityChoice, type ThemeChoice } from '../../components/shell';
 
-export type SecurityPage = 'me' | 'activity' | 'settings';
+export type SecurityPage = 'me' | 'activity' | 'settings' | 'sms';
 
 export interface SecurityShellLink {
   id: SecurityPage;
@@ -26,7 +26,7 @@ export interface SecurityShellProps {
   children: ReactNode;
 }
 
-const ICONS = { me: ShieldCheck, activity: Activity, settings: Settings } as const;
+const ICONS = { me: ShieldCheck, activity: Activity, settings: Settings, sms: MessageSquare } as const;
 
 /** App frame for the security pages: rail, "Security" panel, profile menu; bottom tabs on phones. */
 export function SecurityShell({ active, links, homeHref, profileHref, name, email, onSignOut, onNavigate, children }: SecurityShellProps) {

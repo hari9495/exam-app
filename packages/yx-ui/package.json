@@ -11,6 +11,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./auth": "./src/screens/auth/index.ts",
+    "./notifications": "./src/screens/notifications/index.ts",
     "./styles.css": "./src/styles/index.css"
   },
   "scripts": {
