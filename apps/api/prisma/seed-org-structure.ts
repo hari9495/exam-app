@@ -15,8 +15,9 @@ const IST = 'Asia/Kolkata';
 // P02 §4.2 templates as permission profiles: Payroll Admin holds pay; HR Admin runs records without pay.
 const PAYROLL_ADMIN = ['org:view', 'org.structure.view', 'org.entity.statutory.manage', 'pay.range.view', 'pay.range.manage', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage'];
 const HR_ADMIN = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro'];
-// The panel role's keys plus raising changes for one's team (P02 YX-SEC-27).
-const TEAM_MANAGER = ['org:view', 'results:view', 'interview:view_assigned', 'request.raise_on_behalf'];
+// The panel role's keys plus raising changes for one's team (P02 YX-SEC-27); the structure masters (names and
+// codes, no pay) to pick a new designation or location in those changes.
+const TEAM_MANAGER = ['org:view', 'results:view', 'interview:view_assigned', 'request.raise_on_behalf', 'org.structure.view'];
 const FROM = new Date('2026-04-01T00:00:00.000Z');
 
 export async function seedOrgStructure(tx: Tx, organizationId: string, passwordHash: string): Promise<void> {
@@ -206,5 +207,6 @@ export async function seedOrgStructure(tx: Tx, organizationId: string, passwordH
     () => tx.permissionProfile.findFirst({ where: { ...org, name: 'Team Manager' } }),
     () => tx.permissionProfile.create({ data: { ...org, name: 'Team Manager', permissionsJson: JSON.stringify(TEAM_MANAGER) } }),
   );
+  await tx.permissionProfile.update({ where: { id: managerProfile.id }, data: { permissionsJson: JSON.stringify(TEAM_MANAGER) } });
   await tx.user.updateMany({ where: { ...org, email: 'panel@demo-org.test', permissionProfileId: null }, data: { permissionProfileId: managerProfile.id } });
 }

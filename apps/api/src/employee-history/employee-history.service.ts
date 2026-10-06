@@ -477,6 +477,7 @@ export class EmployeeHistoryService {
       appliedAt: ch.appliedAt,
       // R1: pay values only with pay access; others learn only that pay is part of the change.
       touchesPay: Boolean(payload.compensation),
+      batchId: ch.batchId,
       payload: pay ? payload : { ...payload, compensation: undefined },
       impact: impact ? (pay ? impact : redactImpact(impact)) : null,
     };
