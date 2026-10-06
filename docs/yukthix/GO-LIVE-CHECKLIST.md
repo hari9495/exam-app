@@ -9,8 +9,9 @@
       Reserved names (`www`, `api`, `app`, `admin`, `auth`, `login`, `mail`, `status`, `static`, `cdn`, `docs`,
       `help`) are never a company; do not issue company slugs with those names.
 - [ ] **Company email domains.** Before a company's staff are sent straight to its identity provider by email
-      domain, an admin verifies the domain: Settings › Security › SSO providers lists the TXT record
-      (`yukthix-domain-verification=…`) to publish on the domain itself, then **Verify**. Public mail domains
+      domain, an admin verifies the domain: Settings › People & Access › Security › Single sign-on lists each
+      provider domain with the TXT record (`yukthix-domain-verification=…`) to publish on the domain itself,
+      then **Check record** (a step-up action; API `POST /security/identity-providers/domains/verify`). Public mail domains
       (Gmail, Outlook, Yahoo… and throwaway domains) can never be mapped or verified. A domain verified by two
       companies does not auto-route (those people use the company address or the password step).
 - [ ] **SSO-only companies** must verify their domain (or their staff use the company address), otherwise
