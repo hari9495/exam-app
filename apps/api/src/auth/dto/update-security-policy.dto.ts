@@ -98,4 +98,18 @@ export class UpdateSecurityPolicyDto {
   @ArrayUnique()
   @IsIn(FLOOR.otpSignInChannels, { each: true })
   otpSignInChannels?: string[];
+
+  // Account lockout (YX-IAM-07): lock on this consecutive failure (YukthiX: no later than the 10th) ...
+  @Present()
+  @IsInt()
+  @Min(FLOOR.maxFailedAttempts.min)
+  @Max(FLOOR.maxFailedAttempts.max)
+  maxFailedAttempts?: number;
+
+  // ... for this many minutes the first time (YukthiX: at least 15); repeat locks double, up to 24 h.
+  @Present()
+  @IsInt()
+  @Min(FLOOR.lockMinutes.min)
+  @Max(FLOOR.lockMinutes.max)
+  lockMinutes?: number;
 }

@@ -38,6 +38,8 @@ export interface LoginActivityScreenProps {
   sessionsState: 'ready' | 'loading' | 'error';
   onSessionsPage: (page: number) => void;
   onRevokeSession: (s: SessionRow) => Promise<void>;
+  /** Clears a person's account lock (step-up and audit are the host's / API's). Omitted: no Unlock action. */
+  onUnlock?: (row: LoginEventRow, reason: string) => Promise<void>;
   onRetry?: () => void;
 }
 
@@ -63,7 +65,7 @@ export function LoginActivityScreen(props: LoginActivityScreenProps) {
           title={`${props.failedLast24h} failed sign-in attempts in the last 24 hours`}
           actions={<Button size="sm" onClick={() => setFilters({ ...NO_FILTERS, result: 'failed', range: { from: new Date(Date.now() - 86_400_000), to: null } })}>Show failed attempts</Button>}
         >
-          This is more than usual. Accounts lock after 10 wrong tries in a row and the person is emailed.
+          This is more than usual. Accounts lock after too many wrong tries in a row and the person is emailed. Unlock someone from their row.
         </InlineAlert>
       )}
       <Tabs value={props.tab} onValueChange={(v) => props.onTabChange(v as 'events' | 'sessions')}>
@@ -106,6 +108,7 @@ export function LoginActivityScreen(props: LoginActivityScreenProps) {
               onPageChange={props.onEventsPage}
               filtered={filtered}
               onClearFilters={() => setFilters(NO_FILTERS)}
+              onUnlock={props.onUnlock}
             />
           </div>
         </TabsContent>

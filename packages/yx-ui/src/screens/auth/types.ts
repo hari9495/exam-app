@@ -40,7 +40,7 @@ export interface SessionRow {
   user?: { email: string; name: string | null; role: string };
 }
 
-export type LoginResult = 'success' | 'failed' | 'locked' | 'mfa_failed';
+export type LoginResult = 'success' | 'failed' | 'locked' | 'mfa_failed' | 'unlocked';
 
 export interface LoginEventRow {
   id: string;
@@ -89,6 +89,10 @@ export interface SecurityPolicy {
   ssoOnly: boolean;
   breakGlassUserIds: string[];
   otpSignInChannels: string[];
+  /** Account locks on this many wrong tries in a row (YukthiX: at most 10). */
+  maxFailedAttempts: number;
+  /** First lock lasts this long; repeat locks double, up to 24 hours (YukthiX: at least 15). */
+  lockMinutes: number;
 }
 
 /** The YukthiX floor (Q8): companies may only be stricter. Returned with the policy. */
@@ -100,6 +104,8 @@ export interface SecurityFloor {
   maxConcurrentSessions: { min: number; max: number };
   ipAllowlistMaxEntries: number;
   breakGlassAccounts: { minWhenSsoOnly: number; max: number };
+  maxFailedAttempts: { min: number; max: number };
+  lockMinutes: { min: number; max: number };
 }
 
 export interface PersonOption {

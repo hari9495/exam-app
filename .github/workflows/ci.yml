@@ -70,6 +70,9 @@ jobs:
           APP_DB_OWNER_PASSWORD=$owner_pw APP_DB_APP_PASSWORD=$app_pw sh docker/postgres/init/01-roles.sh
           echo "MIGRATION_DATABASE_URL=postgresql://examapp_owner:$owner_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
           echo "DATABASE_URL=postgresql://examapp_app:$app_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
+          # Per-run key for encrypted org secrets (SSO client secrets, TOTP secrets) used by the e2e suites.
+          org_key=$(openssl rand -hex 32); echo "::add-mask::$org_key"
+          echo "ORG_SECRETS_ENCRYPTION_KEY=$org_key" >> "$GITHUB_ENV"
 
       - name: Migrate and seed database
         working-directory: apps/api

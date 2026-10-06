@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
 import { Request, Response } from 'express';
@@ -16,6 +16,7 @@ import {
 import { EmailService } from '../email/email.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { buildPaginatedResponse, resolvePaginationParams } from '../common/paginated-response';
+import { LoginProtectionService } from './login-protection.service';
 
 // Who is signing in from where. `deviceId` is the raw value of the long-lived device cookie;
 // only its sha256 is ever stored.
@@ -37,10 +38,10 @@ export function clientCountry(req: Request): string | null {
 }
 
 // Sign-in methods (saml / oidc: an identity provider; otp_*: one-time code by that channel); the MFA factors appear on second-factor
-// failures (result mfa_failed).
-export const LOGIN_METHODS = ['password', 'saml', 'oidc', 'otp_email', 'otp_sms', 'otp_whatsapp', 'totp', 'passkey', 'recovery_code', 'otp'] as const;
+// failures (result mfa_failed); 'admin' is an admin clearing an account lock (result unlocked).
+export const LOGIN_METHODS = ['password', 'saml', 'oidc', 'otp_email', 'otp_sms', 'otp_whatsapp', 'totp', 'passkey', 'recovery_code', 'otp', 'admin'] as const;
 export type LoginMethod = (typeof LOGIN_METHODS)[number];
-export type LoginResult = 'success' | 'failed' | 'locked' | 'mfa_failed' | 'code_sent';
+export type LoginResult = 'success' | 'failed' | 'locked' | 'mfa_failed' | 'code_sent' | 'unlocked';
 
 export interface SessionUser {
   id: string;
@@ -131,6 +132,7 @@ export class SessionsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
     private readonly email: EmailService,
+    private readonly loginProtection: LoginProtectionService,
   ) {}
 
   // Opens a session for a user who has just proven their identity. `newDevice` is true when the
@@ -357,12 +359,57 @@ export class SessionsService {
     });
   }
 
+  // Admin "Unlock account" (YX-IAM-07): clears the person's account lock -- password and one-time
+  // code sign-in (by email and by mobile number), the second step and step-up -- for someone in
+  // the admin's own organisation only. Never the per-IP lock and never their MFA. Audited with the
+  // reason, written to login activity, and the person is told.
+  async unlockAccount(context: TenantContext, actorUserId: string, targetUserId: string, reason: string, meta: ClientMeta): Promise<{ wasLocked: boolean }> {
+    const organizationId = context.organizationId;
+    if (!organizationId) throw new BadRequestException('Open an organisation first');
+    if (actorUserId === targetUserId) throw new ForbiddenException('You cannot unlock your own account. Ask another admin.');
+    const target = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.user.findFirst({
+        where: { id: targetUserId, organizationId },
+        select: { id: true, email: true, role: true, organizationId: true, mobileNumber: true, organization: { select: { slug: true } } },
+      }),
+    );
+    if (!target?.organization) throw new NotFoundException('User not found');
+
+    // The same (scope, identifier) pairs sign-in counts under (AuthService / MfaController).
+    const slug = target.organization.slug.trim().toLowerCase();
+    const accounts: [string, string][] = [
+      [slug, target.email.trim().toLowerCase()],
+      ...(target.mobileNumber ? [[slug, target.mobileNumber] as [string, string]] : []),
+      ['mfa', target.id],
+      ['stepup', target.id],
+    ];
+    let wasLocked = false;
+    for (const [scope, identifier] of accounts) {
+      if (await this.loginProtection.clearAccount(scope, identifier)) wasLocked = true;
+    }
+
+    await this.audit.record(context, {
+      actorUserId,
+      action: 'account.unlocked',
+      entityType: 'user',
+      entityId: target.id,
+      metadata: { reason, wasLocked },
+    });
+    await this.recordLoginEvent({ organizationId, userId: target.id, identifier: target.email, result: 'unlocked', method: 'admin', reason: 'admin_unlock', meta });
+    this.notifySecurityChange(
+      target,
+      'Your YukthiX account was unlocked',
+      'An administrator unlocked sign-in to your account after repeated failed attempts. Your password and two-step verification are unchanged.',
+    );
+    return { wasLocked };
+  }
+
   async listLoginEvents(context: TenantContext, filters: LoginEventFilters) {
     const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
     const where: Prisma.LoginEventWhereInput = {
       ...this.tenantWhere(context),
       ...(filters.userId ? { userId: filters.userId } : {}),
-      ...(filters.result ? { result: filters.result === 'unsuccessful' ? { not: 'success' } : filters.result } : {}),
+      ...(filters.result ? { result: filters.result === 'unsuccessful' ? { notIn: ['success', 'unlocked'] } : filters.result } : {}),
       ...(filters.method ? { method: filters.method } : {}),
       ...(filters.from || filters.to
         ? { createdAt: { ...(filters.from ? { gte: new Date(filters.from) } : {}), ...(filters.to ? { lte: new Date(filters.to) } : {}) } }

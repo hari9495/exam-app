@@ -1,4 +1,4 @@
-import { IsIn, IsISO8601, IsNumberString, IsOptional, IsUUID } from 'class-validator';
+import { IsIn, IsISO8601, IsNumberString, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength } from 'class-validator';
 import { LOGIN_METHODS } from '../sessions.service';
 
 class PageQueryDto {
@@ -18,9 +18,9 @@ export class SessionsQueryDto extends PageQueryDto {
 }
 
 export class MyLoginHistoryQueryDto extends PageQueryDto {
-  // 'unsuccessful' = every result except success (the "Failed" filter in Me › Security).
+  // 'unsuccessful' = every result except success and an admin unlock (the "Failed" filter in Me › Security).
   @IsOptional()
-  @IsIn(['success', 'failed', 'locked', 'mfa_failed', 'unsuccessful'])
+  @IsIn(['success', 'failed', 'locked', 'mfa_failed', 'unlocked', 'unsuccessful'])
   result?: string;
 
   @IsOptional()
@@ -40,4 +40,9 @@ export class LoginEventsQueryDto extends MyLoginHistoryQueryDto {
   @IsOptional()
   @IsIn(LOGIN_METHODS)
   method?: string;
+}
+
+// Admin "Unlock account": the reason is required and lands on the audit log.
+export class UnlockAccountDto {
+  @IsString() @MinLength(10) @MaxLength(500) @Matches(/\S/) reason!: string;
 }

@@ -47,6 +47,7 @@ const METHODS: Record<string, string> = {
   totp: 'Authenticator app',
   recovery_code: 'Recovery code',
   otp: 'Code by text',
+  admin: 'Admin',
 };
 export const methodLabel = (m: string) => METHODS[m] ?? m;
 
@@ -55,6 +56,7 @@ export const RESULTS: Record<LoginResult, { label: string; tone: BadgeTone }> = 
   failed: { label: 'Failed', tone: 'danger' },
   locked: { label: 'Blocked', tone: 'warning' },
   mfa_failed: { label: 'Wrong second step', tone: 'danger' },
+  unlocked: { label: 'Unlocked by admin', tone: 'info' },
 };
 
 /** A thrown error as one sentence; a cancelled or timed-out passkey prompt is not the person's fault. */
