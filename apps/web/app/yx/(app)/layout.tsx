@@ -22,8 +22,8 @@ const ORG: SecurityShellLink[] = [
   { id: 'entities', label: 'Legal entities', href: '/yx/settings/legal-entities', group: 'Organisation' },
   { id: 'locations', label: 'Locations', href: '/yx/settings/locations', group: 'Organisation' },
   { id: 'structure', label: 'Structure', href: '/yx/settings/structure', group: 'Organisation' },
-  { id: 'company-rules', label: 'Company rules', href: '/yx/settings/company-rules', group: 'Organisation' },
 ];
+const COMPANY_RULES: SecurityShellLink = { id: 'company-rules', label: 'Company rules', href: '/yx/settings/company-rules', group: 'Organisation' };
 const DIRECTORY: SecurityShellLink = { id: 'directory', label: 'Directory', href: '/yx/people/directory', group: 'People' };
 const ORG_CHART: SecurityShellLink = { id: 'org-chart', label: 'Org chart', href: '/yx/people/org-chart', group: 'People' };
 const TEAM: SecurityShellLink = { id: 'team', label: 'My team', href: '/yx/people/team', group: 'People' };
@@ -74,7 +74,9 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   }
 
   // Organisation pages follow the person's grants (a Payroll Admin profile may hold them without an admin role).
-  const org = perms.has('org.structure.view') || perms.has('org.settings.manage') || perms.has('pay.range.view') ? ORG : [];
+  // Settings are read with the structure (GET /org/settings), not with pay-range access alone.
+  const settingsRead = perms.has('org.structure.view') || perms.has('org.settings.manage');
+  const org = settingsRead || perms.has('pay.range.view') ? [...ORG, ...(settingsRead ? [COMPANY_RULES] : [])] : [];
   const hr = perms.has('employee.profile.view') || perms.has('employee.change.manage') || perms.has('employee.change.approve');
   const employee = Boolean(team.data?.managerId);
   const manager = Boolean(team.data?.members.length);
@@ -93,7 +95,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...org,
     ...(perms.has('access.role.manage') ? [ACCESS] : []),
     // Read by anyone who reads the structure; changed with org.settings.manage (+ access.role.manage for guarded keys).
-    ...(org.length && (perms.has('org.structure.view') || perms.has('org.settings.manage')) ? [ACCESS_SETTINGS] : []),
+    ...(settingsRead ? [ACCESS_SETTINGS] : []),
   ];
   const security = [...linksFor(role, actingSuperAdmin), ...(employee ? [PRIVACY] : [])];
   const links = staff.length ? [...security.map((l) => ({ ...l, group: 'Security' })), ...staff] : security;

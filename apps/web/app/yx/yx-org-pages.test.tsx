@@ -8,6 +8,8 @@ import YxAppLayout from './(app)/layout';
 import YxLegalEntitiesPage from './(app)/settings/legal-entities/page';
 import YxLocationsPage from './(app)/settings/locations/page';
 import YxStructurePage from './(app)/settings/structure/page';
+import YxCompanyRulesPage from './(app)/settings/company-rules/page';
+import YxAccessSettingsPage from './(app)/settings/access-settings/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
@@ -56,8 +58,16 @@ describe('/yx layout: organisation pages follow the grants, not the role', () =>
     route({ 'GET /auth/mfa': { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' }, [`GET ${PERMS_PATH}`]: ['org.structure.view', 'pay.range.view'] });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
     const nav = await screen.findByRole('navigation', { name: 'Settings' });
-    await waitFor(() => expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['My security', 'Legal entities', 'Locations', 'Structure']));
+    await waitFor(() => expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['My security', 'Legal entities', 'Locations', 'Structure', 'Company rules', 'Access and privacy']));
     expect(api).toHaveBeenCalledWith(`${PERMS_PATH}?keys=org.structure.view,org.settings.manage,org.entity.statutory.manage,pay.range.view,pay.range.manage,employee.profile.view,employee.change.manage,employee.change.approve,employee.salary.manage,request.raise_on_behalf,access.role.manage,employee.identity.manage,employee.identity.approve`, {}, 'tok');
+  });
+
+  it('pay-range access alone shows the structure pages but not the settings it cannot read', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
+    route({ 'GET /auth/mfa': { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' }, [`GET ${PERMS_PATH}`]: ['pay.range.view'] });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    const nav = await screen.findByRole('navigation', { name: 'Settings' });
+    await waitFor(() => expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['My security', 'Legal entities', 'Locations', 'Structure']));
   });
 });
 
@@ -140,5 +150,44 @@ describe('/yx/settings/structure', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Show pay for M1 · Manager' }));
     expect(await screen.findByRole('table', { name: 'Pay ranges for M1 · Manager' })).toBeInTheDocument();
     expect(ranges).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('/yx/settings/company-rules and /yx/settings/access-settings (P01 §4.6, P02 §4.2)', () => {
+  const REGISTRY = {
+    'probation.default_months': { label: 'Probation lasts (months)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['3', '6'], default: '6' },
+    'privacy.who_accessed': { label: 'Show "Who accessed my data" to employees', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
+  };
+  const lists = { 'GET /org/legal-entities': [ENTITY], 'GET /org/locations': [LOCATION], 'GET /org/masters/departments': [], 'GET /org/masters/employment-types': [], 'GET /org/masters/grades': [GRADE] };
+
+  it('shows each value with its source and entity overrides by name; Remove sends DELETE after confirming', async () => {
+    const del = jest.fn().mockResolvedValue(undefined);
+    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [{ id: 's-1', key: 'probation.default_months', scopeType: 'legal_entity', scopeId: 'le-1', value: '3', validFrom: null }] }, 'DELETE /org/settings/s-1': del, [`GET ${PERMS_PATH}`]: ['org.structure.view', 'org.settings.manage'] });
+    wrap(<YxCompanyRulesPage />);
+    expect(await screen.findByText('6 · YukthiX starter, not changed yet')).toBeInTheDocument();
+    const table = screen.getByRole('table', { name: /Probation lasts/ });
+    expect(within(table).getByText('Kaveri Foods Pvt Ltd')).toBeInTheDocument();
+    await userEvent.click(within(table).getAllByRole('button').at(-1)!);
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(del).toHaveBeenCalled());
+  });
+
+  it('YX-SEC-02: guarded settings stay disabled without access.role.manage; view-only readers get no buttons', async () => {
+    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, [`GET ${PERMS_PATH}`]: ['org.structure.view', 'org.settings.manage'] });
+    const { unmount } = wrap(<YxAccessSettingsPage />);
+    expect(await screen.findByText(/Only an admin who manages roles and access changes this/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change' })).toBeDisabled();
+    unmount();
+    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, [`GET ${PERMS_PATH}`]: ['org.structure.view'] });
+    wrap(<YxCompanyRulesPage />);
+    await screen.findByText('6 · YukthiX starter, not changed yet');
+    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
+  });
+
+  it('a 403 on the settings shows no access', async () => {
+    route({ ...lists, 'GET /org/settings': forbidden(), [`GET ${PERMS_PATH}`]: [] });
+    wrap(<YxCompanyRulesPage />);
+    expect(await screen.findByText("You don't have access to the company rules")).toBeInTheDocument();
   });
 });

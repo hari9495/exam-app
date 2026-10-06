@@ -54,6 +54,36 @@ describe('/yx/people/directory', () => {
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search people' }), 'arj');
     await waitFor(() => expect(api).toHaveBeenCalledWith('/people/directory?limit=50&offset=0&q=arj', {}, 'tok'));
     expect(screen.queryByText('Code')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add person' })).toBeNull();
+  });
+
+  it('HR adds a person (the entities come from the org API) and opens a profile from the directory', async () => {
+    route({
+      [`GET ${PERMS_PATH}`]: ['employee.profile.view', 'employee.change.manage'],
+      'GET /people/directory': { total: 1, limit: 50, offset: 0, people: [{ ...ARJUN, employeeCode: 'KF-0142' }] },
+      'GET /people/org-chart': CHART,
+      'GET /people/employees/p-arjun/person': { id: 'person-1', roles: [] },
+      'GET /org/legal-entities': [{ id: 'le-1', name: 'Kaveri Foods Pvt Ltd', archivedAt: null }],
+      'GET /org/masters/departments': [],
+      'GET /org/masters/designations': [],
+      'GET /org/masters/grades': [],
+      'GET /org/masters/employment-types': [],
+      'GET /org/masters/cost-centres': [],
+      'GET /org/locations': [],
+    });
+    const { unmount } = wrap(<YxDirectoryPage />);
+    await userEvent.click((await screen.findAllByText('Arjun Kulkarni'))[0]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Profile' }));
+    expect(push).toHaveBeenCalledWith('/yx/people/profile?person=p-arjun');
+    unmount();
+    wrap(<YxDirectoryPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Add person' }));
+    const drawer = await screen.findByRole('dialog', { name: /Add person/ });
+    // The choices are loaded from the org API before the drawer offers them.
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/org/legal-entities', {}, 'tok'));
+    expect(within(drawer).getByRole('combobox', { name: 'Legal entity' })).toBeInTheDocument();
+    // No pay field without employee.salary.manage (R1).
+    expect(within(drawer).queryByLabelText(/Annual CTC/)).toBeNull();
   });
 });
 
