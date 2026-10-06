@@ -212,11 +212,16 @@ export class OrganizationsService {
     // render as a blank cell, which reads as a rendering bug rather than as
     // "no name recorded".
     const adminName = dto.adminName?.trim() || null;
-    const admin = await this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: true }, (tx) =>
-      tx.user.create({
+    const admin = await this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: true }, async (tx) => {
+      // P01 YX-ORG-01: a company always has a default legal entity (India home region, P21), named after it
+      // until the admin fills in the registered details.
+      await tx.legalEntity.create({
+        data: { organizationId: org.id, name: org.name.slice(0, 200), shortName: org.slug.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+/, '').slice(0, 30) || 'MAIN', isDefault: true },
+      });
+      return tx.user.create({
         data: { organizationId: org.id, email: dto.adminEmail, name: adminName, passwordHash, role: 'org_admin' },
-      }),
-    );
+      });
+    });
 
     const rawToken = randomBytes(32).toString('hex');
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');

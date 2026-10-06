@@ -67,12 +67,14 @@ describe('OrganizationsService', () => {
   });
 
   describe('create', () => {
+    const legalEntityCreate = jest.fn();
     it('creates an organization, its first org_admin, and a password-reset token', async () => {
       prisma.organization.findUnique.mockResolvedValue(null);
       prisma.plan.findFirst.mockResolvedValue({ id: 'trial-plan-1', name: 'trial' });
       prisma.organization.create.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', planId: 'trial-plan-1' });
       tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
         fn({
+          legalEntity: { create: legalEntityCreate },
           user: { create: jest.fn().mockResolvedValue({ id: 'admin-1', email: 'admin@acme.test', role: 'org_admin' }) },
           passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'token-1' }) },
         }),
@@ -97,6 +99,8 @@ describe('OrganizationsService', () => {
         { organizationId: null, isSuperAdmin: true },
         { actorUserId: 'super-1', action: 'organization.created', entityType: 'organization', entityId: 'org-1' },
       );
+      // P01 YX-ORG-01: the new company starts with its default legal entity.
+      expect(legalEntityCreate).toHaveBeenCalledWith({ data: { organizationId: 'org-1', name: 'Acme', shortName: 'ACME', isDefault: true } });
     });
 
     it('stores the admin name so the Primary admin column is populated from creation', async () => {
@@ -107,7 +111,7 @@ describe('OrganizationsService', () => {
       prisma.plan.findFirst.mockResolvedValue({ id: 'trial-plan-1', name: 'trial' });
       prisma.organization.create.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', planId: 'trial-plan-1' });
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (tx: unknown) => unknown) =>
-        fn({ user: { create: userCreate }, passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 't1' }) } }),
+        fn({ legalEntity: { create: jest.fn() }, user: { create: userCreate }, passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 't1' }) } }),
       );
 
       await service.create({ organizationId: null, isSuperAdmin: true }, 'super-1', {
@@ -128,7 +132,7 @@ describe('OrganizationsService', () => {
       prisma.plan.findFirst.mockResolvedValue({ id: 'trial-plan-1', name: 'trial' });
       prisma.organization.create.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', planId: 'trial-plan-1' });
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (tx: unknown) => unknown) =>
-        fn({ user: { create: userCreate }, passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 't1' }) } }),
+        fn({ legalEntity: { create: jest.fn() }, user: { create: userCreate }, passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 't1' }) } }),
       );
 
       await service.create({ organizationId: null, isSuperAdmin: true }, 'super-1', {
@@ -146,7 +150,7 @@ describe('OrganizationsService', () => {
       prisma.plan.findFirst.mockResolvedValue({ id: 'trial-plan-1', name: 'trial' });
       prisma.organization.create.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', planId: 'trial-plan-1' });
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (tx: unknown) => unknown) =>
-        fn({ user: { create: userCreate }, passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 't1' }) } }),
+        fn({ legalEntity: { create: jest.fn() }, user: { create: userCreate }, passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 't1' }) } }),
       );
 
       await service.create({ organizationId: null, isSuperAdmin: true }, 'super-1', {
@@ -164,7 +168,7 @@ describe('OrganizationsService', () => {
       prisma.organization.create.mockResolvedValue({ id: 'org-1', name: 'Acme', slug: 'acme', region: 'us', planId: 'trial-plan-1' });
       const userCreate = jest.fn().mockResolvedValue({ id: 'admin-1', email: 'admin@acme.test', role: 'org_admin' });
       tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
-        fn({ user: { create: userCreate }, passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'token-1' }) } }),
+        fn({ legalEntity: { create: jest.fn() }, user: { create: userCreate }, passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'token-1' }) } }),
       );
 
       await service.create(
@@ -187,6 +191,7 @@ describe('OrganizationsService', () => {
       const tokenCreate = jest.fn().mockResolvedValue({ id: 'token-1' });
       tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
         fn({
+          legalEntity: { create: legalEntityCreate },
           user: { create: jest.fn().mockResolvedValue({ id: 'admin-1', email: 'admin@acme.test', role: 'org_admin' }) },
           passwordResetToken: { create: tokenCreate },
         }),

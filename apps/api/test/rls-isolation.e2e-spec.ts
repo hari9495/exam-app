@@ -344,6 +344,78 @@ describe('PostgreSQL row-level security (app role)', () => {
     }
   });
 
+  // P01 organisation structure (YX-ORG-14): every new table is a forced-RLS tenant table, and the composite
+  // (organization_id, id) foreign keys mean a row can never point at another company's row (P01 §5 #5).
+  const ORG_TABLES = ['cost_centres', 'departments', 'designations', 'employment_types', 'grade_pay_ranges', 'grades', 'legal_entities', 'locations', 'settings'];
+
+  it('the organisation-structure tables are forced-RLS tenant tables', async () => {
+    const rows = await prisma.$queryRaw<{ table: string; forced: boolean; policies: bigint }[]>`
+      SELECT c.relname AS table, (c.relrowsecurity AND c.relforcerowsecurity) AS forced,
+             (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+      WHERE c.relname = ANY(${ORG_TABLES}) ORDER BY c.relname`;
+    expect(rows).toEqual(ORG_TABLES.map((table) => ({ table, forced: true, policies: BigInt(1) })));
+  });
+
+  it("(b) org A cannot read, change, remove or plant org B's organisation structure, nor point at it", async () => {
+    const asB = { organizationId: orgB, isSuperAdmin: false };
+    const b = await tenantPrisma.forTenant(asB, async (tx) => {
+      const entity = await tx.legalEntity.create({ data: { organizationId: orgB, name: 'B Ltd', shortName: `B-${randomUUID().slice(0, 8)}`, pan: 'AABCB1234B' } });
+      const location = await tx.location.create({
+        data: { organizationId: orgB, legalEntityId: entity.id, name: 'B site', code: 'B-SITE', address: {}, country: 'IN', state: 'IN-KA', timezone: 'Asia/Kolkata' },
+      });
+      const deptId = randomUUID();
+      const department = await tx.department.create({ data: { id: deptId, organizationId: orgB, name: 'B dept', code: 'B-DEPT', path: `/${deptId}/` } });
+      const grade = await tx.grade.create({ data: { organizationId: orgB, name: 'B grade', code: 'B-G', rank: 1 } });
+      await tx.gradePayRange.create({ data: { organizationId: orgB, gradeId: grade.id, legalEntityId: entity.id, currency: 'INR', min: 1, mid: 2, max: 3, validFrom: new Date('2026-04-01T00:00:00Z') } });
+      await tx.costCentre.create({ data: { organizationId: orgB, legalEntityId: entity.id, name: 'B cc', code: 'B-CC' } });
+      await tx.designation.create({ data: { organizationId: orgB, name: 'B role', code: 'B-R' } });
+      await tx.employmentType.create({ data: { organizationId: orgB, name: 'B type', code: 'B-T', category: 'permanent' } });
+      await tx.setting.create({ data: { organizationId: orgB, scopeType: 'tenant', scopeId: orgB, key: 'employee_code.scope', value: 'tenant' } });
+      return { entity: entity.id, location: location.id, department: department.id, grade: grade.id };
+    });
+    try {
+      const seenByA = await tenantPrisma.forTenant(asA(), async (tx) => {
+        const counts: Record<string, number> = {};
+        for (const t of ORG_TABLES) {
+          const [{ n }] = await tx.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM "${t}" WHERE organization_id = $1::uuid`, orgB);
+          counts[t] = Number(n);
+        }
+        return {
+          ...counts,
+          pan: await tx.$executeRaw`UPDATE legal_entities SET pan = 'ZZZZZ9999Z' WHERE id = ${b.entity}::uuid`,
+          pay: await tx.$executeRaw`UPDATE grade_pay_ranges SET max = 999999999 WHERE grade_id = ${b.grade}::uuid`,
+          setting: await tx.$executeRaw`UPDATE settings SET value = '"legal_entity"' WHERE organization_id = ${orgB}::uuid`,
+          removed: await tx.$executeRaw`DELETE FROM locations WHERE id = ${b.location}::uuid`,
+        };
+      });
+      expect(seenByA).toEqual({ ...Object.fromEntries(ORG_TABLES.map((t) => [t, 0])), pan: 0, pay: 0, setting: 0, removed: 0 });
+      // Planting a row in B is refused by the policy.
+      await expect(tenantPrisma.forTenant(asA(), (tx) => tx.legalEntity.create({ data: { organizationId: orgB, name: 'planted', shortName: 'PLANTED' } }))).rejects.toThrow(RLS_VIOLATION);
+      // An own row pointing at B's entity, department or grade is refused by the composite keys, even with
+      // the platform's bypass on: the referenced (organization, id) pair does not exist.
+      const aEntity = await tenantPrisma.forTenant(asA(), (tx) => tx.legalEntity.create({ data: { organizationId: orgA, name: 'A Ltd', shortName: `A-${randomUUID().slice(0, 8)}` } }));
+      for (const ctx of [asA(), SUPER]) {
+        await expect(
+          tenantPrisma.forTenant(ctx, (tx) => tx.location.create({ data: { organizationId: orgA, legalEntityId: b.entity, name: 'stray', code: 'STRAY', address: {}, country: 'IN', state: 'IN-KA', timezone: 'Asia/Kolkata' } })),
+        ).rejects.toThrow(/locations_legal_entity_fkey|Foreign key/);
+        const id = randomUUID();
+        await expect(tenantPrisma.forTenant(ctx, (tx) => tx.department.create({ data: { id, organizationId: orgA, name: 'stray', code: 'STRAY', parentId: b.department, path: `/${id}/` } }))).rejects.toThrow(/departments_parent_fkey|Foreign key/);
+        await expect(
+          tenantPrisma.forTenant(ctx, (tx) => tx.gradePayRange.create({ data: { organizationId: orgA, gradeId: b.grade, legalEntityId: aEntity.id, currency: 'INR', min: 1, mid: 1, max: 1, validFrom: new Date('2026-04-01T00:00:00Z') } })),
+        ).rejects.toThrow(/grade_pay_ranges_grade_fkey|Foreign key/);
+      }
+      const still = await tenantPrisma.forTenant(SUPER, (tx) => tx.legalEntity.findUniqueOrThrow({ where: { id: b.entity } }));
+      expect(still.pan).toBe('AABCB1234B');
+    } finally {
+      await tenantPrisma.forTenant(SUPER, async (tx) => {
+        for (const t of ['settings', 'grade_pay_ranges', 'cost_centres', 'locations', 'departments', 'designations', 'employment_types', 'grades', 'legal_entities']) {
+          await tx.$executeRawUnsafe(`DELETE FROM "${t}" WHERE organization_id = ANY($1::uuid[])`, [orgA, orgB]);
+        }
+      });
+    }
+  });
+
   it('(a) no context => writes are rejected', async () => {
     await expect(
       prisma.user.create({ data: { organizationId: orgA, email: `x-${randomUUID()}@rls.test`, passwordHash: 'x', role: 'org_admin' } }),

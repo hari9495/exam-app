@@ -2164,3 +2164,179 @@ model SmsUsageMonthly {
   @@id([organizationId, month])
   @@map("sms_usage_monthly")
 }
+
+// ---------------------------------------------------------------------------------------------
+// P01 organisation structure (migration 20261007000000_org_structure). Links between these tables are
+// composite (organization_id, id) foreign keys in SQL, so a row can never point at another company's
+// row; they are deliberately not modelled as Prisma relations.
+
+model LegalEntity {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  name              String    @db.Citext
+  shortName         String    @map("short_name") @db.Citext
+  country           String    @default("IN") @db.Char(2)
+  currency          String    @default("INR") @db.Char(3)
+  fyStartMonth      Int       @default(4) @map("fy_start_month") @db.SmallInt
+  registeredAddress Json?     @map("registered_address")
+  dataRegion        String    @default("IN") @map("data_region") @db.VarChar(8)
+  // Confidential (P02 §4.4): returned only to org.entity.statutory.manage.
+  pan               String?   @db.VarChar(10)
+  tan               String?   @db.VarChar(10)
+  gstin             String?   @db.VarChar(15)
+  cin               String?   @db.VarChar(21)
+  isDefault         Boolean   @default(false) @map("is_default")
+  archivedAt        DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy         String?   @map("created_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("legal_entities")
+}
+
+model Location {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  name           String    @db.Citext
+  code           String    @db.Citext
+  address        Json
+  country        String    @db.Char(2)
+  state          String    @db.VarChar(6)
+  timezone       String    @db.VarChar(64)
+  minWageZone    String?   @map("min_wage_zone") @db.VarChar(40)
+  geoLat         Decimal?  @map("geo_lat") @db.Decimal(9, 6)
+  geoLng         Decimal?  @map("geo_lng") @db.Decimal(9, 6)
+  geoRadiusM     Int?      @map("geo_radius_m")
+  ipRanges       String[]  @default([]) @map("ip_ranges")
+  archivedAt     DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("locations")
+}
+
+model Department {
+  // Set by the service: the materialised path ends with the row's own id.
+  id                 String    @id @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  name               String    @db.Citext
+  code               String    @db.Citext
+  parentId           String?   @map("parent_id") @db.Uuid
+  path               String
+  isDivision         Boolean   @default(false) @map("is_division")
+  ownerLegalEntityId String?   @map("owner_legal_entity_id") @db.Uuid
+  appliesToEntities  String[]  @default([]) @map("applies_to_entities") @db.Uuid
+  archivedAt         DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy          String?   @map("created_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("departments")
+}
+
+model Designation {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  name               String    @db.Citext
+  code               String    @db.Citext
+  jobFamily          String?   @map("job_family") @db.VarChar(100)
+  ownerLegalEntityId String?   @map("owner_legal_entity_id") @db.Uuid
+  appliesToEntities  String[]  @default([]) @map("applies_to_entities") @db.Uuid
+  archivedAt         DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy          String?   @map("created_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("designations")
+}
+
+model Grade {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  name               String    @db.Citext
+  code               String    @db.Citext
+  rank               Int
+  ownerLegalEntityId String?   @map("owner_legal_entity_id") @db.Uuid
+  appliesToEntities  String[]  @default([]) @map("applies_to_entities") @db.Uuid
+  archivedAt         DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy          String?   @map("created_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("grades")
+}
+
+model EmploymentType {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  name               String    @db.Citext
+  code               String    @db.Citext
+  category           String    @db.VarChar(24)
+  ownerLegalEntityId String?   @map("owner_legal_entity_id") @db.Uuid
+  appliesToEntities  String[]  @default([]) @map("applies_to_entities") @db.Uuid
+  archivedAt         DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy          String?   @map("created_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("employment_types")
+}
+
+model CostCentre {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  name           String    @db.Citext
+  code           String    @db.Citext
+  parentId       String?   @map("parent_id") @db.Uuid
+  archivedAt     DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("cost_centres")
+}
+
+// Pay data (founder rule R1): read only with pay.range.view.
+model GradePayRange {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  gradeId        String    @map("grade_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  currency       String    @db.Char(3)
+  min            Decimal   @db.Decimal(14, 2)
+  mid            Decimal   @db.Decimal(14, 2)
+  max            Decimal   @db.Decimal(14, 2)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("grade_pay_ranges")
+}
+
+// P01 §4.6 scoped settings; keys are registered in apps/api/src/org-structure/settings-registry.ts.
+model Setting {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  scopeType      String    @map("scope_type") @db.VarChar(20)
+  scopeId        String    @map("scope_id") @db.Uuid
+  key            String    @db.VarChar(100)
+  value          Json
+  validFrom      DateTime? @map("valid_from") @db.Date
+  updatedBy      String?   @map("updated_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("settings")
+}
