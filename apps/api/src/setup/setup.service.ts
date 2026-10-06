@@ -75,7 +75,7 @@ export class SetupService implements OnModuleInit {
       }
 
       const created = await tx.user.create({
-        data: { organizationId: null, email: dto.email, passwordHash, passwordRecheckPending, role: 'super_admin' },
+        data: { organizationId: null, email: dto.email, passwordHash, passwordRecheckPending, role: 'super_admin', mfaEnrolmentDueAt: new Date() },
       });
 
       await tx.setupToken.deleteMany({});

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import Redis from 'ioredis';
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'crypto';
 import { createBase32Plugin, generateSecret } from '@otplib/core';
@@ -26,6 +26,7 @@ import {
   TenantPrismaService,
   loadTenantSecurityPolicy,
   resolvePermissionGrants,
+  revokeStaffSessions,
 } from '@exam-platform/shared';
 import { LOGIN_PROTECTION_REDIS } from './login-protection.service';
 import { OTP_RESEND_COOLDOWN_SECONDS, OTP_TTL_SECONDS, OtpService, maskMobile, normaliseMobileNumber } from './otp.service';
@@ -49,6 +50,7 @@ export interface MfaUser {
   mfaEnrolmentDueAt: Date;
   mobileNumber?: string | null;
   mobileVerifiedAt?: Date | null;
+  passwordChangeRequired?: boolean;
 }
 
 // What is kept between the first factor and the second (Redis, 5 min, keyed by sha256(token)).
@@ -59,6 +61,8 @@ export interface PendingLogin {
   identifier: string;
   breakGlass: boolean;
   deviceIdHash: string;
+  // SSO only: the provider that vouched (sessions.identity_provider_id).
+  identityProviderId?: string | null;
 }
 
 export const PENDING_LOGIN_TTL_SECONDS = 5 * 60;
@@ -69,6 +73,14 @@ const OTP_PLUGINS = { crypto: new NodeCryptoPlugin(), base32: createBase32Plugin
 // One 30 s step either side for clock drift (otplib epochTolerance is in seconds).
 const TOTP_DRIFT_SECONDS = 30;
 export const RECOVERY_CODE_COUNT = 10;
+// Enrolling the FIRST factor needs a sign-in this recent (re-authentication, ASVS V2.5 / V3.7.1):
+// a stolen refresh cookie or an old hijacked session cannot plant the attacker's authenticator.
+export const FIRST_FACTOR_REAUTH_SECONDS = 10 * 60;
+export const REAUTH_REQUIRED_CODE = 'REAUTH_REQUIRED';
+// YukthiX staff (P12 Q7): a hardware-bound security key is their only factor -- no authenticator
+// app, no recovery codes (both can be copied or phished).
+export const isStaff = (user: { role: string }) => user.role === 'super_admin';
+const pendingUserKey = (userId: string) => `auth:mfa:pending-user:${userId}`;
 // 32 symbols (no 0/1/l/o) x 16 = 80 bits: offline guessing of the sha256 is out of reach.
 const RECOVERY_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
 
@@ -149,6 +161,7 @@ export class MfaService {
           mfaEnrolmentDueAt: true,
           mobileNumber: true,
           mobileVerifiedAt: true,
+          passwordChangeRequired: true,
         },
       }),
     );
@@ -164,8 +177,14 @@ export class MfaService {
     );
   }
 
+  // The factors this account may actually use: for YukthiX staff, security keys (passkeys) only.
+  async usableFactors(user: Pick<MfaUser, 'id' | 'organizationId' | 'role'>) {
+    const factors = await this.activeFactors(user);
+    return isStaff(user) ? factors.filter((f) => f.type === 'passkey') : factors;
+  }
+
   async hasFactor(user: Pick<MfaUser, 'id' | 'organizationId' | 'role'>): Promise<boolean> {
-    return (await this.activeFactors(user)).length > 0;
+    return (await this.usableFactors(user)).length > 0;
   }
 
   // In a sensitive role (P12 §3; YukthiX staff always), or the company requires MFA for everyone.
@@ -206,8 +225,26 @@ export class MfaService {
 
   async createPendingLogin(pending: PendingLogin): Promise<string> {
     const token = randomBytes(32).toString('base64url');
-    await this.store(() => this.redis.set(`auth:mfa:pending:${sha256(token)}`, JSON.stringify(pending), 'EX', PENDING_LOGIN_TTL_SECONDS));
+    const hash = sha256(token);
+    // Indexed per user, so a password reset / MFA reset can cancel sign-ins already half done.
+    await this.store(async () => {
+      const replies = await this.redis
+        .multi()
+        .set(`auth:mfa:pending:${hash}`, JSON.stringify(pending), 'EX', PENDING_LOGIN_TTL_SECONDS)
+        .sadd(pendingUserKey(pending.userId), hash)
+        .expire(pendingUserKey(pending.userId), PENDING_LOGIN_TTL_SECONDS)
+        .exec();
+      if (!replies || replies.some(([error]) => error)) throw new Error('pending sign-in MULTI failed');
+    });
     return token;
+  }
+
+  // Every half-finished sign-in of `userId` (first factor done, second owed) stops working: after a
+  // password reset or an MFA reset, a token won with the old credentials must not complete.
+  async cancelPendingLogins(userId: string): Promise<void> {
+    const hashes = await this.store(() => this.redis.smembers(pendingUserKey(userId)));
+    const keys = hashes.flatMap((h) => [`auth:mfa:pending:${h}`, `auth:mfa:chal:login:${h}`, `auth:otp:mfa:${h}`]);
+    await this.store(() => this.redis.del(pendingUserKey(userId), ...keys));
   }
 
   // The pending sign-in for `token`, only from the device that started it.
@@ -262,6 +299,7 @@ export class MfaService {
   // recovery code is burnt by the same statement that checks it.
   async verifyProof(user: MfaUser, proof: MfaProofDto, passkeyChallenge: string | null): Promise<MfaFactor | null> {
     const ctx = contextFor(user);
+    if (isStaff(user) && proof.factor !== 'passkey') return null; // Q7: security key only
     if (proof.factor === 'totp') {
       if (!proof.code || !/^\d{6}$/.test(proof.code)) return null;
       const totp = await this.tenantPrisma.forTenant(ctx, (tx) =>
@@ -337,14 +375,26 @@ export class MfaService {
 
   // ---- enrolment ---------------------------------------------------------------------------
 
-  // Adding a factor when one exists is a security change: it needs a fresh step-up, so a
-  // hijacked session cannot plant the attacker's own authenticator.
+  // Adding a factor is a security change. With one enrolled it needs a fresh step-up. The FIRST one
+  // needs a fresh sign-in (re-authentication): a stolen refresh cookie or an old hijacked session
+  // cannot plant the attacker's own authenticator (ASVS V2.5 / V3.7.1).
   private async assertMayEnrol(user: MfaUser, session: SessionAssurance, type: 'passkey' | 'totp') {
+    if (isStaff(user) && type !== 'passkey') {
+      throw new BadRequestException('YukthiX staff accounts use a hardware security key only');
+    }
     if (!(await this.allowedFactors(user)).includes(type)) {
       throw new BadRequestException(`Your organisation does not allow ${type === 'totp' ? 'authenticator apps' : 'passkeys'}`);
     }
-    const factors = await this.activeFactors(user);
-    if (factors.length > 0) assertStepUp({ session });
+    const factors = await this.usableFactors(user);
+    if (factors.length > 0) {
+      assertStepUp({ session });
+    } else if (!session.authenticatedAt || Date.now() - session.authenticatedAt.getTime() > FIRST_FACTOR_REAUTH_SECONDS * 1000) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: REAUTH_REQUIRED_CODE,
+        message: 'For your security, sign in again before setting up two-step verification.',
+      });
+    }
     return factors;
   }
 
@@ -394,7 +444,10 @@ export class MfaService {
       userID: new TextEncoder().encode(user.id),
       attestationType: 'none',
       excludeCredentials: existing.map((p) => ({ id: p.credentialId!, transports: p.transports as AuthenticatorTransportFuture[] })),
-      authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+      // Staff (Q7): a roaming security key, with user verification.
+      authenticatorSelection: isStaff(user)
+        ? { authenticatorAttachment: 'cross-platform', residentKey: 'preferred', userVerification: 'required' }
+        : { residentKey: 'preferred', userVerification: 'preferred' },
     });
     await this.store(() => this.redis.set(`auth:mfa:chal:reg:${sessionId}`, options.challenge, 'EX', CHALLENGE_TTL_SECONDS));
     return options;
@@ -419,6 +472,10 @@ export class MfaService {
       info = undefined;
     }
     if (!info) throw new BadRequestException('This passkey could not be verified. Try again.');
+    // Staff (Q7): hardware-bound only -- a synced (multi-device) passkey can be copied off the device.
+    if (isStaff(user) && (info.credentialDeviceType !== 'singleDevice' || info.credentialBackedUp)) {
+      throw new BadRequestException('YukthiX staff accounts need a hardware security key, not a synced passkey');
+    }
     try {
       await this.tenantPrisma.forTenant(contextFor(user), (tx) =>
         tx.authenticator.create({
@@ -442,13 +499,32 @@ export class MfaService {
     return this.afterEnrolment(user, sessionId, 'passkey');
   }
 
-  // First factor: recovery codes (shown once) and the session becomes AAL2 (P12 §6 flow 1).
+  // First factor: recovery codes (shown once; never for staff); the session becomes AAL2 as
+  // 'enrolment', which meets the MFA floor but is NOT a step-up; every other session and
+  // half-finished sign-in of the account ends (P12 §6 flow 1). The owner is told at once.
   private async afterEnrolment(user: MfaUser, sessionId: string, factor: 'passkey' | 'totp') {
-    const first = (await this.activeFactors(user)).length === 1;
-    const recoveryCodes = first ? await this.replaceRecoveryCodes(user) : undefined;
-    await this.elevateSession(user, sessionId, factor);
-    await this.audit.record(contextFor(user), { actorUserId: user.id, action: 'mfa.enrolled', entityType: 'user', entityId: user.id, metadata: { factor } });
-    this.sessions.notifySecurityChange(user, 'Two-step verification added to your YukthiX account', `A new ${factor === 'totp' ? 'authenticator app' : 'passkey'} was added to your account.`);
+    const first = (await this.usableFactors(user)).length === 1;
+    const recoveryCodes = first && !isStaff(user) ? await this.replaceRecoveryCodes(user) : undefined;
+    await this.elevateSession(user, sessionId, 'enrolment');
+    let revoked = 0;
+    if (first) {
+      revoked = await this.tenantPrisma.forTenant(contextFor(user), (tx) =>
+        revokeStaffSessions(tx, { userId: user.id, id: { not: sessionId } }, 'mfa_enrolled'),
+      );
+      await this.cancelPendingLogins(user.id);
+    }
+    await this.audit.record(contextFor(user), {
+      actorUserId: user.id,
+      action: 'mfa.enrolled',
+      entityType: 'user',
+      entityId: user.id,
+      metadata: { factor, first, otherSessionsRevoked: revoked },
+    });
+    this.sessions.notifySecurityChange(
+      user,
+      'Two-step verification added to your YukthiX account',
+      `A new ${factor === 'totp' ? 'authenticator app' : 'passkey'} was added to your account${first ? ', and every other session was signed out' : ''}.`,
+    );
     return { factor, recoveryCodes };
   }
 
@@ -466,6 +542,7 @@ export class MfaService {
   }
 
   async regenerateRecoveryCodes(user: MfaUser): Promise<{ recoveryCodes: string[] }> {
+    if (isStaff(user)) throw new BadRequestException('YukthiX staff accounts do not use recovery codes. Register a second security key instead.');
     if (!(await this.hasFactor(user))) throw new BadRequestException('Set up a passkey or an authenticator app first');
     const recoveryCodes = await this.replaceRecoveryCodes(user);
     await this.audit.record(contextFor(user), { actorUserId: user.id, action: 'mfa.recovery_codes_generated', entityType: 'user', entityId: user.id });
@@ -478,7 +555,8 @@ export class MfaService {
     const factors = await this.activeFactors(user);
     const target = factors.find((f) => f.id === authenticatorId);
     if (!target) throw new NotFoundException('Factor not found');
-    if (factors.length === 1 && (await this.mfaRequiredFor(user))) {
+    const usable = await this.usableFactors(user);
+    if (usable.length === 1 && usable[0].id === target.id && (await this.mfaRequiredFor(user))) {
       throw new BadRequestException('Two-step verification is required for your account. Add another factor before removing this one.');
     }
     await this.tenantPrisma.forTenant(contextFor(user), async (tx) => {
@@ -514,6 +592,14 @@ export class MfaService {
     await this.otp.reserveSend(`mobile\u0000${user.id}`, ip);
     const code = await this.otp.issue(this.mobileKey(sessionId), { userId: user.id, mobileNumber });
     this.otp.deliver(channel, mobileNumber, code, 'mobile', user.organizationId);
+    // YX-IAM-10: every code sent is on record (SMS-pumping / targeting signal).
+    await this.audit.record(contextFor(user), {
+      actorUserId: user.id,
+      action: 'user.mobile_verification_started',
+      entityType: 'user',
+      entityId: user.id,
+      metadata: { mobile: maskMobile(mobileNumber), channel, ip },
+    });
     return { mobileNumber, expiresInSeconds: OTP_TTL_SECONDS, resendAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS };
   }
 

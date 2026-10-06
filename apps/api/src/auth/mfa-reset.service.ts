@@ -125,6 +125,8 @@ export class MfaResetService {
       await tx.user.update({ where: { id: target.id }, data: { mfaEnrolmentDueAt: now } });
       await revokeStaffSessions(tx, { userId: target.id }, 'mfa_reset');
     });
+    // A sign-in half done before the reset (first factor in, second owed) cannot be finished.
+    await this.mfa.cancelPendingLogins(target.id);
     await this.audit.record(ctx, {
       actorUserId: approvedByUserId ?? requestedByUserId,
       action: 'mfa.reset',

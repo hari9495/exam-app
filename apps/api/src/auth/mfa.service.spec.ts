@@ -4,8 +4,15 @@ import { createBase32Plugin } from '@otplib/core';
 import { NodeCryptoPlugin } from '@otplib/plugin-crypto-node';
 import { generateSync as totpCode } from '@otplib/totp';
 import { base32 } from '@scure/base';
-import { DEFAULT_SECURITY_POLICY, OrgSecretsCryptoService, SessionAssurance, loadTenantSecurityPolicy, resolvePermissionGrants } from '@exam-platform/shared';
-import { MfaService, MfaUser, RECOVERY_CODE_COUNT } from './mfa.service';
+import {
+  DEFAULT_SECURITY_POLICY,
+  OrgSecretsCryptoService,
+  SessionAssurance,
+  loadTenantSecurityPolicy,
+  resolvePermissionGrants,
+  stepUpSatisfied,
+} from '@exam-platform/shared';
+import { FIRST_FACTOR_REAUTH_SECONDS, MfaService, MfaUser, RECOVERY_CODE_COUNT } from './mfa.service';
 import { SoftAuthenticator } from '../../test/fixtures/soft-authenticator';
 
 jest.mock('@exam-platform/shared', () => {
@@ -60,6 +67,7 @@ function table() {
 
 function fakeRedis() {
   const store = new Map<string, string>();
+  const sets = new Map<string, Set<string>>();
   return {
     store,
     set: jest.fn(async (key: string, value: string) => (store.set(key, value), 'OK')),
@@ -69,7 +77,19 @@ function fakeRedis() {
       store.delete(key);
       return value;
     }),
-    del: jest.fn(async (...keys: string[]) => keys.filter((k) => store.delete(k)).length),
+    del: jest.fn(async (...keys: string[]) => keys.filter((k) => store.delete(k) || sets.delete(k)).length),
+    sets,
+    smembers: jest.fn(async (key: string) => [...(sets.get(key) ?? [])]),
+    multi() {
+      const ops: (() => unknown)[] = [];
+      const chain = {
+        set: (key: string, value: string) => (ops.push(() => store.set(key, value)), chain),
+        sadd: (key: string, member: string) => (ops.push(() => sets.set(key, new Set([...(sets.get(key) ?? []), member]))), chain),
+        expire: () => chain,
+        exec: async () => ops.map((op) => [null, op()]),
+      };
+      return chain;
+    },
   };
 }
 
@@ -89,7 +109,8 @@ describe('MfaService', () => {
     mfaEnrolmentDueAt: new Date(Date.now() + 86_400_000),
   };
   const FRESH = { assuranceLevel: 'aal2', mfaVerifiedAt: new Date(), mfaMethod: 'totp', mfaEnrolmentDueAt: USER.mfaEnrolmentDueAt };
-  const AAL1 = { assuranceLevel: 'aal1', mfaVerifiedAt: null, mfaMethod: null, mfaEnrolmentDueAt: USER.mfaEnrolmentDueAt };
+  // Signed in just now (sessions.created_at): fresh enough to enrol a first factor.
+  const AAL1: SessionAssurance = { assuranceLevel: 'aal1', mfaVerifiedAt: null, mfaMethod: null, mfaEnrolmentDueAt: USER.mfaEnrolmentDueAt, authenticatedAt: new Date() };
   let tx: { authenticator: ReturnType<typeof table>; recoveryCode: ReturnType<typeof table>; session: { updateMany: jest.Mock }; user: { findUnique: jest.Mock } };
   let redis: ReturnType<typeof fakeRedis>;
   let audit: { record: jest.Mock };
@@ -134,11 +155,15 @@ describe('MfaService', () => {
       expect(tx.recoveryCode.rows.map((r) => r.codeHash)).toEqual(recoveryCodes!.map((c) => sha256(c.replace(/-/g, ''))));
       expect(JSON.stringify(tx.recoveryCode.rows)).not.toContain(recoveryCodes![0]);
 
+      // AAL2 as 'enrolment': meets the MFA floor, never a step-up.
       expect(tx.session.updateMany).toHaveBeenCalledWith({
         where: { id: SID, userId: USER.id, revokedAt: null },
-        data: expect.objectContaining({ assuranceLevel: 'aal2', mfaMethod: 'totp', mfaVerifiedAt: expect.any(Date) }),
+        data: expect.objectContaining({ assuranceLevel: 'aal2', mfaMethod: 'enrolment', mfaVerifiedAt: expect.any(Date) }),
       });
-      expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'mfa.enrolled', metadata: { factor: 'totp' } }));
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ action: 'mfa.enrolled', metadata: { factor: 'totp', first: true, otherSessionsRevoked: 1 } }),
+      );
       expect(sessions.notifySecurityChange).toHaveBeenCalled();
     });
 
@@ -173,6 +198,81 @@ describe('MfaService', () => {
     it("refuses an authenticator app the company's policy does not allow", async () => {
       (loadTenantSecurityPolicy as jest.Mock).mockResolvedValue({ ...DEFAULT_SECURITY_POLICY, allowedFactors: ['passkey'] });
       await expect(service.startTotp(USER, AAL1, SID)).rejects.toThrow('does not allow');
+    });
+  });
+
+  // Regression (high): an AAL1 session for an account with no factor -- a phished password, a
+  // mailbox-only OTP sign-in, a stolen refresh cookie -- could enrol the attacker's authenticator
+  // and get a 15-minute step-up window plus the recovery codes.
+  describe('first-factor enrolment (ASVS V2.5 / V3.7.1)', () => {
+    it('needs a fresh sign-in: an old session (e.g. kept alive by a stolen refresh cookie) is refused', async () => {
+      const old = { ...AAL1, authenticatedAt: new Date(Date.now() - (FIRST_FACTOR_REAUTH_SECONDS + 60) * 1000) };
+      await expect(service.startTotp(USER, old, SID)).rejects.toMatchObject({ response: expect.objectContaining({ code: 'REAUTH_REQUIRED' }) });
+      await expect(service.passkeyRegistrationOptions(USER, old, SID)).rejects.toThrow(ForbiddenException);
+      // Unknown sign-in time fails closed.
+      await expect(service.startTotp(USER, { ...AAL1, authenticatedAt: undefined }, SID)).rejects.toThrow(ForbiddenException);
+      expect(tx.authenticator.rows).toHaveLength(0);
+    });
+
+    it('lifts the session to AAL2 without granting a step-up', async () => {
+      await enrolTotp();
+      const call = tx.session.updateMany.mock.calls.map(([args]) => args).find((args) => args.where.id === SID);
+      const elevated = { ...AAL1, ...call.data };
+      expect(elevated.mfaMethod).toBe('enrolment');
+      expect(stepUpSatisfied(elevated)).toBe(false);
+    });
+
+    it('signs out every other session of the account and cancels its half-finished sign-ins', async () => {
+      const token = await service.createPendingLogin({ userId: USER.id, method: 'password', orgSlug: 'o', identifier: 'i', breakGlass: false, deviceIdHash: sha256('d') });
+      await enrolTotp();
+      expect(tx.session.updateMany).toHaveBeenCalledWith({
+        where: { userId: USER.id, id: { not: SID }, revokedAt: null },
+        data: { revokedAt: expect.any(Date), revokedReason: 'mfa_enrolled' },
+      });
+      expect(await service.loadPendingLogin(token, 'd')).toBeNull();
+    });
+  });
+
+  // P12 Q1/Q7: YukthiX staff use a hardware security key only.
+  describe('YukthiX staff (super admins)', () => {
+    const STAFF: MfaUser = { ...USER, role: 'super_admin', organizationId: null };
+
+    it('cannot enrol an authenticator app, and a TOTP code or recovery code never verifies for them', async () => {
+      await expect(service.startTotp(STAFF, AAL1, SID)).rejects.toThrow('security key');
+      tx.recoveryCode.rows.push({ id: 'r', userId: STAFF.id, codeHash: sha256('aaaabbbbccccdddd'), usedAt: null });
+      expect(await service.verifyProof(STAFF, { factor: 'recovery_code', code: 'aaaa-bbbb-cccc-dddd' }, null)).toBeNull();
+      expect(await service.verifyProof(STAFF, { factor: 'totp', code: '123456' }, null)).toBeNull();
+      await expect(service.regenerateRecoveryCodes(STAFF)).rejects.toThrow('do not use recovery codes');
+    });
+
+    it('asks for a roaming key with user verification, refuses a synced passkey, and issues no recovery codes', async () => {
+      const options = await service.passkeyRegistrationOptions(STAFF, AAL1, SID);
+      expect(options.authenticatorSelection).toMatchObject({ authenticatorAttachment: 'cross-platform', userVerification: 'required' });
+      await expect(service.registerPasskey(STAFF, AAL1, SID, new SoftAuthenticator().register(options, { synced: true }))).rejects.toThrow('hardware security key');
+
+      const again = await service.passkeyRegistrationOptions(STAFF, AAL1, SID);
+      const { recoveryCodes } = await service.registerPasskey(STAFF, AAL1, SID, new SoftAuthenticator().register(again));
+      expect(recoveryCodes).toBeUndefined();
+      expect(tx.recoveryCode.rows.filter((r) => r.userId === STAFF.id && r.id !== 'r')).toHaveLength(0);
+    });
+
+    it('a TOTP enrolled before the rule is not a usable factor for staff', async () => {
+      tx.authenticator.rows.push({ id: 'old-totp', userId: STAFF.id, type: 'totp', revokedAt: null, createdAt: new Date() });
+      expect(await service.hasFactor(STAFF)).toBe(false);
+    });
+  });
+
+  describe('mobile verification', () => {
+    it('every code sent is audited, with the number masked (YX-IAM-10)', async () => {
+      const otp = { channelAvailable: () => true, reserveSend: jest.fn(), issue: jest.fn(async () => '123456'), deliver: jest.fn() };
+      const tenantPrisma = { forTenant: jest.fn(async (_ctx: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
+      service = new MfaService({} as never, tenantPrisma as never, crypto, audit as never, sessions as never, redis as never, otp as never);
+      await service.startMobileVerification({ ...USER, role: 'recruiter' }, AAL1, SID, '+919876543210', 'sms', '203.0.113.5');
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ action: 'user.mobile_verification_started', metadata: expect.objectContaining({ channel: 'sms', ip: '203.0.113.5' }) }),
+      );
+      expect(JSON.stringify(audit.record.mock.calls)).not.toContain('9876543210');
     });
   });
 
@@ -301,12 +401,23 @@ describe('MfaService', () => {
       const token = await service.createPendingLogin(pending);
       expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
       expect([...redis.store.keys()]).toEqual([`auth:mfa:pending:${sha256(token)}`]);
+      expect([...redis.sets.get(`auth:mfa:pending-user:${USER.id}`)!]).toEqual([sha256(token)]); // per-user index: hashes only
       expect(await service.loadPendingLogin(token, 'device-a')).toEqual(pending);
       expect(await service.loadPendingLogin(token, 'device-b')).toBeNull();
       expect(await service.loadPendingLogin('x'.repeat(43), 'device-a')).toBeNull();
       expect(await service.consumePendingLogin(token)).toBe(true);
       expect(await service.consumePendingLogin(token)).toBe(false);
       expect(await service.loadPendingLogin(token, 'device-a')).toBeNull();
+    });
+
+    // Regression: an mfaToken won with the old password stayed usable for 5 minutes after a
+    // password reset or an MFA reset.
+    it('cancelPendingLogins ends every half-finished sign-in of that user only', async () => {
+      const mine = await service.createPendingLogin(pending);
+      const theirs = await service.createPendingLogin({ ...pending, userId: 'someone-else' });
+      await service.cancelPendingLogins(USER.id);
+      expect(await service.loadPendingLogin(mine, 'device-a')).toBeNull();
+      expect(await service.loadPendingLogin(theirs, 'device-a')).not.toBeNull();
     });
 
     it('fails closed (503) when the store is down', async () => {

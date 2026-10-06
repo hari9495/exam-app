@@ -48,6 +48,7 @@ describe('MFA, step-up and recovery (P12 YX-IAM-01/02/03/11)', () => {
   const RECRUITER = emailOf('recruiter');
   const PANEL = emailOf('panel');
   const LATE = emailOf('late'); // org admin past the enrolment grace
+  const VICTIM = emailOf('victim'); // org admin in the grace, no factor yet (enrolment attack)
   const ADMIN_B = emailOf('admin-b');
 
   // Every request its own IPv6 /64 (the lockout's per-IP unit), so the deliberate failures below
@@ -181,6 +182,7 @@ describe('MFA, step-up and recovery (P12 YX-IAM-01/02/03/11)', () => {
       [0, RECRUITER, 'recruiter'],
       [0, PANEL, 'panel'],
       [0, LATE, 'org_admin'],
+      [0, VICTIM, 'org_admin'],
       [1, ADMIN_B, 'org_admin'],
     ];
     for (const [i, who, role] of seed) {
@@ -241,7 +243,8 @@ describe('MFA, step-up and recovery (P12 YX-IAM-01/02/03/11)', () => {
       const codes = await tenantPrisma.forTenant(SUPER, (tx) => tx.recoveryCode.findMany({ where: { userId: users[TOTP_USER] } }));
       expect(codes).toHaveLength(10);
       expect(JSON.stringify(codes)).not.toContain(recoveryCodes[0]);
-      expect(await session(s.sid)).toMatchObject({ assuranceLevel: 'aal2', mfaMethod: 'totp', mfaVerifiedAt: expect.any(Date) });
+      // AAL2 as 'enrolment': the MFA floor is met, but it is no step-up (see the attack block).
+      expect(await session(s.sid)).toMatchObject({ assuranceLevel: 'aal2', mfaMethod: 'enrolment', mfaVerifiedAt: expect.any(Date) });
       expect(await auditActions(A().id, 'mfa.enrolled')).toEqual([expect.objectContaining({ actorUserId: users[TOTP_USER] })]);
       expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: TOTP_USER, subject: 'Two-step verification added to your YukthiX account' }));
 
@@ -490,12 +493,42 @@ describe('MFA, step-up and recovery (P12 YX-IAM-01/02/03/11)', () => {
     });
   });
 
+  // Regression (high): an AAL1 session for an account with no factor -- phished password,
+  // mailbox-only OTP sign-in, stolen refresh cookie -- enrolled the attacker's authenticator and
+  // got a 15-minute step-up window (API keys, IdPs, roles, security policy) plus the recovery codes.
+  describe('first-factor enrolment is not a takeover (ASVS V2.5 / V3.7.1)', () => {
+    it('an old session (a stolen refresh cookie keeps it alive) cannot enrol a first factor', async () => {
+      const s = await signIn(A().slug, VICTIM);
+      await tenantPrisma.forTenant(SUPER, (tx) => tx.session.update({ where: { id: s.sid }, data: { createdAt: new Date(Date.now() - 11 * 60_000) } }));
+      expect(codeOf(await call('post', '/auth/mfa/totp/setup', s).expect(403))).toBe('REAUTH_REQUIRED');
+      expect(codeOf(await call('post', '/auth/mfa/passkeys/registration-options', s).expect(403))).toBe('REAUTH_REQUIRED');
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.authenticator.count({ where: { userId: users[VICTIM] } }))).toBe(0);
+    });
+
+    it('a fresh enrolment gives no step-up, signs out every other session, and the owner is told', async () => {
+      const owner = await signIn(A().slug, VICTIM);
+      const attacker = await signIn(A().slug, VICTIM);
+      await enrolTotp(attacker);
+
+      // No step-up from enrolling: API keys, recovery codes, security policy all refuse.
+      expect(codeOf(await call('post', '/organizations/integrations/api-key', attacker).send({}).expect(403))).toBe('STEP_UP_REQUIRED');
+      expect(codeOf(await call('post', '/auth/mfa/recovery-codes', attacker).expect(403))).toBe('STEP_UP_REQUIRED');
+      expect(codeOf(await call('patch', '/security/policy', attacker).send({ passwordMinLength: 15 }).expect(403))).toBe('STEP_UP_REQUIRED');
+
+      // The owner's other session is gone, and they hear about it at once.
+      await call('get', '/auth/mfa', owner).expect(401);
+      expect((await session(owner.sid)).revokedReason).toBe('mfa_enrolled');
+      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: VICTIM, subject: 'Two-step verification added to your YukthiX account' }));
+    });
+  });
+
   describe('admin MFA reset (YX-IAM-11)', () => {
-    // ADMIN2 enrols an authenticator app now, which leaves this session freshly stepped up.
+    // ADMIN2 enrols an authenticator app now and steps up with it (enrolling is no step-up).
     let admin2: Signed;
     beforeAll(async () => {
       admin2 = await signIn(A().slug, ADMIN2);
-      await enrolTotp(admin2);
+      const { secret: admin2Secret } = await enrolTotp(admin2);
+      await call('post', '/auth/mfa/step-up', admin2).send({ factor: 'totp', code: await totp(admin2Secret) }).expect(200);
     });
 
     it('an ordinary account is reset by one admin: factors and sessions revoked, enrolment due at once', async () => {

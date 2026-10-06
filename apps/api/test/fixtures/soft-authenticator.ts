@@ -45,12 +45,13 @@ export class SoftAuthenticator {
   }
 
   // navigator.credentials.create() as @simplewebauthn/browser returns it.
-  register(options: { challenge: string }, overrides: { origin?: string; type?: string } = {}) {
+  // `synced`: report a backed-up, multi-device passkey (BE + BS flags) rather than a device-bound key.
+  register(options: { challenge: string }, overrides: { origin?: string; type?: string; synced?: boolean } = {}) {
     const idLength = Buffer.alloc(2);
     idLength.writeUInt16BE(this.credentialId.length);
     const attested = Buffer.concat([Buffer.alloc(16), idLength, this.credentialId, this.cosePublicKey]);
     const clientData = { type: overrides.type ?? 'webauthn.create', challenge: options.challenge, origin: overrides.origin ?? this.origin, crossOrigin: false };
-    const attestationObject = isoCBOR.encode(new Map<string, unknown>([['fmt', 'none'], ['attStmt', new Map()], ['authData', this.authData(FLAG_UP | FLAG_UV | FLAG_AT, attested)]]) as never);
+    const attestationObject = isoCBOR.encode(new Map<string, unknown>([['fmt', 'none'], ['attStmt', new Map()], ['authData', this.authData(FLAG_UP | FLAG_UV | FLAG_AT | (overrides.synced ? 0x18 : 0), attested)]]) as never);
     return {
       id: this.id,
       rawId: this.id,
