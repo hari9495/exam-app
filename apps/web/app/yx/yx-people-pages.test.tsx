@@ -57,18 +57,27 @@ describe('/yx layout: the People group follows grants and the employee record', 
   const MFA = { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' };
   const links = async () => within(await screen.findByRole('navigation', { name: 'Settings' })).getAllByRole('link').map((a) => a.textContent);
 
-  it('HR sees Job history and Job changes', async () => {
-    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: ['employee.profile.view', 'employee.change.manage'], 'GET /people/employees': [PERSON] });
+  const NO_TEAM = { managerId: null, members: [] };
+  const MEMBER = { id: 'p-arjun', name: 'Arjun Kulkarni', relation: 'direct' };
+
+  it('HR sees the whole People group', async () => {
+    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: ['employee.profile.view', 'employee.change.manage'], 'GET /people/employees': [PERSON], 'GET /people/team': NO_TEAM });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(await links()).toEqual(['My security', 'Job history', 'Job changes']));
+    await waitFor(async () => expect(await links()).toEqual(['My security', 'Directory', 'Org chart', 'Job history', 'Job changes', 'Probation', 'Bulk changes']));
   });
 
-  it('a manager or employee without HR grants sees only Job history; someone with no record sees neither', async () => {
-    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: [], 'GET /people/employees': [PERSON] });
+  it('a manager sees the directory, their team, history and probations; raising on behalf adds Job changes', async () => {
+    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: ['request.raise_on_behalf'], 'GET /people/employees': [PERSON], 'GET /people/team': { managerId: 'p-divya', members: [MEMBER] } });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    await waitFor(async () => expect(await links()).toEqual(['My security', 'Directory', 'Org chart', 'My team', 'Job history', 'Job changes', 'Probation']));
+  });
+
+  it('an employee without reports sees the directory and their history; someone with no record sees no People group', async () => {
+    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: [], 'GET /people/employees': [PERSON], 'GET /people/team': { managerId: 'p-arjun', members: [] } });
     const { unmount } = wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(await links()).toEqual(['My security', 'Job history']));
+    await waitFor(async () => expect(await links()).toEqual(['My security', 'Directory', 'Org chart', 'Job history']));
     unmount();
-    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: [], 'GET /people/employees': [] });
+    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: [], 'GET /people/employees': [], 'GET /people/team': NO_TEAM });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
     await screen.findByText('page');
     await waitFor(() => expect(api).toHaveBeenCalledWith('/people/employees', {}, 'tok'));

@@ -16,6 +16,7 @@ export const YX_KEYS = [
   'employee.change.manage',
   'employee.change.approve',
   'employee.salary.manage',
+  'request.raise_on_behalf',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

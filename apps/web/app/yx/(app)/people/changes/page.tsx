@@ -25,6 +25,7 @@ export default function YxJobChangesPage() {
       canApprove={perms.has('employee.change.approve')}
       canManage={canManage}
       personHref={(employeeId) => `/yx/people/history?person=${id(employeeId)}`}
+      batchHref={(batchId) => `/yx/people/bulk-changes?batch=${id(batchId)}`}
       onPreview={(changeId) => write<Impact>('GET', `/changes/${id(changeId)}/preview`)}
       onApprove={async (changeId, confirmRebase) => void (await write('POST', `/changes/${id(changeId)}/approve`, { confirmRebase }))}
       onReject={async (changeId, reason) => void (await write('POST', `/changes/${id(changeId)}/reject`, { reason }))}
