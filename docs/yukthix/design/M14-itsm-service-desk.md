@@ -108,8 +108,15 @@
 - Tickets from customers land in the platform console; agents see company, plan and health (P14 / P20).
 - Support sessions with tenant approval (P02 Q8) launched from the ticket.
 
+## Decisions
+
+| # | Topic | Decision (6 Oct 2026) |
+|---|---|---|
+| Q1 | Price | **₹999 per agent per month** in India, **$10** elsewhere; one all-inclusive plan with every feature above, no add-ons. Free: unlimited requesters (employees, customers, guests), unlimited assets, approvers. Annual prepay 10 months for 12; founding offer ₹799 locked 36 months for the first 100 companies; minimum ₹999 a month; 30-day trial, no card, no free tier (same rules as PRICING-UNIT-ECONOMICS §2). Market check 6 Oct 2026: Freshservice India ₹1,799–10,499, ManageEngine SDP Cloud $13–67, Jira SM $20–51, Zoho Desk India ₹420–2,400 per agent. |
+| Q2 | YukthiX HR bundle | The employee → HR helpdesk (M08: tickets, KB, SLA) stays inside the ₹99 HRMS price. IT, Admin, Facilities and other agents on the full Service Desk pay ₹999 per agent. |
+| Q3 | Device discovery | **osquery** (open source, Apache 2.0, Linux Foundation) packaged with the company's enrolment key; our API implements osquery's built-in TLS enrol / config / logger endpoints, so no agent code of our own runs on devices. Plus imports from Intune, Jamf and Google Workspace, and an optional office probe (read-only SNMP + ARP; **not nmap**, whose licence forbids bundling in a paid product). Per-company enrolment secret, per-device key (revocable), TLS with our certificate pinned, code-signed Windows / macOS installers (go-live item), no personal data (no browsing history or files). |
+| Q4 | Remote actions | **None, ever: inventory only.** The agent runs only our fixed read-only query pack; no remote commands, scripts or ad-hoc live queries. A breach of YukthiX can never control customer devices. Remote control stays with the company's own MDM. |
+| Q5 | Build order inside step 3b | Every feature is built; order only. **3b-1 Core:** incidents / tickets, queues, SLA / OLA + business hours, portal + in-app help drawer, email-to-ticket, knowledge base + public help centre, CSAT, external requesters, YukthiX's own support in the platform console (we use it first), core reports. **3b-2 ESM:** service catalogue with forms and approvals, HR / Admin / Facilities / Finance desks, automation rules, live chat, WhatsApp, Teams / Slack. **3b-3 ITIL:** problem, change / CAB + calendar, release, assets + CMDB, osquery discovery + MDM import + office probe, licences, vendors / contracts / procurement. **3b-4 Operations:** monitoring events, on-call + paging, status page, major incident, AI (routing, suggested replies, virtual agent), projects, facilities booking, importers, integrations marketplace. |
+
 ## Still to decide (in the detailed design)
-- Pricing and packaging for the standalone product (per agent / month like the market, or bundled).
-- Discovery agent: build vs a proven open-source agent (e.g. osquery) — library-first preferred.
 - Live chat transport (WebSocket gateway already in the API vs a managed service).
-- Phasing inside step 3b (suggested: core ticketing + catalogue + KB + SLA + email + portal first; then problem / change / CMDB / assets; then on-call, events, status page, procurement).
