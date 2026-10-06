@@ -50,7 +50,7 @@ describe('SessionsService', () => {
     tenantPrisma = { forTenant: jest.fn(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
     audit = { record: jest.fn() };
     email = { send: jest.fn().mockResolvedValue({}) };
-    service = new SessionsService(tenantPrisma as any, audit as any, email as any);
+    service = new SessionsService(tenantPrisma as any, audit as any, email as any, {} as any);
   });
 
   describe('create', () => {
@@ -202,9 +202,9 @@ describe('SessionsService', () => {
     expect(tx.loginEvent.findMany.mock.calls[0][0].where).toEqual({ organizationId: 'org-9', result: 'failed' });
   });
 
-  it("'unsuccessful' lists every result except success", async () => {
+  it("'unsuccessful' lists every result except success and an admin unlock", async () => {
     await service.listLoginEvents(ORG, { result: 'unsuccessful', method: 'oidc' });
-    expect(tx.loginEvent.findMany.mock.calls[0][0].where).toMatchObject({ result: { not: 'success' }, method: 'oidc' });
+    expect(tx.loginEvent.findMany.mock.calls[0][0].where).toMatchObject({ result: { notIn: ['success', 'unlocked'] }, method: 'oidc' });
   });
 
   it('escapes attacker-controlled request data in notification emails', async () => {

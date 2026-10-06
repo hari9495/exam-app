@@ -1,12 +1,13 @@
-import { Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { Request } from 'express';
+import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from './current-tenant.decorator';
-import { SessionsService } from './sessions.service';
-import { LoginEventsQueryDto, MyLoginHistoryQueryDto, SessionsQueryDto } from './dto/session-queries.dto';
+import { SessionsService, resolveClientMeta } from './sessions.service';
+import { LoginEventsQueryDto, MyLoginHistoryQueryDto, SessionsQueryDto, UnlockAccountDto } from './dto/session-queries.dto';
+import { RequireStepUp } from './step-up.decorator';
 
 interface RequestUser {
   userId: string;
@@ -66,6 +67,22 @@ export class SessionsController {
   @RequirePermissions('org:manage_users')
   async adminRevoke(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     await this.sessions.adminRevoke(ctx, (req.user as RequestUser).userId, id);
+  }
+
+  // Admin › Login activity › Unlock (YX-IAM-07): clears a person's account lock in this tenant.
+  // A step-up action; never while impersonating; the per-IP lock and MFA are untouched.
+  @Post('security/users/:id/unlock')
+  @HttpCode(200)
+  @RequirePermissions('org:manage_users')
+  @RequireStepUp()
+  unlockAccount(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @CurrentTenant() ctx: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UnlockAccountDto,
+  ) {
+    return this.sessions.unlockAccount(ctx, this.self(req).userId, id, dto.reason.trim(), resolveClientMeta(req, res));
   }
 
   @Get('security/login-events')
