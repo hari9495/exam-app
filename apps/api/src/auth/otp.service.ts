@@ -108,7 +108,10 @@ export class OtpService {
         .exec();
       if (!replies || replies.some(([error]) => error)) throw new Error('otp MULTI failed');
       const over = Number(replies[1][1]) > OTP_SENDS_PER_IDENTIFIER_PER_HOUR ? sends : Number(replies[3][1]) > OTP_SENDS_PER_IP_PER_HOUR ? ipSends : null;
-      if (over) throw new TooManyOtpRequestsException(Math.max(1, await this.redis.ttl(over)));
+      if (over) {
+        await this.redis.del(cooldown); // a refused send must not start a cooldown for this identifier
+        throw new TooManyOtpRequestsException(Math.max(1, await this.redis.ttl(over)));
+      }
     });
   }
 

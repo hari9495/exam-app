@@ -152,6 +152,31 @@ describe('PostgreSQL row-level security (app role)', () => {
     ).rejects.toThrow(/permission denied/);
   });
 
+  // P12 Part 1d: a verified mobile number signs in by one-time code, so it is tenant data like the
+  // rest of the user row -- and unique only within one company.
+  it("(b) org A can neither find nor change org B's verified mobile numbers; the same number may verify in each company", async () => {
+    const MOBILE = '+919876500001';
+    await tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, (tx) =>
+      tx.user.update({ where: { id: userB }, data: { mobileNumber: MOBILE, mobileVerifiedAt: new Date() } }),
+    );
+    const seenByA = await tenantPrisma.forTenant(asA(), async (tx) => ({
+      found: await tx.user.count({ where: { mobileNumber: MOBILE } }),
+      cleared: await tx.$executeRaw`UPDATE users SET mobile_number = NULL, mobile_verified_at = NULL WHERE id = ${userB}::uuid`,
+    }));
+    expect(seenByA).toEqual({ found: 0, cleared: 0 });
+    // Org A's own user verifies the same number: allowed (uniqueness is per company).
+    await expect(
+      tenantPrisma.forTenant(asA(), (tx) => tx.user.updateMany({ where: { organizationId: orgA }, data: { mobileNumber: MOBILE, mobileVerifiedAt: new Date() } })),
+    ).resolves.toEqual({ count: 1 });
+    // Only E.164 is ever stored, and "verified" needs a number.
+    await expect(
+      tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, (tx) => tx.$executeRaw`UPDATE users SET mobile_number = '98765 00001' WHERE id = ${userB}::uuid`),
+    ).rejects.toThrow(/users_mobile_number_e164_check/);
+    await expect(
+      tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, (tx) => tx.$executeRaw`UPDATE users SET mobile_number = NULL WHERE id = ${userB}::uuid`),
+    ).rejects.toThrow(/users_mobile_verified_check/);
+  });
+
   it("(b) org A cannot read org B's sessions or login events", async () => {
     const absolute = new Date(Date.now() + 3_600_000);
     await tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, async (tx) => {
