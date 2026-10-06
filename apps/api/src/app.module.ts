@@ -67,6 +67,7 @@ import { ApprovalsModule } from './approvals/approvals.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { OrgStructureModule } from './org-structure/org-structure.module';
 import { EmployeeHistoryModule } from './employee-history/employee-history.module';
+import { AccessModule } from './access/access.module';
 import { PeopleModule } from './people/people.module';
 import { FieldPermissionsModule } from './field-permissions/field-permissions.module';
 import { RecycleBinModule } from './recycle-bin/recycle-bin.module';
@@ -153,6 +154,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     OrgStructureModule,
     EmployeeHistoryModule,
     PeopleModule,
+    AccessModule,
     FieldPermissionsModule,
     RecycleBinModule,
     RemindersModule,

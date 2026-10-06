@@ -8,6 +8,7 @@ import {
   UserFieldPermissionConfig,
   parseUserFieldPermissions,
   validateUserFieldPermissions,
+  holdsConfidential,
 } from '@exam-platform/shared';
 import { assignablePermissions, isAssignableKey, AssignablePermission } from '../rbac/assignable-permissions';
 import { UpsertPermissionProfileDto, UpdatePermissionProfileDto } from './dto/upsert-permission-profile.dto';
@@ -94,6 +95,16 @@ export class PermissionProfilesService {
         const organizationId = context.organizationId as string;
         const existing = await tx.permissionProfile.findFirst({ where: { id, organizationId } });
         if (!existing) throw new NotFoundException(`Permission profile ${id} not found`);
+        // P02 §4.6: adding Confidential access to a role people already hold would hand it out without the
+        // second admin's approval a grant needs. Make a new role and grant it instead.
+        if (dto.permissions !== undefined) {
+          const before = new Set(JSON.parse(existing.permissionsJson) as string[]);
+          const added = dto.permissions.filter((k) => !before.has(k));
+          const held = (await tx.user.count({ where: { permissionProfileId: id } })) + (await tx.roleGrant.count({ where: { organizationId, permissionProfileId: id, status: { in: ['active', 'pending'] } } }));
+          if (held && holdsConfidential(added)) {
+            throw new ConflictException('People hold this role, so Confidential access cannot be added to it. Create a new role and grant it (another admin approves).');
+          }
+        }
 
         const data: Prisma.PermissionProfileUpdateInput = {};
         if (dto.name !== undefined) data.name = dto.name;
@@ -127,6 +138,10 @@ export class PermissionProfilesService {
       if (!existing) throw new NotFoundException(`Permission profile ${id} not found`);
 
       const assignedUserCount = await tx.user.count({ where: { permissionProfileId: id } });
+      // Granted roles keep their history (P02 §3): a role ever granted stays.
+      if (await tx.roleGrant.count({ where: { organizationId, permissionProfileId: id } })) {
+        throw new ConflictException('Cannot delete: this role has been granted in Roles & access. Revoke the grants; the role stays for the record.');
+      }
       if (assignedUserCount > 0) {
         // Do NOT cascade/null the assignees -- surface the count and let an admin reassign
         // them first (assignment UI lands in Task 5).

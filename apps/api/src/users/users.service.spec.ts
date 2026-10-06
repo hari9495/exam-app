@@ -1098,7 +1098,7 @@ describe('UsersService', () => {
           update: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', name: 'Al', organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date(), permissionProfileId: 'profile1' }),
         },
         permissionProfile: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'profile1', organizationId: 'org1' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 'profile1', organizationId: 'org1', permissionsJson: '["candidate:view"]' }),
         },
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
@@ -1118,6 +1118,17 @@ describe('UsersService', () => {
         ctx,
         expect.objectContaining({ action: 'user.updated', metadata: expect.objectContaining({ changes: { permissionProfileId: { from: null, to: 'profile1' } } }) }),
       );
+    });
+
+    it('refuses a role opening Confidential data: that goes through Roles & access with a second admin (P02 §4.6)', async () => {
+      const tx = {
+        ...sessionTx(),
+        user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1', permissionProfileId: null }), update: jest.fn() },
+        permissionProfile: { findFirst: jest.fn().mockResolvedValue({ id: 'profile1', organizationId: 'org1', permissionsJson: '["employee.salary.view"]' }) },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await expect(service.update(ctx, 't1', { permissionProfileId: 'profile1' }, 'admin1')).rejects.toThrow(/Roles & access/);
+      expect(tx.user.update).not.toHaveBeenCalled();
     });
 
     it('rejects a permission profile that belongs to another org', async () => {

@@ -3,7 +3,7 @@ import { hasActiveIdentityProvider } from '../auth/identity-providers';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma, User } from '@prisma/client';
 import * as argon2 from 'argon2';
-import { TenantPrismaService, revokeStaffSessions } from '@exam-platform/shared';
+import { TenantPrismaService, holdsConfidential, revokeStaffSessions } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -318,6 +318,10 @@ export class UsersService {
         });
         if (!profile) {
           throw new NotFoundException('Permission profile not found');
+        }
+        // P02 §4.6: a role opening Confidential data is granted through Roles & access, where a second admin approves it.
+        if (profile.id !== target.permissionProfileId && holdsConfidential(JSON.parse(profile.permissionsJson) as string[])) {
+          throw new BadRequestException('This role opens Confidential data (pay, identity or bank details). Grant it in Roles & access, where another admin approves it.');
         }
       }
       const updated = await tx.user.update({
