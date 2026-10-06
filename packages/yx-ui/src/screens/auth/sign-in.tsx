@@ -82,6 +82,13 @@ export function SignInScreen(props: SignInScreenProps) {
     </div>
   );
   const alert = error && <InlineAlert tone="danger">{error}</InlineAlert>;
+  const ssoButtons = providers.length > 0 && (
+    <div className="yx-auth__or" role="group" aria-label="Or sign in with your company account">
+      {providers.map((p) => (
+        <Button key={p.id} fullWidth disabled={busy} onClick={() => props.onSso(p.id)}>{providerButtonLabel(p)}</Button>
+      ))}
+    </div>
+  );
 
   const title = step === 'choose-company' ? 'Choose your company' : 'Sign in';
   const subtitle =
@@ -132,13 +139,7 @@ export function SignInScreen(props: SignInScreenProps) {
               </FormField>
               {alert}
               <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!identifier}>Continue</Button>
-              {providers.length > 0 && (
-                <div className="yx-auth__or" role="group" aria-label="Or sign in with your company account">
-                  {providers.map((p) => (
-                    <Button key={p.id} fullWidth disabled={busy} onClick={() => props.onSso(p.id)}>{providerButtonLabel(p)}</Button>
-                  ))}
-                </div>
-              )}
+              {ssoButtons}
             </>
           )}
 
@@ -157,6 +158,7 @@ export function SignInScreen(props: SignInScreenProps) {
                 {isMobile && <Button size="sm" disabled={busy} onClick={() => props.onSendCode('whatsapp')}>Send a code on WhatsApp</Button>}
               </div>
               <Link href={props.forgotPasswordHref}>Forgot your password?</Link>
+              {ssoButtons}
             </>
           )}
 
@@ -174,6 +176,44 @@ export function SignInScreen(props: SignInScreenProps) {
               </div>
             </>
           )}
+        </form>
+      )}
+    </AuthFrame>
+  );
+}
+
+export interface ForgotPasswordScreenProps {
+  email: string;
+  onEmailChange: (value: string) => void;
+  onSubmit: () => void;
+  /** The request was sent: say so, the same whether or not an account exists. */
+  sent: boolean;
+  busy?: boolean;
+  error?: string | null;
+  signInHref: string;
+}
+
+/** "Forgot your password?" by work email only: every company account with it gets its own link. */
+export function ForgotPasswordScreen({ email, onEmailChange, onSubmit, sent, busy, error, signInHref }: ForgotPasswordScreenProps) {
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    onSubmit();
+  };
+  return (
+    <AuthFrame title="Reset your password" subtitle={sent ? undefined : 'We email a link to reset it. It works for 15 minutes.'}>
+      {sent ? (
+        <div className="yx-auth__form">
+          <Text as="p" role="status">If {email.trim()} has a YukthiX account, we sent it a reset link. With accounts in more than one company, each gets its own link.</Text>
+          <Link href={signInHref}>Back to sign in</Link>
+        </div>
+      ) : (
+        <form className="yx-auth__form" onSubmit={submit} noValidate>
+          <FormField label="Work email" required>
+            <TextField type="email" value={email} onChange={onEmailChange} autoComplete="username" spellCheck={false} autoCapitalize="none" />
+          </FormField>
+          {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+          <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!email.includes('@')}>Email me a reset link</Button>
+          <Link href={signInHref}>Back to sign in</Link>
         </form>
       )}
     </AuthFrame>

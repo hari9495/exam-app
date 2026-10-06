@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
-import { SignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
+import { ForgotPasswordScreen, SignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
 import { MfaChallengeScreen, MfaEnrolScreen } from './mfa';
 import { COMPANIES, NOW, ORG_NAME, PROVIDERS, RECOVERY_CODES, TOTP_SETUP } from './data';
 
@@ -57,6 +57,14 @@ export const PhoneChoose: S = {
   globals: { viewport: { value: 'phone' } },
   render: () => <SignIn step="choose-company" start={DIVYA} />,
 };
+
+function Forgot({ sent = false }: { sent?: boolean }) {
+  const [email, setEmail] = useState(sent ? DIVYA.identifier : '');
+  const [done, setDone] = useState(sent);
+  return <ForgotPasswordScreen email={email} onEmailChange={setEmail} onSubmit={() => setDone(true)} sent={done} signInHref="#sign-in" />;
+}
+export const ForgotPassword: S = { name: 'Forgot password · work email only', render: () => <Forgot /> };
+export const ForgotPasswordSent: S = { name: 'Forgot password · link sent', render: () => <Forgot sent /> };
 
 const challenge = { getPasskey: () => wait(), submit: () => wait(), sendCode: () => wait(), onStartAgain: () => {} };
 export const Challenge: S = { name: 'Second step · passkey and app', render: () => <MfaChallengeScreen factors={['passkey', 'totp', 'otp']} {...challenge} /> };

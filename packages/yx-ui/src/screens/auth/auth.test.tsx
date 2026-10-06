@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { SignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
+import { ForgotPasswordScreen, SignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
 import { MfaChallengeScreen, MfaEnrolScreen, StepUpDialog } from './mfa';
 import { MeSecurityScreen, type MeSecurityScreenProps } from './me-security';
 import { LoginActivityScreen, NO_FILTERS, type LoginActivityScreenProps } from './login-activity';
@@ -120,6 +120,23 @@ describe('SignInScreen (email first, no company code)', () => {
   it('announces errors', () => {
     render(<SignIn step="password" start={DIVYA} error="Invalid email or password." />);
     expect(screen.getByRole('alert')).toHaveTextContent('Invalid email or password.');
+  });
+});
+
+describe('ForgotPasswordScreen', () => {
+  it('asks for the work email only, and answers the same whether or not an account exists', async () => {
+    const onSubmit = vi.fn();
+    function Forgot() {
+      const [email, setEmail] = useState('');
+      const [sent, setSent] = useState(false);
+      return <ForgotPasswordScreen email={email} onEmailChange={setEmail} onSubmit={() => (onSubmit(), setSent(true))} sent={sent} signInHref="/yx/sign-in" />;
+    }
+    render(<Forgot />);
+    expect(screen.queryByLabelText(/company/i)).toBeNull();
+    await userEvent.type(screen.getByLabelText(/Work email/), 'divya.r@kaverifoods.in');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me a reset link' }));
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(screen.getByRole('status')).toHaveTextContent('If divya.r@kaverifoods.in has a YukthiX account, we sent it a reset link.');
   });
 });
 
