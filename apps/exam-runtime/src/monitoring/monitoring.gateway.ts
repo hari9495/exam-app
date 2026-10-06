@@ -32,6 +32,14 @@ interface StaffSocketUser {
   session: SessionAssurance;
 }
 
+// What re-validating the socket needs (kept apart from the user it describes): the server-side
+// session, whose holder owns it, and when the access token presented at connect expires.
+interface StaffSocketAuth {
+  sid: string;
+  sessionUserId: string;
+  expiresAtMs: number;
+}
+
 // Every tick rebroadcasts the full roster, so this is also how often a recruiter's
 // "Time remaining" and "Progress" columns advance.
 export const ROSTER_TICK_MS = 15_000;
@@ -88,6 +96,7 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
         actingSuperAdmin?: boolean;
         impersonatorUserId?: string;
         sid?: string;
+        exp?: number;
       };
       const session = await touchStaffSession(this.tenantPrisma, payload.sid, payload.impersonatorUserId ?? payload.sub);
       if (!session) {
@@ -104,6 +113,11 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
         permissionProfileId: payload.permissionProfileId ?? null,
         actingSuperAdmin: payload.actingSuperAdmin,
         session,
+      };
+      (client.data as { auth?: StaffSocketAuth }).auth = {
+        sid: payload.sid!,
+        sessionUserId: payload.impersonatorUserId ?? payload.sub,
+        expiresAtMs: (payload.exp ?? 0) * 1000,
       };
     } catch {
       // invalid / expired token, or the session lookup failed: stay unauthenticated
@@ -199,7 +213,34 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
     return granted.has('exam:manage');
   }
 
+  // Every connected socket is re-checked on each roster tick (YX-IAM-06, ASVS V3.3): its session
+  // must still be live (not revoked, idle or past its absolute limit), the access token it
+  // connected with unexpired, and -- once it has joined an exam -- exam:manage and the MFA floor
+  // must still hold. Anything else disconnects it; the client reconnects with a fresh token, a
+  // revoked session cannot. Fails closed.
+  async revalidateSockets(): Promise<void> {
+    const sockets = this.server?.sockets;
+    if (!sockets) return;
+    await Promise.all(
+      [...sockets.values()].map(async (socket) => {
+        if (!(await this.stillAuthorised(socket).catch(() => false))) socket.disconnect(true);
+      }),
+    );
+  }
+
+  private async stillAuthorised(socket: Socket): Promise<boolean> {
+    const { user, auth } = socket.data as { user?: StaffSocketUser; auth?: StaffSocketAuth };
+    if (!user || !auth || auth.expiresAtMs <= Date.now()) return false;
+    const session = await touchStaffSession(this.tenantPrisma, auth.sid, auth.sessionUserId);
+    if (!session) return false;
+    user.session = session;
+    const watching = [...socket.rooms].some((room) => room.startsWith(EXAM_ROOM_PREFIX));
+    if (!watching) return true;
+    return Boolean(user.actingSuperAdmin || (await this.hasExamManagePermission(user))) && mfaSatisfied(session);
+  }
+
   private async tickRoster(): Promise<void> {
+    await this.revalidateSockets();
     const rooms = this.server.adapter.rooms;
     for (const roomName of rooms.keys()) {
       if (!roomName.startsWith(EXAM_ROOM_PREFIX)) {

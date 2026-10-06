@@ -336,6 +336,88 @@ describe('MonitoringGateway', () => {
     });
   });
 
+  // Regression (ASVS V3.3, YX-IAM-06): a socket used to be checked at connect only, so a proctor
+  // whose session was revoked (admin revoke, password reset, deactivation, MFA reset, role
+  // change) kept receiving live roster data, past token expiry and session limits.
+  describe('re-validating open sockets on every roster tick', () => {
+    const USER = '11111111-1111-4111-8111-111111111111';
+    const SID = '22222222-2222-4222-8222-222222222222';
+    const connected = async (claims: Record<string, unknown> = {}, rooms: string[] = ['exam:exam-1']) => {
+      const token = jwt.sign({ sub: USER, organizationId: 'org-1', role: 'recruiter', sid: SID, ...claims }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: 900 });
+      const socket = makeSocket({ id: 's1', handshake: { auth: { token } }, rooms: new Set(['s1', ...rooms]) });
+      tenantPrisma.forTenant.mockResolvedValueOnce([ASSURANCE]);
+      await gateway.authenticate(socket);
+      (gateway as any).server = { sockets: new Map([['s1', socket]]), adapter: { rooms: new Map() } };
+      return socket;
+    };
+    const grantsExamManage = (granted: boolean) => prisma.rolePermission.findMany.mockResolvedValue(granted ? [{ permission: { key: 'exam:manage' } }] : []);
+    // touchStaffSession (raw query) or the permission lookup (callback), by call shape.
+    const sessionIs = (rows: unknown[]) =>
+      tenantPrisma.forTenant.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn({ $queryRaw: async () => rows, orgRolePermission: { findUnique: async () => null } }),
+      );
+
+    it('remembers which session the socket rides on and when its token expires', async () => {
+      const socket = await connected();
+      expect(socket.data.auth).toEqual({ sid: SID, sessionUserId: USER, expiresAtMs: expect.any(Number) });
+      expect(socket.data.auth.expiresAtMs).toBeGreaterThan(Date.now());
+    });
+
+    it('keeps a live, authorised socket and refreshes its session snapshot', async () => {
+      const socket = await connected();
+      grantsExamManage(true);
+      const later = { ...ASSURANCE, mfaVerifiedAt: new Date(Date.now() + 1) };
+      sessionIs([later]);
+      await gateway.revalidateSockets();
+      expect(socket.disconnect).not.toHaveBeenCalled();
+      expect(socket.data.user.session).toEqual(later);
+    });
+
+    it('disconnects a socket whose session was revoked or idled out', async () => {
+      const socket = await connected();
+      sessionIs([]);
+      await gateway.revalidateSockets();
+      expect(socket.disconnect).toHaveBeenCalledWith(true);
+    });
+
+    it('disconnects a socket whose access token has expired, without a lookup', async () => {
+      const socket = await connected();
+      socket.data.auth.expiresAtMs = Date.now() - 1;
+      tenantPrisma.forTenant.mockClear();
+      await gateway.revalidateSockets();
+      expect(socket.disconnect).toHaveBeenCalledWith(true);
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
+
+    it('disconnects a watcher who lost exam:manage, or whose MFA grace ran out at AAL1', async () => {
+      const lost = await connected();
+      grantsExamManage(false);
+      sessionIs([ASSURANCE]);
+      await gateway.revalidateSockets();
+      expect(lost.disconnect).toHaveBeenCalledWith(true);
+
+      const aal1 = await connected();
+      grantsExamManage(true);
+      sessionIs([{ assuranceLevel: 'aal1', mfaVerifiedAt: null, mfaMethod: null, mfaEnrolmentDueAt: new Date(0) }]);
+      await gateway.revalidateSockets();
+      expect(aal1.disconnect).toHaveBeenCalledWith(true);
+    });
+
+    it('fails closed: a lookup error disconnects', async () => {
+      const socket = await connected();
+      tenantPrisma.forTenant.mockRejectedValue(new Error('db down'));
+      await gateway.revalidateSockets();
+      expect(socket.disconnect).toHaveBeenCalledWith(true);
+    });
+
+    it('runs on the roster tick', async () => {
+      const spy = jest.spyOn(gateway, 'revalidateSockets').mockResolvedValue(undefined);
+      (gateway as any).server = { adapter: { rooms: new Map() } };
+      await (gateway as any).tickRoster();
+      expect(spy).toHaveBeenCalled();
+    });
+  });
+
   describe('emitLeaderboardUpdate', () => {
     it('emits leaderboard:update to the exam room', () => {
       (gateway as any).server = { to: jest.fn().mockReturnThis(), emit: jest.fn() };
