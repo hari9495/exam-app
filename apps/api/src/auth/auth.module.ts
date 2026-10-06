@@ -15,6 +15,8 @@ import { SessionsService } from './sessions.service';
 import { SessionsController } from './sessions.controller';
 import { LOGIN_PROTECTION_REDIS, LoginProtectionService } from './login-protection.service';
 import { PasswordPolicyModule } from './password-policy.module';
+import { SecurityPolicyService } from './security-policy.service';
+import { SecurityPolicyController } from './security-policy.controller';
 
 // Its own connection, fast-failing: the shared BullMQ-style connection (maxRetriesPerRequest:
 // null) would park sign-in requests forever during a Redis outage instead of failing closed.
@@ -33,10 +35,11 @@ function createLoginProtectionRedis(): Redis {
     SamlCacheProvider,
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },
     SessionsService,
+    SecurityPolicyService,
     LoginProtectionService,
     { provide: LOGIN_PROTECTION_REDIS, useFactory: createLoginProtectionRedis },
   ],
-  controllers: [AuthController, SamlController, SessionsController],
+  controllers: [AuthController, SamlController, SessionsController, SecurityPolicyController],
   exports: [AuthService],
 })
 export class AuthModule {}
