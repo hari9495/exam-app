@@ -48,46 +48,89 @@ describe('MonitoringGateway', () => {
   });
 
   describe('handleConnection', () => {
-    it('disconnects a socket with no auth token', () => {
+    const USER = '11111111-1111-4111-8111-111111111111';
+    const SID = '22222222-2222-4222-8222-222222222222';
+    const sessionLive = (live: boolean) => tenantPrisma.forTenant.mockResolvedValueOnce([{ n: live ? 1 : 0 }]);
+
+    it('disconnects a socket with no auth token', async () => {
       const socket = makeSocket();
 
+      await gateway.authenticate(socket);
       gateway.handleConnection(socket);
 
       expect(socket.disconnect).toHaveBeenCalledWith(true);
     });
 
-    it('disconnects a socket with an invalid token', () => {
+    it('disconnects a socket with an invalid token', async () => {
       const socket = makeSocket({ handshake: { auth: { token: 'not-a-real-jwt' } } });
 
+      await gateway.authenticate(socket);
       gateway.handleConnection(socket);
 
       expect(socket.disconnect).toHaveBeenCalledWith(true);
     });
 
-    it('attaches the decoded staff user to the socket for a valid token', () => {
-      const token = jwt.sign(
-        { sub: 'user-1', organizationId: 'org-1', role: 'recruiter' },
-        { secret: process.env.JWT_ACCESS_SECRET },
-      );
+    it('attaches the decoded staff user to the socket for a valid token with a live session', async () => {
+      const token = jwt.sign({ sub: USER, organizationId: 'org-1', role: 'recruiter', sid: SID }, { secret: process.env.JWT_ACCESS_SECRET });
       const socket = makeSocket({ handshake: { auth: { token } } });
+      sessionLive(true);
 
+      await gateway.authenticate(socket);
       gateway.handleConnection(socket);
 
       expect(socket.disconnect).not.toHaveBeenCalled();
-      expect(socket.data.user).toEqual({ userId: 'user-1', organizationId: 'org-1', role: 'recruiter', permissionProfileId: null });
+      expect(socket.data.user).toEqual({ userId: USER, organizationId: 'org-1', role: 'recruiter', permissionProfileId: null });
     });
 
-    it('carries the actingSuperAdmin claim onto the socket for a super-admin acting in an org', () => {
+    it('disconnects a validly signed token whose session is revoked or expired', async () => {
+      const token = jwt.sign({ sub: USER, organizationId: 'org-1', role: 'recruiter', sid: SID }, { secret: process.env.JWT_ACCESS_SECRET });
+      const socket = makeSocket({ handshake: { auth: { token } } });
+      sessionLive(false);
+
+      await gateway.authenticate(socket);
+      gateway.handleConnection(socket);
+
+      expect(socket.disconnect).toHaveBeenCalledWith(true);
+      expect(socket.data.user).toBeUndefined();
+    });
+
+    it('disconnects a pre-sessions token that carries no sid, without touching the database', async () => {
+      const token = jwt.sign({ sub: USER, organizationId: 'org-1', role: 'recruiter' }, { secret: process.env.JWT_ACCESS_SECRET });
+      const socket = makeSocket({ handshake: { auth: { token } } });
+
+      await gateway.authenticate(socket);
+      gateway.handleConnection(socket);
+
+      expect(socket.disconnect).toHaveBeenCalledWith(true);
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    });
+
+    it('authenticates in namespace middleware, so the connection is accepted only after the session check', async () => {
+      const token = jwt.sign({ sub: USER, organizationId: 'org-1', role: 'recruiter', sid: SID }, { secret: process.env.JWT_ACCESS_SECRET });
+      let middleware: (socket: unknown, next: () => void) => void = () => undefined;
+      gateway.afterInit({ use: (fn: typeof middleware) => (middleware = fn) } as any);
+      gateway.onModuleDestroy();
+      const socket = makeSocket({ handshake: { auth: { token } } });
+      sessionLive(true);
+
+      await new Promise<void>((resolve) => middleware(socket, resolve));
+
+      expect(socket.data.user).toEqual(expect.objectContaining({ userId: USER }));
+    });
+
+    it('carries the actingSuperAdmin claim onto the socket for a super-admin acting in an org', async () => {
       const token = jwt.sign(
-        { sub: 'user-1', organizationId: 'org-1', role: 'super_admin', actingSuperAdmin: true },
+        { sub: USER, organizationId: 'org-1', role: 'super_admin', actingSuperAdmin: true, sid: SID },
         { secret: process.env.JWT_ACCESS_SECRET },
       );
       const socket = makeSocket({ handshake: { auth: { token } } });
+      sessionLive(true);
 
+      await gateway.authenticate(socket);
       gateway.handleConnection(socket);
 
       expect(socket.data.user).toEqual({
-        userId: 'user-1',
+        userId: USER,
         organizationId: 'org-1',
         role: 'super_admin',
         permissionProfileId: null,

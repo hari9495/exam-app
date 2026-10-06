@@ -582,6 +582,7 @@ describe('UsersService', () => {
     const storedHash = await argon2.hash('correct-password');
     const userUpdate = jest.fn();
     const refreshTokenUpdateMany = jest.fn();
+    const sessionUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
     tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
       fn({
         user: {
@@ -589,6 +590,7 @@ describe('UsersService', () => {
           update: userUpdate,
         },
         refreshToken: { updateMany: refreshTokenUpdateMany },
+        session: { updateMany: sessionUpdateMany },
       }),
     );
     jwt.verify.mockReturnValue({ sub: 'user-1', familyId: 'family-current' });
@@ -606,6 +608,11 @@ describe('UsersService', () => {
     expect(refreshTokenUpdateMany).toHaveBeenCalledWith({
       where: { userId: 'user-1', revokedAt: null, familyId: { not: 'family-current' } },
       data: { revokedAt: expect.any(Date) },
+    });
+    // The family is the session: every other session ends too (YX-IAM-06), the caller's stays.
+    expect(sessionUpdateMany).toHaveBeenCalledWith({
+      where: { userId: 'user-1', id: { not: 'family-current' }, revokedAt: null },
+      data: { revokedAt: expect.any(Date), revokedReason: 'password_changed' },
     });
     expect(audit.record).toHaveBeenCalledWith(
       { organizationId: 'org-1', isSuperAdmin: false },
@@ -859,11 +866,17 @@ describe('UsersService', () => {
           update: jest.fn().mockResolvedValue(safe),
         },
         refreshToken: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
+        session: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
       const result = await service.setStatus(ctx, 't1', 'deactivated', 'admin1');
       expect(result.status).toBe('deactivated');
       expect(tx.refreshToken.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 't1', revokedAt: null } }));
+      // Deactivation ends every live session at once, so open access tokens stop working now.
+      expect(tx.session.updateMany).toHaveBeenCalledWith({
+        where: { userId: 't1', revokedAt: null },
+        data: { revokedAt: expect.any(Date), revokedReason: 'user_deactivated' },
+      });
       expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.deactivated', actorUserId: 'admin1' }));
     });
 

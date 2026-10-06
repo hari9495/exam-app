@@ -5,7 +5,7 @@ import { randomBytes, createHash, randomUUID } from 'crypto';
 // argon2 above is retained deliberately: it still hashes PASSWORDS (lines 54,
 // 112), which are the low-entropy input it exists for. Only refresh tokens moved
 // to SHA-256 -- see refresh-token-hash.ts for why.
-import { PrismaService, hashRefreshToken, isLegacyArgon2Hash, refreshTokenMatches } from '@exam-platform/shared';
+import { PrismaService, hashRefreshToken, isLegacyArgon2Hash, refreshTokenMatches, revokeStaffSessions } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { isOrganizationActive, ORGANIZATION_INACTIVE_MESSAGE } from '@exam-platform/shared';
 import { LoginDto } from './dto/login.dto';
@@ -13,6 +13,8 @@ import { AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ClientMeta, SessionUser, SessionsService } from './sessions.service';
+import { LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
 
 interface TokenPair {
   accessToken: string;
@@ -20,6 +22,12 @@ interface TokenPair {
 }
 
 const PASSWORD_RESET_EXPIRY_MINUTES = 15;
+
+// Verified against when no account matched, so an unknown email costs the same argon2 work as
+// a wrong password and response timing cannot enumerate accounts. Same default parameters as
+// every real hash. Computed once, lazily.
+let dummyPasswordHash: Promise<string> | undefined;
+const getDummyPasswordHash = () => (dummyPasswordHash ??= argon2.hash(randomBytes(32).toString('hex')));
 
 // How long after a refresh token is rotated out that presenting it is treated as a benign
 // concurrent-refresh race rather than reuse of a stolen token.
@@ -48,17 +56,34 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
     private readonly emailService: EmailService,
+    private readonly sessions: SessionsService,
+    private readonly loginProtection: LoginProtectionService,
   ) {}
 
-  async login(dto: LoginDto): Promise<TokenPair> {
-    let organizationId: string | null = null;
+  // Password sign-in (YX-IAM-06/07/10). Unknown organisation, unknown email and wrong password
+  // are indistinguishable to the caller -- same 401, same argon2 cost, same lockout counters --
+  // and every attempt, including blocked ones, lands in login_events.
+  async login(dto: LoginDto, meta: ClientMeta): Promise<TokenPair> {
+    const identifier = dto.email.trim().toLowerCase();
+    const orgSlug = dto.organizationSlug?.trim().toLowerCase() ?? '';
+    const attempt = { identifier, method: 'password' as const, meta };
 
+    const org = dto.organizationSlug ? await this.prisma.organization.findUnique({ where: { slug: dto.organizationSlug } }) : null;
+
+    const block = await this.loginProtection.check(orgSlug, identifier, meta.ip);
+    if (block) {
+      await this.sessions.recordLoginEvent({ ...attempt, organizationId: org?.id ?? null, result: 'locked', reason: `${block.scope}_locked` });
+      throw new TooManyLoginAttemptsException(block.retryAfterSeconds);
+    }
+
+    let organizationId: string | null = null;
     if (dto.organizationSlug) {
-      const org = await this.prisma.organization.findUnique({ where: { slug: dto.organizationSlug } });
       if (!org) {
-        throw new UnauthorizedException('Invalid credentials');
+        await argon2.verify(await getDummyPasswordHash(), dto.password);
+        return this.rejectLogin(orgSlug, attempt, null, null, 'unknown_organization');
       }
       if (!isOrganizationActive(org.status)) {
+        await this.sessions.recordLoginEvent({ ...attempt, organizationId: org.id, result: 'failed', reason: 'organization_inactive' });
         throw new UnauthorizedException(ORGANIZATION_INACTIVE_MESSAGE);
       }
       organizationId = org.id;
@@ -75,20 +100,69 @@ export class AuthService {
         }),
     );
 
-    if (!user || !(await argon2.verify(user.passwordHash, dto.password))) {
-      throw new UnauthorizedException('Invalid credentials');
+    const passwordOk = await argon2.verify(user?.passwordHash ?? (await getDummyPasswordHash()), dto.password);
+    if (!user || !passwordOk) {
+      return this.rejectLogin(orgSlug, attempt, organizationId, user, user ? 'bad_password' : 'unknown_user');
     }
 
     if (user.status !== 'active') {
+      await this.sessions.recordLoginEvent({ ...attempt, organizationId, userId: user.id, result: 'failed', reason: 'account_inactive' });
       throw new UnauthorizedException('This account has been deactivated');
     }
 
-    const tokens = await this.issueTokenPair(user.id, user.organizationId, user.role, user.permissionProfileId ?? null);
+    await this.loginProtection.registerSuccess(orgSlug, identifier, meta.ip);
+    const tokens = await this.startSession(user, 'password', meta, identifier);
     await this.audit.record(
       { organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' },
       { actorUserId: user.id, action: 'login.success', entityType: 'user', entityId: user.id },
     );
+    return tokens;
+  }
+
+  private async rejectLogin(
+    orgSlug: string,
+    attempt: { identifier: string; method: 'password'; meta: ClientMeta },
+    organizationId: string | null,
+    user: SessionUser | null,
+    reason: string,
+  ): Promise<never> {
+    const { locked } = await this.loginProtection.registerFailure(orgSlug, attempt.identifier, attempt.meta.ip);
+    await this.sessions.recordLoginEvent({
+      ...attempt,
+      organizationId,
+      userId: user?.id ?? null,
+      result: 'failed',
+      reason: locked ? `${reason}+lockout_started` : reason,
+    });
+    if (locked && user) {
+      this.sessions.notifyLocked(user, attempt.meta);
+    }
+    throw new UnauthorizedException('Invalid credentials');
+  }
+
+  // Session + token pair + login history + new-device alert, for every successful sign-in path.
+  private async startSession(
+    user: SessionUser & { permissionProfileId?: string | null },
+    method: 'password' | 'saml',
+    meta: ClientMeta,
+    identifier: string,
+  ): Promise<TokenPair> {
+    const session = await this.sessions.create(user, method, meta);
+    const tokens = await this.issueTokenPair(user.id, user.organizationId, user.role, user.permissionProfileId ?? null, session);
     await this.recordLogin(user.id, user.organizationId, user.role);
+    await this.sessions.recordLoginEvent({
+      organizationId: user.organizationId,
+      userId: user.id,
+      identifier,
+      result: 'success',
+      method,
+      sessionId: session.id,
+      newDevice: session.newDevice,
+      meta,
+    });
+    if (session.newDevice) {
+      this.sessions.notifyNewDevice(user, meta);
+    }
     return tokens;
   }
 
@@ -152,6 +226,7 @@ export class AuthService {
         where: { userId: resetToken.userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+      await revokeStaffSessions(tx, { userId: resetToken.userId }, 'password_reset');
     });
 
     const user = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
@@ -169,6 +244,18 @@ export class AuthService {
       payload = this.jwt.verify(refreshToken, { secret: process.env.JWT_REFRESH_SECRET });
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    // The family is the session (sessions.id). A revoked / expired / idle session -- or a
+    // pre-sessions token whose family never had one -- ends here: retire whatever is left of the
+    // family and make the client sign in again. Not reuse, so no reuse audit entry.
+    const session = await this.sessions.findLive(payload.familyId, payload.sub);
+    if (!session) {
+      await this.prisma.refreshToken.updateMany({
+        where: { userId: payload.sub, familyId: payload.familyId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      throw new UnauthorizedException('Session expired');
     }
 
     const stored = await this.prisma.refreshToken.findFirst({
@@ -220,7 +307,7 @@ export class AuthService {
         // the other tab adopts this one's result over the BroadcastChannel, or on its next
         // 401 goes through this same forgiveness path itself.
         this.logger.warn(`Refresh race forgiven for user ${payload.sub} (token rotated ${Date.now() - justRotated.revokedAt!.getTime()}ms ago)`);
-        return this.issueAfterRefreshChecks(payload, stored);
+        return this.issueAfterRefreshChecks(payload, stored, session);
       }
       // Reuse of an already-rotated/unknown token: revoke the whole family. Only LIVE rows --
       // re-stamping already-revoked rows would move them back inside the grace window on every
@@ -229,6 +316,9 @@ export class AuthService {
         where: { userId: payload.sub, familyId: payload.familyId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+      // ...and the session it belongs to, so access tokens already issued from it die on their
+      // next request instead of living out their 15 minutes (YX-IAM-06).
+      await this.sessions.revokeById(payload.familyId, payload.sub, 'refresh_token_reuse');
       // The lookup below and the audit write both live inside this one try: the family
       // revocation above has already committed, so nothing security-critical is lost if
       // either fails, and a failure here -- whether the RLS-bypass transaction or the
@@ -264,7 +354,7 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token reuse detected — session revoked');
     }
 
-    return this.issueAfterRefreshChecks(payload, stored);
+    return this.issueAfterRefreshChecks(payload, stored, session);
   }
 
   // The tail of refresh(): revoke the presented live row, re-check the account and org are
@@ -273,6 +363,7 @@ export class AuthService {
   private async issueAfterRefreshChecks(
     payload: { sub: string; familyId: string },
     stored: { id: string } | null,
+    session: { id: string; absoluteExpiresAt: Date },
   ): Promise<TokenPair> {
     if (stored) {
       await this.prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
@@ -296,7 +387,7 @@ export class AuthService {
       }
     }
 
-    return this.issueTokenPair(user.id, user.organizationId, user.role, user.permissionProfileId ?? null, payload.familyId);
+    return this.issueTokenPair(user.id, user.organizationId, user.role, user.permissionProfileId ?? null, session);
   }
 
   async logout(refreshToken: string): Promise<void> {
@@ -310,17 +401,14 @@ export class AuthService {
       where: { userId: payload.sub, familyId: payload.familyId },
       data: { revokedAt: new Date() },
     });
+    await this.sessions.revokeById(payload.familyId, payload.sub, 'logout');
   }
 
   async issueTokensForSso(
-    userId: string,
-    organizationId: string | null,
-    role: string,
-    permissionProfileId: string | null,
+    user: SessionUser & { permissionProfileId: string | null },
+    meta: ClientMeta,
   ): Promise<TokenPair> {
-    const tokens = await this.issueTokenPair(userId, organizationId, role, permissionProfileId);
-    await this.recordLogin(userId, organizationId, role);
-    return tokens;
+    return this.startSession(user, 'saml', meta, user.email.toLowerCase());
   }
 
   // Only called from the two real login entry points (password login, SSO exchange) --
@@ -333,7 +421,9 @@ export class AuthService {
     );
   }
 
-  async switchIntoOrg(actorUserId: string, targetOrgId: string): Promise<string> {
+  // The acting token rides on the super admin's own session (`sid`): revoking that session
+  // kills it too.
+  async switchIntoOrg(actorUserId: string, targetOrgId: string, sessionId: string): Promise<string> {
     const org = await this.prisma.organization.findUnique({ where: { id: targetOrgId } });
     if (!org) {
       throw new NotFoundException(`Organization ${targetOrgId} not found`);
@@ -352,6 +442,7 @@ export class AuthService {
       actingSuperAdmin: true,
       actingOrgName: org.name,
       actingOrgSlug: org.slug,
+      sid: sessionId,
     });
   }
 
@@ -366,7 +457,7 @@ export class AuthService {
   }
 
   async impersonate(
-    caller: { userId: string; organizationId: string | null; role: string; impersonatorUserId?: string },
+    caller: { userId: string; organizationId: string | null; role: string; impersonatorUserId?: string; sessionId: string },
     targetUserId: string,
   ): Promise<string> {
     if (caller.impersonatorUserId) {
@@ -415,6 +506,9 @@ export class AuthService {
       permissionProfileId: null,
       impersonatorUserId: caller.userId,
       impersonatorEmail: callerRecord?.email ?? undefined,
+      // The impersonator's session, not the target's: JwtStrategy checks it against
+      // impersonatorUserId, and ending the impersonator's session ends the impersonation.
+      sid: caller.sessionId,
     });
   }
 
@@ -443,6 +537,7 @@ export class AuthService {
     actingOrgSlug?: string;
     impersonatorUserId?: string;
     impersonatorEmail?: string;
+    sid: string;
   }): string {
     return this.jwt.sign(payload, {
       secret: process.env.JWT_ACCESS_SECRET,
@@ -450,24 +545,27 @@ export class AuthService {
     });
   }
 
+  // The refresh family is the session, and the refresh token dies with the session's absolute
+  // limit (never the old 30 days).
   private async issueTokenPair(
     userId: string,
     organizationId: string | null,
     role: string,
     permissionProfileId: string | null,
-    familyId: string = randomUUID(),
+    session: { id: string; absoluteExpiresAt: Date },
   ): Promise<TokenPair> {
-    const accessToken = this.signAccessToken({ sub: userId, organizationId, role, permissionProfileId });
+    const familyId = session.id;
+    const accessToken = this.signAccessToken({ sub: userId, organizationId, role, permissionProfileId, sid: session.id });
+    const refreshTtlSeconds = Math.max(1, Math.ceil((session.absoluteExpiresAt.getTime() - Date.now()) / 1000));
     const refreshToken = this.jwt.sign(
       { sub: userId, familyId },
-      { secret: process.env.JWT_REFRESH_SECRET, expiresIn: `${process.env.REFRESH_TOKEN_TTL_DAYS ?? 30}d` as `${number}d` },
+      // jwtid: two rotations inside the same second must still yield distinct tokens (and hashes).
+      { secret: process.env.JWT_REFRESH_SECRET, expiresIn: `${refreshTtlSeconds}s` as `${number}s`, jwtid: randomUUID() },
     );
     const tokenHash = hashRefreshToken(refreshToken);
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + Number(process.env.REFRESH_TOKEN_TTL_DAYS ?? 30));
 
     await this.prisma.refreshToken.create({
-      data: { userId, tokenHash, familyId, expiresAt },
+      data: { userId, tokenHash, familyId, expiresAt: session.absoluteExpiresAt },
     });
 
     return { accessToken, refreshToken };

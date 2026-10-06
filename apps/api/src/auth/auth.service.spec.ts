@@ -8,6 +8,17 @@ import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { SessionsService } from './sessions.service';
+import { LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
+
+// The real argon2, with verify() observable (still delegates to the real implementation).
+jest.mock('argon2', () => {
+  const actual = jest.requireActual('argon2');
+  return { ...actual, verify: jest.fn((...args: unknown[]) => actual.verify(...args)) };
+});
+
+const META = { ip: '203.0.113.9', userAgent: 'jest-agent', deviceId: 'd'.repeat(43) };
+const SESSION_ID = '44444444-4444-4444-8444-444444444444';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -16,8 +27,15 @@ describe('AuthService', () => {
     refreshToken: { create: jest.Mock; findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
     user: { findUnique: jest.Mock; update: jest.Mock };
     passwordResetToken: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
+    session: { updateMany: jest.Mock };
     $transaction: jest.Mock;
   };
+  let sessions: {
+    create: jest.Mock; findLive: jest.Mock; revokeById: jest.Mock; recordLoginEvent: jest.Mock;
+    notifyNewDevice: jest.Mock; notifyLocked: jest.Mock;
+  };
+  let loginProtection: { check: jest.Mock; registerFailure: jest.Mock; registerSuccess: jest.Mock };
+  let absoluteExpiresAt: Date;
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
   let emailService: { send: jest.Mock };
@@ -29,6 +47,7 @@ describe('AuthService', () => {
       refreshToken: { create: jest.fn(), findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
       user: { findUnique: jest.fn(), update: jest.fn() },
       passwordResetToken: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+      session: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => callback(prisma)),
     };
     // Default: actually invoke the callback against the same `prisma` mock, mirroring
@@ -40,6 +59,20 @@ describe('AuthService', () => {
     tenantPrisma = { forTenant: jest.fn(async (_context: unknown, fn: (tx: unknown) => unknown) => fn(prisma)) };
     audit = { record: jest.fn() };
     emailService = { send: jest.fn().mockResolvedValue({ success: true }) };
+    absoluteExpiresAt = new Date(Date.now() + 12 * 3600 * 1000);
+    sessions = {
+      create: jest.fn().mockResolvedValue({ id: SESSION_ID, absoluteExpiresAt, newDevice: false }),
+      findLive: jest.fn().mockImplementation(async (id: string) => ({ id, absoluteExpiresAt })),
+      revokeById: jest.fn().mockResolvedValue(undefined),
+      recordLoginEvent: jest.fn().mockResolvedValue(undefined),
+      notifyNewDevice: jest.fn(),
+      notifyLocked: jest.fn(),
+    };
+    loginProtection = {
+      check: jest.fn().mockResolvedValue(null),
+      registerFailure: jest.fn().mockResolvedValue({ failures: 1, locked: false }),
+      registerSuccess: jest.fn().mockResolvedValue(undefined),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -48,6 +81,8 @@ describe('AuthService', () => {
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AuditService, useValue: audit },
         { provide: EmailService, useValue: emailService },
+        { provide: SessionsService, useValue: sessions },
+        { provide: LoginProtectionService, useValue: loginProtection },
         JwtService,
       ],
     }).compile();
@@ -62,7 +97,7 @@ describe('AuthService', () => {
     prisma.organization.findUnique.mockResolvedValue(null);
 
     await expect(
-      service.login({ organizationSlug: 'no-such-org', email: 'a@b.com', password: 'x' }),
+      service.login({ organizationSlug: 'no-such-org', email: 'a@b.com', password: 'x' }, META),
     ).rejects.toThrow(UnauthorizedException);
   });
 
@@ -74,7 +109,7 @@ describe('AuthService', () => {
     });
 
     await expect(
-      service.login({ organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'wrong-password' }),
+      service.login({ organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'wrong-password' }, META),
     ).rejects.toThrow(UnauthorizedException);
   });
 
@@ -89,7 +124,7 @@ describe('AuthService', () => {
 
     const result = await service.login({
       organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'correct-password',
-    });
+    }, META);
 
     expect(result.accessToken).toEqual(expect.any(String));
     expect(result.refreshToken).toEqual(expect.any(String));
@@ -110,7 +145,7 @@ describe('AuthService', () => {
 
     const result = await service.login({
       organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'correct-password',
-    });
+    }, META);
 
     const decoded = jwt.decode(result.accessToken) as { permissionProfileId: string | null };
     expect(decoded.permissionProfileId).toBe('profile-1');
@@ -128,7 +163,7 @@ describe('AuthService', () => {
 
     const result = await service.login({
       organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'correct-password',
-    });
+    }, META);
 
     const decoded = jwt.decode(result.accessToken) as { permissionProfileId: string | null };
     expect(decoded.permissionProfileId).toBeNull();
@@ -145,7 +180,7 @@ describe('AuthService', () => {
       .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ user: { update: userUpdate } }));
     prisma.refreshToken.create.mockResolvedValue({});
 
-    await service.login({ organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'correct-password' });
+    await service.login({ organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'correct-password' }, META);
 
     expect(tenantPrisma.forTenant).toHaveBeenLastCalledWith(
       { organizationId: 'org-1', isSuperAdmin: false },
@@ -167,7 +202,7 @@ describe('AuthService', () => {
       }),
     );
     await expect(
-      service.login({ organizationSlug: 'acme', email: 'a@b.com', password: 'password1' }),
+      service.login({ organizationSlug: 'acme', email: 'a@b.com', password: 'password1' }, META),
     ).rejects.toThrow('This account has been deactivated');
   });
 
@@ -195,6 +230,8 @@ describe('AuthService', () => {
       { organizationId: 'org-1', isSuperAdmin: false },
       { actorUserId: 'user-1', action: 'auth.token_reuse_detected', entityType: 'user', entityId: 'user-1' },
     );
+    // ...and the session itself, so access tokens already minted from it stop working now.
+    expect(sessions.revokeById).toHaveBeenCalledWith('family-1', 'user-1', 'refresh_token_reuse');
   });
 
   describe('concurrent-refresh grace window (F3)', () => {
@@ -528,6 +565,10 @@ describe('AuthService', () => {
         where: { userId: 'user-1', revokedAt: null },
         data: { revokedAt: expect.any(Date) },
       });
+      expect(prisma.session.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', revokedAt: null },
+        data: { revokedAt: expect.any(Date), revokedReason: 'password_reset' },
+      });
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
         { actorUserId: 'user-1', action: 'password.reset', entityType: 'user', entityId: 'user-1' },
@@ -536,22 +577,23 @@ describe('AuthService', () => {
   });
 
   describe('issueTokensForSso', () => {
-    it('issues an access/refresh token pair for the given user, matching the same shape login() produces', async () => {
-      jwt.sign = jest.fn()
-        .mockReturnValueOnce('signed-access-token')
-        .mockReturnValueOnce('signed-refresh-token');
+    const SSO_USER = { id: 'user-1', email: 'u1@x.test', organizationId: 'org-1', role: 'recruiter', permissionProfileId: 'profile-1' };
+
+    it('opens a saml session and issues a pair bound to it, matching the shape login() produces', async () => {
       prisma.refreshToken.create.mockResolvedValue({ id: 'rt-1' });
 
-      const result = await service.issueTokensForSso('user-1', 'org-1', 'recruiter', 'profile-1');
+      const result = await service.issueTokensForSso(SSO_USER, META);
 
-      expect(result).toEqual({ accessToken: 'signed-access-token', refreshToken: 'signed-refresh-token' });
-      expect(jwt.sign).toHaveBeenNthCalledWith(
-        1,
-        { sub: 'user-1', organizationId: 'org-1', role: 'recruiter', permissionProfileId: 'profile-1' },
-        expect.objectContaining({ secret: process.env.JWT_ACCESS_SECRET }),
-      );
-      expect(prisma.refreshToken.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ userId: 'user-1' }) }),
+      expect(sessions.create).toHaveBeenCalledWith(SSO_USER, 'saml', META);
+      const access = jwt.verify(result.accessToken, { secret: process.env.JWT_ACCESS_SECRET }) as Record<string, unknown>;
+      expect(access).toMatchObject({ sub: 'user-1', organizationId: 'org-1', role: 'recruiter', permissionProfileId: 'profile-1', sid: SESSION_ID });
+      const refresh = jwt.verify(result.refreshToken, { secret: process.env.JWT_REFRESH_SECRET }) as { familyId: string };
+      expect(refresh.familyId).toBe(SESSION_ID);
+      expect(prisma.refreshToken.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ userId: 'user-1', familyId: SESSION_ID, expiresAt: absoluteExpiresAt }),
+      });
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-1', result: 'success', method: 'saml', sessionId: SESSION_ID }),
       );
     });
 
@@ -562,7 +604,7 @@ describe('AuthService', () => {
         fn({ user: { update: userUpdate } }),
       );
 
-      await service.issueTokensForSso('user-1', 'org-1', 'recruiter', null);
+      await service.issueTokensForSso({ ...SSO_USER, permissionProfileId: null }, META);
 
       expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
@@ -576,13 +618,13 @@ describe('AuthService', () => {
     it('throws when the target org does not exist', async () => {
       prisma.organization.findUnique.mockResolvedValue(null);
 
-      await expect(service.switchIntoOrg('super-admin-1', 'no-such-org')).rejects.toThrow(NotFoundException);
+      await expect(service.switchIntoOrg('super-admin-1', 'no-such-org', SESSION_ID)).rejects.toThrow(NotFoundException);
     });
 
     it('audit-logs the switch-in against the target org and returns an acting access token', async () => {
       prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Inc', slug: 'acme', status: 'active' });
 
-      const token = await service.switchIntoOrg('super-admin-1', 'org-1');
+      const token = await service.switchIntoOrg('super-admin-1', 'org-1', SESSION_ID);
 
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: true },
@@ -599,6 +641,8 @@ describe('AuthService', () => {
         // org, which disabled the per-org SSO-status check and showed "Reset password" for
         // every user regardless of whether the org they were viewing actually had SSO enabled.
         actingOrgSlug: 'acme',
+        // Rides on the super admin's own session: revoking it ends the acting token too.
+        sid: SESSION_ID,
       });
       // An acting-into-org token is never subject to profile-based field/permission
       // restriction -- actingSuperAdmin already bypasses that guard (T4) regardless, so
@@ -645,10 +689,11 @@ describe('AuthService', () => {
         { id: 'target1', role: 'recruiter', organizationId: 'orgB', status: 'active', email: 't@x.com', permissionProfileId: 'target-profile' },
         { id: 'admin1', email: 'admin@x.com' },
       );
-      const token = await service.impersonate({ userId: 'admin1', organizationId: null, role: 'super_admin' }, 'target1');
+      const token = await service.impersonate({ userId: 'admin1', organizationId: null, role: 'super_admin', sessionId: SESSION_ID }, 'target1');
       expect(token).toBe('signed.jwt.token');
       expect(jwt.sign).toHaveBeenCalledWith(
-        expect.objectContaining({ sub: 'target1', role: 'recruiter', impersonatorUserId: 'admin1', permissionProfileId: null }),
+        // sid is the impersonator's session: ending it ends the impersonation.
+        expect.objectContaining({ sub: 'target1', role: 'recruiter', impersonatorUserId: 'admin1', permissionProfileId: null, sid: SESSION_ID }),
         expect.anything(),
       );
       expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'user.impersonate_start' }));
@@ -656,30 +701,30 @@ describe('AuthService', () => {
 
     it('forbids a super_admin impersonating another super_admin', async () => {
       mockTarget({ id: 'target1', role: 'super_admin', organizationId: null, status: 'active', email: 't@x.com' }, { id: 'admin1', email: 'admin@x.com' });
-      await expect(service.impersonate({ userId: 'admin1', organizationId: null, role: 'super_admin' }, 'target1')).rejects.toThrow(ForbiddenException);
+      await expect(service.impersonate({ userId: 'admin1', organizationId: null, role: 'super_admin', sessionId: SESSION_ID }, 'target1')).rejects.toThrow(ForbiddenException);
     });
 
     it('forbids an org_admin impersonating a user in another org', async () => {
       mockTarget({ id: 'target1', role: 'recruiter', organizationId: 'orgB', status: 'active', email: 't@x.com' }, { id: 'admin1', email: 'admin@x.com' });
-      await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin' }, 'target1')).rejects.toThrow(ForbiddenException);
+      await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin', sessionId: SESSION_ID }, 'target1')).rejects.toThrow(ForbiddenException);
     });
 
     it('forbids an org_admin impersonating another org_admin', async () => {
       mockTarget({ id: 'target1', role: 'org_admin', organizationId: 'orgA', status: 'active', email: 't@x.com' }, { id: 'admin1', email: 'admin@x.com' });
-      await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin' }, 'target1')).rejects.toThrow(ForbiddenException);
+      await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin', sessionId: SESSION_ID }, 'target1')).rejects.toThrow(ForbiddenException);
     });
 
     it('rejects a deactivated target', async () => {
       mockTarget({ id: 'target1', role: 'recruiter', organizationId: 'orgA', status: 'deactivated', email: 't@x.com' }, { id: 'admin1', email: 'admin@x.com' });
-      await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin' }, 'target1')).rejects.toThrow(BadRequestException);
+      await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin', sessionId: SESSION_ID }, 'target1')).rejects.toThrow(BadRequestException);
     });
 
     it('rejects self-impersonation', async () => {
-      await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin' }, 'admin1')).rejects.toThrow(BadRequestException);
+      await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin', sessionId: SESSION_ID }, 'admin1')).rejects.toThrow(BadRequestException);
     });
 
     it('rejects nested impersonation', async () => {
-      await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin', impersonatorUserId: 'x' }, 'target1')).rejects.toThrow(BadRequestException);
+      await expect(service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin', impersonatorUserId: 'x', sessionId: SESSION_ID }, 'target1')).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -715,7 +760,7 @@ describe('AuthService', () => {
       );
 
       await expect(
-        service.login({ organizationSlug: 'acme', email: 'a@b.com', password: 'password1' }),
+        service.login({ organizationSlug: 'acme', email: 'a@b.com', password: 'password1' }, META),
       ).rejects.toThrow('This organization is not currently active');
     });
 
@@ -733,7 +778,7 @@ describe('AuthService', () => {
       );
 
       await expect(
-        service.login({ organizationSlug: 'acme', email: 'a@b.com', password: 'password1' }),
+        service.login({ organizationSlug: 'acme', email: 'a@b.com', password: 'password1' }, META),
       ).rejects.toThrow('This organization is not currently active');
     });
 
@@ -772,11 +817,180 @@ describe('AuthService', () => {
         }),
       );
 
-      await expect(service.login({ email: 'root@platform.test', password: 'password1' })).resolves.toHaveProperty(
+      await expect(service.login({ email: 'root@platform.test', password: 'password1' }, META)).resolves.toHaveProperty(
         'accessToken',
       );
       // No slug means no org lookup at all -- nothing to suspend.
       expect(prisma.organization.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sessions, login events and lockout (YX-IAM-06/07/10)', () => {
+    const DTO = { organizationSlug: 'demo-org', email: 'Admin@Demo-Org.test', password: 'correct-password' };
+    let passwordHash: string;
+    const activeUser = () => ({
+      id: 'user-1', email: 'admin@demo-org.test', organizationId: 'org-1', role: 'org_admin', status: 'active', passwordHash,
+    });
+
+    beforeAll(async () => {
+      passwordHash = await argon2.hash('correct-password');
+    });
+
+    beforeEach(() => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'active' });
+    });
+
+    it('refuses a blocked account with 429 BEFORE looking at the password, and records a locked attempt', async () => {
+      loginProtection.check.mockResolvedValue({ scope: 'account', retryAfterSeconds: 900 });
+
+      const attempt = service.login(DTO, META);
+
+      await expect(attempt).rejects.toBeInstanceOf(TooManyLoginAttemptsException);
+      await expect(attempt).rejects.toMatchObject({ retryAfterSeconds: 900 });
+      expect(loginProtection.check).toHaveBeenCalledWith('demo-org', 'admin@demo-org.test', META.ip);
+      expect(tenantPrisma.forTenant).not.toHaveBeenCalled(); // no user lookup, no password check
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 'org-1', result: 'locked', reason: 'account_locked', identifier: 'admin@demo-org.test' }),
+      );
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it('a correct password does not get through a lock either', async () => {
+      loginProtection.check.mockResolvedValue({ scope: 'ip', retryAfterSeconds: 60 });
+      tenantPrisma.forTenant.mockResolvedValue(activeUser());
+
+      await expect(service.login(DTO, META)).rejects.toBeInstanceOf(TooManyLoginAttemptsException);
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it('treats unknown user, wrong password and unknown organisation identically (no enumeration)', async () => {
+      const verify = argon2.verify as unknown as jest.Mock;
+      verify.mockClear();
+      const outcomes: unknown[] = [];
+
+      tenantPrisma.forTenant.mockResolvedValueOnce(null); // unknown user
+      outcomes.push(await service.login(DTO, META).catch((e: Error) => [e.constructor, e.message]));
+      tenantPrisma.forTenant.mockResolvedValueOnce(activeUser()); // wrong password
+      outcomes.push(await service.login({ ...DTO, password: 'wrong' }, META).catch((e: Error) => [e.constructor, e.message]));
+      prisma.organization.findUnique.mockResolvedValueOnce(null); // unknown organisation
+      outcomes.push(await service.login({ ...DTO, organizationSlug: 'nope' }, META).catch((e: Error) => [e.constructor, e.message]));
+
+      expect(outcomes).toEqual([
+        [UnauthorizedException, 'Invalid credentials'],
+        [UnauthorizedException, 'Invalid credentials'],
+        [UnauthorizedException, 'Invalid credentials'],
+      ]);
+      // An argon2 verification ran in all three cases (dummy hash when no account matched),
+      // so response time does not reveal whether the account exists.
+      expect(verify).toHaveBeenCalledTimes(3);
+      expect(loginProtection.registerFailure).toHaveBeenCalledTimes(3);
+      expect(sessions.recordLoginEvent.mock.calls.map(([e]) => [e.result, e.reason])).toEqual([
+        ['failed', 'unknown_user'],
+        ['failed', 'bad_password'],
+        ['failed', 'unknown_organization'],
+      ]);
+    });
+
+    it('notifies the account holder when a failure starts a lock -- and only a real account', async () => {
+      loginProtection.registerFailure.mockResolvedValue({ failures: 10, locked: true });
+
+      tenantPrisma.forTenant.mockResolvedValueOnce(activeUser());
+      await expect(service.login({ ...DTO, password: 'wrong' }, META)).rejects.toThrow('Invalid credentials');
+      expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), META);
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ reason: 'bad_password+lockout_started' }));
+
+      sessions.notifyLocked.mockClear();
+      tenantPrisma.forTenant.mockResolvedValueOnce(null);
+      await expect(service.login(DTO, META)).rejects.toThrow('Invalid credentials');
+      expect(sessions.notifyLocked).not.toHaveBeenCalled();
+    });
+
+    it('on success: clears the failure history, opens a session and binds both tokens to it', async () => {
+      tenantPrisma.forTenant.mockResolvedValueOnce(activeUser());
+      prisma.refreshToken.create.mockResolvedValue({});
+
+      const result = await service.login(DTO, META);
+
+      expect(loginProtection.registerSuccess).toHaveBeenCalledWith('demo-org', 'admin@demo-org.test', META.ip);
+      expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), 'password', META);
+      const access = jwt.verify(result.accessToken, { secret: process.env.JWT_ACCESS_SECRET }) as { sid: string };
+      expect(access.sid).toBe(SESSION_ID);
+      const refresh = jwt.verify(result.refreshToken, { secret: process.env.JWT_REFRESH_SECRET }) as { familyId: string; exp: number; jti: string };
+      expect(refresh.familyId).toBe(SESSION_ID);
+      expect(refresh.jti).toEqual(expect.any(String));
+      // The refresh token dies with the session's absolute limit, never later.
+      expect(Math.abs(refresh.exp * 1000 - absoluteExpiresAt.getTime())).toBeLessThan(2000);
+      expect(prisma.refreshToken.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ familyId: SESSION_ID, expiresAt: absoluteExpiresAt }),
+      });
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ result: 'success', method: 'password', sessionId: SESSION_ID, userId: 'user-1' }),
+      );
+      expect(sessions.notifyNewDevice).not.toHaveBeenCalled();
+    });
+
+    it('alerts the user when the sign-in comes from a new device', async () => {
+      tenantPrisma.forTenant.mockResolvedValueOnce(activeUser());
+      sessions.create.mockResolvedValueOnce({ id: SESSION_ID, absoluteExpiresAt, newDevice: true });
+
+      await service.login(DTO, META);
+
+      expect(sessions.notifyNewDevice).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), META);
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ newDevice: true }));
+    });
+
+    it('a deactivated account with the right password is recorded, not counted as a guess', async () => {
+      tenantPrisma.forTenant.mockResolvedValueOnce({ ...activeUser(), status: 'deactivated' });
+
+      await expect(service.login(DTO, META)).rejects.toThrow('deactivated');
+      expect(loginProtection.registerFailure).not.toHaveBeenCalled();
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed', reason: 'account_inactive' }));
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it('refresh: a revoked / expired / idle session ends the family with 401 and is NOT treated as reuse', async () => {
+      const refreshToken = jwt.sign({ sub: 'user-1', familyId: 'family-1' }, { secret: process.env.JWT_REFRESH_SECRET });
+      sessions.findLive.mockResolvedValueOnce(null);
+
+      await expect(service.refresh(refreshToken)).rejects.toThrow('Session expired');
+
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', familyId: 'family-1', revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+      expect(prisma.refreshToken.findFirst).not.toHaveBeenCalled();
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('refresh: a tampered refresh token is rejected before any lookup', async () => {
+      const refreshToken = jwt.sign({ sub: 'user-1', familyId: 'family-1' }, { secret: 'not-the-refresh-secret' });
+
+      await expect(service.refresh(refreshToken)).rejects.toThrow('Invalid refresh token');
+      expect(sessions.findLive).not.toHaveBeenCalled();
+    });
+
+    it('refresh: rotation keeps the session id and never extends past its absolute expiry', async () => {
+      const refreshToken = jwt.sign({ sub: 'user-1', familyId: SESSION_ID }, { secret: process.env.JWT_REFRESH_SECRET });
+      const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
+      prisma.refreshToken.findFirst.mockResolvedValue({ id: 'rt-1', tokenHash, revokedAt: null });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'org_admin', status: 'active' });
+
+      const result = await service.refresh(refreshToken);
+
+      expect(sessions.findLive).toHaveBeenCalledWith(SESSION_ID, 'user-1');
+      expect((jwt.decode(result.accessToken) as { sid: string }).sid).toBe(SESSION_ID);
+      expect(prisma.refreshToken.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ familyId: SESSION_ID, expiresAt: absoluteExpiresAt }),
+      });
+    });
+
+    it('logout ends the session behind the refresh token', async () => {
+      const refreshToken = jwt.sign({ sub: 'user-1', familyId: SESSION_ID }, { secret: process.env.JWT_REFRESH_SECRET });
+
+      await service.logout(refreshToken);
+
+      expect(sessions.revokeById).toHaveBeenCalledWith(SESSION_ID, 'user-1', 'logout');
     });
   });
 });

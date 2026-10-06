@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { JwtService } from '@nestjs/jwt';
 import { Prisma, User } from '@prisma/client';
 import * as argon2 from 'argon2';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantPrismaService, revokeStaffSessions } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -366,6 +366,7 @@ export class UsersService {
       const updated = await tx.user.update({ where: { id: targetUserId }, data: { status }, select: SAFE_USER_SELECT });
       if (status === 'deactivated') {
         await tx.refreshToken.updateMany({ where: { userId: targetUserId, revokedAt: null }, data: { revokedAt: new Date() } });
+        await revokeStaffSessions(tx, { userId: targetUserId }, 'user_deactivated');
       }
       await this.audit.record(context, {
         actorUserId,
@@ -419,6 +420,12 @@ export class UsersService {
         },
         data: { revokedAt: new Date() },
       });
+      // The refresh family is the session id: every other session ends, this one stays.
+      await revokeStaffSessions(
+        tx,
+        { userId, ...(currentFamilyId ? { id: { not: currentFamilyId } } : {}) },
+        'password_changed',
+      );
     });
 
     await this.audit.record(context, {

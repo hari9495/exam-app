@@ -11,7 +11,7 @@ import {
 } from '@nestjs/websockets';
 import { Namespace, Socket } from 'socket.io';
 import { PrismaService, resolvePermissionGrants } from '@exam-platform/shared';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantPrismaService, touchStaffSession } from '@exam-platform/shared';
 import { MonitoringService, RosterRow } from './monitoring.service';
 import { LeaderboardService, RecruiterLeaderboardRow } from '../leaderboard/leaderboard.service';
 
@@ -44,7 +44,13 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
     private readonly leaderboard: LeaderboardService,
   ) {}
 
-  afterInit(): void {
+  afterInit(server?: Namespace): void {
+    // Authenticate in the namespace middleware, which socket.io finishes BEFORE accepting the
+    // connection: the session check is async, and doing it in handleConnection would let a
+    // client's first event (join-exam) race ahead of `client.data.user` being set.
+    server?.use((socket, next) => {
+      this.authenticate(socket).finally(() => next());
+    });
     this.rosterInterval = setInterval(() => {
       this.tickRoster().catch((error) => this.logger.error('Roster tick failed', error as Error));
     }, ROSTER_TICK_MS);
@@ -56,10 +62,12 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
     }
   }
 
-  handleConnection(client: Socket): void {
+  // Same rule as the API's JwtStrategy: a validly signed staff token is accepted only while its
+  // server-side session is live (YX-IAM-06), so a revoked session cannot open a monitoring socket.
+  // Leaves `client.data.user` unset on any failure; handleConnection then disconnects.
+  async authenticate(client: Socket): Promise<void> {
     const token = client.handshake.auth?.token as string | undefined;
     if (!token) {
-      client.disconnect(true);
       return;
     }
     try {
@@ -69,7 +77,12 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
         role: string;
         permissionProfileId?: string | null;
         actingSuperAdmin?: boolean;
+        impersonatorUserId?: string;
+        sid?: string;
       };
+      if (!(await touchStaffSession(this.tenantPrisma, payload.sid, payload.impersonatorUserId ?? payload.sub))) {
+        return;
+      }
       (client.data as { user?: StaffSocketUser }).user = {
         userId: payload.sub,
         organizationId: payload.organizationId,
@@ -78,6 +91,12 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
         actingSuperAdmin: payload.actingSuperAdmin,
       };
     } catch {
+      // invalid / expired token, or the session lookup failed: stay unauthenticated
+    }
+  }
+
+  handleConnection(client: Socket): void {
+    if (!(client.data as { user?: StaffSocketUser }).user) {
       client.disconnect(true);
     }
   }

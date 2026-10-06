@@ -14,6 +14,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentUserId } from './current-user-id.decorator';
+import { SessionsService, resolveClientMeta } from './sessions.service';
 
 const REFRESH_COOKIE = 'refresh_token';
 
@@ -30,13 +31,14 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
+    private readonly sessions: SessionsService,
   ) {}
 
   @Post('staff/login')
   @HttpCode(200)
   @Throttle(STRICT_AUTH_THROTTLE)
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
-    const tokens = await this.authService.login(dto);
+  async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const tokens = await this.authService.login(dto, resolveClientMeta(req, res));
     res.cookie(REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions());
     return { accessToken: tokens.accessToken };
   }
@@ -73,7 +75,8 @@ export class AuthController {
   @Post('sso/exchange')
   @HttpCode(200)
   @Throttle(STRICT_AUTH_THROTTLE)
-  async ssoExchange(@Body() dto: SsoExchangeDto, @Res({ passthrough: true }) res: Response) {
+  async ssoExchange(@Body() dto: SsoExchangeDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const meta = resolveClientMeta(req, res);
     const codeHash = createHash('sha256').update(dto.code).digest('hex');
     // `sso_login_codes` itself carries no RLS policy (it's not org-scoped --
     // the code is the only credential at this point), so this plain lookup is
@@ -92,6 +95,7 @@ export class AuthController {
       await this.prisma.ssoLoginCode.delete({ where: { id: record.id } });
     }
     if (!record || record.expiresAt < new Date()) {
+      await this.sessions.recordLoginEvent({ organizationId: null, result: 'failed', method: 'saml', reason: 'invalid_sso_code', meta });
       throw new UnauthorizedException('This sign-in link is invalid or has expired');
     }
 
@@ -102,22 +106,32 @@ export class AuthController {
       throw new UnauthorizedException('This sign-in link is invalid or has expired');
     }
 
+    const failed = (reason: string) =>
+      this.sessions.recordLoginEvent({
+        organizationId: user.organizationId,
+        userId: user.id,
+        identifier: user.email.toLowerCase(),
+        result: 'failed',
+        method: 'saml',
+        reason,
+        meta,
+      });
     if (user.status !== 'active') {
+      await failed('account_inactive');
       throw new UnauthorizedException('This account has been deactivated');
     }
 
     if (user.organizationId) {
       const org = await this.prisma.organization.findUnique({ where: { id: user.organizationId } });
       if (!isOrganizationActive(org?.status)) {
+        await failed('organization_inactive');
         throw new UnauthorizedException(ORGANIZATION_INACTIVE_MESSAGE);
       }
     }
 
     const tokens = await this.authService.issueTokensForSso(
-      user.id,
-      user.organizationId,
-      user.role,
-      user.permissionProfileId ?? null,
+      { id: user.id, email: user.email, organizationId: user.organizationId, role: user.role, permissionProfileId: user.permissionProfileId ?? null },
+      meta,
     );
     res.cookie(REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions());
     return { accessToken: tokens.accessToken };
@@ -141,8 +155,8 @@ export class AuthController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('platform:manage_organizations')
-  async switchIntoOrg(@CurrentUserId() userId: string, @Param('orgId') orgId: string) {
-    const accessToken = await this.authService.switchIntoOrg(userId, orgId);
+  async switchIntoOrg(@CurrentUserId() userId: string, @Param('orgId') orgId: string, @Req() req: Request) {
+    const accessToken = await this.authService.switchIntoOrg(userId, orgId, (req.user as { sessionId: string }).sessionId);
     return { accessToken };
   }
 
@@ -159,7 +173,7 @@ export class AuthController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
   async impersonate(@Req() req: Request, @Param('userId') userId: string) {
-    const caller = req.user as { userId: string; organizationId: string | null; role: string; impersonatorUserId?: string };
+    const caller = req.user as { userId: string; organizationId: string | null; role: string; impersonatorUserId?: string; sessionId: string };
     const accessToken = await this.authService.impersonate(caller, userId);
     return { accessToken };
   }
