@@ -219,7 +219,9 @@ function Effective({ userId, loadEffective }: { userId: string; loadEffective: R
 export function RolesAccessScreen(props: RolesAccessScreenProps) {
   const { state, onRetry, users, roles, templates, grants, meId, loadEffective } = props;
   const [view, setView] = useState<View>('people');
-  const [userId, setUserId] = useState<string | null>(users[0]?.id ?? null);
+  const [picked, setUserId] = useState<string | null>(null);
+  // The first person until one is picked (the list may arrive after the first render).
+  const userId = picked ?? users[0]?.id ?? null;
   const [giving, setGiving] = useState(false);
   const [fromTemplate, setFromTemplate] = useState(false);
   const [ask, setAsk] = useState<Ask | null>(null);

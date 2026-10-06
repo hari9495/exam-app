@@ -30,6 +30,10 @@ const HISTORY: SecurityShellLink = { id: 'job-history', label: 'Job history', hr
 const CHANGES: SecurityShellLink = { id: 'job-changes', label: 'Job changes', href: '/yx/people/changes', group: 'People' };
 const PROBATION: SecurityShellLink = { id: 'probation', label: 'Probation', href: '/yx/people/probation', group: 'People' };
 const BULK: SecurityShellLink = { id: 'bulk-changes', label: 'Bulk changes', href: '/yx/people/bulk-changes', group: 'People' };
+const PROFILE: SecurityShellLink = { id: 'profile', label: 'Profile', href: '/yx/people/profile', group: 'People' };
+const ID_CHANGES: SecurityShellLink = { id: 'profile-requests', label: 'Identity and bank changes', href: '/yx/people/profile-requests', group: 'People' };
+const ACCESS: SecurityShellLink = { id: 'access', label: 'Roles & access', href: '/yx/settings/access', group: 'Access' };
+const PRIVACY: SecurityShellLink = { id: 'privacy', label: 'Who accessed my data', href: '/yx/me/privacy' };
 
 // Links follow the role; the API still checks every permission (audit:view, org:manage_users,
 // org:manage_settings) and the pages show "no access" on a 403. Platform staff outside any company
@@ -73,16 +77,21 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   const employee = Boolean(team.data?.managerId);
   const manager = Boolean(team.data?.members.length);
   const bulk = perms.has('employee.change.manage') || perms.has('employee.change.approve');
+  // P02 §4.4–4.5: one's own profile (or HR's view of others); the identity / bank queue for those who raise or decide.
+  const idDesk = perms.has('employee.identity.approve') || perms.has('employee.identity.manage');
   const staff = [
+    ...(hr || employee ? [PROFILE] : []),
     ...(hr || employee ? [DIRECTORY, ORG_CHART] : []),
     ...(manager ? [TEAM] : []),
     ...(hr || people.data?.length ? [HISTORY] : []),
     ...(hr || perms.has('request.raise_on_behalf') ? [CHANGES] : []),
     ...(hr || manager ? [PROBATION] : []),
     ...(bulk ? [BULK] : []),
+    ...(idDesk ? [ID_CHANGES] : []),
     ...org,
+    ...(perms.has('access.role.manage') ? [ACCESS] : []),
   ];
-  const security = linksFor(role, actingSuperAdmin);
+  const security = [...linksFor(role, actingSuperAdmin), ...(employee ? [PRIVACY] : [])];
   const links = staff.length ? [...security.map((l) => ({ ...l, group: 'Security' })), ...staff] : security;
   const active: SecurityPage = links.find((l) => pathname?.startsWith(l.href))?.id ?? 'me';
   return (
