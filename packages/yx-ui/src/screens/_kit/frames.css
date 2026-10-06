@@ -1,0 +1,60 @@
+/* Screen frames (lead-owned). */
+.yx-screen { padding: var(--yx-space-6); display: flex; flex-direction: column; gap: var(--yx-space-6); min-width: 0; }
+@media (max-width: 767px) { .yx-screen { padding: var(--yx-space-4); gap: var(--yx-space-4); } }
+/* Inside the app shell the content area already pads: don't pad twice. */
+.yx-shell__content > .yx-screen { padding: 0; }
+
+/* T8 phone */
+.yx-phone {
+  display: flex; flex-direction: column;
+  width: 100%; max-width: calc(var(--yx-space-16) * 6 + var(--yx-space-6));
+  min-height: calc(var(--yx-space-16) * 12);
+  margin: 0 auto;
+  background: var(--yx-color-bg-page);
+  border: var(--yx-border-width) solid var(--yx-color-border);
+  color: var(--yx-color-text);
+}
+.yx-phone__head {
+  position: sticky; top: 0; z-index: var(--yx-z-sticky);
+  display: flex; align-items: center; gap: var(--yx-space-2);
+  min-height: var(--yx-space-12); padding: 0 var(--yx-space-4);
+  background: var(--yx-color-bg-surface); border-bottom: var(--yx-border-width) solid var(--yx-color-border);
+}
+.yx-phone__title { flex: 1; margin: 0; font-size: var(--yx-text-lg); line-height: var(--yx-leading-lg); font-weight: var(--yx-weight-semibold); }
+.yx-phone__actions { display: flex; gap: var(--yx-space-1); }
+/* The phone body is a size container, so screens inside a phone frame lay out for phone width at any window size. */
+.yx-phone__body { container-type: inline-size; flex: 1; padding: var(--yx-space-4); display: flex; flex-direction: column; gap: var(--yx-space-4); }
+/* A bottom sheet opened from a phone frame is no wider than the phone (both are centred on the page). */
+body:has(.yx-phone) .yx-sheet { max-width: calc(var(--yx-space-16) * 6 + var(--yx-space-6)); box-sizing: border-box; }.yx-phone__tabs { position: static; } /* preview scaffold: sits after content so it never covers controls */
+.yx-phone__tabs .yx-mobile-tabs { position: static; }
+
+/* T9 portal */
+.yx-portal { min-height: 100vh; display: flex; flex-direction: column; background: var(--yx-color-bg-page); color: var(--yx-color-text); }
+.yx-portal__head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-3) var(--yx-space-6);
+  padding: var(--yx-space-3) var(--yx-space-6);
+  background: var(--yx-color-bg-surface); border-bottom: var(--yx-border-width) solid var(--yx-color-border);
+}
+.yx-portal__tenant { font-weight: var(--yx-weight-semibold); font-size: var(--yx-text-lg); }
+.yx-portal__name { color: var(--yx-color-text-secondary); padding-left: var(--yx-space-3); border-left: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-portal__nav { display: flex; flex-wrap: wrap; gap: var(--yx-space-1) var(--yx-space-4); flex: 1; min-width: 0; }
+.yx-portal__nav a { color: var(--yx-color-text-secondary); text-decoration: none; padding: var(--yx-space-1) 0; }
+.yx-portal__nav a[aria-current="page"] { color: var(--yx-color-text); font-weight: var(--yx-weight-medium); box-shadow: inset 0 calc(var(--yx-focus-width) * -1) 0 var(--yx-color-action-primary); }
+.yx-portal__user { color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
+.yx-portal__body { flex: 1; width: 100%; max-width: var(--yx-page-max); margin: 0 auto; padding: var(--yx-space-6); display: flex; flex-direction: column; gap: var(--yx-space-6); box-sizing: border-box; }
+.yx-portal__foot { padding: var(--yx-space-4) var(--yx-space-6); border-top: var(--yx-border-width) solid var(--yx-color-border); text-align: center; }
+@media (max-width: 767px) {
+  .yx-portal__head, .yx-portal__body { padding: var(--yx-space-4); }
+  .yx-portal__nav { order: 3; flex-basis: 100%; } /* menu on its own row under the tenant name */
+}
+
+/* Kiosk */
+.yx-kiosk { min-height: 100vh; display: flex; flex-direction: column; background: var(--yx-color-bg-page); color: var(--yx-color-text); font-size: var(--yx-text-lg); }
+.yx-kiosk__head { padding: var(--yx-space-4) var(--yx-space-8); font-size: var(--yx-text-2xl); font-weight: var(--yx-weight-semibold); background: var(--yx-color-bg-surface); border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-kiosk__body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--yx-space-8); padding: var(--yx-space-8); }
+.yx-kiosk .yx-button { height: var(--yx-space-16); font-size: var(--yx-text-lg); padding: 0 var(--yx-space-8); }
+@media (max-width: 767px) { .yx-kiosk__head { padding: var(--yx-space-3) var(--yx-space-4); } .yx-kiosk__body { padding: var(--yx-space-4); } }
+/* The page gap already separates the header from the first content: no extra header margin (about 50 px of blank otherwise). */
+.yx-screen > .yx-page-header { margin-bottom: 0; }
+/* Tablet: header actions wrap under the title instead of squeezing it. */
+@media (max-width: 1023px) { .yx-screen > .yx-page-header .yx-page-header__actions { margin-left: 0; width: 100%; } }
