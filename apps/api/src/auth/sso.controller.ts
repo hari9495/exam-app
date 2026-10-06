@@ -8,7 +8,9 @@ import { OidcService } from './oidc.service';
 import { SessionsService, resolveClientMeta } from './sessions.service';
 import { SsoService, oidcEmail, oidcMfaAsserted } from './sso.service';
 
-export const ssoCallbackUrl = (params: string) => `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/sso/callback?${params}`;
+// The result rides in the URL FRAGMENT: never sent to a server, never in a Referer header, not in
+// proxy / access logs (ASVS V3.1.1). The callback page also sends Referrer-Policy: no-referrer.
+export const ssoCallbackUrl = (params: string) => `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/sso/callback#${params}`;
 
 // Single sign-on entry points shared by every provider type (YX-IAM-04; Q2 wave 1).
 @Controller('auth')
@@ -37,10 +39,13 @@ export class SsoController {
     const org = await this.sso.organizationBySlug(dto.organizationSlug);
     if (!org) throw new NotFoundException(NO_SSO_MESSAGE);
     const provider = await this.sso.route(org.id, { providerId: dto.providerId, email: dto.email });
+    // The device cookie (minted here if new) binds the whole sign-in to this browser: OIDC keeps it
+    // with the state, SAML with the AuthnRequest ID when the browser opens /login next.
+    const { deviceId } = resolveClientMeta(req, res);
     if (provider.type === 'saml') {
       return { url: `${process.env.API_ORIGIN}/api/v1/auth/saml/${encodeURIComponent(org.slug)}/login?RelayState=${provider.id}` };
     }
-    return { url: await this.oidc.begin(provider, resolveClientMeta(req, res).deviceId, dto.email) };
+    return { url: await this.oidc.begin(provider, deviceId, dto.email) };
   }
 
   // The IdP sends the browser back here. Every outcome is a login event; the browser only ever
@@ -76,7 +81,9 @@ export class SsoController {
     if ('reason' in resolved) return fail(resolved.reason, 'not_provisioned');
 
     try {
-      const code = await this.sso.mintLoginCode(resolved.user.id, 'oidc', oidcMfaAsserted(claims));
+      // The IdP's MFA claim counts only for a provider an admin has trusted for MFA (YX-IAM-01/04).
+      const mfaAsserted = provider.mfaTrusted && oidcMfaAsserted(claims);
+      const code = await this.sso.mintLoginCode(resolved.user.id, 'oidc', mfaAsserted, { identityProviderId: provider.id, deviceIdHash: pending.deviceIdHash });
       res.redirect(ssoCallbackUrl(`code=${code}`));
     } catch {
       await fail('sso_code_error');

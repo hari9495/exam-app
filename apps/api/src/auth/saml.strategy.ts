@@ -18,17 +18,23 @@ import type { PassportSamlConfig } from '@node-saml/passport-saml';
 // `export =`, still gives the merged namespace type used for `passport
 // .Strategy` below).
 import passport = require('passport');
+import { createHash } from 'crypto';
 import { PrismaService } from '@exam-platform/shared';
 import { SamlCacheProvider } from './saml-cache.provider';
 import { ProviderWithDomains, SsoService, samlMfaAsserted } from './sso.service';
+import { DEVICE_COOKIE } from './sessions.service';
 
 export interface SsoUser {
   id: string;
   email: string;
   role: string;
   organizationId: string | null;
-  // The IdP asserted MFA (AuthnContextClassRef / authnmethodsreferences): the session starts at AAL2.
+  // The IdP asserted MFA (AuthnContextClassRef / authnmethodsreferences) and an admin trusts this
+  // IdP for MFA: the session starts at AAL2.
   mfaAsserted: boolean;
+  identityProviderId: string;
+  // sha256 of the device cookie of the browser that started this sign-in (null: none was sent).
+  deviceIdHash: string | null;
 }
 
 // The installed @node-saml/passport-saml types its verify callback's `user`
@@ -52,6 +58,15 @@ export interface SamlRequestLike {
   params: { organizationSlug?: string | string[] };
   query?: { RelayState?: unknown };
   body?: { RelayState?: unknown };
+  cookies?: Record<string, unknown>;
+  // Set while node-saml consumes the AuthnRequest ID this response answers (SamlCacheProvider).
+  samlDeviceIdHash?: string | null;
+}
+
+// sha256 of this request's device cookie, when it carries a well-formed one.
+function deviceIdHashOf(req: SamlRequestLike): string | null {
+  const id = req.cookies?.[DEVICE_COOKIE];
+  return typeof id === 'string' && /^[A-Za-z0-9_-]{43}$/.test(id) ? createHash('sha256').update(id).digest('hex') : null;
 }
 
 function getSlugParam(req: SamlRequestLike): string {
@@ -107,7 +122,7 @@ export class SamlStrategy implements OnModuleInit {
       {
         passReqToCallback: true,
         getSamlOptions: (req, done) => {
-          this.resolveOrgSamlConfig(getSlugParam(req), getProviderParam(req))
+          this.resolveOrgSamlConfig(getSlugParam(req), getProviderParam(req), req as unknown as SamlRequestLike)
             .then((config) => done(null, config))
             .catch((error) => done(error as Error));
         },
@@ -185,11 +200,16 @@ export class SamlStrategy implements OnModuleInit {
     return (providerId ? saml.find((p) => p.id === providerId) : saml.length === 1 ? saml[0] : undefined) ?? null;
   }
 
-  async resolveOrgSamlConfig(organizationSlug: string, providerId?: string): Promise<Partial<PassportSamlConfig>> {
+  // `req`: the request being served. At /login the new AuthnRequest ID is stored with this
+  // browser's device cookie; at the ACS the device stored with the answered ID is put on `req`.
+  async resolveOrgSamlConfig(organizationSlug: string, providerId?: string, req?: SamlRequestLike): Promise<Partial<PassportSamlConfig>> {
     const provider = await this.resolveProvider(organizationSlug, providerId);
     if (!provider) {
       throw new BadRequestException(`SAML SSO is not configured for "${organizationSlug}"`);
     }
+    const cacheProvider = this.cacheProvider.forRequest(provider.id, req ? deviceIdHashOf(req) : null, (deviceIdHash) => {
+      if (req) req.samlDeviceIdHash = deviceIdHash;
+    });
 
     return {
       entryPoint: provider.samlSsoUrl!,
@@ -214,7 +234,7 @@ export class SamlStrategy implements OnModuleInit {
       // SP-side request signing is out of scope (see the plan's Global
       // Constraints), so no privateKey/publicCert here.
       validateInResponseTo: ValidateInResponseTo.always,
-      cacheProvider: this.cacheProvider,
+      cacheProvider,
       // Entra ID's default "Signing Option" is "Sign SAML assertion" -- the
       // outer <Response> is left unsigned. node-saml defaults to requiring a
       // response-level signature (wantAuthnResponseSigned: true) and rejects
@@ -275,7 +295,8 @@ export class SamlStrategy implements OnModuleInit {
       return;
     }
     const assertion = typeof profile.getAssertion === 'function' ? profile.getAssertion() : null;
-    const mfaAsserted = samlMfaAsserted(assertion, (profile.attributes as Record<string, unknown> | undefined) ?? {});
-    done(null, { ...resolved.user, mfaAsserted });
+    // The IdP's MFA claim counts only for a provider an admin has trusted for MFA (YX-IAM-01/04).
+    const mfaAsserted = provider.mfaTrusted && samlMfaAsserted(assertion, (profile.attributes as Record<string, unknown> | undefined) ?? {});
+    done(null, { ...resolved.user, mfaAsserted, identityProviderId: provider.id, deviceIdHash: req.samlDeviceIdHash ?? null });
   }
 }

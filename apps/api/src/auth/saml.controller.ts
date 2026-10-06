@@ -1,4 +1,6 @@
 import { Controller, Get, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { AuthGuard } from '@nestjs/passport';
 import { Request, Response } from 'express';
 // `import * as passport` silently drops `authenticate`/`use` (they live on
@@ -18,8 +20,10 @@ export class SamlController {
     private readonly sessions: SessionsService,
   ) {}
 
-  // Is any sign-in provider (SAML or OIDC) switched on for this company?
+  // Is any sign-in provider (SAML or OIDC) switched on for this company? Rate-limited per IP
+  // (organisation recon); unknown and inactive organisations answer like one without SSO.
   @Get(':organizationSlug/status')
+  @Throttle(STRICT_AUTH_THROTTLE)
   async status(@Param('organizationSlug') organizationSlug: string): Promise<{ enabled: boolean }> {
     const org = await this.sso.organizationBySlug(organizationSlug);
     return { enabled: org ? (await this.sso.activeProviders(org.id)).length > 0 : false };
@@ -81,7 +85,8 @@ export class SamlController {
     }
 
     try {
-      res.redirect(ssoCallbackUrl(`code=${await this.sso.mintLoginCode(user.id, 'saml', user.mfaAsserted)}`));
+      const code = await this.sso.mintLoginCode(user.id, 'saml', user.mfaAsserted, { identityProviderId: user.identityProviderId, deviceIdHash: user.deviceIdHash });
+      res.redirect(ssoCallbackUrl(`code=${code}`));
     } catch {
       res.redirect(ssoCallbackUrl('ssoError=invalid_response'));
     }

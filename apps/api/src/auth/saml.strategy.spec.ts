@@ -1,4 +1,5 @@
 import { SamlStrategy } from './saml.strategy';
+import { SamlCacheProvider } from './saml-cache.provider';
 
 describe('SamlStrategy', () => {
   let prisma: { organization: { findUnique: jest.Mock } };
@@ -15,6 +16,7 @@ describe('SamlStrategy', () => {
     samlSsoUrl: 'https://idp.example.com/sso',
     samlCertificate: '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----',
     domains: [],
+    mfaTrusted: true,
     ...over,
   });
   const enabled = (...providers: unknown[]) => {
@@ -25,7 +27,7 @@ describe('SamlStrategy', () => {
   beforeEach(() => {
     prisma = { organization: { findUnique: jest.fn() } };
     sso = { organizationBySlug: jest.fn().mockResolvedValue(null), activeProviders: jest.fn().mockResolvedValue([]), resolveUser: jest.fn() };
-    strategy = new SamlStrategy(prisma as any, sso as any, {} as any);
+    strategy = new SamlStrategy(prisma as any, sso as any, new SamlCacheProvider({} as any));
   });
 
   describe('resolveOrgSamlConfig', () => {
@@ -107,7 +109,67 @@ describe('SamlStrategy', () => {
       await strategy.validate(req as any, { nameID: 'alice@acme.test', issuer: 'https://idp.example.com/entity' } as any, done);
 
       expect(sso.resolveUser).toHaveBeenCalledWith(expect.objectContaining({ id: 'idp-1' }), 'alice@acme.test', undefined);
-      expect(done).toHaveBeenCalledWith(null, { id: 'user-1', email: 'alice@acme.test', role: 'recruiter', organizationId: 'org-1', mfaAsserted: false });
+      expect(done).toHaveBeenCalledWith(null, {
+        id: 'user-1',
+        email: 'alice@acme.test',
+        role: 'recruiter',
+        organizationId: 'org-1',
+        mfaAsserted: false,
+        identityProviderId: 'idp-1',
+        deviceIdHash: null,
+      });
+    });
+
+    it('carries the device stored with the answered AuthnRequest onto the user (code binding)', async () => {
+      enabled();
+      sso.resolveUser.mockResolvedValue({ user: { id: 'user-1', email: 'alice@acme.test', role: 'recruiter', organizationId: 'org-1' } });
+      const done = jest.fn();
+      const req = { params: { organizationSlug: 'acme' }, samlDeviceIdHash: 'device-hash' };
+
+      await strategy.validate(req as any, { nameID: 'alice@acme.test', issuer: 'https://idp.example.com/entity' } as any, done);
+
+      expect(done).toHaveBeenCalledWith(null, expect.objectContaining({ deviceIdHash: 'device-hash' }));
+    });
+
+    it('stores the device of the browser opening /login with the new AuthnRequest ID, and hands it back at the ACS', async () => {
+      enabled();
+      const store = new Map<string, string>();
+      const redis = {
+        set: jest.fn(async (k: string, v: string) => (store.set(k, v), 'OK')),
+        get: jest.fn(async (k: string) => store.get(k) ?? null),
+        getdel: jest.fn(async (k: string) => {
+          const v = store.get(k) ?? null;
+          store.delete(k);
+          return v;
+        }),
+      };
+      strategy = new SamlStrategy(prisma as any, sso as any, new SamlCacheProvider(redis as any));
+      const device = 'A'.repeat(43);
+      const login = await strategy.resolveOrgSamlConfig('acme', undefined, { params: {}, cookies: { yx_device: device } });
+      await login.cacheProvider!.saveAsync('_req1', new Date().toISOString());
+
+      const acsReq: { params: object; samlDeviceIdHash?: string | null } = { params: {} };
+      const acs = await strategy.resolveOrgSamlConfig('acme', undefined, acsReq);
+      await acs.cacheProvider!.removeAsync('_req1');
+
+      expect(acsReq.samlDeviceIdHash).toBe(require('crypto').createHash('sha256').update(device).digest('hex'));
+    });
+
+    // Regression: a tenant-chosen IdP's own MFA claim is not a second factor unless an admin
+    // explicitly trusted that provider for it (YX-IAM-01/04).
+    it('ignores the IdP MFA claim of a provider that is not trusted for MFA', async () => {
+      enabled(samlProvider({ mfaTrusted: false }));
+      sso.resolveUser.mockResolvedValue({ user: { id: 'user-1', email: 'alice@acme.test', role: 'recruiter', organizationId: 'org-1' } });
+      const done = jest.fn();
+      const profile = {
+        nameID: 'alice@acme.test',
+        issuer: 'https://idp.example.com/entity',
+        getAssertion: () => ({ Assertion: { AuthnStatement: [{ AuthnContext: [{ AuthnContextClassRef: ['http://schemas.microsoft.com/claims/multipleauthn'] }] }] } }),
+      };
+
+      await strategy.validate({ params: { organizationSlug: 'acme' } } as any, profile as any, done);
+
+      expect(done).toHaveBeenCalledWith(null, expect.objectContaining({ mfaAsserted: false }));
     });
 
     it('flags IdP-asserted MFA from the AuthnContextClassRef', async () => {

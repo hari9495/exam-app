@@ -105,8 +105,7 @@ export class SsoService {
     return (await this.activeProviders(organizationId)).find((p) => p.id === providerId) ?? null;
   }
 
-  // Which provider signs this person in: the one named, else the one owning the email's domain,
-  // else -- the pre-1e set-up, one provider with no domains -- that one.
+  // Which provider signs this person in: the one named, else the one owning the email's domain.
   async route(organizationId: string, choice: { providerId?: string; email?: string }): Promise<ProviderWithDomains> {
     const providers = await this.activeProviders(organizationId);
     let provider: ProviderWithDomains | undefined;
@@ -115,30 +114,29 @@ export class SsoService {
     } else {
       const domain = choice.email ? emailDomain(choice.email) : null;
       provider = (domain && providers.find((p) => p.domains.some((d) => d.domain === domain))) || undefined;
-      if (!provider && providers.length === 1 && providers[0].domains.length === 0) provider = providers[0];
     }
     if (!provider) throw new NotFoundException(NO_SSO_MESSAGE);
     return provider;
   }
 
-  // The account the IdP has vouched for. A provider only speaks for its own domains: a domain
-  // mapped to another provider of this company is refused, and a provider with domains refuses
-  // every other domain. Missing accounts are created only by JIT, only for a mapped domain, and
-  // only into a role that holds no sensitive permission (YX-IAM-05).
+  // The account the IdP has vouched for. A provider only speaks for the email domains mapped to
+  // it (re-read here, so a domain moved to another provider counts at once): a provider with no
+  // domains vouches for nobody -- an admin cannot plant an issuer that signs in as every account
+  // of the company. Missing accounts are created only by JIT, and only into a role that holds no
+  // sensitive permission (YX-IAM-05).
   async resolveUser(provider: ProviderWithDomains, rawEmail: string, displayName?: string): Promise<SsoResolution> {
     const email = rawEmail.trim().toLowerCase();
     if (!EMAIL_RE.test(email)) return { reason: 'no_verified_email' };
     const domain = emailDomain(email);
     const organizationId = provider.organizationId;
-    const ownDomain = provider.domains.some((d) => d.domain === domain);
 
     const { owner, existing } = await this.tenantPrisma.forTenant(tenant(organizationId), async (tx) => ({
       owner: await tx.identityProviderDomain.findUnique({ where: { organizationId_domain: { organizationId, domain } } }),
       existing: await tx.user.findFirst({ where: { organizationId, email }, select: { id: true, email: true, role: true, organizationId: true } }),
     }));
-    if (owner ? owner.identityProviderId !== provider.id : provider.domains.length > 0) return { reason: 'domain_not_allowed' };
+    if (owner?.identityProviderId !== provider.id) return { reason: 'domain_not_allowed' };
     if (existing) return { user: existing };
-    if (!provider.jitEnabled || !provider.jitRole || !ownDomain) return { reason: 'not_provisioned' };
+    if (!provider.jitEnabled || !provider.jitRole) return { reason: 'not_provisioned' };
     if (!(await this.jitRoleIsSafe(organizationId, provider.jitRole))) {
       this.logger.warn(`JIT refused for provider ${provider.id}: role ${provider.jitRole} now holds a sensitive permission`);
       return { reason: 'jit_role_sensitive' };
@@ -180,8 +178,14 @@ export class SsoService {
     return SENSITIVE_ROLE_PERMISSIONS.every((key) => !grants.has(key));
   }
 
-  // The browser trades this for a session within 60 s, once. Only its sha256 is stored.
-  async mintLoginCode(userId: string, method: 'saml' | 'oidc', mfaAsserted: boolean): Promise<string> {
+  // The browser that started the sign-in (and only it, by its device cookie) trades this for a
+  // session within 60 s, once. Only its sha256 is stored.
+  async mintLoginCode(
+    userId: string,
+    method: 'saml' | 'oidc',
+    mfaAsserted: boolean,
+    binding: { identityProviderId: string; deviceIdHash: string | null },
+  ): Promise<string> {
     const rawCode = randomBytes(32).toString('hex');
     await this.prisma.ssoLoginCode.create({
       data: {
@@ -190,6 +194,8 @@ export class SsoService {
         expiresAt: new Date(Date.now() + SSO_LOGIN_CODE_EXPIRY_SECONDS * 1000),
         method,
         mfaAsserted,
+        identityProviderId: binding.identityProviderId,
+        deviceIdHash: binding.deviceIdHash,
       },
     });
     return rawCode;

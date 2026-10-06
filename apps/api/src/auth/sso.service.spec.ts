@@ -90,7 +90,17 @@ describe('SsoService.resolveUser (domains + JIT, YX-IAM-04/05)', () => {
 
     tx.identityProviderDomain.findUnique.mockResolvedValue(null);
     await expect(service.resolveUser(provider(), 'ana@evil.com')).resolves.toEqual({ reason: 'domain_not_allowed' });
-    await expect(service.resolveUser(provider({ domains: [] }), 'ana@evil.com')).resolves.toEqual({ user: { id: 'u1' } });
+  });
+
+  // Regression: a provider with no domains used to vouch for EVERY existing account of the
+  // company -- an admin with org:manage_settings could add their own issuer and sign in as an
+  // org_admin or a break-glass account. A provider now speaks only for domains mapped to it.
+  it('a provider with no domains vouches for nobody, not even an existing org admin', async () => {
+    tx.user.findFirst.mockResolvedValue({ id: 'admin', email: 'boss@acme.com', role: 'org_admin', organizationId: ORG });
+    tx.identityProviderDomain.findUnique.mockResolvedValue(null);
+    await expect(service.resolveUser(provider({ id: 'rogue', domains: [] }), 'boss@acme.com')).resolves.toEqual({ reason: 'domain_not_allowed' });
+    tx.identityProviderDomain.findUnique.mockResolvedValue({ identityProviderId: 'idp-1' });
+    await expect(service.resolveUser(provider({ id: 'rogue', domains: [] }), 'boss@acme.com')).resolves.toEqual({ reason: 'domain_not_allowed' });
   });
 
   it('without JIT, an unknown account is not provisioned', async () => {
@@ -118,7 +128,7 @@ describe('SsoService.resolveUser (domains + JIT, YX-IAM-04/05)', () => {
     await expect(service.resolveUser(provider({ jitEnabled: true, jitRole: 'org_admin' }), 'new@acme.com')).resolves.toEqual({ reason: 'jit_role_sensitive' });
     tx.identityProviderDomain.findUnique.mockResolvedValue(null);
     await expect(service.resolveUser(provider({ jitEnabled: true, jitRole: 'panel', domains: [] }), 'new@acme.com')).resolves.toEqual({
-      reason: 'not_provisioned',
+      reason: 'domain_not_allowed',
     });
     expect(tx.user.create).not.toHaveBeenCalled();
   });

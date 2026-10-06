@@ -57,7 +57,9 @@ describe('OIDC single sign-on and identity providers (P12 Part 1e, YX-IAM-04/05)
     expect(res.status).toBe(302);
     return { location: new URL(res.headers.location), back };
   }
-  const exchange = (code: string | null) => request(server()).post('/api/v1/auth/sso/exchange').set('Cookie', device('a')).send({ code });
+  const exchange = (code: string | null, cookie = device('a')) => request(server()).post('/api/v1/auth/sso/exchange').set('Cookie', cookie).send({ code });
+  // The callback result rides in the URL fragment, never the query string (ASVS V3.1.1).
+  const fragment = (location: URL) => new URLSearchParams(location.hash.slice(1));
 
   beforeAll(async () => {
     await issuer.start();
@@ -144,6 +146,7 @@ describe('OIDC single sign-on and identity providers (P12 Part 1e, YX-IAM-04/05)
           domains: [DOMAIN.toUpperCase()],
           jitEnabled: true,
           jitRole: 'panel',
+          mfaTrusted: true,
           status: 'active',
         })
         .expect(201);
@@ -217,7 +220,7 @@ describe('OIDC single sign-on and identity providers (P12 Part 1e, YX-IAM-04/05)
 
     it('signs an existing account in at AAL1 when the IdP asserts no MFA, and records the login', async () => {
       const { location } = await signIn(at('ana'));
-      const code = location.searchParams.get('code');
+      const code = fragment(location).get('code');
       expect(code).toMatch(/^[0-9a-f]{64}$/);
       const res = await exchange(code).expect(200);
       expect(jwt.decode(res.body.accessToken)).toEqual(expect.objectContaining({ sub: users[at('ana')], organizationId: orgA.id }));
@@ -227,21 +230,21 @@ describe('OIDC single sign-on and identity providers (P12 Part 1e, YX-IAM-04/05)
 
     it('opens an AAL2 session when the IdP asserts MFA (amr), with no YukthiX challenge', async () => {
       const { location } = await signIn(at('fac'), { amr: ['pwd', 'mfa'] });
-      const res = await exchange(location.searchParams.get('code')).expect(200);
+      const res = await exchange(fragment(location).get('code')).expect(200);
       expect(res.body.accessToken).toBeDefined();
       expect(await session(sidOf(res.body.accessToken))).toEqual(expect.objectContaining({ assuranceLevel: 'aal2', mfaMethod: 'idp' }));
     });
 
     it('without IdP MFA, an account with a factor must still give it (the 1c rules apply)', async () => {
       const { location } = await signIn(at('fac'));
-      const res = await exchange(location.searchParams.get('code')).expect(200);
+      const res = await exchange(fragment(location).get('code')).expect(200);
       expect(res.body).toEqual(expect.objectContaining({ mfaRequired: true, factors: expect.arrayContaining(['totp']) }));
       expect(res.body.accessToken).toBeUndefined();
     });
 
     it('JIT creates a new account at the provider\'s domain in the configured non-sensitive role, and audits it', async () => {
       const { location } = await signIn(at('newbie'), { name: 'New Bie' });
-      await exchange(location.searchParams.get('code')).expect(200);
+      await exchange(fragment(location).get('code')).expect(200);
       const created = await tenantPrisma.forTenant(SUPER, (tx) => tx.user.findFirstOrThrow({ where: { organizationId: orgA.id, email: at('newbie') } }));
       expect(created).toEqual(expect.objectContaining({ role: 'panel', name: 'New Bie', status: 'active' }));
       await tenantPrisma.forTenant(SUPER, (tx) =>
@@ -251,7 +254,7 @@ describe('OIDC single sign-on and identity providers (P12 Part 1e, YX-IAM-04/05)
 
     it('refuses an unverified email and an address outside the provider\'s domains, creating nobody', async () => {
       const unverified = await signIn(at('unverified'), { email_verified: false });
-      expect(unverified.location.searchParams.get('ssoError')).toBe('not_provisioned');
+      expect(fragment(unverified.location).get('ssoError')).toBe('not_provisioned');
       expect((await lastOidcEvent())?.reason).toBe('no_verified_email');
 
       // Routed by explicit provider id, but the IdP vouches for a foreign domain.
@@ -274,14 +277,14 @@ describe('OIDC single sign-on and identity providers (P12 Part 1e, YX-IAM-04/05)
     ];
     it.each(tampered)('refuses an ID token with %s', async (_label, tamper) => {
       const { location } = await signIn(at('ana'), {}, tamper);
-      expect(location.searchParams.get('ssoError')).toBe('invalid_response');
-      expect(location.searchParams.get('code')).toBeNull();
+      expect(fragment(location).get('ssoError')).toBe('invalid_response');
+      expect(fragment(location).get('code')).toBeNull();
       expect((await lastOidcEvent())?.reason).toBe('oidc_invalid_response');
     });
 
     it('a callback is single-use: replaying it (state) is refused', async () => {
       const { location, back } = await signIn(at('ana'));
-      expect(location.searchParams.get('code')).toBeTruthy();
+      expect(fragment(location).get('code')).toBeTruthy();
       const replay = await request(server()).get(back).set('Cookie', device('a'));
       expect(replay.headers.location).toContain('ssoError=invalid_response');
       expect((await lastOidcEvent(null))?.reason).toBe('oidc_state_invalid');
@@ -289,7 +292,7 @@ describe('OIDC single sign-on and identity providers (P12 Part 1e, YX-IAM-04/05)
 
     it('only the browser that started the sign-in can finish it (login CSRF)', async () => {
       const { location, back } = await signIn(at('ana'), {}, {}, { start: device('a'), back: device('b') });
-      expect(location.searchParams.get('ssoError')).toBe('invalid_response');
+      expect(fragment(location).get('ssoError')).toBe('invalid_response');
       expect((await lastOidcEvent())?.reason).toBe('oidc_device_mismatch');
       // ...and the attempt burnt the state: the right browser cannot use it afterwards either.
       const retry = await request(server()).get(back).set('Cookie', device('a'));
@@ -305,9 +308,38 @@ describe('OIDC single sign-on and identity providers (P12 Part 1e, YX-IAM-04/05)
       expect(issuer.tokenRequests).toBe(before);
     });
 
+    // Regression (login CSRF): an attacker's code redeemed in the victim's browser.
+    it('the sign-in code only works in the browser that started the sign-in', async () => {
+      const { location } = await signIn(at('ana'));
+      expect(location.search).toBe('');
+      await exchange(fragment(location).get('code'), device('b')).expect(401);
+      expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.loginEvent.findFirst({ where: { organizationId: null, reason: 'sso_device_mismatch' } })))).not.toBeNull();
+    });
+
+    // Regression: a tenant-chosen issuer's own amr/acr used to be AAL2 (and a step-up) for anyone.
+    it('an IdP not trusted for MFA gets no AAL2 from its amr claim', async () => {
+      await admin('patch', `/${providerId}`).send({ mfaTrusted: false }).expect(200);
+      try {
+        const { location } = await signIn(at('ana'), { amr: ['pwd', 'mfa'] });
+        const res = await exchange(fragment(location).get('code')).expect(200);
+        expect(await session(sidOf(res.body.accessToken))).toEqual(expect.objectContaining({ assuranceLevel: 'aal1', mfaMethod: null }));
+      } finally {
+        await admin('patch', `/${providerId}`).send({ mfaTrusted: true }).expect(200);
+      }
+    });
+
+    it('an IdP-asserted MFA session is AAL2 but never a step-up', async () => {
+      const { location } = await signIn(at('fac'), { amr: ['pwd', 'mfa'] });
+      const res = await exchange(fragment(location).get('code')).expect(200);
+      expect(await session(sidOf(res.body.accessToken))).toEqual(expect.objectContaining({ assuranceLevel: 'aal2', mfaMethod: 'idp' }));
+      // A step-up action (the recovery codes) refuses it.
+      const refused = await request(server()).post('/api/v1/auth/mfa/recovery-codes').set('Authorization', `Bearer ${res.body.accessToken}`).expect(403);
+      expect(refused.body.code).toBe(STEP_UP_REQUIRED_CODE);
+    });
+
     it('a sign-in code is single-use', async () => {
       const { location } = await signIn(at('ana'));
-      const code = location.searchParams.get('code');
+      const code = fragment(location).get('code');
       await exchange(code).expect(200);
       await exchange(code).expect(401);
     });
@@ -316,6 +348,26 @@ describe('OIDC single sign-on and identity providers (P12 Part 1e, YX-IAM-04/05)
       await start({ providerId: orgBProviderId }).expect(404);
       await start({ email: 'someone@unknown.test' }).expect(404);
       await request(server()).post('/api/v1/auth/sso/start').send({ organizationSlug: `missing-${runId}`, email: at('ana') }).expect(404);
+    });
+
+    // Regression (YX-IAM-05): switching off a (say, rogue) provider used to leave every session
+    // it had signed in alive, rotating through /auth/refresh for up to 12 h.
+    it('switching a provider off ends the sessions it signed in, at once', async () => {
+      const { location } = await signIn(at('ana'));
+      const res = await exchange(fragment(location).get('code')).expect(200);
+      const cookie = (res.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith('refresh_token='))!.split(';')[0];
+      await request(server()).get('/api/v1/auth/sessions').set('Authorization', `Bearer ${res.body.accessToken}`).expect(200);
+
+      await admin('patch', `/${providerId}`).send({ status: 'disabled' }).expect(200);
+      try {
+        await request(server()).get('/api/v1/auth/sessions').set('Authorization', `Bearer ${res.body.accessToken}`).expect(401);
+        await request(server()).post('/api/v1/auth/refresh').set('Cookie', cookie).send({}).expect(401);
+        expect(await session(sidOf(res.body.accessToken))).toEqual(expect.objectContaining({ revokedReason: 'identity_provider_disabled', identityProviderId: providerId }));
+        // The admin's own password session is untouched.
+        await admin('get', '').expect(200);
+      } finally {
+        await admin('patch', `/${providerId}`).send({ status: 'active' }).expect(200);
+      }
     });
 
     it('a provider switched off mid-sign-in cannot finish it', async () => {
@@ -350,8 +402,17 @@ describe('OIDC single sign-on and identity providers (P12 Part 1e, YX-IAM-04/05)
       await admin('delete', `/${providerId}`).expect(400);
       // Password sign-in is off for everyone else; SSO still works.
       await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: orgA.slug, email: at('ana'), password: PASSWORD }).expect(401);
+      // Ana's password session from before SSO-only (the step-up test above) has ended; the
+      // break-glass admin's has not.
+      const anaPasswordSessions = await tenantPrisma.forTenant(SUPER, (tx) =>
+        tx.session.findMany({ where: { userId: users[at('ana')], method: 'password' }, select: { revokedReason: true } }),
+      );
+      expect(anaPasswordSessions.length).toBeGreaterThan(0);
+      expect(anaPasswordSessions.every((s) => s.revokedReason !== null)).toBe(true);
+      expect(anaPasswordSessions.some((s) => s.revokedReason === 'sso_only_enabled')).toBe(true);
+      await admin('get', '').expect(200);
       const { location } = await signIn(at('ana'));
-      await exchange(location.searchParams.get('code')).expect(200);
+      await exchange(fragment(location).get('code')).expect(200);
 
       await request(server()).patch('/api/v1/security/policy').set('Authorization', `Bearer ${adminAccess}`).send({ ssoOnly: false }).expect(200);
       invalidateTenantSecurityPolicy(orgA.id);

@@ -1,7 +1,7 @@
 import { Body, Controller, HttpCode, Param, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
-import { createHash } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import { PrismaService, TenantPrismaService, isOrganizationActive, ORGANIZATION_INACTIVE_MESSAGE, authCookieSecure } from '@exam-platform/shared';
 import { AuthService, LoginOutcome, isMfaChallenge } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -16,8 +16,11 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentUserId } from './current-user-id.decorator';
 import { SessionsService, resolveClientMeta } from './sessions.service';
 import { SensitiveRoleAction } from './step-up.decorator';
+import { assertHuman } from './bot-challenge';
 
 const REFRESH_COOKIE = 'refresh_token';
+const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+const sameHash = (a: string | null, b: string) => a !== null && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 // One definition for all three set-cookie sites. `secure` was previously hardcoded false at
 // each of them; see authCookieSecure() for why it is now on by default with an explicit
@@ -48,6 +51,7 @@ export class AuthController {
   @HttpCode(200)
   @Throttle(STRICT_AUTH_THROTTLE)
   async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    await assertHuman(dto.challengeToken, req.ip ?? null);
     return signInResponse(await this.authService.login(dto, resolveClientMeta(req, res)), res);
   }
 
@@ -98,12 +102,15 @@ export class AuthController {
     // proven identity via a token/code, not an org-scoped session yet" case.
     const record = await this.prisma.ssoLoginCode.findUnique({ where: { codeHash } });
 
-    // Single-use: delete on every lookup attempt, regardless of outcome.
-    if (record) {
-      await this.prisma.ssoLoginCode.delete({ where: { id: record.id } });
-    }
-    if (!record || record.expiresAt < new Date()) {
-      await this.sessions.recordLoginEvent({ organizationId: null, result: 'failed', method: record?.method === 'oidc' ? 'oidc' : 'saml', reason: 'invalid_sso_code', meta });
+    // Single-use: delete on every lookup attempt, regardless of outcome. deleteMany + count: of two
+    // concurrent redemptions exactly one wins.
+    const won = record ? (await this.prisma.ssoLoginCode.deleteMany({ where: { id: record.id } })).count === 1 : false;
+    // Only the browser that started the sign-in may redeem it (login CSRF; a code leaked through
+    // history or logs is useless elsewhere).
+    const sameDevice = Boolean(record && sameHash(record.deviceIdHash, sha256(meta.deviceId)));
+    if (!record || !won || record.expiresAt < new Date() || !sameDevice) {
+      const reason = record && won && record.expiresAt >= new Date() ? 'sso_device_mismatch' : 'invalid_sso_code';
+      await this.sessions.recordLoginEvent({ organizationId: null, result: 'failed', method: record?.method === 'oidc' ? 'oidc' : 'saml', reason, meta });
       throw new UnauthorizedException('This sign-in link is invalid or has expired');
     }
 
@@ -141,7 +148,7 @@ export class AuthController {
     const outcome = await this.authService.issueTokensForSso(
       { id: user.id, email: user.email, organizationId: user.organizationId, role: user.role, permissionProfileId: user.permissionProfileId ?? null },
       meta,
-      { method, mfaAsserted: record.mfaAsserted },
+      { method, mfaAsserted: record.mfaAsserted, identityProviderId: record.identityProviderId },
     );
     return signInResponse(outcome, res);
   }
