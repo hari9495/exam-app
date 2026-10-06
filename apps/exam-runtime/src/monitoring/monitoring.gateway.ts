@@ -11,7 +11,15 @@ import {
 } from '@nestjs/websockets';
 import { Namespace, Socket } from 'socket.io';
 import { PrismaService, resolvePermissionGrants } from '@exam-platform/shared';
-import { TenantPrismaService, clientIpOf, staffDeskIpAllowed, touchStaffSession } from '@exam-platform/shared';
+import {
+  MFA_REQUIRED_CODE,
+  SessionAssurance,
+  TenantPrismaService,
+  clientIpOf,
+  mfaSatisfied,
+  staffDeskIpAllowed,
+  touchStaffSession,
+} from '@exam-platform/shared';
 import { MonitoringService, RosterRow } from './monitoring.service';
 import { LeaderboardService, RecruiterLeaderboardRow } from '../leaderboard/leaderboard.service';
 
@@ -21,6 +29,7 @@ interface StaffSocketUser {
   role: string;
   permissionProfileId: string | null;
   actingSuperAdmin?: boolean;
+  session: SessionAssurance;
 }
 
 // Every tick rebroadcasts the full roster, so this is also how often a recruiter's
@@ -80,7 +89,8 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
         impersonatorUserId?: string;
         sid?: string;
       };
-      if (!(await touchStaffSession(this.tenantPrisma, payload.sid, payload.impersonatorUserId ?? payload.sub))) {
+      const session = await touchStaffSession(this.tenantPrisma, payload.sid, payload.impersonatorUserId ?? payload.sub);
+      if (!session) {
         return;
       }
       // The company's desk IP allow-list (YX-IAM-09), as the API applies to every staff request.
@@ -93,6 +103,7 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
         role: payload.role,
         permissionProfileId: payload.permissionProfileId ?? null,
         actingSuperAdmin: payload.actingSuperAdmin,
+        session,
       };
     } catch {
       // invalid / expired token, or the session lookup failed: stay unauthenticated
@@ -116,6 +127,12 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
     const hasPermission = user.actingSuperAdmin || (await this.hasExamManagePermission(user));
     if (!hasPermission) {
       client.emit('error', { message: 'Missing required permission: exam:manage' });
+      return;
+    }
+    // Live proctoring is a sensitive-role action (P12 §3 proctor): AAL2 once the enrolment grace
+    // has passed (YX-IAM-01), as the API applies to proctor endpoints.
+    if (!mfaSatisfied(user.session)) {
+      client.emit('error', { code: MFA_REQUIRED_CODE, message: 'Set up two-step verification to continue.' });
       return;
     }
 

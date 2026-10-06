@@ -37,7 +37,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   // Then the company's desk IP allow-list (YX-IAM-09), on every request so a session cannot be
   // carried off the allowed network. 403, not 401: the session is fine, the network is not.
   async validate(req: Request, payload: JwtPayload) {
-    if (!(await touchStaffSession(this.tenantPrisma, payload.sid, payload.impersonatorUserId ?? payload.sub))) {
+    const session = await touchStaffSession(this.tenantPrisma, payload.sid, payload.impersonatorUserId ?? payload.sub);
+    if (!session) {
       throw new UnauthorizedException('Session expired');
     }
     if (!(await staffDeskIpAllowed(this.tenantPrisma, payload, req.ip))) {
@@ -52,6 +53,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       impersonatorUserId: payload.impersonatorUserId,
       impersonatorEmail: payload.impersonatorEmail,
       sessionId: payload.sid!,
+      // Assurance level / last MFA proof of the session (PermissionsGuard: YX-IAM-01/02).
+      session,
     };
   }
 }

@@ -11,9 +11,10 @@ describe('JwtStrategy.validate', () => {
   let live: boolean;
   let deskList: string[];
   const sessionLive = (value: boolean) => (live = value);
+  const ASSURANCE = { assuranceLevel: 'aal2', mfaVerifiedAt: new Date(), mfaMethod: 'totp', mfaEnrolmentDueAt: new Date() };
   // Super-admin context = the session touch; tenant context = the company's security policy.
   const fakeForTenant = async (ctx: { isSuperAdmin: boolean }) =>
-    ctx.isSuperAdmin ? [{ n: live ? 1 : 0 }] : { ...DEFAULT_SECURITY_POLICY, ipAllowlistDesk: deskList, organizationId: 'org1' };
+    ctx.isSuperAdmin ? (live ? [ASSURANCE] : []) : { ...DEFAULT_SECURITY_POLICY, ipAllowlistDesk: deskList, organizationId: 'org1' };
   const validate = (payload: JwtPayload, ip = '203.0.113.5') => strategy.validate({ ip } as never, payload);
 
   beforeAll(() => {
@@ -35,6 +36,8 @@ describe('JwtStrategy.validate', () => {
     });
     expect(user).toEqual(expect.objectContaining({
       userId: U1, role: 'recruiter', impersonatorUserId: ADMIN, impersonatorEmail: 'admin@x.com', sessionId: SID,
+      // The session's assurance (MFA) travels with the request for PermissionsGuard.
+      session: ASSURANCE,
     }));
   });
 

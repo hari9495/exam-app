@@ -1,0 +1,54 @@
+// Multi-factor authentication floor (P12 Q1, YX-IAM-01/02/03), shared by the API and exam-runtime.
+
+// Permissions that belong to the sensitive roles of P12 §3 as they exist in this product:
+// System / HR admin (users, settings, security), finance (billing), approvers (approval chains),
+// Special-data handling (data-subject export / erase) and YukthiX staff (platform). Using any of
+// them needs an AAL2 session once the user's enrolment grace has passed (YX-IAM-01). Proctor and
+// evaluator actions are marked per endpoint (@SensitiveRoleAction) and on the monitoring socket,
+// since their permission (exam:manage) also covers everyday exam authoring.
+export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
+  'platform:manage_organizations',
+  'org:manage_users',
+  'org:manage_settings',
+  'org:manage_billing',
+  'approvals:configure',
+  'candidate:data_rights',
+];
+
+// A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).
+export const SENSITIVE_ROLE_PERMISSIONS: readonly string[] = [...MFA_SENSITIVE_PERMISSIONS, 'exam:manage'];
+
+export const MFA_ENROLMENT_GRACE_DAYS = 14;
+export const MFA_REQUIRED_CODE = 'MFA_REQUIRED';
+export const STEP_UP_REQUIRED_CODE = 'STEP_UP_REQUIRED';
+
+// Step-up window (YX-IAM-02): floor 15 min. STEP_UP_WINDOW_MINUTES may only make it shorter.
+export const STEP_UP_WINDOW_MAX_SECONDS = 15 * 60;
+export function stepUpWindowSeconds(): number {
+  const seconds = Number(process.env.STEP_UP_WINDOW_MINUTES) * 60;
+  return Number.isFinite(seconds) && seconds > 0 ? Math.min(Math.floor(seconds), STEP_UP_WINDOW_MAX_SECONDS) : STEP_UP_WINDOW_MAX_SECONDS;
+}
+
+// The assurance state of a live staff session, as touchStaffSession returns it.
+export interface SessionAssurance {
+  assuranceLevel: string;
+  mfaVerifiedAt: Date | null;
+  mfaMethod: string | null;
+  // The session owner's enrolment deadline.
+  mfaEnrolmentDueAt: Date;
+}
+
+// MFA requirement met: the session is AAL2, or its owner is still inside the enrolment grace.
+export function mfaSatisfied(session: SessionAssurance, now = Date.now()): boolean {
+  return session.assuranceLevel === 'aal2' || session.mfaEnrolmentDueAt.getTime() > now;
+}
+
+// Step-up met: AAL2 proven on this session within the step-up window. No grace: an account
+// without a factor cannot step up, so it cannot take step-up actions.
+export function stepUpSatisfied(session: SessionAssurance, now = Date.now()): boolean {
+  return (
+    session.assuranceLevel === 'aal2' &&
+    session.mfaVerifiedAt !== null &&
+    now - session.mfaVerifiedAt.getTime() <= stepUpWindowSeconds() * 1000
+  );
+}

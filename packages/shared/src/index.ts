@@ -11,6 +11,7 @@ export * from './crypto/embedding-resolver.service';
 export * from './crypto/refresh-token-hash';
 export * from './auth/staff-session';
 export * from './auth/tenant-security-policy';
+export * from './auth/mfa';
 export * from './network/trust-proxy';
 export * from './network/auth-cookie';
 export * from './ai/ai-provider';
