@@ -10,8 +10,6 @@ import { useDocumentBranding } from './useDocumentBranding';
 import { roleToLandingPath } from '../staff-routing';
 import type { MfaProof } from '../../components/auth/SecondFactorForm';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001/api/v1';
-
 export interface StaffLoginBranding {
   name?: string;
   logoUrl?: string;
@@ -25,6 +23,12 @@ export interface MfaChallenge {
   mfaRequired: true;
   mfaToken: string;
   factors: string[];
+}
+
+export interface SsoProvider {
+  id: string;
+  name: string;
+  type: 'saml' | 'oidc_google' | 'oidc_entra' | 'oidc_generic';
 }
 
 interface SignedIn {
@@ -41,7 +45,8 @@ export function useStaffLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [ssoEnabled, setSsoEnabled] = useState(false);
+  // The company's active sign-in providers (P12 YX-IAM-04): one "Continue with ..." button each.
+  const [ssoProviders, setSsoProviders] = useState<SsoProvider[]>([]);
   const [debouncedSlug, setDebouncedSlug] = useState('');
   const [challenge, setChallenge] = useState<MfaChallenge | null>(null);
   // Sign-in with a one-time code (P12 §3; M04 Q2): otpMode shows that form; otpSent holds the
@@ -62,16 +67,16 @@ export function useStaffLogin() {
 
   useEffect(() => {
     if (!debouncedSlug) {
-      setSsoEnabled(false);
+      setSsoProviders([]);
       return;
     }
     let active = true;
-    apiFetch(`/auth/saml/${debouncedSlug}/status`)
+    apiFetch(`/auth/sso/${encodeURIComponent(debouncedSlug)}/providers`)
       .then((result) => {
-        if (active) setSsoEnabled(Boolean(result.enabled));
+        if (active) setSsoProviders(Array.isArray(result) ? result : []);
       })
       .catch(() => {
-        if (active) setSsoEnabled(false);
+        if (active) setSsoProviders([]);
       });
     return () => {
       active = false;
@@ -174,10 +179,24 @@ export function useStaffLogin() {
     setOtpCode('');
   };
 
-  const ssoLoginHref = ssoEnabled
-    ? `${API_BASE}/auth/saml/${organizationSlug}/login`
-    : null;
-  const onSsoClick = () => window.sessionStorage.setItem(SSO_PENDING_SLUG_KEY, organizationSlug);
+  // The API picks the provider (or the one owning the typed email's domain) and, for OIDC, binds
+  // the sign-in to this browser before handing back the identity provider's URL.
+  const startSso = async (providerId: string) => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      window.sessionStorage.setItem(SSO_PENDING_SLUG_KEY, organizationSlug);
+      const { url } = await apiFetch('/auth/sso/start', {
+        method: 'POST',
+        body: JSON.stringify({ organizationSlug, providerId, ...(email.includes('@') ? { email } : {}) }),
+      });
+      window.location.assign(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Single sign-on is not available right now');
+      setSubmitting(false);
+    }
+  };
+  const ssoEnabled = ssoProviders.length > 0;
 
   return {
     organizationSlug, setOrganizationSlug,
@@ -187,7 +206,7 @@ export function useStaffLogin() {
     branding,
     orgPrimary: branding?.primaryColor || '#3b5fe3',
     orgOnPrimary: branding?.textColor || '#ffffff',
-    ssoLoginHref, onSsoClick,
+    ssoProviders, startSso,
     handleSubmit,
     challenge, verifySecondFactor, secondFactorPasskeyOptions, sendSecondFactorCode, cancelChallenge,
     otpMode, toggleOtpMode, identifier, setIdentifier, otpCode, setOtpCode, otpSent, sendOtp, verifyOtp,

@@ -5,14 +5,14 @@ import { ToastProvider } from './ui';
 
 const mockCreateMutate = jest.fn();
 const mockBulkMutate = jest.fn();
-let mockSsoSettings: { samlEnabled: boolean } | undefined = { samlEnabled: false };
+let mockSsoStatus: { enabled: boolean } | undefined = { enabled: false };
 
 jest.mock('../lib/hooks/useUsers', () => ({
   useCreateUser: () => ({ mutate: mockCreateMutate, isPending: false }),
   useBulkCreateUsers: () => ({ mutate: mockBulkMutate, isPending: false, data: undefined }),
 }));
 jest.mock('../lib/hooks/useSso', () => ({
-  useSsoSettings: () => ({ data: mockSsoSettings }),
+  useSsoStatus: () => ({ data: mockSsoStatus }),
 }));
 
 function renderModal(props: Partial<React.ComponentProps<typeof NewUserModal>> = {}) {
@@ -26,7 +26,7 @@ function renderModal(props: Partial<React.ComponentProps<typeof NewUserModal>> =
 beforeEach(() => {
   mockCreateMutate.mockReset();
   mockBulkMutate.mockReset();
-  mockSsoSettings = { samlEnabled: false };
+  mockSsoStatus = { enabled: false };
 });
 
 it('shows Single and Multiple tabs when open', () => {
@@ -103,7 +103,7 @@ it('does not submit the Multiple tab when the textarea is empty or whitespace-on
 
 describe('when SSO is enabled', () => {
   beforeEach(() => {
-    mockSsoSettings = { samlEnabled: true };
+    mockSsoStatus = { enabled: true };
   });
 
   it('hides the password field and the send-link checkbox, showing an explanatory note instead', () => {

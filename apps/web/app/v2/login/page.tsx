@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useStaffLogin } from '../../../lib/hooks/useStaffLogin';
@@ -18,6 +19,7 @@ const PROOF = [
 export default function V2LoginPage() {
   const s = useStaffLogin();
   const reduce = useReducedMotion();
+  const [usePassword, setUsePassword] = useState(false);
   const orgName = s.branding?.name;
   const initial = (orgName || 'W').trim().charAt(0).toUpperCase();
   // A mobile number gets a text (SMS by default, WhatsApp on request); an email gets an email.
@@ -95,10 +97,18 @@ export default function V2LoginPage() {
               </div>
             )}
 
-            {s.ssoEnabled && s.ssoLoginHref ? (
-              <motion.a whileTap={reduce ? undefined : { scale: 0.98 }} href={s.ssoLoginHref} onClick={s.onSsoClick} className="v2-cta" style={{ textDecoration: 'none', height: 44 }}>
-                Continue with SSO
-              </motion.a>
+            {s.ssoEnabled && !usePassword ? (
+              <>
+                {s.ssoProviders.map((p) => (
+                  <Button key={p.id} type="button" loading={s.submitting} fullWidth onClick={() => void s.startSso(p.id)}>
+                    {p.type === 'oidc_google' ? 'Continue with Google' : p.type === 'oidc_entra' ? 'Continue with Microsoft' : `Continue with ${p.name}`}
+                  </Button>
+                ))}
+                {/* Break-glass administrators (and companies that keep passwords alongside SSO). */}
+                <button type="button" className="v2-link" style={LINK} onClick={() => setUsePassword(true)}>
+                  Sign in with a password instead
+                </button>
+              </>
             ) : s.otpMode ? (
               <>
                 {s.otpSent ? (

@@ -1273,11 +1273,24 @@ export interface ApprovalRequestDetail extends ApprovalRequestSummary {
   subject: Record<string, unknown>;
 }
 
-export interface SsoSettingsResponse {
-  samlEnabled: boolean;
-  samlIdpEntityId: string | null;
-  samlIdpSsoUrl: string | null;
-  samlIdpCertificate: string | null;
+// A company's sign-in identity provider (P12 YX-IAM-04/05). The OIDC client secret is write-only.
+export type IdentityProviderType = 'saml' | 'oidc_google' | 'oidc_entra' | 'oidc_generic';
+export interface IdentityProvider {
+  id: string;
+  type: IdentityProviderType;
+  name: string;
+  status: 'active' | 'disabled';
+  domains: string[];
+  samlEntityId: string | null;
+  samlSsoUrl: string | null;
+  samlCertificate: string | null;
+  oidcIssuer: string | null;
+  oidcClientId: string | null;
+  clientSecretSet: boolean;
+  entraTenantId: string | null;
+  jitEnabled: boolean;
+  jitRole: string | null;
+  mfaClaimValues: string[];
 }
 
 export interface WebhookDeliveryRow {

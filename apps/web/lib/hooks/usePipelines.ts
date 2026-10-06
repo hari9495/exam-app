@@ -137,7 +137,7 @@ export function useDeleteStatus() {
 }
 
 // Org-wide auto-archive-on-hire toggle (Task 8's GET/PATCH /organizations/pipeline-settings,
-// both pipelines:configure-gated). Mirrors useSso.ts's useSsoSettings/useUpdateSsoSettings
+// both pipelines:configure-gated). Mirrors useSso.ts's useIdentityProviders/useSaveIdentityProvider
 // fetch-wrapper/invalidation shape.
 export interface PipelineSettingsResponse {
   autoArchiveSiblingsOnHire: boolean;

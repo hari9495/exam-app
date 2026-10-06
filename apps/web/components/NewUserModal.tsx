@@ -3,7 +3,7 @@
 import { FormEvent, useState } from 'react';
 import { Modal, Tabs, TabsList, TabsTrigger, TabsContent, Input, Select, Checkbox, Button, RequiredFieldsNote, useToast } from './ui';
 import { useCreateUser, useBulkCreateUsers } from '../lib/hooks/useUsers';
-import { useSsoSettings } from '../lib/hooks/useSso';
+import { useSsoStatus } from '../lib/hooks/useSso';
 
 // Lifted from users/page.tsx -- this modal now owns it.
 const ROLE_OPTIONS = [
@@ -24,8 +24,8 @@ export function NewUserModal({ open, onClose }: NewUserModalProps) {
   // Staff sign in via the identity provider on an SSO-enabled org (email-matched, no
   // password ever checked) -- the password field and the set-password-link option both
   // become dead UI in that case, so hide them rather than offer a choice that does nothing.
-  const { data: ssoSettings } = useSsoSettings();
-  const ssoEnabled = ssoSettings?.samlEnabled === true;
+  const { data: ssoStatus } = useSsoStatus();
+  const ssoEnabled = ssoStatus?.enabled === true;
 
   const [tab, setTab] = useState('single');
   const [error, setError] = useState<string | null>(null);
