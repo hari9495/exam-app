@@ -1,0 +1,737 @@
+[
+ {
+  "id": "D-001",
+  "step": "UI",
+  "source": "yx-ui-merge",
+  "date": "2026-10-06",
+  "item": "Dead-button scan finds 1039 buttons with no action outside pay and auth (same count as the source); getting to 0 means wiring real actions across 10 modules, which I did not attempt"
+ },
+ {
+  "id": "D-002",
+  "step": "UI",
+  "source": "yx-ui-merge",
+  "date": "2026-10-06",
+  "item": "Screenshot and axe tests (test:visual, test:a11y) were added but not run; the baselines exist for Windows only, so Linux CI would need its own"
+ },
+ {
+  "id": "D-003",
+  "step": "UI",
+  "source": "yx-ui-merge",
+  "date": "2026-10-06",
+  "item": "Untracked docs/yukthix/GO-LIVE-CHECKLIST.md in the worktree is not from this task and was left alone"
+ },
+ {
+  "id": "D-004",
+  "step": "UI",
+  "source": "yx-ui-merge",
+  "date": "2026-10-06",
+  "item": "Not pushed"
+ },
+ {
+  "id": "D-005",
+  "step": "0",
+  "source": "step0-e2e",
+  "date": "2026-10-05",
+  "item": "Recruiter live leaderboard can stay stale (left as is, product decision needed): the push after each answer reads the deliberate 15 s shared cache (ADO #6828). If the last answers of an exam land within 15 s of the previous computation, the recruiter's board stays stale until they rejoin, because the 15 s roster tick does not re-send the leaderboard. A cheap fix is to also emit leaderboard:update from tickRoster. I did not change it because the cache is a deliberate performance trade-off."
+ },
+ {
+  "id": "D-006",
+  "step": "0",
+  "source": "step0-e2e",
+  "date": "2026-10-05",
+  "item": "e2e now runs in a single Jest worker (maxWorkers 1). Every booted app runs real BullMQ workers on one shared Redis, so parallel workers stole each other's jobs. Running suites in parallel would need per-worker queue prefixes."
+ },
+ {
+  "id": "D-007",
+  "step": "0",
+  "source": "step0-e2e",
+  "date": "2026-10-05",
+  "item": "exam-runtime e2e still prints Jest's 'did not exit one second after the test run' warning, though the run exits by itself in about 28 s. I did not trace which timer causes it."
+ },
+ {
+  "id": "D-008",
+  "step": "0",
+  "source": "step0-e2e",
+  "date": "2026-10-05",
+  "item": "Fire-and-forget analyses (for example insight generation) can still log an error after a suite's cleanup deletes the exam. It is log noise only and does not fail tests."
+ },
+ {
+  "id": "D-009",
+  "step": "0",
+  "source": "step0-e2e",
+  "date": "2026-10-05",
+  "item": "Delete the dead /uploads static file server (see security issues)."
+ },
+ {
+  "id": "D-010",
+  "step": "0",
+  "source": "step0-postgres",
+  "date": "2026-10-05",
+  "item": "21 api e2e suites (42 tests) and 1 exam-runtime e2e suite (2 tests) still fail. I left them because the code shows deliberate app changes the tests were never updated for, and rewriting the assertions would bake in product decisions without your input. Not individually traced: the AI evaluation insight cases, the webhook result left at pending, proctoring analysis stuck at processing (timeouts), the audit-log response-shape case, and the branding public-by-slug assertion. The evidence I found for the rest is:"
+ },
+ {
+  "id": "D-011",
+  "step": "0",
+  "source": "step0-postgres",
+  "date": "2026-10-05",
+  "item": "Roles now have permissions the tests expect to be denied (expected 403, got 200/201 in question-bank, exam-builder, candidates, ai-jobs, exam-reporting, session-enforcement and ai-insight)."
+ },
+ {
+  "id": "D-012",
+  "step": "0",
+  "source": "step0-postgres",
+  "date": "2026-10-05",
+  "item": "API responses changed shape: dashboard now requires ?window=, audit logs return {data}, and branding, compare and preview return extra fields."
+ },
+ {
+  "id": "D-013",
+  "step": "0",
+  "source": "step0-postgres",
+  "date": "2026-10-05",
+  "item": "Behaviour changed on purpose: recruiter unblock resets the webcam strike count (test expects 3), published exams can no longer be edited (409 in exam-scheduling), and the leaderboard is cached for 15 seconds."
+ },
+ {
+  "id": "D-014",
+  "step": "0",
+  "source": "step0-postgres",
+  "date": "2026-10-05",
+  "item": "The code-question request field codeLanguage no longer exists, so code-question creation returns 400 (exam-code-grading, ai-code-review, integrity)."
+ },
+ {
+  "id": "D-015",
+  "step": "0",
+  "source": "step0-postgres",
+  "date": "2026-10-05",
+  "item": "Missing local config: Azure Blob Storage (logo and image uploads return 500), no AI provider configured (AI question generation returns 400), an invalid Anthropic key, and no SMTP server."
+ },
+ {
+  "id": "D-016",
+  "step": "0",
+  "source": "step0-postgres",
+  "date": "2026-10-05",
+  "item": "The exam-taking 403 is the proctoring-minutes quota: the test plan's limit is 1 minute and that org had already used 120. It is the same rule as before."
+ },
+ {
+  "id": "D-017",
+  "step": "0",
+  "source": "step0-postgres",
+  "date": "2026-10-05",
+  "item": "No before/after comparison against SQL Server: pulling the mssql image needs your OK. If you want true 'before' counts, approve the pull and I'll run the same suites on origin/main."
+ },
+ {
+  "id": "D-018",
+  "step": "0",
+  "source": "step0-postgres",
+  "date": "2026-10-05",
+  "item": "Small case-sensitivity gaps remain: tag names, permission keys and similar unique columns used to be case-insensitive on SQL Server and now are not. Only emails and org slugs were made case-insensitive."
+ },
+ {
+  "id": "D-019",
+  "step": "0",
+  "source": "step0-postgres",
+  "date": "2026-10-05",
+  "item": "Moving existing production data from SQL Server to PostgreSQL (export, load, cutover) is not covered. The README deploy notes cover a fresh PostgreSQL database only."
+ },
+ {
+  "id": "D-020",
+  "step": "0",
+  "source": "step0-postgres",
+  "date": "2026-10-05",
+  "item": "Production needs the three database roles (owner, app login, and the app_runtime group) created by a DBA before the first prisma migrate deploy; the README describes this."
+ },
+ {
+  "id": "D-021",
+  "step": "2",
+  "source": "org:2a-structure",
+  "date": "2026-10-06",
+  "item": "head_employee_id on departments not added: there is no employees table until part 2b."
+ },
+ {
+  "id": "D-022",
+  "step": "2",
+  "source": "org:2a-structure",
+  "date": "2026-10-06",
+  "item": "Location holiday_calendar_id and weekly_off_rule_id not added: they belong to M02 (wave 4), which has no tables yet."
+ },
+ {
+  "id": "D-023",
+  "step": "2",
+  "source": "org:2a-structure",
+  "date": "2026-10-06",
+  "item": "Statutory default matrix per employment-type category (YX-ORG-20) not built: it needs the P07 statutory rules-as-data packs. Only the category is stored."
+ },
+ {
+  "id": "D-024",
+  "step": "2",
+  "source": "org:2a-structure",
+  "date": "2026-10-06",
+  "item": "Positions not built: M01 puts them in wave 5."
+ },
+ {
+  "id": "D-025",
+  "step": "2",
+  "source": "org:2a-structure",
+  "date": "2026-10-06",
+  "item": "statutory_registrations (PF/ESIC/PT/LWF numbers) not built: P01 places them in M03/P07."
+ },
+ {
+  "id": "D-026",
+  "step": "2",
+  "source": "org:2a-structure",
+  "date": "2026-10-06",
+  "item": "Pay-group and employee setting scopes are in the resolution order but cannot be set yet: their tables come with M03 and part 2b."
+ },
+ {
+  "id": "D-027",
+  "step": "2",
+  "source": "org:2a-structure",
+  "date": "2026-10-06",
+  "item": "Switching employee_code.scope to company-wide is not checked for duplicate codes (YX-ORG-16): employments don't exist until part 2b, so there are no codes to compare."
+ },
+ {
+  "id": "D-028",
+  "step": "2",
+  "source": "org:2a-structure",
+  "date": "2026-10-06",
+  "item": "Correcting a pay range already in force or in the past (superseded rows, YX-HIS-12 retro tiers) is refused instead. The full correction flow comes with the P06 change engine in part 2b."
+ },
+ {
+  "id": "D-029",
+  "step": "2",
+  "source": "org:2a-structure",
+  "date": "2026-10-06",
+  "item": "The org.master.changed event (P01 §7) is not emitted: there is no event bus yet. Every change is audited instead."
+ },
+ {
+  "id": "D-030",
+  "step": "2",
+  "source": "org:2a-structure",
+  "date": "2026-10-06",
+  "item": "Department and cost-centre parents are chosen from a dropdown list, not the tree view described in P01 §8."
+ },
+ {
+  "id": "D-031",
+  "step": "2",
+  "source": "org:2a-structure",
+  "date": "2026-10-06",
+  "item": "Entity-specific values for scoped settings have no screen: only the two company-wide rules are shown on the Legal entities page. The API supports all scopes."
+ },
+ {
+  "id": "D-032",
+  "step": "2",
+  "source": "org:2a-structure",
+  "date": "2026-10-06",
+  "item": "Not seen live in a browser: I did not sign in to /yx (no user-typed request to enter credentials), and Storybook screenshots timed out. The API was checked with curl and the screens' text in Storybook."
+ },
+ {
+  "id": "D-033",
+  "step": "2",
+  "source": "org:2b-effective-dating",
+  "date": "2026-10-06",
+  "item": "P03 workflow engine: approval is one checker with employee.change.approve (different from the requester and the subject). There is no approval routing, approval_request_id link, manager-raised requests or approver notifications (cancellations are audited only); these land with P03 and P04."
+ },
+ {
+  "id": "D-034",
+  "step": "2",
+  "source": "org:2b-effective-dating",
+  "date": "2026-10-06",
+  "item": "YX-HIS-12 tier 2 (correction into processed payroll with a Payroll Admin step), YX-HIS-08/09 (payslip snapshots) and YX-HIS-13 (mid-period policy) need payroll (step 5). The segments() API and the retro months on each change are ready for it."
+ },
+ {
+  "id": "D-035",
+  "step": "2",
+  "source": "org:2b-effective-dating",
+  "date": "2026-10-06",
+  "item": "The employee.change.effective event is written as an audit entry only: there is no event bus or outbox yet. P02 implicit-grant recompute and syncing User.managerId from the assignment are not done."
+ },
+ {
+  "id": "D-036",
+  "step": "2",
+  "source": "org:2b-effective-dating",
+  "date": "2026-10-06",
+  "item": "Dated facts not yet built: P06 §4.1 lists bank account, tax regime, statutory flags, shift, leave policy, legal name, absence, gender / marital status and contract end; they belong to later modules. The P06 §5 `rebased_from_change_id` column is not used: later changes are recalculated in place and the impact lists them."
+ },
+ {
+  "id": "D-037",
+  "step": "2",
+  "source": "org:2b-effective-dating",
+  "date": "2026-10-06",
+  "item": "Inter-entity transfer (YX-ORG-11/17), exit, rehire and host postings are left out: they need the transfer policies and wave-4 offboarding. Cost-centre splits are supported by the API, but the change form offers a single cost centre at 100 %."
+ },
+ {
+  "id": "D-038",
+  "step": "2",
+  "source": "org:2b-effective-dating",
+  "date": "2026-10-06",
+  "item": "The employee record is minimal (given, family and preferred name, work email, login link). Persons and person roles (J15), identifiers, the directory and the full record (M01 §3.1, step 2c) are not built. There are no SQL `*_current` views or `*_as_of` functions; the typed service is the reader."
+ },
+ {
+  "id": "D-039",
+  "step": "2",
+  "source": "org:2b-effective-dating",
+  "date": "2026-10-06",
+  "item": "The UI computes the retro-limit hint from April (India default), not from the company setting or the entity's financial-year month; the API enforces the real limit. Screens were not rendered in a browser or Storybook for screenshots; they are checked by vitest and web jest tests only. The impact preview covers location (state and time zone), department, designation, grade, employment type, manager, cost centres, status and pay; holiday calendar, leave policy and shift effects wait for those modules."
+ },
+ {
+  "id": "D-040",
+  "step": "1",
+  "source": "lockout-policy",
+  "date": "2026-10-06",
+  "item": "The 'unsuccessful' login-activity filter still counts one-time-code sends (code_sent), so the 'failed in the last 24 hours' figure includes them. This was already the case and is not changed here."
+ },
+ {
+  "id": "D-041",
+  "step": "1",
+  "source": "lockout-policy",
+  "date": "2026-10-06",
+  "item": "Older fields on the Security page still say 'Minimum allowed'; only the new lockout fields say 'YukthiX minimum'."
+ },
+ {
+  "id": "D-042",
+  "step": "1",
+  "source": "lockout-policy",
+  "date": "2026-10-06",
+  "item": "The full API e2e run was not repeated after the last two small fixes; only the 7 sign-in suites were re-run."
+ },
+ {
+  "id": "D-043",
+  "step": "1",
+  "source": "lockout-policy",
+  "date": "2026-10-06",
+  "item": "Jest e2e reports open handles at exit, so the suite was run with --forceExit (this was already the case)."
+ },
+ {
+  "id": "D-044",
+  "step": "1",
+  "source": "login-no-code",
+  "date": "2026-10-06",
+  "item": "\"Signed\" selection token: it is a random 256-bit token with its state kept server-side in Redis, deleted on first use, tied to the device and expiring after 2 minutes — the same pattern as the existing MFA pending token. It is not a signature-carrying token like a JWT; I judged it at least as strong because it can't be forged, replayed or reused after deletion. Say if a literal signed token is required."
+ },
+ {
+  "id": "D-045",
+  "step": "1",
+  "source": "login-no-code",
+  "date": "2026-10-06",
+  "item": "Equal work across 1 vs many matching accounts: the password checks run in parallel (at most 10), so response time barely changes, but it is not padded to a fixed number of checks. This is marked with a ponytail comment in the code. 0 vs 1 account costs the same, because of the dummy check."
+ },
+ {
+  "id": "D-046",
+  "step": "1",
+  "source": "login-no-code",
+  "date": "2026-10-06",
+  "item": "A domain is never re-checked after it is verified; a lapsed domain keeps routing until it is taken off the company's providers."
+ },
+ {
+  "id": "D-047",
+  "step": "1",
+  "source": "login-no-code",
+  "date": "2026-10-06",
+  "item": "The full identity-provider editor is still the v2 page (/v2/settings/sso). Only the domain status and the \"Check record\" button were added to the YukthiX Settings › Security screen."
+ },
+ {
+  "id": "D-048",
+  "step": "1",
+  "source": "login-no-code",
+  "date": "2026-10-06",
+  "item": "When the company is known from the web address, an email whose domain one of that company's providers maps still goes straight to SSO without domain verification. This is the existing in-company behaviour of sso/start."
+ },
+ {
+  "id": "D-049",
+  "step": "1",
+  "source": "login-no-code",
+  "date": "2026-10-06",
+  "item": "In email-first OTP with several matching accounts, the one code is sent through the first company's email sender or SMS account."
+ },
+ {
+  "id": "D-050",
+  "step": "1",
+  "source": "login-no-code",
+  "date": "2026-10-06",
+  "item": "Platform staff (super admin) accounts are now one of the email-first candidates. If a staff account shares an email and password with a company account, the picker shows a \"YukthiX\" choice."
+ },
+ {
+  "id": "D-051",
+  "step": "1",
+  "source": "sms-channel",
+  "date": "2026-10-06",
+  "item": "The example gateway configs, especially the delivery-report formats, are best-effort shapes from memory of each provider's API. Check each against the gateway's current API reference before going live; the README says so."
+ },
+ {
+  "id": "D-052",
+  "step": "1",
+  "source": "sms-channel",
+  "date": "2026-10-06",
+  "item": "Twilio delivery reports are verified with the token in the callback URL, not with Twilio's own X-Twilio-Signature. Add native signature checking if wanted."
+ },
+ {
+  "id": "D-053",
+  "step": "1",
+  "source": "sms-channel",
+  "date": "2026-10-06",
+  "item": "OTP sends run in-process, not on the engine's queue. The idempotency key is a random id per code issued; the full engine should pass (event, recipient, channel) through the same sendOtp."
+ },
+ {
+  "id": "D-054",
+  "step": "1",
+  "source": "sms-channel",
+  "date": "2026-10-06",
+  "item": "There is no UI link to the example configs: I had no customer-facing docs URL to point to. Pass examplesHref once docs are hosted."
+ },
+ {
+  "id": "D-055",
+  "step": "1",
+  "source": "sms-channel",
+  "date": "2026-10-06",
+  "item": "Only one template type ('otp') is stored per account (in a JSON column). The engine will add more types the same way."
+ },
+ {
+  "id": "D-056",
+  "step": "1",
+  "source": "sms-channel",
+  "date": "2026-10-06",
+  "item": "The monthly cap counts messages, not billable parts (cost_units records parts). The month boundary is IST, not each company's time zone."
+ },
+ {
+  "id": "D-057",
+  "step": "1",
+  "source": "sms-channel",
+  "date": "2026-10-06",
+  "item": "The SMS page sits in the existing Security shell's side nav as 'Text messages (SMS)'. A real Notifications section waits for the wider settings navigation."
+ },
+ {
+  "id": "D-058",
+  "step": "1",
+  "source": "sms-channel",
+  "date": "2026-10-06",
+  "item": "On phone cards the delivery log shows a stray '·' separator next to the masked number. It comes from the shared DataTable card layout."
+ },
+ {
+  "id": "D-059",
+  "step": "1",
+  "source": "login:1a-sessions",
+  "date": "2026-10-06",
+  "item": "Bot challenge on public login/OTP pages under attack (YX-IAM-07): needs a CAPTCHA/Turnstile provider decision and a frontend change; not in Part 1a's list."
+ },
+ {
+  "id": "D-060",
+  "step": "1",
+  "source": "login:1a-sessions",
+  "date": "2026-10-06",
+  "item": "New-country login alerts and the sessions.geo column (YX-IAM-07): there is no geo-IP lookup in the codebase yet, so geo stays null as instructed. Only new-device alerts are sent."
+ },
+ {
+  "id": "D-061",
+  "step": "1",
+  "source": "login:1a-sessions",
+  "date": "2026-10-06",
+  "item": "Per-tenant stricter session limits: limits are process-wide (env, clamped to the floor) until tenant_security_policies exists. Each session stores its own idle_timeout_seconds so a tenant policy can plug in later."
+ },
+ {
+  "id": "D-062",
+  "step": "1",
+  "source": "login:1a-sessions",
+  "date": "2026-10-06",
+  "item": "Mobile 30-day sessions (M04 Q8): all staff sessions use the desk floor for now. A device-type distinction comes with the mobile/device-registration work."
+ },
+ {
+  "id": "D-063",
+  "step": "1",
+  "source": "login:1a-sessions",
+  "date": "2026-10-06",
+  "item": "Retention job: expired and revoked sessions rows and login_events accumulate. Login events must be kept at least 1 year (YX-SECOPS-07); a purge job and its DB role are not built."
+ },
+ {
+  "id": "D-064",
+  "step": "1",
+  "source": "login:1a-sessions",
+  "date": "2026-10-06",
+  "item": "Web app (apps/web) is untouched: no Me > Security or Admin > Login activity screens yet. The client also handles the new 401 'Session expired' only through its existing logout-on-refresh-failure path, and any background polling it does will keep a session from idling out. Not verified in the browser."
+ },
+ {
+  "id": "D-065",
+  "step": "1",
+  "source": "login:1a-sessions",
+  "date": "2026-10-06",
+  "item": "Retry-After header: the 429 lockout response carries retryAfterSeconds in the body but does not set the HTTP Retry-After header."
+ },
+ {
+  "id": "D-066",
+  "step": "1",
+  "source": "login:1a-sessions",
+  "date": "2026-10-06",
+  "item": "Login events and session revocations are recorded in their tables and the existing audit_logs; the P08 per-tenant audit hash chain does not exist yet, so they are not chained."
+ },
+ {
+  "id": "D-067",
+  "step": "1",
+  "source": "login:1b-passwords-policy",
+  "date": "2026-10-06",
+  "item": "Enforcing MFA scope and allowed factors (YX-IAM-01/03), and requiring MFA on break-glass accounts. The settings are stored and validated now; enforcement needs the factors that Part 1c builds."
+ },
+ {
+  "id": "D-068",
+  "step": "1",
+  "source": "login:1b-passwords-policy",
+  "date": "2026-10-06",
+  "item": "Step-up on security-policy changes (YX-IAM-02). The PATCH endpoint carries the @RequireStepUp() marker, but nothing enforces it until Part 1c's StepUpGuard exists."
+ },
+ {
+  "id": "D-069",
+  "step": "1",
+  "source": "login:1b-passwords-policy",
+  "date": "2026-10-06",
+  "item": "An option for a company to include the mobile app or the candidate/external portals in its IP allow-lists. They are exempt for now: no mobile client exists yet to tell apart from the web, and the portals do not use staff tokens."
+ },
+ {
+  "id": "D-070",
+  "step": "1",
+  "source": "login:1b-passwords-policy",
+  "date": "2026-10-06",
+  "item": "Several identity providers per company, mapped by email domain (YX-IAM-04, Q2). SSO-only currently relies on the existing single SAML setup (samlEnabled); multi-provider and Google / Entra OIDC are Part 1c/1d work."
+ },
+ {
+  "id": "D-071",
+  "step": "1",
+  "source": "login:1b-passwords-policy",
+  "date": "2026-10-06",
+  "item": "The 'admin console' allow-list covers endpoints gated by an org:manage_* permission. Admin actions guarded only by a role check, such as impersonation, are covered by the desk list but not the admin list."
+ },
+ {
+  "id": "D-072",
+  "step": "1",
+  "source": "login:1b-passwords-policy",
+  "date": "2026-10-06",
+  "item": "The policy cache is per process: other API instances apply a change within 30 seconds. A Redis-based invalidation would remove that delay if it ever matters."
+ },
+ {
+  "id": "D-073",
+  "step": "1",
+  "source": "login:1c-mfa",
+  "date": "2026-10-06",
+  "item": "OTP by SMS / WhatsApp / email (the fallback factor in YX-IAM-03) is not built, because nothing exists to send it. The 'never the sole factor for System Admin / Payroll Admin' rule holds only because no OTP factor exists; it must be enforced when OTP is added."
+ },
+ {
+  "id": "D-074",
+  "step": "1",
+  "source": "login:1c-mfa",
+  "date": "2026-10-06",
+  "item": "Hardware-key-only MFA for YukthiX staff (Q7) is not enforced: staff can use any passkey or TOTP app. Resetting a platform super admin's MFA is also not built, because resets are organisation-scoped."
+ },
+ {
+  "id": "D-075",
+  "step": "1",
+  "source": "login:1c-mfa",
+  "date": "2026-10-06",
+  "item": "Passkey-only (usernameless) sign-in, where a passkey alone gives AAL2, is not built. Passkeys work as the second factor."
+ },
+ {
+  "id": "D-076",
+  "step": "1",
+  "source": "login:1c-mfa",
+  "date": "2026-10-06",
+  "item": "SSO sessions do not count as AAL2 even when the identity provider enforces MFA; such users still need a YukthiX factor. Reading the provider's MFA claim belongs with the Google/Entra OIDC part."
+ },
+ {
+  "id": "D-077",
+  "step": "1",
+  "source": "login:1c-mfa",
+  "date": "2026-10-06",
+  "item": "The 'identity re-verification' route of YX-IAM-11 is not built; the second-admin route is. The email password-reset link still works for a sensitive-role account that has no factor yet (inside its grace)."
+ },
+ {
+  "id": "D-078",
+  "step": "1",
+  "source": "login:1c-mfa",
+  "date": "2026-10-06",
+  "item": "Bank-account change, payroll approval, Confidential/Special data export and viewing a POSH case are not marked as step-up actions because those endpoints do not exist yet. The decorator is ready for them."
+ },
+ {
+  "id": "D-079",
+  "step": "1",
+  "source": "login:1c-mfa",
+  "date": "2026-10-06",
+  "item": "Saving SSO-only does not yet check that the named break-glass accounts have MFA. Sign-in already refuses a break-glass account without it, and those admins can still sign in through SSO to enrol."
+ },
+ {
+  "id": "D-080",
+  "step": "1",
+  "source": "login:1d-otp",
+  "date": "2026-10-06",
+  "item": "Real SMS / WhatsApp provider: only the interface, the in-memory dev/test sink and a 'none' provider exist. Production offers email codes only until a provider (DLT-registered SMS template, WhatsApp authentication template) is wired into otp-sender.ts with credentials from the environment. Reason: no provider has been chosen and no credentials may go in code."
+ },
+ {
+  "id": "D-081",
+  "step": "1",
+  "source": "login:1d-otp",
+  "date": "2026-10-06",
+  "item": "P04 YX-NTF-12/13 SMS quota metering and YX-NTF-14 channel_consents: no notification engine or consent table exists yet. Texts are sent only when the person asks for one on that channel."
+ },
+ {
+  "id": "D-082",
+  "step": "1",
+  "source": "login:1d-otp",
+  "date": "2026-10-06",
+  "item": "Admins cannot set a mobile number for field staff; only the person can verify their own, after signing in by email code or password. Reason: a number entered by someone else is not proven to belong to the person. Add an admin flow that sends the employee a verification code if it is wanted."
+ },
+ {
+  "id": "D-083",
+  "step": "1",
+  "source": "login:1d-otp",
+  "date": "2026-10-06",
+  "item": "Known trade-off: someone who repeatedly asks for codes on another person's identifier can use up that person's 5 codes per hour, blocking their code sign-in for up to an hour (password sign-in still works). This comes from capping codes per identifier; a CAPTCHA under attack (the YX-IAM-07 bot challenge, still open from 1a) is the usual remedy."
+ },
+ {
+  "id": "D-084",
+  "step": "1",
+  "source": "login:1d-otp",
+  "date": "2026-10-06",
+  "item": "M04 app PIN, biometric unlock and 30-day mobile sessions, and P12 SSO-only plus code sign-in in e2e (covered only by unit tests: e2e would need a full SAML setup)."
+ },
+ {
+  "id": "D-085",
+  "step": "1",
+  "source": "login:1e-sso",
+  "date": "2026-10-06",
+  "item": "SCIM 2.0 provisioning, and revoking sessions within 5 minutes when an IdP disables a user (YX-IAM-05 second half): P12 Q2 schedules these for wave 3, before the pilot, so they are out of scope here."
+ },
+ {
+  "id": "D-086",
+  "step": "1",
+  "source": "login:1e-sso",
+  "date": "2026-10-06",
+  "item": "Disabling or removing an identity provider does not end sessions already opened through it, because sessions do not record which provider opened them. That belongs with the SCIM work above."
+ },
+ {
+  "id": "D-087",
+  "step": "1",
+  "source": "login:1e-sso",
+  "date": "2026-10-06",
+  "item": "Step-up through an SSO re-sign-in is not available. Step-up still needs a passkey or authenticator app (Part 1c), so an SSO-only user with no factor cannot take step-up actions until they enrol one."
+ },
+ {
+  "id": "D-088",
+  "step": "1",
+  "source": "login:1e-sso",
+  "date": "2026-10-06",
+  "item": "Existing accounts are matched by email, not by the IdP's stable user id (no linking table). This is the same as the previous SAML behaviour."
+ },
+ {
+  "id": "D-089",
+  "step": "1",
+  "source": "login:1e-sso",
+  "date": "2026-10-06",
+  "item": "The generic-issuer address check happens when the provider is saved and does not resolve DNS, so DNS rebinding is not blocked. This is the existing helper's documented limit, and only company admins can set an issuer."
+ },
+ {
+  "id": "D-090",
+  "step": "1",
+  "source": "login:1e-sso",
+  "date": "2026-10-06",
+  "item": "There is no \"test sign-in\" button in the SSO settings (P12 §6.3 step 3). Instead, a generic issuer must answer discovery before it can be switched on."
+ },
+ {
+  "id": "D-091",
+  "step": "1",
+  "source": "login:1g-ui",
+  "date": "2026-10-06",
+  "item": "Full API e2e result not available: the run started before the last commit (the only change after it was a docs-only README) but had not finished when this report was written. Re-run `npm run test:e2e` in apps/api to confirm."
+ },
+ {
+  "id": "D-092",
+  "step": "1",
+  "source": "login:1g-ui",
+  "date": "2026-10-06",
+  "item": "Phone check of tables in Storybook is inconclusive: the automatic overflow check ran with the browser pane hidden, so tables could not switch to phone cards and showed sideways scrolling inside the table. In the real app at 390 px, with the pane visible, they do switch to cards and the page itself never scrolls sideways."
+ },
+ {
+  "id": "D-093",
+  "step": "1",
+  "source": "login:1g-ui",
+  "date": "2026-10-06",
+  "item": "The design system's visual and accessibility tests (Playwright) were not copied, as the task named only the token check and component tests; Storybook's a11y panel is still on."
+ },
+ {
+  "id": "D-094",
+  "step": "1",
+  "source": "login:1g-ui",
+  "date": "2026-10-06",
+  "item": "Signed-in people who open /yx/sign-in are not sent on to their landing page."
+ },
+ {
+  "id": "D-095",
+  "step": "1",
+  "source": "login:1g-ui",
+  "date": "2026-10-06",
+  "item": "The phone filters on Login activity are stacked full-width dropdowns; a collapsible filter panel would save space."
+ },
+ {
+  "id": "D-096",
+  "step": "1",
+  "source": "login:1g-ui",
+  "date": "2026-10-06",
+  "item": "The classic login and profile pages are unchanged. The old 'New user' form, '/profile?mfa=setup' and the /v2 login still work as before; only the step-up prompt changed look everywhere."
+ },
+ {
+  "id": "D-097",
+  "step": "1",
+  "source": "login:1g-ui",
+  "date": "2026-10-06",
+  "item": "Docker images still copy the whole node_modules into runtime images (existing pattern), so the new Storybook and Vite dev tools now ship in them too; the build should prune dev dependencies."
+ },
+ {
+  "id": "D-098",
+  "step": "1",
+  "source": "login:1g-ui",
+  "date": "2026-10-06",
+  "item": "Not in this part: bot challenge and new-country alerts (from 1a), and automatic user provisioning from the identity provider (SCIM, wave 3)."
+ },
+ {
+  "id": "D-099",
+  "step": "1",
+  "source": "login:fix-review",
+  "date": "2026-10-06",
+  "item": "No Content-Security-Policy without 'unsafe-inline' for the web app. Next.js puts inline scripts on every page, so a strict policy needs a nonce issued per request, which makes every page server-rendered. The raw-HTML sink was removed instead, and /sso/callback only got a Referrer-Policy header."
+ },
+ {
+  "id": "D-100",
+  "step": "1",
+  "source": "login:fix-review",
+  "date": "2026-10-06",
+  "item": "The CAPTCHA soft lock suggested in the review was not built. The device-trusted soft lock covers the denial-of-service case; the Turnstile check is optional, off until its keys are set, lets attempts through if Cloudflare is unreachable, and is not on forgot-password."
+ },
+ {
+  "id": "D-101",
+  "step": "1",
+  "source": "login:fix-review",
+  "date": "2026-10-06",
+  "item": "Discovery-supplied endpoints are not required to share the issuer's registrable domain (that needs a public-suffix library, which is not a direct dependency). Every such URL is still DNS-checked and the connection pinned to the checked public address."
+ },
+ {
+  "id": "D-102",
+  "step": "1",
+  "source": "login:fix-review",
+  "date": "2026-10-06",
+  "item": "Hardware-only for super admins is enforced as a device-bound (single-device, not backed-up) credential plus a roaming-key request. There is no attestation or vendor allow-list."
+ },
+ {
+  "id": "D-103",
+  "step": "1",
+  "source": "login:fix-review",
+  "date": "2026-10-06",
+  "item": "There is no recovery flow for super admins: they have no recovery codes, and the existing MFA reset is per organisation. Staff should register two security keys."
+ },
+ {
+  "id": "D-104",
+  "step": "1",
+  "source": "login:fix-review",
+  "date": "2026-10-06",
+  "item": "The migration gives existing domain-less providers the email domains of their organisation's accounts. A rogue domain-less provider created before this migration would also be mapped; admins should review provider domains after deploying."
+ },
+ {
+  "id": "D-105",
+  "step": "1",
+  "source": "login:fix-review",
+  "date": "2026-10-06",
+  "item": "Some commits are grouped by area rather than one per finding, and intermediate commits may not compile on their own; the branch tip is green."
+ }
+]
