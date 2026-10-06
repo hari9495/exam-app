@@ -85,9 +85,10 @@ export class OrgScopeService {
     return null;
   }
 
-  async settingById(ctx: TenantContext, id: string): Promise<string | null> {
-    const row = await inCompany(this.tenantPrisma, ctx, (tx, c) => tx.setting.findFirst({ where: { id, organizationId: c.organizationId }, select: { scopeType: true, scopeId: true } }));
+  /** The setting's key and its scope as an entity. */
+  async settingById(ctx: TenantContext, id: string): Promise<{ key: string; entityId: string | null }> {
+    const row = await inCompany(this.tenantPrisma, ctx, (tx, c) => tx.setting.findFirst({ where: { id, organizationId: c.organizationId }, select: { key: true, scopeType: true, scopeId: true } }));
     if (!row) throw new NotFoundException('Setting not found');
-    return this.settingEntity(ctx, row.scopeType, row.scopeId);
+    return { key: row.key, entityId: await this.settingEntity(ctx, row.scopeType, row.scopeId) };
   }
 }

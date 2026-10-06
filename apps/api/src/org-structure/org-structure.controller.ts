@@ -22,6 +22,7 @@ import {
 } from './dto';
 import { IN_STATES, REGIONS } from './org-validation';
 import { OrgSettingsService } from './org-settings.service';
+import { SETTINGS } from './settings-registry';
 import { OrgStructureService } from './org-structure.service';
 import { OrgScopeService } from '../access/org-scope.service';
 
@@ -61,6 +62,12 @@ export class OrgStructureController {
 
   private manage(req: Request, entityId: string | null) {
     return this.scope.require(req, 'org.settings.manage', entityId);
+  }
+
+  /** Settings that loosen an access or fraud guard also need their guard key, company-wide (P02 §4.2, YX-SEC-02). */
+  private async settingGuard(req: Request, key: string) {
+    const guard = SETTINGS[key]?.guard;
+    if (guard) await this.scope.require(req, guard, null);
   }
 
   /** The entity a master body puts the record in: a cost centre's entity, an entity-only owner, or company-wide. */
@@ -322,6 +329,7 @@ export class OrgStructureController {
   async setSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SettingDto) {
     ownSession(req);
     await this.manage(req, await this.scope.settingEntity(ctx, dto.scopeType, dto.scopeId));
+    await this.settingGuard(req, dto.key);
     return this.settings.set(ctx, dto);
   }
 
@@ -330,7 +338,9 @@ export class OrgStructureController {
   @RequirePermissions('org.settings.manage')
   async removeSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
-    await this.manage(req, await this.scope.settingById(ctx, id));
+    const row = await this.scope.settingById(ctx, id);
+    await this.manage(req, row.entityId);
+    await this.settingGuard(req, row.key);
     await this.settings.remove(ctx, id);
   }
 }

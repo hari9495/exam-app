@@ -454,6 +454,25 @@ describe('Access, visibility and privacy (P02 §4.2–4.6; R1)', () => {
       await api('hrBlr', 'get', `/org/grades/${ids.g2}/pay-ranges`).expect(403);
     });
 
+    it('settings that loosen an access or fraud guard also need access.role.manage (P02 §4.2, YX-SEC-02)', async () => {
+      // Entity-scoped settings admin: may set entity values, but not the bank-change cooling period.
+      await api('orgTn', 'put', '/org/settings').send({ key: 'employee.bank_change.cooling_hours', scopeType: 'legal_entity', scopeId: ids.tn, value: '0' }).expect(403);
+      // Company-wide settings admin without access management.
+      const g = (await grant(201, 'hrOps', 'orgAdmin', 'tenant')).body;
+      expect(g.status).toBe('active');
+      for (const [key, value] of [['access.manager.view_scope', 'direct_reports'], ['access.risk.confidential_threshold', '250'], ['privacy.who_accessed', 'off'], ['employee.bank_change.cooling_hours', '0']]) {
+        await api('hrOps', 'put', '/org/settings').send({ key, scopeType: 'tenant', value }).expect(403);
+      }
+      const plain = (await api('hrOps', 'put', '/org/settings').send({ key: 'probation.review_lead_days', scopeType: 'tenant', value: '30' }).expect(200)).body;
+      await api('hrOps', 'delete', `/org/settings/${plain.id}`).expect(204);
+      // Nor can such an admin remove one the access admin set.
+      await up('adminA');
+      const set = (await api('adminA', 'put', '/org/settings').send({ key: 'employee.bank_change.cooling_hours', scopeType: 'tenant', value: '72' }).expect(200)).body;
+      await api('hrOps', 'delete', `/org/settings/${set.id}`).expect(403);
+      await api('adminA', 'delete', `/org/settings/${set.id}`).expect(204);
+      await api('adminA', 'post', `/access/grants/${g.id}/revoke`).send({ reason: 'Test over' }).expect(201);
+    });
+
     it('a bulk batch is visible and decided only by HR whose grants reach everyone in it', async () => {
       const csv = `employee_code,legal_entity,change_type,effective_date,reason,designation
 ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
