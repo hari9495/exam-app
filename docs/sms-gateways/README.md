@@ -85,7 +85,7 @@ mapping: add `?token=<callbackSecret>` to the status-callback URL in the Twilio 
 
 ## Example configs
 
-[`examples.json`](examples.json) holds working shapes for **MSG91, Gupshup (Enterprise SMS),
+[`examples.json`](examples.json) holds working shapes for **Zoho CPaaS** (the YukthiX shared account: Zoho keeps the approved DLT text as a template, so the request sends only the values via `{var1}`), **MSG91, Gupshup (Enterprise SMS),
 Kaleyra, Exotel, Textlocal** and a generic JSON API. `apps/api/src/sms/providers/http-gateways.spec.ts`
 validates and renders every one of them. Paste the `config` into a new `http` account, then type
 the real values of its `secrets`.

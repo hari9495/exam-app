@@ -2,15 +2,54 @@
   "_readme": "Example 'http' channel-account configs for Indian SMS gateways (see docs/sms-gateways/README.md). Paste one into Settings > Notifications > SMS > Add account, then type the real values of the secrets there (they are write-only). Check field names against your gateway's current API reference before going live: gateways change them. apps/api/src/sms/providers/http-provider.spec.ts renders every example here.",
   "examples": [
     {
+      "name": "Zoho CPaaS (YukthiX shared account)",
+      "config": {
+        "url": "https://cpaas.zoho.com/v1.1/sms",
+        "method": "POST",
+        "contentType": "application/json",
+        "headers": {
+          "Authorization": "{secret.token}"
+        },
+        "bodyTemplate": "{\"sender_key\":\"<Zoho sender key>\",\"template_key\":\"<Zoho template key>\",\"to\":[{\"mobile_no\":\"{to_digits}\"}],\"merge_info\":{\"otp\":\"{var1}\"}}",
+        "secrets": {
+          "token": "<Zoho API token (the Authorization key from the CPaaS console)>"
+        },
+        "response": {}
+      }
+    },
+    {
       "name": "MSG91",
       "config": {
         "url": "https://api.msg91.com/api/sendhttp.php",
         "method": "POST",
         "contentType": "application/x-www-form-urlencoded",
         "bodyTemplate": "authkey={secret.authkey}&mobiles={to_digits}&message={message}&sender={sender}&route=4&country=91&DLT_TE_ID={dlt_template_id}&response=json",
-        "secrets": { "authkey": "<MSG91 auth key>" },
-        "response": { "successPath": "type", "successValues": ["success"], "messageIdPath": "message" },
-        "callback": { "auth": "token", "messageIdPath": "requestId", "statusPath": "status", "delivered": ["1"], "failed": ["2", "16", "25"], "optedOut": ["26"] }
+        "secrets": {
+          "authkey": "<MSG91 auth key>"
+        },
+        "response": {
+          "successPath": "type",
+          "successValues": [
+            "success"
+          ],
+          "messageIdPath": "message"
+        },
+        "callback": {
+          "auth": "token",
+          "messageIdPath": "requestId",
+          "statusPath": "status",
+          "delivered": [
+            "1"
+          ],
+          "failed": [
+            "2",
+            "16",
+            "25"
+          ],
+          "optedOut": [
+            "26"
+          ]
+        }
       }
     },
     {
@@ -20,9 +59,30 @@
         "method": "POST",
         "contentType": "application/x-www-form-urlencoded",
         "bodyTemplate": "method=SendMessage&v=1.1&format=json&auth_scheme=plain&msg_type=TEXT&userid={secret.userid}&password={secret.password}&send_to={to_digits}&msg={message}&mask={sender}&principalEntityId={dlt_entity_id}&dltTemplateId={dlt_template_id}",
-        "secrets": { "userid": "<Gupshup user id>", "password": "<Gupshup password>" },
-        "response": { "successPath": "response.status", "successValues": ["success"], "messageIdPath": "response.id" },
-        "callback": { "auth": "token", "messageIdPath": "externalId", "statusPath": "status", "delivered": ["SUCCESS"], "failed": ["FAIL", "UNDELIV"], "optedOut": [] }
+        "secrets": {
+          "userid": "<Gupshup user id>",
+          "password": "<Gupshup password>"
+        },
+        "response": {
+          "successPath": "response.status",
+          "successValues": [
+            "success"
+          ],
+          "messageIdPath": "response.id"
+        },
+        "callback": {
+          "auth": "token",
+          "messageIdPath": "externalId",
+          "statusPath": "status",
+          "delivered": [
+            "SUCCESS"
+          ],
+          "failed": [
+            "FAIL",
+            "UNDELIV"
+          ],
+          "optedOut": []
+        }
       }
     },
     {
@@ -31,11 +91,34 @@
         "url": "https://api.kaleyra.io/v1/HXIN0000000000IN/messages",
         "method": "POST",
         "contentType": "application/x-www-form-urlencoded",
-        "headers": { "api-key": "{secret.api_key}" },
+        "headers": {
+          "api-key": "{secret.api_key}"
+        },
         "bodyTemplate": "to={to}&sender={sender}&type=OTP&body={message}&template_id={dlt_template_id}",
-        "secrets": { "api_key": "<Kaleyra API key>" },
-        "response": { "messageIdPath": "data.0.message_id" },
-        "callback": { "auth": "hmac", "signatureHeader": "x-signature", "signatureEncoding": "hex", "messageIdPath": "message_id", "statusPath": "status", "delivered": ["DELIVRD"], "failed": ["UNDELIV", "EXPIRED", "REJECTD"], "optedOut": ["NDNC"] }
+        "secrets": {
+          "api_key": "<Kaleyra API key>"
+        },
+        "response": {
+          "messageIdPath": "data.0.message_id"
+        },
+        "callback": {
+          "auth": "hmac",
+          "signatureHeader": "x-signature",
+          "signatureEncoding": "hex",
+          "messageIdPath": "message_id",
+          "statusPath": "status",
+          "delivered": [
+            "DELIVRD"
+          ],
+          "failed": [
+            "UNDELIV",
+            "EXPIRED",
+            "REJECTD"
+          ],
+          "optedOut": [
+            "NDNC"
+          ]
+        }
       }
     },
     {
@@ -44,11 +127,31 @@
         "url": "https://api.exotel.com/v1/Accounts/exampleaccount1/Sms/send.json",
         "method": "POST",
         "contentType": "application/x-www-form-urlencoded",
-        "headers": { "Authorization": "Basic {secret.basic}" },
+        "headers": {
+          "Authorization": "Basic {secret.basic}"
+        },
         "bodyTemplate": "From={sender}&To={to}&Body={message}&SmsType=transactional&DltEntityId={dlt_entity_id}&DltTemplateId={dlt_template_id}",
-        "secrets": { "basic": "<base64 of API key:API token>" },
-        "response": { "messageIdPath": "SMSMessage.Sid" },
-        "callback": { "auth": "token", "messageIdPath": "SmsSid", "statusPath": "Status", "delivered": ["sent"], "failed": ["failed", "failed-dnd"], "optedOut": ["failed-dnd"] }
+        "secrets": {
+          "basic": "<base64 of API key:API token>"
+        },
+        "response": {
+          "messageIdPath": "SMSMessage.Sid"
+        },
+        "callback": {
+          "auth": "token",
+          "messageIdPath": "SmsSid",
+          "statusPath": "Status",
+          "delivered": [
+            "sent"
+          ],
+          "failed": [
+            "failed",
+            "failed-dnd"
+          ],
+          "optedOut": [
+            "failed-dnd"
+          ]
+        }
       }
     },
     {
@@ -58,9 +161,29 @@
         "method": "POST",
         "contentType": "application/x-www-form-urlencoded",
         "bodyTemplate": "apikey={secret.apikey}&numbers={to_digits}&sender={sender}&message={message}",
-        "secrets": { "apikey": "<Textlocal API key>" },
-        "response": { "successPath": "status", "successValues": ["success"], "messageIdPath": "messages.0.id" },
-        "callback": { "auth": "token", "messageIdPath": "customID", "statusPath": "status", "delivered": ["D"], "failed": ["U", "I"], "optedOut": [] }
+        "secrets": {
+          "apikey": "<Textlocal API key>"
+        },
+        "response": {
+          "successPath": "status",
+          "successValues": [
+            "success"
+          ],
+          "messageIdPath": "messages.0.id"
+        },
+        "callback": {
+          "auth": "token",
+          "messageIdPath": "customID",
+          "statusPath": "status",
+          "delivered": [
+            "D"
+          ],
+          "failed": [
+            "U",
+            "I"
+          ],
+          "optedOut": []
+        }
       }
     },
     {
@@ -69,11 +192,39 @@
         "url": "https://sms.example-gateway.in/v2/messages",
         "method": "POST",
         "contentType": "application/json",
-        "headers": { "Authorization": "Bearer {secret.token}" },
+        "headers": {
+          "Authorization": "Bearer {secret.token}"
+        },
         "bodyTemplate": "{\"to\":\"{to}\",\"from\":\"{sender}\",\"text\":\"{message}\",\"dlt\":{\"entityId\":\"{dlt_entity_id}\",\"templateId\":\"{dlt_template_id}\"},\"reference\":\"{idempotency_key}\"}",
-        "secrets": { "token": "<API token>" },
-        "response": { "successPath": "accepted", "successValues": ["true"], "messageIdPath": "id" },
-        "callback": { "auth": "hmac", "signatureHeader": "x-signature", "signatureEncoding": "hex", "itemsPath": "events", "messageIdPath": "id", "statusPath": "status", "addressPath": "to", "delivered": ["delivered"], "failed": ["failed", "undelivered"], "optedOut": ["opted_out"] }
+        "secrets": {
+          "token": "<API token>"
+        },
+        "response": {
+          "successPath": "accepted",
+          "successValues": [
+            "true"
+          ],
+          "messageIdPath": "id"
+        },
+        "callback": {
+          "auth": "hmac",
+          "signatureHeader": "x-signature",
+          "signatureEncoding": "hex",
+          "itemsPath": "events",
+          "messageIdPath": "id",
+          "statusPath": "status",
+          "addressPath": "to",
+          "delivered": [
+            "delivered"
+          ],
+          "failed": [
+            "failed",
+            "undelivered"
+          ],
+          "optedOut": [
+            "opted_out"
+          ]
+        }
       }
     }
   ]

@@ -27,7 +27,7 @@ const byName = (name: string) => withSecrets(examples.find((e) => e.name === nam
 
 describe('httpProvider: gateway example configs', () => {
   it('cover the common Indian gateways and any JSON API', () => {
-    expect(examples.map((e) => e.name)).toEqual(['MSG91', 'Gupshup (Enterprise SMS)', 'Kaleyra', 'Exotel', 'Textlocal', 'Any JSON API']);
+    expect(examples.map((e) => e.name)).toEqual(['Zoho CPaaS (YukthiX shared account)', 'MSG91', 'Gupshup (Enterprise SMS)', 'Kaleyra', 'Exotel', 'Textlocal', 'Any JSON API']);
   });
 
   it.each(examples.map((e) => [e.name, e.config] as const))('%s: valid, and renders every variable for its content type', async (_name, config) => {
@@ -39,7 +39,12 @@ describe('httpProvider: gateway example configs', () => {
     expect(url).toBe(config.url);
     const body = init.body as string;
     expect(body).not.toMatch(/\{(to|to_digits|message|sender|dlt_entity_id|dlt_template_id|idempotency_key|secret\.[\w-]+)\}/);
-    if (String(config.contentType).includes('json')) {
+    // Template-key gateways (Zoho CPaaS) hold the DLT text themselves and take only the values.
+    const valuesOnly = !String(config.bodyTemplate).includes('{message}');
+    if (valuesOnly) {
+      expect(body).toContain(otp.vars[0]);
+      expect(body).toContain(otp.to.slice(1));
+    } else if (String(config.contentType).includes('json')) {
       expect(JSON.stringify(JSON.parse(body))).toContain(JSON.stringify(otp.body).slice(1, -1));
     } else {
       const values = [...new URLSearchParams(body).values()];
