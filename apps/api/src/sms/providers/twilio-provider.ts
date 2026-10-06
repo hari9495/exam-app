@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { sendTwilioSms } from '../twilio-transport';
-import { SmsProviderAdapter, SmsSendArgs, SmsSendResult } from './types';
+import { SmsFetch, SmsProviderAdapter, SmsSendArgs, SmsSendResult } from './types';
 
 function isBlank(value: unknown): boolean {
   return typeof value !== 'string' || value.trim() === '';
@@ -24,8 +24,9 @@ export const twilioProvider: SmsProviderAdapter = {
   async send(
     config: Record<string, unknown>,
     { to, body }: SmsSendArgs,
-    fetchImpl?: typeof fetch,
+    fetchImpl?: SmsFetch,
   ): Promise<SmsSendResult> {
+    // api.twilio.com is fixed, so plain fetch (no tenant-supplied host to pin).
     return sendTwilioSms(
       {
         accountSid: config.accountSid as string,
@@ -34,7 +35,7 @@ export const twilioProvider: SmsProviderAdapter = {
         to,
         body,
       },
-      fetchImpl,
+      fetchImpl as unknown as typeof fetch | undefined,
     );
   },
 };
