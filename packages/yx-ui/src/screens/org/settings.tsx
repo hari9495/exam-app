@@ -28,6 +28,9 @@ export const SCOPE_LABEL: Record<SettingScope, string> = {
   pay_group: 'Pay group',
 };
 
+/** Broadest first, as the table lists them. */
+const SCOPES = Object.keys(SCOPE_LABEL) as SettingScope[];
+
 /** Words for the stored values; anything unlisted shows as stored (numbers). */
 const VALUE_LABEL: Record<string, Record<string, string>> = {
   'employee_change.retro_limit': { current_fy: 'Start of this financial year', previous_fy: 'Start of last financial year' },
@@ -147,7 +150,7 @@ function SettingBlock({ settingKey, def, rows, names, canEdit, blockedReason, to
   const source = row ? (row.validFrom ? `Set for your company from ${dateLabel(row.validFrom)}` : 'Set for your company') : 'YukthiX starter, not changed yet';
   const inForce = (r: SettingOverride) => def.dated && r.validFrom !== null && r.validFrom <= today;
   const columns: TableColumn<SettingOverride>[] = [
-    { key: 'scope', header: 'Applies to', value: names, render: (r) => <span className="yx-auth__item-main"><Text weight="medium">{names(r)}</Text><Text tone="secondary" size="sm">{SCOPE_LABEL[r.scopeType]}</Text></span>, hideable: false },
+    { key: 'scope', header: 'Applies to', value: names, render: (r) => <span className="yx-auth__item-main"><Text weight="medium">{names(r)}</Text>{r.scopeType !== 'tenant' && <Text tone="secondary" size="sm">{SCOPE_LABEL[r.scopeType]}</Text>}</span>, hideable: false },
     { key: 'value', header: 'Value', value: (r) => valueLabel(settingKey, r.value), width: 200 },
     ...(def.dated
       ? [{ key: 'from', header: 'From', value: (r: SettingOverride) => r.validFrom ?? '', render: (r: SettingOverride) => (r.validFrom ? <span>{dateLabel(r.validFrom)} {r.validFrom > today && <Badge tone="info">Scheduled</Badge>}</span> : '—'), width: 170 }]
@@ -224,7 +227,7 @@ export function CompanySettingsScreen(props: CompanySettingsScreenProps) {
                     key={k}
                     settingKey={k}
                     def={def}
-                    rows={props.overrides.filter((r) => r.key === k)}
+                    rows={props.overrides.filter((r) => r.key === k).sort((x, y) => SCOPES.indexOf(x.scopeType) - SCOPES.indexOf(y.scopeType) || (x.validFrom ?? '').localeCompare(y.validFrom ?? ''))}
                     names={name}
                     canEdit={props.canManage}
                     blockedReason={props.canManage && guard ? 'Only an admin who manages roles and access changes this' : null}
