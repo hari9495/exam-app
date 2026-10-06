@@ -101,7 +101,7 @@ export function Widget({ title, size = 6, menu, actions, empty, bare, busy, lock
         </div>
       )}
       {/* inert: in edit mode nothing inside the widget can be clicked or tabbed to (React 18 has no inert prop type). */}
-      <div className="yx-widget__body" {...(locked ? { inert: '' } : {})}>
+      <div className="yx-widget__body" {...(locked ? ({ inert: '' } as object) : {})}>
         {empty ? <EmptyState compact title={empty} /> : children}
       </div>
     </section>

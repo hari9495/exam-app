@@ -340,7 +340,9 @@ export function SideRail({ items, activeId, onSelect, logo, 'aria-label': ariaLa
   const renderItem = (item: RailItem, i: number) => {
     const active = item.id === activeId;
     const common = {
-      ref: (el: HTMLElement | null) => (refs.current[i] = el),
+      ref: (el: HTMLElement | null) => {
+        refs.current[i] = el;
+      },
       className: 'yx-rail__item',
       'aria-label': item.label,
       'aria-current': active ? ('page' as const) : undefined,
