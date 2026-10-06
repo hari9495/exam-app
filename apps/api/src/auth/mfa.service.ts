@@ -591,7 +591,8 @@ export class MfaService {
     await this.assertMayChangeMobile(user, session);
     await this.otp.reserveSend(`mobile\u0000${user.id}`, ip);
     const code = await this.otp.issue(this.mobileKey(sessionId), { userId: user.id, mobileNumber });
-    this.otp.deliver(channel, mobileNumber, code, 'mobile', user.organizationId);
+    // No email fallback: the code proves this number.
+    this.otp.deliver(channel, mobileNumber, code, 'mobile', user.organizationId, { userId: user.id });
     // YX-IAM-10: every code sent is on record (SMS-pumping / targeting signal).
     await this.audit.record(contextFor(user), {
       actorUserId: user.id,

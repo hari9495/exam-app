@@ -359,8 +359,11 @@ export class AuthService {
     const orgSlug = dto.organizationSlug.trim().toLowerCase();
     const org = await this.prisma.organization.findUnique({ where: { slug: orgSlug } });
     let organizationId = org && isOrganizationActive(org.status) ? org.id : null;
+    // A code that can't go by text message goes by email instead, where the company allows email codes.
+    let emailFallback = false;
     if (organizationId) {
       const policy = await loadTenantSecurityPolicy(this.tenantPrisma, organizationId);
+      emailFallback = policy.otpSignInChannels.includes('email');
       // SSO-only (YX-IAM-04) turns every other way in off; break-glass stays password + MFA.
       const refused =
         policy.ssoOnly || !policy.otpSignInChannels.includes(channel) ? 'otp_disabled' : !ipAllowedForSurface(policy, 'desk', meta.ip) ? 'ip_not_allowed' : null;
@@ -400,7 +403,10 @@ export class AuthService {
       deviceIdHash: sha256(meta.deviceId),
     });
     if (recipient) {
-      this.otp.deliver(channel, channel === 'email' ? recipient.email : recipient.mobileNumber!, code, 'sign_in', organizationId);
+      this.otp.deliver(channel, channel === 'email' ? recipient.email : recipient.mobileNumber!, code, 'sign_in', organizationId, {
+        userId: recipient.id,
+        fallbackEmail: channel !== 'email' && emailFallback ? recipient.email : null,
+      });
       // YX-IAM-10: every code actually sent is a login event (SMS-pumping / targeting signal).
       await this.sessions.recordLoginEvent({ organizationId, userId: recipient.id, identifier: parsed.value, result: 'code_sent', method, meta });
     }
@@ -486,7 +492,8 @@ export class AuthService {
     }
     await this.otp.reserveSend(`mfa\u0000${user.id}`, meta.ip);
     const code = await this.otp.issue(otpMfaKey(dto.mfaToken), { userId: user.id });
-    this.otp.deliver(dto.channel, user.mobileNumber!, code, 'mfa', user.organizationId);
+    // Never by email: password + email code would be one factor (YX-IAM-03).
+    this.otp.deliver(dto.channel, user.mobileNumber!, code, 'mfa', user.organizationId, { userId: user.id });
     await this.sessions.recordLoginEvent({ organizationId: user.organizationId, userId: user.id, identifier: pending.identifier, result: 'code_sent', method: 'otp', reason: `mfa_${dto.channel}`, meta });
     return { expiresInSeconds: OTP_TTL_SECONDS, resendAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS };
   }

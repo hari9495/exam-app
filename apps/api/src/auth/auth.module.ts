@@ -22,7 +22,7 @@ import { MfaResetService } from './mfa-reset.service';
 import { MfaController } from './mfa.controller';
 import { OtpService } from './otp.service';
 import { OtpController } from './otp.controller';
-import { OTP_SMS_SENDER, createOtpSmsSender } from './otp-sender';
+import { SmsChannelModule } from '../sms-channel/sms-channel.module';
 import { SsoService } from './sso.service';
 import { OidcService } from './oidc.service';
 import { SsoController } from './sso.controller';
@@ -38,7 +38,7 @@ function createLoginProtectionRedis(): Redis {
 }
 
 @Module({
-  imports: [PassportModule, JwtModule.register({}), AuditModule, CryptoModule, EmailModule, PasswordPolicyModule],
+  imports: [PassportModule, JwtModule.register({}), AuditModule, CryptoModule, EmailModule, PasswordPolicyModule, SmsChannelModule],
   providers: [
     AuthService,
     JwtStrategy,
@@ -52,7 +52,6 @@ function createLoginProtectionRedis(): Redis {
     MfaResetService,
     { provide: LOGIN_PROTECTION_REDIS, useFactory: createLoginProtectionRedis },
     OtpService,
-    { provide: OTP_SMS_SENDER, useFactory: createOtpSmsSender },
     SsoService,
     OidcService,
     IdentityProvidersService,

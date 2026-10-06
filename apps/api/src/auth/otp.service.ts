@@ -1,6 +1,6 @@
 import { HttpException, HttpStatus, Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import Redis from 'ioredis';
-import { createHash, randomInt, timingSafeEqual } from 'crypto';
+import { createHash, randomInt, randomUUID, timingSafeEqual } from 'crypto';
 import parsePhoneNumberFromString from 'libphonenumber-js/max';
 import { OrgSecretsCryptoService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
@@ -55,10 +55,11 @@ export function normaliseMobileNumber(raw: string): string | null {
 
 export const maskMobile = (e164: string) => `${e164.slice(0, 3)}${'•'.repeat(Math.max(0, e164.length - 5))}${e164.slice(-2)}`;
 
+// `label` fills the DLT template's purpose {#var#} (at most 30 characters, APX-A §4.3).
 const MESSAGES = {
-  sign_in: { subject: 'Your YukthiX sign-in code', what: 'sign-in code' },
-  mfa: { subject: 'Your YukthiX verification code', what: 'verification code' },
-  mobile: { subject: 'Your YukthiX verification code', what: 'code to verify this mobile number' },
+  sign_in: { subject: 'Your YukthiX sign-in code', what: 'sign-in code', label: 'sign-in code' },
+  mfa: { subject: 'Your YukthiX verification code', what: 'verification code', label: 'verification code' },
+  mobile: { subject: 'Your YukthiX verification code', what: 'code to verify this mobile number', label: 'mobile verification code' },
 } as const;
 export type OtpPurpose = keyof typeof MESSAGES;
 
@@ -164,21 +165,41 @@ export class OtpService {
 
   // Sent at once (YX-NTF-13), fire-and-forget: the caller's response and timing never depend on
   // delivery. The code is the only variable content; nothing else about the account is included.
-  deliver(channel: OtpChannel, to: string, code: string, purpose: OtpPurpose, organizationId?: string | null): void {
-    const { subject, what } = MESSAGES[purpose];
+  // By SMS / WhatsApp the person asked for it on that channel (YX-NTF-14); when it can't go there it
+  // goes to `fallbackEmail` if the flow allows one (YX-NTF-07), never when it may already have arrived.
+  deliver(
+    channel: OtpChannel,
+    to: string,
+    code: string,
+    purpose: OtpPurpose,
+    organizationId: string | null | undefined,
+    opts: { userId: string; fallbackEmail?: string | null },
+  ): void {
     const minutes = OTP_TTL_SECONDS / 60;
-    const sending =
+    const sending: Promise<unknown> =
       channel === 'email'
-        ? this.email.send({
-            to,
-            subject,
-            html:
-              `<p>Your YukthiX ${what} is:</p><p style="font-size:24px;letter-spacing:4px"><b>${code}</b></p>` +
-              `<p>It expires in ${minutes} minutes and works once. Never share it: YukthiX staff will never ask for it.</p>` +
-              '<p>If you did not ask for this code, you can ignore this email.</p>',
-            organizationId: organizationId ?? undefined,
-          })
-        : this.sms.send(to, channel, `${code} is your YukthiX ${what}. It expires in ${minutes} minutes. Never share it.`);
-    Promise.resolve(sending).catch((error) => this.logger.error(`Failed to send a one-time code by ${channel}`, error as Error));
+        ? this.emailCode(to, code, purpose, organizationId)
+        : this.sms
+            .send({ organizationId: organizationId ?? null, to, channel, code, purpose: MESSAGES[purpose].label, minutes, idempotencyKey: randomUUID(), recipientUserId: opts.userId })
+            .then((result) => {
+              if (result.delivered || result.mayHaveArrived) return;
+              this.logger.warn(`One-time code not sent by ${channel} (${result.reason})${opts.fallbackEmail ? '; sent by email instead' : ''}`);
+              if (opts.fallbackEmail) return this.emailCode(opts.fallbackEmail, code, purpose, organizationId, true);
+            });
+    sending.catch((error) => this.logger.error(`Failed to send a one-time code by ${channel}`, error as Error));
+  }
+
+  private emailCode(to: string, code: string, purpose: OtpPurpose, organizationId?: string | null, insteadOfText = false) {
+    const { subject, what } = MESSAGES[purpose];
+    return this.email.send({
+      to,
+      subject,
+      html:
+        (insteadOfText ? '<p>We could not send your code by text message, so here it is by email.</p>' : '') +
+        `<p>Your YukthiX ${what} is:</p><p style="font-size:24px;letter-spacing:4px"><b>${code}</b></p>` +
+        `<p>It expires in ${OTP_TTL_SECONDS / 60} minutes and works once. Never share it: YukthiX staff will never ask for it.</p>` +
+        '<p>If you did not ask for this code, you can ignore this email.</p>',
+      organizationId: organizationId ?? undefined,
+    });
   }
 }
