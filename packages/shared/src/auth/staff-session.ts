@@ -49,7 +49,7 @@ export async function touchStaffSession(
   const rows = await tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
     tx.$queryRaw<SessionAssurance[]>`
       WITH live AS (
-        SELECT s.id, s.last_seen_at, s.assurance_level, s.mfa_verified_at, s.mfa_method, u.mfa_enrolment_due_at
+        SELECT s.id, s.last_seen_at, s.created_at, s.assurance_level, s.mfa_verified_at, s.mfa_method, u.mfa_enrolment_due_at
         FROM sessions s JOIN users u ON u.id = s.user_id
         WHERE s.id = ${sessionId}::uuid AND s.user_id = ${userId}::uuid AND s.revoked_at IS NULL
           AND s.absolute_expires_at > now() AND s.idle_expires_at > now()
@@ -62,7 +62,7 @@ export async function touchStaffSession(
         RETURNING s.id
       )
       SELECT assurance_level AS "assuranceLevel", mfa_verified_at AS "mfaVerifiedAt", mfa_method AS "mfaMethod",
-             mfa_enrolment_due_at AS "mfaEnrolmentDueAt"
+             mfa_enrolment_due_at AS "mfaEnrolmentDueAt", created_at AS "authenticatedAt"
       FROM live`,
   );
   return rows[0] ?? null;

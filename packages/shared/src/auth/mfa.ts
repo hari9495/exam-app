@@ -45,6 +45,9 @@ export interface SessionAssurance {
   mfaMethod: string | null;
   // The session owner's enrolment deadline.
   mfaEnrolmentDueAt: Date;
+  // When the session's sign-in happened (sessions.created_at; refresh keeps it). Absent = unknown,
+  // which every freshness check treats as stale.
+  authenticatedAt?: Date;
 }
 
 // MFA requirement met: the session is AAL2, or its owner is still inside the enrolment grace.
@@ -52,13 +55,19 @@ export function mfaSatisfied(session: SessionAssurance, now = Date.now()): boole
   return session.assuranceLevel === 'aal2' || session.mfaEnrolmentDueAt.getTime() > now;
 }
 
-// Step-up met: AAL2 proven on this session within the step-up window, by a passkey, authenticator
-// app or recovery code -- a one-time code (fallback factor, YX-IAM-03) never counts as a step-up.
+// Session AAL2 states that are never a step-up: a one-time code (fallback factor, YX-IAM-03); an
+// identity provider's own MFA claim (a tenant-chosen issuer, not a YukthiX factor); and enrolling
+// the first factor (proves possession of a new authenticator, not that the user is who signed in).
+export const NON_STEP_UP_MFA_METHODS: readonly string[] = ['otp', 'idp', 'enrolment'];
+
+// Step-up met: AAL2 proven on this session within the step-up window by a YukthiX passkey,
+// authenticator app or recovery code (NON_STEP_UP_MFA_METHODS never count).
 // No grace: an account without a factor cannot step up, so it cannot take step-up actions.
 export function stepUpSatisfied(session: SessionAssurance, now = Date.now()): boolean {
   return (
     session.assuranceLevel === 'aal2' &&
-    session.mfaMethod !== 'otp' &&
+    session.mfaMethod !== null &&
+    !NON_STEP_UP_MFA_METHODS.includes(session.mfaMethod) &&
     session.mfaVerifiedAt !== null &&
     now - session.mfaVerifiedAt.getTime() <= stepUpWindowSeconds() * 1000
   );
