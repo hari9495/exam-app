@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { IdentityProvider, Prisma } from '@prisma/client';
 import { X509Certificate } from 'crypto';
-import { AuditService, OrgSecretsCryptoService, TenantContext, TenantPrismaService, loadTenantSecurityPolicy } from '@exam-platform/shared';
+import { AuditService, OrgSecretsCryptoService, TenantContext, TenantPrismaService, loadTenantSecurityPolicy, revokeStaffSessions } from '@exam-platform/shared';
 import { CreateIdentityProviderDto, UpdateIdentityProviderDto } from './dto/identity-provider.dto';
 import { GOOGLE_ISSUER, assertIssuerUrl, entraIssuer } from './identity-providers';
 import { SsoService } from './sso.service';
@@ -24,6 +24,7 @@ const SELECT = {
   entraTenantId: true,
   jitEnabled: true,
   jitRole: true,
+  mfaTrusted: true,
   createdAt: true,
   updatedAt: true,
   domains: { select: { domain: true }, orderBy: { domain: 'asc' } },
@@ -49,6 +50,7 @@ const AUDITED: (keyof Settings)[] = [
   'entraTenantId',
   'jitEnabled',
   'jitRole',
+  'mfaTrusted',
 ];
 
 // Settings › People & Access › Security › SSO providers (P12 §6.3, §7): several SAML / Google /
@@ -106,6 +108,7 @@ export class IdentityProvidersService {
       entraTenantId: null,
       jitEnabled: false,
       jitRole: null,
+      mfaTrusted: false,
     };
     const { settings, domains } = await this.prepare(organizationId, type, base, [], dto);
     const id = await this.write(context, actorUserId, organizationId, null, type, base, settings, domains);
@@ -127,14 +130,19 @@ export class IdentityProvidersService {
     const organizationId = this.orgOf(context);
     const current = await this.find(context, id);
     if (current.status === 'active') await this.assertNotLastForSsoOnly(context, organizationId, id);
-    await this.tenantPrisma.forTenant(context, (tx) => tx.identityProvider.delete({ where: { id } }));
+    // YX-IAM-05: the sessions it signed in end with it (same transaction, before the link is cleared).
+    const sessionsRevoked = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const revoked = await revokeStaffSessions(tx, { identityProviderId: id }, 'identity_provider_removed');
+      await tx.identityProvider.delete({ where: { id } });
+      return revoked;
+    });
     // YX-IAM-10: every IdP change is logged.
     await this.audit.record(context, {
       actorUserId,
       action: 'identity_provider.deleted',
       entityType: 'identity_provider',
       entityId: id,
-      metadata: { type: current.type, name: current.name, domains: current.domains.map((d) => d.domain) },
+      metadata: { type: current.type, name: current.name, domains: current.domains.map((d) => d.domain), sessionsRevoked },
     });
     this.alertAdmins(organizationId, actorUserId, `The identity provider "${current.name}" was removed.`);
     return { success: true };
@@ -154,7 +162,7 @@ export class IdentityProvidersService {
   // issuer rules, valid certificate, JIT floor, and (on activation) that a generic issuer answers.
   private async prepare(organizationId: string, type: string, before: Settings, beforeDomains: string[], dto: UpdateIdentityProviderDto) {
     const next: Settings = { ...before };
-    for (const key of ['name', 'status', 'jitEnabled', 'jitRole'] as const) {
+    for (const key of ['name', 'status', 'jitEnabled', 'jitRole', 'mfaTrusted'] as const) {
       if (dto[key] !== undefined) (next as Record<string, unknown>)[key] = dto[key];
     }
     const domains = dto.domains ? [...new Set(dto.domains)] : beforeDomains;
@@ -179,7 +187,7 @@ export class IdentityProvidersService {
       }
       if (dto.oidcIssuer !== undefined) {
         if (type !== 'oidc_generic') throw new BadRequestException('Google and Microsoft Entra have a fixed issuer');
-        assertIssuerUrl(dto.oidcIssuer);
+        await assertIssuerUrl(dto.oidcIssuer);
         next.oidcIssuer = dto.oidcIssuer.replace(/\/+$/, '');
       }
       if (dto.entraTenantId !== undefined) {
@@ -235,6 +243,9 @@ export class IdentityProvidersService {
   ): Promise<string> {
     if (id && before.status === 'active' && next.status !== 'active') await this.assertNotLastForSsoOnly(context, organizationId, id);
     let savedId: string;
+    // YX-IAM-05: switching a provider off ends every session it signed in (within the request).
+    const disabling = Boolean(id) && before.status === 'active' && next.status !== 'active';
+    let sessionsRevoked = 0;
     try {
       savedId = await this.tenantPrisma.forTenant(context, async (tx) => {
         const row = id
@@ -244,6 +255,7 @@ export class IdentityProvidersService {
         if (domains.length) {
           await tx.identityProviderDomain.createMany({ data: domains.map((domain) => ({ organizationId, domain, identityProviderId: row.id })) });
         }
+        if (disabling) sessionsRevoked = await revokeStaffSessions(tx, { identityProviderId: row.id }, 'identity_provider_disabled');
         return row.id;
       });
     } catch (error) {
@@ -258,7 +270,7 @@ export class IdentityProvidersService {
       action: id ? 'identity_provider.updated' : 'identity_provider.created',
       entityType: 'identity_provider',
       entityId: savedId,
-      metadata: { type, name: next.name, status: next.status, changed, domains },
+      metadata: { type, name: next.name, status: next.status, changed, domains, ...(disabling ? { sessionsRevoked } : {}) },
     });
     if (!id || changed.length || JSON.stringify(domains) !== JSON.stringify(beforeDomains)) {
       this.alertAdmins(

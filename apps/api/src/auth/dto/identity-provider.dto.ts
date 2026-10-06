@@ -90,6 +90,12 @@ export class UpdateIdentityProviderDto {
   @IsOptional()
   @IsIn(JIT_ROLES)
   jitRole?: string | null;
+
+  // Trust this provider's own MFA claim (amr / acr / AuthnContextClassRef) as the second factor.
+  // Never for break-glass accounts.
+  @Present()
+  @IsBoolean()
+  mfaTrusted?: boolean;
 }
 
 export class CreateIdentityProviderDto extends UpdateIdentityProviderDto {

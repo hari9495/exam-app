@@ -56,6 +56,7 @@ describe('SecurityPolicyService', () => {
     tenantSecurityPolicy: { findUnique: jest.Mock; upsert: jest.Mock };
     identityProvider: { count: jest.Mock };
     user: { count: jest.Mock };
+    session: { updateMany: jest.Mock };
     $executeRaw: jest.Mock;
   };
   let tenantPrisma: { forTenant: jest.Mock };
@@ -67,6 +68,7 @@ describe('SecurityPolicyService', () => {
       tenantSecurityPolicy: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn() },
       identityProvider: { count: jest.fn().mockResolvedValue(1) },
       user: { count: jest.fn().mockResolvedValue(2) },
+      session: { updateMany: jest.fn().mockResolvedValue({ count: 3 }) },
       $executeRaw: jest.fn(),
     };
     tenantPrisma = { forTenant: jest.fn(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
@@ -171,6 +173,23 @@ describe('SecurityPolicyService', () => {
     it('turns SSO-only on with two valid break-glass admins', async () => {
       await update({ ssoOnly: true, breakGlassUserIds: BG });
       expect(tx.tenantSecurityPolicy.upsert.mock.calls[0][0].update).toEqual(expect.objectContaining({ ssoOnly: true, breakGlassUserIds: BG }));
+    });
+
+    // Regression: turning SSO-only on left every password / one-time-code session alive for up to
+    // 12 h. They end at once -- the break-glass accounts' excepted -- and the count is audited.
+    it('ends every password and one-time-code session except the break-glass accounts when SSO-only goes on', async () => {
+      await update({ ssoOnly: true, breakGlassUserIds: BG });
+      expect(tx.session.updateMany).toHaveBeenCalledWith({
+        where: { organizationId: ORG, method: { in: ['password', 'otp_email', 'otp_sms', 'otp_whatsapp'] }, userId: { notIn: BG }, revokedAt: null },
+        data: { revokedAt: expect.any(Date), revokedReason: 'sso_only_enabled' },
+      });
+      expect(audit.record).toHaveBeenCalledWith(CTX, expect.objectContaining({ metadata: expect.objectContaining({ sessionsRevoked: 3 }) }));
+    });
+
+    it('revokes nothing when SSO-only was already on', async () => {
+      tx.tenantSecurityPolicy.findUnique.mockResolvedValue({ ...DEFAULT_SECURITY_POLICY, ssoOnly: true, breakGlassUserIds: BG, organizationId: ORG });
+      await update({ sessionIdleMinutes: 20 });
+      expect(tx.session.updateMany).not.toHaveBeenCalled();
     });
 
     it('cannot drop below two break-glass accounts while SSO-only stays on', async () => {

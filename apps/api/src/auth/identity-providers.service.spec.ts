@@ -55,6 +55,7 @@ describe('IdentityProvidersService', () => {
       },
       identityProviderDomain: { deleteMany: jest.fn(), createMany: jest.fn() },
       tenantSecurityPolicy: { findUnique: jest.fn().mockResolvedValue(null) },
+      session: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
     };
     const tenantPrisma = { forTenant: jest.fn((_ctx, fn) => fn(tx)) };
     audit = { record: jest.fn() };
@@ -216,6 +217,47 @@ describe('IdentityProvidersService', () => {
     });
   });
 
+  // Regression (YX-IAM-05): disabling or deleting a provider -- e.g. a rogue one -- left every
+  // session it had signed in alive for up to 12 h, rotating through /auth/refresh.
+  describe('ending the sessions a provider signed in', () => {
+    const active = () => stored({ status: 'active', samlEntityId: 'e', samlSsoUrl: 'https://idp.test/sso', samlCertificate: cert });
+    const revokedBy = (reason: string) => ({
+      where: { identityProviderId: 'idp-1', revokedAt: null },
+      data: { revokedAt: expect.any(Date), revokedReason: reason },
+    });
+
+    it('switching it off revokes its sessions and audits how many', async () => {
+      tx.identityProvider.findFirst.mockResolvedValue(active());
+      await service.update(context, 'u1', 'idp-1', { status: 'disabled' });
+      expect(tx.session.updateMany).toHaveBeenCalledWith(revokedBy('identity_provider_disabled'));
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ metadata: expect.objectContaining({ sessionsRevoked: 2 }) }));
+    });
+
+    it('deleting it revokes its sessions before the row (and the link) goes', async () => {
+      tx.identityProvider.findFirst.mockResolvedValue(active());
+      const order: string[] = [];
+      tx.session.updateMany.mockImplementation(async () => (order.push('revoke'), { count: 1 }));
+      tx.identityProvider.delete.mockImplementation(async () => order.push('delete'));
+      await service.remove(context, 'u1', 'idp-1');
+      expect(tx.session.updateMany).toHaveBeenCalledWith(revokedBy('identity_provider_removed'));
+      expect(order).toEqual(['revoke', 'delete']);
+    });
+
+    it('other edits of an active provider leave its sessions alone', async () => {
+      tx.identityProvider.findFirst.mockResolvedValue(active());
+      await service.update(context, 'u1', 'idp-1', { name: 'Renamed' });
+      expect(tx.session.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  it('trusting a provider for MFA is an audited setting, off by default', async () => {
+    await service.create(context, 'u1', { type: 'saml', name: 'Okta' } as any);
+    expect(tx.identityProvider.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ mfaTrusted: false }) }));
+    await service.update(context, 'u1', 'idp-1', { mfaTrusted: true });
+    expect(tx.identityProvider.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ mfaTrusted: true }) }));
+    expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ metadata: expect.objectContaining({ changed: ['mfaTrusted'] }) }));
+  });
+
   it('another company\'s provider is not found (RLS hides it)', async () => {
     tx.identityProvider.findFirst.mockResolvedValue(null);
     await expect(service.update(context, 'u1', 'other', { name: 'x' })).rejects.toThrow(NotFoundException);
@@ -224,5 +266,17 @@ describe('IdentityProvidersService', () => {
 
   it('needs an organisation context', async () => {
     await expect(service.list({ organizationId: null, isSuperAdmin: true })).rejects.toThrow(BadRequestException);
+  });
+});
+
+// Regression: a settings-only admin (a custom profile with org:manage_settings but not
+// org:manage_users) could add an IdP and use it to sign in as other people.
+describe('IdentityProvidersController permissions', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { IdentityProvidersController } = require('./identity-providers.controller');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { PERMISSIONS_KEY } = require('../rbac/permissions.decorator');
+  it.each(['create', 'update', 'remove'])('%s needs both org:manage_settings and org:manage_users', (method) => {
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, IdentityProvidersController.prototype[method])).toEqual(['org:manage_settings', 'org:manage_users']);
   });
 });

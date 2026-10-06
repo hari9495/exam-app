@@ -9,6 +9,7 @@ import {
   invalidateTenantSecurityPolicy,
   ipAllowedForSurface,
   isValidIpRange,
+  revokeStaffSessions,
   sessionLimitsFor,
   toSecurityPolicySettings,
 } from '@exam-platform/shared';
@@ -76,6 +77,10 @@ export class SecurityPolicyService {
     );
 
     const { idleSeconds, absoluteSeconds } = sessionLimitsFor(next);
+    // SSO-only switched on (YX-IAM-04): every session that came in by password or one-time code
+    // ends now -- except the break-glass accounts' -- instead of living out its 12 h.
+    const ssoOnlyTurnedOn = next.ssoOnly && !current.ssoOnly;
+    let sessionsRevoked = 0;
     await this.tenantPrisma.forTenant(context, async (tx) => {
       await tx.tenantSecurityPolicy.upsert({
         where: { organizationId },
@@ -92,6 +97,13 @@ export class SecurityPolicyService {
                                     created_at + make_interval(secs => ${absoluteSeconds}))
           WHERE organization_id = ${organizationId}::uuid AND revoked_at IS NULL AND absolute_expires_at > now()`;
       }
+      if (ssoOnlyTurnedOn) {
+        sessionsRevoked = await revokeStaffSessions(
+          tx,
+          { organizationId, method: { in: ['password', 'otp_email', 'otp_sms', 'otp_whatsapp'] }, userId: { notIn: next.breakGlassUserIds } },
+          'sso_only_enabled',
+        );
+      }
     });
     invalidateTenantSecurityPolicy(organizationId);
 
@@ -102,7 +114,7 @@ export class SecurityPolicyService {
         action: 'security_policy.updated',
         entityType: 'organization',
         entityId: organizationId,
-        metadata: { changes },
+        metadata: { changes, ...(ssoOnlyTurnedOn ? { sessionsRevoked } : {}) },
       });
     }
     return this.get(context);

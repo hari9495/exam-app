@@ -6,6 +6,7 @@ import * as client from 'openid-client';
 import { OrgSecretsCryptoService } from '@exam-platform/shared';
 import { LOGIN_PROTECTION_REDIS } from './login-protection.service';
 import { isLoopback } from './identity-providers';
+import { publicHttpsFetch } from '../common/ssrf';
 
 // OpenID Connect sign-in (Google, Microsoft Entra, generic) via openid-client: authorization code
 // flow with PKCE (S256), state and nonce; the library validates the ID token's signature against
@@ -62,14 +63,23 @@ export class OidcService {
 
   private discover(issuerUrl: string, clientId: string, clientSecret: string | undefined): Promise<client.Configuration> {
     const issuer = new URL(issuerUrl);
+    // http is only ever accepted for a loopback issuer outside production (assertIssuerUrl).
+    const devLoopback = process.env.NODE_ENV !== 'production' && isLoopback(issuer);
     const execute = [
       // Verify the ID token's signature against the issuer's JWKS, not only TLS to the token
       // endpoint (openid-client skips it by default, as OIDC Core allows).
       client.enableNonRepudiationChecks,
-      // http is only ever accepted for a loopback issuer outside production (assertIssuerUrl).
-      ...(process.env.NODE_ENV !== 'production' && isLoopback(issuer) ? [client.allowInsecureRequests] : []),
+      ...(devLoopback ? [client.allowInsecureRequests] : []),
     ];
-    return client.discovery(issuer, clientId, clientSecret, undefined, { timeout: DISCOVERY_TIMEOUT_SECONDS, execute });
+    // SSRF (ASVS V12.6 / V5.2.6): discovery and every URL the discovery document names (token
+    // endpoint, JWKS, userinfo) are fetched over https to public addresses only, each connection
+    // pinned to the address that was checked. A tenant admin types the issuer; the document it
+    // serves cannot point the server at internal hosts.
+    return client.discovery(issuer, clientId, clientSecret, undefined, {
+      timeout: DISCOVERY_TIMEOUT_SECONDS,
+      execute,
+      ...(devLoopback ? {} : { [client.customFetch]: publicHttpsFetch as client.CustomFetch }),
+    });
   }
 
   // Step 1: remember state / nonce / PKCE verifier for this browser, return the IdP's URL.
