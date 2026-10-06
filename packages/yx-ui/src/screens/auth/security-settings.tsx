@@ -51,6 +51,8 @@ export function policyErrors(d: SecurityPolicy, floor: SecurityFloor, providers:
   range('sec-idle', d.sessionIdleMinutes, floor.sessionIdleMinutes, 'Sign out after no activity');
   range('sec-absolute', d.sessionAbsoluteMinutes, floor.sessionAbsoluteMinutes, 'Longest session');
   range('sec-concurrent', d.maxConcurrentSessions, floor.maxConcurrentSessions, 'Sessions per person');
+  range('sec-lock-after', d.maxFailedAttempts, floor.maxFailedAttempts, 'Lock after');
+  range('sec-lock-for', d.lockMinutes, floor.lockMinutes, 'Lock for');
   const idle = d.sessionIdleMinutes ?? SESSION_DEFAULTS.idleMinutes;
   const absolute = d.sessionAbsoluteMinutes ?? SESSION_DEFAULTS.absoluteMinutes;
   if (idle > absolute) errors.push({ fieldId: 'sec-idle', message: 'Sign out after no activity can’t be longer than the longest session' });
@@ -255,6 +257,15 @@ function SecurityForm({ policy, floor, providers, admins, providersHref, onSave 
         </FormField>
         <FormField id="sec-ip-api" label="API keys" error={errorOf('sec-ip-api')} helper="Calls with a valid API key from other networks are refused.">
           <TextArea value={ipText.api} onChange={(v) => setIp('api', v)} rows={3} spellCheck={false} />
+        </FormField>
+      </FormSection>
+
+      <FormSection title="Account lockout" description="After too many wrong tries in a row the account locks and the person is emailed. Each later lock lasts twice as long, up to 24 hours. Repeated failures from one network are blocked by YukthiX whatever you choose.">
+        <FormField id="sec-lock-after" label="Lock after" error={errorOf('sec-lock-after')} helper={`YukthiX minimum: lock by the ${floor.maxFailedAttempts.max}th wrong try. Allowed: ${floor.maxFailedAttempts.min} to ${floor.maxFailedAttempts.max}.`}>
+          <NumberField value={draft.maxFailedAttempts} onChange={(v) => set({ maxFailedAttempts: v ?? floor.maxFailedAttempts.max })} min={floor.maxFailedAttempts.min} max={floor.maxFailedAttempts.max} suffix="wrong tries" />
+        </FormField>
+        <FormField id="sec-lock-for" label="Lock for" error={errorOf('sec-lock-for')} helper={`YukthiX minimum: ${floor.lockMinutes.min} minutes. Allowed: ${floor.lockMinutes.min} minutes to ${hours(floor.lockMinutes.max)}.`}>
+          <NumberField value={draft.lockMinutes} onChange={(v) => set({ lockMinutes: v ?? floor.lockMinutes.min })} min={floor.lockMinutes.min} max={floor.lockMinutes.max} suffix="minutes" />
         </FormField>
       </FormSection>
 

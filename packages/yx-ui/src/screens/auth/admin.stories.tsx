@@ -39,6 +39,7 @@ function Activity(over: Partial<LoginActivityScreenProps>) {
         sessionsState="ready"
         onSessionsPage={() => {}}
         onRevokeSession={() => wait()}
+        onUnlock={() => wait()}
         {...over}
         tab={tab}
         onTabChange={setTab}
@@ -48,6 +49,25 @@ function Activity(over: Partial<LoginActivityScreenProps>) {
 }
 
 export const LoginActivity: S = { name: 'Login activity · attempts', render: () => <Activity /> };
+export const LoginActivityUnlock: S = {
+  name: 'Login activity · unlock a locked account',
+  render: () => <Activity />,
+  play: async ({ canvasElement }) => {
+    const button = canvasElement.querySelector<HTMLButtonElement>('button[aria-label^="Unlock "]');
+    button?.click();
+  },
+};
+export const LoginActivityUnlockRefused: S = {
+  name: 'Login activity · unlock refused',
+  render: () => (
+    <Activity
+      onUnlock={async () => {
+        await wait(300);
+        throw new Error('User not found');
+      }}
+    />
+  ),
+};
 export const LoginActivitySpike: S = { name: 'Login activity · many failed attempts', render: () => <Activity failedLast24h={46} /> };
 export const LoginActivitySessions: S = { name: 'Login activity · signed in now', render: () => <Activity tab="sessions" /> };
 export const LoginActivityLoading: S = { name: 'Login activity · loading', render: () => <Activity events={null} eventsState="loading" failedLast24h={null} /> };
@@ -81,6 +101,10 @@ export const SecuritySettings: S = { name: '2.3 Security', render: () => <Settin
 export const SecuritySettingsSsoOnly: S = {
   name: '2.3 Security · single sign-on only',
   render: () => <Settings policy={{ ...POLICY, ssoOnly: true, breakGlassUserIds: [ADMINS[0].id], mfaScope: 'all', sessionIdleMinutes: 15 }} />,
+};
+export const SecuritySettingsStrictLockout: S = {
+  name: '2.3 Security · strict lockout',
+  render: () => <Settings policy={{ ...POLICY, maxFailedAttempts: 3, lockMinutes: 60 }} />,
 };
 export const SecuritySettingsSaveFails: S = {
   name: '2.3 Security · save refused',

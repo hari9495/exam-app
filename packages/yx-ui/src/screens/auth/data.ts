@@ -122,6 +122,8 @@ export const FLOOR: SecurityFloor = {
   maxConcurrentSessions: { min: 1, max: 100 },
   ipAllowlistMaxEntries: 100,
   breakGlassAccounts: { minWhenSsoOnly: 2, max: 10 },
+  maxFailedAttempts: { min: 3, max: 10 },
+  lockMinutes: { min: 15, max: 1440 },
 };
 
 export const POLICY: SecurityPolicy = {
@@ -137,6 +139,8 @@ export const POLICY: SecurityPolicy = {
   ssoOnly: false,
   breakGlassUserIds: [],
   otpSignInChannels: [],
+  maxFailedAttempts: 10,
+  lockMinutes: 15,
 };
 
 export const IDPS: IdentityProviderRow[] = [

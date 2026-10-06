@@ -295,6 +295,27 @@ describe('LoginActivityScreen', () => {
     expect(onRevokeSession).toHaveBeenCalledWith(ORG_SESSIONS.data[2]);
   });
 
+  it('unlocks a locked person only with a reason, and only on rows that show a lock', async () => {
+    const onUnlock = vi.fn().mockResolvedValue(undefined);
+    render(<Activity onUnlock={onUnlock} />);
+    // o-2 is the only row showing a lock for a known person.
+    expect(screen.getAllByRole('button', { name: /^Unlock / })).toHaveLength(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Unlock ramesh.g@kaverifoods.in' }));
+    const dialog = screen.getByRole('dialog');
+    const confirm = within(dialog).getByRole('button', { name: 'Unlock account' });
+    expect(confirm).toBeDisabled();
+    await userEvent.type(within(dialog).getByLabelText(/Reason/), 'too short');
+    expect(confirm).toBeDisabled();
+    await userEvent.type(within(dialog).getByLabelText(/Reason/), ' - called him back on his desk phone');
+    await userEvent.click(confirm);
+    expect(onUnlock).toHaveBeenCalledWith(ORG_EVENTS.data[1], 'too short - called him back on his desk phone');
+  });
+
+  it('offers no Unlock without the permission (no handler)', () => {
+    render(<Activity />);
+    expect(screen.queryByRole('button', { name: /^Unlock / })).toBeNull();
+  });
+
   it('says what to do when filters match nothing', () => {
     render(<Activity events={{ data: [], total: 0, page: 1, pageSize: 25 }} filters={{ ...NO_FILTERS, result: 'locked' }} />);
     expect(screen.getByText(/No results/)).toBeInTheDocument();
@@ -312,6 +333,32 @@ describe('SecuritySettingsScreen', () => {
     expect(screen.getByText(/Minimum allowed: 12 characters/)).toBeInTheDocument();
     expect(screen.getByText(/maximum allowed: 12 hours/)).toBeInTheDocument();
     expect(screen.getByText(/Allowed: 5 minutes to 8 hours/)).toBeInTheDocument();
+    expect(screen.getByText(/YukthiX minimum: lock by the 10th wrong try\. Allowed: 3 to 10\./)).toBeInTheDocument();
+    expect(screen.getByText(/YukthiX minimum: 15 minutes\. Allowed: 15 minutes to 24 hours\./)).toBeInTheDocument();
+  });
+
+  it('saves a stricter lockout', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<Settings onSave={onSave} />);
+    await userEvent.clear(screen.getByLabelText('Lock after'));
+    await userEvent.type(screen.getByLabelText('Lock after'), '3');
+    await userEvent.clear(screen.getByLabelText('Lock for'));
+    await userEvent.type(screen.getByLabelText('Lock for'), '60');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(onSave).toHaveBeenCalledWith({ maxFailedAttempts: 3, lockMinutes: 60 });
+  });
+
+  it('refuses a lockout laxer than YukthiX allows', async () => {
+    const onSave = vi.fn();
+    render(<Settings onSave={onSave} />);
+    await userEvent.clear(screen.getByLabelText('Lock after'));
+    await userEvent.type(screen.getByLabelText('Lock after'), '11');
+    await userEvent.clear(screen.getByLabelText('Lock for'));
+    await userEvent.type(screen.getByLabelText('Lock for'), '10');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Lock after must be between 3 and 10');
+    expect(screen.getByRole('alert')).toHaveTextContent('Lock for must be between 15 and 1440');
   });
 
   it('saves only the changed fields', async () => {
@@ -371,6 +418,8 @@ describe('helpers', () => {
     expect(policyErrors({ ...POLICY, sessionIdleMinutes: 300, sessionAbsoluteMinutes: 120 }, FLOOR, IDPS).map((e) => e.fieldId)).toEqual(['sec-idle']);
     expect(policyErrors({ ...POLICY, sessionIdleMinutes: 481 }, FLOOR, IDPS).map((e) => e.fieldId)).toContain('sec-idle');
     expect(policyErrors({ ...POLICY, passwordMinLength: 8 }, FLOOR, IDPS).map((e) => e.fieldId)).toEqual(['sec-password']);
+    expect(policyErrors({ ...POLICY, maxFailedAttempts: 2, lockMinutes: 10 }, FLOOR, IDPS).map((e) => e.fieldId)).toEqual(['sec-lock-after', 'sec-lock-for']);
+    expect(policyErrors({ ...POLICY, maxFailedAttempts: 11, lockMinutes: 1441 }, FLOOR, IDPS).map((e) => e.fieldId)).toEqual(['sec-lock-after', 'sec-lock-for']);
     expect(policyErrors(POLICY, FLOOR, IDPS)).toEqual([]);
   });
 
