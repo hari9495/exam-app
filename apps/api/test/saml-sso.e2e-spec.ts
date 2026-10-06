@@ -7,6 +7,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { SamlCacheProvider } from '../src/auth/saml-cache.provider';
 import { getTestIdp, buildSignedSamlResponse, TestIdp } from './fixtures/saml-test-idp';
+import { markSteppedUp } from './fixtures/step-up';
 
 describe('SAML SSO end-to-end flow', () => {
   let app: INestApplication;
@@ -65,6 +66,8 @@ describe('SAML SSO end-to-end flow', () => {
         .send({ organizationSlug: orgSlug, email: orgAdmin.email, password: 'OrgAdminPassw0rd!' })
         .expect(200)
     ).body.accessToken;
+    // Changing the identity provider is a step-up action (P12 §3); proven in mfa.e2e-spec.ts.
+    await markSteppedUp(tenantPrisma, orgAdminAccessToken);
 
     // Pre-provision the staff member who will "log in via SSO" -- this is
     // the exact same real POST /users flow a recruiter/org-admin would use.
