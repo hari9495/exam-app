@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CompanyOption, SignInFields, SignInStep, SsoProviderOption } from '@yukthix/ui/auth';
 import { apiFetch } from '../api-client';
+import { goTo } from '../navigate';
 import { botChallengeToken } from '../bot-challenge';
 import { useAuth, YX_SSO_RETURN_KEY } from '../auth-context';
 import { decodeJwtPayload } from '../jwt';
@@ -77,7 +78,7 @@ export function useYxSignIn() {
   const goToIdp = (url: string) => {
     window.sessionStorage.setItem(YX_SSO_RETURN_KEY, '1');
     setStep('redirecting');
-    window.location.assign(url);
+    goTo(url);
   };
 
   return {

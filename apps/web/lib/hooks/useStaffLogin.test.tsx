@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '../api-client';
+import { goTo } from '../navigate';
 import { useAuth } from '../auth-context';
 import { fakeJwt } from '../test-utils/fake-jwt';
 import { roleToLandingPath } from '../staff-routing';
@@ -8,6 +9,7 @@ import { useStaffLogin } from './useStaffLogin';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn() }));
 jest.mock('../api-client', () => ({ apiFetch: jest.fn() }));
+jest.mock('../navigate', () => ({ goTo: jest.fn() }));
 jest.mock('../auth-context', () => ({ useAuth: jest.fn(), SSO_PENDING_SLUG_KEY: 'k', YX_SSO_RETURN_KEY: 'yx' }));
 jest.mock('./useBranding', () => ({ useBranding: () => ({ data: undefined }) }));
 jest.mock('./useDocumentBranding', () => ({ useDocumentBranding: () => undefined }));
@@ -143,8 +145,8 @@ describe('useStaffLogin', () => {
     });
 
     it('marks an SSO start from the YukthiX page, and clears the mark from the classic page', async () => {
-      const assign = jest.fn();
-      Object.defineProperty(window, 'location', { value: { ...window.location, assign }, configurable: true });
+      const assign = goTo as jest.Mock;
+      assign.mockClear();
       api.mockResolvedValue({ url: 'https://idp.example.test/start' });
       const yx = renderHook(() => useStaffLogin({ yx: true }));
       act(() => yx.result.current.setEmail('a@acme.test'));

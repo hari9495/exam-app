@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
+import { goTo } from '../../lib/navigate';
 import { useAuth } from '../../lib/auth-context';
 import YxSignInPage from './sign-in/page';
 import YxForgotPasswordPage from './forgot-password/page';
@@ -13,6 +14,7 @@ import YxAppLayout from './(app)/layout';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
+jest.mock('../../lib/navigate', () => ({ goTo: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn(), YX_SSO_RETURN_KEY: 'yxSsoReturn' }));
 jest.mock('../../lib/bot-challenge', () => ({ botChallengeToken: async () => null }));
 jest.mock('../../lib/hooks/useCurrentUser', () => ({ useCurrentUser: () => ({ data: { name: 'Divya Raghunathan', email: 'divya.r@kaverifoods.in' } }) }));
@@ -66,11 +68,8 @@ describe('/yx/sign-in (email first, no company code)', () => {
   const CASTINGS = { id: 'c-2', name: 'Hosur Precision Castings', logoUrl: null };
   let push: jest.Mock;
   let login: jest.Mock;
-  const assign = jest.fn();
+  const assign = goTo as jest.Mock;
 
-  beforeAll(() => {
-    Object.defineProperty(window, 'location', { configurable: true, value: { ...window.location, assign } });
-  });
   beforeEach(() => {
     push = jest.fn();
     login = jest.fn();
