@@ -30,7 +30,7 @@ export function Pagination({ page, totalPages, onPageChange }: PaginationProps) 
           onClick={() => onPageChange(p)}
           aria-current={p === page ? 'page' : undefined}
           className={clsx(
-            'min-w-[2rem] rounded-md px-2.5 py-1.5 text-sm',
+            'min-w-8 rounded-md px-2.5 py-1.5 text-sm',
             p === page ? 'border border-rule bg-primary text-on-primary' : 'text-ink hover:bg-ground',
           )}
         >

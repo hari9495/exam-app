@@ -71,7 +71,7 @@ function markButtonClasses(marked: boolean | undefined) {
     // whitespace-nowrap keeps "Mark for review" on one line beside the question meta.
     // active:scale + focus ring give an immediate press response so the toggle feels
     // instant, independent of the debounced save behind it.
-    'whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium transition-all active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-candidate-review-border',
+    'whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium transition-all active:scale-[0.97] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-candidate-review-border',
     marked
       ? 'border-candidate-review-border bg-candidate-review-bg text-candidate-review'
       : 'border-candidate-border text-candidate-text-secondary hover:bg-candidate-bg',
@@ -547,14 +547,14 @@ export default function CandidateExamPage() {
         // and splitting the options into two columns rather than stretching single rows.
         className={clsx(
           'mx-auto flex w-full min-h-0 max-w-6xl flex-1 flex-col overflow-hidden p-4 xl:max-w-7xl xl:p-6 2xl:max-w-none 2xl:px-10',
-          (isPaused || isBlocked) && 'pointer-events-none blur-sm select-none',
+          (isPaused || isBlocked) && 'pointer-events-none blur-xs select-none',
         )}
       >
       <div className="mb-4 shrink-0 rounded-lg border border-candidate-border bg-white px-4 py-3">
         <div className="mb-2 flex items-center justify-between">
           <button
             onClick={() => setNavigatorOpen((open) => !open)}
-            className="rounded bg-candidate-primary-light px-3 py-1 text-xs font-bold text-candidate-primary lg:hidden"
+            className="rounded-sm bg-candidate-primary-light px-3 py-1 text-xs font-bold text-candidate-primary lg:hidden"
           >
             <span className="inline-flex items-center gap-1">
               Q{currentIndex + 1}/{questions.length}
@@ -659,7 +659,7 @@ export default function CandidateExamPage() {
           {question.snippetCode ? (
             <div className="mb-4 overflow-hidden rounded-md">
               <div className="bg-[#1E1E1E] px-3 py-1.5">
-                <span className="rounded bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-candidate-text-faint">
+                <span className="rounded-sm bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-candidate-text-faint">
                   {question.snippetLanguage ?? 'plaintext'}
                 </span>
               </div>
@@ -676,7 +676,7 @@ export default function CandidateExamPage() {
                   <select
                     id="code-language-select"
                     aria-label="Choose A Language Before You Start"
-                    className="rounded border border-candidate-border px-2 py-1 text-sm"
+                    className="rounded-sm border border-candidate-border px-2 py-1 text-sm"
                     value=""
                     onChange={(e) => {
                       const lang = e.target.value;
@@ -703,7 +703,7 @@ export default function CandidateExamPage() {
                         <span className="h-2.5 w-2.5 rounded-full bg-[#FFBD2E]" />
                         <span className="h-2.5 w-2.5 rounded-full bg-[#27C93F]" />
                       </span>
-                      <span className="rounded bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-candidate-text-faint">
+                      <span className="rounded-sm bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-candidate-text-faint">
                         {currentCodeLanguage}
                       </span>
                     </div>
@@ -770,13 +770,13 @@ export default function CandidateExamPage() {
                       <span className="min-w-0 flex-1 truncate text-candidate-text" title={file.fileName}>
                         {file.fileName}
                       </span>
-                      <span className="flex-shrink-0 text-xs text-candidate-text-faint">{formatFileSize(file.size)}</span>
+                      <span className="shrink-0 text-xs text-candidate-text-faint">{formatFileSize(file.size)}</span>
                       <button
                         type="button"
                         onClick={() => handleFileRemove(file.id)}
                         disabled={answerFile.remove.isPending}
                         aria-label={`Remove ${file.fileName}`}
-                        className="flex-shrink-0 rounded px-2 py-1 text-xs font-medium text-candidate-text-secondary hover:bg-candidate-border/40 disabled:opacity-50"
+                        className="shrink-0 rounded-sm px-2 py-1 text-xs font-medium text-candidate-text-secondary hover:bg-candidate-border/40 disabled:opacity-50"
                       >
                         Remove
                       </button>
@@ -832,7 +832,7 @@ export default function CandidateExamPage() {
                     <span className="inline-flex items-center gap-2">
                       <span
                         className={clsx(
-                          'inline-block h-3.5 w-3.5 flex-shrink-0 border-2',
+                          'inline-block h-3.5 w-3.5 shrink-0 border-2',
                           // Square = multi-select (checkbox affordance), round = single-select radio.
                           question.type === 'multi_mcq' ? 'rounded-[3px]' : 'rounded-full',
                           selected ? 'border-candidate-primary bg-candidate-primary shadow-[inset_0_0_0_2px_white]' : 'border-candidate-text-faint',
@@ -840,7 +840,7 @@ export default function CandidateExamPage() {
                         aria-hidden="true"
                       />
                       {option.imageUrl ? (
-                        <img src={option.imageUrl} alt="Option illustration" className="h-10 w-10 rounded object-cover" />
+                        <img src={option.imageUrl} alt="Option illustration" className="h-10 w-10 rounded-sm object-cover" />
                       ) : null}
                       {option.text}
                     </span>
@@ -915,7 +915,7 @@ export default function CandidateExamPage() {
               type="button"
               onClick={() => enterReviewFilter('marked')}
               aria-label={`Review the ${reviewCount} questions marked for review`}
-              className="rounded-md bg-candidate-review-bg p-2 text-center transition hover:ring-2 hover:ring-inset hover:ring-candidate-review-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-candidate-review-border"
+              className="rounded-md bg-candidate-review-bg p-2 text-center transition hover:ring-2 hover:ring-inset hover:ring-candidate-review-border focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-candidate-review-border"
             >
               <div className="text-lg font-bold text-candidate-review">{reviewCount}</div>
               <div className="inline-flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-candidate-review">
@@ -933,7 +933,7 @@ export default function CandidateExamPage() {
               type="button"
               onClick={() => enterReviewFilter('unanswered')}
               aria-label={`Review the ${unansweredCount} unanswered questions`}
-              className="rounded-md bg-candidate-bg p-2 text-center transition hover:ring-2 hover:ring-inset hover:ring-candidate-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-candidate-primary"
+              className="rounded-md bg-candidate-bg p-2 text-center transition hover:ring-2 hover:ring-inset hover:ring-candidate-border focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-candidate-primary"
             >
               <div className="text-lg font-bold text-candidate-text-secondary">{unansweredCount}</div>
               <div className="inline-flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-candidate-text-secondary">

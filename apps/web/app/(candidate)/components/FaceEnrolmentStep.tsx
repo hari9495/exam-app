@@ -124,14 +124,14 @@ export function FaceEnrolmentStep({ policy, onSettled }: Props) {
         <div className="mt-3 flex gap-2">
           <button
             type="button"
-            className="rounded bg-candidate-primary px-3 py-1.5 text-white"
+            className="rounded-sm bg-candidate-primary px-3 py-1.5 text-white"
             onClick={() => setPhase('capture')}
           >
             I agree
           </button>
           <button
             type="button"
-            className="rounded border border-candidate-border px-3 py-1.5"
+            className="rounded-sm border border-candidate-border px-3 py-1.5"
             onClick={handleDecline}
           >
             I don’t agree
@@ -143,7 +143,7 @@ export function FaceEnrolmentStep({ policy, onSettled }: Props) {
 
   return (
     <div className="rounded-lg border border-candidate-border p-4 text-sm">
-      <video ref={videoRef} autoPlay playsInline muted className="w-full max-w-sm rounded" />
+      <video ref={videoRef} autoPlay playsInline muted className="w-full max-w-sm rounded-sm" />
       <p className="mt-2">{hint}</p>
       <p className="mt-1 text-xs text-candidate-text-faint">
         Attempt {Math.min(attempts + 1, maxAttempts)} of {maxAttempts}

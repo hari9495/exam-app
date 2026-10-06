@@ -93,7 +93,7 @@ export default async function CareersPage({ params }: { params: Promise<{ orgSlu
       >
         {data.logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={data.logoUrl} alt={`${data.orgName} logo`} className="h-14 w-14 rounded object-contain" />
+          <img src={data.logoUrl} alt={`${data.orgName} logo`} className="h-14 w-14 rounded-sm object-contain" />
         ) : null}
         <h1 className="font-display text-2xl font-bold">{data.headline || `${data.orgName} — Open roles`}</h1>
         {data.intro

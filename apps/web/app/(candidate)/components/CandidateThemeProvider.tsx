@@ -36,7 +36,7 @@ export function CandidateThemeProvider({ children }: { children: React.ReactNode
         <img
           src={data?.organizationLogoUrl || '/logo.png'}
           alt={data?.organizationName ? `${data.organizationName} logo` : 'Prudent Hire'}
-          className="h-8 w-8 shrink-0 rounded object-contain"
+          className="h-8 w-8 shrink-0 rounded-sm object-contain"
         />
         <span className="text-[15px] font-bold tracking-tight text-candidate-text">
           {data?.organizationName || 'Prudent Hire'}

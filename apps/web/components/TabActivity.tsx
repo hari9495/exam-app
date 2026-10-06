@@ -130,7 +130,7 @@ export function TabActivityBanner({ entries }: TabActivityBannerProps) {
               type="button"
               disabled={!canExpand}
               onClick={() => setExpanded(group.representative)}
-              className="flex items-center gap-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-left text-xs text-amber-800 disabled:cursor-default"
+              className="flex items-center gap-2 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-left text-xs text-amber-800 disabled:cursor-default"
             >
               <StatusBadge tone="warning">{group.label}{group.count > 1 ? ` × ${group.count}` : ''}</StatusBadge>
               <span>detected around this question — estimated timing{canExpand ? ', click for detail' : ''}</span>
@@ -145,7 +145,7 @@ export function TabActivityBanner({ entries }: TabActivityBannerProps) {
             <p className="mb-3 text-sm text-gray-700">{expanded.reasoning}</p>
           </>
         )}
-        {expanded?.screenshot && <img src={expanded.screenshot} alt="Screen capture" className="w-full rounded" />}
+        {expanded?.screenshot && <img src={expanded.screenshot} alt="Screen capture" className="w-full rounded-sm" />}
       </Modal>
     </>
   );

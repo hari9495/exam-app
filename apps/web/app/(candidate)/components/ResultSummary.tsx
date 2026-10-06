@@ -24,7 +24,7 @@ export function ResultSummary({ feedback }: { feedback: AttemptFeedback }) {
       {feedback.passFail ? (
         <span
           className={clsx(
-            'mx-auto inline-flex items-center rounded px-4 py-1 text-sm font-bold uppercase tracking-wide',
+            'mx-auto inline-flex items-center rounded-sm px-4 py-1 text-sm font-bold uppercase tracking-wide',
             feedback.passFail === 'pass'
               ? 'bg-candidate-primary-light text-candidate-primary'
               : 'bg-candidate-danger-bg text-candidate-danger',
