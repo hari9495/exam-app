@@ -232,6 +232,9 @@ model User {
   // MFA must be enrolled by then wherever it is required (P12 §8: 14-day grace for existing
   // accounts); an approved MFA reset sets it to now().
   mfaEnrolmentDueAt      DateTime             @default(dbgenerated("(now() + '14 days'::interval)")) @map("mfa_enrolment_due_at") @db.Timestamptz(3)
+  // E.164; signs in by one-time code (and receives SMS / WhatsApp codes) only once verified.
+  mobileNumber           String?              @map("mobile_number") @db.VarChar(16)
+  mobileVerifiedAt       DateTime?            @map("mobile_verified_at") @db.Timestamptz(3)
   managerId              String?              @map("manager_id") @db.Uuid
   permissionProfileId    String?              @map("permission_profile_id") @db.Uuid
   permissionProfile      PermissionProfile?   @relation(fields: [permissionProfileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -397,6 +400,8 @@ model TenantSecurityPolicy {
   ipAllowlistApi         String[]     @default([]) @map("ip_allowlist_api")
   ssoOnly                Boolean      @default(false) @map("sso_only")
   breakGlassUserIds      String[]     @default([]) @map("break_glass_user_ids") @db.Uuid
+  // OTP sign-in channels the company allows: subset of email / sms / whatsapp; empty = off
+  otpSignInChannels      String[]     @default([]) @map("otp_sign_in_channels") @db.VarChar(16)
   updatedAt              DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   updatedByUserId        String?      @map("updated_by_user_id") @db.Uuid
 
@@ -414,7 +419,7 @@ model LoginEvent {
   identifier     String?  @db.VarChar(320)
   // 'success' | 'failed' | 'locked' | 'mfa_failed'
   result         String   @db.VarChar(16)
-  // 'password' | 'saml'
+  // 'password' | 'saml' | 'otp_email' | 'otp_sms' | 'otp_whatsapp' (second-factor failures: the factor)
   method         String   @db.VarChar(32)
   reason         String?  @db.VarChar(64)
   sessionId      String?  @map("session_id") @db.Uuid
