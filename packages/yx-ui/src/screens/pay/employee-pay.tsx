@@ -1643,6 +1643,7 @@ export function IncentiveStatementScreen({ layout = 'desktop', variant = 'defaul
             ])}
           </ul>
         ) : (
+          <div className="yx-pay-scroll" tabIndex={0} role="region" aria-label="Incentive statement by month">
           <table className="yx-pay-table">
             <thead>
               <tr>
@@ -1695,6 +1696,7 @@ export function IncentiveStatementScreen({ layout = 'desktop', variant = 'defaul
               </tr>
             </tfoot>
           </table>
+          </div>
         )}
         <p className="yx-pay-note">
           The plan pays quarterly: {q1.label} was paid on the {q1.paidOn}. Monthly figures share the quarter's commission by each month's net sales. Commission is salary income; tax is deducted through your payslip.
