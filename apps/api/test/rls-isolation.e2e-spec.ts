@@ -441,7 +441,8 @@ describe('PostgreSQL row-level security (app role)', () => {
       const department = await tx.department.create({ data: { id: deptId, organizationId: orgB, name: 'B dept', code: 'B-DEPT', path: `/${deptId}/` } });
       const designation = await tx.designation.create({ data: { organizationId: orgB, name: 'B role', code: 'B-R' } });
       const type = await tx.employmentType.create({ data: { organizationId: orgB, name: 'B type', code: 'B-T', category: 'permanent' } });
-      const employee = await tx.employee.create({ data: { organizationId: orgB, givenName: 'Bea' } });
+      const person = await tx.person.create({ data: { organizationId: orgB, givenName: 'Bea' } });
+      const employee = await tx.employee.create({ data: { organizationId: orgB, personId: person.id, givenName: 'Bea' } });
       const employment = await tx.employment.create({ data: { organizationId: orgB, employeeId: employee.id, legalEntityId: entity.id, employeeCode: 'B1', codeScopeKey: entity.id, joinedOn: day('2026-04-01') } });
       const change = (status: string) =>
         tx.employeeChange.create({ data: { organizationId: orgB, employeeId: employee.id, employmentId: employment.id, changeType: 'join', effectiveDate: day('2026-04-01'), status, payload: {}, reason: 'join', ...(status === 'effective' ? { appliedAt: new Date() } : {}) } });
@@ -452,7 +453,7 @@ describe('PostgreSQL row-level security (app role)', () => {
       });
       await tx.compensation.create({ data: { organizationId: orgB, employmentId: employment.id, validFrom: day('2026-04-01'), currency: 'INR', annualCtc: 500000, changeId: join.id } });
       await tx.employmentStatusPeriod.create({ data: { organizationId: orgB, employmentId: employment.id, validFrom: day('2026-04-01'), status: 'confirmed', changeId: join.id } });
-      return { entity: entity.id, location: location.id, department: department.id, designation: designation.id, type: type.id, employee: employee.id, employment: employment.id, join: join.id, pending: pending.id, assignment: assignment.id };
+      return { entity: entity.id, location: location.id, department: department.id, designation: designation.id, type: type.id, person: person.id, employee: employee.id, employment: employment.id, join: join.id, pending: pending.id, assignment: assignment.id };
     });
     const rowB = { organizationId: orgB, legalEntityId: b.entity, employeeId: b.employee, employmentId: b.employment, locationId: b.location, departmentId: b.department, designationId: b.designation, employmentTypeId: b.type };
 
@@ -470,12 +471,13 @@ describe('PostgreSQL row-level security (app role)', () => {
       };
     });
     expect(seenByA).toEqual({ ...Object.fromEntries(HISTORY_TABLES.map((t) => [t, 0])), pay: 0, change: 0, name: 0 });
-    await expect(tenantPrisma.forTenant(asA(), (tx) => tx.employee.create({ data: { organizationId: orgB, givenName: 'planted' } }))).rejects.toThrow(RLS_VIOLATION);
+    await expect(tenantPrisma.forTenant(asA(), (tx) => tx.employee.create({ data: { organizationId: orgB, personId: b.person, givenName: 'planted' } }))).rejects.toThrow(RLS_VIOLATION);
 
     // A's own employee can neither sit at B's location nor hang off B's employee, even with the platform's bypass.
     const a = await tenantPrisma.forTenant(asA(), async (tx) => {
       const entity = await tx.legalEntity.create({ data: { organizationId: orgA, name: 'A Ltd', shortName: `A-${randomUUID().slice(0, 8)}` } });
-      const employee = await tx.employee.create({ data: { organizationId: orgA, givenName: 'Ann' } });
+      const person = await tx.person.create({ data: { organizationId: orgA, givenName: 'Ann' } });
+      const employee = await tx.employee.create({ data: { organizationId: orgA, personId: person.id, givenName: 'Ann' } });
       const employment = await tx.employment.create({ data: { organizationId: orgA, employeeId: employee.id, legalEntityId: entity.id, employeeCode: 'A1', codeScopeKey: entity.id, joinedOn: day('2026-04-01') } });
       const join = await tx.employeeChange.create({
         data: { organizationId: orgA, employeeId: employee.id, employmentId: employment.id, changeType: 'join', effectiveDate: day('2026-04-01'), status: 'effective', appliedAt: new Date(), payload: {}, reason: 'join' },
@@ -511,7 +513,99 @@ describe('PostgreSQL row-level security (app role)', () => {
     ).rejects.toThrow(/employee_assignments_no_overlap|exclusion|23P01/);
     const name = await tenantPrisma.forTenant(asB, (tx) => tx.employee.findUniqueOrThrow({ where: { id: b.employee } }));
     expect(name.givenName).toBe('Bea');
+    // A's employee record can never belong to B's person (P01 §4.5a, YX-ORG-26), even with the bypass.
+    for (const ctx of [asA(), SUPER]) {
+      await expect(tenantPrisma.forTenant(ctx, (tx) => tx.employee.create({ data: { organizationId: orgA, personId: b.person, givenName: 'Borrowed' } }))).rejects.toThrow(/employees_person_fkey|Foreign key/);
+    }
     // afterAll removes both companies; their rows go with them (FK cascades run as the table owner).
+  });
+
+  // People core (step 2c): persons and their roles (P01 §4.5a), dotted-line managers (M01 Q5), probation
+  // plans (M01 §3.4) and bulk change batches (M01 §3.3): forced-RLS tenant tables with composite keys.
+  const PEOPLE_TABLES = ['assignment_dotted_line_managers', 'employee_change_batches', 'person_link_log', 'person_roles', 'persons', 'probations'];
+
+  it('the people-core tables are forced-RLS tenant tables', async () => {
+    const rows = await prisma.$queryRaw<{ table: string; forced: boolean; policies: bigint }[]>`
+      SELECT c.relname AS table, (c.relrowsecurity AND c.relforcerowsecurity) AS forced,
+             (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+      WHERE c.relname = ANY(${PEOPLE_TABLES}) ORDER BY c.relname`;
+    expect(rows).toEqual(PEOPLE_TABLES.map((table) => ({ table, forced: true, policies: BigInt(1) })));
+  });
+
+  it("(b) org A cannot read, change or point at org B's persons, roles, probations, batches and dotted lines", async () => {
+    const asB = { organizationId: orgB, isSuperAdmin: false };
+    const day = (d: string) => new Date(`${d}T00:00:00Z`);
+    const b = await tenantPrisma.forTenant(asB, async (tx) => {
+      const o = { organizationId: orgB };
+      const entity = await tx.legalEntity.create({ data: { ...o, name: 'B People', shortName: `BP-${randomUUID().slice(0, 8)}` } });
+      const location = await tx.location.create({ data: { ...o, legalEntityId: entity.id, name: 'B office', code: `BO-${randomUUID().slice(0, 6)}`, address: {}, country: 'IN', state: 'IN-KA', timezone: 'Asia/Kolkata' } });
+      const deptId = randomUUID();
+      const department = await tx.department.create({ data: { ...o, id: deptId, name: `B ops ${deptId.slice(0, 6)}`, code: `BOPS-${deptId.slice(0, 6)}`, path: `/${deptId}/` } });
+      const designation = await tx.designation.create({ data: { ...o, name: `B lead ${deptId.slice(0, 6)}`, code: `BL-${deptId.slice(0, 6)}` } });
+      const type = await tx.employmentType.create({ data: { ...o, name: `B perm ${deptId.slice(0, 6)}`, code: `BP-${deptId.slice(0, 6)}`, category: 'permanent' } });
+      const hire = async (name: string, code: string) => {
+        const person = await tx.person.create({ data: { ...o, givenName: name, primaryEmail: `${code.toLowerCase()}@b.test` } });
+        const employee = await tx.employee.create({ data: { ...o, personId: person.id, givenName: name } });
+        const employment = await tx.employment.create({ data: { ...o, employeeId: employee.id, legalEntityId: entity.id, employeeCode: code, codeScopeKey: entity.id, joinedOn: day('2026-04-01') } });
+        const role = await tx.personRole.create({ data: { ...o, personId: person.id, roleType: 'employee', sourceTable: 'employments', sourceId: employment.id, startOn: day('2026-04-01') } });
+        return { person: person.id, employee: employee.id, employment: employment.id, role: role.id, email: person.primaryEmail! };
+      };
+      const boss = await hire('Bo', `BB-${deptId.slice(0, 6)}`);
+      const worker = await hire('Bi', `BW-${deptId.slice(0, 6)}`);
+      const join = await tx.employeeChange.create({
+        data: { ...o, employeeId: worker.employee, employmentId: worker.employment, changeType: 'join', effectiveDate: day('2026-04-01'), status: 'effective', appliedAt: new Date(), payload: {}, reason: 'join' },
+      });
+      const assignment = await tx.employeeAssignment.create({
+        data: { ...o, legalEntityId: entity.id, employeeId: worker.employee, employmentId: worker.employment, validFrom: day('2026-04-01'), locationId: location.id, departmentId: department.id, designationId: designation.id, employmentTypeId: type.id, managerEmployeeId: boss.employee, changeId: join.id },
+      });
+      await tx.assignmentDottedLineManager.create({ data: { ...o, employeeId: worker.employee, assignmentId: assignment.id, managerEmployeeId: boss.employee } });
+      const probation = await tx.probation.create({ data: { ...o, employmentId: worker.employment, startOn: day('2026-04-01'), originalEndOn: day('2026-09-30'), plannedEndOn: day('2026-09-30') } });
+      const batch = await tx.employeeChangeBatch.create({ data: { ...o, source: 'csv', reason: 'Reorg', rowCount: 1 } });
+      const log = await tx.personLinkLog.create({ data: { ...o, action: 'confirmed', personId: worker.person, basis: 'hr_confirmed' } });
+      return { ...worker, boss: boss.employee, assignment: assignment.id, probation: probation.id, batch: batch.id, log: log.id, join: join.id };
+    });
+
+    const seenByA = await tenantPrisma.forTenant(asA(), async (tx) => {
+      const counts: Record<string, number> = {};
+      for (const t of PEOPLE_TABLES) {
+        const [{ n }] = await tx.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM "${t}" WHERE organization_id = $1::uuid`, orgB);
+        counts[t] = Number(n);
+      }
+      return {
+        ...counts,
+        person: await tx.$executeRaw`UPDATE persons SET given_name = 'Hacked' WHERE id = ${b.person}::uuid`,
+        probation: await tx.$executeRaw`UPDATE probations SET planned_end_on = '2030-01-01' WHERE id = ${b.probation}::uuid`,
+        batch: await tx.$executeRaw`UPDATE employee_change_batches SET status = 'approved' WHERE id = ${b.batch}::uuid`,
+        role: await tx.$executeRaw`DELETE FROM person_roles WHERE id = ${b.role}::uuid`,
+      };
+    });
+    expect(seenByA).toEqual({ ...Object.fromEntries(PEOPLE_TABLES.map((t) => [t, 0])), person: 0, probation: 0, batch: 0, role: 0 });
+    await expect(tenantPrisma.forTenant(asA(), (tx) => tx.person.create({ data: { organizationId: orgB, givenName: 'planted' } }))).rejects.toThrow(RLS_VIOLATION);
+
+    // A's rows can never hang off B's person, employment, assignment or batch, even with the platform bypass.
+    const a = await tenantPrisma.forTenant(asA(), async (tx) => {
+      const person = await tx.person.create({ data: { organizationId: orgA, givenName: 'Ann' } });
+      return { person: person.id };
+    });
+    for (const ctx of [asA(), SUPER]) {
+      await expect(tenantPrisma.forTenant(ctx, (tx) => tx.personRole.create({ data: { organizationId: orgA, personId: b.person, roleType: 'login', sourceTable: 'users', sourceId: randomUUID(), startOn: day('2026-04-01') } }))).rejects.toThrow(/person_roles_person_fkey|Foreign key/);
+      await expect(tenantPrisma.forTenant(ctx, (tx) => tx.probation.create({ data: { organizationId: orgA, employmentId: b.employment, startOn: day('2026-04-01'), originalEndOn: day('2026-09-30'), plannedEndOn: day('2026-09-30') } }))).rejects.toThrow(/probations_employment_fkey|Foreign key/);
+      await expect(tenantPrisma.forTenant(ctx, (tx) => tx.personLinkLog.create({ data: { organizationId: orgA, action: 'merge', personId: a.person, otherPersonId: b.person, basis: 'x' } }))).rejects.toThrow(/person_link_log_other_fkey|Foreign key/);
+    }
+
+    // In B's own context: the link log is append-only, and an assignment's dotted lines are written with it,
+    // never added later (YX-ORG-27, YX-HIS-07).
+    await expect(tenantPrisma.forTenant(asB, (tx) => tx.$executeRaw`UPDATE person_link_log SET reason = 'x' WHERE id = ${b.log}::uuid`)).rejects.toThrow(/permission denied/);
+    await expect(tenantPrisma.forTenant(asB, (tx) => tx.$executeRaw`DELETE FROM person_link_log WHERE id = ${b.log}::uuid`)).rejects.toThrow(/permission denied/);
+    await expect(tenantPrisma.forTenant(asB, (tx) => tx.$executeRaw`DELETE FROM assignment_dotted_line_managers WHERE assignment_id = ${b.assignment}::uuid`)).rejects.toThrow(/permission denied/);
+    await expect(
+      tenantPrisma.forTenant(asB, (tx) => tx.assignmentDottedLineManager.create({ data: { organizationId: orgB, employeeId: b.employee, assignmentId: b.assignment, managerEmployeeId: b.employee } })),
+    ).rejects.toThrow(/self_check|written with it/);
+    // One email per live person in a company (YX-ORG-27 deterministic key).
+    await expect(tenantPrisma.forTenant(asB, (tx) => tx.person.create({ data: { organizationId: orgB, givenName: 'Twin', primaryEmail: b.email.toUpperCase() } }))).rejects.toThrow(/Unique constraint|persons_email_key/);
+    const name = await tenantPrisma.forTenant(asB, (tx) => tx.person.findUniqueOrThrow({ where: { id: b.person } }));
+    expect(name.givenName).toBe('Bi');
   });
 
   it('(a) no context => writes are rejected', async () => {

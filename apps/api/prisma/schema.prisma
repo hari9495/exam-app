@@ -2349,6 +2349,8 @@ model Setting {
 model Employee {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
+  /// P01 §4.5a: the person this record belongs to (one employee record per person).
+  personId       String   @map("person_id") @db.Uuid
   userId         String?  @map("user_id") @db.Uuid
   givenName      String   @map("given_name") @db.VarChar(100)
   familyName     String?  @map("family_name") @db.VarChar(100)
@@ -2392,6 +2394,8 @@ model EmployeeChange {
   impact         Json?
   reason         String    @db.VarChar(1000)
   overrideReason String?   @map("override_reason") @db.VarChar(1000)
+  /// M01 §3.3: set when the change was raised in a bulk batch (approved together).
+  batchId        String?   @map("batch_id") @db.Uuid
   requestedBy    String?   @map("requested_by") @db.Uuid
   requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
   decidedBy      String?   @map("decided_by") @db.Uuid
@@ -2437,6 +2441,17 @@ model AssignmentCostCentre {
   @@map("assignment_cost_centres")
 }
 
+/// P01 §4.4 / M01 Q5: dotted-line managers of an assignment (visibility and feedback only, YX-EMP-04).
+model AssignmentDottedLineManager {
+  organizationId    String @map("organization_id") @db.Uuid
+  employeeId        String @map("employee_id") @db.Uuid
+  assignmentId      String @map("assignment_id") @db.Uuid
+  managerEmployeeId String @map("manager_employee_id") @db.Uuid
+
+  @@id([assignmentId, managerEmployeeId])
+  @@map("assignment_dotted_line_managers")
+}
+
 model EmploymentStatusPeriod {
   id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId       String    @map("organization_id") @db.Uuid
@@ -2466,4 +2481,93 @@ model Compensation {
   supersededByChangeId String?   @map("superseded_by_change_id") @db.Uuid
 
   @@map("compensations")
+}
+
+// ---- People core (migration 20261009000000_people_core): P01 §4.5a persons, M01 §3.4 probations,
+// M01 §3.3 bulk change batches. Partial unique indexes and checks live in the migration.
+
+model Person {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  givenName      String   @map("given_name") @db.VarChar(100)
+  familyName     String?  @map("family_name") @db.VarChar(100)
+  preferredName  String?  @map("preferred_name") @db.VarChar(100)
+  primaryEmail   String?  @map("primary_email") @db.Citext
+  primaryPhone   String?  @map("primary_phone") @db.VarChar(16)
+  status         String   @default("active") @db.VarChar(8)
+  mergedInto     String?  @map("merged_into") @db.Uuid
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("persons")
+}
+
+model PersonRole {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  personId       String    @map("person_id") @db.Uuid
+  roleType       String    @map("role_type") @db.VarChar(24)
+  sourceTable    String    @map("source_table") @db.VarChar(40)
+  sourceId       String    @map("source_id") @db.Uuid
+  startOn        DateTime  @map("start_on") @db.Date
+  endOn          DateTime? @map("end_on") @db.Date
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("person_roles")
+}
+
+/// Append-only (the app role cannot update or delete it): YX-ORG-27.
+model PersonLinkLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  action         String   @db.VarChar(12)
+  personId       String   @map("person_id") @db.Uuid
+  otherPersonId  String?  @map("other_person_id") @db.Uuid
+  roleId         String?  @map("role_id") @db.Uuid
+  basis          String   @db.VarChar(40)
+  decidedBy      String?  @map("decided_by") @db.Uuid
+  reason         String?  @db.VarChar(1000)
+  before         Json?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("person_link_log")
+}
+
+model Probation {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  employmentId     String    @map("employment_id") @db.Uuid
+  startOn          DateTime  @map("start_on") @db.Date
+  originalEndOn    DateTime  @map("original_end_on") @db.Date
+  plannedEndOn     DateTime  @map("planned_end_on") @db.Date
+  extendedMonths   Int       @default(0) @map("extended_months")
+  reviewRemindedOn DateTime? @map("review_reminded_on") @db.Date
+  escalatedOn      DateTime? @map("escalated_on") @db.Date
+  createdBy        String?   @map("created_by") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employmentId])
+  @@map("probations")
+}
+
+model EmployeeChangeBatch {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  status         String    @default("pending") @db.VarChar(16)
+  source         String    @db.VarChar(16)
+  fileName       String?   @map("file_name") @db.VarChar(200)
+  reason         String    @db.VarChar(1000)
+  rowCount       Int       @map("row_count")
+  requestedBy    String?   @map("requested_by") @db.Uuid
+  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionNote   String?   @map("decision_note") @db.VarChar(1000)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("employee_change_batches")
 }
