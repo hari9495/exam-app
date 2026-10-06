@@ -103,7 +103,7 @@ export function TwoStepSection() {
         {status && status.required && status.factors.length === 0 && (
           <p role={prompt ? 'alert' : undefined} className="rounded-md border border-rule bg-ground px-3 py-2 text-sm">
             Your role needs two-step verification. Set it up by <span className="font-medium">{dateOf(status.enrolmentDueAt)}</span>
-            {new Date(status.enrolmentDueAt) <= new Date() ? ' — admin actions are paused until you do.' : '.'}
+            {new Date(status.enrolmentDueAt) <= new Date() ? ' — sensitive actions are paused until you do.' : '.'}
           </p>
         )}
 
