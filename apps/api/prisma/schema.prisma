@@ -230,6 +230,7 @@ model User {
   permissionProfile   PermissionProfile?   @relation(fields: [permissionProfileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
   refreshTokens       RefreshToken[]
+  sessions            Session[]
   passwordResetTokens PasswordResetToken[]
   ssoLoginCodes       SsoLoginCode[]
   auditLogs           AuditLog[]
@@ -269,6 +270,65 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+// Server-side staff session (P12 §4, YX-IAM-06). The refresh-token family IS the session:
+// refresh_tokens.family_id = sessions.id, and every access token carries it as `sid`, so
+// revoking this row kills its access and refresh tokens at once. Rows are never deleted by
+// the app; revoked_at/revoked_reason record why a session ended.
+model Session {
+  id                 String    @id @default(uuid()) @db.Uuid
+  organizationId     String?   @map("organization_id") @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 'password' | 'saml'
+  method             String    @db.VarChar(32)
+  // 'aal1' | 'aal2' (P12 §3)
+  assuranceLevel     String    @default("aal1") @map("assurance_level") @db.VarChar(16)
+  // sha256 of the opaque device cookie; never the raw value.
+  deviceIdHash       String?   @map("device_id_hash") @db.VarChar(64)
+  userAgent          String?   @map("user_agent") @db.VarChar(512)
+  ipAddress          String?   @map("ip_address") @db.VarChar(64)
+  // No geo-IP lookup exists yet; populated once one does.
+  geo                String?   @db.VarChar(128)
+  idleTimeoutSeconds Int       @map("idle_timeout_seconds")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSeenAt         DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  idleExpiresAt      DateTime  @map("idle_expires_at") @db.Timestamptz(3)
+  absoluteExpiresAt  DateTime  @map("absolute_expires_at") @db.Timestamptz(3)
+  revokedAt          DateTime? @map("revoked_at") @db.Timestamptz(3)
+  revokedReason      String?   @map("revoked_reason") @db.VarChar(64)
+
+  @@index([userId, createdAt])
+  @@index([organizationId, lastSeenAt])
+  @@map("sessions")
+}
+
+// Every staff sign-in attempt (P12 §4, YX-IAM-10). Append-only for the app role (P08 pattern:
+// UPDATE/DELETE revoked in the migration). No FK to users/organizations on purpose: the record
+// must outlive the user it describes, and attempts for unknown users have no user at all.
+model LoginEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @map("organization_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  // The identifier that was typed (lower-cased email), kept even when no user matched.
+  identifier     String?  @db.VarChar(320)
+  // 'success' | 'failed' | 'locked' | 'mfa_failed'
+  result         String   @db.VarChar(16)
+  // 'password' | 'saml'
+  method         String   @db.VarChar(32)
+  reason         String?  @db.VarChar(64)
+  sessionId      String?  @map("session_id") @db.Uuid
+  ipAddress      String?  @map("ip_address") @db.VarChar(64)
+  userAgent      String?  @map("user_agent") @db.VarChar(512)
+  deviceIdHash   String?  @map("device_id_hash") @db.VarChar(64)
+  geo            String?  @db.VarChar(128)
+  newDevice      Boolean  @default(false) @map("new_device")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, createdAt])
+  @@index([userId, createdAt])
+  @@map("login_events")
 }
 
 model PasswordResetToken {

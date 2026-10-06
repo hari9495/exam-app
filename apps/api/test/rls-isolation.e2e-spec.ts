@@ -67,6 +67,40 @@ describe('PostgreSQL row-level security (app role)', () => {
     expect(unprotected).toEqual([]);
   });
 
+  // P12 Part 1a tables: named explicitly so dropping either from the policy loop (or the table
+  // itself) fails here, not just silently shrinks the generic check above.
+  it('sessions and login_events are forced-RLS tenant tables, and login_events is append-only', async () => {
+    const rows = await prisma.$queryRaw<{ table: string; forced: boolean; policies: bigint; can_update: boolean; can_delete: boolean }[]>`
+      SELECT c.relname AS table, (c.relrowsecurity AND c.relforcerowsecurity) AS forced,
+             (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies,
+             has_table_privilege(c.oid, 'UPDATE') AS can_update, has_table_privilege(c.oid, 'DELETE') AS can_delete
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+      WHERE c.relname IN ('sessions', 'login_events') ORDER BY c.relname`;
+    expect(rows).toEqual([
+      { table: 'login_events', forced: true, policies: BigInt(1), can_update: false, can_delete: false },
+      { table: 'sessions', forced: true, policies: BigInt(1), can_update: true, can_delete: true },
+    ]);
+  });
+
+  it("(b) org A cannot read org B's sessions or login events", async () => {
+    const absolute = new Date(Date.now() + 3_600_000);
+    await tenantPrisma.forTenant({ organizationId: orgB, isSuperAdmin: false }, async (tx) => {
+      await tx.session.create({
+        data: { organizationId: orgB, userId: userB, method: 'password', idleTimeoutSeconds: 60, idleExpiresAt: absolute, absoluteExpiresAt: absolute },
+      });
+      await tx.loginEvent.create({ data: { organizationId: orgB, userId: userB, result: 'success', method: 'password' } });
+    });
+    const seenByA = await tenantPrisma.forTenant(asA(), async (tx) => ({
+      sessions: await tx.session.count({ where: { userId: userB } }),
+      events: await tx.loginEvent.count({ where: { userId: userB } }),
+      revoked: await tx.$executeRaw`UPDATE sessions SET revoked_at = now() WHERE user_id = ${userB}::uuid`,
+    }));
+    expect(seenByA).toEqual({ sessions: 0, events: 0, revoked: 0 });
+    await expect(
+      tenantPrisma.forTenant(asA(), (tx) => tx.loginEvent.create({ data: { organizationId: orgB, result: 'failed', method: 'password' } })),
+    ).rejects.toThrow(RLS_VIOLATION);
+  });
+
   it('(a) no context => zero rows, even though rows exist', async () => {
     const [{ n }] = await prisma.$queryRaw<{ n: bigint }[]>`
       SELECT count(*) AS n FROM users WHERE organization_id IN (${orgA}::uuid, ${orgB}::uuid)`;
