@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { seedOrgStructure } from './seed-org-structure';
 import { seedEmployees } from './seed-employees';
+import { seedAccess } from './seed-access';
 
 const prisma = new PrismaClient();
 
@@ -44,6 +45,14 @@ export const PERMISSIONS = [
   { key: 'employee.salary.manage', description: 'Change employee pay (CTC)' },
   // P02 YX-SEC-27 / M01 §3.10: managers raise job changes for their team; HR approves.
   { key: 'request.raise_on_behalf', description: 'Raise promotions, transfers and manager changes for people in your team' },
+  // P02 §4.2–4.5 (step 2d): who holds which role, and the Personal / Confidential / Special classes.
+  { key: 'access.role.manage', description: 'Grant and revoke roles with their scope (Roles & access)' },
+  { key: 'employee.personal.view', description: 'View personal details (date of birth, personal contact, address)' },
+  { key: 'employee.profile.edit', description: 'Edit personal details for someone else' },
+  { key: 'employee.identity.view', description: 'View identity and bank details (masked; full value with an audited reveal)' },
+  { key: 'employee.identity.manage', description: 'Raise identity, bank and legal-name changes for someone else' },
+  { key: 'employee.identity.approve', description: 'Approve identity, bank and legal-name changes raised by someone else' },
+  { key: 'employee.aadhaar.view', description: 'View Aadhaar in full (Special, every view recorded)' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -76,6 +85,10 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'employee.change.approve',
     'employee.change.retro',
     'employee.change.retro_override',
+    // P02 §4.2 System Admin: hands out roles; Personal data (not Confidential) like the rest of the record.
+    'access.role.manage',
+    'employee.personal.view',
+    'employee.profile.edit',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -204,10 +217,11 @@ async function main() {
         payroll: await userId('payroll@demo-org.test'),
         panel: await userId('panel@demo-org.test'),
       });
+      await seedAccess(tx, demoOrg.id, { admin: await userId('admin@demo-org.test'), panel: await userId('panel@demo-org.test'), passwordHash: panelHash });
     }
   }, { timeout: 60000 });
 
-  console.log('Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026, panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026 (org slug: demo-org)');
+  console.log('Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026, panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026 (org slug: demo-org)');
 }
 
 // Only run when invoked as a script (prisma db seed / ts-node). Guarded so importing this module for
