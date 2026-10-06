@@ -1,5 +1,6 @@
-import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { createHash } from 'crypto';
+import { DEFAULT_SECURITY_POLICY, invalidateTenantSecurityPolicy } from '@exam-platform/shared';
 import { ApiKeyAuthGuard } from './api-key-auth.guard';
 
 describe('ApiKeyAuthGuard', () => {
@@ -7,6 +8,7 @@ describe('ApiKeyAuthGuard', () => {
   let tenantPrisma: { forTenant: jest.Mock };
 
   beforeEach(() => {
+    invalidateTenantSecurityPolicy('org-1');
     tenantPrisma = { forTenant: jest.fn() };
     guard = new ApiKeyAuthGuard(tenantPrisma as any);
   });
@@ -52,7 +54,7 @@ describe('ApiKeyAuthGuard', () => {
   });
 
   it('attaches request.apiKeyOrg and returns true on a valid key', async () => {
-    tenantPrisma.forTenant.mockResolvedValue({ id: 'org-1' });
+    tenantPrisma.forTenant.mockResolvedValueOnce({ id: 'org-1' }).mockResolvedValueOnce(null); // key's org, then no policy row
     const request: any = { headers: { authorization: 'Bearer pk_live_realkey' } };
     const context = { switchToHttp: () => ({ getRequest: () => request }) } as unknown as ExecutionContext;
 
@@ -72,5 +74,33 @@ describe('ApiKeyAuthGuard', () => {
 
     await expect(guard.canActivate(contextWithHeader('Bearer pk_live_realkey'))).rejects.toThrow(UnauthorizedException);
     expect(captured.where?.apiKeyHash).toBe(expectedHash);
+  });
+
+  describe("the company's API IP allow-list (YX-IAM-09)", () => {
+    const withList = (ip: string) => {
+      tenantPrisma.forTenant
+        .mockResolvedValueOnce({ id: 'org-1' })
+        .mockResolvedValueOnce({ ...DEFAULT_SECURITY_POLICY, ipAllowlistApi: ['203.0.113.0/24'], organizationId: 'org-1' });
+      const request: any = { ip, headers: { authorization: 'Bearer pk_live_realkey' } };
+      return { request, context: { switchToHttp: () => ({ getRequest: () => request }) } as unknown as ExecutionContext };
+    };
+
+    it('accepts a valid key from an allowed address', async () => {
+      const { request, context } = withList('203.0.113.10');
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(request.apiKeyOrg).toEqual({ organizationId: 'org-1' });
+    });
+
+    it('refuses a valid key from any other address with 403 and attaches nothing', async () => {
+      const { request, context } = withList('192.0.2.10');
+      await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
+      expect(request.apiKeyOrg).toBeUndefined();
+    });
+
+    it('never reaches the policy for an unknown key, so the refusal cannot be probed without a key', async () => {
+      tenantPrisma.forTenant.mockResolvedValue(null);
+      await expect(guard.canActivate(contextWithHeader('Bearer pk_live_wrongkey'))).rejects.toThrow(UnauthorizedException);
+      expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -1,5 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { createHash } from 'crypto';
+import { DEFAULT_SECURITY_POLICY, invalidateTenantSecurityPolicy } from '@exam-platform/shared';
 import { DEVICE_COOKIE, SessionsService, resolveClientMeta } from './sessions.service';
 
 describe('resolveClientMeta', () => {
@@ -42,7 +43,10 @@ describe('SessionsService', () => {
     tx = {
       session: { findFirst: jest.fn(), create: jest.fn(), findMany: jest.fn(), updateMany: jest.fn(), count: jest.fn() },
       loginEvent: { create: jest.fn(), findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
+      tenantSecurityPolicy: { findUnique: jest.fn().mockResolvedValue(null) },
+      user: { findMany: jest.fn().mockResolvedValue([]) },
     };
+    invalidateTenantSecurityPolicy('org-1');
     tenantPrisma = { forTenant: jest.fn(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
     audit = { record: jest.fn() };
     email = { send: jest.fn().mockResolvedValue({}) };
@@ -94,6 +98,63 @@ describe('SessionsService', () => {
       tx.session.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'other' }); // known user, unknown device
       expect((await service.create(USER, 'password', META)).newDevice).toBe(true);
     });
+  });
+
+  describe('create under the company security policy (YX-IAM-06, Q8)', () => {
+    const withPolicy = (overrides: object) =>
+      tx.tenantSecurityPolicy.findUnique.mockResolvedValue({ ...DEFAULT_SECURITY_POLICY, ...overrides, organizationId: 'org-1' });
+    beforeEach(() => {
+      tx.session.findFirst.mockResolvedValue(null);
+      tx.session.create.mockImplementation(async ({ data }: any) => ({ id: 'new', absoluteExpiresAt: data.absoluteExpiresAt }));
+    });
+
+    it("applies the company's stricter idle and absolute limits", async () => {
+      withPolicy({ sessionIdleMinutes: 10, sessionAbsoluteMinutes: 60 });
+      const before = Date.now();
+      await service.create(USER, 'password', META);
+      const data = tx.session.create.mock.calls[0][0].data;
+      expect(data.idleTimeoutSeconds).toBe(600);
+      expect(data.absoluteExpiresAt.getTime() - before).toBeLessThanOrEqual(3600 * 1000 + 1000);
+    });
+
+    it('signs out the least recently used sessions beyond the concurrent-session cap, never the new one', async () => {
+      withPolicy({ maxConcurrentSessions: 2 });
+      tx.session.findMany.mockResolvedValue([{ id: 'oldest' }]);
+      tx.session.updateMany.mockResolvedValue({ count: 1 });
+      await service.create(USER, 'password', META);
+      expect(tx.session.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ userId: 'user-1', id: { not: 'new' }, revokedAt: null }),
+          orderBy: [{ lastSeenAt: 'desc' }, { createdAt: 'desc' }],
+          skip: 1,
+        }),
+      );
+      expect(tx.session.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ['oldest'] }, revokedAt: null },
+        data: { revokedAt: expect.any(Date), revokedReason: 'concurrent_limit' },
+      });
+      expect(audit.record).toHaveBeenCalledWith(ORG, expect.objectContaining({ action: 'session.revoked_concurrent_limit' }));
+    });
+
+    it('revokes nothing (and audits nothing) with no cap or when under it', async () => {
+      await service.create(USER, 'password', META);
+      withPolicy({ maxConcurrentSessions: 5 });
+      invalidateTenantSecurityPolicy('org-1');
+      tx.session.findMany.mockResolvedValue([]);
+      await service.create(USER, 'password', META);
+      expect(tx.session.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+  });
+
+  it('alerts every active admin of a break-glass sign-in, with request data escaped (YX-IAM-04)', async () => {
+    tx.user.findMany.mockResolvedValue([{ id: 'a1', email: 'a1@x.test' }, { id: 'a2', email: 'a2@x.test' }]);
+    service.notifyBreakGlass(USER, { ...META, userAgent: '<script>x</script>' });
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    expect(tx.user.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: 'org-1', role: 'org_admin', status: 'active' } }));
+    expect(email.send.mock.calls.map((c) => c[0].to)).toEqual(['a1@x.test', 'a2@x.test']);
+    expect(email.send.mock.calls[0][0].html).not.toContain('<script>');
   });
 
   it('findLive rejects non-uuid ids without touching the database', async () => {

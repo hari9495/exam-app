@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { MonitoringGateway, ROSTER_TICK_MS } from './monitoring.gateway';
 import { PrismaService } from '@exam-platform/shared';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { DEFAULT_SECURITY_POLICY, TenantPrismaService, invalidateTenantSecurityPolicy } from '@exam-platform/shared';
 import { MonitoringService } from './monitoring.service';
 import { LeaderboardService } from '../leaderboard/leaderboard.service';
 
@@ -17,6 +17,7 @@ describe('MonitoringGateway', () => {
   function makeSocket(overrides: Record<string, unknown> = {}) {
     return {
       handshake: { auth: {} },
+      request: { headers: {}, socket: { remoteAddress: '203.0.113.5' } },
       data: {},
       disconnect: jest.fn(),
       join: jest.fn().mockResolvedValue(undefined),
@@ -28,6 +29,7 @@ describe('MonitoringGateway', () => {
   beforeEach(async () => {
     prisma = { rolePermission: { findMany: jest.fn() } };
     tenantPrisma = { forTenant: jest.fn() };
+    invalidateTenantSecurityPolicy('org-1');
     monitoring = { getRosterSnapshot: jest.fn(), getRecentAlerts: jest.fn().mockResolvedValue([]) };
     leaderboardService = { computeRecruiterView: jest.fn() };
 
@@ -116,6 +118,29 @@ describe('MonitoringGateway', () => {
       await new Promise<void>((resolve) => middleware(socket, resolve));
 
       expect(socket.data.user).toEqual(expect.objectContaining({ userId: USER }));
+    });
+
+    describe("the company's desk IP allow-list (YX-IAM-09)", () => {
+      const connectFrom = async (ip: string, claims: object = { role: 'recruiter' }) => {
+        const token = jwt.sign({ sub: USER, organizationId: 'org-1', sid: SID, ...claims }, { secret: process.env.JWT_ACCESS_SECRET });
+        const socket = makeSocket({ handshake: { auth: { token } }, request: { headers: {}, socket: { remoteAddress: ip } } });
+        sessionLive(true);
+        tenantPrisma.forTenant.mockResolvedValueOnce({ ...DEFAULT_SECURITY_POLICY, ipAllowlistDesk: ['203.0.113.0/24'], organizationId: 'org-1' });
+        await gateway.authenticate(socket);
+        gateway.handleConnection(socket);
+        return socket;
+      };
+
+      it('refuses a live staff session connecting from outside the list', async () => {
+        const socket = await connectFrom('192.0.2.1');
+        expect(socket.data.user).toBeUndefined();
+        expect(socket.disconnect).toHaveBeenCalledWith(true);
+      });
+
+      it('accepts it from inside the list', async () => {
+        const socket = await connectFrom('203.0.113.99');
+        expect(socket.data.user).toEqual(expect.objectContaining({ userId: USER }));
+      });
     });
 
     it('carries the actingSuperAdmin claim onto the socket for a super-admin acting in an org', async () => {

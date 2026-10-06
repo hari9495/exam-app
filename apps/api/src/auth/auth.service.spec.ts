@@ -4,13 +4,28 @@ import { UnauthorizedException, NotFoundException, ForbiddenException, BadReques
 import * as argon2 from 'argon2';
 import { createHash } from 'crypto';
 import { AuthService } from './auth.service';
-import { PrismaService } from '@exam-platform/shared';
+import { DEFAULT_SECURITY_POLICY, PrismaService, SecurityPolicySettings, loadTenantSecurityPolicy, staffDeskIpAllowed } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { SessionsService } from './sessions.service';
 import { LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
 import { PasswordPolicyService } from './password-policy.service';
+
+// The company security policy is read through the shared (cached) loader; stub it per test so a
+// test controls the policy without the cache leaking between tests. Default: no policy row.
+jest.mock('@exam-platform/shared', () => {
+  const actual = jest.requireActual('@exam-platform/shared');
+  return {
+    ...actual,
+    loadTenantSecurityPolicy: jest.fn(async () => actual.DEFAULT_SECURITY_POLICY),
+    staffDeskIpAllowed: jest.fn(async () => true),
+  };
+});
+const policyLoader = loadTenantSecurityPolicy as jest.Mock;
+const deskIpAllowed = staffDeskIpAllowed as jest.Mock;
+const setPolicy = (overrides: Partial<SecurityPolicySettings>) =>
+  policyLoader.mockImplementation(async () => ({ ...DEFAULT_SECURITY_POLICY, ...overrides }));
 
 // The real argon2, with verify() observable (still delegates to the real implementation).
 jest.mock('argon2', () => {
@@ -33,7 +48,7 @@ describe('AuthService', () => {
   };
   let sessions: {
     create: jest.Mock; findLive: jest.Mock; revokeById: jest.Mock; recordLoginEvent: jest.Mock;
-    notifyNewDevice: jest.Mock; notifyLocked: jest.Mock;
+    notifyNewDevice: jest.Mock; notifyLocked: jest.Mock; notifyBreakGlass: jest.Mock;
   };
   let passwordPolicy: { hashNewPassword: jest.Mock; recheckAfterLogin: jest.Mock };
   let loginProtection: { check: jest.Mock; registerFailure: jest.Mock; registerSuccess: jest.Mock };
@@ -69,11 +84,14 @@ describe('AuthService', () => {
       recordLoginEvent: jest.fn().mockResolvedValue(undefined),
       notifyNewDevice: jest.fn(),
       notifyLocked: jest.fn(),
+      notifyBreakGlass: jest.fn(),
     };
     passwordPolicy = {
       hashNewPassword: jest.fn(async (password: string) => ({ passwordHash: await argon2.hash(password), passwordRecheckPending: false })),
       recheckAfterLogin: jest.fn().mockResolvedValue(undefined),
     };
+    policyLoader.mockImplementation(async () => DEFAULT_SECURITY_POLICY);
+    deskIpAllowed.mockResolvedValue(true);
     loginProtection = {
       check: jest.fn().mockResolvedValue(null),
       registerFailure: jest.fn().mockResolvedValue({ failures: 1, locked: false }),
@@ -1003,16 +1021,62 @@ describe('AuthService', () => {
     });
   });
 
-  describe('password floor at reset and sign-in (YX-IAM-08)', () => {
+  describe('tenant security policy at sign-in (YX-IAM-04/08/09)', () => {
+    const ORG = { id: 'org-1', status: 'active' };
+    const signIn = (password = 'correct-password', meta = META) =>
+      service.login({ organizationSlug: 'demo-org', email: 'admin@demo-org.test', password }, meta);
     const withUser = async (overrides: object = {}) => {
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'active' });
+      prisma.organization.findUnique.mockResolvedValue(ORG);
       tenantPrisma.forTenant.mockResolvedValueOnce({
         id: 'user-1', email: 'admin@demo-org.test', organizationId: 'org-1', role: 'org_admin', status: 'active',
         passwordHash: await argon2.hash('correct-password'), passwordRecheckPending: false, ...overrides,
       });
       tenantPrisma.forTenant.mockResolvedValueOnce(undefined); // lastLoginAt
     };
-    const signIn = () => service.login({ organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'correct-password' }, META);
+
+    it('refuses sign-in from outside the desk allow-list before any credential check (403, no lockout count)', async () => {
+      setPolicy({ ipAllowlistDesk: ['198.51.100.0/24'] });
+      prisma.organization.findUnique.mockResolvedValue(ORG);
+      (argon2.verify as jest.Mock).mockClear();
+
+      await expect(signIn()).rejects.toThrow(ForbiddenException);
+      expect(argon2.verify).not.toHaveBeenCalled();
+      expect(loginProtection.registerFailure).not.toHaveBeenCalled();
+      expect(sessions.create).not.toHaveBeenCalled();
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed', reason: 'ip_not_allowed', organizationId: 'org-1' }));
+    });
+
+    it('allows sign-in from inside the desk allow-list', async () => {
+      setPolicy({ ipAllowlistDesk: ['203.0.113.0/24'] });
+      await withUser();
+      await expect(signIn()).resolves.toEqual(expect.objectContaining({ accessToken: expect.any(String) }));
+    });
+
+    it('SSO-only: a correct password from a non-break-glass account gets the wrong-password response', async () => {
+      setPolicy({ ssoOnly: true, breakGlassUserIds: ['bg-1', 'bg-2'] });
+      await withUser();
+      await expect(signIn()).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
+      expect(loginProtection.registerFailure).toHaveBeenCalled();
+      expect(sessions.create).not.toHaveBeenCalled();
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed', reason: 'sso_only' }));
+    });
+
+    it('SSO-only: a wrong password from a break-glass account is still refused', async () => {
+      setPolicy({ ssoOnly: true, breakGlassUserIds: ['user-1', 'bg-2'] });
+      await withUser();
+      await expect(signIn('wrong-password')).rejects.toThrow(UnauthorizedException);
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it('SSO-only: a break-glass account signs in, is audited as break-glass and every admin is alerted', async () => {
+      setPolicy({ ssoOnly: true, breakGlassUserIds: ['user-1', 'bg-2'] });
+      await withUser();
+      await signIn();
+      expect(sessions.create).toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'login.break_glass' }));
+      expect(sessions.notifyBreakGlass).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), META);
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'success', reason: 'break_glass' }));
+    });
 
     it('re-checks a password flagged while the breach service was down, without delaying sign-in', async () => {
       await withUser({ passwordRecheckPending: true });
@@ -1024,6 +1088,27 @@ describe('AuthService', () => {
       await withUser();
       await signIn();
       expect(passwordPolicy.recheckAfterLogin).not.toHaveBeenCalled();
+    });
+
+    it('refresh from outside the desk allow-list is refused (403) without burning the refresh token', async () => {
+      deskIpAllowed.mockResolvedValue(false);
+      const refreshToken = jwt.sign({ sub: 'user-1', familyId: SESSION_ID }, { secret: process.env.JWT_REFRESH_SECRET });
+      const tokenHash = createHash('sha256').update(refreshToken).digest('hex');
+      prisma.refreshToken.findFirst.mockResolvedValue({ id: 'rt-1', tokenHash, revokedAt: null });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', organizationId: 'org-1', role: 'recruiter', status: 'active' });
+
+      await expect(service.refresh(refreshToken, '192.0.2.1')).rejects.toThrow(ForbiddenException);
+      expect(deskIpAllowed).toHaveBeenCalledWith(tenantPrisma, expect.objectContaining({ organizationId: 'org-1' }), '192.0.2.1');
+      expect(prisma.refreshToken.update).not.toHaveBeenCalled();
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+    });
+
+    it('SSO sign-in from outside the desk allow-list is refused and recorded', async () => {
+      deskIpAllowed.mockResolvedValue(false);
+      const user = { id: 'user-1', email: 'U1@x.test', organizationId: 'org-1', role: 'recruiter', permissionProfileId: null };
+      await expect(service.issueTokensForSso(user, META)).rejects.toThrow(ForbiddenException);
+      expect(sessions.create).not.toHaveBeenCalled();
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ method: 'saml', result: 'failed', reason: 'ip_not_allowed' }));
     });
 
     it('a reset rejected by the password floor leaves the link unused and the password unchanged', async () => {

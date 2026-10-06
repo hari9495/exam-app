@@ -1,7 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { TenantPrismaService, touchStaffSession } from '@exam-platform/shared';
+import { Request } from 'express';
+import { NETWORK_NOT_ALLOWED_MESSAGE, TenantPrismaService, staffDeskIpAllowed, touchStaffSession } from '@exam-platform/shared';
 
 export interface JwtPayload {
   sub: string;
@@ -24,6 +25,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: process.env.JWT_ACCESS_SECRET!,
+      passReqToCallback: true,
     });
   }
 
@@ -31,9 +33,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   // elsewhere, admin revoke, password reset, deactivation, refresh-token reuse) or letting it
   // idle out rejects the token on its very next request. Tokens without `sid` predate sessions
   // and are rejected; the client's refresh then sends the user to sign in again.
-  async validate(payload: JwtPayload) {
+  //
+  // Then the company's desk IP allow-list (YX-IAM-09), on every request so a session cannot be
+  // carried off the allowed network. 403, not 401: the session is fine, the network is not.
+  async validate(req: Request, payload: JwtPayload) {
     if (!(await touchStaffSession(this.tenantPrisma, payload.sid, payload.impersonatorUserId ?? payload.sub))) {
       throw new UnauthorizedException('Session expired');
+    }
+    if (!(await staffDeskIpAllowed(this.tenantPrisma, payload, req.ip))) {
+      throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
     }
     return {
       userId: payload.sub,

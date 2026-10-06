@@ -5,7 +5,18 @@ import { randomBytes, createHash, randomUUID } from 'crypto';
 // argon2 above is retained deliberately: it still hashes PASSWORDS (lines 54,
 // 112), which are the low-entropy input it exists for. Only refresh tokens moved
 // to SHA-256 -- see refresh-token-hash.ts for why.
-import { PrismaService, hashRefreshToken, isLegacyArgon2Hash, refreshTokenMatches, revokeStaffSessions } from '@exam-platform/shared';
+import {
+  DEFAULT_SECURITY_POLICY,
+  NETWORK_NOT_ALLOWED_MESSAGE,
+  PrismaService,
+  hashRefreshToken,
+  ipAllowedForSurface,
+  isLegacyArgon2Hash,
+  loadTenantSecurityPolicy,
+  refreshTokenMatches,
+  revokeStaffSessions,
+  staffDeskIpAllowed,
+} from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { isOrganizationActive, ORGANIZATION_INACTIVE_MESSAGE } from '@exam-platform/shared';
 import { LoginDto } from './dto/login.dto';
@@ -79,6 +90,7 @@ export class AuthService {
     }
 
     let organizationId: string | null = null;
+    let policy = DEFAULT_SECURITY_POLICY;
     if (dto.organizationSlug) {
       if (!org) {
         await argon2.verify(await getDummyPasswordHash(), dto.password);
@@ -89,6 +101,11 @@ export class AuthService {
         throw new UnauthorizedException(ORGANIZATION_INACTIVE_MESSAGE);
       }
       organizationId = org.id;
+      policy = await loadTenantSecurityPolicy(this.tenantPrisma, org.id);
+      if (!ipAllowedForSurface(policy, 'desk', meta.ip)) {
+        await this.sessions.recordLoginEvent({ ...attempt, organizationId, result: 'failed', reason: 'ip_not_allowed' });
+        throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
+      }
     }
 
     const isSuperAdminLookup = !dto.organizationSlug;
@@ -107,17 +124,28 @@ export class AuthService {
       return this.rejectLogin(orgSlug, attempt, organizationId, user, user ? 'bad_password' : 'unknown_user');
     }
 
+    // SSO-only (YX-IAM-04): password sign-in is off except for the named break-glass accounts. A
+    // correct password from anyone else gets exactly the wrong-password response, so the switch
+    // is no password oracle.
+    const breakGlass = policy.ssoOnly && policy.breakGlassUserIds.includes(user.id);
+    if (policy.ssoOnly && !breakGlass) {
+      return this.rejectLogin(orgSlug, attempt, organizationId, user, 'sso_only');
+    }
+
     if (user.status !== 'active') {
       await this.sessions.recordLoginEvent({ ...attempt, organizationId, userId: user.id, result: 'failed', reason: 'account_inactive' });
       throw new UnauthorizedException('This account has been deactivated');
     }
 
     await this.loginProtection.registerSuccess(orgSlug, identifier, meta.ip);
-    const tokens = await this.startSession(user, 'password', meta, identifier);
+    const tokens = await this.startSession(user, 'password', meta, identifier, breakGlass ? 'break_glass' : undefined);
     await this.audit.record(
       { organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' },
-      { actorUserId: user.id, action: 'login.success', entityType: 'user', entityId: user.id },
+      { actorUserId: user.id, action: breakGlass ? 'login.break_glass' : 'login.success', entityType: 'user', entityId: user.id },
     );
+    if (breakGlass) {
+      this.sessions.notifyBreakGlass(user, meta);
+    }
     if (user.passwordRecheckPending) {
       void this.passwordPolicy.recheckAfterLogin(user, dto.password);
     }
@@ -151,6 +179,7 @@ export class AuthService {
     method: 'password' | 'saml',
     meta: ClientMeta,
     identifier: string,
+    reason?: string,
   ): Promise<TokenPair> {
     const session = await this.sessions.create(user, method, meta);
     const tokens = await this.issueTokenPair(user.id, user.organizationId, user.role, user.permissionProfileId ?? null, session);
@@ -161,6 +190,7 @@ export class AuthService {
       identifier,
       result: 'success',
       method,
+      reason,
       sessionId: session.id,
       newDevice: session.newDevice,
       meta,
@@ -247,7 +277,7 @@ export class AuthService {
     );
   }
 
-  async refresh(refreshToken: string): Promise<TokenPair> {
+  async refresh(refreshToken: string, ip: string | null = null): Promise<TokenPair> {
     let payload: { sub: string; familyId: string };
     try {
       payload = this.jwt.verify(refreshToken, { secret: process.env.JWT_REFRESH_SECRET });
@@ -316,7 +346,7 @@ export class AuthService {
         // the other tab adopts this one's result over the BroadcastChannel, or on its next
         // 401 goes through this same forgiveness path itself.
         this.logger.warn(`Refresh race forgiven for user ${payload.sub} (token rotated ${Date.now() - justRotated.revokedAt!.getTime()}ms ago)`);
-        return this.issueAfterRefreshChecks(payload, stored, session);
+        return this.issueAfterRefreshChecks(payload, stored, session, ip);
       }
       // Reuse of an already-rotated/unknown token: revoke the whole family. Only LIVE rows --
       // re-stamping already-revoked rows would move them back inside the grace window on every
@@ -363,7 +393,7 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token reuse detected — session revoked');
     }
 
-    return this.issueAfterRefreshChecks(payload, stored, session);
+    return this.issueAfterRefreshChecks(payload, stored, session, ip);
   }
 
   // The tail of refresh(): revoke the presented live row, re-check the account and org are
@@ -373,14 +403,21 @@ export class AuthService {
     payload: { sub: string; familyId: string },
     stored: { id: string } | null,
     session: { id: string; absoluteExpiresAt: Date },
+    ip: string | null,
   ): Promise<TokenPair> {
-    if (stored) {
-      await this.prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
-    }
-
     const user = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
       tx.user.findUniqueOrThrow({ where: { id: payload.sub } }),
     );
+
+    // Desk IP allow-list (YX-IAM-09) before rotating: the refresh token stays usable from an
+    // allowed network instead of being burnt (and later mistaken for reuse).
+    if (!(await staffDeskIpAllowed(this.tenantPrisma, user, ip))) {
+      throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
+    }
+
+    if (stored) {
+      await this.prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
+    }
 
     if (user.status !== 'active') {
       throw new UnauthorizedException('This account has been deactivated');
@@ -417,6 +454,18 @@ export class AuthService {
     user: SessionUser & { permissionProfileId: string | null },
     meta: ClientMeta,
   ): Promise<TokenPair> {
+    if (!(await staffDeskIpAllowed(this.tenantPrisma, user, meta.ip))) {
+      await this.sessions.recordLoginEvent({
+        organizationId: user.organizationId,
+        userId: user.id,
+        identifier: user.email.toLowerCase(),
+        result: 'failed',
+        method: 'saml',
+        reason: 'ip_not_allowed',
+        meta,
+      });
+      throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
+    }
     return this.startSession(user, 'saml', meta, user.email.toLowerCase());
   }
 

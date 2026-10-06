@@ -7,9 +7,11 @@ import {
   TenantContext,
   TenantPrismaService,
   authCookieSecure,
+  DEFAULT_SECURITY_POLICY,
   isUuid,
+  loadTenantSecurityPolicy,
   revokeStaffSessions,
-  staffSessionLimits,
+  sessionLimitsFor,
 } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { escapeHtml } from '../notifications/notification-email-render';
@@ -119,16 +121,18 @@ export class SessionsService {
 
   // Opens a session for a user who has just proven their identity. `newDevice` is true when the
   // user has signed in before but never from this device cookie (first-ever sign-in is not
-  // "new device": there is nothing to compare against).
+  // "new device": there is nothing to compare against). Lifetime and the concurrent-session cap
+  // follow the company's security policy within the floor (YX-IAM-06, Q8).
   async create(
     user: SessionUser,
     method: LoginMethod,
     meta: ClientMeta,
   ): Promise<{ id: string; absoluteExpiresAt: Date; newDevice: boolean }> {
-    const { idleSeconds, absoluteSeconds } = staffSessionLimits();
+    const policy = user.organizationId ? await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId) : DEFAULT_SECURITY_POLICY;
+    const { idleSeconds, absoluteSeconds } = sessionLimitsFor(policy);
     const now = Date.now();
     const deviceIdHash = sha256(meta.deviceId);
-    return this.tenantPrisma.forTenant(contextFor(user), async (tx) => {
+    const result = await this.tenantPrisma.forTenant(contextFor(user), async (tx) => {
       const seenDevice = await tx.session.findFirst({ where: { userId: user.id, deviceIdHash }, select: { id: true } });
       const seenAny = seenDevice ?? (await tx.session.findFirst({ where: { userId: user.id }, select: { id: true } }));
       const session = await tx.session.create({
@@ -145,8 +149,30 @@ export class SessionsService {
         },
         select: { id: true, absoluteExpiresAt: true },
       });
-      return { ...session, newDevice: !seenDevice && Boolean(seenAny) };
+      // Over the company's concurrent-session cap: the least recently used sessions make room.
+      let evicted = 0;
+      if (policy.maxConcurrentSessions) {
+        const excess = await tx.session.findMany({
+          where: { userId: user.id, id: { not: session.id }, ...liveWhere(new Date(now)) },
+          orderBy: [{ lastSeenAt: 'desc' }, { createdAt: 'desc' }],
+          skip: policy.maxConcurrentSessions - 1, // the new session holds one slot
+          select: { id: true },
+        });
+        const ids = excess.map((s) => s.id);
+        evicted = ids.length ? await revokeStaffSessions(tx, { id: { in: ids } }, 'concurrent_limit') : 0;
+      }
+      return { session: { ...session, newDevice: !seenDevice && Boolean(seenAny) }, evicted };
     });
+    if (result.evicted > 0) {
+      await this.audit.record(contextFor(user), {
+        actorUserId: user.id,
+        action: 'session.revoked_concurrent_limit',
+        entityType: 'user',
+        entityId: user.id,
+        metadata: { revoked: result.evicted, limit: policy.maxConcurrentSessions },
+      });
+    }
+    return result.session;
   }
 
   // The live session behind a refresh token, or null (revoked, expired, idle, unknown, or a
@@ -337,6 +363,27 @@ export class SessionsService {
       `<p>We temporarily locked sign-in to your account after repeated failed password attempts.</p>${this.describe(meta)}` +
         '<p>You can try again later or reset your password. If these attempts were not you, reset your password now.</p>',
     );
+  }
+
+  // SSO-only break-glass sign-in (YX-IAM-04): every admin of the company is told.
+  notifyBreakGlass(user: SessionUser, meta: ClientMeta): void {
+    if (!user.organizationId) return;
+    const organizationId = user.organizationId;
+    this.tenantPrisma
+      .forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+        tx.user.findMany({ where: { organizationId, role: 'org_admin', status: 'active' }, select: { id: true, email: true } }),
+      )
+      .then((admins) => {
+        for (const admin of admins) {
+          this.send(
+            { ...admin, organizationId, role: 'org_admin' },
+            'Break-glass sign-in to your YukthiX organisation',
+            `<p>The break-glass account <b>${escapeHtml(user.email)}</b> just signed in with a password while SSO-only is on.</p>` +
+              `${this.describe(meta)}<p>If this was not expected, review <b>Admin &rsaquo; Login activity</b> and revoke the session.</p>`,
+          );
+        }
+      })
+      .catch((error) => this.logger.error(`Failed to alert admins of break-glass sign-in by user ${user.id}`, error as Error));
   }
 
   private describe(meta: ClientMeta): string {

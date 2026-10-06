@@ -11,7 +11,7 @@ import {
 } from '@nestjs/websockets';
 import { Namespace, Socket } from 'socket.io';
 import { PrismaService, resolvePermissionGrants } from '@exam-platform/shared';
-import { TenantPrismaService, touchStaffSession } from '@exam-platform/shared';
+import { TenantPrismaService, clientIpOf, staffDeskIpAllowed, touchStaffSession } from '@exam-platform/shared';
 import { MonitoringService, RosterRow } from './monitoring.service';
 import { LeaderboardService, RecruiterLeaderboardRow } from '../leaderboard/leaderboard.service';
 
@@ -81,6 +81,10 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
         sid?: string;
       };
       if (!(await touchStaffSession(this.tenantPrisma, payload.sid, payload.impersonatorUserId ?? payload.sub))) {
+        return;
+      }
+      // The company's desk IP allow-list (YX-IAM-09), as the API applies to every staff request.
+      if (!(await staffDeskIpAllowed(this.tenantPrisma, payload, clientIpOf(client.request)))) {
         return;
       }
       (client.data as { user?: StaffSocketUser }).user = {

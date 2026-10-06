@@ -2,6 +2,7 @@ import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PermissionsGuard } from './permissions.guard';
 import { PERMISSIONS_KEY, PERMISSIONS_ANY_KEY } from './permissions.decorator';
+import { DEFAULT_SECURITY_POLICY, invalidateTenantSecurityPolicy } from '@exam-platform/shared';
 
 function mockContext(user: unknown): ExecutionContext {
   return {
@@ -258,4 +259,41 @@ describe('PermissionsGuard', () => {
       expect(prisma.rolePermission.findMany).toHaveBeenCalled(); // then fell back to global
     });
   });
+
+  describe("the company's admin-console IP allow-list (YX-IAM-09)", () => {
+    const ORG = 'org-admin-ip';
+    const build = (required: string[]) => {
+      const reflector = { get: jest.fn((key: string) => (key === PERMISSIONS_KEY ? required : undefined)) } as unknown as Reflector;
+      const prisma = { rolePermission: { findMany: jest.fn().mockResolvedValue(required.map((key) => ({ permission: { key } }))) } };
+      const tx = {
+        tenantSecurityPolicy: { findUnique: jest.fn().mockResolvedValue({ ...DEFAULT_SECURITY_POLICY, ipAllowlistAdmin: ['203.0.113.0/24'], organizationId: ORG }) },
+        orgRolePermission: { findUnique: jest.fn().mockResolvedValue(null) },
+      };
+      const tenantPrisma = { forTenant: jest.fn(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
+      return new PermissionsGuard(reflector, prisma as any, tenantPrisma as any);
+    };
+    const ctx = (user: object, ip: string) =>
+      ({ switchToHttp: () => ({ getRequest: () => ({ user, ip }) }), getHandler: () => ({}) }) as unknown as ExecutionContext;
+    const admin = { role: 'org_admin', organizationId: ORG, permissionProfileId: null };
+    beforeEach(() => invalidateTenantSecurityPolicy(ORG));
+
+    it('refuses an org:manage_* endpoint from outside the list with 403, even for an admin', async () => {
+      await expect(build(['org:manage_settings']).canActivate(ctx(admin, '192.0.2.1'))).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows it from inside the list', async () => {
+      await expect(build(['org:manage_users']).canActivate(ctx(admin, '203.0.113.4'))).resolves.toBe(true);
+    });
+
+    it('does not apply to everyday (non-admin) endpoints', async () => {
+      await expect(build(['exam:manage']).canActivate(ctx(admin, '192.0.2.1'))).resolves.toBe(true);
+    });
+
+    it('does not bind platform staff acting inside the company', async () => {
+      await expect(
+        build(['org:manage_settings']).canActivate(ctx({ role: 'super_admin', organizationId: ORG, actingSuperAdmin: true }, '192.0.2.1')),
+      ).resolves.toBe(true);
+    });
+  });
 });
+

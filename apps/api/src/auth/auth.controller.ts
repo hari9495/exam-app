@@ -67,7 +67,7 @@ export class AuthController {
     if (!refreshToken) {
       throw new UnauthorizedException('Refresh token required');
     }
-    const tokens = await this.authService.refresh(refreshToken);
+    const tokens = await this.authService.refresh(refreshToken, req.ip ?? null);
     res.cookie(REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions());
     return { accessToken: tokens.accessToken };
   }
