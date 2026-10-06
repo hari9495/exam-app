@@ -80,7 +80,7 @@ export async function seedEmployees(tx: Tx, organizationId: string, actors: Acto
 
   await hire(
     'ramesh',
-    { given: 'Ramesh', family: 'Iyengar', email: 'ramesh.iyengar@kaverifoods.test', entity: 'KFPL', code: 'KF-0001', joined: '2014-04-01', status: 'confirmed' },
+    { given: 'Ramesh', family: 'Iyengar', email: 'ramesh.iyengar@kaverifoods.test', entity: 'KFPL', code: 'KF-0002', joined: '2014-04-01', status: 'confirmed' },
     { locationId: blr, departmentId: ppl, designationId: await d('MD'), gradeId: await g('M4'), employmentTypeId: perm, managerEmployeeId: null, costCentres: [] },
     '5400000',
   );
@@ -94,7 +94,7 @@ export async function seedEmployees(tx: Tx, organizationId: string, actors: Acto
   // Divya signs in as panel@demo-org.test: her team is visible to her through the implicit manager grant.
   await hire(
     'divya',
-    { given: 'Divya', family: 'Raghunathan', email: 'divya.raghunathan@kaverifoods.test', userId: actors.panel, entity: 'KFPL', code: 'KF-0057', joined: '2021-01-11', status: 'confirmed' },
+    { given: 'Divya', family: 'Raghunathan', email: 'divya.raghunathan@kaverifoods.test', userId: actors.panel, entity: 'KFPL', code: 'KF-0001', joined: '2021-01-11', status: 'confirmed' },
     {
       locationId: blr,
       departmentId: qa,
@@ -123,7 +123,7 @@ export async function seedEmployees(tx: Tx, organizationId: string, actors: Acto
   });
   await hire(
     'meera',
-    { given: 'Meera', family: 'Iyer', email: 'meera.iyer@kaverifoods.test', entity: 'KFPL', code: 'KF-0188', joined: '2026-04-01', status: 'probation' },
+    { given: 'Meera', family: 'Iyer', email: 'meera.iyer@kaverifoods.test', entity: 'KFPL', code: 'KF-0118', joined: '2026-04-01', status: 'probation' },
     { locationId: blr, departmentId: qa, designationId: await d('QA-ANALYST'), gradeId: await g('G2'), employmentTypeId: prob, managerEmployeeId: divya, costCentres: [] },
     '420000',
   );
