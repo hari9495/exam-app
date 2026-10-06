@@ -1,0 +1,55 @@
+/* §29 Kanban: hiring pipelines and helpdesk only */
+.yx-kanban { --yx-kanban-col: calc(var(--yx-space-16) * 4 + var(--yx-space-8)); display: flex; align-items: flex-start; gap: var(--yx-space-3); overflow-x: auto; padding-bottom: var(--yx-space-2); color: var(--yx-color-text); font-size: var(--yx-text-body); line-height: var(--yx-leading-body); }
+.yx-kanban__col { flex: 1 1 var(--yx-kanban-col); min-width: calc(var(--yx-space-16) * 3 + var(--yx-space-4)); max-width: calc(var(--yx-kanban-col) * 1.4); display: flex; flex-direction: column; gap: var(--yx-space-2); padding: var(--yx-space-2); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); box-sizing: border-box; }
+.yx-kanban__col[data-drop] { border-color: var(--yx-color-action-primary); }
+.yx-kanban__col[data-collapsed] { flex: none; width: auto; min-width: 0; }
+.yx-kanban__col[data-collapsed] .yx-kanban__head { flex-direction: column-reverse; align-items: center; }
+.yx-kanban__col[data-collapsed] .yx-kanban__title { writing-mode: vertical-rl; }
+.yx-kanban__head { display: flex; align-items: center; gap: var(--yx-space-2); padding: 0 var(--yx-space-1); min-height: var(--yx-control-sm); }
+.yx-kanban__title { margin: 0; font-size: var(--yx-text-body); line-height: var(--yx-leading-body); font-weight: var(--yx-weight-medium); min-width: 0; overflow-wrap: anywhere; }
+/* The count is a small grey badge, so "Day 1" and its count never read as "Day 11". */
+.yx-kanban__count { display: inline-flex; align-items: center; justify-content: center; min-width: var(--yx-space-5); height: var(--yx-badge-height); padding: 0 var(--yx-space-1); border-radius: var(--yx-radius-badge); background: var(--yx-color-bg-surface); border: var(--yx-border-width) solid var(--yx-color-border); font-size: var(--yx-text-xs); color: var(--yx-color-text-secondary); font-variant-numeric: tabular-nums; margin-right: auto; }
+.yx-kanban__col[data-collapsed] .yx-kanban__count { margin-right: 0; }
+.yx-kanban__cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-2); min-height: var(--yx-space-1); }
+.yx-kanban__card { display: flex; flex-direction: column; gap: var(--yx-space-2); padding: var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); cursor: grab; }
+.yx-kanban__card:hover { border-color: var(--yx-color-border-strong); }
+.yx-kanban__card[data-dragging] { opacity: 0.5; cursor: grabbing; }
+.yx-kanban__top { display: flex; align-items: center; gap: var(--yx-space-2); }
+.yx-kanban__name { flex: 1; min-width: 0; padding: 0; border: 0; background: none; font: inherit; font-weight: var(--yx-weight-medium); color: var(--yx-color-text); text-align: left; overflow-wrap: anywhere; }
+button.yx-kanban__name { cursor: pointer; min-height: var(--yx-target-min); }
+button.yx-kanban__name:hover { color: var(--yx-color-link); text-decoration: underline; text-underline-offset: var(--yx-space-half); }
+button.yx-kanban__name:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); border-radius: var(--yx-radius-badge); }
+.yx-kanban__facts { list-style: none; margin: 0; padding: 0; font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); color: var(--yx-color-text-secondary); }
+.yx-kanban__days { display: flex; align-items: center; gap: var(--yx-space-1); margin: 0; font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-muted); }
+.yx-kanban__days[data-late] { color: var(--yx-color-warning-text); font-weight: var(--yx-weight-medium); }
+.yx-kanban__drop { height: var(--yx-focus-width); border-radius: var(--yx-radius-badge); background: var(--yx-color-action-primary); }
+.yx-kanban__empty { margin: 0; padding: var(--yx-space-4) var(--yx-space-2); border: var(--yx-border-width) dashed var(--yx-color-border-strong); border-radius: var(--yx-radius-card); text-align: center; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
+.yx-kanban__add { align-self: flex-start; }
+.yx-kanban__reason { width: calc(var(--yx-space-16) * 5); max-width: calc(100vw - var(--yx-space-8)); }
+.yx-kanban__rform { display: flex; flex-direction: column; gap: var(--yx-space-3); }
+.yx-kanban__rtitle { margin: 0; font-weight: var(--yx-weight-medium); }
+.yx-kanban__ractions { display: flex; justify-content: flex-end; gap: var(--yx-space-2); }
+.yx-kanban-wrap { display: grid; gap: var(--yx-space-2); min-width: 0; }
+.yx-kanban__card[data-late] { border-left: var(--yx-space-1) solid var(--yx-color-warning-border); }
+.yx-kanban__next { display: flex; align-items: flex-start; gap: var(--yx-space-1); margin: 0; font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); color: var(--yx-color-text); }
+.yx-kanban__next[data-overdue] { color: var(--yx-color-danger-text); font-weight: var(--yx-weight-medium); }
+.yx-kanban__more { display: inline-flex; align-items: center; gap: var(--yx-space-1); justify-self: end; margin: 0; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
+.yx-kanban__tabs { display: none; }
+@media (max-width: 767px) {
+  .yx-kanban { scroll-snap-type: x mandatory; }
+  .yx-kanban__col { scroll-snap-align: start; flex: none; width: calc(100vw - var(--yx-space-10)); max-width: none; }
+  .yx-kanban__tabs { display: flex; gap: var(--yx-space-2); overflow-x: auto; padding-block: var(--yx-space-half); }
+  .yx-kanban__tab { flex: none; display: inline-flex; align-items: center; gap: var(--yx-space-2); min-height: var(--yx-space-8); padding: 0 var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border-strong); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-surface); font: inherit; font-size: var(--yx-text-sm); color: var(--yx-color-text); cursor: pointer; }
+  .yx-kanban__tab .yx-kanban__count { margin-right: 0; }
+  .yx-kanban__more { display: none; }
+}
+
+/* Compact cards (founder review 1 Oct 2026): every line stays on one line and shortens with "…"; the full text is in the tooltip. */
+.yx-kanban__card { gap: var(--yx-space-2); padding: var(--yx-space-2) var(--yx-space-3); }
+.yx-kanban__name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+button.yx-kanban__name { min-height: var(--yx-space-6); }
+.yx-kanban__facts li:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.yx-kanban__line { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.yx-kanban__next { align-items: center; min-width: 0; }
+.yx-kanban__next[data-overdue] { color: var(--yx-color-danger-text); font-weight: var(--yx-weight-medium); }
+.yx-kanban__days { min-width: 0; }

@@ -1,0 +1,35 @@
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+.yx-root,
+:where(body.yx-body) {
+  font-family: var(--yx-font-sans);
+  font-size: var(--yx-text-body);
+  line-height: var(--yx-leading-body);
+  color: var(--yx-color-text);
+  background: var(--yx-color-bg-page);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+.yx-focusable:focus-visible,
+:where([class^="yx-"]):focus-visible {
+  outline: var(--yx-focus-width) solid var(--yx-color-focus-ring);
+  outline-offset: var(--yx-space-half);
+}
+
+.yx-mono {
+  font-family: var(--yx-font-mono);
+  font-size: var(--yx-text-sm);
+}
+
+.yx-visually-hidden {
+  position: absolute; top: 0; left: 0; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* `hidden` always hides, even when a class sets display (e.g. flex). Hidden tab panels were leaving gaps (founder review 30 Sep 2026). */
+[hidden]:not([hidden="until-found"]) { display: none !important; }

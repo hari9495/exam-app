@@ -1,0 +1,107 @@
+/* Popover shell */
+.yx-popover {
+  z-index: var(--yx-z-popover);
+  background: var(--yx-color-bg-raised);
+  border: var(--yx-border-width) solid var(--yx-color-border);
+  border-radius: var(--yx-radius-card);
+  box-shadow: var(--yx-shadow-popover);
+  color: var(--yx-color-text);
+  font-family: var(--yx-font-sans);
+  font-size: var(--yx-text-body);
+  line-height: var(--yx-leading-body);
+  animation: yx-fade-in var(--yx-duration-menu) var(--yx-ease-out);
+}
+.yx-popover:focus-visible { outline: none; }
+
+/* §16 Select trigger */
+.yx-select {
+  display: flex;
+  align-items: center;
+  gap: var(--yx-space-2);
+  width: 100%;
+  height: var(--yx-control-md);
+  padding: 0 var(--yx-space-2) 0 var(--yx-space-3);
+  background: var(--yx-input-bg);
+  border: var(--yx-border-width) solid var(--yx-input-border);
+  border-radius: var(--yx-radius-control);
+  color: var(--yx-color-text);
+  font: inherit;
+  font-size: var(--yx-text-body);
+  text-align: left;
+  cursor: pointer;
+}
+.yx-select[data-size="sm"] { height: var(--yx-control-sm); }
+.yx-select:hover { border-color: var(--yx-color-text-muted); }
+.yx-select:focus-visible, .yx-select[aria-expanded="true"] { border-color: var(--yx-color-focus-ring); outline: var(--yx-border-width) solid var(--yx-color-focus-ring); }
+.yx-select[data-invalid] { border-color: var(--yx-input-border-error); }
+.yx-select:disabled { background: var(--yx-color-bg-subtle); border-color: var(--yx-color-border); color: var(--yx-color-text-disabled); cursor: not-allowed; }
+.yx-select > .yx-icon { color: var(--yx-color-text-muted); }
+.yx-select__value { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--yx-space-1); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.yx-select[data-placeholder] .yx-select__value { color: var(--yx-color-text-muted); }
+.yx-select__chip {
+  display: inline-flex; align-items: center;
+  height: var(--yx-badge-height); padding: 0 var(--yx-space-2);
+  border-radius: var(--yx-radius-badge); background: var(--yx-color-bg-subtle); border: var(--yx-border-width) solid var(--yx-color-border);
+  font-size: var(--yx-text-xs);
+}
+.yx-select__more { font-size: var(--yx-text-xs); color: var(--yx-color-text-muted); }
+.yx-select__popover { width: var(--radix-popover-trigger-width); min-width: var(--yx-menu-min); padding: 0; overflow: hidden; }
+
+/* Listbox (cmdk) */
+.yx-listbox__search {
+  display: flex; align-items: center; gap: var(--yx-space-2);
+  height: var(--yx-control-md); padding: 0 var(--yx-space-3);
+  border-bottom: var(--yx-border-width) solid var(--yx-color-border);
+  color: var(--yx-color-text-muted);
+}
+.yx-listbox__search[data-hidden] { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); border: 0; padding: 0; }
+.yx-listbox__search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--yx-color-text); font: inherit; font-size: var(--yx-text-body); }
+.yx-listbox [cmdk-list] { max-height: var(--yx-popover-max-h); overflow-y: auto; padding: var(--yx-space-1); }
+.yx-listbox__item {
+  display: flex; align-items: center; gap: var(--yx-space-2);
+  min-height: var(--yx-control-sm); padding: var(--yx-space-1) var(--yx-space-2);
+  border-radius: var(--yx-radius-badge); cursor: pointer; user-select: none;
+}
+.yx-listbox__item[data-selected="true"] { background: var(--yx-color-bg-subtle); }
+.yx-listbox__item[data-disabled="true"] { color: var(--yx-color-text-disabled); cursor: not-allowed; }
+.yx-listbox__item[data-checked] { font-weight: var(--yx-weight-medium); }
+.yx-listbox__content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.yx-listbox__desc { font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-muted); }
+.yx-listbox__check { width: var(--yx-icon-sm); display: inline-flex; color: var(--yx-color-action-primary); }
+.yx-listbox__empty { padding: var(--yx-space-3); color: var(--yx-color-text-muted); text-align: center; }
+.yx-listbox__footer {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: var(--yx-space-2) var(--yx-space-3);
+  border-top: var(--yx-border-width) solid var(--yx-color-border);
+  font-size: var(--yx-text-sm); color: var(--yx-color-text-muted);
+}
+.yx-listbox__footer .yx-link { border: 0; background: none; font: inherit; padding: 0; }
+
+/* Calendar (react-day-picker restyled) */
+.yx-calendar { padding: var(--yx-space-3); }
+.yx-calendar .rdp-root {
+  --rdp-accent-color: var(--yx-color-action-primary);
+  --rdp-accent-background-color: var(--yx-color-bg-selected);
+  --rdp-day-height: var(--yx-control-md);
+  --rdp-day-width: var(--yx-control-md);
+  --rdp-day_button-height: var(--yx-control-sm);
+  --rdp-day_button-width: var(--yx-control-sm);
+  --rdp-day_button-border-radius: var(--yx-radius-control);
+  --rdp-selected-border: var(--yx-border-width) solid var(--yx-color-action-primary);
+  --rdp-today-color: var(--yx-color-action-primary);
+  --rdp-nav-height: var(--yx-control-md);
+  --rdp-nav_button-height: var(--yx-control-sm);
+  --rdp-nav_button-width: var(--yx-control-sm);
+  --rdp-disabled-opacity: 0.35;
+  font-family: var(--yx-font-sans);
+  font-size: var(--yx-text-sm);
+}
+.yx-calendar .rdp-selected .rdp-day_button { background: var(--yx-color-action-primary); color: var(--yx-color-text-on-action); font-weight: var(--yx-weight-medium); }
+.yx-calendar .rdp-weekday { font-size: var(--yx-text-xs); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-muted); opacity: 1; }
+.yx-calendar .rdp-dropdown_root, .yx-calendar .rdp-caption_label { font-weight: var(--yx-weight-semibold); font-size: var(--yx-text-sm); }
+.yx-calendar .rdp-chevron { fill: var(--yx-color-text-secondary); }
+.yx-calendar .rdp-selected { font-size: inherit; font-weight: var(--yx-weight-medium); }
+.yx-calendar .rdp-today:not(.rdp-selected) .rdp-day_button { font-weight: var(--yx-weight-semibold); }
+.yx-listbox [cmdk-list] { scrollbar-width: thin; scrollbar-color: var(--yx-color-border-strong) transparent; }
+/* hide the empty listbox; the status message above says there are no matches */
+.yx-listbox:has(> .yx-listbox__empty) [cmdk-list] { display: none; }
