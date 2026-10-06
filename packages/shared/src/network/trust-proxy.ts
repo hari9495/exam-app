@@ -27,3 +27,15 @@ export function configureTrustProxy(app: INestApplication): void {
   if (process.env.TRUST_PROXY !== 'true') return;
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
 }
+
+// req.ip for a request Express does not see (a socket.io handshake), with exactly the semantics
+// configureTrustProxy gives Express: TRUST_PROXY=true trusts ONE hop (nginx), so the client is the
+// LAST X-Forwarded-For entry (the one nginx appended); otherwise the socket peer. A forged
+// left-hand entry is never used.
+export function clientIpOf(req: { headers: Record<string, string | string[] | undefined>; socket?: { remoteAddress?: string } }): string | null {
+  const peer = req.socket?.remoteAddress ?? null;
+  if (process.env.TRUST_PROXY !== 'true') return peer;
+  const header = req.headers['x-forwarded-for'];
+  const hops = (Array.isArray(header) ? header.join(',') : header ?? '').split(',').map((h) => h.trim()).filter(Boolean);
+  return hops.length ? hops[hops.length - 1] : peer;
+}
