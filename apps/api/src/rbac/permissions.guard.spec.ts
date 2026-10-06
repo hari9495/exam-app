@@ -293,6 +293,16 @@ describe('PermissionsGuard', () => {
       await expect(build(['exam:manage']).canActivate(ctx(admin, '192.0.2.1'))).resolves.toBe(true);
     });
 
+    // Regression: the admin console was "org:manage_*" by name, so login activity / the audit
+    // trail, approval chains and data-subject rights were reachable from any network.
+    it.each(['audit:view', 'approvals:configure', 'candidate:data_rights', 'org:manage_billing'])(
+      'covers %s, an admin-grade permission, from outside the list',
+      async (permission) => {
+        await expect(build([permission]).canActivate(ctx(admin, '192.0.2.1'))).rejects.toThrow(ForbiddenException);
+        await expect(build([permission]).canActivate(ctx(admin, '203.0.113.4'))).resolves.toBe(true);
+      },
+    );
+
     it('does not bind platform staff acting inside the company', async () => {
       await expect(
         build(['org:manage_settings']).canActivate(ctx({ role: 'super_admin', organizationId: ORG, actingSuperAdmin: true }, '192.0.2.1')),

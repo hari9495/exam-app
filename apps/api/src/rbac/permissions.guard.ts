@@ -19,8 +19,11 @@ import { PERMISSIONS_KEY, PERMISSIONS_ANY_KEY } from './permissions.decorator';
 import { SENSITIVE_ROLE_ACTION, STEP_UP_REQUIRED } from '../auth/step-up.decorator';
 
 // Endpoints gated by these permissions are the "admin console" for the company's admin IP
-// allow-list (YX-IAM-09): organisation administration -- users, settings/security, billing.
-const ADMIN_CONSOLE_PERMISSION = /^org:manage_/;
+// allow-list (YX-IAM-09): every sensitive-role permission (users, settings / security, billing,
+// approval chains, data-subject rights), the audit trail and login activity, and any future
+// org:manage_* permission. An explicit list, not a name pattern, so nothing admin-grade slips out.
+export const ADMIN_CONSOLE_PERMISSIONS: readonly string[] = [...MFA_SENSITIVE_PERMISSIONS, 'audit:view'];
+const isAdminConsolePermission = (key: string) => ADMIN_CONSOLE_PERMISSIONS.includes(key) || key.startsWith('org:manage_');
 
 interface RequestUser {
   userId?: string;
@@ -118,7 +121,7 @@ export class PermissionsGuard implements CanActivate {
     allKeys: string[],
   ): Promise<void> {
     // Tenant staff only: platform super admins are bound by staff controls (Q7), not tenant lists.
-    if (user.organizationId && user.role !== 'super_admin' && allKeys.some((key) => ADMIN_CONSOLE_PERMISSION.test(key))) {
+    if (user.organizationId && user.role !== 'super_admin' && allKeys.some(isAdminConsolePermission)) {
       const policy = await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId);
       if (!ipAllowedForSurface(policy, 'admin', ip)) {
         throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
