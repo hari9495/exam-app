@@ -196,3 +196,10 @@
 @media (min-width: 768px) {
   .yx-shell__content .yx-save-bar { bottom: calc((var(--yx-space-12) + var(--yx-space-10)) * -1); }
 }
+
+/* Segment: joined pick-one control (R11). Wraps to full-width rows on narrow screens rather than scrolling. */
+.yx-segment { display: inline-flex; flex-wrap: wrap; max-width: 100%; border: var(--yx-border-width) solid var(--yx-color-border-strong); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-surface); overflow: hidden; }
+.yx-segment > button { flex: 1 1 auto; min-height: max(var(--yx-control-md), var(--yx-target-min)); padding: 0 var(--yx-space-3); border: 0; background: transparent; font: inherit; font-size: var(--yx-text-sm); color: var(--yx-color-text); cursor: pointer; white-space: nowrap; }
+.yx-segment > button + button { border-inline-start: var(--yx-border-width) solid var(--yx-color-border-strong); }
+.yx-segment > button[aria-checked='true'] { background: var(--yx-color-action-primary); color: var(--yx-color-text-on-action); font-weight: var(--yx-weight-medium); }
+.yx-segment > button:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: calc(var(--yx-focus-width) * -1); }

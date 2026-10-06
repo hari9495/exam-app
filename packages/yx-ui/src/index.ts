@@ -7,6 +7,7 @@ export * from './components/popover';
 export * from './components/field';
 export * from './components/inputs';
 export * from './components/choice';
+export * from './components/segment';
 export * from './components/select';
 export * from './components/date';
 export * from './components/upload';
