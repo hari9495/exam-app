@@ -373,22 +373,24 @@ export class SessionsService {
   // SSO-only break-glass sign-in (YX-IAM-04): every admin of the company is told.
   notifyBreakGlass(user: SessionUser, meta: ClientMeta): void {
     if (!user.organizationId) return;
-    const organizationId = user.organizationId;
+    this.notifyAdmins(
+      user.organizationId,
+      'Break-glass sign-in to your YukthiX organisation',
+      `<p>The break-glass account <b>${escapeHtml(user.email)}</b> just signed in with a password while SSO-only is on.</p>` +
+        `${this.describe(meta)}<p>If this was not expected, review <b>Admin &rsaquo; Login activity</b> and revoke the session.</p>`,
+    );
+  }
+
+  // Every active administrator of the company hears about it. `html` is already escaped.
+  notifyAdmins(organizationId: string, subject: string, html: string): void {
     this.tenantPrisma
       .forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
         tx.user.findMany({ where: { organizationId, role: 'org_admin', status: 'active' }, select: { id: true, email: true } }),
       )
       .then((admins) => {
-        for (const admin of admins) {
-          this.send(
-            { ...admin, organizationId, role: 'org_admin' },
-            'Break-glass sign-in to your YukthiX organisation',
-            `<p>The break-glass account <b>${escapeHtml(user.email)}</b> just signed in with a password while SSO-only is on.</p>` +
-              `${this.describe(meta)}<p>If this was not expected, review <b>Admin &rsaquo; Login activity</b> and revoke the session.</p>`,
-          );
-        }
+        for (const admin of admins) this.send({ ...admin, organizationId, role: 'org_admin' }, subject, html);
       })
-      .catch((error) => this.logger.error(`Failed to alert admins of break-glass sign-in by user ${user.id}`, error as Error));
+      .catch((error) => this.logger.error(`Failed to alert the admins of organisation ${organizationId}`, error as Error));
   }
 
   // MFA changes and resets (YX-IAM-10/11): the people concerned hear about every one.

@@ -6,6 +6,8 @@ import { CreateIdentityProviderDto, UpdateIdentityProviderDto } from './dto/iden
 import { GOOGLE_ISSUER, assertIssuerUrl, entraIssuer } from './identity-providers';
 import { SsoService } from './sso.service';
 import { OidcService } from './oidc.service';
+import { SessionsService } from './sessions.service';
+import { escapeHtml } from '../notifications/notification-email-render';
 
 const SELECT = {
   id: true,
@@ -59,7 +61,19 @@ export class IdentityProvidersService {
     private readonly crypto: OrgSecretsCryptoService,
     private readonly sso: SsoService,
     private readonly oidc: OidcService,
+    private readonly sessions: SessionsService,
   ) {}
+
+  // Whoever controls a sign-in provider can sign in as anyone at its domains, so every change
+  // reaches all of the company's administrators, not only the audit log (YX-IAM-04/10).
+  private alertAdmins(organizationId: string, actorUserId: string, what: string): void {
+    this.sessions.notifyAdmins(
+      organizationId,
+      'Single sign-on settings changed in your YukthiX organisation',
+      `<p>${escapeHtml(what)}</p><p>Changed by user ${escapeHtml(actorUserId)} at ${escapeHtml(new Date().toISOString())}.</p>` +
+        '<p>If this was not expected, review <b>Settings &rsaquo; Single Sign-On</b> and the audit log at once.</p>',
+    );
+  }
 
   private orgOf(context: TenantContext): string {
     if (!context.organizationId) {
@@ -103,8 +117,9 @@ export class IdentityProvidersService {
     const current = await this.find(context, id);
     const { oidcClientSecretEncrypted, domains: currentDomains, ...rest } = current;
     const before: Settings = { ...pick(rest), oidcClientSecretEncrypted };
-    const { settings, domains } = await this.prepare(organizationId, current.type, before, currentDomains.map((d) => d.domain), dto);
-    await this.write(context, actorUserId, organizationId, id, current.type, before, settings, domains);
+    const beforeDomains = currentDomains.map((d) => d.domain);
+    const { settings, domains } = await this.prepare(organizationId, current.type, before, beforeDomains, dto);
+    await this.write(context, actorUserId, organizationId, id, current.type, before, settings, domains, beforeDomains);
     return this.one(context, id);
   }
 
@@ -121,6 +136,7 @@ export class IdentityProvidersService {
       entityId: id,
       metadata: { type: current.type, name: current.name, domains: current.domains.map((d) => d.domain) },
     });
+    this.alertAdmins(organizationId, actorUserId, `The identity provider "${current.name}" was removed.`);
     return { success: true };
   }
 
@@ -215,6 +231,7 @@ export class IdentityProvidersService {
     before: Settings,
     next: Settings,
     domains: string[],
+    beforeDomains: string[] = [],
   ): Promise<string> {
     if (id && before.status === 'active' && next.status !== 'active') await this.assertNotLastForSsoOnly(context, organizationId, id);
     let savedId: string;
@@ -243,6 +260,13 @@ export class IdentityProvidersService {
       entityId: savedId,
       metadata: { type, name: next.name, status: next.status, changed, domains },
     });
+    if (!id || changed.length || JSON.stringify(domains) !== JSON.stringify(beforeDomains)) {
+      this.alertAdmins(
+        organizationId,
+        actorUserId,
+        `The identity provider "${next.name}" was ${id ? 'changed' : 'added'} (${next.status === 'active' ? 'on' : 'off'}; domains: ${domains.join(', ') || 'none'}).`,
+      );
+    }
     return savedId;
   }
 

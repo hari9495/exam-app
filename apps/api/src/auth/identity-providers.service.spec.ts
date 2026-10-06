@@ -13,6 +13,7 @@ describe('IdentityProvidersService', () => {
   let crypto: { encrypt: jest.Mock };
   let sso: { jitRoleIsSafe: jest.Mock };
   let oidc: { checkIssuer: jest.Mock };
+  let sessions: { notifyAdmins: jest.Mock };
   let service: IdentityProvidersService;
   let cert: string;
 
@@ -60,7 +61,8 @@ describe('IdentityProvidersService', () => {
     crypto = { encrypt: jest.fn((value: string) => `enc(${value})`) };
     sso = { jitRoleIsSafe: jest.fn().mockResolvedValue(true) };
     oidc = { checkIssuer: jest.fn().mockResolvedValue(undefined) };
-    service = new IdentityProvidersService(tenantPrisma as any, audit as any, crypto as any, sso as any, oidc as any);
+    sessions = { notifyAdmins: jest.fn() };
+    service = new IdentityProvidersService(tenantPrisma as any, audit as any, crypto as any, sso as any, oidc as any, sessions as any);
   });
 
   describe('SAML', () => {
@@ -118,6 +120,9 @@ describe('IdentityProvidersService', () => {
       expect(view).not.toHaveProperty('oidcClientSecretEncrypted');
       expect(view.clientSecretSet).toBe(true);
       expect(JSON.stringify(audit.record.mock.calls)).not.toContain('s3cret');
+      // Every administrator hears about a new sign-in provider; never the secret.
+      expect(sessions.notifyAdmins).toHaveBeenCalledWith(ORG, expect.stringMatching(/Single sign-on/), expect.stringContaining('Google'));
+      expect(JSON.stringify(sessions.notifyAdmins.mock.calls)).not.toContain('s3cret');
     });
 
     it('Entra is pinned to the directory it names', async () => {

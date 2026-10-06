@@ -161,6 +161,12 @@ describe('OIDC single sign-on and identity providers (P12 Part 1e, YX-IAM-04/05)
         tx.auditLog.findFirstOrThrow({ where: { organizationId: orgA.id, action: 'identity_provider.created', entityId: providerId } }),
       );
       expect(JSON.stringify(audit)).not.toContain(issuer.clientSecret);
+      // Every administrator is told (fire-and-forget email).
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      for (const who of [at('admin'), at('admin2')]) {
+        expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: who, subject: expect.stringMatching(/Single sign-on settings changed/) }));
+      }
+      expect(JSON.stringify(email.send.mock.calls)).not.toContain(issuer.clientSecret);
     });
 
     it('needs a fresh step-up, the settings permission, and is refused for another company\'s provider', async () => {
