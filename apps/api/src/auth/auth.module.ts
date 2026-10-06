@@ -23,6 +23,11 @@ import { MfaController } from './mfa.controller';
 import { OtpService } from './otp.service';
 import { OtpController } from './otp.controller';
 import { OTP_SMS_SENDER, createOtpSmsSender } from './otp-sender';
+import { SsoService } from './sso.service';
+import { OidcService } from './oidc.service';
+import { SsoController } from './sso.controller';
+import { IdentityProvidersService } from './identity-providers.service';
+import { IdentityProvidersController } from './identity-providers.controller';
 
 // Its own connection, fast-failing: the shared BullMQ-style connection (maxRetriesPerRequest:
 // null) would park sign-in requests forever during a Redis outage instead of failing closed.
@@ -48,8 +53,11 @@ function createLoginProtectionRedis(): Redis {
     { provide: LOGIN_PROTECTION_REDIS, useFactory: createLoginProtectionRedis },
     OtpService,
     { provide: OTP_SMS_SENDER, useFactory: createOtpSmsSender },
+    SsoService,
+    OidcService,
+    IdentityProvidersService,
   ],
-  controllers: [AuthController, SamlController, SessionsController, SecurityPolicyController, MfaController, OtpController],
+  controllers: [AuthController, SamlController, SsoController, SessionsController, SecurityPolicyController, MfaController, OtpController, IdentityProvidersController],
   exports: [AuthService],
 })
 export class AuthModule {}

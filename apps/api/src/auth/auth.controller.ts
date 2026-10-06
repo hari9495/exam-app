@@ -103,7 +103,7 @@ export class AuthController {
       await this.prisma.ssoLoginCode.delete({ where: { id: record.id } });
     }
     if (!record || record.expiresAt < new Date()) {
-      await this.sessions.recordLoginEvent({ organizationId: null, result: 'failed', method: 'saml', reason: 'invalid_sso_code', meta });
+      await this.sessions.recordLoginEvent({ organizationId: null, result: 'failed', method: record?.method === 'oidc' ? 'oidc' : 'saml', reason: 'invalid_sso_code', meta });
       throw new UnauthorizedException('This sign-in link is invalid or has expired');
     }
 
@@ -114,13 +114,14 @@ export class AuthController {
       throw new UnauthorizedException('This sign-in link is invalid or has expired');
     }
 
+    const method = record.method === 'oidc' ? 'oidc' : 'saml';
     const failed = (reason: string) =>
       this.sessions.recordLoginEvent({
         organizationId: user.organizationId,
         userId: user.id,
         identifier: user.email.toLowerCase(),
         result: 'failed',
-        method: 'saml',
+        method,
         reason,
         meta,
       });
@@ -140,6 +141,7 @@ export class AuthController {
     const outcome = await this.authService.issueTokensForSso(
       { id: user.id, email: user.email, organizationId: user.organizationId, role: user.role, permissionProfileId: user.permissionProfileId ?? null },
       meta,
+      { method, mfaAsserted: record.mfaAsserted },
     );
     return signInResponse(outcome, res);
   }

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { hasActiveIdentityProvider } from '../auth/identity-providers';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma, User } from '@prisma/client';
 import * as argon2 from 'argon2';
@@ -104,11 +105,9 @@ export class UsersService {
     // password would just be dead weight nobody can use. Force a random, unusable one instead of
     // trusting/requiring the frontend to send one. A chosen password meets the floor
     // (YX-IAM-08); it is checked before the transaction so the breach lookup holds no DB tx open.
-    const org = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.organization.findUnique({ where: { id: context.organizationId as string }, select: { samlEnabled: true } }),
-    );
+    const ssoEnabled = await this.tenantPrisma.forTenant(context, (tx) => hasActiveIdentityProvider(tx, context.organizationId as string));
     let chosen: { passwordHash: string; passwordRecheckPending: boolean };
-    if (org?.samlEnabled) {
+    if (ssoEnabled) {
       chosen = { passwordHash: await argon2.hash(randomBytes(32).toString('hex')), passwordRecheckPending: false };
     } else if (dto.password) {
       chosen = await this.passwordPolicy.hashNewPassword(dto.password, context.organizationId);
@@ -558,11 +557,10 @@ export class UsersService {
       if (!target) {
         throw new NotFoundException('User not found');
       }
-      const org = await tx.organization.findUnique({ where: { id: context.organizationId as string }, select: { samlEnabled: true } });
-      // SSO-enabled orgs authenticate via SAML, matched by email -- a reset link is
-      // meaningless there (see create/bulkCreate for the same reasoning), so skip the
+      // SSO-enabled orgs authenticate via their identity provider, matched by email -- a reset
+      // link is meaningless there (see create/bulkCreate for the same reasoning), so skip the
       // token and the email rather than send a link nobody can use.
-      if (org?.samlEnabled) {
+      if (await hasActiveIdentityProvider(tx, context.organizationId as string)) {
         ssoSkipped = true;
         return;
       }
@@ -598,11 +596,9 @@ export class UsersService {
     if (!context.organizationId) {
       throw new BadRequestException('Users must be created within an organization');
     }
-    // Read once, not per email -- samlEnabled can't change mid-call, and each of the
-    // (up to 200) emails already runs its own transaction below.
-    const org = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.organization.findUnique({ where: { id: context.organizationId as string }, select: { samlEnabled: true } }),
-    );
+    // Read once, not per email -- each of the (up to 200) emails already runs its own
+    // transaction below.
+    const ssoEnabled = await this.tenantPrisma.forTenant(context, (tx) => hasActiveIdentityProvider(tx, context.organizationId as string));
     const created: SafeUser[] = [];
     const skipped: { email: string; reason: string }[] = [];
     for (const email of dto.emails) {
@@ -621,7 +617,7 @@ export class UsersService {
         // SSO-enabled orgs authenticate staff via SAML, matched by email -- no set-password
         // link is ever needed, and sending one would promise an access path that doesn't
         // apply. Skip the token and the email entirely rather than send a dead link.
-        if (!org?.samlEnabled) {
+        if (!ssoEnabled) {
           const rawToken = randomBytes(32).toString('hex');
           const tokenHash = createHash('sha256').update(rawToken).digest('hex');
           await tx.passwordResetToken.create({

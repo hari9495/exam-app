@@ -161,7 +161,7 @@ describe('UsersService', () => {
 
     it('ignores a supplied password and generates a random one when the org has SSO enabled', async () => {
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: true }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(1) },
         user: {
           findFirst: jest.fn().mockResolvedValue(null),
           create: jest.fn().mockResolvedValue({ id: 'u1', email: 'a@b.com', organizationId: 'org-1', role: 'recruiter' }),
@@ -181,7 +181,7 @@ describe('UsersService', () => {
     it('applies the password floor to a chosen password and stores the re-check flag (YX-IAM-08)', async () => {
       passwordPolicy.hashNewPassword.mockResolvedValue({ passwordHash: 'h', passwordRecheckPending: true });
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: {
           findFirst: jest.fn().mockResolvedValue(null),
           create: jest.fn().mockResolvedValue({ id: 'u1', email: 'a@b.com', organizationId: 'org-1', role: 'recruiter' }),
@@ -198,7 +198,7 @@ describe('UsersService', () => {
     it('creates nothing when the chosen password fails the floor', async () => {
       passwordPolicy.hashNewPassword.mockRejectedValue(new BadRequestException('breached'));
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn() },
       };
       tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
@@ -209,7 +209,7 @@ describe('UsersService', () => {
 
     it('rejects creation with no password when the org does NOT have SSO enabled', async () => {
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
@@ -223,7 +223,7 @@ describe('UsersService', () => {
     // with no exception filter to translate it, surfacing a generic 500 instead of a clear message.
     it('rejects with a clear message when a user with that email already exists in the org', async () => {
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 'existing-1', email: 'a@b.com' }) },
       };
       tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
@@ -1120,7 +1120,7 @@ describe('UsersService', () => {
 
     it('creates a reset token and emails the target', async () => {
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', organizationId: 'org1' }) },
         passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok1' }) },
       };
@@ -1138,7 +1138,7 @@ describe('UsersService', () => {
 
     it('skips the reset token and email when the org has SSO enabled', async () => {
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: true }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(1) },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', organizationId: 'org1' }) },
         passwordResetToken: { create: jest.fn() },
       };
@@ -1157,7 +1157,7 @@ describe('UsersService', () => {
     // (rakesh.t@prudentconsulting.com never got his email) was invisible to the admin.
     it('reports emailSent: false when the email actually fails to send', async () => {
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', organizationId: 'org1' }) },
         passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok1' }) },
       };
@@ -1187,7 +1187,7 @@ describe('UsersService', () => {
     it('creates new emails and skips existing ones', async () => {
       const created = { id: 'n1', email: 'new@b.com', role: 'recruiter', name: null, organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() };
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: {
           findFirst: jest.fn()
             .mockResolvedValueOnce({ id: 'dup' }) // exists@b.com -> skipped
@@ -1209,7 +1209,7 @@ describe('UsersService', () => {
 
     it('does not check the soft seat limit when nothing was created', async () => {
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 'dup' }) },
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
@@ -1223,7 +1223,7 @@ describe('UsersService', () => {
     it('still returns created users when the soft seat-limit check rejects', async () => {
       const created = { id: 'n1', email: 'new@b.com', role: 'recruiter', name: null, organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() };
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) },
         passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok' }) },
       };
@@ -1239,7 +1239,7 @@ describe('UsersService', () => {
     it('creates users but sends no set-password email when the org has SSO enabled', async () => {
       const created = { id: 'n1', email: 'new@b.com', role: 'recruiter', name: null, organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() };
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: true }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(1) },
         user: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) },
         passwordResetToken: { create: jest.fn() },
       };

@@ -60,10 +60,6 @@ model Organization {
   apiKeyCreatedAt               DateTime?             @map("api_key_created_at") @db.Timestamptz(3)
   webhookUrl                    String?               @map("webhook_url") @db.VarChar(1000)
   webhookSecretEncrypted        String?               @map("webhook_secret_encrypted") @db.VarChar(1000)
-  samlEnabled                   Boolean               @default(false) @map("saml_enabled")
-  samlIdpEntityId               String?               @map("saml_idp_entity_id") @db.VarChar(1000)
-  samlIdpSsoUrl                 String?               @map("saml_idp_sso_url") @db.VarChar(1000)
-  samlIdpCertificate            String?               @map("saml_idp_certificate") @db.Text
   autoArchiveSiblingsOnHire     Boolean               @default(true) @map("auto_archive_siblings_on_hire")
   businessHoursJson             String?               @map("business_hours_json") @db.Text
   holidaysJson                  String?               @map("holidays_json") @db.Text
@@ -112,6 +108,7 @@ model Organization {
   auditLogs                     AuditLog[]
   webhookDeliveries             WebhookDelivery[]
   securityPolicy                TenantSecurityPolicy?
+  identityProviders             IdentityProvider[]
 
   @@map("organizations")
 }
@@ -196,12 +193,15 @@ model WebhookDelivery {
 }
 
 model SsoLoginCode {
-  id        String   @id @default(uuid()) @db.Uuid
-  codeHash  String   @unique @map("code_hash") @db.VarChar(1000)
-  userId    String   @map("user_id") @db.Uuid
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id          String   @id @default(uuid()) @db.Uuid
+  codeHash    String   @unique @map("code_hash") @db.VarChar(1000)
+  userId      String   @map("user_id") @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  // 'saml' | 'oidc'; mfaAsserted: the IdP said it did MFA (the session then starts at AAL2)
+  method      String   @default("saml") @db.VarChar(16)
+  mfaAsserted Boolean  @default(false) @map("mfa_asserted")
 
   @@map("sso_login_codes")
 }
@@ -1991,4 +1991,46 @@ model AgencySubmission {
   @@index([organizationId, status])
   @@index([agencyId])
   @@map("agency_submissions")
+}
+
+// A company's sign-in identity providers (P12 §4, YX-IAM-04/05): SAML, Google / Entra / generic
+// OIDC. Several per company, routed by email domain. Shapes and the JIT floor are database checks.
+model IdentityProvider {
+  id                        String                   @id @default(uuid()) @db.Uuid
+  organizationId            String                   @map("organization_id") @db.Uuid
+  organization              Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // 'saml' | 'oidc_google' | 'oidc_entra' | 'oidc_generic'
+  type                      String                   @db.VarChar(16)
+  name                      String                   @db.VarChar(100)
+  // 'active' | 'disabled'
+  status                    String                   @default("disabled") @db.VarChar(16)
+  samlEntityId              String?                  @map("saml_entity_id") @db.VarChar(1000)
+  samlSsoUrl                String?                  @map("saml_sso_url") @db.VarChar(1000)
+  samlCertificate           String?                  @map("saml_certificate") @db.Text
+  oidcIssuer                String?                  @map("oidc_issuer") @db.VarChar(1000)
+  oidcClientId              String?                  @map("oidc_client_id") @db.VarChar(1000)
+  // AES-256-GCM (OrgSecretsCryptoService); never returned by the API
+  oidcClientSecretEncrypted String?                  @map("oidc_client_secret_encrypted") @db.Text
+  entraTenantId             String?                  @map("entra_tenant_id") @db.Uuid
+  jitEnabled                Boolean                  @default(false) @map("jit_enabled")
+  jitRole                   String?                  @map("jit_role") @db.VarChar(32)
+  mfaClaimValues            String[]                 @default([]) @map("mfa_claim_values") @db.VarChar(255)
+  createdAt                 DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  domains                   IdentityProviderDomain[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId])
+  @@map("identity_providers")
+}
+
+model IdentityProviderDomain {
+  organizationId     String           @map("organization_id") @db.Uuid
+  domain             String           @db.VarChar(253)
+  identityProviderId String           @map("identity_provider_id") @db.Uuid
+  identityProvider   IdentityProvider @relation(fields: [identityProviderId, organizationId], references: [id, organizationId], onDelete: Cascade, map: "identity_provider_domains_provider_fkey")
+
+  @@id([organizationId, domain])
+  @@index([identityProviderId])
+  @@map("identity_provider_domains")
 }

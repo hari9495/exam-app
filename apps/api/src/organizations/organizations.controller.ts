@@ -17,7 +17,6 @@ import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { UpdateEmbeddingConfigDto } from './dto/update-embedding-config.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateHrisConfigDto } from './dto/update-hris-config.dto';
-import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateReminderSettingsDto } from './dto/update-reminder-settings.dto';
@@ -239,19 +238,6 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   updateApplyConsent(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateApplyConsentDto) {
     return this.organizationsService.setApplyConsent(tenant, userId, dto);
-  }
-
-  @Get('sso')
-  @RequirePermissions('org:manage_settings')
-  getSsoSettings(@CurrentTenant() tenant: TenantContext) {
-    return this.organizationsService.getSsoSettings(tenant);
-  }
-
-  @Patch('sso')
-  @RequirePermissions('org:manage_settings')
-  @RequireStepUp()
-  updateSsoSettings(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateSsoSettingsDto) {
-    return this.organizationsService.updateSsoSettings(tenant, userId, dto);
   }
 
   @Patch('branding')

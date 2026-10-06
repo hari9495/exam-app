@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Organization, Prisma } from '@prisma/client';
-import { randomBytes, createHash, X509Certificate } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 import * as argon2 from 'argon2';
 import * as nodemailer from 'nodemailer';
 import { PrismaService } from '@exam-platform/shared';
@@ -18,7 +18,6 @@ import { UpdateSmtpSettingsDto } from './dto/update-smtp-settings.dto';
 import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { UpdateEmbeddingConfigDto } from './dto/update-embedding-config.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
-import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateReminderSettingsDto } from './dto/update-reminder-settings.dto';
@@ -55,7 +54,7 @@ export interface BrandingResponse {
 // The platform-admin list is the ONLY consumer of the organizations table that
 // reaches a browser, and this table holds every one of an org's secrets. Without
 // an explicit select Prisma returns all scalars -- smtpPasswordEncrypted,
-// aiApiKeyEncrypted, apiKeyHash, webhookSecretEncrypted, samlIdpCertificate --
+// aiApiKeyEncrypted, apiKeyHash, webhookSecretEncrypted --
 // and the controller returns them verbatim. Add columns here deliberately; never
 // widen this to a bare findMany.
 const ORGANIZATION_LIST_SELECT = {
@@ -162,12 +161,6 @@ export interface WhatsappProviderCatalogItem {
   configFields: WhatsappConfigField[];
 }
 
-export interface SsoSettingsResponse {
-  samlEnabled: boolean;
-  samlIdpEntityId: string | null;
-  samlIdpSsoUrl: string | null;
-  samlIdpCertificate: string | null;
-}
 
 const ALLOWED_LOGO_MIME_TYPES: Record<string, string> = {
   'image/png': '.png',
@@ -933,87 +926,6 @@ export class OrganizationsService {
       metadata: { provider },
     });
     return { hrisExportConfigured: configured, hrisExportEnabled: dto.enabled };
-  }
-
-  async getSsoSettings(context: TenantContext): Promise<SsoSettingsResponse> {
-    const organizationId = this.requireOrganizationId(context);
-    const org = await this.prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: { samlEnabled: true, samlIdpEntityId: true, samlIdpSsoUrl: true, samlIdpCertificate: true },
-    });
-    return {
-      samlEnabled: org?.samlEnabled ?? false,
-      samlIdpEntityId: org?.samlIdpEntityId ?? null,
-      samlIdpSsoUrl: org?.samlIdpSsoUrl ?? null,
-      samlIdpCertificate: org?.samlIdpCertificate ?? null,
-    };
-  }
-
-  async updateSsoSettings(context: TenantContext, actorUserId: string, dto: UpdateSsoSettingsDto): Promise<SsoSettingsResponse> {
-    const organizationId = this.requireOrganizationId(context);
-
-    // Defense-in-depth: @IsUrl on the DTO only fires behind the global ValidationPipe
-    // (HTTP boundary). Re-check here so the service is safe to call directly too.
-    if (dto.samlIdpSsoUrl !== undefined) {
-      try {
-        new URL(dto.samlIdpSsoUrl);
-      } catch {
-        throw new BadRequestException('That does not look like a valid SSO URL');
-      }
-    }
-
-    if (dto.samlIdpCertificate !== undefined) {
-      try {
-        // eslint-disable-next-line no-new
-        new X509Certificate(dto.samlIdpCertificate);
-      } catch {
-        throw new BadRequestException('That does not look like a valid X.509 certificate (PEM format)');
-      }
-    }
-
-    if (dto.samlEnabled === true) {
-      const current = await this.prisma.organization.findUnique({
-        where: { id: organizationId },
-        select: { samlIdpEntityId: true, samlIdpSsoUrl: true, samlIdpCertificate: true },
-      });
-      const entityId = dto.samlIdpEntityId ?? current?.samlIdpEntityId;
-      const ssoUrl = dto.samlIdpSsoUrl ?? current?.samlIdpSsoUrl;
-      const certificate = dto.samlIdpCertificate ?? current?.samlIdpCertificate;
-      if (!entityId || !ssoUrl || !certificate) {
-        throw new BadRequestException('Cannot enable SSO until the IdP entity ID, SSO URL, and certificate are all set');
-      }
-    }
-
-    const org = await this.prisma.organization.update({
-      where: { id: organizationId },
-      data: {
-        ...(dto.samlEnabled !== undefined && { samlEnabled: dto.samlEnabled }),
-        ...(dto.samlIdpEntityId !== undefined && { samlIdpEntityId: dto.samlIdpEntityId }),
-        ...(dto.samlIdpSsoUrl !== undefined && { samlIdpSsoUrl: dto.samlIdpSsoUrl }),
-        ...(dto.samlIdpCertificate !== undefined && { samlIdpCertificate: dto.samlIdpCertificate }),
-      },
-    });
-    // Record the enable/disable toggle as its own action when samlEnabled was
-    // explicitly changed -- turning org-wide SSO on or off is a security-relevant
-    // event worth surfacing distinctly from a plain IdP-config edit.
-    const action =
-      dto.samlEnabled === true
-        ? 'organization.sso_enabled'
-        : dto.samlEnabled === false
-          ? 'organization.sso_disabled'
-          : 'organization.sso_configured';
-    await this.audit.record(context, {
-      actorUserId,
-      action,
-      entityType: 'organization',
-      entityId: organizationId,
-    });
-    return {
-      samlEnabled: org.samlEnabled,
-      samlIdpEntityId: org.samlIdpEntityId,
-      samlIdpSsoUrl: org.samlIdpSsoUrl,
-      samlIdpCertificate: org.samlIdpCertificate,
-    };
   }
 
   async getPipelineSettings(context: TenantContext): Promise<PipelineSettingsResponse> {

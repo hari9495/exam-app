@@ -200,12 +200,13 @@ export class AuthService {
     meta: ClientMeta,
     mfaFactor?: string,
   ): Promise<SignedIn> {
-    if (login.method !== 'saml') {
+    const viaIdp = login.method === 'saml' || login.method === 'oidc';
+    if (!viaIdp) {
       await this.loginProtection.registerSuccess(login.orgSlug, login.identifier, meta.ip);
     }
     const reason = login.breakGlass ? 'break_glass' : mfaFactor ? `mfa_${mfaFactor}` : undefined;
     const tokens: SignedIn = await this.startSession(user, login.method, meta, login.identifier, reason, mfaFactor);
-    if (login.method !== 'saml') {
+    if (!viaIdp) {
       const metadata = { ...(login.method !== 'password' ? { method: login.method } : {}), ...(mfaFactor ? { mfa: mfaFactor } : {}) };
       await this.audit.record(
         { organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' },
@@ -743,9 +744,13 @@ export class AuthService {
     await this.sessions.revokeById(payload.familyId, payload.sub, 'logout');
   }
 
+  // An identity provider vouched for `user` (SAML or OIDC). The session is AAL2 only when the IdP
+  // asserted MFA (P12 §3); otherwise the assertion is a first factor and the MFA rules apply: an
+  // enrolled YukthiX factor is still required, and the enrolment prompt / floor as for passwords.
   async issueTokensForSso(
     user: SessionUser & { permissionProfileId: string | null },
     meta: ClientMeta,
+    sso: { method: 'saml' | 'oidc'; mfaAsserted: boolean } = { method: 'saml', mfaAsserted: false },
   ): Promise<LoginOutcome> {
     if (!(await staffDeskIpAllowed(this.tenantPrisma, user, meta.ip))) {
       await this.sessions.recordLoginEvent({
@@ -753,14 +758,16 @@ export class AuthService {
         userId: user.id,
         identifier: user.email.toLowerCase(),
         result: 'failed',
-        method: 'saml',
+        method: sso.method,
         reason: 'ip_not_allowed',
         meta,
       });
       throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
     }
-    // The IdP's assertion is a first factor here; an enrolled YukthiX factor is still required.
-    const login = { method: 'saml' as const, orgSlug: '', identifier: user.email.toLowerCase(), breakGlass: false };
+    const login = { method: sso.method, orgSlug: '', identifier: user.email.toLowerCase(), breakGlass: false };
+    if (sso.mfaAsserted) {
+      return this.finishSignIn(user, login, meta, 'idp');
+    }
     if (await this.mfa.hasFactor(user)) {
       return this.challengeSecondFactor(user.id, login, meta);
     }

@@ -13,6 +13,7 @@ import {
   toSecurityPolicySettings,
 } from '@exam-platform/shared';
 import { UpdateSecurityPolicyDto } from './dto/update-security-policy.dto';
+import { hasActiveIdentityProvider } from './identity-providers';
 
 type SettingKey = keyof SecurityPolicySettings;
 const IP_LISTS = ['ipAllowlistDesk', 'ipAllowlistAdmin', 'ipAllowlistApi'] as const;
@@ -134,13 +135,13 @@ export class SecurityPolicyService {
       throw new BadRequestException(`SSO-only needs at least ${minWhenSsoOnly} break-glass admin accounts`);
     }
     if (next.ssoOnly || next.breakGlassUserIds.length) {
-      const { org, admins } = await this.tenantPrisma.forTenant(context, async (tx) => ({
-        org: await tx.organization.findUnique({ where: { id: organizationId }, select: { samlEnabled: true } }),
+      const { ssoConfigured, admins } = await this.tenantPrisma.forTenant(context, async (tx) => ({
+        ssoConfigured: await hasActiveIdentityProvider(tx, organizationId),
         admins: await tx.user.count({
           where: { id: { in: next.breakGlassUserIds }, organizationId, role: 'org_admin', status: 'active' },
         }),
       }));
-      if (next.ssoOnly && !org?.samlEnabled) {
+      if (next.ssoOnly && !ssoConfigured) {
         throw new BadRequestException('Set up single sign-on before turning on SSO-only');
       }
       if (admins !== next.breakGlassUserIds.length) {

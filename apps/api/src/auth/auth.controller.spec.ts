@@ -35,7 +35,7 @@ describe('AuthController.ssoExchange', () => {
   it('exchanges a valid unexpired code for a token pair and deletes the code', async () => {
     const codeHash = createHash('sha256').update('raw-code-123').digest('hex');
     prisma.ssoLoginCode.findUnique.mockResolvedValue({
-      id: 'code-row-1', codeHash, userId: 'user-1', expiresAt: new Date(Date.now() + 30_000),
+      id: 'code-row-1', codeHash, userId: 'user-1', expiresAt: new Date(Date.now() + 30_000), method: 'oidc', mfaAsserted: true,
     });
     tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', email: 'U1@x.test', organizationId: 'org-1', role: 'recruiter', status: 'active' });
     authService.issueTokensForSso.mockResolvedValue({ accessToken: 'access-1', refreshToken: 'refresh-1' });
@@ -48,6 +48,8 @@ describe('AuthController.ssoExchange', () => {
     expect(authService.issueTokensForSso).toHaveBeenCalledWith(
       { id: 'user-1', email: 'U1@x.test', organizationId: 'org-1', role: 'recruiter', permissionProfileId: null },
       expect.objectContaining({ ip: '203.0.113.7', userAgent: 'jest-agent', deviceId: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) }),
+      // How the IdP signed the person in travels with the code (AAL2 only when it asserted MFA).
+      { method: 'oidc', mfaAsserted: true },
     );
     // No device cookie on the request => one is minted, HttpOnly + Secure like the refresh cookie.
     expect(res.cookie).toHaveBeenCalledWith('yx_device', expect.any(String), expect.objectContaining({ httpOnly: true, secure: true, sameSite: 'lax' }));

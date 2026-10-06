@@ -2,13 +2,31 @@ import { SamlStrategy } from './saml.strategy';
 
 describe('SamlStrategy', () => {
   let prisma: { organization: { findUnique: jest.Mock } };
-  let tenantPrisma: { forTenant: jest.Mock };
+  let sso: { organizationBySlug: jest.Mock; activeProviders: jest.Mock; resolveUser: jest.Mock };
   let strategy: SamlStrategy;
+
+  // A company's SAML identity provider (P12 Part 1e: several per company, on identity_providers).
+  const samlProvider = (over: Record<string, unknown> = {}) => ({
+    id: 'idp-1',
+    organizationId: 'org-1',
+    type: 'saml',
+    status: 'active',
+    samlEntityId: 'https://idp.example.com/entity',
+    samlSsoUrl: 'https://idp.example.com/sso',
+    samlCertificate: '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----',
+    mfaClaimValues: [],
+    domains: [],
+    ...over,
+  });
+  const enabled = (...providers: unknown[]) => {
+    sso.organizationBySlug.mockResolvedValue({ id: 'org-1', slug: 'acme', status: 'active' });
+    sso.activeProviders.mockResolvedValue(providers.length ? providers : [samlProvider()]);
+  };
 
   beforeEach(() => {
     prisma = { organization: { findUnique: jest.fn() } };
-    tenantPrisma = { forTenant: jest.fn() };
-    strategy = new SamlStrategy(prisma as any, tenantPrisma as any, {} as any);
+    sso = { organizationBySlug: jest.fn().mockResolvedValue(null), activeProviders: jest.fn().mockResolvedValue([]), resolveUser: jest.fn() };
+    strategy = new SamlStrategy(prisma as any, sso as any, {} as any);
   });
 
   describe('resolveOrgSamlConfig', () => {
@@ -19,13 +37,7 @@ describe('SamlStrategy', () => {
       //   AADSTS75011: Authentication method 'MultiFactor, Fido' ... doesn't
       //   match requested authentication method 'Password, ProtectedTransport'
       // Password login worked, stronger credentials did not.
-      prisma.organization.findUnique.mockResolvedValue({
-        id: 'org-1',
-        samlEnabled: true,
-        samlIdpEntityId: 'https://idp.example.com/entity',
-        samlIdpSsoUrl: 'https://idp.example.com/sso',
-        samlIdpCertificate: '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----',
-      });
+      enabled();
 
       const config = await strategy.resolveOrgSamlConfig('acme');
 
@@ -37,13 +49,7 @@ describe('SamlStrategy', () => {
     it('still requires the assertion to be signed while relaxing the auth context', async () => {
       // Relaxing HOW the IdP authenticates must not relax whether we trust the
       // response. The signature and issuer checks are the security boundary.
-      prisma.organization.findUnique.mockResolvedValue({
-        id: 'org-1',
-        samlEnabled: true,
-        samlIdpEntityId: 'https://idp.example.com/entity',
-        samlIdpSsoUrl: 'https://idp.example.com/sso',
-        samlIdpCertificate: '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----',
-      });
+      enabled();
 
       const config = await strategy.resolveOrgSamlConfig('acme');
 
@@ -51,14 +57,8 @@ describe('SamlStrategy', () => {
       expect(config.validateInResponseTo).toBe('always');
     });
 
-    it('builds SAML options from the org row when SSO is enabled', async () => {
-      prisma.organization.findUnique.mockResolvedValue({
-        id: 'org-1',
-        samlEnabled: true,
-        samlIdpEntityId: 'https://idp.example.com/entity',
-        samlIdpSsoUrl: 'https://idp.example.com/sso',
-        samlIdpCertificate: '-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----',
-      });
+    it('builds SAML options from the company active SAML provider', async () => {
+      enabled();
 
       const config = await strategy.resolveOrgSamlConfig('acme');
 
@@ -78,38 +78,58 @@ describe('SamlStrategy', () => {
     });
 
     it('throws when the org has no slug match', async () => {
-      prisma.organization.findUnique.mockResolvedValue(null);
-
       await expect(strategy.resolveOrgSamlConfig('unknown-org')).rejects.toThrow();
     });
 
-    it('throws when the org has not enabled SAML', async () => {
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', samlEnabled: false });
+    it('throws when the org has no active SAML provider', async () => {
+      sso.organizationBySlug.mockResolvedValue({ id: 'org-1', slug: 'acme', status: 'active' });
+      sso.activeProviders.mockResolvedValue([samlProvider({ type: 'oidc_google' })]);
 
       await expect(strategy.resolveOrgSamlConfig('acme')).rejects.toThrow();
+    });
+
+    it('several SAML providers: RelayState picks one of the company own; without it none is guessed', async () => {
+      enabled(samlProvider(), samlProvider({ id: 'idp-2', samlSsoUrl: 'https://second.example.com/sso' }));
+
+      await expect(strategy.resolveOrgSamlConfig('acme', 'idp-2')).resolves.toEqual(expect.objectContaining({ entryPoint: 'https://second.example.com/sso' }));
+      await expect(strategy.resolveOrgSamlConfig('acme')).rejects.toThrow();
+      // Another company's provider id is simply not among this company's providers.
+      await expect(strategy.resolveOrgSamlConfig('acme', 'idp-of-another-company')).rejects.toThrow();
     });
   });
 
   describe('validate', () => {
-    it('resolves to the matching pre-provisioned user for the assertion email when the issuer matches', async () => {
+    it('resolves the account the provider vouches for when the issuer matches (AAL1 without an MFA context)', async () => {
       const req = { params: { organizationSlug: 'acme' } };
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', samlEnabled: true, samlIdpEntityId: 'https://idp.example.com/entity' });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', email: 'alice@acme.test', role: 'recruiter', organizationId: 'org-1' });
+      enabled();
+      sso.resolveUser.mockResolvedValue({ user: { id: 'user-1', email: 'alice@acme.test', role: 'recruiter', organizationId: 'org-1' } });
       const done = jest.fn();
 
       await strategy.validate(req as any, { nameID: 'alice@acme.test', issuer: 'https://idp.example.com/entity' } as any, done);
 
-      expect(tenantPrisma.forTenant).toHaveBeenCalledWith(
-        { organizationId: 'org-1', isSuperAdmin: false },
-        expect.any(Function),
-      );
-      expect(done).toHaveBeenCalledWith(null, { id: 'user-1', email: 'alice@acme.test', role: 'recruiter', organizationId: 'org-1' });
+      expect(sso.resolveUser).toHaveBeenCalledWith(expect.objectContaining({ id: 'idp-1' }), 'alice@acme.test', undefined);
+      expect(done).toHaveBeenCalledWith(null, { id: 'user-1', email: 'alice@acme.test', role: 'recruiter', organizationId: 'org-1', mfaAsserted: false });
     });
 
-    it('calls done with user:false and a not_provisioned info flag when no user matches', async () => {
+    it('flags IdP-asserted MFA from the AuthnContextClassRef', async () => {
+      enabled();
+      sso.resolveUser.mockResolvedValue({ user: { id: 'user-1', email: 'alice@acme.test', role: 'recruiter', organizationId: 'org-1' } });
+      const done = jest.fn();
+      const profile = {
+        nameID: 'alice@acme.test',
+        issuer: 'https://idp.example.com/entity',
+        getAssertion: () => ({ Assertion: { AuthnStatement: [{ AuthnContext: [{ AuthnContextClassRef: ['http://schemas.microsoft.com/claims/multipleauthn'] }] }] } }),
+      };
+
+      await strategy.validate({ params: { organizationSlug: 'acme' } } as any, profile as any, done);
+
+      expect(done).toHaveBeenCalledWith(null, expect.objectContaining({ mfaAsserted: true }));
+    });
+
+    it('calls done with user:false and the reason when no account is resolved', async () => {
       const req = { params: { organizationSlug: 'acme' } };
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', samlEnabled: true, samlIdpEntityId: 'https://idp.example.com/entity' });
-      tenantPrisma.forTenant.mockResolvedValue(null);
+      enabled();
+      sso.resolveUser.mockResolvedValue({ reason: 'not_provisioned' });
       const done = jest.fn();
 
       await strategy.validate(req as any, { nameID: 'nobody@acme.test', issuer: 'https://idp.example.com/entity' } as any, done);
@@ -117,28 +137,41 @@ describe('SamlStrategy', () => {
       expect(done).toHaveBeenCalledWith(null, false, { message: 'not_provisioned' });
     });
 
-    // Regression test for the finding that samlIdpEntityId was collected and
+    // Regression test for the finding that the entity ID was collected and
     // required-to-enable but never actually checked against the SAML
     // response's Issuer -- see the comment above this check in validate().
-    it('rejects the assertion when the profile issuer does not match the org-configured entity ID', async () => {
+    it('rejects the assertion when the profile issuer does not match the provider entity ID', async () => {
       const req = { params: { organizationSlug: 'acme' } };
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', samlEnabled: true, samlIdpEntityId: 'https://idp.example.com/entity' });
+      enabled();
       const done = jest.fn();
 
       await strategy.validate(req as any, { nameID: 'alice@acme.test', issuer: 'https://attacker.example.com/entity' } as any, done);
 
       expect(done).toHaveBeenCalledWith(null, false, { message: 'issuer_mismatch' });
-      expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+      expect(sso.resolveUser).not.toHaveBeenCalled();
+    });
+
+    it('a response is checked against the provider RelayState names, never another one', async () => {
+      enabled(samlProvider(), samlProvider({ id: 'idp-2', samlEntityId: 'https://second.example.com/entity' }));
+      const done = jest.fn();
+
+      await strategy.validate(
+        { params: { organizationSlug: 'acme' }, body: { RelayState: 'idp-2' } } as any,
+        { nameID: 'alice@acme.test', issuer: 'https://idp.example.com/entity' } as any,
+        done,
+      );
+
+      expect(done).toHaveBeenCalledWith(null, false, { message: 'issuer_mismatch' });
     });
   });
 
   describe('generateMetadata / resolveSpMetadataConfig', () => {
     it('builds SP metadata for an org that exists but has not enabled SSO yet (no IdP fields set)', async () => {
       // Regression test: SP metadata (this SP's own issuer + ACS callback
-      // URL) must not require samlEnabled or any IdP field, since org-admins
+      // URL) must not require an active identity provider, since org-admins
       // need to hand this URL to their IdP admin BEFORE SSO can be fully
       // configured and enabled -- see the comment on generateMetadata().
-      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', samlEnabled: false, samlIdpEntityId: null, samlIdpSsoUrl: null, samlIdpCertificate: null });
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1' });
       const req = { params: { organizationSlug: 'acme' } };
       const callback = jest.fn();
 

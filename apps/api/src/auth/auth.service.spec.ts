@@ -1283,6 +1283,17 @@ describe('AuthService', () => {
       expect(mfa.createPendingLogin).toHaveBeenCalledWith(expect.objectContaining({ method: 'saml', identifier: 'u@x.test' }));
       expect(sessions.create).not.toHaveBeenCalled();
     });
+
+    it('an IdP that asserted MFA opens an AAL2 (idp) session directly, even with a YukthiX factor enrolled (P12 §3)', async () => {
+      mfa.hasFactor.mockResolvedValue(true);
+      prisma.refreshToken.create.mockResolvedValue({ id: 'rt-1' });
+      const user = { id: 'user-1', email: 'U@x.test', organizationId: 'org-1', role: 'recruiter', permissionProfileId: null };
+      const outcome = await service.issueTokensForSso(user, META, { method: 'oidc', mfaAsserted: true });
+      expect(outcome).toHaveProperty('accessToken');
+      expect(sessions.create).toHaveBeenCalledWith(user, 'oidc', META, 'idp');
+      expect(mfa.createPendingLogin).not.toHaveBeenCalled();
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'success', method: 'oidc', reason: 'mfa_idp' }));
+    });
   });
 
   describe('one-time-code sign-in (P12 §3 AAL1, M04 Q2) and the OTP fallback factor (YX-IAM-03)', () => {

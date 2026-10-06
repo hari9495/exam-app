@@ -25,9 +25,9 @@ export interface ClientMeta {
   deviceId: string;
 }
 
-// Sign-in methods (otp_*: one-time code by that channel); the MFA factors appear on second-factor
+// Sign-in methods (saml / oidc: an identity provider; otp_*: one-time code by that channel); the MFA factors appear on second-factor
 // failures (result mfa_failed).
-export type LoginMethod = 'password' | 'saml' | 'otp_email' | 'otp_sms' | 'otp_whatsapp' | 'totp' | 'passkey' | 'recovery_code' | 'otp';
+export type LoginMethod = 'password' | 'saml' | 'oidc' | 'otp_email' | 'otp_sms' | 'otp_whatsapp' | 'totp' | 'passkey' | 'recovery_code' | 'otp';
 export type LoginResult = 'success' | 'failed' | 'locked' | 'mfa_failed';
 
 export interface SessionUser {

@@ -54,7 +54,7 @@ describe('UpdateSecurityPolicyDto: the YukthiX floor (Q8) -- a company may only 
 describe('SecurityPolicyService', () => {
   let tx: {
     tenantSecurityPolicy: { findUnique: jest.Mock; upsert: jest.Mock };
-    organization: { findUnique: jest.Mock };
+    identityProvider: { count: jest.Mock };
     user: { count: jest.Mock };
     $executeRaw: jest.Mock;
   };
@@ -65,7 +65,7 @@ describe('SecurityPolicyService', () => {
   beforeEach(() => {
     tx = {
       tenantSecurityPolicy: { findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn() },
-      organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: true }) },
+      identityProvider: { count: jest.fn().mockResolvedValue(1) },
       user: { count: jest.fn().mockResolvedValue(2) },
       $executeRaw: jest.fn(),
     };
@@ -156,7 +156,7 @@ describe('SecurityPolicyService', () => {
     });
 
     it('needs single sign-on to be set up first', async () => {
-      tx.organization.findUnique.mockResolvedValue({ samlEnabled: false });
+      tx.identityProvider.count.mockResolvedValue(0);
       await expect(update({ ssoOnly: true, breakGlassUserIds: BG })).rejects.toThrow('Set up single sign-on');
     });
 

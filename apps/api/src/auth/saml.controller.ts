@@ -5,26 +5,24 @@ import { Request, Response } from 'express';
 // the singleton's prototype, not as own properties) -- see saml.strategy.ts
 // for the full explanation. Import-equals keeps the real object.
 import passport = require('passport');
-import { randomBytes, createHash } from 'crypto';
-import { PrismaService } from '@exam-platform/shared';
 import { SsoUser, SamlStrategy } from './saml.strategy';
-
-const SSO_LOGIN_CODE_EXPIRY_SECONDS = 60;
+import { SsoService } from './sso.service';
+import { DEVICE_COOKIE, SessionsService } from './sessions.service';
+import { ssoCallbackUrl } from './sso.controller';
 
 @Controller('auth/saml')
 export class SamlController {
   constructor(
-    private readonly prisma: PrismaService,
     private readonly samlStrategy: SamlStrategy,
+    private readonly sso: SsoService,
+    private readonly sessions: SessionsService,
   ) {}
 
+  // Is any sign-in provider (SAML or OIDC) switched on for this company?
   @Get(':organizationSlug/status')
   async status(@Param('organizationSlug') organizationSlug: string): Promise<{ enabled: boolean }> {
-    const org = await this.prisma.organization.findUnique({
-      where: { slug: organizationSlug },
-      select: { samlEnabled: true },
-    });
-    return { enabled: org?.samlEnabled ?? false };
+    const org = await this.sso.organizationBySlug(organizationSlug);
+    return { enabled: org ? (await this.sso.activeProviders(org.id)).length > 0 : false };
   }
 
   @Get(':organizationSlug/metadata')
@@ -52,7 +50,7 @@ export class SamlController {
       'saml',
       { session: false },
       (err: Error | null, user: SsoUser | false | undefined, info: { message: string } | undefined) =>
-        this.handleAuthCallback(err, user, info, res),
+        this.handleAuthCallback(err, user, info, res, req),
     )(req, res);
   }
 
@@ -61,30 +59,31 @@ export class SamlController {
     user: SsoUser | false | undefined,
     info: { message: string } | undefined,
     res: Response,
+    req?: Request,
   ): Promise<void> {
-    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000';
-
-    if (err) {
-      res.redirect(`${frontendUrl}/sso/callback?ssoError=invalid_response`);
-      return;
-    }
-    if (!user) {
+    if (err || !user) {
+      // YX-IAM-10: the failed attempt is a login event. The IdP's POST is cross-site, so the
+      // SameSite=Lax device cookie is usually absent; none is minted here (that would overwrite it).
+      if (req) {
+        const userAgent = req.get('user-agent');
+        await this.sessions.recordLoginEvent({
+          organizationId: (await this.sso.organizationBySlug(String(req.params.organizationSlug ?? '')))?.id ?? null,
+          result: 'failed',
+          method: 'saml',
+          reason: err ? 'saml_invalid_response' : `saml_${info?.message ?? 'rejected'}`.slice(0, 64),
+          meta: { ip: req.ip ?? null, userAgent: userAgent ? userAgent.slice(0, 512) : null, deviceId: String(req.cookies?.[DEVICE_COOKIE] ?? '') },
+        });
+      }
       // Hardcode the literal, not info?.message -- the redirect must never leak
       // which specific validation step failed, regardless of what a collaborator sends.
-      res.redirect(`${frontendUrl}/sso/callback?ssoError=not_provisioned`);
+      res.redirect(ssoCallbackUrl(`ssoError=${err ? 'invalid_response' : 'not_provisioned'}`));
       return;
     }
 
     try {
-      const rawCode = randomBytes(32).toString('hex');
-      const codeHash = createHash('sha256').update(rawCode).digest('hex');
-      const expiresAt = new Date(Date.now() + SSO_LOGIN_CODE_EXPIRY_SECONDS * 1000);
-
-      await this.prisma.ssoLoginCode.create({ data: { userId: user.id, codeHash, expiresAt } });
-
-      res.redirect(`${frontendUrl}/sso/callback?code=${rawCode}`);
+      res.redirect(ssoCallbackUrl(`code=${await this.sso.mintLoginCode(user.id, 'saml', user.mfaAsserted)}`));
     } catch {
-      res.redirect(`${frontendUrl}/sso/callback?ssoError=invalid_response`);
+      res.redirect(ssoCallbackUrl('ssoError=invalid_response'));
     }
   }
 }
