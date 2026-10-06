@@ -15,6 +15,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ClientMeta, SessionUser, SessionsService } from './sessions.service';
 import { LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
+import { PasswordPolicyService } from './password-policy.service';
 
 interface TokenPair {
   accessToken: string;
@@ -58,6 +59,7 @@ export class AuthService {
     private readonly emailService: EmailService,
     private readonly sessions: SessionsService,
     private readonly loginProtection: LoginProtectionService,
+    private readonly passwordPolicy: PasswordPolicyService,
   ) {}
 
   // Password sign-in (YX-IAM-06/07/10). Unknown organisation, unknown email and wrong password
@@ -116,6 +118,9 @@ export class AuthService {
       { organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' },
       { actorUserId: user.id, action: 'login.success', entityType: 'user', entityId: user.id },
     );
+    if (user.passwordRecheckPending) {
+      void this.passwordPolicy.recheckAfterLogin(user, dto.password);
+    }
     return tokens;
   }
 
@@ -212,7 +217,14 @@ export class AuthService {
       throw new BadRequestException('This reset link is invalid or has expired');
     }
 
-    const passwordHash = await argon2.hash(dto.newPassword);
+    const owner = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.user.findUnique({ where: { id: resetToken.userId }, select: { organizationId: true, role: true } }),
+    );
+    // Before the token is consumed: a rejected password leaves the link usable for another try.
+    const { passwordHash, passwordRecheckPending } = await this.passwordPolicy.hashNewPassword(
+      dto.newPassword,
+      owner?.organizationId ?? null,
+    );
 
     // Routed through forTenant (super_admin bypass): the caller has proven identity via
     // a validated reset token, not via an org-scoped session, so there is no tenant
@@ -220,7 +232,7 @@ export class AuthService {
     // silently matches zero rows on `users`, making tx.user.update() a no-op. Same
     // pattern as the reuse-detection branch in refresh() below.
     await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
-      await tx.user.update({ where: { id: resetToken.userId }, data: { passwordHash } });
+      await tx.user.update({ where: { id: resetToken.userId }, data: { passwordHash, passwordRecheckPending } });
       await tx.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } });
       await tx.refreshToken.updateMany({
         where: { userId: resetToken.userId, revokedAt: null },
@@ -229,11 +241,8 @@ export class AuthService {
       await revokeStaffSessions(tx, { userId: resetToken.userId }, 'password_reset');
     });
 
-    const user = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
-      tx.user.findUnique({ where: { id: resetToken.userId } }),
-    );
     await this.audit.record(
-      { organizationId: user?.organizationId ?? null, isSuperAdmin: user?.role === 'super_admin' },
+      { organizationId: owner?.organizationId ?? null, isSuperAdmin: owner?.role === 'super_admin' },
       { actorUserId: resetToken.userId, action: 'password.reset', entityType: 'user', entityId: resetToken.userId },
     );
   }

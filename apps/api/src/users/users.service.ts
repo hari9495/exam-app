@@ -16,6 +16,7 @@ import { QuotaService } from '../billing/quota.service';
 import { SuperAdminEmailDto } from './dto/super-admin-email.dto';
 import { BulkCreateUsersDto } from './dto/bulk-create-users.dto';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
+import { PasswordPolicyService } from '../auth/password-policy.service';
 
 /**
  * A User record with `passwordHash` (and any other sensitive fields) excluded.
@@ -29,7 +30,7 @@ import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } fr
 // business being in a staff-list row -- only the "me" endpoints need it (see ProfileUser).
 // notificationDigest/lastDigestSentAt are the user's own email-cadence prefs, managed via the
 // /notifications/digest endpoints -- not part of the staff-user surface, so kept out of SafeUser.
-export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath' | 'emailSignature' | 'notificationDigest' | 'lastDigestSentAt'>;
+export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath' | 'emailSignature' | 'notificationDigest' | 'lastDigestSentAt' | 'passwordRecheckPending'>;
 
 // The staff pickers advertise "Search staff by name or email", but this filter matched email
 // only, so typing a person's NAME silently returned nothing -- the audit-log actor picker looked
@@ -90,11 +91,29 @@ export class UsersService {
     private readonly emailService: EmailService,
     private readonly blobStorage: BlobStorageService,
     private readonly quota: QuotaService,
+    private readonly passwordPolicy: PasswordPolicyService,
   ) {}
 
   async create(context: TenantContext, dto: CreateUserDto): Promise<SafeUser> {
     if (!context.organizationId) {
       throw new BadRequestException('A user must be created within an organization');
+    }
+
+    // SSO-enabled orgs authenticate staff via SAML, matched by email (see AuthService's
+    // ssoExchange) -- passwordHash is never checked for these users, so a caller-supplied
+    // password would just be dead weight nobody can use. Force a random, unusable one instead of
+    // trusting/requiring the frontend to send one. A chosen password meets the floor
+    // (YX-IAM-08); it is checked before the transaction so the breach lookup holds no DB tx open.
+    const org = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.organization.findUnique({ where: { id: context.organizationId as string }, select: { samlEnabled: true } }),
+    );
+    let chosen: { passwordHash: string; passwordRecheckPending: boolean };
+    if (org?.samlEnabled) {
+      chosen = { passwordHash: await argon2.hash(randomBytes(32).toString('hex')), passwordRecheckPending: false };
+    } else if (dto.password) {
+      chosen = await this.passwordPolicy.hashNewPassword(dto.password, context.organizationId);
+    } else {
+      throw new BadRequestException('Password is required');
     }
 
     const user = await this.tenantPrisma.forTenant(context, async (tx) => {
@@ -106,25 +125,13 @@ export class UsersService {
         throw new ConflictException('A user with this email already exists in your organization.');
       }
 
-      const org = await tx.organization.findUnique({
-        where: { id: context.organizationId as string },
-        select: { samlEnabled: true },
-      });
-      // SSO-enabled orgs authenticate staff via SAML, matched by email (see
-      // AuthService's ssoExchange) -- passwordHash is never checked for these users, so
-      // a caller-supplied password would just be dead weight nobody can use. Force a
-      // random, unusable one instead of trusting/requiring the frontend to send one.
-      const password = org?.samlEnabled ? randomBytes(32).toString('hex') : dto.password;
-      if (!password) {
-        throw new BadRequestException('Password is required');
-      }
-      const passwordHash = await argon2.hash(password);
       return tx.user.create({
         data: {
           organizationId: context.organizationId as string,
           email: dto.email,
           name: dto.name,
-          passwordHash,
+          passwordHash: chosen.passwordHash,
+          passwordRecheckPending: chosen.passwordRecheckPending,
           role: dto.role,
         },
         select: SAFE_USER_SELECT,
@@ -392,7 +399,7 @@ export class UsersService {
       throw new UnauthorizedException('Current password is incorrect');
     }
 
-    const passwordHash = await argon2.hash(dto.newPassword);
+    const { passwordHash, passwordRecheckPending } = await this.passwordPolicy.hashNewPassword(dto.newPassword, user.organizationId);
 
     // Preserve the session making this request: decode its own refresh-token
     // family so the revoke-others write below can exclude it. A voluntary
@@ -411,7 +418,7 @@ export class UsersService {
     }
 
     await this.tenantPrisma.forTenant(context, async (tx) => {
-      await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+      await tx.user.update({ where: { id: userId }, data: { passwordHash, passwordRecheckPending } });
       await tx.refreshToken.updateMany({
         where: {
           userId,

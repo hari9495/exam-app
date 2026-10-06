@@ -1,4 +1,5 @@
 import { IsEmail, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { TENANT_SECURITY_FLOOR } from '@exam-platform/shared';
 import { CREATABLE_ROLES } from '../../rbac/roles';
 
 export class CreateUserDto {
@@ -16,7 +17,8 @@ export class CreateUserDto {
   // depends on the org's samlEnabled flag, not just the DTO's own shape.
   @IsOptional()
   @IsString()
-  @MinLength(8)
+  @MinLength(TENANT_SECURITY_FLOOR.passwordMinLength)
+  @MaxLength(TENANT_SECURITY_FLOOR.passwordMaxLength)
   password?: string;
 
   @IsIn(CREATABLE_ROLES)

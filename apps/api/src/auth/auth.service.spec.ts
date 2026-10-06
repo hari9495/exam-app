@@ -10,6 +10,7 @@ import { AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { SessionsService } from './sessions.service';
 import { LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
+import { PasswordPolicyService } from './password-policy.service';
 
 // The real argon2, with verify() observable (still delegates to the real implementation).
 jest.mock('argon2', () => {
@@ -34,6 +35,7 @@ describe('AuthService', () => {
     create: jest.Mock; findLive: jest.Mock; revokeById: jest.Mock; recordLoginEvent: jest.Mock;
     notifyNewDevice: jest.Mock; notifyLocked: jest.Mock;
   };
+  let passwordPolicy: { hashNewPassword: jest.Mock; recheckAfterLogin: jest.Mock };
   let loginProtection: { check: jest.Mock; registerFailure: jest.Mock; registerSuccess: jest.Mock };
   let absoluteExpiresAt: Date;
   let tenantPrisma: { forTenant: jest.Mock };
@@ -68,6 +70,10 @@ describe('AuthService', () => {
       notifyNewDevice: jest.fn(),
       notifyLocked: jest.fn(),
     };
+    passwordPolicy = {
+      hashNewPassword: jest.fn(async (password: string) => ({ passwordHash: await argon2.hash(password), passwordRecheckPending: false })),
+      recheckAfterLogin: jest.fn().mockResolvedValue(undefined),
+    };
     loginProtection = {
       check: jest.fn().mockResolvedValue(null),
       registerFailure: jest.fn().mockResolvedValue({ failures: 1, locked: false }),
@@ -83,6 +89,7 @@ describe('AuthService', () => {
         { provide: EmailService, useValue: emailService },
         { provide: SessionsService, useValue: sessions },
         { provide: LoginProtectionService, useValue: loginProtection },
+        { provide: PasswordPolicyService, useValue: passwordPolicy },
         JwtService,
       ],
     }).compile();
@@ -550,8 +557,10 @@ describe('AuthService', () => {
       );
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'user-1' },
-        data: { passwordHash: expect.any(String) },
+        data: { passwordHash: expect.any(String), passwordRecheckPending: false },
       });
+      // The floor for the account's own organisation (YX-IAM-08).
+      expect(passwordPolicy.hashNewPassword).toHaveBeenCalledWith('NewPassw0rd!', 'org-1');
       // The weaker expect.any(String) check above would also pass for a hash of the
       // wrong password (or garbage) -- verify the stored hash actually verifies against
       // the newPassword that was submitted.
@@ -991,6 +1000,41 @@ describe('AuthService', () => {
       await service.logout(refreshToken);
 
       expect(sessions.revokeById).toHaveBeenCalledWith(SESSION_ID, 'user-1', 'logout');
+    });
+  });
+
+  describe('password floor at reset and sign-in (YX-IAM-08)', () => {
+    const withUser = async (overrides: object = {}) => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'active' });
+      tenantPrisma.forTenant.mockResolvedValueOnce({
+        id: 'user-1', email: 'admin@demo-org.test', organizationId: 'org-1', role: 'org_admin', status: 'active',
+        passwordHash: await argon2.hash('correct-password'), passwordRecheckPending: false, ...overrides,
+      });
+      tenantPrisma.forTenant.mockResolvedValueOnce(undefined); // lastLoginAt
+    };
+    const signIn = () => service.login({ organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'correct-password' }, META);
+
+    it('re-checks a password flagged while the breach service was down, without delaying sign-in', async () => {
+      await withUser({ passwordRecheckPending: true });
+      await signIn();
+      expect(passwordPolicy.recheckAfterLogin).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), 'correct-password');
+    });
+
+    it('does not re-check an unflagged password', async () => {
+      await withUser();
+      await signIn();
+      expect(passwordPolicy.recheckAfterLogin).not.toHaveBeenCalled();
+    });
+
+    it('a reset rejected by the password floor leaves the link unused and the password unchanged', async () => {
+      prisma.passwordResetToken.findUnique.mockResolvedValue({ id: 'prt-1', userId: 'user-1', usedAt: null, expiresAt: new Date(Date.now() + 60_000) });
+      prisma.user.findUnique.mockResolvedValue({ organizationId: 'org-1', role: 'recruiter' });
+      passwordPolicy.hashNewPassword.mockRejectedValue(new BadRequestException('breached'));
+
+      await expect(service.resetPassword({ token: 'raw-token', newPassword: 'password1234' })).rejects.toThrow(BadRequestException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.passwordResetToken.update).not.toHaveBeenCalled();
+      expect(prisma.session.updateMany).not.toHaveBeenCalled();
     });
   });
 });

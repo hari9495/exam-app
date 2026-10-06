@@ -5,11 +5,12 @@ import { UsersService } from './users.service';
 import { AuditModule, StorageModule } from '@exam-platform/shared';
 import { EmailModule } from '../email/email.module';
 import { BillingModule } from '../billing/billing.module';
+import { PasswordPolicyModule } from '../auth/password-policy.module';
 
 @Module({
   // BillingModule imported explicitly (not @Global) so UsersService can inject QuotaService --
   // same prod DI crash this pattern avoids elsewhere (see jobs.module.ts).
-  imports: [JwtModule.register({}), AuditModule, EmailModule, StorageModule, BillingModule],
+  imports: [JwtModule.register({}), AuditModule, EmailModule, StorageModule, BillingModule, PasswordPolicyModule],
   controllers: [UsersController],
   providers: [UsersService],
   exports: [UsersService],

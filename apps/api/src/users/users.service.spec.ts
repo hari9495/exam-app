@@ -11,6 +11,7 @@ import { AuditService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { QuotaService } from '../billing/quota.service';
+import { PasswordPolicyService } from '../auth/password-policy.service';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -20,6 +21,7 @@ describe('UsersService', () => {
   let emailService: { send: jest.Mock };
   let blobStorage: { upload: jest.Mock; signIfOurs: jest.Mock };
   let quota: { checkSoftLimit: jest.Mock };
+  let passwordPolicy: { hashNewPassword: jest.Mock };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
@@ -31,6 +33,9 @@ describe('UsersService', () => {
       // Stands in for the real SAS signing: returns the path with a token appended.
       signIfOurs: jest.fn(async (value: unknown) => (value == null ? null : `${value as string}?sig=abc`)),
     };
+    passwordPolicy = {
+      hashNewPassword: jest.fn(async (password: string) => ({ passwordHash: await argon2.hash(password), passwordRecheckPending: false })),
+    };
     quota = { checkSoftLimit: jest.fn().mockResolvedValue({ warn: false, threshold: null, used: 0, limit: 0 }) };
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -41,6 +46,7 @@ describe('UsersService', () => {
         { provide: EmailService, useValue: emailService },
         { provide: BlobStorageService, useValue: blobStorage },
         { provide: QuotaService, useValue: quota },
+        { provide: PasswordPolicyService, useValue: passwordPolicy },
       ],
     }).compile();
     service = moduleRef.get(UsersService);
@@ -172,6 +178,35 @@ describe('UsersService', () => {
       expect(await argon2.verify(createCall.data.passwordHash, '')).toBe(false);
     });
 
+    it('applies the password floor to a chosen password and stores the re-check flag (YX-IAM-08)', async () => {
+      passwordPolicy.hashNewPassword.mockResolvedValue({ passwordHash: 'h', passwordRecheckPending: true });
+      const tx = {
+        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        user: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'u1', email: 'a@b.com', organizationId: 'org-1', role: 'recruiter' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      await service.create(ctx, { email: 'a@b.com', password: 'a-long-passphrase', role: 'recruiter' });
+
+      expect(passwordPolicy.hashNewPassword).toHaveBeenCalledWith('a-long-passphrase', 'org-1');
+      expect(tx.user.create.mock.calls[0][0].data).toEqual(expect.objectContaining({ passwordHash: 'h', passwordRecheckPending: true }));
+    });
+
+    it('creates nothing when the chosen password fails the floor', async () => {
+      passwordPolicy.hashNewPassword.mockRejectedValue(new BadRequestException('breached'));
+      const tx = {
+        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        user: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      await expect(service.create(ctx, { email: 'a@b.com', password: 'password1234', role: 'recruiter' })).rejects.toThrow(BadRequestException);
+      expect(tx.user.create).not.toHaveBeenCalled();
+    });
+
     it('rejects creation with no password when the org does NOT have SSO enabled', async () => {
       const tx = {
         organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
@@ -188,6 +223,7 @@ describe('UsersService', () => {
     // with no exception filter to translate it, surfacing a generic 500 instead of a clear message.
     it('rejects with a clear message when a user with that email already exists in the org', async () => {
       const tx = {
+        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 'existing-1', email: 'a@b.com' }) },
       };
       tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
@@ -576,6 +612,26 @@ describe('UsersService', () => {
         undefined,
       ),
     ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('changePassword applies the floor for the user organisation and changes nothing on rejection', async () => {
+    const storedHash = await argon2.hash('correct-password');
+    const userUpdate = jest.fn();
+    passwordPolicy.hashNewPassword.mockRejectedValue(new BadRequestException('breached'));
+    tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+      fn({ user: { findUniqueOrThrow: async () => ({ id: 'user-1', organizationId: 'org-1', passwordHash: storedHash }), update: userUpdate } }),
+    );
+
+    await expect(
+      service.changePassword(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        'user-1',
+        { currentPassword: 'correct-password', newPassword: 'password1234' },
+        undefined,
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(passwordPolicy.hashNewPassword).toHaveBeenCalledWith('password1234', 'org-1');
+    expect(userUpdate).not.toHaveBeenCalled();
   });
 
   it('changePassword updates the hash and revokes other sessions, keeping the caller\'s own session alive', async () => {

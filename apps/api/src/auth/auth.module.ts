@@ -14,6 +14,7 @@ import Redis from 'ioredis';
 import { SessionsService } from './sessions.service';
 import { SessionsController } from './sessions.controller';
 import { LOGIN_PROTECTION_REDIS, LoginProtectionService } from './login-protection.service';
+import { PasswordPolicyModule } from './password-policy.module';
 
 // Its own connection, fast-failing: the shared BullMQ-style connection (maxRetriesPerRequest:
 // null) would park sign-in requests forever during a Redis outage instead of failing closed.
@@ -24,7 +25,7 @@ function createLoginProtectionRedis(): Redis {
 }
 
 @Module({
-  imports: [PassportModule, JwtModule.register({}), AuditModule, EmailModule],
+  imports: [PassportModule, JwtModule.register({}), AuditModule, EmailModule, PasswordPolicyModule],
   providers: [
     AuthService,
     JwtStrategy,
