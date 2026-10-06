@@ -20,6 +20,9 @@ describe('CSV export cells (OWASP CSV injection)', () => {
     expect(csvCell('say "hi"')).toBe('"say ""hi"""');
     expect(csvCell('=HYPERLINK("x")')).toBe(`"'=HYPERLINK(""x"")"`);
     expect(csvCell('+91 98450')).toBe("'+91 98450");
+    // Formula forms an importer may still run after trimming or folding full-width signs.
+    for (const v of ['  =1+1', '\t=1+1', '\r=1', ' @SUM(A1)', '\uFF1D1+1', ' \uFF0BA1', '\uFF0D1', '\uFF20x', '\u3000=1']) expect(csvCell(v).replace(/^"/, '').startsWith("'")).toBe(true);
+    expect(csvCell('Kaveri - Hosur')).toBe('Kaveri - Hosur');
     expect(csvText([['a', null], [1, 'b']])).toBe('a,\r\n1,b\r\n');
   });
 });

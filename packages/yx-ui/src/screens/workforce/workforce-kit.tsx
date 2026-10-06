@@ -6,12 +6,13 @@ import type { ProbationStage, Ref, TeamMember } from './types';
 export const refName = (r: Ref | null | undefined) => r?.name ?? '—';
 
 /**
- * One CSV cell. Cells a spreadsheet would run as a formula get a leading apostrophe (OWASP CSV injection);
- * quotes are doubled.
+ * One CSV cell. Cells a spreadsheet would run as a formula get a leading apostrophe (OWASP CSV injection):
+ * a formula sign, tab or CR first, also after leading whitespace (importers trim it) and in full-width form
+ * (some importers fold it to ASCII). Quotes are doubled.
  */
 export function csvCell(value: string | number | null | undefined): string {
   let s = value === null || value === undefined ? '' : String(value);
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  if (/^[\t\r]|^\s*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]/.test(s)) s = `'${s}`;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
