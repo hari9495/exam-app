@@ -5,7 +5,8 @@ import { LegalEntitiesScreen, entityInput, statutoryErrors, type LegalEntitiesSc
 import { LocationsScreen, locationInput, type LocationsScreenProps } from './locations';
 import { StructureScreen, masterInput, payRangeErrors, subtree, type StructureScreenProps } from './structure';
 import { addressDraft, ownershipLabel } from './org-kit';
-import { ENTITIES, LOCATIONS, MASTERS, PAY_RANGES, RULES, STATES, TODAY_ISO } from './data';
+import { CompanySettingsScreen, companyValue, settingInput, type CompanySettingsScreenProps } from './settings';
+import { ENTITIES, LOCATIONS, MASTERS, PAY_RANGES, RULES, SETTING_CHOICES, SETTING_OVERRIDES, SETTING_REGISTRY, STATES, TODAY_ISO } from './data';
 
 const ok = () => vi.fn().mockResolvedValue(undefined);
 
@@ -241,5 +242,77 @@ describe('rules without a screen', () => {
   it('a department cannot move under its own subtree (YX-ORG-03)', () => {
     expect([...subtree(MASTERS.departments, 'd-ops')].sort()).toEqual(['d-ops', 'd-prod', 'd-qa']);
     expect(ownershipLabel({ ownerLegalEntityId: null, appliesToEntities: ['le-kfpl', 'le-tn'] }, ENTITIES)).toBe('Shared · KFPL, KFPL-TN');
+  });
+});
+
+describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
+  const base: CompanySettingsScreenProps = {
+    section: 'organisation',
+    state: 'ready',
+    registry: SETTING_REGISTRY,
+    overrides: SETTING_OVERRIDES,
+    choices: SETTING_CHOICES,
+    canManage: true,
+    heldGuards: ['access.role.manage'],
+    today: TODAY_ISO,
+    onSave: ok(),
+    onRemove: ok(),
+  };
+
+  it('YX-ORG-12/18: the company value says where it comes from; dated values resolve as of today', () => {
+    const def = SETTING_REGISTRY['attendance.mode'];
+    expect(companyValue(def, SETTING_OVERRIDES.filter((r) => r.key === 'attendance.mode'), TODAY_ISO).value).toBe('punch');
+    // A company value starting later is not in force yet.
+    expect(companyValue(def, [{ id: 'x', key: 'attendance.mode', scopeType: 'tenant', scopeId: 'o', value: 'timesheet', validFrom: '2026-12-01' }], TODAY_ISO)).toEqual({ value: 'punch', row: null });
+    render(<CompanySettingsScreen {...base} />);
+    expect(screen.getByText('6 · YukthiX starter, not changed yet')).toBeInTheDocument();
+    expect(screen.getByText('Punch in and out · Set for your company from 1 Apr 2026')).toBeInTheDocument();
+    expect(screen.getByText('Hosur plant')).toBeInTheDocument();
+    expect(screen.getByText('Scheduled')).toBeInTheDocument();
+  });
+
+  it('builds a scoped body; dated keys need a start date; the record is required; only registered values', () => {
+    const def = SETTING_REGISTRY['attendance.mode'];
+    expect(settingInput('attendance.mode', def, { scopeType: 'location', scopeId: null, value: 'punch', validFrom: null }).errors.map((e) => e.fieldId)).toEqual(['set-scope-id', 'set-from']);
+    expect(settingInput('attendance.mode', def, { scopeType: 'location', scopeId: 'loc-hsr', value: 'punch', validFrom: new Date(2026, 10, 1) }).input).toEqual({ key: 'attendance.mode', scopeType: 'location', scopeId: 'loc-hsr', value: 'punch', validFrom: '2026-11-01' });
+    const who = SETTING_REGISTRY['privacy.who_accessed'];
+    expect(settingInput('privacy.who_accessed', who, { scopeType: 'tenant', scopeId: null, value: 'nope', validFrom: null }).input).toBeNull();
+    expect(settingInput('privacy.who_accessed', who, { scopeType: 'tenant', scopeId: null, value: 'off', validFrom: null }).input).toEqual({ key: 'privacy.who_accessed', scopeType: 'tenant', value: 'off' });
+  });
+
+  it('YX-HIS-07: removes a scheduled value only after confirming; values in force have no Remove', async () => {
+    const onRemove = ok();
+    render(<CompanySettingsScreen {...base} onRemove={onRemove} />);
+    const table = screen.getByRole('table', { name: /Attendance mode/ });
+    const rows = within(table).getAllByRole('row');
+    const blr = rows.find((r) => within(r).queryByText('Bengaluru head office'))!;
+    expect(within(blr).queryAllByRole('button')).toHaveLength(0);
+    const hosur = rows.find((r) => within(r).queryByText('Hosur plant'))!;
+    await userEvent.click(within(hosur).getByRole('button'));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(onRemove).toHaveBeenCalledWith('s-5'));
+  });
+
+  it('YX-SEC-02: guarded settings are disabled with the reason without access management; view-only has no buttons', () => {
+    const { unmount } = render(<CompanySettingsScreen {...base} section="access" heldGuards={[]} />);
+    const buttons = screen.getAllByRole('button', { name: 'Change' });
+    expect(buttons).toHaveLength(4);
+    buttons.forEach((b) => expect(b).toBeDisabled());
+    expect(screen.getAllByText(/Only an admin who manages roles and access changes this/)).toHaveLength(4);
+    unmount();
+    render(<CompanySettingsScreen {...base} canManage={false} />);
+    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
+  });
+
+  it('the editor refuses to save without a value', async () => {
+    const onSave = ok();
+    render(<CompanySettingsScreen {...base} onSave={onSave} />);
+    const block = screen.getByText('Probation review reminder (days before the end)').closest('.yx-auth__stack') as HTMLElement;
+    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(within(dialog).getAllByText('Choose the value').length).toBeGreaterThan(0);
   });
 });

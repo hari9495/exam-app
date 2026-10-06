@@ -10,6 +10,7 @@ import { Select } from '../../components/select';
 import { Breadcrumbs, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { dateLabel, errorText } from '../org/org-kit';
+import { HireDrawer, type HireDrawerProps } from '../history/hire';
 import { refName } from './workforce-kit';
 import type { DirectoryPage, DirectoryPerson, DirectoryQuery, LoadState, PersonRecord, Ref } from './types';
 
@@ -30,6 +31,10 @@ export interface DirectoryScreenProps {
   /** HR: the person behind the record and their roles. */
   loadPerson?: (id: string) => Promise<PersonRecord>;
   onOpenHistory?: (id: string) => void;
+  /** HR with the record's grants: the profile (Personal, identity and bank by class, P02 §4.4). */
+  onOpenProfile?: (id: string) => void;
+  /** employee.change.manage: add a person (P01 §4.4, PPL-36). */
+  addPerson?: Omit<HireDrawerProps, 'onClose'>;
 }
 
 const ROLE_LABEL: Record<string, string> = { employee: 'Employee', login: 'Sign-in', candidate: 'Candidate', applicant: 'Applicant', alumnus: 'Alumnus', nominee: 'Nominee', consultant: 'Consultant', contract_worker: 'Contract worker', vendor_worker: 'Vendor worker', campus_registrant: 'Campus registrant', test_taker: 'Test taker', external_login: 'External sign-in' };
@@ -76,8 +81,9 @@ function PersonPanel({ id, loadPerson }: { id: string; loadPerson: (id: string) 
   );
 }
 
-export function DirectoryScreen({ state, onRetry, page, query, onQuery, choices, isHr, loadPerson, onOpenHistory }: DirectoryScreenProps) {
+export function DirectoryScreen({ state, onRetry, page, query, onQuery, choices, isHr, loadPerson, onOpenHistory, onOpenProfile, addPerson }: DirectoryScreenProps) {
   const [search, setSearch] = useState(query.q);
+  const [adding, setAdding] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   // Search as you type, a moment after the last key.
   useEffect(() => {
@@ -98,7 +104,7 @@ export function DirectoryScreen({ state, onRetry, page, query, onQuery, choices,
   const limit = page?.limit ?? 50;
   return (
     <div className="yx-auth__page">
-      <PageHeader breadcrumbs={<Breadcrumbs items={[{ label: 'People' }, { label: 'Directory' }]} />} title="Directory" description="Find colleagues by name, team or location. Colleagues see only name, role, team, location, work email and manager." />
+      <PageHeader breadcrumbs={<Breadcrumbs items={[{ label: 'People' }, { label: 'Directory' }]} />} title="Directory" description="Find colleagues by name, team or location. Colleagues see only name, role, team, location, work email and manager." actions={addPerson && state === 'ready' ? <Button variant="primary" onClick={() => setAdding(true)}>Add person</Button> : undefined} />
       {state === 'loading' && <Skeleton height={240} />}
       {state === 'error' && <ErrorState title="We couldn't load the directory." description="Check your connection and try again." onRetry={onRetry} />}
       {state === 'no-access' && <NoAccessState grantedBy="HR" what="the directory" />}
@@ -123,7 +129,7 @@ export function DirectoryScreen({ state, onRetry, page, query, onQuery, choices,
               setSearch('');
               onQuery({ q: '', legalEntityId: null, departmentId: null, locationId: null, offset: 0 });
             }}
-            empty={<EmptyState compact title="No one here yet." description="People appear once HR adds them." />}
+            empty={<EmptyState compact title="No one here yet." description="People appear once HR adds them." action={addPerson ? <Button onClick={() => setAdding(true)}>Add person</Button> : undefined} />}
             onRowClick={(r) => setOpenId(r.id)}
             activeRowId={openId}
           />
@@ -138,6 +144,7 @@ export function DirectoryScreen({ state, onRetry, page, query, onQuery, choices,
         footer={
           <>
             <Button onClick={() => setOpenId(null)}>Close</Button>
+            {open && isHr && onOpenProfile && <Button onClick={() => onOpenProfile(open.id)}>Profile</Button>}
             {open && isHr && onOpenHistory && (
               <Button variant="primary" onClick={() => onOpenHistory(open.id)}>
                 Job history
@@ -190,6 +197,7 @@ export function DirectoryScreen({ state, onRetry, page, query, onQuery, choices,
           </div>
         )}
       </Drawer>
+      {adding && addPerson && <HireDrawer {...addPerson} onClose={() => setAdding(false)} />}
     </div>
   );
 }

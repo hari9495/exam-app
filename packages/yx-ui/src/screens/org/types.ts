@@ -139,3 +139,43 @@ export interface CompanyRules {
   employeeCodeScope: CompanyRule<'legal_entity' | 'tenant'>;
   defaultOwnership: CompanyRule<'shared' | 'entity_only'>;
 }
+
+/* ---------- scoped settings (P01 §4.6; YX-ORG-12/18) ---------- */
+
+/** Most specific first; pay groups arrive with payroll. */
+export type SettingScope = 'employee' | 'designation' | 'grade' | 'employment_type' | 'department' | 'location' | 'pay_group' | 'legal_entity' | 'tenant';
+
+/** One registered key, as GET /org/settings returns it. */
+export interface SettingDef {
+  label: string;
+  scopes: SettingScope[];
+  /** Dated keys carry the date they apply from; values in force cannot change (YX-HIS-07). */
+  dated: boolean;
+  values: string[];
+  /** The YukthiX starter value (D17). */
+  default: string;
+  /** A second key needed to change it (access and fraud guards). */
+  guard?: string;
+}
+
+export interface SettingOverride {
+  id: string;
+  key: string;
+  scopeType: SettingScope;
+  /** The company id for scope 'tenant'. */
+  scopeId: string;
+  value: unknown;
+  /** YYYY-MM-DD, dated keys only. */
+  validFrom: string | null;
+}
+
+export interface SettingInput {
+  key: string;
+  scopeType: SettingScope;
+  scopeId?: string;
+  value: string;
+  validFrom?: string;
+}
+
+/** The records each scope can name, by scope. */
+export type SettingScopeChoices = Partial<Record<SettingScope, { value: string; label: string }[]>>;

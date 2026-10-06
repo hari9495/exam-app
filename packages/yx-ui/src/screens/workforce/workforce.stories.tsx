@@ -16,11 +16,20 @@ type S = StoryObj;
 const wait = (ms = 400) => new Promise<void>((r) => setTimeout(r, ms));
 const EMPTY_QUERY: DirectoryQuery = { q: '', legalEntityId: null, departmentId: null, locationId: null, offset: 0 };
 
+const ENTITY_CHOICES = CHOICES.legalEntities.map((e) => ({ value: e.id, label: e.name ?? '' }));
+/** The second try links to the matched person (PPL-36). */
+let tries = 0;
+const hire = async (input: { personId?: string }) => {
+  await wait();
+  if (!input.personId && tries++ % 2 === 0) throw Object.assign(new Error('Possible same person'), { code: 'POSSIBLE_SAME_PERSON', body: { personIds: ['person-1'] } });
+  return { id: 'e-new' };
+};
+
 function Directory({ hr = false }: { hr?: boolean }) {
   const [query, setQuery] = useState(EMPTY_QUERY);
   const page = hr ? DIRECTORY_HR : DIRECTORY;
   const people = page.people.filter((p) => (!query.q || p.name.toLowerCase().includes(query.q.toLowerCase())) && (!query.departmentId || p.department?.id === query.departmentId));
-  return <DirectoryScreen state="ready" page={{ ...page, total: people.length, people }} query={query} onQuery={setQuery} choices={CHOICES} isHr={hr} loadPerson={() => wait().then(() => PERSON)} onOpenHistory={() => {}} />;
+  return <DirectoryScreen state="ready" page={{ ...page, total: people.length, people }} query={query} onQuery={setQuery} choices={CHOICES} isHr={hr} loadPerson={() => wait().then(() => PERSON)} onOpenHistory={() => {}} onOpenProfile={hr ? () => {} : undefined} addPerson={hr ? { options: OPTIONS, legalEntities: ENTITY_CHOICES, onSubmit: hire } : undefined} />;
 }
 
 export const DirectoryEmployee: S = { name: 'Directory · employee (Public fields)', render: () => <Directory /> };

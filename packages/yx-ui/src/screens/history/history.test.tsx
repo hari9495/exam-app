@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { PersonHistoryScreen, type PersonHistoryScreenProps } from './person-history';
 import { JobChangesScreen, type JobChangesScreenProps } from './job-changes';
 import { changeInput, ImpactPanel, type ChangeDraft } from './history-kit';
+import { EMPTY_HIRE, HireDrawer, hireInput, type HireDraft } from './hire';
 import { AS_OF, AS_OF_PAY, CHANGES, HISTORY, IMPACT, OPTIONS, PEOPLE, TODAY_ISO } from './data';
 
 const ok = () => vi.fn().mockResolvedValue(undefined);
@@ -189,5 +190,78 @@ describe('JobChangesScreen (PPL-05; YX-SEC-11, YX-HIS-06, Q7)', () => {
     render(<Changes canApprove={false} canManage={false} />);
     expect(screen.queryByRole('button', { name: 'Review' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'New change' })).toBeNull();
+  });
+});
+
+describe('Add person (P01 §4.4 / §4.5a, PPL-36)', () => {
+  const full: HireDraft = { ...EMPTY_HIRE, givenName: ' Kiran ', familyName: 'Joshi', workEmail: 'kiran.j@kaverifoods.in', legalEntityId: 'le-kfpl', joinedOn: new Date(2026, 9, 1), locationId: 'loc-blr', departmentId: 'd-qa', designationId: 'des-qa', employmentTypeId: 'et-perm', costCentreId: 'cc-eng', annualCtc: '540000', reason: 'Offer accepted' };
+
+  it('builds the join body with the whole job; pay only for pay access (R1)', () => {
+    expect(hireInput(full, true).input).toEqual({
+      givenName: 'Kiran',
+      familyName: 'Joshi',
+      workEmail: 'kiran.j@kaverifoods.in',
+      legalEntityId: 'le-kfpl',
+      joinedOn: '2026-10-01',
+      status: 'probation',
+      assignment: { locationId: 'loc-blr', departmentId: 'd-qa', designationId: 'des-qa', employmentTypeId: 'et-perm', gradeId: null, managerEmployeeId: null, costCentres: [{ costCentreId: 'cc-eng', percent: '100' }] },
+      compensation: { currency: 'INR', annualCtc: '540000' },
+      reason: 'Offer accepted',
+    });
+    expect(hireInput(full, false).input).not.toHaveProperty('compensation');
+  });
+
+  it('lists what is missing or malformed', () => {
+    expect(hireInput(EMPTY_HIRE, true).errors.map((e) => e.fieldId)).toEqual(['hire-given', 'hire-entity', 'hire-joined', 'hire-location', 'hire-department', 'hire-designation', 'hire-type', 'hire-cc', 'hire-reason']);
+    const bad = hireInput({ ...full, workEmail: 'kiran@', mobilePhone: 'call me', employeeCode: 'KF 01;', annualCtc: '5,40,000' }, true);
+    expect(bad.errors.map((e) => e.fieldId)).toEqual(['hire-email', 'hire-phone', 'hire-code', 'hire-ctc']);
+  });
+
+  it('YX-ORG-27: a possible match is linked only after HR confirms it is the same person', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const onSubmit = vi
+      .fn()
+      .mockRejectedValueOnce(Object.assign(new Error('match'), { code: 'POSSIBLE_SAME_PERSON', body: { personIds: ['person-9'] } }))
+      .mockResolvedValueOnce({ id: 'e-new' });
+    const onCreated = vi.fn();
+    render(<HireDrawer options={OPTIONS} legalEntities={[{ value: 'le-kfpl', label: 'Kaveri Foods Pvt Ltd' }]} onSubmit={onSubmit} onClose={() => {}} onCreated={onCreated} />);
+    const dialog = screen.getByRole('dialog');
+    const pick = async (name: string, option: string) => {
+      await u.click(within(dialog).getByRole('combobox', { name }));
+      await u.click(await screen.findByRole('option', { name: option }));
+    };
+    await u.type(within(dialog).getByLabelText(/First name/), 'Kiran');
+    await u.type(within(dialog).getByLabelText(/Work email/), 'kiran.j@kaverifoods.in');
+    await pick('Legal entity', 'Kaveri Foods Pvt Ltd');
+    // Entity-only masters of another entity are not offered (YX-ORG-15).
+    await u.click(within(dialog).getByRole('combobox', { name: 'Location' }));
+    expect(screen.queryByRole('option', { name: 'Hosur plant' })).toBeNull();
+    await u.click(await screen.findByRole('option', { name: 'Bengaluru head office' }));
+    await pick('Department', 'Quality');
+    await pick('Designation', 'Quality Analyst');
+    await pick('Employment type', 'Permanent');
+    await pick('Cost centre', 'CC-BLR-ENG · Engineering Bengaluru');
+    await u.type(within(dialog).getByLabelText(/Joins on/), '1/10/2026');
+    await u.type(within(dialog).getByLabelText(/^Reason/), 'Offer accepted');
+    await u.click(within(dialog).getByRole('button', { name: 'Add person' }));
+    await screen.findByText('This email or phone already belongs to someone here');
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('personId');
+    const link = within(dialog).getByRole('button', { name: 'Link and add' });
+    expect(link).toBeDisabled();
+    await u.click(within(dialog).getByRole('checkbox', { name: 'I checked: this is the same person' }));
+    await u.click(link);
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('e-new'));
+    expect(onSubmit.mock.calls[1][0]).toMatchObject({ personId: 'person-9', givenName: 'Kiran', joinedOn: '2026-10-01' });
+  });
+
+  it('any other refusal is shown and nothing is linked', async () => {
+    const onSubmit = vi.fn().mockRejectedValue(Object.assign(new Error('That email or phone belongs to another person.'), { code: 'CONFLICT' }));
+    const { rerender } = render(<HireDrawer options={OPTIONS} legalEntities={[]} onSubmit={onSubmit} onClose={() => {}} />);
+    // Incomplete: listed, not sent.
+    await userEvent.click(screen.getByRole('button', { name: 'Add person' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText('Fix these before saving')).toBeInTheDocument();
+    rerender(<HireDrawer options={{ ...OPTIONS, canPay: false }} legalEntities={[]} onSubmit={onSubmit} onClose={() => {}} />);
+    expect(screen.queryByLabelText(/Annual CTC/)).toBeNull();
   });
 });

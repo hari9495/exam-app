@@ -9,6 +9,7 @@ import { BulkChangesScreen, type BulkChangesScreenProps } from './bulk';
 import { csvCell, csvText } from './workforce-kit';
 import { BATCH_DETAIL, BATCHES, BULK_RESULT, CHOICES, DIRECTORY, DIRECTORY_HR, ORG_CHART, PEOPLE, PERSON, PROBATIONS, TEAM, TODAY_ISO } from './data';
 import type { DirectoryQuery } from './types';
+import { OPTIONS } from '../history/data';
 
 const ok = () => vi.fn().mockResolvedValue(undefined);
 const QUERY: DirectoryQuery = { q: '', legalEntityId: null, departmentId: null, locationId: null, offset: 0 };
@@ -47,6 +48,20 @@ describe('Directory (P02 Q4, YX-SEC-17)', () => {
     expect(loadPerson).toHaveBeenCalledWith('p-arjun');
     await userEvent.click(within(drawer).getByRole('button', { name: 'Job history' }));
     expect(onOpenHistory).toHaveBeenCalledWith('p-arjun');
+  });
+
+  it('Add person and Profile only where granted; Add person opens the hire form', async () => {
+    const { unmount } = render(<DirectoryScreen state="ready" page={DIRECTORY} query={QUERY} onQuery={vi.fn()} choices={CHOICES} isHr={false} />);
+    expect(screen.queryByRole('button', { name: 'Add person' })).toBeNull();
+    unmount();
+    const onOpenProfile = vi.fn();
+    render(<DirectoryScreen state="ready" page={DIRECTORY_HR} query={QUERY} onQuery={vi.fn()} choices={CHOICES} isHr onOpenProfile={onOpenProfile} addPerson={{ options: OPTIONS, legalEntities: [], onSubmit: vi.fn() }} />);
+    await userEvent.click(screen.getAllByText('Arjun Kulkarni')[0]);
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Profile' }));
+    expect(onOpenProfile).toHaveBeenCalledWith('p-arjun');
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Add person' }));
+    expect(await screen.findByRole('dialog', { name: /Add person/ })).toBeInTheDocument();
   });
 
   it('searches a moment after typing, from the first page', async () => {

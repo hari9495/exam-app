@@ -1,6 +1,6 @@
 // Story and test data in the YukthiX story world (review/RULES.md "Data facts"): Kaveri Foods, fictional
 // identifiers, documentation IP ranges. TODAY is 29 Sep 2026.
-import type { CompanyRules, LegalEntity, MasterLists, OrgLocation, PayRange, StateOption } from './types';
+import type { CompanyRules, LegalEntity, MasterLists, OrgLocation, PayRange, SettingDef, SettingOverride, SettingScopeChoices, StateOption } from './types';
 
 export const TODAY_ISO = '2026-09-29';
 
@@ -114,3 +114,35 @@ export const PAY_RANGES: PayRange[] = [
   { id: 'pr-1', gradeId: 'gr-m1', legalEntityId: 'le-kfpl', currency: 'INR', min: '1000000', mid: '1400000', max: '1800000', validFrom: '2026-04-01', validTo: '2026-10-31' },
   { id: 'pr-2', gradeId: 'gr-m1', legalEntityId: 'le-kfpl', currency: 'INR', min: '1100000', mid: '1500000', max: '1900000', validFrom: '2026-11-01', validTo: null },
 ];
+
+/** GET /org/settings registry (P01 §4.6), as the API sends it. */
+export const SETTING_REGISTRY: Record<string, SettingDef> = {
+  'employee_change.retro_limit': { label: 'Past-dated changes may go back to', scopes: ['tenant'], dated: false, values: ['current_fy', 'previous_fy'], default: 'current_fy' },
+  'probation.default_months': { label: 'Probation lasts (months)', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: false, values: ['3', '6', '9', '12'], default: '6' },
+  'probation.review_lead_days': { label: 'Probation review reminder (days before the end)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30'], default: '15' },
+  'probation.max_total_months': { label: 'Probation with extensions lasts at most (months)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['6', '9', '12', '18', '24'], default: '12' },
+  'probation.auto_confirm_after_days': { label: 'Confirm automatically after the end date', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '0', '7', '15', '30'], default: 'off' },
+  'access.manager.view_scope': { label: 'Managers can view', scopes: ['tenant'], dated: false, values: ['all_reports', 'direct_reports'], default: 'all_reports', guard: 'access.role.manage' },
+  'access.risk.confidential_threshold': { label: 'Warn when a grant opens Confidential data of more than (people)', scopes: ['tenant'], dated: false, values: ['5', '10', '25', '50', '100', '250'], default: '25', guard: 'access.role.manage' },
+  'privacy.who_accessed': { label: 'Show "Who accessed my data" to employees', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
+  'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },
+  'attendance.mode': { label: 'Attendance mode', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['punch', 'assumed_present', 'timesheet'], default: 'punch' },
+  'attendance.missing_punch_effect': { label: 'Missing punches', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['block_payroll_approval', 'warning_only'], default: 'block_payroll_approval' },
+};
+
+export const SETTING_OVERRIDES: SettingOverride[] = [
+  { id: 's-1', key: 'probation.default_months', scopeType: 'legal_entity', scopeId: 'le-tn', value: '3', validFrom: null },
+  { id: 's-2', key: 'probation.default_months', scopeType: 'grade', scopeId: 'gr-m1', value: '12', validFrom: null },
+  { id: 's-3', key: 'attendance.mode', scopeType: 'tenant', scopeId: 'org', value: 'punch', validFrom: '2026-04-01' },
+  { id: 's-4', key: 'attendance.mode', scopeType: 'location', scopeId: 'loc-blr', value: 'assumed_present', validFrom: '2026-04-01' },
+  { id: 's-5', key: 'attendance.mode', scopeType: 'location', scopeId: 'loc-hsr', value: 'timesheet', validFrom: '2026-11-01' },
+  { id: 's-6', key: 'access.manager.view_scope', scopeType: 'tenant', scopeId: 'org', value: 'direct_reports', validFrom: null },
+];
+
+export const SETTING_CHOICES: SettingScopeChoices = {
+  legal_entity: ENTITIES.filter((e) => !e.archivedAt).map((e) => ({ value: e.id, label: e.name })),
+  location: LOCATIONS.map((l) => ({ value: l.id, label: l.name })),
+  department: MASTERS.departments.map((d) => ({ value: d.id, label: d.name })),
+  employment_type: MASTERS['employment-types'].map((t) => ({ value: t.id, label: t.name })),
+  grade: MASTERS.grades.map((g) => ({ value: g.id, label: g.name })),
+};
