@@ -2,7 +2,7 @@ import { affectedMonths, applyFact, fold, FoldError, fyStart, localToday, payloa
 
 // P06 rules that need no database: change types (M01 §3.3), the fold that turns changes into dated rows
 // (§4.3, §4.4, YX-HIS-06), retro reach (YX-HIS-12) and affected periods (§4.5).
-const A: AssignmentValues = { locationId: 'loc', departmentId: 'dep', designationId: 'des', gradeId: 'g1', employmentTypeId: 'et', managerEmployeeId: 'm1', costCentres: [] };
+const A: AssignmentValues = { locationId: 'loc', departmentId: 'dep', designationId: 'des', gradeId: 'g1', employmentTypeId: 'et', managerEmployeeId: 'm1', costCentres: [], dottedLineManagerIds: [] };
 
 describe('change types (M01 §3.3)', () => {
   it('each type changes only its own facts', () => {
@@ -107,5 +107,24 @@ describe('retro reach and affected periods (YX-HIS-12, P06 §4.5)', () => {
     const at = new Date('2026-09-30T19:00:00Z'); // 00:30 on 1 Oct in India, still 30 Sep in London
     expect(localToday('Asia/Kolkata', at)).toBe('2026-10-01');
     expect(localToday('Europe/London', at)).toBe('2026-09-30');
+  });
+});
+
+describe('dotted-line managers (M01 Q5, P01 §4.4)', () => {
+  it('a manager change or transfer may set them; other types may not; no duplicates, never also the manager', () => {
+    expect(payloadProblem('manager_change', { assignment: { dottedLineManagerIds: ['d1', 'd2'] } })).toBeNull();
+    expect(payloadProblem('transfer', { assignment: { locationId: 'x', dottedLineManagerIds: [] } })).toBeNull();
+    expect(payloadProblem('promotion', { assignment: { dottedLineManagerIds: ['d1'] } })).toMatch(/cannot change dottedLineManagerIds/);
+    expect(payloadProblem('manager_change', { assignment: { dottedLineManagerIds: ['d1', 'd1'] } })).toMatch(/listed twice/);
+    expect(payloadProblem('manager_change', { assignment: { managerEmployeeId: 'd1', dottedLineManagerIds: ['d1'] } })).toMatch(/not also a dotted-line manager/);
+  });
+
+  it('are kept sorted, survive other changes, and a dotted line promoted to manager leaves the list', () => {
+    const withDotted = applyFact('assignment', A, { assignment: { dottedLineManagerIds: ['d2', 'd1'] } }) as AssignmentValues;
+    expect(withDotted.dottedLineManagerIds).toEqual(['d1', 'd2']);
+    const moved = applyFact('assignment', withDotted, { assignment: { locationId: 'loc2' } }) as AssignmentValues;
+    expect(moved.dottedLineManagerIds).toEqual(['d1', 'd2']);
+    const promoted = applyFact('assignment', withDotted, { assignment: { managerEmployeeId: 'd1' } }) as AssignmentValues;
+    expect(promoted).toMatchObject({ managerEmployeeId: 'd1', dottedLineManagerIds: ['d2'] });
   });
 });

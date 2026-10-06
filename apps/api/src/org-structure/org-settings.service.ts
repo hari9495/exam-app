@@ -36,6 +36,30 @@ function definition(key: string): SettingDef {
   return def;
 }
 
+/**
+ * YX-ORG-16: switching how employee codes are unique re-keys every employment, so one unique index keeps
+ * serving both modes. Company-wide uniqueness is refused while two employments share a code; the clashes are
+ * listed so they can be fixed first.
+ */
+async function rekeyEmployeeCodes(tx: Tx, c: CompanyContext, scope: unknown): Promise<void> {
+  if (scope === 'tenant') {
+    const clashes = await tx.$queryRaw<{ code: string; employees: { id: string; name: string; legalEntity: string }[] }[]>`
+      SELECT m.employee_code::text AS code,
+             json_agg(json_build_object('id', e.id, 'name', concat_ws(' ', e.given_name, e.family_name), 'legalEntity', le.name) ORDER BY le.name) AS employees
+      FROM employments m
+      JOIN employees e ON e.organization_id = m.organization_id AND e.id = m.employee_id
+      JOIN legal_entities le ON le.organization_id = m.organization_id AND le.id = m.legal_entity_id
+      WHERE m.organization_id = ${c.organizationId}::uuid
+      GROUP BY m.employee_code HAVING count(*) > 1 ORDER BY 1 LIMIT 100`;
+    if (clashes.length) {
+      throw new ConflictException({ statusCode: 409, code: 'EMPLOYEE_CODE_CLASHES', message: 'Some employee codes are used in more than one legal entity. Change them first (YX-ORG-16).', clashes });
+    }
+    await tx.$executeRaw`UPDATE employments SET code_scope_key = organization_id, updated_at = now() WHERE organization_id = ${c.organizationId}::uuid AND code_scope_key <> organization_id`;
+  } else {
+    await tx.$executeRaw`UPDATE employments SET code_scope_key = legal_entity_id, updated_at = now() WHERE organization_id = ${c.organizationId}::uuid AND code_scope_key <> legal_entity_id`;
+  }
+}
+
 @Injectable()
 export class OrgSettingsService {
   constructor(private readonly tenantPrisma: TenantPrismaService) {}
@@ -81,6 +105,7 @@ export class OrgSettingsService {
       const row = existing
         ? await tx.setting.update({ where: { id: existing.id }, data: { value: dto.value, updatedBy: c.userId } })
         : await tx.setting.create({ data: { ...where, value: dto.value, updatedBy: c.userId } });
+      if (dto.key === 'employee_code.scope') await rekeyEmployeeCodes(tx, c, dto.value);
       await audit(tx, c, 'org.setting.changed', 'setting', row.id, { key: dto.key, scopeType, scopeId, validFrom: dto.validFrom ?? null, from: existing?.value ?? null, to: dto.value });
       return rowView(row);
     });
@@ -95,6 +120,7 @@ export class OrgSettingsService {
         throw new ConflictException('That value is already in force. Add a new value from a later date instead (YX-HIS-07).');
       }
       await tx.setting.delete({ where: { id } });
+      if (row.key === 'employee_code.scope') await rekeyEmployeeCodes(tx, c, SETTINGS['employee_code.scope'].default);
       await audit(tx, c, 'org.setting.removed', 'setting', id, { key: row.key, scopeType: row.scopeType, scopeId: row.scopeId, validFrom: row.validFrom ? isoDate(row.validFrom) : null, value: row.value });
     });
   }

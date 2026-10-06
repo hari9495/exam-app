@@ -68,6 +68,13 @@ export class AssignmentPayloadDto {
   @ValidateNested({ each: true })
   @Type(() => CostCentreShareDto)
   costCentres?: CostCentreShareDto[];
+
+  /** M01 Q5: dotted-line managers (visibility and feedback only). The whole list replaces the old one. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(5)
+  @IsUUID('all', { each: true })
+  dottedLineManagerIds?: string[];
 }
 
 export class CompensationPayloadDto {
@@ -202,6 +209,17 @@ export class EmployeeCreateDto {
   @IsEmail()
   @MaxLength(200)
   workEmail?: string;
+
+  /** Mobile, any common format; stored in E.164 on the person (YX-ORG-28). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  mobilePhone?: string;
+
+  /** P01 §4.5a / YX-ORG-27: HR confirmed the record belongs to this existing person. */
+  @IsOptional()
+  @IsUUID()
+  personId?: string;
 
   /** The person's login, when they have one (P01 §4.5). */
   @IsOptional()

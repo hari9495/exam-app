@@ -17,6 +17,8 @@ import { EmployeeHistoryService, RequestUser } from './employee-history.service'
 //   employee.change.retro           past-dated changes (YX-HIS-12 tier 1)
 //   employee.change.retro_override  before the company's retro limit, with a reason (tier 3)
 //   employee.salary.view / .manage  pay facts (founder rule R1)
+//   request.raise_on_behalf         managers raise job changes for their current team and see / withdraw
+//                                   only what they raised (P02 YX-SEC-27, M01 §3.10; the service checks it)
 // Reading one person's record is also open to the implicit grants (P02 YX-SEC-04): the person themselves
 // and the managers above them for the periods they managed (YX-SEC-06). The service checks those.
 @Controller('people')
@@ -62,27 +64,27 @@ export class EmployeeHistoryController {
   // ---- changes ----
 
   @Get('changes')
-  @RequireAnyPermission('employee.profile.view', 'employee.change.manage', 'employee.change.approve')
+  @RequireAnyPermission('employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'request.raise_on_behalf')
   async changes(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: ChangeListQueryDto) {
     return this.history.listChanges(ctx, await this.viewer(req), q);
   }
 
   @Post('changes/preview')
-  @RequirePermissions('employee.change.manage')
+  @RequireAnyPermission('employee.change.manage', 'request.raise_on_behalf')
   async previewRequest(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ChangeRequestDto) {
     ownSession(req);
     return this.history.previewRequest(ctx, await this.viewer(req), dto);
   }
 
   @Post('changes')
-  @RequirePermissions('employee.change.manage')
+  @RequireAnyPermission('employee.change.manage', 'request.raise_on_behalf')
   async request(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ChangeRequestDto) {
     ownSession(req);
     return this.history.requestChange(ctx, await this.viewer(req), dto);
   }
 
   @Get('changes/:id')
-  @RequireAnyPermission('employee.profile.view', 'employee.change.manage', 'employee.change.approve')
+  @RequireAnyPermission('employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'request.raise_on_behalf')
   async get(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.history.getChange(ctx, await this.viewer(req), id);
   }
@@ -118,7 +120,7 @@ export class EmployeeHistoryController {
   }
 
   @Post('changes/:id/cancel')
-  @RequirePermissions('employee.change.manage')
+  @RequireAnyPermission('employee.change.manage', 'request.raise_on_behalf')
   async cancel(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DecisionDto) {
     ownSession(req);
     return this.history.cancel(ctx, await this.viewer(req), id, dto.reason, dto.confirmRebase === true);

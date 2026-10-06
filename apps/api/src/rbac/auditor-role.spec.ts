@@ -15,7 +15,7 @@ describe('auditor role (compliance read-only)', () => {
 
   it('holds no write/manage/configure/data-rights capability', () => {
     for (const key of ROLE_PERMISSIONS.auditor) {
-      expect(key).not.toMatch(/:manage|:configure|:manage_|data_rights|:manage_organizations|\.manage|\.approve|\.retro|salary/);
+      expect(key).not.toMatch(/:manage|:configure|:manage_|data_rights|:manage_organizations|\.manage|\.approve|\.retro|salary|raise_on_behalf/);
     }
   });
 

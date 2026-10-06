@@ -24,9 +24,11 @@ export interface AssignmentValues {
   employmentTypeId: string;
   managerEmployeeId: string | null;
   costCentres: CostCentreShare[];
+  /** M01 Q5: visibility and feedback only, never an approver unless a policy names them (YX-EMP-04). Sorted. */
+  dottedLineManagerIds: string[];
 }
 export type AssignmentField = keyof AssignmentValues;
-export const ASSIGNMENT_FIELDS: readonly AssignmentField[] = ['locationId', 'departmentId', 'designationId', 'gradeId', 'employmentTypeId', 'managerEmployeeId', 'costCentres'];
+export const ASSIGNMENT_FIELDS: readonly AssignmentField[] = ['locationId', 'departmentId', 'designationId', 'gradeId', 'employmentTypeId', 'managerEmployeeId', 'costCentres', 'dottedLineManagerIds'];
 const REQUIRED_ASSIGNMENT: readonly AssignmentField[] = ['locationId', 'departmentId', 'designationId', 'employmentTypeId'];
 
 export interface StatusValues {
@@ -62,9 +64,10 @@ interface TypeRule {
 export const TYPE_RULES: Readonly<Record<ChangeType, TypeRule>> = {
   join: { assignment: 'all', status: ['probation', 'confirmed'], compensation: true, requires: ['assignment', 'status'] },
   promotion: { assignment: ['designationId', 'gradeId'], compensation: true, requires: ['assignment'] },
-  transfer: { assignment: ['locationId', 'departmentId', 'costCentres', 'managerEmployeeId'], requires: ['assignment'] },
+  transfer: { assignment: ['locationId', 'departmentId', 'costCentres', 'managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'] },
   redesignation: { assignment: ['designationId'], requires: ['assignment'] },
-  manager_change: { assignment: ['managerEmployeeId'], requires: ['assignment'] },
+  // M01 §3.2: the primary manager and the dotted lines change through the same change type.
+  manager_change: { assignment: ['managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'] },
   salary_revision: { compensation: true, requires: ['compensation'] },
   employment_type_change: { assignment: ['employmentTypeId'], requires: ['assignment'] },
   confirmation: { status: ['confirmed'], requires: ['status'] },
@@ -95,6 +98,9 @@ export function payloadProblem(type: ChangeType, p: ChangePayload): string | nul
       const total = cc.reduce((s, x) => s.add(new Prisma.Decimal(x.percent)), new Prisma.Decimal(0));
       if (!total.equals(100)) return 'Cost centre shares total 100 % (P01 Q8).';
     }
+    const dotted = p.assignment.dottedLineManagerIds;
+    if (dotted && new Set(dotted).size !== dotted.length) return 'A dotted-line manager is listed twice.';
+    if (dotted && p.assignment.managerEmployeeId && dotted.includes(p.assignment.managerEmployeeId)) return 'The manager is not also a dotted-line manager.';
   }
   if (p.status !== undefined) {
     if (!rule.status) return `A ${label(type)} cannot change the employment status.`;
@@ -137,6 +143,8 @@ export function applyFact(fact: Fact, base: unknown, p: ChangePayload): unknown 
     next.managerEmployeeId ??= null;
     // Stored form: shares sorted, two decimals, so equal splits compare equal.
     next.costCentres = (next.costCentres ?? []).map((x) => ({ costCentreId: x.costCentreId, percent: new Prisma.Decimal(x.percent).toFixed(2) })).sort((a, b) => a.costCentreId.localeCompare(b.costCentreId));
+    // A dotted-line manager who becomes the manager stops being a dotted line.
+    next.dottedLineManagerIds = (next.dottedLineManagerIds ?? []).filter((m) => m !== next.managerEmployeeId).sort();
     const missing = REQUIRED_ASSIGNMENT.find((k) => !next[k]);
     if (missing) throw new FoldError(`There is no assignment to change yet (${missing} missing).`);
     return next;

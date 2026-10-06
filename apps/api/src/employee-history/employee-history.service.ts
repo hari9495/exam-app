@@ -5,6 +5,8 @@ import { audit, CompanyContext, companyContext, mapDbError, Tx } from '../org-st
 import { addDays, asDate, isCurrency, isoDate, todayIst } from '../org-structure/org-validation';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { ChangeEditDto, ChangeRequestDto, EmployeeCreateDto } from './dto';
+import { addRole, checkLoginLink, personForEmployee } from '../people/persons';
+import { startProbation } from '../people/probation';
 import {
   affectedMonths,
   AssignmentValues,
@@ -41,6 +43,8 @@ export const HISTORY_KEYS = [
   'employee.change.retro_override',
   'employee.salary.view',
   'employee.salary.manage',
+  // P02 YX-SEC-27 / M01 §3.10: managers raise job changes for their team (never approve them).
+  'request.raise_on_behalf',
 ] as const;
 type Key = (typeof HISTORY_KEYS)[number];
 
@@ -61,7 +65,7 @@ export interface Viewer {
   actingForOther: boolean;
 }
 
-interface Access {
+export interface Access {
   /** employee.profile.view: every change, whatever its state. */
   hr: boolean;
   /** HR or the person themselves: every date. */
@@ -74,7 +78,7 @@ interface Access {
 
 type Employment = Prisma.EmploymentGetPayload<object>;
 type ChangeRow = Prisma.EmployeeChangeGetPayload<object>;
-type AssignmentRow = Prisma.EmployeeAssignmentGetPayload<object> & { costCentres: { costCentreId: string; percent: Prisma.Decimal }[] };
+type AssignmentRow = Prisma.EmployeeAssignmentGetPayload<object> & { costCentres: { costCentreId: string; percent: Prisma.Decimal }[]; dottedLines: { managerEmployeeId: string }[] };
 type StatusRow = Prisma.EmploymentStatusPeriodGetPayload<object>;
 type CompRow = Prisma.CompensationGetPayload<object>;
 type FactRow = AssignmentRow | StatusRow | CompRow;
@@ -83,6 +87,10 @@ type Facts = { assignment: AssignmentValues | null; status: StatusValues | null;
 const ACTIVE = ['scheduled', 'effective'];
 const iso = (d: Date | null) => (d ? isoDate(d) : null);
 const has = (v: Viewer, k: Key) => v.grants.has(k);
+/** M01 §3.10: the job changes a manager may raise for their team (salary only with the pay grant, R1). */
+const ON_BEHALF_TYPES: readonly ChangeType[] = ['promotion', 'transfer', 'redesignation', 'manager_change'];
+/** HR-side change rights: everything else is a manager raising on behalf (YX-SEC-27). */
+const changeDesk = (v: Viewer) => has(v, 'employee.profile.view') || has(v, 'employee.change.manage') || has(v, 'employee.change.approve');
 const covers = (from: string, to: string | null, date: string) => from <= date && (to === null || date <= to);
 
 function assignmentValues(r: AssignmentRow): AssignmentValues {
@@ -94,6 +102,7 @@ function assignmentValues(r: AssignmentRow): AssignmentValues {
     employmentTypeId: r.employmentTypeId,
     managerEmployeeId: r.managerEmployeeId,
     costCentres: r.costCentres.map((x) => ({ costCentreId: x.costCentreId, percent: x.percent.toFixed(2) })).sort((a, b) => a.costCentreId.localeCompare(b.costCentreId)),
+    dottedLineManagerIds: r.dottedLines.map((x) => x.managerEmployeeId).sort(),
   };
 }
 const values = (fact: Fact, r: FactRow): unknown =>
@@ -120,7 +129,7 @@ export class EmployeeHistoryService {
     return { userId: user.userId ?? null, grants, actingForOther: Boolean(user.impersonatorUserId || user.actingSuperAdmin) };
   }
 
-  private async run<T>(ctx: TenantContext, fn: (tx: Tx, c: CompanyContext) => Promise<T>): Promise<T> {
+  async run<T>(ctx: TenantContext, fn: (tx: Tx, c: CompanyContext) => Promise<T>): Promise<T> {
     const c = companyContext(ctx);
     try {
       return await this.tenantPrisma.forTenant(c, (tx) => fn(tx, c));
@@ -137,7 +146,7 @@ export class EmployeeHistoryService {
   }
 
   /** Runs `fn` in a transaction that is always rolled back, returning its result (P06 §4.3 impact preview). */
-  private async preview<T>(ctx: TenantContext, fn: (tx: Tx, c: CompanyContext) => Promise<T>): Promise<T> {
+  async preview<T>(ctx: TenantContext, fn: (tx: Tx, c: CompanyContext) => Promise<T>): Promise<T> {
     try {
       await this.run(ctx, async (tx, c) => {
         throw new Rollback(await fn(tx, c));
@@ -151,7 +160,7 @@ export class EmployeeHistoryService {
 
   // ================= who may see whom (P02 §4.3, YX-SEC-06, YX-HIS-10) =================
 
-  private async ownEmployeeId(tx: Tx, c: CompanyContext, v: Viewer): Promise<string | null> {
+  async ownEmployeeId(tx: Tx, c: CompanyContext, v: Viewer): Promise<string | null> {
     if (!v.userId || v.actingForOther) return null;
     return (await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: v.userId }, select: { id: true } }))?.id ?? null;
   }
@@ -160,7 +169,7 @@ export class EmployeeHistoryService {
    * The periods in which `above` sat anywhere above `subject` in the reporting chain, from current rows:
    * the chain is walked over date ranges, intersecting as it climbs (PostgreSQL ranges, no date maths here).
    */
-  private async chainPeriods(tx: Tx, c: CompanyContext, subject: string, above: string): Promise<[string, string | null][]> {
+  async chainPeriods(tx: Tx, c: CompanyContext, subject: string, above: string): Promise<[string, string | null][]> {
     const rows = await tx.$queryRaw<{ from: string; to: string | null }[]>`
       WITH RECURSIVE up(manager_id, period, depth) AS (
         SELECT a.manager_employee_id, daterange(a.valid_from, a.valid_to, '[]'), 1
@@ -181,7 +190,7 @@ export class EmployeeHistoryService {
     return rows.map((r) => [r.from, r.to]);
   }
 
-  private async access(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string): Promise<Access> {
+  async access(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string): Promise<Access> {
     const employee = await tx.employee.findFirst({ where: { id: employeeId, organizationId: c.organizationId }, select: { id: true } });
     const own = await this.ownEmployeeId(tx, c, v);
     const self = own === employeeId;
@@ -211,7 +220,7 @@ export class EmployeeHistoryService {
   }
 
   /** Rows of every fact for an employment; current only unless `recordedAt` asks what was believed then (Q1). */
-  private async rows(tx: Tx, c: CompanyContext, employmentId: string, opts: { recordedAt?: Date; includeSuperseded?: boolean } = {}) {
+  async rows(tx: Tx, c: CompanyContext, employmentId: string, opts: { recordedAt?: Date; includeSuperseded?: boolean } = {}) {
     // The same filter fits all three dated tables (common columns, P06 §4.2).
     const when: { recordedAt?: { lte: Date }; supersededAt?: null; OR?: ({ supersededAt: null } | { supersededAt: { gt: Date } })[] } = opts.includeSuperseded
       ? {}
@@ -221,11 +230,11 @@ export class EmployeeHistoryService {
     const where = { organizationId: c.organizationId, employmentId, ...when };
     const order = [{ validFrom: 'asc' as const }, { recordedAt: 'asc' as const }];
     const assignments = await tx.employeeAssignment.findMany({ where, orderBy: order });
-    const shares = assignments.length
-      ? await tx.assignmentCostCentre.findMany({ where: { organizationId: c.organizationId, assignmentId: { in: assignments.map((a) => a.id) } } })
-      : [];
+    const children = { where: { organizationId: c.organizationId, assignmentId: { in: assignments.map((a) => a.id) } } };
+    const shares = assignments.length ? await tx.assignmentCostCentre.findMany(children) : [];
+    const dotted = assignments.length ? await tx.assignmentDottedLineManager.findMany(children) : [];
     return {
-      assignment: assignments.map((a) => ({ ...a, costCentres: shares.filter((s) => s.assignmentId === a.id) })) as AssignmentRow[],
+      assignment: assignments.map((a) => ({ ...a, costCentres: shares.filter((s) => s.assignmentId === a.id), dottedLines: dotted.filter((d) => d.assignmentId === a.id) })) as AssignmentRow[],
       status: (await tx.employmentStatusPeriod.findMany({ where, orderBy: order })) as StatusRow[],
       compensation: (await tx.compensation.findMany({ where, orderBy: order })) as CompRow[],
     };
@@ -244,7 +253,7 @@ export class EmployeeHistoryService {
   }
 
   /** Names for the ids the screens show (masters, locations, managers, cost centres). */
-  private async names(tx: Tx, c: CompanyContext, rows: AssignmentValues[]) {
+  async names(tx: Tx, c: CompanyContext, rows: AssignmentValues[]) {
     const ids = (k: keyof AssignmentValues) => [...new Set(rows.map((r) => r[k]).filter((x): x is string => typeof x === 'string'))];
     const org = { organizationId: c.organizationId };
     const pick = { id: true, name: true, code: true } as const;
@@ -254,14 +263,14 @@ export class EmployeeHistoryService {
       tx.designation.findMany({ where: { ...org, id: { in: ids('designationId') } }, select: pick }),
       tx.grade.findMany({ where: { ...org, id: { in: ids('gradeId') } }, select: pick }),
       tx.employmentType.findMany({ where: { ...org, id: { in: ids('employmentTypeId') } }, select: pick }),
-      tx.employee.findMany({ where: { ...org, id: { in: ids('managerEmployeeId') } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }),
+      tx.employee.findMany({ where: { ...org, id: { in: [...ids('managerEmployeeId'), ...rows.flatMap((r) => r.dottedLineManagerIds)] } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }),
       tx.costCentre.findMany({ where: { ...org, id: { in: rows.flatMap((r) => r.costCentres.map((x) => x.costCentreId)) } }, select: pick }),
     ]);
     const by = <T extends { id: string }>(list: T[]) => new Map(list.map((x) => [x.id, x]));
     return { locations: by(locations), departments: by(departments), designations: by(designations), grades: by(grades), types: by(types), managers: by(managers), ccs: by(ccs) };
   }
 
-  private describe(a: AssignmentValues, n: Awaited<ReturnType<EmployeeHistoryService['names']>>) {
+  describe(a: AssignmentValues, n: Awaited<ReturnType<EmployeeHistoryService['names']>>) {
     const ref = (m: Map<string, { id: string; name: string; code: string }>, id: string | null) => (id ? { id, name: m.get(id)?.name ?? null, code: m.get(id)?.code ?? null } : null);
     const loc = n.locations.get(a.locationId);
     const mgr = a.managerEmployeeId ? n.managers.get(a.managerEmployeeId) : undefined;
@@ -273,6 +282,7 @@ export class EmployeeHistoryService {
       employmentType: ref(n.types, a.employmentTypeId),
       manager: a.managerEmployeeId ? { id: a.managerEmployeeId, name: mgr ? displayName(mgr) : null } : null,
       costCentres: a.costCentres.map((x) => ({ ...ref(n.ccs, x.costCentreId)!, percent: x.percent })),
+      dottedLineManagers: a.dottedLineManagerIds.map((m) => ({ id: m, name: n.managers.get(m) ? displayName(n.managers.get(m)!) : null })),
     };
   }
 
@@ -426,7 +436,7 @@ export class EmployeeHistoryService {
       const current = await tx.employeeAssignment.findMany({
         where: { organizationId: c.organizationId, employeeId: { in: people.map((p) => p.id) }, supersededAt: null, validFrom: { lte: asDate(today) }, OR: [{ validTo: null }, { validTo: { gte: asDate(today) } }] },
       });
-      const names = await this.names(tx, c, current.map((r) => assignmentValues({ ...r, costCentres: [] })));
+      const names = await this.names(tx, c, current.map((r) => assignmentValues({ ...r, costCentres: [], dottedLines: [] })));
       return people.map((p) => {
         const e = employments.find((x) => x.employeeId === p.id);
         const a = current.find((x) => x.employeeId === p.id);
@@ -446,7 +456,7 @@ export class EmployeeHistoryService {
 
   // ================= changes: the only write path (P06 §4.3) =================
 
-  private changeView(ch: ChangeRow, pay: boolean) {
+  changeView(ch: ChangeRow, pay: boolean) {
     const payload = ch.payload as ChangePayload;
     const impact = ch.impact as Record<string, unknown> | null;
     return {
@@ -472,7 +482,7 @@ export class EmployeeHistoryService {
     };
   }
 
-  private async lockEmployment(tx: Tx, c: CompanyContext, employmentId: string) {
+  async lockEmployment(tx: Tx, c: CompanyContext, employmentId: string) {
     // One writer per employment at a time: concurrent changes rebuild the same rows.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`employment:${c.organizationId}:${employmentId}`}))`;
   }
@@ -484,7 +494,7 @@ export class EmployeeHistoryService {
   }
 
   /** YX-HIS-12: limit from the company setting, default the start of the entity's financial year. */
-  private async retroLimit(tx: Tx, c: CompanyContext, legalEntityId: string, today: string): Promise<string> {
+  async retroLimit(tx: Tx, c: CompanyContext, legalEntityId: string, today: string): Promise<string> {
     const entity = await tx.legalEntity.findFirstOrThrow({ where: { id: legalEntityId, organizationId: c.organizationId }, select: { fyStartMonth: true } });
     const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key: 'employee_change.retro_limit' } });
     const { value } = resolveSetting(SETTINGS['employee_change.retro_limit'], rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: c.organizationId }, null);
@@ -492,7 +502,7 @@ export class EmployeeHistoryService {
   }
 
   /** Who may make a change reaching this far back (YX-HIS-12 tiers 1 and 3; tier 2 arrives with payroll). */
-  private async checkReach(tx: Tx, c: CompanyContext, v: Viewer, e: Employment, date: string, overrideReason: string | null | undefined): Promise<Reach> {
+  async checkReach(tx: Tx, c: CompanyContext, v: Viewer, e: Employment, date: string, overrideReason: string | null | undefined): Promise<Reach> {
     const today = todayIst();
     const r = reach(date, today, await this.retroLimit(tx, c, e.legalEntityId, today));
     if (r === 'retro' && !has(v, 'employee.change.retro')) throw new ForbiddenException('A past-dated change needs employee.change.retro (YX-HIS-12).');
@@ -536,9 +546,9 @@ export class EmployeeHistoryService {
         if (cc.archivedAt) throw new BadRequestException('That cost centre is archived (YX-ORG-04).');
         if (cc.legalEntityId !== entity) throw new BadRequestException('The cost centre belongs to another legal entity (YX-ORG-08).');
       }
-      if (a.managerEmployeeId) {
-        if (a.managerEmployeeId === e.employeeId) throw new BadRequestException('Nobody reports to themselves (YX-ORG-09).');
-        const m = await tx.employee.findFirst({ where: { id: a.managerEmployeeId, organizationId: org }, select: { id: true } });
+      for (const managerId of [...(a.managerEmployeeId ? [a.managerEmployeeId] : []), ...(a.dottedLineManagerIds ?? [])]) {
+        if (managerId === e.employeeId) throw new BadRequestException('Nobody reports to themselves (YX-ORG-09).');
+        const m = await tx.employee.findFirst({ where: { id: managerId, organizationId: org }, select: { id: true } });
         if (!m) throw new BadRequestException('No such manager in this company (YX-ORG-09).');
       }
     }
@@ -560,7 +570,7 @@ export class EmployeeHistoryService {
    */
   async rebuild(tx: Tx, c: CompanyContext, e: Employment, from: string, byChangeId: string) {
     const org = c.organizationId;
-    const [{ now }] = await tx.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
+    const [{ now }] = await tx.$queryRaw<{ now: Date }[]>`SELECT now()::timestamptz(3) AS now`;
     const changes: FoldChange[] = (
       await tx.employeeChange.findMany({ where: { organizationId: org, employmentId: e.id, status: { in: ACTIVE }, effectiveDate: { gte: asDate(from) } }, orderBy: [{ effectiveDate: 'asc' }, { seq: 'asc' }] })
     ).map((ch) => ({ id: ch.id, effectiveDate: isoDate(ch.effectiveDate), payload: ch.payload as ChangePayload }));
@@ -569,10 +579,13 @@ export class EmployeeHistoryService {
       const base = { organizationId: org, employmentId: e.id, validFrom: asDate(seg.from), validTo: seg.to ? asDate(seg.to) : null, changeId: seg.changeId, recordedAt: now };
       if (fact === 'assignment') {
         const v = seg.values as AssignmentValues;
-        const { costCentres, ...cols } = v;
+        const { costCentres, dottedLineManagerIds, ...cols } = v;
         const row = await tx.employeeAssignment.create({ data: { ...base, ...cols, legalEntityId: e.legalEntityId, employeeId: e.employeeId } });
         if (costCentres.length) {
           await tx.assignmentCostCentre.createMany({ data: costCentres.map((x) => ({ organizationId: org, legalEntityId: e.legalEntityId, assignmentId: row.id, costCentreId: x.costCentreId, percent: x.percent })) });
+        }
+        if (dottedLineManagerIds.length) {
+          await tx.assignmentDottedLineManager.createMany({ data: dottedLineManagerIds.map((m) => ({ organizationId: org, employeeId: e.employeeId, assignmentId: row.id, managerEmployeeId: m })) });
         }
       } else if (fact === 'status') {
         await tx.employmentStatusPeriod.create({ data: { ...base, status: (seg.values as StatusValues).status } });
@@ -622,6 +635,16 @@ export class EmployeeHistoryService {
           WHERE m.organization_id = ${org}::uuid AND m.employee_id = a.manager_employee_id AND m.superseded_at IS NULL), '{}'::datemultirange)
       LIMIT 1`;
     if (orphan) throw new BadRequestException(`The manager is not employed on every day from ${orphan.from} (YX-ORG-09).`);
+    // Dotted-line managers too (M01 Q5): an employee of the company on every day of the assignment.
+    const [dottedOrphan] = await tx.$queryRaw<{ from: string }[]>`
+      SELECT a.valid_from::text AS "from" FROM employee_assignments a
+      JOIN assignment_dotted_line_managers d ON d.organization_id = a.organization_id AND d.assignment_id = a.id
+      WHERE a.organization_id = ${org}::uuid AND a.employment_id = ${e.id}::uuid AND a.superseded_at IS NULL
+        AND NOT daterange(a.valid_from, a.valid_to, '[]') <@ COALESCE((
+          SELECT range_agg(daterange(m.valid_from, m.valid_to, '[]')) FROM employee_assignments m
+          WHERE m.organization_id = ${org}::uuid AND m.employee_id = d.manager_employee_id AND m.superseded_at IS NULL), '{}'::datemultirange)
+      LIMIT 1`;
+    if (dottedOrphan) throw new BadRequestException(`A dotted-line manager is not employed on every day from ${dottedOrphan.from} (YX-ORG-09).`);
     // ... and the reporting chain never loops back to the person.
     const loop = await this.chainPeriods(tx, c, e.employeeId, e.employeeId);
     if (loop.length) throw new BadRequestException(`That would make a reporting loop from ${loop[0][0]} (YX-ORG-09).`);
@@ -673,6 +696,8 @@ export class EmployeeHistoryService {
     push('Grade', da?.grade?.name, db?.grade?.name);
     push('Employment type', da?.employmentType?.name, db?.employmentType?.name);
     push('Manager (approvals route here)', da?.manager?.name, db?.manager?.name);
+    const dotted = (d: typeof da) => d?.dottedLineManagers.map((x) => x.name ?? x.id).join(', ') || null;
+    push('Dotted-line managers (visibility only)', dotted(da), dotted(db));
     const ccs = (d: typeof da) => d?.costCentres.map((x) => `${x.code} ${x.percent}%`).join(', ') || null;
     push('Cost centres', ccs(da), ccs(db));
     push('Employment status', b.status?.status, a.status?.status);
@@ -681,12 +706,28 @@ export class EmployeeHistoryService {
     return { facts, pay };
   }
 
+  /**
+   * P02 YX-SEC-27 / M01 §3.10: without employee.change.manage, a holder of request.raise_on_behalf may raise a
+   * promotion, transfer, re-designation or manager change for someone in their current reporting subtree
+   * (never themselves). They can never approve it (YX-SEC-11 covers the requester).
+   */
+  async checkOnBehalf(tx: Tx, c: CompanyContext, v: Viewer, type: ChangeType, subjectId: string) {
+    if (!has(v, 'request.raise_on_behalf') || v.actingForOther) throw new ForbiddenException('Missing required permission(s): employee.change.manage');
+    if (!ON_BEHALF_TYPES.includes(type)) throw new ForbiddenException('Managers raise promotions, transfers, re-designations and manager changes; HR raises the rest.');
+    const own = await this.ownEmployeeId(tx, c, v);
+    const today = todayIst();
+    const periods = own && own !== subjectId ? await this.chainPeriods(tx, c, subjectId, own) : [];
+    // Not in their team today: the same answer as an unknown person (no existence leak).
+    if (!periods.some(([f, t]) => covers(f, t, today))) throw new NotFoundException('No open employment for that employee');
+  }
+
   /** Validate and store a requested change (pending). */
-  private async createChange(tx: Tx, c: CompanyContext, v: Viewer, dto: ChangeRequestDto) {
+  async createChange(tx: Tx, c: CompanyContext, v: Viewer, dto: ChangeRequestDto) {
     const payload = toPayload(dto.payload);
     this.checkPayload(dto.changeType, payload, v);
     const e = await this.openEmployment(tx, c, dto.employeeId);
     await this.lockEmployment(tx, c, e.id);
+    if (!has(v, 'employee.change.manage')) await this.checkOnBehalf(tx, c, v, dto.changeType, e.employeeId);
     if (dto.effectiveDate < isoDate(e.joinedOn)) throw new BadRequestException('The effective date is before the employee joined.');
     await this.checkReach(tx, c, v, e, dto.effectiveDate, dto.overrideReason);
     await this.checkRefs(tx, c, e, payload);
@@ -708,7 +749,7 @@ export class EmployeeHistoryService {
   }
 
   /** Approve (or simulate approving) a pending change: materialise it and compute its impact. */
-  private async approveIn(tx: Tx, c: CompanyContext, v: Viewer, ch: ChangeRow, e: Employment, opts: { confirmRebase: boolean; note?: string; simulate: boolean }) {
+  async approveIn(tx: Tx, c: CompanyContext, v: Viewer, ch: ChangeRow, e: Employment, opts: { confirmRebase: boolean; note?: string; simulate: boolean }) {
     const payload = ch.payload as ChangePayload;
     const date = isoDate(ch.effectiveDate);
     if (!opts.simulate) {
@@ -738,11 +779,11 @@ export class EmployeeHistoryService {
     return { updated, impact, effectiveNow };
   }
 
-  private changeImpactView(impact: object, pay: boolean) {
+  changeImpactView(impact: object, pay: boolean) {
     return pay ? impact : redactImpact(impact as Record<string, unknown>);
   }
 
-  private async timezoneOn(tx: Tx, c: CompanyContext, employmentId: string, date: string): Promise<string> {
+  async timezoneOn(tx: Tx, c: CompanyContext, employmentId: string, date: string): Promise<string> {
     const a = await tx.employeeAssignment.findFirst({
       where: { organizationId: c.organizationId, employmentId, supersededAt: null, validFrom: { lte: asDate(date) }, OR: [{ validTo: null }, { validTo: { gte: asDate(date) } }] },
       select: { locationId: true },
@@ -751,7 +792,7 @@ export class EmployeeHistoryService {
     return loc?.timezone ?? 'Asia/Kolkata';
   }
 
-  private async afterApply(tx: Tx, c: CompanyContext, ch: ChangeRow, impact: { retro: unknown }, effectiveNow: boolean) {
+  async afterApply(tx: Tx, c: CompanyContext, ch: ChangeRow, impact: { retro: unknown }, effectiveNow: boolean) {
     await audit(tx, c, 'employee.change.approved', 'employee', ch.employeeId, { changeId: ch.id, changeType: ch.changeType, effectiveDate: isoDate(ch.effectiveDate) });
     // YX-HIS-05: the employee.change.effective event (P04 notifications, P09 metrics, P02 grants).
     if (effectiveNow) await audit(tx, c, 'employee.change.effective', 'employee', ch.employeeId, { changeId: ch.id, changeType: ch.changeType, effectiveDate: isoDate(ch.effectiveDate) });
@@ -776,13 +817,13 @@ export class EmployeeHistoryService {
     });
   }
 
-  private async changeOr404(tx: Tx, c: CompanyContext, id: string): Promise<ChangeRow> {
+  async changeOr404(tx: Tx, c: CompanyContext, id: string): Promise<ChangeRow> {
     const ch = await tx.employeeChange.findFirst({ where: { id, organizationId: c.organizationId } });
     if (!ch) throw new NotFoundException('Change not found');
     return ch;
   }
 
-  private async employmentById(tx: Tx, c: CompanyContext, id: string): Promise<Employment> {
+  async employmentById(tx: Tx, c: CompanyContext, id: string): Promise<Employment> {
     return tx.employment.findFirstOrThrow({ where: { id, organizationId: c.organizationId } });
   }
 
@@ -791,6 +832,8 @@ export class EmployeeHistoryService {
       const rows = await tx.employeeChange.findMany({
         where: {
           organizationId: c.organizationId,
+          // A manager raising on behalf sees the changes they raised, nothing else (P02 §4.3).
+          ...(changeDesk(v) ? {} : { requestedBy: v.userId ?? '00000000-0000-0000-0000-000000000000' }),
           ...(q.status ? { status: q.status } : {}),
           ...(q.employeeId ? { employeeId: q.employeeId } : {}),
           ...(q.from || q.to ? { effectiveDate: { ...(q.from ? { gte: asDate(q.from) } : {}), ...(q.to ? { lte: asDate(q.to) } : {}) } } : {}),
@@ -808,7 +851,18 @@ export class EmployeeHistoryService {
   }
 
   getChange(ctx: TenantContext, v: Viewer, id: string) {
-    return this.run(ctx, async (tx, c) => this.changeView(await this.changeOr404(tx, c, id), has(v, 'employee.salary.view') && !v.actingForOther));
+    return this.run(ctx, async (tx, c) => {
+      const ch = await this.changeOr404(tx, c, id);
+      if (!changeDesk(v) && ch.requestedBy !== v.userId) throw new NotFoundException('Change not found');
+      return this.changeView(ch, has(v, 'employee.salary.view') && !v.actingForOther);
+    });
+  }
+
+  /** M01 §3.3: a change raised in a bulk batch is approved, rejected and changed with its batch while that is open. */
+  async notInOpenBatch(tx: Tx, c: CompanyContext, ch: ChangeRow) {
+    if (!ch.batchId) return;
+    const batch = await tx.employeeChangeBatch.findFirst({ where: { id: ch.batchId, organizationId: c.organizationId }, select: { status: true } });
+    if (batch?.status === 'pending') throw new ConflictException('This change is part of a bulk change still waiting for approval: decide it with its batch.');
   }
 
   /** The impact of approving a pending change, without approving it. */
@@ -830,6 +884,7 @@ export class EmployeeHistoryService {
       await this.lockEmployment(tx, c, e.id);
       const fresh = await this.changeOr404(tx, c, id);
       if (fresh.status !== 'pending') throw new ConflictException(`This change is ${fresh.status}.`);
+      await this.notInOpenBatch(tx, c, fresh);
       if (e.exitedOn) throw new ConflictException('The employment has ended.');
       const { updated, impact, effectiveNow } = await this.approveIn(tx, c, v, fresh, e, { confirmRebase, note, simulate: false });
       await this.afterApply(tx, c, updated, impact, effectiveNow);
@@ -841,6 +896,7 @@ export class EmployeeHistoryService {
     return this.run(ctx, async (tx, c) => {
       const ch = await this.changeOr404(tx, c, id);
       if (ch.status !== 'pending') throw new ConflictException(`This change is ${ch.status}.`);
+      await this.notInOpenBatch(tx, c, ch);
       if (ch.requestedBy && ch.requestedBy === c.userId) throw new ForbiddenException('You raised this change: cancel it instead.');
       const updated = await tx.employeeChange.update({ where: { id }, data: { status: 'rejected', decidedBy: c.userId, decidedAt: new Date(), decisionNote: reason.trim() } });
       await audit(tx, c, 'employee.change.rejected', 'employee', ch.employeeId, { changeId: id });
@@ -859,6 +915,7 @@ export class EmployeeHistoryService {
       await this.lockEmployment(tx, c, e.id);
       const fresh = await this.changeOr404(tx, c, id);
       if (fresh.status !== 'pending' && fresh.status !== 'scheduled') throw new ConflictException(`A ${fresh.status} change cannot be edited; raise a correction instead.`);
+      await this.notInOpenBatch(tx, c, fresh);
       const oldDate = isoDate(fresh.effectiveDate);
       const date = dto.effectiveDate ?? oldDate;
       const payload = dto.payload ? toPayload(dto.payload) : (fresh.payload as ChangePayload);
@@ -899,6 +956,9 @@ export class EmployeeHistoryService {
       await this.lockEmployment(tx, c, e.id);
       const fresh = await this.changeOr404(tx, c, id);
       if (fresh.status !== 'pending' && fresh.status !== 'scheduled') throw new ConflictException(`A ${fresh.status} change cannot be cancelled; raise a correction instead.`);
+      await this.notInOpenBatch(tx, c, fresh);
+      // A manager raising on behalf withdraws only their own request, before it is decided (YX-SEC-27).
+      if (!has(v, 'employee.change.manage') && (fresh.requestedBy !== c.userId || fresh.status !== 'pending')) throw new NotFoundException('Change not found');
       if ((fresh.payload as ChangePayload).compensation && (!has(v, 'employee.salary.manage') || v.actingForOther)) throw new ForbiddenException('This change includes pay: cancelling it needs employee.salary.manage.');
       const updated = await tx.employeeChange.update({ where: { id }, data: { status: 'cancelled', decisionNote: reason.trim(), decidedBy: c.userId, decidedAt: new Date() } });
       if (fresh.status === 'scheduled') {
@@ -933,17 +993,14 @@ export class EmployeeHistoryService {
       const entity = await tx.legalEntity.findFirst({ where: { id: dto.legalEntityId, organizationId: c.organizationId } });
       if (!entity) throw new BadRequestException('No such legal entity in this company.');
       if (entity.archivedAt) throw new BadRequestException('That legal entity is archived.');
-      if (dto.userId) {
-        // The login gives its holder the person's own view, pay included: never one's own login, and only the
-        // login whose email is the record's work email.
-        if (dto.userId === c.userId) throw new ForbiddenException('You cannot link your own login to a record you create.');
-        const user = await tx.user.findFirst({ where: { id: dto.userId, organizationId: c.organizationId }, select: { email: true } });
-        if (!user) throw new BadRequestException('No such login in this company.');
-        if (!dto.workEmail || user.email.toLowerCase() !== dto.workEmail.toLowerCase()) throw new BadRequestException("A login is linked only when its email is the person's work email.");
-      }
+      // The login gives its holder the person's own view, pay included (P01 §4.5).
+      if (dto.userId) await checkLoginLink(tx, c, dto.userId, dto.workEmail ?? null);
+      // P01 §4.5a: the person behind the record (YX-ORG-26/27).
+      const personId = await personForEmployee(tx, c, { givenName: dto.givenName, familyName: dto.familyName, preferredName: dto.preferredName, email: dto.workEmail, phone: dto.mobilePhone, personId: dto.personId });
       const person = await tx.employee.create({
         data: {
           organizationId: c.organizationId,
+          personId,
           userId: dto.userId ?? null,
           givenName: dto.givenName.trim(),
           familyName: dto.familyName?.trim() || null,
@@ -962,6 +1019,10 @@ export class EmployeeHistoryService {
         data: { organizationId: c.organizationId, employeeId: person.id, legalEntityId: entity.id, employeeCode, codeScopeKey, joinedOn: asDate(dto.joinedOn), createdBy: c.userId },
       });
       await this.checkRefs(tx, c, e, payload);
+      await addRole(tx, c, personId, 'employee', { table: 'employments', id: e.id }, e.joinedOn);
+      if (dto.userId) await addRole(tx, c, personId, 'login', { table: 'users', id: dto.userId }, e.joinedOn);
+      // M01 §3.4: a joiner on probation gets the company's probation plan.
+      if (dto.status === 'probation') await startProbation(tx, c, e.id, dto.joinedOn, { legalEntityId: entity.id, employmentTypeId: payload.assignment?.employmentTypeId, gradeId: payload.assignment?.gradeId });
       const join = await tx.employeeChange.create({
         data: {
           organizationId: c.organizationId,

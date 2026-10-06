@@ -22,6 +22,12 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // P06 YX-HIS-12: how far back a past-dated change may go without a System Admin override (Q5:
   // default the start of the current financial year; the company may widen it).
   'employee_change.retro_limit': { label: 'Past-dated changes may go back to', scopes: ['tenant'], dated: false, values: ['current_fy', 'previous_fy'], default: 'current_fy' },
+  // M01 §3.4 / Q3 probation policy (starter values, D17): length per employment type / grade, the review
+  // reminder lead, the most it may run with extensions, and auto-confirmation (off unless the company opts in).
+  'probation.default_months': { label: 'Probation lasts (months)', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: false, values: ['3', '6', '9', '12'], default: '6' },
+  'probation.review_lead_days': { label: 'Probation review reminder (days before the end)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30'], default: '15' },
+  'probation.max_total_months': { label: 'Probation with extensions lasts at most (months)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['6', '9', '12', '18', '24'], default: '12' },
+  'probation.auto_confirm_after_days': { label: 'Confirm automatically after the end date', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '0', '7', '15', '30'], default: 'off' },
   // P01 §4.6 / D1 (M02): attendance mode and the missing-punch effect, both dated.
   'attendance.mode': {
     label: 'Attendance mode',
