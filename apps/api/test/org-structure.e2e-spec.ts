@@ -103,6 +103,15 @@ describe('Organisation structure (P01 §4.1–4.3, §4.6; YX-ORG-01..05, 08, 12,
       await api('auditorA', 'post', '/masters/grades').send({ name: 'G', rank: 1 }).expect(403);
       await request(server()).get('/api/v1/org/legal-entities').expect(401);
     });
+
+    it('screens can ask which of these keys the person holds (profile or role, as the guard resolves them)', async () => {
+      const keys = 'org.structure.view,org.settings.manage,org.entity.statutory.manage,pay.range.view,pay.range.manage';
+      const mine = (who: Who) => request(server()).get(`/api/v1/rbac/me/permissions?keys=${keys}`).set('Authorization', `Bearer ${token[who]}`).expect(200);
+      expect((await mine('adminA')).body).toEqual(['org.structure.view', 'org.settings.manage']);
+      expect((await mine('payrollA')).body).toEqual(['org.structure.view', 'org.entity.statutory.manage', 'pay.range.view', 'pay.range.manage']);
+      expect((await mine('panelA')).body).toEqual([]);
+      await request(server()).get('/api/v1/rbac/me/permissions?keys=DROP TABLE').set('Authorization', `Bearer ${token.adminA}`).expect(400);
+    });
   });
 
   describe('legal entities (P01 §4.1; YX-ORG-01, YX-ORG-30)', () => {

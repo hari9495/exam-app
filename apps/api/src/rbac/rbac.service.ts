@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '@exam-platform/shared';
+import { PrismaService, TenantPrismaService, resolvePermissionGrants } from '@exam-platform/shared';
 
 export interface RolePermissions {
   role: string;
@@ -8,7 +8,16 @@ export interface RolePermissions {
 
 @Injectable()
 export class RbacService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenantPrisma: TenantPrismaService,
+  ) {}
+
+  /** The subset of `keys` this user holds, resolved exactly as PermissionsGuard resolves them. */
+  async grantedKeys(user: { role: string; organizationId?: string | null; permissionProfileId?: string | null }, keys: string[]): Promise<string[]> {
+    const granted = await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: user.role, organizationId: user.organizationId ?? null, permissionProfileId: user.permissionProfileId }, keys);
+    return [...new Set(keys)].filter((k) => granted.has(k));
+  }
 
   async listRoles(): Promise<RolePermissions[]> {
     const grants = await this.prisma.rolePermission.findMany({
