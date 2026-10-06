@@ -3,7 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { createHash } from 'crypto';
 import { PrismaService, TenantPrismaService, isOrganizationActive, ORGANIZATION_INACTIVE_MESSAGE, authCookieSecure } from '@exam-platform/shared';
-import { AuthService } from './auth.service';
+import { AuthService, LoginOutcome, isMfaChallenge } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -15,14 +15,24 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentUserId } from './current-user-id.decorator';
 import { SessionsService, resolveClientMeta } from './sessions.service';
+import { SensitiveRoleAction } from './step-up.decorator';
 
 const REFRESH_COOKIE = 'refresh_token';
 
 // One definition for all three set-cookie sites. `secure` was previously hardcoded false at
 // each of them; see authCookieSecure() for why it is now on by default with an explicit
 // local-dev opt-out rather than an environment-detection opt-in.
-function refreshCookieOptions() {
+export function refreshCookieOptions() {
   return { httpOnly: true, sameSite: 'lax' as const, secure: authCookieSecure() };
+}
+
+// A finished sign-in sets the refresh cookie; a pending one (second factor owed) sets nothing.
+export function signInResponse(outcome: LoginOutcome, res: Response) {
+  if (isMfaChallenge(outcome)) {
+    return outcome;
+  }
+  res.cookie(REFRESH_COOKIE, outcome.refreshToken, refreshCookieOptions());
+  return { accessToken: outcome.accessToken, ...(outcome.mfa ? { mfa: outcome.mfa } : {}) };
 }
 
 @Controller('auth')
@@ -38,9 +48,7 @@ export class AuthController {
   @HttpCode(200)
   @Throttle(STRICT_AUTH_THROTTLE)
   async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const tokens = await this.authService.login(dto, resolveClientMeta(req, res));
-    res.cookie(REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions());
-    return { accessToken: tokens.accessToken };
+    return signInResponse(await this.authService.login(dto, resolveClientMeta(req, res)), res);
   }
 
   @Post('forgot-password')
@@ -129,12 +137,11 @@ export class AuthController {
       }
     }
 
-    const tokens = await this.authService.issueTokensForSso(
+    const outcome = await this.authService.issueTokensForSso(
       { id: user.id, email: user.email, organizationId: user.organizationId, role: user.role, permissionProfileId: user.permissionProfileId ?? null },
       meta,
     );
-    res.cookie(REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions());
-    return { accessToken: tokens.accessToken };
+    return signInResponse(outcome, res);
   }
 
   @Post('logout')
@@ -169,9 +176,11 @@ export class AuthController {
     return { success: true };
   }
 
+  // Acting as another user is an admin capability: AAL2 once the enrolment grace is over (YX-IAM-01).
   @Post('impersonate/:userId')
   @HttpCode(200)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @SensitiveRoleAction()
   async impersonate(@Req() req: Request, @Param('userId') userId: string) {
     const caller = req.user as { userId: string; organizationId: string | null; role: string; impersonatorUserId?: string; sessionId: string };
     const accessToken = await this.authService.impersonate(caller, userId);

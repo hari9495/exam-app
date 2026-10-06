@@ -25,7 +25,8 @@ export interface ClientMeta {
   deviceId: string;
 }
 
-export type LoginMethod = 'password' | 'saml';
+// Sign-in methods; the MFA factors appear on second-factor failures (result mfa_failed).
+export type LoginMethod = 'password' | 'saml' | 'totp' | 'passkey' | 'recovery_code';
 export type LoginResult = 'success' | 'failed' | 'locked' | 'mfa_failed';
 
 export interface SessionUser {
@@ -123,10 +124,12 @@ export class SessionsService {
   // user has signed in before but never from this device cookie (first-ever sign-in is not
   // "new device": there is nothing to compare against). Lifetime and the concurrent-session cap
   // follow the company's security policy within the floor (YX-IAM-06, Q8).
+  // `mfaFactor`: the second factor proven at sign-in; the session then starts at AAL2.
   async create(
     user: SessionUser,
     method: LoginMethod,
     meta: ClientMeta,
+    mfaFactor?: string,
   ): Promise<{ id: string; absoluteExpiresAt: Date; newDevice: boolean }> {
     const policy = user.organizationId ? await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId) : DEFAULT_SECURITY_POLICY;
     const { idleSeconds, absoluteSeconds } = sessionLimitsFor(policy);
@@ -146,6 +149,7 @@ export class SessionsService {
           idleTimeoutSeconds: idleSeconds,
           idleExpiresAt: new Date(now + idleSeconds * 1000),
           absoluteExpiresAt: new Date(now + absoluteSeconds * 1000),
+          ...(mfaFactor ? { assuranceLevel: 'aal2', mfaVerifiedAt: new Date(now), mfaMethod: mfaFactor } : {}),
         },
         select: { id: true, absoluteExpiresAt: true },
       });
@@ -384,6 +388,17 @@ export class SessionsService {
         }
       })
       .catch((error) => this.logger.error(`Failed to alert admins of break-glass sign-in by user ${user.id}`, error as Error));
+  }
+
+  // MFA changes and resets (YX-IAM-10/11): the people concerned hear about every one.
+  // `what` is a complete sentence.
+  notifySecurityChange(user: SessionUser, subject: string, what: string): void {
+    this.send(
+      user,
+      subject,
+      `<p>${escapeHtml(what)}</p><p>Time: ${escapeHtml(new Date().toISOString())}</p>` +
+        '<p>If you did not expect this, contact your administrator at once.</p>',
+    );
   }
 
   private describe(meta: ClientMeta): string {

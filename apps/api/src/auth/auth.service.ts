@@ -27,11 +27,30 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ClientMeta, SessionUser, SessionsService } from './sessions.service';
 import { LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
 import { PasswordPolicyService } from './password-policy.service';
+import { MfaService, MfaUser, PENDING_LOGIN_TTL_SECONDS, PendingLogin } from './mfa.service';
+import { MfaLoginDto } from './dto/mfa.dto';
 
 interface TokenPair {
   accessToken: string;
   refreshToken: string;
 }
+
+// Signed in, no second factor enrolled. `mfa` is set when MFA is required for this account:
+// the client prompts enrolment, which becomes mandatory at `enrolmentDueAt` (YX-IAM-01, P12 §8).
+export interface SignedIn extends TokenPair {
+  mfa?: { required: true; enrolmentDueAt: Date };
+}
+
+// First factor accepted; the second is still owed (no session, no tokens yet).
+export interface MfaChallenge {
+  mfaRequired: true;
+  mfaToken: string;
+  factors: string[];
+  expiresInSeconds: number;
+}
+
+export type LoginOutcome = SignedIn | MfaChallenge;
+export const isMfaChallenge = (outcome: LoginOutcome): outcome is MfaChallenge => 'mfaRequired' in outcome;
 
 const PASSWORD_RESET_EXPIRY_MINUTES = 15;
 
@@ -71,12 +90,13 @@ export class AuthService {
     private readonly sessions: SessionsService,
     private readonly loginProtection: LoginProtectionService,
     private readonly passwordPolicy: PasswordPolicyService,
+    private readonly mfa: MfaService,
   ) {}
 
   // Password sign-in (YX-IAM-06/07/10). Unknown organisation, unknown email and wrong password
   // are indistinguishable to the caller -- same 401, same argon2 cost, same lockout counters --
   // and every attempt, including blocked ones, lands in login_events.
-  async login(dto: LoginDto, meta: ClientMeta): Promise<TokenPair> {
+  async login(dto: LoginDto, meta: ClientMeta): Promise<LoginOutcome> {
     const identifier = dto.email.trim().toLowerCase();
     const orgSlug = dto.organizationSlug?.trim().toLowerCase() ?? '';
     const attempt = { identifier, method: 'password' as const, meta };
@@ -137,19 +157,121 @@ export class AuthService {
       throw new UnauthorizedException('This account has been deactivated');
     }
 
-    await this.loginProtection.registerSuccess(orgSlug, identifier, meta.ip);
-    const tokens = await this.startSession(user, 'password', meta, identifier, breakGlass ? 'break_glass' : undefined);
-    await this.audit.record(
-      { organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' },
-      { actorUserId: user.id, action: breakGlass ? 'login.break_glass' : 'login.success', entityType: 'user', entityId: user.id },
-    );
-    if (breakGlass) {
-      this.sessions.notifyBreakGlass(user, meta);
-    }
+    // The password is proven: re-check one whose breach check could not run when it was set.
     if (user.passwordRecheckPending) {
       void this.passwordPolicy.recheckAfterLogin(user, dto.password);
     }
+
+    // Second factor (YX-IAM-01/03): anyone with one enrolled must use it. Break-glass sign-in is
+    // only for accounts with MFA (YX-IAM-04); without it, the same wrong-password response.
+    const login = { method: 'password' as const, orgSlug, identifier, breakGlass };
+    const hasFactor = await this.mfa.hasFactor(user);
+    if (breakGlass && !hasFactor) {
+      return this.rejectLogin(orgSlug, attempt, organizationId, user, 'break_glass_without_mfa');
+    }
+    return hasFactor ? this.challengeSecondFactor(user.id, login, meta) : this.finishSignIn(user, login, meta);
+  }
+
+  // Everything after the last factor: lockout cleared, session + tokens, audit, alerts.
+  private async finishSignIn(
+    user: SessionUser & { permissionProfileId?: string | null },
+    login: Pick<PendingLogin, 'method' | 'orgSlug' | 'identifier' | 'breakGlass'>,
+    meta: ClientMeta,
+    mfaFactor?: string,
+  ): Promise<SignedIn> {
+    if (login.method === 'password') {
+      await this.loginProtection.registerSuccess(login.orgSlug, login.identifier, meta.ip);
+    }
+    const reason = login.breakGlass ? 'break_glass' : mfaFactor ? `mfa_${mfaFactor}` : undefined;
+    const tokens: SignedIn = await this.startSession(user, login.method, meta, login.identifier, reason, mfaFactor);
+    if (login.method === 'password') {
+      await this.audit.record(
+        { organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' },
+        {
+          actorUserId: user.id,
+          action: login.breakGlass ? 'login.break_glass' : 'login.success',
+          entityType: 'user',
+          entityId: user.id,
+          ...(mfaFactor ? { metadata: { mfa: mfaFactor } } : {}),
+        },
+      );
+    }
+    if (login.breakGlass) {
+      this.sessions.notifyBreakGlass(user, meta);
+    }
+    if (!mfaFactor) {
+      const account = await this.mfa.loadUser(user.id);
+      if (account && (await this.mfa.mfaRequiredFor(account))) {
+        tokens.mfa = { required: true, enrolmentDueAt: account.mfaEnrolmentDueAt };
+      }
+    }
     return tokens;
+  }
+
+  private async challengeSecondFactor(
+    userId: string,
+    login: Pick<PendingLogin, 'method' | 'orgSlug' | 'identifier' | 'breakGlass'>,
+    meta: ClientMeta,
+  ): Promise<MfaChallenge> {
+    const account = (await this.mfa.loadUser(userId))!;
+    const factors = [...new Set((await this.mfa.activeFactors(account)).map((f) => f.type)), 'recovery_code'];
+    const mfaToken = await this.mfa.createPendingLogin({
+      ...login,
+      userId,
+      deviceIdHash: createHash('sha256').update(meta.deviceId).digest('hex'),
+    });
+    return { mfaRequired: true, mfaToken, factors, expiresInSeconds: PENDING_LOGIN_TTL_SECONDS };
+  }
+
+  // Passkey challenge for the second step of a pending sign-in (same device only).
+  async mfaLoginPasskeyOptions(mfaToken: string, meta: ClientMeta) {
+    const pending = await this.mfa.loadPendingLogin(mfaToken, meta.deviceId);
+    const user = pending && (await this.mfa.loadUser(pending.userId));
+    if (!pending || !user) {
+      throw new UnauthorizedException('Your sign-in has expired. Please sign in again.');
+    }
+    return this.mfa.loginPasskeyOptions(mfaToken, user);
+  }
+
+  // Second step of sign-in (YX-IAM-01/03). Guessing is bounded by the same per-account and per-IP
+  // lockout as passwords (keyed on the account id), and every failure is a login event.
+  async completeMfaLogin(dto: MfaLoginDto, meta: ClientMeta): Promise<SignedIn> {
+    const pending = await this.mfa.loadPendingLogin(dto.mfaToken, meta.deviceId);
+    const user = pending && (await this.mfa.loadUser(pending.userId));
+    if (!pending || !user) {
+      await this.sessions.recordLoginEvent({ organizationId: null, result: 'mfa_failed', method: dto.factor, reason: 'mfa_token_invalid', meta });
+      throw new UnauthorizedException('Your sign-in has expired. Please sign in again.');
+    }
+    const event = { organizationId: user.organizationId, userId: user.id, identifier: pending.identifier, meta };
+    const block = await this.loginProtection.check('mfa', user.id, meta.ip);
+    if (block) {
+      await this.sessions.recordLoginEvent({ ...event, result: 'locked', method: dto.factor, reason: `mfa_${block.scope}_locked` });
+      throw new TooManyLoginAttemptsException(block.retryAfterSeconds);
+    }
+    if (user.status !== 'active') {
+      await this.sessions.recordLoginEvent({ ...event, result: 'failed', method: pending.method, reason: 'account_inactive' });
+      throw new UnauthorizedException('This account has been deactivated');
+    }
+    if (!(await staffDeskIpAllowed(this.tenantPrisma, user, meta.ip))) {
+      await this.sessions.recordLoginEvent({ ...event, result: 'failed', method: pending.method, reason: 'ip_not_allowed' });
+      throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
+    }
+
+    const challenge = dto.factor === 'passkey' ? await this.mfa.takeLoginChallenge(dto.mfaToken) : null;
+    const factor = await this.mfa.verifyProof(user, dto, challenge);
+    if (!factor || !(await this.mfa.consumePendingLogin(dto.mfaToken))) {
+      const { locked } = await this.loginProtection.registerFailure('mfa', user.id, meta.ip);
+      await this.sessions.recordLoginEvent({
+        ...event,
+        result: 'mfa_failed',
+        method: dto.factor,
+        reason: locked ? 'mfa_invalid+lockout_started' : 'mfa_invalid',
+      });
+      if (locked) this.sessions.notifyLocked(user, meta);
+      throw new UnauthorizedException('That verification did not work. Try again.');
+    }
+    await this.loginProtection.registerSuccess('mfa', user.id, meta.ip);
+    return this.finishSignIn(user, pending, meta, factor);
   }
 
   private async rejectLogin(
@@ -180,8 +302,9 @@ export class AuthService {
     meta: ClientMeta,
     identifier: string,
     reason?: string,
+    mfaFactor?: string,
   ): Promise<TokenPair> {
-    const session = await this.sessions.create(user, method, meta);
+    const session = await this.sessions.create(user, method, meta, mfaFactor);
     const tokens = await this.issueTokenPair(user.id, user.organizationId, user.role, user.permissionProfileId ?? null, session);
     await this.recordLogin(user.id, user.organizationId, user.role);
     await this.sessions.recordLoginEvent({
@@ -453,7 +576,7 @@ export class AuthService {
   async issueTokensForSso(
     user: SessionUser & { permissionProfileId: string | null },
     meta: ClientMeta,
-  ): Promise<TokenPair> {
+  ): Promise<LoginOutcome> {
     if (!(await staffDeskIpAllowed(this.tenantPrisma, user, meta.ip))) {
       await this.sessions.recordLoginEvent({
         organizationId: user.organizationId,
@@ -466,7 +589,12 @@ export class AuthService {
       });
       throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
     }
-    return this.startSession(user, 'saml', meta, user.email.toLowerCase());
+    // The IdP's assertion is a first factor here; an enrolled YukthiX factor is still required.
+    const login = { method: 'saml' as const, orgSlug: '', identifier: user.email.toLowerCase(), breakGlass: false };
+    if (await this.mfa.hasFactor(user)) {
+      return this.challengeSecondFactor(user.id, login, meta);
+    }
+    return this.finishSignIn(user, login, meta);
   }
 
   // Only called from the two real login entry points (password login, SSO exchange) --

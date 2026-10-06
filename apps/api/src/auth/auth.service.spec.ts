@@ -3,7 +3,8 @@ import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { createHash } from 'crypto';
-import { AuthService } from './auth.service';
+import { AuthService, SignedIn } from './auth.service';
+import { MfaService } from './mfa.service';
 import { DEFAULT_SECURITY_POLICY, PrismaService, SecurityPolicySettings, loadTenantSecurityPolicy, staffDeskIpAllowed } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
@@ -57,8 +58,21 @@ describe('AuthService', () => {
   let audit: { record: jest.Mock };
   let emailService: { send: jest.Mock };
   let jwt: JwtService;
+  let mfa: Record<string, jest.Mock>;
 
   beforeEach(async () => {
+    // No second factor enrolled unless a test says so; MFA not required.
+    mfa = {
+      hasFactor: jest.fn().mockResolvedValue(false),
+      loadUser: jest.fn().mockResolvedValue(null),
+      mfaRequiredFor: jest.fn().mockResolvedValue(false),
+      activeFactors: jest.fn().mockResolvedValue([{ type: 'totp' }]),
+      createPendingLogin: jest.fn().mockResolvedValue('pending-token'),
+      loadPendingLogin: jest.fn().mockResolvedValue(null),
+      consumePendingLogin: jest.fn().mockResolvedValue(true),
+      takeLoginChallenge: jest.fn().mockResolvedValue(null),
+      verifyProof: jest.fn().mockResolvedValue(null),
+    };
     prisma = {
       organization: { findUnique: jest.fn() },
       refreshToken: { create: jest.fn(), findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
@@ -108,6 +122,7 @@ describe('AuthService', () => {
         { provide: SessionsService, useValue: sessions },
         { provide: LoginProtectionService, useValue: loginProtection },
         { provide: PasswordPolicyService, useValue: passwordPolicy },
+        { provide: MfaService, useValue: mfa },
         JwtService,
       ],
     }).compile();
@@ -147,9 +162,9 @@ describe('AuthService', () => {
     tenantPrisma.forTenant.mockResolvedValueOnce(undefined);
     prisma.refreshToken.create.mockResolvedValue({});
 
-    const result = await service.login({
+    const result = (await service.login({
       organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'correct-password',
-    }, META);
+    }, META)) as SignedIn;
 
     expect(result.accessToken).toEqual(expect.any(String));
     expect(result.refreshToken).toEqual(expect.any(String));
@@ -168,9 +183,9 @@ describe('AuthService', () => {
     tenantPrisma.forTenant.mockResolvedValueOnce(undefined);
     prisma.refreshToken.create.mockResolvedValue({});
 
-    const result = await service.login({
+    const result = (await service.login({
       organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'correct-password',
-    }, META);
+    }, META)) as SignedIn;
 
     const decoded = jwt.decode(result.accessToken) as { permissionProfileId: string | null };
     expect(decoded.permissionProfileId).toBe('profile-1');
@@ -186,9 +201,9 @@ describe('AuthService', () => {
     tenantPrisma.forTenant.mockResolvedValueOnce(undefined);
     prisma.refreshToken.create.mockResolvedValue({});
 
-    const result = await service.login({
+    const result = (await service.login({
       organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'correct-password',
-    }, META);
+    }, META)) as SignedIn;
 
     const decoded = jwt.decode(result.accessToken) as { permissionProfileId: string | null };
     expect(decoded.permissionProfileId).toBeNull();
@@ -609,9 +624,9 @@ describe('AuthService', () => {
     it('opens a saml session and issues a pair bound to it, matching the shape login() produces', async () => {
       prisma.refreshToken.create.mockResolvedValue({ id: 'rt-1' });
 
-      const result = await service.issueTokensForSso(SSO_USER, META);
+      const result = (await service.issueTokensForSso(SSO_USER, META)) as SignedIn;
 
-      expect(sessions.create).toHaveBeenCalledWith(SSO_USER, 'saml', META);
+      expect(sessions.create).toHaveBeenCalledWith(SSO_USER, 'saml', META, undefined);
       const access = jwt.verify(result.accessToken, { secret: process.env.JWT_ACCESS_SECRET }) as Record<string, unknown>;
       expect(access).toMatchObject({ sub: 'user-1', organizationId: 'org-1', role: 'recruiter', permissionProfileId: 'profile-1', sid: SESSION_ID });
       const refresh = jwt.verify(result.refreshToken, { secret: process.env.JWT_REFRESH_SECRET }) as { familyId: string };
@@ -936,10 +951,10 @@ describe('AuthService', () => {
       tenantPrisma.forTenant.mockResolvedValueOnce(activeUser());
       prisma.refreshToken.create.mockResolvedValue({});
 
-      const result = await service.login(DTO, META);
+      const result = (await service.login(DTO, META)) as SignedIn;
 
       expect(loginProtection.registerSuccess).toHaveBeenCalledWith('demo-org', 'admin@demo-org.test', META.ip);
-      expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), 'password', META);
+      expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), 'password', META, undefined);
       const access = jwt.verify(result.accessToken, { secret: process.env.JWT_ACCESS_SECRET }) as { sid: string };
       expect(access.sid).toBe(SESSION_ID);
       const refresh = jwt.verify(result.refreshToken, { secret: process.env.JWT_REFRESH_SECRET }) as { familyId: string; exp: number; jti: string };
@@ -1068,12 +1083,31 @@ describe('AuthService', () => {
       expect(sessions.create).not.toHaveBeenCalled();
     });
 
-    it('SSO-only: a break-glass account signs in, is audited as break-glass and every admin is alerted', async () => {
+    it('SSO-only: a break-glass account without MFA gets the wrong-password response (YX-IAM-04 needs MFA)', async () => {
       setPolicy({ ssoOnly: true, breakGlassUserIds: ['user-1', 'bg-2'] });
       await withUser();
-      await signIn();
-      expect(sessions.create).toHaveBeenCalled();
-      expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'login.break_glass' }));
+      await expect(signIn()).rejects.toThrow('Invalid credentials');
+      expect(sessions.create).not.toHaveBeenCalled();
+      expect(loginProtection.registerFailure).toHaveBeenCalled();
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed', reason: 'break_glass_without_mfa' }));
+    });
+
+    it('SSO-only: a break-glass account with MFA signs in after its second factor, audited as break-glass, admins alerted', async () => {
+      setPolicy({ ssoOnly: true, breakGlassUserIds: ['user-1', 'bg-2'] });
+      await withUser();
+      mfa.hasFactor.mockResolvedValue(true);
+      const challenge = await signIn();
+      expect(challenge).toMatchObject({ mfaRequired: true, mfaToken: 'pending-token' });
+      expect(sessions.create).not.toHaveBeenCalled();
+      expect(mfa.createPendingLogin).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1', breakGlass: true, method: 'password' }));
+
+      // The pending state is what createPendingLogin stored; the factor checks out.
+      mfa.loadPendingLogin.mockResolvedValue({ ...mfa.createPendingLogin.mock.calls[0][0] });
+      mfa.loadUser.mockResolvedValue({ id: 'user-1', email: 'admin@demo-org.test', organizationId: 'org-1', role: 'org_admin', status: 'active' });
+      mfa.verifyProof.mockResolvedValue('totp');
+      await service.completeMfaLogin({ mfaToken: 'pending-token', factor: 'totp', code: '123456' }, META);
+      expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), 'password', META, 'totp');
+      expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'login.break_glass', metadata: { mfa: 'totp' } }));
       expect(sessions.notifyBreakGlass).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), META);
       expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'success', reason: 'break_glass' }));
     });
@@ -1120,6 +1154,121 @@ describe('AuthService', () => {
       expect(prisma.user.update).not.toHaveBeenCalled();
       expect(prisma.passwordResetToken.update).not.toHaveBeenCalled();
       expect(prisma.session.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('second factor at sign-in (YX-IAM-01/03)', () => {
+    const PENDING = { userId: 'user-1', method: 'password', orgSlug: 'demo-org', identifier: 'admin@demo-org.test', breakGlass: false, deviceIdHash: 'x' };
+    const ACCOUNT = { id: 'user-1', email: 'admin@demo-org.test', organizationId: 'org-1', role: 'org_admin', status: 'active', permissionProfileId: null, mfaEnrolmentDueAt: new Date() };
+    const PROOF = { mfaToken: 'pending-token', factor: 'totp' as const, code: '123456' };
+    const withUser = async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'active' });
+      tenantPrisma.forTenant.mockResolvedValueOnce({
+        id: 'user-1', email: 'admin@demo-org.test', organizationId: 'org-1', role: 'org_admin', status: 'active',
+        passwordHash: await argon2.hash('correct-password'), passwordRecheckPending: false,
+      });
+    };
+    const signIn = () => service.login({ organizationSlug: 'demo-org', email: 'admin@demo-org.test', password: 'correct-password' }, META);
+
+    beforeEach(() => {
+      mfa.loadUser.mockResolvedValue(ACCOUNT);
+      mfa.loadPendingLogin.mockResolvedValue(PENDING);
+      mfa.verifyProof.mockResolvedValue('totp');
+      mfa.consumePendingLogin.mockResolvedValue(true);
+    });
+
+    it('a correct password for an account with a factor yields a challenge, not a session, and keeps the lockout count', async () => {
+      await withUser();
+      mfa.hasFactor.mockResolvedValue(true);
+      const outcome = await signIn();
+      expect(outcome).toEqual({ mfaRequired: true, mfaToken: 'pending-token', factors: ['totp', 'recovery_code'], expiresInSeconds: 300 });
+      expect(sessions.create).not.toHaveBeenCalled();
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+      expect(loginProtection.registerSuccess).not.toHaveBeenCalled();
+      // The pending sign-in is bound to this device.
+      expect(mfa.createPendingLogin).toHaveBeenCalledWith(expect.objectContaining({ deviceIdHash: createHash('sha256').update(META.deviceId).digest('hex') }));
+    });
+
+    it('the right second factor opens an AAL2 session and clears both lockout counters', async () => {
+      tenantPrisma.forTenant.mockResolvedValueOnce(undefined); // lastLoginAt
+      const result = await service.completeMfaLogin(PROOF, META);
+      expect(result.accessToken).toEqual(expect.any(String));
+      expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), 'password', META, 'totp');
+      expect(loginProtection.registerSuccess).toHaveBeenCalledWith('mfa', 'user-1', META.ip);
+      expect(loginProtection.registerSuccess).toHaveBeenCalledWith('demo-org', 'admin@demo-org.test', META.ip);
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'success', reason: 'mfa_totp' }));
+      expect(result.mfa).toBeUndefined();
+    });
+
+    it('a wrong second factor counts toward lockout, is a login event and opens nothing', async () => {
+      mfa.verifyProof.mockResolvedValue(null);
+      await expect(service.completeMfaLogin(PROOF, META)).rejects.toThrow(UnauthorizedException);
+      expect(loginProtection.registerFailure).toHaveBeenCalledWith('mfa', 'user-1', META.ip);
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'mfa_failed', method: 'totp', reason: 'mfa_invalid' }));
+      expect(mfa.consumePendingLogin).not.toHaveBeenCalled();
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it('the failure that starts a lock notifies the account holder', async () => {
+      mfa.verifyProof.mockResolvedValue(null);
+      loginProtection.registerFailure.mockResolvedValue({ failures: 10, locked: true });
+      await expect(service.completeMfaLogin(PROOF, META)).rejects.toThrow(UnauthorizedException);
+      expect(sessions.notifyLocked).toHaveBeenCalled();
+    });
+
+    it('a locked account is refused before the proof is even checked', async () => {
+      loginProtection.check.mockResolvedValue({ scope: 'account', retryAfterSeconds: 900 });
+      await expect(service.completeMfaLogin(PROOF, META)).rejects.toThrow(TooManyLoginAttemptsException);
+      expect(mfa.verifyProof).not.toHaveBeenCalled();
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'locked' }));
+    });
+
+    it('an expired, unknown or other-device pending token is refused and logged', async () => {
+      mfa.loadPendingLogin.mockResolvedValue(null);
+      await expect(service.completeMfaLogin(PROOF, META)).rejects.toThrow(UnauthorizedException);
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'mfa_failed', reason: 'mfa_token_invalid' }));
+      expect(mfa.verifyProof).not.toHaveBeenCalled();
+    });
+
+    it('a replay racing a successful proof loses (the pending token is single-use)', async () => {
+      mfa.consumePendingLogin.mockResolvedValue(false);
+      await expect(service.completeMfaLogin(PROOF, META)).rejects.toThrow(UnauthorizedException);
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it('a deactivated account or a network outside the desk allow-list cannot finish', async () => {
+      mfa.loadUser.mockResolvedValue({ ...ACCOUNT, status: 'deactivated' });
+      await expect(service.completeMfaLogin(PROOF, META)).rejects.toThrow('deactivated');
+      mfa.loadUser.mockResolvedValue(ACCOUNT);
+      deskIpAllowed.mockResolvedValue(false);
+      await expect(service.completeMfaLogin(PROOF, META)).rejects.toThrow(ForbiddenException);
+      expect(mfa.verifyProof).not.toHaveBeenCalled();
+    });
+
+    it('a passkey proof uses the server-side challenge issued for this pending sign-in', async () => {
+      mfa.takeLoginChallenge.mockResolvedValue('challenge-1');
+      mfa.verifyProof.mockResolvedValue(null);
+      const proof = { mfaToken: 'pending-token', factor: 'passkey' as const, credential: {} as never };
+      await expect(service.completeMfaLogin(proof, META)).rejects.toThrow(UnauthorizedException);
+      expect(mfa.takeLoginChallenge).toHaveBeenCalledWith('pending-token');
+      expect(mfa.verifyProof).toHaveBeenCalledWith(ACCOUNT, proof, 'challenge-1');
+    });
+
+    it('without a factor, a sensitive account signs in and is told when enrolment becomes mandatory', async () => {
+      await withUser();
+      tenantPrisma.forTenant.mockResolvedValueOnce(undefined); // lastLoginAt
+      mfa.mfaRequiredFor.mockResolvedValue(true);
+      const outcome = (await signIn()) as SignedIn;
+      expect(outcome.accessToken).toEqual(expect.any(String));
+      expect(outcome.mfa).toEqual({ required: true, enrolmentDueAt: ACCOUNT.mfaEnrolmentDueAt });
+    });
+
+    it('SSO sign-in still needs the enrolled YukthiX factor', async () => {
+      mfa.hasFactor.mockResolvedValue(true);
+      const outcome = await service.issueTokensForSso({ id: 'user-1', email: 'U@x.test', organizationId: 'org-1', role: 'recruiter', permissionProfileId: null }, META);
+      expect(outcome).toMatchObject({ mfaRequired: true });
+      expect(mfa.createPendingLogin).toHaveBeenCalledWith(expect.objectContaining({ method: 'saml', identifier: 'u@x.test' }));
+      expect(sessions.create).not.toHaveBeenCalled();
     });
   });
 });

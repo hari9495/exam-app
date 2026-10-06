@@ -7,7 +7,7 @@ import { SamlController } from './saml.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { SamlStrategy } from './saml.strategy';
 import { SamlCacheProvider } from './saml-cache.provider';
-import { AuditModule } from '@exam-platform/shared';
+import { AuditModule, CryptoModule } from '@exam-platform/shared';
 import { EmailModule } from '../email/email.module';
 import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connection';
 import Redis from 'ioredis';
@@ -17,6 +17,9 @@ import { LOGIN_PROTECTION_REDIS, LoginProtectionService } from './login-protecti
 import { PasswordPolicyModule } from './password-policy.module';
 import { SecurityPolicyService } from './security-policy.service';
 import { SecurityPolicyController } from './security-policy.controller';
+import { MfaService } from './mfa.service';
+import { MfaResetService } from './mfa-reset.service';
+import { MfaController } from './mfa.controller';
 
 // Its own connection, fast-failing: the shared BullMQ-style connection (maxRetriesPerRequest:
 // null) would park sign-in requests forever during a Redis outage instead of failing closed.
@@ -27,7 +30,7 @@ function createLoginProtectionRedis(): Redis {
 }
 
 @Module({
-  imports: [PassportModule, JwtModule.register({}), AuditModule, EmailModule, PasswordPolicyModule],
+  imports: [PassportModule, JwtModule.register({}), AuditModule, CryptoModule, EmailModule, PasswordPolicyModule],
   providers: [
     AuthService,
     JwtStrategy,
@@ -37,9 +40,11 @@ function createLoginProtectionRedis(): Redis {
     SessionsService,
     SecurityPolicyService,
     LoginProtectionService,
+    MfaService,
+    MfaResetService,
     { provide: LOGIN_PROTECTION_REDIS, useFactory: createLoginProtectionRedis },
   ],
-  controllers: [AuthController, SamlController, SessionsController, SecurityPolicyController],
+  controllers: [AuthController, SamlController, SessionsController, SecurityPolicyController, MfaController],
   exports: [AuthService],
 })
 export class AuthModule {}
