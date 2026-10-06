@@ -39,4 +39,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   // P06 YX-HIS-04/05: scheduled employee changes take effect at 00:00 in each employee's location time zone.
   // Every 15 minutes covers half- and quarter-hour zones (IST is UTC+5:30); the run is idempotent.
   { id: 'employee-changes', cron: '*/15 * * * *' },
+  // M01 §3.4 / YX-LC-01: probation reminders and escalation on the local date; each step is marked once.
+  { id: 'probations', cron: '7 * * * *' },
 ];

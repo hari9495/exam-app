@@ -29,6 +29,7 @@ describe('ScheduledSweepsWorkerService', () => {
       proctoringRetention: { prune: jest.fn().mockResolvedValue(0) },
       drip: { sweep: jest.fn().mockResolvedValue(undefined) },
       employeeHistory: { applyDue: jest.fn().mockResolvedValue(0) },
+      people: { probationSweep: jest.fn().mockResolvedValue(0) },
     };
     const service = new ScheduledSweepsWorkerService(
       connection as never,
@@ -43,6 +44,7 @@ describe('ScheduledSweepsWorkerService', () => {
       services.proctoringRetention as never,
       services.drip as never,
       services.employeeHistory as never,
+      services.people as never,
     );
     return { service, queue, connection, services };
   };
@@ -76,6 +78,7 @@ describe('ScheduledSweepsWorkerService', () => {
       'proctoring-retention': services.proctoringRetention.prune,
       'drip-steps': services.drip.sweep,
       'employee-changes': services.employeeHistory.applyDue,
+      probations: services.people.probationSweep,
     };
     for (const { id } of SWEEP_SCHEDULE) {
       await mockWorker.processor!({ name: id });
