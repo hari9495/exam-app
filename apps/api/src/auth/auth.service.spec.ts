@@ -1448,7 +1448,7 @@ describe('AuthService', () => {
         expect(sent).toEqual({ otpToken: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/), expiresInSeconds: 300, resendAfterSeconds: 60 });
         expect(otp.reserveSend).toHaveBeenCalledWith(`signin\u0000demo-org\u0000${EMAIL}`, META.ip);
         expect(otp.issue).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ userId: 'user-1', channel: 'email', tokenHash: sha(sent.otpToken!), deviceIdHash: sha(META.deviceId) }));
-        expect(otp.deliver).toHaveBeenCalledWith('email', EMAIL, '123456', 'sign_in', 'org-1');
+        expect(otp.deliver).toHaveBeenCalledWith('email', EMAIL, '123456', 'sign_in', 'org-1', { userId: 'user-1', fallbackEmail: null });
       });
 
       it('no enumeration: an unknown account, an inactive one and an unknown organisation get the same answer and the same limits, and nothing is sent', async () => {
@@ -1472,7 +1472,15 @@ describe('AuthService', () => {
           fn({ user: { findFirst: async (args: { where: unknown }) => (expect(args.where).toEqual({ organizationId: 'org-1', mobileNumber: MOBILE, mobileVerifiedAt: { not: null } }), USER) } }),
         );
         await start('098765 43210', { channel: 'whatsapp' });
-        expect(otp.deliver).toHaveBeenCalledWith('whatsapp', MOBILE, '123456', 'sign_in', 'org-1');
+        // The company allows email codes, so a code that can't be texted goes to the account's email.
+        expect(otp.deliver).toHaveBeenCalledWith('whatsapp', MOBILE, '123456', 'sign_in', 'org-1', { userId: USER.id, fallbackEmail: USER.email });
+      });
+
+      it('no email fallback for a texted code when the company does not allow email codes (YX-NTF-07)', async () => {
+        setPolicy({ otpSignInChannels: ['sms'] });
+        tenantPrisma.forTenant.mockResolvedValueOnce(USER);
+        await start(MOBILE, { channel: 'sms' });
+        expect(otp.deliver).toHaveBeenCalledWith('sms', MOBILE, '123456', 'sign_in', 'org-1', { userId: USER.id, fallbackEmail: null });
       });
 
       // Regression (organisation recon): "not turned on" (400) vs a normal answer told an outsider
@@ -1638,7 +1646,7 @@ describe('AuthService', () => {
         mfa.loadPendingLogin.mockResolvedValue(PENDING);
         await expect(service.sendMfaOtp({ mfaToken: 'M'.repeat(43), channel: 'sms' }, META)).resolves.toEqual({ expiresInSeconds: 300, resendAfterSeconds: 60 });
         expect(otp.reserveSend).toHaveBeenCalledWith('mfa\u0000user-1', META.ip);
-        expect(otp.deliver).toHaveBeenCalledWith('sms', MOBILE, '123456', 'mfa', 'org-1');
+        expect(otp.deliver).toHaveBeenCalledWith('sms', MOBILE, '123456', 'mfa', 'org-1', { userId: USER.id });
         expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'code_sent', method: 'otp', reason: 'mfa_sms', userId: 'user-1' }));
 
         otp.check.mockResolvedValue({ userId: 'user-1' });
