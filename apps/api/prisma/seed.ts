@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { seedOrgStructure } from './seed-org-structure';
+import { seedEmployees } from './seed-employees';
 
 const prisma = new PrismaClient();
 
@@ -33,6 +34,14 @@ export const PERMISSIONS = [
   { key: 'org.entity.statutory.manage', description: 'View and change legal entity PAN, TAN, GSTIN and CIN (Confidential)' },
   { key: 'pay.range.view', description: 'View grade pay ranges (pay data)' },
   { key: 'pay.range.manage', description: 'Change grade pay ranges (pay data)' },
+  // YukthiX employee core and job history (P01 §4.4, P06).
+  { key: 'employee.profile.view', description: 'View every employee record and job history' },
+  { key: 'employee.change.manage', description: 'Add employees and raise, edit or cancel job changes' },
+  { key: 'employee.change.approve', description: 'Approve or reject job changes raised by someone else' },
+  { key: 'employee.change.retro', description: 'Raise or approve past-dated job changes' },
+  { key: 'employee.change.retro_override', description: 'Go back before the company retro limit, with a reason' },
+  { key: 'employee.salary.view', description: 'View employee pay (CTC)' },
+  { key: 'employee.salary.manage', description: 'Change employee pay (CTC)' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -59,6 +68,12 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     // P02 Q1: the System Admin runs the structure but sees no Confidential or pay data unless granted.
     'org.structure.view',
     'org.settings.manage',
+    // P06: the System Admin runs job history (Internal facts) and is the YX-HIS-12 override; no pay (Q1).
+    'employee.profile.view',
+    'employee.change.manage',
+    'employee.change.approve',
+    'employee.change.retro',
+    'employee.change.retro_override',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -70,7 +85,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   // question bank, and the audit log — but holds ZERO write keys, so every mutation route (all gated
   // on a :manage key) denies it. Deliberately NOT in EDITABLE_ROLES: its grants stay fixed read-only,
   // so an org admin can't accidentally hand it write access.
-  auditor: ['org:view', 'results:view', 'audit:view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned', 'org.structure.view'],
+  auditor: ['org:view', 'results:view', 'audit:view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned', 'org.structure.view', 'employee.profile.view'],
 };
 
 async function main() {
@@ -180,10 +195,17 @@ async function main() {
       });
 
       await seedOrgStructure(tx, demoOrg.id, panelHash);
+      const userId = async (email: string) => (await tx.user.findUniqueOrThrow({ where: { organizationId_email: { organizationId: demoOrg.id, email } } })).id;
+      await seedEmployees(tx, demoOrg.id, {
+        admin: await userId('admin@demo-org.test'),
+        hr: await userId('hr@demo-org.test'),
+        payroll: await userId('payroll@demo-org.test'),
+        panel: await userId('panel@demo-org.test'),
+      });
     }
   }, { timeout: 60000 });
 
-  console.log('Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026, panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026 (org slug: demo-org)');
+  console.log('Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026, panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026 (org slug: demo-org)');
 }
 
 // Only run when invoked as a script (prisma db seed / ts-node). Guarded so importing this module for

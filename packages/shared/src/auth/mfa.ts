@@ -18,6 +18,14 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'org.entity.statutory.manage',
   'pay.range.view',
   'pay.range.manage',
+  // HR admin and payroll over employee records and job history (P01 §4.4, P06; P02 §4.2).
+  'employee.profile.view',
+  'employee.change.manage',
+  'employee.change.approve',
+  'employee.change.retro',
+  'employee.change.retro_override',
+  'employee.salary.view',
+  'employee.salary.manage',
 ];
 
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).
@@ -33,6 +41,7 @@ export const OTP_FALLBACK_BARRED_PERMISSIONS: readonly string[] = [
   // Payroll Admin.
   'org.entity.statutory.manage',
   'pay.range.manage',
+  'employee.salary.manage',
 ];
 
 export const MFA_ENROLMENT_GRACE_DAYS = 14;
