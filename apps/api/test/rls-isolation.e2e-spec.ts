@@ -278,6 +278,72 @@ describe('PostgreSQL row-level security (app role)', () => {
     expect(superCount).toBe(2);
   });
 
+  // P04 SMS channel: gateway accounts (NULL organisation = the YukthiX shared account, platform only), the
+  // delivery log (never deleted by the app), consents (append-only), the notification policy and metering.
+  it('the SMS channel tables are forced-RLS tenant tables; consents and deliveries cannot be deleted', async () => {
+    const rows = await prisma.$queryRaw<{ table: string; forced: boolean; policies: bigint; can_update: boolean; can_delete: boolean }[]>`
+      SELECT c.relname AS table, (c.relrowsecurity AND c.relforcerowsecurity) AS forced,
+             (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies,
+             has_table_privilege(c.oid, 'UPDATE') AS can_update, has_table_privilege(c.oid, 'DELETE') AS can_delete
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+      WHERE c.relname IN ('channel_accounts', 'notification_deliveries', 'channel_consents', 'tenant_notification_policies', 'sms_usage_monthly')
+      ORDER BY c.relname`;
+    expect(rows).toEqual([
+      { table: 'channel_accounts', forced: true, policies: BigInt(1), can_update: true, can_delete: true },
+      // Only withdrawn_at / withdrawal_source are updatable (column grant), once (trigger).
+      { table: 'channel_consents', forced: true, policies: BigInt(1), can_update: false, can_delete: false },
+      { table: 'notification_deliveries', forced: true, policies: BigInt(1), can_update: true, can_delete: false },
+      { table: 'sms_usage_monthly', forced: true, policies: BigInt(1), can_update: true, can_delete: true },
+      { table: 'tenant_notification_policies', forced: true, policies: BigInt(1), can_update: true, can_delete: true },
+    ]);
+  });
+
+  it("(b) org A cannot read, change or plant org B's SMS accounts, deliveries, consents, policy or usage; nor the shared account", async () => {
+    const asB = { organizationId: orgB, isSuperAdmin: false };
+    const ids = await tenantPrisma.forTenant(asB, async (tx) => {
+      const account = await tx.channelAccount.create({ data: { organizationId: orgB, provider: 'dev', name: 'B gateway', configEncrypted: 'x.y.z' } });
+      const delivery = await tx.notificationDelivery.create({
+        data: { organizationId: orgB, channel: 'sms', kind: 'otp', idempotencyKey: `rls-${randomUUID()}`, addressMasked: '+91••••••••10', addressHash: 'b'.repeat(64), channelAccountId: account.id, status: 'sent' },
+      });
+      const consent = await tx.channelConsent.create({
+        data: { organizationId: orgB, recipientType: 'user', recipientId: userB, channel: 'sms', addressHash: 'b'.repeat(64), source: 'otp_prompt', textVersion: 'v1' },
+      });
+      await tx.tenantNotificationPolicy.create({ data: { organizationId: orgB, smsMonthlyCap: 100 } });
+      await tx.smsUsageMonthly.create({ data: { organizationId: orgB, month: new Date('2026-10-01T00:00:00Z'), sentCount: 7 } });
+      return { account: account.id, delivery: delivery.id, consent: consent.id };
+    });
+    const shared = await tenantPrisma.forTenant(SUPER, (tx) => tx.channelAccount.create({ data: { organizationId: null, provider: 'dev', name: 'Shared (rls test)', configEncrypted: 'x.y.z' } }));
+    try {
+      const seenByA = await tenantPrisma.forTenant(asA(), async (tx) => ({
+        accounts: await tx.channelAccount.count({ where: { id: { in: [ids.account, shared.id] } } }),
+        deliveries: await tx.notificationDelivery.count({ where: { id: ids.delivery } }),
+        consents: await tx.channelConsent.count({ where: { id: ids.consent } }),
+        policy: await tx.tenantNotificationPolicy.count({ where: { organizationId: orgB } }),
+        usage: await tx.smsUsageMonthly.count({ where: { organizationId: orgB } }),
+        redirected: await tx.$executeRaw`UPDATE channel_accounts SET config_encrypted = 'stolen' WHERE id IN (${ids.account}::uuid, ${shared.id}::uuid)`,
+        delivered: await tx.$executeRaw`UPDATE notification_deliveries SET status = 'delivered' WHERE id = ${ids.delivery}::uuid`,
+        withdrawn: await tx.$executeRaw`UPDATE channel_consents SET withdrawn_at = now(), withdrawal_source = 'hr' WHERE id = ${ids.consent}::uuid`,
+        uncapped: await tx.$executeRaw`UPDATE tenant_notification_policies SET sms_monthly_cap = NULL WHERE organization_id = ${orgB}::uuid`,
+        reset: await tx.$executeRaw`UPDATE sms_usage_monthly SET sent_count = 0 WHERE organization_id = ${orgB}::uuid`,
+        removed: await tx.$executeRaw`DELETE FROM channel_accounts WHERE id IN (${ids.account}::uuid, ${shared.id}::uuid)`,
+      }));
+      expect(seenByA).toEqual({ accounts: 0, deliveries: 0, consents: 0, policy: 0, usage: 0, redirected: 0, delivered: 0, withdrawn: 0, uncapped: 0, reset: 0, removed: 0 });
+      // A company can't create a "shared" account or plant rows in another company.
+      await expect(tenantPrisma.forTenant(asA(), (tx) => tx.channelAccount.create({ data: { organizationId: null, provider: 'dev', name: 'fake shared', configEncrypted: 'x' } }))).rejects.toThrow(RLS_VIOLATION);
+      await expect(tenantPrisma.forTenant(asA(), (tx) => tx.channelAccount.create({ data: { organizationId: orgB, provider: 'dev', name: 'planted', configEncrypted: 'x' } }))).rejects.toThrow(RLS_VIOLATION);
+      // Even org B itself never sees the shared account.
+      expect(await tenantPrisma.forTenant(asB, (tx) => tx.channelAccount.count({ where: { id: shared.id } }))).toBe(0);
+      const b = await tenantPrisma.forTenant(SUPER, (tx) => tx.notificationDelivery.findUniqueOrThrow({ where: { id: ids.delivery } }));
+      expect(b.status).toBe('sent');
+    } finally {
+      await tenantPrisma.forTenant(SUPER, async (tx) => {
+        await tx.channelAccount.deleteMany({ where: { id: { in: [ids.account, shared.id] } } });
+        await tx.tenantNotificationPolicy.deleteMany({ where: { organizationId: orgB } });
+        await tx.smsUsageMonthly.deleteMany({ where: { organizationId: orgB } });
+      });
+    }
+  });
+
   it('(a) no context => writes are rejected', async () => {
     await expect(
       prisma.user.create({ data: { organizationId: orgA, email: `x-${randomUUID()}@rls.test`, passwordHash: 'x', role: 'org_admin' } }),
