@@ -4,17 +4,19 @@ import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { addDays, asDate, isoDate, todayIst } from '../org-structure/org-validation';
 import { displayName, EmployeeHistoryService, Viewer } from '../employee-history/employee-history.service';
+import { covers, has as holds, managerViewScope, tenantWide } from '../access/scope';
 import { localToday } from '../employee-history/history-rules';
 import { addRole, checkLoginLink } from './persons';
 import { endAfterMonths, settingFor } from './probation';
 
 // People core reads and record actions (P01 §4.4–4.5a; M01 §3.1–3.4, §3.10): directory, org chart,
 // reporting subtrees, the manager's team, the person behind a record, employee codes, logins and probation.
-// Everything runs in the caller's company under forced RLS (never the platform bypass), through the same
-// visibility rules as job history (P02 §4.3): HR (employee.profile.view) sees everyone; others see
-// colleagues' Public fields (P02 Q4) and their own team. No pay anywhere here (founder rule R1).
+// Everything runs in the caller's company under forced RLS (never the platform bypass), through the record
+// scope engine (P02 §4.3, access/scope.ts): HR keys reach the people in their grants' scopes; everyone else
+// sees colleagues' Public fields (P02 Q4) and their own team. No pay anywhere here (founder rule R1).
 
-const has = (v: Viewer, k: string) => v.grants.has(k);
+const has = (v: Viewer, k: string) => holds(v, k);
+/** Holds the HR view key at some scope; which people it reaches is decided per row. */
 const hr = (v: Viewer) => has(v, 'employee.profile.view');
 
 /** One person in force on a date: Public fields plus the ids the screens resolve to names. */
@@ -33,6 +35,8 @@ interface ActiveRow {
   grade_id: string | null;
   manager_employee_id: string | null;
   dotted: string[];
+  /** employee.profile.view reaches this person on the date (P02 §4.3): Internal fields and code search. */
+  in_scope: boolean;
   total: bigint;
 }
 
@@ -49,12 +53,13 @@ export class PeopleService {
   ) {}
 
   /** Everyone employed on `date`, with their assignment in force (current rows, P06 §4.2). */
-  private active(tx: Tx, c: CompanyContext, date: string, where: Prisma.Sql = Prisma.empty, page?: { limit: number; offset: number }) {
+  private active(tx: Tx, c: CompanyContext, date: string, where: Prisma.Sql = Prisma.empty, page?: { limit: number; offset: number }, inScope: Prisma.Sql = Prisma.sql`FALSE`) {
     return tx.$queryRaw<ActiveRow[]>`
       SELECT e.id::text, e.given_name, e.family_name, e.preferred_name, e.work_email::text, m.employee_code::text, m.legal_entity_id::text, m.joined_on,
              a.location_id::text, a.department_id::text, a.designation_id::text, a.grade_id::text, a.manager_employee_id::text,
              COALESCE((SELECT array_agg(d.manager_employee_id::text ORDER BY d.manager_employee_id) FROM assignment_dotted_line_managers d
                        WHERE d.organization_id = a.organization_id AND d.assignment_id = a.id), '{}') AS dotted,
+             (${inScope}) AS in_scope,
              count(*) OVER () AS total
       FROM employees e
       JOIN employments m ON m.organization_id = e.organization_id AND m.employee_id = e.id
@@ -109,12 +114,16 @@ export class PeopleService {
   directory(ctx: TenantContext, v: Viewer, q: { q?: string; legalEntityId?: string; departmentId?: string; locationId?: string; limit?: number; offset?: number }) {
     return this.history.run(ctx, async (tx, c) => {
       if (!hr(v) && !(await this.own(tx, c, v))) throw new ForbiddenException('The directory is for employees of this company.');
+      const today = todayIst();
+      // Internal fields (code, joining date) only for the people HR's grants reach (P02 §4.3–4.4), and a code
+      // search matches only them, so a search cannot find out who holds a code outside one's scope (YX-SEC-05).
+      const inScope = await this.history.scopeFilter(tx, c, v, 'employee.profile.view', Prisma.sql`e.id`, Prisma.sql`${today}::date`);
       const term = q.q?.trim();
       const conditions: Prisma.Sql[] = [];
       if (term) {
         conditions.push(Prisma.sql`(e.given_name ILIKE ${like(term)} OR e.family_name ILIKE ${like(term)} OR e.preferred_name ILIKE ${like(term)}
           OR concat_ws(' ', e.given_name, e.family_name) ILIKE ${like(term)} OR e.work_email::text ILIKE ${like(term)}
-          ${hr(v) ? Prisma.sql`OR m.employee_code::text ILIKE ${like(term)}` : Prisma.empty})`);
+          ${hr(v) ? Prisma.sql`OR (m.employee_code::text ILIKE ${like(term)} AND ${inScope})` : Prisma.empty})`);
       }
       if (q.legalEntityId) conditions.push(Prisma.sql`m.legal_entity_id = ${q.legalEntityId}::uuid`);
       if (q.locationId) conditions.push(Prisma.sql`a.location_id = ${q.locationId}::uuid`);
@@ -126,7 +135,7 @@ export class PeopleService {
       const where = conditions.length ? Prisma.sql`AND ${Prisma.join(conditions, ' AND ')}` : Prisma.empty;
       const limit = q.limit ?? 50;
       const offset = q.offset ?? 0;
-      const rows = await this.active(tx, c, todayIst(), where, { limit, offset });
+      const rows = await this.active(tx, c, today, where, { limit, offset }, inScope);
       const n = await this.labels(tx, c, rows);
       return {
         total: rows.length ? Number(rows[0].total) : 0,
@@ -141,8 +150,8 @@ export class PeopleService {
           location: n.location(r.location_id),
           legalEntity: n.entity(r.legal_entity_id),
           manager: n.person(r.manager_employee_id),
-          // Internal class: HR only here (P02 §4.4).
-          ...(hr(v) ? { employeeCode: r.employee_code, joinedOn: isoDate(r.joined_on) } : {}),
+          // Internal class: HR within its scope here (P02 §4.4).
+          ...(r.in_scope ? { employeeCode: r.employee_code, joinedOn: isoDate(r.joined_on) } : {}),
         })),
       };
     });
@@ -163,8 +172,9 @@ export class PeopleService {
         if (asOf && asOf !== today) throw new ForbiddenException('Only HR can see the org chart on another date.');
       }
       const date = asOf ?? today;
+      const inScope = await this.history.scopeFilter(tx, c, v, 'employee.profile.view', Prisma.sql`e.id`, Prisma.sql`${date}::date`);
       // ponytail: one flat list for the whole company; page by subtree when a company passes ~5,000 people.
-      const rows = await this.active(tx, c, date, Prisma.empty, { limit: 5000, offset: 0 });
+      const rows = await this.active(tx, c, date, Prisma.empty, { limit: 5000, offset: 0 }, inScope);
       const n = await this.labels(tx, c, rows);
       const present = new Set(rows.map((r) => r.id));
       const reports = new Map<string, number>();
@@ -183,7 +193,7 @@ export class PeopleService {
           managerId: r.manager_employee_id && present.has(r.manager_employee_id) ? r.manager_employee_id : null,
           dottedLineManagerIds: r.dotted.filter((d) => present.has(d)),
           directReports: reports.get(r.id) ?? 0,
-          ...(hr(v) ? { employeeCode: r.employee_code } : {}),
+          ...(r.in_scope ? { employeeCode: r.employee_code } : {}),
         })),
       };
     });
@@ -198,7 +208,7 @@ export class PeopleService {
     return this.history.run(ctx, async (tx, c) => {
       const today = todayIst();
       const a = await this.history.access(tx, c, v, employeeId);
-      if (!a.full && !a.periods.some(([f, t]) => f <= today && (t === null || today <= t))) throw new NotFoundException('Employee not found');
+      if (!a.full && !covers(a.periods, today)) throw new NotFoundException('Employee not found');
       const found = await tx.$queryRaw<{ id: string; depth: number }[]>`
         WITH RECURSIVE down(id, depth) AS (
           SELECT a.employee_id, 1 FROM employee_assignments a
@@ -262,8 +272,10 @@ export class PeopleService {
          AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]')
         WHERE d.organization_id = ${c.organizationId}::uuid AND d.manager_employee_id = ${own}::uuid`;
       // Someone in the subtree who also has a dotted line keeps the stronger (reporting) relation.
+      // P02 Q2: the company may narrow a manager's view to direct reports.
+      const direct = (await managerViewScope(tx, c)) === 'direct_reports';
       const relation = new Map<string, { depth: number; dotted: boolean }>();
-      for (const f of found) if (!relation.has(f.id) || relation.get(f.id)!.dotted) relation.set(f.id, f);
+      for (const f of found) if ((f.dotted || !direct || f.depth === 1) && (!relation.has(f.id) || relation.get(f.id)!.dotted)) relation.set(f.id, f);
       const ids = [...relation.keys()];
       const rows = ids.length ? await this.active(tx, c, today, Prisma.sql`AND e.id = ANY(${ids}::uuid[])`) : [];
       const n = await this.labels(tx, c, rows);
@@ -300,13 +312,23 @@ export class PeopleService {
     }
   }
 
+  /** The signed-in person's own record (never while acting for someone else). */
+  me(ctx: TenantContext, v: Viewer) {
+    return this.history.run(ctx, async (tx, c) => {
+      const own = await this.own(tx, c, v);
+      if (!own) throw new NotFoundException('You have no employee record in this company.');
+      const employee = await tx.employee.findFirstOrThrow({ where: { id: own, organizationId: c.organizationId } });
+      return { employeeId: own, name: displayName(employee) };
+    });
+  }
+
   // ================= the person behind a record (P01 §4.5a, J15) =================
 
-  /** The person and every role they hold in the company. Personal contact data: HR or the person only. */
+  /** The person and every role they hold in the company. Contact data: HR within its scope, or the person. */
   person(ctx: TenantContext, v: Viewer, employeeId: string) {
     return this.history.run(ctx, async (tx, c) => {
       const a = await this.history.access(tx, c, v, employeeId);
-      if (!a.full) throw new NotFoundException('Employee not found');
+      if (!a.self && !a.hr) throw new NotFoundException('Employee not found');
       const employee = await tx.employee.findFirstOrThrow({ where: { id: employeeId, organizationId: c.organizationId } });
       const person = await tx.person.findFirstOrThrow({ where: { id: employee.personId, organizationId: c.organizationId } });
       const roles = await tx.personRole.findMany({ where: { organizationId: c.organizationId, personId: person.id }, orderBy: [{ startOn: 'asc' }, { createdAt: 'asc' }] });
@@ -350,6 +372,7 @@ export class PeopleService {
   setCode(ctx: TenantContext, v: Viewer, employeeId: string, code: string, reason: string) {
     return this.history.run(ctx, async (tx, c) => {
       if ((await this.own(tx, c, v)) === employeeId) throw new ForbiddenException('Someone else changes your own employee code.');
+      await this.history.mustReach(tx, c, v, 'employee.change.manage', employeeId, todayIst());
       const e = await this.openEmploymentOf(tx, c, employeeId);
       if (e.employeeCode === code) return { employeeCode: code };
       await tx.employment.update({ where: { id: e.id }, data: { employeeCode: code } });
@@ -363,6 +386,7 @@ export class PeopleService {
     return this.history.run(ctx, async (tx, c) => {
       const employee = await tx.employee.findFirst({ where: { id: employeeId, organizationId: c.organizationId } });
       if (!employee) throw new NotFoundException('Employee not found');
+      await this.history.mustReach(tx, c, v, 'employee.change.manage', employeeId, todayIst());
       if (employee.userId) throw new ConflictException('This record already has a login. Unlink it first.');
       await checkLoginLink(tx, c, userId, employee.workEmail);
       await tx.employee.update({ where: { id: employee.id }, data: { userId } });
@@ -377,6 +401,7 @@ export class PeopleService {
     return this.history.run(ctx, async (tx, c) => {
       const employee = await tx.employee.findFirst({ where: { id: employeeId, organizationId: c.organizationId } });
       if (!employee?.userId) throw new NotFoundException('That record has no login');
+      await this.history.mustReach(tx, c, v, 'employee.change.manage', employeeId, todayIst());
       if (employee.userId === c.userId) throw new ForbiddenException('Someone else unlinks your own login.');
       await tx.employee.update({ where: { id: employee.id }, data: { userId: null } });
       await tx.personRole.updateMany({ where: { organizationId: c.organizationId, personId: employee.personId, roleType: 'login', sourceId: employee.userId, endOn: null }, data: { endOn: asDate(todayIst()) } });
@@ -409,9 +434,12 @@ export class PeopleService {
     return this.history.run(ctx, async (tx, c) => {
       const today = todayIst();
       let employeeIds: string[] | null = null;
-      if (!hr(v)) {
+      if (!tenantWide(v, 'employee.profile.view')) {
         const team = await this.teamIn(tx, c, v);
-        employeeIds = team.members.filter((m) => m.relation !== 'dotted').map((m) => m.id);
+        const scoped = hr(v)
+          ? (await tx.$queryRaw<{ id: string }[]>`SELECT e.id::text FROM employees e WHERE e.organization_id = ${c.organizationId}::uuid AND ${await this.history.scopeFilter(tx, c, v, 'employee.profile.view', Prisma.sql`e.id`, Prisma.sql`${today}::date`)}`).map((r) => r.id)
+          : [];
+        employeeIds = [...new Set([...team.members.filter((m) => m.relation !== 'dotted').map((m) => m.id), ...scoped])];
         if (!employeeIds.length) return { today, rows: [] };
       }
       const employments = await tx.employment.findMany({ where: { organizationId: c.organizationId, exitedOn: null, ...(employeeIds ? { employeeId: { in: employeeIds } } : {}) } });
@@ -457,6 +485,7 @@ export class PeopleService {
   extendProbation(ctx: TenantContext, v: Viewer, employeeId: string, months: number, reason: string) {
     return this.history.run(ctx, async (tx, c) => {
       if ((await this.own(tx, c, v)) === employeeId) throw new ForbiddenException('Someone else decides your own probation.');
+      await this.history.mustReach(tx, c, v, 'employee.change.manage', employeeId, todayIst());
       const e = await this.openEmploymentOf(tx, c, employeeId);
       await this.history.lockEmployment(tx, c, e.id);
       const p = await tx.probation.findFirst({ where: { organizationId: c.organizationId, employmentId: e.id } });

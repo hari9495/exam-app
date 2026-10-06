@@ -28,6 +28,14 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'probation.review_lead_days': { label: 'Probation review reminder (days before the end)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30'], default: '15' },
   'probation.max_total_months': { label: 'Probation with extensions lasts at most (months)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['6', '9', '12', '18', '24'], default: '12' },
   'probation.auto_confirm_after_days': { label: 'Confirm automatically after the end date', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '0', '7', '15', '30'], default: 'off' },
+  // P02 Q2 (decided): managers view their whole reporting subtree by default; the company may narrow it.
+  'access.manager.view_scope': { label: 'Managers can view', scopes: ['tenant'], dated: false, values: ['all_reports', 'direct_reports'], default: 'all_reports' },
+  // P02 YX-SEC-18 (a): a role grant giving Confidential / Special access over more people than this warns first.
+  'access.risk.confidential_threshold': { label: 'Warn when a grant opens Confidential data of more than (people)', scopes: ['tenant'], dated: false, values: ['5', '10', '25', '50', '100', '250'], default: '25' },
+  // P02 §7 / P08: employees see who viewed their Confidential and Special data (every view is recorded either way).
+  'privacy.who_accessed': { label: 'Show "Who accessed my data" to employees', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
+  'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48' },
   // P01 §4.6 / D1 (M02): attendance mode and the missing-punch effect, both dated.
   'attendance.mode': {
     label: 'Attendance mode',

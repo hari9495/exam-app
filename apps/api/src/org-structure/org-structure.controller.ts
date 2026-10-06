@@ -23,6 +23,7 @@ import {
 import { IN_STATES, REGIONS } from './org-validation';
 import { OrgSettingsService } from './org-settings.service';
 import { OrgStructureService } from './org-structure.service';
+import { OrgScopeService } from '../access/org-scope.service';
 
 // Settings › Organisation (P01 §8, APX-D 1.2–1.4) and the scoped-settings API (P01 §4.6). Every route
 // declares its permission (P02 YX-SEC-01):
@@ -30,6 +31,8 @@ import { OrgStructureService } from './org-structure.service';
 //   org.settings.manage          change them and scoped settings (HR / System Admin)
 //   org.entity.statutory.manage  the Confidential entity identifiers (P02 §4.4)
 //   pay.range.view / .manage     grade pay ranges (founder rule R1: pay is private)
+// Each key may be held for the whole company or one legal entity (P02 §4.3): writes and pay / Confidential
+// reads are checked against the record's entity here (OrgScopeService) before the service runs.
 const VIEW = ['org.structure.view', 'org.settings.manage'] as const;
 const KIND = new ParseEnumPipe(Object.fromEntries(MASTER_KINDS.map((k) => [k, k])));
 
@@ -53,7 +56,17 @@ export class OrgStructureController {
   constructor(
     private readonly org: OrgStructureService,
     private readonly settings: OrgSettingsService,
+    private readonly scope: OrgScopeService,
   ) {}
+
+  private manage(req: Request, entityId: string | null) {
+    return this.scope.require(req, 'org.settings.manage', entityId);
+  }
+
+  /** The entity a master body puts the record in: a cost centre's entity, an entity-only owner, or company-wide. */
+  private masterEntity(kind: MasterKind, body: { legalEntityId?: string; ownerLegalEntityId?: string | null }): string | null {
+    return kind === 'cost-centres' ? (body.legalEntityId ?? null) : (body.ownerLegalEntityId ?? null);
+  }
 
   /** Lists the screens need: India's states and the open data regions. */
   @Get('reference')
@@ -75,39 +88,44 @@ export class OrgStructureController {
 
   @Post('legal-entities')
   @RequirePermissions('org.settings.manage')
-  createEntity(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LegalEntityDto) {
+  async createEntity(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LegalEntityDto) {
     ownSession(req);
+    await this.manage(req, null);
     return this.org.createEntity(ctx, dto);
   }
 
   @Put('legal-entities/:id')
   @RequirePermissions('org.settings.manage')
-  updateEntity(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LegalEntityDto) {
+  async updateEntity(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LegalEntityDto) {
     ownSession(req);
+    await this.manage(req, id);
     return this.org.updateEntity(ctx, id, dto);
   }
 
   @Post('legal-entities/:id/default')
   @HttpCode(200)
   @RequirePermissions('org.settings.manage')
-  setDefault(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+  async setDefault(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
+    await this.manage(req, null);
     return this.org.setDefaultEntity(ctx, id);
   }
 
   @Post('legal-entities/:id/archive')
   @HttpCode(200)
   @RequirePermissions('org.settings.manage')
-  archiveEntity(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+  async archiveEntity(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
+    await this.manage(req, id);
     return this.org.archiveEntity(ctx, id);
   }
 
   @Post('legal-entities/:id/restore')
   @HttpCode(200)
   @RequirePermissions('org.settings.manage')
-  restoreEntity(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+  async restoreEntity(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
+    await this.manage(req, id);
     return this.org.restoreEntity(ctx, id);
   }
 
@@ -116,21 +134,24 @@ export class OrgStructureController {
   @RequirePermissions('org.settings.manage')
   async deleteEntity(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
+    await this.manage(req, null);
     await this.org.deleteEntity(ctx, id);
   }
 
   @Get('legal-entities/:id/statutory')
   @RequirePermissions('org.entity.statutory.manage')
-  getStatutory(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+  async getStatutory(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
+    await this.scope.require(req, 'org.entity.statutory.manage', id);
     return this.org.getStatutory(ctx, id);
   }
 
   @Put('legal-entities/:id/statutory')
   @RequirePermissions('org.entity.statutory.manage')
   @RequireStepUp()
-  setStatutory(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LegalEntityStatutoryDto) {
+  async setStatutory(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LegalEntityStatutoryDto) {
     ownSession(req);
+    await this.scope.require(req, 'org.entity.statutory.manage', id);
     return this.org.setStatutory(ctx, id, dto);
   }
 
@@ -144,31 +165,35 @@ export class OrgStructureController {
 
   @Post('locations')
   @RequirePermissions('org.settings.manage')
-  createLocation(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LocationDto) {
+  async createLocation(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LocationDto) {
     ownSession(req);
+    await this.manage(req, dto.legalEntityId);
     return this.org.createLocation(ctx, dto);
   }
 
   @Put('locations/:id')
   @RequirePermissions('org.settings.manage')
-  updateLocation(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LocationDto) {
+  async updateLocation(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LocationDto) {
     ownSession(req);
+    await this.manage(req, await this.scope.entityOf(ctx, 'location', id));
     return this.org.updateLocation(ctx, id, dto);
   }
 
   @Post('locations/:id/archive')
   @HttpCode(200)
   @RequirePermissions('org.settings.manage')
-  archiveLocation(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+  async archiveLocation(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
+    await this.manage(req, await this.scope.entityOf(ctx, 'location', id));
     return this.org.archiveLocation(ctx, id, true);
   }
 
   @Post('locations/:id/restore')
   @HttpCode(200)
   @RequirePermissions('org.settings.manage')
-  restoreLocation(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+  async restoreLocation(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
+    await this.manage(req, await this.scope.entityOf(ctx, 'location', id));
     return this.org.archiveLocation(ctx, id, false);
   }
 
@@ -177,6 +202,7 @@ export class OrgStructureController {
   @RequirePermissions('org.settings.manage')
   async deleteLocation(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
+    await this.manage(req, await this.scope.entityOf(ctx, 'location', id));
     await this.org.deleteLocation(ctx, id);
   }
 
@@ -190,31 +216,39 @@ export class OrgStructureController {
 
   @Post('masters/:kind')
   @RequirePermissions('org.settings.manage')
-  createMaster(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('kind', KIND) kind: MasterKind, @Body() body: unknown) {
+  async createMaster(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('kind', KIND) kind: MasterKind, @Body() body: unknown) {
     ownSession(req);
-    return this.org.createMaster(ctx, kind, masterBody(kind, body));
+    const dto = masterBody(kind, body);
+    await this.manage(req, this.masterEntity(kind, dto as never));
+    return this.org.createMaster(ctx, kind, dto);
   }
 
   @Put('masters/:kind/:id')
   @RequirePermissions('org.settings.manage')
-  updateMaster(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('kind', KIND) kind: MasterKind, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+  async updateMaster(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('kind', KIND) kind: MasterKind, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     ownSession(req);
-    return this.org.updateMaster(ctx, kind, id, masterBody(kind, body));
+    const dto = masterBody(kind, body);
+    await this.manage(req, await this.scope.entityOf(ctx, kind, id));
+    // Moving it to another owner (or making it shared) needs that scope too.
+    if (kind === 'cost-centres' || (dto as { ownerLegalEntityId?: string | null }).ownerLegalEntityId !== undefined) await this.manage(req, this.masterEntity(kind, dto as never));
+    return this.org.updateMaster(ctx, kind, id, dto);
   }
 
   @Post('masters/:kind/:id/archive')
   @HttpCode(200)
   @RequirePermissions('org.settings.manage')
-  archiveMaster(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('kind', KIND) kind: MasterKind, @Param('id', ParseUUIDPipe) id: string) {
+  async archiveMaster(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('kind', KIND) kind: MasterKind, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
+    await this.manage(req, await this.scope.entityOf(ctx, kind, id));
     return this.org.archiveMaster(ctx, kind, id, true);
   }
 
   @Post('masters/:kind/:id/restore')
   @HttpCode(200)
   @RequirePermissions('org.settings.manage')
-  restoreMaster(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('kind', KIND) kind: MasterKind, @Param('id', ParseUUIDPipe) id: string) {
+  async restoreMaster(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('kind', KIND) kind: MasterKind, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
+    await this.manage(req, await this.scope.entityOf(ctx, kind, id));
     return this.org.archiveMaster(ctx, kind, id, false);
   }
 
@@ -223,6 +257,7 @@ export class OrgStructureController {
   @RequirePermissions('org.settings.manage')
   async deleteMaster(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('kind', KIND) kind: MasterKind, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
+    await this.manage(req, await this.scope.entityOf(ctx, kind, id));
     await this.org.deleteMaster(ctx, kind, id);
   }
 
@@ -230,24 +265,27 @@ export class OrgStructureController {
 
   @Get('grades/:gradeId/pay-ranges')
   @RequirePermissions('pay.range.view')
-  listPayRanges(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('gradeId', ParseUUIDPipe) gradeId: string, @Query() q: PayRangeQueryDto) {
+  async listPayRanges(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('gradeId', ParseUUIDPipe) gradeId: string, @Query() q: PayRangeQueryDto) {
     ownSession(req);
-    return this.org.listPayRanges(ctx, gradeId, q.legalEntityId);
+    // R1 + P02 §4.3: only the entities the pay grant reaches.
+    return this.org.listPayRanges(ctx, gradeId, q.legalEntityId, await this.scope.reach(req, 'pay.range.view'));
   }
 
   @Post('grades/:gradeId/pay-ranges')
   @RequirePermissions('pay.range.manage')
   @RequireStepUp()
-  createPayRange(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('gradeId', ParseUUIDPipe) gradeId: string, @Body() dto: PayRangeDto) {
+  async createPayRange(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('gradeId', ParseUUIDPipe) gradeId: string, @Body() dto: PayRangeDto) {
     ownSession(req);
+    await this.scope.require(req, 'pay.range.manage', dto.legalEntityId);
     return this.org.createPayRange(ctx, gradeId, dto);
   }
 
   @Put('pay-ranges/:id')
   @RequirePermissions('pay.range.manage')
   @RequireStepUp()
-  updatePayRange(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PayRangeAmountsDto) {
+  async updatePayRange(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PayRangeAmountsDto) {
     ownSession(req);
+    await this.scope.require(req, 'pay.range.manage', await this.scope.entityOf(ctx, 'pay_range', id));
     return this.org.updatePayRange(ctx, id, dto);
   }
 
@@ -257,6 +295,7 @@ export class OrgStructureController {
   @RequireStepUp()
   async deletePayRange(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
+    await this.scope.require(req, 'pay.range.manage', await this.scope.entityOf(ctx, 'pay_range', id));
     await this.org.deletePayRange(ctx, id);
   }
 
@@ -270,14 +309,17 @@ export class OrgStructureController {
 
   @Get('settings/resolve')
   @RequireAnyPermission(...VIEW)
-  resolveSetting(@CurrentTenant() ctx: TenantContext, @Query() q: ResolveSettingQueryDto) {
+  async resolveSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: ResolveSettingQueryDto) {
+    // Resolving for a person reads their assignment (Internal): only for HR whose grant reaches them.
+    if (q.employeeId) await this.scope.requireEmployee(req, ctx, q.employeeId, q.asOf);
     return this.settings.resolve(ctx, q);
   }
 
   @Put('settings')
   @RequirePermissions('org.settings.manage')
-  setSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SettingDto) {
+  async setSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SettingDto) {
     ownSession(req);
+    await this.manage(req, await this.scope.settingEntity(ctx, dto.scopeType, dto.scopeId));
     return this.settings.set(ctx, dto);
   }
 
@@ -286,6 +328,7 @@ export class OrgStructureController {
   @RequirePermissions('org.settings.manage')
   async removeSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
+    await this.manage(req, await this.scope.settingById(ctx, id));
     await this.settings.remove(ctx, id);
   }
 }

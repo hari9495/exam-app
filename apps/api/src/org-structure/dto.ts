@@ -206,6 +206,11 @@ export class DepartmentDto extends ScopedMasterDto {
   @IsUUID()
   parentId?: string | null;
 
+  /** P01 §4.3: the department head (implicit "Dept head @ department subtree" view, P02 YX-SEC-04). */
+  @Nullable()
+  @IsUUID()
+  headEmployeeId?: string | null;
+
   @IsOptional()
   @IsBoolean()
   isDivision?: boolean;

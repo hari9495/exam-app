@@ -4,7 +4,7 @@ import { validate } from 'class-validator';
 import { Prisma } from '@prisma/client';
 import { TenantContext } from '@exam-platform/shared';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
-import { asDate } from '../org-structure/org-validation';
+import { asDate, isoDate } from '../org-structure/org-validation';
 import { ChangeRequestDto } from '../employee-history/dto';
 import { displayName, EmployeeHistoryService, Viewer } from '../employee-history/employee-history.service';
 import { CHANGE_TYPES, FoldError } from '../employee-history/history-rules';
@@ -26,7 +26,6 @@ interface Item {
   error?: string;
 }
 
-const has = (v: Viewer, k: string) => v.grants.has(k);
 const message = (e: unknown) => {
   if (e instanceof HttpException) {
     const r = e.getResponse();
@@ -44,9 +43,17 @@ export class BulkChangesService {
   // ---- turning file rows into change requests ----
 
   /** Every code in the file, resolved inside the company. Unknown or ambiguous codes are row errors. */
-  private async resolve(tx: Tx, c: CompanyContext, rows: RawRow[], batchReason: string): Promise<Item[]> {
+  /** The people with an open employment that the viewer's change grant reaches (P02 §4.3): nobody else can be a row. */
+  private async reachable(tx: Tx, c: CompanyContext, v: Viewer) {
+    const open = await tx.employment.findMany({ where: { organizationId: c.organizationId, exitedOn: null }, select: { employeeId: true } });
+    return this.history.reachedIds(tx, c, v, 'employee.change.manage', open.map((e) => e.employeeId));
+  }
+
+  private async resolve(tx: Tx, c: CompanyContext, rows: RawRow[], batchReason: string, reach: ReadonlySet<string>): Promise<Item[]> {
     const org = c.organizationId;
     const open = await tx.employment.findMany({ where: { organizationId: org, exitedOn: null }, select: { employeeId: true, employeeCode: true, legalEntityId: true } });
+    // A row names only people in scope: a code outside it reads as unknown, so a file cannot probe other entities' codes.
+    const subjects = open.filter((e) => reach.has(e.employeeId));
     const entities = await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true, shortName: true } });
     const byCode = (code: string, entityId?: string) => open.filter((e) => e.employeeCode.toLowerCase() === code.toLowerCase() && (!entityId || e.legalEntityId === entityId));
     const master = async (model: 'location' | 'department' | 'designation' | 'grade' | 'employmentType', code: string) =>
@@ -63,7 +70,7 @@ export class BulkChangesService {
           continue;
         }
       }
-      const subject = byCode(r.employee_code ?? '', entityId);
+      const subject = subjects.filter((e) => e.employeeCode.toLowerCase() === (r.employee_code ?? '').toLowerCase() && (!entityId || e.legalEntityId === entityId));
       if (subject.length !== 1) {
         fail(subject.length ? `Employee code ${r.employee_code} is used in more than one legal entity: add legal_entity.` : `No current employee with the code ${r.employee_code}.`);
         continue;
@@ -142,8 +149,8 @@ export class BulkChangesService {
    * one transaction that is always rolled back. A failing row is undone on its own (savepoint) and reported.
    */
   private async evaluate(tx: Tx, c: CompanyContext, v: Viewer, items: Item[]) {
-    const pay = has(v, 'employee.salary.view') && !v.actingForOther;
     const people = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: items.flatMap((i) => (i.employeeId ? [i.employeeId] : [])) } } });
+    const pay = await this.history.payFor(tx, c, v, people.map((p) => p.id));
     const out = [];
     for (const item of items) {
       const person = people.find((p) => p.id === item.employeeId);
@@ -157,7 +164,7 @@ export class BulkChangesService {
         const { ch, e } = await this.history.createChange(tx, c, v, item.dto);
         const { impact } = await this.history.approveIn(tx, c, v, ch, e, { confirmRebase: true, simulate: true });
         await tx.$executeRaw`RELEASE SAVEPOINT bulk_row`;
-        out.push({ ...base, ok: true, error: null, impact: this.history.changeImpactView(impact, pay) });
+        out.push({ ...base, ok: true, error: null, impact: this.history.changeImpactView(impact, pay.has(e.employeeId)) });
       } catch (err) {
         await tx.$executeRaw`ROLLBACK TO SAVEPOINT bulk_row`;
         out.push({ ...base, ok: false, error: message(err), impact: null });
@@ -196,7 +203,7 @@ export class BulkChangesService {
       if (e instanceof CsvProblem) throw new BadRequestException(e.message);
       throw e;
     }
-    return this.submit(ctx, v, (tx, c) => this.resolve(tx, c, rows, dto.reason.trim()), { source: 'csv', fileName: dto.fileName, reason: dto.reason, dryRun: dto.dryRun === true });
+    return this.submit(ctx, v, async (tx, c) => this.resolve(tx, c, rows, dto.reason.trim(), await this.reachable(tx, c, v)), { source: 'csv', fileName: dto.fileName, reason: dto.reason, dryRun: dto.dryRun === true });
   }
 
   /** M01 §3.2: "reassign N reports to …" when a manager leaves or a team moves: a manager change for each. */
@@ -210,8 +217,10 @@ export class BulkChangesService {
         orderBy: { employeeId: 'asc' },
       });
       const codes = await tx.employment.findMany({ where: { organizationId: c.organizationId, employeeId: { in: reports.map((r) => r.employeeId) }, exitedOn: null }, select: { employeeId: true, employeeCode: true } });
+      const reach = await this.reachable(tx, c, v);
       return reports
-        .filter((r) => r.employeeId !== dto.toManagerId)
+        // P02 §4.3: only the reports the viewer's grant reaches are moved (or even listed).
+        .filter((r) => r.employeeId !== dto.toManagerId && reach.has(r.employeeId))
         .map((r, i) => ({
           line: i + 1,
           employeeId: r.employeeId,
@@ -230,9 +239,29 @@ export class BulkChangesService {
     return b;
   }
 
+  private async visibleBatch(tx: Tx, c: CompanyContext, v: Viewer, id: string) {
+    const b = await this.batchOr404(tx, c, id);
+    if (!(await this.inView(tx, c, v, b, await this.changesOf(tx, c, id)))) throw new NotFoundException('Batch not found');
+    return b;
+  }
+
+  /**
+   * P02 §4.3: a batch is visible to whoever raised it and to HR whose keys reach every person in it; a batch
+   * reaching beyond one's scope stays out of view (same answer as a missing one).
+   */
+  private async inView(tx: Tx, c: CompanyContext, v: Viewer, b: Prisma.EmployeeChangeBatchGetPayload<object>, changes: Prisma.EmployeeChangeGetPayload<object>[]) {
+    if (b.requestedBy && b.requestedBy === v.userId) return true;
+    for (const ch of changes) if (!(await this.history.canSeeChange(tx, c, v, ch))) return false;
+    return true;
+  }
+
+  private changesOf(tx: Tx, c: CompanyContext, id: string) {
+    return tx.employeeChange.findMany({ where: { organizationId: c.organizationId, batchId: id }, orderBy: { seq: 'asc' } });
+  }
+
   private async batchView(tx: Tx, c: CompanyContext, v: Viewer, b: Prisma.EmployeeChangeBatchGetPayload<object>, withChanges: boolean) {
-    const changes = await tx.employeeChange.findMany({ where: { organizationId: c.organizationId, batchId: b.id }, orderBy: { seq: 'asc' } });
-    const pay = has(v, 'employee.salary.view') && !v.actingForOther;
+    const changes = await this.changesOf(tx, c, b.id);
+    const pay = await this.history.payFor(tx, c, v, [...new Set(changes.map((x) => x.employeeId))]);
     const people = withChanges ? await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: changes.map((x) => x.employeeId) } } }) : [];
     return {
       id: b.id,
@@ -250,7 +279,7 @@ export class BulkChangesService {
         ? {
             changes: changes.map((x) => {
               const p = people.find((y) => y.id === x.employeeId);
-              return { ...this.history.changeView(x, pay), employeeName: p ? displayName(p) : null };
+              return { ...this.history.changeView(x, pay.has(x.employeeId)), employeeName: p ? displayName(p) : null };
             }),
           }
         : {}),
@@ -260,18 +289,20 @@ export class BulkChangesService {
   list(ctx: TenantContext, v: Viewer, status?: string) {
     return this.history.run(ctx, async (tx, c) => {
       const rows = await tx.employeeChangeBatch.findMany({ where: { organizationId: c.organizationId, ...(status ? { status } : {}) }, orderBy: { requestedAt: 'desc' }, take: 200 });
-      return Promise.all(rows.map((b) => this.batchView(tx, c, v, b, false)));
+      const visible = [];
+      for (const b of rows) if (await this.inView(tx, c, v, b, await this.changesOf(tx, c, b.id))) visible.push(await this.batchView(tx, c, v, b, false));
+      return visible;
     });
   }
 
   get(ctx: TenantContext, v: Viewer, id: string) {
-    return this.history.run(ctx, async (tx, c) => this.batchView(tx, c, v, await this.batchOr404(tx, c, id), true));
+    return this.history.run(ctx, async (tx, c) => this.batchView(tx, c, v, await this.visibleBatch(tx, c, v, id), true));
   }
 
   /** One approval for every change in the batch, in the order raised; any failure leaves everything as it was. */
   approve(ctx: TenantContext, v: Viewer, id: string, confirmRebase: boolean, note?: string) {
     return this.history.run(ctx, async (tx, c) => {
-      const b = await this.batchOr404(tx, c, id);
+      const b = await this.visibleBatch(tx, c, v, id);
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`batch:${c.organizationId}:${id}`}))`;
       const fresh = await this.batchOr404(tx, c, id);
       if (fresh.status !== 'pending') throw new ConflictException(`This batch is ${fresh.status}.`);
@@ -306,10 +337,15 @@ export class BulkChangesService {
   /** Reject (an approver, never the requester) or cancel (the requester or HR): every pending change goes with it. */
   close(ctx: TenantContext, v: Viewer, id: string, outcome: 'rejected' | 'cancelled', reason: string) {
     return this.history.run(ctx, async (tx, c) => {
-      const b = await this.batchOr404(tx, c, id);
+      const b = await this.visibleBatch(tx, c, v, id);
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`batch:${c.organizationId}:${id}`}))`;
       if ((await this.batchOr404(tx, c, id)).status !== 'pending') throw new ConflictException(`This batch is ${b.status}.`);
       if (outcome === 'rejected' && b.requestedBy === c.userId) throw new ForbiddenException('You raised this batch: cancel it instead.');
+      // P02 §4.3: rejecting needs the approval grant over every person in it; cancelling, the requester or HR's change grant over all.
+      const key = outcome === 'rejected' ? 'employee.change.approve' : 'employee.change.manage';
+      if (outcome === 'rejected' || b.requestedBy !== c.userId) {
+        for (const ch of await this.changesOf(tx, c, id)) await this.history.mustReach(tx, c, v, key, ch.employeeId, isoDate(ch.effectiveDate));
+      }
       const now = new Date();
       await tx.employeeChange.updateMany({ where: { organizationId: c.organizationId, batchId: id, status: 'pending' }, data: { status: outcome, decidedBy: c.userId ?? null, decidedAt: now, decisionNote: reason.trim() } });
       const updated = await tx.employeeChangeBatch.update({ where: { id }, data: { status: outcome, decidedBy: c.userId ?? null, decidedAt: now, decisionNote: reason.trim() } });

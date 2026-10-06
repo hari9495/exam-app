@@ -486,6 +486,7 @@ export class OrgStructureService {
         codeScope = { ownerLegalEntityId: own.ownerLegalEntityId };
         if (kind === 'departments') {
           const d = dto as DepartmentDto;
+          await this.headOf(tx, c, d.headEmployeeId);
           await this.lock(tx, c, 'departments');
           const id = randomUUID();
           const parent = d.parentId ? await this.departmentParent(tx, c, id, d.parentId, own.ownerLegalEntityId) : null;
@@ -503,8 +504,10 @@ export class OrgStructureService {
 
   private kindFields(kind: MasterKind, dto: AnyMasterDto): Record<string, unknown> {
     switch (kind) {
-      case 'departments':
-        return { isDivision: (dto as DepartmentDto).isDivision ?? false };
+      case 'departments': {
+        const d = dto as DepartmentDto;
+        return { isDivision: d.isDivision ?? false, ...(d.headEmployeeId !== undefined ? { headEmployeeId: d.headEmployeeId } : {}) };
+      }
       case 'designations':
         return { jobFamily: (dto as DesignationDto).jobFamily?.trim() || null };
       case 'grades':
@@ -529,6 +532,12 @@ export class OrgStructureService {
       throw new BadRequestException(`${parent.name} belongs to one legal entity, so only that entity’s departments can sit under it (YX-ORG-15).`);
     }
     return parent;
+  }
+
+  /** A department head is an employee of this company (the composite key proves it again). */
+  private async headOf(tx: Tx, c: CompanyContext, employeeId: string | null | undefined) {
+    if (!employeeId) return;
+    if (!(await tx.employee.findFirst({ where: { id: employeeId, organizationId: c.organizationId }, select: { id: true } }))) throw new BadRequestException('Choose a department head who is an employee of this company.');
   }
 
   /** A cost centre's parent: same entity, active, no cycle. */
@@ -563,7 +572,10 @@ export class OrgStructureService {
       } else {
         const own = await this.ownership(tx, c, dto as DepartmentDto, row);
         data = { ...data, ...own, ...this.kindFields(kind, dto) };
-        if (kind === 'departments') await this.moveDepartment(tx, c, row as MasterRow & { path: string }, dto as DepartmentDto, own.ownerLegalEntityId, data);
+        if (kind === 'departments') {
+          await this.headOf(tx, c, (dto as DepartmentDto).headEmployeeId);
+          await this.moveDepartment(tx, c, row as MasterRow & { path: string }, dto as DepartmentDto, own.ownerLegalEntityId, data);
+        }
       }
       const updated = await delegate(tx, kind).update({ where: { id }, data });
       const fields = changed(row as unknown as Record<string, unknown>, data);
@@ -629,11 +641,12 @@ export class OrgStructureService {
 
   // ================= grade pay ranges (pay data, founder rule R1) =================
 
-  listPayRanges(ctx: TenantContext, gradeId: string, legalEntityId: string | undefined) {
+  listPayRanges(ctx: TenantContext, gradeId: string, legalEntityId: string | undefined, entities: 'all' | ReadonlySet<string> = 'all') {
     return this.run(ctx, async (tx, c) => {
       await this.masterOr404(tx, c, 'grades', gradeId);
+      const reach = entities === 'all' ? {} : { legalEntityId: { in: [...entities] } };
       const rows = await tx.gradePayRange.findMany({
-        where: { organizationId: c.organizationId, gradeId, ...(legalEntityId ? { legalEntityId } : {}) },
+        where: { organizationId: c.organizationId, gradeId, AND: [reach, legalEntityId ? { legalEntityId } : {}] },
         orderBy: [{ legalEntityId: 'asc' }, { currency: 'asc' }, { validFrom: 'asc' }],
       });
       // R1: "Show pay" is recorded.
