@@ -75,4 +75,12 @@ describe('AuditService', () => {
       data: expect.objectContaining({ actorEmail: null, actorName: null, actorRole: null }),
     });
   });
+
+  it('recordIn writes inside the caller transaction, so the entry commits or rolls back with the change (P08)', async () => {
+    const create = jest.fn();
+    const tx = mockTx({ auditLog: { create } });
+    await AuditService.recordIn(tx as never, { organizationId: 'org-1', isSuperAdmin: false }, { actorUserId: null, action: 'org.location.created', entityType: 'location', entityId: 'loc-1' });
+    expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ organizationId: 'org-1', action: 'org.location.created', entityId: 'loc-1' }) });
+  });
 });
