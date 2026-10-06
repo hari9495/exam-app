@@ -12,7 +12,7 @@ const DAY_MS = 86_400_000;
 const iso = (d: Date | null, endOfDay = false) => (d ? new Date(d.getTime() + (endOfDay ? DAY_MS - 1 : 0)).toISOString() : undefined);
 
 // Admin › Login activity (P12 §7; YX-IAM-06/10): the company's sign-in attempts (audit:view) and who
-// is signed in now (org:manage_users). Tenant scoping is RLS on the API side.
+// is signed in now and Unlock (org:manage_users). Tenant scoping is RLS on the API side.
 export default function YxLoginActivityPage() {
   const { accessToken } = useAuth();
   const token = accessToken ?? undefined;
@@ -60,6 +60,16 @@ export default function YxLoginActivityPage() {
         await apiFetch(`/security/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' }, token);
         await queryClient.invalidateQueries({ queryKey: ['yx', 'admin', 'sessions'] });
       }}
+      // Who-is-signed-in loads only with org:manage_users -- the permission Unlock needs too. A step-up
+      // action: apiFetch asks the admin to confirm it's them, then resends.
+      onUnlock={
+        sessions.isSuccess
+          ? async (row, reason) => {
+              await apiFetch(`/security/users/${encodeURIComponent(row.userId!)}/unlock`, { method: 'POST', body: JSON.stringify({ reason }) }, token);
+              await queryClient.invalidateQueries({ queryKey: ['yx', 'admin', 'events'] });
+            }
+          : undefined
+      }
       onRetry={() => void queryClient.invalidateQueries({ queryKey: ['yx', 'admin'] })}
     />
   );
