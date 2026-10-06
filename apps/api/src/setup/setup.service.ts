@@ -53,6 +53,11 @@ export class SetupService implements OnModuleInit {
   async completeSetup(dto: CompleteSetupDto): Promise<void> {
     const tokenHash = createHash('sha256').update(dto.token).digest('hex');
     const context = { organizationId: null, isSuperAdmin: true };
+    // Cheap gate before the expensive part: once setup is done (the normal state) this public
+    // endpoint must not spend argon2 work or a breach lookup on anyone. Re-checked in the tx below.
+    if (!(await this.needsSetup())) {
+      throw new BadRequestException('Setup has already been completed');
+    }
     // The platform's first super admin gets the same password floor as everyone (YX-IAM-08).
     const { passwordHash, passwordRecheckPending } = await this.passwordPolicy.hashNewPassword(dto.password, null);
 

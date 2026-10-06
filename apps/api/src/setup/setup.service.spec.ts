@@ -83,6 +83,8 @@ describe('SetupService', () => {
     await expect(
       service.completeSetup({ token: 'raw-token', email: 'ops@example.com', password: 'long-enough-passphrase' }),
     ).rejects.toThrow(BadRequestException);
+    // Once set up, the public endpoint spends no hashing or breach-lookup work on anyone.
+    expect(passwordPolicy.hashNewPassword).not.toHaveBeenCalled();
   });
 
   it('completeSetup rejects an invalid token', async () => {
