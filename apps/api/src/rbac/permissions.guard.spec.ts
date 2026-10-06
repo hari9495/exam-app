@@ -325,6 +325,8 @@ describe('PermissionsGuard', () => {
         orgRolePermission: { findUnique: jest.fn().mockResolvedValue(null) },
         user: { findUnique: jest.fn().mockResolvedValue(null) },
         auditLog: auditLogs,
+        // Role grants (P02 YX-SEC-03): none for this user.
+        $queryRaw: jest.fn().mockResolvedValue([]),
       };
       const tenantPrisma = { forTenant: jest.fn(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
       return new PermissionsGuard(reflector, prisma as any, tenantPrisma as any);

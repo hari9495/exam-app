@@ -477,7 +477,7 @@ export class AuthService {
       return [];
     }
     if (!(await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId)).allowedFactors.includes('otp')) return [];
-    const grants = await resolvePermissionGrants(this.prisma, this.tenantPrisma, user, [...OTP_FALLBACK_BARRED_PERMISSIONS]);
+    const grants = await resolvePermissionGrants(this.prisma, this.tenantPrisma, { ...user, userId: user.id }, [...OTP_FALLBACK_BARRED_PERMISSIONS]);
     if (OTP_FALLBACK_BARRED_PERMISSIONS.some((key) => grants.has(key))) return [];
     const texted = OTP_CHANNELS.filter((channel) => channel !== 'email');
     const ready = await Promise.all(texted.map((channel) => this.otp.channelAvailable(channel, user.organizationId)));

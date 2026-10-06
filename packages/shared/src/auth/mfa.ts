@@ -26,6 +26,14 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'employee.change.retro_override',
   'employee.salary.view',
   'employee.salary.manage',
+  // Personal, Confidential and Special employee data and who holds which role (P02 §4.2–4.5, step 2d).
+  'employee.personal.view',
+  'employee.profile.edit',
+  'employee.identity.view',
+  'employee.identity.manage',
+  'employee.identity.approve',
+  'employee.aadhaar.view',
+  'access.role.manage',
 ];
 
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).
@@ -42,6 +50,9 @@ export const OTP_FALLBACK_BARRED_PERMISSIONS: readonly string[] = [
   'org.entity.statutory.manage',
   'pay.range.manage',
   'employee.salary.manage',
+  // Approving bank / identity changes (payout fraud guard, P02 §4.5) and handing out roles (System Admin).
+  'employee.identity.approve',
+  'access.role.manage',
 ];
 
 export const MFA_ENROLMENT_GRACE_DAYS = 14;

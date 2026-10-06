@@ -188,9 +188,10 @@ export class MfaService {
   }
 
   // In a sensitive role (P12 §3; YukthiX staff always), or the company requires MFA for everyone.
-  async isSensitive(user: Pick<MfaUser, 'organizationId' | 'role' | 'permissionProfileId'>): Promise<boolean> {
+  async isSensitive(user: Pick<MfaUser, 'id' | 'organizationId' | 'role' | 'permissionProfileId'>): Promise<boolean> {
     if (user.role === 'super_admin') return true;
-    const grants = await resolvePermissionGrants(this.prisma, this.tenantPrisma, user, [...SENSITIVE_ROLE_PERMISSIONS]);
+    // Role grants count too (P02 YX-SEC-03): a Payroll Admin grant makes its holder a sensitive role.
+    const grants = await resolvePermissionGrants(this.prisma, this.tenantPrisma, { ...user, userId: user.id }, [...SENSITIVE_ROLE_PERMISSIONS]);
     return SENSITIVE_ROLE_PERMISSIONS.some((key) => grants.has(key));
   }
 

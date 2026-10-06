@@ -14,8 +14,8 @@ export class RbacService {
   ) {}
 
   /** The subset of `keys` this user holds, resolved exactly as PermissionsGuard resolves them. */
-  async grantedKeys(user: { role: string; organizationId?: string | null; permissionProfileId?: string | null }, keys: string[]): Promise<string[]> {
-    const granted = await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: user.role, organizationId: user.organizationId ?? null, permissionProfileId: user.permissionProfileId }, keys);
+  async grantedKeys(user: { userId?: string; role: string; organizationId?: string | null; permissionProfileId?: string | null }, keys: string[]): Promise<string[]> {
+    const granted = await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: user.role, organizationId: user.organizationId ?? null, permissionProfileId: user.permissionProfileId, userId: user.userId ?? null }, keys);
     return [...new Set(keys)].filter((k) => granted.has(k));
   }
 

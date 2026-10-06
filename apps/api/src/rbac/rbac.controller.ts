@@ -20,7 +20,7 @@ export class RbacController {
   /** Which of the asked-for keys the signed-in person holds, so screens show only what they can open. The API still checks every call. */
   @Get('me/permissions')
   myPermissions(@Req() req: Request, @Query() q: MyPermissionsQueryDto) {
-    const user = req.user as { role: string; organizationId?: string | null; permissionProfileId?: string | null };
+    const user = req.user as { userId?: string; role: string; organizationId?: string | null; permissionProfileId?: string | null };
     return this.rbacService.grantedKeys(user, q.keys.split(','));
   }
 }
