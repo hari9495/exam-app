@@ -7,6 +7,8 @@ import { BRAND } from '../../../lib/brand';
 import { Button, TextField, PasswordField, FormAlert, WorkfoxMark } from '../../../components/ui-v2';
 import { SecondFactorForm } from '../../../components/auth/SecondFactorForm';
 
+const LINK = { alignSelf: 'flex-start', background: 'none', border: 0, padding: 0 };
+
 const PROOF = [
   'Proctored, timed, integrity-scored',
   'Panel-ready reports the moment a candidate submits',
@@ -18,6 +20,13 @@ export default function V2LoginPage() {
   const reduce = useReducedMotion();
   const orgName = s.branding?.name;
   const initial = (orgName || 'W').trim().charAt(0).toUpperCase();
+  // A mobile number gets a text (SMS by default, WhatsApp on request); an email gets an email.
+  const isMobile = s.identifier.trim() !== '' && !s.identifier.includes('@');
+  const onOtpSubmit = (e: React.FormEvent) => {
+    if (s.otpSent) return void s.verifyOtp(e);
+    e.preventDefault();
+    void s.sendOtp(isMobile ? 'sms' : undefined);
+  };
 
   return (
     <main
@@ -48,7 +57,12 @@ export default function V2LoginPage() {
                 <h1 className="v2-title">Two-step verification</h1>
                 <p style={{ fontSize: 13, color: 'var(--muted)', margin: '3px 0 0' }}>Confirm it&apos;s you to finish signing in.</p>
               </div>
-              <SecondFactorForm factors={s.challenge.factors} getPasskeyOptions={s.secondFactorPasskeyOptions} submit={s.verifySecondFactor} />
+              <SecondFactorForm
+                factors={s.challenge.factors}
+                getPasskeyOptions={s.secondFactorPasskeyOptions}
+                submit={s.verifySecondFactor}
+                sendCode={s.sendSecondFactorCode}
+              />
               <button type="button" className="v2-link" style={{ alignSelf: 'flex-start', background: 'none', border: 0, padding: 0 }} onClick={s.cancelChallenge}>
                 Start again
               </button>
@@ -64,7 +78,7 @@ export default function V2LoginPage() {
 
           {s.error && <FormAlert>{s.error}</FormAlert>}
 
-          <form onSubmit={s.handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <form onSubmit={s.otpMode ? onOtpSubmit : s.handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <TextField id="org-slug" label="Organization" value={s.organizationSlug} onChange={s.setOrganizationSlug} autoComplete="organization" />
 
             {orgName && (
@@ -85,6 +99,34 @@ export default function V2LoginPage() {
               <motion.a whileTap={reduce ? undefined : { scale: 0.98 }} href={s.ssoLoginHref} onClick={s.onSsoClick} className="v2-cta" style={{ textDecoration: 'none', height: 44 }}>
                 Continue with SSO
               </motion.a>
+            ) : s.otpMode ? (
+              <>
+                {s.otpSent ? (
+                  <>
+                    <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
+                      If an account matches, we sent a 6-digit code to it. It expires in 5 minutes.
+                    </p>
+                    <TextField id="otp-code" label="6-digit code" value={s.otpCode} onChange={s.setOtpCode} required autoComplete="one-time-code" />
+                    <Button type="submit" loading={s.submitting} fullWidth>Sign in</Button>
+                    <button type="button" className="v2-link" style={LINK} disabled={s.submitting} onClick={() => void s.sendOtp(isMobile ? 'sms' : undefined)}>
+                      Send a new code
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <TextField id="identifier" label="Work email or mobile number" value={s.identifier} onChange={s.setIdentifier} required autoComplete="username" />
+                    <Button type="submit" loading={s.submitting} fullWidth>{isMobile ? 'Text me a code' : 'Email me a code'}</Button>
+                    {isMobile && (
+                      <button type="button" className="v2-link" style={LINK} disabled={s.submitting} onClick={() => void s.sendOtp('whatsapp')}>
+                        Send it on WhatsApp instead
+                      </button>
+                    )}
+                  </>
+                )}
+                <button type="button" className="v2-link" style={LINK} onClick={s.toggleOtpMode}>
+                  Use your password instead
+                </button>
+              </>
             ) : (
               <>
                 <TextField id="email" label="Email" type="email" value={s.email} onChange={s.setEmail} required autoComplete="email" />
@@ -93,6 +135,9 @@ export default function V2LoginPage() {
                   <Button type="submit" loading={s.submitting} fullWidth>Sign in</Button>
                 </motion.div>
                 <Link href="/forgot-password" className="v2-link">Forgot password?</Link>
+                <button type="button" className="v2-link" style={LINK} onClick={s.toggleOtpMode}>
+                  Sign in with a one-time code instead
+                </button>
               </>
             )}
           </form>

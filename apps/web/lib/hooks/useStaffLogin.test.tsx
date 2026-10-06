@@ -72,4 +72,64 @@ describe('useStaffLogin', () => {
     await submitPassword();
     await waitFor(() => expect(push).toHaveBeenCalledWith('/profile?mfa=setup'));
   });
+
+  describe('one-time code (P12 §3, M04 Q2)', () => {
+    async function sendCode(identifier: string, channel?: 'sms' | 'whatsapp') {
+      const hook = renderHook(() => useStaffLogin());
+      act(() => {
+        hook.result.current.setOrganizationSlug('acme');
+        hook.result.current.toggleOtpMode();
+        hook.result.current.setIdentifier(identifier);
+      });
+      api.mockResolvedValueOnce({ otpToken: 't'.repeat(43), expiresInSeconds: 300, resendAfterSeconds: 60 });
+      await act(() => hook.result.current.sendOtp(channel));
+      return hook;
+    }
+
+    it('sends a code, then signs in with it', async () => {
+      const hook = await sendCode(' a@acme.test ');
+      expect(api).toHaveBeenLastCalledWith('/auth/otp/start', { method: 'POST', body: JSON.stringify({ organizationSlug: 'acme', identifier: 'a@acme.test' }) });
+      expect(hook.result.current.otpSent).toEqual({ otpToken: 't'.repeat(43), identifier: 'a@acme.test' });
+
+      act(() => hook.result.current.setOtpCode('123456'));
+      const accessToken = fakeJwt({ role: 'panel' });
+      api.mockResolvedValueOnce({ accessToken });
+      await act(() => hook.result.current.verifyOtp(submitEvent));
+      expect(api).toHaveBeenLastCalledWith('/auth/otp/verify', {
+        method: 'POST',
+        body: JSON.stringify({ organizationSlug: 'acme', identifier: 'a@acme.test', otpToken: 't'.repeat(43), code: '123456' }),
+      });
+      expect(login).toHaveBeenCalledWith('acme', accessToken);
+      expect(push).toHaveBeenCalledWith(roleToLandingPath('panel'));
+    });
+
+    it('a mobile number can ask for WhatsApp; an account with a factor then gets the second step', async () => {
+      const hook = await sendCode('98765 43210', 'whatsapp');
+      expect(api).toHaveBeenLastCalledWith('/auth/otp/start', { method: 'POST', body: JSON.stringify({ organizationSlug: 'acme', identifier: '98765 43210', channel: 'whatsapp' }) });
+      act(() => hook.result.current.setOtpCode('123456'));
+      api.mockResolvedValueOnce({ mfaRequired: true, mfaToken: 'pending', factors: ['totp', 'recovery_code'] });
+      await act(() => hook.result.current.verifyOtp(submitEvent));
+      expect(hook.result.current.challenge).toEqual({ mfaRequired: true, mfaToken: 'pending', factors: ['totp', 'recovery_code'] });
+      expect(login).not.toHaveBeenCalled();
+    });
+
+    it('shows a refused code or a cooldown as an error', async () => {
+      const hook = await sendCode('a@acme.test');
+      api.mockRejectedValueOnce(new Error('That code is not right or has expired. Ask for a new one.'));
+      await act(() => hook.result.current.verifyOtp(submitEvent));
+      expect(hook.result.current.error).toBe('That code is not right or has expired. Ask for a new one.');
+      api.mockRejectedValueOnce(new Error('Please wait before asking for another code.'));
+      await act(() => hook.result.current.sendOtp());
+      expect(hook.result.current.error).toBe('Please wait before asking for another code.');
+      expect(hook.result.current.submitting).toBe(false);
+    });
+
+    it('sends the fallback second-factor code for the pending sign-in', async () => {
+      api.mockResolvedValueOnce({ mfaRequired: true, mfaToken: 'pending', factors: ['totp', 'otp'] });
+      const hook = await submitPassword();
+      api.mockResolvedValueOnce({ expiresInSeconds: 300, resendAfterSeconds: 60 });
+      await act(() => hook.result.current.sendSecondFactorCode('sms'));
+      expect(api).toHaveBeenLastCalledWith('/auth/mfa/otp/send', { method: 'POST', body: JSON.stringify({ mfaToken: 'pending', channel: 'sms' }) });
+    });
+  });
 });

@@ -44,6 +44,12 @@ export function useStaffLogin() {
   const [ssoEnabled, setSsoEnabled] = useState(false);
   const [debouncedSlug, setDebouncedSlug] = useState('');
   const [challenge, setChallenge] = useState<MfaChallenge | null>(null);
+  // Sign-in with a one-time code (P12 §3; M04 Q2): otpMode shows that form; otpSent holds the
+  // token the API returned for the code just sent.
+  const [otpMode, setOtpMode] = useState(false);
+  const [identifier, setIdentifier] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSent, setOtpSent] = useState<{ otpToken: string; identifier: string } | null>(null);
 
   const { data } = useBranding(debouncedSlug || null);
   const branding = data as StaffLoginBranding | undefined;
@@ -97,6 +103,55 @@ export function useStaffLogin() {
     }
   }
 
+  const fail = (err: unknown, fallback: string) => {
+    setError(err instanceof Error ? err.message : fallback);
+    setSubmitting(false);
+  };
+
+  async function sendOtp(channel?: 'sms' | 'whatsapp') {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const sent = await apiFetch('/auth/otp/start', {
+        method: 'POST',
+        body: JSON.stringify({ organizationSlug, identifier: identifier.trim(), ...(channel ? { channel } : {}) }),
+      });
+      setOtpSent({ otpToken: sent.otpToken, identifier: identifier.trim() });
+      setOtpCode('');
+      setSubmitting(false);
+    } catch (err) {
+      fail(err, 'Could not send a code');
+    }
+  }
+
+  async function verifyOtp(e: React.FormEvent) {
+    e.preventDefault();
+    if (!otpSent) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      const result = await apiFetch('/auth/otp/verify', {
+        method: 'POST',
+        body: JSON.stringify({ organizationSlug, identifier: otpSent.identifier, otpToken: otpSent.otpToken, code: otpCode.trim() }),
+      });
+      if (result.mfaRequired) {
+        setChallenge(result as MfaChallenge);
+        setSubmitting(false);
+        return;
+      }
+      finish(result as SignedIn);
+    } catch (err) {
+      fail(err, 'Sign-in failed');
+    }
+  }
+
+  const toggleOtpMode = () => {
+    setOtpMode(!otpMode);
+    setOtpSent(null);
+    setOtpCode('');
+    setError(null);
+  };
+
   // Accounts that must enrol MFA are taken to set it up first (P12 §8: prompted at sign-in).
   function finish(result: SignedIn) {
     login(organizationSlug, result.accessToken);
@@ -108,9 +163,15 @@ export function useStaffLogin() {
     apiFetch(path, { method: 'POST', body: JSON.stringify({ mfaToken: challenge?.mfaToken, ...body }) });
   const verifySecondFactor = async (proof: MfaProof) => finish(await mfaPost('/auth/mfa/verify', proof));
   const secondFactorPasskeyOptions = () => mfaPost('/auth/mfa/passkey-options', {});
+  // The OTP fallback second factor (YX-IAM-03), offered only when the API lists 'otp'.
+  const sendSecondFactorCode = async (channel: 'sms' | 'whatsapp') => {
+    await mfaPost('/auth/mfa/otp/send', { channel });
+  };
   const cancelChallenge = () => {
     setChallenge(null);
     setPassword('');
+    setOtpSent(null);
+    setOtpCode('');
   };
 
   const ssoLoginHref = ssoEnabled
@@ -128,6 +189,7 @@ export function useStaffLogin() {
     orgOnPrimary: branding?.textColor || '#ffffff',
     ssoLoginHref, onSsoClick,
     handleSubmit,
-    challenge, verifySecondFactor, secondFactorPasskeyOptions, cancelChallenge,
+    challenge, verifySecondFactor, secondFactorPasskeyOptions, sendSecondFactorCode, cancelChallenge,
+    otpMode, toggleOtpMode, identifier, setIdentifier, otpCode, setOtpCode, otpSent, sendOtp, verifyOtp,
   };
 }

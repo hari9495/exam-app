@@ -50,4 +50,21 @@ describe('SecondFactorForm', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Use your passkey' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('That did not work. Try again.');
   });
+
+  it('texts a fallback code when the API offers one, then submits it as factor otp', async () => {
+    const sendCode = jest.fn().mockResolvedValue(undefined);
+    render(<SecondFactorForm factors={['totp', 'recovery_code', 'otp']} getPasskeyOptions={getPasskeyOptions} submit={submit} sendCode={sendCode} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Send it on WhatsApp' }));
+    expect(sendCode).toHaveBeenCalledWith('whatsapp');
+    await userEvent.type(await screen.findByLabelText('Code we sent to your phone'), '654321');
+    await userEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    expect(submit).toHaveBeenCalledWith({ factor: 'otp', code: '654321' });
+    await userEvent.click(screen.getByRole('button', { name: 'Text me a new code' }));
+    expect(sendCode).toHaveBeenLastCalledWith('sms');
+  });
+
+  it('offers no text-message code unless the API lists it (never at step-up)', () => {
+    render(<SecondFactorForm factors={['totp', 'recovery_code']} getPasskeyOptions={getPasskeyOptions} submit={submit} sendCode={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Text me a code instead' })).not.toBeInTheDocument();
+  });
 });

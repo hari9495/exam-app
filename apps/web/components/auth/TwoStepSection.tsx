@@ -21,6 +21,8 @@ interface MfaStatus {
   required: boolean;
   enrolmentDueAt: string;
   allowedFactors: string[];
+  // Verified mobile number (E.164) for sign-in codes and the text-message fallback; null if none.
+  mobileNumber: string | null;
 }
 
 const dateOf = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -36,6 +38,9 @@ export function TwoStepSection() {
   const [code, setCode] = useState('');
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mobile, setMobile] = useState('');
+  const [mobileSent, setMobileSent] = useState<string | null>(null);
+  const [mobileCode, setMobileCode] = useState('');
   // Sign-in sends accounts that must enrol here with ?mfa=setup: announce the requirement.
   const [prompt, setPrompt] = useState(false);
   useEffect(() => setPrompt(new URLSearchParams(window.location.search).get('mfa') === 'setup'), []);
@@ -92,6 +97,30 @@ export function TwoStepSection() {
   const newCodes = () =>
     run(async () => {
       setRecoveryCodes((await post('/auth/mfa/recovery-codes')).recoveryCodes);
+    });
+
+  // Mobile number: verified by a texted code; adding or removing one asks for a step-up when a
+  // factor is enrolled (apiFetch prompts).
+  const sendMobileCode = (e: FormEvent) => {
+    e.preventDefault();
+    void run(async () => {
+      setMobileSent((await post('/auth/otp/mobile', { mobileNumber: mobile.trim() })).mobileNumber);
+      setMobileCode('');
+    });
+  };
+
+  const verifyMobile = (e: FormEvent) => {
+    e.preventDefault();
+    void run(async () => {
+      await post('/auth/otp/mobile/verify', { code: mobileCode.trim() });
+      setMobileSent(null);
+      setMobile('');
+    });
+  };
+
+  const removeMobile = () =>
+    run(async () => {
+      await apiFetch('/auth/otp/mobile', { method: 'DELETE' }, token);
     });
 
   const allowed = status?.allowedFactors ?? [];
@@ -167,6 +196,35 @@ export function TwoStepSection() {
           <p role="alert" className="text-sm text-status-danger">
             {error}
           </p>
+        )}
+
+        {status && (
+          <div className="flex flex-col gap-2 rounded-md border border-rule p-3">
+            <p className="text-sm font-medium">Mobile number</p>
+            {status.mobileNumber ? (
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="tabular-nums">{status.mobileNumber}</span>
+                <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={removeMobile} aria-label="Remove mobile number">
+                  Remove
+                </Button>
+              </div>
+            ) : mobileSent ? (
+              <form onSubmit={verifyMobile} className="flex flex-col gap-2">
+                <p className="text-xs text-muted">We texted a 6-digit code to {mobileSent}. It expires in 5 minutes.</p>
+                <Input label="Code from the text" value={mobileCode} onChange={setMobileCode} inputMode="numeric" autoComplete="one-time-code" maxLength={6} required />
+                <div className="flex gap-2">
+                  <Button type="submit" size="sm" loading={busy}>Verify</Button>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => setMobileSent(null)}>Cancel</Button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={sendMobileCode} className="flex flex-col gap-2">
+                <p className="text-xs text-muted">Lets you sign in with a code sent to your phone, where your organisation allows it.</p>
+                <Input label="Mobile number" value={mobile} onChange={setMobile} inputMode="tel" autoComplete="tel" maxLength={32} required />
+                <Button type="submit" size="sm" variant="secondary" loading={busy}>Text me a code</Button>
+              </form>
+            )}
+          </div>
         )}
 
         {status && !totpSetup && (

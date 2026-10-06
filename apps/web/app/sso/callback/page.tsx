@@ -84,6 +84,9 @@ function SsoCallbackRedeemer() {
             factors={challenge.factors}
             getPasskeyOptions={() => post('/auth/mfa/passkey-options', {})}
             submit={async (proof: MfaProof) => finish(challenge.slug, await post('/auth/mfa/verify', proof))}
+            sendCode={async (channel) => {
+              await post('/auth/mfa/otp/send', { channel });
+            }}
           />
         </div>
       </main>

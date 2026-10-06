@@ -14,14 +14,29 @@ const CODES = Array.from({ length: 10 }, (_, i) => `aaaa-bbbb-cccc-dd${String(i)
 
 describe('TwoStepSection', () => {
   let factors: object[];
+  let mobileNumber: string | null;
   const api = apiFetch as jest.Mock;
 
   beforeEach(() => {
     factors = [];
+    mobileNumber = null;
     (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok' });
     api.mockReset().mockImplementation(async (path: string, init?: RequestInit) => {
       if (path === '/auth/mfa') {
-        return { factors, recoveryCodesRemaining: factors.length ? 10 : 0, required: true, enrolmentDueAt: '2026-10-20T00:00:00Z', allowedFactors: ['passkey', 'totp'] };
+        return { factors, recoveryCodesRemaining: factors.length ? 10 : 0, required: true, enrolmentDueAt: '2026-10-20T00:00:00Z', allowedFactors: ['passkey', 'totp'], mobileNumber };
+      }
+      if (path === '/auth/otp/mobile' && init?.method === 'POST') {
+        expect(JSON.parse(String(init.body))).toEqual({ mobileNumber: '98765 43210' });
+        return { mobileNumber: '+919876543210', expiresInSeconds: 300 };
+      }
+      if (path === '/auth/otp/mobile/verify') {
+        expect(JSON.parse(String(init?.body))).toEqual({ code: '246810' });
+        mobileNumber = '+919876543210';
+        return { mobileNumber };
+      }
+      if (path === '/auth/otp/mobile' && init?.method === 'DELETE') {
+        mobileNumber = null;
+        return null;
       }
       if (path === '/auth/mfa/totp/setup') return { secret: 'JBSWY3DPEHPK3PXP', otpauthUrl: 'otpauth://totp/YukthiX:me?secret=JBSWY3DPEHPK3PXP' };
       if (path === '/auth/mfa/totp/confirm') {
@@ -83,5 +98,19 @@ describe('TwoStepSection', () => {
     render(<TwoStepSection />);
     await userEvent.click(await screen.findByRole('button', { name: 'Remove authenticator app' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Add another factor before removing this one');
+  });
+
+  it('verifies a mobile number with a texted code, and removes it', async () => {
+    render(<TwoStepSection />);
+    await userEvent.type(await screen.findByLabelText('Mobile number'), '98765 43210');
+    await userEvent.click(screen.getByRole('button', { name: 'Text me a code' }));
+    expect(await screen.findByText(/We texted a 6-digit code to \+919876543210/)).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Code from the text'), '246810');
+    await userEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    expect(await screen.findByText('+919876543210')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove mobile number' }));
+    expect(await screen.findByLabelText('Mobile number')).toBeInTheDocument();
+    expect(api).toHaveBeenCalledWith('/auth/otp/mobile', { method: 'DELETE' }, 'tok');
   });
 });
