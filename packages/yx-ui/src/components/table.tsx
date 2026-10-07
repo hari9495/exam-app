@@ -514,7 +514,8 @@ export function DataTable<R>(props: DataTableProps<R>) {
   const totals = visible.some((c) => c.total);
   const groupable = columns.filter((c) => c.groupable);
   // No button column when no row has a button (e.g. a "Completed" tab) (founder review 30 Sep 2026).
-  const hasActions = Boolean((rowActions && rows.some((r) => hasContent(rowActions(r)))) || (rowButtons && rows.some((r) => rowButtons(r) != null)));
+  const anyMenu = Boolean(rowActions && rows.some((r) => hasContent(rowActions(r))));
+  const hasActions = anyMenu || Boolean(rowButtons && rows.some((r) => rowButtons(r) != null));
   const colCount = visible.length + (selectable ? 1 : 0) + (hasActions ? 1 : 0);
   const firstLeft = selectable ? SELECT_W : 0;
 
@@ -675,7 +676,8 @@ export function DataTable<R>(props: DataTableProps<R>) {
           <td className="yx-table__actions" data-no-row-click>
             <div className="yx-table__actions-inner">
               {rowBtns}
-              {menuButton}
+              {/* A row without a "…" menu keeps its place, so the buttons line up in one column (R9). */}
+              {menuButton || (anyMenu && hasContent(rowBtns) && <span className="yx-table__menu-slot" aria-hidden="true" />)}
             </div>
           </td>
         )}

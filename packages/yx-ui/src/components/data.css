@@ -221,6 +221,8 @@
 .yx-table .yx-table__actions { position: sticky; right: 0; z-index: 1; width: auto; padding: 0 var(--yx-space-2); box-shadow: inset var(--yx-border-width) 0 0 var(--yx-color-border); }
 .yx-table th.yx-table__actions { z-index: 3; }
 .yx-table__actions-inner { display: flex; justify-content: flex-end; align-items: center; gap: var(--yx-space-2); width: max-content; margin-left: auto; }
+.yx-table__menu-slot { flex: none; width: var(--yx-control-sm); }
+.yx-table[data-layout="cards"] .yx-table__menu-slot { display: none; }
 .yx-table tbody tr[data-clickable] { cursor: pointer; }
 .yx-table tbody tr:hover > td { background: var(--yx-color-bg-page); }
 .yx-table tbody tr:focus-visible { outline: none; }
@@ -340,11 +342,10 @@
 .yx-table[data-card-summary] td { padding: 0; text-align: left; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
 .yx-table[data-card-summary] td[data-frozen] { flex-basis: 100%; padding-bottom: var(--yx-space-1); font-size: var(--yx-text-body); color: var(--yx-color-text); }
 .yx-table[data-card-summary] td::before { content: none; }
-/* Separators only between cells that show something, so an empty first cell leaves no stray leading "·". */
-.yx-table[data-card-summary] tbody td:not([data-frozen]):not(.yx-table__actions):not(:empty) ~ td:not([data-frozen]):not(.yx-table__actions):not(:empty)::before { content: '·'; margin-right: var(--yx-space-1); color: var(--yx-color-text-muted); }
+/* Separators only between cells that show something, and at the end of a cell, so a wrapped line never starts with "·". */
+.yx-table[data-card-summary] tbody td:not([data-frozen]):not(.yx-table__actions):not(:empty):has(~ td:not([data-frozen]):not(.yx-table__actions):not(:empty))::after { content: '·'; margin-left: var(--yx-space-1); color: var(--yx-color-text-muted); }
 /* Amounts carry their column name ("Liability ₹1,94,296"), so a line of figures is never unlabelled. */
 .yx-table[data-card-summary] tbody td[data-type="money"]:not(:empty)::before { content: attr(data-label) ' '; white-space: pre; color: var(--yx-color-text-muted); }
-.yx-table[data-card-summary] tbody td:not([data-frozen]):not(.yx-table__actions):not(:empty) ~ td[data-type="money"]:not([data-frozen]):not(.yx-table__actions):not(:empty)::before { content: '· ' attr(data-label) ' '; white-space: pre; margin-right: 0; }
 /* Footer totals in summary cards: each total with its column name. */
 .yx-table[data-card-summary] tfoot td { display: flex; justify-content: space-between; gap: var(--yx-space-3); }
 .yx-table[data-card-summary] tfoot td[data-label]::before { content: attr(data-label); color: var(--yx-color-text-muted); }

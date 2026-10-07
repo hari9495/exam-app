@@ -26,6 +26,24 @@ const COLS: TableColumn<Row>[] = [
 ];
 
 describe('DataTable', () => {
+  // Legal entities: the default entity has Edit but no "…" menu; its Edit sat further right than the others (R9).
+  it('keeps the menu slot on rows without a menu, so row buttons line up', () => {
+    render(
+      <DataTable
+        label="Entities"
+        columns={COLS}
+        rows={ROWS}
+        getRowId={(r) => r.id}
+        rowButtons={() => <Button size="sm">Edit</Button>}
+        rowActions={(r) => (r.id === '1' ? null : <span>Archive</span>)}
+      />,
+    );
+    const rows = screen.getAllByRole('row').slice(1, 4);
+    expect(rows[0].querySelector('.yx-table__menu-slot')).not.toBeNull();
+    expect(rows[1].querySelector('.yx-table__menu-slot')).toBeNull();
+    expect(within(rows[1]).getByRole('button', { name: /More actions/ })).toBeInTheDocument();
+  });
+
   it('sorts by header click: ascending, descending, off', async () => {
     const u = userEvent.setup();
     render(<DataTable label="People" columns={COLS} rows={ROWS} getRowId={(r) => r.id} />);
