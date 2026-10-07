@@ -256,6 +256,11 @@ describe('MfaService', () => {
       expect(tx.recoveryCode.rows.filter((r) => r.userId === STAFF.id && r.id !== 'r')).toHaveLength(0);
     });
 
+    it('are offered security keys only (setup, My security): never an authenticator app', async () => {
+      expect((await service.status(STAFF, AAL1)).allowedFactors).toEqual(['passkey']);
+      expect((await service.status(USER, AAL1)).allowedFactors).toEqual(DEFAULT_SECURITY_POLICY.allowedFactors);
+    });
+
     it('a TOTP enrolled before the rule is not a usable factor for staff', async () => {
       tx.authenticator.rows.push({ id: 'old-totp', userId: STAFF.id, type: 'totp', revokedAt: null, createdAt: new Date() });
       expect(await service.hasFactor(STAFF)).toBe(false);

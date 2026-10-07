@@ -210,6 +210,8 @@ export class MfaService {
   }
 
   private async allowedFactors(user: MfaUser): Promise<string[]> {
+    // YukthiX staff: security keys only (a passkey or a hardware key), never an authenticator app.
+    if (isStaff(user)) return ['passkey'];
     return user.organizationId ? (await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId)).allowedFactors : DEFAULT_SECURITY_POLICY.allowedFactors;
   }
 
