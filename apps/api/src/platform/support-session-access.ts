@@ -25,6 +25,26 @@ export async function liveSupportSession(tenantPrisma: TenantPrismaService, wher
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const WRITES_ALLOWED = ['/auth/super-admin/switch-out', '/auth/logout'];
 
+// Deny by default: only the YukthiX HR pages, whose services hide pay, identity, bank and restricted data from
+// someone acting for another (P02 YX-SEC-20; step 2's actingForOther rules), plus what those pages need to load.
+// DECISION NEEDED: the hiring and assessment (exam app) pages do not mask Confidential / Special data for staff, so
+// support sessions do not reach them yet.
+export const SUPPORT_READABLE = [
+  '/org',
+  '/people',
+  '/access',
+  '/support-access',
+  '/security',
+  '/notifications/sms',
+  '/organizations/branding',
+  '/users/me',
+  '/rbac/me',
+  '/auth/mfa',
+  '/auth/sessions',
+  '/auth/login-history',
+];
+const readable = (path: string) => SUPPORT_READABLE.some((p) => path === p || path.startsWith(`${p}/`));
+
 /**
  * Called by JwtStrategy for a token minted inside a support session: refuses it once the session has ended,
  * expired or been ended by the company, refuses any change, and records the request in the company's audit log
@@ -38,6 +58,7 @@ export async function enforceSupportSession(tenantPrisma: TenantPrismaService, r
   const live = token.organizationId ? await liveSupportSession(tenantPrisma, { organizationId: token.organizationId, staffUserId: token.sub, id: token.supportSessionId }) : null;
   if (!live) throw new ForbiddenException({ statusCode: 403, code: 'SUPPORT_SESSION_ENDED', message: 'The support session has ended. Leave the company to continue.' });
   if (!READ_METHODS.has(method)) throw new ForbiddenException({ statusCode: 403, code: 'SUPPORT_SESSION_READ_ONLY', message: 'A support session is read-only.' });
+  if (!readable(path)) throw new ForbiddenException({ statusCode: 403, code: 'SUPPORT_SESSION_OUT_OF_SCOPE', message: 'A support session covers the YukthiX HR pages only.' });
   if (method === 'OPTIONS') return;
   await new AuditService(tenantPrisma).record(
     { organizationId: token.organizationId, isSuperAdmin: true },

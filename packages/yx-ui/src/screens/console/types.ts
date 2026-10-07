@@ -107,6 +107,8 @@ export interface SupportActivity {
   byYukthix: boolean;
   method: string | null;
   path: string | null;
+  /** What was recorded with it, e.g. the hours approved. */
+  details: Record<string, unknown> | null;
 }
 
 export interface PlatformAuditEntry {

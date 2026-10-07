@@ -100,7 +100,7 @@ function Activity({ session, load, onClose }: { session: SupportSession; load: (
     <Drawer open onOpenChange={(o) => !o && onClose()} size="md" title="What was done in this session" subtitle={`${session.requestedBy} · ${session.reason}`}>
       {failed && <ErrorState title="We couldn't load the activity." description="Try again in a moment." />}
       {!failed && !items && <Skeleton height={160} />}
-      {items && (items.length ? <Timeline aria-label="Session activity" items={items.map((a) => ({ id: a.id, actor: { name: a.by }, action: actionWords(a.action, a.method ? { method: a.method, path: a.path } : null), at: new Date(a.at) }))} /> : <Text tone="secondary">Nothing recorded yet.</Text>)}
+      {items && (items.length ? <Timeline aria-label="Session activity" items={items.map((a) => ({ id: a.id, actor: { name: a.by }, action: actionWords(a.action, a.details), at: new Date(a.at) }))} /> : <Text tone="secondary">Nothing recorded yet.</Text>)}
     </Drawer>
   );
 }

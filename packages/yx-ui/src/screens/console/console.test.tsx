@@ -223,6 +223,7 @@ describe('Company side: Support access (PLT-17, P02 Q8)', () => {
     await waitFor(() => expect(p.onEnd).toHaveBeenCalledWith('s1'));
     await ue.click(screen.getAllByRole('button', { name: 'Activity' })[0]);
     expect(await screen.findByText('Opened /org/legal-entities')).toBeInTheDocument();
+    expect(screen.getByText('Approved the support session for 24 hours')).toBeInTheDocument();
     expect(p.loadActivity).toHaveBeenCalledWith('s1');
   });
 

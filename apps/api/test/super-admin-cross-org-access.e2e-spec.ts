@@ -4,6 +4,7 @@ import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
 import { bootAdminApp } from './dual-app';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
+import { markSteppedUp } from './fixtures/step-up';
 
 describe('Super Admin Cross-Org Access', () => {
   let app: INestApplication;
@@ -105,6 +106,12 @@ describe('Super Admin Cross-Org Access', () => {
     await app.close();
   });
 
+  it('switch-into needs the security key proven on the session (P12 Q7)', async () => {
+    const response = await request(http).post(`/api/v1/auth/super-admin/switch-into/${org1Id}`).set('Authorization', `Bearer ${superAccessToken}`).expect(403);
+    expect(response.body.code).toBe('MFA_REQUIRED');
+    await markSteppedUp(tenantPrisma, superAccessToken);
+  });
+
   it('switch-into without an approved support session is refused (no standing switch-in)', async () => {
     const response = await request(http).post(`/api/v1/auth/super-admin/switch-into/${org2Id}`).set('Authorization', `Bearer ${superAccessToken}`).expect(403);
     expect(response.body.code).toBe('SUPPORT_SESSION_REQUIRED');
@@ -132,15 +139,13 @@ describe('Super Admin Cross-Org Access', () => {
     expect(auditEntry).not.toBeNull();
   });
 
-  it('lets the acting token through a recruiter-only permission the base super_admin role does not hold', async () => {
-    await request(http).get('/api/v1/questions').set('Authorization', `Bearer ${actingAccessToken}`).expect(200);
-  });
-
-  it('lets the acting token through an org-scoped endpoint, returning only that org\'s users', async () => {
-    const response = await request(http).get('/api/v1/users').set('Authorization', `Bearer ${actingAccessToken}`).expect(200);
-
-    expect(response.body.data.length).toBeGreaterThan(0);
-    expect(response.body.data.every((u: { organizationId: string }) => u.organizationId === org1Id)).toBe(true);
+  it('a support session reaches the YukthiX HR pages only, read-only; hiring and assessment pages are out of scope', async () => {
+    const out = await request(http).get('/api/v1/questions').set('Authorization', `Bearer ${actingAccessToken}`).expect(403);
+    expect(out.body.code).toBe('SUPPORT_SESSION_OUT_OF_SCOPE');
+    await request(http).get('/api/v1/users').set('Authorization', `Bearer ${actingAccessToken}`).expect(403);
+    await request(http).get('/api/v1/org/legal-entities').set('Authorization', `Bearer ${actingAccessToken}`).expect(200);
+    const write = await request(http).post('/api/v1/org/legal-entities').set('Authorization', `Bearer ${actingAccessToken}`).send({}).expect(403);
+    expect(write.body.code).toBe('SUPPORT_SESSION_READ_ONLY');
   });
 
   it('switch-out succeeds and records its own audit entry, without touching the refresh cookie', async () => {

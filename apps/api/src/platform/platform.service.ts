@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { AuditEntry, AuditService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { AuditEntry, AuditService, TenantContext, TenantPrismaService, revokeStaffSessions } from '@exam-platform/shared';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { addDays, asDate, todayIst } from '../org-structure/org-validation';
 import { CompaniesQueryDto, CreateCompanyDto, ExtendTrialDto, LifecycleAction, LifecycleDto, PlatformAuditQueryDto, PriceDto } from './dto';
@@ -155,7 +155,15 @@ export class PlatformService {
       const to = move.to ?? (await this.stateBeforeSuspension(tx, id));
       const { count } = await tx.organization.updateMany({ where: { id, lifecycle: o.lifecycle }, data: { lifecycle: to } });
       if (!count) throw new ConflictException('Someone changed this company at the same moment. Reload and try again.');
-      return { result: null, audit: { action: 'platform.company.lifecycle', entityType: 'organization', entityId: id, metadata: { from: o.lifecycle, to, reason: dto.reason.trim() } } };
+      // Nobody stays signed in to a suspended or closed company: every live session ends now, and so does any support
+      // session (nobody there could end it any more).
+      const stopping = to === 'suspended' || to === 'closed';
+      const signedOut = stopping ? await revokeStaffSessions(tx, { organizationId: id }, `company_${to}`) : 0;
+      if (stopping) {
+        await tx.supportSession.updateMany({ where: { organizationId: id, status: 'approved' }, data: { status: 'ended', endedBy: actorUserId, endedByName: actor.label.slice(0, 200), endedAt: new Date() } });
+        await tx.supportSession.updateMany({ where: { organizationId: id, status: 'requested' }, data: { status: 'cancelled' } });
+      }
+      return { result: null, audit: { action: 'platform.company.lifecycle', entityType: 'organization', entityId: id, metadata: { from: o.lifecycle, to, reason: dto.reason.trim(), signedOut } } };
     });
     return this.company(actorUserId, id);
   }

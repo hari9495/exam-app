@@ -106,6 +106,15 @@ describe('enforceSupportSession (inside a company)', () => {
     expect(audits).toEqual([]);
   });
 
+  it('reaches only the YukthiX HR pages: hiring, assessments and everything else are out of scope', async () => {
+    for (const path of ['/api/v1/candidates', '/api/v1/attempts/a1/evidence', '/api/v1/questions', '/api/v1/organizations/integrations', '/api/v1/orgx', '/api/v1/users']) {
+      await expect(enforceSupportSession(tenantPrisma as never, req('GET', path), token)).rejects.toMatchObject({ response: { code: 'SUPPORT_SESSION_OUT_OF_SCOPE' } });
+    }
+    await expect(enforceSupportSession(tenantPrisma as never, req('GET', '/api/v1/org'), token)).resolves.toBeUndefined();
+    await expect(enforceSupportSession(tenantPrisma as never, req('GET', '/api/v1/users/me'), token)).resolves.toBeUndefined();
+    expect(audits).toHaveLength(2);
+  });
+
   it('refuses everything once the session has ended, expired or was ended by the company', async () => {
     live = null;
     await expect(enforceSupportSession(tenantPrisma as never, req('GET', '/api/v1/people/employees'), token)).rejects.toMatchObject({ response: { code: 'SUPPORT_SESSION_ENDED' } });

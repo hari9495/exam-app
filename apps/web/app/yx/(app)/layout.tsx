@@ -123,7 +123,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
       active={active}
       links={links}
       company={branding.data?.name || undefined}
-      hiringHref={access.examAts ? roleToLandingPath(role ?? undefined) : undefined}
+      hiringHref={access.examAts && !support ? roleToLandingPath(role ?? undefined) : undefined}
       profileHref="/profile"
       name={me.data?.name || me.data?.email || 'Your account'}
       email={me.data?.email}

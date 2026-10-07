@@ -206,7 +206,7 @@ export class SupportSessionsService {
       });
       return rows.map((r) => {
         const meta = r.metadataJson ? (JSON.parse(r.metadataJson) as Record<string, unknown>) : {};
-        return { id: r.id, at: r.createdAt, action: r.action, by: r.actorName || r.actorEmail || 'YukthiX', byYukthix: r.actorRole === 'super_admin', method: typeof meta.method === 'string' ? meta.method : null, path: typeof meta.path === 'string' ? meta.path : null };
+        return { id: r.id, at: r.createdAt, action: r.action, by: r.actorName || r.actorEmail || 'YukthiX', byYukthix: r.actorRole === 'super_admin', method: typeof meta.method === 'string' ? meta.method : null, path: typeof meta.path === 'string' ? meta.path : null, details: meta };
       });
     });
   }

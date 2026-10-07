@@ -54,10 +54,10 @@ export const SESSIONS: SupportSession[] = [
 export const REQUEST: SupportSession = { ...SESSIONS[2], id: 's4', organizationId: 'c2', company: 'Godavari Agro', mine: undefined };
 
 export const ACTIVITY: SupportActivity[] = [
-  { id: 'a1', at: at(-2), action: 'support_session.requested', by: 'Anand Iyer', byYukthix: true, method: null, path: null },
-  { id: 'a2', at: at(-1), action: 'support_session.approved', by: 'Sunita Rao', byYukthix: false, method: null, path: null },
-  { id: 'a3', at: at(-0.9), action: 'super_admin.org_switch_in', by: 'Anand Iyer', byYukthix: true, method: null, path: null },
-  { id: 'a4', at: at(-0.8), action: 'support_session.request', by: 'Anand Iyer', byYukthix: true, method: 'GET', path: '/org/legal-entities' },
+  { id: 'a1', at: at(-2), action: 'support_session.requested', by: 'Anand Iyer', byYukthix: true, method: null, path: null, details: { hours: 24 } },
+  { id: 'a2', at: at(-1), action: 'support_session.approved', by: 'Sunita Rao', byYukthix: false, method: null, path: null, details: { hours: 24 } },
+  { id: 'a3', at: at(-0.9), action: 'super_admin.org_switch_in', by: 'Anand Iyer', byYukthix: true, method: null, path: null, details: null },
+  { id: 'a4', at: at(-0.8), action: 'support_session.request', by: 'Anand Iyer', byYukthix: true, method: 'GET', path: '/org/legal-entities', details: { method: 'GET', path: '/org/legal-entities' } },
 ];
 
 export const AUDIT: PlatformAuditEntry[] = [

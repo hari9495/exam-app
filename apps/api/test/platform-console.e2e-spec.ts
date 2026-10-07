@@ -23,10 +23,10 @@ describe('YukthiX platform console (step 3)', () => {
   const server = () => app.getHttpServer();
   const token: Record<string, string> = {};
   const users: Record<string, string> = {};
-  const org = { A: '', B: '' };
+  const org = { A: '', B: '', C: '' };
   const slugA = `pc-a-${runId}`;
   let planId: string;
-  type Who = 'staff' | 'staff2' | 'staffNoKey' | 'adminA' | 'panelA' | 'adminB';
+  type Who = 'staff' | 'staff2' | 'staffNoKey' | 'adminA' | 'panelA' | 'adminB' | 'adminC';
   const api = (who: Who | string, method: 'get' | 'post' | 'put' | 'patch' | 'delete', path: string) =>
     request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who] ?? who}`);
   const up = (who: Who) => markSteppedUp(tenantPrisma, token[who]);
@@ -62,6 +62,11 @@ describe('YukthiX platform console (step 3)', () => {
     users.adminB = (await tenantPrisma.forTenant({ organizationId: org.B, isSuperAdmin: false }, (tx) => tx.user.create({ data: { organizationId: org.B, email: `admin-b-${runId}@pc.test`, passwordHash, role: 'org_admin' } }))).id;
     await companyLogin('adminB', `pc-b-${runId}`, `admin-b-${runId}@pc.test`);
     await up('adminB');
+    // Org B is closed below; org C is the other company that stays open for the cross-company checks.
+    org.C = (await prisma.organization.create({ data: { name: `PC Third ${runId}`, slug: `pc-c-${runId}`, planId } })).id;
+    users.adminC = (await tenantPrisma.forTenant({ organizationId: org.C, isSuperAdmin: false }, (tx) => tx.user.create({ data: { organizationId: org.C, email: `admin-c-${runId}@pc.test`, passwordHash, role: 'org_admin' } }))).id;
+    await companyLogin('adminC', `pc-c-${runId}`, `admin-c-${runId}@pc.test`);
+    await up('adminC');
   }, 120_000);
 
   afterAll(async () => {
@@ -70,7 +75,7 @@ describe('YukthiX platform console (step 3)', () => {
         const ids = Object.values(users);
         await tx.refreshToken.deleteMany({ where: { userId: { in: ids } } });
         await tx.session.deleteMany({ where: { userId: { in: ids } } });
-        await tx.organization.deleteMany({ where: { id: { in: [org.A, org.B].filter(Boolean) } } });
+        await tx.organization.deleteMany({ where: { id: { in: [org.A, org.B, org.C].filter(Boolean) } } });
         await tx.user.deleteMany({ where: { id: { in: ids } } });
       })
       .catch(() => undefined);
@@ -122,7 +127,7 @@ describe('YukthiX platform console (step 3)', () => {
 
     it('lists and searches companies with account facts only (no HR data)', async () => {
       const list = (await api('staff', 'get', `/platform/companies?search=${runId}`).expect(200)).body;
-      expect(list.map((c: { id: string }) => c.id).sort()).toEqual([org.A, org.B].sort());
+      expect(list.map((c: { id: string }) => c.id).sort()).toEqual([org.A, org.B, org.C].sort());
       expect(Object.keys(list[0]).sort()).toEqual(['createdAt', 'employees', 'id', 'lifecycle', 'name', 'products', 'signInAllowed', 'slug', 'trialEndsAt']);
       expect((await api('staff', 'get', `/platform/companies?search=${runId}&lifecycle=trial`).expect(200)).body.map((c: { id: string }) => c.id)).toEqual([org.A]);
       await api('staff', 'get', '/platform/companies?lifecycle=gone').expect(400);
@@ -147,14 +152,18 @@ describe('YukthiX platform console (step 3)', () => {
       await api('staff', 'post', `/platform/companies/${org.A}/lifecycle`).send({ action: 'delete', reason: 'Not a move' }).expect(400);
       const suspended = (await api('staff', 'post', `/platform/companies/${org.A}/lifecycle`).send({ action: 'suspend', reason: 'Payment fraud check' }).expect(200)).body;
       expect(suspended).toMatchObject({ lifecycle: 'suspended', signInAllowed: false });
+      // Everyone already signed in there is signed out at once.
+      await api('adminA', 'get', '/rbac/me/permissions?keys=org:view').expect(401);
       await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: slugA, email: `admin-a-${runId}@pc.test`, password: PASSWORD }).expect(401);
       const back = (await api('staff', 'post', `/platform/companies/${org.A}/lifecycle`).send({ action: 'reinstate', reason: 'Check cleared' }).expect(200)).body;
       expect(back).toMatchObject({ lifecycle: 'trial', signInAllowed: true });
+      await companyLogin('adminA', slugA, `admin-a-${runId}@pc.test`);
+      await companyLogin('panelA', slugA, `panel-a-${runId}@pc.test`);
       await api('staff', 'post', `/platform/companies/${org.A}/lifecycle`).send({ action: 'reinstate', reason: 'Twice' }).expect(409);
       const moves = await audit(org.A, { action: 'platform.company.lifecycle' });
       expect(moves.map((m) => JSON.parse(m.metadataJson!))).toEqual([
-        { from: 'trial', to: 'suspended', reason: 'Payment fraud check' },
-        { from: 'suspended', to: 'trial', reason: 'Check cleared' },
+        { from: 'trial', to: 'suspended', reason: 'Payment fraud check', signedOut: 2 },
+        { from: 'suspended', to: 'trial', reason: 'Check cleared', signedOut: 0 },
       ]);
       // Visible to the company's own admins in their audit log (YX-CONSOLE-02).
       const seen = (await api('adminA', 'get', '/audit-logs?limit=100&action=platform.company.lifecycle').expect(200)).body;
@@ -240,8 +249,8 @@ describe('YukthiX platform console (step 3)', () => {
 
     it('only the company System Admin sees and decides; another company sees nothing; staff cannot approve', async () => {
       expect((await api('adminA', 'get', '/support-access').expect(200)).body.map((r: { id: string }) => r.id)).toEqual([sessionId]);
-      expect((await api('adminB', 'get', '/support-access').expect(200)).body).toEqual([]);
-      await api('adminB', 'post', `/support-access/${sessionId}/approve`).send({}).expect(404);
+      expect((await api('adminC', 'get', '/support-access').expect(200)).body).toEqual([]);
+      await api('adminC', 'post', `/support-access/${sessionId}/approve`).send({}).expect(404);
       await api('panelA', 'get', '/support-access').expect(403);
       await api('staff', 'post', `/support-access/${sessionId}/approve`).send({}).expect(403);
       // RLS: another company's context reads none of it.
@@ -277,7 +286,7 @@ describe('YukthiX platform console (step 3)', () => {
       const activity = (await api('adminA', 'get', `/support-access/${sessionId}/activity`).expect(200)).body;
       expect(activity.map((a: { action: string }) => a.action)).toEqual(expect.arrayContaining(['support_session.requested', 'support_session.approved', 'super_admin.org_switch_in', 'support_session.request']));
       expect(activity.find((a: { path: string | null }) => a.path === '/org/legal-entities')).toMatchObject({ method: 'GET', byYukthix: true, by: 'Staff staff' });
-      await api('adminB', 'get', `/support-access/${sessionId}/activity`).expect(404);
+      await api('adminC', 'get', `/support-access/${sessionId}/activity`).expect(404);
     });
 
     it('pay, identity and bank rows are out of reach inside any support session, by RLS', async () => {
@@ -330,6 +339,24 @@ describe('YukthiX platform console (step 3)', () => {
       const staffList = (await api('staff', 'get', `/platform/support-sessions?organizationId=${org.A}`).expect(200)).body;
       expect(staffList.find((r: { id: string }) => r.id === sessionId)).toMatchObject({ company: 'Godavari Agro', mine: true, status: 'ended' });
       expect(staffList.find((r: { id: string }) => r.id === past.id)).toMatchObject({ mine: false });
+    });
+    it('suspending the company ends its support sessions and withdraws waiting requests', async () => {
+      const now = Date.now();
+      const asA = { organizationId: org.A, isSuperAdmin: false };
+      const live = await tenantPrisma.forTenant(asA, (tx) =>
+        tx.supportSession.create({
+          data: { organizationId: org.A, requestedBy: users.staff2, requestedByName: 'Staff staff2', requestedByEmail: 'x@platform.test', reason: 'Live session before suspension', hours: 2, status: 'approved', decidedBy: users.adminA, decidedByName: 'Sunita Rao', decidedAt: new Date(now), startsAt: new Date(now), endsAt: new Date(now + 2 * 3_600_000) },
+        }),
+      );
+      const waiting = (await api('staff', 'post', `/platform/companies/${org.A}/support-sessions`).send({ reason: 'Waiting when the company is suspended', hours: 2 }).expect(201)).body;
+      await up('staff');
+      await api('staff', 'post', `/platform/companies/${org.A}/lifecycle`).send({ action: 'suspend', reason: 'Suspension check' }).expect(200);
+      await api('staff2', 'post', `/auth/super-admin/switch-into/${org.A}`).expect(403);
+      const rows = await tenantPrisma.forTenant(asA, (tx) => tx.supportSession.findMany({ where: { id: { in: [live.id, waiting.id] } }, orderBy: { createdAt: 'asc' } }));
+      expect(rows.map((r) => r.status)).toEqual(['ended', 'cancelled']);
+      await api('staff', 'post', `/platform/companies/${org.A}/lifecycle`).send({ action: 'reinstate', reason: 'Suspension check over' }).expect(200);
+      await companyLogin('adminA', slugA, `admin-a-${runId}@pc.test`);
+      await up('adminA');
     });
   });
 
