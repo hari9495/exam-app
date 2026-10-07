@@ -106,6 +106,15 @@ export class UpdateSecurityPolicyDto {
   @Max(FLOOR.maxFailedAttempts.max)
   maxFailedAttempts?: number;
 
+  // "Continue with Google / Microsoft" on the sign-in screen (off by default; SSO-only turns both off).
+  @Present()
+  @IsBoolean()
+  googleSignIn?: boolean;
+
+  @Present()
+  @IsBoolean()
+  microsoftSignIn?: boolean;
+
   // ... for this many minutes the first time (YukthiX: at least 15); repeat locks double, up to 24 h.
   @Present()
   @IsInt()

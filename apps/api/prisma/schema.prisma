@@ -110,6 +110,7 @@ model Organization {
   securityPolicy                TenantSecurityPolicy?
   identityProviders             IdentityProvider[]
   verifiedDomains               VerifiedDomain[]
+  externalIdentities            ExternalIdentity[]
   channelAccounts               ChannelAccount[]
   notificationDeliveries        NotificationDelivery[]
   channelConsents               ChannelConsent[]
@@ -259,6 +260,7 @@ model User {
   authenticators         Authenticator[]
   recoveryCodes          RecoveryCode[]
   mfaResetRequests       MfaResetRequest[]
+  externalIdentities     ExternalIdentity[]
 
   @@unique([organizationId, email])
   @@map("users")
@@ -360,6 +362,25 @@ model Authenticator {
   @@map("authenticators")
 }
 
+// A Google / Microsoft account an account has fully signed in with (migration 20261007300000).
+// subject: Google `sub`, Microsoft `<tid>:<oid>`. Matched before any email address.
+model ExternalIdentity {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String       @map("user_id") @db.Uuid
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 'google' | 'microsoft'
+  provider       String       @db.VarChar(16)
+  subject        String       @db.VarChar(255)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt     DateTime     @default(now()) @map("last_used_at") @db.Timestamptz(3)
+
+  @@unique([userId, provider])
+  @@index([provider, subject])
+  @@map("external_identities")
+}
+
 // Single-use recovery codes (YX-IAM-11): sha256 only, shown to the user once.
 model RecoveryCode {
   id             String    @id @default(uuid()) @db.Uuid
@@ -421,6 +442,9 @@ model TenantSecurityPolicy {
   // minutes (15-1440), doubling per further lock up to 24 h
   maxFailedAttempts      Int          @default(10) @map("max_failed_attempts")
   lockMinutes            Int          @default(15) @map("lock_minutes")
+  // "Continue with Google / Microsoft" (YukthiX's platform OIDC apps); off unless the company turns it on
+  googleSignIn           Boolean      @default(false) @map("google_sign_in")
+  microsoftSignIn        Boolean      @default(false) @map("microsoft_sign_in")
   updatedAt              DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   updatedByUserId        String?      @map("updated_by_user_id") @db.Uuid
 
