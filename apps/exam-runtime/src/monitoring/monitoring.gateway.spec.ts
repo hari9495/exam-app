@@ -168,6 +168,9 @@ describe('MonitoringGateway', () => {
   });
 
   describe('handleJoinExam', () => {
+    // The shared resolver also reads the user's active role grants (P02 YX-SEC-03): none unless a test says so.
+    beforeEach(() => tenantPrisma.forTenant.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ $queryRaw: async () => [], orgRolePermission: { findUnique: async () => null } })));
+
     it('disconnects a socket with no authenticated user', async () => {
       const socket = makeSocket();
 
@@ -192,7 +195,7 @@ describe('MonitoringGateway', () => {
         data: { user: { session: ASSURANCE, userId: 'user-1', organizationId: 'org-1', role: 'recruiter', permissionProfileId: 'profile-1' } },
       });
       const findUnique = jest.fn().mockResolvedValue({ permissionsJson: JSON.stringify(['org:view', 'results:view']) });
-      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ permissionProfile: { findUnique } }));
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ permissionProfile: { findUnique }, $queryRaw: async () => [] }));
       prisma.rolePermission.findMany.mockResolvedValue([{ permission: { key: 'exam:manage' } }]);
 
       await gateway.handleJoinExam(socket, { examId: 'exam-1' });
@@ -206,7 +209,7 @@ describe('MonitoringGateway', () => {
     it('denies a recruiter when the org override for the role removed exam:manage', async () => {
       const socket = makeSocket({ data: { user: { session: ASSURANCE, userId: 'user-1', organizationId: 'org-1', role: 'recruiter', permissionProfileId: null } } });
       const findUnique = jest.fn().mockResolvedValue({ permissionsJson: JSON.stringify(['org:view']) });
-      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ orgRolePermission: { findUnique } }));
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ orgRolePermission: { findUnique }, $queryRaw: async () => [] }));
       prisma.rolePermission.findMany.mockResolvedValue([{ permission: { key: 'exam:manage' } }]);
 
       await gateway.handleJoinExam(socket, { examId: 'exam-1' });
@@ -354,7 +357,7 @@ describe('MonitoringGateway', () => {
     // touchStaffSession (raw query) or the permission lookup (callback), by call shape.
     const sessionIs = (rows: unknown[]) =>
       tenantPrisma.forTenant.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
-        fn({ $queryRaw: async () => rows, orgRolePermission: { findUnique: async () => null } }),
+        fn({ $queryRaw: async (sql: TemplateStringsArray) => (sql.join('').includes('role_grants') ? [] : rows), orgRolePermission: { findUnique: async () => null } }),
       );
 
     it('remembers which session the socket rides on and when its token expires', async () => {
