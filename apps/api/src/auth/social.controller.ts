@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, NotFoundException, Param, Post, Req, R
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { DEFAULT_SECURITY_POLICY, TenantPrismaService, loadTenantSecurityPolicy } from '@exam-platform/shared';
-import { STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
+import { PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { AuthService } from './auth.service';
 import { signInResponse } from './auth.controller';
 import { CompanyScopeService } from './company-scope';
@@ -37,7 +37,9 @@ export class SocialController {
   // unknown slug answers like a company with the default policy (everything off), so nothing tells
   // whether it exists. With no company: what YukthiX has set up -- the same for every visitor.
   @Get('sign-in-options')
-  @Throttle(STRICT_AUTH_THROTTLE)
+  // Read-only and enumeration-safe (unknown companies answer like everything off), so the normal
+  // public tier: an office behind one IP opening the sign-in page must not lose its buttons.
+  @Throttle(PUBLIC_API_THROTTLE)
   async options(@Req() req: Request) {
     const google = socialApp('google') !== null;
     const microsoft = socialApp('microsoft') !== null;

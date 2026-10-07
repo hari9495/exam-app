@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react';
-import { Smartphone } from 'lucide-react';
+import { KeyRound, Smartphone } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Avatar } from '../../components/display';
 import { InlineAlert } from '../../components/feedback';
@@ -107,7 +107,7 @@ export function SignInScreen(props: SignInScreenProps) {
   );
   const alert = error && <InlineAlert tone="danger">{error}</InlineAlert>;
   const companyButtons = providers.map((p) => (
-    <Button key={p.id} fullWidth size="lg" disabled={busy} onClick={() => props.onSso(p.id)}>{providerButtonLabel(p)}</Button>
+    <Button key={p.id} fullWidth size="lg" icon={KeyRound} disabled={busy} onClick={() => props.onSso(p.id)}>{providerButtonLabel(p)}</Button>
   ));
   const otherWays = (mobileOn || googleOn || microsoftOn || providers.length > 0) && (
     <>

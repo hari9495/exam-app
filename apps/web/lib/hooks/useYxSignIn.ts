@@ -50,10 +50,16 @@ export function useYxSignIn() {
   // Codes go to the mobile number on the mobile steps, else to the work email.
   const codeTo = step === 'mobile' || step === 'mobile-code' ? mobile : identifier;
 
-  const loadOptions = () =>
+  // A busy moment (429) or a blip must not leave the screen without its "Continue with …" buttons:
+  // try again after 2 s, 5 s and 10 s before giving up.
+  const loadOptions = (attempt = 0): Promise<void> =>
     apiFetch('/auth/sign-in-options')
       .then((o) => setOptions(o ?? undefined))
-      .catch(() => setOptions(undefined));
+      .catch(() => {
+        const wait = [2000, 5000, 10000][attempt];
+        if (wait === undefined) return setOptions(undefined);
+        return new Promise<void>((r) => setTimeout(r, wait)).then(() => loadOptions(attempt + 1));
+      });
 
   useEffect(() => {
     apiFetch('/auth/remembered-company')
