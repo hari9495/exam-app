@@ -1,7 +1,7 @@
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { DateRangePicker, type DateRange } from '../../components/date';
-import { EmptyState, InlineAlert, Pagination } from '../../components/feedback';
+import { EmptyState, InlineAlert, NoAccessState, Pagination } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { ConfirmDialog } from '../../components/overlay';
 import { Select } from '../../components/select';
@@ -41,6 +41,8 @@ export interface LoginActivityScreenProps {
   /** Clears a person's account lock (step-up and audit are the host's / API's). Omitted: no Unlock action. */
   onUnlock?: (row: LoginEventRow, reason: string) => Promise<void>;
   onRetry?: () => void;
+  /** The API refused for a missing permission: say so, not "couldn't load". */
+  noAccess?: boolean;
 }
 
 const METHOD_FILTERS = ['password', 'saml', 'oidc', 'otp_email', 'otp_sms', 'otp_whatsapp'];
@@ -51,6 +53,15 @@ export function LoginActivityScreen(props: LoginActivityScreenProps) {
   const set = (patch: Partial<LoginActivityFilters>) => setFilters({ ...filters, ...patch });
   const filtered = Boolean(filters.result || filters.method || filters.userId || filters.range.from || filters.range.to);
   const spike = props.failedLast24h != null && props.failedLast24h >= FAILED_SPIKE_AT;
+
+  if (props.noAccess) {
+    return (
+      <div className="yx-auth__page">
+        <PageHeader title="Login activity" description="Every sign-in attempt in your company, and who is signed in now." />
+        <NoAccessState grantedBy="a System Admin" what="login activity" />
+      </div>
+    );
+  }
 
   return (
     <div className="yx-auth__page">

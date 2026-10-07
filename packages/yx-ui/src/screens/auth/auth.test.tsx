@@ -657,3 +657,19 @@ describe('ResetPasswordScreen', () => {
     expect(screen.getByRole('link', { name: 'Get a new link' })).toHaveAttribute('href', '/yx/forgot-password');
   });
 });
+
+describe('LoginActivityScreen results and access', () => {
+  it('names a sent code in words, never the raw "code_sent"', () => {
+    const sent = { ...ORG_EVENTS.data[0], id: 'e-code', result: 'code_sent' as const, method: 'otp_email' };
+    render(<Activity events={{ ...ORG_EVENTS, data: [sent], total: 1 }} />);
+    expect(screen.getByText('Code sent')).toBeInTheDocument();
+    expect(screen.queryByText('code_sent')).toBeNull();
+  });
+
+  it('says "no access" without the permission, with no tabs or retry', () => {
+    render(<Activity noAccess events={null} eventsState="error" />);
+    expect(screen.getByText("You don't have access to login activity")).toBeInTheDocument();
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull();
+  });
+});

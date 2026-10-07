@@ -21,7 +21,7 @@ export default function YxLoginActivityPage() {
   const [filters, setFilters] = useState<LoginActivityFilters>(NO_FILTERS);
   const [eventsPage, setEventsPage] = useState(1);
   const [sessionsPage, setSessionsPage] = useState(1);
-  const get = <T,>(key: unknown[], path: string, enabled = true) => ({ queryKey: ['yx', 'admin', ...key], queryFn: (): Promise<T> => apiFetch(path, {}, token), enabled: Boolean(token) && enabled });
+  const get = <T,>(key: unknown[], path: string, enabled = true) => ({ queryKey: ['yx', 'admin', ...key], queryFn: (): Promise<T> => apiFetch(path, {}, token), enabled: Boolean(token) && enabled, retry: false });
 
   const eventsPath = `/security/login-events${qs({
     result: filters.result,
@@ -33,6 +33,8 @@ export default function YxLoginActivityPage() {
     pageSize: 25,
   })}`;
   const events = useQuery(get<Page<LoginEventRow>>(['events', eventsPath], eventsPath));
+  // A plain 403 is a missing permission (MFA_REQUIRED is the MFA floor; the layout says what to do).
+  const eventsError = events.error as { status?: number; code?: string } | null;
   // Rounded to the minute so the query key is stable between renders.
   const since = new Date(Math.floor((Date.now() - DAY_MS) / 60_000) * 60_000).toISOString();
   const failed = useQuery(get<Page<LoginEventRow>>(['failed', since], `/security/login-events${qs({ result: 'unsuccessful', from: since, pageSize: 1 })}`));
@@ -71,6 +73,7 @@ export default function YxLoginActivityPage() {
           : undefined
       }
       onRetry={() => void queryClient.invalidateQueries({ queryKey: ['yx', 'admin'] })}
+      noAccess={eventsError?.status === 403 && eventsError.code !== 'MFA_REQUIRED'}
     />
   );
 }

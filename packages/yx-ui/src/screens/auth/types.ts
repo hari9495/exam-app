@@ -40,7 +40,7 @@ export interface SessionRow {
   user?: { email: string; name: string | null; role: string };
 }
 
-export type LoginResult = 'success' | 'failed' | 'locked' | 'mfa_failed' | 'unlocked';
+export type LoginResult = 'success' | 'failed' | 'locked' | 'mfa_failed' | 'code_sent' | 'unlocked';
 
 export interface LoginEventRow {
   id: string;

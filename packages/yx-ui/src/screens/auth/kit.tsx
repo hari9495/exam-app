@@ -58,6 +58,7 @@ export const RESULTS: Record<LoginResult, { label: string; tone: BadgeTone }> = 
   failed: { label: 'Failed', tone: 'danger' },
   locked: { label: 'Blocked', tone: 'warning' },
   mfa_failed: { label: 'Wrong second step', tone: 'danger' },
+  code_sent: { label: 'Code sent', tone: 'neutral' },
   unlocked: { label: 'Unlocked by admin', tone: 'info' },
 };
 

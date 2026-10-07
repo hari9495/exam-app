@@ -64,7 +64,10 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   const team = usePeople<{ managerId: string | null; members: TeamMember[] }>('/team');
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
-  const mfaOverdue = mfa.data?.required && mfa.data.factors.length === 0 && new Date(mfa.data.enrolmentDueAt) <= new Date();
+  // A sensitive role with no second step: a reminder during the grace period, a pause after it.
+  const mfaMissing = Boolean(mfa.data?.required && mfa.data.factors.length === 0);
+  const mfaOverdue = mfaMissing && new Date(mfa.data!.enrolmentDueAt) <= new Date();
+  const mfaDue = mfa.data ? new Date(mfa.data.enrolmentDueAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
   useEffect(() => {
     if (!isLoading && !accessToken) router.replace('/yx/sign-in');
@@ -104,7 +107,8 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   ];
   const security = [...linksFor(role, actingSuperAdmin), ...(employee ? [PRIVACY] : [])];
   const links = [...staff, ...security];
-  const active: WorkspacePage = links.find((l) => pathname?.startsWith(l.href))?.id ?? 'me';
+  // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not Profile.
+  const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
   return (
     <WorkspaceShell
       active={active}
@@ -118,7 +122,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
       onSignOut={() => void logout().then(() => router.push('/yx/sign-in'))}
     >
       <div className="yx-auth__page">
-        {mfaOverdue && active !== 'me' && (
+        {mfaMissing && active !== 'me' && (
           <InlineAlert
             tone="warning"
             title="Set up two-step verification"
@@ -128,7 +132,9 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
               </Button>
             }
           >
-            Your role needs a second sign-in step. Admin pages are paused until you add one.
+            {mfaOverdue
+              ? 'Your role needs a second sign-in step. Admin pages are paused until you add one.'
+              : `Your role needs a second sign-in step. Set it up by ${mfaDue}; after that, admin pages pause until you add one.`}
           </InlineAlert>
         )}
         {children}

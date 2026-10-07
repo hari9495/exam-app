@@ -398,6 +398,14 @@ describe('/yx/admin/login-activity', () => {
     expect(await screen.findByText('3 failed attempts in the last 24 hours')).toBeInTheDocument();
     expect(api.mock.calls.some(([p]) => /^\/security\/login-events\?result=unsuccessful&from=.+&pageSize=1$/.test(p))).toBe(true);
   });
+
+  it('says "no access" to someone without the permission, not "check your connection"', async () => {
+    const forbidden = Object.assign(new Error('Forbidden'), { status: 403 });
+    route({ 'GET /security/login-events': forbidden, 'GET /security/sessions': forbidden, 'GET /users': forbidden });
+    wrap(<YxLoginActivityPage />);
+    expect(await screen.findByText("You don't have access to login activity")).toBeInTheDocument();
+    expect(screen.queryByText(/Check your connection/)).toBeNull();
+  });
 });
 
 describe('/yx/settings/security', () => {
@@ -491,6 +499,23 @@ describe('/yx layout', () => {
     route({ 'GET /auth/mfa': { ...MFA, factors: [], enrolmentDueAt: '2026-01-01T00:00:00Z' } });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
     expect(await screen.findByRole('link', { name: 'Set it up now' })).toHaveAttribute('href', '/yx/me/security');
+  });
+
+  it('reminds an admin in the grace period, with the date, and lets them work', async () => {
+    (usePathname as jest.Mock).mockReturnValue('/yx/settings/security');
+    route({ 'GET /auth/mfa': { ...MFA, factors: [], enrolmentDueAt: '2099-10-21T00:00:00Z' } });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    expect(await screen.findByText(/Set it up by 21 Oct 2099/)).toBeInTheDocument();
+    expect(screen.getByText('page')).toBeInTheDocument();
+  });
+
+  it('marks Identity and bank changes, not Profile, on /yx/people/profile-requests', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
+    (usePathname as jest.Mock).mockReturnValue('/yx/people/profile-requests');
+    route({ 'GET /auth/mfa': MFA, 'GET /rbac/me/permissions': ['employee.profile.view', 'employee.identity.approve'] });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    expect(await screen.findByRole('link', { name: 'Identity and bank changes' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Profile' })).not.toHaveAttribute('aria-current');
   });
 
   it('sends a signed-out visitor to the sign-in page', () => {
