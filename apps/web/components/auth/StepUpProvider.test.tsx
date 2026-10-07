@@ -43,7 +43,7 @@ describe('StepUpProvider', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Authenticator app' })); // the method cards
     await userEvent.type(await screen.findByLabelText(/6-digit code from your authenticator app/), '000000');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('That verification did not work');
+    expect(await screen.findByRole('alert')).toHaveTextContent("That code didn't work. Check it and try again.");
 
     await userEvent.clear(screen.getByLabelText(/6-digit code from your authenticator app/));
     await userEvent.type(screen.getByLabelText(/6-digit code from your authenticator app/), '123456');
@@ -52,6 +52,15 @@ describe('StepUpProvider', () => {
     await expect(action).resolves.toEqual({ saved: true });
     expect(calls.filter((c) => c === 'PATCH /security/policy')).toHaveLength(2);
     await waitFor(() => expect(screen.queryByText("Confirm it's you")).not.toBeInTheDocument());
+  });
+
+  it('a used or wrong recovery code says only that it did not work and may be used', async () => {
+    render(<StepUpProvider />);
+    void apiFetch('/security/policy', { method: 'PATCH', body: '{}' }, 'tok').catch(() => undefined);
+    await userEvent.click(await screen.findByRole('button', { name: 'Recovery code' }));
+    await userEvent.type(await screen.findByLabelText(/Recovery code/), 'aaaa-bbbb-cccc-dddd');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("That recovery code didn't work. It may already be used — try another one.");
   });
 
   it('dismissing the prompt fails the action with the server message, without a retry', async () => {
