@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { ReactNode } from 'react';
 import { CalendarDays, FileText, Inbox, Landmark, Receipt, Star, UserMinus, UserPlus, Users } from 'lucide-react';
-import { COLOR_ICONS, COLOR_ICONS_TO_COMMISSION, ColorIcon, type ColorIconName, type ColorIconSize } from '../components/color-icon';
+import { COLOR_ICONS, ColorIcon, type ColorIconName, type ColorIconSize } from '../components/color-icon';
 import { PanelGroup, PanelLink, RAIL_ITEMS, SidePanel, SideRail, type RailItem } from '../components/shell';
 import { Monogram } from '../components/brand';
 import { EmptyState } from '../components/feedback';
@@ -191,7 +191,7 @@ const BeforeAfter = () => (
 const cell = { padding: '8px 12px', borderBottom: '1px solid var(--yx-color-border)', textAlign: 'left' as const, verticalAlign: 'middle' as const, overflowWrap: 'anywhere' as const };
 
 const Registry = () => (
-  <Section title="Icon registry · meaning → icon" note="One icon per meaning. Screens use <ColorIcon name=…>, never a Fluent import.">
+  <Section title="Icon registry · meaning → icon" note="One icon per meaning. Screens use <ColorIcon name=…>; the art is vendored SVG (src/icons/color). Stand-ins hold the place until the designer delivers the composite.">
     <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 14, background: 'var(--yx-color-bg-surface)' }}>
       <thead>
         <tr>
@@ -218,14 +218,13 @@ const Registry = () => (
               {COLOR_ICONS[k].fluent}
               <br />
               <span style={{ fontSize: 12, color: 'var(--yx-color-text-secondary)' }}>drawn at {Object.keys(COLOR_ICONS[k].art).join(' / ')} px</span>
+              {(COLOR_ICONS[k] as { standIn?: boolean }).standIn && (
+                <>
+                  <br />
+                  <span style={{ fontSize: 12, color: 'var(--yx-color-text-secondary)' }}>Stand-in — composite brief sent to designer</span>
+                </>
+              )}
             </td>
-          </tr>
-        ))}
-        {COLOR_ICONS_TO_COMMISSION.map((m) => (
-          <tr key={m}>
-            <td style={{ ...cell, color: 'var(--yx-color-text-muted)' }}>None yet</td>
-            <td style={cell}>{m}</td>
-            <td style={cell}>No good Fluent icon · commission from the brand designer</td>
           </tr>
         ))}
       </tbody>

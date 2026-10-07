@@ -4,7 +4,7 @@ This repository includes or bundles the third-party material below. Each notice 
 
 ## Fluent UI System Icons (Color variant)
 
-- Package: [`@fluentui/react-icons`](https://www.npmjs.com/package/@fluentui/react-icons) 2.0.343, used by `packages/yx-ui` (`src/components/color-icon.tsx`)
+- Files: `packages/yx-ui/src/icons/color/fluent-color.ts` holds SVG files copied verbatim (line breaks removed) from [microsoft/fluentui-system-icons](https://github.com/microsoft/fluentui-system-icons), tag 1.1.343 (`assets/<Name>/SVG/ic_fluent_<name>_<size>_color.svg`; the same art as `@fluentui/react-icons` 2.0.343, which is no longer a dependency). Used by `src/components/color-icon.tsx`.
 - Source: https://github.com/microsoft/fluentui-system-icons
 - Licence: MIT
 
