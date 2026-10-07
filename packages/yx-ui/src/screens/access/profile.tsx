@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Button } from '../../components/button';
+import { Button, IconButton } from '../../components/button';
+import { Eye, Lock } from 'lucide-react';
 import { Checkbox } from '../../components/choice';
 import { DatePicker } from '../../components/date';
 import { Badge } from '../../components/display';
@@ -12,7 +13,7 @@ import { Select } from '../../components/select';
 import { Breadcrumbs, Card, DescriptionList, PageHeader } from '../../components/shell';
 import { dayKey } from '../../lib/dates';
 import { dateLabel, errorText } from '../org/org-kit';
-import { ConfidentialBadge, GENDER_LABEL, KIND_LABEL, shown } from './access-kit';
+import { GENDER_LABEL, KIND_LABEL, shown } from './access-kit';
 import type { LoadState, PersonalDetails, ProfileRequest, ProfileRequestInput, ProfileView, RequestKind, RevealField } from './types';
 
 // People › Profile (PPL-03 / PPL-32; P02 §4.4–4.5): the record by sensitivity class. Personal details for the
@@ -196,14 +197,13 @@ export function ProfileScreen(props: ProfileScreenProps) {
       setBusy(null);
     }
   };
+  const REVEAL_NAME: Record<RevealField, string> = { pan: 'PAN', aadhaar: 'Aadhaar', uan: 'UAN', esic: 'ESIC IP number', bank_salary: 'salary account number', bank_reimbursement: 'reimbursement account number' };
   const masked = (field: RevealField, value: string | null, allowed: boolean) =>
     value ? (
       <span className="yx-ppl2__row">
         <Text mono>{revealed[field] ?? value}</Text>
         {allowed && !revealed[field] && (
-          <Button size="sm" loading={busy === field} onClick={() => reveal(field)}>
-            Show
-          </Button>
+          <IconButton icon={Eye} size="sm" label={`Show full ${REVEAL_NAME[field]}`} disabled={busy === field} onClick={() => void reveal(field)} />
         )}
       </span>
     ) : (
@@ -246,10 +246,11 @@ export function ProfileScreen(props: ProfileScreenProps) {
           <Card title="Identity and bank" actions={p.can.requestChange ? <Button size="sm" onClick={() => setChanging(true)}>Request a change</Button> : undefined}>
             {p.identity ? (
               <>
-                <span className="yx-ppl2__row">
-                  <ConfidentialBadge />
-                  <Text tone="secondary" size="sm">{p.self ? 'Only you, HR and payroll with access see these.' : 'Each full look is recorded and shown to the person.'}</Text>
-                </span>
+                <p className="yx-ppl2__confidential">
+                  <Lock size={14} aria-hidden />
+                  <Text as="span" size="sm" weight="medium">Confidential</Text>
+                  <Text as="span" tone="secondary" size="sm">{p.self ? '· Only you, HR and payroll with access can see these.' : '· Each full look is recorded and shown to the person.'}</Text>
+                </p>
                 <DescriptionList
                   columns={2}
                   items={[
@@ -257,7 +258,15 @@ export function ProfileScreen(props: ProfileScreenProps) {
                     { label: 'PAN', value: masked('pan', p.identity.pan, p.can.reveal) },
                     { label: 'UAN', value: masked('uan', p.identity.uan, p.can.reveal) },
                     { label: 'ESIC IP number', value: masked('esic', p.identity.esic, p.can.reveal) },
-                    { label: 'Aadhaar', value: masked('aadhaar', p.identity.aadhaar, p.classes.aadhaar) },
+                    {
+                      label: 'Aadhaar',
+                      value: (
+                        <span className="yx-auth__item-main">
+                          {masked('aadhaar', p.identity.aadhaar, p.classes.aadhaar)}
+                          {p.identity.aadhaar && !p.classes.aadhaar && <Text tone="secondary" size="sm">Never shown in full</Text>}
+                        </span>
+                      ),
+                    },
                     ...p.identity.bankAccounts.map((b) => ({
                       label: b.purpose === 'salary' ? 'Salary account' : 'Reimbursement account',
                       value: (

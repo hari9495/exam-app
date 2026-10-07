@@ -107,14 +107,14 @@ describe('Profile by sensitivity class (P02 §4.4–4.5)', () => {
     expect(screen.getByText('Identity and bank details are for the person and payroll.')).toBeInTheDocument();
     expect(screen.getByText('Pay is visible only with pay access.')).toBeInTheDocument();
     expect(screen.queryByText('divya.r.home@mail.test')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Show' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Show full/ })).toBeNull();
   });
 
   it('identifiers are masked; Show asks for the full value; Aadhaar has no Show without its grant (YX-SEC-08)', async () => {
     const p = profile();
     expect(screen.getByText('•••• 821K')).toBeInTheDocument();
     expect(screen.getByText('•••• 0248')).toBeInTheDocument();
-    const shows = screen.getAllByRole('button', { name: 'Show' });
+    const shows = screen.getAllByRole('button', { name: /^Show full/ });
     expect(shows).toHaveLength(3); // PAN, UAN, salary account; never Aadhaar here
     await ue.click(shows[0]);
     expect(p.onReveal).toHaveBeenCalledWith('pan');
