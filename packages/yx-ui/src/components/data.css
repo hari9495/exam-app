@@ -127,7 +127,7 @@
 /* §30 Filter bar */
 .yx-filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); min-width: 0; }
 .yx-filter-bar__search { width: calc(var(--yx-space-16) * 4); max-width: 100%; }
-.yx-filter-bar__end { margin-left: auto; display: flex; gap: var(--yx-space-2); }
+.yx-filter-bar__end { margin-left: auto; display: flex; flex-wrap: wrap; gap: var(--yx-space-2); min-width: 0; }
 .yx-filter-chip {
   display: inline-flex;
   align-items: stretch;
@@ -137,13 +137,14 @@
   background: var(--yx-color-bg-surface);
   font-size: var(--yx-text-sm);
   overflow: hidden;
+  max-width: 100%; /* phones: a long value truncates inside the chip instead of pushing the page sideways */
 }
 .yx-filter-chip[data-active] { border-color: var(--yx-color-info-border); background: var(--yx-color-bg-selected); }
 .yx-filter-chip__main, .yx-filter-chip__remove {
   display: inline-flex; align-items: center; gap: var(--yx-space-1);
   border: 0; background: transparent; color: var(--yx-color-text); font: inherit; cursor: pointer;
 }
-.yx-filter-chip__main { padding: 0 var(--yx-space-2) 0 var(--yx-space-3); max-width: calc(var(--yx-space-16) * 5); }
+.yx-filter-chip__main { padding: 0 var(--yx-space-2) 0 var(--yx-space-3); max-width: calc(var(--yx-space-16) * 5); min-width: 0; }
 .yx-filter-chip__main:hover, .yx-filter-chip__remove:hover { background: var(--yx-color-bg-subtle); }
 .yx-filter-chip__label { color: var(--yx-color-text-secondary); white-space: nowrap; }
 .yx-filter-chip__value { font-weight: var(--yx-weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -225,6 +226,8 @@
 .yx-table[data-layout="cards"] .yx-table__menu-slot { display: none; }
 .yx-table tbody tr[data-clickable] { cursor: pointer; }
 .yx-table tbody tr:hover > td { background: var(--yx-color-bg-page); }
+/* A row that opens something tints clearly on hover, not the faint page tint (affordance, founder review 8 Oct 2026). */
+.yx-table tbody tr[data-clickable]:hover > td { background: var(--yx-color-bg-subtle); }
 .yx-table tbody tr:focus-visible { outline: none; }
 .yx-table tbody tr:focus-visible > td { background: var(--yx-color-bg-selected); box-shadow: inset 0 var(--yx-focus-width) 0 var(--yx-color-focus-ring), inset 0 calc(var(--yx-focus-width) * -1) 0 var(--yx-color-focus-ring); }
 .yx-table tbody tr:has([role="checkbox"][data-state="checked"]) > td,
@@ -331,6 +334,10 @@
 .yx-table[data-layout="cards"] .yx-table__actions-inner { flex-wrap: wrap; justify-content: flex-start; width: auto; margin-left: 0; }
 .yx-table[data-layout="cards"] td.yx-table__message { display: block; text-align: left; }
 .yx-table[data-layout="cards"] tbody tr:hover > td { background: transparent; }
+/* Clickable cards: the whole card tints on hover and gets one ring on keyboard focus. */
+.yx-table[data-layout="cards"] tbody tr[data-clickable]:hover { background: var(--yx-color-bg-subtle); }
+.yx-table[data-layout="cards"] tbody tr:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: calc(var(--yx-focus-width) * -1); }
+.yx-table[data-layout="cards"] tbody tr:focus-visible > td { box-shadow: none; }
 .yx-table[data-layout="cards"] tfoot > tr { background: var(--yx-color-bg-subtle); }
 /* Card checkbox inline with the name; an unselectable card shows why instead (phones have no hover tooltip). */
 .yx-table[data-layout="cards"] td[data-frozen] { align-items: center; flex-wrap: wrap; gap: var(--yx-space-2); }
