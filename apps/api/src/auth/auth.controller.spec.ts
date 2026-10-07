@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { RefreshThrottlerGuard } from './refresh-throttler.guard';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { SessionsService } from './sessions.service';
@@ -49,7 +50,10 @@ describe('AuthController.ssoExchange', () => {
         { provide: SessionsService, useValue: sessions },
         { provide: CompanyScopeService, useValue: { slugFor: jest.fn(async (_req: unknown, slug?: string) => slug) } },
       ],
-    }).compile();
+    })
+      .overrideGuard(RefreshThrottlerGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
     controller = moduleRef.get(AuthController);
   });
 
