@@ -1,6 +1,7 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 import { GrantScope, GrantScopeType, TENANT_SCOPE, grantScopesFor } from '../record-visibility/record-visibility';
+import { isGrantOnlyKey } from '../field-permissions/employee-fields';
 
 export interface PermissionSubject {
   role: string;
@@ -87,7 +88,8 @@ async function baseGrants(prisma: PrismaService, tenantPrisma: TenantPrismaServi
       }),
     );
     if (override) {
-      return JSON.parse(override.permissionsJson) as string[];
+      // An override never confers HR or pay keys, even one stored before they were refused (P02 §4.6, R1).
+      return (JSON.parse(override.permissionsJson) as string[]).filter((k) => !isGrantOnlyKey(k));
     }
   }
   const grants = await prisma.rolePermission.findMany({

@@ -37,6 +37,13 @@ describe('resolveScopedGrants (P02 YX-SEC-03)', () => {
     expect([...(await resolvePermissionGrants(prisma, tenantPrisma, { role: 'panel', organizationId: 'o1' }, []))]).toEqual(['org:view']);
     expect(tx.$queryRaw).not.toHaveBeenCalled();
   });
+
+  it('a company override of a base role never confers HR or pay keys, even one stored before they were refused (P02 §4.6, R1)', async () => {
+    const { prisma, tenantPrisma, tx } = build([]);
+    tx.orgRolePermission.findUnique.mockResolvedValue({ permissionsJson: JSON.stringify(['org:view', 'employee.profile.view', 'employee.salary.view', 'employee.aadhaar.view', 'pay.range.view', 'org.entity.statutory.manage']) });
+    const keys = await resolvePermissionGrants(prisma, tenantPrisma, { role: 'panel', organizationId: 'o1', userId: 'u1' }, []);
+    expect([...keys]).toEqual(['org:view']);
+  });
 });
 
 describe('grant scopes per key (P02 §4.3)', () => {
@@ -57,6 +64,7 @@ describe('employee field classes (P02 §4.4, YX-SEC-07/08)', () => {
     expect(EMPLOYEE_FIELD_CLASSES.bankAccount).toBe('confidential');
     expect(EMPLOYEE_FIELD_CLASSES.aadhaar).toBe('special');
     expect(EMPLOYEE_FIELD_CLASSES.personalPhone).toBe('personal');
+    expect([EMPLOYEE_FIELD_CLASSES.personPhone, EMPLOYEE_FIELD_CLASSES.personEmail]).toEqual(['personal', 'personal']);
     expect(EMPLOYEE_FIELD_CLASSES.designation).toBe('public');
   });
   it('Confidential keys are recognised; masking keeps the last four only', () => {

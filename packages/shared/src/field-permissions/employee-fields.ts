@@ -29,6 +29,9 @@ export const EMPLOYEE_FIELD_CLASSES = {
   personalEmail: 'personal',
   personalPhone: 'personal',
   address: 'personal',
+  // The person behind the record (P01 §4.5a): the mobile captured at hiring, and an email that is not the work one.
+  personPhone: 'personal',
+  personEmail: 'personal',
   // Confidential: pay (founder rule R1) and identity / bank.
   compensation: 'confidential',
   legalName: 'confidential',
@@ -69,6 +72,13 @@ export const CONFIDENTIAL_KEYS: readonly string[] = [
   'org.entity.statutory.manage',
 ];
 export const holdsConfidential = (keys: readonly string[]) => keys.some((k) => CONFIDENTIAL_KEYS.includes(k));
+
+/**
+ * P02 §4.6 and founder rule R1: HR and pay data keys (employee.*, pay.*, org.entity.statutory.*) reach a user
+ * only through their own permission profile or a scoped role grant, never through a company override of a base
+ * role, which would hand them to everyone holding that role company-wide without a second admin.
+ */
+export const isGrantOnlyKey = (key: string) => /^(employee\.|pay\.|org\.entity\.statutory\.)/.test(key);
 
 /** "•••• 6789": the last four only (P02 §4.4 masked level). */
 export function maskTail(last4: string | null | undefined): string | null {
