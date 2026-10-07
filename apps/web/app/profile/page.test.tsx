@@ -47,7 +47,7 @@ describe('ProfilePage', () => {
   it('redirects to /login when not authenticated', async () => {
     mockFetchWithToken(null);
     renderPage();
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/login'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/yx/sign-in'));
   });
 
   it('renders the ProfileForm content when authenticated', async () => {

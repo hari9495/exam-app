@@ -29,9 +29,14 @@ const nextConfig = {
     const routes = ['/dashboard', '/exams', '/questions', '/candidates', '/walk-in-groups', '/jobs', '/analytics/hiring', '/message-templates', '/offer-template'];
     return [
       ...routes.map((source) => ({ source, destination: `/v2${source}`, permanent: false })),
-      // Staff login is rebuilt in v2 (Azure split login). Everything that pushes to /login
-      // (logout, unauth guards, SSO/reset returns) funnels to the v2 page. permanent:false → reversible.
-      { source: '/login', destination: '/v2/login', permanent: false },
+      // The classic sign-in is retired (founder decision 7 Oct 2026): every company sign-in, password
+      // reset and reset link is the YukthiX one (old bookmarks and emails included). The query string
+      // carries over; a ?next= path is honoured only when it is same-site (lib/safe-next.ts).
+      // YukthiX platform staff sign in at /staff/sign-in, which nothing links to.
+      { source: '/login', destination: '/yx/sign-in', permanent: true },
+      { source: '/v2/login', destination: '/yx/sign-in', permanent: true },
+      { source: '/forgot-password', destination: '/yx/forgot-password', permanent: true },
+      { source: '/reset-password/:token', destination: '/yx/reset-password/:token', permanent: true },
       // Question editor is rebuilt in v2; redirect the old editor routes too.
       { source: '/questions/new', destination: '/v2/questions/new', permanent: false },
       { source: '/questions/:id/edit', destination: '/v2/questions/:id/edit', permanent: false },

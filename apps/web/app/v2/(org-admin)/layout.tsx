@@ -9,6 +9,7 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { MotionConfig } from 'framer-motion';
 import { useAuth } from '../../../lib/auth-context';
+import { signInPath } from '../../../lib/api-client';
 import { staffLandingPath } from '../../../lib/staff-landing';
 import { buildStaffNav } from '../../../lib/staff-nav';
 import { useOrgBranding } from '../../../lib/hooks/useBranding';
@@ -27,7 +28,7 @@ export default function OrgAdminV2Layout({ children }: { children: React.ReactNo
 
   useEffect(() => {
     if (!isLoading && !accessToken) {
-      router.push('/login');
+      router.push(signInPath());
     } else if (!isLoading && accessToken && role && role !== 'org_admin' && !actingSuperAdmin) {
       router.push(staffLandingPath(role));
     }

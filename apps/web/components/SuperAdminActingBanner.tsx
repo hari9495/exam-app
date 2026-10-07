@@ -18,7 +18,7 @@ export function SuperAdminActingBanner() {
     // layout's own role-gate `useEffect` -- e.g. (recruiter)/(org-admin)/(panel)/layout.tsx's
     // `role !== '<shell role>' && !actingSuperAdmin` check -- observe actingSuperAdmin flip to
     // false while still mounted on that shell's page, and it races this function's own redirect
-    // to /organizations with a competing `router.push('/login')`, which can win.
+    // to /organizations with a competing `router.push(signInPath())`, which can win.
     router.push('/organizations');
     await switchOutOfOrg();
   }

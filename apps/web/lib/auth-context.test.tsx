@@ -393,6 +393,34 @@ describe('AuthProvider', () => {
     expect(client.getQueryData(['currentUser'])).toBeUndefined();
   });
 
+  it.each([
+    ['recruiter', '/yx/sign-in'],
+    ['super_admin', '/staff/sign-in'],
+  ])('logout sends a %s back to %s', async (role, expected) => {
+    window.sessionStorage.clear();
+    const token = fakeJwt({ sub: 'u1', role });
+    global.fetch = jest.fn(async (url) =>
+      String(url).endsWith('/auth/refresh') ? new Response(JSON.stringify({ accessToken: token }), { status: 200 }) : new Response('{}', { status: 200 }),
+    ) as unknown as typeof fetch;
+    let auth: ReturnType<typeof useAuth> | undefined;
+    function Consumer() {
+      auth = useAuth();
+      return <p>{auth.role ?? 'none'}</p>;
+    }
+    renderWithQueryClient(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByText(role)).toBeInTheDocument());
+    let to = '';
+    await act(async () => {
+      to = await auth!.logout();
+    });
+    expect(to).toBe(expected);
+    expect(window.sessionStorage.getItem('staffSession')).toBeNull();
+  });
+
   it('decodes actingSuperAdmin, actingOrgName, and actingOrgSlug off the access token after switchIntoOrg', async () => {
     const tokenA = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'super_admin' });
     const actingToken = fakeJwt({

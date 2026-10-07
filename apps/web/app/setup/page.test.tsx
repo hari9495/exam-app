@@ -17,7 +17,7 @@ describe('SetupPage', () => {
   it('redirects to /login when setup is already complete', async () => {
     mockedApiFetch.mockResolvedValueOnce({ needsSetup: false });
     render(<SetupPage />);
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/login'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/staff/sign-in'));
   });
 
   it('shows the form when setup is needed, and submits token/email/password', async () => {

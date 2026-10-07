@@ -2,15 +2,21 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { CompanyOption, SignInFields, SignInOptions, SignInStep, SocialProvider, SsoProviderOption } from '@yukthix/ui/auth';
-import { apiFetch, YX_SESSION_KEY } from '../api-client';
+import type { CompanyOption, MfaProof, SignInFields, SignInOptions, SignInStep, SocialProvider, SsoProviderOption } from '@yukthix/ui/auth';
+import { apiFetch } from '../api-client';
 import { goTo } from '../navigate';
 import { botChallengeToken } from '../bot-challenge';
-import { useAuth, YX_SSO_RETURN_KEY } from '../auth-context';
+import { useAuth } from '../auth-context';
 import { decodeJwtPayload } from '../jwt';
 import { yxLandingPath } from '../yx-landing';
-import type { MfaProof } from '../../components/auth/SecondFactorForm';
-import type { MfaChallenge } from './useStaffLogin';
+import { nextFromLocation } from '../safe-next';
+
+// The first step was right and a second factor is owed (P12 YX-IAM-01); no session exists yet.
+export interface MfaChallenge {
+  mfaRequired: true;
+  mfaToken: string;
+  factors: string[];
+}
 
 type Company = Omit<CompanyOption, 'id'>;
 interface SignedIn {
@@ -26,7 +32,7 @@ const PLAIN: Record<string, string> = {
   'Invalid credentials': 'Wrong email or password. Try again.',
   'Too many sign-in attempts. Please wait and try again.': 'Too many tries. Wait a few minutes and try again.',
 };
-const message = (err: unknown, fallback: string) => {
+export const message = (err: unknown, fallback: string) => {
   const text = err instanceof Error && err.message ? err.message : fallback;
   return PLAIN[text] ?? text;
 };
@@ -90,12 +96,13 @@ export function useYxSignIn() {
     }
   };
 
-  // Lands in YukthiX unless the person holds exam/ATS permissions (then their role's console, as before).
+  // Back to a validated same-site `next` (e.g. from an old /login?next= link); else YukthiX, unless the
+  // person holds exam/ATS permissions (then their role's console, as before).
   async function finish(result: SignedIn) {
     login('', result.accessToken);
-    window.sessionStorage.setItem(YX_SESSION_KEY, '1');
+    if (result.mfa?.required) return router.push('/yx/setup-mfa');
     const role = decodeJwtPayload(result.accessToken)?.role as string | undefined;
-    router.push(result.mfa?.required ? '/yx/setup-mfa' : await yxLandingPath(result.accessToken, role));
+    router.push(nextFromLocation() ?? (await yxLandingPath(result.accessToken, role)));
   }
 
   async function settle(outcome: Outcome) {
@@ -109,7 +116,6 @@ export function useYxSignIn() {
   }
 
   const goToIdp = (url: string, to?: string) => {
-    if (!to) window.sessionStorage.setItem(YX_SSO_RETURN_KEY, '1');
     setRedirectingTo(to);
     setStep('redirecting');
     goTo(url);

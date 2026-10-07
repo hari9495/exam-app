@@ -3,13 +3,11 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { apiFetch, YX_SESSION_KEY } from '../../../lib/api-client';
+import { apiFetch } from '../../../lib/api-client';
 import { yxLandingPath } from '../../../lib/yx-landing';
-import { useAuth, SSO_PENDING_SLUG_KEY } from '../../../lib/auth-context';
+import { useAuth } from '../../../lib/auth-context';
 import { decodeJwtPayload } from '../../../lib/jwt';
-import { MfaProof, SecondFactorForm } from '../../../components/auth/SecondFactorForm';
 import { MfaChallengeScreen } from '@yukthix/ui/auth';
-import { YX_SSO_RETURN_KEY } from '../../../lib/auth-context';
 import { passkeyAssertion } from '../../../lib/yx-security';
 
 const GENERIC_ERROR = 'Sign-in failed. Please try again or use your password.';
@@ -22,37 +20,30 @@ function takeCallbackParams(): URLSearchParams {
   return params;
 }
 const ERROR_REDIRECT_DELAY_MS = 3000;
+// Every company sign-in is the YukthiX one (founder decision 7 Oct 2026).
+const signInPath = '/yx/sign-in';
 
 function SsoCallbackRedeemer() {
   const router = useRouter();
   const { login } = useAuth();
   const [error, setError] = useState<string | null>(null);
   // The IdP's sign-in is a first factor; an enrolled YukthiX factor is still owed (P12 YX-IAM-01).
-  const [challenge, setChallenge] = useState<{ mfaToken: string; factors: string[]; slug: string } | null>(null);
-  // Started from the YukthiX sign-in page (/yx/sign-in): finish in the YukthiX screens.
-  const [yx] = useState(() => typeof window !== 'undefined' && window.sessionStorage.getItem(YX_SSO_RETURN_KEY) === '1');
-  const signInPath = yx ? '/yx/sign-in' : '/login';
-
-  async function finish(slug: string, result: { accessToken: string; mfa?: { required: boolean } }) {
-    login(slug, result.accessToken);
-    const payload = decodeJwtPayload(result.accessToken);
-    if (yx) window.sessionStorage.setItem(YX_SESSION_KEY, '1');
+  const [challenge, setChallenge] = useState<{ mfaToken: string; factors: string[] } | null>(null);
+  async function finish(result: { accessToken: string; mfa?: { required: boolean } }) {
+    login('', result.accessToken);
     if (result.mfa?.required) {
-      router.push(yx ? '/yx/setup-mfa' : '/profile?mfa=setup');
+      router.push('/yx/setup-mfa');
       return;
     }
-    if (yx) {
-      router.push(await yxLandingPath(result.accessToken, payload?.role as string | undefined));
-      return;
-    }
-    router.push(payload?.role === 'org_admin' ? '/users' : payload?.role === 'panel' ? '/reports' : '/dashboard');
+    const payload = decodeJwtPayload(result.accessToken);
+    router.push(await yxLandingPath(result.accessToken, payload?.role as string | undefined));
   }
 
   useEffect(() => {
     if (!error) return;
     const timer = setTimeout(() => router.push(signInPath), ERROR_REDIRECT_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [error, router, signInPath]);
+  }, [error, router]);
 
   // The code is single-use and wiped from the URL on first read: run once, even when React
   // re-runs effects (Strict Mode).
@@ -79,16 +70,11 @@ function SsoCallbackRedeemer() {
 
     apiFetch('/auth/sso/exchange', { method: 'POST', body: JSON.stringify({ code }) })
       .then((result) => {
-        // The org slug was stashed in sessionStorage by the login page right before it
-        // navigated to the IdP, since that in-memory form state doesn't survive the redirect.
-        const stashedSlug = window.sessionStorage.getItem(SSO_PENDING_SLUG_KEY) ?? '';
-        window.sessionStorage.removeItem(SSO_PENDING_SLUG_KEY);
-        window.sessionStorage.removeItem(YX_SSO_RETURN_KEY);
         if (result.mfaRequired) {
-          setChallenge({ mfaToken: result.mfaToken, factors: result.factors, slug: stashedSlug });
+          setChallenge({ mfaToken: result.mfaToken, factors: result.factors });
           return;
         }
-        return finish(stashedSlug, result);
+        return finish(result);
       })
       .catch((err: Error) => {
         setError(err.message || GENERIC_ERROR);
@@ -100,38 +86,18 @@ function SsoCallbackRedeemer() {
   if (challenge) {
     const post = (path: string, body: object) =>
       apiFetch(path, { method: 'POST', body: JSON.stringify({ mfaToken: challenge.mfaToken, ...body }) });
-    if (yx) {
-      return (
-        <div className="yx-root">
-          <MfaChallengeScreen
-            factors={challenge.factors}
-            getPasskey={() => passkeyAssertion(() => post('/auth/mfa/passkey-options', {}))}
-            submit={async (proof) => finish(challenge.slug, await post('/auth/mfa/verify', proof))}
-            sendCode={async (channel) => {
-              await post('/auth/mfa/otp/send', { channel });
-            }}
-            onStartAgain={() => router.push(signInPath)}
-          />
-        </div>
-      );
-    }
     return (
-      <main className="flex min-h-screen items-center justify-center px-6">
-        <div className="flex w-full max-w-sm flex-col gap-4">
-          <div>
-            <h1 className="text-lg font-semibold">Two-step verification</h1>
-            <p className="text-sm text-muted">Confirm it&apos;s you to finish signing in.</p>
-          </div>
-          <SecondFactorForm
-            factors={challenge.factors}
-            getPasskeyOptions={() => post('/auth/mfa/passkey-options', {})}
-            submit={async (proof: MfaProof) => finish(challenge.slug, await post('/auth/mfa/verify', proof))}
-            sendCode={async (channel) => {
-              await post('/auth/mfa/otp/send', { channel });
-            }}
-          />
-        </div>
-      </main>
+      <div className="yx-root">
+        <MfaChallengeScreen
+          factors={challenge.factors}
+          getPasskey={() => passkeyAssertion(() => post('/auth/mfa/passkey-options', {}))}
+          submit={async (proof) => finish(await post('/auth/mfa/verify', proof))}
+          sendCode={async (channel) => {
+            await post('/auth/mfa/otp/send', { channel });
+          }}
+          onStartAgain={() => router.push(signInPath)}
+        />
+      </div>
     );
   }
 
@@ -142,7 +108,7 @@ function SsoCallbackRedeemer() {
           {error}
         </p>
         <Link href={signInPath} className="text-sm font-medium text-primary hover:underline">
-          Back to login
+          Back to sign in
         </Link>
       </main>
     );

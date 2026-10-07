@@ -13,7 +13,7 @@ import YxAccessSettingsPage from './(app)/settings/access-settings/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
-jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn(), YX_SSO_RETURN_KEY: 'yxSsoReturn' }));
+jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 jest.mock('../../lib/hooks/useCurrentUser', () => ({ useCurrentUser: () => ({ data: { name: 'Arjun Kulkarni', email: 'arjun.k@kaverifoods.in' } }) }));
 
 const wrap = (ui: React.ReactElement) =>

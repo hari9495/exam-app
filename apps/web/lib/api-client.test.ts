@@ -1,5 +1,5 @@
 import { goTo } from './navigate';
-import { apiFetch, apiFetchBlob, resetSessionState, setStepUpHandler, setUnauthorizedHandler, YX_SESSION_KEY } from './api-client';
+import { apiFetch, apiFetchBlob, resetSessionState, setStepUpHandler, setUnauthorizedHandler, STAFF_SESSION_KEY } from './api-client';
 
 jest.mock('./navigate', () => ({ goTo: jest.fn() }));
 
@@ -80,21 +80,21 @@ describe('apiFetch', () => {
       expect(refresh).toHaveBeenCalledTimes(2);
       expect(global.fetch).toHaveBeenCalledTimes(2);
       expect(goTo).toHaveBeenCalledTimes(1);
-      expect(goTo).toHaveBeenCalledWith('/login');
+      expect(goTo).toHaveBeenCalledWith('/yx/sign-in');
     } finally {
     }
   });
 
-  it('sends a YukthiX session to /yx/sign-in', async () => {
-    window.history.pushState({}, '', '/v2/panel/reports');
-    window.sessionStorage.setItem(YX_SESSION_KEY, '1');
+  it('sends a platform staff session to the staff sign-in page', async () => {
+    window.history.pushState({}, '', '/v2/organizations');
+    window.sessionStorage.setItem(STAFF_SESSION_KEY, '1');
     try {
       global.fetch = jest.fn(async () => new Response('{}', { status: 401 })) as unknown as typeof fetch;
       setUnauthorizedHandler(async () => null);
-      await expect(apiFetch('/exams', {}, 'old')).rejects.toMatchObject({ status: 401 });
-      expect(goTo).toHaveBeenCalledWith('/yx/sign-in');
+      await expect(apiFetch('/organizations', {}, 'old')).rejects.toMatchObject({ status: 401 });
+      expect(goTo).toHaveBeenCalledWith('/staff/sign-in');
     } finally {
-      window.sessionStorage.removeItem(YX_SESSION_KEY);
+      window.sessionStorage.removeItem(STAFF_SESSION_KEY);
     }
   });
 

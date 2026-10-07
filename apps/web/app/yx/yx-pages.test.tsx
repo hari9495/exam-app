@@ -16,9 +16,9 @@ import YxSecuritySettingsPage from './(app)/settings/security/page';
 import YxAppLayout from './(app)/layout';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useParams: () => ({ token: 'tok-123' }) }));
-jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), YX_SESSION_KEY: 'yxSession' }));
+jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
 jest.mock('../../lib/navigate', () => ({ goTo: jest.fn() }));
-jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn(), YX_SSO_RETURN_KEY: 'yxSsoReturn' }));
+jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 jest.mock('../../lib/bot-challenge', () => ({ botChallengeToken: async () => null }));
 jest.mock('../../lib/hooks/useCurrentUser', () => ({ useCurrentUser: () => ({ data: { name: 'Divya Raghunathan', email: 'divya.r@kaverifoods.in' } }) }));
 jest.mock('@simplewebauthn/browser', () => ({ startAuthentication: jest.fn(), startRegistration: jest.fn() }));
@@ -103,6 +103,24 @@ describe('/yx/sign-in (email first, no company code)', () => {
     expect(login).toHaveBeenCalledWith('', expect.any(String));
   });
 
+  it('returns to a same-site ?next= (e.g. from an old /login?next= link) instead of the landing', async () => {
+    window.history.replaceState(null, '', '/yx/sign-in?next=/v2/questions');
+    try {
+      route({
+        'GET /auth/remembered-company': { company: null },
+        'POST /auth/identify': { next: 'password', providers: [] },
+        'POST /auth/staff/login': { accessToken: token({ role: 'recruiter' }) },
+      });
+      render(<YxSignInPage />);
+      await typeIdentifier('divya.r@kaverifoods.in');
+      await userEvent.type(await screen.findByLabelText(/^Password/), 'correct horse battery');
+      await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/questions'));
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
+  });
+
   it('a credential that opens several companies: "Choose your company", then that company', async () => {
     route({
       'GET /auth/remembered-company': { company: null },
@@ -146,7 +164,6 @@ describe('/yx/sign-in (email first, no company code)', () => {
     await typeIdentifier('divya.r@kaverifoods.in');
     await waitFor(() => expect(assign).toHaveBeenCalledWith('https://idp.example.test/start'));
     expect(screen.getByRole('status')).toHaveTextContent("Taking you to your company's sign-in page");
-    expect(window.sessionStorage.getItem('yxSsoReturn')).toBe('1');
   });
 
   it('shows the remembered company, and "Not your company?" forgets it', async () => {

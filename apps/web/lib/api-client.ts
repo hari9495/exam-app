@@ -85,14 +85,21 @@ async function throwForResponse(response: Response): Promise<never> {
   if (Object.keys(details).length) error.body = details;
   if (typeof body.code === 'string') error.code = body.code;
   if (body.code === PASSWORD_CHANGE_REQUIRED && typeof body.resetToken === 'string' && /^[0-9a-f]{64}$/.test(body.resetToken) && typeof window !== 'undefined') {
-    window.location.assign(`/reset-password/${body.resetToken}`);
+    window.location.assign(`/yx/reset-password/${body.resetToken}`);
   }
   throw error;
 }
 
-// Set by the YukthiX sign-in (useYxSignIn) so a dead session sends the person back to /yx/sign-in
-// even from a classic /v2 page.
-export const YX_SESSION_KEY = 'yxSession';
+// Set when a YukthiX platform staff (super_admin) token is applied, so a dead staff session goes
+// back to the staff sign-in rather than the company one (founder decision 7 Oct 2026).
+export const STAFF_SESSION_KEY = 'staffSession';
+export const STAFF_SIGN_IN = '/staff/sign-in';
+
+/** Where this tab signs in again: the staff page for platform staff, else the YukthiX sign-in. */
+export function signInPath(): string {
+  if (typeof window === 'undefined') return '/yx/sign-in';
+  return window.location.pathname.startsWith('/staff') || window.sessionStorage.getItem(STAFF_SESSION_KEY) === '1' ? STAFF_SIGN_IN : '/yx/sign-in';
+}
 
 // One /auth/refresh shared by every request that hits a 401 at the same time: refresh tokens rotate
 // on every use, and the endpoint is strictly rate-limited.
@@ -112,8 +119,7 @@ let sentToSignIn = false;
 /** The session is over (refresh refused, rate-limited or unreachable): stop and sign in again, once. */
 function sendToSignIn() {
   if (sentToSignIn || typeof window === 'undefined') return;
-  const yx = window.location.pathname.startsWith('/yx') || window.sessionStorage.getItem(YX_SESSION_KEY) === '1';
-  const target = yx ? '/yx/sign-in' : '/login';
+  const target = signInPath();
   if (window.location.pathname === target) return;
   sentToSignIn = true;
   goTo(target);

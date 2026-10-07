@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { MotionConfig } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '../../lib/auth-context';
+import { signInPath } from '../../lib/api-client';
 import { ProfileForm } from '../../components/ProfileForm';
 import { NotificationEmailPreferences } from '../../components/NotificationEmailPreferences';
 import { TwoStepSection } from '../../components/auth/TwoStepSection';
@@ -22,7 +23,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!isLoading && !accessToken) {
-      router.push('/login');
+      router.push(signInPath());
     }
   }, [isLoading, accessToken, router]);
 
@@ -30,7 +31,7 @@ export default function ProfilePage() {
     return <p className="p-8 text-sm text-muted">Loading…</p>;
   }
 
-  const homeHref = (role && HOME_BY_ROLE[role]) || '/login';
+  const homeHref = (role && HOME_BY_ROLE[role]) || signInPath();
 
   return (
     <MotionConfig reducedMotion="user">

@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import { MotionConfig } from 'framer-motion';
 import { BarChart3, CalendarClock } from 'lucide-react';
 import { useAuth } from '../../../lib/auth-context';
+import { signInPath } from '../../../lib/api-client';
 import { staffLandingPath } from '../../../lib/staff-landing';
 import { useOrgBranding } from '../../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../../lib/hooks/useDocumentBranding';
@@ -35,7 +36,7 @@ export default function PanelV2Layout({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     if (!isLoading && !accessToken) {
-      router.push('/login');
+      router.push(signInPath());
     } else if (!isLoading && accessToken && role && !ALLOWED_ROLES.includes(role) && !actingSuperAdmin) {
       router.push(staffLandingPath(role));
     } else if (noExamAts) {

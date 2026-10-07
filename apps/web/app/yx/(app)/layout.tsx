@@ -119,7 +119,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
       name={me.data?.name || me.data?.email || 'Your account'}
       email={me.data?.email}
       onNavigate={(href) => router.push(href)}
-      onSignOut={() => void logout().then(() => router.push('/yx/sign-in'))}
+      onSignOut={() => void logout().then((to) => router.push(to))}
     >
       <div className="yx-auth__page">
         {mfaMissing && active !== 'me' && (

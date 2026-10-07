@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { apiFetch, setUnauthorizedHandler, YX_SESSION_KEY } from './api-client';
+import { apiFetch, setUnauthorizedHandler, signInPath, STAFF_SESSION_KEY } from './api-client';
 import { decodeJwtPayload } from './jwt';
 
 interface AuthContextValue {
@@ -13,7 +13,7 @@ interface AuthContextValue {
   actingOrgName: string | null;
   isLoading: boolean;
   login: (organizationSlug: string, accessToken: string) => void;
-  /** Signs out; resolves to the sign-in page this person uses (YukthiX or the classic one). */
+  /** Signs out; resolves to the sign-in page this person uses (the staff page for platform staff, else /yx/sign-in). */
   logout: () => Promise<string>;
   switchIntoOrg: (orgId: string) => Promise<void>;
   switchOutOfOrg: () => Promise<void>;
@@ -26,18 +26,6 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const SLUG_STORAGE_KEY = 'organizationSlug';
-
-// Stashed by the login page right before it navigates to the SP-initiated SSO redirect, so the
-// slug survives the round trip to the IdP and back. Deliberately a separate key from
-// SLUG_STORAGE_KEY: that key represents an *authenticated* session's slug (set on login, cleared
-// on logout, read on mount to restore UI before silentRefresh resolves) and is written even when
-// the SSO attempt fails or is abandoned, which would otherwise leave a stale slug marked as if a
-// real session existed.
-export const SSO_PENDING_SLUG_KEY = 'ssoPendingOrganizationSlug';
-
-// Set by the YukthiX sign-in page (/yx/sign-in) before the SSO redirect, so the callback finishes in
-// the YukthiX screens (second step, first-login enrolment) rather than the classic ones.
-export const YX_SSO_RETURN_KEY = 'yxSsoReturn';
 
 // A super_admin "switch into org" mints an access-only acting token; a token refresh (on mount,
 // on any 401, or a page reload) reissues the BASE super_admin token and would silently drop the
@@ -84,6 +72,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setActingOrgName(payload && typeof payload.actingOrgName === 'string' ? payload.actingOrgName : null);
     setImpersonating(Boolean(payload?.impersonatorUserId));
     setImpersonatorEmail(payload && typeof payload.impersonatorEmail === 'string' ? payload.impersonatorEmail : null);
+    // Platform staff sign in again on their own page (api-client signInPath).
+    if (typeof window !== 'undefined' && (payload?.role === 'super_admin' || payload?.actingSuperAdmin)) {
+      window.sessionStorage.setItem(STAFF_SESSION_KEY, '1');
+    }
     // A super_admin has no organizationSlug of their own (they log in without one), so acting
     // into an org left it stuck empty -- which silently disabled useSsoStatus()'s per-org check
     // (it no-ops without a slug) and showed staff actions like "Reset password" for every user
@@ -232,7 +224,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout(): Promise<string> {
-    const yx = typeof window !== 'undefined' && window.sessionStorage.getItem(YX_SESSION_KEY) === '1';
+    const target = signInPath();
     await apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({}) }).catch(() => undefined);
     applyToken(null);
     // Sibling tabs must learn the family is dead, or their next scheduled refresh runs
@@ -242,10 +234,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (typeof window !== 'undefined') {
       window.sessionStorage.removeItem(SLUG_STORAGE_KEY);
       window.sessionStorage.removeItem(ACTING_ORG_STORAGE_KEY);
-      window.sessionStorage.removeItem(YX_SESSION_KEY);
+      window.sessionStorage.removeItem(STAFF_SESSION_KEY);
     }
     queryClient.removeQueries({ queryKey: ['currentUser'] });
-    return yx ? '/yx/sign-in' : '/login';
+    return target;
   }
 
   async function switchIntoOrg(orgId: string): Promise<void> {

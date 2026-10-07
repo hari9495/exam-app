@@ -10,12 +10,8 @@ jest.mock('next/navigation', () => ({ useRouter: jest.fn() }));
 
 // The API hands the result over in the URL fragment (never sent to a server or in a Referer).
 const atCallback = (fragment: string) => window.history.replaceState(null, '', `/sso/callback${fragment ? `#${fragment}` : ''}`);
-jest.mock('../../../lib/api-client', () => ({ apiFetch: jest.fn(), YX_SESSION_KEY: 'yxSession' }));
-jest.mock('../../../lib/auth-context', () => ({
-  useAuth: jest.fn(),
-  SSO_PENDING_SLUG_KEY: 'ssoPendingOrganizationSlug',
-  YX_SSO_RETURN_KEY: 'yxSsoReturn',
-}));
+jest.mock('../../../lib/api-client', () => ({ apiFetch: jest.fn() }));
+jest.mock('../../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
 describe('SsoCallbackPage', () => {
   const push = jest.fn();
@@ -30,50 +26,19 @@ describe('SsoCallbackPage', () => {
     window.sessionStorage.clear();
   });
 
-  it('exchanges a code for tokens, logs the session in via useAuth().login with the stashed org slug, and redirects by role', async () => {
-    window.sessionStorage.setItem('ssoPendingOrganizationSlug', 'acme');
+  it('exchanges a code for tokens, signs in and lands an exam admin in their console', async () => {
     atCallback('code=abc123');
-    const accessToken = fakeJwt({ sub: 'u1', role: 'recruiter' });
-    (apiFetch as jest.Mock).mockResolvedValue({ accessToken });
+    const accessToken = fakeJwt({ sub: 'u1', role: 'org_admin' });
+    (apiFetch as jest.Mock)
+      .mockResolvedValueOnce({ accessToken })
+      .mockResolvedValueOnce(['exam:manage'])
+      .mockRejectedValueOnce(new Error('You have no employee record in this company.'));
 
     render(<SsoCallbackPage />);
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard'));
-    expect(apiFetch).toHaveBeenCalledWith('/auth/sso/exchange', {
-      method: 'POST',
-      body: JSON.stringify({ code: 'abc123' }),
-    });
-    expect(login).toHaveBeenCalledWith('acme', accessToken);
-    expect(window.sessionStorage.getItem('ssoPendingOrganizationSlug')).toBeNull();
-  });
-
-  it('logs in with an empty slug when no slug was stashed (e.g. direct navigation)', async () => {
-    atCallback('code=abc123');
-    const accessToken = fakeJwt({ sub: 'u1', role: 'recruiter' });
-    (apiFetch as jest.Mock).mockResolvedValue({ accessToken });
-
-    render(<SsoCallbackPage />);
-
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/users'));
+    expect(apiFetch).toHaveBeenCalledWith('/auth/sso/exchange', { method: 'POST', body: JSON.stringify({ code: 'abc123' }) });
     expect(login).toHaveBeenCalledWith('', accessToken);
-  });
-
-  it('redirects org_admin to /users', async () => {
-    atCallback('code=abc123');
-    (apiFetch as jest.Mock).mockResolvedValue({ accessToken: fakeJwt({ role: 'org_admin' }) });
-
-    render(<SsoCallbackPage />);
-
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/users'));
-  });
-
-  it('redirects panel to /reports', async () => {
-    atCallback('code=abc123');
-    (apiFetch as jest.Mock).mockResolvedValue({ accessToken: fakeJwt({ role: 'panel' }) });
-
-    render(<SsoCallbackPage />);
-
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/reports'));
   });
 
   it('shows a not-authorized message and a link back to password login for ssoError=not_provisioned', async () => {
@@ -82,7 +47,7 @@ describe('SsoCallbackPage', () => {
     render(<SsoCallbackPage />);
 
     expect(await screen.findByText(/not.*authorized|contact your org admin/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /back to login|password/i })).toHaveAttribute('href', '/login');
+    expect(screen.getByRole('link', { name: /back to sign in/i })).toHaveAttribute('href', '/yx/sign-in');
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
@@ -133,7 +98,7 @@ describe('SsoCallbackPage', () => {
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
-  it('auto-redirects to /login a few seconds after showing an error', async () => {
+  it('auto-redirects to /yx/sign-in a few seconds after showing an error', async () => {
     jest.useFakeTimers({ advanceTimers: true });
     atCallback('ssoError=invalid_response');
 
@@ -143,39 +108,13 @@ describe('SsoCallbackPage', () => {
     expect(push).not.toHaveBeenCalled();
 
     jest.advanceTimersByTime(3000);
-    expect(push).toHaveBeenCalledWith('/login');
+    expect(push).toHaveBeenCalledWith('/yx/sign-in');
 
     jest.useRealTimers();
   });
 
   // An enrolled YukthiX factor is still owed after the IdP (P12 YX-IAM-01).
-  it('asks for the second factor when the exchange returns a challenge, then signs in', async () => {
-    window.sessionStorage.setItem('ssoPendingOrganizationSlug', 'acme');
-    atCallback('code=abc123');
-    const accessToken = fakeJwt({ sub: 'u1', role: 'org_admin' });
-    (apiFetch as jest.Mock)
-      .mockResolvedValueOnce({ mfaRequired: true, mfaToken: 'pending', factors: ['totp', 'recovery_code'] })
-      .mockResolvedValueOnce({ accessToken });
-
-    render(<SsoCallbackPage />);
-    await userEvent.type(await screen.findByLabelText('Code from your authenticator app'), '123456');
-    await userEvent.click(screen.getByRole('button', { name: 'Verify' }));
-
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/users'));
-    expect(apiFetch).toHaveBeenLastCalledWith('/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ mfaToken: 'pending', factor: 'totp', code: '123456' }) });
-    expect(login).toHaveBeenCalledWith('acme', accessToken);
-  });
-
-  it('sends an account that must enrol MFA to set it up', async () => {
-    atCallback('code=abc123');
-    (apiFetch as jest.Mock).mockResolvedValue({ accessToken: fakeJwt({ role: 'org_admin' }), mfa: { required: true, enrolmentDueAt: '2026-10-20T00:00:00Z' } });
-    render(<SsoCallbackPage />);
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/profile?mfa=setup'));
-  });
-
-  // Started from /yx/sign-in: the second step and enrolment are the YukthiX screens.
-  it('finishes a YukthiX sign-in in the YukthiX second-step screen', async () => {
-    window.sessionStorage.setItem('yxSsoReturn', '1');
+  it('asks for the second factor in the YukthiX screen, then signs in', async () => {
     atCallback('code=abc123');
     const accessToken = fakeJwt({ sub: 'u1', role: 'org_admin' });
     (apiFetch as jest.Mock)
@@ -186,16 +125,13 @@ describe('SsoCallbackPage', () => {
 
     render(<SsoCallbackPage />);
     expect(await screen.findByRole('heading', { name: "Confirm it's you" })).toBeInTheDocument();
-    expect(window.sessionStorage.getItem('yxSsoReturn')).toBeNull();
     await userEvent.type(screen.getByLabelText(/6-digit code from your authenticator app/), '123456');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     // An admin with exam permissions keeps the role console.
     await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/users'));
-    expect(window.sessionStorage.getItem('yxSession')).toBe('1');
   });
 
   it('lands a YukthiX SSO sign-in without exam/ATS permissions in YukthiX', async () => {
-    window.sessionStorage.setItem('yxSsoReturn', '1');
     atCallback('code=abc123');
     (apiFetch as jest.Mock).mockResolvedValueOnce({ accessToken: fakeJwt({ sub: 'u2', role: 'panel' }) }).mockResolvedValueOnce(['employee.profile.view']).mockRejectedValueOnce(new Error('You have no employee record in this company.'));
     render(<SsoCallbackPage />);
@@ -203,7 +139,6 @@ describe('SsoCallbackPage', () => {
   });
 
   it('sends a YukthiX sign-in that must enrol to the YukthiX set-up page', async () => {
-    window.sessionStorage.setItem('yxSsoReturn', '1');
     atCallback('code=abc123');
     (apiFetch as jest.Mock).mockResolvedValue({ accessToken: fakeJwt({ role: 'org_admin' }), mfa: { required: true, enrolmentDueAt: '2026-10-20T00:00:00Z' } });
     render(<SsoCallbackPage />);
