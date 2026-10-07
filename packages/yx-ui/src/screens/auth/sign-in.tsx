@@ -238,6 +238,41 @@ export function SignInScreen(props: SignInScreenProps) {
   );
 }
 
+export interface StaffSignInScreenProps {
+  email: string;
+  password: string;
+  onEmailChange: (value: string) => void;
+  onPasswordChange: (value: string) => void;
+  onSubmit: () => void;
+  busy?: boolean;
+  error?: string | null;
+}
+
+/**
+ * YukthiX platform staff only (P12 Q7): email and password, then a hardware security key. Its own
+ * page, never linked from the company sign-in; company accounts cannot sign in here.
+ */
+export function StaffSignInScreen({ email, password, onEmailChange, onPasswordChange, onSubmit, busy, error }: StaffSignInScreenProps) {
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    onSubmit();
+  };
+  return (
+    <AuthFrame title="YukthiX staff sign-in" subtitle="For YukthiX platform staff. Have your security key ready.">
+      <form className="yx-auth__form" onSubmit={submit} noValidate>
+        <FormField label="Staff email" required>
+          <TextField type="email" value={email} onChange={onEmailChange} autoComplete="username" spellCheck={false} autoCapitalize="none" />
+        </FormField>
+        <FormField label="Password" required>
+          <PasswordField value={password} onChange={onPasswordChange} autoComplete="current-password" />
+        </FormField>
+        {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+        <Button type="submit" variant="primary" fullWidth size="lg" loading={busy} disabled={!email.includes('@') || !password}>Continue</Button>
+      </form>
+    </AuthFrame>
+  );
+}
+
 export interface ForgotPasswordScreenProps {
   email: string;
   onEmailChange: (value: string) => void;

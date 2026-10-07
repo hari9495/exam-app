@@ -125,15 +125,17 @@ export interface SecondFactorPanelProps {
   submit: (proof: MfaProof) => Promise<void>;
   /** Sends a code by SMS or WhatsApp; omit where a text code is not allowed (step-up). */
   sendCode?: (channel: 'sms' | 'whatsapp') => Promise<void>;
+  /** Offer a recovery code as the way out (default). YukthiX staff have none: security key only. */
+  recoveryCode?: boolean;
 }
 
 /** Passkey first, then an authenticator code, a texted code where allowed, and a recovery code as the way out. */
-export function SecondFactorPanel({ factors, getPasskey, submit, sendCode }: SecondFactorPanelProps) {
+export function SecondFactorPanel({ factors, getPasskey, submit, sendCode, recoveryCode = true }: SecondFactorPanelProps) {
   const choices: Choice[] = [
     ...(factors.includes('passkey') ? (['passkey'] as const) : []),
     ...(factors.includes('totp') ? (['totp'] as const) : []),
     ...(sendCode && factors.includes('otp') ? (['otp'] as const) : []),
-    'recovery_code' as const,
+    ...(recoveryCode ? (['recovery_code'] as const) : []),
   ];
   const [choice, setChoice] = useState<Choice>(choices[0]);
   const [code, setCode] = useState('');

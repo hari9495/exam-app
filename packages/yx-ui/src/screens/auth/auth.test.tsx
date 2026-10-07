@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { ForgotPasswordScreen, ResetPasswordScreen, SignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
+import { ForgotPasswordScreen, ResetPasswordScreen, SignInScreen, StaffSignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
 import { MfaChallengeScreen, MfaEnrolScreen, StepUpDialog } from './mfa';
 import { MeSecurityScreen, type MeSecurityScreenProps } from './me-security';
 import { LoginActivityScreen, NO_FILTERS, type LoginActivityScreenProps } from './login-activity';
@@ -241,6 +241,27 @@ describe('SecuritySettingsScreen email domains', () => {
     expect(within(list).getByText('yukthix-domain-verification=a')).toBeInTheDocument();
     await userEvent.click(within(list).getByRole('button', { name: 'Check record' }));
     expect(onVerifyDomain).toHaveBeenCalledWith('kaverifoods.in');
+  });
+});
+
+describe('StaffSignInScreen', () => {
+  it('takes a staff email and password, with no company or other ways in', async () => {
+    const onSubmit = vi.fn();
+    function Harness() {
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      return <StaffSignInScreen email={email} password={password} onEmailChange={setEmail} onPasswordChange={setPassword} onSubmit={onSubmit} error="Wrong email or password. Try again." />;
+    }
+    render(<Harness />);
+    expect(screen.getByRole('heading', { level: 1, name: 'YukthiX staff sign-in' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Wrong email or password');
+    const go = screen.getByRole('button', { name: 'Continue' });
+    expect(go).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/Staff email/), 'ops@yukthix.test');
+    await userEvent.type(screen.getByLabelText(/^Password/), 'Staff-Passw0rd-26');
+    await userEvent.click(go);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Continue with/)).toBeNull();
   });
 });
 
