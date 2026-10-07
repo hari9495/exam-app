@@ -20,6 +20,8 @@
 .yx-auth__divider { display: flex; align-items: center; gap: var(--yx-space-3); color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
 .yx-auth__divider::before, .yx-auth__divider::after { content: ''; flex: 1 1 0; border-top: var(--yx-border-width) solid var(--yx-color-border); }
 .yx-auth__ways { display: flex; flex-direction: column; gap: var(--yx-space-3); }
+.yx-auth__options-failed { margin: 0; text-align: center; }
+.yx-auth__options-failed .yx-link { border: 0; background: none; padding: 0; font: inherit; }
 /* Icons and labels start at the same x in every "Continue with …" button; the column stays roughly centred. */
 .yx-auth__ways .yx-button { justify-content: flex-start; padding-inline-start: max(var(--yx-space-4), calc(50% - var(--yx-space-16) - var(--yx-space-10))); }
 .yx-mark-google-blue { fill: var(--yx-mark-google-blue); }

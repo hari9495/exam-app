@@ -50,6 +50,9 @@ export interface SignInScreenProps {
   providers: SsoProviderOption[];
   /** The other ways in. Omitted: only the work email. */
   options?: SignInOptions;
+  /** The other ways in could not be loaded (after retrying): a quiet line with "Try again" instead of nothing. */
+  optionsFailed?: boolean;
+  onRetryOptions?: () => void;
   /** Step choose-company: the companies the sign-in opened. */
   companies?: CompanyOption[];
   /** Step mobile-code: how the code went. */
@@ -124,6 +127,14 @@ export function SignInScreen(props: SignInScreenProps) {
       </div>
     </>
   );
+  const optionsFailedLine = props.optionsFailed && props.onRetryOptions && (
+    <Text as="p" size="sm" tone="secondary" className="yx-auth__options-failed" role="status">
+      Couldn&apos;t load other sign-in methods ·{' '}
+      <Link asChild>
+        <button type="button" onClick={props.onRetryOptions}>Try again</button>
+      </Link>
+    </Text>
+  );
 
   const title = step === 'choose-company' ? 'Choose your company' : 'Sign in';
   const subtitle =
@@ -176,6 +187,7 @@ export function SignInScreen(props: SignInScreenProps) {
               {alert}
               <Button type="submit" variant="primary" fullWidth size="lg" loading={busy} disabled={!identifier.includes('@')}>Continue</Button>
               {otherWays}
+              {optionsFailedLine}
             </>
           )}
 

@@ -745,7 +745,7 @@ export const GROUP_2: SettingsGroupDef = {
           title: 'MFA and single sign-on',
           settings: [
             { key: 'security.mfa.everyone', label: 'Require a second sign-in step for everyone', kind: 'toggle', value: false, helper: 'Always required for admins, finance approvers, POSH committee members and the ethics officer.', sensitive: true, synonyms: ['MFA', '2FA', 'two-factor'] },
-            { key: 'security.mfa.factors', label: 'Allowed second steps', kind: 'multiselect', value: ['Passkey', 'Authenticator app (TOTP)', 'OTP (fallback)'], options: ['Passkey', 'Authenticator app (TOTP)', 'OTP (fallback)'], optionLabels: { 'Authenticator app (TOTP)': 'Authenticator app', 'OTP (fallback)': 'One-time code by SMS (backup)' }, sensitive: true },
+            { key: 'security.mfa.factors', label: 'Allowed sign-in methods', kind: 'multiselect', value: ['Passkey', 'Authenticator app (TOTP)', 'OTP (fallback)'], options: ['Passkey', 'Authenticator app (TOTP)', 'OTP (fallback)'], optionLabels: { 'Authenticator app (TOTP)': 'Authenticator app', 'OTP (fallback)': 'One-time code by SMS (backup)' }, sensitive: true },
             {
               key: 'security.sso.providers', label: 'SSO identity providers', kind: 'list', addLabel: 'Add identity provider',
               columns: ['Provider', 'Protocol', 'Email domains', 'Just-in-time accounts'],

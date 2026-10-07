@@ -149,8 +149,15 @@ function SessionsTable({ sessions, sessionsState, onSessionsPage, onRevokeSessio
       value: (s) => methodLabel(s.method),
       render: (s) => (
         <span className="yx-auth__badges">
-          {methodLabel(s.method)}
-          {s.assuranceLevel === 'aal2' ? <Badge tone="success">Two-step</Badge> : <Badge>One step</Badge>}
+          {s.method === 'passkey' ? (
+            // A passkey is the whole sign-in (AAL2 on its own): one badge, not "Passkey · Two-step".
+            <Badge tone="success">Passkey</Badge>
+          ) : (
+            <>
+              {methodLabel(s.method)}
+              {s.assuranceLevel === 'aal2' ? <Badge tone="success">Two-step</Badge> : <Badge>One step</Badge>}
+            </>
+          )}
         </span>
       ),
       width: 220,

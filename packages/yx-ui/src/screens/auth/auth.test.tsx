@@ -9,6 +9,7 @@ import { LoginActivityScreen, NO_FILTERS, type LoginActivityScreenProps } from '
 import { SecuritySettingsScreen, policyChanges, policyErrors, type SecuritySettingsScreenProps } from './security-settings';
 import { deviceLabel, errorText } from './kit';
 import { ADMINS, COMPANIES, FLOOR, IDPS, MFA_ENROLLED, MFA_NONE, MY_HISTORY, MY_SESSIONS, NOW, ORG_EVENTS, ORG_SESSIONS, PEOPLE, POLICY, PROVIDERS, RECOVERY_CODES, TOTP_SETUP } from './data';
+import { GROUP_2 } from '../settings/registry-g1-g2';
 
 function SignIn(over: Partial<SignInScreenProps> & { start?: Partial<SignInFields> }) {
   const { start, ...rest } = over;
@@ -516,6 +517,15 @@ describe('LoginActivityScreen', () => {
     expect(onUnlock).toHaveBeenCalledWith(ORG_EVENTS.data[1], 'too short - called him back on his desk phone');
   });
 
+  it('a passkey sign-in reads "Passkey", not "Two-step"; other full sign-ins still read "Two-step"', () => {
+    const passkey = { ...ORG_SESSIONS.data[2], id: 's-pk', method: 'passkey', user: { email: 'divya.r@kaverifoods.in', name: 'Divya Raghunathan', role: 'org_admin' } };
+    render(<Activity tab="sessions" sessions={{ ...ORG_SESSIONS, data: [passkey, ORG_SESSIONS.data[2]] }} />);
+    const [pk, sso] = screen.getAllByRole('row').slice(1);
+    expect(within(pk).getByText('Passkey')).toBeInTheDocument();
+    expect(within(pk).queryByText('Two-step')).toBeNull();
+    expect(within(sso).getByText('Two-step')).toBeInTheDocument();
+  });
+
   it('offers no Unlock without the permission (no handler)', () => {
     render(<Activity />);
     expect(screen.queryByRole('button', { name: /^Unlock / })).toBeNull();
@@ -706,6 +716,26 @@ describe('My security sign-in methods', () => {
 });
 
 // Founder decision 7 Oct 2026: a passkey is a sign-in method in its own right.
+describe('other ways that could not load', () => {
+  it('a quiet line with a link-style "Try again" instead of nothing', async () => {
+    const onRetryOptions = vi.fn();
+    const { rerender } = render(<SignIn optionsFailed onRetryOptions={onRetryOptions} />);
+    const line = screen.getByRole('status');
+    expect(line).toHaveTextContent("Couldn't load other sign-in methods · Try again");
+    const retry = within(line).getByRole('button', { name: 'Try again' });
+    expect(retry).toHaveClass('yx-link');
+    await userEvent.click(retry);
+    expect(onRetryOptions).toHaveBeenCalledOnce();
+    rerender(<SignIn options={ALL_WAYS} onMobile={vi.fn()} />);
+    expect(screen.queryByText(/Couldn't load other sign-in methods/)).toBeNull();
+  });
+
+  it('company settings name them "Allowed sign-in methods"', () => {
+    expect(JSON.stringify(GROUP_2)).toContain('"label":"Allowed sign-in methods"');
+    expect(JSON.stringify(GROUP_2)).not.toContain('Allowed second steps');
+  });
+});
+
 describe('passkey as a sign-in method', () => {
   it('"Sign in with a passkey" heads the other ways when the company allows it and the browser can; the email field offers passkeys in autofill', async () => {
     const onPasskey = vi.fn();
