@@ -104,7 +104,7 @@ describe('/yx/people/profile', () => {
     });
     wrap(<YxProfilePage />);
     expect(await screen.findByText('•••• 821K')).toBeInTheDocument();
-    await ue.click(screen.getByRole('button', { name: 'Show' }));
+    await ue.click(screen.getByRole('button', { name: 'Show full PAN' }));
     expect(await screen.findByText('BQRPR4821K')).toBeInTheDocument();
     expect(reveals).toEqual([{ field: 'pan' }]);
     await ue.click(screen.getByRole('button', { name: 'Open job history' }));
