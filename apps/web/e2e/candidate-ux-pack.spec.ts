@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { signIn } from './fixtures/sign-in';
 
-const ORG_SLUG = process.env.E2E_ORG_SLUG ?? 'demo-org';
 const RECRUITER_EMAIL = process.env.E2E_RECRUITER_EMAIL ?? 'recruiter@demo-org.test';
 const RECRUITER_PASSWORD = process.env.E2E_RECRUITER_PASSWORD ?? 'Passw0rd!2026';
 
@@ -15,11 +15,7 @@ async function mockCameraAndDisableWebcamMonitor(page: import('@playwright/test'
 }
 
 test('a candidate with a +50% accommodation gets more remaining time than the exam duration, and sees a section breakdown after submitting', async ({ page }) => {
-  await page.goto('/login');
-  await page.getByLabel('Organization slug').fill(ORG_SLUG);
-  await page.getByLabel('Email').fill(RECRUITER_EMAIL);
-  await page.getByLabel('Password').fill(RECRUITER_PASSWORD);
-  await page.getByRole('button', { name: 'Log in' }).click();
+  await signIn(page, RECRUITER_EMAIL, RECRUITER_PASSWORD);
   await expect(page).toHaveURL(/\/dashboard/);
 
   await page.getByRole('link', { name: 'Question Bank' }).click();

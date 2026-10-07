@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { signIn } from './fixtures/sign-in';
 
-const ORG_SLUG = process.env.E2E_ORG_SLUG ?? 'demo-org';
 const RECRUITER_EMAIL = process.env.E2E_RECRUITER_EMAIL ?? 'recruiter@demo-org.test';
 const RECRUITER_PASSWORD = process.env.E2E_RECRUITER_PASSWORD ?? 'Passw0rd!2026';
 const PANEL_EMAIL = process.env.E2E_PANEL_EMAIL ?? 'panel@demo-org.test';
@@ -64,11 +64,7 @@ test('panel member views results, opens a candidate, compares, and exports', asy
   const questionText = 'Panel path: 2 + 2?';
 
   // Recruiter: create exam, question, publish, add two candidates, invite them
-  await page.goto('/login');
-  await page.getByLabel('Organization slug').fill(ORG_SLUG);
-  await page.getByLabel('Email').fill(RECRUITER_EMAIL);
-  await page.getByLabel('Password').fill(RECRUITER_PASSWORD);
-  await page.getByRole('button', { name: 'Log in' }).click();
+  await signIn(page, RECRUITER_EMAIL, RECRUITER_PASSWORD);
   await expect(page).toHaveURL(/\/dashboard/);
 
   await page.getByRole('link', { name: 'Question Bank' }).click();
@@ -115,11 +111,7 @@ test('panel member views results, opens a candidate, compares, and exports', asy
   await settleAttempt(page, tokenB, examTitle, questionText);
 
   // Panel: log in, view results, open a candidate, compare, export
-  await page.goto('/login');
-  await page.getByLabel('Organization slug').fill(ORG_SLUG);
-  await page.getByLabel('Email').fill(PANEL_EMAIL);
-  await page.getByLabel('Password').fill(PANEL_PASSWORD);
-  await page.getByRole('button', { name: 'Log in' }).click();
+  await signIn(page, PANEL_EMAIL, PANEL_PASSWORD);
   await expect(page).toHaveURL(/\/reports$/);
 
   await page.getByRole('link', { name: examTitle }).click();

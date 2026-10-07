@@ -1,17 +1,16 @@
 import { test, expect } from '@playwright/test';
+import { staffSignIn } from './fixtures/sign-in';
 
 const ORG_NAME = process.env.E2E_ORG_NAME ?? 'Kaveri Foods';
 const SUPER_ADMIN_EMAIL = process.env.E2E_SUPER_ADMIN_EMAIL ?? 'super@platform.test';
 const SUPER_ADMIN_PASSWORD = process.env.E2E_SUPER_ADMIN_PASSWORD ?? 'DevSuper123!';
 
 test('super_admin switches into an org, drives the recruiter and org-admin shells, then exits with elevation genuinely ended', async ({ page }) => {
-  // Log in as super_admin -- no organization slug, per the staff login form's own handling
-  // of a platform-level account.
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(SUPER_ADMIN_EMAIL);
-  await page.getByLabel('Password').fill(SUPER_ADMIN_PASSWORD);
-  await page.getByRole('button', { name: 'Log in' }).click();
-  await expect(page).toHaveURL(/\/organizations/);
+  // Platform staff sign in on their own page (no company); an account without a security key yet
+  // is in its set-up grace period and continues to the console.
+  await staffSignIn(page, SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD);
+  await expect(page).toHaveURL(/\/yx\/setup-mfa|\/organizations/);
+  await page.goto('/v2/organizations');
 
   // Switch into a real org.
   await page.getByLabel('Search organizations').fill(ORG_NAME);
@@ -43,8 +42,8 @@ test('super_admin switches into an org, drives the recruiter and org-admin shell
   await expect(page.getByText(/Viewing as super_admin/)).not.toBeVisible();
 
   // The elevation genuinely ended -- a direct visit to the recruiter-only page now redirects
-  // to /login rather than rendering (no acting token, and the platform role has no baseline
+  // away rather than rendering (no acting token, and the platform role has no baseline
   // access to a recruiter route).
   await page.goto('/questions');
-  await expect(page).toHaveURL(/\/login/);
+  await expect(page).not.toHaveURL(/\/questions/);
 });
