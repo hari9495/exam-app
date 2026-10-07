@@ -909,14 +909,13 @@ describe('AuthService', () => {
       tenantPrisma.forTenant.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
         fn({
           user: {
-            // Email-first: platform staff are one of the accounts with this email.
-            findMany: jest.fn().mockResolvedValue([{ id: 'u1', organizationId: null, organization: null, role: 'super_admin', status: 'active', passwordHash }]),
+            findFirst: jest.fn().mockResolvedValue({ id: 'u1', email: 'root@platform.test', organizationId: null, role: 'super_admin', status: 'active', passwordHash }),
             update: jest.fn(),
           },
         }),
       );
 
-      await expect(service.login({ email: 'root@platform.test', password: 'password1' }, META)).resolves.toHaveProperty(
+      await expect(service.loginPlatformStaff({ email: 'root@platform.test', password: 'password1' }, META)).resolves.toHaveProperty(
         'accessToken',
       );
       // No slug: no organisation is looked up by slug -- nothing to suspend.
@@ -1429,11 +1428,11 @@ describe('AuthService', () => {
       mfa.loadUser.mockResolvedValue({ ...ACCOUNT, role: 'super_admin', organizationId: null });
       mfa.usableFactors.mockResolvedValue([{ type: 'passkey' }]);
       prisma.organization.findUnique.mockResolvedValue(null);
-      tenantPrisma.forTenant.mockResolvedValueOnce([
-        { id: 'user-1', email: 'root@platform.test', organizationId: null, organization: null, role: 'super_admin', status: 'active', passwordHash: await argon2.hash('correct-password') },
-      ]);
+      tenantPrisma.forTenant.mockResolvedValueOnce({
+        id: 'user-1', email: 'root@platform.test', organizationId: null, role: 'super_admin', status: 'active', passwordHash: await argon2.hash('correct-password'),
+      });
       mfa.hasFactor.mockResolvedValue(true);
-      const outcome = await service.login({ email: 'root@platform.test', password: 'correct-password' }, META);
+      const outcome = await service.loginPlatformStaff({ email: 'root@platform.test', password: 'correct-password' }, META);
       expect(outcome).toMatchObject({ mfaRequired: true, factors: ['passkey'] });
     });
   });
@@ -1888,6 +1887,83 @@ describe('AuthService', () => {
       expect(prisma.passwordResetToken.create).toHaveBeenCalledTimes(2);
       expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: EMAIL, subject: 'Reset your Kaveri Foods password', organizationId: 'org-kaveri' }));
       expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ subject: 'Reset your Ashok Textiles password', organizationId: 'org-ashok' }));
+    });
+
+    // W-005: YukthiX platform staff are never reachable through a company sign-in.
+    describe('YukthiX platform staff are not company accounts (W-005)', () => {
+      const staff = (passwordHash: string) => ({ ...account('u-staff', 'x', 'YukthiX', passwordHash, { role: 'super_admin' }), organizationId: null, organization: null });
+
+      it('the company lookup asks the database for company accounts only', async () => {
+        await expect(login('whatever')).rejects.toThrow(UnauthorizedException);
+        const where = ((prisma.user as any).findMany as jest.Mock).mock.calls[0][0].where;
+        expect(where).toMatchObject({ role: { not: 'super_admin' }, organizationId: { not: null }, organization: { status: 'active' } });
+        expect(where.OR).toBeUndefined();
+      });
+
+      it('even if the lookup returned one, a staff email with its right password gets the wrong-password 401 and no picker entry', async () => {
+        accounts = [staff(kaveriHash) as any, account('u-kaveri', 'org-kaveri', 'Kaveri Foods', kaveriHash)];
+        // Only the company account is tried, and it signs straight in: no "YukthiX" choice exists.
+        await expect(login('kaveri-password')).resolves.toHaveProperty('accessToken');
+        expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'u-kaveri' }), 'password', META, undefined, null);
+        expect(verify.mock.calls.map(([hash]) => hash)).toEqual([kaveriHash]);
+        expect(store.size).toBe(0);
+
+        accounts = [staff(kaveriHash) as any];
+        verify.mockClear();
+        await expect(login('kaveri-password')).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
+        // Same work and the same events as an unknown email; nothing is counted against the staff account.
+        expect(verify).toHaveBeenCalledTimes(1);
+        expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ organizationId: null, reason: 'unknown_user' }));
+        expect(loginProtection.reserve).not.toHaveBeenCalledWith('', expect.anything(), expect.anything(), expect.anything());
+      });
+
+      it('one-time codes and forgot-password never reach a staff account', async () => {
+        accounts = [staff(kaveriHash) as any];
+        policyLoader.mockImplementation(async () => ({ ...DEFAULT_SECURITY_POLICY, otpSignInChannels: ['email'] }));
+        await service.startOtpLogin({ identifier: EMAIL }, META);
+        expect(otp.deliver).not.toHaveBeenCalled();
+        expect(otp.issue.mock.calls[0][1].userIds).toBe('');
+        await service.forgotPassword({ email: EMAIL });
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(prisma.passwordResetToken.create).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('the platform staff sign-in', () => {
+      const STAFF_EMAIL = 'ops@yukthix.test';
+      const STAFF = { id: 'u-staff', email: STAFF_EMAIL, organizationId: null, role: 'super_admin', status: 'active', permissionProfileId: null, mfaEnrolmentDueAt: new Date() };
+      let staffHash: string;
+      beforeAll(async () => {
+        staffHash = await argon2.hash('staff-password');
+      });
+
+      it('looks up platform staff only, under YukthiX lockout, then asks for their security key', async () => {
+        mfa.hasFactor.mockResolvedValue(true);
+        mfa.loadUser.mockResolvedValue(STAFF);
+        mfa.usableFactors.mockResolvedValue([{ type: 'passkey' }]);
+        const findFirst = jest.fn().mockResolvedValue({ ...STAFF, passwordHash: staffHash });
+        tenantPrisma.forTenant.mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ user: { findFirst } }));
+        const outcome = await service.loginPlatformStaff({ email: ` ${STAFF_EMAIL.toUpperCase()} `, password: 'staff-password' }, META);
+        expect(outcome).toMatchObject({ mfaRequired: true, factors: ['passkey'] });
+        expect(tenantPrisma.forTenant.mock.calls[0][0]).toEqual({ organizationId: null, isSuperAdmin: true });
+        expect(findFirst).toHaveBeenCalledWith({ where: { email: STAFF_EMAIL, role: 'super_admin', organizationId: null } });
+        expect(loginProtection.reserve).toHaveBeenCalledWith('', STAFF_EMAIL, META.ip, {
+          deviceId: META.deviceId,
+          lockout: { maxFailedAttempts: DEFAULT_SECURITY_POLICY.maxFailedAttempts, lockMinutes: DEFAULT_SECURITY_POLICY.lockMinutes },
+        });
+        expect(mfa.createPendingLogin).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u-staff', orgSlug: '', breakGlass: false }));
+      });
+
+      it('a wrong password and an unknown (or company) email answer the same 401 after one argon2 verify each', async () => {
+        tenantPrisma.forTenant.mockResolvedValueOnce({ ...STAFF, passwordHash: staffHash });
+        await expect(service.loginPlatformStaff({ email: STAFF_EMAIL, password: 'nope' }, META)).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
+        expect(verify).toHaveBeenCalledTimes(1);
+        tenantPrisma.forTenant.mockResolvedValueOnce(null);
+        await expect(service.loginPlatformStaff({ email: EMAIL, password: 'kaveri-password' }, META)).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
+        expect(verify).toHaveBeenCalledTimes(2);
+        expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ organizationId: null, reason: 'unknown_user' }));
+        expect(sessions.create).not.toHaveBeenCalled();
+      });
     });
   });
 });

@@ -155,7 +155,8 @@ describe('SMS channel (P04 §4.4/§4.5a; YX-NTF-07/10/11/12/13/14)', () => {
     }
     for (const [name, k] of [['adminA', 'A'], ['adminB', 'B'], ['adminA2', 'A'], ['platform', null]] as const) {
       const res = await request(server())
-        .post('/api/v1/auth/staff/login')
+        // YukthiX platform staff sign in through their own path only (W-005).
+        .post(k ? '/api/v1/auth/staff/login' : '/api/v1/auth/platform/login')
         .send({ ...(k ? { organizationSlug: org[k].slug } : {}), email: `${name}-${runId}@sms.test`, password: PASSWORD })
         .expect(200);
       token[name] = res.body.accessToken;

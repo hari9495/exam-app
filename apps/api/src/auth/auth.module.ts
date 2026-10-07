@@ -39,7 +39,8 @@ function createLoginProtectionRedis(): Redis {
   return Object.assign(client, { onApplicationShutdown: () => client.disconnect() });
 }
 
-// Bounded DNS lookups (domain ownership checks are an admin action, never on the sign-in path).
+// Bounded DNS lookups (domain ownership checks: an admin action and the nightly re-check, never on
+// the sign-in path).
 function createTxtResolver() {
   const resolver = new Resolver({ timeout: 3000, tries: 2 });
   return (name: string) => resolver.resolveTxt(name);
@@ -67,6 +68,6 @@ function createTxtResolver() {
     CompanyScopeService,
   ],
   controllers: [AuthController, SamlController, SsoController, SessionsController, SecurityPolicyController, MfaController, OtpController, IdentityProvidersController],
-  exports: [AuthService],
+  exports: [AuthService, IdentityProvidersService],
 })
 export class AuthModule {}

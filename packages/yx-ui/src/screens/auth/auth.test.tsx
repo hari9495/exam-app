@@ -142,6 +142,21 @@ describe('SecuritySettingsScreen email domains', () => {
     await userEvent.click(check);
     expect(onVerifyDomain).toHaveBeenCalledTimes(2);
   });
+
+  it('shows a lapsed domain as lapsed, with its TXT record and a way to check it again', async () => {
+    const onVerifyDomain = vi.fn().mockResolvedValue(undefined);
+    const domains = [
+      { domain: 'kaverifoods.in', verifiedAt: null, lapsedAt: '2026-10-05T12:00:00+05:30', txtRecord: { name: 'kaverifoods.in', value: 'yukthix-domain-verification=a' } },
+    ];
+    render(<SecuritySettingsScreen state="ready" policy={POLICY} floor={FLOOR} providers={IDPS} admins={ADMINS} providersHref="#" onSave={vi.fn()} domains={domains} onVerifyDomain={onVerifyDomain} />);
+    const list = screen.getByRole('list', { name: 'Email domains' });
+    expect(within(list).getByText('Lapsed')).toBeInTheDocument();
+    expect(within(list).queryByText('Verified')).toBeNull();
+    expect(within(list).getByText(/sign-ins no longer go to your identity provider/)).toHaveTextContent('lapsed 5 Oct 2026');
+    expect(within(list).getByText('yukthix-domain-verification=a')).toBeInTheDocument();
+    await userEvent.click(within(list).getByRole('button', { name: 'Check record' }));
+    expect(onVerifyDomain).toHaveBeenCalledWith('kaverifoods.in');
+  });
 });
 
 describe('ForgotPasswordScreen', () => {

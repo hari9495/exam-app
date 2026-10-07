@@ -31,11 +31,11 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ClientMeta, LoginMethod, SessionUser, SessionsService } from './sessions.service';
 import { LOGIN_PROTECTION_REDIS, LockoutSettings, LoginAttempt, LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
 import { PasswordPolicyService } from './password-policy.service';
-import { MfaService, MfaUser, PENDING_LOGIN_TTL_SECONDS, PendingLogin } from './mfa.service';
+import { MfaService, MfaUser, PENDING_LOGIN_TTL_SECONDS, PendingLogin, isStaff } from './mfa.service';
 import { MfaLoginDto, MfaProofDto } from './dto/mfa.dto';
 import { MfaOtpSendDto, OtpStartDto, OtpVerifyDto } from './dto/otp.dto';
 import { OTP_CHANNELS, OTP_RESEND_COOLDOWN_SECONDS, OTP_TTL_SECONDS, OtpChannel, OtpService, parseOtpIdentifier } from './otp.service';
-import { SelectCompanyDto } from './dto/login.dto';
+import { PlatformLoginDto, SelectCompanyDto } from './dto/login.dto';
 import { CompanyCard, CompanyScopeService } from './company-scope';
 
 interface TokenPair {
@@ -96,7 +96,8 @@ export const MAX_COMPANY_ACCOUNTS = 10;
 // Lockout scope for an email / mobile number across every company (on top of each account's own).
 export const ANY_COMPANY = '*';
 export const COMPANY_PICK_TTL_SECONDS = 2 * 60;
-export const PLATFORM_CHOICE = 'yukthix';
+// Lockout scope of the YukthiX platform staff sign-in (no company slug is ever empty).
+export const PLATFORM_SCOPE = '';
 const pickKey = (token: string) => `auth:pick:${sha256(token)}`;
 const EXPIRED_MESSAGE = 'Your sign-in has expired. Please sign in again.';
 
@@ -130,7 +131,7 @@ type Policy = Awaited<ReturnType<typeof loadTenantSecurityPolicy>>;
 interface Candidate {
   account: Account;
   policy: Policy;
-  // Lowercased company slug ('' for YukthiX staff): the account's own lockout scope, as with an orgSlug.
+  // Lowercased company slug: the account's own lockout scope, as with an orgSlug.
   slug: string;
   listedBreakGlass: boolean;
   blocked: { scope: string } | null;
@@ -202,6 +203,32 @@ export class AuthService {
     if (!parsed) throw new BadRequestException('Enter an email address or a mobile number');
     const slug = dto.organizationSlug?.trim();
     return slug ? this.loginToCompany(slug, parsed, dto.password, meta) : this.loginAnyCompany(parsed, dto.password, meta);
+  }
+
+  // YukthiX platform staff (P12 Q7) sign in here and only here; no company path reaches them (W-005).
+  // Only an account with no company and the super_admin role is looked up, so an unknown email, a
+  // company account and a wrong password all answer the same 401 after the same argon2 work. Lockout
+  // under YukthiX's settings; the second factor is a hardware security key only (MfaService).
+  async loginPlatformStaff(dto: PlatformLoginDto, meta: ClientMeta): Promise<LoginOutcome> {
+    const identifier = dto.email.trim().toLowerCase();
+    const attempt = { identifier, method: 'password' as const, meta };
+    const user = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.user.findFirst({ where: { email: identifier, role: 'super_admin', organizationId: null } }),
+    );
+    const reserved = await this.loginProtection.reserve(PLATFORM_SCOPE, identifier, meta.ip, { deviceId: meta.deviceId, lockout: await this.lockoutFor(null) });
+    if (reserved.block) {
+      await this.sessions.recordLoginEvent({ ...attempt, organizationId: null, userId: user?.id ?? null, result: 'locked', reason: `${reserved.block.scope}_locked` });
+      throw new TooManyLoginAttemptsException(reserved.block.retryAfterSeconds);
+    }
+    const passwordOk = await argon2.verify(user?.passwordHash ?? (await getDummyPasswordHash()), dto.password);
+    if (!user || !passwordOk) return this.rejectLogin(PLATFORM_SCOPE, attempt, null, user, user ? 'bad_password' : 'unknown_user', reserved);
+    if (user.status !== 'active') {
+      await this.sessions.recordLoginEvent({ ...attempt, organizationId: null, userId: user.id, result: 'failed', reason: 'account_inactive' });
+      throw new UnauthorizedException('This account has been deactivated');
+    }
+    await this.loginProtection.registerSuccess(PLATFORM_SCOPE, identifier, meta.ip);
+    if (user.passwordRecheckPending) await this.passwordPolicy.recheckAfterLogin(user, dto.password);
+    return this.continueAfterFirstFactor(user, { method: 'password', orgSlug: PLATFORM_SCOPE, identifier, breakGlass: false }, meta);
   }
 
   private async loginToCompany(slug: string, parsed: ParsedIdentifier, password: string, meta: ClientMeta): Promise<LoginOutcome> {
@@ -335,21 +362,26 @@ export class AuthService {
     return winners.length === 1 ? this.continueAs(winners[0], 'password', identifier, meta) : this.offerCompanies(winners, 'password', identifier, meta);
   }
 
-  // Every active account with this email / verified mobile number, in an active company (or YukthiX
-  // staff), oldest first, capped.
-  private accountsFor(parsed: ParsedIdentifier): Promise<Account[]> {
-    return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+  // Every active company account with this email / verified mobile number, in an active company,
+  // oldest first, capped. Never a YukthiX staff account (W-005): they sign in only through
+  // loginPlatformStaff, so the company paths -- password, one-time code, the company picker and
+  // forgot-password -- cannot reach them, and do the same work whether or not one exists.
+  private async accountsFor(parsed: ParsedIdentifier): Promise<Account[]> {
+    const accounts = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
       tx.user.findMany({
         where: {
           ...(parsed.kind === 'email' ? { email: parsed.value } : { mobileNumber: parsed.value, mobileVerifiedAt: { not: null } }),
           status: 'active',
-          OR: [{ organizationId: null, role: 'super_admin' }, { organization: { status: 'active' } }],
+          role: { not: 'super_admin' },
+          organizationId: { not: null },
+          organization: { status: 'active' },
         },
         select: ACCOUNT_SELECT,
         orderBy: { createdAt: 'asc' },
         take: MAX_COMPANY_ACCOUNTS,
       }),
     );
+    return accounts.filter((a) => a.organizationId && !isStaff(a));
   }
 
   private accountById(userId: string): Promise<Account | null> {
@@ -373,7 +405,7 @@ export class AuthService {
   private async refusal(account: Account, policy: Policy, method: PendingLogin['method'], identifier: string, ip: string | null): Promise<string | null> {
     if (account.status !== 'active') return 'account_inactive';
     if (!identifier.includes('@') && !(account.mobileVerifiedAt && account.mobileNumber === identifier)) return 'mobile_changed';
-    if (!account.organizationId) return method === 'password' ? null : 'otp_disabled'; // YukthiX staff: password + security key only
+    if (!account.organizationId || isStaff(account)) return 'platform_staff'; // their own sign-in only (W-005)
     if (!isOrganizationActive(account.organization?.status)) return 'organization_inactive';
     if (!ipAllowedForSurface(policy, 'desk', ip)) return 'ip_not_allowed';
     if (method === 'password') return policy.ssoOnly && !policy.breakGlassUserIds.includes(account.id) ? 'sso_only' : null;
@@ -429,16 +461,13 @@ export class AuthService {
       deviceIdHash: sha256(meta.deviceId),
       accounts: winners.map((w) => ({
         userId: w.account.id,
-        choice: w.account.organizationId ?? PLATFORM_CHOICE,
+        choice: w.account.organizationId!,
         proof: method === 'password' ? sha256(w.account.passwordHash) : '',
       })),
     };
     await this.store(() => this.redis.set(pickKey(selectionToken), JSON.stringify(pick), 'EX', COMPANY_PICK_TTL_SECONDS));
     const companies = await Promise.all(
-      winners.map(async (w) => ({
-        id: w.account.organizationId ?? PLATFORM_CHOICE,
-        ...(w.account.organization ? await this.companyScope.card(w.account.organization) : { name: 'YukthiX', logoUrl: null }),
-      })),
+      winners.map(async (w) => ({ id: w.account.organizationId!, ...(await this.companyScope.card(w.account.organization!)) })),
     );
     return { selectionRequired: true, selectionToken, companies, expiresInSeconds: COMPANY_PICK_TTL_SECONDS };
   }
@@ -944,7 +973,7 @@ export class AuthService {
     // Email-first: every company account with this email gets its own link, naming the company
     // (the answer is the same whether there are none, one or several).
     if (!dto.organizationSlug) {
-      const accounts = (await this.accountsFor({ kind: 'email', value: dto.email.trim().toLowerCase() })).filter((a) => a.organizationId);
+      const accounts = await this.accountsFor({ kind: 'email', value: dto.email.trim().toLowerCase() });
       for (const account of accounts) {
         const rawToken = await this.createResetToken(account.id);
         this.dispatchResetEmail(account.email, rawToken, account.organizationId!, account.organization?.name).catch((error) =>
