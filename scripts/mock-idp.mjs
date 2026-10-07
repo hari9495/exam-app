@@ -41,6 +41,8 @@ const PEOPLE = {
     { id: 'g-admin', label: 'Demo admin', claims: { email: 'admin@demo-org.test', email_verified: true, name: 'Demo Admin' } },
     { id: 'g-recruiter', label: 'Demo recruiter', claims: { email: 'recruiter@demo-org.test', email_verified: true, name: 'Demo Recruiter' } },
     { id: 'g-panel', label: 'Demo panel member', claims: { email: 'panel@demo-org.test', email_verified: true, name: 'Demo Panel' } },
+    { id: 'g-hr', label: 'Demo HR admin (Lakshmi)', claims: { email: 'hr@demo-org.test', email_verified: true, name: 'Lakshmi Venkatesan' } },
+    { id: 'g-consultant', label: 'Consultant in two companies (picker)', claims: { email: 'consultant@sharma-advisory.test', email_verified: true, name: 'Nikhil Sharma' } },
     { id: 'g-staff', label: 'YukthiX staff (refused)', claims: { email: 'super@platform.test', email_verified: true, name: 'Platform Staff' } },
     { id: 'g-unverified', label: 'Recruiter address, not verified (refused)', claims: { email: 'recruiter@demo-org.test', email_verified: false, name: 'Unverified' } },
     { id: 'g-nobody', label: 'No YukthiX account (refused)', claims: { email: 'nobody@elsewhere.test', email_verified: true, name: 'Nobody' } },

@@ -3,6 +3,7 @@ import * as argon2 from 'argon2';
 import { seedOrgStructure } from './seed-org-structure';
 import { seedEmployees } from './seed-employees';
 import { seedAccess } from './seed-access';
+import { CONSULTANT, seedSignInDemo } from './seed-sign-in';
 
 const prisma = new PrismaClient();
 
@@ -234,10 +235,11 @@ async function main() {
         where: { organizationId: demoOrg.id, email: 'recruiter@demo-org.test', mobileVerifiedAt: null },
         data: { mobileNumber: '+919845012345', mobileVerifiedAt: new Date() },
       });
+      await seedSignInDemo(tx, demoOrg.id, trialPlan.id, { admin: orgAdminHash, staff: panelHash });
     }
   }, { timeout: 60000 });
 
-  console.log('Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026 (org slug: demo-org)');
+  console.log(`Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
 }
 
 // Only run when invoked as a script (prisma db seed / ts-node). Guarded so importing this module for

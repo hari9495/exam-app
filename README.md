@@ -26,8 +26,8 @@ mock (panva's `oidc-provider`, a devDependency): nothing is sent to Google or Mi
    to start with any of them, and `DEV_SMS_TO_MAIL` also refuses an `SMTP_HOST` that is not this machine.)
 3. `cd apps/api && npx prisma db seed` once (it updates an existing demo company too).
 4. Open `http://localhost:3000/yx/sign-in`:
-   - **Continue with Google / Microsoft** opens the mock's page: pick *Demo admin*, *Demo recruiter* or *Demo panel
-     member* to sign in (a role that needs two-step verification is asked to set it up). The people marked
+   - **Continue with Google / Microsoft** opens the mock's page: pick *Demo admin*, *Demo recruiter*, *Demo panel
+     member* or (Google) *Demo HR admin* to sign in (a role that needs two-step verification is asked to set it up). The people marked
      *(refused)* show what must fail: YukthiX staff, an address Google has not verified, another Microsoft
      directory claiming the admin's address, a personal Microsoft account. Each ends on the sign-in screen with
      the same message, and the reason is in Admin › Login activity.
@@ -35,7 +35,16 @@ mock (panva's `oidc-provider`, a devDependency): nothing is sent to Google or Mi
      (`http://127.0.0.1:8025`) as a mail to `+919845012345@sms.local`, subject *SMS to +91 98450 12345*, and is
      also printed in the `dev:api` log (`[DevSms] sms to +919845012345: 123456 is your YukthiX sign-in code`).
    - **Work email**: as before (password, emailed code in Mailpit, or the company's SSO).
-5. Settings › Security › *Allow sign-in with Google / Microsoft* turns each one off for the company (sign in as
+   - **Choose your company**: `consultant@sharma-advisory.test` has an account in the demo company and in a second
+     one, *Ganga Textiles* (`ganga-textiles`), with the same password and verified mobile +91 98450 67890. Email and
+     password, a code to that mobile, or the mock's *Consultant in two companies* under Google each end on the
+     company picker (use a fresh window, or *Not your company?*, so no company is remembered).
+5. Also seeded for manual tests: a second System Admin `admin2@demo-org.test` (approves Confidential role grants
+   another admin asked for), and two email domains in Settings › Security on a disabled provider:
+   `kaveri.test` verified and `kaverifoods-old.test` lapsed. `.test` names have no DNS, so the nightly re-check
+   lapses `kaveri.test` after three days; run the seed again to put both back. All passwords: the last line the
+   seed prints (`apps/api/prisma/seed.ts`).
+6. Settings › Security › *Allow sign-in with Google / Microsoft* turns each one off for the company (sign in as
    the admin; saving asks you to confirm it's you).
 
 The API e2e suite starts the same mock on a free port (`apps/api/test/social-sign-in.e2e-spec.ts`).
