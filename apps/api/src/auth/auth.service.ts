@@ -1234,7 +1234,7 @@ export class AuthService {
   }
 
   private async dispatchResetEmail(email: string, rawToken: string, organizationId: string, companyName?: string, yukthix = false): Promise<void> {
-    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}${yukthix ? '/yx' : ''}/reset-password/${rawToken}`;
+    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/reset-password/${rawToken}`;
     if (yukthix) {
       const mail = await passwordResetEmail({ to: email, link, company: companyName, minutes: PASSWORD_RESET_EXPIRY_MINUTES });
       await this.emailService.send({ to: email, ...mail, organizationId });
