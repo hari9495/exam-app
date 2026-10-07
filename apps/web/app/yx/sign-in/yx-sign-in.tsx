@@ -6,10 +6,11 @@ import { useYxSignIn } from '../../../lib/hooks/useYxSignIn';
 import { passkeyAssertion } from '../../../lib/yx-security';
 
 // The API puts the single-use code (or "it did not work") in the URL fragment, which never reaches a
-// server, a log or a Referer header (ASVS V3.1.1). Read it once and wipe it from the address bar.
+// server, a log or a Referer header (ASVS V3.1.1). Read it once, then the address bar is the plain
+// sign-in page again (nothing to replay on reload).
 function takeCallbackParams(): URLSearchParams {
   const params = new URLSearchParams(window.location.hash.slice(1));
-  window.history.replaceState(null, '', window.location.pathname);
+  window.history.replaceState(null, '', '/yx/sign-in');
   return params;
 }
 

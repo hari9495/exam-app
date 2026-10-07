@@ -264,6 +264,7 @@ describe('/yx/sign-in/callback (back from Google / Microsoft)', () => {
     expect(api).toHaveBeenCalledWith('/auth/social/exchange', { method: 'POST', body: JSON.stringify({ code: 'c0de' }) });
     expect(api.mock.calls.filter(([p]) => p === '/auth/social/exchange')).toHaveLength(1);
     expect(window.location.hash).toBe('');
+    expect(window.location.pathname).toBe('/yx/sign-in');
     expect(login).toHaveBeenCalledWith('', expect.any(String));
   });
 
