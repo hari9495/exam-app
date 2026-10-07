@@ -181,7 +181,8 @@ describe('SsoCallbackPage', () => {
     (apiFetch as jest.Mock)
       .mockResolvedValueOnce({ mfaRequired: true, mfaToken: 'pending', factors: ['totp'] })
       .mockResolvedValueOnce({ accessToken })
-      .mockResolvedValueOnce(['exam:manage']);
+      .mockResolvedValueOnce(['exam:manage'])
+      .mockRejectedValueOnce(new Error('You have no employee record in this company.'));
 
     render(<SsoCallbackPage />);
     expect(await screen.findByRole('heading', { name: "Confirm it's you" })).toBeInTheDocument();
@@ -196,7 +197,7 @@ describe('SsoCallbackPage', () => {
   it('lands a YukthiX SSO sign-in without exam/ATS permissions in YukthiX', async () => {
     window.sessionStorage.setItem('yxSsoReturn', '1');
     atCallback('code=abc123');
-    (apiFetch as jest.Mock).mockResolvedValueOnce({ accessToken: fakeJwt({ sub: 'u2', role: 'panel' }) }).mockResolvedValueOnce(['employee.profile.view']);
+    (apiFetch as jest.Mock).mockResolvedValueOnce({ accessToken: fakeJwt({ sub: 'u2', role: 'panel' }) }).mockResolvedValueOnce(['employee.profile.view']).mockRejectedValueOnce(new Error('You have no employee record in this company.'));
     render(<SsoCallbackPage />);
     await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/people/directory'));
   });
