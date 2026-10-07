@@ -10,19 +10,23 @@ import { roleToLandingPath } from './staff-routing';
 /** Any of these opens some of the exam / ATS (/v2) screens. */
 export const EXAM_ATS_KEYS = ['exam:manage', 'results:view', 'candidate:manage', 'candidate:view', 'pipeline:manage', 'question_bank:manage', 'interview:view_assigned'] as const;
 const DIRECTORY_KEY = 'employee.profile.view';
-const LANDING_KEYS = [...EXAM_ATS_KEYS, DIRECTORY_KEY];
+/** Any of these is YukthiX HR work: the person lands in YukthiX, not the exam console. */
+const YX_SETTINGS_KEYS = ['org.settings.manage', 'org.structure.view', 'access.role.manage'] as const;
+const LANDING_KEYS = [...EXAM_ATS_KEYS, DIRECTORY_KEY, ...YX_SETTINGS_KEYS];
 
 /**
- * Pure: where a signed-in person lands. Anyone with an employee record in the company lands in
+ * Pure: where a signed-in person lands. Anyone with an employee record or any YukthiX HR permission lands in
  * YukthiX (Directory if they may read it, else their own Profile); exam / hiring stays one click away
  * ("Hiring and assessments"). Only exam/ATS accounts with no employee record (and platform staff)
  * keep their role's console.
  */
 export function landingFor(role: string | undefined, granted: readonly string[], isEmployee = false): string {
   if (role === 'super_admin') return roleToLandingPath(role);
-  if (isEmployee) return granted.includes(DIRECTORY_KEY) ? '/yx/people/directory' : '/yx/people/profile';
+  if (granted.includes(DIRECTORY_KEY)) return '/yx/people/directory';
+  if (isEmployee) return '/yx/people/profile';
+  if (YX_SETTINGS_KEYS.some((k) => granted.includes(k))) return '/yx/settings/legal-entities';
   if (EXAM_ATS_KEYS.some((k) => granted.includes(k))) return roleToLandingPath(role);
-  return granted.includes(DIRECTORY_KEY) ? '/yx/people/directory' : '/yx/me/security';
+  return '/yx/me/security';
 }
 
 const grantedKeys = (token: string | undefined): Promise<string[]> => apiFetch(`/rbac/me/permissions?keys=${LANDING_KEYS.join(',')}`, {}, token);

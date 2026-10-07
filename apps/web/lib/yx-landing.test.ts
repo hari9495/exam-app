@@ -11,7 +11,8 @@ describe('landingFor (where a YukthiX sign-in lands)', () => {
 
   it('keeps the role console for exam/ATS people (recruiter, admin, panelist)', () => {
     expect(landingFor('recruiter', ['exam:manage', 'results:view'])).toBe('/v2/today');
-    expect(landingFor('org_admin', ['exam:manage', 'employee.profile.view'])).toBe('/v2/users');
+    expect(landingFor('org_admin', ['exam:manage', 'employee.profile.view'])).toBe('/yx/people/directory');
+    expect(landingFor('org_admin', ['exam:manage', 'org.settings.manage'])).toBe('/yx/settings/legal-entities');
     expect(landingFor('panel', ['results:view'])).toBe('/v2/panel/reports');
     expect(landingFor('super_admin', [])).toBe('/v2/organizations');
   });

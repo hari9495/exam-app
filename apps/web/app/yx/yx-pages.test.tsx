@@ -135,7 +135,7 @@ describe('/yx/sign-in (email first, no company code)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(await screen.findByRole('heading', { name: 'Choose your company' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: CASTINGS.name }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/users'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/people/directory'));
     expect(api).toHaveBeenCalledWith('/auth/staff/select-company', { method: 'POST', body: JSON.stringify({ selectionToken: 't'.repeat(43), organizationId: 'c-2' }) });
   });
 
