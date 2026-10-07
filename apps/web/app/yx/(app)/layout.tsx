@@ -83,8 +83,10 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
 
   // Organisation pages follow the person's grants (a Payroll Admin profile may hold them without an admin role).
   // Settings are read with the structure (GET /org/settings), not with pay-range access alone.
-  const settingsRead = perms.has('org.structure.view') || perms.has('org.settings.manage');
-  const org = settingsRead || perms.has('pay.range.view') ? [...ORG, ...(settingsRead ? [COMPANY_RULES] : [])] : [];
+  // Admin menus only for people who can change them (founder review 7 Oct 2026): a manager may READ the structure
+  // (department and location pickers use it) but gets no Organisation / Access settings in the menu.
+  const settingsAdmin = perms.has('org.settings.manage');
+  const org = settingsAdmin || perms.has('pay.range.view') ? [...ORG, ...(settingsAdmin ? [COMPANY_RULES] : [])] : [];
   const hr = perms.has('employee.profile.view') || perms.has('employee.change.manage') || perms.has('employee.change.approve');
   const employee = Boolean(team.data?.managerId);
   const manager = Boolean(team.data?.members.length);
@@ -103,7 +105,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...org,
     ...(perms.has('access.role.manage') ? [ACCESS] : []),
     // Read by anyone who reads the structure; changed with org.settings.manage (+ access.role.manage for guarded keys).
-    ...(settingsRead ? [ACCESS_SETTINGS] : []),
+    ...(settingsAdmin ? [ACCESS_SETTINGS] : []),
   ];
   const security = [...linksFor(role, actingSuperAdmin), ...(employee ? [PRIVACY] : [])];
   const links = [...staff, ...security];

@@ -56,3 +56,6 @@
 .yx-workspace__company { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-secondary); }
 @media (max-width: 479px) { .yx-workspace__company { display: none; } }
 @media (max-width: 480px) { .yx-auth__item { flex-wrap: wrap; } }
+
+/* §12 two-tier sidebar: the desktop panel shows only the area chosen in the rail; the phone sheet shows all. */
+.yx-shell__panel .yx-workspace__area[data-other-area] { display: none; }

@@ -38,8 +38,8 @@ const ICONS: Record<WorkspacePage, IconComponent> = { me: ShieldCheck, activity:
 const GROUP_ICONS: Record<WorkspaceGroup, IconComponent> = { People: Users, Organisation: Building2, Access: KeyRound, Security: ShieldCheck, Me: UserRound };
 
 /**
- * Product frame for the YukthiX workspace pages: rail with one area per group, a grouped side panel (all groups, so the
- * menu sheet on tablets and phones reaches every page), top bar with the company and the account menu.
+ * Product frame for the YukthiX workspace pages: rail with one area per group, a side panel with that area's pages
+ * (the menu sheet on phones lists every area, since there is no rail), top bar with the company and the account menu.
  */
 export function WorkspaceShell({ active, links, company, hiringHref, profileHref, name, email, onSignOut, onNavigate, children }: WorkspaceShellProps) {
   const groups = GROUPS.filter((g) => links.some((l) => l.group === g));
@@ -68,7 +68,9 @@ export function WorkspaceShell({ active, links, company, hiringHref, profileHref
       panel={
         <SidePanel title="Menu">
           {groups.map((group) => (
-            <PanelGroup key={group} label={group}>
+            // Desktop panel: only the area picked in the rail (§12). The phone sheet keeps every area (no rail there).
+            <div key={group} className="yx-workspace__area" data-other-area={group !== activeGroup || undefined}>
+            <PanelGroup label={group}>
               {links
                 .filter((l) => l.group === group)
                 .map((l) => (
@@ -77,13 +79,16 @@ export function WorkspaceShell({ active, links, company, hiringHref, profileHref
                   </PanelLink>
                 ))}
             </PanelGroup>
+            </div>
           ))}
           {hiringHref && (
+            <div className="yx-workspace__area" data-other-area>
             <PanelGroup label="Other apps">
               <PanelLink href={hiringHref} icon={Briefcase}>
                 Hiring and assessments
               </PanelLink>
             </PanelGroup>
+            </div>
           )}
         </SidePanel>
       }
