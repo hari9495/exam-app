@@ -176,8 +176,10 @@ async function main() {
       const orgAdminHash = await argon2.hash('DevAdmin123!');
       await tx.user.upsert({
         where: { organizationId_email: { organizationId: demoOrg.id, email: 'admin@demo-org.test' } },
-        update: {},
+        // Ramesh Iyer, Managing Director of Kaveri Foods: the name shows in the menu, emails and Login activity.
+        update: { name: 'Ramesh Iyer' },
         create: {
+          name: 'Ramesh Iyer',
           email: 'admin@demo-org.test',
           passwordHash: orgAdminHash,
           role: 'org_admin',
@@ -190,8 +192,9 @@ async function main() {
       const recruiterHash = await argon2.hash('Passw0rd!2026');
       await tx.user.upsert({
         where: { organizationId_email: { organizationId: demoOrg.id, email: 'recruiter@demo-org.test' } },
-        update: {},
+        update: { name: 'Neha Kulkarni' },
         create: {
+          name: 'Neha Kulkarni',
           email: 'recruiter@demo-org.test',
           passwordHash: recruiterHash,
           role: 'recruiter',
