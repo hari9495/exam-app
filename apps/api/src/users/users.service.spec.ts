@@ -1206,6 +1206,7 @@ describe('UsersService', () => {
       // SMTP_HOST in production and fakes success via an Ethereal test account -- see
       // the "set-password link never arrives" incident this test was added to catch).
       expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'a@b.com', organizationId: 'org1' }));
+      expect(emailService.send.mock.calls[0][0].html).toMatch(/\/yx\/reset-password\/[a-f0-9]{64}"/);
       expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.password_reset_requested' }));
     });
 

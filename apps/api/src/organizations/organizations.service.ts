@@ -249,7 +249,7 @@ export class OrganizationsService {
   }
 
   private async dispatchWelcomeEmail(email: string, rawToken: string): Promise<void> {
-    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password/${rawToken}`;
+    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/reset-password/${rawToken}`;
     await this.emailService.send({
       to: email,
       subject: 'Welcome — set up your account',

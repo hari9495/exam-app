@@ -670,7 +670,7 @@ export class UsersService {
   }
 
   private dispatchResetLink(email: string, rawToken: string, organizationId: string) {
-    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password/${rawToken}`;
+    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/reset-password/${rawToken}`;
     return this.emailService.send({
       to: email,
       subject: 'Reset your Examination Platform password',
@@ -680,7 +680,7 @@ export class UsersService {
   }
 
   private async dispatchInviteEmail(email: string, rawToken: string): Promise<void> {
-    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password/${rawToken}`;
+    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/reset-password/${rawToken}`;
     await this.emailService.send({
       to: email,
       subject: 'Welcome — set up your platform administrator account',

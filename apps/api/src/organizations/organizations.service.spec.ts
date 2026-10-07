@@ -212,7 +212,7 @@ describe('OrganizationsService', () => {
 
       expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'admin@acme.test' }));
       const htmlContent = emailService.send.mock.calls[0][0].html as string;
-      const match = htmlContent.match(/\/reset-password\/([a-f0-9]+)/);
+      const match = htmlContent.match(/\/yx\/reset-password\/([a-f0-9]+)/);
       expect(match).not.toBeNull();
       const rawTokenFromEmail = match![1];
       expect(createHash('sha256').update(rawTokenFromEmail).digest('hex')).toBe(storedTokenHash);
