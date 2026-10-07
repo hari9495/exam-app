@@ -34,7 +34,7 @@ const HISTORY: WorkspaceLink = { id: 'job-history', label: 'Job history', href: 
 const CHANGES: WorkspaceLink = { id: 'job-changes', label: 'Job changes', href: '/yx/people/changes', group: 'People' };
 const PROBATION: WorkspaceLink = { id: 'probation', label: 'Probation', href: '/yx/people/probation', group: 'People' };
 const BULK: WorkspaceLink = { id: 'bulk-changes', label: 'Bulk changes', href: '/yx/people/bulk-changes', group: 'People' };
-const PROFILE: WorkspaceLink = { id: 'profile', label: 'Profile', href: '/yx/people/profile', group: 'People' };
+const PROFILE: WorkspaceLink = { id: 'profile', label: 'My profile', href: '/yx/people/profile', group: 'People' };
 const ID_CHANGES: WorkspaceLink = { id: 'profile-requests', label: 'Identity and bank changes', href: '/yx/people/profile-requests', group: 'People' };
 const ACCESS: WorkspaceLink = { id: 'access', label: 'Roles & access', href: '/yx/settings/access', group: 'Access' };
 const ACCESS_SETTINGS: WorkspaceLink = { id: 'access-settings', label: 'Access and privacy', href: '/yx/settings/access-settings', group: 'Access' };
@@ -111,7 +111,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   ];
   const security = [...linksFor(role, actingSuperAdmin), ...(employee ? [PRIVACY] : [])];
   const links = [...staff, ...security];
-  // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not Profile.
+  // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
   return (
     <WorkspaceShell
@@ -119,7 +119,8 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
       links={links}
       company={branding.data?.name || undefined}
       hiringHref={access.examAts ? roleToLandingPath(role ?? undefined) : undefined}
-      profileHref="/profile"
+      // The account menu's "My profile" is the same page as the menu link, where the person has it.
+      profileHref={links.includes(PROFILE) ? PROFILE.href : '/profile'}
       name={me.data?.name || me.data?.email || 'Your account'}
       email={me.data?.email}
       onNavigate={(href) => router.push(href)}

@@ -741,13 +741,13 @@ describe('/yx layout', () => {
     expect(screen.getByText('page')).toBeInTheDocument();
   });
 
-  it('marks Identity and bank changes, not Profile, on /yx/people/profile-requests', async () => {
+  it('marks Identity and bank changes, not My profile, on /yx/people/profile-requests', async () => {
     (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
     (usePathname as jest.Mock).mockReturnValue('/yx/people/profile-requests');
     route({ 'GET /auth/mfa': MFA, 'GET /rbac/me/permissions': ['employee.profile.view', 'employee.identity.approve'] });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
     expect(await screen.findByRole('link', { name: 'Identity and bank changes' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Profile' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'My profile' })).not.toHaveAttribute('aria-current');
   });
 
   it('sends a signed-out visitor to the sign-in page', () => {
