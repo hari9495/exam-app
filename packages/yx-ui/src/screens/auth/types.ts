@@ -63,6 +63,20 @@ export interface Page<T> {
   pageSize: number;
 }
 
+/**
+ * The ways in the sign-in screen offers besides the work email (GET /auth/sign-in-options). With a
+ * known company, only what its security policy allows; otherwise what YukthiX has set up.
+ */
+export interface SignInOptions {
+  google: boolean;
+  microsoft: boolean;
+  /** One-time code to a mobile number by SMS / WhatsApp. */
+  sms: boolean;
+  whatsapp: boolean;
+  /** "Email me a code instead" on the password step. */
+  emailCode: boolean;
+}
+
 export interface SsoProviderOption {
   id: string;
   name: string;
@@ -103,6 +117,9 @@ export interface SecurityPolicy {
   maxFailedAttempts: number;
   /** First lock lasts this long; repeat locks double, up to 24 hours (YukthiX: at least 15). */
   lockMinutes: number;
+  /** "Continue with Google" / "Continue with Microsoft" on the sign-in screen (off by default). */
+  googleSignIn: boolean;
+  microsoftSignIn: boolean;
 }
 
 /** The YukthiX floor (Q8): companies may only be stricter. Returned with the policy. */

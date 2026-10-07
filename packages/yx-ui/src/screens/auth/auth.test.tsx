@@ -12,7 +12,7 @@ import { ADMINS, COMPANIES, FLOOR, IDPS, MFA_ENROLLED, MFA_NONE, MY_HISTORY, MY_
 
 function SignIn(over: Partial<SignInScreenProps> & { start?: Partial<SignInFields> }) {
   const { start, ...rest } = over;
-  const [fields, setFields] = useState<SignInFields>({ identifier: '', password: '', code: '', ...start });
+  const [fields, setFields] = useState<SignInFields>({ identifier: '', mobile: '', password: '', code: '', ...start });
   const [step, setStep] = useState<SignInStep>(over.step ?? 'identify');
   return (
     <SignInScreen
@@ -35,24 +35,108 @@ function SignIn(over: Partial<SignInScreenProps> & { start?: Partial<SignInField
 
 const DIVYA = { identifier: 'divya.r@kaverifoods.in' };
 const KAVERI = { name: 'Kaveri Foods Pvt Ltd', logoUrl: null };
+const ALL_WAYS = { google: true, microsoft: true, sms: true, whatsapp: true, emailCode: true };
 
-describe('SignInScreen (email first, no company code)', () => {
-  it('asks only for an email or mobile number first, never a company code', async () => {
+describe('SignInScreen (work email first, no company code)', () => {
+  it('asks only for a work email first, never a company code', async () => {
     const onIdentify = vi.fn();
     render(<SignIn onIdentify={onIdentify} />);
     expect(screen.queryByLabelText(/company/i)).toBeNull();
     expect(screen.queryByLabelText(/password/i)).toBeNull();
     const go = screen.getByRole('button', { name: 'Continue' });
     expect(go).toBeDisabled();
-    await userEvent.type(screen.getByLabelText(/Work email or mobile number/), DIVYA.identifier);
+    await userEvent.type(screen.getByLabelText(/Work email/), '+919845012345');
+    expect(go).toBeDisabled();
+    await userEvent.clear(screen.getByLabelText(/Work email/));
+    await userEvent.type(screen.getByLabelText(/Work email/), DIVYA.identifier);
     await userEvent.click(go);
     expect(onIdentify).toHaveBeenCalledOnce();
+  });
+
+  it("then 'or' and the other ways in, in the founder's order, each with its mark", async () => {
+    const onMobile = vi.fn();
+    const onSocial = vi.fn();
+    render(<SignIn options={ALL_WAYS} onMobile={onMobile} onSocial={onSocial} />);
+    expect(screen.getByRole('separator')).toHaveTextContent('or');
+    const ways = within(screen.getByRole('group', { name: 'Other ways to sign in' })).getAllByRole('button');
+    expect(ways.map((b) => b.textContent)).toEqual(['Continue with mobile', 'Continue with Microsoft', 'Continue with Google']);
+    // Bordered buttons (R2), each with its decorative mark.
+    for (const b of ways) {
+      expect(b).toHaveAttribute('data-variant', 'secondary');
+      expect(b.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    }
+    expect(ways[1].querySelectorAll('rect')).toHaveLength(4);
+    expect([...ways[2].querySelectorAll('path')].map((p) => p.getAttribute('class'))).toEqual(['yx-mark-google-red', 'yx-mark-google-blue', 'yx-mark-google-yellow', 'yx-mark-google-green']);
+    await userEvent.click(ways[0]);
+    expect(onMobile).toHaveBeenCalledOnce();
+    await userEvent.click(ways[1]);
+    expect(onSocial).toHaveBeenLastCalledWith('microsoft');
+    await userEvent.click(ways[2]);
+    expect(onSocial).toHaveBeenLastCalledWith('google');
+  });
+
+  it("hides each way that is off, and the 'or' when none is on", () => {
+    const { unmount } = render(<SignIn options={{ ...ALL_WAYS, sms: false, whatsapp: false, google: false }} onMobile={vi.fn()} onSocial={vi.fn()} />);
+    const ways = within(screen.getByRole('group', { name: 'Other ways to sign in' })).getAllByRole('button');
+    expect(ways.map((b) => b.textContent)).toEqual(['Continue with Microsoft']);
+    unmount();
+    render(<SignIn options={{ google: false, microsoft: false, sms: false, whatsapp: false, emailCode: true }} onMobile={vi.fn()} onSocial={vi.fn()} />);
+    expect(screen.queryByRole('separator')).toBeNull();
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+  });
+
+  it("a company's own Google provider replaces YukthiX's Google button", async () => {
+    const onSso = vi.fn();
+    const onSocial = vi.fn();
+    render(<SignIn company={KAVERI} providers={PROVIDERS} options={ALL_WAYS} onSocial={onSocial} onSso={onSso} />);
+    const ways = within(screen.getByRole('group', { name: 'Other ways to sign in' })).getAllByRole('button');
+    expect(ways.map((b) => b.textContent)).toEqual(['Continue with Microsoft', 'Continue with Google', 'Continue with Kaveri staff directory']);
+    await userEvent.click(ways[1]);
+    expect(onSso).toHaveBeenCalledWith(PROVIDERS[0].id);
+    expect(onSocial).not.toHaveBeenCalled();
+  });
+
+  it('mobile: the number, then a code by SMS or WhatsApp, and a way back to the email', async () => {
+    const onSendCode = vi.fn();
+    render(<SignIn step="mobile" options={ALL_WAYS} onSendCode={onSendCode} />);
+    const text = screen.getByRole('button', { name: 'Text me a code' });
+    expect(text).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/Mobile number/), '98450 12345');
+    await userEvent.click(text);
+    expect(onSendCode).toHaveBeenLastCalledWith('sms');
+    await userEvent.click(screen.getByRole('button', { name: 'Send a code on WhatsApp' }));
+    expect(onSendCode).toHaveBeenLastCalledWith('whatsapp');
+    await userEvent.click(screen.getByRole('button', { name: 'Use my work email instead' }));
+    expect(screen.getByLabelText(/Work email/)).toBeInTheDocument();
+  });
+
+  it('mobile with WhatsApp only: WhatsApp is the main button', async () => {
+    const onSendCode = vi.fn();
+    render(<SignIn step="mobile" options={{ ...ALL_WAYS, sms: false }} onSendCode={onSendCode} start={{ mobile: '9845012345' }} />);
+    expect(screen.queryByRole('button', { name: 'Text me a code' })).toBeNull();
+    const wa = screen.getByRole('button', { name: 'Send a code on WhatsApp' });
+    expect(wa).toHaveAttribute('data-variant', 'primary');
+    await userEvent.click(wa);
+    expect(onSendCode).toHaveBeenLastCalledWith('whatsapp');
+  });
+
+  it('the mobile code: the number shown, how it went, and a new code by the same way', async () => {
+    const onSendCode = vi.fn();
+    const onVerifyCode = vi.fn();
+    render(<SignIn step="mobile-code" codeChannel="whatsapp" options={ALL_WAYS} start={{ mobile: '+91 98450 12345' }} onSendCode={onSendCode} onVerifyCode={onVerifyCode} />);
+    expect(screen.getByText('+91 98450 12345')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('by WhatsApp');
+    await userEvent.click(screen.getByRole('button', { name: 'Send a new code' }));
+    expect(onSendCode).toHaveBeenLastCalledWith('whatsapp');
+    await userEvent.type(screen.getByLabelText(/6-digit code/), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(onVerifyCode).toHaveBeenCalledOnce();
   });
 
   it('then the password, with the email shown and a way back', async () => {
     const onPasswordSubmit = vi.fn();
     render(<SignIn onPasswordSubmit={onPasswordSubmit} />);
-    await userEvent.type(screen.getByLabelText(/Work email or mobile number/), DIVYA.identifier);
+    await userEvent.type(screen.getByLabelText(/Work email/), DIVYA.identifier);
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(screen.getByText(DIVYA.identifier)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText(/^Password/), 'correct horse battery');
@@ -60,21 +144,19 @@ describe('SignInScreen (email first, no company code)', () => {
     expect(onPasswordSubmit).toHaveBeenCalledOnce();
     expect(screen.getByRole('link', { name: 'Forgot your password?' })).toHaveAttribute('href', '/forgot-password');
     await userEvent.click(screen.getByRole('button', { name: 'Change' }));
-    expect(screen.getByLabelText(/Work email or mobile number/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Work email/)).toBeInTheDocument();
   });
 
-  it('offers a code instead: by email for an address, by text or WhatsApp for a mobile number', async () => {
+  it('offers an emailed code instead only where it is on', async () => {
     const onSendCode = vi.fn();
     const { unmount } = render(<SignIn step="password" start={DIVYA} onSendCode={onSendCode} />);
     await userEvent.click(screen.getByRole('button', { name: 'Email me a code instead' }));
-    expect(onSendCode).toHaveBeenLastCalledWith(undefined);
-    expect(screen.queryByRole('button', { name: /WhatsApp/ })).toBeNull();
+    expect(onSendCode).toHaveBeenCalledOnce();
+    expect(onSendCode.mock.lastCall?.[0]).toBeUndefined(); // by email
     unmount();
-    render(<SignIn step="password" start={{ identifier: '+919845012345' }} onSendCode={onSendCode} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Text me a code instead' }));
-    expect(onSendCode).toHaveBeenLastCalledWith('sms');
-    await userEvent.click(screen.getByRole('button', { name: 'Send a code on WhatsApp' }));
-    expect(onSendCode).toHaveBeenLastCalledWith('whatsapp');
+    // The known company turned email codes off: no button that would silently send nothing.
+    render(<SignIn step="password" start={DIVYA} options={{ ...ALL_WAYS, emailCode: false }} onSendCode={onSendCode} />);
+    expect(screen.queryByRole('button', { name: 'Email me a code instead' })).toBeNull();
   });
 
   it('shows the remembered company with "Not your company?", and its providers', async () => {
@@ -104,9 +186,12 @@ describe('SignInScreen (email first, no company code)', () => {
     expect(onPickCompany).toHaveBeenCalledWith(COMPANIES[1].id);
   });
 
-  it('says it is going to the company sign-in page', () => {
-    render(<SignIn step="redirecting" />);
+  it('says where it is going: the company sign-in page, or Google / Microsoft', () => {
+    const { unmount } = render(<SignIn step="redirecting" />);
     expect(screen.getByRole('status')).toHaveTextContent("Taking you to your company's sign-in page");
+    unmount();
+    render(<SignIn step="redirecting" redirectingTo="Microsoft" />);
+    expect(screen.getByRole('status')).toHaveTextContent('Taking you to Microsoft');
   });
 
   it('asks for the code after one was sent', async () => {
@@ -457,6 +542,25 @@ describe('SecuritySettingsScreen', () => {
     expect(onSave).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent('Lock after must be between 3 and 10');
     expect(screen.getByRole('alert')).toHaveTextContent('Lock for must be between 15 and 1440');
+  });
+
+  it('turns "Continue with Google / Microsoft" on per provider and saves only that', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<Settings onSave={onSave} />);
+    const googleSwitch = screen.getByRole('switch', { name: 'Allow sign-in with Google' });
+    expect(googleSwitch).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: 'Allow sign-in with Microsoft' })).not.toBeChecked();
+    await userEvent.click(googleSwitch);
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(onSave).toHaveBeenCalledWith({ googleSignIn: true });
+  });
+
+  it('with sign-in only through the identity provider, the switches are off and say why', () => {
+    render(<Settings policy={{ ...POLICY, ssoOnly: true, googleSignIn: true, breakGlassUserIds: [ADMINS[0].id, ADMINS[1].id] }} />);
+    const googleSwitch = screen.getByRole('switch', { name: 'Allow sign-in with Google' });
+    expect(googleSwitch).toBeDisabled();
+    expect(googleSwitch).not.toBeChecked();
+    expect(screen.getAllByText('Off while sign-in is only through your identity provider.')).toHaveLength(2);
   });
 
   it('saves only the changed fields', async () => {
