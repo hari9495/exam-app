@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const ORG_NAME = process.env.E2E_ORG_NAME ?? 'Demo Org';
+const ORG_NAME = process.env.E2E_ORG_NAME ?? 'Kaveri Foods';
 const SUPER_ADMIN_EMAIL = process.env.E2E_SUPER_ADMIN_EMAIL ?? 'super@platform.test';
 const SUPER_ADMIN_PASSWORD = process.env.E2E_SUPER_ADMIN_PASSWORD ?? 'DevSuper123!';
 

@@ -168,8 +168,9 @@ async function main() {
 
       const demoOrg = await tx.organization.upsert({
         where: { slug: 'demo-org' },
-        update: {},
-        create: { name: 'Demo Org', slug: 'demo-org', planId: trialPlan.id },
+        // The demo company is Kaveri Foods everywhere (test script, screens, emails); slug kept for links and tests.
+        update: { name: 'Kaveri Foods' },
+        create: { name: 'Kaveri Foods', slug: 'demo-org', planId: trialPlan.id },
       });
 
       const orgAdminHash = await argon2.hash('DevAdmin123!');
@@ -203,8 +204,10 @@ async function main() {
       const panelHash = await argon2.hash('Passw0rd!2026');
       await tx.user.upsert({
         where: { organizationId_email: { organizationId: demoOrg.id, email: 'panel@demo-org.test' } },
-        update: {},
+        // Divya Raghunathan (KF-0001) signs in as panel@: her name shows in the menu, emails and approvals.
+        update: { name: 'Divya Raghunathan' },
         create: {
+          name: 'Divya Raghunathan',
           email: 'panel@demo-org.test',
           passwordHash: panelHash,
           role: 'panel',
