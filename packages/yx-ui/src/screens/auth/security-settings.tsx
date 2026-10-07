@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
-import { Checkbox } from '../../components/choice';
+import { Checkbox, Switch } from '../../components/choice';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
 import { ErrorSummary, FormField, FormSection } from '../../components/field';
 import { Text } from '../../components/foundations';
@@ -231,6 +231,20 @@ function SecurityForm({ policy, floor, providers, admins, providersHref, onSave,
           ))}
           <Text as="p" tone="secondary" size="sm">People with a second step still give it after the code.</Text>
         </fieldset>
+      </FormSection>
+
+      <FormSection title="Sign in with Google or Microsoft" description="People use the Google or Microsoft account of their work email. Off unless you turn it on.">
+        {(['google', 'microsoft'] as const).map((p) => (
+          <Switch
+            key={p}
+            id={`sec-${p}`}
+            label={p === 'google' ? 'Allow sign-in with Google' : 'Allow sign-in with Microsoft'}
+            description={draft.ssoOnly ? 'Off while sign-in is only through your identity provider.' : 'People with a second step still give it.'}
+            checked={!draft.ssoOnly && draft[`${p}SignIn`]}
+            disabled={draft.ssoOnly}
+            onChange={(on) => set({ [`${p}SignIn`]: on })}
+          />
+        ))}
       </FormSection>
 
       <FormSection title="Single sign-on">

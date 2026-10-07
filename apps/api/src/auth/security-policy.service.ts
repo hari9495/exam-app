@@ -100,9 +100,14 @@ export class SecurityPolicyService {
       if (ssoOnlyTurnedOn) {
         sessionsRevoked = await revokeStaffSessions(
           tx,
-          { organizationId, method: { in: ['password', 'otp_email', 'otp_sms', 'otp_whatsapp'] }, userId: { notIn: next.breakGlassUserIds } },
+          { organizationId, method: { in: ['password', 'otp_email', 'otp_sms', 'otp_whatsapp', 'google', 'microsoft'] }, userId: { notIn: next.breakGlassUserIds } },
           'sso_only_enabled',
         );
+      }
+      // A "Continue with Google / Microsoft" switched off ends the sessions that came in that way.
+      const socialOff = (['google', 'microsoft'] as const).filter((m) => current[`${m}SignIn`] && !next[`${m}SignIn`]);
+      if (socialOff.length) {
+        sessionsRevoked += await revokeStaffSessions(tx, { organizationId, method: { in: [...socialOff] } }, 'social_sign_in_disabled');
       }
     });
     invalidateTenantSecurityPolicy(organizationId);
@@ -114,7 +119,7 @@ export class SecurityPolicyService {
         action: 'security_policy.updated',
         entityType: 'organization',
         entityId: organizationId,
-        metadata: { changes, ...(ssoOnlyTurnedOn ? { sessionsRevoked } : {}) },
+        metadata: { changes, ...(ssoOnlyTurnedOn || sessionsRevoked ? { sessionsRevoked } : {}) },
       });
     }
     return this.get(context);

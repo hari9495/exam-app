@@ -20,7 +20,7 @@ export class ChannelOtpSender implements OtpSmsSender {
   async send(req: OtpSmsRequest): Promise<OtpSmsResult> {
     if (req.channel === 'whatsapp') {
       if (!this.channels.has('whatsapp')) return { delivered: false, reason: 'whatsapp_unavailable' };
-      devSmsSink.sent.push({ to: req.to, channel: 'whatsapp', text: `${req.code} is your YukthiX ${req.purpose}. It expires in ${req.minutes} minutes.`, sender: null, dltTemplateId: null, providerMsgId: `dev-${randomUUID()}`, at: new Date() });
+      devSmsSink.keep({ to: req.to, channel: 'whatsapp', text: `${req.code} is your YukthiX ${req.purpose}. It expires in ${req.minutes} minutes.`, sender: null, dltTemplateId: null, providerMsgId: `dev-${randomUUID()}`, at: new Date() });
       return { delivered: true };
     }
     const outcome = await this.channel.sendOtp({

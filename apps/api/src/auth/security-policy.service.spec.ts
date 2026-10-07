@@ -180,10 +180,30 @@ describe('SecurityPolicyService', () => {
     it('ends every password and one-time-code session except the break-glass accounts when SSO-only goes on', async () => {
       await update({ ssoOnly: true, breakGlassUserIds: BG });
       expect(tx.session.updateMany).toHaveBeenCalledWith({
-        where: { organizationId: ORG, method: { in: ['password', 'otp_email', 'otp_sms', 'otp_whatsapp'] }, userId: { notIn: BG }, revokedAt: null },
+        where: { organizationId: ORG, method: { in: ['password', 'otp_email', 'otp_sms', 'otp_whatsapp', 'google', 'microsoft'] }, userId: { notIn: BG }, revokedAt: null },
         data: { revokedAt: expect.any(Date), revokedReason: 'sso_only_enabled' },
       });
       expect(audit.record).toHaveBeenCalledWith(CTX, expect.objectContaining({ metadata: expect.objectContaining({ sessionsRevoked: 3 }) }));
+    });
+
+    it('turning "Continue with Google" off ends the sessions that came in that way, and is audited', async () => {
+      tx.tenantSecurityPolicy.findUnique.mockResolvedValue({ ...DEFAULT_SECURITY_POLICY, googleSignIn: true, microsoftSignIn: true, organizationId: ORG });
+      await update({ googleSignIn: false });
+      expect(tx.session.updateMany).toHaveBeenCalledTimes(1);
+      expect(tx.session.updateMany).toHaveBeenCalledWith({
+        where: { organizationId: ORG, method: { in: ['google'] }, revokedAt: null },
+        data: { revokedAt: expect.any(Date), revokedReason: 'social_sign_in_disabled' },
+      });
+      expect(audit.record).toHaveBeenCalledWith(
+        CTX,
+        expect.objectContaining({ metadata: { changes: { googleSignIn: { from: true, to: false } }, sessionsRevoked: 3 } }),
+      );
+    });
+
+    it('turning it on revokes nothing', async () => {
+      await update({ googleSignIn: true, microsoftSignIn: true });
+      expect(tx.session.updateMany).not.toHaveBeenCalled();
+      expect(tx.tenantSecurityPolicy.upsert.mock.calls[0][0].update).toEqual(expect.objectContaining({ googleSignIn: true, microsoftSignIn: true }));
     });
 
     it('revokes nothing when SSO-only was already on', async () => {
