@@ -17,14 +17,21 @@ export interface DevSms {
  * leave the process. Refused in production. `simulate` makes a dev account fail on purpose, to try
  * failover locally.
  */
-export class DevSmsSink {
-  readonly sent: DevSms[] = [];
-}
-export const devSmsSink = new DevSmsSink();
-
 const SIMULATE: SmsFailure[] = ['rejected', 'unavailable', 'unknown'];
 const isProduction = () => process.env.NODE_ENV === 'production';
 const logger = new Logger('DevSms');
+
+export class DevSmsSink {
+  readonly sent: DevSms[] = [];
+
+  // DEV_SMS_LOG_TEXT=1 (a laptop only, never production): also print the message -- the code
+  // included -- to the API log, so a sign-in by mobile can be tried without a real SMS account.
+  keep(message: DevSms): void {
+    this.sent.push(message);
+    if (process.env.DEV_SMS_LOG_TEXT === '1' && !isProduction()) logger.log(`${message.channel} to ${message.to}: ${message.text}`);
+  }
+}
+export const devSmsSink = new DevSmsSink();
 
 export const devProvider: SmsProviderAdapter = {
   id: 'dev',
@@ -43,7 +50,7 @@ export const devProvider: SmsProviderAdapter = {
     const simulate = config.simulate as SmsFailure | undefined;
     if (simulate) return { ok: false, failure: simulate, error: `simulated ${simulate} failure` };
     const providerMsgId = `dev-${randomUUID()}`;
-    devSmsSink.sent.push({ to: args.to, channel: 'sms', text: args.body, sender: args.sender ?? null, dltTemplateId: args.dltTemplateId ?? null, providerMsgId, at: new Date() });
+    devSmsSink.keep({ to: args.to, channel: 'sms', text: args.body, sender: args.sender ?? null, dltTemplateId: args.dltTemplateId ?? null, providerMsgId, at: new Date() });
     logger.log(`sms to ${args.to.slice(0, 4)}****${args.to.slice(-2)} kept in the in-memory sink`);
     return { ok: true, providerMsgId };
   },
