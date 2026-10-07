@@ -133,10 +133,15 @@
 - **Never:** hover lift or glow on buttons, bouncing, parallax, count-up numbers on money, animated backgrounds.
 - **Reduce motion:** when the user's OS asks for it, all motion is instant and the delight moments become static confirmations.
 
-### ✅ §8 Iconography (decided 28 Sep 2026: both)
-- **Now:** one open-source outline set — **Lucide** (ISC licence) — at 1.5 px stroke; 16 px in dense UI, 20 px in navigation; filled variant only for the selected navigation item. Icons carry a text label except universally known ones (search, close, more, back).
-- **Custom YukthiX icon set:** commissioned from the logo / brand designer in the same 1.5 px outline grammar; first the HR-specific icons (payslip, attendance punch, leave, statutory filing, proctoring, offer letter, org unit, rule builder, workflow), then gradually replacing the Lucide set so the product has its own recognisable icons. Team action: add to the logo designer brief.
-- **Rules:** no emoji; no sparkle / magic-wand icon for AI (AI uses a small "AI" text badge, §3 purple); one icon per meaning across the product (icon registry in Storybook).
+### ✅ §8 Iconography (decided 28 Sep 2026: both; colour icons added 7 Oct 2026)
+Two icon families, each with its own job.
+- **Colour icons — Fluent UI System Icons, Color variant** (MIT, © Microsoft; npm [`@fluentui/react-icons`](https://www.npmjs.com/package/@fluentui/react-icons) pinned at 2.0.343; notice in `THIRD-PARTY-NOTICES.md`). The big, friendly icons: navigation areas in the sidebar (Home, People, Time and leave, Payroll, Hiring, Assessments, Service desk, Performance, Learning, Analytics, Settings), Home / dashboard tiles, empty states, the onboarding / setup hub and help. Sizes: **20 px** in navigation, **24–32 px** on tiles, **48 px** on empty states. Use the hand-drawn size where Fluent has one; otherwise the nearest larger drawing is scaled.
+- **Outline icons — Lucide** (ISC licence), 1.5 px stroke, unchanged: everything small and dense — tables, buttons, form fields, menus, toolbars, side-panel links and status (16 px; 20 px in the panel). Outline icons carry a text label except universally known ones (search, close, more, back). Status keeps its green / amber / red meaning because outline icons take the status colour; colour icons never sit in a status slot.
+- **Icon registry:** one meaning → one icon, in one place (`ColorIcon` / `COLOR_ICONS` in `@yukthix/ui`, keys such as `area.people`, `area.time`, `area.payroll`, `leave`, `approvals`). Screens never import Fluent icons directly; a new meaning is added to the registry first. Storybook "Foundations / Icons / Colour icons" shows the registry table.
+- **Rules:** labels always visible next to a colour icon (rail, tiles, empty-state title); colour never carries meaning alone (§3); no emoji; no sparkle / magic-wand icon for AI (AI uses the "AI" text badge, §3 purple); never Icons8 or any other paid, subscription or attribution-required set. A 48 px colour icon on an empty state is an icon, not an illustration (§9, §26 still apply: no decorative drawings).
+- **Dark mode:** checked on the dark surface (`#111A2B`). Most Fluent colour icons read better on dark than on light. Service desk (Headset) is the exception — its dark headband sits under 3:1 — so it is flagged `darkTile` and sits on a light neutral tile in dark mode. A mid-grey tile (Slate 700) was measured and lowers contrast for most icons, so Home tiles use the subtle neutral fill in both themes. Re-check any new icon the same way.
+- **Licence watch:** Microsoft marks the Color variant *deprecated* in the package (accessibility guidance; may be removed in a future major release). We pin the version; the MIT licence lets us copy the SVGs into our own set if they are removed.
+- **Custom YukthiX colour icons:** HR meanings Fluent Color does not cover are commissioned from the brand designer **in the same Fluent Color style** (soft gradients, same grid and sizes): payslip, attendance punch, statutory filing, proctoring, offer letter, org unit, rule builder, workflow. Listed as "commission" rows in the registry until delivered. Team action: add to the logo designer brief.
 
 ### ✅ §10 Core data objects and §11 Hierarchy (decided 28 Sep 2026)
 - **Core objects:** Person (one record across employee / candidate / contractor / alumnus roles, P01 `persons`) · Employment · Org unit · Position · Request (leave, expense, any P03 request) · Pay run · Payslip · Document · Job · Application · Test · Attempt · Case / ticket · Project · Workflow.
@@ -350,7 +355,7 @@ Every component below lives in `packages/ui`, uses only §41 tokens, has a Story
 | Component | Source | Rules |
 |---|---|---|
 | Text, Heading | Keep | Only §2 scale steps; one 22 px page title |
-| Icon | Build | Lucide 1.5 px now, YukthiX set later (§8); 16 / 20 px |
+| Icon | Build | Lucide 1.5 px outline for dense UI, 16 / 20 px; `ColorIcon` (Fluent Color, registry) for areas, tiles, empty states, 20 / 24–32 / 48 px (§8) |
 | Logo, Monogram | Build | From the designer's files only |
 | VisuallyHidden, FocusRing, Portal | Radix | Accessibility plumbing |
 
@@ -461,6 +466,7 @@ Every button with a text label has a border or a fill. Borderless is only for ic
 | Drawer footer | Cancel or Close (secondary) left of the primary Save | Secondary + primary |
 
 ### Build log
+- **7 Oct 2026, colour icons (§8):** `ColorIcon` + `COLOR_ICONS` registry in `@yukthix/ui` (Fluent UI System Icons Color, MIT, `@fluentui/react-icons` 2.0.343 pinned). Preview story "Foundations / Icons / Colour icons"; the real navigation still uses Lucide until the founder signs off.
 - **29 Sep 2026, a11y correction to §3:** muted text uses **Slate 550 `#5B6778`** instead of Slate 500 `#64748B`. The axe check in Storybook showed `#64748B` falls just under 4.5:1 on the page (`#F7F8FA`) and subtle (`#F3F5F7`) backgrounds. Slate 500 stays for icons, borders and chart slate.
 - **29 Sep 2026, phase 1 built:** `@yukthix/ui` (folder `yukthix-ui` next to this one) has foundations, actions, form structure, all inputs and pickers, badges and avatars, with Storybook, tests, the token check and a clean axe run in light, dark and compact. Status and next phases: `yukthix-ui/README.md`.
 - **29 Sep 2026, data screens built:** DataTable (full §20 set), FilterBar with chips and shareable URL, SavedViewMenu, ColumnManager, Drawer, InlineAlert, Empty / Error / No-access states, Skeleton, Meter, Pagination, TimesheetGrid (M12 week grid + phone day list). Button rules for these screens in §15a.

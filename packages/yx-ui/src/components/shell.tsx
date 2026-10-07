@@ -288,6 +288,8 @@ export interface RailItem {
   pinBottom?: boolean;
   /** Shorter name under the icon when the full one doesn't fit, e.g. "Contract" for "Contract labour". */
   short?: string;
+  /** Colour icon (§8) drawn instead of `icon`, e.g. <ColorIcon name="area.people" size={20} />. */
+  art?: ReactNode;
 }
 
 /** Every area, in order (§12). Filter by role before passing to <SideRail items>. */
@@ -355,12 +357,12 @@ export function SideRail({ items, activeId, onSelect, logo, 'aria-label': ariaLa
       <li key={item.id} data-pin={item.pinBottom || undefined}>
         {item.href ? (
           <a href={item.href} {...common}>
-            <Icon icon={item.icon} size="md" />
+            {item.art ?? <Icon icon={item.icon} size="md" />}
             <span className="yx-rail__label" aria-hidden="true">{item.short ?? item.label}</span>
           </a>
         ) : (
           <button type="button" {...common}>
-            <Icon icon={item.icon} size="md" />
+            {item.art ?? <Icon icon={item.icon} size="md" />}
             <span className="yx-rail__label" aria-hidden="true">{item.short ?? item.label}</span>
           </button>
         )}

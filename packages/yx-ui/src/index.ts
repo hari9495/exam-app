@@ -1,5 +1,6 @@
 // @yukthix/ui — see ../README.md and brand/DESIGN-SYSTEM.md (v1.0)
 export * from './components/foundations';
+export * from './components/color-icon';
 export * from './components/button';
 export * from './components/tooltip';
 export * from './components/menu';
