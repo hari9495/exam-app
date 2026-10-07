@@ -59,7 +59,7 @@ function toFormState(plan: Plan): PlanFormState {
 }
 
 export default function V2PlansPage() {
-  const { data: plans, isLoading, isError } = usePlans();
+  const { data: plans, isLoading, isError, error: loadError } = usePlans();
   const createPlan = useCreatePlan();
   const updatePlan = useUpdatePlan();
 
@@ -159,7 +159,7 @@ export default function V2PlansPage() {
       <DataTable
         columns={columns} data={rows} getRowId={(p) => p.id}
         search={search} onSearchChange={setSearch} searchPlaceholder="Search plans…"
-        isLoading={isLoading} isError={isError} errorMessage="Failed to load plans." emptyMessage={q ? 'No matching plans.' : 'No plans yet.'}
+        isLoading={isLoading} isError={isError} error={loadError} errorMessage="Failed to load plans." emptyMessage={q ? 'No matching plans.' : 'No plans yet.'}
         columnLabels={{ name: 'Name', seatLimit: 'Seats', candidateLimit: 'Candidates', aiCreditLimit: 'AI Credits', proctoringMinutesLimit: 'Proctoring Minutes', priceLabel: 'Price', isPublic: 'Visibility' }}
       />
       </div>

@@ -184,7 +184,7 @@ export default function V2UsersPage() {
   const currentUserId = currentUser?.id ?? '';
   // ListView sorted/filtered client-side, so a paginated slice would only ever sort/filter the
   // visible page. Fetch one large page instead (same as the old page).
-  const { data: usersResponse, isLoading, isError } = useUsers({ pageSize: 200 });
+  const { data: usersResponse, isLoading, isError, error } = useUsers({ pageSize: 200 });
   const { data: teammates } = useTeammates();
   const { data: permissionProfiles } = usePermissionProfiles();
   const { data: ssoStatus } = useSsoStatus();
@@ -333,7 +333,7 @@ export default function V2UsersPage() {
       <DataTable
         columns={columns} data={rows} getRowId={(u) => u.id}
         search={search} onSearchChange={setSearch} searchPlaceholder="Search staff users…"
-        isLoading={isLoading} isError={isError} errorMessage="Failed to load staff users." emptyMessage={q || roleFilter !== 'all' || statusFilter !== 'all' ? 'No matching staff users.' : 'No staff users yet.'}
+        isLoading={isLoading} isError={isError} error={error} errorMessage="Failed to load staff users." emptyMessage={q || roleFilter !== 'all' || statusFilter !== 'all' ? 'No matching staff users.' : 'No staff users yet.'}
         columnLabels={{ name: 'Full name', email: 'Email', role: 'Role', status: 'Status', lastLoginAt: 'Last login', createdAt: 'Created' }}
       />
       </div>

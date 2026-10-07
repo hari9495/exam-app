@@ -30,7 +30,7 @@ const COLUMN_LABELS: Record<string, string> = { status: 'Status', attemptTotalCo
 export default function V2PanelReportsPage() {
   const [search, setSearch] = useState('');
   // Matches the old /reports: fetch up to the server max and search/sort client-side (no pagination).
-  const { data: resp, isLoading, isError } = useExams(undefined, { pageSize: 100 });
+  const { data: resp, isLoading, isError, error } = useExams(undefined, { pageSize: 100 });
   const all = resp?.data ?? [];
   const q = search.trim().toLowerCase();
   const rows = q ? all.filter((e) => e.title.toLowerCase().includes(q)) : all;
@@ -79,7 +79,7 @@ export default function V2PanelReportsPage() {
       <DataTable
         columns={columns} data={rows} getRowId={(r) => r.id}
         search={search} onSearchChange={setSearch} searchPlaceholder="Search exams…"
-        isLoading={isLoading} isError={isError} errorMessage="Failed to load Results." emptyMessage={q ? 'No matches.' : 'No exams yet.'}
+        isLoading={isLoading} isError={isError} error={error} errorMessage="Failed to load Results." emptyMessage={q ? 'No matches.' : 'No exams yet.'}
         columnLabels={COLUMN_LABELS}
       />
     </div>

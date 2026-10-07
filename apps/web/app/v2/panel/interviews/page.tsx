@@ -44,7 +44,7 @@ function timeLabel(interview: Interview): string {
 export default function V2PanelInterviewsPage() {
   const [search, setSearch] = useState('');
   const [scorecardFor, setScorecardFor] = useState<string | null>(null);
-  const { data: interviews, isLoading, isError } = useMyInterviews();
+  const { data: interviews, isLoading, isError, error } = useMyInterviews();
   const q = search.trim().toLowerCase();
   const rows = q
     ? (interviews ?? []).filter((i) => i.location.toLowerCase().includes(q) || i.status.toLowerCase().includes(q))
@@ -100,7 +100,7 @@ export default function V2PanelInterviewsPage() {
       <DataTable
         columns={columns} data={rows} getRowId={(i) => i.id}
         search={search} onSearchChange={setSearch} searchPlaceholder="Search interviews…"
-        isLoading={isLoading} isError={isError} errorMessage="Failed to load interviews." emptyMessage={q ? 'No matches.' : 'No interviews assigned yet.'}
+        isLoading={isLoading} isError={isError} error={error} errorMessage="Failed to load interviews." emptyMessage={q ? 'No matches.' : 'No interviews assigned yet.'}
         columnLabels={{ time: 'Time', location: 'Location', status: 'Status', actions: 'Feedback' }}
       />
 

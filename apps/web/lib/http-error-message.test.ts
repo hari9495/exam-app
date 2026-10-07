@@ -1,4 +1,4 @@
-import { humanizeHttpError, NetworkError } from './http-error-message';
+import { humanizeHttpError, loadErrorMessage, NetworkError } from './http-error-message';
 
 describe('humanizeHttpError', () => {
   it('passes hand-written server messages through untouched', () => {
@@ -41,5 +41,17 @@ describe('NetworkError', () => {
     const err = new NetworkError();
     expect(err instanceof TypeError).toBe(true);
     expect(err.message).toMatch(/internet connection/);
+  });
+});
+
+describe('loadErrorMessage (DataTable load errors)', () => {
+  it('says the person has no access on a 403', () => {
+    expect(loadErrorMessage(Object.assign(new Error('Forbidden'), { status: 403 }), 'Failed to load Results.')).toBe("You don't have access to this page. Ask your admin.");
+  });
+
+  it('keeps the screen\'s "Failed to load" for real errors', () => {
+    expect(loadErrorMessage(Object.assign(new Error('boom'), { status: 500 }), 'Failed to load Results.')).toBe('Failed to load Results.');
+    expect(loadErrorMessage(new TypeError('Failed to fetch'), 'Failed to load Results.')).toBe('Failed to load Results.');
+    expect(loadErrorMessage(undefined, 'Failed to load Results.')).toBe('Failed to load Results.');
   });
 });

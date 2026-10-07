@@ -17,7 +17,7 @@ import { STATUS } from '../../../../components/ui-v2/viz';
 export default function V2WalkInGroupsPage() {
   const router = useRouter();
   const { organizationSlug } = useAuth();
-  const { data: groups, isLoading, isError } = useWalkInGroups();
+  const { data: groups, isLoading, isError, error } = useWalkInGroups();
   const createGroup = useCreateWalkInGroup();
   const deleteGroup = useDeleteWalkInGroup();
   const [search, setSearch] = useState('');
@@ -87,7 +87,7 @@ export default function V2WalkInGroupsPage() {
       <DataTable
         columns={columns} data={rows} getRowId={(r) => r.id}
         search={search} onSearchChange={setSearch} searchPlaceholder="Search groups…"
-        isLoading={isLoading} isError={isError} errorMessage="Failed to load groups." emptyMessage={q ? 'No matches.' : 'No walk-in groups yet. Create one to start.'}
+        isLoading={isLoading} isError={isError} error={error} errorMessage="Failed to load groups." emptyMessage={q ? 'No matches.' : 'No walk-in groups yet. Create one to start.'}
         columnLabels={{ exams: 'Exams' }}
       />
       </div>

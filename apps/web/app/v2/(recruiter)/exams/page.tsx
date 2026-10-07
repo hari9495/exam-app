@@ -27,7 +27,7 @@ export default function V2ExamsPage() {
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const notify = (type: 'success' | 'error', text: string) => { setNotice({ type, text }); setTimeout(() => setNotice(null), 4000); };
 
-  const { data: resp, isLoading, isError } = useExams(statusFilter === 'all' ? undefined : statusFilter, { page, pageSize: 20, search: search || undefined });
+  const { data: resp, isLoading, isError, error } = useExams(statusFilter === 'all' ? undefined : statusFilter, { page, pageSize: 20, search: search || undefined });
   const rows = resp?.data ?? [];
   const duplicateExam = useDuplicateExam();
   const archiveExam = useArchiveExam();
@@ -109,7 +109,7 @@ export default function V2ExamsPage() {
         columns={columns} data={rows} getRowId={(r) => r.id}
         search={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} searchPlaceholder="Search exams…"
         page={resp?.page ?? 1} totalPages={resp?.totalPages ?? 1} onPageChange={setPage}
-        isLoading={isLoading} isError={isError} errorMessage="Failed to load exams." emptyMessage="No exams found."
+        isLoading={isLoading} isError={isError} error={error} errorMessage="Failed to load exams." emptyMessage="No exams found."
         columnLabels={COLUMN_LABELS} onExport={exportCsv}
       />
       </div>

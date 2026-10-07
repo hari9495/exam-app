@@ -83,7 +83,7 @@ export default function V2QuestionsPage() {
 
   // Grouped/needs-review widen to the server max on page 1 so counts reflect the whole set (matches old).
   const widen = groupBy !== 'none' || needsReviewOnly;
-  const { data: questions, isLoading, isError } = useQuestions({ page: widen ? 1 : page, pageSize: widen ? 100 : 20, search: search || undefined, status });
+  const { data: questions, isLoading, isError, error } = useQuestions({ page: widen ? 1 : page, pageSize: widen ? 100 : 20, search: search || undefined, status });
   const { data: draftCount } = useQuestions({ status: 'draft', pageSize: 1 });
   const pendingDrafts = draftCount?.total ?? 0;
   const { data: flagged } = useFlaggedQuestions();
@@ -220,7 +220,7 @@ export default function V2QuestionsPage() {
         columns={columns} data={rows} getRowId={(r) => r.id}
         search={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} searchPlaceholder="Search questions…"
         page={widen ? undefined : questions?.page ?? 1} totalPages={widen ? undefined : questions?.totalPages ?? 1} onPageChange={widen ? undefined : setPage}
-        isLoading={isLoading} isError={isError} errorMessage="Failed to load questions." emptyMessage={emptyMessage}
+        isLoading={isLoading} isError={isError} error={error} errorMessage="Failed to load questions." emptyMessage={emptyMessage}
         columnLabels={COLUMN_LABELS}
         enableSelection={status === 'draft'}
         renderBulkBar={status === 'draft' ? (ids, clear) => (

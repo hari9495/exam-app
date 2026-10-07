@@ -53,7 +53,7 @@ function RowActions({ submission, notify }: { submission: AgencySubmission; noti
 
 export default function V2AgencySubmissionsPage() {
   const [status, setStatus] = useState<AgencySubmissionStatus>('pending');
-  const { data, isLoading, isError } = useAgencySubmissions(status);
+  const { data, isLoading, isError, error } = useAgencySubmissions(status);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const notify = (type: 'success' | 'error', text: string) => { setNotice({ type, text }); setTimeout(() => setNotice(null), 4000); };
   const rows = data ?? [];
@@ -130,7 +130,7 @@ export default function V2AgencySubmissionsPage() {
 
       <DataTable
         columns={columns} data={rows} getRowId={(r) => r.id} hideToolbar
-        isLoading={isLoading} isError={isError}
+        isLoading={isLoading} isError={isError} error={error}
         errorMessage="Failed to load agency submissions."
         emptyMessage={status === 'pending' ? 'No pending submissions right now.' : `No ${status} submissions.`}
       />

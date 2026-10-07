@@ -64,7 +64,7 @@ export default function V2JobsPage() {
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const notify = (type: 'success' | 'error', text: string) => { setNotice({ type, text }); setTimeout(() => setNotice(null), 4000); };
 
-  const { data: jobs, isLoading, isError } = useJobs(statusFilter === 'all' ? undefined : (statusFilter as JobStatus));
+  const { data: jobs, isLoading, isError, error } = useJobs(statusFilter === 'all' ? undefined : (statusFilter as JobStatus));
   const { data: teammates } = useTeammates();
   const { data: pipelines } = usePipelines();
   const { data: jobFieldDefs } = useCustomFields('job');
@@ -152,7 +152,7 @@ export default function V2JobsPage() {
       <DataTable
         columns={columns} data={rows} getRowId={(r) => r.id}
         search={search} onSearchChange={setSearch} searchPlaceholder="Search jobs…"
-        isLoading={isLoading} isError={isError} errorMessage="Failed to load jobs." emptyMessage={q ? 'No matches.' : 'No jobs yet.'}
+        isLoading={isLoading} isError={isError} error={error} errorMessage="Failed to load jobs." emptyMessage={q ? 'No matches.' : 'No jobs yet.'}
         columnLabels={{ pipeline: 'Pipeline', createdAt: 'Created' }}
       />
       </div>

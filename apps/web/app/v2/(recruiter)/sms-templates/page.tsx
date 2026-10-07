@@ -103,7 +103,7 @@ function EditSmsTemplateDialog({ template, pipelines, isNew = false, onClose, on
 export default function V2SmsTemplatesPage() {
   const { role } = useAuth();
   const canManage = role !== 'panel';
-  const { data: templates, isLoading, isError } = useSmsTemplates();
+  const { data: templates, isLoading, isError, error } = useSmsTemplates();
   const { data: smsConfig, isSuccess: smsConfigLoaded } = useSmsConfig();
   const { data: pipelines } = usePipelines();
   const stageNames = stageNameMap(pipelines);
@@ -182,7 +182,7 @@ export default function V2SmsTemplatesPage() {
       <DataTable
         columns={columns} data={rows} getRowId={(t) => t.id ?? `default-${t.triggerStageId ?? 'none'}`}
         search={search} onSearchChange={setSearch} searchPlaceholder="Search templates…"
-        isLoading={isLoading} isError={isError} errorMessage="Failed to load templates." emptyMessage={q ? 'No matches.' : 'No templates.'}
+        isLoading={isLoading} isError={isError} error={error} errorMessage="Failed to load templates." emptyMessage={q ? 'No matches.' : 'No templates.'}
         columnLabels={{ event: 'Trigger event', mode: 'Trigger mode', enabled: 'Enabled' }}
       />
       </div>

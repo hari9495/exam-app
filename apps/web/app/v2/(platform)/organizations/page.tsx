@@ -201,7 +201,7 @@ function DeleteOrgDialog({ organization, onClose, notify }: { organization: Orga
 export default function V2OrganizationsPage() {
   const router = useRouter();
   const { switchIntoOrg } = useAuth();
-  const { data, isLoading, isError } = useOrganizations();
+  const { data, isLoading, isError, error } = useOrganizations();
   const setStatus = useSetOrganizationStatus();
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -306,7 +306,7 @@ export default function V2OrganizationsPage() {
       <DataTable
         columns={columns} data={rows} getRowId={(org) => org.id}
         search={search} onSearchChange={setSearch} searchPlaceholder="Search organizations…"
-        isLoading={isLoading} isError={isError} errorMessage="Failed to load organizations." emptyMessage={q ? 'No matching organizations.' : 'No organizations yet.'}
+        isLoading={isLoading} isError={isError} error={error} errorMessage="Failed to load organizations." emptyMessage={q ? 'No matching organizations.' : 'No organizations yet.'}
         columnLabels={{ name: 'Name', slug: 'Slug', primaryAdminName: 'Primary admin', primaryAdminEmail: 'Admin email', region: 'Region', status: 'Status', userCount: 'Users', examCount: 'Exams', createdAt: 'Created' }}
       />
       </div>
