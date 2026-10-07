@@ -12,6 +12,7 @@ import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
 import { Breadcrumbs, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
+import { formatPhone } from '../../lib/format';
 import type { SmsAccount, SmsAccountInput, SmsDeliveryRow, SmsDeliveryStatus, SmsOverview, SmsProvider, SmsTemplate, SmsTemplateVariable, SmsTestResult } from './types';
 
 /* ---------- words ---------- */
@@ -534,7 +535,7 @@ function SmsSettings(props: SmsSettingsScreenProps & { overview: SmsOverview }) 
   ];
   const deliveryColumns: TableColumn<SmsDeliveryRow>[] = [
     { key: 'when', header: 'When', value: (r) => r.createdAt, render: (r) => when(r.createdAt), width: 190, hideable: false },
-    { key: 'to', header: 'To', value: (r) => r.to, width: 150 },
+    { key: 'to', header: 'To', value: (r) => formatPhone(r.to), width: 150 },
     {
       key: 'status',
       header: 'Result',
@@ -557,7 +558,7 @@ function SmsSettings(props: SmsSettingsScreenProps & { overview: SmsOverview }) 
     if (!t || t.kind === 'sending') return [];
     if (t.kind === 'failed') return [<InlineAlert key={a.id} tone="danger" title={`Test from ${a.name} not sent`}>{t.message}</InlineAlert>];
     const { result } = t;
-    if (result.status === 'sent') return [<InlineAlert key={a.id} tone="success" title={`Test sent from ${a.name} to ${result.to ?? 'your number'}`}>Check your phone. The delivery log below shows the gateway’s report when it arrives.</InlineAlert>];
+    if (result.status === 'sent') return [<InlineAlert key={a.id} tone="success" title={`Test sent from ${a.name} to ${result.to ? formatPhone(result.to) : 'your number'}`}>Check your phone. The delivery log below shows the gateway’s report when it arrives.</InlineAlert>];
     return [<InlineAlert key={a.id} tone="warning" title={`Test from ${a.name} not sent`}>{deliveryDetail({ status: 'fallback', error: result.error }) ?? 'The gateway did not confirm the message.'}</InlineAlert>];
   });
 

@@ -9,6 +9,7 @@ import { ConfirmDialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { MethodCards } from '../../components/choice';
 import { Card, PageHeader } from '../../components/shell';
+import { formatPhone } from '../../lib/format';
 import { RecoveryCodes, day, deviceLabel, methodLabel, setupMethodOptions, useStep, when, type SetupMethod, ipLabel } from './kit';
 import { TotpConfirm, type TotpSetup } from './mfa';
 import { LoginEventsTable } from './tables';
@@ -214,7 +215,7 @@ function MobileCard({ mfa, onSendMobileCode, onVerifyMobile, onRemoveMobile }: M
       {mfa.mobileNumber ? (
         <div className="yx-auth__item">
           <div className="yx-auth__item-main">
-            <Text weight="medium" className="yx-mono">{mfa.mobileNumber}</Text>
+            <Text weight="medium" className="yx-mono">{formatPhone(mfa.mobileNumber)}</Text>
             <Text tone="secondary" size="sm">Verified. Used for sign-in codes where your company allows them.</Text>
           </div>
           <ConfirmDialog
@@ -228,7 +229,7 @@ function MobileCard({ mfa, onSendMobileCode, onVerifyMobile, onRemoveMobile }: M
         </div>
       ) : sentTo ? (
         <form className="yx-auth__form" onSubmit={verify} noValidate>
-          <Text as="p" tone="secondary" role="status">We texted a 6-digit code to {sentTo}. It expires in 5 minutes.</Text>
+          <Text as="p" tone="secondary" role="status">We texted a 6-digit code to {formatPhone(sentTo)}. It expires in 5 minutes.</Text>
           <FormField label="Code from the text" required>
             <TextField value={code} onChange={setCode} inputMode="numeric" autoComplete="one-time-code" maxLength={6} />
           </FormField>
