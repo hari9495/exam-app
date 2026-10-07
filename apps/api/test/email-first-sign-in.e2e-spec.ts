@@ -328,6 +328,21 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
       }
     });
 
+    it('a typed company code still gets the YukthiX reset page link', async () => {
+      email.send.mockClear();
+      expect((await call(browser(), 'post', '/auth/forgot-password', { organizationSlug: org.cauvery.slug, email: STAFF })).status).toBe(200);
+      await emailArrives(email.send, (m) => m.to === STAFF);
+      const html = email.send.mock.calls.find(([m]) => m.to === STAFF)![0].html as string;
+      expect(html).toMatch(/\/yx\/reset-password\/[0-9a-f]{64}/);
+      expect(html).not.toMatch(/(?<!\/yx)\/reset-password\//);
+    });
+
+    it('YukthiX staff are offered a security key only when setting up their second step', async () => {
+      const res = await platformLogin(browser(), STAFF, STAFF_PW);
+      const status = await request(server()).get('/api/v1/auth/mfa').set('Authorization', `Bearer ${res.body.accessToken}`).set('X-Forwarded-For', freshIp()).expect(200);
+      expect(status.body.allowedFactors).toEqual(['passkey']);
+    });
+
     it('the platform staff sign-in still works, and never signs in a company account', async () => {
       const res = await platformLogin(browser(), STAFF.toUpperCase(), STAFF_PW);
       expect(res.status).toBe(200);
