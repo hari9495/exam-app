@@ -33,6 +33,23 @@ export class LoginDto {
   challengeToken?: string;
 }
 
+// YukthiX platform staff sign-in (POST /auth/platform/login): work email and password only.
+export class PlatformLoginDto {
+  @IsEmail()
+  @MaxLength(320)
+  email!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(1024)
+  password!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4096)
+  challengeToken?: string;
+}
+
 // Step 1 of the YukthiX sign-in: only the email or mobile number. The answer says where to go
 // next (the company's identity provider, or the password / code step) and nothing about accounts.
 export class IdentifyDto {
@@ -47,8 +64,8 @@ export class SelectCompanyDto {
   @Matches(/^[A-Za-z0-9_-]{43}$/)
   selectionToken!: string;
 
-  // The company's id from the list, or 'yukthix' for a YukthiX staff account.
+  // The company's id from the list (YukthiX staff are never on it: they use POST /auth/platform/login).
   @IsString()
-  @Matches(/^([0-9a-f-]{36}|yukthix)$/)
+  @Matches(/^[0-9a-f-]{36}$/)
   organizationId!: string;
 }

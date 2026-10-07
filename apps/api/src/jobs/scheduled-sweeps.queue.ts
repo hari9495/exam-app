@@ -41,4 +41,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'employee-changes', cron: '*/15 * * * *' },
   // M01 §3.4 / YX-LC-01: probation reminders and escalation on the local date; each step is marked once.
   { id: 'probations', cron: '7 * * * *' },
+  // W-006: verified company email domains, re-checked against DNS (daily by default; DOMAIN_RECHECK_CRON).
+  { id: 'domain-verification-recheck', cron: process.env.DOMAIN_RECHECK_CRON?.trim() || '30 5 * * *' },
 ];

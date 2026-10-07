@@ -135,6 +135,26 @@ describe('useStaffLogin', () => {
     });
   });
 
+  it('a company named: the company sign-in; none: the YukthiX platform staff sign-in, never email-first', async () => {
+    api.mockResolvedValue({ accessToken: fakeJwt({ role: 'recruiter' }) });
+    await submitPassword();
+    expect(api).toHaveBeenLastCalledWith('/auth/staff/login', {
+      method: 'POST',
+      body: JSON.stringify({ organizationSlug: 'acme', email: 'a@acme.test', password: 'Corr3ct-Horse-Battery' }),
+    });
+    const hook = renderHook(() => useStaffLogin());
+    act(() => {
+      hook.result.current.setOrganizationSlug('  ');
+      hook.result.current.setEmail('ops@yukthix.test');
+      hook.result.current.setPassword('Corr3ct-Horse-Battery');
+    });
+    await act(() => hook.result.current.handleSubmit(submitEvent));
+    expect(api).toHaveBeenLastCalledWith('/auth/platform/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: 'ops@yukthix.test', password: 'Corr3ct-Horse-Battery' }),
+    });
+  });
+
   // The YukthiX sign-in page (/yx/sign-in).
   describe('yx option', () => {
     it('sends an account that must enrol to the YukthiX set-up page', async () => {

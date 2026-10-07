@@ -162,7 +162,8 @@ describe('SsoService.routeByVerifiedDomain (email-first, no company known)', () 
 
   it('routes a domain exactly one company has verified and mapped to an active provider', async () => {
     await expect(service.routeByVerifiedDomain('Divya.R@KaveriFoods.in')).resolves.toEqual({ org: { id: KAVERI.id, slug: 'kaveri-foods' }, provider: okta });
-    expect(tx.verifiedDomain.findMany).toHaveBeenCalledWith({ where: { domain: 'kaverifoods.in' }, select: { organizationId: true }, take: 2 });
+    // A lapsed domain (W-006) is not asked for at all.
+    expect(tx.verifiedDomain.findMany).toHaveBeenCalledWith({ where: { domain: 'kaverifoods.in', lapsedAt: null }, select: { organizationId: true }, take: 2 });
   });
 
   it('never routes an unverified domain, a domain two companies verified, or a public mail domain', async () => {

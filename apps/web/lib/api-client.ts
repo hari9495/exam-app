@@ -32,6 +32,7 @@ export function setStepUpHandler(handler: (() => Promise<boolean>) | null) {
 const NO_REFRESH_PATHS = new Set([
   '/auth/refresh',
   '/auth/staff/login',
+  '/auth/platform/login',
   '/auth/staff/select-company',
   '/auth/otp/verify',
   '/auth/mfa/verify',

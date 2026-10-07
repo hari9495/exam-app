@@ -14,6 +14,7 @@ import { ProctoringRetentionService } from '../proctoring-retention/proctoring-r
 import { DripService } from '../drip/drip.service';
 import { EmployeeHistoryService } from '../employee-history/employee-history.service';
 import { PeopleService } from '../people/people.service';
+import { IdentityProvidersService } from '../auth/identity-providers.service';
 
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -42,6 +43,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     drip: DripService,
     employeeHistory: EmployeeHistoryService,
     people: PeopleService,
+    identityProviders: IdentityProvidersService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -57,6 +59,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'employee-changes': () => employeeHistory.applyDue(),
       // M01 §3.4 / YX-LC-01: probation review reminders, escalation and opt-in auto-confirmation.
       probations: () => people.probationSweep(),
+      'domain-verification-recheck': () => identityProviders.recheckDomains(),
     };
     this.worker = new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), { connection: this.connection });
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

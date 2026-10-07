@@ -294,6 +294,25 @@ describe('/yx/settings/security', () => {
     );
   });
 
+  it('shows a domain whose TXT record lapsed, and checks it again', async () => {
+    const IDP = { id: 'p-1', name: 'Kaveri staff directory', type: 'saml', status: 'active', domains: ['kaveri.co.in'], jitEnabled: false };
+    const DOMAIN = { domain: 'kaveri.co.in', verifiedAt: null, lapsedAt: NOW, txtRecord: { name: 'kaveri.co.in', value: 'yukthix-domain-verification=b' } };
+    route({
+      'GET /security/policy': { policy: POLICY, floor: FLOOR, updatedAt: null },
+      'GET /security/identity-providers': [IDP],
+      'GET /security/identity-providers/domains': [DOMAIN],
+      'GET /users': { data: [], total: 0, page: 1, pageSize: 100, totalPages: 1 },
+      'POST /security/identity-providers/domains/verify': { domain: 'kaveri.co.in', verifiedAt: NOW },
+    });
+    wrap(<YxSecuritySettingsPage />);
+    expect(await screen.findByText('Lapsed')).toBeInTheDocument();
+    expect(screen.getByText(/sign-ins no longer go to your identity provider/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Check record' }));
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith('/security/identity-providers/domains/verify', { method: 'POST', body: JSON.stringify({ domain: 'kaveri.co.in' }) }, 'tok'),
+    );
+  });
+
   it('shows "no access" on a plain 403', async () => {
     route({
       'GET /security/policy': Object.assign(new Error('Forbidden'), { status: 403 }),

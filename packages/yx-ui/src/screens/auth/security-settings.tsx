@@ -9,6 +9,7 @@ import { NumberField, TextArea } from '../../components/inputs';
 import { Segment } from '../../components/segment';
 import { MultiSelect } from '../../components/select';
 import { Breadcrumbs, PageHeader } from '../../components/shell';
+import { formatDate } from '../../lib/format';
 import { useStep, when } from './kit';
 import type { EmailDomainRow, IdentityProviderRow, PersonOption, SecurityFloor, SecurityPolicy } from './types';
 
@@ -109,8 +110,13 @@ function EmailDomains({ domains, onVerify }: { domains: EmailDomainRow[]; onVeri
             <div className="yx-auth__item-main">
               <span className="yx-auth__badges">
                 <Text weight="medium">{d.domain}</Text>
-                <Badge tone={d.verifiedAt ? 'success' : 'neutral'}>{d.verifiedAt ? 'Verified' : 'Not verified'}</Badge>
+                <Badge tone={d.verifiedAt ? 'success' : d.lapsedAt ? 'warning' : 'neutral'}>{d.verifiedAt ? 'Verified' : d.lapsedAt ? 'Lapsed' : 'Not verified'}</Badge>
               </span>
+              {!d.verifiedAt && d.lapsedAt && (
+                <Text tone="secondary" size="sm">
+                  Repeated checks have not found the TXT record (lapsed {formatDate(new Date(d.lapsedAt))}), so sign-ins no longer go to your identity provider. Put the record back, then check it.
+                </Text>
+              )}
               {!d.verifiedAt && (
                 <Text tone="secondary" size="sm" className="yx-auth__key">
                   TXT record on {d.txtRecord.name}: <Text mono size="sm">{d.txtRecord.value}</Text>

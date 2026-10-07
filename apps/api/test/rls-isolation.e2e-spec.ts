@@ -278,6 +278,23 @@ describe('PostgreSQL row-level security (app role)', () => {
     expect(superCount).toBe(2);
   });
 
+  // W-006: the re-check columns of verified_domains sit under the same tenant policy.
+  it("org A cannot read, restore, lapse or plant org B's verified email domains", async () => {
+    const asB = { organizationId: orgB, isSuperAdmin: false };
+    const domain = `rls-${randomUUID().slice(0, 8)}.test`;
+    await tenantPrisma.forTenant(asB, (tx) => tx.verifiedDomain.create({ data: { organizationId: orgB, domain, failedChecks: 3, lapsedAt: new Date() } }));
+    const seenByA = await tenantPrisma.forTenant(asA(), async (tx) => ({
+      seen: await tx.verifiedDomain.count({ where: { organizationId: orgB } }),
+      restored: await tx.$executeRaw`UPDATE verified_domains SET lapsed_at = NULL, failed_checks = 0 WHERE organization_id = ${orgB}::uuid`,
+      removed: await tx.$executeRaw`DELETE FROM verified_domains WHERE organization_id = ${orgB}::uuid`,
+    }));
+    expect(seenByA).toEqual({ seen: 0, restored: 0, removed: 0 });
+    await expect(tenantPrisma.forTenant(asA(), (tx) => tx.verifiedDomain.create({ data: { organizationId: orgB, domain: `x-${domain}` } }))).rejects.toThrow(RLS_VIOLATION);
+    expect(await tenantPrisma.forTenant(asB, (tx) => tx.verifiedDomain.findMany({ where: { organizationId: orgB } }))).toEqual([
+      expect.objectContaining({ domain, failedChecks: 3, lapsedAt: expect.any(Date) }),
+    ]);
+  });
+
   // P04 SMS channel: gateway accounts (NULL organisation = the YukthiX shared account, platform only), the
   // delivery log (never deleted by the app), consents (append-only), the notification policy and metering.
   it('the SMS channel tables are forced-RLS tenant tables; consents and deliveries cannot be deleted', async () => {

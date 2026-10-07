@@ -73,6 +73,8 @@ export interface SsoProviderOption {
 export interface EmailDomainRow {
   domain: string;
   verifiedAt: string | null;
+  /** Set when daily re-checks stopped finding the TXT record: no longer routes until checked again. */
+  lapsedAt?: string | null;
   /** The TXT record to publish on the domain itself. */
   txtRecord: { name: string; value: string };
 }

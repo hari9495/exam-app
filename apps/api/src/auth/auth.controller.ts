@@ -4,7 +4,7 @@ import { Request, Response } from 'express';
 import { createHash, timingSafeEqual } from 'crypto';
 import { PrismaService, TenantPrismaService, isOrganizationActive, ORGANIZATION_INACTIVE_MESSAGE, authCookieSecure } from '@exam-platform/shared';
 import { AuthService, LoginOutcome, isPending } from './auth.service';
-import { LoginDto, SelectCompanyDto } from './dto/login.dto';
+import { LoginDto, PlatformLoginDto, SelectCompanyDto } from './dto/login.dto';
 import { CompanyScopeService, REMEMBERED_COMPANY_COOKIE, clearRememberedCompany, setRememberedCompany } from './company-scope';
 import { RefreshDto } from './dto/refresh.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -59,6 +59,16 @@ export class AuthController {
     await assertHuman(dto.challengeToken, req.ip ?? null);
     const organizationSlug = await this.scope.slugFor(req, dto.organizationSlug);
     return signInResponse(await this.authService.login({ ...dto, organizationSlug }, resolveClientMeta(req, res)), res);
+  }
+
+  // YukthiX platform staff only (P12 Q7, W-005). The company sign-in above never reaches a staff
+  // account, and this one never reaches a company account.
+  @Post('platform/login')
+  @HttpCode(200)
+  @Throttle(STRICT_AUTH_THROTTLE)
+  async platformLogin(@Body() dto: PlatformLoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    await assertHuman(dto.challengeToken, req.ip ?? null);
+    return signInResponse(await this.authService.loginPlatformStaff(dto, resolveClientMeta(req, res)), res);
   }
 
   // The company picked when one credential matched several (single-use token from staff/login or otp/verify).
