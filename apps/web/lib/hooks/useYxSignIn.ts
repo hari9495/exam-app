@@ -20,7 +20,16 @@ interface SignedIn {
 type Outcome = SignedIn | MfaChallenge | { selectionRequired: true; selectionToken: string; companies: CompanyOption[] };
 
 const post = (path: string, body: object) => apiFetch(path, { method: 'POST', body: JSON.stringify(body) });
-const message = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
+// The API's words, in YukthiX's plain voice (P12 still reveals nothing: same text for a wrong
+// password and an unknown email).
+const PLAIN: Record<string, string> = {
+  'Invalid credentials': 'Wrong email or password. Try again.',
+  'Too many sign-in attempts. Please wait and try again.': 'Too many tries. Wait a few minutes and try again.',
+};
+const message = (err: unknown, fallback: string) => {
+  const text = err instanceof Error && err.message ? err.message : fallback;
+  return PLAIN[text] ?? text;
+};
 const PROVIDER_NAME: Record<SocialProvider, string> = { google: 'Google', microsoft: 'Microsoft' };
 // The same words whatever the reason (no account, address not verified, method off ...): nothing to enumerate.
 export const SOCIAL_FAILED = "We couldn't sign you in with that account. Try another way, or ask your admin.";
