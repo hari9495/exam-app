@@ -21,6 +21,8 @@ export const YX_KEYS = [
   'access.role.manage',
   'employee.identity.manage',
   'employee.identity.approve',
+  // P02 Q8 (step 3): the System Admin decides on YukthiX support sessions.
+  'org.support_access.approve',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

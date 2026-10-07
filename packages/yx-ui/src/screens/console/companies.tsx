@@ -29,7 +29,7 @@ export function companyInput(d: NewCompany): { input: NewCompany | null; errors:
 }
 
 function NewCompanyDrawer({ products, onClose, onCreate }: { products: Product[]; onClose: () => void; onCreate: (input: NewCompany) => Promise<void> }) {
-  const [draft, setDraft] = useState<NewCompany>({ name: '', slug: '', adminName: '', adminEmail: '', products: products.length === 1 ? [products[0].code] : [] });
+  const [draft, setDraft] = useState<NewCompany>({ name: '', slug: '', adminName: '', adminEmail: '', products: [] });
   const [slugTouched, setSlugTouched] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [showErrors, setShowErrors] = useState(false);

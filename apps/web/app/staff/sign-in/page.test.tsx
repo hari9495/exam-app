@@ -51,7 +51,7 @@ describe('/staff/sign-in', () => {
     expect(screen.queryByText(/Authenticator app|Recovery code|Text message/)).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: /passkey|security key/i }));
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/organizations'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/staff/companies'));
     expect(api).toHaveBeenNthCalledWith(2, '/auth/mfa/passkey-options', { method: 'POST', body: JSON.stringify({ mfaToken: 'pending' }) });
     expect(api).toHaveBeenNthCalledWith(3, '/auth/mfa/verify', { method: 'POST', body: JSON.stringify({ mfaToken: 'pending', factor: 'passkey', credential: { id: 'key-1' } }) });
     expect(login).toHaveBeenCalledWith('', token);
@@ -69,14 +69,14 @@ describe('/staff/sign-in', () => {
     api.mockResolvedValueOnce({ accessToken: token });
     render(<StaffSignInPage />);
     await signIn();
-    await waitFor(() => expect(push).toHaveBeenLastCalledWith('/v2/organizations'));
+    await waitFor(() => expect(push).toHaveBeenLastCalledWith('/staff/companies'));
   });
 
   it('a staff account with no security key yet goes to set one up', async () => {
     api.mockResolvedValueOnce({ accessToken: token, mfa: { required: true, enrolmentDueAt: '2026-10-20T00:00:00Z' } });
     render(<StaffSignInPage />);
     await signIn();
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/setup-mfa'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/setup-mfa?next=%2Fstaff%2Fcompanies'));
   });
 
   it('says a wrong password plainly and stays on the page', async () => {
