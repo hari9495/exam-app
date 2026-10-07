@@ -37,6 +37,8 @@ export interface HireInput {
   };
   compensation?: { currency: string; annualCtc: string };
   reason: string;
+  /** P06 YX-HIS-12: why a joining date goes back before the company's retro limit. */
+  overrideReason?: string;
 }
 
 export interface HireDraft {
@@ -57,6 +59,7 @@ export interface HireDraft {
   costCentreId: string | null;
   annualCtc: string;
   reason: string;
+  overrideReason: string;
 }
 
 export const EMPTY_HIRE: HireDraft = {
@@ -77,6 +80,7 @@ export const EMPTY_HIRE: HireDraft = {
   costCentreId: null,
   annualCtc: '',
   reason: '',
+  overrideReason: '',
 };
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -102,6 +106,8 @@ export function hireInput(d: HireDraft, canPay: boolean): { input: HireInput | n
   const ctc = d.annualCtc.trim();
   if (canPay && ctc && !AMOUNT.test(ctc)) errors.push({ fieldId: 'hire-ctc', message: 'Enter the annual CTC in rupees' });
   if (d.reason.trim().length < 3) errors.push({ fieldId: 'hire-reason', message: 'Say why, in a few words' });
+  const back = d.overrideReason.trim();
+  if (back && back.length < 10) errors.push({ fieldId: 'hire-back', message: 'Say why it goes back that far, in at least 10 characters' });
   if (errors.length) return { input: null, errors };
   return {
     input: {
@@ -125,6 +131,7 @@ export function hireInput(d: HireDraft, canPay: boolean): { input: HireInput | n
       // R1: pay only from someone who may set it.
       ...(canPay && ctc ? { compensation: { currency: 'INR', annualCtc: ctc } } : {}),
       reason: d.reason.trim(),
+      ...(back ? { overrideReason: back } : {}),
     },
     errors,
   };
@@ -275,7 +282,7 @@ export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreate
             <Select value={draft.managerEmployeeId} onChange={(managerEmployeeId) => set({ managerEmployeeId })} options={choices.managers} searchable clearable aria-label="Manager" />
           </FormField>
           {options.canPay && (
-            <FormField id="hire-ctc" label="Annual CTC (₹)" optional helper="Can be added later as a pay change." error={errorOf('hire-ctc')}>
+            <FormField id="hire-ctc" label="Annual CTC (₹)" optional helper="Goes to another approver as a pay change from the joining date." error={errorOf('hire-ctc')}>
               <TextField value={draft.annualCtc} onChange={(annualCtc) => set({ annualCtc: annualCtc.trim() })} inputMode="decimal" maxLength={16} />
             </FormField>
           )}
@@ -284,6 +291,11 @@ export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreate
           <FormField id="hire-reason" label="Reason" required helper="Shown on their timeline, e.g. the offer or requisition." error={errorOf('hire-reason')}>
             <TextArea value={draft.reason} onChange={(reason) => set({ reason })} rows={2} maxLength={1000} />
           </FormField>
+          {draft.joinedOn && dayKey(draft.joinedOn) < dayKey(new Date()) && (
+            <FormField id="hire-back" label="Reason for the past date" optional helper="Needed when the joining date is before the company's limit for past-dated changes." error={errorOf('hire-back')}>
+              <TextArea value={draft.overrideReason} onChange={(overrideReason) => set({ overrideReason })} rows={2} maxLength={1000} />
+            </FormField>
+          )}
         </FormSection>
         {failed && <InlineAlert tone="danger" title="Not added">{failed}</InlineAlert>}
       </form>

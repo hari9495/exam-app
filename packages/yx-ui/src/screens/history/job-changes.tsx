@@ -205,7 +205,8 @@ export function JobChangesScreen({ state, onRetry, today, rows, defaultView = 'p
                     (r.status === 'pending' && !r.batchId) || r.status === 'scheduled' ? (
                       <>
                         <MenuItem onSelect={() => setAsk({ kind: 'reschedule', row: r })}>Move to another date</MenuItem>
-                        <MenuItem destructive onSelect={() => setAsk({ kind: 'cancel', row: r })}>Cancel change</MenuItem>
+                        {/* Undoing an approved change is a decision too (YX-SEC-11): approvers only. */}
+                        {(r.status === 'pending' || canApprove) && <MenuItem destructive onSelect={() => setAsk({ kind: 'cancel', row: r })}>Cancel change</MenuItem>}
                       </>
                     ) : null
                 : undefined

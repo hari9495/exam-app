@@ -217,6 +217,12 @@ describe('Add person (P01 §4.4 / §4.5a, PPL-36)', () => {
     expect(bad.errors.map((e) => e.fieldId)).toEqual(['hire-email', 'hire-phone', 'hire-code', 'hire-ctc']);
   });
 
+  it('YX-HIS-12: a reason for a past joining date goes with the hire, and is at least 10 characters', () => {
+    expect(hireInput({ ...full, overrideReason: ' Migrated from the old system ' }, true).input).toMatchObject({ overrideReason: 'Migrated from the old system' });
+    expect(hireInput({ ...full, overrideReason: 'short' }, true).errors.map((e) => e.fieldId)).toEqual(['hire-back']);
+    expect(hireInput(full, true).input).not.toHaveProperty('overrideReason');
+  });
+
   it('YX-ORG-27: a possible match is linked only after HR confirms it is the same person', async () => {
     const u = userEvent.setup({ pointerEventsCheck: 0 });
     const onSubmit = vi

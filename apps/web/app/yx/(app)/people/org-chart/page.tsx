@@ -8,8 +8,8 @@ import { usePeople } from '../../../../../lib/yx-people';
 
 const id = encodeURIComponent;
 
-// People › Org chart (PPL-02; M01 §3.2): today's reporting lines for everyone with an employee record; HR may
-// view it as on another date (P06 §4.7) and open a person's job history.
+// People › Org chart (PPL-02; M01 §3.2): today's reporting lines for everyone with an employee record; company-wide
+// HR may view it as on another date (P06 §4.7, P02 §4.3); HR opens a person's job history.
 export default function YxOrgChartPage() {
   const router = useRouter();
   const perms = useYxPermissions();
@@ -25,7 +25,7 @@ export default function YxOrgChartPage() {
       onRetry={() => void chart.refetch()}
       data={chart.data ?? null}
       today={today}
-      onAsOf={isHr ? setAsOf : undefined}
+      onAsOf={chart.data?.otherDates ? setAsOf : undefined}
       meId={team.data?.managerId ?? null}
       companyName="Organisation"
       onOpenPerson={isHr ? (personId) => router.push(`/yx/people/history?person=${id(personId)}`) : undefined}

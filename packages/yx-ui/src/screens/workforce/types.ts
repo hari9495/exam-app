@@ -67,6 +67,8 @@ export interface OrgChartNode {
 export interface OrgChartData {
   asOf: string;
   truncated: boolean;
+  /** Company-wide HR may look at another date (P02 §4.3); for everyone else the chart is today's. */
+  otherDates?: boolean;
   nodes: OrgChartNode[];
 }
 
