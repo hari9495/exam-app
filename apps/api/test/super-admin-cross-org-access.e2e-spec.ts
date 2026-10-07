@@ -61,7 +61,7 @@ describe('Super Admin Cross-Org Access', () => {
     superAdminId = superAdmin.id;
 
     superAccessToken = (
-      await request(http).post('/api/v1/auth/staff/login').send({ email: superAdmin.email, password: 'SuperPassw0rd!' }).expect(200)
+      await request(http).post('/api/v1/auth/platform/login').send({ email: superAdmin.email, password: 'SuperPassw0rd!' }).expect(200)
     ).body.accessToken;
   });
 

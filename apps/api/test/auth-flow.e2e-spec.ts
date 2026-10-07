@@ -117,7 +117,7 @@ describe('Full Phase 0 flow: create org -> create user -> login -> protected rou
     superAdminId = superAdmin.id;
 
     const superLogin = await request(app.getHttpServer())
-      .post('/api/v1/auth/staff/login')
+      .post('/api/v1/auth/platform/login')
       .send({ email: superAdmin.email, password: 'SuperPassw0rd!' })
       .expect(200);
     const superAccessToken = superLogin.body.accessToken;
