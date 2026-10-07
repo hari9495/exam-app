@@ -21,9 +21,9 @@ The seed turns every way in on for the demo company (codes by email and SMS, Goo
 mock (panva's `oidc-provider`, a devDependency): nothing is sent to Google or Microsoft.
 
 1. `npm run dev:mock-idp` (its own terminal) — a local "Google" and "Microsoft" at `http://127.0.0.1:4010`.
-2. In `apps/api/.env` add `YX_MOCK_IDP_URL=http://127.0.0.1:4010` and `DEV_SMS_LOG_TEXT=1`, then restart
-   `npm run dev:api`. (Both are for a laptop only: with `NODE_ENV=production` the API refuses to start with
-   `YX_MOCK_IDP_URL`, and SMS text is never printed.)
+2. In `apps/api/.env` add `YX_MOCK_IDP_URL=http://127.0.0.1:4010`, `DEV_SMS_LOG_TEXT=1` and `DEV_SMS_TO_MAIL=1`,
+   then restart `npm run dev:api`. (All three are for a laptop only: with `NODE_ENV=production` the API refuses
+   to start with any of them, and `DEV_SMS_TO_MAIL` also refuses an `SMTP_HOST` that is not this machine.)
 3. `cd apps/api && npx prisma db seed` once (it updates an existing demo company too).
 4. Open `http://localhost:3000/yx/sign-in`:
    - **Continue with Google / Microsoft** opens the mock's page: pick *Demo admin*, *Demo recruiter* or *Demo panel
@@ -31,8 +31,9 @@ mock (panva's `oidc-provider`, a devDependency): nothing is sent to Google or Mi
      *(refused)* show what must fail: YukthiX staff, an address Google has not verified, another Microsoft
      directory claiming the admin's address, a personal Microsoft account. Each ends on the sign-in screen with
      the same message, and the reason is in Admin › Login activity.
-   - **Continue with mobile**: `98450 12345`, *Text me a code*; the code is printed in the `dev:api` log
-     (`[DevSms] sms to +919845012345: 123456 is your YukthiX sign-in code`).
+   - **Continue with mobile**: `98450 12345`, *Text me a code* (or WhatsApp); the text arrives in Mailpit
+     (`http://127.0.0.1:8025`) as a mail to `+919845012345@sms.local`, subject *SMS to +91 98450 12345*, and is
+     also printed in the `dev:api` log (`[DevSms] sms to +919845012345: 123456 is your YukthiX sign-in code`).
    - **Work email**: as before (password, emailed code in Mailpit, or the company's SSO).
 5. Settings › Security › *Allow sign-in with Google / Microsoft* turns each one off for the company (sign in as
    the admin; saving asks you to confirm it's you).

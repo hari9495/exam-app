@@ -23,12 +23,15 @@ const logger = new Logger('DevSms');
 
 export class DevSmsSink {
   readonly sent: DevSms[] = [];
+  /** Set by DevSmsMail when DEV_SMS_TO_MAIL=1 (never in production): also hands each message to the local mail catcher. */
+  mirror: ((message: DevSms) => void) | null = null;
 
   // DEV_SMS_LOG_TEXT=1 (a laptop only, never production): also print the message -- the code
   // included -- to the API log, so a sign-in by mobile can be tried without a real SMS account.
   keep(message: DevSms): void {
     this.sent.push(message);
     if (process.env.DEV_SMS_LOG_TEXT === '1' && !isProduction()) logger.log(`${message.channel} to ${message.to}: ${message.text}`);
+    if (!isProduction()) this.mirror?.(message);
   }
 }
 export const devSmsSink = new DevSmsSink();

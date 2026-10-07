@@ -3,6 +3,7 @@ import { AuditModule, CryptoModule } from '@exam-platform/shared';
 import { EmailModule } from '../email/email.module';
 import { OTP_SMS_SENDER } from '../auth/otp-sender';
 import { ChannelOtpSender } from './channel-otp-sender';
+import { DevSmsMail } from './dev-sms-mail';
 import { SmsAccountsService } from './sms-accounts.service';
 import { PUBLIC_GATEWAY_NET, SMS_GATEWAY_NET, SmsChannelService } from './sms-channel.service';
 import { SmsCallbacksController, SmsSettingsController } from './sms-channel.controller';
@@ -16,6 +17,7 @@ import { SmsCallbacksController, SmsSettingsController } from './sms-channel.con
     SmsAccountsService,
     { provide: SMS_GATEWAY_NET, useValue: PUBLIC_GATEWAY_NET },
     { provide: OTP_SMS_SENDER, useClass: ChannelOtpSender },
+    DevSmsMail,
   ],
   controllers: [SmsSettingsController, SmsCallbacksController],
   exports: [SmsChannelService, OTP_SMS_SENDER],
