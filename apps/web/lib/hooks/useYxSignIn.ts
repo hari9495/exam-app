@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CompanyOption, MfaProof, SignInFields, SignInOptions, SignInStep, SocialProvider, SsoProviderOption } from '@yukthix/ui/auth';
 import { apiFetch } from '../api-client';
@@ -9,7 +9,8 @@ import { botChallengeToken } from '../bot-challenge';
 import { useAuth } from '../auth-context';
 import { decodeJwtPayload } from '../jwt';
 import { yxLandingPath } from '../yx-landing';
-import { nextFromLocation } from '../safe-next';
+import { keepNextForRoundTrip, takeNext } from '../safe-next';
+import { yxAuthMessage, yxProofError } from '../yx-auth-messages';
 import { WebAuthnAbortService, browserSupportsWebAuthn, browserSupportsWebAuthnAutofill } from '@simplewebauthn/browser';
 import { passkeySignInAssertion } from '../yx-security';
 
@@ -28,16 +29,14 @@ interface SignedIn {
 type Outcome = SignedIn | MfaChallenge | { selectionRequired: true; selectionToken: string; companies: CompanyOption[] };
 
 const post = (path: string, body: object) => apiFetch(path, { method: 'POST', body: JSON.stringify(body) });
-// The API's words, in YukthiX's plain voice (P12 still reveals nothing: same text for a wrong
-// password and an unknown email).
-const PLAIN: Record<string, string> = {
-  'Invalid credentials': 'Wrong email or password. Try again.',
-  'Too many sign-in attempts. Please wait and try again.': 'Too many tries. Wait a few minutes and try again.',
-};
-export const message = (err: unknown, fallback: string) => {
-  const text = err instanceof Error && err.message ? err.message : fallback;
-  return PLAIN[text] ?? text;
-};
+// The API's words, in YukthiX's plain voice (lib/yx-auth-messages).
+export const message = yxAuthMessage;
+// "Continue with ..." buttons: retried with backoff for about a minute (2 + 4 + 8 + 16 + 30 s) before
+// the screen says it could not load them.
+export const OPTIONS_RETRY_MS = [2000, 4000, 8000, 16000, 30000];
+// Google / Microsoft codes already traded in this tab: each is single-use, so a second exchange
+// (a remount, React Strict Mode) could only fail and be logged as a failed sign-in.
+const redeemedSocialCodes = new Set<string>();
 const PROVIDER_NAME: Record<SocialProvider, string> = { google: 'Google', microsoft: 'Microsoft' };
 // The same words whatever the reason (no account, address not verified, method off ...): nothing to enumerate.
 export const SOCIAL_FAILED = "We couldn't sign you in with that account. Try another way, or ask your admin.";
@@ -56,6 +55,8 @@ export function useYxSignIn() {
   const [fields, setFields] = useState<SignInFields>({ identifier: '', mobile: '', password: '', code: '' });
   const [company, setCompany] = useState<Company | null>(null);
   const [options, setOptions] = useState<SignInOptions | undefined>(undefined);
+  const [optionsFailed, setOptionsFailed] = useState(false);
+  const mounted = useRef(true);
   const [providers, setProviders] = useState<SsoProviderOption[]>([]);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [selectionToken, setSelectionToken] = useState<string | null>(null);
@@ -74,21 +75,28 @@ export function useYxSignIn() {
   const codeTo = step === 'mobile' || step === 'mobile-code' ? mobile : identifier;
 
   // A busy moment (429) or a blip must not leave the screen without its "Continue with …" buttons:
-  // try again after 2 s, 5 s and 10 s before giving up.
+  // keep trying for about a minute, then say so (with "Try again") instead of hiding them.
   const loadOptions = (attempt = 0): Promise<void> =>
     apiFetch('/auth/sign-in-options')
-      .then((o) => setOptions(o ?? undefined))
+      .then((o) => {
+        setOptions(o ?? undefined);
+        setOptionsFailed(false);
+      })
       .catch(() => {
-        const wait = [2000, 5000, 10000][attempt];
-        if (wait === undefined) return setOptions(undefined);
-        return new Promise<void>((r) => setTimeout(r, wait)).then(() => loadOptions(attempt + 1));
+        const wait = OPTIONS_RETRY_MS[attempt];
+        if (wait === undefined || !mounted.current) return setOptionsFailed(true);
+        return new Promise<void>((r) => setTimeout(r, wait)).then(() => (mounted.current ? loadOptions(attempt + 1) : undefined));
       });
 
   useEffect(() => {
+    mounted.current = true;
     apiFetch('/auth/remembered-company')
       .then((r) => setCompany(r?.company ?? null))
       .catch(() => setCompany(null));
     void loadOptions();
+    return () => {
+      mounted.current = false;
+    };
   }, []);
 
   const run = async (fallback: string, task: () => Promise<void>, onError?: () => void) => {
@@ -104,13 +112,15 @@ export function useYxSignIn() {
     }
   };
 
-  // Back to a validated same-site `next` (e.g. from an old /login?next= link); else YukthiX, unless the
-  // person holds exam/ATS permissions (then their role's console, as before).
+  // Back to a validated same-site `next` (the page whose session ran out, or an old /login?next= link;
+  // kept across a Google / Microsoft / company sign-in round trip); else YukthiX, unless the person
+  // holds exam/ATS permissions (then their role's console, as before).
   async function finish(result: SignedIn) {
     login('', result.accessToken);
-    if (result.mfa?.required) return router.push('/yx/setup-mfa');
+    const next = takeNext();
+    if (result.mfa?.required) return router.push(next ? `/yx/setup-mfa?next=${encodeURIComponent(next)}` : '/yx/setup-mfa');
     const role = decodeJwtPayload(result.accessToken)?.role as string | undefined;
-    router.push(nextFromLocation() ?? (await yxLandingPath(result.accessToken, role)));
+    router.push(next ?? (await yxLandingPath(result.accessToken, role)));
   }
 
   async function settle(outcome: Outcome) {
@@ -124,6 +134,7 @@ export function useYxSignIn() {
   }
 
   const goToIdp = (url: string, to?: string) => {
+    keepNextForRoundTrip();
     setRedirectingTo(to);
     setStep('redirecting');
     goTo(url);
@@ -182,6 +193,11 @@ export function useYxSignIn() {
     fields,
     company,
     options,
+    optionsFailed,
+    retryOptions: () => {
+      setOptionsFailed(false);
+      void loadOptions();
+    },
     providers,
     companies,
     codeChannel,
@@ -270,6 +286,8 @@ export function useYxSignIn() {
     // The callback page: trade the single-use code for the outcome (signed in, second step, or the
     // company picker); any failure is the same message and back to the start.
     redeemSocial: (code: string | null) => {
+      if (code && redeemedSocialCodes.has(code)) return Promise.resolve();
+      if (code) redeemedSocialCodes.add(code);
       setRedirectingTo(undefined);
       setStep('redirecting');
       return run(
@@ -301,9 +319,19 @@ export function useYxSignIn() {
 
     // Second step (P12 YX-IAM-01/03), for whichever account the first step opened.
     secondFactorPasskeyOptions: () => post('/auth/mfa/passkey-options', { mfaToken: challenge?.mfaToken }),
-    verifySecondFactor: async (proof: MfaProof) => finish(await post('/auth/mfa/verify', { mfaToken: challenge?.mfaToken, ...proof })),
+    verifySecondFactor: async (proof: MfaProof) => {
+      let outcome: SignedIn;
+      try {
+        outcome = await post('/auth/mfa/verify', { mfaToken: challenge?.mfaToken, ...proof });
+      } catch (err) {
+        throw yxProofError(err, proof.factor);
+      }
+      await finish(outcome);
+    },
     sendSecondFactorCode: async (channel: 'sms' | 'whatsapp') => {
-      await post('/auth/mfa/otp/send', { mfaToken: challenge?.mfaToken, channel });
+      await post('/auth/mfa/otp/send', { mfaToken: challenge?.mfaToken, channel }).catch((err) => {
+        throw new Error(yxAuthMessage(err, 'Could not send a code'));
+      });
     },
     cancelChallenge: () => {
       setChallenge(null);

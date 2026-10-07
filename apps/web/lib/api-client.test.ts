@@ -68,8 +68,8 @@ describe('apiFetch', () => {
     ['refused (null)', async () => null],
     ['rate-limited (same token back)', async () => 'old'],
     ['thrown', async () => Promise.reject(new TypeError('Failed to fetch'))],
-  ])('a failed refresh (%s) is not retried: one refresh, no retry of the request, and the person is sent to sign in', async (_label, handler) => {
-    window.history.pushState({}, '', '/v2/panel/reports');
+  ])('a failed refresh (%s) is not retried: one refresh, no retry of the request, and the person is sent to sign in and back', async (_label, handler) => {
+    window.history.pushState({}, '', '/v2/panel/reports?week=41');
     try {
       global.fetch = jest.fn(async () => new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 })) as unknown as typeof fetch;
       const refresh = jest.fn(handler as () => Promise<string | null>);
@@ -80,7 +80,7 @@ describe('apiFetch', () => {
       expect(refresh).toHaveBeenCalledTimes(2);
       expect(global.fetch).toHaveBeenCalledTimes(2);
       expect(goTo).toHaveBeenCalledTimes(1);
-      expect(goTo).toHaveBeenCalledWith('/yx/sign-in');
+      expect(goTo).toHaveBeenCalledWith('/yx/sign-in?next=%2Fv2%2Fpanel%2Freports%3Fweek%3D41');
     } finally {
     }
   });
@@ -92,7 +92,7 @@ describe('apiFetch', () => {
       global.fetch = jest.fn(async () => new Response('{}', { status: 401 })) as unknown as typeof fetch;
       setUnauthorizedHandler(async () => null);
       await expect(apiFetch('/organizations', {}, 'old')).rejects.toMatchObject({ status: 401 });
-      expect(goTo).toHaveBeenCalledWith('/staff/sign-in');
+      expect(goTo).toHaveBeenCalledWith('/staff/sign-in?next=%2Fv2%2Forganizations');
     } finally {
       window.sessionStorage.removeItem(STAFF_SESSION_KEY);
     }

@@ -1,4 +1,5 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { StrictMode } from 'react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'next/navigation';
@@ -7,7 +8,7 @@ import { goTo } from '../../lib/navigate';
 import { useAuth } from '../../lib/auth-context';
 import YxSignInPage from './sign-in/page';
 import YxSignInCallbackPage from './sign-in/callback/page';
-import { PASSKEY_FAILED, SOCIAL_FAILED } from '../../lib/hooks/useYxSignIn';
+import { OPTIONS_RETRY_MS, PASSKEY_FAILED, SOCIAL_FAILED } from '../../lib/hooks/useYxSignIn';
 import { browserSupportsWebAuthn, browserSupportsWebAuthnAutofill, startAuthentication } from '@simplewebauthn/browser';
 import YxForgotPasswordPage from './forgot-password/page';
 import YxResetPasswordPage from './reset-password/[token]/page';
@@ -15,6 +16,7 @@ import YxMySecurityPage from './(app)/me/security/page';
 import YxLoginActivityPage from './(app)/admin/login-activity/page';
 import YxSecuritySettingsPage from './(app)/settings/security/page';
 import YxAppLayout from './(app)/layout';
+import YxSetupMfaPage from './setup-mfa/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useParams: () => ({ token: 'tok-123' }) }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
@@ -228,6 +230,99 @@ describe('/yx/sign-in (email first, no company code)', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/me/security'));
   });
 
+  it('the sign-in throttle (not the account lock) says to wait a minute', async () => {
+    route({
+      'GET /auth/remembered-company': { company: null },
+      'POST /auth/identify': { next: 'password', providers: [] },
+      'POST /auth/staff/login': Object.assign(new Error('Too many attempts. Please wait a minute and try again.'), { status: 429 }),
+    });
+    render(<YxSignInPage />);
+    await typeIdentifier('divya.r@kaverifoods.in');
+    await userEvent.type(await screen.findByLabelText(/^Password/), 'pw');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too many tries. Wait a minute and try again.');
+  });
+
+  it('a wrong code at the second step says so plainly', async () => {
+    route({
+      'GET /auth/remembered-company': { company: null },
+      'POST /auth/identify': { next: 'password', providers: [] },
+      'POST /auth/staff/login': { mfaRequired: true, mfaToken: 'm', factors: ['totp'] },
+      'POST /auth/mfa/verify': Object.assign(new Error('That verification did not work. Try again.'), { status: 401 }),
+    });
+    render(<YxSignInPage />);
+    await typeIdentifier('divya.r@kaverifoods.in');
+    await userEvent.type(await screen.findByLabelText(/^Password/), 'pw');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Authenticator app' }));
+    await userEvent.type(await screen.findByLabelText(/6-digit code/), '000000');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("That code didn't work. Check it and try again.");
+  });
+
+  it("other ways that cannot load: retried for about a minute, then a quiet line with Try again", async () => {
+    jest.useFakeTimers();
+    try {
+      let up = false;
+      api.mockImplementation(async (path: string) => {
+        if (path === '/auth/remembered-company') return { company: null };
+        if (path === '/auth/sign-in-options') {
+          if (up) return WAYS;
+          throw Object.assign(new Error('Too many attempts.'), { status: 429 });
+        }
+        throw new Error(`unexpected ${path}`);
+      });
+      render(<YxSignInPage />);
+      const tries = () => api.mock.calls.filter(([p]) => p === '/auth/sign-in-options').length;
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(OPTIONS_RETRY_MS.reduce((a, b) => a + b, 0) - 1000);
+      });
+      expect(screen.queryByText(/Couldn.t load other sign-in methods/)).toBeNull(); // still trying
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(1000);
+      });
+      expect(tries()).toBe(OPTIONS_RETRY_MS.length + 1);
+      expect(OPTIONS_RETRY_MS.reduce((a, b) => a + b, 0)).toBe(60_000);
+      expect(screen.getByText(/Couldn.t load other sign-in methods/)).toBeInTheDocument();
+
+      up = true;
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      });
+      expect(await screen.findByRole('group', { name: 'Other ways to sign in' })).toBeInTheDocument();
+      expect(screen.queryByText(/Couldn.t load other sign-in methods/)).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('?next= survives the round trip to Google and back', async () => {
+    window.history.replaceState(null, '', '/yx/sign-in?next=%2Fyx%2Fpayroll%2Fruns');
+    try {
+      route({
+        'GET /auth/remembered-company': { company: null },
+        'GET /auth/sign-in-options': WAYS,
+        'POST /auth/social/google/start': { url: 'https://accounts.example.test/auth?state=s' },
+      });
+      const first = render(<YxSignInPage />);
+      await userEvent.click(await screen.findByRole('button', { name: 'Continue with Google' }));
+      await waitFor(() => expect(assign).toHaveBeenCalled());
+      first.unmount();
+
+      window.history.replaceState(null, '', '/yx/sign-in/callback#code=round-trip');
+      route({
+        'GET /auth/remembered-company': { company: null },
+        'GET /auth/sign-in-options': WAYS,
+        'POST /auth/social/exchange': { accessToken: token({ role: 'recruiter' }) },
+      });
+      render(<YxSignInCallbackPage />);
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/payroll/runs'));
+    } finally {
+      window.history.replaceState(null, '', '/');
+      window.sessionStorage.clear();
+    }
+  });
+
   it('shows the second step while a challenge is pending', async () => {
     route({
       'GET /auth/remembered-company': { company: null },
@@ -407,8 +502,29 @@ describe('/yx/sign-in/callback (back from Google / Microsoft)', () => {
     expect(login).toHaveBeenCalledWith('', expect.any(String));
   });
 
+  it('Strict Mode and a remount still trade the single-use code once', async () => {
+    window.history.replaceState(null, '', '/yx/sign-in/callback#code=strict-1');
+    route({
+      'GET /auth/remembered-company': { company: null },
+      'GET /auth/sign-in-options': { google: true, microsoft: true, sms: false, whatsapp: false, emailCode: true },
+      'POST /auth/social/exchange': { accessToken: token({ role: 'recruiter' }) },
+      'GET /rbac/me/permissions': ['exam:manage'],
+    });
+    const first = render(
+      <StrictMode>
+        <YxSignInCallbackPage />
+      </StrictMode>,
+    );
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    first.unmount();
+    window.history.replaceState(null, '', '/yx/sign-in/callback#code=strict-1'); // the same code again
+    render(<YxSignInCallbackPage />);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(api.mock.calls.filter(([p]) => p === '/auth/social/exchange')).toHaveLength(1);
+  });
+
   it('several companies: the company choice', async () => {
-    window.history.replaceState(null, '', '/yx/sign-in/callback#code=c0de');
+    window.history.replaceState(null, '', '/yx/sign-in/callback#code=c0de2');
     route({
       'GET /auth/remembered-company': { company: null },
       'GET /auth/sign-in-options': { google: true, microsoft: true, sms: false, whatsapp: false, emailCode: true },
@@ -638,8 +754,36 @@ describe('/yx layout', () => {
     const replace = jest.fn();
     (useRouter as jest.Mock).mockReturnValue({ push: jest.fn(), replace });
     (useAuth as jest.Mock).mockReturnValue({ accessToken: null, role: null, actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
-    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    expect(replace).toHaveBeenCalledWith('/yx/sign-in');
+    window.history.replaceState(null, '', '/yx/people/directory?tab=all');
+    try {
+      wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+      expect(replace).toHaveBeenCalledWith('/yx/sign-in?next=%2Fyx%2Fpeople%2Fdirectory%3Ftab%3Dall');
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
     expect(screen.queryByText('page')).toBeNull();
+  });
+});
+
+describe('/yx/setup-mfa', () => {
+  it('YukthiX staff are offered a security key only, never an authenticator app', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'super_admin', isLoading: false });
+    route({
+      'GET /auth/mfa': { ...MFA, factors: [], allowedFactors: ['passkey', 'totp'] },
+      'GET /rbac/me/permissions': [],
+    });
+    wrap(<YxSetupMfaPage />);
+    expect(await screen.findByRole('button', { name: /Passkey/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Authenticator app/ })).toBeNull();
+  });
+
+  it('a company admin sees what the company allows', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'org_admin', isLoading: false });
+    route({
+      'GET /auth/mfa': { ...MFA, factors: [], allowedFactors: ['passkey', 'totp'] },
+      'GET /rbac/me/permissions': [],
+    });
+    wrap(<YxSetupMfaPage />);
+    expect(await screen.findByRole('button', { name: /Authenticator app/ })).toBeInTheDocument();
   });
 });

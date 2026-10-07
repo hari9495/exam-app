@@ -9,15 +9,20 @@ import { useAuth } from '../../../lib/auth-context';
 import { apiFetch } from '../../../lib/api-client';
 import { useLanding } from '../../../lib/yx-landing';
 import { addPasskey, confirmTotp, startTotp } from '../../../lib/yx-security';
+import { nextFromLocation } from '../../../lib/safe-next';
 
 // First sign-in for an account whose role needs a second step (P12 §6.1 steps 2–3, §8 grace).
 export default function YxSetupMfaPage() {
   const router = useRouter();
-  const { accessToken, isLoading } = useAuth();
+  const { accessToken, isLoading, role } = useAuth();
   const token = accessToken ?? undefined;
   const status = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, token), enabled: Boolean(accessToken) });
   // Where this person works: YukthiX unless they hold exam/ATS permissions.
-  const { landing, ready } = useLanding();
+  const { landing: home, ready } = useLanding();
+  // Back to the page whose session ran out (?next=, validated), else home.
+  const landing = nextFromLocation() ?? home;
+  // YukthiX staff: a security key only (the API offers them nothing else either).
+  const staff = role === 'super_admin';
 
   useEffect(() => {
     if (!isLoading && !accessToken) router.replace('/yx/sign-in');
@@ -37,7 +42,7 @@ export default function YxSetupMfaPage() {
 
   return (
     <MfaEnrolScreen
-      allowedFactors={status.data.allowedFactors}
+      allowedFactors={staff ? status.data.allowedFactors.filter((f) => f === 'passkey') : status.data.allowedFactors}
       dueAt={status.data.enrolmentDueAt}
       onAddPasskey={() => addPasskey(token)}
       onStartTotp={() => startTotp(token)}

@@ -1,5 +1,6 @@
 import { humanizeHttpError, NetworkError } from './http-error-message';
 import { goTo } from './navigate';
+import { withNextHere } from './safe-next';
 
 // Exported for public, unauthenticated pages (e.g. the candidate apply/status pages) that hit
 // the backend with plain fetch instead of apiFetch -- there's no access token to attach.
@@ -116,13 +117,14 @@ function refreshOnce(): Promise<string | null> {
 }
 
 let sentToSignIn = false;
-/** The session is over (refresh refused, rate-limited or unreachable): stop and sign in again, once. */
+/** The session is over (refresh refused, rate-limited or unreachable): stop and sign in again, once,
+ * then come back here (?next=, validated again by the sign-in). */
 function sendToSignIn() {
   if (sentToSignIn || typeof window === 'undefined') return;
   const target = signInPath();
   if (window.location.pathname === target) return;
   sentToSignIn = true;
-  goTo(target);
+  goTo(withNextHere(target));
 }
 
 /** Test hook: forget a previous send-to-sign-in. */

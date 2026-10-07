@@ -51,6 +51,8 @@ export function YxSignIn({ callback = false }: { callback?: boolean }) {
       onForgetCompany={() => void s.forgetCompany()}
       providers={s.providers}
       options={s.options}
+      optionsFailed={s.optionsFailed}
+      onRetryOptions={s.retryOptions}
       companies={s.companies}
       codeChannel={s.codeChannel}
       redirectingTo={s.redirectingTo}

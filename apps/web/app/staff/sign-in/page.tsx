@@ -7,10 +7,11 @@ import { apiFetch } from '../../../lib/api-client';
 import { useAuth } from '../../../lib/auth-context';
 import { botChallengeToken } from '../../../lib/bot-challenge';
 import { decodeJwtPayload } from '../../../lib/jwt';
-import { nextFromLocation } from '../../../lib/safe-next';
+import { takeNext } from '../../../lib/safe-next';
 import { roleToLandingPath } from '../../../lib/staff-routing';
 import { passkeyAssertion } from '../../../lib/yx-security';
 import { message, type MfaChallenge } from '../../../lib/hooks/useYxSignIn';
+import { yxProofError } from '../../../lib/yx-auth-messages';
 
 interface SignedIn {
   accessToken: string;
@@ -33,7 +34,9 @@ export default function StaffSignInPage() {
   function finish(result: SignedIn) {
     login('', result.accessToken);
     const role = decodeJwtPayload(result.accessToken)?.role as string | undefined;
-    router.push(result.mfa?.required ? '/yx/setup-mfa' : (nextFromLocation() ?? roleToLandingPath(role)));
+    const next = takeNext();
+    if (result.mfa?.required) return router.push(next ? `/yx/setup-mfa?next=${encodeURIComponent(next)}` : '/yx/setup-mfa');
+    router.push(next ?? roleToLandingPath(role));
   }
 
   async function signIn() {
@@ -57,7 +60,7 @@ export default function StaffSignInPage() {
         factors={challenge.factors}
         recoveryCode={false}
         getPasskey={() => passkeyAssertion(() => post('/auth/mfa/passkey-options', { mfaToken: challenge.mfaToken }))}
-        submit={async (proof: MfaProof) => finish(await post('/auth/mfa/verify', { mfaToken: challenge.mfaToken, ...proof }))}
+        submit={async (proof: MfaProof) => finish(await post('/auth/mfa/verify', { mfaToken: challenge.mfaToken, ...proof }).catch((err) => Promise.reject(yxProofError(err, proof.factor))))}
         onStartAgain={() => {
           setChallenge(null);
           setPassword('');

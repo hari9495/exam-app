@@ -11,6 +11,7 @@ import { useAuth } from '../../../lib/auth-context';
 import { useCurrentUser } from '../../../lib/hooks/useCurrentUser';
 import { roleToLandingPath } from '../../../lib/staff-routing';
 import { useLanding } from '../../../lib/yx-landing';
+import { withNextHere } from '../../../lib/safe-next';
 import { useOrgBranding } from '../../../lib/hooks/useBranding';
 import { useYxPermissions } from '../../../lib/yx-org';
 import { usePeople } from '../../../lib/yx-people';
@@ -70,7 +71,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   const mfaDue = mfa.data ? new Date(mfa.data.enrolmentDueAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
   useEffect(() => {
-    if (!isLoading && !accessToken) router.replace('/yx/sign-in');
+    if (!isLoading && !accessToken) router.replace(withNextHere('/yx/sign-in'));
   }, [isLoading, accessToken, router]);
 
   if (isLoading || !accessToken) {
