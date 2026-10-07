@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
-import { ForgotPasswordScreen, SignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
+import { ForgotPasswordScreen, ResetPasswordScreen, SignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
 import { MfaChallengeScreen, MfaEnrolScreen } from './mfa';
 import { COMPANIES, NOW, ORG_NAME, PROVIDERS, RECOVERY_CODES, TOTP_SETUP } from './data';
 
@@ -80,6 +80,15 @@ function Forgot({ sent = false }: { sent?: boolean }) {
 }
 export const ForgotPassword: S = { name: 'Forgot password · work email only', render: () => <Forgot /> };
 export const ForgotPasswordSent: S = { name: 'Forgot password · link sent', render: () => <Forgot sent /> };
+
+function Reset({ error = null, done = false }: { error?: string | null; done?: boolean }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  return <ResetPasswordScreen password={password} confirm={confirm} onPasswordChange={setPassword} onConfirmChange={setConfirm} onSubmit={() => {}} done={done} error={error} signInHref="#sign-in" forgotHref="#forgot" />;
+}
+export const ResetPassword: S = { name: 'Reset password · new password', render: () => <Reset /> };
+export const ResetPasswordExpired: S = { name: 'Reset password · link expired', render: () => <Reset error="This reset link is invalid or has expired" /> };
+export const ResetPasswordDone: S = { name: 'Reset password · done', render: () => <Reset done /> };
 
 const challenge = { getPasskey: () => wait(), submit: () => wait(), sendCode: () => wait(), onStartAgain: () => {} };
 export const Challenge: S = { name: 'Second step · passkey and app', render: () => <MfaChallengeScreen factors={['passkey', 'totp', 'otp']} {...challenge} /> };

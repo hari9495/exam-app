@@ -1108,14 +1108,15 @@ export class AuthService {
     return tokens;
   }
 
-  async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
+  // `yukthix`: asked from the YukthiX page (no company code typed), so the link opens the YukthiX reset page.
+  async forgotPassword(dto: ForgotPasswordDto, yukthix = false): Promise<void> {
     // Email-first: every company account with this email gets its own link, naming the company
     // (the answer is the same whether there are none, one or several).
     if (!dto.organizationSlug) {
       const accounts = await this.accountsFor({ kind: 'email', value: dto.email.trim().toLowerCase() });
       for (const account of accounts) {
         const rawToken = await this.createResetToken(account.id);
-        this.dispatchResetEmail(account.email, rawToken, account.organizationId!, account.organization?.name).catch((error) =>
+        this.dispatchResetEmail(account.email, rawToken, account.organizationId!, account.organization?.name, true).catch((error) =>
           this.logger.error(`Failed to dispatch password reset email to ${account.email}`, error as Error),
         );
       }
@@ -1138,7 +1139,7 @@ export class AuthService {
     // Fire-and-forget, matching the invitation-email pattern in InvitationsService:
     // email delivery is a notification side effect, not something the caller should
     // wait on (or that should make forgotPassword() throw on SMTP failure).
-    this.dispatchResetEmail(user.email, rawToken, org.id).catch((error) =>
+    this.dispatchResetEmail(user.email, rawToken, org.id, undefined, yukthix).catch((error) =>
       this.logger.error(`Failed to dispatch password reset email to ${user.email}`, error as Error),
     );
   }
@@ -1152,8 +1153,8 @@ export class AuthService {
     return rawToken;
   }
 
-  private async dispatchResetEmail(email: string, rawToken: string, organizationId: string, companyName?: string): Promise<void> {
-    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password/${rawToken}`;
+  private async dispatchResetEmail(email: string, rawToken: string, organizationId: string, companyName?: string, yukthix = false): Promise<void> {
+    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}${yukthix ? '/yx' : ''}/reset-password/${rawToken}`;
     const which = companyName ? ` for your <b>${escapeHtml(companyName)}</b> account` : '';
     await this.emailService.send({
       to: email,

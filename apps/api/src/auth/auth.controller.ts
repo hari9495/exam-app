@@ -102,7 +102,7 @@ export class AuthController {
   @HttpCode(200)
   @Throttle(STRICT_AUTH_THROTTLE)
   async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
-    await this.authService.forgotPassword({ ...dto, organizationSlug: await this.scope.slugFor(req, dto.organizationSlug) });
+    await this.authService.forgotPassword({ ...dto, organizationSlug: await this.scope.slugFor(req, dto.organizationSlug) }, !dto.organizationSlug);
     return { message: 'If an account with that email exists, a reset link has been sent.' };
   }
 

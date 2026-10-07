@@ -9,12 +9,13 @@ import YxSignInPage from './sign-in/page';
 import YxSignInCallbackPage from './sign-in/callback/page';
 import { SOCIAL_FAILED } from '../../lib/hooks/useYxSignIn';
 import YxForgotPasswordPage from './forgot-password/page';
+import YxResetPasswordPage from './reset-password/[token]/page';
 import YxMySecurityPage from './(app)/me/security/page';
 import YxLoginActivityPage from './(app)/admin/login-activity/page';
 import YxSecuritySettingsPage from './(app)/settings/security/page';
 import YxAppLayout from './(app)/layout';
 
-jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn() }));
+jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useParams: () => ({ token: 'tok-123' }) }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), YX_SESSION_KEY: 'yxSession' }));
 jest.mock('../../lib/navigate', () => ({ goTo: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn(), YX_SSO_RETURN_KEY: 'yxSsoReturn' }));
@@ -338,6 +339,29 @@ describe('/yx/forgot-password', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Email me a reset link' }));
     expect(await screen.findByRole('status')).toHaveTextContent('we sent it a reset link');
     expect(api).toHaveBeenCalledWith('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email: 'divya.r@kaverifoods.in' }) });
+  });
+});
+
+describe('/yx/reset-password/[token]', () => {
+  it('sets the new password with the token from the link, then sends the person to the YukthiX sign-in', async () => {
+    route({ 'POST /auth/reset-password': { success: true } });
+    render(<YxResetPasswordPage />);
+    await userEvent.type(screen.getByLabelText(/New password/), 'Kaveri-Recruit-Oct26');
+    await userEvent.type(screen.getByLabelText(/Type it again/), 'Kaveri-Recruit-Oct26');
+    await userEvent.click(screen.getByRole('button', { name: 'Save new password' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Your new password works now');
+    expect(api).toHaveBeenCalledWith('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token: 'tok-123', newPassword: 'Kaveri-Recruit-Oct26' }) });
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/yx/sign-in');
+  });
+
+  it('shows why a password was refused and keeps the form', async () => {
+    route({ 'POST /auth/reset-password': new Error('This password has appeared in a known data breach. Choose a different one.') });
+    render(<YxResetPasswordPage />);
+    await userEvent.type(screen.getByLabelText(/New password/), 'Password123456');
+    await userEvent.type(screen.getByLabelText(/Type it again/), 'Password123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Save new password' }));
+    expect(await screen.findByText(/known data breach/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save new password' })).toBeInTheDocument();
   });
 });
 

@@ -1887,6 +1887,19 @@ describe('AuthService', () => {
       expect(prisma.passwordResetToken.create).toHaveBeenCalledTimes(2);
       expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: EMAIL, subject: 'Reset your Kaveri Foods password', organizationId: 'org-kaveri' }));
       expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ subject: 'Reset your Ashok Textiles password', organizationId: 'org-ashok' }));
+      // Asked on the YukthiX page: the link opens the YukthiX reset page, not the older app's.
+      expect(emailService.send.mock.calls[0][0].html).toMatch(/\/yx\/reset-password\/[a-f0-9]{64}"/);
+    });
+
+    it('a YukthiX request with a remembered company also links to the YukthiX reset page; a typed company code keeps the older page', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org', status: 'active' });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', email: 'admin@demo-org.test', organizationId: 'org-1' });
+      prisma.passwordResetToken.create.mockResolvedValue({});
+      await service.forgotPassword({ organizationSlug: 'demo-org', email: 'admin@demo-org.test' }, true);
+      await service.forgotPassword({ organizationSlug: 'demo-org', email: 'admin@demo-org.test' });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(emailService.send.mock.calls[0][0].html).toContain('/yx/reset-password/');
+      expect(emailService.send.mock.calls[1][0].html).not.toContain('/yx/');
     });
 
     // W-005: YukthiX platform staff are never reachable through a company sign-in.

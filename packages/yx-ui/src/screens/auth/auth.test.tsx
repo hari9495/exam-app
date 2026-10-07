@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { ForgotPasswordScreen, SignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
+import { ForgotPasswordScreen, ResetPasswordScreen, SignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
 import { MfaChallengeScreen, MfaEnrolScreen, StepUpDialog } from './mfa';
 import { MeSecurityScreen, type MeSecurityScreenProps } from './me-security';
 import { LoginActivityScreen, NO_FILTERS, type LoginActivityScreenProps } from './login-activity';
@@ -632,3 +632,28 @@ describe('helpers', () => {
   });
 });
 
+
+describe('ResetPasswordScreen', () => {
+  function Harness({ onSubmit = vi.fn(), error = null as string | null }) {
+    const [password, setPassword] = useState('');
+    const [confirm, setConfirm] = useState('');
+    return <ResetPasswordScreen password={password} confirm={confirm} onPasswordChange={setPassword} onConfirmChange={setConfirm} onSubmit={onSubmit} done={false} error={error} signInHref="/yx/sign-in" forgotHref="/yx/forgot-password" />;
+  }
+
+  it('sends only when both passwords match', async () => {
+    const onSubmit = vi.fn();
+    render(<Harness onSubmit={onSubmit} />);
+    await userEvent.type(screen.getByLabelText(/New password/), 'Kaveri-Recruit-Oct26');
+    await userEvent.type(screen.getByLabelText(/Type it again/), 'Kaveri-Recruit-Oct2');
+    expect(screen.getByText('The two passwords are not the same')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save new password' })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/Type it again/), '6');
+    await userEvent.click(screen.getByRole('button', { name: 'Save new password' }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers a new link when this one has expired', () => {
+    render(<Harness error="This reset link is invalid or has expired" />);
+    expect(screen.getByRole('link', { name: 'Get a new link' })).toHaveAttribute('href', '/yx/forgot-password');
+  });
+});

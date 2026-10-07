@@ -275,3 +275,60 @@ export function ForgotPasswordScreen({ email, onEmailChange, onSubmit, sent, bus
     </AuthFrame>
   );
 }
+
+export interface ResetPasswordScreenProps {
+  password: string;
+  confirm: string;
+  onPasswordChange: (value: string) => void;
+  onConfirmChange: (value: string) => void;
+  onSubmit: () => void;
+  /** The new password is set. */
+  done: boolean;
+  busy?: boolean;
+  /** The API's answer as one sentence (too short, breached, link expired). */
+  error?: string | null;
+  /** Company minimum; YukthiX never allows fewer than 12. */
+  minLength?: number;
+  signInHref: string;
+  forgotHref: string;
+}
+
+/** The page the reset email links to: a new password twice, then back to sign in. The API checks length and breach lists. */
+export function ResetPasswordScreen({ password, confirm, onPasswordChange, onConfirmChange, onSubmit, done, busy, error, minLength = 12, signInHref, forgotHref }: ResetPasswordScreenProps) {
+  const mismatch = confirm.length > 0 && confirm !== password;
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!mismatch) onSubmit();
+  };
+  if (done) {
+    return (
+      <AuthFrame title="Password changed">
+        <div className="yx-auth__form">
+          <Text as="p" role="status">Your new password works now. You were signed out on every device, so sign in again.</Text>
+          <Button asChild variant="primary" fullWidth>
+            <a href={signInHref}>Sign in</a>
+          </Button>
+        </div>
+      </AuthFrame>
+    );
+  }
+  return (
+    <AuthFrame title="Choose a new password" subtitle={`At least ${minLength} characters. Passwords found in known breaches are refused.`}>
+      <form className="yx-auth__form" onSubmit={submit} noValidate>
+        <FormField label="New password" required>
+          <PasswordField value={password} onChange={onPasswordChange} autoComplete="new-password" />
+        </FormField>
+        <FormField label="Type it again" required error={mismatch ? 'The two passwords are not the same' : undefined}>
+          <PasswordField value={confirm} onChange={onConfirmChange} autoComplete="new-password" />
+        </FormField>
+        {error && (
+          <InlineAlert tone="danger">
+            {error} {/expired|invalid/i.test(error) && <Link href={forgotHref}>Get a new link</Link>}
+          </InlineAlert>
+        )}
+        <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!password || !confirm || mismatch}>Save new password</Button>
+        <Link href={signInHref}>Back to sign in</Link>
+      </form>
+    </AuthFrame>
+  );
+}
