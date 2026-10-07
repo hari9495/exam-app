@@ -125,6 +125,7 @@ describe('SsoCallbackPage', () => {
 
     render(<SsoCallbackPage />);
     expect(await screen.findByRole('heading', { name: "Confirm it's you" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Authenticator app' })); // the method cards
     await userEvent.type(screen.getByLabelText(/6-digit code from your authenticator app/), '123456');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     // An admin with exam permissions keeps the role console.

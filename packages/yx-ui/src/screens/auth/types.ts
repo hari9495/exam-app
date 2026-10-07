@@ -75,6 +75,8 @@ export interface SignInOptions {
   whatsapp: boolean;
   /** "Email me a code instead" on the password step. */
   emailCode: boolean;
+  /** "Sign in with a passkey" (passwordless): the known company allows passkeys and is not SSO-only. */
+  passkey?: boolean;
 }
 
 export interface SsoProviderOption {

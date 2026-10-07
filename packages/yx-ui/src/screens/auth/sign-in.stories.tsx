@@ -10,8 +10,8 @@ type S = StoryObj;
 
 const wait = (ms = 600) => new Promise<void>((r) => setTimeout(r, ms));
 const KAVERI = { name: ORG_NAME, logoUrl: null };
-const ALL_WAYS = { google: true, microsoft: true, sms: true, whatsapp: true, emailCode: true };
-const NO_WAYS = { google: false, microsoft: false, sms: false, whatsapp: false, emailCode: true };
+const ALL_WAYS = { google: true, microsoft: true, sms: true, whatsapp: true, emailCode: true, passkey: true };
+const NO_WAYS = { google: false, microsoft: false, sms: false, whatsapp: false, emailCode: true, passkey: false };
 
 // Email first, no company code: identify -> password / code -> (several companies) choose one.
 function SignIn({ start = {}, ...over }: Partial<SignInScreenProps> & { start?: Partial<SignInFields> }) {
@@ -29,6 +29,7 @@ function SignIn({ start = {}, ...over }: Partial<SignInScreenProps> & { start?: 
       onPasswordSubmit={() => setStep('choose-company')}
       onSendCode={(channel) => setStep(channel ? 'mobile-code' : 'code')}
       onMobile={() => setStep('mobile')}
+      onPasskey={() => setStep('redirecting')}
       onSocial={() => setStep('redirecting')}
       onVerifyCode={() => setStep('choose-company')}
       onRestart={() => setStep('identify')}
@@ -91,10 +92,10 @@ export const ResetPasswordExpired: S = { name: 'Reset password · link expired',
 export const ResetPasswordDone: S = { name: 'Reset password · done', render: () => <Reset done /> };
 
 const challenge = { getPasskey: () => wait(), submit: () => wait(), sendCode: () => wait(), onStartAgain: () => {} };
-export const Challenge: S = { name: 'Second step · passkey and app', render: () => <MfaChallengeScreen factors={['passkey', 'totp', 'otp']} {...challenge} /> };
-export const ChallengeAppOnly: S = { name: 'Second step · authenticator app only', render: () => <MfaChallengeScreen factors={['totp']} {...challenge} /> };
+export const Challenge: S = { name: "Confirm it's you · several ways (cards)", render: () => <MfaChallengeScreen factors={['passkey', 'totp', 'otp']} {...challenge} /> };
+export const ChallengeAppOnly: S = { name: "Confirm it's you · authenticator app only", render: () => <MfaChallengeScreen factors={['totp']} {...challenge} /> };
 export const ChallengeError: S = {
-  name: 'Second step · wrong code',
+  name: "Confirm it's you · wrong code",
   render: () => (
     <MfaChallengeScreen
       factors={['totp']}
@@ -106,7 +107,7 @@ export const ChallengeError: S = {
     />
   ),
 };
-export const ChallengePhone: S = { name: 'Second step · phone', globals: { viewport: { value: 'phone' } }, render: () => <MfaChallengeScreen factors={['passkey', 'totp']} {...challenge} /> };
+export const ChallengePhone: S = { name: "Confirm it's you · phone", globals: { viewport: { value: 'phone' } }, render: () => <MfaChallengeScreen factors={['passkey', 'totp']} {...challenge} /> };
 
 const enrol = {
   allowedFactors: ['passkey', 'totp'],
@@ -116,8 +117,8 @@ const enrol = {
   onContinue: () => {},
   now: NOW,
 };
-export const Enrol: S = { name: 'First sign-in · set up two-step', render: () => <MfaEnrolScreen dueAt="2026-10-08T00:00:00+05:30" {...enrol} /> };
-export const EnrolOverdue: S = { name: 'First sign-in · set up two-step (deadline passed)', render: () => <MfaEnrolScreen dueAt="2026-09-20T00:00:00+05:30" {...enrol} /> };
+export const Enrol: S = { name: 'First sign-in · secure your account', render: () => <MfaEnrolScreen dueAt="2026-10-08T00:00:00+05:30" {...enrol} /> };
+export const EnrolOverdue: S = { name: 'First sign-in · secure your account (deadline passed)', render: () => <MfaEnrolScreen dueAt="2026-09-20T00:00:00+05:30" {...enrol} /> };
 export const EnrolError: S = {
   name: 'First sign-in · passkey failed',
   render: () => (
@@ -132,3 +133,5 @@ export const EnrolError: S = {
   ),
 };
 export const EnrolPhone: S = { name: 'First sign-in · phone', globals: { viewport: { value: 'phone' } }, render: () => <MfaEnrolScreen dueAt="2026-10-08T00:00:00+05:30" {...enrol} /> };
+export const EnrolAppOnly: S = { name: 'First sign-in · company allows authenticator apps only', render: () => <MfaEnrolScreen dueAt="2026-10-08T00:00:00+05:30" {...enrol} allowedFactors={['totp']} /> };
+export const IdentifyNoPasskey: S = { name: 'Sign in · company does not allow passkeys', render: () => <SignIn company={KAVERI} options={{ ...ALL_WAYS, passkey: false }} /> };

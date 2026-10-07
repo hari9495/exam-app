@@ -125,7 +125,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         {mfaMissing && active !== 'me' && (
           <InlineAlert
             tone="warning"
-            title="Set up two-step verification"
+            title="Secure your account"
             actions={
               <Button asChild size="sm">
                 <Link href={ME.href}>Set it up now</Link>
@@ -133,8 +133,8 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
             }
           >
             {mfaOverdue
-              ? 'Your role needs a second sign-in step. Admin pages are paused until you add one.'
-              : `Your role needs a second sign-in step. Set it up by ${mfaDue}; after that, admin pages pause until you add one.`}
+              ? 'Your role needs a passkey or an authenticator app. Admin pages are paused until you add one.'
+              : `Your role needs a passkey or an authenticator app. Set it up by ${mfaDue}; after that, admin pages pause until you add one.`}
           </InlineAlert>
         )}
         {children}

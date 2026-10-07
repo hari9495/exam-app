@@ -3,12 +3,13 @@ import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
 import { FormField } from '../../components/field';
-import { Text } from '../../components/foundations';
+import { Heading, Text } from '../../components/foundations';
 import { TextField } from '../../components/inputs';
 import { ConfirmDialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
+import { MethodCards } from '../../components/choice';
 import { Card, PageHeader } from '../../components/shell';
-import { RecoveryCodes, day, deviceLabel, methodLabel, useStep, when } from './kit';
+import { RecoveryCodes, day, deviceLabel, methodLabel, setupMethodOptions, useStep, when, type SetupMethod } from './kit';
 import { TotpConfirm, type TotpSetup } from './mfa';
 import { LoginEventsTable } from './tables';
 import type { LoginEventRow, MfaFactor, MfaStatus, Page, SessionRow } from './types';
@@ -29,6 +30,8 @@ export interface MeSecurityScreenProps {
   onStartTotp: () => Promise<TotpSetup>;
   onConfirmTotp: (code: string) => Promise<{ recoveryCodes?: string[] }>;
   onRemoveFactor: (factor: MfaFactor) => Promise<void>;
+  /** Renames a passkey (a step-up action). */
+  onRenamePasskey: (factor: MfaFactor, label: string) => Promise<void>;
   onNewRecoveryCodes: () => Promise<string[]>;
   onSendMobileCode: (mobileNumber: string) => Promise<string>;
   onVerifyMobile: (code: string) => Promise<void>;
@@ -39,7 +42,7 @@ export interface MeSecurityScreenProps {
   now?: Date;
 }
 
-/** Me › Security (P12 §7): second steps, recovery codes, mobile number, where you're signed in, sign-in history. */
+/** Me › Security (P12 §7): sign-in methods (passkeys by name, authenticator app), recovery codes, mobile number, where you're signed in, sign-in history. */
 export function MeSecurityScreen(props: MeSecurityScreenProps) {
   const { state, mfa, sessions } = props;
   return (
@@ -80,11 +83,14 @@ export function MeSecurityScreen(props: MeSecurityScreenProps) {
   );
 }
 
-function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFactor, onNewRecoveryCodes, now = new Date() }: MeSecurityScreenProps & { mfa: MfaStatus }) {
+function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFactor, onRenamePasskey, onNewRecoveryCodes, now = new Date() }: MeSecurityScreenProps & { mfa: MfaStatus }) {
   const [totp, setTotp] = useState<TotpSetup | null>(null);
   const [code, setCode] = useState('');
   const [codes, setCodes] = useState<string[] | null>(null);
   const [removing, setRemoving] = useState<MfaFactor | null>(null);
+  const [renaming, setRenaming] = useState<MfaFactor | null>(null);
+  const [name, setName] = useState('');
+  const [adding, setAdding] = useState<SetupMethod | null>(null);
   const { busy, error, run } = useStep();
   const show = (r: { recoveryCodes?: string[] }) => r.recoveryCodes?.length && setCodes(r.recoveryCodes);
   const confirmTotp = (e: FormEvent) => {
@@ -95,58 +101,70 @@ function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFa
       setCode('');
     });
   };
-  const allowed = mfa.allowedFactors;
+  const add = (method: SetupMethod) => {
+    setAdding(method);
+    void run(async () => (method === 'passkey' ? show(await onAddPasskey()) : setTotp(await onStartTotp()))).finally(() => setAdding(null));
+  };
   const hasTotp = mfa.factors.some((f) => f.type === 'totp');
+  const addable = setupMethodOptions(mfa.allowedFactors.filter((f) => f !== 'totp' || !hasTotp));
   const overdue = new Date(mfa.enrolmentDueAt) <= now;
   const lastOne = mfa.required && mfa.factors.length === 1;
+  const nameOf = (f: MfaFactor) => (f.type === 'passkey' ? `Passkey · ${f.label}` : 'Authenticator app');
 
   return (
-    <Card title="Two-step verification">
+    <Card title="Sign-in methods">
       <div className="yx-auth__stack">
         {mfa.required && mfa.factors.length === 0 && (
           <InlineAlert tone={overdue ? 'danger' : 'warning'} title={overdue ? 'Sensitive actions are paused' : `Set this up by ${day(mfa.enrolmentDueAt)}`}>
-            Your role needs a second sign-in step. A passkey is the quickest.
+            Your role needs a passkey or an authenticator app. A passkey is the quickest.
           </InlineAlert>
         )}
         {mfa.factors.length > 0 ? (
-          <ul className="yx-auth__list" aria-label="Your second steps">
+          <ul className="yx-auth__list" aria-label="Your sign-in methods">
             {mfa.factors.map((f) => (
               <li key={f.id} className="yx-auth__item">
                 <div className="yx-auth__item-main">
-                  <Text weight="medium">{f.type === 'passkey' ? `Passkey · ${f.label}` : 'Authenticator app'}</Text>
+                  <Text weight="medium">{nameOf(f)}</Text>
                   <Text tone="secondary" size="sm">Added {day(f.createdAt)}{f.lastUsedAt ? ` · last used ${day(f.lastUsedAt)}` : ' · not used yet'}</Text>
                 </div>
-                <Button size="sm" disabled={lastOne} title={lastOne ? 'Your role needs at least one' : undefined} onClick={() => setRemoving(f)} aria-label={`Remove ${f.type === 'passkey' ? f.label : 'authenticator app'}`}>
-                  Remove
-                </Button>
+                <span className="yx-auth__row">
+                  {f.type === 'passkey' && (
+                    <Button size="sm" aria-label={`Rename ${f.label}`} onClick={() => { setName(f.label); setRenaming(f); }}>Rename</Button>
+                  )}
+                  <Button size="sm" disabled={lastOne} title={lastOne ? 'Your role needs at least one' : undefined} onClick={() => setRemoving(f)} aria-label={`Remove ${nameOf(f)}`}>
+                    Remove
+                  </Button>
+                </span>
               </li>
             ))}
           </ul>
         ) : (
-          !mfa.required && <EmptyState compact title="No second step yet." description="Add a passkey: it is the quickest and can't be phished." />
+          !mfa.required && <EmptyState compact title="No passkey or authenticator app yet." description="Add a passkey: you sign in with your face, fingerprint or PIN, and it can't be phished." />
         )}
-        {lastOne && <Text as="p" tone="secondary" size="sm">You can't remove your only second step, because your role needs one. Add another first.</Text>}
+        {lastOne && <Text as="p" tone="secondary" size="sm">You can't remove your only sign-in method, because your role needs one. Add another first.</Text>}
 
         {codes && <RecoveryCodes codes={codes} onDone={() => setCodes(null)} />}
         {totp && <TotpConfirm setup={totp} code={code} onCode={setCode} onSubmit={confirmTotp} busy={busy} error={error} onCancel={() => setTotp(null)} />}
-        {!totp && error && <InlineAlert tone="danger">{error}</InlineAlert>}
 
-        {!totp && !codes && (
+        {!totp && !codes && addable.length > 0 && (
+          <section className="yx-auth__stack" aria-labelledby="yx-add-method">
+            <Heading level={4} as="h3" id="yx-add-method">Add a sign-in method</Heading>
+            <MethodCards aria-label="Sign-in methods you can add" options={addable} onSelect={(m) => add(m as SetupMethod)} busy={adding} />
+          </section>
+        )}
+        {!totp && error && <InlineAlert tone="danger">{error}</InlineAlert>}
+        {!totp && !codes && mfa.factors.length > 0 && (
           <div className="yx-auth__row">
-            {allowed.includes('passkey') && <Button variant="primary" loading={busy} onClick={() => void run(async () => show(await onAddPasskey()))}>Add a passkey</Button>}
-            {allowed.includes('totp') && !hasTotp && <Button disabled={busy} onClick={() => void run(async () => setTotp(await onStartTotp()))}>Set up authenticator app</Button>}
-            {mfa.factors.length > 0 && (
-              <Button disabled={busy} onClick={() => void run(async () => setCodes(await onNewRecoveryCodes()))}>
-                New recovery codes ({mfa.recoveryCodesRemaining} left)
-              </Button>
-            )}
+            <Button disabled={busy} onClick={() => void run(async () => setCodes(await onNewRecoveryCodes()))}>
+              New recovery codes ({mfa.recoveryCodesRemaining} left)
+            </Button>
           </div>
         )}
       </div>
       <ConfirmDialog
         open={removing !== null}
         onOpenChange={(o) => !o && setRemoving(null)}
-        title={`Remove ${removing?.type === 'passkey' ? removing.label : 'authenticator app'}?`}
+        title={`Remove ${removing ? nameOf(removing) : ''}?`}
         consequence="You won't be able to use it to sign in. We'll email you about this change."
         confirmLabel="Remove"
         destructive
@@ -154,6 +172,21 @@ function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFa
           if (removing) await onRemoveFactor(removing);
         }}
       />
+      <ConfirmDialog
+        open={renaming !== null}
+        onOpenChange={(o) => !o && setRenaming(null)}
+        title="Rename passkey"
+        consequence="A name that tells you which device it is on."
+        confirmLabel="Save name"
+        confirmDisabled={!name.trim() || name.trim() === renaming?.label}
+        onConfirm={async () => {
+          if (renaming) await onRenamePasskey(renaming, name.trim());
+        }}
+      >
+        <FormField label="Name" required>
+          <TextField value={name} onChange={setName} maxLength={64} />
+        </FormField>
+      </ConfirmDialog>
     </Card>
   );
 }
@@ -249,7 +282,7 @@ function SessionsCard({ sessions, onSignOutSession, onSignOutOthers }: { session
                 <Text tone="secondary" size="sm">
                   {[s.ipAddress, s.geo, `active ${when(s.lastSeenAt)}`].filter(Boolean).join(' · ')}
                 </Text>
-                <Text tone="secondary" size="sm">Signed in {when(s.createdAt)} with {methodLabel(s.method).toLowerCase()}{s.assuranceLevel === 'aal2' ? ' and a second step' : ''}</Text>
+                <Text tone="secondary" size="sm">Signed in {when(s.createdAt)} with {methodLabel(s.method).toLowerCase()}{s.assuranceLevel === 'aal2' && s.method !== 'passkey' ? ' and a second step' : ''}</Text>
               </div>
               {!s.current && (
                 <ConfirmDialog

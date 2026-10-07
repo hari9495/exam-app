@@ -49,6 +49,7 @@ export default function YxMySecurityPage() {
       onStartTotp={() => startTotp(token)}
       onConfirmTotp={(code) => after(confirmTotp(code, token))}
       onRemoveFactor={(f) => after(apiFetch(`/auth/mfa/authenticators/${encodeURIComponent(f.id)}`, { method: 'DELETE' }, token))}
+      onRenamePasskey={(f, label) => after(apiFetch(`/auth/mfa/authenticators/${encodeURIComponent(f.id)}`, { method: 'PATCH', body: JSON.stringify({ label }) }, token))}
       onNewRecoveryCodes={async () => (await after(post('/auth/mfa/recovery-codes', token))).recoveryCodes}
       onSendMobileCode={async (mobileNumber) => (await post('/auth/otp/mobile', token, { mobileNumber })).mobileNumber}
       onVerifyMobile={(code) => after(post('/auth/otp/mobile/verify', token, { code }))}

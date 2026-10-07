@@ -62,6 +62,7 @@ export function YxSignIn({ callback = false }: { callback?: boolean }) {
       onVerifyCode={() => void s.verifyCode()}
       onRestart={s.restart}
       onMobile={s.startMobile}
+      onPasskey={s.passkeyCapable ? () => void s.passkey() : undefined}
       onSocial={(provider) => void s.social(provider)}
       onSso={(providerId) => void s.sso(providerId)}
       onPickCompany={(id) => void s.pickCompany(id)}

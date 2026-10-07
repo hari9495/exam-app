@@ -10,6 +10,8 @@ import { useAuth } from '../auth-context';
 import { decodeJwtPayload } from '../jwt';
 import { yxLandingPath } from '../yx-landing';
 import { nextFromLocation } from '../safe-next';
+import { WebAuthnAbortService, browserSupportsWebAuthn, browserSupportsWebAuthnAutofill } from '@simplewebauthn/browser';
+import { passkeySignInAssertion } from '../yx-security';
 
 // The first step was right and a second factor is owed (P12 YX-IAM-01); no session exists yet.
 export interface MfaChallenge {
@@ -39,6 +41,9 @@ export const message = (err: unknown, fallback: string) => {
 const PROVIDER_NAME: Record<SocialProvider, string> = { google: 'Google', microsoft: 'Microsoft' };
 // The same words whatever the reason (no account, address not verified, method off ...): nothing to enumerate.
 export const SOCIAL_FAILED = "We couldn't sign you in with that account. Try another way, or ask your admin.";
+export const PASSKEY_FAILED = "We couldn't sign you in with that passkey. Try another way, or ask your admin.";
+// The person closed the passkey prompt, or another ceremony replaced it: not an error to show.
+const isCancelled = (err: unknown) => err instanceof Error && (err.name === 'NotAllowedError' || err.name === 'AbortError');
 
 // YukthiX sign-in without a company code (founder decision 7 Oct 2026). The API decides the company:
 // the web address, the company this device signed in to last (an HttpOnly cookie it reads itself),
@@ -58,6 +63,9 @@ export function useYxSignIn() {
   const [codeChannel, setCodeChannel] = useState<'sms' | 'whatsapp' | undefined>(undefined);
   const [redirectingTo, setRedirectingTo] = useState<string | undefined>(undefined);
   const [challenge, setChallenge] = useState<MfaChallenge | null>(null);
+  // This browser can use passkeys (decides whether "Sign in with a passkey" is shown); re-arms the autofill request.
+  const [passkeyCapable, setPasskeyCapable] = useState(false);
+  const [autofillRound, setAutofillRound] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const identifier = fields.identifier.trim();
@@ -130,6 +138,45 @@ export function useYxSignIn() {
     setRedirectingTo(undefined);
   };
 
+  // "Sign in with a passkey" (founder decision 7 Oct 2026): the passkey is the whole sign-in (AAL2),
+  // so it lands where any finished sign-in does.
+  async function finishPasskey(credential: unknown) {
+    setError(null);
+    setBusy(true);
+    try {
+      await settle(await post('/auth/passkey/verify', { credential }));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    setPasskeyCapable(browserSupportsWebAuthn());
+  }, []);
+
+  // On the first screen, where the company allows passkeys, the work-email field's autofill offers
+  // this site's passkeys too (WebAuthn conditional mediation). Silent until the person picks one;
+  // cancelled when the screen moves on or the button starts its own prompt, re-armed after that.
+  useEffect(() => {
+    if (step !== 'identify' || !options?.passkey) return;
+    let live = true;
+    void browserSupportsWebAuthnAutofill().then(async (ok) => {
+      if (!ok || !live) return;
+      let credential: unknown;
+      try {
+        credential = await passkeySignInAssertion(true);
+      } catch {
+        return; // not offered, closed, or replaced by the button's prompt: nothing to say
+      }
+      if (live) await finishPasskey(credential).catch((err) => setError(message(err, PASSKEY_FAILED)));
+    });
+    return () => {
+      live = false;
+      WebAuthnAbortService.cancelCeremony();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, options?.passkey, autofillRound]);
+
   return {
     step,
     fields,
@@ -156,6 +203,24 @@ export function useYxSignIn() {
       run('Sign-in failed', async () => {
         const challengeToken = await botChallengeToken();
         await settle(await post('/auth/staff/login', { identifier, password: fields.password, ...(challengeToken ? { challengeToken } : {}) }));
+      }),
+
+    // "Sign in with a passkey": shown where this browser can and the company allows it (options.passkey).
+    passkeyCapable,
+    passkey: () =>
+      run(PASSKEY_FAILED, async () => {
+        let credential: unknown;
+        try {
+          credential = await passkeySignInAssertion(false);
+        } catch (err) {
+          setAutofillRound((n) => n + 1); // offer passkeys in the autofill again
+          if (!isCancelled(err)) throw err;
+          return; // the person closed the prompt: not an error
+        }
+        await finishPasskey(credential).catch((err) => {
+          setAutofillRound((n) => n + 1);
+          throw err;
+        });
       }),
 
     // "Continue with mobile": the number, then a code by SMS or WhatsApp.

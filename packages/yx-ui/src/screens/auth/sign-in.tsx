@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react';
-import { KeyRound, Smartphone } from 'lucide-react';
+import { Fingerprint, KeyRound, Smartphone } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Avatar } from '../../components/display';
 import { InlineAlert } from '../../components/feedback';
@@ -12,7 +12,7 @@ import type { SignInOptions, SsoProviderOption } from './types';
 
 /**
  * The YukthiX sign-in (founder request 7 Oct 2026): work email + Continue, then "or" and the other
- * ways in -- a mobile number, Microsoft, Google -- each shown only when it is on.
+ * ways in -- a passkey, a mobile number, Microsoft, Google -- each shown only when it is on.
  *  - email: identify -> the company's sign-in page, or password / emailed code;
  *  - mobile: number -> a code by SMS or WhatsApp;
  *  - Microsoft / Google: their sign-in page, back through the callback ('redirecting').
@@ -66,6 +66,8 @@ export interface SignInScreenProps {
   onVerifyCode: () => void;
   /** Back to step identify. */
   onRestart: () => void;
+  /** "Sign in with a passkey": pass it only where this browser supports passkeys. The work-email field also offers passkeys in its autofill (the host starts that request). */
+  onPasskey?: () => void;
   /** "Continue with mobile". */
   onMobile?: () => void;
   onSocial?: (provider: SocialProvider) => void;
@@ -85,6 +87,7 @@ export function SignInScreen(props: SignInScreenProps) {
   const { step, fields, onFieldChange: set, providers, options, busy, error, company } = props;
   const identifier = fields.identifier.trim();
   const mobile = fields.mobile.trim();
+  const passkeyOn = Boolean(options?.passkey && props.onPasskey);
   const mobileOn = Boolean(options && (options.sms || options.whatsapp) && props.onMobile);
   // A company's own Google / Microsoft provider replaces YukthiX's button (one button each).
   const googleOn = Boolean(options?.google && props.onSocial) && !providers.some((p) => p.type === 'oidc_google');
@@ -109,10 +112,11 @@ export function SignInScreen(props: SignInScreenProps) {
   const companyButtons = providers.map((p) => (
     <Button key={p.id} fullWidth size="lg" icon={KeyRound} disabled={busy} onClick={() => props.onSso(p.id)}>{providerButtonLabel(p)}</Button>
   ));
-  const otherWays = (mobileOn || googleOn || microsoftOn || providers.length > 0) && (
+  const otherWays = (passkeyOn || mobileOn || googleOn || microsoftOn || providers.length > 0) && (
     <>
       <div className="yx-auth__divider" role="separator"><span>or</span></div>
       <div className="yx-auth__ways" role="group" aria-label="Other ways to sign in">
+        {passkeyOn && <Button fullWidth size="lg" icon={Fingerprint} disabled={busy} onClick={props.onPasskey}>Sign in with a passkey</Button>}
         {mobileOn && <Button fullWidth size="lg" icon={Smartphone} disabled={busy} onClick={props.onMobile}>Continue with mobile</Button>}
         {microsoftOn && <Button fullWidth size="lg" icon={MicrosoftMark} disabled={busy} onClick={() => props.onSocial!('microsoft')}>Continue with Microsoft</Button>}
         {googleOn && <Button fullWidth size="lg" icon={GoogleMark} disabled={busy} onClick={() => props.onSocial!('google')}>Continue with Google</Button>}
@@ -167,7 +171,7 @@ export function SignInScreen(props: SignInScreenProps) {
           {step === 'identify' && (
             <>
               <FormField label="Work email" required>
-                <TextField type="email" value={fields.identifier} onChange={(v) => set('identifier', v)} autoComplete="username" spellCheck={false} autoCapitalize="none" />
+                <TextField type="email" value={fields.identifier} onChange={(v) => set('identifier', v)} autoComplete="username webauthn" spellCheck={false} autoCapitalize="none" />
               </FormField>
               {alert}
               <Button type="submit" variant="primary" fullWidth size="lg" loading={busy} disabled={!identifier.includes('@')}>Continue</Button>

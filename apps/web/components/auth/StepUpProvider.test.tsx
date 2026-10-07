@@ -40,6 +40,7 @@ describe('StepUpProvider', () => {
     render(<StepUpProvider />);
     const action = apiFetch('/security/policy', { method: 'PATCH', body: '{}' }, 'tok');
 
+    await userEvent.click(await screen.findByRole('button', { name: 'Authenticator app' })); // the method cards
     await userEvent.type(await screen.findByLabelText(/6-digit code from your authenticator app/), '000000');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('That verification did not work');
@@ -56,6 +57,7 @@ describe('StepUpProvider', () => {
   it('dismissing the prompt fails the action with the server message, without a retry', async () => {
     render(<StepUpProvider />);
     const outcome = apiFetch('/organizations/integrations/api-key', { method: 'POST' }, 'tok').catch((error: unknown) => error);
+    await userEvent.click(await screen.findByRole('button', { name: 'Authenticator app' })); // the method cards
     await screen.findByLabelText(/6-digit code from your authenticator app/);
     await userEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(await outcome).toMatchObject({ status: 403, code: 'STEP_UP_REQUIRED' });

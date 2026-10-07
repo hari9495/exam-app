@@ -35,6 +35,7 @@ function Page(over: Partial<MeSecurityScreenProps>) {
         onStartTotp={async () => (await wait(), TOTP_SETUP)}
         onConfirmTotp={async () => (await wait(), {})}
         onRemoveFactor={() => wait()}
+        onRenamePasskey={() => wait()}
         onNewRecoveryCodes={async () => (await wait(), RECOVERY_CODES)}
         onSendMobileCode={async (n) => (await wait(), n)}
         onVerifyMobile={() => wait()}

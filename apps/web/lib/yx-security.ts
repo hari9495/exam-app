@@ -14,6 +14,16 @@ export async function passkeyAssertion(getOptions: () => Promise<PublicKeyCreden
   return startAuthentication({ optionsJSON: await getOptions() });
 }
 
+/**
+ * "Sign in with a passkey" (passwordless): a challenge for this device, then the browser's passkey
+ * prompt -- or, with `autofill`, the work-email field's suggestions (conditional mediation; it waits
+ * until the person picks one, and is cancelled when another ceremony starts).
+ */
+export async function passkeySignInAssertion(autofill = false) {
+  const optionsJSON = await post('/auth/passkey/options');
+  return startAuthentication({ optionsJSON, useBrowserAutofill: autofill });
+}
+
 /** Registers a passkey named after this browser; returns the first recovery codes when it is the first factor. */
 export async function addPasskey(token?: string): Promise<{ recoveryCodes?: string[] }> {
   const credential = await startRegistration({ optionsJSON: await post('/auth/mfa/passkeys/registration-options', token) });

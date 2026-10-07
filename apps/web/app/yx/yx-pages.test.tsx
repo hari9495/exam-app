@@ -7,7 +7,8 @@ import { goTo } from '../../lib/navigate';
 import { useAuth } from '../../lib/auth-context';
 import YxSignInPage from './sign-in/page';
 import YxSignInCallbackPage from './sign-in/callback/page';
-import { SOCIAL_FAILED } from '../../lib/hooks/useYxSignIn';
+import { PASSKEY_FAILED, SOCIAL_FAILED } from '../../lib/hooks/useYxSignIn';
+import { browserSupportsWebAuthn, browserSupportsWebAuthnAutofill, startAuthentication } from '@simplewebauthn/browser';
 import YxForgotPasswordPage from './forgot-password/page';
 import YxResetPasswordPage from './reset-password/[token]/page';
 import YxMySecurityPage from './(app)/me/security/page';
@@ -21,7 +22,13 @@ jest.mock('../../lib/navigate', () => ({ goTo: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 jest.mock('../../lib/bot-challenge', () => ({ botChallengeToken: async () => null }));
 jest.mock('../../lib/hooks/useCurrentUser', () => ({ useCurrentUser: () => ({ data: { name: 'Divya Raghunathan', email: 'divya.r@kaverifoods.in' } }) }));
-jest.mock('@simplewebauthn/browser', () => ({ startAuthentication: jest.fn(), startRegistration: jest.fn() }));
+jest.mock('@simplewebauthn/browser', () => ({
+  startAuthentication: jest.fn(),
+  startRegistration: jest.fn(),
+  browserSupportsWebAuthn: jest.fn(() => false),
+  browserSupportsWebAuthnAutofill: jest.fn(async () => false),
+  WebAuthnAbortService: { cancelCeremony: jest.fn() },
+}));
 
 const wrap = (ui: React.ReactElement) =>
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
@@ -278,6 +285,86 @@ describe('/yx/sign-in (email first, no company code)', () => {
     expect(api).toHaveBeenCalledWith('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ identifier: '98450 12345', otpToken: 'o'.repeat(43), code: '123456' }) });
   });
 
+  describe('Sign in with a passkey (passwordless)', () => {
+    const start = startAuthentication as jest.Mock;
+    const CREDENTIAL = { id: 'cred-1', rawId: 'cred-1', type: 'public-key', response: {}, clientExtensionResults: {} };
+    beforeEach(() => {
+      start.mockReset();
+      (browserSupportsWebAuthn as jest.Mock).mockReturnValue(true);
+    });
+    afterEach(() => {
+      (browserSupportsWebAuthn as jest.Mock).mockReturnValue(false);
+      (browserSupportsWebAuthnAutofill as jest.Mock).mockResolvedValue(false);
+    });
+
+    it('heads the other ways; the passkey alone signs in and lands like any sign-in', async () => {
+      route({
+        'GET /auth/remembered-company': { company: null },
+        'GET /auth/sign-in-options': { ...WAYS, passkey: true },
+        'POST /auth/passkey/options': { challenge: 'chal-1', userVerification: 'required' },
+        'POST /auth/passkey/verify': { accessToken: token({ role: 'recruiter' }) },
+        'GET /rbac/me/permissions': ['exam:manage', 'results:view'],
+      });
+      start.mockResolvedValue(CREDENTIAL);
+      render(<YxSignInPage />);
+      const ways = within(await screen.findByRole('group', { name: 'Other ways to sign in' })).getAllByRole('button');
+      expect(ways[0]).toHaveTextContent('Sign in with a passkey');
+      expect(screen.getByLabelText(/Work email/)).toHaveAttribute('autocomplete', 'username webauthn');
+      await userEvent.click(ways[0]);
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/today'));
+      expect(start).toHaveBeenCalledWith({ optionsJSON: { challenge: 'chal-1', userVerification: 'required' }, useBrowserAutofill: false });
+      expect(api).toHaveBeenCalledWith('/auth/passkey/verify', { method: 'POST', body: JSON.stringify({ credential: CREDENTIAL }) });
+      expect(login).toHaveBeenCalledWith('', expect.any(String));
+    });
+
+    it('not offered where the browser cannot, or the company does not allow passkeys', async () => {
+      route({ 'GET /auth/remembered-company': { company: null }, 'GET /auth/sign-in-options': { ...WAYS, passkey: false } });
+      const { unmount } = render(<YxSignInPage />);
+      await screen.findByRole('group', { name: 'Other ways to sign in' });
+      expect(screen.queryByRole('button', { name: 'Sign in with a passkey' })).toBeNull();
+      unmount();
+      (browserSupportsWebAuthn as jest.Mock).mockReturnValue(false);
+      route({ 'GET /auth/remembered-company': { company: null }, 'GET /auth/sign-in-options': { ...WAYS, passkey: true } });
+      render(<YxSignInPage />);
+      await screen.findByRole('group', { name: 'Other ways to sign in' });
+      expect(screen.queryByRole('button', { name: 'Sign in with a passkey' })).toBeNull();
+    });
+
+    it("the work-email field's autofill offers passkeys; picking one signs in", async () => {
+      (browserSupportsWebAuthnAutofill as jest.Mock).mockResolvedValue(true);
+      route({
+        'GET /auth/remembered-company': { company: null },
+        'GET /auth/sign-in-options': { ...WAYS, passkey: true },
+        'POST /auth/passkey/options': { challenge: 'chal-2' },
+        'POST /auth/passkey/verify': { accessToken: token({ role: 'recruiter' }) },
+        'GET /rbac/me/permissions': ['exam:manage'],
+      });
+      start.mockResolvedValue(CREDENTIAL);
+      render(<YxSignInPage />);
+      await waitFor(() => expect(start).toHaveBeenCalledWith({ optionsJSON: { challenge: 'chal-2' }, useBrowserAutofill: true }));
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/today'));
+    });
+
+    it('a refused passkey says so; a closed prompt says nothing', async () => {
+      route({
+        'GET /auth/remembered-company': { company: null },
+        'GET /auth/sign-in-options': { ...WAYS, passkey: true },
+        'POST /auth/passkey/options': { challenge: 'chal-3' },
+        'POST /auth/passkey/verify': new Error(PASSKEY_FAILED),
+      });
+      start.mockRejectedValueOnce(Object.assign(new Error('The operation either timed out or was not allowed.'), { name: 'NotAllowedError' }));
+      render(<YxSignInPage />);
+      const button = await screen.findByRole('button', { name: 'Sign in with a passkey' });
+      await userEvent.click(button);
+      await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+      expect(screen.queryByRole('alert')).toBeNull();
+      start.mockResolvedValue(CREDENTIAL);
+      await userEvent.click(button);
+      expect(await screen.findByRole('alert')).toHaveTextContent(PASSKEY_FAILED);
+      expect(push).not.toHaveBeenCalled();
+    });
+  });
+
   it('a known company with email codes off: no "Email me a code instead"', async () => {
     route({
       'GET /auth/remembered-company': { company: { name: KAVERI.name, logoUrl: null } },
@@ -394,6 +481,18 @@ describe('/yx/me/security', () => {
     await userEvent.click(await screen.findByRole('button', { name: /^Sign out Safari on iOS/ }));
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Sign out' }));
     await waitFor(() => expect(api).toHaveBeenCalledWith('/auth/sessions/s-2', { method: 'DELETE' }, 'tok'));
+  });
+
+  it('renames a passkey (the API asks for step-up)', async () => {
+    route({ 'GET /auth/mfa': MFA, 'GET /auth/sessions': [], 'GET /auth/login-history': EMPTY_PAGE, 'PATCH /auth/mfa/authenticators/f-1': null });
+    wrap(<YxMySecurityPage />);
+    expect(await screen.findByText('Passkey · Office laptop')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Rename Office laptop' }));
+    const field = within(screen.getByRole('dialog')).getByRole('textbox', { name: /Name/ });
+    await userEvent.clear(field);
+    await userEvent.type(field, 'Work laptop');
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save name' }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/auth/mfa/authenticators/f-1', { method: 'PATCH', body: JSON.stringify({ label: 'Work laptop' }) }, 'tok'));
   });
 
   it('asks the API for every unsuccessful attempt under "Failed"', async () => {
