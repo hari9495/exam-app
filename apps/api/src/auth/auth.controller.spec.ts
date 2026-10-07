@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { RefreshThrottlerGuard } from './refresh-throttler.guard';
+import { CredentialThrottlerGuard } from './credential-throttler.guard';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { SessionsService } from './sessions.service';
@@ -52,6 +53,8 @@ describe('AuthController.ssoExchange', () => {
       ],
     })
       .overrideGuard(RefreshThrottlerGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(CredentialThrottlerGuard)
       .useValue({ canActivate: () => true })
       .compile();
     controller = moduleRef.get(AuthController);
