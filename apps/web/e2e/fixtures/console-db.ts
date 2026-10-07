@@ -52,3 +52,23 @@ export async function cleanUp(staffId: string | null, companySlug: string): Prom
   }).catch(() => undefined);
   await prisma.$disconnect();
 }
+
+/**
+ * An approved support session (P02 Q8) for `staffEmail` in the company named `companyName`, starting now, as if its
+ * System Admin had approved it: for e2e specs that drive pages inside a company and are not about the approval.
+ */
+export async function approvedSupportSession(staffEmail: string, companyName: string, hours = 1): Promise<void> {
+  await asPlatform(async (tx) => {
+    const staff = await tx.user.findFirstOrThrow({ where: { email: staffEmail, organizationId: null, role: 'super_admin' } });
+    const org = await tx.organization.findFirstOrThrow({ where: { name: companyName } });
+    const admin = await tx.user.findFirstOrThrow({ where: { organizationId: org.id, role: 'org_admin' } });
+    await tx.supportSession.updateMany({ where: { organizationId: org.id, requestedBy: staff.id, status: { in: ['requested', 'approved'] } }, data: { status: 'expired' } }).catch(() => undefined);
+    const now = new Date();
+    await tx.supportSession.create({
+      data: {
+        organizationId: org.id, requestedBy: staff.id, requestedByName: staff.name ?? staff.email, requestedByEmail: staff.email, reason: 'End-to-end test of the company pages', hours,
+        status: 'approved', decidedBy: admin.id, decidedByName: admin.name ?? admin.email, decidedAt: now, startsAt: now, endsAt: new Date(now.getTime() + hours * 3_600_000),
+      },
+    });
+  });
+}
