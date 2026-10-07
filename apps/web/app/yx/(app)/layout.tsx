@@ -53,7 +53,7 @@ function linksFor(role: string | null, acting: boolean): WorkspaceLink[] {
 export default function YxAppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { accessToken, role, actingSuperAdmin, isLoading, logout } = useAuth();
+  const { accessToken, role, actingSuperAdmin, isLoading, signedOut, logout } = useAuth();
   const me = useCurrentUser();
   const perms = useYxPermissions();
   // The hiring and assessment app (/v2) is offered only to people who hold its permissions.
@@ -71,8 +71,9 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   const mfaDue = mfa.data ? new Date(mfa.data.enrolmentDueAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
 
   useEffect(() => {
-    if (!isLoading && !accessToken) router.replace(withNextHere('/yx/sign-in'));
-  }, [isLoading, accessToken, router]);
+    // A lapsed session comes back here after sign-in; a deliberate sign-out does not (the next person is someone else).
+    if (!isLoading && !accessToken && !signedOut) router.replace(withNextHere('/yx/sign-in'));
+  }, [isLoading, accessToken, signedOut, router]);
 
   if (isLoading || !accessToken) {
     return (
@@ -125,7 +126,8 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
       onSignOut={() => void logout().then((to) => router.push(to))}
     >
       <div className="yx-auth__page">
-        {mfaMissing && active !== 'me' && (
+        {/* Everywhere except My security itself, where it is set up (pages outside the menu fall back to 'me'). */}
+        {mfaMissing && pathname !== ME.href && (
           <InlineAlert
             tone="warning"
             title="Secure your account"

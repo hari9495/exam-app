@@ -12,6 +12,8 @@ interface AuthContextValue {
   actingSuperAdmin: boolean;
   actingOrgName: string | null;
   isLoading: boolean;
+  /** True after this tab signed out on purpose: the sign-in page then gets no ?next= (that page was the last person's). */
+  signedOut: boolean;
   login: (organizationSlug: string, accessToken: string) => void;
   /** Signs out; resolves to the sign-in page this person uses (the staff page for platform staff, else /yx/sign-in). */
   logout: () => Promise<string>;
@@ -42,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [impersonatorEmail, setImpersonatorEmail] = useState<string | null>(null);
   const [organizationSlug, setOrganizationSlug] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [signedOut, setSignedOut] = useState(false);
   const accessTokenRef = useRef<string | null>(null);
   accessTokenRef.current = accessToken;
   // Guards against silentRefresh re-entering the acting org more than once (the switch-into call
@@ -217,6 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function login(slug: string, token: string) {
     setOrganizationSlug(slug);
+    setSignedOut(false);
     applyToken(token);
     if (typeof window !== 'undefined') {
       window.sessionStorage.setItem(SLUG_STORAGE_KEY, slug);
@@ -226,6 +230,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function logout(): Promise<string> {
     const target = signInPath();
     await apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({}) }).catch(() => undefined);
+    setSignedOut(true);
     applyToken(null);
     // Sibling tabs must learn the family is dead, or their next scheduled refresh runs
     // straight into reuse detection against a family this tab just revoked.
@@ -236,7 +241,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.sessionStorage.removeItem(ACTING_ORG_STORAGE_KEY);
       window.sessionStorage.removeItem(STAFF_SESSION_KEY);
     }
-    queryClient.removeQueries({ queryKey: ['currentUser'] });
+    // Every cached answer belonged to the person who left (their permissions, two-step status, records):
+    // the next person to sign in on this tab must not see or be routed by any of it.
+    queryClient.clear();
     return target;
   }
 
@@ -296,6 +303,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         actingSuperAdmin,
         actingOrgName,
         isLoading,
+        signedOut,
         login,
         logout,
         switchIntoOrg,

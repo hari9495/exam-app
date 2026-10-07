@@ -393,6 +393,36 @@ describe('AuthProvider', () => {
     expect(client.getQueryData(['currentUser'])).toBeUndefined();
   });
 
+  it('on logout forgets every cached answer (permissions, two-step status) and marks the tab signed out', async () => {
+    const tokenA = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'org_admin' });
+    global.fetch = jest.fn(async (url) => {
+      const u = String(url);
+      if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: tokenA }), { status: 200 });
+      if (u.endsWith('/auth/logout')) return new Response(JSON.stringify({}), { status: 200 });
+      throw new Error(`Unexpected fetch to ${u}`);
+    }) as unknown as typeof fetch;
+    let auth: ReturnType<typeof useAuth> | undefined;
+    function Consumer() {
+      auth = useAuth();
+      return <p>{auth.accessToken ? 'in' : 'out'}</p>;
+    }
+    const { client } = renderWithQueryClient(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('in')).toBeInTheDocument());
+    client.setQueryData(['landing-permissions'], ['org.settings.manage']);
+    client.setQueryData(['yx', 'mfa'], { required: true, factors: [] });
+    expect(auth!.signedOut).toBe(false);
+    await act(async () => {
+      await auth!.logout();
+    });
+    expect(client.getQueryData(['landing-permissions'])).toBeUndefined();
+    expect(client.getQueryData(['yx', 'mfa'])).toBeUndefined();
+    expect(auth!.signedOut).toBe(true);
+  });
+
   it.each([
     ['recruiter', '/yx/sign-in'],
     ['super_admin', '/staff/sign-in'],
