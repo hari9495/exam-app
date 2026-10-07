@@ -129,7 +129,7 @@ describe('PasswordPolicyService', () => {
 
     it('clears the flag when the password is clean, and tells nobody', async () => {
       await service.recheckAfterLogin(USER, 'kite-mango-7');
-      expect(tx.user.update).toHaveBeenCalledWith({ where: { id: 'user-1' }, data: { passwordRecheckPending: false, passwordChangeRequired: false } });
+      expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'user-1' }, data: { passwordRecheckPending: false, passwordChangeRequired: false } }));
       expect(email.send).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
     });
@@ -138,12 +138,12 @@ describe('PasswordPolicyService', () => {
     // marked so the next sign-in must change it (YX-IAM-08, ASVS V2.1.7).
     it('requires a password change at next sign-in, audits and emails the user when the password is breached', async () => {
       await service.recheckAfterLogin(USER, BREACHED);
-      expect(tx.user.update).toHaveBeenCalledWith({ where: { id: 'user-1' }, data: { passwordRecheckPending: false, passwordChangeRequired: true } });
+      expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'user-1' }, data: { passwordRecheckPending: false, passwordChangeRequired: true } }));
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
         expect.objectContaining({ action: 'password.breached_on_recheck', entityId: 'user-1' }),
       );
-      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'u@x.test' }));
+      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'u@x.test', subject: 'Change your YukthiX password', text: expect.stringContaining('known data breach') }));
     });
 
     it('keeps the flag while the service is still down, and never throws', async () => {

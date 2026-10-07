@@ -31,3 +31,26 @@ export function trackOtpSends(builder: TestingModuleBuilder): { builder: Testing
     },
   };
 }
+
+// Emailed codes are rendered before they are sent (also fire-and-forget): wrap OtpService's email
+// path the same way, so `settle()` covers them too.
+export function trackEmailCodes(otp: object): () => Promise<void> {
+  const inflight = new Set<Promise<unknown>>();
+  const target = otp as { emailCode: (...args: unknown[]) => Promise<unknown> };
+  const inner = target.emailCode.bind(otp);
+  target.emailCode = (...args: unknown[]) => {
+    const sending = inner(...args);
+    inflight.add(sending);
+    void sending.finally(() => inflight.delete(sending)).catch(() => undefined);
+    return sending;
+  };
+  return async () => {
+    while (inflight.size) await Promise.allSettled([...inflight]);
+    await new Promise((r) => setImmediate(r));
+  };
+}
+
+// Security notices are rendered and sent fire-and-forget: wait (up to 5 s) until one matches.
+export async function emailArrives(send: jest.Mock, match: (m: { to: string; subject: string }) => boolean): Promise<void> {
+  for (let i = 0; i < 250 && !send.mock.calls.some(([m]) => match(m)); i++) await new Promise((r) => setTimeout(r, 20));
+}

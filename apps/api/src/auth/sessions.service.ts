@@ -14,7 +14,20 @@ import {
   sessionLimitsFor,
 } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
-import { escapeHtml } from '../notifications/notification-email-render';
+import {
+  Block,
+  RenderedEmail,
+  SignInFacts,
+  accountLockedEmail,
+  noticeEmail,
+  appUrl,
+  button,
+  describeDevice,
+  details,
+  newSignInEmail,
+  securityChangeEmail,
+  text,
+} from '../email/account-emails';
 import { buildPaginatedResponse, resolvePaginationParams } from '../common/paginated-response';
 import { LoginProtectionService } from './login-protection.service';
 
@@ -430,52 +443,44 @@ export class SessionsService {
   // ---- notifications to the account holder (fire-and-forget) -----------------------------
 
   notifyNewDevice(user: SessionUser, meta: ClientMeta): void {
-    this.send(
-      user,
-      'New sign-in to your YukthiX account',
-      `<p>Your account was just signed in to from a device we have not seen before.</p>${this.describe(meta)}` +
-        '<p>If this was you, no action is needed. If not, open <b>Me &rsaquo; Security</b>, sign out that session and change your password.</p>',
-    );
+    this.send(user, (r) => newSignInEmail({ to: user.email, company: r.company, facts: this.facts(meta, r.timeZone) }));
   }
 
   // A known device, but a country this account has never signed in from (ASVS V2.2 / YX-IAM-07).
   notifyNewCountry(user: SessionUser, meta: ClientMeta): void {
-    this.send(
-      user,
-      'Sign-in to your YukthiX account from a new country',
-      `<p>Your account was just signed in to from a country it has not been used from before (${escapeHtml(meta.country ?? 'unknown')}).</p>${this.describe(meta)}` +
-        '<p>If this was you, no action is needed. If not, open <b>Me &rsaquo; Security</b>, sign out that session and change your password.</p>',
-    );
+    this.send(user, (r) => newSignInEmail({ to: user.email, company: r.company, facts: this.facts(meta, r.timeZone), newCountry: true }));
   }
 
-  notifyLocked(user: SessionUser, meta: ClientMeta): void {
-    this.send(
-      user,
-      'Sign-in to your YukthiX account was temporarily locked',
-      `<p>We temporarily locked sign-in to your account after repeated failed password attempts.</p>${this.describe(meta)}` +
-        '<p>You can try again later or reset your password. If these attempts were not you, reset your password now.</p>',
-    );
+  // `lockedForSeconds`: how long this lock lasts, when the caller knows it.
+  notifyLocked(user: SessionUser, meta: ClientMeta, lockedForSeconds?: number | null): void {
+    this.send(user, (r) => accountLockedEmail({ to: user.email, company: r.company, facts: this.facts(meta, r.timeZone), lockedForSeconds }));
   }
 
   // SSO-only break-glass sign-in (YX-IAM-04): every admin of the company is told.
   notifyBreakGlass(user: SessionUser, meta: ClientMeta): void {
     if (!user.organizationId) return;
-    this.notifyAdmins(
-      user.organizationId,
-      'Break-glass sign-in to your YukthiX organisation',
-      `<p>The break-glass account <b>${escapeHtml(user.email)}</b> just signed in with a password while SSO-only is on.</p>` +
-        `${this.describe(meta)}<p>If this was not expected, review <b>Admin &rsaquo; Login activity</b> and revoke the session.</p>`,
-    );
+    this.notifyAdmins(user.organizationId, 'Break-glass sign-in to your YukthiX organisation', 'Break-glass account used', [
+      text(`The break-glass account ${user.email} just signed in with a password while SSO-only is on.`),
+      details([['IP address', meta.ip ?? 'Unknown'], ['Device', describeDevice(meta.userAgent) ?? 'Unknown device']]),
+      text("If this wasn't expected, review Login activity and sign out that session."),
+      button('Open Login activity', appUrl('/yx/admin/login-activity')),
+    ]);
   }
 
-  // Every active administrator of the company hears about it. `html` is already escaped.
-  notifyAdmins(organizationId: string, subject: string, html: string): void {
+  // Every active administrator of the company hears about it. Block text is plain (escaped when rendered).
+  notifyAdmins(organizationId: string, subject: string, heading: string, blocks: Block[]): void {
     this.tenantPrisma
       .forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
-        tx.user.findMany({ where: { organizationId, role: 'org_admin', status: 'active' }, select: { id: true, email: true } }),
+        tx.user.findMany({
+          where: { organizationId, role: 'org_admin', status: 'active' },
+          select: { id: true, email: true, organization: { select: { name: true } } },
+        }),
       )
-      .then((admins) => {
-        for (const admin of admins) this.send({ ...admin, organizationId, role: 'org_admin' }, subject, html);
+      .then(async (admins) => {
+        for (const admin of admins) {
+          const mail = await noticeEmail({ to: admin.email, company: admin.organization?.name, subject, heading, blocks });
+          this.deliver({ ...admin, organizationId, role: 'org_admin' }, mail);
+        }
       })
       .catch((error) => this.logger.error(`Failed to alert the admins of organisation ${organizationId}`, error as Error));
   }
@@ -483,24 +488,29 @@ export class SessionsService {
   // MFA changes and resets (YX-IAM-10/11): the people concerned hear about every one.
   // `what` is a complete sentence.
   notifySecurityChange(user: SessionUser, subject: string, what: string): void {
-    this.send(
-      user,
-      subject,
-      `<p>${escapeHtml(what)}</p><p>Time: ${escapeHtml(new Date().toISOString())}</p>` +
-        '<p>If you did not expect this, contact your administrator at once.</p>',
-    );
+    const when = new Date();
+    this.send(user, (r) => securityChangeEmail({ to: user.email, company: r.company, subject, what, when, timeZone: r.timeZone }));
   }
 
-  private describe(meta: ClientMeta): string {
-    return (
-      `<p>Time: ${escapeHtml(new Date().toISOString())}<br>IP address: ${escapeHtml(meta.ip ?? 'unknown')}` +
-      `<br>Browser: ${escapeHtml(meta.userAgent ?? 'unknown')}</p>`
-    );
+  private facts(meta: ClientMeta, timeZone: string | null): SignInFacts {
+    return { when: new Date(), timeZone, userAgent: meta.userAgent, country: meta.country, ip: meta.ip };
   }
 
-  private send(user: SessionUser, subject: string, html: string): void {
-    this.email
-      .send({ to: user.email, subject, html, organizationId: user.organizationId ?? undefined })
+  // The recipient's company name and time zone, then the email. Fire-and-forget; never throws.
+  private send(user: SessionUser, build: (r: { company: string | null; timeZone: string | null }) => Promise<RenderedEmail>): void {
+    this.tenantPrisma
+      .forTenant({ organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' }, (tx) =>
+        tx.user.findUnique({ where: { id: user.id }, select: { timeZone: true, organization: { select: { name: true } } } }),
+      )
+      .then((row) => build({ company: row?.organization?.name ?? null, timeZone: row?.timeZone ?? null }))
+      .then((mail) => this.deliver(user, mail))
       .catch((error) => this.logger.error(`Failed to send security notification to user ${user.id}`, error as Error));
   }
+
+  private deliver(user: SessionUser, mail: RenderedEmail): void {
+    this.email
+      .send({ to: user.email, ...mail, organizationId: user.organizationId ?? undefined })
+      .catch((error) => this.logger.error(`Failed to send security notification to user ${user.id}`, error as Error));
+  }
+
 }

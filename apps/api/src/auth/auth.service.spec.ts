@@ -1009,7 +1009,7 @@ describe('AuthService', () => {
 
       tenantPrisma.forTenant.mockResolvedValueOnce(activeUser());
       await expect(service.login({ ...DTO, password: 'wrong' }, META)).rejects.toThrow('Invalid credentials');
-      expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), META);
+      expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), META, undefined);
       expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ reason: 'bad_password+lockout_started' }));
 
       sessions.notifyLocked.mockClear();
@@ -1064,7 +1064,8 @@ describe('AuthService', () => {
 
       await expect(service.login({ ...DTO, password: 'wrong' }, META)).rejects.toThrow('Invalid credentials');
       expect(loginProtection.reserve).toHaveBeenCalledWith('demo-org', 'admin@demo-org.test', META.ip, { deviceId: META.deviceId, lockExempt: true, lockout: DEFAULT_LOCKOUT });
-      expect(sessions.notifyAdmins).toHaveBeenCalledWith('org-1', 'Repeated failed sign-ins to a break-glass account', expect.stringContaining('admin@demo-org.test'));
+      expect(sessions.notifyAdmins).toHaveBeenCalledWith('org-1', 'Repeated failed sign-ins to a break-glass account', expect.any(String), expect.any(Array));
+      expect(JSON.stringify(sessions.notifyAdmins.mock.calls[0][3])).toContain('admin@demo-org.test');
       expect(sessions.notifyLocked).not.toHaveBeenCalled();
     });
 
@@ -1589,7 +1590,7 @@ describe('AuthService', () => {
         expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed', method: 'otp_email', reason: 'otp_invalid' }));
         loginProtection.registerFailure.mockResolvedValue({ failures: 10, locked: true });
         await expect(verify('000000')).rejects.toThrow(UnauthorizedException);
-        expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), META);
+        expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), META, undefined);
         expect(sessions.create).not.toHaveBeenCalled();
       });
 

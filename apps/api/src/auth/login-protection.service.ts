@@ -119,6 +119,8 @@ export interface LoginAttempt {
   lockExempt: boolean;
   // The company's "lock every N failures" this attempt was counted under.
   lockEvery: number;
+  // How long the lock lasts if this attempt fails and starts one (for the holder's email).
+  lockedForSeconds?: number;
 }
 
 export interface AttemptOptions {
@@ -203,7 +205,8 @@ export class LoginProtectionService {
     if (kind === 'ip' || kind === 'account') {
       return { block: { scope: kind, retryAfterSeconds: Math.ceil(Number(value) / 1000) }, failures: 0, lockExempt, lockEvery };
     }
-    return { block: null, failures: Number(value), lockExempt, lockEvery };
+    const failures = Number(value);
+    return { block: null, failures, lockExempt, lockEvery, lockedForSeconds: accountBlockSeconds(failures, lockExempt, options.lockout) };
   }
 
   // The reserved attempt failed: it is already counted for the account; count it for the IP.

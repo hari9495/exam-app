@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/commo
 import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { noticeEmail, text } from '../email/account-emails';
 import { assertPublicHttpsHost, publicHttpsFetch } from '../common/ssrf';
 import { SmsFetch, SmsProviderAdapter, getChannelProvider } from '../sms/providers';
 import { normaliseMobileNumber } from '../auth/otp.service';
@@ -291,18 +292,23 @@ export class SmsChannelService {
         await tx.$executeRaw`INSERT INTO sms_usage_monthly (organization_id, month, sent_count) VALUES (${organizationId}::uuid, ${month}::date, 0) ON CONFLICT DO NOTHING`;
         const first = await tx.$executeRaw`UPDATE sms_usage_monthly SET cap_alerted_at = now()
           WHERE organization_id = ${organizationId}::uuid AND month = ${month}::date AND cap_alerted_at IS NULL`;
-        return first === 1 ? tx.user.findMany({ where: { organizationId, role: 'org_admin', status: 'active' }, select: { email: true } }) : [];
+        return first === 1
+          ? tx.user.findMany({ where: { organizationId, role: 'org_admin', status: 'active' }, select: { email: true, organization: { select: { name: true } } } })
+          : [];
       })
-      .then((admins) => {
+      .then(async (admins) => {
         for (const admin of admins) {
-          void this.email.send({
+          const mail = await noticeEmail({
             to: admin.email,
-            organizationId,
+            company: admin.organization?.name,
             subject: 'Your organisation has reached its monthly SMS limit',
-            html:
-              `<p>Your organisation has sent its limit of ${cap} text messages this month.</p>` +
-              '<p>Until next month, one-time codes go by email where the sign-in allows it. To change the limit, open <b>Settings &rsaquo; Notifications &rsaquo; SMS</b>.</p>',
+            heading: 'Monthly SMS limit reached',
+            blocks: [
+              text(`Your organisation has sent its limit of ${cap} text messages this month.`),
+              text('Until next month, one-time codes go by email where the sign-in allows it. You can change the limit in Settings › Notifications › SMS.'),
+            ],
           });
+          void this.email.send({ to: admin.email, organizationId, ...mail });
         }
       })
       .catch((error) => this.logger.error(`Could not alert the admins of ${organizationId} about the SMS limit`, error as Error));

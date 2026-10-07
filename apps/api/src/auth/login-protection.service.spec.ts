@@ -93,7 +93,7 @@ describe('LoginProtectionService', () => {
     const redis = { eval: jest.fn().mockResolvedValueOnce(['account', 2500]).mockResolvedValueOnce(['ok', 4]) };
     const service = new LoginProtectionService(redis as any);
     expect(await service.reserve('org', 'a@b.test', null)).toEqual({ block: { scope: 'account', retryAfterSeconds: 3 }, failures: 0, lockExempt: false, lockEvery: 10 });
-    expect(await service.reserve('org', 'a@b.test', null, { lockExempt: true })).toEqual({ block: null, failures: 4, lockExempt: true, lockEvery: 10 });
+    expect(await service.reserve('org', 'a@b.test', null, { lockExempt: true })).toEqual({ block: null, failures: 4, lockExempt: true, lockEvery: 10, lockedForSeconds: expect.any(Number) });
   });
 
   it("reports the lock on the company's Nth reserved failure", async () => {

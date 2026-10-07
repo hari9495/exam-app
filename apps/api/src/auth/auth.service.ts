@@ -39,6 +39,7 @@ import { PlatformLoginDto, SelectCompanyDto } from './dto/login.dto';
 import { CompanyCard, CompanyScopeService } from './company-scope';
 import { SocialIdentity, SocialProvider, isSocialProvider } from './social-sign-in';
 import { emailDomain } from './identity-providers';
+import { appUrl, button, details, passwordResetEmail, text } from '../email/account-emails';
 
 interface TokenPair {
   accessToken: string;
@@ -433,7 +434,7 @@ export class AuthService {
     const lockout = { maxFailedAttempts: c.policy.maxFailedAttempts, lockMinutes: c.policy.lockMinutes };
     const counted = await this.loginProtection.reserve(c.slug, identifier, meta.ip, { deviceId: meta.deviceId, lockExempt: c.listedBreakGlass, lockout });
     const locked = !counted.block && counted.failures > 0 && counted.failures % counted.lockEvery === 0;
-    if (locked) this.alertLocked(c.account, meta, c.listedBreakGlass);
+    if (locked) this.alertLocked(c.account, meta, c.listedBreakGlass, counted.lockedForSeconds);
     return locked;
   }
 
@@ -667,7 +668,7 @@ export class AuthService {
         method: dto.factor,
         reason: locked ? 'mfa_invalid+lockout_started' : 'mfa_invalid',
       });
-      if (locked) this.alertLocked(user, meta, pending.breakGlass);
+      if (locked) this.alertLocked(user, meta, pending.breakGlass, reserved.lockedForSeconds);
       throw new UnauthorizedException('That verification did not work. Try again.');
     }
     await this.loginProtection.registerSuccess('mfa', user.id, meta.ip, { deviceId: meta.deviceId, trustDevice: true });
@@ -776,7 +777,7 @@ export class AuthService {
       const { locked } = await this.loginProtection.registerFailure(orgSlug, parsed.value, meta.ip, reserved);
       await this.sessions.recordLoginEvent({ ...event, userId: record?.userId || null, result: 'failed', reason: locked ? 'otp_invalid+lockout_started' : 'otp_invalid' });
       const holder = locked && record?.userId ? await this.mfa.loadUser(record.userId) : null;
-      if (holder) this.sessions.notifyLocked(holder, meta);
+      if (holder) this.sessions.notifyLocked(holder, meta, reserved.lockedForSeconds);
       throw new UnauthorizedException(OTP_INVALID_MESSAGE);
     }
 
@@ -836,6 +837,8 @@ export class AuthService {
       this.otp.deliver(channel, channel === 'email' ? account.email : account.mobileNumber!, code, 'sign_in', account.organizationId, {
         userId: account.id,
         fallbackEmail: channel !== 'email' && first.policy.otpSignInChannels.includes('email') ? account.email : null,
+        // Several companies share the address: the email names none of them (it says YukthiX).
+        nameCompany: allowed.length === 1,
       });
       for (const c of allowed) {
         await this.sessions.recordLoginEvent({ organizationId: c.account.organizationId, userId: c.account.id, identifier: parsed.value, result: 'code_sent', method, meta });
@@ -1056,25 +1059,26 @@ export class AuthService {
       reason: locked ? `${reason}+lockout_started` : reason,
     });
     if (locked && user) {
-      this.alertLocked(user, attempt.meta, reserved.lockExempt);
+      this.alertLocked(user, attempt.meta, reserved.lockExempt, reserved.lockedForSeconds);
     }
     throw new UnauthorizedException(INVALID_CREDENTIALS);
   }
 
   // The lock threshold was reached: the holder is told; for a break-glass account (never locked)
   // every admin of the company is told instead, since someone is guessing at the way in of last resort.
-  private alertLocked(user: SessionUser, meta: ClientMeta, breakGlass: boolean): void {
+  private alertLocked(user: SessionUser, meta: ClientMeta, breakGlass: boolean, lockedForSeconds?: number): void {
     if (breakGlass && user.organizationId) {
-      this.sessions.notifyAdmins(
-        user.organizationId,
-        'Repeated failed sign-ins to a break-glass account',
-        `<p>Someone has repeatedly failed to sign in to the break-glass account <b>${escapeHtml(user.email)}</b>.</p>` +
-          `<p>IP address: ${escapeHtml(meta.ip ?? 'unknown')}</p><p>Review <b>Admin &rsaquo; Login activity</b>.</p>`,
-      );
+      this.sessions.notifyAdmins(user.organizationId, 'Repeated failed sign-ins to a break-glass account', 'Repeated failed sign-ins', [
+        text(`Someone has repeatedly failed to sign in to the break-glass account ${user.email}.`),
+        details([['IP address', meta.ip ?? 'Unknown']]),
+        text('Review Login activity to see where the attempts came from.'),
+        button('Open Login activity', appUrl('/yx/admin/login-activity')),
+      ]);
       return;
     }
-    this.sessions.notifyLocked(user, meta);
+    this.sessions.notifyLocked(user, meta, lockedForSeconds);
   }
+
 
   // Session + token pair + login history + new-device alert, for every successful sign-in path.
   private async startSession(
@@ -1139,7 +1143,7 @@ export class AuthService {
     // Fire-and-forget, matching the invitation-email pattern in InvitationsService:
     // email delivery is a notification side effect, not something the caller should
     // wait on (or that should make forgotPassword() throw on SMTP failure).
-    this.dispatchResetEmail(user.email, rawToken, org.id, undefined, yukthix).catch((error) =>
+    this.dispatchResetEmail(user.email, rawToken, org.id, yukthix ? org.name : undefined, yukthix).catch((error) =>
       this.logger.error(`Failed to dispatch password reset email to ${user.email}`, error as Error),
     );
   }
@@ -1155,6 +1159,11 @@ export class AuthService {
 
   private async dispatchResetEmail(email: string, rawToken: string, organizationId: string, companyName?: string, yukthix = false): Promise<void> {
     const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}${yukthix ? '/yx' : ''}/reset-password/${rawToken}`;
+    if (yukthix) {
+      const mail = await passwordResetEmail({ to: email, link, company: companyName, minutes: PASSWORD_RESET_EXPIRY_MINUTES });
+      await this.emailService.send({ to: email, ...mail, organizationId });
+      return;
+    }
     const which = companyName ? ` for your <b>${escapeHtml(companyName)}</b> account` : '';
     await this.emailService.send({
       to: email,

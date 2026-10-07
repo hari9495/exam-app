@@ -53,8 +53,10 @@ describe('one-time codes (P12 §3, M04 Q2)', () => {
       result = { delivered: true };
       email.send.mockClear();
     });
-    const flush = () => new Promise((r) => setTimeout(r, 5));
-    const service = (redis: object) => new OtpService(crypto, email as never, sms, redis as never);
+    // The email is rendered (MJML, compiled once per layout) before it is sent.
+    const flush = () => new Promise((r) => setTimeout(r, 300));
+    const prisma = { organization: { findUnique: jest.fn(async () => ({ name: 'Kaveri <Foods>' })) } };
+    const service = (redis: object) => new OtpService(crypto, email as never, sms, redis as never, prisma as never);
 
     it('fails closed (503) when its store is down: no code is issued, checked or rate-limited', async () => {
       const down = new Proxy({}, { get: () => () => { throw new Error('ECONNREFUSED'); } });
@@ -77,12 +79,25 @@ describe('one-time codes (P12 §3, M04 Q2)', () => {
       otp.deliver('sms', '+919876543210', '012345', 'mfa', 'org-1', { userId: 'u-1' });
       await flush();
       expect(email.send).toHaveBeenCalledTimes(1);
-      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'a@b.test', subject: 'Your YukthiX sign-in code', organizationId: 'org-1' }));
-      expect(email.send.mock.calls[0][0].html).toContain('<b>012345</b>');
+      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'a@b.test', subject: '012345 is your YukthiX sign-in code', organizationId: 'org-1' }));
+      const { html, text } = email.send.mock.calls[0][0];
+      expect(html).toContain('012<span>345</span>');
+      expect(html).toContain('sign in to Kaveri &lt;Foods&gt;');
+      expect(html).not.toContain('<Foods>');
+      expect(text).toContain('012345');
+      expect(text).toContain('Enter this code to sign in to Kaveri <Foods>. It works once and expires in 5 minutes.');
       expect(sms.sent).toEqual([
         expect.objectContaining({ organizationId: 'org-1', to: '+919876543210', channel: 'sms', code: '012345', purpose: 'verification code', minutes: 5, recipientUserId: 'u-1' }),
       ]);
       expect(sms.sent[0].idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
+    });
+
+    it('a code for an address several companies share names none of them', async () => {
+      const otp = service({});
+      otp.deliver('email', 'a@b.test', '012345', 'sign_in', 'org-1', { userId: 'u-1', nameCompany: false });
+      await flush();
+      expect(email.send.mock.calls[0][0].text).toContain('Enter this code to sign in to YukthiX.');
+      expect(email.send.mock.calls[0][0].text).not.toContain('Kaveri');
     });
 
     it('a text channel counts as available only where a text could actually go', async () => {
@@ -99,9 +114,9 @@ describe('one-time codes (P12 §3, M04 Q2)', () => {
       const otp = service({});
       otp.deliver('sms', '+919876543210', '246810', 'sign_in', 'org-1', { userId: 'u-1', fallbackEmail: 'field@plant.test' });
       await flush();
-      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'field@plant.test', subject: 'Your YukthiX sign-in code' }));
-      expect(email.send.mock.calls[0][0].html).toContain('could not send your code by text message');
-      expect(email.send.mock.calls[0][0].html).toContain('<b>246810</b>');
+      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'field@plant.test', subject: '246810 is your YukthiX sign-in code' }));
+      expect(email.send.mock.calls[0][0].html).toContain('couldn&#39;t send this code by text message');
+      expect(email.send.mock.calls[0][0].text).toContain('246810');
     });
 
     it('no fallback email when the flow has none (second step, number check), or when the text may have arrived', async () => {

@@ -14,7 +14,7 @@ import { OrgSecretsCryptoService, PrismaService, STEP_UP_REQUIRED_CODE, TenantPr
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { DevSmsSink, devSmsSink } from '../src/sms/providers';
-import { trackOtpSends } from './fixtures/sms';
+import { emailArrives, trackEmailCodes, trackOtpSends } from './fixtures/sms';
 import { OTP_SMS_SENDER } from '../src/auth/otp-sender';
 import { OTP_MAX_ATTEMPTS, OtpService } from '../src/auth/otp.service';
 import { markSteppedUp } from './fixtures/step-up';
@@ -63,9 +63,10 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
   const refreshCookieOf = (res: request.Response) =>
     ((res.headers['set-cookie'] as unknown as string[] | undefined) ?? []).find((c) => c.startsWith('refresh_token='));
 
-  const lastEmailCode = (to: string): string | undefined => {
+  const lastEmailCode = async (to: string): Promise<string | undefined> => {
+    await settle();
     const call = [...email.send.mock.calls].reverse().find(([m]) => m.to === to && /code/.test(m.subject));
-    return call?.[0].html.match(/<b>(\d{6})<\/b>/)?.[1];
+    return call?.[0].subject.match(/^(\d{6}) is your/)?.[1];
   };
   // Codes go out fire-and-forget: wait for sends already started, then read the dev sink.
   const lastSmsCode = async (to: string) => {
@@ -112,7 +113,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     const b = browser();
     const identifier = opts.identifier ?? who;
     const started = await startOtp(b, slug, identifier, opts.channel).expect(200);
-    const code = opts.identifier ? (await lastSmsCode(identifier))! : lastEmailCode(who)!;
+    const code = opts.identifier ? (await lastSmsCode(identifier))! : (await lastEmailCode(who))!;
     const res = await verifyOtp(b, slug, identifier, started.body.otpToken, code).expect(200);
     await resetLimits(slug, identifier);
     return { b, res, code, otpToken: started.body.otpToken as string };
@@ -150,8 +151,12 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
 
   beforeAll(async () => {
     const tracked = trackOtpSends(Test.createTestingModule({ imports: [AppModule] }).overrideProvider(EmailService).useValue(email));
-    settle = tracked.settle;
     const moduleRef = await tracked.builder.compile();
+    const settleEmails = trackEmailCodes(moduleRef.get(OtpService));
+    settle = async () => {
+      await tracked.settle();
+      await settleEmails();
+    };
     app = moduleRef.createNestApplication();
     app.use(cookieParser());
     app.getHttpAdapter().getInstance().set('trust proxy', true);
@@ -212,6 +217,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
       const off = await startOtp(browser(), OFF().slug, FIELD).expect(200);
       const unknown = await startOtp(browser(), `no-such-org-${runId}`, FIELD).expect(200);
       expect(Object.keys(off.body).sort()).toEqual(Object.keys(unknown.body).sort());
+      await settle();
       expect(email.send).not.toHaveBeenCalled();
       const [event] = await tenantPrisma.forTenant(SUPER, (tx) =>
         tx.loginEvent.findMany({ where: { organizationId: OFF().id, reason: 'otp_disabled' }, orderBy: { createdAt: 'desc' }, take: 1 }),
@@ -223,8 +229,9 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
       const b = browser();
       const started = await startOtp(b, A().slug, FIELD.toUpperCase()).expect(200);
       expect(started.body).toEqual({ otpToken: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/), expiresInSeconds: 300, resendAfterSeconds: 60 });
-      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: FIELD, subject: 'Your YukthiX sign-in code', organizationId: A().id }));
-      const code = lastEmailCode(FIELD)!;
+      await settle();
+      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: FIELD, subject: expect.stringMatching(/^\d{6} is your YukthiX sign-in code$/), organizationId: A().id }));
+      const code = (await lastEmailCode(FIELD))!;
 
       // Stored as a keyed hash only, for at most 5 minutes.
       const key = `auth:otp:signin:${sha(`${A().slug}\u0000${FIELD}`)}`;
@@ -251,6 +258,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
       const b = browser();
       const started = await startOtp(b, A().slug, ghost).expect(200);
       expect(Object.keys(started.body).sort()).toEqual(['expiresInSeconds', 'otpToken', 'resendAfterSeconds']);
+      await settle();
       expect(email.send).not.toHaveBeenCalled();
       await verifyOtp(b, A().slug, ghost, started.body.otpToken, '123456').expect(401);
       expect(await eventsFor(ghost)).toEqual([expect.objectContaining({ result: 'failed', method: 'otp_email', reason: 'otp_invalid', userId: null, organizationId: A().id })]);
@@ -262,10 +270,11 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     it('wrong tenant: an account of company A asking at company B gets nothing, and A\'s code is no good at B', async () => {
       const atA = browser();
       const a = await startOtp(atA, A().slug, FIELD).expect(200);
-      const codeA = lastEmailCode(FIELD)!;
+      const codeA = (await lastEmailCode(FIELD))!;
       email.send.mockClear();
       const atB = browser();
       const b = await startOtp(atB, B().slug, FIELD).expect(200);
+      await settle();
       expect(email.send).not.toHaveBeenCalled();
       await verifyOtp(atB, B().slug, FIELD, b.body.otpToken, codeA).expect(401);
       // A's code still works at A, from A's browser.
@@ -277,7 +286,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     it('the code only works from the browser that asked for it, with its token', async () => {
       const b = browser();
       const started = await startOtp(b, A().slug, FIELD).expect(200);
-      const code = lastEmailCode(FIELD)!;
+      const code = (await lastEmailCode(FIELD))!;
       await verifyOtp({ ip: b.ip, cookie: `yx_device=${'q'.repeat(43)}` }, A().slug, FIELD, started.body.otpToken, code).expect(401);
       await verifyOtp(b, A().slug, FIELD, 'A'.repeat(43), code).expect(401);
       await verifyOtp(b, A().slug, FIELD, started.body.otpToken, code).expect(200);
@@ -287,7 +296,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     it('expired: a code past its 5 minutes is refused', async () => {
       const b = browser();
       const started = await startOtp(b, A().slug, FIELD).expect(200);
-      const code = lastEmailCode(FIELD)!;
+      const code = (await lastEmailCode(FIELD))!;
       await redis.pexpire(`auth:otp:signin:${sha(`${A().slug}\u0000${FIELD}`)}`, 1);
       await new Promise((r) => setTimeout(r, 20));
       await verifyOtp(b, A().slug, FIELD, started.body.otpToken, code).expect(401);
@@ -297,10 +306,10 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     it('a new code replaces the previous one', async () => {
       const b = browser();
       const first = await startOtp(b, A().slug, FIELD).expect(200);
-      const oldCode = lastEmailCode(FIELD)!;
+      const oldCode = (await lastEmailCode(FIELD))!;
       await redis.del(`auth:otp:cool:${limitKey(`signin\u0000${A().slug}\u0000${FIELD}`)}`);
       const second = await startOtp(b, A().slug, FIELD).expect(200);
-      const newCode = lastEmailCode(FIELD)!;
+      const newCode = (await lastEmailCode(FIELD))!;
       if (oldCode !== newCode) await verifyOtp(b, A().slug, FIELD, first.body.otpToken, oldCode).expect(401);
       await verifyOtp(b, A().slug, FIELD, second.body.otpToken, newCode).expect(200);
       await resetLimits(A().slug, FIELD);
@@ -309,7 +318,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     it(`brute force: the ${OTP_MAX_ATTEMPTS}th wrong try burns the code, so even the right one then fails`, async () => {
       const b = browser();
       const started = await startOtp(b, A().slug, FIELD).expect(200);
-      const code = lastEmailCode(FIELD)!;
+      const code = (await lastEmailCode(FIELD))!;
       const wrong = code === '000000' ? '111111' : '000000';
       for (let i = 0; i < OTP_MAX_ATTEMPTS; i++) {
         await redis.del(`auth:lp:acct:block:${lockKey(A().slug, FIELD)}`); // skip the progressive delay, keep the count
@@ -326,12 +335,13 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
         await redis.del(`auth:otp:cool:${limitKey(`signin\u0000${A().slug}\u0000${LOCKED}`)}`, `auth:lp:acct:block:${lockKey(A().slug, LOCKED)}`);
         const b = { ip };
         const started = await startOtp(b, A().slug, LOCKED).expect(200);
-        const code = lastEmailCode(LOCKED)!;
+        const code = (await lastEmailCode(LOCKED))!;
         await verifyOtp(b, A().slug, LOCKED, started.body.otpToken, code === '000000' ? '111111' : '000000').expect(401);
         if (i === 4) await redis.del(`auth:otp:sends:${limitKey(`signin\u0000${A().slug}\u0000${LOCKED}`)}`); // hourly cap, proven below
       }
       const locked = await startOtp(browser(), A().slug, LOCKED).expect(429);
       expect(locked.body.retryAfterSeconds).toBeGreaterThan(800);
+      await emailArrives(email.send, (m) => m.to === LOCKED && /locked/.test(m.subject));
       expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: LOCKED, subject: 'Sign-in to your YukthiX account was temporarily locked' }));
       expect(await eventsFor(LOCKED)).toEqual(expect.arrayContaining([
         expect.objectContaining({ result: 'failed', method: 'otp_email', reason: 'otp_invalid+lockout_started' }),
@@ -366,6 +376,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
       await setPolicy(B().id, { ipAllowlistDesk: ['198.51.100.0/24'] });
       try {
         await startOtp(browser(), B().slug, FIELD_B).expect(200); // the unknown-organisation answer
+        await settle();
         expect(email.send).not.toHaveBeenCalled();
         const events = await tenantPrisma.forTenant(SUPER, (tx) => tx.loginEvent.count({ where: { organizationId: B().id, reason: 'ip_not_allowed' } }));
         expect(events).toBeGreaterThan(0);
@@ -403,6 +414,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
       const row = await tenantPrisma.forTenant(SUPER, (tx) => tx.user.findUniqueOrThrow({ where: { id: users[MOBILE_USER] } }));
       expect(row).toMatchObject({ mobileNumber: mobile(1), mobileVerifiedAt: expect.any(Date) });
       expect(await auditActions(A().id, 'user.mobile_verified')).toEqual([expect.objectContaining({ actorUserId: users[MOBILE_USER] })]);
+      await emailArrives(email.send, (m) => m.to === MOBILE_USER && /Mobile number added/.test(m.subject));
       expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: MOBILE_USER, subject: 'Mobile number added to your YukthiX account' }));
       // Status shows it; user listings never do.
       const status = await request(server()).get('/api/v1/auth/mfa').set('Authorization', `Bearer ${access}`).set('X-Forwarded-For', b.ip).expect(200);
@@ -444,7 +456,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     it('an account with TOTP that signs in by code must still give the TOTP; OTP is not offered again', async () => {
       const b = browser();
       const started = await startOtp(b, A().slug, TWO_STEP).expect(200);
-      const first = await verifyOtp(b, A().slug, TWO_STEP, started.body.otpToken, lastEmailCode(TWO_STEP)!).expect(200);
+      const first = await verifyOtp(b, A().slug, TWO_STEP, started.body.otpToken, (await lastEmailCode(TWO_STEP))!).expect(200);
       expect(first.body).toMatchObject({ mfaRequired: true, factors: ['totp', 'recovery_code'] });
       expect(first.body.accessToken).toBeUndefined();
       await post(b, '/auth/mfa/otp/send', { mfaToken: first.body.mfaToken, channel: 'sms' }).expect(400);
@@ -542,9 +554,10 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     it('without its Redis store no code is issued (503), and nothing is sent', async () => {
       const down = new Redis('redis://127.0.0.1:1', { maxRetriesPerRequest: 0, lazyConnect: true, retryStrategy: () => null });
       down.on('error', () => undefined);
-      const otp = new OtpService(app.get(OrgSecretsCryptoService), email as never, app.get(OTP_SMS_SENDER), down);
+      const otp = new OtpService(app.get(OrgSecretsCryptoService), email as never, app.get(OTP_SMS_SENDER), down, app.get(PrismaService));
       await expect(otp.reserveSend('x', null)).rejects.toThrow('temporarily unavailable');
       await expect(otp.issue('k', {})).rejects.toThrow('temporarily unavailable');
+      await settle();
       expect(email.send).not.toHaveBeenCalled();
       down.disconnect();
     });
