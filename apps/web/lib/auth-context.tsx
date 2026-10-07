@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { apiFetch, setUnauthorizedHandler } from './api-client';
+import { apiFetch, setUnauthorizedHandler, YX_SESSION_KEY } from './api-client';
 import { decodeJwtPayload } from './jwt';
 
 interface AuthContextValue {
@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Guards against silentRefresh re-entering the acting org more than once (the switch-into call
   // itself goes through apiFetch, whose 401 handler is silentRefresh).
   const restoringActingRef = useRef(false);
-  // Several independent triggers can now ask for a refresh close together (401/403 retry, tab
+  // Several independent triggers can now ask for a refresh close together (401 retry, tab
   // refocus, the polling interval below) -- refresh tokens rotate on every use, so two concurrent
   // /auth/refresh calls would have the second one reuse an already-rotated token and trip the
   // reuse-detection path, revoking the whole session. Collapsing concurrent callers onto the same
@@ -240,6 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (typeof window !== 'undefined') {
       window.sessionStorage.removeItem(SLUG_STORAGE_KEY);
       window.sessionStorage.removeItem(ACTING_ORG_STORAGE_KEY);
+      window.sessionStorage.removeItem(YX_SESSION_KEY);
     }
     queryClient.removeQueries({ queryKey: ['currentUser'] });
   }
