@@ -132,10 +132,10 @@ describe('Access, visibility and privacy (P02 §4.2–4.6; R1)', () => {
     const profile = async (name: string, keys: string[]) =>
       (await tenantPrisma.forTenant(asA(), (tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name, permissionsJson: JSON.stringify(keys) } }))).id;
     const hrAll = await profile('HR Admin (all)', [
-      'employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.salary.view', 'employee.salary.manage',
+      'employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override', 'employee.salary.view', 'employee.salary.manage',
       'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage',
     ]);
-    const approver = await profile('HR Approver', ['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.salary.view']);
+    const approver = await profile('HR Approver', ['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override', 'employee.salary.view']);
     roles.records = await profile('HR Records', ['org.structure.view', 'employee.profile.view', 'employee.change.manage', 'employee.personal.view']);
     roles.payroll = await profile('Payroll TN', ['employee.profile.view', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', 'employee.aadhaar.view', 'pay.range.view']);
     roles.orgAdmin = await profile('Org settings', ['org.structure.view', 'org.settings.manage']);
@@ -170,22 +170,27 @@ describe('Access, visibility and privacy (P02 §4.2–4.6; R1)', () => {
       token[name] = res.body.accessToken;
     }
 
-    const hire = async (given: string, entity: string, a: Record<string, unknown>, ctc: string, userId?: string) =>
-      (
-        await api('hrAll', 'post', '/people/employees')
-          .send({
-            legalEntityId: entity,
-            status: 'confirmed',
-            reason: 'Joined',
-            joinedOn: joinOld,
-            givenName: given,
-            workEmail: `${given.toLowerCase()}-${runId}@acc.test`,
-            ...(userId ? { userId } : {}),
-            assignment: { locationId: ids.blr, departmentId: ids.qa, designationId: ids.analyst, gradeId: ids.g2, employmentTypeId: ids.perm, managerEmployeeId: null, ...a },
-            compensation: { currency: 'INR', annualCtc: ctc },
-          })
-          .expect(201)
-      ).body.id as string;
+    // A past joining date goes through the retro rules (YX-HIS-12); the pay given with a hire is a pending salary
+    // revision that someone else approves (YX-SEC-11).
+    const hire = async (given: string, entity: string, a: Record<string, unknown>, ctc: string, userId?: string) => {
+      const res = await api('hrAll', 'post', '/people/employees')
+        .send({
+          legalEntityId: entity,
+          status: 'confirmed',
+          reason: 'Joined',
+          overrideReason: 'Migrated from the old system',
+          joinedOn: joinOld,
+          givenName: given,
+          workEmail: `${given.toLowerCase()}-${runId}@acc.test`,
+          ...(userId ? { userId } : {}),
+          assignment: { locationId: ids.blr, departmentId: ids.qa, designationId: ids.analyst, gradeId: ids.g2, employmentTypeId: ids.perm, managerEmployeeId: null, ...a },
+          compensation: { currency: 'INR', annualCtc: ctc },
+        })
+        .expect(201);
+      await up('approverA');
+      await api('approverA', 'post', `/people/changes/${res.body.payChangeId}/approve`).send({ confirmRebase: true }).expect(201);
+      return res.body.id as string;
+    };
     // Login emails match the work emails (P01 §4.5).
     const login = async (who: Who, given: string) => {
       await tenantPrisma.forTenant(asA(), (tx) => tx.user.update({ where: { id: users[who] }, data: { email: `${given.toLowerCase()}-${runId}@acc.test` } }));
@@ -643,6 +648,201 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       const p = (await api('hrBlr', 'get', `/people/employees/${ids.arjun}/profile`).expect(200)).body;
       noPay(p);
       expect(p.classes).toMatchObject({ personal: true, identity: false, pay: false });
+    });
+  });
+
+  // =====================================================================================================
+  // Independent review of step 2: each attack, reproduced, now fails safely.
+  describe('review hardening: every reported attack now fails safely', () => {
+    const role = async (key: string, keys: string[]) => {
+      roles[key] = (await tenantPrisma.forTenant(asA(), (tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name: `${key} ${runId}`, permissionsJson: JSON.stringify(keys) } }))).id;
+    };
+    const codeOf = async (employeeId: string) => (await tenantPrisma.forTenant(asA(), (tx) => tx.employment.findFirstOrThrow({ where: { organizationId: org.A.id, employeeId } }))).employeeCode;
+
+    it('a base-role override cannot hand out pay, Aadhaar or identity keys; a row stored earlier confers nothing (P02 §4.6, R1)', async () => {
+      await up('adminA');
+      const res = await api('adminA', 'put', '/organizations/role-permissions/panel').send({ permissions: ['org:view', 'employee.profile.view', 'employee.salary.view', 'employee.aadhaar.view', 'employee.identity.view'] }).expect(400);
+      expect(res.body.message).toMatch(/Roles & access/);
+      expect((await api('adminA', 'get', '/organizations/role-permissions').expect(200)).body.assignablePermissions.map((p: { key: string }) => p.key)).not.toContain('employee.salary.view');
+      // An override written before the refusal existed is ignored by the one resolver every guard uses.
+      await tenantPrisma.forTenant(asA(), (tx) => tx.orgRolePermission.create({ data: { organizationId: org.A.id, role: 'panel', permissionsJson: JSON.stringify(['org:view', 'results:view', 'interview:view_assigned', 'employee.profile.view', 'employee.salary.view', 'employee.aadhaar.view']) } }));
+      try {
+        expect((await api('outsider', 'get', '/rbac/me/permissions?keys=org:view,employee.profile.view,employee.salary.view,employee.aadhaar.view').expect(200)).body).toEqual(['org:view']);
+        await api('outsider', 'get', `/people/employees/${ids.arjun}/as-of?pay=true`).expect(404);
+      } finally {
+        await tenantPrisma.forTenant(asA(), (tx) => tx.orgRolePermission.deleteMany({ where: { organizationId: org.A.id, role: 'panel' } }));
+      }
+    });
+
+    it('scoped HR cannot rewrite the present of someone who left its scope with a past-dated change, nor approve one (P02 §4.3, P06 fold)', async () => {
+      const moved = (await api('hrAll', 'post', '/people/changes').send({ employeeId: ids.arjun, changeType: 'transfer', effectiveDate: addDays(today, -5), payload: { assignment: { locationId: ids.mys } }, reason: 'Moved to Mysuru' }).expect(201)).body;
+      await up('approverA');
+      await api('approverA', 'post', `/people/changes/${moved.id}/approve`).send({ confirmRebase: true }).expect(201);
+      // The Bengaluru HR also gets retro and approval rights, for Bengaluru.
+      await role('blrDesk', ['employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro']);
+      await grant(201, 'hrBlr', 'blrDesk', 'location', ids.blr);
+      const body = (employeeId: string, date: string) => ({ employeeId, changeType: 'redesignation', effectiveDate: date, payload: { assignment: { designationId: ids.lead } }, reason: 'Back-dated title' });
+      // Arjun was in Bengaluru 30 days ago, but the change would carry into today, in Mysuru: as if unknown.
+      await api('hrBlr', 'post', '/people/changes').send(body(ids.arjun, addDays(today, -30))).expect(404);
+      await api('hrBlr', 'post', '/people/changes/preview').send(body(ids.arjun, addDays(today, -30))).expect(404);
+      // Someone still in Bengaluru: allowed.
+      const ok = (await api('hrBlr', 'post', '/people/changes').send(body(ids.divya, addDays(today, -30))).expect(201)).body;
+      await api('hrBlr', 'post', `/people/changes/${ok.id}/cancel`).send({ reason: 'Test only' }).expect(201);
+      // The approval side: the same date check is not enough to approve someone HR no longer reaches.
+      const raised = (await api('hrAll', 'post', '/people/changes').send(body(ids.arjun, addDays(today, -30))).expect(201)).body;
+      await up('hrBlr');
+      await api('hrBlr', 'post', `/people/changes/${raised.id}/approve`).send({ confirmRebase: true }).expect(404);
+      await api('hrAll', 'post', `/people/changes/${raised.id}/cancel`).send({ reason: 'Test only' }).expect(201);
+    });
+
+    it('a hire never applies pay or a past joining date on one person’s word (YX-SEC-11, YX-HIS-12)', async () => {
+      // No employee.change.retro: a past joining date is refused.
+      await up('hrTn');
+      const hire = (extra: Record<string, unknown>) => ({ legalEntityId: ids.tn, status: 'confirmed', reason: 'Joined', givenName: `Hire ${randomUUID().slice(0, 4)}`, joinedOn: today, assignment: { locationId: ids.hsr, departmentId: ids.prod, designationId: ids.analyst, gradeId: ids.g2, employmentTypeId: ids.perm, managerEmployeeId: null }, ...extra });
+      await api('hrTn', 'post', '/people/employees').send(hire({ joinedOn: addDays(today, -3) })).expect(403);
+      // Pay with a hire waits for someone else: the hirer cannot approve it, and nothing is paid until then.
+      const created = (await api('hrAll', 'post', '/people/employees').send(hire({ compensation: { currency: 'INR', annualCtc: '480000' } })).expect(201)).body;
+      CTC.push('480000');
+      expect((await api('hrAll', 'get', `/people/changes/${created.payChangeId}`).expect(200)).body).toMatchObject({ status: 'pending', changeType: 'salary_revision', requestedBy: users.hrAll });
+      expect((await api('hrAll', 'get', `/people/employees/${created.id}/as-of?pay=true`).expect(200)).body.compensation).toBeNull();
+      await up('hrAll');
+      await api('hrAll', 'post', `/people/changes/${created.payChangeId}/approve`).send({}).expect(403);
+      await up('approverA');
+      await api('approverA', 'post', `/people/changes/${created.payChangeId}/approve`).send({}).expect(201);
+      expect((await api('hrAll', 'get', `/people/employees/${created.id}/as-of?pay=true`).expect(200)).body.compensation).toMatchObject({ annualCtc: '480000.00' });
+    });
+
+    it('a department head is named only by an access admin, never oneself, and sees the department only from that day (YX-SEC-04/06)', async () => {
+      await role('settingsAll', ['org.structure.view', 'org.settings.manage']);
+      const g = (await grant(201, 'hrOps', 'settingsAll', 'tenant')).body;
+      await api('hrOps', 'put', `/org/masters/departments/${ids.ops}`).send({ name: 'OPS', code: 'OPS', headEmployeeId: ids.divya }).expect(403);
+      // The structure itself still changes with the settings grant alone.
+      await api('hrOps', 'put', `/org/masters/departments/${ids.ops}`).send({ name: 'Operations', code: 'OPS' }).expect(200);
+      await up('adminA');
+      await api('adminA', 'post', `/access/grants/${g.id}/revoke`).send({ reason: 'Test over' }).expect(201);
+      // An access admin with an employee record cannot name themselves.
+      const own = (await api('hrAll', 'post', '/people/employees').send({ legalEntityId: ids.kf, status: 'confirmed', reason: 'Joined', givenName: 'Admin Two', joinedOn: today, userId: users.admin2A, workEmail: email('admin2A'), assignment: { locationId: ids.blr, departmentId: ids.ppl, designationId: ids.analyst, gradeId: ids.g2, employmentTypeId: ids.perm, managerEmployeeId: null } }).expect(201)).body.id;
+      await api('admin2A', 'put', `/org/masters/departments/${ids.ppl}`).send({ name: 'PPL', code: 'PPL', headEmployeeId: own }).expect(403);
+      const head = (await auditRows('access.implicit_grant.changed')).find((a) => a.entityId === ids.qa)!;
+      expect(head).toMatchObject({ actor: users.adminA, metadata: { grant: 'department_head', from: null, to: ids.imran } });
+      // Imran became head of QA today: nothing of the department from before.
+      await api('imranU', 'get', `/people/employees/${ids.meera}/as-of?date=${addDays(today, -1)}`).expect(404);
+      const h = (await api('imranU', 'get', `/people/employees/${ids.meera}/history`).expect(200)).body;
+      expect(h.assignment.every((r: { validTo: string | null }) => r.validTo === null || r.validTo >= today)).toBe(true);
+      expect(h.changes.every((c: { effectiveDate: string }) => c.effectiveDate >= today)).toBe(true);
+    });
+
+    it('the person’s phone is Personal: not for employee.profile.view alone (YX-SEC-07)', async () => {
+      const lakshmi = await tenantPrisma.forTenant(asA(), (tx) => tx.employee.findFirstOrThrow({ where: { id: ids.lakshmi } }));
+      await tenantPrisma.forTenant(asA(), (tx) => tx.person.update({ where: { id: lakshmi.personId }, data: { primaryPhone: '+919845011111' } }));
+      const auditor = (await api('approverA', 'get', `/people/employees/${ids.lakshmi}/person`).expect(200)).body;
+      expect(auditor).toMatchObject({ primaryPhone: null, primaryEmail: `lakshmi-${runId}@acc.test` });
+      expect((await api('hrBlr', 'get', `/people/employees/${ids.lakshmi}/person`).expect(200)).body.primaryPhone).toBe('+919845011111');
+      expect((await api('lakshmiU', 'get', `/people/employees/${ids.lakshmi}/person`).expect(200)).body.primaryPhone).toBe('+919845011111');
+    });
+
+    it('pay in change lists follows the salary grant on each change’s date, and every view is recorded (R1, YX-SEC-09)', async () => {
+      await role('blrSalary', ['employee.salary.view']);
+      await approveGrant((await grant(201, 'hrOps', 'blrSalary', 'location', ids.blr)).body.id);
+      // Meera has been in Bengaluru for 20 days; her hire pay (from when she was in Mysuru) stays hidden.
+      const raise = (await api('hrAll', 'post', '/people/changes').send({ employeeId: ids.meera, changeType: 'salary_revision', effectiveDate: addDays(today, 5), payload: { compensation: { annualCtc: '455000' } }, reason: 'Raise' }).expect(201)).body;
+      const list = (await api('hrOps', 'get', `/people/changes?employeeId=${ids.meera}`).expect(200)).body as { id: string; effectiveDate: string; changeType: string; payload: { compensation?: { annualCtc: string } } }[];
+      expect(list.find((c) => c.id === raise.id)!.payload.compensation).toEqual({ annualCtc: '455000' });
+      const hirePay = list.find((c) => c.changeType === 'salary_revision' && c.effectiveDate === joinOld)!;
+      expect(hirePay.payload.compensation).toBeUndefined();
+      expect((await auditRows('employee.pay.viewed')).filter((a) => a.actor === users.hrOps).map((a) => [a.entityId, a.metadata.what])).toEqual([[ids.meera, 'change']]);
+      await api('hrAll', 'post', `/people/changes/${raise.id}/cancel`).send({ reason: 'Test only' }).expect(201);
+    });
+
+    it('an impact preview shows a scoped viewer nothing dated outside its periods (P02 §4.3)', async () => {
+      // Meera is to move back to Mysuru in 40 days; a correction dated inside Bengaluru's period rebases that move.
+      const back = (await api('hrAll', 'post', '/people/changes').send({ employeeId: ids.meera, changeType: 'transfer', effectiveDate: addDays(today, 40), payload: { assignment: { locationId: ids.mys } }, reason: 'Back to Mysuru' }).expect(201)).body;
+      await up('approverA');
+      await api('approverA', 'post', `/people/changes/${back.id}/approve`).send({ confirmRebase: true }).expect(201);
+      const fix = (await api('hrAll', 'post', '/people/changes').send({ employeeId: ids.meera, changeType: 'redesignation', effectiveDate: addDays(today, -10), payload: { assignment: { designationId: ids.lead } }, reason: 'Title fix' }).expect(201)).body;
+      const all = (await api('hrAll', 'get', `/people/changes/${fix.id}/preview`).expect(200)).body;
+      expect(all.rebased.map((r: { changeId: string }) => r.changeId)).toContain(back.id);
+      const scoped = (await api('hrBlr', 'get', `/people/changes/${fix.id}/preview`).expect(200)).body;
+      expect(scoped.facts).toEqual(all.facts);
+      expect(scoped.rebased).toEqual([]);
+      // And the scoped HR could not have raised it: Meera leaves Bengaluru, so it is not theirs to shape.
+      await api('hrBlr', 'post', '/people/changes/preview').send({ employeeId: ids.meera, changeType: 'redesignation', effectiveDate: addDays(today, -10), payload: { assignment: { designationId: ids.lead } }, reason: 'Title fix' }).expect(404);
+      await api('hrAll', 'post', `/people/changes/${fix.id}/cancel`).send({ reason: 'Test only' }).expect(201);
+    });
+
+    it('a bulk file cannot look up employee codes outside the uploader’s scope (YX-SEC-05)', async () => {
+      // A code no one in the uploader's entity shares, so only an out-of-scope lookup could resolve it.
+      await api('hrAll', 'put', `/people/employees/${ids.arjun}/code`).send({ employeeCode: 'KF-0042', reason: 'Match the payroll series' }).expect(200);
+      ids.arjunCode = 'KF-0042';
+      const csv = `employee_code,legal_entity,change_type,effective_date,reason,manager
+${ids.imranCode},KFPL-TN,manager_change,${addDays(today, 20)},New manager,${ids.arjunCode}
+`;
+      const dry = (await api('hrTn', 'post', '/people/change-batches').send({ csv, reason: 'Probe', dryRun: true }).expect(201)).body;
+      expect(dry.rows).toEqual([expect.objectContaining({ ok: false, error: `No current employee you manage has the code ${ids.arjunCode}.` })]);
+      expect(JSON.stringify(dry)).not.toContain('Arjun');
+    });
+
+    it('nobody rejects a change about themselves, and only an approver undoes an approved one; whoever approved it is told (YX-SEC-11, Q7)', async () => {
+      await role('approverAll', ['employee.profile.view', 'employee.change.approve']);
+      await grant(201, 'lakshmiU', 'approverAll', 'tenant');
+      const own = (await api('hrAll', 'post', '/people/changes').send({ employeeId: ids.lakshmi, changeType: 'redesignation', effectiveDate: addDays(today, 15), payload: { assignment: { designationId: ids.lead } }, reason: 'Title' }).expect(201)).body;
+      await api('lakshmiU', 'post', `/people/changes/${own.id}/reject`).send({ reason: 'No thanks' }).expect(403);
+      const csv = `employee_code,legal_entity,change_type,effective_date,reason,designation
+${await codeOf(ids.lakshmi)},KFPL,redesignation,${addDays(today, 16)},Title,AN
+`;
+      const b = (await api('hrAll', 'post', '/people/change-batches').send({ csv, reason: 'Titles' }).expect(201)).body.batch;
+      await api('lakshmiU', 'post', `/people/change-batches/${b.id}/reject`).send({ reason: 'No thanks' }).expect(403);
+      await api('hrAll', 'post', `/people/change-batches/${b.id}/cancel`).send({ reason: 'Test only' }).expect(201);
+      await api('hrAll', 'post', `/people/changes/${own.id}/cancel`).send({ reason: 'Test only' }).expect(201);
+      // An approved change for Divya: the OPS desk may raise changes for her but not approve them, so it cannot undo one.
+      const sched = (await api('hrAll', 'post', '/people/changes').send({ employeeId: ids.divya, changeType: 'redesignation', effectiveDate: addDays(today, 15), payload: { assignment: { designationId: ids.lead } }, reason: 'Title' }).expect(201)).body;
+      await up('approverA');
+      await api('approverA', 'post', `/people/changes/${sched.id}/approve`).send({ confirmRebase: true }).expect(201);
+      await api('hrOps', 'post', `/people/changes/${sched.id}/cancel`).send({ reason: 'Undo' }).expect(403);
+      await api('hrAll', 'post', `/people/changes/${sched.id}/cancel`).send({ reason: 'Postponed', confirmRebase: true }).expect(201);
+      const bell = await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.findMany({ where: { organizationId: org.A.id, entityId: sched.id } }));
+      expect(bell.map((n) => [n.recipientUserId, n.type])).toEqual([[users.approverA, 'employee.change.cancelled']]);
+    });
+
+    it('the record as recorded before a correction is for company-wide HR and the person only (YX-SEC-06)', async () => {
+      const at = new Date().toISOString();
+      await api('hrBlr', 'get', `/people/employees/${ids.lakshmi}/as-of?recordedAt=${encodeURIComponent(at)}`).expect(403);
+      await api('divyaU', 'get', `/people/employees/${ids.arjun}/as-of?recordedAt=${encodeURIComponent(at)}`).expect(403);
+      await api('hrAll', 'get', `/people/employees/${ids.lakshmi}/as-of?recordedAt=${encodeURIComponent(at)}`).expect(200);
+      await api('lakshmiU', 'get', `/people/employees/${ids.lakshmi}/as-of?recordedAt=${encodeURIComponent(at)}`).expect(200);
+    });
+
+    it('a new personal email tells the old one, and a bank notice goes to the contact on file when it was raised (YX-SEC-13)', async () => {
+      sent.length = 0;
+      await api('imranU', 'put', `/people/employees/${ids.imran}/personal`).send({ personalEmail: `imran.new-${runId}@mail.test` }).expect(200);
+      expect(sent.map((s) => s.to).sort()).toEqual([`imran-${runId}@acc.test`, `imran.home-${runId}@mail.test`].sort());
+      await up('imranU');
+      const req = (await api('imranU', 'post', `/people/employees/${ids.imran}/profile-requests`).send({ kind: 'bank_reimbursement', value: { holderName: 'Imran', accountNumber: '555566667777', ifsc: 'ICIC0001111' }, reason: 'Claims account' }).expect(201)).body.id;
+      // Someone holding the session swaps the personal email before approval.
+      await api('imranU', 'put', `/people/employees/${ids.imran}/personal`).send({ personalEmail: `attacker-${runId}@evil.test` }).expect(200);
+      sent.length = 0;
+      await up('payrollTn');
+      await api('payrollTn', 'post', `/people/profile-requests/${req}/approve`).send({}).expect(201);
+      expect(sent.map((s) => s.to)).toEqual(expect.arrayContaining([`imran.new-${runId}@mail.test`, `imran-${runId}@acc.test`]));
+    });
+
+    it('settings that loosen approval or retro controls need access.role.manage and are recorded as control changes (YX-SEC-02)', async () => {
+      const g = (await grant(201, 'hrOps', 'settingsAll', 'tenant')).body;
+      await api('hrOps', 'put', '/org/settings').send({ key: 'probation.auto_confirm_after_days', scopeType: 'tenant', value: '0' }).expect(403);
+      await api('hrOps', 'put', '/org/settings').send({ key: 'employee_change.retro_limit', scopeType: 'tenant', value: 'previous_fy' }).expect(403);
+      await api('orgTn', 'put', '/org/settings').send({ key: 'probation.auto_confirm_after_days', scopeType: 'legal_entity', scopeId: ids.tn, value: '0' }).expect(403);
+      await up('adminA');
+      const set = (await api('adminA', 'put', '/org/settings').send({ key: 'employee_change.retro_limit', scopeType: 'tenant', value: 'previous_fy' }).expect(200)).body;
+      expect((await auditRows('org.setting.changed')).find((a) => a.entityId === set.id)!.metadata).toMatchObject({ key: 'employee_change.retro_limit', control: true });
+      await api('adminA', 'delete', `/org/settings/${set.id}`).expect(204);
+      await up('adminA');
+      await api('adminA', 'post', `/access/grants/${g.id}/revoke`).send({ reason: 'Test over' }).expect(201);
+    });
+
+    it('the org chart on another date is for company-wide HR only (YX-SEC-05)', async () => {
+      await api('hrTn', 'get', `/people/org-chart?asOf=${addDays(today, -30)}`).expect(403);
+      await api('hrTn', 'get', '/people/org-chart').expect(200);
+      await api('hrAll', 'get', `/people/org-chart?asOf=${addDays(today, -30)}`).expect(200);
     });
   });
 });

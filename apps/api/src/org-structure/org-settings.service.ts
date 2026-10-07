@@ -106,7 +106,8 @@ export class OrgSettingsService {
         ? await tx.setting.update({ where: { id: existing.id }, data: { value: dto.value, updatedBy: c.userId } })
         : await tx.setting.create({ data: { ...where, value: dto.value, updatedBy: c.userId } });
       if (dto.key === 'employee_code.scope') await rekeyEmployeeCodes(tx, c, dto.value);
-      await audit(tx, c, 'org.setting.changed', 'setting', row.id, { key: dto.key, scopeType, scopeId, validFrom: dto.validFrom ?? null, from: existing?.value ?? null, to: dto.value });
+      // A guarded key loosens an approval, retro, access or fraud control: recorded as a control change (P08).
+      await audit(tx, c, 'org.setting.changed', 'setting', row.id, { key: dto.key, scopeType, scopeId, validFrom: dto.validFrom ?? null, from: existing?.value ?? null, to: dto.value, control: Boolean(SETTINGS[dto.key]?.guard) });
       return rowView(row);
     });
   }
@@ -121,7 +122,7 @@ export class OrgSettingsService {
       }
       await tx.setting.delete({ where: { id } });
       if (row.key === 'employee_code.scope') await rekeyEmployeeCodes(tx, c, SETTINGS['employee_code.scope'].default);
-      await audit(tx, c, 'org.setting.removed', 'setting', id, { key: row.key, scopeType: row.scopeType, scopeId: row.scopeId, validFrom: row.validFrom ? isoDate(row.validFrom) : null, value: row.value });
+      await audit(tx, c, 'org.setting.removed', 'setting', id, { key: row.key, scopeType: row.scopeType, scopeId: row.scopeId, validFrom: row.validFrom ? isoDate(row.validFrom) : null, value: row.value, control: Boolean(SETTINGS[row.key]?.guard) });
     });
   }
 

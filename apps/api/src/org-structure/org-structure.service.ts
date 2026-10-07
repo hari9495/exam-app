@@ -486,7 +486,7 @@ export class OrgStructureService {
         codeScope = { ownerLegalEntityId: own.ownerLegalEntityId };
         if (kind === 'departments') {
           const d = dto as DepartmentDto;
-          await this.headOf(tx, c, d.headEmployeeId);
+          await this.headOf(tx, c, d.headEmployeeId, null, data);
           await this.lock(tx, c, 'departments');
           const id = randomUUID();
           const parent = d.parentId ? await this.departmentParent(tx, c, id, d.parentId, own.ownerLegalEntityId) : null;
@@ -497,6 +497,7 @@ export class OrgStructureService {
       const code = dto.code ?? codeFromName(name, await this.takenCodes(tx, c, kind, name, codeScope));
       const row = await delegate(tx, kind).create({ data: { ...data, code } });
       await audit(tx, c, `org.${MASTER_ENTITY[kind]}.created`, MASTER_ENTITY[kind], row.id, { name: row.name, code: row.code });
+      if (data.headSince !== undefined) await this.auditHead(tx, c, row.id, null, data.headEmployeeId as string | null);
       const { path: _p, ...view } = masterView(row);
       return view;
     });
@@ -534,10 +535,30 @@ export class OrgStructureService {
     return parent;
   }
 
-  /** A department head is an employee of this company (the composite key proves it again). */
-  private async headOf(tx: Tx, c: CompanyContext, employeeId: string | null | undefined) {
-    if (!employeeId) return;
-    if (!(await tx.employee.findFirst({ where: { id: employeeId, organizationId: c.organizationId }, select: { id: true } }))) throw new BadRequestException('Choose a department head who is an employee of this company.');
+  /** The department's head now (null for none or a new department): naming another is an access change. */
+  departmentHead(ctx: TenantContext, id: string | null): Promise<string | null> {
+    if (!id) return Promise.resolve(null);
+    return this.run(ctx, async (tx, c) => (await tx.department.findFirst({ where: { id, organizationId: c.organizationId }, select: { headEmployeeId: true } }))?.headEmployeeId ?? null);
+  }
+
+  /**
+   * A new department head (P02 YX-SEC-04): an employee of this company (the composite key proves it again), never
+   * the person naming them, since the head's implicit view of the subtree is an access grant; it runs from today,
+   * never over the department's earlier history (YX-SEC-06). Sets headSince on `data` when the head changes.
+   */
+  private async headOf(tx: Tx, c: CompanyContext, employeeId: string | null | undefined, current: string | null, data: Record<string, unknown>) {
+    if (employeeId === undefined || employeeId === current) return;
+    if (employeeId) {
+      if (!(await tx.employee.findFirst({ where: { id: employeeId, organizationId: c.organizationId }, select: { id: true } }))) throw new BadRequestException('Choose a department head who is an employee of this company.');
+      const own = c.userId ? await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: c.userId }, select: { id: true } }) : null;
+      if (own?.id === employeeId) throw new ForbiddenException('Someone else names you department head: it opens the department’s records to you (YX-SEC-11).');
+    }
+    data.headSince = employeeId ? asDate(todayIst()) : null;
+  }
+
+  /** Changing a head grants or ends an implicit view: recorded as an access change (P02 §4.2, P08). */
+  private auditHead(tx: Tx, c: CompanyContext, departmentId: string, from: string | null, to: string | null) {
+    return audit(tx, c, 'access.implicit_grant.changed', 'department', departmentId, { grant: 'department_head', from, to });
   }
 
   /** A cost centre's parent: same entity, active, no cycle. */
@@ -573,13 +594,14 @@ export class OrgStructureService {
         const own = await this.ownership(tx, c, dto as DepartmentDto, row);
         data = { ...data, ...own, ...this.kindFields(kind, dto) };
         if (kind === 'departments') {
-          await this.headOf(tx, c, (dto as DepartmentDto).headEmployeeId);
+          await this.headOf(tx, c, (dto as DepartmentDto).headEmployeeId, (row as { headEmployeeId?: string | null }).headEmployeeId ?? null, data);
           await this.moveDepartment(tx, c, row as MasterRow & { path: string }, dto as DepartmentDto, own.ownerLegalEntityId, data);
         }
       }
       const updated = await delegate(tx, kind).update({ where: { id }, data });
       const fields = changed(row as unknown as Record<string, unknown>, data);
       if (fields.length) await audit(tx, c, `org.${MASTER_ENTITY[kind]}.updated`, MASTER_ENTITY[kind], id, { fields });
+      if (data.headSince !== undefined) await this.auditHead(tx, c, id, (row as { headEmployeeId?: string | null }).headEmployeeId ?? null, data.headEmployeeId as string | null);
       const { path: _p, ...view } = masterView(updated);
       return view;
     });

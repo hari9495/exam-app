@@ -26,13 +26,15 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'org.master.default_ownership': { label: 'New masters are', scopes: ['tenant'], dated: false, values: ['shared', 'entity_only'], default: 'shared' },
   // P06 YX-HIS-12: how far back a past-dated change may go without a System Admin override (Q5:
   // default the start of the current financial year; the company may widen it).
-  'employee_change.retro_limit': { label: 'Past-dated changes may go back to', scopes: ['tenant'], dated: false, values: ['current_fy', 'previous_fy'], default: 'current_fy' },
+  // Widening it loosens a control (YX-HIS-12), so it is the access admin's (P02 §4.2, YX-SEC-02).
+  'employee_change.retro_limit': { label: 'Past-dated changes may go back to', scopes: ['tenant'], dated: false, values: ['current_fy', 'previous_fy'], default: 'current_fy', guard: 'access.role.manage' },
   // M01 §3.4 / Q3 probation policy (starter values, D17): length per employment type / grade, the review
   // reminder lead, the most it may run with extensions, and auto-confirmation (off unless the company opts in).
   'probation.default_months': { label: 'Probation lasts (months)', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: false, values: ['3', '6', '9', '12'], default: '6' },
   'probation.review_lead_days': { label: 'Probation review reminder (days before the end)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30'], default: '15' },
   'probation.max_total_months': { label: 'Probation with extensions lasts at most (months)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['6', '9', '12', '18', '24'], default: '12' },
-  'probation.auto_confirm_after_days': { label: 'Confirm automatically after the end date', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '0', '7', '15', '30'], default: 'off' },
+  // Auto-confirmation is a system change with no approver (YX-SEC-11), so turning it on is the access admin's.
+  'probation.auto_confirm_after_days': { label: 'Confirm automatically after the end date', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '0', '7', '15', '30'], default: 'off', guard: 'access.role.manage' },
   // P02 Q2 (decided): managers view their whole reporting subtree by default; the company may narrow it.
   'access.manager.view_scope': { label: 'Managers can view', scopes: ['tenant'], dated: false, values: ['all_reports', 'direct_reports'], default: 'all_reports', guard: 'access.role.manage' },
   // P02 YX-SEC-18 (a): a role grant giving Confidential / Special access over more people than this warns first.

@@ -70,6 +70,15 @@ export class OrgStructureController {
     if (guard) await this.scope.require(req, guard, null);
   }
 
+  /**
+   * Naming a department head hands them the implicit view of the department's people (P02 YX-SEC-04): an access
+   * grant, so it also needs access.role.manage company-wide (YX-SEC-02), not only the structure grant.
+   */
+  private async headGuard(req: Request, ctx: TenantContext, kind: MasterKind, id: string | null, dto: unknown) {
+    const head = (dto as { headEmployeeId?: string | null }).headEmployeeId;
+    if (kind === 'departments' && head !== undefined && head !== (await this.org.departmentHead(ctx, id))) await this.scope.require(req, 'access.role.manage', null);
+  }
+
   /** The entity a master body puts the record in: a cost centre's entity, an entity-only owner, or company-wide. */
   private masterEntity(kind: MasterKind, body: { legalEntityId?: string; ownerLegalEntityId?: string | null }): string | null {
     return kind === 'cost-centres' ? (body.legalEntityId ?? null) : (body.ownerLegalEntityId ?? null);
@@ -229,6 +238,7 @@ export class OrgStructureController {
     ownSession(req);
     const dto = masterBody(kind, body);
     await this.manage(req, this.masterEntity(kind, dto as never));
+    await this.headGuard(req, ctx, kind, null, dto);
     return this.org.createMaster(ctx, kind, dto);
   }
 
@@ -240,6 +250,7 @@ export class OrgStructureController {
     await this.manage(req, await this.scope.entityOf(ctx, kind, id));
     // Moving it to another owner (or making it shared) needs that scope too.
     if (kind === 'cost-centres' || (dto as { ownerLegalEntityId?: string | null }).ownerLegalEntityId !== undefined) await this.manage(req, this.masterEntity(kind, dto as never));
+    await this.headGuard(req, ctx, kind, id, dto);
     return this.org.updateMaster(ctx, kind, id, dto);
   }
 

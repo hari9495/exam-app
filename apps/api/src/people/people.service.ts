@@ -161,16 +161,15 @@ export class PeopleService {
 
   /**
    * The org chart from the assignments in force on a date: every person with their manager and dotted
-   * lines, for the screen to draw (search, expand / collapse, export). Public fields only. HR may look at
-   * any date ("view as on", P06 §4.7); everyone else sees today's chart.
+   * lines, for the screen to draw (search, expand / collapse, export). Public fields only. Company-wide HR may
+   * look at any date ("view as on", P06 §4.7); everyone else, scoped HR included, sees today's chart, since a past
+   * chart of the whole company would show leavers and people never in their scope (P02 §4.3, YX-SEC-05).
    */
   orgChart(ctx: TenantContext, v: Viewer, asOf: string | undefined) {
     return this.history.run(ctx, async (tx, c) => {
       const today = todayIst();
-      if (!hr(v)) {
-        if (!(await this.own(tx, c, v))) throw new ForbiddenException('The org chart is for employees of this company.');
-        if (asOf && asOf !== today) throw new ForbiddenException('Only HR can see the org chart on another date.');
-      }
+      if (!hr(v) && !(await this.own(tx, c, v))) throw new ForbiddenException('The org chart is for employees of this company.');
+      if (asOf && asOf !== today && !tenantWide(v, 'employee.profile.view')) throw new ForbiddenException('Only company-wide HR can see the org chart on another date.');
       const date = asOf ?? today;
       const inScope = await this.history.scopeFilter(tx, c, v, 'employee.profile.view', Prisma.sql`e.id`, Prisma.sql`${date}::date`);
       // ponytail: one flat list for the whole company; page by subtree when a company passes ~5,000 people.
@@ -182,6 +181,7 @@ export class PeopleService {
       return {
         asOf: date,
         truncated: rows.length ? Number(rows[0].total) > rows.length : false,
+        otherDates: tenantWide(v, 'employee.profile.view'),
         nodes: rows.map((r) => ({
           id: r.id,
           name: displayName({ givenName: r.given_name, familyName: r.family_name, preferredName: r.preferred_name }),
@@ -324,13 +324,17 @@ export class PeopleService {
 
   // ================= the person behind a record (P01 §4.5a, J15) =================
 
-  /** The person and every role they hold in the company. Contact data: HR within its scope, or the person. */
+  /**
+   * The person and every role they hold in the company. Their phone and a non-work email are Personal class
+   * (P02 §4.4, YX-SEC-07): the person, or employee.personal.view reaching them; never while acting for someone.
+   */
   person(ctx: TenantContext, v: Viewer, employeeId: string) {
     return this.history.run(ctx, async (tx, c) => {
       const a = await this.history.access(tx, c, v, employeeId);
       if (!a.self && !a.hr) throw new NotFoundException('Employee not found');
       const employee = await tx.employee.findFirstOrThrow({ where: { id: employeeId, organizationId: c.organizationId } });
       const person = await tx.person.findFirstOrThrow({ where: { id: employee.personId, organizationId: c.organizationId } });
+      const personal = a.self || (!v.actingForOther && (await this.history.reaches(tx, c, v, 'employee.personal.view', employeeId, todayIst())));
       const roles = await tx.personRole.findMany({ where: { organizationId: c.organizationId, personId: person.id }, orderBy: [{ startOn: 'asc' }, { createdAt: 'asc' }] });
       const employments = await tx.employment.findMany({ where: { organizationId: c.organizationId, id: { in: roles.filter((r) => r.sourceTable === 'employments').map((r) => r.sourceId) } } });
       const entities = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, id: { in: employments.map((e) => e.legalEntityId) } }, select: { id: true, name: true } });
@@ -348,8 +352,8 @@ export class PeopleService {
         givenName: person.givenName,
         familyName: person.familyName,
         preferredName: person.preferredName,
-        primaryEmail: person.primaryEmail,
-        primaryPhone: person.primaryPhone,
+        primaryEmail: personal || person.primaryEmail?.toLowerCase() === employee.workEmail?.toLowerCase() ? person.primaryEmail : null,
+        primaryPhone: personal ? person.primaryPhone : null,
         status: person.status,
         loginLinked: Boolean(employee.userId),
         roles: roles.map((r) => ({ id: r.id, roleType: r.roleType, startOn: isoDate(r.startOn), endOn: r.endOn ? isoDate(r.endOn) : null, label: label(r) })),

@@ -168,8 +168,8 @@ export class ProfileService {
 
   // ================= Personal: edited directly (§4.5) =================
 
-  updatePersonal(ctx: TenantContext, v: Viewer, employeeId: string, dto: PersonalDetailsDto) {
-    return this.history.run(ctx, async (tx, c) => {
+  async updatePersonal(ctx: TenantContext, v: Viewer, employeeId: string, dto: PersonalDetailsDto) {
+    const out = await this.history.run(ctx, async (tx, c) => {
       const a = await this.history.access(tx, c, v, employeeId);
       if (!a.self && !(await this.can(tx, c, v, 'employee.profile.edit', employeeId))) throw new ForbiddenException('Editing personal details needs employee.profile.edit for this person.');
       const today = todayIst();
@@ -198,7 +198,7 @@ export class ProfileService {
       if (country && !isCountry(country)) throw new BadRequestException('Unknown country');
       if (state && (!country || !isSubdivisionOf(state, country))) throw new BadRequestException('The state is not a subdivision of the country.');
       const fields = Object.keys(data).filter((k) => JSON.stringify(data[k]) !== JSON.stringify((current as Record<string, unknown> | null)?.[k] ?? null));
-      if (!fields.length) return this.personalView(current);
+      if (!fields.length) return { view: this.personalView(current), tell: [] as string[], organizationId: c.organizationId };
       const row = await tx.employeePersonalDetails.upsert({
         where: { organizationId_employeeId: { organizationId: c.organizationId, employeeId } },
         create: { organizationId: c.organizationId, employeeId, ...data, updatedBy: c.userId ?? null },
@@ -206,8 +206,14 @@ export class ProfileService {
       });
       // P08: which fields changed and by whom, never the values (Personal data stays out of the log).
       await audit(tx, c, 'employee.personal.updated', 'employee', employeeId, { fields, by: a.self ? 'self' : 'hr' });
-      return this.personalView(row);
+      // YX-SEC-13: a new personal email is a new "previous contact" for later identity / bank notices, so the
+      // contacts on file before it (the old personal and the work address) are told.
+      const tell = fields.includes('personalEmail') ? (await this.contactsOnFile(tx, c, employeeId, current?.personalEmail ?? null)).filter((x) => x !== row.personalEmail) : [];
+      return { view: this.personalView(row), tell, organizationId: c.organizationId };
     });
+    const html = `<p>The personal email on your work record was changed on ${todayIst()}.</p><p>If you did not do this, contact HR at once.</p>`;
+    await Promise.allSettled(out.tell.map((to) => this.email.send({ to, subject: 'Your personal email at work was changed', html, organizationId: out.organizationId }))).catch((e) => this.logger.error(e));
+    return out.view;
   }
 
   // ================= identity / bank / legal name: change with approval (§4.5, YX-SEC-13) =================
@@ -261,6 +267,8 @@ export class ProfileService {
             currentDisplay: (await this.currentDisplay(tx, c, employeeId, dto.kind)) ?? Prisma.DbNull,
             reason: dto.reason.trim(),
             requestedBy: c.userId!,
+            // YX-SEC-13: the "previous contact" is the one on file now, before anything else changes.
+            notifyContacts: await this.contactsOnFile(tx, c, employeeId),
           },
         });
       } catch (e) {
@@ -397,7 +405,8 @@ export class ProfileService {
         });
       }
       await tx.employeeProfileRequest.update({ where: { id }, data: { status: 'approved', decidedBy: c.userId, decidedAt: now, decisionNote: note?.trim() || null, overrideReason: overrideReason?.trim() || null } });
-      const contacts = await this.contactsOnFile(tx, c, r.employeeId);
+      // YX-SEC-13: the contacts on file when it was raised (a personal email changed since cannot redirect it), and today's.
+      const contacts = [...new Set([...r.notifyContacts, ...(await this.contactsOnFile(tx, c, r.employeeId))])];
       await audit(tx, c, 'employee.profile_change.approved', 'employee', r.employeeId, { requestId: id, kind, duplicateOverride: conflicts.length > 0, notified: contacts.length });
       return { id, status: 'approved' as const, kind, contacts, organizationId: c.organizationId };
     });
@@ -408,10 +417,10 @@ export class ProfileService {
     return { id: result.id, status: result.status };
   }
 
-  /** Work and personal email on file (the "previous contact": these kinds never change them). */
-  private async contactsOnFile(tx: Tx, c: CompanyContext, employeeId: string): Promise<string[]> {
+  /** Work and personal email on file (the "previous contact"); `personal` overrides the stored personal email. */
+  private async contactsOnFile(tx: Tx, c: CompanyContext, employeeId: string, personal?: string | null): Promise<string[]> {
     const e = await tx.employee.findFirstOrThrow({ where: { id: employeeId, organizationId: c.organizationId }, select: { workEmail: true } });
-    const d = await tx.employeePersonalDetails.findFirst({ where: { organizationId: c.organizationId, employeeId }, select: { personalEmail: true } });
+    const d = personal === undefined ? await tx.employeePersonalDetails.findFirst({ where: { organizationId: c.organizationId, employeeId }, select: { personalEmail: true } }) : { personalEmail: personal };
     return [...new Set([e.workEmail, d?.personalEmail].filter((x): x is string => Boolean(x)))];
   }
 
