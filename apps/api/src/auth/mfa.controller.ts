@@ -16,6 +16,7 @@ import { resolveClientMeta } from './sessions.service';
 import { RequireStepUp } from './step-up.decorator';
 import { AuditService } from '@exam-platform/shared';
 import { ConfirmTotpDto, MfaLoginDto, MfaProofDto, MfaTokenDto, RegisterPasskeyDto, RenamePasskeyDto, RequestMfaResetDto } from './dto/mfa.dto';
+import { CredentialThrottle } from './credential-throttler.guard';
 
 interface RequestUser {
   userId: string;
@@ -41,14 +42,14 @@ export class MfaController {
 
   @Post('auth/mfa/passkey-options')
   @HttpCode(200)
-  @Throttle(STRICT_AUTH_THROTTLE)
+  @CredentialThrottle()
   loginPasskeyOptions(@Body() dto: MfaTokenDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return this.auth.mfaLoginPasskeyOptions(dto.mfaToken, resolveClientMeta(req, res));
   }
 
   @Post('auth/mfa/verify')
   @HttpCode(200)
-  @Throttle(STRICT_AUTH_THROTTLE)
+  @CredentialThrottle()
   async verifyLogin(@Body() dto: MfaLoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return signInResponse(await this.auth.completeMfaLogin(dto, resolveClientMeta(req, res)), res);
   }

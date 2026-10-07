@@ -11,10 +11,15 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { markSteppedUp } from './fixtures/step-up';
+import { CREDENTIAL_THROTTLE, CREDENTIAL_THROTTLE_LIMITS } from '../src/rate-limit-tiers';
 
 // Company-configurable account lockout and admin unlock (P12 YX-IAM-07, Q8; founder decision
 // 6 Oct 2026), against the real database (forced RLS, app role, CHECK constraints) and real Redis.
 describe('account lockout settings and admin unlock (P12 YX-IAM-07)', () => {
+  // The sign-in throttle at its PRODUCTION limits (relaxed under NODE_ENV=test elsewhere; read when
+  // the app starts): the lockout must stay reachable through it. Every other test here sends each
+  // request from a fresh IP, so the per IP + account budget never binds them.
+  Object.assign(CREDENTIAL_THROTTLE, CREDENTIAL_THROTTLE_LIMITS);
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
@@ -237,6 +242,33 @@ describe('account lockout settings and admin unlock (P12 YX-IAM-07)', () => {
       const nowhere = `nowhere-${runId}`;
       await failTimes(nowhere, ghost, 3);
       expect((await login(nowhere, ghost, { password: WRONG }).expect(429)).body.retryAfterSeconds).toBeLessThanOrEqual(1);
+    });
+  });
+
+  describe('one office IP: the lockout, not the sign-in throttle, stops guessing', () => {
+    it('10 wrong passwords for one email from one IP lock the account and email the person', async () => {
+      const ip = freshIp();
+      const key = sha256(`${orgA().slug}\u0000${RECRUITER_A}`);
+      const statuses: number[] = [];
+      for (let i = 0; i < 10; i++) {
+        // From the 3rd failure each try must wait 1, 2, 4 ... s: the person waiting it out.
+        await redis.del(`auth:lp:acct:block:${key}`);
+        statuses.push((await login(orgA().slug, RECRUITER_A, { password: WRONG, ip })).status);
+      }
+      expect(statuses).toEqual(Array(10).fill(401));
+      // Locked for the company default (15 min) wherever it is tried from, even with the right password.
+      expect((await login(orgA().slug, RECRUITER_A).expect(429)).body.retryAfterSeconds).toBe(900);
+      await new Promise((r) => setTimeout(r, 100));
+      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: RECRUITER_A, subject: 'Sign-in to your YukthiX account was temporarily locked' }));
+    });
+
+    it('one IP trying 30 different emails is blocked by the IP rule (30 in 15 min) before the throttle ceiling', async () => {
+      const ip = freshIp();
+      const statuses: number[] = [];
+      for (let i = 0; i < 30; i++) statuses.push((await login(orgA().slug, emailOf(`spray-${i}`), { password: WRONG, ip })).status);
+      expect(statuses).toEqual(Array(30).fill(401));
+      const blocked = await login(orgA().slug, ADMIN_A, { ip }).expect(429);
+      expect(blocked.body.retryAfterSeconds).toBeGreaterThan(890);
     });
   });
 

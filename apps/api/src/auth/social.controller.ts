@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, NotFoundException, Param, Post, Req, R
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { DEFAULT_SECURITY_POLICY, TenantPrismaService, loadTenantSecurityPolicy } from '@exam-platform/shared';
-import { PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
+import { PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
 import { AuthService } from './auth.service';
 import { signInResponse } from './auth.controller';
 import { CompanyScopeService } from './company-scope';
@@ -12,6 +12,7 @@ import { OtpService } from './otp.service';
 import { SessionsService, resolveClientMeta } from './sessions.service';
 import { isSocialProvider, mockIdpUrl, socialApp, socialIdentity } from './social-sign-in';
 import { SsoService } from './sso.service';
+import { CredentialThrottle } from './credential-throttler.guard';
 
 // The browser learns the result from the URL FRAGMENT only (never sent to a server, never in a
 // Referer or a log; ASVS V3.1.1): a single-use code, or that it did not work.
@@ -67,7 +68,7 @@ export class SocialController {
   // cookie (minted here if new); the browser goes to the provider.
   @Post('social/:provider/start')
   @HttpCode(200)
-  @Throttle(STRICT_AUTH_THROTTLE)
+  @CredentialThrottle()
   async start(@Param('provider') provider: string, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const app = isSocialProvider(provider) ? socialApp(provider) : null;
     if (!isSocialProvider(provider) || !app) throw new NotFoundException('This way of signing in is not available');
@@ -114,7 +115,7 @@ export class SocialController {
   // second factor owed, or the company picker.
   @Post('social/exchange')
   @HttpCode(200)
-  @Throttle(STRICT_AUTH_THROTTLE)
+  @CredentialThrottle()
   async exchange(@Body() dto: SsoExchangeDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return signInResponse(await this.auth.socialSignIn(dto.code, resolveClientMeta(req, res)), res);
   }

@@ -11,6 +11,7 @@ import { resolveClientMeta } from './sessions.service';
 import { assertHuman } from './bot-challenge';
 import { CompanyScopeService } from './company-scope';
 import { MfaOtpSendDto, MobileCodeDto, MobileNumberDto, OtpStartDto, OtpVerifyDto } from './dto/otp.dto';
+import { CredentialThrottle } from './credential-throttler.guard';
 
 interface RequestUser {
   userId: string;
@@ -33,7 +34,7 @@ export class OtpController {
 
   @Post('otp/start')
   @HttpCode(200)
-  @Throttle(STRICT_AUTH_THROTTLE)
+  @CredentialThrottle()
   async start(@Body() dto: OtpStartDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await assertHuman(dto.challengeToken, req.ip ?? null);
     const organizationSlug = await this.scope.slugFor(req, dto.organizationSlug);
@@ -42,7 +43,7 @@ export class OtpController {
 
   @Post('otp/verify')
   @HttpCode(200)
-  @Throttle(STRICT_AUTH_THROTTLE)
+  @CredentialThrottle()
   async verify(@Body() dto: OtpVerifyDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const organizationSlug = await this.scope.slugFor(req, dto.organizationSlug);
     return signInResponse(await this.auth.completeOtpLogin({ ...dto, organizationSlug }, resolveClientMeta(req, res)), res);
@@ -50,7 +51,7 @@ export class OtpController {
 
   @Post('mfa/otp/send')
   @HttpCode(200)
-  @Throttle(STRICT_AUTH_THROTTLE)
+  @CredentialThrottle()
   sendMfaOtp(@Body() dto: MfaOtpSendDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return this.auth.sendMfaOtp(dto, resolveClientMeta(req, res));
   }
