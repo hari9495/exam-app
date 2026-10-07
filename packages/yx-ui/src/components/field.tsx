@@ -133,8 +133,11 @@ export interface FormErrorItem {
 /** Top-of-form summary for long forms; each item links to its field (§16). Receives focus when it appears. */
 export function ErrorSummary({ errors, title = 'Fix these before saving' }: { errors: FormErrorItem[]; title?: string }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Only when it appears: fixing one problem must not pull focus away from the field being typed in.
+  const shown = useRef(false);
   useEffect(() => {
-    if (errors.length) ref.current?.focus();
+    if (errors.length && !shown.current) ref.current?.focus();
+    shown.current = errors.length > 0;
   }, [errors.length]);
   if (!errors.length) return null;
   return (
