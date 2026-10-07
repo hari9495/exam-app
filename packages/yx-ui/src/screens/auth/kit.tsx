@@ -40,6 +40,8 @@ const METHODS: Record<string, string> = {
   password: 'Password',
   saml: 'Single sign-on',
   oidc: 'Single sign-on',
+  google: 'Google',
+  microsoft: 'Microsoft',
   otp_email: 'Code by email',
   otp_sms: 'Code by SMS',
   otp_whatsapp: 'Code on WhatsApp',

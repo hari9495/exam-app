@@ -147,6 +147,8 @@ export const POLICY: SecurityPolicy = {
   otpSignInChannels: [],
   maxFailedAttempts: 10,
   lockMinutes: 15,
+  googleSignIn: false,
+  microsoftSignIn: false,
 };
 
 export const IDPS: IdentityProviderRow[] = [

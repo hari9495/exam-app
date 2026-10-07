@@ -253,4 +253,13 @@
   --yx-switch-w: 32px;
   --yx-switch-h: 18px;
   --yx-switch-thumb: var(--yx-slate-0);
+  /* Third-party sign-in marks: the owners' own colours, unchanged in dark mode (Google and Microsoft brand guidelines). */
+  --yx-mark-google-blue: #4285F4;
+  --yx-mark-google-green: #34A853;
+  --yx-mark-google-yellow: #FBBC05;
+  --yx-mark-google-red: #EA4335;
+  --yx-mark-microsoft-red: #F25022;
+  --yx-mark-microsoft-green: #7FBA00;
+  --yx-mark-microsoft-blue: #00A4EF;
+  --yx-mark-microsoft-yellow: #FFB900;
 }

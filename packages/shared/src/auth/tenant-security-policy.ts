@@ -45,6 +45,8 @@ export const DEFAULT_SECURITY_POLICY: SecurityPolicySettings = Object.freeze({
   otpSignInChannels: [],
   maxFailedAttempts: TENANT_SECURITY_FLOOR.maxFailedAttempts.max,
   lockMinutes: TENANT_SECURITY_FLOOR.lockMinutes.min,
+  googleSignIn: false,
+  microsoftSignIn: false,
 });
 
 // Read on every staff request (IP allow-lists), so cached per process.

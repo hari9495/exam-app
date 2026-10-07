@@ -14,6 +14,31 @@
 5. `npm run dev:api` (terminal 1), `npm run dev:web` (terminal 2)
 6. Visit `http://localhost:3000/login` — log in with `admin@demo-org.test` / `DevAdmin123!`, org slug `demo-org`.
 
+### Sign-in on your laptop (YukthiX sign-in: email, mobile, Microsoft, Google)
+
+The seed turns every way in on for the demo company (codes by email and SMS, Google and Microsoft) and gives
+`recruiter@demo-org.test` the fictional verified mobile number +91 98450 12345. Google and Microsoft are a local
+mock (panva's `oidc-provider`, a devDependency): nothing is sent to Google or Microsoft.
+
+1. `npm run dev:mock-idp` (its own terminal) — a local "Google" and "Microsoft" at `http://127.0.0.1:4010`.
+2. In `apps/api/.env` add `YX_MOCK_IDP_URL=http://127.0.0.1:4010` and `DEV_SMS_LOG_TEXT=1`, then restart
+   `npm run dev:api`. (Both are for a laptop only: with `NODE_ENV=production` the API refuses to start with
+   `YX_MOCK_IDP_URL`, and SMS text is never printed.)
+3. `cd apps/api && npx prisma db seed` once (it updates an existing demo company too).
+4. Open `http://localhost:3000/yx/sign-in`:
+   - **Continue with Google / Microsoft** opens the mock's page: pick *Demo admin*, *Demo recruiter* or *Demo panel
+     member* to sign in (a role that needs two-step verification is asked to set it up). The people marked
+     *(refused)* show what must fail: YukthiX staff, an address Google has not verified, another Microsoft
+     directory claiming the admin's address, a personal Microsoft account. Each ends on the sign-in screen with
+     the same message, and the reason is in Admin › Login activity.
+   - **Continue with mobile**: `98450 12345`, *Text me a code*; the code is printed in the `dev:api` log
+     (`[DevSms] sms to +919845012345: 123456 is your YukthiX sign-in code`).
+   - **Work email**: as before (password, emailed code in Mailpit, or the company's SSO).
+5. Settings › Security › *Allow sign-in with Google / Microsoft* turns each one off for the company (sign in as
+   the admin; saving asks you to confirm it's you).
+
+The API e2e suite starts the same mock on a free port (`apps/api/test/social-sign-in.e2e-spec.ts`).
+
 ## Phase 0: local development setup — apps/exam-runtime
 
 `apps/exam-runtime` is a second app, separate from `apps/api`. It's the candidate-facing service — exam-taking, live monitoring, proctoring analysis, and grading. It needs its own `.env` file:

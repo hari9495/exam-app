@@ -37,9 +37,10 @@ export function clientCountry(req: Request): string | null {
   return value && /^[A-Z]{2}$/.test(value) && value !== 'XX' && value !== 'T1' ? value : null;
 }
 
-// Sign-in methods (saml / oidc: an identity provider; otp_*: one-time code by that channel); the MFA factors appear on second-factor
-// failures (result mfa_failed); 'admin' is an admin clearing an account lock (result unlocked).
-export const LOGIN_METHODS = ['password', 'saml', 'oidc', 'otp_email', 'otp_sms', 'otp_whatsapp', 'totp', 'passkey', 'recovery_code', 'otp', 'admin'] as const;
+// Sign-in methods (saml / oidc: a company identity provider; google / microsoft: YukthiX's own "Continue with" apps; otp_*:
+// one-time code by that channel); the MFA factors appear on second-factor failures (result mfa_failed); 'admin' is an admin
+// clearing an account lock (result unlocked).
+export const LOGIN_METHODS = ['password', 'saml', 'oidc', 'google', 'microsoft', 'otp_email', 'otp_sms', 'otp_whatsapp', 'totp', 'passkey', 'recovery_code', 'otp', 'admin'] as const;
 export type LoginMethod = (typeof LOGIN_METHODS)[number];
 export type LoginResult = 'success' | 'failed' | 'locked' | 'mfa_failed' | 'code_sent' | 'unlocked';
 

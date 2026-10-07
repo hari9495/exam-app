@@ -10,10 +10,12 @@ type S = StoryObj;
 
 const wait = (ms = 600) => new Promise<void>((r) => setTimeout(r, ms));
 const KAVERI = { name: ORG_NAME, logoUrl: null };
+const ALL_WAYS = { google: true, microsoft: true, sms: true, whatsapp: true, emailCode: true };
+const NO_WAYS = { google: false, microsoft: false, sms: false, whatsapp: false, emailCode: true };
 
 // Email first, no company code: identify -> password / code -> (several companies) choose one.
 function SignIn({ start = {}, ...over }: Partial<SignInScreenProps> & { start?: Partial<SignInFields> }) {
-  const [fields, setFields] = useState<SignInFields>({ identifier: '', password: '', code: '', ...start });
+  const [fields, setFields] = useState<SignInFields>({ identifier: '', mobile: '', password: '', code: '', ...start });
   const [step, setStep] = useState<SignInStep>(over.step ?? 'identify');
   const [company, setCompany] = useState(over.company ?? null);
   return (
@@ -22,9 +24,12 @@ function SignIn({ start = {}, ...over }: Partial<SignInScreenProps> & { start?: 
       onFieldChange={(k, v) => setFields((f) => ({ ...f, [k]: v }))}
       providers={[]}
       companies={COMPANIES}
+      options={ALL_WAYS}
       onIdentify={() => setStep('password')}
       onPasswordSubmit={() => setStep('choose-company')}
-      onSendCode={() => setStep('code')}
+      onSendCode={(channel) => setStep(channel ? 'mobile-code' : 'code')}
+      onMobile={() => setStep('mobile')}
+      onSocial={() => setStep('redirecting')}
       onVerifyCode={() => setStep('choose-company')}
       onRestart={() => setStep('identify')}
       onSso={() => setStep('redirecting')}
@@ -39,10 +44,20 @@ function SignIn({ start = {}, ...over }: Partial<SignInScreenProps> & { start?: 
 }
 
 const DIVYA = { identifier: 'divya.r@kaverifoods.in' };
-export const Identify: S = { name: 'Sign in · email or mobile first', render: () => <SignIn /> };
+const MOBILE = { mobile: '+91 98450 12345' };
+export const Identify: S = { name: 'Sign in · work email, or another way', render: () => <SignIn /> };
+export const IdentifyEmailOnly: S = { name: 'Sign in · work email only (no other way set up)', render: () => <SignIn options={NO_WAYS} /> };
+export const IdentifySomeWays: S = { name: 'Sign in · company allows mobile only', render: () => <SignIn company={KAVERI} options={{ ...NO_WAYS, sms: true }} /> };
+export const Mobile: S = { name: 'Sign in · mobile number', render: () => <SignIn step="mobile" /> };
+export const MobileWhatsApp: S = { name: 'Sign in · mobile number, WhatsApp only', render: () => <SignIn step="mobile" options={{ ...ALL_WAYS, sms: false }} start={MOBILE} /> };
+export const MobileCode: S = { name: 'Sign in · mobile code sent', render: () => <SignIn step="mobile-code" codeChannel="sms" start={MOBILE} /> };
+export const RedirectingProvider: S = { name: 'Sign in · going to the provider', render: () => <SignIn step="redirecting" redirectingTo="your account provider" start={DIVYA} /> };
+export const SignInFailed: S = { name: 'Sign in · provider sign-in refused', render: () => <SignIn error="We couldn't sign you in with that account. Try another way, or ask your admin." /> };
+export const PhoneWays: S = { name: 'Sign in · phone, all ways', globals: { viewport: { value: 'phone' } }, render: () => <SignIn /> };
+export const PhoneMobile: S = { name: 'Sign in · phone, mobile number', globals: { viewport: { value: 'phone' } }, render: () => <SignIn step="mobile" start={MOBILE} /> };
 export const Remembered: S = { name: 'Sign in · remembered company', render: () => <SignIn company={KAVERI} providers={PROVIDERS} /> };
 export const Password: S = { name: 'Sign in · password', render: () => <SignIn step="password" start={DIVYA} /> };
-export const PasswordMobile: S = { name: 'Sign in · password, mobile number', render: () => <SignIn step="password" start={{ identifier: '+91 98450 12345' }} /> };
+export const PasswordNoEmailCode: S = { name: 'Sign in · password, email codes off', render: () => <SignIn step="password" company={KAVERI} options={{ ...ALL_WAYS, emailCode: false }} start={DIVYA} /> };
 export const CodeSent: S = { name: 'Sign in · code sent', render: () => <SignIn step="code" start={DIVYA} /> };
 export const Redirecting: S = { name: 'Sign in · going to single sign-on', render: () => <SignIn step="redirecting" start={DIVYA} /> };
 export const ChooseCompany: S = { name: 'Sign in · choose your company', render: () => <SignIn step="choose-company" start={DIVYA} /> };

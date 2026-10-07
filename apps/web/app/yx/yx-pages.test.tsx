@@ -6,6 +6,8 @@ import { apiFetch } from '../../lib/api-client';
 import { goTo } from '../../lib/navigate';
 import { useAuth } from '../../lib/auth-context';
 import YxSignInPage from './sign-in/page';
+import YxSignInCallbackPage from './sign-in/callback/page';
+import { SOCIAL_FAILED } from '../../lib/hooks/useYxSignIn';
 import YxForgotPasswordPage from './forgot-password/page';
 import YxMySecurityPage from './(app)/me/security/page';
 import YxLoginActivityPage from './(app)/admin/login-activity/page';
@@ -41,7 +43,7 @@ const FLOOR = {
 const POLICY = {
   mfaScope: 'sensitive_roles', allowedFactors: ['passkey', 'totp'], sessionIdleMinutes: null, sessionAbsoluteMinutes: null, maxConcurrentSessions: null,
   passwordMinLength: 12, ipAllowlistDesk: [], ipAllowlistAdmin: [], ipAllowlistApi: [], ssoOnly: false, breakGlassUserIds: [], otpSignInChannels: [],
-  maxFailedAttempts: 10, lockMinutes: 15,
+  maxFailedAttempts: 10, lockMinutes: 15, googleSignIn: false, microsoftSignIn: false,
 };
 
 const api = apiFetch as jest.Mock;
@@ -78,7 +80,7 @@ describe('/yx/sign-in (email first, no company code)', () => {
     (useAuth as jest.Mock).mockReturnValue({ login });
   });
   const typeIdentifier = async (value: string) => {
-    await userEvent.type(screen.getByLabelText(/Work email or mobile number/), value);
+    await userEvent.type(screen.getByLabelText(/Work email/), value);
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
   };
 
@@ -129,7 +131,7 @@ describe('/yx/sign-in (email first, no company code)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     await userEvent.click(await screen.findByRole('button', { name: KAVERI.name }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Your sign-in has expired');
-    expect(screen.getByLabelText(/Work email or mobile number/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Work email/)).toBeInTheDocument();
   });
 
   it('a domain that uses single sign-on goes straight to the company sign-in page', async () => {
@@ -180,6 +182,116 @@ describe('/yx/sign-in (email first, no company code)', () => {
     await userEvent.type(await screen.findByLabelText(/^Password/), 'pw');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(await screen.findByRole('heading', { name: "Confirm it's you" })).toBeInTheDocument();
+  });
+
+  const WAYS = { google: true, microsoft: true, sms: true, whatsapp: false, emailCode: true };
+
+  it('offers only the ways the API says are on; "Continue with Google" goes to Google', async () => {
+    route({
+      'GET /auth/remembered-company': { company: null },
+      'GET /auth/sign-in-options': { ...WAYS, microsoft: false },
+      'POST /auth/social/google/start': { url: 'https://accounts.example.test/auth?state=s' },
+    });
+    render(<YxSignInPage />);
+    const ways = within(await screen.findByRole('group', { name: 'Other ways to sign in' })).getAllByRole('button');
+    expect(ways.map((b) => b.textContent)).toEqual(['Continue with mobile', 'Continue with Google']);
+    await userEvent.click(ways[1]);
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://accounts.example.test/auth?state=s'));
+    expect(api).toHaveBeenCalledWith('/auth/social/google/start', { method: 'POST', body: '{}' });
+    expect(screen.getByRole('status')).toHaveTextContent('Taking you to Google');
+  });
+
+  it('no ways answered (or not set up): only the work email', async () => {
+    route({ 'GET /auth/remembered-company': { company: null } });
+    render(<YxSignInPage />);
+    await screen.findByLabelText(/Work email/);
+    expect(screen.queryByRole('separator')).toBeNull();
+  });
+
+  it('Continue with mobile: the number, a code by SMS, then signed in', async () => {
+    route({
+      'GET /auth/remembered-company': { company: null },
+      'GET /auth/sign-in-options': WAYS,
+      'POST /auth/otp/start': { otpToken: 'o'.repeat(43), expiresInSeconds: 300, resendAfterSeconds: 60 },
+      'POST /auth/otp/verify': { accessToken: token({ role: 'recruiter' }) },
+    });
+    render(<YxSignInPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Continue with mobile' }));
+    await userEvent.type(screen.getByLabelText(/Mobile number/), '98450 12345');
+    await userEvent.click(screen.getByRole('button', { name: 'Text me a code' }));
+    expect(api).toHaveBeenCalledWith('/auth/otp/start', { method: 'POST', body: JSON.stringify({ identifier: '98450 12345', channel: 'sms' }) });
+    expect(await screen.findByRole('status')).toHaveTextContent('by SMS');
+    await userEvent.type(screen.getByLabelText(/6-digit code/), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/today'));
+    expect(api).toHaveBeenCalledWith('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ identifier: '98450 12345', otpToken: 'o'.repeat(43), code: '123456' }) });
+  });
+
+  it('a known company with email codes off: no "Email me a code instead"', async () => {
+    route({
+      'GET /auth/remembered-company': { company: { name: KAVERI.name, logoUrl: null } },
+      'GET /auth/sign-in-options': { ...WAYS, emailCode: false },
+      'POST /auth/identify': { next: 'password', providers: [] },
+    });
+    render(<YxSignInPage />);
+    await typeIdentifier('divya.r@kaverifoods.in');
+    await screen.findByLabelText(/^Password/);
+    expect(screen.queryByRole('button', { name: 'Email me a code instead' })).toBeNull();
+  });
+});
+
+describe('/yx/sign-in/callback (back from Google / Microsoft)', () => {
+  const token = (payload: object) => `h.${btoa(JSON.stringify(payload)).replace(/=+$/, '')}.s`;
+  let push: jest.Mock;
+  let login: jest.Mock;
+  beforeEach(() => {
+    push = jest.fn();
+    login = jest.fn();
+    (useRouter as jest.Mock).mockReturnValue({ push, replace: jest.fn() });
+    (useAuth as jest.Mock).mockReturnValue({ login });
+  });
+  afterEach(() => window.history.replaceState(null, '', '/'));
+
+  it('trades the code from the fragment once, wipes it, and signs in', async () => {
+    window.history.replaceState(null, '', '/yx/sign-in/callback#code=c0de');
+    route({
+      'GET /auth/remembered-company': { company: null },
+      'GET /auth/sign-in-options': { google: true, microsoft: true, sms: false, whatsapp: false, emailCode: true },
+      'POST /auth/social/exchange': { accessToken: token({ role: 'recruiter' }) },
+    });
+    render(<YxSignInCallbackPage />);
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/today'));
+    expect(api).toHaveBeenCalledWith('/auth/social/exchange', { method: 'POST', body: JSON.stringify({ code: 'c0de' }) });
+    expect(api.mock.calls.filter(([p]) => p === '/auth/social/exchange')).toHaveLength(1);
+    expect(window.location.hash).toBe('');
+    expect(window.location.pathname).toBe('/yx/sign-in');
+    expect(login).toHaveBeenCalledWith('', expect.any(String));
+  });
+
+  it('several companies: the company choice', async () => {
+    window.history.replaceState(null, '', '/yx/sign-in/callback#code=c0de');
+    route({
+      'GET /auth/remembered-company': { company: null },
+      'GET /auth/sign-in-options': { google: true, microsoft: true, sms: false, whatsapp: false, emailCode: true },
+      'POST /auth/social/exchange': { selectionRequired: true, selectionToken: 't'.repeat(43), companies: [{ id: 'c-1', name: 'Kaveri Foods Pvt Ltd', logoUrl: null }], expiresInSeconds: 120 },
+    });
+    render(<YxSignInCallbackPage />);
+    expect(await screen.findByRole('heading', { name: 'Choose your company' })).toBeInTheDocument();
+  });
+
+  it('any failure: one message whatever the reason, and the sign-in screen again', async () => {
+    window.history.replaceState(null, '', '/yx/sign-in/callback#error=signin_failed');
+    route({ 'GET /auth/remembered-company': { company: null } });
+    render(<YxSignInCallbackPage />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(SOCIAL_FAILED);
+    expect(screen.getByLabelText(/Work email/)).toBeInTheDocument();
+    expect(api).not.toHaveBeenCalledWith('/auth/social/exchange', expect.anything());
+
+    window.history.replaceState(null, '', '/yx/sign-in/callback#code=spent');
+    route({ 'GET /auth/remembered-company': { company: null }, 'POST /auth/social/exchange': new Error('Invalid credentials') });
+    render(<YxSignInCallbackPage />);
+    await waitFor(() => expect(screen.getAllByRole('alert').some((a) => a.textContent === SOCIAL_FAILED)).toBe(true));
+    expect(screen.queryByText('Invalid credentials')).toBeNull();
   });
 });
 

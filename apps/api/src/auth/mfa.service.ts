@@ -56,13 +56,15 @@ export interface MfaUser {
 // What is kept between the first factor and the second (Redis, 5 min, keyed by sha256(token)).
 export interface PendingLogin {
   userId: string;
-  method: 'password' | 'saml' | 'oidc' | 'otp_email' | 'otp_sms' | 'otp_whatsapp';
+  method: 'password' | 'saml' | 'oidc' | 'google' | 'microsoft' | 'otp_email' | 'otp_sms' | 'otp_whatsapp';
   orgSlug: string;
   identifier: string;
   breakGlass: boolean;
   deviceIdHash: string;
   // SSO only: the provider that vouched (sessions.identity_provider_id).
   identityProviderId?: string | null;
+  // Google / Microsoft only: the subject linked to the account once every factor is given.
+  externalSubject?: string;
 }
 
 export const PENDING_LOGIN_TTL_SECONDS = 5 * 60;
