@@ -934,13 +934,17 @@ export function DataTable<R>(props: DataTableProps<R>) {
           aria-label={label}
           role={treeParent && !groupBy ? 'treegrid' : undefined}
           aria-busy={state === 'loading' || undefined}
-          // Once the person has resized columns, every width is theirs: the table is exactly that wide, no re-sharing.
-          style={cards ? undefined : resized ? { width: fixedW + dataW, minWidth: fixedW + dataW } : { minWidth: fixedW + visible.reduce((t, c) => t + fitW(c), 0) }}
+          // Once the person has resized columns, every width is theirs; the table still fills the row (founder review
+          // 8 Oct 2026: borders stopped short of the edge) -- the last column takes the spare room, at least its own width.
+          style={cards ? undefined : resized ? { width: '100%', minWidth: fixedW + dataW } : { minWidth: fixedW + visible.reduce((t, c) => t + fitW(c), 0) }}
         >
           <colgroup>
             {selectable && <col style={{ width: SELECT_W }} />}
-            {visible.map((c) => (
-              <col key={c.key} style={colW(c.key) ? { width: colW(c.key) } : c.type === 'person' && !cards ? { width: PERSON_MIN_W } : undefined} />
+            {visible.map((c, i) => (
+              <col
+                key={c.key}
+                style={resized && i === visible.length - 1 ? undefined : colW(c.key) ? { width: colW(c.key) } : c.type === 'person' && !cards ? { width: PERSON_MIN_W } : undefined}
+              />
             ))}
             {hasActions && <col style={{ width: rowButtons ? actW : ACTIONS_W }} />}
           </colgroup>
