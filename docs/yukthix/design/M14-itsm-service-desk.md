@@ -539,7 +539,7 @@
 
 ### Founder decisions on the gap check
 
-> **Decided 7 Oct 2026:** D1 → Q6, D2 → Q7, D3 / D4 / D5 / D7 → Q8, D6 → Q9 (see Decisions). **D8 is still open.**
+> **Decided 7 Oct 2026:** D1 → Q6, D2 → Q7, D3 / D4 / D5 / D7 → Q8, D6 → Q9, D8 → Q10 (see Decisions).
 
 These clash with Q1 or Q4, or touch systems Q4 did not cover. No stories are made for them (D8 only decides the price of a role that is built).
 
@@ -567,6 +567,7 @@ These clash with Q1 or Q4, or touch systems Q4 did not cover. No stories are mad
 | Q7 | Identity-provider actions (gap D2) | **Allowed with controls:** password reset, account unlock, create / disable users, group and licence changes in Microsoft Entra ID or Google Workspace, from approved requests. Off by default; uses the company's own app registration with the fewest permissions; approval per action, step-up for the agent, full audit, no passwords stored by YukthiX. They act on identity systems, never on devices. |
 | Q8 | Packaging (gaps D3, D4, D5, D7) | **One plan stays:** no free tier (30-day trial), no add-on SKUs sold alone, no day passes for now, cloud only (data region choice and bring-your-own-key encryption instead of an on-premises edition). |
 | Q9 | AI (gap D6) | **AI is not inside the ₹999 price.** A company can **bring its own AI key** (P10 BYO key) and use every AI feature at no extra charge from YukthiX; to use **YukthiX's AI** it **buys AI credits** (P10 metering, YX-AI-03). This is the one priced extra on top of the single plan. Credit pack sizes and prices: set in P14 before the build of 3b-4. |
+| Q10 | Collaborators (gap D8) | **Free**, like approvers: unlimited collaborator seats who can view tickets they are added to, add internal notes and complete tasks assigned to them, but cannot own, be assigned or answer tickets (role in US-G-033). Only agents pay ₹999. |
 
 ## Still to decide (in the detailed design)
 - Live chat transport (WebSocket gateway already in the API vs a managed service).
