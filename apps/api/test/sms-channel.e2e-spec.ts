@@ -113,6 +113,10 @@ describe('SMS channel (P04 §4.4/§4.5a; YX-NTF-07/10/11/12/13/14)', () => {
   const createAccount = async (who: 'adminA' | 'adminB', body: object) => (await api(who, 'post', '/accounts').send(body).expect(201)).body as { id: string };
 
   beforeAll(async () => {
+    // A laptop's .env may turn the development SMS helpers on (README "Sign-in on your laptop"); this
+    // suite proves what is printed and mailed without them.
+    process.env.DEV_SMS_LOG_TEXT = '';
+    process.env.DEV_SMS_TO_MAIL = '';
     await startGateway();
     const tracked = trackOtpSends(Test.createTestingModule({ imports: [AppModule] }).overrideProvider(EmailService).useValue(email).overrideProvider(SMS_GATEWAY_NET).useValue(testNet));
     settle = tracked.settle;
