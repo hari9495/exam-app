@@ -1,4 +1,4 @@
-import { ACCOUNT_LOCKED, CODE_FAILED, RECOVERY_CODE_FAILED, TOO_MANY_TRIES, yxAuthMessage, yxProofError } from './yx-auth-messages';
+import { ACCOUNT_LOCKED, CODE_FAILED, RECOVERY_CODE_FAILED, TOO_MANY_TRIES, tryAgainIn, yxAuthMessage, yxProofError } from './yx-auth-messages';
 
 const httpError = (status: number, message: string) => Object.assign(new Error(message), { status });
 
@@ -11,6 +11,15 @@ describe('YukthiX sign-in words', () => {
   it('the account / IP lock: wait a few minutes', () => {
     expect(yxAuthMessage(httpError(429, 'Too many sign-in attempts. Please wait and try again.'), 'x')).toBe(ACCOUNT_LOCKED);
     expect(ACCOUNT_LOCKED).toBe('Too many tries. Wait a few minutes and try again.');
+  });
+
+  it('the lock with the wait the API gave: the real time left', () => {
+    const locked = (retryAfterSeconds: number) => Object.assign(httpError(429, 'Too many sign-in attempts. Please wait and try again.'), { body: { retryAfterSeconds } });
+    expect(yxAuthMessage(locked(8), 'x')).toBe('Too many tries. Try again in 8 seconds.');
+    expect(yxAuthMessage(locked(1), 'x')).toBe('Too many tries. Try again in 1 second.');
+    expect(yxAuthMessage(locked(60), 'x')).toBe('Too many tries. Try again in 60 seconds.');
+    expect(yxAuthMessage(locked(900), 'x')).toBe('Too many tries. Try again in 15 minutes.');
+    expect(tryAgainIn(7200)).toBe('Too many tries. Try again in 2 hours.');
   });
 
   it('a wrong password reads the same as an unknown email; other messages pass through', () => {

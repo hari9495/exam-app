@@ -74,7 +74,7 @@ async function doFetch(path: string, options: RequestInit, accessToken?: string)
   }
 }
 
-const DETAIL_FIELDS = ['personIds', 'clashes'] as const;
+const DETAIL_FIELDS = ['personIds', 'clashes', 'retryAfterSeconds'] as const;
 
 async function throwForResponse(response: Response): Promise<never> {
   const body = await errorBody(response);

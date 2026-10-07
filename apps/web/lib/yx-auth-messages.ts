@@ -14,9 +14,20 @@ const PLAIN: Record<string, string> = {
   [API_LOCKED]: ACCOUNT_LOCKED,
 };
 
+const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+
+/** The real wait the API gave with its lock (retryAfterSeconds), in plain words. */
+export function tryAgainIn(seconds: number): string {
+  if (seconds <= 90) return `Too many tries. Try again in ${plural(Math.max(1, Math.ceil(seconds)), 'second')}.`;
+  if (seconds <= 90 * 60) return `Too many tries. Try again in ${plural(Math.ceil(seconds / 60), 'minute')}.`;
+  return `Too many tries. Try again in ${plural(Math.ceil(seconds / 3600), 'hour')}.`;
+}
+
 /** A failed sign-in step as one sentence. A 429 other than the account / IP lock is the request throttle. */
 export function yxAuthMessage(err: unknown, fallback: string): string {
   const text = err instanceof Error && err.message ? err.message : fallback;
+  const wait = (err as { body?: { retryAfterSeconds?: unknown } } | null)?.body?.retryAfterSeconds;
+  if (text === API_LOCKED && typeof wait === 'number' && wait > 0) return tryAgainIn(wait);
   if (PLAIN[text]) return PLAIN[text];
   return (err as { status?: number } | null)?.status === 429 ? TOO_MANY_TRIES : text;
 }
