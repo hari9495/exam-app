@@ -34,6 +34,10 @@ const GUARD = [
   'actions-', 'inputs-', 'overlays-', 'data-', 'data-display-', 'shell-', 'workflow-', 'surfaces-', 'builders-', 'dashboards-', 'time-and-activity-',
   'screens-people-directory', 'screens-people-employee-profile', 'screens-settings-', 'screens-time-leave', 'screens-hiring-pipeline',
   'screens-notifications-', 'screens-org-chart',
+  // Founder test batch 8 Oct 2026: clickable rows in a narrow (card) table, a Review button on a selected row,
+  // the locked scope button, the résumé upload, phone tables with filters.
+  'screens-expenses-exp-03', 'screens-analytics-anl-07', 'screens-proctoring-prc-03', 'screens-platform-inbox-requests--plt-04',
+  'screens-platform-shell-homes--plt-01', 'screens-hiring-hir-12', 'screens-portals-t9-06',
 ];
 
 // Documented exceptions: [story id prefix or '*', selector, reason, rules skipped (all when omitted)].
@@ -235,7 +239,9 @@ async function auditStory(page, cdp, s) {
     // keyboard focus
     if (e.focusable && !e.pseudo) {
       await page.keyboard.press('Shift');
-      const f = await page.evaluate((i) => { const el = document.querySelector(`[data-yxa="${i}"]`); el.focus({ preventScroll: true }); return true; }, e.i).then(() => page.evaluate(styles, e.i));
+      // Behind an open modal the focus trap sends focus back into the dialog: unreachable, not ring-less.
+      const reached = await page.evaluate((i) => { const el = document.querySelector(`[data-yxa="${i}"]`); el.focus({ preventScroll: true }); return document.activeElement === el; }, e.i);
+      const f = reached ? await page.evaluate(styles, e.i) : null;
       await page.evaluate(() => document.activeElement?.blur());
       const ring = f && (!/^none/.test(f.outline) && parseFloat(f.outline.split(' ')[1]) > 0 || f.shadow !== b.shadow || f.bc !== b.bc || f.before !== b.before || f.after !== b.after || f.kids !== b.kids);
       if (f && !ring) add(e, 'no-focus-ring', f.fv ? 'focus-visible, nothing drawn' : 'no :focus-visible');
