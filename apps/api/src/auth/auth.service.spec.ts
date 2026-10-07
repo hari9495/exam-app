@@ -1966,4 +1966,180 @@ describe('AuthService', () => {
       });
     });
   });
+
+  describe('Continue with Google / Microsoft (founder request 7 Oct 2026)', () => {
+    const EMAIL = 'divya.r@kaverifoods.in';
+    const account = (id: string, org: string, name: string, over: object = {}) => ({
+      id,
+      email: EMAIL,
+      organizationId: org,
+      role: 'recruiter',
+      status: 'active',
+      permissionProfileId: null,
+      passwordHash: 'x',
+      passwordRecheckPending: false,
+      mobileNumber: null,
+      mobileVerifiedAt: null,
+      organization: { slug: `${name}-slug`, name, logoPath: null, status: 'active' },
+      ...over,
+    });
+    let accounts: ReturnType<typeof account>[];
+    let identities: { userId: string; provider: string; subject: string; id: string }[];
+    let verifiedDomains: { organizationId: string; domain: string }[];
+    const ON = { googleSignIn: true, microsoftSignIn: true };
+    const proof = (over: object = {}) => ({
+      provider: 'google' as const,
+      subject: 'g-1',
+      email: EMAIL,
+      domainEmail: null,
+      name: 'Divya',
+      scopeSlug: null,
+      deviceIdHash: createHash('sha256').update(META.deviceId).digest('hex'),
+      ...over,
+    });
+    const signIn = async (over: object = {}, meta = META) => service.socialSignIn(await service.mintSocialCode(proof(over) as never), meta);
+
+    beforeEach(() => {
+      accounts = [account('u-kaveri', 'org-kaveri', 'Kaveri Foods')];
+      identities = [];
+      verifiedDomains = [];
+      setPolicy(ON);
+      (prisma.user as any).findMany = jest.fn(async ({ where }: { where: { id?: { in: string[] }; email?: string } }) =>
+        accounts.filter((a) => (where.id ? where.id.in.includes(a.id) : a.email === where.email)),
+      );
+      prisma.user.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => accounts.find((a) => a.id === where.id) ?? null);
+      (prisma as any).externalIdentity = {
+        findMany: jest.fn(async ({ where }: { where: { provider: string; subject?: string | { not: string }; userId?: { in: string[] } } }) =>
+          identities.filter(
+            (i) =>
+              i.provider === where.provider &&
+              (typeof where.subject === 'string' ? i.subject === where.subject : where.subject ? i.subject !== where.subject.not : true) &&
+              (where.userId ? where.userId.in.includes(i.userId) : true),
+          ),
+        ),
+        findUnique: jest.fn(async ({ where }: { where: { userId_provider: { userId: string; provider: string } } }) =>
+          identities.find((i) => i.userId === where.userId_provider.userId && i.provider === where.userId_provider.provider) ?? null,
+        ),
+        create: jest.fn(async ({ data }: { data: { userId: string; provider: string; subject: string } }) => {
+          const row = { ...data, id: `l-${identities.length}` };
+          identities.push(row);
+          return row;
+        }),
+        update: jest.fn(async () => ({})),
+      };
+      (prisma as any).verifiedDomain = {
+        findMany: jest.fn(async ({ where }: { where: { domain: string; organizationId: { in: string[] } } }) =>
+          verifiedDomains.filter((d) => d.domain === where.domain && where.organizationId.in.includes(d.organizationId)),
+        ),
+      };
+    });
+
+    it('a verified address opens its one account: session by "google", the subject linked (audited), the second factor rules as for passwords', async () => {
+      const signedIn = (await signIn()) as SignedIn;
+      expect(signedIn.accessToken).toEqual(expect.any(String));
+      expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'u-kaveri' }), 'google', META, undefined, null);
+      expect(identities).toEqual([expect.objectContaining({ userId: 'u-kaveri', provider: 'google', subject: 'g-1', organizationId: 'org-kaveri' })]);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ action: 'user.external_identity_linked', entityId: 'u-kaveri', metadata: { provider: 'google' } }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'login.success', metadata: { method: 'google' } }));
+      // Signing in again only touches the link.
+      await signIn();
+      expect(identities).toHaveLength(1);
+    });
+
+    it('the code is single-use and only for the device that started the sign-in', async () => {
+      const code = await service.mintSocialCode(proof() as never);
+      expect(redis.set).toHaveBeenCalledWith(expect.stringMatching(/^auth:social:code:[0-9a-f]{64}$/), expect.any(String), 'EX', 60);
+      expect([...store.keys()].join()).not.toContain(code);
+      await expect(service.socialSignIn(code, { ...META, deviceId: 'e'.repeat(43) })).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
+      expect(sessions.recordLoginEvent).toHaveBeenLastCalledWith(expect.objectContaining({ result: 'failed', reason: 'social_device_mismatch', method: 'google' }));
+      await expect(service.socialSignIn(code, META)).rejects.toThrow(UnauthorizedException);
+      expect(sessions.recordLoginEvent).toHaveBeenLastCalledWith(expect.objectContaining({ reason: 'social_code_invalid' }));
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['the company has not turned it on', { googleSignIn: false }],
+      ['the company is SSO-only', { ...ON, ssoOnly: true }],
+    ])('refused like a wrong password when %s', async (_why, policy) => {
+      setPolicy(policy);
+      await expect(signIn()).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 'org-kaveri', userId: 'u-kaveri', result: 'failed', reason: 'social_disabled' }));
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it('each provider is its own switch', async () => {
+      setPolicy({ googleSignIn: true, microsoftSignIn: false });
+      await expect(signIn({ provider: 'microsoft', subject: 'tid:oid' })).rejects.toThrow(UnauthorizedException);
+      expect(await signIn()).toEqual(expect.objectContaining({ accessToken: expect.any(String) }));
+    });
+
+    it('no account, an unverified address, or YukthiX staff: the same refusal', async () => {
+      await expect(signIn({ email: null })).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
+      expect(sessions.recordLoginEvent).toHaveBeenLastCalledWith(expect.objectContaining({ organizationId: null, reason: 'unknown_user', method: 'google' }));
+      accounts = [account('u-staff', null as never, 'x', { role: 'super_admin', organization: null })];
+      await expect(signIn()).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it('the linked subject wins over the address; an account linked to another subject is never opened by email', async () => {
+      identities.push({ id: 'l-0', userId: 'u-kaveri', provider: 'google', subject: 'g-other' });
+      await expect(signIn()).rejects.toThrow(UnauthorizedException);
+      // The linked subject itself still signs in, whatever address it carries now.
+      expect(await signIn({ subject: 'g-other', email: 'new-address@elsewhere.test' })).toEqual(expect.objectContaining({ accessToken: expect.any(String) }));
+    });
+
+    it('a Microsoft work sign-in name opens only accounts of a company that verified its domain', async () => {
+      accounts = [account('u-kaveri', 'org-kaveri', 'Kaveri Foods'), account('u-ashok', 'org-ashok', 'Ashok Textiles')];
+      verifiedDomains = [{ organizationId: 'org-kaveri', domain: 'kaverifoods.in' }];
+      const ms = { provider: 'microsoft', subject: 'tid:oid', email: null, domainEmail: EMAIL };
+      expect(await signIn(ms)).toEqual(expect.objectContaining({ accessToken: expect.any(String) }));
+      expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'u-kaveri' }), 'microsoft', META, undefined, null);
+      verifiedDomains = [];
+      await expect(signIn({ ...ms, subject: 'tid:oid2' })).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('several companies: the picker; the subject is linked to the one picked', async () => {
+      accounts = [account('u-kaveri', 'org-kaveri', 'Kaveri Foods'), account('u-ashok', 'org-ashok', 'Ashok Textiles')];
+      const choice = (await signIn()) as any;
+      expect(choice).toEqual(expect.objectContaining({ selectionRequired: true, companies: [expect.objectContaining({ id: 'org-kaveri' }), expect.objectContaining({ id: 'org-ashok' })] }));
+      expect(sessions.create).not.toHaveBeenCalled();
+      await service.selectCompany({ selectionToken: choice.selectionToken, organizationId: 'org-ashok' }, META);
+      expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'u-ashok' }), 'google', META, undefined, null);
+      expect(identities).toEqual([expect.objectContaining({ userId: 'u-ashok', subject: 'g-1' })]);
+    });
+
+    it('the picker re-checks the company switch when the company is picked', async () => {
+      accounts = [account('u-kaveri', 'org-kaveri', 'Kaveri Foods'), account('u-ashok', 'org-ashok', 'Ashok Textiles')];
+      const choice = (await signIn()) as any;
+      setPolicy({ googleSignIn: false });
+      await expect(service.selectCompany({ selectionToken: choice.selectionToken, organizationId: 'org-ashok' }, META)).rejects.toThrow(UnauthorizedException);
+      expect(sessions.recordLoginEvent).toHaveBeenLastCalledWith(expect.objectContaining({ userId: 'u-ashok', reason: 'social_disabled' }));
+    });
+
+    it('with the company known, only its account is a candidate', async () => {
+      accounts = [account('u-kaveri', 'org-kaveri', 'Kaveri Foods'), account('u-ashok', 'org-ashok', 'Ashok Textiles')];
+      expect(await signIn({ scopeSlug: 'ashok textiles-slug' })).toEqual(expect.objectContaining({ accessToken: expect.any(String) }));
+      expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'u-ashok' }), 'google', META, undefined, null);
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u-kaveri', reason: 'other_company' }));
+    });
+
+    it('a locked account is not opened', async () => {
+      loginProtection.check.mockResolvedValue({ scope: 'account', retryAfterSeconds: 60 });
+      await expect(signIn()).rejects.toThrow(UnauthorizedException);
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'locked', reason: 'account_locked' }));
+    });
+
+    it('MFA still applies: the second factor is owed, carrying the subject; nothing is linked yet', async () => {
+      mfa.hasFactor.mockResolvedValue(true);
+      mfa.loadUser.mockResolvedValue({ ...accounts[0], role: 'recruiter' });
+      const outcome = await signIn();
+      expect(outcome).toEqual(expect.objectContaining({ mfaRequired: true }));
+      expect(mfa.createPendingLogin).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u-kaveri', method: 'google', externalSubject: 'g-1' }));
+      expect(identities).toEqual([]);
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+  });
 });

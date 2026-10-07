@@ -7,6 +7,7 @@ import { OrgSecretsCryptoService } from '@exam-platform/shared';
 import { LOGIN_PROTECTION_REDIS } from './login-protection.service';
 import { isLoopback } from './identity-providers';
 import { publicHttpsFetch } from '../common/ssrf';
+import { SocialApp, SocialProvider, socialRedirectUri } from './social-sign-in';
 
 // OpenID Connect sign-in (Google, Microsoft Entra, generic) via openid-client: authorization code
 // flow with PKCE (S256), state and nonce; the library validates the ID token's signature against
@@ -25,10 +26,22 @@ export interface OidcPending {
   deviceIdHash: string;
 }
 
+// "Continue with Google / Microsoft": the same, for YukthiX's own apps; the company is not known yet
+// (scopeSlug: the web address / remembered company, if any).
+export interface SocialPending {
+  provider: SocialProvider;
+  scopeSlug: string | null;
+  nonce: string;
+  codeVerifier: string;
+  deviceIdHash: string;
+}
+
 export type OidcClaims = client.IDToken;
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const stateKey = (state: string) => `auth:oidc:state:${sha256(state)}`;
+// A separate namespace: a company sign-in's state can never finish a Google / Microsoft one, or back.
+const socialStateKey = (state: string) => `auth:social:state:${sha256(state)}`;
 
 @Injectable()
 export class OidcService {
@@ -107,8 +120,58 @@ export class OidcService {
     return raw ? (JSON.parse(raw) as OidcPending) : null;
   }
 
+  // "Continue with Google / Microsoft", step 1. One discovery per provider per process (refreshed hourly).
+  async beginSocial(provider: SocialProvider, app: SocialApp, deviceId: string, scopeSlug: string | null): Promise<string> {
+    const config = await this.socialConfiguration(provider, app);
+    const state = client.randomState();
+    const nonce = client.randomNonce();
+    const codeVerifier = client.randomPKCECodeVerifier();
+    const pending: SocialPending = { provider, scopeSlug, nonce, codeVerifier, deviceIdHash: sha256(deviceId) };
+    await this.store(() => this.redis.set(socialStateKey(state), JSON.stringify(pending), 'EX', OIDC_STATE_TTL_SECONDS));
+    return client.buildAuthorizationUrl(config, {
+      redirect_uri: socialRedirectUri(provider),
+      scope: 'openid email profile',
+      state,
+      nonce,
+      code_challenge: await client.calculatePKCECodeChallenge(codeVerifier),
+      code_challenge_method: 'S256',
+      prompt: 'select_account',
+    }).href;
+  }
+
+  // Single use, as takeState.
+  async takeSocialState(state: string): Promise<SocialPending | null> {
+    const raw = await this.store(() => this.redis.getdel(socialStateKey(state)));
+    return raw ? (JSON.parse(raw) as SocialPending) : null;
+  }
+
+  // Step 2: code -> tokens; the ID token's signature, iss (Microsoft: per tenant), aud, exp, nonce,
+  // the state and the PKCE verifier are all checked by openid-client.
+  async completeSocial(provider: SocialProvider, app: SocialApp, pending: SocialPending, state: string, callbackQuery: string): Promise<OidcClaims> {
+    const config = await this.socialConfiguration(provider, app);
+    const currentUrl = new URL(socialRedirectUri(provider));
+    currentUrl.search = callbackQuery;
+    const tokens = await client.authorizationCodeGrant(config, currentUrl, {
+      pkceCodeVerifier: pending.codeVerifier,
+      expectedState: state,
+      expectedNonce: pending.nonce,
+      idTokenExpected: true,
+    });
+    return tokens.claims()!;
+  }
+
+  private socialConfiguration(provider: SocialProvider, app: SocialApp): Promise<client.Configuration> {
+    const key = `social:${provider}:${app.issuer}:${app.clientId}`;
+    const cached = this.configs.get(key);
+    if (cached && Date.now() - cached.at < CONFIG_TTL_MS) return cached.config;
+    const config = this.discover(app.issuer, app.clientId, app.clientSecret);
+    config.catch(() => this.configs.delete(key));
+    this.configs.set(key, { version: 0, at: Date.now(), config });
+    return config;
+  }
+
   // Only the browser that started a sign-in may finish it (login CSRF).
-  static sameDevice(pending: OidcPending, deviceId: string): boolean {
+  static sameDevice(pending: { deviceIdHash: string }, deviceId: string): boolean {
     const a = Buffer.from(pending.deviceIdHash);
     const b = Buffer.from(sha256(deviceId));
     return a.length === b.length && timingSafeEqual(a, b);

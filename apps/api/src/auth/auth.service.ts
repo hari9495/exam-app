@@ -37,6 +37,8 @@ import { MfaOtpSendDto, OtpStartDto, OtpVerifyDto } from './dto/otp.dto';
 import { OTP_CHANNELS, OTP_RESEND_COOLDOWN_SECONDS, OTP_TTL_SECONDS, OtpChannel, OtpService, parseOtpIdentifier } from './otp.service';
 import { PlatformLoginDto, SelectCompanyDto } from './dto/login.dto';
 import { CompanyCard, CompanyScopeService } from './company-scope';
+import { SocialIdentity, SocialProvider, isSocialProvider } from './social-sign-in';
+import { emailDomain } from './identity-providers';
 
 interface TokenPair {
   accessToken: string;
@@ -99,6 +101,8 @@ export const COMPANY_PICK_TTL_SECONDS = 2 * 60;
 // Lockout scope of the YukthiX platform staff sign-in (no company slug is ever empty).
 export const PLATFORM_SCOPE = '';
 const pickKey = (token: string) => `auth:pick:${sha256(token)}`;
+const socialCodeKey = (code: string) => `auth:social:code:${sha256(code)}`;
+export const SOCIAL_CODE_TTL_SECONDS = 60;
 const EXPIRED_MESSAGE = 'Your sign-in has expired. Please sign in again.';
 
 const ACCOUNT_SELECT = {
@@ -143,6 +147,15 @@ interface CompanyPick {
   deviceIdHash: string;
   // proof: sha256 of the password hash that was verified (a reset in between voids the choice).
   accounts: { userId: string; choice: string; proof: string }[];
+  // Google / Microsoft: the subject to link once the picked account has signed in.
+  subject?: string;
+}
+// "Continue with Google / Microsoft": what the provider proved, kept 60 s under sha256(code) for the
+// browser that started it (AuthService.socialSignIn).
+export interface SocialProof extends SocialIdentity {
+  provider: SocialProvider;
+  scopeSlug: string | null;
+  deviceIdHash: string;
 }
 type ParsedIdentifier = { kind: 'email' | 'mobile'; value: string };
 
@@ -408,6 +421,8 @@ export class AuthService {
     if (!account.organizationId || isStaff(account)) return 'platform_staff'; // their own sign-in only (W-005)
     if (!isOrganizationActive(account.organization?.status)) return 'organization_inactive';
     if (!ipAllowedForSurface(policy, 'desk', ip)) return 'ip_not_allowed';
+    // Each company opts in per provider; SSO-only turns both off (YX-IAM-04).
+    if (isSocialProvider(method)) return policy.ssoOnly || !(method === 'google' ? policy.googleSignIn : policy.microsoftSignIn) ? 'social_disabled' : null;
     if (method === 'password') return policy.ssoOnly && !policy.breakGlassUserIds.includes(account.id) ? 'sso_only' : null;
     return policy.ssoOnly || !policy.otpSignInChannels.includes(method.slice('otp_'.length) as OtpChannel) ? 'otp_disabled' : null;
   }
@@ -423,16 +438,16 @@ export class AuthService {
   }
 
   // The first factor is proven for this one account: on to its second factor, or signed in.
-  private continueAs(c: Candidate, method: PendingLogin['method'], identifier: string, meta: ClientMeta): Promise<LoginOutcome> {
+  private continueAs(c: Candidate, method: PendingLogin['method'], identifier: string, meta: ClientMeta, externalSubject?: string): Promise<LoginOutcome> {
     const breakGlass = method === 'password' && c.policy.ssoOnly && c.listedBreakGlass;
-    return this.continueAfterFirstFactor(c.account, { method, orgSlug: c.slug, identifier, breakGlass }, meta);
+    return this.continueAfterFirstFactor(c.account, { method, orgSlug: c.slug, identifier, breakGlass, ...(externalSubject ? { externalSubject } : {}) }, meta);
   }
 
   // Second factor (YX-IAM-01/03): anyone with one enrolled must use it. Break-glass sign-in is only
   // for accounts with MFA (YX-IAM-04); without it, the same wrong-password response.
   private async continueAfterFirstFactor(
     user: SessionUser & { permissionProfileId?: string | null },
-    login: Pick<PendingLogin, 'method' | 'orgSlug' | 'identifier' | 'breakGlass'>,
+    login: Pick<PendingLogin, 'method' | 'orgSlug' | 'identifier' | 'breakGlass' | 'externalSubject'>,
     meta: ClientMeta,
   ): Promise<LoginOutcome> {
     const hasFactor = await this.mfa.hasFactor(user);
@@ -453,12 +468,13 @@ export class AuthService {
 
   // Several companies matched: a 2-minute, single-use, device-bound choice. Only the companies the
   // credential opened are listed, name and logo only.
-  private async offerCompanies(winners: Candidate[], method: PendingLogin['method'], identifier: string, meta: ClientMeta): Promise<CompanyChoice> {
+  private async offerCompanies(winners: Candidate[], method: PendingLogin['method'], identifier: string, meta: ClientMeta, subject?: string): Promise<CompanyChoice> {
     const selectionToken = randomBytes(32).toString('base64url');
     const pick: CompanyPick = {
       method,
       identifier,
       deviceIdHash: sha256(meta.deviceId),
+      ...(subject ? { subject } : {}),
       accounts: winners.map((w) => ({
         userId: w.account.id,
         choice: w.account.organizationId!,
@@ -498,10 +514,12 @@ export class AuthService {
     const account = await this.accountById(chosen.userId);
     if (!account) return refuse('unknown_user');
     if (pick.method === 'password' && !sameHash(chosen.proof, sha256(account.passwordHash))) return refuse('password_changed', account);
-    const [c] = await this.toCandidates([account], pick.identifier, meta);
-    const reason = c.blocked ? `${c.blocked.scope}_locked` : await this.refusal(account, c.policy, pick.method, pick.identifier, meta.ip);
+    // Google / Microsoft vouched for the person, not for one address: each account by its own email.
+    const identifier = isSocialProvider(pick.method) ? account.email.toLowerCase() : pick.identifier;
+    const [c] = await this.toCandidates([account], identifier, meta);
+    const reason = c.blocked ? `${c.blocked.scope}_locked` : await this.refusal(account, c.policy, pick.method, identifier, meta.ip);
     if (reason) return refuse(reason, account);
-    return this.continueAs(c, pick.method, pick.identifier, meta);
+    return this.continueAs(c, pick.method, identifier, meta, pick.subject);
   }
 
   // Fail closed (as the lockout store): no choice can be kept or checked without Redis.
@@ -523,7 +541,7 @@ export class AuthService {
   // Everything after the last factor: lockout cleared, session + tokens, audit, alerts.
   private async finishSignIn(
     user: SessionUser & { permissionProfileId?: string | null },
-    login: Pick<PendingLogin, 'method' | 'orgSlug' | 'identifier' | 'breakGlass' | 'identityProviderId'>,
+    login: Pick<PendingLogin, 'method' | 'orgSlug' | 'identifier' | 'breakGlass' | 'identityProviderId' | 'externalSubject'>,
     meta: ClientMeta,
     mfaFactor?: string,
   ): Promise<SignedIn> {
@@ -545,6 +563,9 @@ export class AuthService {
     }
     const reason = login.breakGlass ? 'break_glass' : mfaFactor ? `mfa_${mfaFactor}` : undefined;
     const tokens: SignedIn = await this.startSession(user, login.method, meta, login.identifier, reason, mfaFactor, login.identityProviderId ?? null);
+    if (isSocialProvider(login.method) && login.externalSubject && user.organizationId) {
+      await this.linkExternalIdentity(user, login.method, login.externalSubject);
+    }
     if (!viaIdp) {
       const metadata = { ...(login.method !== 'password' ? { method: login.method } : {}), ...(mfaFactor ? { mfa: mfaFactor } : {}) };
       await this.audit.record(
@@ -574,7 +595,7 @@ export class AuthService {
 
   private async challengeSecondFactor(
     userId: string,
-    login: Pick<PendingLogin, 'method' | 'orgSlug' | 'identifier' | 'breakGlass' | 'identityProviderId'>,
+    login: Pick<PendingLogin, 'method' | 'orgSlug' | 'identifier' | 'breakGlass' | 'identityProviderId' | 'externalSubject'>,
     meta: ClientMeta,
   ): Promise<MfaChallenge> {
     const account = (await this.mfa.loadUser(userId))!;
@@ -866,6 +887,124 @@ export class AuthService {
     }
     for (const w of winners) await this.loginProtection.registerSuccess(w.slug, parsed.value, meta.ip);
     return winners.length === 1 ? this.continueAs(winners[0], method, parsed.value, meta) : this.offerCompanies(winners, method, parsed.value, meta);
+  }
+
+  // ---- "Continue with Google / Microsoft" (founder request 7 Oct 2026; P12 Q2) ----------------
+
+  // The provider's callback hands the browser this single-use, 60-second, device-bound code (in the
+  // URL fragment); the browser trades it at POST /auth/social/exchange. Only its sha256 is stored.
+  async mintSocialCode(proof: SocialProof): Promise<string> {
+    const code = randomBytes(32).toString('base64url');
+    await this.store(() => this.redis.set(socialCodeKey(code), JSON.stringify(proof), 'EX', SOCIAL_CODE_TTL_SECONDS));
+    return code;
+  }
+
+  // Which accounts the provider's proof opens, by the rules of the email-first password sign-in:
+  // none -> the wrong-password answer (nothing says why: no account, address not verified, method
+  // off for the company, staff, locked ...); one -> that account, its second factor still owed;
+  // several -> the company picker. Every refusal is a login event for its company.
+  async socialSignIn(code: string, meta: ClientMeta): Promise<LoginOutcome> {
+    const raw = await this.store(() => this.redis.getdel(socialCodeKey(code)));
+    const proof = raw ? (JSON.parse(raw) as SocialProof) : null;
+    if (!proof || !sameHash(proof.deviceIdHash, sha256(meta.deviceId))) {
+      await this.sessions.recordLoginEvent({
+        organizationId: null,
+        identifier: proof?.email ?? proof?.domainEmail ?? null,
+        result: 'failed',
+        method: proof?.provider ?? 'google',
+        reason: proof ? 'social_device_mismatch' : 'social_code_invalid',
+        meta,
+      });
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
+    }
+    const method = proof.provider;
+    const accounts = await this.socialAccounts(proof);
+    const candidates = (await Promise.all(accounts.map((a) => this.toCandidates([a], a.email.toLowerCase(), meta)))).flat();
+    const winners: Candidate[] = [];
+    for (const c of candidates) {
+      const identifier = c.account.email.toLowerCase();
+      // With a company known (web address / remembered company), only that company's account.
+      const reason =
+        proof.scopeSlug && c.slug !== proof.scopeSlug
+          ? 'other_company'
+          : c.blocked
+            ? `${c.blocked.scope}_locked`
+            : await this.refusal(c.account, c.policy, method, identifier, meta.ip);
+      if (reason) {
+        await this.sessions.recordLoginEvent({ organizationId: c.account.organizationId, userId: c.account.id, identifier, result: c.blocked ? 'locked' : 'failed', method, reason, meta });
+      } else {
+        winners.push(c);
+      }
+    }
+    if (!winners.length) {
+      if (!candidates.length) {
+        await this.sessions.recordLoginEvent({ organizationId: null, identifier: proof.email ?? proof.domainEmail, result: 'failed', method, reason: 'unknown_user', meta });
+      }
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
+    }
+    return winners.length === 1
+      ? this.continueAs(winners[0], method, winners[0].account.email.toLowerCase(), meta, proof.subject)
+      : this.offerCompanies(winners, method, proof.email ?? winners[0].account.email.toLowerCase(), meta, proof.subject);
+  }
+
+  // The accounts linked to this subject, then by email the accounts not linked to another account of
+  // this provider: a provider-verified address in any company, a Microsoft work sign-in name only in
+  // a company that has verified its domain (not lapsed). Never YukthiX staff (W-005); capped.
+  private async socialAccounts(proof: SocialProof): Promise<Account[]> {
+    const all = { organizationId: null, isSuperAdmin: true };
+    const linked = await this.tenantPrisma.forTenant(all, (tx) =>
+      tx.externalIdentity.findMany({ where: { provider: proof.provider, subject: proof.subject }, select: { userId: true }, take: MAX_COMPANY_ACCOUNTS }),
+    );
+    const byLink: Account[] = linked.length
+      ? await this.tenantPrisma.forTenant(all, (tx) =>
+          tx.user.findMany({
+            where: { id: { in: linked.map((l) => l.userId) }, status: 'active', role: { not: 'super_admin' }, organizationId: { not: null }, organization: { status: 'active' } },
+            select: ACCOUNT_SELECT,
+            orderBy: { createdAt: 'asc' },
+          }),
+        )
+      : [];
+    const byEmail: Account[] = proof.email ? await this.accountsFor({ kind: 'email', value: proof.email }) : [];
+    if (proof.domainEmail && proof.domainEmail !== proof.email) {
+      const found = await this.accountsFor({ kind: 'email', value: proof.domainEmail });
+      const verified = found.length
+        ? await this.tenantPrisma.forTenant(all, (tx) =>
+            tx.verifiedDomain.findMany({
+              where: { domain: emailDomain(proof.domainEmail!), lapsedAt: null, organizationId: { in: found.map((a) => a.organizationId!) } },
+              select: { organizationId: true },
+            }),
+          )
+        : [];
+      byEmail.push(...found.filter((a) => verified.some((v) => v.organizationId === a.organizationId)));
+    }
+    const linkedElsewhere = byEmail.length
+      ? await this.tenantPrisma.forTenant(all, (tx) =>
+          tx.externalIdentity.findMany({ where: { provider: proof.provider, userId: { in: byEmail.map((a) => a.id) }, subject: { not: proof.subject } }, select: { userId: true } }),
+        )
+      : [];
+    const accounts = new Map<string, Account>();
+    for (const a of [...byLink, ...byEmail]) {
+      if (!isStaff(a) && !linkedElsewhere.some((l) => l.userId === a.id)) accounts.set(a.id, a);
+    }
+    return [...accounts.values()].slice(0, MAX_COMPANY_ACCOUNTS);
+  }
+
+  // After the whole sign-in (every factor): remember which Google / Microsoft account this is. A link
+  // is never moved to another subject here: the first one stays while the account exists.
+  private async linkExternalIdentity(user: SessionUser, provider: SocialProvider, subject: string): Promise<void> {
+    const ctx = { organizationId: user.organizationId, isSuperAdmin: false };
+    const created = await this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const existing = await tx.externalIdentity.findUnique({ where: { userId_provider: { userId: user.id, provider } } });
+      if (existing) {
+        if (existing.subject === subject) await tx.externalIdentity.update({ where: { id: existing.id }, data: { lastUsedAt: new Date() } });
+        return false;
+      }
+      await tx.externalIdentity.create({ data: { organizationId: user.organizationId!, userId: user.id, provider, subject } });
+      return true;
+    });
+    if (created) {
+      await this.audit.record(ctx, { actorUserId: user.id, action: 'user.external_identity_linked', entityType: 'user', entityId: user.id, metadata: { provider } });
+    }
   }
 
   // OTP as the fallback second factor (YX-IAM-03): SMS / WhatsApp to a verified mobile number,

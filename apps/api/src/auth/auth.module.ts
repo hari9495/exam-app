@@ -27,6 +27,7 @@ import { SmsChannelModule } from '../sms-channel/sms-channel.module';
 import { SsoService } from './sso.service';
 import { OidcService } from './oidc.service';
 import { SsoController } from './sso.controller';
+import { SocialController } from './social.controller';
 import { DNS_TXT_RESOLVER, IdentityProvidersService } from './identity-providers.service';
 import { CompanyScopeService } from './company-scope';
 import { IdentityProvidersController } from './identity-providers.controller';
@@ -67,7 +68,7 @@ function createTxtResolver() {
     { provide: DNS_TXT_RESOLVER, useFactory: createTxtResolver },
     CompanyScopeService,
   ],
-  controllers: [AuthController, SamlController, SsoController, SessionsController, SecurityPolicyController, MfaController, OtpController, IdentityProvidersController],
+  controllers: [AuthController, SamlController, SsoController, SessionsController, SecurityPolicyController, MfaController, OtpController, IdentityProvidersController, SocialController],
   exports: [AuthService, IdentityProvidersService],
 })
 export class AuthModule {}
