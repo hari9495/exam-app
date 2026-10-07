@@ -4,7 +4,7 @@ import { Check, ChevronDown, Search } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { Icon } from './foundations';
 import { useFieldControl } from './field';
-import { Popover, PopoverContent, PopoverTrigger } from './popover';
+import { Popover, PopoverContent, PopoverTrigger, closeOnEscape } from './popover';
 import { PersonLabel } from './display';
 
 const CLEAR = '__yx_clear__';
@@ -161,7 +161,7 @@ function SelectInner<V extends string>(
           <Icon icon={ChevronDown} />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="yx-select__popover">
+      <PopoverContent className="yx-select__popover" onKeyDown={closeOnEscape(setOpen)}>
         <OptionList
           options={list}
           isSelected={(v) => v === value}
@@ -249,7 +249,7 @@ export function MultiSelect<V extends string = string>({
           <Icon icon={ChevronDown} />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="yx-select__popover">
+      <PopoverContent className="yx-select__popover" onKeyDown={closeOnEscape(setOpen)}>
         <OptionList
           options={options}
           isSelected={(v) => value.includes(v)}

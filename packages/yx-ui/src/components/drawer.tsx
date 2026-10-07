@@ -3,6 +3,7 @@ import * as RD from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { IconButton, Button } from './button';
 import { InlineAlert } from './feedback';
+import { PopoverPortalContext, hasOpenPopover } from './popover';
 
 export interface DrawerProps {
   open: boolean;
@@ -26,7 +27,9 @@ export interface DrawerProps {
 /** Slide-over from the right (§18). The list behind stays visible on wide screens. */
 export function Drawer({ open, onOpenChange, title, subtitle, meta, children, footer, size = 'md', dirty, description }: DrawerProps) {
   const [confirming, setConfirming] = useState(false);
+  const [panel, setPanel] = useState<HTMLDivElement | null>(null);
   const requestClose = (next: boolean) => {
+    if (!next && hasOpenPopover(panel)) return;
     if (!next && dirty) {
       setConfirming(true);
       return;
@@ -39,7 +42,9 @@ export function Drawer({ open, onOpenChange, title, subtitle, meta, children, fo
     <RD.Root open={open} onOpenChange={requestClose}>
       <RD.Portal>
         <RD.Overlay className="yx-drawer__scrim" />
+        <PopoverPortalContext.Provider value={panel}>
         <RD.Content
+          ref={setPanel}
           className="yx-drawer"
           data-size={size}
           tabIndex={-1}
@@ -92,6 +97,7 @@ export function Drawer({ open, onOpenChange, title, subtitle, meta, children, fo
             </footer>
           )}
         </RD.Content>
+        </PopoverPortalContext.Provider>
       </RD.Portal>
     </RD.Root>
   );

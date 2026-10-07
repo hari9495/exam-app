@@ -5,7 +5,7 @@ import { formatDate, parseDate } from '../lib/format';
 import { Icon } from './foundations';
 import { FieldRow, FormField, useFieldControl } from './field';
 import { TextField } from './inputs';
-import { Popover, PopoverAnchor, PopoverContent } from './popover';
+import { Popover, PopoverAnchor, PopoverContent, closeOnEscape } from './popover';
 
 export interface DatePickerProps {
   value: Date | null;
@@ -104,7 +104,7 @@ export const DatePicker = forwardRef<HTMLInputElement, DatePickerProps>(function
           />
         </div>
       </PopoverAnchor>
-      <PopoverContent className="yx-calendar" onOpenAutoFocus={(e) => e.preventDefault()}>
+      <PopoverContent className="yx-calendar" onOpenAutoFocus={(e) => e.preventDefault()} onKeyDown={closeOnEscape(setOpen)}>
         <DayPicker
           mode="single"
           selected={value ?? undefined}
