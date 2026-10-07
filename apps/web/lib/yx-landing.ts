@@ -12,9 +12,16 @@ export const EXAM_ATS_KEYS = ['exam:manage', 'results:view', 'candidate:manage',
 const DIRECTORY_KEY = 'employee.profile.view';
 const LANDING_KEYS = [...EXAM_ATS_KEYS, DIRECTORY_KEY];
 
-/** Pure: where a signed-in person lands. Exam/ATS people (and platform staff) keep their role's console. */
-export function landingFor(role: string | undefined, granted: readonly string[]): string {
-  if (role === 'super_admin' || EXAM_ATS_KEYS.some((k) => granted.includes(k))) return roleToLandingPath(role);
+/**
+ * Pure: where a signed-in person lands. Anyone with an employee record in the company lands in
+ * YukthiX (Directory if they may read it, else their own Profile); exam / hiring stays one click away
+ * ("Hiring and assessments"). Only exam/ATS accounts with no employee record (and platform staff)
+ * keep their role's console.
+ */
+export function landingFor(role: string | undefined, granted: readonly string[], isEmployee = false): string {
+  if (role === 'super_admin') return roleToLandingPath(role);
+  if (isEmployee) return granted.includes(DIRECTORY_KEY) ? '/yx/people/directory' : '/yx/people/profile';
+  if (EXAM_ATS_KEYS.some((k) => granted.includes(k))) return roleToLandingPath(role);
   return granted.includes(DIRECTORY_KEY) ? '/yx/people/directory' : '/yx/me/security';
 }
 
@@ -23,7 +30,11 @@ const grantedKeys = (token: string | undefined): Promise<string[]> => apiFetch(`
 /** Landing after a YukthiX sign-in. If the permissions cannot be read, the safe default is My security. */
 export async function yxLandingPath(accessToken: string, role: string | undefined): Promise<string> {
   try {
-    return landingFor(role, await grantedKeys(accessToken));
+    const [granted, isEmployee] = await Promise.all([
+      grantedKeys(accessToken),
+      apiFetch('/people/me', {}, accessToken).then(() => true, () => false),
+    ]);
+    return landingFor(role, granted, isEmployee);
   } catch {
     return '/yx/me/security';
   }

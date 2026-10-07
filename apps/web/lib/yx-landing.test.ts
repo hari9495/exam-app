@@ -15,4 +15,9 @@ describe('landingFor (where a YukthiX sign-in lands)', () => {
     expect(landingFor('panel', ['results:view'])).toBe('/v2/panel/reports');
     expect(landingFor('super_admin', [])).toBe('/v2/organizations');
   });
+  it('an employee lands in YukthiX even with exam / interview access', () => {
+    expect(landingFor('panel', ['results:view', 'interview:view_assigned'], true)).toBe('/yx/people/profile');
+    expect(landingFor('org_admin', ['exam:manage', 'employee.profile.view'], true)).toBe('/yx/people/directory');
+    expect(landingFor('recruiter', ['exam:manage'], false)).toBe('/v2/today');
+  });
 });
