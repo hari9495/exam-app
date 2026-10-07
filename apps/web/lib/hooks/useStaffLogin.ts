@@ -93,10 +93,12 @@ export function useStaffLogin({ enrolPath = '/profile?mfa=setup', yx = false }: 
     setSubmitting(true);
     try {
       const challengeToken = await botChallengeToken();
-      const result = await apiFetch('/auth/staff/login', {
+      // No organisation: YukthiX platform staff, who never sign in through a company (P12 Q7).
+      const slug = organizationSlug.trim();
+      const result = await apiFetch(slug ? '/auth/staff/login' : '/auth/platform/login', {
         method: 'POST',
         body: JSON.stringify({
-          organizationSlug: organizationSlug || undefined,
+          ...(slug ? { organizationSlug: slug } : {}),
           email,
           password,
           ...(challengeToken ? { challengeToken } : {}),
