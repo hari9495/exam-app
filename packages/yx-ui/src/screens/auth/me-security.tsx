@@ -113,7 +113,7 @@ function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFa
             {mfa.factors.map((f) => (
               <li key={f.id} className="yx-auth__item">
                 <div className="yx-auth__item-main">
-                  <Text weight="medium">{f.type === 'passkey' ? f.label : 'Authenticator app'}</Text>
+                  <Text weight="medium">{f.type === 'passkey' ? `Passkey · ${f.label}` : 'Authenticator app'}</Text>
                   <Text tone="secondary" size="sm">Added {day(f.createdAt)}{f.lastUsedAt ? ` · last used ${day(f.lastUsedAt)}` : ' · not used yet'}</Text>
                 </div>
                 <Button size="sm" disabled={lastOne} title={lastOne ? 'Your role needs at least one' : undefined} onClick={() => setRemoving(f)} aria-label={`Remove ${f.type === 'passkey' ? f.label : 'authenticator app'}`}>

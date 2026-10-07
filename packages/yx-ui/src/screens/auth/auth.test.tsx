@@ -673,3 +673,12 @@ describe('LoginActivityScreen results and access', () => {
     expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull();
   });
 });
+
+describe('My security second steps', () => {
+  it('says which entry is a passkey, not only the device name', () => {
+    render(<Me />);
+    const list = screen.getByRole('list', { name: 'Your second steps' });
+    const passkey = MFA_ENROLLED.factors.find((f) => f.type === 'passkey')!;
+    expect(within(list).getByText(`Passkey · ${passkey.label}`)).toBeInTheDocument();
+  });
+});
