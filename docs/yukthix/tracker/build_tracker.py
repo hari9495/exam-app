@@ -27,6 +27,7 @@ STEP_DOCS = {'0': ['P01'], '1': ['P12', 'P04'], '2': ['P01', 'P02', 'P06', 'M01'
 DONE, IN_PROGRESS = {'0', '1', '2'}, set()
 RULE_STATUSES = ['Built + tested', 'Built, no test cites it', 'Tested, code not linked', 'UI prototype only',
                  'Verify (step done, not linked)', 'In progress', 'Not started', 'Not needed']
+TEST_RESULTS = ['Pass', 'Fail', 'Blocked', 'Not tested']
 WORK_STATUSES = ['Open', 'In progress', 'Done', 'Parked', 'Not started', 'Accepted (won\'t do)', 'Moved to a step']
 RULE_RE = re.compile(r'YX-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d+[a-z]?')
 DEF_RE = re.compile(r'^\|\s*\**(YX-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d+[a-z]?)\**\s*\|(.*?)\|')
@@ -331,8 +332,19 @@ def main():
         cov += [[rid, '', '', 'Story cites a rule the docs do not define'] for rid in sorted(in_stories - set(rules))]
         sheet(wb, 'Coverage', ['Rule ID', 'Doc', 'Rule', 'Problem'], cov, [16, 8, 90, 34], keep, wrap=(3,))
 
+    # Manual tests (manual-tests.json): the founder's screen-by-screen script; placed right after Summary
+    mt = json.loads((HERE / 'manual-tests.json').read_text(encoding='utf-8'))
+    mrows = [[m['id'], m['area'], m['screen'], m['url'], m['account'], '\n'.join(f'{i}. {s}' for i, s in enumerate(m['steps'], 1)),
+              m['expected'] + (f"\n\nNote: {m['note']}" if m.get('note') else ''), ', '.join(m['stories']), None, None] for m in mt]
+    mh = ['ID', 'Area', 'Screen', 'URL', 'Account', 'Steps', 'Expected', 'Stories', 'Result (you)', 'Notes (you)']
+    ws_mt = sheet(wb, 'Manual tests', mh, mrows, [10, 18, 30, 34, 28, 70, 60, 18, 13, 40], keep, wrap=(3, 5, 6, 7, 8, 10))
+    dropdown(ws_mt, 'I', TEST_RESULTS, len(mrows))
+    colour(ws_mt, f'I2:I{len(mrows) + 1}', {'Pass': 'green', 'Fail': 'red', 'Blocked': 'amber'})
+    n_mt = len(mrows) + 1
+
     # Summary (first sheet)
     ws = wb.create_sheet('Summary', 0)
+    wb.move_sheet(ws_mt, offset=1 - wb.index(ws_mt))
     ws['A1'] = 'YukthiX product tracker'
     ws['A1'].font = Font(bold=True, size=16)
     ws['A2'] = f'Generated {today} from docs/yukthix (design docs, roadmap, go-live) and the code in: ' + ', '.join(r.name for r in roots)
@@ -347,6 +359,12 @@ def main():
              ('', None), ('UI', None),
              ('Screen files', len(srows)), ('Screen files wired to the API', sum(1 for s in srows if s[3] == 'Yes')),
              ('Storybook stories', sum(stories.values())),
+             ('', None), ('Manual tests', None),
+             ('Test cases', f"=COUNTA('Manual tests'!A2:A{n_mt})"),
+             ('Passed', f"=COUNTIF('Manual tests'!I2:I{n_mt},\"Pass\")"),
+             ('Failed', f"=COUNTIF('Manual tests'!I2:I{n_mt},\"Fail\")"),
+             ('Blocked', f"=COUNTIF('Manual tests'!I2:I{n_mt},\"Blocked\")"),
+             ('Not tested', f"=COUNTA('Manual tests'!A2:A{n_mt})-COUNTIF('Manual tests'!I2:I{n_mt},\"Pass\")-COUNTIF('Manual tests'!I2:I{n_mt},\"Fail\")-COUNTIF('Manual tests'!I2:I{n_mt},\"Blocked\")"),
              ('', None), ('Design', None), ('Design docs', len(drows)), ('PRs (YukthiX branches)', len(prs))]
     if n_back:
         b = lambda col: f'Backlog!${col}$2:${col}${n_back}'
@@ -368,6 +386,7 @@ def main():
         'Rules: every YX-... rule in the design docs. "Built + tested" means a code file and a test file cite the rule ID.',
         '"Verify" means its roadmap step is done but no code or test cites the rule: confirm it is built and add the ID to its test, or build it.',
         'Override (you) on the Rules sheet replaces the automatic status (e.g. "Not needed" with a note).',
+        'Manual tests: the founder test script (manual-tests.json). Set Result (you) to Pass, Fail, Blocked or Not tested; empty counts as not tested.',
         'Deferred: things each build job reported as left out. Close, move to a step, or accept each one.',
         'Columns marked (you) are kept when the tracker is regenerated. Everything else is rebuilt from the docs and the code.',
         'Rebuild: python docs/yukthix/tracker/build_tracker.py --code <each worktree with unmerged work>',
@@ -376,7 +395,7 @@ def main():
         ws[f'A{j}'] = t
     wb.calculation.fullCalcOnLoad = True  # formulas have no cached values; Excel computes them on open
     wb.save(OUT)
-    print(f'{OUT}: {len(rrows)} rules, {len(drows)} docs, {len(frows)} deferred, {len(wrows)} open work, {len(grows)} go-live, {len(srows)} screens, {len(prs)} PRs')
+    print(f'{OUT}: {len(rrows)} rules, {len(drows)} docs, {len(frows)} deferred, {len(wrows)} open work, {len(grows)} go-live, {len(srows)} screens, {len(prs)} PRs, {len(mrows)} manual tests')
 
 
 if __name__ == '__main__':

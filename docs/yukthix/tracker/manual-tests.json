@@ -1,0 +1,2291 @@
+[
+  {
+    "id": "MT-0-01",
+    "area": "0 Before you start",
+    "screen": "Test set-up",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "Not signed in",
+    "steps": [
+      "Ask the developer to start the app (web on port 3000, API, database) and to load fresh demo data (the seed).",
+      "The seed prints the demo passwords at the end. Keep that list next to you (it is also the last line of apps/api/prisma/seed.ts).",
+      "Open Mailpit at http://localhost:8025 in a second tab. All emails (codes, reset links, alerts) arrive there.",
+      "Start the test sign-in server for Google / Microsoft (see README).",
+      "Install an authenticator app on your phone (Google Authenticator or Microsoft Authenticator).",
+      "Use Chrome. For \"a second browser\" use a Chrome Incognito window."
+    ],
+    "expected": "The sign-in page opens. Mailpit opens and shows the inbox. You have the demo password list.",
+    "stories": [],
+    "note": "Demo company: Kaveri Foods (web address name demo-org). Sites: Bengaluru head office, Chennai office, Hosur plant. People: Ramesh (MD), Lakshmi (HR, hr@), Divya (QA manager, panel@), Arjun, Meera, Kiran (Divya's team, Bengaluru), Kavya (Hosur plant), Rahul (Sales). Admin, HR and Payroll accounts need two-step verification: do MT-1-09 for each of them first."
+  },
+  {
+    "id": "MT-1-01",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - first screen",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "Not signed in",
+    "steps": [
+      "Open the sign-in page in a fresh Incognito window.",
+      "Look at the screen without typing anything."
+    ],
+    "expected": "You see \"Work email\" with a Continue button, an \"or\" line, then \"Continue with mobile\", \"Continue with Microsoft\" and \"Continue with Google\". There is no box for a company code.",
+    "stories": [
+      "new sign-in spec (7 Oct 2026)",
+      "US-A-031"
+    ],
+    "note": "New sign-in screen is being built now. May still be in progress."
+  },
+  {
+    "id": "MT-1-02",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - email and password",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Type hr@demo-org.test in Work email.",
+      "Click Continue.",
+      "Type the password from the demo list and click Sign in.",
+      "If asked, give your second step (authenticator code)."
+    ],
+    "expected": "You are signed in to Kaveri Foods and land on a YukthiX page. Your name (Lakshmi Venkatesan) shows in the menu.",
+    "stories": [
+      "US-A-031",
+      "US-A-036"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-1-03",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - wrong password",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "recruiter@demo-org.test (Recruiter)",
+    "steps": [
+      "Type recruiter@demo-org.test and click Continue.",
+      "Type a wrong password, for example Wrong-pass-1, and click Sign in."
+    ],
+    "expected": "A red message \"Invalid credentials\" shows. You stay on the password step. No hint about whether the account exists.",
+    "stories": [
+      "US-A-013",
+      "US-A-037"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-1-04",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - unknown email gives no hint",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "Not signed in",
+    "steps": [
+      "Type nobody@demo-org.test and click Continue.",
+      "Type any password and click Sign in."
+    ],
+    "expected": "The same \"Invalid credentials\" message as a wrong password. Nothing tells you the email does not exist or which company it is.",
+    "stories": [
+      "US-A-013",
+      "US-A-031",
+      "US-A-037"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-1-05",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - wrong password lockout",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "recruiter@demo-org.test (Recruiter)",
+    "steps": [
+      "First check the lockout number in Settings > Security (MT-4-04). The default is 10 wrong tries.",
+      "Type recruiter@demo-org.test, Continue, then a wrong password. Click Sign in.",
+      "Repeat the wrong password until you reach the lockout number.",
+      "Now type the correct password and click Sign in.",
+      "Open Mailpit."
+    ],
+    "expected": "After the limit you see \"Too many sign-in attempts. Please wait and try again.\" Even the correct password does not work while locked. Mailpit has an email to the recruiter saying the account was locked. The lock ends after the lock time (default 15 minutes) or when an admin unlocks it (MT-2-12).",
+    "stories": [
+      "US-A-012"
+    ],
+    "note": "NEGATIVE test. Use only the recruiter account. Repeated failures from one network can also block other accounts for a short time; if that happens, wait 15 minutes."
+  },
+  {
+    "id": "MT-1-06",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - YukthiX staff account on the company screen",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "super@platform.test (YukthiX staff)",
+    "steps": [
+      "Type super@platform.test and click Continue.",
+      "Type the staff password from the demo list and click Sign in."
+    ],
+    "expected": "Sign-in is refused with the same \"Invalid credentials\" message. YukthiX staff never sign in through the company sign-in screen, and staff accounts never appear in the company picker.",
+    "stories": [
+      "US-A-034",
+      "US-A-037"
+    ],
+    "note": "NEGATIVE test. Story US-A-034 is still \"New\" in the tracker; the code for it is in the workspace and login branches. May still be in progress."
+  },
+  {
+    "id": "MT-1-07",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - email code",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "First, as admin, turn on Email under \"Sign in with a one-time code\" in Settings > Security (MT-4-05).",
+      "Sign out. Open the sign-in page.",
+      "Type panel@demo-org.test and click Continue.",
+      "Click \"Email me a code instead\".",
+      "Open Mailpit, open the email \"Your YukthiX sign-in code\" and copy the 6-digit code.",
+      "Type the code in \"6-digit code\" and click Sign in."
+    ],
+    "expected": "The email has only the code, what it is for and when it expires (5 minutes). After typing the code you are signed in as Divya.",
+    "stories": [
+      "US-A-021"
+    ],
+    "note": "Divya is not in a sensitive role, so no second step is asked. Admin, HR and Payroll still give their second step after the code."
+  },
+  {
+    "id": "MT-1-08",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - email codes off, button hidden",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "As admin, untick Email under \"Sign in with a one-time code\" in Settings > Security and save.",
+      "Sign out. Type panel@demo-org.test and click Continue.",
+      "Look at the password step."
+    ],
+    "expected": "There is no \"Email me a code instead\" button. Only the password (and other allowed methods) are offered.",
+    "stories": [
+      "US-A-021",
+      "new sign-in spec (7 Oct 2026)"
+    ],
+    "note": "NEGATIVE test. New sign-in screen is being built now. May still be in progress. On the older screen the button still shows but no email is sent."
+  },
+  {
+    "id": "MT-1-09",
+    "area": "1 Sign-in",
+    "screen": "Two-step setup - authenticator app",
+    "url": "http://localhost:3000/yx/setup-mfa",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Sign in as admin@demo-org.test for the first time (no second step set yet).",
+      "On \"Set up two-step verification\" choose \"Authenticator app\".",
+      "Click \"Show the QR code\". Scan it with the authenticator app on your phone.",
+      "Type the 6-digit code from the phone and click \"Turn on\".",
+      "Copy or write down the recovery codes. Tick \"I have saved my recovery codes\" and click Continue."
+    ],
+    "expected": "The page \"Two-step verification is on - Last step: keep a way back in.\" shows recovery codes once. After Continue you land on the admin pages. Repeat this for hr@, payroll@ and plant-hr@ before the other tests.",
+    "stories": [
+      "US-A-017",
+      "US-A-018",
+      "US-A-036"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-1-10",
+    "area": "1 Sign-in",
+    "screen": "Two-step setup - passkey",
+    "url": "http://localhost:3000/yx/setup-mfa",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh)",
+    "steps": [
+      "Sign in as payroll@demo-org.test (or use My security > \"Add a passkey\" if the authenticator is already set).",
+      "Choose \"Passkey (recommended)\" and click \"Add a passkey\".",
+      "Follow the Windows Hello / phone prompt (fingerprint, face or PIN).",
+      "Save the recovery codes, tick the box and click Continue."
+    ],
+    "expected": "The passkey is saved. Next time, the second step offers \"Passkey\" first and it works with the fingerprint / PIN.",
+    "stories": [
+      "US-A-017"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-1-11",
+    "area": "1 Sign-in",
+    "screen": "Two-step setup - remind me later (grace period)",
+    "url": "http://localhost:3000/yx/setup-mfa",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Sign in with an account in a sensitive role that has no second step yet (ask the developer to reset one if all are set).",
+      "On \"Set up two-step verification\" read the date in the subtitle.",
+      "Click \"Remind me later\".",
+      "Open an admin page."
+    ],
+    "expected": "The subtitle says \"Set it up by <date>\" (14 days). After \"Remind me later\" you can work, but a yellow banner \"Set up two-step verification\" shows. After the date, admin pages pause until you add a second step.",
+    "stories": [
+      "US-A-018"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-1-12",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - second step with authenticator",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Sign out. Sign in as admin@demo-org.test with the password.",
+      "On \"Confirm it's you\" choose \"Authenticator app\".",
+      "Type the current 6-digit code from your phone and continue."
+    ],
+    "expected": "You are signed in. Login activity (MT-2-10) shows this sign-in as \"Two-step\".",
+    "stories": [
+      "US-A-017",
+      "US-A-036"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-1-13",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - second step with a recovery code",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Sign out. Sign in as admin@demo-org.test with the password.",
+      "On \"Confirm it's you\" choose \"Recovery code\".",
+      "Type one of the saved recovery codes and continue.",
+      "Sign out and try the same recovery code again."
+    ],
+    "expected": "The first time you are signed in. The second time the same code is refused (each code works only once).",
+    "stories": [
+      "US-A-017"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-1-14",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - wrong second-step code",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Sign in as admin@demo-org.test with the password.",
+      "On \"Confirm it's you\" choose \"Authenticator app\" and type 000000."
+    ],
+    "expected": "An error shows and you are not signed in. \"Start again\" takes you back to the first screen.",
+    "stories": [
+      "US-A-017"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-1-15",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - remembered company and \"Not your company?\"",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Sign in once as hr@demo-org.test, then sign out.",
+      "Open the sign-in page again in the same browser.",
+      "Look at the top of the form.",
+      "Click \"Not your company?\"."
+    ],
+    "expected": "The page says \"Signing in to Kaveri Foods\" with the company logo or initials, and only the sign-in methods Kaveri Foods allows. After \"Not your company?\" the company line disappears and the general first screen shows again.",
+    "stories": [
+      "US-A-032",
+      "new sign-in spec (7 Oct 2026)"
+    ],
+    "note": "Company-known screen showing only allowed methods is part of the new sign-in screen. May still be in progress."
+  },
+  {
+    "id": "MT-1-16",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - company screen shows only allowed methods",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "As admin, in Settings > Security make sure \"Allow sign-in with Google\" is OFF and \"Allow sign-in with Microsoft\" is OFF. Save.",
+      "Sign out. Open the sign-in page in the same browser (company is remembered)."
+    ],
+    "expected": "The \"Signing in to Kaveri Foods\" screen does not show \"Continue with Google\" or \"Continue with Microsoft\".",
+    "stories": [
+      "new sign-in spec (7 Oct 2026)"
+    ],
+    "note": "NEGATIVE test. New sign-in screen is being built now. May still be in progress."
+  },
+  {
+    "id": "MT-1-17",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - Continue with Google (test sign-in server)",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Start the test sign-in server (see README).",
+      "As admin, turn ON \"Allow sign-in with Google\" in Settings > Security and save.",
+      "Sign out. On the sign-in page click \"Continue with Google\".",
+      "On the test sign-in page choose or type hr@demo-org.test and continue.",
+      "Give your second step if asked."
+    ],
+    "expected": "You come back to YukthiX signed in as Lakshmi (HR) in Kaveri Foods.",
+    "stories": [
+      "new sign-in spec (7 Oct 2026)"
+    ],
+    "note": "New sign-in screen is being built now. May still be in progress."
+  },
+  {
+    "id": "MT-1-18",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - Continue with Microsoft (test sign-in server)",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "As admin, turn ON \"Allow sign-in with Microsoft\" in Settings > Security and save.",
+      "Sign out. On the sign-in page click \"Continue with Microsoft\".",
+      "On the test sign-in page choose or type hr@demo-org.test and continue."
+    ],
+    "expected": "You come back signed in as Lakshmi in Kaveri Foods.",
+    "stories": [
+      "new sign-in spec (7 Oct 2026)"
+    ],
+    "note": "New sign-in screen is being built now. May still be in progress."
+  },
+  {
+    "id": "MT-1-19",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - Google when the company has it off",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "As admin, turn OFF \"Allow sign-in with Google\" and save.",
+      "Sign out. Click \"Not your company?\" if shown, then click \"Continue with Google\" on the general first screen.",
+      "On the test sign-in page use hr@demo-org.test."
+    ],
+    "expected": "You are NOT signed in to Kaveri Foods. A message says this sign-in method is not allowed for your company (or no account was found).",
+    "stories": [
+      "new sign-in spec (7 Oct 2026)"
+    ],
+    "note": "NEGATIVE test. New sign-in screen is being built now. May still be in progress."
+  },
+  {
+    "id": "MT-1-20",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - Continue with mobile",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "First verify a mobile number for Divya in My security (MT-2-06) and, as admin, tick SMS under \"Sign in with a one-time code\" (MT-4-05).",
+      "Sign out. Click \"Continue with mobile\". Type Divya's mobile number and continue.",
+      "Type the 6-digit code from the text message and click Sign in."
+    ],
+    "expected": "You are signed in as Divya.",
+    "stories": [
+      "US-A-021",
+      "new sign-in spec (7 Oct 2026)"
+    ],
+    "note": "New sign-in screen is being built now. May still be in progress. On a local machine texts go to a development sink and are not shown; if you cannot get the code, mark Blocked."
+  },
+  {
+    "id": "MT-1-21",
+    "area": "1 Sign-in",
+    "screen": "Sign-in - company picker",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "An email that has accounts in two companies",
+    "steps": [
+      "Ask the developer for a second test company where the same email and password exist (the demo data has only one company).",
+      "Sign in with that email and password.",
+      "On \"Choose your company\" pick one company."
+    ],
+    "expected": "\"Choose your company\" lists only the companies where this password worked (name and logo only). After picking, you are signed in to that company. \"Use a different email or number\" goes back to the start.",
+    "stories": [
+      "US-A-031"
+    ],
+    "note": "Needs a second company. Mark Blocked if there is none."
+  },
+  {
+    "id": "MT-1-22",
+    "area": "1 Sign-in",
+    "screen": "Forgot password",
+    "url": "http://localhost:3000/yx/forgot-password",
+    "account": "recruiter@demo-org.test (Recruiter)",
+    "steps": [
+      "On the sign-in password step click \"Forgot your password?\".",
+      "Type recruiter@demo-org.test and click \"Email me a reset link\".",
+      "Open Mailpit and open the reset email. Click the link within 15 minutes.",
+      "Set a new password of at least 12 characters and sign in with it."
+    ],
+    "expected": "The page says \"If recruiter@demo-org.test has a YukthiX account, we sent it a reset link.\" No company is asked. The email arrives in Mailpit and the new password works.",
+    "stories": [
+      "US-A-032",
+      "US-A-014"
+    ],
+    "note": "Afterwards tell the developer the recruiter password changed (or reload the seed)."
+  },
+  {
+    "id": "MT-1-23",
+    "area": "1 Sign-in",
+    "screen": "Forgot password - unknown email",
+    "url": "http://localhost:3000/yx/forgot-password",
+    "account": "Not signed in",
+    "steps": [
+      "Type nobody@demo-org.test and click \"Email me a reset link\".",
+      "Open Mailpit."
+    ],
+    "expected": "The same \"If ... has a YukthiX account, we sent it a reset link\" message shows. No email arrives in Mailpit. Nothing reveals that the account does not exist.",
+    "stories": [
+      "US-A-032",
+      "US-A-013"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-1-24",
+    "area": "1 Sign-in",
+    "screen": "New password rules",
+    "url": "http://localhost:3000/yx/forgot-password",
+    "account": "recruiter@demo-org.test (Recruiter)",
+    "steps": [
+      "Open a reset link from Mailpit (as in MT-1-22).",
+      "Try a short password like Short1!.",
+      "Try a well-known password like Password123456."
+    ],
+    "expected": "Both are refused: the short one for being under 12 characters, the well-known one because it is in a list of breached passwords.",
+    "stories": [
+      "US-A-014"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-1-25",
+    "area": "1 Sign-in",
+    "screen": "New-device alert email",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "Sign in as panel@demo-org.test in a new Incognito window (a device it has not used).",
+      "Open Mailpit."
+    ],
+    "expected": "Mailpit has an email \"New sign-in to your YukthiX account\" for Divya.",
+    "stories": [
+      "US-A-013"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-2-01",
+    "area": "2 My security",
+    "screen": "My security - overview",
+    "url": "http://localhost:3000/yx/me/security",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Sign in as hr@demo-org.test.",
+      "In the menu click Me > My security."
+    ],
+    "expected": "You see: Two-step verification (your second steps), recovery codes, Mobile number, \"Where you're signed in\" and \"Sign-in history\".",
+    "stories": [
+      "US-A-036"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-2-02",
+    "area": "2 My security",
+    "screen": "My security - add a passkey",
+    "url": "http://localhost:3000/yx/me/security",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Click \"Add a passkey\".",
+      "Confirm it's you if asked, then follow the Windows Hello / phone prompt."
+    ],
+    "expected": "The passkey appears under \"Your second steps\". Mailpit has an email about the security change.",
+    "stories": [
+      "US-A-017",
+      "US-A-011"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-2-03",
+    "area": "2 My security",
+    "screen": "My security - add an authenticator app",
+    "url": "http://localhost:3000/yx/me/security",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Click \"Set up authenticator app\".",
+      "Scan the QR code with your phone app and type the 6-digit code. Click \"Turn on\"."
+    ],
+    "expected": "A second \"Authenticator app\" entry appears in the list.",
+    "stories": [
+      "US-A-017"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-2-04",
+    "area": "2 My security",
+    "screen": "My security - cannot remove the only second step",
+    "url": "http://localhost:3000/yx/me/security",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh)",
+    "steps": [
+      "Use an account with exactly one second step (for example payroll@ with only the authenticator).",
+      "Look at the Remove button next to it."
+    ],
+    "expected": "You see \"You can't remove your only second step, because your role needs one. Add another first.\" The only factor cannot be removed.",
+    "stories": [
+      "US-A-018"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-2-05",
+    "area": "2 My security",
+    "screen": "My security - new recovery codes",
+    "url": "http://localhost:3000/yx/me/security",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Click \"New recovery codes (N left)\".",
+      "Confirm it's you (passkey or authenticator).",
+      "Save the codes, tick \"I have saved my recovery codes\".",
+      "Try one of the OLD codes at the next sign-in."
+    ],
+    "expected": "Before the new codes show you must confirm it's you. The new codes show once. The old codes no longer work.",
+    "stories": [
+      "US-A-017",
+      "US-A-019"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-2-06",
+    "area": "2 My security",
+    "screen": "My security - verify a mobile number",
+    "url": "http://localhost:3000/yx/me/security",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "Under Mobile number type a mobile number and click \"Text me a code\".",
+      "Type the code in \"Code from the text\" and click \"Verify number\"."
+    ],
+    "expected": "The number shows \"Verified. Used for sign-in codes where your company allows them.\"",
+    "stories": [
+      "US-A-021"
+    ],
+    "note": "Locally the text goes to a development sink and is not shown. If you cannot get the code, mark Blocked."
+  },
+  {
+    "id": "MT-2-07",
+    "area": "2 My security",
+    "screen": "My security - sign out one session",
+    "url": "http://localhost:3000/yx/me/security",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Sign in as hr@ in Chrome AND in an Incognito window.",
+      "In Chrome open My security > \"Where you're signed in\".",
+      "Click \"Sign out\" on the other session (not \"This browser\").",
+      "In the Incognito window click any menu link."
+    ],
+    "expected": "The other session disappears from the list. In Incognito you are sent back to the sign-in page.",
+    "stories": [
+      "US-A-010"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-2-08",
+    "area": "2 My security",
+    "screen": "My security - sign out everywhere else",
+    "url": "http://localhost:3000/yx/me/security",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Sign in as hr@ in two more browsers or Incognito windows.",
+      "In Chrome click \"Sign out everywhere else\"."
+    ],
+    "expected": "Only \"This browser\" stays in the list. The other windows go to the sign-in page on their next click.",
+    "stories": [
+      "US-A-010"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-2-09",
+    "area": "2 My security",
+    "screen": "My security - sign-in history",
+    "url": "http://localhost:3000/yx/me/security",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Scroll to \"Sign-in history\".",
+      "Change the Show filter to failed attempts, then back to all."
+    ],
+    "expected": "You see only YOUR own sign-ins with result, method, device, IP and time. Failed attempts show when you filter for them.",
+    "stories": [
+      "US-A-011"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-2-10",
+    "area": "2 My security",
+    "screen": "Login activity - company sign-ins",
+    "url": "http://localhost:3000/yx/admin/login-activity",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Sign in as admin@. Click Security > Login activity.",
+      "On \"Sign-in attempts\" filter Result = unsuccessful. Then filter Method and Person.",
+      "Click \"Show failed attempts\"."
+    ],
+    "expected": "You see the sign-ins of Kaveri Foods only, with the filters working. The number of failed attempts in the last 24 hours shows. New devices are marked \"New device\".",
+    "stories": [
+      "US-A-011",
+      "US-A-036"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-2-11",
+    "area": "2 My security",
+    "screen": "Login activity - who is signed in now",
+    "url": "http://localhost:3000/yx/admin/login-activity",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Open the \"Signed in now\" tab.",
+      "Find hr@'s session and click \"Sign out\". Confirm."
+    ],
+    "expected": "The list shows people signed in now with how they signed in (One step / Two-step). After Sign out, hr@ must sign in again.",
+    "stories": [
+      "US-A-010"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-2-12",
+    "area": "2 My security",
+    "screen": "Login activity - unlock a locked account",
+    "url": "http://localhost:3000/yx/admin/login-activity",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "First lock recruiter@ (MT-1-05).",
+      "In Login activity find the locked attempt for recruiter@ and click \"Unlock\".",
+      "Type a reason and confirm. Confirm it's you if asked.",
+      "Sign in as recruiter@ with the right password."
+    ],
+    "expected": "The unlock asks for a reason and your second step. After it, the recruiter can sign in. The unlock is recorded.",
+    "stories": [
+      "US-A-012"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-2-13",
+    "area": "2 My security",
+    "screen": "Login activity - not for normal staff",
+    "url": "http://localhost:3000/yx/admin/login-activity",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "Sign in as panel@demo-org.test.",
+      "Look at the menu. Then type the Login activity web address directly."
+    ],
+    "expected": "There is no Login activity link. Opening the address shows \"You don't have access to this page\" (or no data).",
+    "stories": [
+      "US-A-011",
+      "US-A-078"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-3-01",
+    "area": "3 Company setup",
+    "screen": "Legal entities - list",
+    "url": "http://localhost:3000/yx/settings/legal-entities",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Sign in as admin@. Click Organisation > Legal entities."
+    ],
+    "expected": "You see Kaveri Foods Pvt Ltd (KFPL, marked Default) and Kaveri Foods Pvt Ltd (Tamil Nadu) (KFPL-TN). Each shows \"India - data kept in India\".",
+    "stories": [
+      "US-A-070",
+      "US-A-078"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-3-02",
+    "area": "3 Company setup",
+    "screen": "Legal entities - add an entity",
+    "url": "http://localhost:3000/yx/settings/legal-entities",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Click \"Add legal entity\".",
+      "Fill Registered name (for example Kaveri Test Pvt Ltd), Short name (KTEST), Currency, Financial year starts in, Registered address.",
+      "Type a wrong PAN (for example 12345) and try to save.",
+      "Fix the PAN to a valid format (5 letters, 4 digits, 1 letter) and save."
+    ],
+    "expected": "A wrong PAN is refused with a clear message. With a valid PAN the entity is added. Country / data region cannot be changed later.",
+    "stories": [
+      "US-A-070"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-3-03",
+    "area": "3 Company setup",
+    "screen": "Legal entities - make default",
+    "url": "http://localhost:3000/yx/settings/legal-entities",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Open the row menu of the new entity and choose \"Make default\". Confirm.",
+      "Then make Kaveri Foods Pvt Ltd the default again."
+    ],
+    "expected": "Only one entity is Default at any time. The message says new hires and imports start with this entity.",
+    "stories": [
+      "US-A-070"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-3-04",
+    "area": "3 Company setup",
+    "screen": "Legal entities - identifiers hidden without access",
+    "url": "http://localhost:3000/yx/settings/legal-entities",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "As admin@ look at the Identifiers column."
+    ],
+    "expected": "Admin sees only \"All on file\" or \"None on file\", never the PAN / TAN / GSTIN numbers. There is no Identifiers button.",
+    "stories": [
+      "US-A-076"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-3-05",
+    "area": "3 Company setup",
+    "screen": "Legal entities - open identifiers (Payroll)",
+    "url": "http://localhost:3000/yx/settings/legal-entities",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh)",
+    "steps": [
+      "Sign in as payroll@. Open Organisation > Legal entities.",
+      "Click \"Identifiers\" on Kaveri Foods Pvt Ltd.",
+      "Confirm it's you."
+    ],
+    "expected": "After the second step the PAN, TAN, GSTIN and CIN show. The look is recorded.",
+    "stories": [
+      "US-A-076"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-3-06",
+    "area": "3 Company setup",
+    "screen": "Company rules - entity rules",
+    "url": "http://localhost:3000/yx/settings/legal-entities",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "On Legal entities find the \"Company rules\" part (\"Employee codes are unique\", \"New masters are\").",
+      "Change \"Employee codes are unique\" and click \"Save rules\"."
+    ],
+    "expected": "The rule saves with \"Saved.\". If codes would clash, the switch is refused and the clashes are listed.",
+    "stories": [
+      "US-A-073",
+      "US-A-099"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-3-07",
+    "area": "3 Company setup",
+    "screen": "Locations - list and add",
+    "url": "http://localhost:3000/yx/settings/locations",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Click Organisation > Locations.",
+      "Click \"Add location\". Fill Legal entity, Name (Mysuru office), Code, Address, State and Time zone.",
+      "Tick \"Use a geofence\" and fill Latitude, Longitude and Radius. Add an allowed network like 203.0.113.0/24.",
+      "Save."
+    ],
+    "expected": "You see Bengaluru head office, Chennai office and Hosur plant, and the new Mysuru office under its legal entity.",
+    "stories": [
+      "US-A-071",
+      "US-A-078"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-3-08",
+    "area": "3 Company setup",
+    "screen": "Locations - state and time zone required",
+    "url": "http://localhost:3000/yx/settings/locations",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Click \"Add location\". Fill only Legal entity and Name. Leave State and Time zone empty.",
+      "Try to save."
+    ],
+    "expected": "Saving is refused. The empty State and Time zone fields are marked.",
+    "stories": [
+      "US-A-071"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-3-09",
+    "area": "3 Company setup",
+    "screen": "Locations - archive, restore, delete",
+    "url": "http://localhost:3000/yx/settings/locations",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Open the row menu of Mysuru office and choose Archive. Confirm.",
+      "Tick \"Show archived\", open the menu and choose Restore.",
+      "Try Delete on Hosur plant (used by people)."
+    ],
+    "expected": "Each action asks to confirm. An archived location is hidden and cannot be chosen for new people. Hosur plant cannot be deleted because it is in use; only Archive is offered.",
+    "stories": [
+      "US-A-074",
+      "US-A-078"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-3-10",
+    "area": "3 Company setup",
+    "screen": "Structure - departments tree",
+    "url": "http://localhost:3000/yx/settings/structure",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Click Organisation > Structure. Open the Departments tab.",
+      "Click \"Add department\". Name it Packaging, Parent = Operations. Save.",
+      "Edit Operations and set its Parent to Packaging (its own child). Save."
+    ],
+    "expected": "Operations shows as a Division with Quality and Production under it. Packaging is added under Operations. Moving Operations under its own child is refused (no loops).",
+    "stories": [
+      "US-A-072"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-3-11",
+    "area": "3 Company setup",
+    "screen": "Structure - designations and codes",
+    "url": "http://localhost:3000/yx/settings/structure",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Open the Designations tab. Click \"Add designation\".",
+      "Type a name, leave Code empty, choose Ownership \"One entity only\" and pick KFPL-TN. Save.",
+      "Add another designation with the same name."
+    ],
+    "expected": "The first one gets a code made for it. The duplicate name is refused.",
+    "stories": [
+      "US-A-073"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-3-12",
+    "area": "3 Company setup",
+    "screen": "Structure - grades and pay ranges hidden without pay access",
+    "url": "http://localhost:3000/yx/settings/structure",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Sign in as hr@. Open Structure > Grades."
+    ],
+    "expected": "Grades W1 to M4 are listed. There is NO \"Show pay\" button: HR without pay access never sees pay ranges.",
+    "stories": [
+      "US-A-075"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-3-13",
+    "area": "3 Company setup",
+    "screen": "Structure - pay ranges (Payroll)",
+    "url": "http://localhost:3000/yx/settings/structure",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh)",
+    "steps": [
+      "Sign in as payroll@. Open Structure > Grades.",
+      "Click \"Show pay\" on G2. Confirm it's you if asked.",
+      "Click \"Add range\": Legal entity KFPL, Currency INR, Starts = a future date, Minimum, Midpoint, Maximum. Click \"Add range\".",
+      "Try to add a second range for the same grade, entity and currency that overlaps it."
+    ],
+    "expected": "The pay ranges drawer shows \"Pay is private. Opening this list is recorded\". The current range is \"In force\". The new range ends the old one the day before it starts; the past is not changed. An overlapping range is refused.",
+    "stories": [
+      "US-A-075"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-3-14",
+    "area": "3 Company setup",
+    "screen": "Structure - employment types",
+    "url": "http://localhost:3000/yx/settings/structure",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Open the Employment types tab. Click \"Add employment type\".",
+      "Fill Name and Category (for example Consultant). Save."
+    ],
+    "expected": "It appears in the list with its category. Fixed-term (plant) shows as KFPL-TN only.",
+    "stories": [
+      "US-A-073"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-3-15",
+    "area": "3 Company setup",
+    "screen": "Structure - cost centres",
+    "url": "http://localhost:3000/yx/settings/structure",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Open the Cost centres tab. Click \"Add cost centre\".",
+      "Choose Legal entity KFPL and Parent cost centre \"Hosur production\" (which belongs to KFPL-TN). Save."
+    ],
+    "expected": "Saving is refused: a cost centre and its parent must be in the same legal entity.",
+    "stories": [
+      "US-A-075"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-3-16",
+    "area": "3 Company setup",
+    "screen": "Structure - archive a used master",
+    "url": "http://localhost:3000/yx/settings/structure",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "On Designations open the menu of \"Quality Analyst\" (used by people) and choose Delete.",
+      "Choose Archive instead. Then open Add person (MT-6-02) and look at the designation list.",
+      "Back on Structure, tick \"Show archived\" and Restore it."
+    ],
+    "expected": "Delete is refused for a used record. An archived designation is not offered for new people. After Restore it can be chosen again.",
+    "stories": [
+      "US-A-074"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-3-17",
+    "area": "3 Company setup",
+    "screen": "Company rules - values and where they come from",
+    "url": "http://localhost:3000/yx/settings/company-rules",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Click Organisation > Company rules.",
+      "Look at Job changes, Probation and Attendance.",
+      "On \"Attendance mode\" look at the rows for the company and for Bengaluru head office."
+    ],
+    "expected": "Each rule shows its value and where it comes from (\"Set for your company\" or \"YukthiX starter, not changed yet\"). Attendance is \"Punch in and out\" for the company and \"Present unless on leave\" for Bengaluru head office.",
+    "stories": [
+      "US-A-077"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-3-18",
+    "area": "3 Company setup",
+    "screen": "Company rules - change a dated rule",
+    "url": "http://localhost:3000/yx/settings/company-rules",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "On \"Attendance mode\" click Change.",
+      "Applies to = Location, Hosur plant. Value = Timesheet. Applies from = a future date. Save."
+    ],
+    "expected": "The new row shows with a \"Scheduled\" badge. Earlier days keep the old value.",
+    "stories": [
+      "US-A-077"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-3-19",
+    "area": "3 Company setup",
+    "screen": "Company rules - probation and retro limit",
+    "url": "http://localhost:3000/yx/settings/company-rules",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Change \"Probation lasts (months)\" for the company to 3.",
+      "Change \"Past-dated changes may go back to\" to \"Start of last financial year\"."
+    ],
+    "expected": "Both save. The probation length is used for new joiners. The retro limit changes the date shown in the job-change form (MT-7-07).",
+    "stories": [
+      "US-A-077",
+      "US-A-085",
+      "US-A-097"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-4-01",
+    "area": "4 Security & SMS settings",
+    "screen": "Security settings - page and minimums",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Sign in as admin@. Click Security > Security settings."
+    ],
+    "expected": "You see the sections Second sign-in step, Sign in with a one-time code, Single sign-on, Sessions, Network allow-lists, Account lockout, Passwords. A note says YukthiX sets minimums. Each field shows the allowed range.",
+    "stories": [
+      "US-A-015"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-4-02",
+    "area": "4 Security & SMS settings",
+    "screen": "Security settings - not for HR",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Sign in as hr@. Type the Security settings address directly."
+    ],
+    "expected": "There is no Security settings link in the menu. The page says you do not have access.",
+    "stories": [
+      "US-A-015"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-4-03",
+    "area": "4 Security & SMS settings",
+    "screen": "Security settings - MFA for everyone",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Under \"Who needs a second step\" choose Everyone.",
+      "Click \"Save changes\" and confirm it's you.",
+      "Sign in as recruiter@ in Incognito.",
+      "Set it back to \"Sensitive roles\" and save."
+    ],
+    "expected": "Saving asks for your second step. While \"Everyone\" is on, the recruiter is asked to set up two-step verification.",
+    "stories": [
+      "US-A-015",
+      "US-A-019"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-4-04",
+    "area": "4 Security & SMS settings",
+    "screen": "Security settings - lockout rules",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "In Account lockout set \"Lock after\" to a number above the allowed maximum (for example 50). Click Save changes.",
+      "Set \"Lock for\" below the minimum (for example 1). Save.",
+      "Set \"Lock after\" to 5 and \"Lock for\" to 15. Save."
+    ],
+    "expected": "Values weaker than the YukthiX minimum are refused with a red message next to the field. 5 and 15 save with \"Saved.\".",
+    "stories": [
+      "US-A-012"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-4-05",
+    "area": "4 Security & SMS settings",
+    "screen": "Security settings - one-time code channels",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "In \"Sign in with a one-time code\" tick Email (and SMS if you have a gateway).",
+      "Save and confirm it's you."
+    ],
+    "expected": "Saved. The email code button appears on the sign-in screen (MT-1-07).",
+    "stories": [
+      "US-A-021"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-4-06",
+    "area": "4 Security & SMS settings",
+    "screen": "Security settings - text code not allowed as only factor",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Under the allowed second steps untick Passkey and Authenticator app, leaving only \"Code by SMS or WhatsApp (backup only)\".",
+      "Click Save changes."
+    ],
+    "expected": "Refused: \"Keep passkey or authenticator app allowed\".",
+    "stories": [
+      "US-A-021"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-4-07",
+    "area": "4 Security & SMS settings",
+    "screen": "Security settings - password minimum",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "In Passwords set \"Minimum password length\" to 8. Save.",
+      "Set it to 14. Save."
+    ],
+    "expected": "8 is refused (minimum 12). 14 saves.",
+    "stories": [
+      "US-A-014",
+      "US-A-015"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-4-08",
+    "area": "4 Security & SMS settings",
+    "screen": "Security settings - session limits",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Set \"Sign out on the web after no activity for\" to 600 minutes (10 hours). Save.",
+      "Set it longer than \"Longest web session\". Save."
+    ],
+    "expected": "Both are refused with a message (idle limit max 8 hours; idle cannot be longer than the longest session).",
+    "stories": [
+      "US-A-015"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-4-09",
+    "area": "4 Security & SMS settings",
+    "screen": "Security settings - allow Google / Microsoft sign-in",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Find \"Allow sign-in with Google\" and \"Allow sign-in with Microsoft\".",
+      "Turn Google on. Save and confirm it's you."
+    ],
+    "expected": "The switches save. The sign-in screen for Kaveri Foods now shows \"Continue with Google\" (MT-1-17).",
+    "stories": [
+      "new sign-in spec (7 Oct 2026)"
+    ],
+    "note": "New sign-in screen is being built now. May still be in progress."
+  },
+  {
+    "id": "MT-4-10",
+    "area": "4 Security & SMS settings",
+    "screen": "Security settings - single sign-on providers",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "In Single sign-on click \"Add identity provider\" (or \"Manage identity providers\").",
+      "Look at the page that opens."
+    ],
+    "expected": "The identity provider page opens, where Google, Microsoft Entra ID, OpenID Connect or SAML can be added. Back on Security settings each provider shows On or Off.",
+    "stories": [
+      "US-A-027",
+      "US-A-030"
+    ],
+    "note": "The provider page is the older admin page (/v2/settings/sso)."
+  },
+  {
+    "id": "MT-4-11",
+    "area": "4 Security & SMS settings",
+    "screen": "Security settings - SSO only needs an active provider and 2 emergency admins",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Look at \"Sign in only through your identity provider\".",
+      "If a provider is on: tick it, choose only 1 emergency admin and save."
+    ],
+    "expected": "With no active provider the box cannot be ticked (\"Turn on an identity provider first\"). With a provider, saving with fewer than 2 emergency admins is refused.",
+    "stories": [
+      "US-A-029"
+    ],
+    "note": "NEGATIVE test. The demo company has one admin, so you will see the refusal."
+  },
+  {
+    "id": "MT-4-12",
+    "area": "4 Security & SMS settings",
+    "screen": "Security settings - verify an email domain",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Add an identity provider with an email domain (for example kaverifoods.test) on the provider page.",
+      "Back on Security settings, under Email domains read the TXT record.",
+      "Click \"Check record\"."
+    ],
+    "expected": "The domain shows \"Not verified\" with the TXT record to publish. \"Check record\" says the record was not found (no real DNS locally). Not-verified domains never send people to the provider.",
+    "stories": [
+      "US-A-033"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-4-13",
+    "area": "4 Security & SMS settings",
+    "screen": "Security settings - lapsed domain",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Ask the developer to set up a verified domain whose TXT record was then removed (the daily re-check marks it Lapsed after repeated misses).",
+      "Open Security settings and look at Email domains."
+    ],
+    "expected": "The domain shows a yellow \"Lapsed\" badge and the text \"Repeated checks have not found the TXT record ... Put the record back, then check it.\" Sign-ins no longer go to the identity provider.",
+    "stories": [
+      "US-A-035"
+    ],
+    "note": "Needs developer setup. Story US-A-035 is \"New\" in the tracker but the code is in the workspace branch. May still be in progress."
+  },
+  {
+    "id": "MT-4-14",
+    "area": "4 Security & SMS settings",
+    "screen": "Security settings - IP allow-list",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "In Network allow-lists type 203.0.113.0/24 under \"Admin pages\". Save.",
+      "Open Settings > Legal entities.",
+      "Clear the list and save again (use another admin session or ask the developer if you are locked out)."
+    ],
+    "expected": "Admin pages are refused from your network while the list does not include it. Clearing the list allows any network again.",
+    "stories": [
+      "US-A-016"
+    ],
+    "note": "NEGATIVE test. Careful: this can lock you out of admin pages. Keep a second signed-in window open to undo it."
+  },
+  {
+    "id": "MT-4-15",
+    "area": "4 Security & SMS settings",
+    "screen": "SMS settings - page",
+    "url": "http://localhost:3000/yx/settings/sms",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Click Security > Text messages (SMS)."
+    ],
+    "expected": "You see Sending (use the YukthiX shared account, Monthly limit), Your accounts (or \"No accounts of your own.\") and the Delivery log.",
+    "stories": [
+      "US-A-025"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-4-16",
+    "area": "4 Security & SMS settings",
+    "screen": "SMS settings - add a gateway account",
+    "url": "http://localhost:3000/yx/settings/sms",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Click \"Add account\".",
+      "Name: Test gateway. Gateway: Development. Sender: KAVERI. DLT entity id: digits only.",
+      "In One-time-code template fill DLT template id (digits) and Registered text.",
+      "Click \"Add account\" and confirm it's you.",
+      "Click Edit on the new account."
+    ],
+    "expected": "The account is listed with its sender and template status. On Edit, secrets are empty: they are never shown again.",
+    "stories": [
+      "US-A-022",
+      "US-A-025"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-4-17",
+    "area": "4 Security & SMS settings",
+    "screen": "SMS settings - field checks",
+    "url": "http://localhost:3000/yx/settings/sms",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Click \"Add account\". Type letters in \"DLT entity id\" and leave Name empty. Try to save."
+    ],
+    "expected": "Refused with \"Enter a name\" and \"The DLT entity id is digits only\".",
+    "stories": [
+      "US-A-022"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-4-18",
+    "area": "4 Security & SMS settings",
+    "screen": "SMS settings - test send",
+    "url": "http://localhost:3000/yx/settings/sms",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "If the Send test button is off, click \"Verify my number\" and verify your mobile (MT-2-06).",
+      "Click \"Send test\" on the Test gateway account.",
+      "Look at the Delivery log."
+    ],
+    "expected": "A green message \"Test sent from Test gateway to <your number>\". The Delivery log shows a row with a masked number and the status.",
+    "stories": [
+      "US-A-025",
+      "US-A-023"
+    ],
+    "note": "Needs a verified mobile. Locally the code text is not shown; if you cannot verify, mark Blocked."
+  },
+  {
+    "id": "MT-4-19",
+    "area": "4 Security & SMS settings",
+    "screen": "SMS settings - failover",
+    "url": "http://localhost:3000/yx/settings/sms",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Edit Test gateway: in Gateway settings set simulate to \"unavailable\". Save.",
+      "Add a second Development account with a lower priority.",
+      "Send a test from the first account."
+    ],
+    "expected": "The first account fails and the message goes through the second account. The Delivery log shows both attempts.",
+    "stories": [
+      "US-A-023"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-4-20",
+    "area": "4 Security & SMS settings",
+    "screen": "SMS settings - monthly limit",
+    "url": "http://localhost:3000/yx/settings/sms",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Set Monthly limit to 1 and save. Send two tests."
+    ],
+    "expected": "After the limit, \"Monthly limit reached\" shows and texts stop; codes go by email where allowed.",
+    "stories": [
+      "US-A-024"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-5-01",
+    "area": "5 Access",
+    "screen": "Roles & access - overview",
+    "url": "http://localhost:3000/yx/settings/access",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Sign in as admin@. Click Access > Roles & access.",
+      "Use the Show switch: People, Waiting, Roles."
+    ],
+    "expected": "People lists each person's grants (role, over which people, from / until). Roles lists HR Admin, Payroll Admin, Team Manager, Plant HR Executive and others. Waiting shows grants waiting for approval.",
+    "stories": [
+      "US-A-111",
+      "US-A-112",
+      "US-A-127"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-5-02",
+    "area": "5 Access",
+    "screen": "Roles & access - new role from a template",
+    "url": "http://localhost:3000/yx/settings/access",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Show = Roles. Click \"New role from a template\".",
+      "Template = HR Executive. Role name = Chennai HR. Save."
+    ],
+    "expected": "The new role appears in the Roles list with the template's permissions.",
+    "stories": [
+      "US-A-111",
+      "US-A-127"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-5-03",
+    "area": "5 Access",
+    "screen": "Roles & access - give a scoped role",
+    "url": "http://localhost:3000/yx/settings/access",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Click \"Give access\".",
+      "Person = recruiter@. Role = Chennai HR. Over = Location, Chennai office. From = today. Reason = test.",
+      "Click \"Give access\" and confirm it's you."
+    ],
+    "expected": "The grant shows on the recruiter with \"Chennai office\" and the From date. The recruiter now sees People pages, but only for Chennai office people.",
+    "stories": [
+      "US-A-112",
+      "US-A-127"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-5-04",
+    "area": "5 Access",
+    "screen": "Roles & access - what they can do today",
+    "url": "http://localhost:3000/yx/settings/access",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Show = People. Open plant-hr@ (Anitha Rao).",
+      "Look at \"What they can do today\"."
+    ],
+    "expected": "It lists her permissions and that they apply only over Hosur plant.",
+    "stories": [
+      "US-A-117",
+      "US-A-127"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-5-05",
+    "area": "5 Access",
+    "screen": "Roles & access - Confidential role waits for a second admin",
+    "url": "http://localhost:3000/yx/settings/access",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Click \"Give access\". Person = recruiter@. Role = Payroll Admin. Over = Whole company.",
+      "Notice the button says \"Send for approval\". Click it.",
+      "Open Show = Waiting."
+    ],
+    "expected": "The grant is waiting. On your own request you see \"You asked: another admin decides\" and no Approve button.",
+    "stories": [
+      "US-A-112",
+      "US-A-119",
+      "US-A-127"
+    ],
+    "note": "NEGATIVE test. Built in the code, but the story is still \"New\" in the tracker. May still be in progress. A second admin is needed to approve; the demo has one admin, so approving is Blocked unless the developer adds one."
+  },
+  {
+    "id": "MT-5-06",
+    "area": "5 Access",
+    "screen": "Roles & access - risk check",
+    "url": "http://localhost:3000/yx/settings/access",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "In Access and privacy (MT-5-09) set \"Warn when a grant opens Confidential data of more than (people)\" to a low number.",
+      "Give a role that opens identity or bank data over the whole company."
+    ],
+    "expected": "A box \"Check before you continue\" explains the risk. The button changes to \"Give access anyway\".",
+    "stories": [
+      "US-A-117"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-5-07",
+    "area": "5 Access",
+    "screen": "Roles & access - revoke a grant",
+    "url": "http://localhost:3000/yx/settings/access",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "On the recruiter's Chennai HR grant choose Revoke.",
+      "Type a reason and confirm."
+    ],
+    "expected": "\"The access ends now. The grant stays on the record.\" The recruiter no longer sees People pages.",
+    "stories": [
+      "US-A-112"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-5-08",
+    "area": "5 Access",
+    "screen": "Roles & access - not for HR",
+    "url": "http://localhost:3000/yx/settings/access",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Sign in as hr@. Type the Roles & access address directly."
+    ],
+    "expected": "No Roles & access link in the menu. The page says you do not have access.",
+    "stories": [
+      "US-A-110",
+      "US-A-125"
+    ],
+    "note": "NEGATIVE test. Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-5-09",
+    "area": "5 Access",
+    "screen": "Access and privacy settings",
+    "url": "http://localhost:3000/yx/settings/access-settings",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "Click Access > Access and privacy.",
+      "Look at Manager access, Special permissions, Privacy, Bank details.",
+      "Change \"Managers can view\" to \"Direct reports only\". Save."
+    ],
+    "expected": "Each rule shows its value and where it comes from. The change saves (it needs the roles-and-access permission).",
+    "stories": [
+      "US-A-113",
+      "US-A-114"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-5-10",
+    "area": "5 Access",
+    "screen": "Access and privacy - HR can read but not change guarded rules",
+    "url": "http://localhost:3000/yx/settings/access-settings",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Sign in as hr@. Open Access > Access and privacy.",
+      "Try to change \"Show \"Who accessed my data\" to employees\"."
+    ],
+    "expected": "HR can read the rules but cannot change them (\"Only an admin who manages roles and access changes this\").",
+    "stories": [
+      "US-A-114"
+    ],
+    "note": "NEGATIVE test. Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-5-11",
+    "area": "5 Access",
+    "screen": "Plant HR sees only Hosur - job history",
+    "url": "http://localhost:3000/yx/people/history",
+    "account": "plant-hr@demo-org.test (Plant HR, Hosur only - Anitha)",
+    "steps": [
+      "Sign in as plant-hr@demo-org.test.",
+      "Open People > Job history and open the person list."
+    ],
+    "expected": "Only Kavya Reddy (Hosur plant) is in the list. Bengaluru people (Divya, Arjun, Meera, Lakshmi) are not.",
+    "stories": [
+      "US-A-112",
+      "US-A-114"
+    ],
+    "note": "NEGATIVE test. Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-5-12",
+    "area": "5 Access",
+    "screen": "Plant HR sees only Hosur - directory",
+    "url": "http://localhost:3000/yx/people/directory",
+    "account": "plant-hr@demo-org.test (Plant HR, Hosur only - Anitha)",
+    "steps": [
+      "Open People > Directory. Search Kavya, then search Divya.",
+      "Search by the code KF-0001 (Divya's code)."
+    ],
+    "expected": "Kavya shows with her code KFT-0031. Divya shows only Public fields (no code, no joining date). Searching KF-0001 finds nobody.",
+    "stories": [
+      "US-A-094",
+      "US-A-114"
+    ],
+    "note": "NEGATIVE test. Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-5-13",
+    "area": "5 Access",
+    "screen": "Plant HR sees only Hosur - job changes",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "plant-hr@demo-org.test (Plant HR, Hosur only - Anitha)",
+    "steps": [
+      "Open People > Job changes. Look at \"Waiting for approval\" and \"Scheduled\"."
+    ],
+    "expected": "Only Kavya's changes show (her manager change). Arjun's and Rahul's changes are not shown.",
+    "stories": [
+      "US-A-112",
+      "US-A-114"
+    ],
+    "note": "NEGATIVE test. Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-6-01",
+    "area": "6 People",
+    "screen": "Directory - colleague view",
+    "url": "http://localhost:3000/yx/people/directory",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "Sign in as panel@ (Divya). Open People > Directory.",
+      "Search \"arj\"."
+    ],
+    "expected": "Arjun Kulkarni shows with name, designation, department, location, work email and manager only. No code, no joining date, no pay, no Profile button.",
+    "stories": [
+      "US-A-094",
+      "US-A-125"
+    ],
+    "note": "May still be in progress."
+  },
+  {
+    "id": "MT-6-02",
+    "area": "6 People",
+    "screen": "Add person - new joiner",
+    "url": "http://localhost:3000/yx/people/directory",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Sign in as hr@. Open People > Directory. Click \"Add person\".",
+      "Person: First name Sanjay, Last name Rao, Work email sanjay.rao@kaverifoods.test.",
+      "Employment: Legal entity KFPL, Employee code empty, Joins on = next Monday, On probation.",
+      "Job: Location Bengaluru head office, Department Quality, Designation QA Analyst, Grade G2, Employment type Probationer, Manager Divya.",
+      "Reason: New joiner. Click \"Add person\"."
+    ],
+    "expected": "The person is added and Job history opens for Sanjay with the join. An employee code is made automatically. He appears in the Directory and on Probation.",
+    "stories": [
+      "US-A-080",
+      "US-A-090",
+      "US-A-125"
+    ],
+    "note": "HR has no pay access: if you fill Annual CTC the pay goes to Payroll for approval."
+  },
+  {
+    "id": "MT-6-03",
+    "area": "6 People",
+    "screen": "Add person - possible same person",
+    "url": "http://localhost:3000/yx/people/directory",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Click \"Add person\". Use the work email of an existing person: arjun.kulkarni@kaverifoods.test. Fill the other required fields.",
+      "Click \"Add person\".",
+      "Read the box. Do NOT tick \"I checked: this is the same person\". Click Cancel."
+    ],
+    "expected": "A box \"This email or phone already belongs to someone here\" shows. Nothing is linked silently; the person is added only if you tick the box and click \"Link and add\". Arjun already works here, so linking him again would be refused (one open employment per person).",
+    "stories": [
+      "US-A-090",
+      "US-A-080"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-6-04",
+    "area": "6 People",
+    "screen": "Add person - past joining date needs a reason",
+    "url": "http://localhost:3000/yx/people/directory",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Click \"Add person\". Set Joins on to a date last month."
+    ],
+    "expected": "A field \"Reason for the past date\" appears and must be filled before saving.",
+    "stories": [
+      "US-A-085"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-6-05",
+    "area": "6 People",
+    "screen": "Directory - HR view and filters",
+    "url": "http://localhost:3000/yx/people/directory",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "As hr@ open People > Directory.",
+      "Filter Department = Operations. Then filter Location = Hosur plant.",
+      "Search with a % sign (for example 50%).",
+      "Click a person to open the drawer."
+    ],
+    "expected": "HR also sees Code and Joined. The Operations filter includes Quality and Production (whole subtree). A % search does not match everyone. The drawer shows \"Person and roles\" with Profile and job history buttons.",
+    "stories": [
+      "US-A-094",
+      "US-A-090"
+    ],
+    "note": "May still be in progress."
+  },
+  {
+    "id": "MT-6-06",
+    "area": "6 People",
+    "screen": "Profile - my own profile",
+    "url": "http://localhost:3000/yx/people/profile",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "Sign in as panel@ (Divya). Open People > Profile."
+    ],
+    "expected": "You see \"My profile\": Personal details, Identity and bank (PAN, Aadhaar, UAN, salary account, all masked with last 4 digits), Pay (\"Pay is visible only with pay access.\" + \"Open job history\") and Changes waiting for approval (the reimbursement account request).",
+    "stories": [
+      "US-A-115",
+      "US-A-116"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-6-07",
+    "area": "6 People",
+    "screen": "Profile - edit personal details",
+    "url": "http://localhost:3000/yx/people/profile",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "In Personal details click Edit.",
+      "Change Personal phone and tick \"Hide my birthday from the colleague directory\". Save."
+    ],
+    "expected": "The new phone shows. Your birthday no longer shows in the directory.",
+    "stories": [
+      "US-A-115"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-6-08",
+    "area": "6 People",
+    "screen": "Profile - HR view of another person (Personal class)",
+    "url": "http://localhost:3000/yx/people/profile",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "As hr@ open People > Profile. In \"Pick a person\" choose Arjun Kulkarni."
+    ],
+    "expected": "HR sees Arjun's Personal details (date of birth, personal email, address) and masked identity and bank values. No pay.",
+    "stories": [
+      "US-A-115",
+      "US-A-116"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-6-09",
+    "area": "6 People",
+    "screen": "Profile - Payroll sees no Personal details",
+    "url": "http://localhost:3000/yx/people/profile",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh)",
+    "steps": [
+      "As payroll@ open People > Profile and pick Arjun."
+    ],
+    "expected": "Payroll sees identity and bank (masked, with Show) but not the Personal section (no personal-data access).",
+    "stories": [
+      "US-A-115"
+    ],
+    "note": "NEGATIVE test. Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-6-10",
+    "area": "6 People",
+    "screen": "Org chart - today",
+    "url": "http://localhost:3000/yx/people/org-chart",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open People > Org chart.",
+      "Find Arjun Kulkarni."
+    ],
+    "expected": "Ramesh Iyengar is at the top. Lakshmi, Divya and Rahul report to him; Arjun, Meera, Kiran and Kavya report to Divya. Arjun shows a dotted line to Lakshmi. Report counts show. No pay anywhere.",
+    "stories": [
+      "US-A-093",
+      "US-A-092"
+    ],
+    "note": "May still be in progress."
+  },
+  {
+    "id": "MT-6-11",
+    "area": "6 People",
+    "screen": "Org chart - as on another date",
+    "url": "http://localhost:3000/yx/people/org-chart",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "In \"View as on\" pick 1 Jan 2026. Then pick a date after 16 Nov 2026.",
+      "Click \"Back to today\"."
+    ],
+    "expected": "1 Jan 2026 (\"As it was\"): Meera and Kiran are not there yet. After 16 Nov (\"As it will be\"): only approved changes are included. \"Back to today\" returns to today.",
+    "stories": [
+      "US-A-093"
+    ],
+    "note": "May still be in progress."
+  },
+  {
+    "id": "MT-6-12",
+    "area": "6 People",
+    "screen": "Org chart - manager cannot see past dates for everyone",
+    "url": "http://localhost:3000/yx/people/org-chart",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "As panel@ open People > Org chart.",
+      "Look for the \"View as on\" date picker."
+    ],
+    "expected": "Divya sees the chart with Public fields only. Past org charts are for company-wide HR only (no date picker, or it is refused).",
+    "stories": [
+      "US-A-093"
+    ],
+    "note": "NEGATIVE test. May still be in progress."
+  },
+  {
+    "id": "MT-6-13",
+    "area": "6 People",
+    "screen": "My team",
+    "url": "http://localhost:3000/yx/people/team",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "As panel@ open People > My team."
+    ],
+    "expected": "Arjun, Meera, Kiran and Kavya show as \"Reports to you\". Kiran shows \"On probation\" with \"Probation ends <date>\". No pay column. A \"Raise a change\" button is there.",
+    "stories": [
+      "US-A-095",
+      "US-A-125"
+    ],
+    "note": "May still be in progress."
+  },
+  {
+    "id": "MT-6-14",
+    "area": "6 People",
+    "screen": "My team - not shown to people without reports",
+    "url": "http://localhost:3000/yx/people/team",
+    "account": "recruiter@demo-org.test (Recruiter)",
+    "steps": [
+      "Sign in as recruiter@ (no employee record, no team). Look at the menu."
+    ],
+    "expected": "There is no \"My team\" link. Opening the address shows \"No one reports to you yet.\" or no access.",
+    "stories": [
+      "US-A-095",
+      "US-A-125"
+    ],
+    "note": "NEGATIVE test. May still be in progress."
+  },
+  {
+    "id": "MT-7-01",
+    "area": "7 Changes",
+    "screen": "Job changes - raise a promotion",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "As hr@ open People > Job changes. Click \"New change\".",
+      "Person = Kiran Joshi. Kind of change = Promotion. Takes effect on = first day of next month.",
+      "New designation = Senior QA Engineer, Grade G3. Reason = Strong review.",
+      "Click \"Preview impact\", then \"Send for approval\"."
+    ],
+    "expected": "The impact preview lists what changes. The change shows under \"Waiting for approval\".",
+    "stories": [
+      "US-A-081",
+      "US-A-087",
+      "US-A-088"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-7-02",
+    "area": "7 Changes",
+    "screen": "Job changes - cannot approve own change",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "As hr@ open \"Waiting for approval\". Click Review on the Kiran change (or Rahul's salary revision, raised by HR).",
+      "Click Approve."
+    ],
+    "expected": "Refused: \"You raised this change, so someone else approves it.\"",
+    "stories": [
+      "US-A-081",
+      "US-A-119"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-7-03",
+    "area": "7 Changes",
+    "screen": "Job changes - approve (another person)",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh)",
+    "steps": [
+      "Sign in as payroll@. Open Job changes > Waiting for approval.",
+      "Click Review on Kiran's promotion. Read the impact.",
+      "Click Approve and confirm it's you."
+    ],
+    "expected": "Approval asks for your second step. The change moves to Scheduled (future date) with \"Takes effect on <date>\".",
+    "stories": [
+      "US-A-081",
+      "US-A-083",
+      "US-A-019"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-7-04",
+    "area": "7 Changes",
+    "screen": "Job changes - reject with reason",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh)",
+    "steps": [
+      "Click Review on Rahul Sharma's salary revision. Click Reject.",
+      "Type a reason and confirm."
+    ],
+    "expected": "The change leaves the waiting list. The person who raised it sees your reason.",
+    "stories": [
+      "US-A-081"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-7-05",
+    "area": "7 Changes",
+    "screen": "Job changes - cancel or move a scheduled change",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh)",
+    "steps": [
+      "On Scheduled open the menu of Kiran's promotion. Choose \"Move to another date\" and pick a new date.",
+      "Then (as payroll@) choose \"Cancel change\", type a reason and confirm."
+    ],
+    "expected": "Moving the date sends it back for approval. Cancel needs a reason; \"It will not take effect.\"",
+    "stories": [
+      "US-A-084",
+      "US-A-088"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-7-06",
+    "area": "7 Changes",
+    "screen": "Job changes - back-dated change",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "New change: Person = Arjun. Kind = Manager change or Department. Takes effect on = a date last month. Reason. Preview impact."
+    ],
+    "expected": "A box \"This changes the past\" shows, and the payroll months to settle are named. After sending, the row is marked \"Changes the past\".",
+    "stories": [
+      "US-A-085",
+      "US-A-088"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-7-07",
+    "area": "7 Changes",
+    "screen": "Job changes - before the retro limit",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "New change for Arjun with Takes effect on = a date before 1 Apr 2026 (start of this financial year)."
+    ],
+    "expected": "A note says dates before the limit need a System Admin and a reason (\"Why go back this far\"). HR alone cannot send it.",
+    "stories": [
+      "US-A-085",
+      "US-A-088"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-7-08",
+    "area": "7 Changes",
+    "screen": "Job changes - future change rebases a later one",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Arjun has a promotion scheduled for 1 Nov 2026. Raise a Salary revision for Arjun on a date BEFORE that (for example the 15th of this month), 5%. Send for approval.",
+      "Sign in as payroll@. Review it."
+    ],
+    "expected": "The review shows \"Later changes will be recalculated\" and the button \"Approve and recalculate\".",
+    "stories": [
+      "US-A-084",
+      "US-A-088"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-7-09",
+    "area": "7 Changes",
+    "screen": "Job changes - manager raises for the team",
+    "url": "http://localhost:3000/yx/people/team",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "As panel@ open My team. Click \"Raise a change\" for Arjun.",
+      "Kind = Manager change or Department. Fill date and reason. Send for approval.",
+      "Look for pay fields."
+    ],
+    "expected": "Divya can raise changes only for her own team. No pay fields (no pay grant). She sees only changes she raised and can withdraw them; she can never approve them.",
+    "stories": [
+      "US-A-096"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-7-10",
+    "area": "7 Changes",
+    "screen": "Job changes - a change about yourself",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Ask payroll@ to raise a change for Lakshmi Venkatesan (hr@).",
+      "As hr@ try to Review and Approve it."
+    ],
+    "expected": "Refused: \"A change about yourself is approved by someone else.\"",
+    "stories": [
+      "US-A-081",
+      "US-A-119"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-7-11",
+    "area": "7 Changes",
+    "screen": "Bulk changes - CSV dry run",
+    "url": "http://localhost:3000/yx/people/bulk-changes",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "As hr@ open People > Bulk changes. Show = \"From a file\".",
+      "Click \"Download template\". Open it in Excel.",
+      "Fill two rows (employee_code KF-0142 and KF-0118, change_type, effective_date next month, department). In one row type a wrong employee code.",
+      "Upload the file, type a reason and click \"Check every row\"."
+    ],
+    "expected": "The template has NO annual_ctc / increase_percent columns for HR (no pay access). The check lists each row; the wrong row is marked with its error. \"Send for approval\" stays off; nothing is saved.",
+    "stories": [
+      "US-A-098",
+      "US-A-125"
+    ],
+    "note": "NEGATIVE test. May still be in progress."
+  },
+  {
+    "id": "MT-7-12",
+    "area": "7 Changes",
+    "screen": "Bulk changes - commit and approve",
+    "url": "http://localhost:3000/yx/people/bulk-changes",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Fix the wrong row and click \"Check every row\" again (\"All N rows are ready\").",
+      "Click \"Send for approval\".",
+      "Sign in as payroll@. Open Bulk changes > Batches > \"Open the batch\". Click \"Approve all\" and confirm it's you."
+    ],
+    "expected": "All rows go for approval together and are approved together. hr@ cannot approve its own batch.",
+    "stories": [
+      "US-A-098"
+    ],
+    "note": "May still be in progress."
+  },
+  {
+    "id": "MT-7-13",
+    "area": "7 Changes",
+    "screen": "Bulk changes - move a team",
+    "url": "http://localhost:3000/yx/people/bulk-changes",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Show = \"Move a team\". \"Everyone who reports to\" = Divya. \"Moves to\" = Lakshmi. From = next month. Reason.",
+      "Check, then Send for approval."
+    ],
+    "expected": "Every report of Divya gets a manager change in one batch, waiting for approval.",
+    "stories": [
+      "US-A-098"
+    ],
+    "note": "May still be in progress."
+  },
+  {
+    "id": "MT-7-14",
+    "area": "7 Changes",
+    "screen": "Probation - list and confirm",
+    "url": "http://localhost:3000/yx/people/probation",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open People > Probation. Show = \"On probation\".",
+      "On Kiran Joshi click Confirm. Pick \"Confirmed from\" and a reason. Send for approval.",
+      "As payroll@ approve it in Job changes."
+    ],
+    "expected": "Kiran shows end date and review due date. Confirm sends a confirmation for approval (\"The person stays on probation until it is approved\"). After approval Kiran moves to \"Recently confirmed\".",
+    "stories": [
+      "US-A-097",
+      "US-A-125"
+    ],
+    "note": "May still be in progress."
+  },
+  {
+    "id": "MT-7-15",
+    "area": "7 Changes",
+    "screen": "Probation - extend within the maximum",
+    "url": "http://localhost:3000/yx/people/probation",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "On a person on probation click Extend.",
+      "Look at \"Extend by\" choices. Pick 2 months, reason, confirm."
+    ],
+    "expected": "The choices stop at the company maximum (\"Up to N more months (company maximum 12 months in total)\"). The new end date shows.",
+    "stories": [
+      "US-A-097"
+    ],
+    "note": "May still be in progress."
+  },
+  {
+    "id": "MT-7-16",
+    "area": "7 Changes",
+    "screen": "Probation - manager view",
+    "url": "http://localhost:3000/yx/people/probation",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "As panel@ open People > Probation."
+    ],
+    "expected": "Divya sees only her team's probations (Kiran). She has no Confirm / Extend buttons (only Job history).",
+    "stories": [
+      "US-A-097"
+    ],
+    "note": "NEGATIVE test. May still be in progress."
+  },
+  {
+    "id": "MT-7-17",
+    "area": "7 Changes",
+    "screen": "Job history - as on a date",
+    "url": "http://localhost:3000/yx/people/history",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open People > Job history. Pick Arjun Kulkarni.",
+      "In \"View as on\" pick 1 Dec 2026. Then pick 1 Mar 2026.",
+      "Pick Meera Iyer and look at \"Corrected records\"."
+    ],
+    "expected": "1 Dec 2026 shows Senior QA Engineer, G3 with \"Includes scheduled changes\". 1 Mar 2026 shows QA Analyst, G2. Meera shows her corrected joining designation (\"Corrected on ...: Joining record had the wrong designation\").",
+    "stories": [
+      "US-A-086",
+      "US-A-088"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-7-18",
+    "area": "7 Changes",
+    "screen": "Job history - HR without pay access",
+    "url": "http://localhost:3000/yx/people/history",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "As hr@ open Arjun's job history."
+    ],
+    "expected": "There is no \"Show pay\" button and no Annual CTC.",
+    "stories": [
+      "US-A-087"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-7-19",
+    "area": "7 Changes",
+    "screen": "Job history - manager sees only the periods she managed",
+    "url": "http://localhost:3000/yx/people/history",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "As panel@ open People > Job history and pick Arjun."
+    ],
+    "expected": "Divya sees Arjun's approved changes, no pay, no Change button, no impact. People outside her team are not in the list.",
+    "stories": [
+      "US-A-086"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-8-01",
+    "area": "8 Privacy",
+    "screen": "Identity - Show a masked value",
+    "url": "http://localhost:3000/yx/people/profile",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "As hr@ open People > Profile and pick Divya.",
+      "In Identity and bank click Show next to PAN. Confirm it's you if asked."
+    ],
+    "expected": "The full PAN shows. \"Each full look is recorded and shown to the person.\"",
+    "stories": [
+      "US-A-116"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-8-02",
+    "area": "8 Privacy",
+    "screen": "Identity - change goes to approval with step-up",
+    "url": "http://localhost:3000/yx/people/profile",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "On Divya's profile click \"Request a change\" in Identity and bank.",
+      "What changes = Legal name. Type a new legal name and a reason. Click \"Send for approval\". Confirm it's you."
+    ],
+    "expected": "A fresh second step is asked. The request shows under \"Changes waiting for approval\". The record does not change yet.",
+    "stories": [
+      "US-A-118"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-8-03",
+    "area": "8 Privacy",
+    "screen": "Identity and bank changes - approve (Payroll)",
+    "url": "http://localhost:3000/yx/people/profile-requests",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh)",
+    "steps": [
+      "As payroll@ open People > Identity and bank changes.",
+      "Find Divya's reimbursement account request (\"Travel claims to my savings account\"). Look at old and new.",
+      "Click Approve and confirm it's you."
+    ],
+    "expected": "Old and new show side by side. After approval \"The new value goes on file now and the person is told by email\" (check Mailpit). A new bank account is used for pay only after the waiting period.",
+    "stories": [
+      "US-A-118"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-8-04",
+    "area": "8 Privacy",
+    "screen": "Identity and bank changes - reject",
+    "url": "http://localhost:3000/yx/people/profile-requests",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh)",
+    "steps": [
+      "Click Reject on the legal-name request from MT-8-02. Type a reason. Confirm."
+    ],
+    "expected": "\"Nothing changes on the record. The person sees your reason.\"",
+    "stories": [
+      "US-A-118"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-8-05",
+    "area": "8 Privacy",
+    "screen": "Identity and bank changes - HR cannot approve",
+    "url": "http://localhost:3000/yx/people/profile-requests",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "As hr@ open People > Identity and bank changes."
+    ],
+    "expected": "HR sees the requests it raised but has no Approve button (approval is Payroll's).",
+    "stories": [
+      "US-A-118",
+      "US-A-119"
+    ],
+    "note": "NEGATIVE test. Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-8-06",
+    "area": "8 Privacy",
+    "screen": "My own bank change - withdraw",
+    "url": "http://localhost:3000/yx/people/profile",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "As panel@ open People > Profile. Click \"Request a change\", choose Reimbursement account, fill it, send (confirm it's you).",
+      "In \"Changes waiting for approval\" click Withdraw, type a reason, confirm."
+    ],
+    "expected": "The request is withdrawn and nothing changes on the record.",
+    "stories": [
+      "US-A-118"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress. Divya needs a second step (passkey or authenticator) for this."
+  },
+  {
+    "id": "MT-8-07",
+    "area": "8 Privacy",
+    "screen": "Who accessed my data",
+    "url": "http://localhost:3000/yx/me/privacy",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "First, as payroll@ open Divya's Job history and click \"Show pay\"; as hr@ Show Divya's PAN (MT-8-01).",
+      "Sign in as panel@. Open Me > Who accessed my data."
+    ],
+    "expected": "The list shows who looked (Suresh Pillai, Lakshmi Venkatesan), when, and what they saw (pay, PAN), marked Confidential.",
+    "stories": [
+      "US-A-116",
+      "US-A-087"
+    ],
+    "note": "Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-8-08",
+    "area": "8 Privacy",
+    "screen": "Who accessed my data - turned off",
+    "url": "http://localhost:3000/yx/me/privacy",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "As admin@ set \"Show \"Who accessed my data\" to employees\" to Hidden in Access and privacy.",
+      "As panel@ open Who accessed my data."
+    ],
+    "expected": "\"Your company has turned this view off\". (Looks are still recorded.)",
+    "stories": [
+      "US-A-114"
+    ],
+    "note": "NEGATIVE test. Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  },
+  {
+    "id": "MT-8-09",
+    "area": "8 Privacy",
+    "screen": "Pay - visible only with pay access",
+    "url": "http://localhost:3000/yx/people/history",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh)",
+    "steps": [
+      "As payroll@ open Arjun's Job history. Click \"Show pay\". Confirm it's you if asked.",
+      "Click \"Hide pay\"."
+    ],
+    "expected": "Annual CTC and Pay history show only after \"Show pay\". The look is recorded (appears in Arjun's \"Who accessed my data\").",
+    "stories": [
+      "US-A-087"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-8-10",
+    "area": "8 Privacy",
+    "screen": "Pay - never shown without pay access",
+    "url": "Several pages",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "As hr@ check: Directory, Org chart, Profile (Divya), Job history (Arjun), Bulk changes template, Structure > Grades.",
+      "Repeat as panel@ for Directory, Org chart, My team, Job history."
+    ],
+    "expected": "No salary, CTC, pay range or \"Show pay\" anywhere for these accounts.",
+    "stories": [
+      "US-A-087",
+      "US-A-075",
+      "US-A-093",
+      "US-A-095"
+    ],
+    "note": "NEGATIVE test."
+  },
+  {
+    "id": "MT-8-11",
+    "area": "8 Privacy",
+    "screen": "Pay - plant HR cannot see Bengaluru pay or identity",
+    "url": "http://localhost:3000/yx/people/profile",
+    "account": "plant-hr@demo-org.test (Plant HR, Hosur only - Anitha)",
+    "steps": [
+      "As plant-hr@ open People > Profile.",
+      "Open the person list."
+    ],
+    "expected": "Only Kavya (Hosur) can be picked. There is no way to open Divya's or Arjun's identity or bank details. No pay for anyone.",
+    "stories": [
+      "US-A-112",
+      "US-A-114"
+    ],
+    "note": "NEGATIVE test. Built in the code, but the story is still \"New\" in the tracker. May still be in progress."
+  }
+]
