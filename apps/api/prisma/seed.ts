@@ -54,10 +54,32 @@ export const PERMISSIONS = [
   { key: 'employee.identity.manage', description: 'Raise identity, bank and legal-name changes for someone else' },
   { key: 'employee.identity.approve', description: 'Approve identity, bank and legal-name changes raised by someone else' },
   { key: 'employee.aadhaar.view', description: 'View Aadhaar in full (Special, every view recorded)' },
+  // Step 3, the YukthiX platform console (P14 §7) and support sessions (P02 Q8). Platform keys are staff only.
+  { key: 'platform.companies.view', description: 'See companies, their lifecycle and products (YukthiX staff)' },
+  { key: 'platform.companies.manage', description: 'Create companies and change their lifecycle (YukthiX staff)' },
+  { key: 'platform.plans.manage', description: 'Set product prices (YukthiX staff)' },
+  { key: 'platform.channels.manage', description: 'Manage the YukthiX shared message accounts (YukthiX staff)' },
+  { key: 'platform.support.request', description: 'Ask a company for a support session and use it (YukthiX staff)' },
+  { key: 'platform.audit.view', description: 'See the platform audit log (YukthiX staff)' },
+  { key: 'org.support_access.approve', description: 'Approve, decline and end YukthiX support sessions' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
-  super_admin: ['platform:manage_organizations', 'org:manage_users', 'org:manage_settings', 'org:view', 'audit:view'],
+  // DECISION NEEDED: least-privilege staff roles (support, billing, security; P14 §4 platform_staff_roles, P12 Q7).
+  // Until they are decided every YukthiX staff account holds all console keys; each route checks its own key.
+  super_admin: [
+    'platform:manage_organizations',
+    'org:manage_users',
+    'org:manage_settings',
+    'org:view',
+    'audit:view',
+    'platform.companies.view',
+    'platform.companies.manage',
+    'platform.plans.manage',
+    'platform.channels.manage',
+    'platform.support.request',
+    'platform.audit.view',
+  ],
   // org_admin is a full org-scoped superuser: their own admin features PLUS the complete
   // recruiter/panel capability set (exams, question bank, candidates, results).
   org_admin: [
@@ -90,6 +112,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'access.role.manage',
     'employee.personal.view',
     'employee.profile.edit',
+    // P02 Q8: the System Admin decides on YukthiX support sessions.
+    'org.support_access.approve',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],

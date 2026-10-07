@@ -7,6 +7,11 @@ import { randomUUID } from 'crypto';
 // Proves tenant isolation is enforced by PostgreSQL itself, connected exactly as the app is
 // (DATABASE_URL = the NOSUPERUSER NOBYPASSRLS role that owns nothing) -- not by app-level
 // `where` clauses. Every check here goes through raw SQL or an unfiltered delegate on purpose.
+
+// Pay, identity and bank tables also carry the RESTRICTIVE support_session_excluded policy (step 3, P02 Q8).
+const SUPPORT_EXCLUDED = ['compensations', 'grade_pay_ranges', 'employee_identifiers', 'employee_bank_accounts', 'employee_profile_requests'];
+const policiesOf = (table: string) => BigInt(SUPPORT_EXCLUDED.includes(table) ? 2 : 1);
+
 describe('PostgreSQL row-level security (app role)', () => {
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
@@ -371,7 +376,7 @@ describe('PostgreSQL row-level security (app role)', () => {
              (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
       WHERE c.relname = ANY(${ORG_TABLES}) ORDER BY c.relname`;
-    expect(rows).toEqual(ORG_TABLES.map((table) => ({ table, forced: true, policies: BigInt(1) })));
+    expect(rows).toEqual(ORG_TABLES.map((table) => ({ table, forced: true, policies: policiesOf(table) })));
   });
 
   it("(b) org A cannot read, change, remove or plant org B's organisation structure, nor point at it", async () => {
@@ -444,7 +449,7 @@ describe('PostgreSQL row-level security (app role)', () => {
              (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
       WHERE c.relname = ANY(${HISTORY_TABLES}) ORDER BY c.relname`;
-    expect(rows).toEqual(HISTORY_TABLES.map((table) => ({ table, forced: true, policies: BigInt(1) })));
+    expect(rows).toEqual(HISTORY_TABLES.map((table) => ({ table, forced: true, policies: policiesOf(table) })));
   });
 
   it("(b) org A cannot read or change org B's employees and history, nor point at them; dated rows are immutable", async () => {
@@ -635,7 +640,27 @@ describe('PostgreSQL row-level security (app role)', () => {
              (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
       WHERE c.relname = ANY(${ACCESS_TABLES}) ORDER BY c.relname`;
-    expect(rows).toEqual(ACCESS_TABLES.map((table) => ({ table, forced: true, policies: BigInt(1) })));
+    expect(rows).toEqual(ACCESS_TABLES.map((table) => ({ table, forced: true, policies: policiesOf(table) })));
+  });
+
+  // Step 3, the platform console: the company tables are forced-RLS tenant tables; support sessions are never deleted
+  // by the app; inside a support session pay, identity and bank rows are out of reach (RESTRICTIVE, P02 Q8).
+  it('the platform console tables are forced-RLS tenant tables, and support sessions keep their history', async () => {
+    const CONSOLE_TABLES = ['organization_products', 'support_sessions'];
+    const rows = await prisma.$queryRaw<{ table: string; forced: boolean; policies: bigint; can_delete: boolean }[]>`
+      SELECT c.relname AS table, (c.relrowsecurity AND c.relforcerowsecurity) AS forced,
+             (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies,
+             has_table_privilege('app_runtime', c.oid, 'DELETE') AS can_delete
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+      WHERE c.relname = ANY(${CONSOLE_TABLES}) ORDER BY c.relname`;
+    expect(rows).toEqual([
+      { table: 'organization_products', forced: true, policies: BigInt(1), can_delete: true },
+      { table: 'support_sessions', forced: true, policies: BigInt(1), can_delete: false },
+    ]);
+    const restrictive = await prisma.$queryRaw<{ table: string }[]>`
+      SELECT c.relname AS table FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid
+      WHERE p.polname = 'support_session_excluded' AND NOT p.polpermissive ORDER BY c.relname`;
+    expect(restrictive.map((r) => r.table)).toEqual([...SUPPORT_EXCLUDED].sort());
   });
 
   it("(b) org A cannot read, change or point at org B's grants, personal data, identifiers, bank accounts or requests", async () => {

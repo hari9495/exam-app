@@ -104,7 +104,7 @@ describe('P01 organisation structure: rules without a database', () => {
   });
 
   it('P01 §5 #2: platform staff never get the RLS bypass here, and a company is required', () => {
-    expect(companyContext({ organizationId: 'org-1', isSuperAdmin: true, userId: 'u' })).toEqual({ organizationId: 'org-1', isSuperAdmin: false, userId: 'u', role: null });
+    expect(companyContext({ organizationId: 'org-1', isSuperAdmin: true, userId: 'u' })).toEqual({ organizationId: 'org-1', isSuperAdmin: false, userId: 'u', role: null, supportSessionId: null });
     expect(() => companyContext({ organizationId: null, isSuperAdmin: true })).toThrow(ForbiddenException);
   });
 

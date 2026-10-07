@@ -29,7 +29,7 @@ export type CompanyContext = TenantContext & { organizationId: string };
 /** The caller's company, without the RLS bypass even for platform staff acting in it. */
 export function companyContext(ctx: TenantContext): CompanyContext {
   if (!ctx.organizationId) throw new ForbiddenException('Sign in to a company to manage its organisation.');
-  return { organizationId: ctx.organizationId, isSuperAdmin: false, userId: ctx.userId ?? null, role: ctx.role ?? null };
+  return { organizationId: ctx.organizationId, isSuperAdmin: false, userId: ctx.userId ?? null, role: ctx.role ?? null, supportSessionId: ctx.supportSessionId ?? null };
 }
 
 /** Database refusals in plain words: uniqueness, a row still in use, overlapping dated rows. */

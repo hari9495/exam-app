@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { createHash, timingSafeEqual } from 'crypto';
@@ -232,12 +232,15 @@ export class AuthController {
     return { success: true };
   }
 
+  // Only from the staff member's own platform session (not from inside a company or an impersonation).
   @Post('super-admin/switch-into/:orgId')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @RequirePermissions('platform:manage_organizations')
-  async switchIntoOrg(@CurrentUserId() userId: string, @Param('orgId') orgId: string, @Req() req: Request) {
-    const accessToken = await this.authService.switchIntoOrg(userId, orgId, (req.user as { sessionId: string }).sessionId);
+  @RequirePermissions('platform.support.request')
+  async switchIntoOrg(@CurrentUserId() userId: string, @Param('orgId', ParseUUIDPipe) orgId: string, @Req() req: Request) {
+    const user = req.user as { sessionId: string; organizationId: string | null; actingSuperAdmin?: boolean; impersonatorUserId?: string };
+    if (user.organizationId || user.actingSuperAdmin || user.impersonatorUserId) throw new BadRequestException('Leave the company you are in first');
+    const accessToken = await this.authService.switchIntoOrg(userId, orgId, user.sessionId);
     return { accessToken };
   }
 
@@ -245,8 +248,8 @@ export class AuthController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
   async switchOutOfOrg(@CurrentUserId() userId: string, @Req() req: Request) {
-    const user = req.user as { organizationId: string | null; actingSuperAdmin?: boolean };
-    await this.authService.recordSwitchOut(userId, user.actingSuperAdmin ? user.organizationId : null);
+    const user = req.user as { organizationId: string | null; actingSuperAdmin?: boolean; supportSessionId?: string | null };
+    await this.authService.recordSwitchOut(userId, user.actingSuperAdmin ? user.organizationId : null, user.supportSessionId);
     return { success: true };
   }
 

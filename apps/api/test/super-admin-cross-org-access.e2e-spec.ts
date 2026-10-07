@@ -16,6 +16,7 @@ describe('Super Admin Cross-Org Access', () => {
   let superAdminId: string;
   let superAccessToken: string;
   let actingAccessToken: string;
+  let supportSessionId: string;
   const runId = randomUUID();
 
   beforeAll(async () => {
@@ -39,7 +40,7 @@ describe('Super Admin Cross-Org Access', () => {
     // directory search narrow to exactly these two rows regardless of what else concurrent
     // suites have seeded into the shared dev database.
     const org1UserHash = await argon2.hash('Org1UserPassw0rd!');
-    await tenantPrisma.forTenant({ organizationId: org1Id, isSuperAdmin: false }, (tx) =>
+    const org1Admin = await tenantPrisma.forTenant({ organizationId: org1Id, isSuperAdmin: false }, (tx) =>
       tx.user.create({
         data: { organizationId: org1Id, email: `admin@ci-cross-org-${runId}-one.test`, passwordHash: org1UserHash, role: 'org_admin' },
       }),
@@ -60,6 +61,20 @@ describe('Super Admin Cross-Org Access', () => {
     );
     superAdminId = superAdmin.id;
 
+    // P02 Q8: staff open a company only inside a support session the company approved (platform-console.e2e-spec.ts
+    // covers asking and approving); this suite starts from an approved one.
+    const now = Date.now();
+    supportSessionId = (
+      await tenantPrisma.forTenant({ organizationId: org1Id, isSuperAdmin: false }, (tx) =>
+        tx.supportSession.create({
+          data: {
+            organizationId: org1Id, requestedBy: superAdminId, requestedByName: 'CI staff', requestedByEmail: superAdmin.email, reason: 'Cross-org access checks', hours: 2,
+            status: 'approved', decidedBy: org1Admin.id, decidedByName: 'CI admin', decidedAt: new Date(now), startsAt: new Date(now), endsAt: new Date(now + 2 * 3_600_000),
+          },
+        }),
+      )
+    ).id;
+
     superAccessToken = (
       await request(http).post('/api/v1/auth/platform/login').send({ email: superAdmin.email, password: 'SuperPassw0rd!' }).expect(200)
     ).body.accessToken;
@@ -77,6 +92,8 @@ describe('Super Admin Cross-Org Access', () => {
     await tenantPrisma
       .forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.refreshToken.deleteMany({ where: { userId: superAdminId } }))
       .catch(() => undefined);
+    // Companies first: their support sessions point at the staff account.
+    await prisma.organization.deleteMany({ where: { id: { in: [org1Id, org2Id] } } }).catch(() => undefined);
     await tenantPrisma
       .forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.user.deleteMany({ where: { organizationId: { in: [org1Id, org2Id] } } }))
       .catch(() => undefined);
@@ -86,6 +103,11 @@ describe('Super Admin Cross-Org Access', () => {
     await prisma.organization.deleteMany({ where: { id: { in: [org1Id, org2Id] } } }).catch(() => undefined);
     await prisma.plan.delete({ where: { id: planId } }).catch(() => undefined);
     await app.close();
+  });
+
+  it('switch-into without an approved support session is refused (no standing switch-in)', async () => {
+    const response = await request(http).post(`/api/v1/auth/super-admin/switch-into/${org2Id}`).set('Authorization', `Bearer ${superAccessToken}`).expect(403);
+    expect(response.body.code).toBe('SUPPORT_SESSION_REQUIRED');
   });
 
   it('switch-into mints an acting token scoped to the target org, without touching the refresh cookie', async () => {
@@ -102,9 +124,10 @@ describe('Super Admin Cross-Org Access', () => {
     expect(payload.organizationId).toBe(org1Id);
     expect(payload.actingSuperAdmin).toBe(true);
     expect(payload.role).toBe('super_admin');
+    expect(payload.supportSessionId).toBe(supportSessionId);
 
     const auditEntry = await tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
-      tx.auditLog.findFirst({ where: { action: 'super_admin.org_switch_in', entityId: org1Id, actorUserId: superAdminId } }),
+      tx.auditLog.findFirst({ where: { organizationId: org1Id, action: 'super_admin.org_switch_in', entityId: supportSessionId, actorUserId: superAdminId } }),
     );
     expect(auditEntry).not.toBeNull();
   });
@@ -130,7 +153,7 @@ describe('Super Admin Cross-Org Access', () => {
     expect(response.headers['set-cookie']).toBeUndefined();
 
     const auditEntry = await tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
-      tx.auditLog.findFirst({ where: { action: 'super_admin.org_switch_out', entityId: org1Id, actorUserId: superAdminId } }),
+      tx.auditLog.findFirst({ where: { organizationId: org1Id, action: 'super_admin.org_switch_out', entityId: supportSessionId, actorUserId: superAdminId } }),
     );
     expect(auditEntry).not.toBeNull();
   });

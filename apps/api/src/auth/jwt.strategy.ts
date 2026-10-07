@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Request } from 'express';
 import { NETWORK_NOT_ALLOWED_MESSAGE, TenantPrismaService, staffDeskIpAllowed, touchStaffSession } from '@exam-platform/shared';
+import { enforceSupportSession } from '../platform/support-session-access';
 
 export interface JwtPayload {
   sub: string;
@@ -11,6 +12,8 @@ export interface JwtPayload {
   permissionProfileId?: string | null;
   actingSuperAdmin?: boolean;
   actingOrgName?: string;
+  // YukthiX staff inside a company: the approved support session the token belongs to (P02 Q8).
+  supportSessionId?: string;
   impersonatorUserId?: string;
   impersonatorEmail?: string;
   // Server-side session the token belongs to (YX-IAM-06). Owned by the impersonator when
@@ -44,12 +47,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!(await staffDeskIpAllowed(this.tenantPrisma, payload, req.ip))) {
       throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
     }
+    // Staff inside a company only through a live support session: read-only, every request recorded (P02 Q8).
+    if (payload.actingSuperAdmin) {
+      if (!payload.supportSessionId) throw new UnauthorizedException('Session expired');
+      await enforceSupportSession(this.tenantPrisma, req, { sub: payload.sub, organizationId: payload.organizationId, supportSessionId: payload.supportSessionId });
+    }
     return {
       userId: payload.sub,
       organizationId: payload.organizationId,
       role: payload.role,
       permissionProfileId: payload.permissionProfileId ?? null,
       actingSuperAdmin: payload.actingSuperAdmin ?? false,
+      supportSessionId: payload.supportSessionId ?? null,
       impersonatorUserId: payload.impersonatorUserId,
       impersonatorEmail: payload.impersonatorEmail,
       sessionId: payload.sid!,

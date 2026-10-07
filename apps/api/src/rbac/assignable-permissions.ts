@@ -11,10 +11,13 @@ export const NON_ASSIGNABLE_PERMISSION_KEYS = [
   // P02 §4.2: who holds which role is the System Admin's (org_admin); a role handing it on would let a grant
   // grant itself more.
   'access.role.manage',
+  // P02 Q8: letting YukthiX support into the company is the System Admin's decision alone.
+  'org.support_access.approve',
 ] as const;
 
+/** Every platform.* key is YukthiX staff only (P14 YX-CONSOLE-01): never part of a company role. */
 export function isAssignableKey(key: string): boolean {
-  return !(NON_ASSIGNABLE_PERMISSION_KEYS as readonly string[]).includes(key);
+  return !(NON_ASSIGNABLE_PERMISSION_KEYS as readonly string[]).includes(key) && !key.startsWith('platform');
 }
 
 export interface AssignablePermission {

@@ -113,7 +113,8 @@ export class TenantPrismaService {
       set_config('app.current_org', ${context.organizationId ?? ''}, true),
       set_config('app.is_super_admin', ${context.isSuperAdmin ? 'on' : 'off'}, true),
       set_config('app.current_user_id', ${context.userId ?? ''}, true),
-      set_config('app.record_visibility_governed', ${isRecordVisibilityGoverned(context.role) ? 'on' : 'off'}, true)`;
+      set_config('app.record_visibility_governed', ${isRecordVisibilityGoverned(context.role) ? 'on' : 'off'}, true),
+      set_config('app.support_session', ${context.supportSessionId ?? ''}, true)`;
   }
 
   // For call sites whose isolation already comes from an ID chain resolved

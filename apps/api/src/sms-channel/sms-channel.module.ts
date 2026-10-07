@@ -20,6 +20,6 @@ import { SmsCallbacksController, SmsSettingsController } from './sms-channel.con
     DevSmsMail,
   ],
   controllers: [SmsSettingsController, SmsCallbacksController],
-  exports: [SmsChannelService, OTP_SMS_SENDER],
+  exports: [SmsChannelService, SmsAccountsService, OTP_SMS_SENDER],
 })
 export class SmsChannelModule {}

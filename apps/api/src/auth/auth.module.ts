@@ -73,6 +73,6 @@ function createTxtResolver() {
     CredentialThrottlerGuard,
   ],
   controllers: [AuthController, SamlController, SsoController, SessionsController, SecurityPolicyController, MfaController, OtpController, IdentityProvidersController, SocialController],
-  exports: [AuthService, IdentityProvidersService],
+  exports: [AuthService, IdentityProvidersService, SessionsService],
 })
 export class AuthModule {}

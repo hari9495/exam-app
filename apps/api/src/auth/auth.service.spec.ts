@@ -711,24 +711,39 @@ describe('AuthService', () => {
   });
 
   describe('switchIntoOrg', () => {
+    const ENDS = new Date(Date.now() + 2 * 3_600_000);
+    const withSession = (row: unknown) => {
+      (prisma as unknown as { supportSession: unknown }).supportSession = { findFirst: jest.fn().mockResolvedValue(row) };
+    };
+
     it('throws when the target org does not exist', async () => {
       prisma.organization.findUnique.mockResolvedValue(null);
 
       await expect(service.switchIntoOrg('super-admin-1', 'no-such-org', SESSION_ID)).rejects.toThrow(NotFoundException);
     });
 
-    it('audit-logs the switch-in against the target org and returns an acting access token', async () => {
+    it('refuses without a live support session the company approved (P02 Q8): no standing switch-in', async () => {
       prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Inc', slug: 'acme', status: 'active' });
+      withSession(null);
+
+      await expect(service.switchIntoOrg('super-admin-1', 'org-1', SESSION_ID)).rejects.toMatchObject({ response: { code: 'SUPPORT_SESSION_REQUIRED' } });
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('audit-logs the switch-in against the support session and returns an acting token that ends with the window', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Inc', slug: 'acme', status: 'active' });
+      withSession({ id: 'ss-1', endsAt: ENDS });
 
       const token = await service.switchIntoOrg('super-admin-1', 'org-1', SESSION_ID);
 
+      expect(tenantPrisma.forTenant).toHaveBeenCalledWith({ organizationId: 'org-1', isSuperAdmin: false }, expect.any(Function));
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: true },
-        { actorUserId: 'super-admin-1', action: 'super_admin.org_switch_in', entityType: 'organization', entityId: 'org-1' },
+        { actorUserId: 'super-admin-1', action: 'super_admin.org_switch_in', entityType: 'support_session', entityId: 'ss-1', metadata: { organizationId: 'org-1' } },
       );
       const payload = jwt.verify(token, { secret: 'test-secret' }) as {
         sub: string; organizationId: string; role: string; permissionProfileId: string | null;
-        actingSuperAdmin: boolean; actingOrgName: string; actingOrgSlug: string;
+        actingSuperAdmin: boolean; actingOrgName: string; actingOrgSlug: string; supportSessionId: string; exp: number;
       };
       expect(payload).toMatchObject({
         sub: 'super-admin-1', organizationId: 'org-1', role: 'super_admin', actingSuperAdmin: true, actingOrgName: 'Acme Inc',
@@ -737,12 +752,11 @@ describe('AuthService', () => {
         // org, which disabled the per-org SSO-status check and showed "Reset password" for
         // every user regardless of whether the org they were viewing actually had SSO enabled.
         actingOrgSlug: 'acme',
+        supportSessionId: 'ss-1',
         // Rides on the super admin's own session: revoking it ends the acting token too.
         sid: SESSION_ID,
       });
-      // An acting-into-org token is never subject to profile-based field/permission
-      // restriction -- actingSuperAdmin already bypasses that guard (T4) regardless, so
-      // this is never resolved from a real profile assignment.
+      expect(payload.exp * 1000).toBeLessThanOrEqual(ENDS.getTime() + 1000);
       expect(payload.permissionProfileId).toBeNull();
     });
   });
@@ -754,12 +768,12 @@ describe('AuthService', () => {
       expect(audit.record).not.toHaveBeenCalled();
     });
 
-    it('audit-logs the switch-out against the exited org', async () => {
-      await service.recordSwitchOut('super-admin-1', 'org-1');
+    it('audit-logs the switch-out against the support session', async () => {
+      await service.recordSwitchOut('super-admin-1', 'org-1', 'ss-1');
 
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: true },
-        { actorUserId: 'super-admin-1', action: 'super_admin.org_switch_out', entityType: 'organization', entityId: 'org-1' },
+        { actorUserId: 'super-admin-1', action: 'super_admin.org_switch_out', entityType: 'support_session', entityId: 'ss-1', metadata: { organizationId: 'org-1' } },
       );
     });
   });

@@ -32,6 +32,7 @@ import { ClientMeta, LoginMethod, SessionUser, SessionsService } from './session
 import { LOGIN_PROTECTION_REDIS, LockoutSettings, LoginAttempt, LoginBlock, LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
 import { PasswordPolicyService } from './password-policy.service';
 import { MfaService, MfaUser, PENDING_LOGIN_TTL_SECONDS, PendingLogin, isStaff } from './mfa.service';
+import { liveSupportSession } from '../platform/support-session-access';
 import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
 import { MfaLoginDto, MfaProofDto, PasskeyAssertionDto } from './dto/mfa.dto';
 import { MfaOtpSendDto, OtpStartDto, OtpVerifyDto } from './dto/otp.dto';
@@ -1518,36 +1519,49 @@ export class AuthService {
 
   // The acting token rides on the super admin's own session (`sid`): revoking that session
   // kills it too.
+  // P02 Q8 / YX-SEC-20: YukthiX staff open a company only inside a support session the company approved, for its
+  // window only (the token never outlives it, and JwtStrategy re-checks the session on every request).
   async switchIntoOrg(actorUserId: string, targetOrgId: string, sessionId: string): Promise<string> {
     const org = await this.prisma.organization.findUnique({ where: { id: targetOrgId } });
     if (!org) {
       throw new NotFoundException(`Organization ${targetOrgId} not found`);
     }
+    const support = await liveSupportSession(this.tenantPrisma, { organizationId: targetOrgId, staffUserId: actorUserId });
+    if (!support) {
+      throw new ForbiddenException({ statusCode: 403, code: 'SUPPORT_SESSION_REQUIRED', message: 'Ask the company for a support session first. A System Admin of the company must approve it.' });
+    }
 
     await this.audit.record(
       { organizationId: targetOrgId, isSuperAdmin: true },
-      { actorUserId, action: 'super_admin.org_switch_in', entityType: 'organization', entityId: targetOrgId },
+      { actorUserId, action: 'super_admin.org_switch_in', entityType: 'support_session', entityId: support.id, metadata: { organizationId: targetOrgId } },
     );
 
-    return this.signAccessToken({
-      sub: actorUserId,
-      organizationId: targetOrgId,
-      role: 'super_admin',
-      permissionProfileId: null,
-      actingSuperAdmin: true,
-      actingOrgName: org.name,
-      actingOrgSlug: org.slug,
-      sid: sessionId,
-    });
+    return this.signAccessToken(
+      {
+        sub: actorUserId,
+        organizationId: targetOrgId,
+        role: 'super_admin',
+        permissionProfileId: null,
+        actingSuperAdmin: true,
+        actingOrgName: org.name,
+        actingOrgSlug: org.slug,
+        supportSessionId: support.id,
+        supportEndsAt: support.endsAt!.toISOString(),
+        sid: sessionId,
+      },
+      Math.floor((support.endsAt!.getTime() - Date.now()) / 1000),
+    );
   }
 
-  async recordSwitchOut(actorUserId: string, exitedOrgId: string | null): Promise<void> {
+  async recordSwitchOut(actorUserId: string, exitedOrgId: string | null, supportSessionId?: string | null): Promise<void> {
     if (!exitedOrgId) {
       return;
     }
     await this.audit.record(
       { organizationId: exitedOrgId, isSuperAdmin: true },
-      { actorUserId, action: 'super_admin.org_switch_out', entityType: 'organization', entityId: exitedOrgId },
+      supportSessionId
+        ? { actorUserId, action: 'super_admin.org_switch_out', entityType: 'support_session', entityId: supportSessionId, metadata: { organizationId: exitedOrgId } }
+        : { actorUserId, action: 'super_admin.org_switch_out', entityType: 'organization', entityId: exitedOrgId },
     );
   }
 
@@ -1630,13 +1644,16 @@ export class AuthService {
     actingSuperAdmin?: boolean;
     actingOrgName?: string;
     actingOrgSlug?: string;
+    supportSessionId?: string;
+    supportEndsAt?: string;
     impersonatorUserId?: string;
     impersonatorEmail?: string;
     sid: string;
-  }): string {
+  }, maxSeconds?: number): string {
+    const ttl = Number(process.env.ACCESS_TOKEN_TTL_SECONDS ?? 900);
     return this.jwt.sign(payload, {
       secret: process.env.JWT_ACCESS_SECRET,
-      expiresIn: `${process.env.ACCESS_TOKEN_TTL_SECONDS ?? 900}s` as `${number}s`,
+      expiresIn: `${Math.max(1, Math.min(ttl, maxSeconds ?? ttl))}s` as `${number}s`,
     });
   }
 

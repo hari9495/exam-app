@@ -187,7 +187,9 @@ export class OrganizationsService {
     private readonly blobStorage: BlobStorageService,
   ) {}
 
-  async create(context: TenantContext, actorUserId: string, dto: CreateOrganizationDto): Promise<Organization> {
+  // `region` is optional for the YukthiX console: legal entities carry their own data region (P21), so the column
+  // keeps its default there.
+  async create(context: TenantContext, actorUserId: string, dto: Omit<CreateOrganizationDto, 'region'> & { region?: string }): Promise<Organization> {
     const existing = await this.prisma.organization.findUnique({ where: { slug: dto.slug } });
     if (existing) {
       throw new ConflictException(`Organization slug "${dto.slug}" is already taken`);
@@ -199,7 +201,7 @@ export class OrganizationsService {
     }
 
     const org = await this.prisma.organization.create({
-      data: { name: dto.name, slug: dto.slug, region: dto.region, planId: trialPlan.id },
+      data: { name: dto.name, slug: dto.slug, ...(dto.region ? { region: dto.region } : {}), planId: trialPlan.id },
     });
 
     // The new org has no pre-existing tenant session to scope to, so admin creation

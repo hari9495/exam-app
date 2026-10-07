@@ -34,7 +34,7 @@ describe('TenantPrismaService', () => {
     // discarded by Postgres at COMMIT/ROLLBACK, so a pooled connection never keeps a tenant.
     expect(executeRaw).toHaveBeenCalledTimes(1);
     const call = contextCall(executeRaw);
-    for (const key of ['app.current_org', 'app.is_super_admin', 'app.current_user_id', 'app.record_visibility_governed']) {
+    for (const key of ['app.current_org', 'app.is_super_admin', 'app.current_user_id', 'app.record_visibility_governed', 'app.support_session']) {
       expect(call.sql).toContain(`set_config('${key}', ?, true)`);
     }
     expect(call.sql).not.toMatch(/false|SET\s+app|sp_set_session_context/i);
@@ -49,7 +49,7 @@ describe('TenantPrismaService', () => {
     const result = await service.forTenant(context, async () => 'ok');
 
     expect(result).toBe('ok');
-    expectTransactionLocalContext(executeRaw, ['org-1', 'off', '', 'off']);
+    expectTransactionLocalContext(executeRaw, ['org-1', 'off', '', 'off', '']);
     // Routing: forTenant must run through the soft-delete-filtered client's $transaction, never
     // the raw one -- that's the whole point of the recycle-bin fix.
     expect(filteredTransaction).toHaveBeenCalledTimes(1);
@@ -111,7 +111,7 @@ describe('TenantPrismaService', () => {
 
       await service.forTenant({ organizationId: 'org-1', isSuperAdmin: false, userId: 'U1', role: 'recruiter' }, async () => 'ok');
 
-      expectTransactionLocalContext(executeRaw, ['org-1', 'off', 'U1', 'on']);
+      expectTransactionLocalContext(executeRaw, ['org-1', 'off', 'U1', 'on', '']);
     });
 
     it('sets governed=off for a non-governed role (org_admin) even with a userId, and super-admin on', async () => {
@@ -120,7 +120,7 @@ describe('TenantPrismaService', () => {
 
       await service.forTenant({ organizationId: 'org-1', isSuperAdmin: true, userId: 'U2', role: 'org_admin' }, async () => 'ok');
 
-      expectTransactionLocalContext(executeRaw, ['org-1', 'on', 'U2', 'off']);
+      expectTransactionLocalContext(executeRaw, ['org-1', 'on', 'U2', 'off', '']);
     });
 
     it('sets empty org/user values (which match nothing) when the context has none', async () => {
@@ -129,7 +129,16 @@ describe('TenantPrismaService', () => {
 
       await service.forTenant({ organizationId: null, isSuperAdmin: false, role: 'recruiter' }, async () => 'ok');
 
-      expectTransactionLocalContext(executeRaw, ['', 'off', '', 'on']);
+      expectTransactionLocalContext(executeRaw, ['', 'off', '', 'on', '']);
+    });
+
+    it('sets the support session for YukthiX staff inside one (P02 Q8)', async () => {
+      const executeRaw = jest.fn().mockResolvedValue(1);
+      const { service } = makeService((cb) => cb({ $executeRaw: executeRaw }));
+
+      await service.forTenant({ organizationId: 'org-1', isSuperAdmin: false, userId: 'S1', role: 'super_admin', supportSessionId: 'ss-1' }, async () => 'ok');
+
+      expectTransactionLocalContext(executeRaw, ['org-1', 'off', 'S1', 'off', 'ss-1']);
     });
   });
 
@@ -210,7 +219,7 @@ describe('TenantPrismaService', () => {
       const result = await service.forTenantIncludingDeleted(context, async () => 'ok');
 
       expect(result).toBe('ok');
-      expectTransactionLocalContext(executeRaw, ['org-1', 'off', '', 'off']);
+      expectTransactionLocalContext(executeRaw, ['org-1', 'off', '', 'off', '']);
     });
 
     // Routing: forTenantIncludingDeleted must run through the RAW client's $transaction, never

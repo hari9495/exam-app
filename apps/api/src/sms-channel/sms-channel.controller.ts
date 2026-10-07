@@ -21,11 +21,17 @@ export function mountSmsCallbackBody(app: INestApplication): void {
 }
 
 // Settings › Notifications › SMS (P04 §7). Bearer-token only (no CSRF surface). Saving an account carries
-// gateway credentials: step-up (P12 §3), never while impersonating, always audited.
+// gateway credentials: step-up (P12 §3), never while impersonating, always audited. Companies only.
 @Controller('notifications/sms')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SmsSettingsController {
   constructor(private readonly accounts: SmsAccountsService) {}
+
+  /** A company's own settings; the YukthiX shared account is managed in the platform console (/platform/channels). */
+  private company(ctx: TenantContext): TenantContext {
+    if (!ctx.organizationId) throw new ForbiddenException('The YukthiX shared SMS account is managed in the platform console');
+    return ctx;
+  }
 
   private actor(req: Request): string {
     const user = req.user as { userId: string; impersonatorUserId?: string };
@@ -36,27 +42,27 @@ export class SmsSettingsController {
   @Get()
   @RequirePermissions('org:manage_settings')
   overview(@CurrentTenant() ctx: TenantContext) {
-    return this.accounts.overview(ctx);
+    return this.accounts.overview(this.company(ctx));
   }
 
   @Patch('policy')
   @RequirePermissions('org:manage_settings')
   updatePolicy(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: UpdateSmsPolicyDto) {
-    return this.accounts.updatePolicy(ctx, this.actor(req), dto);
+    return this.accounts.updatePolicy(this.company(ctx), this.actor(req), dto);
   }
 
   @Post('accounts')
   @RequirePermissions('org:manage_settings')
   @RequireStepUp()
   create(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: CreateSmsAccountDto) {
-    return this.accounts.create(ctx, this.actor(req), dto);
+    return this.accounts.create(this.company(ctx), this.actor(req), dto);
   }
 
   @Patch('accounts/:id')
   @RequirePermissions('org:manage_settings')
   @RequireStepUp()
   update(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateSmsAccountDto) {
-    return this.accounts.update(ctx, this.actor(req), id, dto);
+    return this.accounts.update(this.company(ctx), this.actor(req), id, dto);
   }
 
   @Delete('accounts/:id')
@@ -64,7 +70,7 @@ export class SmsSettingsController {
   @RequirePermissions('org:manage_settings')
   @RequireStepUp()
   async remove(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    await this.accounts.remove(ctx, this.actor(req), id);
+    await this.accounts.remove(this.company(ctx), this.actor(req), id);
   }
 
   // Only to the admin's own verified number, so it can't be used to message anyone else.
@@ -73,13 +79,13 @@ export class SmsSettingsController {
   @Throttle(STRICT_AUTH_THROTTLE)
   @RequirePermissions('org:manage_settings')
   test(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.accounts.test(ctx, this.actor(req), id);
+    return this.accounts.test(this.company(ctx), this.actor(req), id);
   }
 
   @Get('deliveries')
   @RequirePermissions('org:manage_settings')
   deliveries(@CurrentTenant() ctx: TenantContext, @Query() query: DeliveriesQueryDto) {
-    return this.accounts.deliveries(ctx, query.before);
+    return this.accounts.deliveries(this.company(ctx), query.before);
   }
 }
 

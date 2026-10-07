@@ -9,6 +9,11 @@ export interface AuditEntry {
   entityType: string;
   entityId?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * The actor's identity, when the caller already read it: a YukthiX staff member acting on one company writes under
+   * that company's context, where RLS hides the staff account row, so the snapshot cannot be looked up there.
+   */
+  actor?: { email: string | null; name: string | null; role: string | null };
 }
 
 @Injectable()
@@ -31,10 +36,10 @@ export class AuditService {
     // "System". Best-effort: a missing user (e.g. already deleted) just leaves
     // the snapshot null. This lookup never fails the audit write -- the record
     // must be created even if identity can't be captured.
-    let actorEmail: string | null = null;
-    let actorName: string | null = null;
-    let actorRole: string | null = null;
-    if (entry.actorUserId) {
+    let actorEmail: string | null = entry.actor?.email ?? null;
+    let actorName: string | null = entry.actor?.name ?? null;
+    let actorRole: string | null = entry.actor?.role ?? null;
+    if (entry.actorUserId && !entry.actor) {
       try {
         const actor = await tx.user.findUnique({
           where: { id: entry.actorUserId },

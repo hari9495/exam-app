@@ -1,6 +1,7 @@
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { DEFAULT_SECURITY_POLICY, invalidateTenantSecurityPolicy } from '@exam-platform/shared';
 import { JwtStrategy, JwtPayload } from './jwt.strategy';
+import * as supportAccess from '../platform/support-session-access';
 
 describe('JwtStrategy.validate', () => {
   const SID = '22222222-2222-4222-8222-222222222222';
@@ -92,10 +93,12 @@ describe('JwtStrategy.validate', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it('does not bind platform staff acting inside the company', async () => {
+    it('does not bind platform staff acting inside the company (their support session is checked instead)', async () => {
+      const enforce = jest.spyOn(supportAccess, 'enforceSupportSession').mockResolvedValue(undefined);
       await expect(
-        validate({ sub: ADMIN, organizationId: 'org1', role: 'super_admin', actingSuperAdmin: true, sid: SID }, '192.0.2.1'),
+        validate({ sub: ADMIN, organizationId: 'org1', role: 'super_admin', actingSuperAdmin: true, supportSessionId: 'ss-1', sid: SID }, '192.0.2.1'),
       ).resolves.toBeDefined();
+      enforce.mockRestore();
     });
 
     it('checks the session first: a dead session is 401 regardless of network', async () => {
@@ -112,5 +115,34 @@ describe('JwtStrategy.validate', () => {
     const values = tx.$queryRaw.mock.calls[0].slice(1);
     expect(values).toEqual(expect.arrayContaining([SID, ADMIN]));
     expect(values).not.toContain(U1);
+  });
+
+  describe('YukthiX staff inside a company (P02 Q8 support sessions)', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    it('refuses an acting token that carries no support session (no standing switch-in)', async () => {
+      const enforce = jest.spyOn(supportAccess, 'enforceSupportSession');
+      await expect(validate({ sub: ADMIN, organizationId: 'org1', role: 'super_admin', actingSuperAdmin: true, sid: SID })).rejects.toThrow(UnauthorizedException);
+      expect(enforce).not.toHaveBeenCalled();
+    });
+
+    it('checks the support session on every request and passes its id to the request user', async () => {
+      const enforce = jest.spyOn(supportAccess, 'enforceSupportSession').mockResolvedValue(undefined);
+      const user = await validate({ sub: ADMIN, organizationId: 'org1', role: 'super_admin', actingSuperAdmin: true, supportSessionId: 'ss-1', sid: SID });
+      expect(enforce).toHaveBeenCalledWith(tenantPrisma, expect.anything(), { sub: ADMIN, organizationId: 'org1', supportSessionId: 'ss-1' });
+      expect(user).toEqual(expect.objectContaining({ actingSuperAdmin: true, supportSessionId: 'ss-1' }));
+    });
+
+    it('rejects the request when the session has ended', async () => {
+      jest.spyOn(supportAccess, 'enforceSupportSession').mockRejectedValue(new ForbiddenException('ended'));
+      await expect(validate({ sub: ADMIN, organizationId: 'org1', role: 'super_admin', actingSuperAdmin: true, supportSessionId: 'ss-1', sid: SID })).rejects.toThrow(ForbiddenException);
+    });
+
+    it('never runs the check for a normal token', async () => {
+      const enforce = jest.spyOn(supportAccess, 'enforceSupportSession');
+      const user = await validate({ sub: U1, organizationId: 'org1', role: 'org_admin', sid: SID });
+      expect(enforce).not.toHaveBeenCalled();
+      expect(user.supportSessionId).toBeNull();
+    });
   });
 });
