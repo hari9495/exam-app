@@ -2,6 +2,7 @@
 import type { ReactNode } from 'react';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { IconButton } from '../../components/button';
+import { Segment as SharedSegment } from '../../components/segment';
 import { Icon, type IconComponent } from '../../components/foundations';
 import './settings.css';
 
@@ -79,17 +80,9 @@ export function MCard({ title, children, end }: { title?: ReactNode; children: R
   );
 }
 
-/** Two-way segment (Me / Team, Mine / Team). Buttons with aria-pressed. */
-export function Segment<V extends string>({ value, options, onChange, label }: { value: V; options: { value: V; label: string }[]; onChange: (v: V) => void; label: string }) {
-  return (
-    <div className="yx-m-segment" role="group" aria-label={label}>
-      {options.map((o) => (
-        <button key={o.value} type="button" aria-pressed={o.value === value} onClick={() => onChange(o.value)}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
+/** Two-way segment (Me / Team, Mine / Team): the shared Segment, full width on the phone. */
+export function Segment<V extends string>(props: { value: V; options: { value: V; label: string }[]; onChange: (v: V) => void; label: string }) {
+  return <SharedSegment {...props} className="yx-m-segment" />;
 }
 
 export const BackButton = ({ label = 'Back' }: { label?: string }) => <IconButton icon={ArrowLeft} label={label} />;

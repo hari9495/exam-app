@@ -154,3 +154,5 @@
   .yx-roster__block { flex-direction: row; align-items: baseline; gap: var(--yx-space-1); }
   .yx-roster__leave-pre { display: inline; }
 }
+
+.yx-roster:not([data-readonly]) .yx-roster__cell:hover:not([aria-selected="true"]) { background: var(--yx-color-bg-subtle); box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-color-border-input); }

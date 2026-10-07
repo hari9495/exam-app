@@ -105,3 +105,5 @@
 .yx-listbox [cmdk-list] { scrollbar-width: thin; scrollbar-color: var(--yx-color-border-strong) transparent; }
 /* hide the empty listbox; the status message above says there are no matches */
 .yx-listbox:has(> .yx-listbox__empty) [cmdk-list] { display: none; }
+/* Error and open states keep their colour; hover still answers with a tint. */
+.yx-select:hover:not(:disabled) { background: var(--yx-color-bg-subtle); }

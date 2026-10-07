@@ -116,3 +116,5 @@
   box-sizing: content-box; margin-top: 0; background-clip: content-box;
   padding-block: calc((max(var(--yx-target-min), var(--yx-switch-h)) - var(--yx-switch-h)) / 2);
 }
+
+.yx-hire-qlist__btn:hover:not([aria-current]) { background: var(--yx-color-bg-subtle); }

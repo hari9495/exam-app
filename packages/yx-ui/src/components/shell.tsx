@@ -109,7 +109,7 @@ function OverflowMenu({ label, children }: { label: string; children: ReactNode 
     <Menu>
       <Tooltip content={label}>
         <MenuTrigger asChild>
-          <IconButton icon={MoreHorizontal} label={label} noTooltip />
+          <IconButton icon={MoreHorizontal} label={label} />
         </MenuTrigger>
       </Tooltip>
       <MenuContent align="end">{children}</MenuContent>
@@ -555,9 +555,11 @@ export function ProfileMenu({
 }: ProfileMenuProps) {
   return (
     <Menu defaultOpen={defaultOpen} modal={false}>
-      <MenuTrigger className="yx-topbar__profile" aria-label={`Account menu for ${name}`}>
-        <Avatar name={name} src={photoUrl} size={32} />
-      </MenuTrigger>
+      <Tooltip content="Your account">
+        <MenuTrigger className="yx-topbar__profile" aria-label={`Account menu for ${name}`}>
+          <Avatar name={name} src={photoUrl} size={32} />
+        </MenuTrigger>
+      </Tooltip>
       <MenuContent align="end">
         <div className="yx-profile-menu__who">
           <span className="yx-profile-menu__name">{name}</span>
@@ -872,7 +874,7 @@ export function Breadcrumbs({ items, max = 4 }: { items: Crumb[]; max?: number }
             <Menu>
               <Tooltip content={`Show ${hidden.length} more`}>
                 <MenuTrigger asChild>
-                  <IconButton icon={MoreHorizontal} label={`Show ${hidden.length} more pages`} size="sm" noTooltip />
+                  <IconButton icon={MoreHorizontal} label={`Show ${hidden.length} more pages`} size="sm" />
                 </MenuTrigger>
               </Tooltip>
               <MenuContent align="start">

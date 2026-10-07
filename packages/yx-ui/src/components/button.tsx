@@ -122,11 +122,13 @@ export function SplitButton({ children, onClick, variant = 'secondary', size = '
         {children}
       </Button>
       <Menu>
-        <MenuTrigger asChild>
-          <button type="button" className="yx-button" data-variant={variant} data-size={size} data-icon-only aria-label={menuLabel} disabled={disabled || loading}>
-            <Icon icon={ChevronDown} />
-          </button>
-        </MenuTrigger>
+        <Tooltip content={menuLabel}>
+          <MenuTrigger asChild>
+            <button type="button" className="yx-button" data-variant={variant} data-size={size} data-icon-only aria-label={menuLabel} disabled={disabled || loading}>
+              <Icon icon={ChevronDown} />
+            </button>
+          </MenuTrigger>
+        </Tooltip>
         <MenuContent align="end">{menu}</MenuContent>
       </Menu>
     </div>

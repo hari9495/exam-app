@@ -204,3 +204,8 @@
 .yx-ops-cellbtn { background: none; border: 0; padding: 0; cursor: pointer; min-height: var(--yx-target-min); display: inline-flex; align-items: center; border-radius: var(--yx-radius-control); }
 .yx-ops-cellbtn:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: 2px; }
 .yx-ops-row[data-center] { justify-content: center; }
+
+.yx-ops-cellbtn:hover { background: var(--yx-color-bg-subtle); }
+.yx-ops-list__title { color: var(--yx-color-link); }
+/* A status that opens its detail: underlined like a link (7 Oct 2026). */
+.yx-ops-cellbtn { text-decoration: underline; text-underline-offset: var(--yx-space-half); }

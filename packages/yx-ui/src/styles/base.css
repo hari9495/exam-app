@@ -21,6 +21,15 @@
   outline-offset: var(--yx-space-half);
 }
 
+/* Anything you can click shows the hand (founder review 7 Oct 2026). Zero specificity: a component's own cursor wins. */
+:where(button:not(:disabled), [role="button"]:not([aria-disabled="true"]), [role="tab"]:not([data-disabled]), summary, a[href]) { cursor: pointer; }
+/* Disclosure (<details>): the summary row tints on hover and gets the focus ring, so it reads as a control, not a heading. */
+/* Links: the underline thickens on hover, so a link answers the pointer like a button does. */
+a[href]:hover { text-decoration-thickness: var(--yx-focus-width); }
+:where(summary) { border-radius: var(--yx-radius-control); }
+:where(summary):hover { background: var(--yx-color-bg-subtle); }
+:where(summary):focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); }
+
 .yx-mono {
   font-family: var(--yx-font-mono);
   font-size: var(--yx-text-sm);

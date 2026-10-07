@@ -203,10 +203,8 @@
 }
 .yx-ps-quick button:hover { background: var(--yx-color-bg-subtle); }
 .yx-ps-quick button:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: 1px; }
-.yx-ps-seg { display: flex; padding: var(--yx-space-half); gap: var(--yx-space-half); background: var(--yx-color-bg-subtle); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-control); }
-.yx-ps-seg button { flex: 1; min-height: var(--yx-target-min); font: inherit; border: var(--yx-border-width) solid transparent; background: transparent; color: var(--yx-color-text-secondary); border-radius: var(--yx-radius-control); cursor: pointer; }
-.yx-ps-seg button[aria-pressed="true"] { background: var(--yx-color-bg-surface); border-color: var(--yx-color-border); color: var(--yx-color-text); font-weight: var(--yx-weight-medium); }
-.yx-ps-seg button:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: 1px; }
+/* Phone: the shared Segment (R11) at full width, options sharing the row equally. */
+.yx-segment.yx-ps-seg { display: flex; width: 100%; box-sizing: border-box; align-self: stretch; }
 .yx-ps-matrix { width: 100%; border-collapse: collapse; font-size: var(--yx-text-sm); }
 .yx-ps-matrix th, .yx-ps-matrix td { padding: var(--yx-space-2) var(--yx-space-1); border-bottom: var(--yx-border-width) solid var(--yx-color-border); text-align: center; }
 .yx-ps-matrix th[scope="row"] { text-align: left; font-weight: var(--yx-weight-regular); }
@@ -222,3 +220,4 @@
 .yx-tportal .yx-link, .yx-tportal p a, .yx-tportal li a { text-decoration: underline; }
 .yx-ps-cal__item { min-height: var(--yx-target-min); }
 .yx-ps-matrix input { width: var(--yx-target-min); height: var(--yx-target-min); }
+.yx-ps-cal__item:hover { filter: brightness(0.95); }

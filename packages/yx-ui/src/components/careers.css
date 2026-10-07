@@ -371,3 +371,7 @@
 @media (max-width: 767px) {
   .yx-apply { padding: var(--yx-space-4); border: 0; border-radius: 0; }
 }
+
+/* FAQ rows tint on hover like any disclosure (7 Oct 2026). */
+.yx-careers__faq-q button:hover { color: var(--yx-color-link); }
+.yx-page-builder__row-main:hover { background: var(--yx-color-bg-subtle); }

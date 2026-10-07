@@ -226,7 +226,7 @@ function NotificationRow({ n, actions, nested }: { n: PlatformNotification; acti
         )}
         <Menu>
           <MenuTrigger asChild>
-            <IconButton icon={MoreHorizontal} label={`More for: ${n.text}`} size="sm" noTooltip />
+            <IconButton icon={MoreHorizontal} label={`More for: ${n.text}`} size="sm" />
           </MenuTrigger>
           <MenuContent align="end">
             <MenuItem icon={n.read ? MailOpen : Mail} onSelect={() => actions.toggleRead(n)}>

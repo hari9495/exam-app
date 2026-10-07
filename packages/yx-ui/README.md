@@ -21,6 +21,7 @@ import { PayDiffPanel } from '@yukthix/ui/screens/pay/employee-pay'; // any scre
 | `npm run check:responsive -- <storybookUrl>` | Every screen story at 1920 / 1366 / 1024 / 768 / 390 px: sideways overflow or a double scroll bar fails |
 | `npm run test:visual` | Builds Storybook and compares every story in light and dark with `tests/__screenshots__` (Git LFS); `test:visual:update` accepts intended changes |
 | `npm run test:a11y` | Builds Storybook and runs axe (WCAG 2.2 AA) on every story in light and dark |
+| `npm run test:affordance` | Builds Storybook and checks the representative story set (light, dark) that everything clickable looks clickable: border or fill on text controls, pointer, hover, focus ring, selected state beyond colour, 3:1 control edges. `node scripts/check-affordance.mjs storybook-static --all` checks every story (~25 min). Runs in CI |
 
 - Set `data-theme="dark"` on `<html>` for dark mode and `data-density="compact"` for compact tables and forms.
 - Add `class="yx-body"` to `<body>` for the base font, size and page colour.

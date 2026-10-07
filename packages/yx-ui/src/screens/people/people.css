@@ -160,9 +160,9 @@
 .yx-ppl__wf-tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(var(--yx-space-16) * 2.5)), 1fr)); gap: var(--yx-space-3); }
 .yx-ppl__wf-tab {
   display: grid; justify-items: start; gap: var(--yx-space-1); padding: var(--yx-space-3) var(--yx-space-4); text-align: left; cursor: pointer; font: inherit; color: inherit;
-  border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface);
+  border: var(--yx-border-width) solid var(--yx-color-border-input); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface);
 }
-.yx-ppl__wf-tab:hover { border-color: var(--yx-color-border-strong); }
+.yx-ppl__wf-tab:hover:not([aria-selected='true']) { border-color: var(--yx-color-text-muted); background: var(--yx-color-bg-subtle); }
 .yx-ppl__wf-tab[aria-selected='true'] { border-color: var(--yx-color-action-primary); box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-color-action-primary); background: var(--yx-color-bg-selected); }
 .yx-ppl__wf-tab:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); }
 .yx-ppl__wf-label { font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
@@ -171,16 +171,11 @@
 .yx-ppl__chips { display: flex; gap: var(--yx-space-2); overflow-x: auto; padding-block: var(--yx-space-half); }
 .yx-ppl__chip {
   flex: none; min-height: var(--yx-space-8); padding: 0 var(--yx-space-3); cursor: pointer; font: inherit; font-size: var(--yx-text-sm); color: var(--yx-color-text);
-  border: var(--yx-border-width) solid var(--yx-color-border-strong); border-radius: var(--yx-radius-pill, var(--yx-space-8)); background: var(--yx-color-bg-surface);
+  border: var(--yx-border-width) solid var(--yx-color-border-input); border-radius: var(--yx-radius-pill, var(--yx-space-8)); background: var(--yx-color-bg-surface);
 }
 .yx-ppl__chip[aria-pressed='true'] { border-color: var(--yx-color-action-primary); background: var(--yx-color-bg-selected); color: var(--yx-color-link); font-weight: var(--yx-weight-medium); }
 .yx-ppl__chip:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); }
 .yx-ppl__filterbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-3); }
-.yx-ppl__segment { display: inline-flex; flex: none; align-self: flex-start; justify-self: start; max-width: 100%; border: var(--yx-border-width) solid var(--yx-color-border-strong); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-surface); overflow: hidden; }
-.yx-ppl__segment > button { min-height: var(--yx-space-8); padding: 0 var(--yx-space-3); border: 0; background: transparent; font: inherit; font-size: var(--yx-text-sm); color: var(--yx-color-text); cursor: pointer; }
-.yx-ppl__segment > button + button { border-inline-start: var(--yx-border-width) solid var(--yx-color-border-strong); }
-.yx-ppl__segment > button[aria-checked='true'] { background: var(--yx-color-action-primary); color: var(--yx-color-text-on-action); font-weight: var(--yx-weight-medium); }
-.yx-ppl__segment > button:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: calc(var(--yx-focus-width) * -1); }
 .yx-ppl__chip--toggle { display: inline-flex; align-items: center; gap: var(--yx-space-1); }
 
 /* PPL-11 header and filters (founder review 1 Oct 2026) */
@@ -214,3 +209,4 @@
 .yx-ppl__phase-title { margin: 0; font-size: var(--yx-text-body); font-weight: var(--yx-weight-semibold); }
 .yx-ppl__done-fold > summary { cursor: pointer; padding: var(--yx-space-2) 0; color: var(--yx-color-link); font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); }
 .yx-ppl__done-fold > summary:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); border-radius: var(--yx-radius-badge); }
+.yx-ppl__chip:hover:not([aria-pressed='true']) { border-color: var(--yx-color-text-muted); background: var(--yx-color-bg-subtle); }

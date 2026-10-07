@@ -58,3 +58,5 @@ body:has(.yx-phone) .yx-sheet { max-width: calc(var(--yx-space-16) * 6 + var(--y
 .yx-screen > .yx-page-header { margin-bottom: 0; }
 /* Tablet: header actions wrap under the title instead of squeezing it. */
 @media (max-width: 1023px) { .yx-screen > .yx-page-header .yx-page-header__actions { margin-left: 0; width: 100%; } }
+
+.yx-portal__nav a:hover:not([aria-current="page"]) { color: var(--yx-color-text); box-shadow: inset 0 calc(var(--yx-focus-width) * -1) 0 var(--yx-color-border-input); }

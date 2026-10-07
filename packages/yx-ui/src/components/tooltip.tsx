@@ -17,7 +17,7 @@ export function Tooltip({ content, children, side = 'top', delay = 500, open }: 
   return (
     <RT.Provider delayDuration={delay} skipDelayDuration={200}>
       <RT.Root open={open}>
-        <RT.Trigger asChild>{children}</RT.Trigger>
+        <RT.Trigger asChild data-yx-tooltip="">{children}</RT.Trigger>
         <RT.Portal>
           <RT.Content className="yx-tooltip" side={side} sideOffset={6} collisionPadding={8}>
             {content}

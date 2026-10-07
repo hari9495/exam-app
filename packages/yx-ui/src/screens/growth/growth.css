@@ -139,3 +139,5 @@
 
 /* Kiosk-size attendance screen on the phone */
 .yx-growth-center { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--yx-space-3); }
+
+.yx-growth-scale__opt:hover:not([aria-checked="true"]) { background: var(--yx-color-bg-subtle); border-color: var(--yx-color-text-muted); }

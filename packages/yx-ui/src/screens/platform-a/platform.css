@@ -97,10 +97,10 @@
   display: flex; align-items: flex-start; gap: var(--yx-space-3); text-align: left;
   min-height: var(--yx-target-min); padding: var(--yx-space-3);
   background: var(--yx-color-bg-surface); color: var(--yx-color-text);
-  border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-control);
+  border: var(--yx-border-width) solid var(--yx-color-border-input); border-radius: var(--yx-radius-control);
   font: inherit; cursor: pointer;
 }
-.yx-plt-type:hover { border-color: var(--yx-color-border-strong); }
+.yx-plt-type:hover { border-color: var(--yx-color-text-muted); }
 .yx-plt-type:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-focus-width); }
 .yx-plt-type[aria-pressed="true"] { border-color: var(--yx-color-action-primary); background: var(--yx-color-bg-selected); }
 .yx-plt-type__text { display: flex; flex-direction: column; gap: var(--yx-space-half); }
@@ -126,7 +126,7 @@
   display: flex; align-items: center; gap: var(--yx-space-2); width: 100%;
   min-height: var(--yx-target-min); padding: 0 var(--yx-space-3);
   background: var(--yx-color-bg-surface); color: var(--yx-color-text);
-  border: var(--yx-border-width) dashed var(--yx-color-border-strong); border-radius: var(--yx-radius-control);
+  border: var(--yx-border-width) dashed var(--yx-color-border-input); border-radius: var(--yx-radius-control);
   font: inherit; cursor: grab; text-align: left;
 }
 .yx-plt-palette-field:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); }
@@ -268,3 +268,6 @@
 .yx-plt-fact { margin: 0; display: flex; flex-direction: column; gap: var(--yx-space-1); }
 .yx-plt-fact dt { font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-secondary); }
 .yx-plt-fact dd { margin: 0; padding: var(--yx-space-2) var(--yx-space-3); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-subtle); }
+
+.yx-plt-myreq__row:hover { background: var(--yx-color-bg-subtle); }
+.yx-plt-palette-field:hover { border-color: var(--yx-color-text-muted); background: var(--yx-color-bg-subtle); }

@@ -17,8 +17,9 @@
   font: inherit;
   cursor: pointer;
 }
-.yx-ntabs__tab:hover { color: var(--yx-color-text); }
-.yx-ntabs__tab[data-state="active"] { color: var(--yx-color-text); font-weight: var(--yx-weight-medium); border-bottom-color: var(--yx-color-action-primary); }
+.yx-ntabs__tab { border-radius: var(--yx-radius-control) var(--yx-radius-control) 0 0; }
+.yx-ntabs__tab:hover:not([data-state="active"]) { color: var(--yx-color-text); background: var(--yx-color-bg-subtle); border-bottom-color: var(--yx-color-border-input); }
+.yx-ntabs__tab[data-state="active"] { color: var(--yx-color-action-primary); font-weight: var(--yx-weight-medium); border-bottom-color: var(--yx-color-action-primary); }
 .yx-ntabs__tab:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: calc(var(--yx-focus-width) * -1); border-radius: var(--yx-radius-badge); }
 .yx-ntabs__count {
   min-width: var(--yx-badge-height);
@@ -61,10 +62,10 @@
 .yx-toast__title { margin: 0; font-weight: var(--yx-weight-medium); }
 .yx-toast__desc { margin: var(--yx-space-half) 0 0; opacity: 0.8; }
 .yx-toast[data-tone="error"] { box-shadow: inset var(--yx-space-1) 0 0 var(--yx-color-danger-action), var(--yx-shadow-popover); }
-.yx-toast .yx-button,
-.yx-toast .yx-button:hover { background: transparent; color: var(--yx-color-text-inverse); border-color: var(--yx-color-text-inverse); }
-.yx-toast .yx-button[data-icon-only],
-.yx-toast .yx-button[data-icon-only]:hover { border-color: transparent; background: transparent; color: var(--yx-color-text-inverse); }
+.yx-toast .yx-button { background: transparent; color: var(--yx-color-text-inverse); border-color: var(--yx-color-text-inverse); }
+.yx-toast .yx-button[data-icon-only] { border-color: transparent; background: transparent; color: var(--yx-color-text-inverse); }
+/* On the dark toast, hover draws the outline thicker (text) or adds one (icon) instead of the light-surface tint. */
+.yx-toast .yx-button:hover, .yx-toast .yx-button[data-icon-only]:hover { background: transparent; color: var(--yx-color-text-inverse); border-color: var(--yx-color-text-inverse); box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-color-text-inverse); }
 .yx-toast .yx-button:focus-visible { outline-color: var(--yx-color-text-inverse); }
 @keyframes yx-toast-in { from { opacity: 0; transform: translateY(var(--yx-space-2)); } to { opacity: 1; transform: none; } }
 
@@ -311,3 +312,6 @@ a.yx-notif__text:focus-visible { outline: var(--yx-focus-width) solid var(--yx-c
 
 .yx-assistant__list { list-style: none; margin: 0; padding: 0; display: contents; }
 .yx-inbox__panel { display: contents; }
+.yx-notif__item:hover { background: var(--yx-color-bg-subtle); }
+/* On an unread (tinted) row the blue View button keeps a 3:1 edge. */
+.yx-notif__item[data-unread] .yx-button[data-variant="review"] { border-color: var(--yx-color-info-text); }

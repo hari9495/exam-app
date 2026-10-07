@@ -142,3 +142,5 @@
 .yx-idcap { display: flex; flex-direction: column; gap: var(--yx-space-2); }
 .yx-idcap__meta { margin: 0; display: flex; align-items: center; gap: var(--yx-space-2); font-size: var(--yx-text-sm); }
 .yx-idcap[data-state="blurry"] .yx-idcap__meta { color: var(--yx-color-warning-text); }
+
+.yx-ftl__item:hover { background: var(--yx-color-bg-subtle); }

@@ -29,6 +29,7 @@ import { formatDate, formatINR, groupIndian } from '../lib/format';
 import { groupRows, sortRows, toCsv, total as computeTotal, type SortState, type TotalKind } from '../lib/table';
 import { Icon } from './foundations';
 import { Button, IconButton } from './button';
+import { Tooltip } from './tooltip';
 import { Menu, MenuCheckboxItem, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from './menu';
 import { Checkbox } from './choice';
 import { Badge, PersonLabel, type BadgeTone } from './display';
@@ -235,9 +236,11 @@ function TreeCell({ tree, name, onToggle, children }: { tree: { depth: number; c
         <span key={i} className="yx-table__tree-step" aria-hidden="true" />
       ))}
       {tree.children ? (
-        <button type="button" className="yx-table__tree-toggle" aria-expanded={tree.open} aria-label={`${tree.open ? 'Collapse' : 'Expand'} ${name}, ${tree.children} under it`} tabIndex={-1} onClick={onToggle}>
-          <Icon icon={tree.open ? ChevronDown : ChevronRight} />
-        </button>
+        <Tooltip content={tree.open ? 'Collapse' : 'Expand'}>
+          <button type="button" className="yx-table__tree-toggle" aria-expanded={tree.open} aria-label={`${tree.open ? 'Collapse' : 'Expand'} ${name}, ${tree.children} under it`} tabIndex={-1} onClick={onToggle}>
+            <Icon icon={tree.open ? ChevronDown : ChevronRight} />
+          </button>
+        </Tooltip>
       ) : (
         <span className="yx-table__tree-leaf" aria-hidden="true" />
       )}
@@ -600,7 +603,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
     const menuButton = hasContent(menu) && (
       <Menu>
         <MenuTrigger asChild>
-          <IconButton icon={MoreHorizontal} label={`More actions for ${cellText(visible[0], row)}`} size="sm" noTooltip />
+          <IconButton icon={MoreHorizontal} label={`More actions for ${cellText(visible[0], row)}`} size="sm" />
         </MenuTrigger>
         <MenuContent align="end">{menu}</MenuContent>
       </Menu>
@@ -1117,8 +1120,8 @@ export function ColumnManager<R>({
                   onChange={(on) => onChange({ ...state, hidden: on ? state.hidden.filter((k) => k !== c.key) : [...state.hidden, c.key] })}
                 />
                 <span className="yx-colmgr__move">
-                  <IconButton icon={ArrowUp} label={`Move ${c.header} up`} size="sm" noTooltip disabled={i <= 1} onClick={() => move(c.key, -1)} />
-                  <IconButton icon={ArrowDown} label={`Move ${c.header} down`} size="sm" noTooltip disabled={i === 0 || i === columns.length - 1} onClick={() => move(c.key, 1)} />
+                  <IconButton icon={ArrowUp} label={`Move ${c.header} up`} size="sm" disabled={i <= 1} onClick={() => move(c.key, -1)} />
+                  <IconButton icon={ArrowDown} label={`Move ${c.header} down`} size="sm" disabled={i === 0 || i === columns.length - 1} onClick={() => move(c.key, 1)} />
                 </span>
               </li>
             );

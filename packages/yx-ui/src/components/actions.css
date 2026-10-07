@@ -157,3 +157,12 @@
 }
 /* In a table, every text row button matches the widest one (the table sets --yx-row-btn-w). */
 .yx-table__actions-inner > .yx-button:not([data-icon-only]) { min-width: var(--yx-row-btn-w, calc(var(--yx-space-16) * 1.5 + var(--yx-space-2))); }
+
+/* Toggle buttons (aria-pressed: Like, Bookmark, Show pay): "on" is filled blue, not just a different word (founder review 7 Oct 2026). */
+.yx-button[aria-pressed="true"]:not([data-variant="primary"]):not(:disabled) { background: var(--yx-color-bg-selected); border-color: var(--yx-color-action-primary); color: var(--yx-color-action-primary); }
+.yx-button[aria-pressed="true"]:not([data-variant="primary"]):not(:disabled):hover { border-color: var(--yx-color-action-primary-hover); }
+/* Solid Approve (phone, dialog footers) darkens on hover like the primary button. */
+.yx-dialog__foot .yx-button[data-variant="approve"]:hover:not(:disabled), .yx-sheet__foot .yx-button[data-variant="approve"]:hover:not(:disabled), .yx-drawer__foot .yx-button[data-variant="approve"]:hover:not(:disabled), .yx-button[data-variant="approve"][data-full]:hover:not(:disabled) { filter: brightness(0.9); }
+/* On a tinted (unread) row the blue View / Review button keeps a 3:1 edge. */
+[data-unread] .yx-button[data-variant="review"] { border-color: var(--yx-color-info-text); }
+[data-unread] .yx-button[data-variant="review"]:hover:not(:disabled) { box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-color-info-text); }

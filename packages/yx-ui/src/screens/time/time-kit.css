@@ -264,7 +264,7 @@
 .yx-tim-big { font-size: var(--yx-text-3xl); line-height: var(--yx-leading-3xl); font-weight: var(--yx-weight-semibold); margin: 0; font-variant-numeric: tabular-nums; }
 .yx-tim-keypad { display: grid; grid-template-columns: repeat(3, calc(var(--yx-space-16) + var(--yx-space-8))); gap: var(--yx-space-3); }
 .yx-tim-keypad button {
-  height: calc(var(--yx-space-16) + var(--yx-space-2)); border: var(--yx-border-width) solid var(--yx-color-border-strong); border-radius: var(--yx-radius-control);
+  height: calc(var(--yx-space-16) + var(--yx-space-2)); border: var(--yx-border-width) solid var(--yx-color-border-input); border-radius: var(--yx-radius-control);
   background: var(--yx-color-bg-surface); color: var(--yx-color-text); font: inherit; font-size: var(--yx-text-2xl); cursor: pointer;
 }
 .yx-tim-keypad button:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: 2px; }
@@ -289,3 +289,8 @@
 /* Home dashboard: the widget is the box, so no second border (founder review 30 Sep 2026). */
 .yx-tim-clock[data-variant="home"] { border: 0; padding: 0; background: none; gap: var(--yx-space-3); }
 .yx-tim-clock[data-variant="home"] .yx-tim-clock__time { font-size: var(--yx-text-3xl); line-height: var(--yx-leading-3xl); }
+
+.yx-tim-cell:hover:not([aria-pressed="true"]) { box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-color-border-input); }
+.yx-tim-keypad button:hover { background: var(--yx-color-bg-subtle); }
+button.yx-tim-cov { cursor: pointer; border: 0; font: inherit; }
+button.yx-tim-cov:hover { box-shadow: inset 0 0 0 var(--yx-border-width) currentColor; }

@@ -440,3 +440,8 @@
 /* Sideways scroll box for hand-built tables (responsive review 30 Sep 2026): the table scrolls, the page never does. */
 .yx-scroll-x { max-width: 100%; overflow-x: auto; scrollbar-width: thin; }
 .yx-scroll-x:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); }
+
+/* Affordance pass (7 Oct 2026): sortable headers and group rows tint on hover. */
+.yx-table__sort { border-radius: var(--yx-radius-control); }
+.yx-table__sort:hover { background: var(--yx-color-bg-subtle); }
+.yx-table__group-toggle:hover { text-decoration: underline; text-underline-offset: var(--yx-space-half); }

@@ -101,6 +101,14 @@ jobs:
       - name: Run apps/web unit tests
         run: npm run test:web
 
+      # Things you can click must look clickable (founder review 7 Oct 2026): builds the yx-ui Storybook and checks a
+      # representative story set (list in packages/yx-ui/scripts/check-affordance.mjs) in light and dark for text controls
+      # with no border or fill, missing pointer / hover / focus ring, colour-only selected states and weak control edges.
+      - name: yx-ui affordance guard
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:affordance --workspace=packages/yx-ui
+
       - name: Build apps/api
         run: npm run build --workspace=apps/api
 

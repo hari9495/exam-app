@@ -84,3 +84,8 @@
 /* Big enough to stay a 24 px target when the chart opens fitted (down to 60 % zoom). */
 .yx-org .yx-org__card .yx-org__toggle { width: var(--yx-space-10); min-width: var(--yx-space-10); height: var(--yx-space-10); bottom: calc(var(--yx-space-10) / -2); }
 .yx-org__litem[data-highlight] { background: var(--yx-color-bg-selected); }
+
+/* A card selects its person on click: hand cursor and a stronger border on hover (7 Oct 2026). */
+.yx-org__card[data-toggle], .yx-org__node > .yx-org__card { cursor: pointer; }
+.yx-org__node > .yx-org__card:hover { border-color: var(--yx-color-border-input); }
+.yx-org__crumb:hover { text-decoration: underline; text-underline-offset: var(--yx-space-half); }

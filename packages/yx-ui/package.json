@@ -30,7 +30,9 @@
     "check:responsive": "node scripts/check-responsive.mjs",
     "test:visual": "storybook build --quiet && playwright test tests/visual.spec.ts",
     "test:visual:update": "storybook build --quiet && playwright test tests/visual.spec.ts --update-snapshots",
-    "test:a11y": "storybook build --quiet && playwright test tests/a11y.spec.ts"
+    "test:a11y": "storybook build --quiet && playwright test tests/a11y.spec.ts",
+    "check:affordance": "node scripts/check-affordance.mjs storybook-static",
+    "test:affordance": "storybook build --quiet && node scripts/check-affordance.mjs storybook-static && node scripts/check-affordance.mjs storybook-static --theme=dark"
   },
   "peerDependencies": {
     "react": ">=18",

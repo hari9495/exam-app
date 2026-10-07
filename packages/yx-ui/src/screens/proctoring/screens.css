@@ -119,3 +119,5 @@
 .yx-prc-danger { color: var(--yx-color-danger-text); }
 .yx-prc-success { color: var(--yx-color-success-text); }
 .yx-prc-big { font-size: var(--yx-text-3xl); margin: 0; }
+
+.yx-prc-slot:hover:not([aria-pressed="true"]), .yx-anl-choice:hover:not([aria-pressed="true"]):not([aria-checked="true"]) { border-color: var(--yx-color-text-muted); background: var(--yx-color-bg-subtle); }

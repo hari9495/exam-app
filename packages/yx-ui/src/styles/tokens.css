@@ -22,6 +22,7 @@
   --yx-slate-100: #E2E8F0;
   --yx-slate-200: #CBD5E1;
   --yx-slate-300: #94A3B8;
+  --yx-slate-400: #7D8CA3; /* control boundary: 3:1 on surface, page, subtle and selected backgrounds (WCAG 1.4.11, 7 Oct 2026) */
   --yx-slate-500: #64748B;
   --yx-slate-550: #5B6778; /* muted text: 4.5:1 on page, subtle and selected backgrounds (a11y fix, 29 Sep 2026) */
   --yx-slate-600: #475569;
@@ -91,7 +92,7 @@
 
   --yx-color-border: var(--yx-slate-100);
   --yx-color-border-strong: var(--yx-slate-200);
-  --yx-color-border-input: var(--yx-slate-300);
+  --yx-color-border-input: var(--yx-slate-400); /* every control boundary (inputs, secondary buttons, chips): 3:1 */
 
   --yx-color-text: var(--yx-slate-900);
   --yx-color-text-secondary: var(--yx-slate-600);
@@ -213,7 +214,7 @@
   --yx-color-icon-tile-lift: var(--yx-slate-100); /* for the few colour icons too dark on dark surfaces (darkTile) */
   --yx-color-border: var(--yx-slate-800);
   --yx-color-border-strong: var(--yx-slate-700);
-  --yx-color-border-input: var(--yx-slate-600);
+  --yx-color-border-input: var(--yx-slate-500); /* 3:1 on every dark surface */
   --yx-color-text: var(--yx-slate-100);
   --yx-color-text-secondary: var(--yx-slate-300);
   --yx-color-text-muted: var(--yx-slate-300);
@@ -245,7 +246,7 @@
   --yx-button-primary-fg: var(--yx-color-text-on-action);
   --yx-button-secondary-bg: var(--yx-color-bg-surface);
   --yx-button-secondary-bg-hover: var(--yx-color-bg-subtle);
-  --yx-button-secondary-border: var(--yx-color-border-strong);
+  --yx-button-secondary-border: var(--yx-color-border-input); /* a text button's border is its boundary: 3:1 (founder review 7 Oct 2026) */
   --yx-button-danger-bg: var(--yx-color-danger-action);
   --yx-input-bg: var(--yx-color-bg-surface);
   --yx-input-border: var(--yx-color-border-input);

@@ -174,10 +174,8 @@ button.yx-m-row, a.yx-m-row { cursor: pointer; }
 .yx-m-card__title { margin: 0; font-weight: var(--yx-weight-semibold); }
 .yx-m-big { font-size: var(--yx-text-2xl); font-weight: var(--yx-weight-semibold); font-variant-numeric: tabular-nums; }
 .yx-m-muted { color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); margin: 0; }
-.yx-m-segment { display: grid; grid-template-columns: 1fr 1fr; gap: var(--yx-space-1); padding: var(--yx-space-1); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-subtle); }
-.yx-m-segment button { min-height: var(--yx-target-min); border: var(--yx-border-width) solid transparent; border-radius: var(--yx-radius-control); background: none; font: inherit; color: var(--yx-color-text-secondary); cursor: pointer; }
-.yx-m-segment button[aria-pressed="true"] { background: var(--yx-color-bg-surface); border-color: var(--yx-color-border); color: var(--yx-color-text); font-weight: var(--yx-weight-medium); }
-.yx-m-segment button:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); }
+/* Phone: the shared Segment (R11) at full width, options sharing the row equally. */
+.yx-segment.yx-m-segment { display: flex; width: 100%; box-sizing: border-box; align-self: stretch; }
 .yx-m-strip { display: flex; gap: var(--yx-space-3); overflow-x: auto; padding-bottom: var(--yx-space-1); }
 .yx-m-strip > * { flex: 0 0 auto; display: grid; justify-items: center; gap: var(--yx-space-1); width: calc(var(--yx-space-16) + var(--yx-space-4)); text-align: center; font-size: var(--yx-text-xs); }
 .yx-m-actions { display: grid; gap: var(--yx-space-2); }
@@ -238,3 +236,6 @@ html:has(.yx-phone) { scroll-padding-bottom: calc(var(--yx-space-16) + var(--yx-
 .yx-set-list__table tr:last-child th { border-bottom: 0; }
 .yx-set-usage { display: flex; align-items: center; flex-wrap: wrap; gap: var(--yx-space-3); }
 .yx-set-usage__bar { inline-size: min(100%, calc(var(--yx-space-16) * 5)); block-size: var(--yx-space-2); }
+
+button.yx-m-row:hover, a.yx-m-row:hover { background: var(--yx-color-bg-subtle); }
+.yx-set-recent a:hover { background: var(--yx-color-bg-subtle); }
