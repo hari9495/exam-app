@@ -1,6 +1,6 @@
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
-import { covers, coversRange, overlaps, Period } from './scope';
+import { covers, coversRange, overlaps, Period, started } from './scope';
 import { ProfileRequestDto } from '../people/profile.dto';
 import { ROLE_TEMPLATES } from './role-templates';
 import { holdsConfidential, grantScopesFor } from '@exam-platform/shared';
@@ -27,6 +27,15 @@ describe('scope periods', () => {
     expect(coversRange(p, '2026-02-01', '2026-09-15')).toBe(false);
     expect(coversRange(p, '2026-09-02', '2027-12-31')).toBe(true);
     expect(coversRange([], '2026-01-01', '2026-01-02')).toBe(false);
+  });
+  it('an open-ended range is covered only by a period that never ends (a change folds forward, P06)', () => {
+    expect(coversRange(p, '2026-09-02', null)).toBe(true);
+    expect(coversRange(p, '2026-02-01', null)).toBe(false);
+    expect(coversRange([['2026-01-01', '2026-03-31']], '2026-02-01', null)).toBe(false);
+  });
+  it('a period that has not started opens nothing yet; a running one keeps its end (YX-SEC-06)', () => {
+    expect(started(p, '2026-05-01')).toEqual([p[0], p[1]]);
+    expect(started(p, '2026-09-01')).toEqual(p);
   });
 });
 

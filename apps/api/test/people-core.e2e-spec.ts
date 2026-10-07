@@ -47,6 +47,7 @@ describe('People core (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10; P02 YX-SEC-04/
     legalEntityId: ids.kf,
     status: 'confirmed',
     reason: 'Joined',
+    overrideReason: 'Joined before go-live',
     joinedOn: joinOld,
     assignment: { locationId: ids.blr, departmentId: ids.qa, designationId: ids.analyst, gradeId: ids.g2, employmentTypeId: ids.perm, managerEmployeeId: null },
     ...body,
@@ -108,7 +109,8 @@ describe('People core (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10; P02 YX-SEC-04/
 
     const profile = async (name: string, keys: string[]) =>
       (await tenantPrisma.forTenant(asA(), (tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name, permissionsJson: JSON.stringify(keys) } }))).id;
-    const hr = await profile('HR Admin', ['employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro']);
+    // retro_override: the people here joined before the retro limit (YX-HIS-12).
+    const hr = await profile('HR Admin', ['employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override']);
     const approver = await profile('HR Approver', ['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.salary.view']);
     const payroll = await profile('Payroll Admin', ['employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage']);
     const manager = await profile('Team Manager', ['org:view', 'request.raise_on_behalf']);
@@ -156,7 +158,10 @@ describe('People core (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10; P02 YX-SEC-04/
       ids.meera = await hire({ givenName: 'Meera', familyName: 'Iyer', workEmail: `meera-${runId}@ppl.test` }, { managerEmployeeId: ids.arjun });
       ids.imran = await hire({ givenName: 'Imran', legalEntityId: ids.tn, workEmail: `imran-${runId}@ppl.test` }, { locationId: ids.hsr, departmentId: ids.prod, managerEmployeeId: ids.lakshmi, costCentres: [{ costCentreId: ids.ccTn, percent: '100' }] });
       const person = (await api('hrA', 'get', `/people/employees/${ids.lakshmi}/person`).expect(200)).body;
-      expect(person).toMatchObject({ givenName: 'Lakshmi', familyName: 'Venkatesan', primaryEmail: email('lakshmiA'), primaryPhone: '+919845012345', status: 'active', loginLinked: true });
+      // The phone is Personal class (P02 §4.4, YX-SEC-07): this HR holds employee.profile.view only. The work email shows.
+      expect(person).toMatchObject({ givenName: 'Lakshmi', familyName: 'Venkatesan', primaryEmail: email('lakshmiA'), primaryPhone: null, status: 'active', loginLinked: true });
+      // Stored in E.164; the person sees it.
+      expect((await api('lakshmiA', 'get', `/people/employees/${ids.lakshmi}/person`).expect(200)).body.primaryPhone).toBe('+919845012345');
       expect(person.roles.map((r: { roleType: string; label: string }) => [r.roleType, r.label])).toEqual([
         ['employee', 'E0001 · Kaveri Foods'],
         ['login', email('lakshmiA')],

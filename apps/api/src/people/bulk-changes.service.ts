@@ -49,13 +49,17 @@ export class BulkChangesService {
     return this.history.reachedIds(tx, c, v, 'employee.change.manage', open.map((e) => e.employeeId));
   }
 
-  private async resolve(tx: Tx, c: CompanyContext, rows: RawRow[], batchReason: string, reach: ReadonlySet<string>): Promise<Item[]> {
+  private async resolve(tx: Tx, c: CompanyContext, v: Viewer, rows: RawRow[], batchReason: string, reach: ReadonlySet<string>): Promise<Item[]> {
     const org = c.organizationId;
     const open = await tx.employment.findMany({ where: { organizationId: org, exitedOn: null }, select: { employeeId: true, employeeCode: true, legalEntityId: true } });
     // A row names only people in scope: a code outside it reads as unknown, so a file cannot probe other entities' codes.
     const subjects = open.filter((e) => reach.has(e.employeeId));
+    // Employee codes are Internal (P02 §4.4): a manager or dotted-line column resolves only among the people the
+    // uploader's HR keys reach today, with one answer for "unknown" and "outside your scope" (YX-SEC-05).
+    const visible = await this.history.reachedIds(tx, c, v, 'employee.profile.view', open.map((e) => e.employeeId));
+    const pickable = open.filter((e) => reach.has(e.employeeId) || visible.has(e.employeeId));
     const entities = await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true, shortName: true } });
-    const byCode = (code: string, entityId?: string) => open.filter((e) => e.employeeCode.toLowerCase() === code.toLowerCase() && (!entityId || e.legalEntityId === entityId));
+    const byCode = (code: string, entityId?: string) => pickable.filter((e) => e.employeeCode.toLowerCase() === code.toLowerCase() && (!entityId || e.legalEntityId === entityId));
     const master = async (model: 'location' | 'department' | 'designation' | 'grade' | 'employmentType', code: string) =>
       (await (tx[model] as unknown as { findFirst(a: unknown): Promise<{ id: string } | null> }).findFirst({ where: { organizationId: org, code: { equals: code, mode: 'insensitive' } }, select: { id: true } }))?.id;
 
@@ -95,7 +99,7 @@ export class BulkChangesService {
         const same = byCode(code, employer);
         const any = byCode(code);
         const hit = same.length === 1 ? same : any;
-        if (hit.length !== 1) problems.push(hit.length ? `Employee code ${code} is used in more than one legal entity.` : `No current employee with the code ${code}.`);
+        if (hit.length !== 1) problems.push(hit.length ? `Employee code ${code} is used in more than one legal entity you manage.` : `No current employee you manage has the code ${code}.`);
         return hit[0]?.employeeId;
       };
       if (r.manager) assignment.managerEmployeeId = r.manager.toLowerCase() === 'none' ? null : personByCode(r.manager);
@@ -150,7 +154,6 @@ export class BulkChangesService {
    */
   private async evaluate(tx: Tx, c: CompanyContext, v: Viewer, items: Item[]) {
     const people = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: items.flatMap((i) => (i.employeeId ? [i.employeeId] : [])) } } });
-    const pay = await this.history.payFor(tx, c, v, people.map((p) => p.id));
     const out = [];
     for (const item of items) {
       const person = people.find((p) => p.id === item.employeeId);
@@ -164,7 +167,7 @@ export class BulkChangesService {
         const { ch, e } = await this.history.createChange(tx, c, v, item.dto);
         const { impact } = await this.history.approveIn(tx, c, v, ch, e, { confirmRebase: true, simulate: true });
         await tx.$executeRaw`RELEASE SAVEPOINT bulk_row`;
-        out.push({ ...base, ok: true, error: null, impact: this.history.changeImpactView(impact, pay.has(e.employeeId)) });
+        out.push({ ...base, ok: true, error: null, impact: await this.history.viewImpact(tx, c, v, e.employeeId, impact) });
       } catch (err) {
         await tx.$executeRaw`ROLLBACK TO SAVEPOINT bulk_row`;
         out.push({ ...base, ok: false, error: message(err), impact: null });
@@ -203,7 +206,7 @@ export class BulkChangesService {
       if (e instanceof CsvProblem) throw new BadRequestException(e.message);
       throw e;
     }
-    return this.submit(ctx, v, async (tx, c) => this.resolve(tx, c, rows, dto.reason.trim(), await this.reachable(tx, c, v)), { source: 'csv', fileName: dto.fileName, reason: dto.reason, dryRun: dto.dryRun === true });
+    return this.submit(ctx, v, async (tx, c) => this.resolve(tx, c, v, rows, dto.reason.trim(), await this.reachable(tx, c, v)), { source: 'csv', fileName: dto.fileName, reason: dto.reason, dryRun: dto.dryRun === true });
   }
 
   /** M01 §3.2: "reassign N reports to …" when a manager leaves or a team moves: a manager change for each. */
@@ -261,8 +264,9 @@ export class BulkChangesService {
 
   private async batchView(tx: Tx, c: CompanyContext, v: Viewer, b: Prisma.EmployeeChangeBatchGetPayload<object>, withChanges: boolean) {
     const changes = await this.changesOf(tx, c, b.id);
-    const pay = await this.history.payFor(tx, c, v, [...new Set(changes.map((x) => x.employeeId))]);
     const people = withChanges ? await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: changes.map((x) => x.employeeId) } } }) : [];
+    // R1 per change date, impacts within scope, pay views recorded (P02 §4.3, YX-SEC-09).
+    const views = withChanges ? await this.history.viewChanges(tx, c, v, changes, 'batch') : [];
     return {
       id: b.id,
       status: b.status,
@@ -277,9 +281,9 @@ export class BulkChangesService {
       touchesPay: changes.some((x) => Boolean((x.payload as { compensation?: unknown }).compensation)),
       ...(withChanges
         ? {
-            changes: changes.map((x) => {
+            changes: views.map((x) => {
               const p = people.find((y) => y.id === x.employeeId);
-              return { ...this.history.changeView(x, pay.has(x.employeeId)), employeeName: p ? displayName(p) : null };
+              return { ...x, employeeName: p ? displayName(p) : null };
             }),
           }
         : {}),
@@ -345,6 +349,11 @@ export class BulkChangesService {
       const key = outcome === 'rejected' ? 'employee.change.approve' : 'employee.change.manage';
       if (outcome === 'rejected' || b.requestedBy !== c.userId) {
         for (const ch of await this.changesOf(tx, c, id)) await this.history.mustReach(tx, c, v, key, ch.employeeId, isoDate(ch.effectiveDate));
+      }
+      // YX-SEC-11: a batch with a change about oneself is decided by someone else, rejection included.
+      if (outcome === 'rejected') {
+        const own = await this.history.ownEmployeeId(tx, c, v);
+        if (own && (await this.changesOf(tx, c, id)).some((ch) => ch.employeeId === own)) throw new ForbiddenException('This batch includes a change about you, so someone else decides it (YX-SEC-11).');
       }
       const now = new Date();
       await tx.employeeChange.updateMany({ where: { organizationId: c.organizationId, batchId: id, status: 'pending' }, data: { status: outcome, decidedBy: c.userId ?? null, decidedAt: now, decisionNote: reason.trim() } });

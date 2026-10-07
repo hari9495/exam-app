@@ -94,10 +94,29 @@ export async function implicitSql(tx: Tx, c: CompanyContext, own: string | null,
 
 async function implicitMultirange(tx: Tx, c: CompanyContext, own: string, emp: Prisma.Sql): Promise<Prisma.Sql> {
   const team = (await managerViewScope(tx, c)) === 'direct_reports' ? 'direct_reports' : 'all_reports';
-  const heads = await tx.department.findMany({ where: { organizationId: c.organizationId, headEmployeeId: own }, select: { id: true } });
+  const heads = await tx.department.findMany({ where: { organizationId: c.organizationId, headEmployeeId: own }, select: { id: true, headSince: true } });
   const parts = [team, 'dotted_line'].map((type) => scopeSql(c, { type, id: null }, emp, own));
-  for (const d of heads) parts.push(scopeSql(c, { type: 'department_subtree', id: d.id }, emp, own));
+  // YX-SEC-04/06: a department head sees the subtree only from the day they became head, never its earlier history.
+  for (const d of heads) parts.push(Prisma.sql`(${scopeSql(c, { type: 'department_subtree', id: d.id }, emp, own)} * datemultirange(daterange(${d.headSince}::date, NULL)))`);
   return Prisma.join(parts, ' + ');
+}
+
+/**
+ * The periods each of `ids` falls inside any of `keys`' explicit grants, in one query (lists of changes decide
+ * pay and later-dated impact rows per change date, P02 §4.3 / R1). Company-wide holders: every date.
+ */
+export async function grantPeriodsFor(tx: Tx, c: CompanyContext, v: Viewer, keys: readonly string[], ids: readonly string[], own: string | null): Promise<Map<string, Period[]>> {
+  const out = new Map<string, Period[]>(ids.map((id) => [id, []]));
+  if (!ids.length) return out;
+  if (keys.some((k) => tenantWide(v, k))) return new Map(ids.map((id) => [id, [['0001-01-01', null]] as Period[]]));
+  const held = keys.filter((k) => (v.scopes.get(k) ?? []).length);
+  if (!held.length) return out;
+  const range = Prisma.join(held.map((k) => grantMultirange(c, v, k, Prisma.sql`x.id`, own)), ' + ');
+  const rows = await tx.$queryRaw<{ id: string; from: string | null; to: string | null }[]>`
+    SELECT x.id::text AS id, lower(r)::text AS "from", (upper(r) - 1)::text AS "to"
+    FROM unnest(${[...ids]}::uuid[]) AS x(id), unnest((${range})::datemultirange) AS r ORDER BY 1, 2 NULLS FIRST`;
+  for (const r of rows) out.get(r.id)!.push([r.from ?? '0001-01-01', r.to]);
+  return out;
 }
 
 /** P02 Q2: what a manager may view, a company setting (starter: the whole reporting subtree). */
@@ -105,14 +124,20 @@ export function managerViewScope(tx: Tx, c: CompanyContext): Promise<string> {
   return settingFor(tx, c, 'access.manager.view_scope', { legalEntityId: '' });
 }
 
+/**
+ * Read access starts when the relation does (P02 YX-SEC-06): a period that begins after `today` (an approved
+ * future transfer into a scope, a future manager) opens nothing yet; a period already running keeps its end.
+ */
+export const started = (periods: readonly Period[], today: string): Period[] => periods.filter(([f]) => f <= today);
+
 export const covers = (periods: readonly Period[], date: string) => periods.some(([f, t]) => f <= date && (t === null || date <= t));
 export const overlaps = (periods: readonly Period[], from: string, to: string | null) => periods.some(([f, t]) => (t === null || from <= t) && (to === null || f <= to));
-/** Does the union of `periods` cover every day of [from, to]? */
-export function coversRange(periods: readonly Period[], from: string, to: string): boolean {
+/** Does the union of `periods` cover every day of [from, to]? `to` null: every day from `from` on. */
+export function coversRange(periods: readonly Period[], from: string, to: string | null): boolean {
   let cursor = from;
   for (const [f, t] of [...periods].sort((a, b) => a[0].localeCompare(b[0]))) {
     if (f > cursor) return false;
-    if (t === null || t >= to) return true;
+    if (t === null || (to !== null && t >= to)) return true;
     if (t >= cursor) cursor = new Date(Date.parse(`${t}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
   }
   return false;

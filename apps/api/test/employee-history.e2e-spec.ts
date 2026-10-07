@@ -34,7 +34,7 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
   const users: Record<string, string> = {};
   const token: Record<string, string> = {};
-  type Who = 'adminA' | 'adminB' | 'hrA' | 'approverA' | 'payrollA' | 'clerkA' | 'divyaA' | 'arjunA' | 'kavyaA' | 'outsiderA';
+  type Who = 'adminA' | 'adminB' | 'hrA' | 'approverA' | 'payrollA' | 'payApproverA' | 'clerkA' | 'divyaA' | 'arjunA' | 'kavyaA' | 'outsiderA';
   const api = (who: Who, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const ids: Record<string, string> = {};
   const asA = () => ({ organizationId: org.A.id, isSuperAdmin: false });
@@ -49,6 +49,8 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
     legalEntityId: ids.kf,
     status: 'confirmed',
     reason: 'Joined',
+    // YX-HIS-12: these people joined before the retro limit (migrated records).
+    overrideReason: 'Joined before go-live',
     assignment: { locationId: ids.blr, departmentId: ids.qa, designationId: ids.analyst, gradeId: ids.g2, employmentTypeId: ids.perm, managerEmployeeId: null },
     ...body,
   });
@@ -107,7 +109,8 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       (await tenantPrisma.forTenant(asA(), (tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name, permissionsJson: JSON.stringify(keys) } }))).id;
     const hr = await profile('HR Admin', ['employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro']);
     const approver = await profile('HR Approver', ['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override']);
-    const payroll = await profile('Payroll Admin', ['employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.salary.view', 'employee.salary.manage']);
+    const payroll = await profile('Payroll Admin', ['employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override', 'employee.salary.view', 'employee.salary.manage']);
+    const payApprover = await profile('Payroll Approver', ['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override', 'employee.salary.view']);
     const clerk = await profile('HR Clerk', ['employee.change.manage']);
     const passwordHash = await argon2.hash(PASSWORD);
     const people: [Who, 'A' | 'B', string, string | null][] = [
@@ -116,6 +119,7 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       ['hrA', 'A', 'panel', hr],
       ['approverA', 'A', 'panel', approver],
       ['payrollA', 'A', 'panel', payroll],
+      ['payApproverA', 'A', 'panel', payApprover],
       ['clerkA', 'A', 'panel', clerk],
       ['divyaA', 'A', 'panel', null],
       ['arjunA', 'A', 'panel', null],
@@ -160,10 +164,13 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
 
   describe('joining (P01 §4.4; YX-ORG-04/08/15/16; R1)', () => {
     it('HR adds people; codes are generated per legal entity; every id is checked against the employer', async () => {
-      const lakshmi = await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Lakshmi', familyName: 'Venkatesan', joinedOn: joinOld, assignment: { ...join({}).assignment, departmentId: ids.ppl } })).expect(201);
+      // YX-HIS-12: a joining date before the retro limit needs the override (the System Admin here) and a reason.
+      await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Early', joinedOn: joinOld })).expect(403);
+      await api('adminA', 'post', '/people/employees').send(join({ givenName: 'Early', joinedOn: joinOld, overrideReason: undefined })).expect(400);
+      const lakshmi = await api('adminA', 'post', '/people/employees').send(join({ givenName: 'Lakshmi', familyName: 'Venkatesan', joinedOn: joinOld, assignment: { ...join({}).assignment, departmentId: ids.ppl } })).expect(201);
       expect(lakshmi.body.employeeCode).toBe('E0001');
       ids.lakshmi = lakshmi.body.id;
-      const divya = await api('hrA', 'post', '/people/employees')
+      const divya = await api('adminA', 'post', '/people/employees')
         .send(
           join({
             givenName: 'Divya',
@@ -183,10 +190,16 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
         .expect(201);
       ids.arjun = arjun.body.id;
       expect(arjun.body.employeeCode).toBe('E0002');
-      ids.kavya = (await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Kavya', joinedOn: joinOld, userId: users.kavyaA, workEmail: `kavyaA-${runId}@hist.test`, assignment: { ...join({}).assignment, managerEmployeeId: ids.lakshmi } })).expect(201)).body.id;
-      ids.ravi = (await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Ravi', joinedOn: joinOld, assignment: { ...join({}).assignment, managerEmployeeId: ids.kavya } })).expect(201)).body.id;
+      // YX-SEC-11: the pay given with the hire waits as a salary revision for someone else to approve.
+      expect((await api('payrollA', 'get', `/people/changes/${arjun.body.payChangeId}`).expect(200)).body).toMatchObject({ status: 'pending', changeType: 'salary_revision', effectiveDate: joinArjun });
+      await markSteppedUp(tenantPrisma, token.payrollA);
+      await api('payrollA', 'post', `/people/changes/${arjun.body.payChangeId}/approve`).send({}).expect(403);
+      await markSteppedUp(tenantPrisma, token.payApproverA);
+      await api('payApproverA', 'post', `/people/changes/${arjun.body.payChangeId}/approve`).send({ confirmRebase: true }).expect(201);
+      ids.kavya = (await api('adminA', 'post', '/people/employees').send(join({ givenName: 'Kavya', joinedOn: joinOld, userId: users.kavyaA, workEmail: `kavyaA-${runId}@hist.test`, assignment: { ...join({}).assignment, managerEmployeeId: ids.lakshmi } })).expect(201)).body.id;
+      ids.ravi = (await api('adminA', 'post', '/people/employees').send(join({ givenName: 'Ravi', joinedOn: joinOld, assignment: { ...join({}).assignment, managerEmployeeId: ids.kavya } })).expect(201)).body.id;
       // The other entity runs its own code series (YX-ORG-16 default: per legal entity).
-      const tn = await api('hrA', 'post', '/people/employees')
+      const tn = await api('adminA', 'post', '/people/employees')
         .send(join({ givenName: 'Imran', legalEntityId: ids.tn, joinedOn: joinOld, assignment: { ...join({}).assignment, locationId: ids.hsr, departmentId: ids.prod, managerEmployeeId: ids.divya, costCentres: [{ costCentreId: ids.ccTn, percent: '100' }] } }))
         .expect(201);
       expect(tn.body.employeeCode).toBe('E0001');
@@ -211,7 +224,7 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: today, userId: users.outsiderA, workEmail: 'someone.else@hist.test' })).expect(400);
       await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: today, userId: users.outsiderA })).expect(400);
       // YX-ORG-09: the manager must be employed on every day managed.
-      await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: addDays(joinArjun, -30), assignment: { ...join({}).assignment, managerEmployeeId: ids.arjun } })).expect(400);
+      await api('adminA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: addDays(joinArjun, -30), assignment: { ...join({}).assignment, managerEmployeeId: ids.arjun } })).expect(400);
       await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: today, assignment: { ...join({}).assignment, costCentres: [{ costCentreId: ids.cc1, percent: '50' }] } })).expect(400);
       await api('hrA', 'post', '/people/employees').send(join({ givenName: 'X', joinedOn: today, isAdmin: true })).expect(400); // not whitelisted
       expect((await auditActions('employee.created')).length).toBe(6);
@@ -230,7 +243,7 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       const divya = (await api('hrA', 'get', `/people/employees/${ids.divya}/as-of`).expect(200)).body;
       expect(divya.assignment.costCentres.map((c: { code: string; percent: string }) => `${c.code} ${c.percent}`).sort()).toEqual(['CC-ENG 60.00', 'CC-FIN 40.00']);
       // YX-SEC-09: someone else's pay viewed is audited; HR without pay access leaves no pay trail.
-      expect((await auditActions('employee.pay.viewed')).map((a) => [a.entityId, a.metadata.what])).toEqual([[ids.arjun, 'as_of']]);
+      expect((await auditActions('employee.pay.viewed')).map((a) => [a.entityId, a.metadata.what])).toEqual([[ids.arjun, 'change'], [ids.arjun, 'change'], [ids.arjun, 'as_of']]);
     });
   });
 
@@ -319,10 +332,12 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       expect(hrView.impact.pay).toBe('hidden');
     });
 
-    it('editing a scheduled change\'s date sends it back for approval and withdraws its rows; a reason alone just saves', async () => {
+    it('editing a scheduled change\'s date sends it back for approval and withdraws its rows; its approved reasons stay (YX-SEC-11)', async () => {
       const in30 = addDays(today, 30);
-      const reworded = await api('hrA', 'put', `/people/changes/${ids.promotion}`).send({ reason: 'Promotion after the review' }).expect(200);
-      expect(reworded.body).toMatchObject({ status: 'scheduled', reason: 'Promotion after the review' });
+      // The approver approved what the record says: rewording an approved change is refused, not saved quietly.
+      const reworded = await api('hrA', 'put', `/people/changes/${ids.promotion}`).send({ reason: 'Promotion after the review' }).expect(409);
+      expect(reworded.body.message).toMatch(/reasons stay as approved/);
+      expect((await api('hrA', 'get', `/people/changes/${ids.promotion}`).expect(200)).body).toMatchObject({ status: 'scheduled', reason: 'Promotion' });
       const moved = await api('hrA', 'put', `/people/changes/${ids.promotion}`).send({ effectiveDate: addDays(today, 40) }).expect(200);
       expect(moved.body).toMatchObject({ status: 'pending', effectiveDate: addDays(today, 40), decidedBy: null });
       expect((await api('hrA', 'get', `/people/employees/${ids.arjun}/as-of?date=${addDays(today, 41)}`).expect(200)).body.assignment.designation.name).toBe('Quality Analyst');
@@ -474,13 +489,15 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       await api('approverA', 'post', `/people/changes/${raised.body.id}/approve`).send({ confirmRebase: true }).expect(201);
       await api('divyaA', 'get', `/people/employees/${ids.arjun}/as-of?date=${addDays(move, -1)}`).expect(200);
       await api('divyaA', 'get', `/people/employees/${ids.arjun}/as-of?date=${move}`).expect(404);
-      await api('kavyaA', 'get', `/people/employees/${ids.arjun}/as-of?date=${move}`).expect(200);
+      // The incoming manager sees nothing until the relation starts, not even the planned assignment (YX-SEC-06).
+      await api('kavyaA', 'get', `/people/employees/${ids.arjun}/as-of?date=${move}`).expect(404);
       await api('kavyaA', 'get', `/people/employees/${ids.arjun}/as-of?date=${today}`).expect(404);
-      // The manager's timeline: current rows and changes inside their period only, never pay.
-      const timeline = (await api('kavyaA', 'get', `/people/employees/${ids.arjun}/history?pay=true`).expect(200)).body;
+      await api('kavyaA', 'get', `/people/employees/${ids.arjun}/history`).expect(404);
+      // The outgoing manager's timeline: current rows and changes inside their period only, never pay.
+      const timeline = (await api('divyaA', 'get', `/people/employees/${ids.arjun}/history?pay=true`).expect(200)).body;
       expect(timeline.compensation).toEqual([]);
-      expect(timeline.assignment.every((r: { supersededAt: string | null; validTo: string | null }) => !r.supersededAt && (r.validTo === null || r.validTo >= move))).toBe(true);
-      expect(timeline.changes.every((c: { effectiveDate: string }) => c.effectiveDate >= move)).toBe(true);
+      expect(timeline.assignment.every((r: { supersededAt: string | null; validFrom: string }) => !r.supersededAt && r.validFrom < move)).toBe(true);
+      expect(timeline.changes.every((c: { effectiveDate: string }) => c.effectiveDate < move)).toBe(true);
       expect(timeline.changes.some((c: { touchesPay: boolean; payload: { compensation?: unknown } }) => c.touchesPay && c.payload.compensation !== undefined)).toBe(false);
     });
 

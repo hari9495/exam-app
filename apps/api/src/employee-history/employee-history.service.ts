@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
-import { buildViewer, covers, coversRange, grantPeriods, has as holds, implicitPeriods, implicitSql, inScopeSql, overlaps, Period, tenantWide, Viewer } from '../access/scope';
+import { buildViewer, covers, coversRange, grantPeriods, grantPeriodsFor, has as holds, implicitPeriods, implicitSql, inScopeSql, overlaps, Period, started, tenantWide, Viewer } from '../access/scope';
+import { NotificationsService } from '../notifications/notifications.service';
 import { audit, CompanyContext, companyContext, mapDbError, Tx } from '../org-structure/org-structure.service';
 import { addDays, asDate, isCurrency, isoDate, todayIst } from '../org-structure/org-validation';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
@@ -90,6 +91,9 @@ type FactRow = AssignmentRow | StatusRow | CompRow;
 type Facts = { assignment: AssignmentValues | null; status: StatusValues | null; compensation: CompensationValues | null };
 
 const ACTIVE = ['scheduled', 'effective'];
+/** The HR desk keys: a change is in view where one of them reaches its subject (P02 §4.3). */
+const DESK_KEYS = ['employee.profile.view', 'employee.change.manage', 'employee.change.approve'] as const;
+const ALL: Period[] = [['0001-01-01', null]];
 const iso = (d: Date | null) => (d ? isoDate(d) : null);
 const has = (v: Viewer, k: Key) => holds(v, k);
 /** M01 §3.10: the job changes a manager may raise for their team (salary only with the pay grant, R1). */
@@ -126,6 +130,7 @@ export class EmployeeHistoryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
+    private readonly notifications?: NotificationsService,
   ) {}
 
   /** The asker's keys with their scopes, resolved as the permissions guard resolves them (P02 YX-SEC-03). */
@@ -138,6 +143,18 @@ export class EmployeeHistoryService {
     if (tenantWide(v, key)) return true;
     if (!has(v, key)) return false;
     return covers(await grantPeriods(tx, c, v, key, employeeId, await this.ownEmployeeId(tx, c, v)), date);
+  }
+
+  /**
+   * Does `key` reach the person on every day from `from` to the end of the employment? A change's values carry
+   * forward until a later change overrides them (P06 fold), so a grant that raises, approves, edits or cancels a
+   * change, or sets pay, must cover all of it: a past-dated change by HR whose scope the person has since left
+   * would otherwise rewrite their present (P02 §4.3, ASVS V4.2.1).
+   */
+  async reachesFrom(tx: Tx, c: CompanyContext, v: Viewer, key: Key, e: Employment, from: string): Promise<boolean> {
+    if (tenantWide(v, key)) return true;
+    if (!has(v, key)) return false;
+    return coversRange(await grantPeriods(tx, c, v, key, e.employeeId, await this.ownEmployeeId(tx, c, v)), from, iso(e.exitedOn));
   }
 
   /** Outside the key's scope: the same answer as an unknown person, so nothing about the record leaks (YX-SEC-05). */
@@ -158,11 +175,6 @@ export class EmployeeHistoryService {
   /** SQL condition: employee `emp` is in `key`'s scope on `date` (lists, YX-SEC-05). */
   async scopeFilter(tx: Tx, c: CompanyContext, v: Viewer, key: Key, emp: Prisma.Sql, date: Prisma.Sql): Promise<Prisma.Sql> {
     return inScopeSql(c, v, key, emp, date, await this.ownEmployeeId(tx, c, v));
-  }
-
-  /** R1 per person: pay on a list row only where the salary grant reaches the person, never while acting for someone. */
-  async payFor(tx: Tx, c: CompanyContext, v: Viewer, ids: string[]): Promise<Set<string>> {
-    return v.actingForOther ? new Set() : this.reachedIds(tx, c, v, 'employee.salary.view', ids);
   }
 
   async run<T>(ctx: TenantContext, fn: (tx: Tx, c: CompanyContext) => Promise<T>): Promise<T> {
@@ -238,11 +250,14 @@ export class EmployeeHistoryService {
     if (!employee) throw new NotFoundException('Employee not found');
     const own = await this.ownEmployeeId(tx, c, v);
     const self = own === employeeId;
-    const hrPeriods = await grantPeriods(tx, c, v, 'employee.profile.view', employeeId, own);
-    const implicit = self ? [] : await implicitPeriods(tx, c, own, employeeId);
+    // YX-SEC-06: a relation that starts in the future (an approved transfer into a scope, a future manager) opens
+    // nothing until it starts.
+    const today = todayIst();
+    const hrPeriods = started(await grantPeriods(tx, c, v, 'employee.profile.view', employeeId, own), today);
+    const implicit = self ? [] : started(await implicitPeriods(tx, c, own, employeeId), today);
     const periods = [...hrPeriods, ...implicit];
     if (!self && periods.length === 0) throw new NotFoundException('Employee not found');
-    const payPeriods: Period[] = v.actingForOther ? [] : self ? [['0001-01-01', null]] : await grantPeriods(tx, c, v, 'employee.salary.view', employeeId, own);
+    const payPeriods: Period[] = v.actingForOther ? [] : self ? ALL : started(await grantPeriods(tx, c, v, 'employee.salary.view', employeeId, own), today);
     return { hr: hrPeriods.length > 0, hrPeriods, full: self || tenantWide(v, 'employee.profile.view'), self, periods, pay: payPeriods.length > 0, payPeriods };
   }
 
@@ -343,6 +358,9 @@ export class EmployeeHistoryService {
       const on = date ?? todayIst();
       // YX-SEC-06: a manager sees only the periods they managed the person.
       if (!this.visibleOn(a, on)) throw new NotFoundException('Employee not found');
+      // What was believed before a correction shows superseded rows, which can tell where the person was outside a
+      // scoped viewer's periods: company-wide HR and the person only, as in history() (YX-SEC-06).
+      if (recordedAt && !a.full) throw new ForbiddenException('Only company-wide HR and the person can see the record as it was recorded before a correction.');
       const e = await this.employmentOf(tx, c, employeeId);
       const rows = await this.rows(tx, c, e.id, { recordedAt: recordedAt ? new Date(recordedAt) : undefined });
       const facts = this.factsOn(rows, on);
@@ -401,7 +419,7 @@ export class EmployeeHistoryService {
         employee: await this.header(tx, c, employeeId, e),
         payAccess: a.pay,
         // An impact speaks about other dates (later changes it recalculated): HR only. Pay on a change only where pay is in scope.
-        changes: changes.map((ch) => ({ ...this.changeView(ch, showPay && covers(a.payPeriods, isoDate(ch.effectiveDate))), ...(a.hr ? {} : { impact: null }) })),
+        changes: changes.map((ch) => ({ ...this.changeView(ch, showPay ? a.payPeriods : [], a.hrPeriods), ...(a.hr ? {} : { impact: null }) })),
         assignment: rows.assignment.filter((r) => inView(r.validFrom, r.validTo)).map((r) => ({ ...common(r), ...this.describe(assignmentValues(r), names) })),
         status: rows.status.filter((r) => inView(r.validFrom, r.validTo)).map((r) => ({ ...common(r), status: r.status })),
         compensation: payRows.map((r) => ({ ...common(r), currency: r.currency, annualCtc: r.annualCtc.toFixed(2) })),
@@ -505,9 +523,14 @@ export class EmployeeHistoryService {
 
   // ================= changes: the only write path (P06 §4.3) =================
 
-  changeView(ch: ChangeRow, pay: boolean) {
+  /**
+   * One change as a viewer may see it: pay values only where `payPeriods` covers the change's date (R1), and of its
+   * impact only the later-dated rows on dates `desk` covers (P02 §4.3; an impact speaks about other dates).
+   */
+  changeView(ch: ChangeRow, payPeriods: readonly Period[], desk: readonly Period[]) {
     const payload = ch.payload as ChangePayload;
     const impact = ch.impact as Record<string, unknown> | null;
+    const pay = covers(payPeriods, isoDate(ch.effectiveDate));
     return {
       id: ch.id,
       employeeId: ch.employeeId,
@@ -528,8 +551,47 @@ export class EmployeeHistoryService {
       touchesPay: Boolean(payload.compensation),
       batchId: ch.batchId,
       payload: pay ? payload : { ...payload, compensation: undefined },
-      impact: impact ? (pay ? impact : redactImpact(impact)) : null,
+      impact: impact ? scopeImpact(impact, desk, payPeriods) : null,
     };
+  }
+
+  /**
+   * Every change list, single change, batch and decision returns through here (P02 §4.3, R1, YX-SEC-09): pay per
+   * change only where employee.salary.view reaches the person on the change's date, impacts limited to the
+   * viewer's HR periods, and pay shown for someone else is recorded (employee.pay.viewed).
+   */
+  async viewChanges(tx: Tx, c: CompanyContext, v: Viewer, rows: ChangeRow[], what: 'change' | 'batch') {
+    const ids = [...new Set(rows.map((r) => r.employeeId))];
+    const { pay, desk, own } = await this.readPeriods(tx, c, v, ids);
+    const seen = new Set<string>();
+    const views = rows.map((r) => {
+      const view = this.changeView(r, pay.get(r.employeeId) ?? [], desk.get(r.employeeId) ?? []);
+      if (r.employeeId !== own && (view.payload.compensation || showsPay(view.impact))) seen.add(r.employeeId);
+      return view;
+    });
+    for (const id of seen) await audit(tx, c, 'employee.pay.viewed', 'employee', id, { what });
+    return views;
+  }
+
+  /**
+   * A freshly computed impact (preview, dry run, rebase confirmation) for this viewer, as changeView scopes a
+   * stored one. Previews run in a transaction that is rolled back, so the pay view is recorded in its own.
+   */
+  async viewImpact(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string, impact: object) {
+    const { pay, desk, own } = await this.readPeriods(tx, c, v, [employeeId]);
+    const out = scopeImpact(impact as Record<string, unknown>, desk.get(employeeId) ?? [], pay.get(employeeId) ?? []);
+    if (employeeId !== own && showsPay(out)) await this.tenantPrisma.forTenant(c, (t) => audit(t, c, 'employee.pay.viewed', 'employee', employeeId, { what: 'impact' }));
+    return out;
+  }
+
+  /** Per person: the started periods of the viewer's salary grant (never while acting for someone) and HR desk keys. */
+  private async readPeriods(tx: Tx, c: CompanyContext, v: Viewer, ids: string[]) {
+    const own = await this.ownEmployeeId(tx, c, v);
+    const today = todayIst();
+    const clip = (m: Map<string, Period[]>) => new Map([...m].map(([k, p]) => [k, started(p, today)] as const));
+    const pay = v.actingForOther ? new Map<string, Period[]>() : clip(await grantPeriodsFor(tx, c, v, ['employee.salary.view'], ids, own));
+    const desk = clip(await grantPeriodsFor(tx, c, v, DESK_KEYS, ids, own));
+    return { pay, desk, own };
   }
 
   async lockEmployment(tx: Tx, c: CompanyContext, employmentId: string) {
@@ -612,9 +674,9 @@ export class EmployeeHistoryService {
     if (p.compensation && (!has(v, 'employee.salary.manage') || v.actingForOther)) throw new ForbiddenException('Changing pay needs employee.salary.manage.');
   }
 
-  /** R1 + P02 §4.3: touching pay needs employee.salary.manage reaching the person on the date. */
-  private async checkPayReach(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string, date: string) {
-    if (v.actingForOther || !(await this.reaches(tx, c, v, 'employee.salary.manage', employeeId, date))) throw new ForbiddenException('Changing pay needs employee.salary.manage for this person.');
+  /** R1 + P02 §4.3: touching pay needs employee.salary.manage reaching the person from the date on. */
+  private async checkPayReach(tx: Tx, c: CompanyContext, v: Viewer, e: Employment, date: string) {
+    if (v.actingForOther || !(await this.reachesFrom(tx, c, v, 'employee.salary.manage', e, date))) throw new ForbiddenException('Changing pay needs employee.salary.manage for this person.');
   }
 
   /**
@@ -787,8 +849,9 @@ export class EmployeeHistoryService {
     const e = await this.openEmployment(tx, c, dto.employeeId);
     await this.lockEmployment(tx, c, e.id);
     // HR within its scope (P02 §4.3), else a manager raising on behalf for their team (YX-SEC-27).
-    if (!(await this.reaches(tx, c, v, 'employee.change.manage', e.employeeId, dto.effectiveDate))) await this.checkOnBehalf(tx, c, v, dto.changeType, e.employeeId);
-    if (payload.compensation) await this.checkPayReach(tx, c, v, e.employeeId, dto.effectiveDate);
+    // The grant covers every day the change will shape, from its date on (P06 fold), not just the date itself.
+    if (!(await this.reachesFrom(tx, c, v, 'employee.change.manage', e, dto.effectiveDate))) await this.checkOnBehalf(tx, c, v, dto.changeType, e.employeeId);
+    if (payload.compensation) await this.checkPayReach(tx, c, v, e, dto.effectiveDate);
     if (dto.effectiveDate < isoDate(e.joinedOn)) throw new BadRequestException('The effective date is before the employee joined.');
     await this.checkReach(tx, c, v, e, dto.effectiveDate, dto.overrideReason);
     await this.checkRefs(tx, c, e, payload);
@@ -817,10 +880,10 @@ export class EmployeeHistoryService {
       // YX-SEC-11: no self-approval, neither by the requester nor by the person the change is about.
       if (ch.requestedBy && ch.requestedBy === c.userId) throw new ForbiddenException('You raised this change, so someone else approves it (YX-SEC-11).');
       if ((await this.ownEmployeeId(tx, c, v)) === ch.employeeId) throw new ForbiddenException('A change about yourself is approved by someone else (YX-SEC-11).');
-      // P02 §4.3: the approval grant reaches the person on the change's date.
-      await this.mustReach(tx, c, v, 'employee.change.approve', ch.employeeId, date);
+      // P02 §4.3: the approval grant reaches the person on every day the change shapes, from its date on.
+      if (!(await this.reachesFrom(tx, c, v, 'employee.change.approve', e, date))) throw new NotFoundException('Employee not found');
       // R1: the approver sees what they approve.
-      if (payload.compensation && (v.actingForOther || !(await this.reaches(tx, c, v, 'employee.salary.view', ch.employeeId, date)))) {
+      if (payload.compensation && (v.actingForOther || !(await this.reachesFrom(tx, c, v, 'employee.salary.view', e, date)))) {
         throw new ForbiddenException('This change includes pay: approving it needs employee.salary.view for this person.');
       }
       // A change approved after its date reaches back from the approval day (YX-HIS-12).
@@ -835,17 +898,13 @@ export class EmployeeHistoryService {
     const tz = await this.timezoneOn(tx, c, e.id, date);
     const effectiveNow = date <= localToday(tz);
     if (!opts.simulate && impact.rebased.length && !opts.confirmRebase) {
-      throw new ConflictException({ statusCode: 409, code: 'REBASE_CONFIRMATION_REQUIRED', message: 'Later changes are recalculated on the new values. Review them and confirm (YX-HIS-06).', impact: this.changeImpactView(impact, (await this.payFor(tx, c, v, [ch.employeeId])).size > 0) });
+      throw new ConflictException({ statusCode: 409, code: 'REBASE_CONFIRMATION_REQUIRED', message: 'Later changes are recalculated on the new values. Review them and confirm (YX-HIS-06).', impact: await this.viewImpact(tx, c, v, ch.employeeId, impact) });
     }
     const updated = await tx.employeeChange.update({
       where: { id: ch.id },
       data: { impact: impact as unknown as Prisma.InputJsonObject, ...(effectiveNow ? { status: 'effective', appliedAt: new Date() } : {}) },
     });
     return { updated, impact, effectiveNow };
-  }
-
-  changeImpactView(impact: object, pay: boolean) {
-    return pay ? impact : redactImpact(impact as Record<string, unknown>);
   }
 
   async timezoneOn(tx: Tx, c: CompanyContext, employmentId: string, date: string): Promise<string> {
@@ -870,7 +929,7 @@ export class EmployeeHistoryService {
     return this.preview(ctx, async (tx, c) => {
       const { ch, e } = await this.createChange(tx, c, v, dto);
       const { impact } = await this.approveIn(tx, c, v, ch, e, { confirmRebase: true, simulate: true });
-      return { reach: reach(dto.effectiveDate, todayIst(), await this.retroLimit(tx, c, e.legalEntityId, todayIst())), impact: this.changeImpactView(impact, (await this.payFor(tx, c, v, [e.employeeId])).size > 0) };
+      return { reach: reach(dto.effectiveDate, todayIst(), await this.retroLimit(tx, c, e.legalEntityId, todayIst())), impact: await this.viewImpact(tx, c, v, e.employeeId, impact) };
     });
   }
 
@@ -878,7 +937,7 @@ export class EmployeeHistoryService {
     return this.run(ctx, async (tx, c) => {
       const { ch } = await this.createChange(tx, c, v, dto);
       await audit(tx, c, 'employee.change.requested', 'employee', ch.employeeId, { changeId: ch.id, changeType: ch.changeType, effectiveDate: dto.effectiveDate, touchesPay: Boolean(dto.payload.compensation) });
-      return this.changeView(ch, (await this.payFor(tx, c, v, [ch.employeeId])).size > 0);
+      return (await this.viewChanges(tx, c, v, [ch], 'change'))[0];
     });
   }
 
@@ -912,10 +971,10 @@ export class EmployeeHistoryService {
         take: 500,
       });
       const people = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: [...new Set(rows.map((r) => r.employeeId))] } } });
-      const pay = await this.payFor(tx, c, v, people.map((p) => p.id));
-      return rows.map((r) => {
-        const p = people.find((x) => x.id === r.employeeId);
-        return { ...this.changeView(r, pay.has(r.employeeId)), employeeName: p ? displayName(p) : null };
+      const views = await this.viewChanges(tx, c, v, rows, 'change');
+      return views.map((view) => {
+        const p = people.find((x) => x.id === view.employeeId);
+        return { ...view, employeeName: p ? displayName(p) : null };
       });
     });
   }
@@ -924,7 +983,7 @@ export class EmployeeHistoryService {
     return this.run(ctx, async (tx, c) => {
       const ch = await this.changeOr404(tx, c, id);
       await this.mustSeeChange(tx, c, v, ch);
-      return this.changeView(ch, (await this.payFor(tx, c, v, [ch.employeeId])).size > 0);
+      return (await this.viewChanges(tx, c, v, [ch], 'change'))[0];
     });
   }
 
@@ -968,7 +1027,7 @@ export class EmployeeHistoryService {
       const e = await this.employmentById(tx, c, ch.employmentId);
       await this.lockEmployment(tx, c, e.id);
       const { impact } = await this.approveIn(tx, c, v, ch, e, { confirmRebase: true, simulate: true });
-      return this.changeImpactView(impact, (await this.payFor(tx, c, v, [ch.employeeId])).size > 0);
+      return this.viewImpact(tx, c, v, ch.employeeId, impact);
     });
   }
 
@@ -983,7 +1042,7 @@ export class EmployeeHistoryService {
       if (e.exitedOn) throw new ConflictException('The employment has ended.');
       const { updated, impact, effectiveNow } = await this.approveIn(tx, c, v, fresh, e, { confirmRebase, note, simulate: false });
       await this.afterApply(tx, c, updated, impact, effectiveNow);
-      return this.changeView(updated, (await this.payFor(tx, c, v, [updated.employeeId])).size > 0);
+      return (await this.viewChanges(tx, c, v, [updated], 'change'))[0];
     });
   }
 
@@ -994,9 +1053,11 @@ export class EmployeeHistoryService {
       await this.notInOpenBatch(tx, c, ch);
       if (ch.requestedBy && ch.requestedBy === c.userId) throw new ForbiddenException('You raised this change: cancel it instead.');
       await this.mustReach(tx, c, v, 'employee.change.approve', ch.employeeId, isoDate(ch.effectiveDate));
+      // YX-SEC-11: a decision about oneself, rejecting included, is someone else's.
+      if ((await this.ownEmployeeId(tx, c, v)) === ch.employeeId) throw new ForbiddenException('A change about yourself is decided by someone else (YX-SEC-11).');
       const updated = await tx.employeeChange.update({ where: { id }, data: { status: 'rejected', decidedBy: c.userId, decidedAt: new Date(), decisionNote: reason.trim() } });
       await audit(tx, c, 'employee.change.rejected', 'employee', ch.employeeId, { changeId: id });
-      return this.changeView(updated, (await this.payFor(tx, c, v, [ch.employeeId])).size > 0);
+      return (await this.viewChanges(tx, c, v, [updated], 'change'))[0];
     });
   }
 
@@ -1014,15 +1075,19 @@ export class EmployeeHistoryService {
       await this.notInOpenBatch(tx, c, fresh);
       const oldDate = isoDate(fresh.effectiveDate);
       const date = dto.effectiveDate ?? oldDate;
-      // P02 §4.3: the editing grant reaches the person on the old and the new date.
-      await this.mustReach(tx, c, v, 'employee.change.manage', fresh.employeeId, oldDate);
-      if (date !== oldDate) await this.mustReach(tx, c, v, 'employee.change.manage', fresh.employeeId, date);
+      // P02 §4.3: the editing grant reaches the person from the earlier of the old and new date on (P06 fold).
+      const from = date < oldDate ? date : oldDate;
+      if (!(await this.reachesFrom(tx, c, v, 'employee.change.manage', e, from))) throw new NotFoundException('Employee not found');
       const payload = dto.payload ? toPayload(dto.payload) : (fresh.payload as ChangePayload);
       const routing = date !== oldDate || (dto.payload !== undefined && JSON.stringify(payload) !== JSON.stringify(fresh.payload));
+      // YX-SEC-11: an approved change keeps the reasons its approver saw; changing them sends it back for approval.
+      if (fresh.status === 'scheduled' && !routing && ((dto.reason && dto.reason.trim() !== fresh.reason) || (dto.overrideReason && dto.overrideReason.trim() !== fresh.overrideReason))) {
+        throw new ConflictException('This change is approved: its reasons stay as approved. Change its date or values to send it back for approval.');
+      }
       // R1: pay already on the change, or put on it, is only touched with pay access reaching the person.
       if ((fresh.payload as ChangePayload).compensation || payload.compensation) {
         if (!has(v, 'employee.salary.manage') || v.actingForOther) throw new ForbiddenException('This change includes pay: editing it needs employee.salary.manage.');
-        await this.checkPayReach(tx, c, v, fresh.employeeId, date);
+        await this.checkPayReach(tx, c, v, e, from);
       }
       if (routing) {
         this.checkPayload(fresh.changeType as ChangeType, payload, v);
@@ -1044,13 +1109,17 @@ export class EmployeeHistoryService {
       // Back to approval: withdraw its rows; later changes fall back onto the values before it.
       if (routing && fresh.status === 'scheduled') await this.rebuild(tx, c, e, oldDate, id);
       await audit(tx, c, 'employee.change.edited', 'employee', ch.employeeId, { changeId: id, backToApproval: routing && fresh.status === 'scheduled', fields: Object.keys(dto) });
-      return this.changeView(updated, (await this.payFor(tx, c, v, [ch.employeeId])).size > 0);
+      return (await this.viewChanges(tx, c, v, [updated], 'change'))[0];
     });
   }
 
-  /** Q7: cancel a pending or scheduled change, with a reason; a scheduled one's rows are withdrawn. */
-  cancel(ctx: TenantContext, v: Viewer, id: string, reason: string, confirmRebase: boolean) {
-    return this.run(ctx, async (tx, c) => {
+  /**
+   * Q7: cancel a pending or scheduled change, with a reason; a scheduled one's rows are withdrawn. Undoing an
+   * approved change is itself a decision (YX-SEC-11): it needs the approval grant too, never by the person it is
+   * about, and whoever raised and approved it is told (P04 bell and email).
+   */
+  async cancel(ctx: TenantContext, v: Viewer, id: string, reason: string, confirmRebase: boolean) {
+    const out = await this.run(ctx, async (tx, c) => {
       const ch = await this.changeOr404(tx, c, id);
       const e = await this.employmentById(tx, c, ch.employmentId);
       await this.lockEmployment(tx, c, e.id);
@@ -1058,11 +1127,15 @@ export class EmployeeHistoryService {
       if (fresh.status !== 'pending' && fresh.status !== 'scheduled') throw new ConflictException(`A ${fresh.status} change cannot be cancelled; raise a correction instead.`);
       await this.notInOpenBatch(tx, c, fresh);
       // HR within its scope (P02 §4.3); a manager raising on behalf withdraws only their own request, before it is decided (YX-SEC-27).
-      const desk = await this.reaches(tx, c, v, 'employee.change.manage', fresh.employeeId, isoDate(fresh.effectiveDate));
+      const desk = await this.reachesFrom(tx, c, v, 'employee.change.manage', e, isoDate(fresh.effectiveDate));
       if (!desk && (fresh.requestedBy !== c.userId || fresh.status !== 'pending')) throw new NotFoundException('Change not found');
+      if (fresh.status === 'scheduled') {
+        if (!(await this.reachesFrom(tx, c, v, 'employee.change.approve', e, isoDate(fresh.effectiveDate)))) throw new ForbiddenException('This change is approved: cancelling it needs employee.change.approve for this person (YX-SEC-11).');
+        if ((await this.ownEmployeeId(tx, c, v)) === fresh.employeeId) throw new ForbiddenException('A change about yourself is cancelled by someone else (YX-SEC-11).');
+      }
       if ((fresh.payload as ChangePayload).compensation) {
         if (!has(v, 'employee.salary.manage') || v.actingForOther) throw new ForbiddenException('This change includes pay: cancelling it needs employee.salary.manage.');
-        await this.checkPayReach(tx, c, v, fresh.employeeId, isoDate(fresh.effectiveDate));
+        await this.checkPayReach(tx, c, v, e, isoDate(fresh.effectiveDate));
       }
       const updated = await tx.employeeChange.update({ where: { id }, data: { status: 'cancelled', decisionNote: reason.trim(), decidedBy: c.userId, decidedAt: new Date() } });
       if (fresh.status === 'scheduled') {
@@ -1077,29 +1150,40 @@ export class EmployeeHistoryService {
           throw new ConflictException({ statusCode: 409, code: 'REBASE_CONFIRMATION_REQUIRED', message: 'Later changes are recalculated without this one. Confirm (YX-HIS-06).', rebased: changed.map((l) => ({ changeId: l.id, changeType: l.changeType, effectiveDate: isoDate(l.effectiveDate) })) });
         }
       }
-      // ponytail: approvers are told through the audit trail until the P04 notification engine lands.
       await audit(tx, c, 'employee.change.cancelled', 'employee', ch.employeeId, { changeId: id, wasStatus: fresh.status, reason: reason.trim() });
-      return this.changeView(updated, (await this.payFor(tx, c, v, [ch.employeeId])).size > 0);
+      const person = await tx.employee.findFirstOrThrow({ where: { id: ch.employeeId, organizationId: c.organizationId } });
+      return { view: (await this.viewChanges(tx, c, v, [updated], 'change'))[0], tell: [fresh.requestedBy, fresh.decidedBy].filter((x): x is string => Boolean(x)), who: displayName(person), userId: c.userId };
     });
+    // P06 Q7: whoever raised and approved the change learns it will not happen (bell and email, best effort, after commit).
+    if (out.userId && out.tell.length) {
+      await this.notifications
+        ?.notify(ctx, out.userId, out.tell, 'employee.change.cancelled', { entityType: 'employee_change', entityId: id, contextText: `${out.who} · ${label(out.view.changeType as ChangeType)} on ${out.view.effectiveDate} cancelled`, linkPath: '/yx/people/changes' })
+        .catch((err: unknown) => this.logger.error(err));
+    }
+    return out.view;
   }
 
   // ================= hiring an employee: the join change (P01 §4.4, P06 §8) =================
 
   /**
    * A new employee, their employment and its first dated rows, written by a join change that takes effect
-   * on the joining date. Hiring approvals belong to onboarding (M01 wave 4); the join is applied directly
-   * by HR and audited.
+   * on the joining date. Hiring approvals belong to onboarding (M01 wave 4); the job facts of the join are
+   * applied directly by HR and audited, a past joining date under the same retro rules as any change
+   * (YX-HIS-12). Pay never skips maker-checker (YX-SEC-11, R1): pay given with the hire is raised as a pending
+   * salary revision from the joining date, which someone else approves.
    */
   createEmployee(ctx: TenantContext, v: Viewer, dto: EmployeeCreateDto) {
-    const payload = toPayload({ assignment: dto.assignment, status: dto.status, compensation: dto.compensation });
+    const payload = toPayload({ assignment: dto.assignment, status: dto.status });
     this.checkPayload('join', payload, v);
+    const pay = dto.compensation ? toPayload({ compensation: dto.compensation }) : null;
+    if (pay) this.checkPayload('salary_revision', pay, v);
     return this.run(ctx, async (tx, c) => {
       const entity = await tx.legalEntity.findFirst({ where: { id: dto.legalEntityId, organizationId: c.organizationId } });
       if (!entity) throw new BadRequestException('No such legal entity in this company.');
       if (entity.archivedAt) throw new BadRequestException('That legal entity is archived.');
       // P02 §4.3: HR hires only into its scope; pay on the join needs the salary grant there too (R1).
       await this.mustHireInto(tx, c, v, 'employee.change.manage', entity.id, dto.assignment);
-      if (payload.compensation) await this.mustHireInto(tx, c, v, 'employee.salary.manage', entity.id, dto.assignment);
+      if (pay) await this.mustHireInto(tx, c, v, 'employee.salary.manage', entity.id, dto.assignment);
       // The login gives its holder the person's own view, pay included (P01 §4.5).
       if (dto.userId) await checkLoginLink(tx, c, dto.userId, dto.workEmail ?? null);
       // P01 §4.5a: the person behind the record (YX-ORG-26/27).
@@ -1125,6 +1209,8 @@ export class EmployeeHistoryService {
       const e = await tx.employment.create({
         data: { organizationId: c.organizationId, employeeId: person.id, legalEntityId: entity.id, employeeCode, codeScopeKey, joinedOn: asDate(dto.joinedOn), createdBy: c.userId },
       });
+      // YX-HIS-12: a joining date in the past needs employee.change.retro, before the retro limit the override and a reason.
+      await this.checkReach(tx, c, v, e, dto.joinedOn, dto.overrideReason);
       await this.checkRefs(tx, c, e, payload);
       await addRole(tx, c, personId, 'employee', { table: 'employments', id: e.id }, e.joinedOn);
       if (dto.userId) await addRole(tx, c, personId, 'login', { table: 'users', id: dto.userId }, e.joinedOn);
@@ -1140,6 +1226,7 @@ export class EmployeeHistoryService {
           status: 'scheduled',
           payload: payload as Prisma.InputJsonObject,
           reason: dto.reason.trim(),
+          overrideReason: dto.overrideReason?.trim() ?? null,
           requestedBy: c.userId,
           decidedBy: c.userId,
           decidedAt: new Date(),
@@ -1148,9 +1235,26 @@ export class EmployeeHistoryService {
       await this.rebuild(tx, c, e, dto.joinedOn, join.id);
       const effectiveNow = dto.joinedOn <= localToday(await this.timezoneOn(tx, c, e.id, dto.joinedOn));
       if (effectiveNow) await tx.employeeChange.update({ where: { id: join.id }, data: { status: 'effective', appliedAt: new Date() } });
-      await audit(tx, c, 'employee.created', 'employee', person.id, { employmentId: e.id, legalEntityId: entity.id, employeeCode, joinedOn: dto.joinedOn, changeId: join.id, withPay: Boolean(payload.compensation) });
+      await audit(tx, c, 'employee.created', 'employee', person.id, { employmentId: e.id, legalEntityId: entity.id, employeeCode, joinedOn: dto.joinedOn, changeId: join.id, withPay: false });
       if (effectiveNow) await audit(tx, c, 'employee.change.effective', 'employee', person.id, { changeId: join.id, changeType: 'join', effectiveDate: dto.joinedOn });
-      return { id: person.id, employmentId: e.id, employeeCode, changeId: join.id };
+      const payChange = pay
+        ? await tx.employeeChange.create({
+            data: {
+              organizationId: c.organizationId,
+              employeeId: person.id,
+              employmentId: e.id,
+              changeType: 'salary_revision',
+              effectiveDate: asDate(dto.joinedOn),
+              status: 'pending',
+              payload: pay as Prisma.InputJsonObject,
+              reason: dto.reason.trim(),
+              overrideReason: dto.overrideReason?.trim() ?? null,
+              requestedBy: c.userId,
+            },
+          })
+        : null;
+      if (payChange) await audit(tx, c, 'employee.change.requested', 'employee', person.id, { changeId: payChange.id, changeType: 'salary_revision', effectiveDate: dto.joinedOn, touchesPay: true });
+      return { id: person.id, employmentId: e.id, employeeCode, changeId: join.id, payChangeId: payChange?.id ?? null };
     });
   }
 
@@ -1220,8 +1324,21 @@ function toPayload(p: { assignment?: object; status?: string; compensation?: obj
   return JSON.parse(JSON.stringify(p)) as ChangePayload;
 }
 
+/**
+ * An impact for a viewer (P02 §4.3, R1): pay values only on dates `pay` covers (else 'hidden'), and the later
+ * changes it rebased only on dates `desk` covers, so a preview is no window onto periods outside one's scope.
+ */
+export function scopeImpact(impact: Record<string, unknown>, desk: readonly Period[], pay: readonly Period[]): Record<string, unknown> {
+  const strip = (x: Record<string, unknown>) => (covers(pay, String(x.effectiveDate)) ? x : { ...x, pay: Array.isArray(x.pay) && x.pay.length ? 'hidden' : [] });
+  const rebased = Array.isArray(impact.rebased) ? (impact.rebased as Record<string, unknown>[]).filter((r) => covers(desk, String(r.effectiveDate))).map(strip) : [];
+  return { ...strip(impact), rebased };
+}
+
 /** R1: an impact without pay values. */
-export function redactImpact(impact: Record<string, unknown>): Record<string, unknown> {
-  const strip = (x: Record<string, unknown>) => ({ ...x, pay: Array.isArray(x.pay) && x.pay.length ? 'hidden' : [] });
-  return { ...strip(impact), rebased: Array.isArray(impact.rebased) ? (impact.rebased as Record<string, unknown>[]).map(strip) : [] };
+export const redactImpact = (impact: Record<string, unknown>) => scopeImpact(impact, ALL, []);
+
+/** Does this (scoped) impact show any pay value? */
+function showsPay(impact: Record<string, unknown> | null): boolean {
+  const any = (x: Record<string, unknown>) => Array.isArray(x.pay) && x.pay.length > 0;
+  return Boolean(impact && (any(impact) || ((impact.rebased as Record<string, unknown>[] | undefined) ?? []).some(any)));
 }

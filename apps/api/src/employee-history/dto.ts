@@ -256,6 +256,13 @@ export class EmployeeCreateDto {
   @MinLength(3)
   @MaxLength(1000)
   reason!: string;
+
+  /** YX-HIS-12: a joining date before the retro limit needs a reason. */
+  @IsOptional()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(1000)
+  overrideReason?: string;
 }
 
 export class AsOfQueryDto {
