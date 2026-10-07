@@ -47,13 +47,18 @@ const SAFETY = 'YukthiX will never ask for your password or a sign-in code.';
 const FONT = "'IBM Plex Sans', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 const MONO = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
+// The card is 600 px wide; on any screen too narrow for it plus a 12 px gutter each side (a phone,
+// a 600 px preview pane) it keeps that gutter instead of touching the edges.
+const CARD_WIDTH = 600;
+const CARD_GUTTER = 12;
+
 // Design system §3: Azure 500 primary, slate neutrals; dark-mode tokens for clients that honour
 // prefers-color-scheme (Apple Mail, Outlook for Mac/iOS, some webmail).
 const STYLE = `
   :root { color-scheme: light dark; supported-color-schemes: light dark; }
   .yx-code-digits span { margin-left: 0.4em; }
-  @media only screen and (max-width: 480px) {
-    .yx-card { margin: 0 12px !important; width: auto !important; }
+  @media only screen and (max-width: ${CARD_WIDTH + 2 * CARD_GUTTER - 1}px) {
+    .yx-card { margin: 0 ${CARD_GUTTER}px !important; width: auto !important; }
   }
   @media (prefers-color-scheme: dark) {
     body, .yx-page, div[role="article"] { background-color: #0B1220 !important; }
@@ -129,7 +134,7 @@ export async function renderAccountEmail(input: AccountEmailInput): Promise<Rend
     <mj-raw><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"></mj-raw>
     <mj-style>${STYLE}</mj-style>
   </mj-head>
-  <mj-body background-color="#F7F8FA" width="600px" css-class="yx-page">
+  <mj-body background-color="#F7F8FA" width="${CARD_WIDTH}px" css-class="yx-page">
     <mj-section padding="32px 24px 16px">
       <mj-column>
         <mj-text css-class="yx-ink" padding="0" font-size="22px" line-height="28px" font-weight="600" letter-spacing="-0.01em">Yukthi<span class="yx-x" style="color:#3B5FE3">X</span></mj-text>

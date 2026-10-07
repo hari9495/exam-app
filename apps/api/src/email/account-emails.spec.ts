@@ -29,6 +29,12 @@ function expectSafe(mail: { html: string; text: string }) {
 }
 
 describe('YukthiX account emails', () => {
+  it('the card keeps a 12 px gutter on any screen narrower than 600 px plus the gutters', async () => {
+    const { html } = await codeEmail({ to: TO, code: '532112', purpose: 'sign_in', minutes: 5 });
+    expect(html).toMatch(/@media only screen and \(max-width: 623px\) \{\s*\.yx-card \{ margin: 0 12px !important; width: auto !important; \}/);
+    expect(html).toMatch(/class="yx-card"[^>]*max-width:600px/);
+  });
+
   it('sign-in code: code in the subject, spaced in a box, the company named, no links', async () => {
     const mail = await codeEmail({ to: TO, code: '532112', purpose: 'sign_in', company: EVIL, minutes: 5 });
     expect(mail.subject).toBe('532112 is your YukthiX sign-in code');
