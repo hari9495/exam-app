@@ -37,5 +37,7 @@
 .yx-auth__fieldset > legend { padding: 0; margin-bottom: var(--yx-space-2); font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); color: var(--yx-color-text); }
 .yx-auth__fieldset > p { margin: 0; }
 .yx-auth__save { padding-top: var(--yx-space-4); border-top: var(--yx-border-width) solid var(--yx-color-border); }
-.yx-auth__home { display: inline-flex; align-items: center; color: inherit; text-decoration: none; }
+.yx-workspace__home { display: inline-flex; align-items: center; gap: var(--yx-space-3); min-width: 0; color: inherit; text-decoration: none; }
+.yx-workspace__company { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-secondary); }
+@media (max-width: 479px) { .yx-workspace__company { display: none; } }
 @media (max-width: 480px) { .yx-auth__item { flex-wrap: wrap; } }

@@ -311,8 +311,22 @@ describe('/yx layout', () => {
     (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'recruiter', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
     route({ 'GET /auth/mfa': MFA });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    const nav = screen.getByRole('navigation', { name: 'Security' });
+    const nav = screen.getByRole('navigation', { name: 'Menu' });
     expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['My security']);
+  });
+
+  it('offers the hiring app only to people with exam/ATS permissions', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'recruiter', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
+    route({ 'GET /auth/mfa': MFA, 'GET /rbac/me/permissions': ['exam:manage'] });
+    const { unmount } = wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    expect(await screen.findByRole('link', { name: 'Hiring and assessments' })).toHaveAttribute('href', '/v2/today');
+    unmount();
+    (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
+    route({ 'GET /auth/mfa': MFA, 'GET /rbac/me/permissions': ['employee.profile.view'] });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    await screen.findByRole('link', { name: 'Directory' });
+    expect(screen.queryByRole('link', { name: /Hiring/ })).toBeNull();
+    expect(screen.queryAllByRole('link').filter((a) => a.getAttribute('href')?.startsWith('/v2'))).toEqual([]);
   });
 
   it('tells an admin past the grace period to set up a second step', async () => {

@@ -451,7 +451,9 @@ export function PanelLink({ href, active, icon, count, children, className, ...r
 /* ------------------------------------------------------------------ TopBar */
 
 export interface TopBarProps {
-  /** Opens the command palette. */
+  /** Before the search, e.g. the logo and company on pages without a command palette. */
+  start?: ReactNode;
+  /** Opens the command palette. The search button shows only with it. */
   onSearch?: () => void;
   searchText?: string;
   /** Shortcut hint; "⌘ K" on Mac. */
@@ -468,6 +470,7 @@ export interface TopBarProps {
 }
 
 export function TopBar({
+  start,
   onSearch,
   searchText = 'Search people, requests, actions',
   shortcut = 'Ctrl K',
@@ -481,14 +484,17 @@ export function TopBar({
   return (
     <header className="yx-topbar">
       {shell && <IconButton icon={MenuIcon} label="Open navigation" className="yx-topbar__menu" onClick={shell.openNav} />}
+      {start}
       {/* Below 600 px the search collapses to its icon (the label stays as the accessible name). */}
-      <button type="button" className="yx-topbar__search" onClick={onSearch} aria-haspopup="dialog" aria-label={searchText}>
-        <Icon icon={Search} />
-        <span className="yx-topbar__search-text" aria-hidden="true">{searchText}</span>
-        <span className="yx-topbar__kbd">
-          <Kbd>{shortcut}</Kbd>
-        </span>
-      </button>
+      {onSearch && (
+        <button type="button" className="yx-topbar__search" onClick={onSearch} aria-haspopup="dialog" aria-label={searchText}>
+          <Icon icon={Search} />
+          <span className="yx-topbar__search-text" aria-hidden="true">{searchText}</span>
+          <span className="yx-topbar__kbd">
+            <Kbd>{shortcut}</Kbd>
+          </span>
+        </button>
+      )}
       <div className="yx-topbar__end">
         {entity && <div className="yx-topbar__entity">{entity}</div>}
         {/* Ask AI sits in the bar with the other tools, never floating over the page (R8). */}

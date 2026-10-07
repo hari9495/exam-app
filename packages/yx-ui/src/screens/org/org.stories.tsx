@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { SecurityShell, type SecurityShellLink } from '../auth/shell';
+import { WorkspaceShell, type WorkspaceLink } from '../auth/shell';
 import { LegalEntitiesScreen } from './entities';
 import { LocationsScreen } from './locations';
 import { StructureScreen } from './structure';
@@ -11,19 +11,19 @@ export default meta;
 type S = StoryObj;
 
 const wait = (ms = 600) => new Promise<void>((r) => setTimeout(r, ms));
-const LINKS: SecurityShellLink[] = [
-  { id: 'me', label: 'My security', href: '#me', group: 'Security' },
+const LINKS: WorkspaceLink[] = [
   { id: 'settings', label: 'Security settings', href: '#settings', group: 'Security' },
+  { id: 'me', label: 'My security', href: '#me', group: 'Me' },
   { id: 'entities', label: 'Legal entities', href: '#entities', group: 'Organisation' },
   { id: 'locations', label: 'Locations', href: '#locations', group: 'Organisation' },
   { id: 'structure', label: 'Structure', href: '#structure', group: 'Organisation' },
   { id: 'company-rules', label: 'Company rules', href: '#rules', group: 'Organisation' },
   { id: 'access-settings', label: 'Access and privacy', href: '#privacy', group: 'Access' },
 ];
-const Frame = ({ active, children }: { active: SecurityShellLink['id']; children: React.ReactNode }) => (
-  <SecurityShell title="Settings" active={active} links={LINKS} homeHref="#home" profileHref="#profile" name="Arjun Kulkarni" email="arjun.k@kaverifoods.in" onSignOut={() => {}}>
+const Frame = ({ active, children }: { active: WorkspaceLink['id']; children: React.ReactNode }) => (
+  <WorkspaceShell active={active} links={LINKS} company="Kaveri Foods Pvt Ltd" profileHref="#profile" name="Arjun Kulkarni" email="arjun.k@kaverifoods.in" onSignOut={() => {}}>
     {children}
-  </SecurityShell>
+  </WorkspaceShell>
 );
 
 export const LegalEntities: S = {

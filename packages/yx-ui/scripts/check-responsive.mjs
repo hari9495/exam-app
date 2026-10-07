@@ -15,6 +15,8 @@ const WIDTHS = [
   { name: 'tablet', width: 768, height: 1024 },
   { name: 'phone', width: 390, height: 844 },
 ];
+// WIDTHS=1440,1024,768,375 checks just those widths (height 900).
+if (process.env.WIDTHS) WIDTHS.splice(0, WIDTHS.length, ...process.env.WIDTHS.split(',').map((w) => ({ name: `w${w}`, width: Number(w), height: 900 })));
 const WORKERS = Number(process.env.WORKERS ?? 6);
 const OUT = 'test-results/responsive.jsonl';
 

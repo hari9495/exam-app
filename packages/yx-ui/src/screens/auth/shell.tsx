@@ -1,25 +1,29 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { Activity, BookUser, Building2, CalendarClock, ClipboardCheck, Eye, FileStack, GitFork, History, House, IdCard, KeyRound, ListChecks, LockKeyhole, MapPin, MessageSquare, Network, Settings, ShieldCheck, UserRound, Users } from 'lucide-react';
+import { Activity, BookUser, Briefcase, Building2, CalendarClock, ClipboardCheck, Eye, FileStack, GitFork, History, IdCard, KeyRound, ListChecks, LockKeyhole, MapPin, MessageSquare, Network, Settings, ShieldCheck, UserRound, Users } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
-import { AppShell, MobileTabBar, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, type DensityChoice, type ThemeChoice } from '../../components/shell';
+import type { IconComponent } from '../../components/foundations';
+import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type SecurityPage = 'me' | 'activity' | 'settings' | 'sms' | 'entities' | 'locations' | 'structure' | 'directory' | 'org-chart' | 'team' | 'job-history' | 'job-changes' | 'probation' | 'bulk-changes' | 'profile' | 'profile-requests' | 'access' | 'privacy' | 'company-rules' | 'access-settings';
+export type WorkspacePage = 'me' | 'activity' | 'settings' | 'sms' | 'entities' | 'locations' | 'structure' | 'directory' | 'org-chart' | 'team' | 'job-history' | 'job-changes' | 'probation' | 'bulk-changes' | 'profile' | 'profile-requests' | 'access' | 'privacy' | 'company-rules' | 'access-settings';
+/** Sidebar groups, in this order. */
+export type WorkspaceGroup = 'People' | 'Organisation' | 'Access' | 'Security' | 'Me';
+const GROUPS: WorkspaceGroup[] = ['People', 'Organisation', 'Access', 'Security', 'Me'];
 
-export interface SecurityShellLink {
-  id: SecurityPage;
+export interface WorkspaceLink {
+  id: WorkspacePage;
   label: string;
   href: string;
-  /** Panel group heading, e.g. Organisation; links without one come first. */
-  group?: string;
+  group: WorkspaceGroup;
 }
 
-export interface SecurityShellProps {
-  active: SecurityPage;
+export interface WorkspaceShellProps {
+  active: WorkspacePage;
   /** Only the pages this person may open. */
-  links: SecurityShellLink[];
-  homeHref: string;
-  /** Panel and rail name (default Security). */
-  title?: string;
+  links: WorkspaceLink[];
+  /** Company shown in the top bar. */
+  company?: string;
+  /** The hiring and assessment app, only for people who hold its permissions. */
+  hiringHref?: string;
   /** Profile and notification preferences. */
   profileHref: string;
   name: string;
@@ -30,11 +34,16 @@ export interface SecurityShellProps {
   children: ReactNode;
 }
 
-const ICONS = { me: ShieldCheck, activity: Activity, settings: Settings, sms: MessageSquare, entities: Building2, locations: MapPin, structure: Network, directory: BookUser, 'org-chart': GitFork, team: Users, 'job-history': History, 'job-changes': CalendarClock, probation: ClipboardCheck, 'bulk-changes': FileStack, profile: UserRound, 'profile-requests': IdCard, access: KeyRound, privacy: Eye, 'company-rules': ListChecks, 'access-settings': LockKeyhole } as const;
+const ICONS: Record<WorkspacePage, IconComponent> = { me: ShieldCheck, activity: Activity, settings: Settings, sms: MessageSquare, entities: Building2, locations: MapPin, structure: Network, directory: BookUser, 'org-chart': GitFork, team: Users, 'job-history': History, 'job-changes': CalendarClock, probation: ClipboardCheck, 'bulk-changes': FileStack, profile: UserRound, 'profile-requests': IdCard, access: KeyRound, privacy: Eye, 'company-rules': ListChecks, 'access-settings': LockKeyhole };
+const GROUP_ICONS: Record<WorkspaceGroup, IconComponent> = { People: Users, Organisation: Building2, Access: KeyRound, Security: ShieldCheck, Me: UserRound };
 
-/** App frame for the security pages: rail, "Security" panel, profile menu; bottom tabs on phones. */
-export function SecurityShell({ active, links, homeHref, title = 'Security', profileHref, name, email, onSignOut, onNavigate, children }: SecurityShellProps) {
-  const groups = [...new Set(links.map((l) => l.group))];
+/**
+ * Product frame for the YukthiX workspace pages: rail with one area per group, a grouped side panel (all groups, so the
+ * menu sheet on tablets and phones reaches every page), top bar with the company and the account menu.
+ */
+export function WorkspaceShell({ active, links, company, hiringHref, profileHref, name, email, onSignOut, onNavigate, children }: WorkspaceShellProps) {
+  const groups = GROUPS.filter((g) => links.some((l) => l.group === g));
+  const activeGroup = links.find((l) => l.id === active)?.group;
   const [theme, setTheme] = useState<ThemeChoice>('light');
   const [density, setDensity] = useState<DensityChoice>('comfortable');
   useEffect(() => {
@@ -48,22 +57,18 @@ export function SecurityShell({ active, links, homeHref, title = 'Security', pro
     e.preventDefault();
     onNavigate(href);
   };
+  const rail: RailItem[] = [
+    ...groups.map((g) => ({ id: g, label: g, short: g === 'Organisation' ? 'Org' : undefined, icon: GROUP_ICONS[g], href: links.find((l) => l.group === g)!.href })),
+    ...(hiringHref ? [{ id: 'hiring', label: 'Hiring', icon: Briefcase, href: hiringHref }] : []),
+  ];
+  const home = links[0]?.href ?? profileHref;
   return (
     <AppShell
-      rail={
-        <SideRail
-          items={[
-            { id: 'home', label: 'Home', icon: House, href: homeHref },
-            { id: 'security', label: title, icon: title === 'Security' ? ShieldCheck : Settings, href: links[0]?.href },
-          ]}
-          activeId="security"
-          logo={<Monogram />}
-        />
-      }
+      rail={<SideRail items={rail} activeId={activeGroup} logo={<Monogram />} />}
       panel={
-        <SidePanel title={title}>
+        <SidePanel title="Menu">
           {groups.map((group) => (
-            <PanelGroup key={group ?? ''} label={group}>
+            <PanelGroup key={group} label={group}>
               {links
                 .filter((l) => l.group === group)
                 .map((l) => (
@@ -73,14 +78,24 @@ export function SecurityShell({ active, links, homeHref, title = 'Security', pro
                 ))}
             </PanelGroup>
           ))}
+          {hiringHref && (
+            <PanelGroup label="Other apps">
+              <PanelLink href={hiringHref} icon={Briefcase}>
+                Hiring and assessments
+              </PanelLink>
+            </PanelGroup>
+          )}
         </SidePanel>
       }
       topBar={
-        <header className="yx-topbar">
-          <a href={homeHref} className="yx-auth__home" onClick={go(homeHref)}>
-            <Logo size="md" />
-          </a>
-          <div className="yx-topbar__end">
+        <TopBar
+          start={
+            <a href={home} className="yx-workspace__home" onClick={go(home)}>
+              <Logo size="md" />
+              {company && <span className="yx-workspace__company">{company}</span>}
+            </a>
+          }
+          profile={
             <ProfileMenu
               name={name}
               email={email}
@@ -92,13 +107,8 @@ export function SecurityShell({ active, links, homeHref, title = 'Security', pro
               density={density}
               onDensityChange={setDensity}
             />
-          </div>
-        </header>
-      }
-      mobileTabBar={
-        links.length > 1 ? (
-          <MobileTabBar items={links.map((l) => ({ id: l.id, label: l.label, icon: ICONS[l.id], href: l.href }))} activeId={active} />
-        ) : undefined
+          }
+        />
       }
     >
       {children}

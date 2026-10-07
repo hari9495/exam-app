@@ -5,5 +5,5 @@ export { MfaChallengeScreen, MfaEnrolScreen, StepUpDialog, type MfaChallengeScre
 export { MeSecurityScreen, type HistoryFilter, type MeSecurityScreenProps } from './me-security';
 export { LoginActivityScreen, NO_FILTERS, FAILED_SPIKE_AT, type LoginActivityFilters, type LoginActivityScreenProps } from './login-activity';
 export { SecuritySettingsScreen, SESSION_DEFAULTS, policyChanges, policyErrors, type SecuritySettingsScreenProps } from './security-settings';
-export { SecurityShell, type SecurityPage, type SecurityShellLink, type SecurityShellProps } from './shell';
+export { WorkspaceShell, type WorkspaceGroup, type WorkspaceLink, type WorkspacePage, type WorkspaceShellProps } from './shell';
 export { deviceLabel, errorText } from './kit';

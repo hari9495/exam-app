@@ -57,8 +57,8 @@ describe('/yx layout: organisation pages follow the grants, not the role', () =>
     (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
     route({ 'GET /auth/mfa': { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' }, [`GET ${PERMS_PATH}`]: ['org.structure.view', 'pay.range.view'] });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    const nav = await screen.findByRole('navigation', { name: 'Settings' });
-    await waitFor(() => expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['My security', 'Legal entities', 'Locations', 'Structure', 'Company rules', 'Access and privacy']));
+    const nav = await screen.findByRole('navigation', { name: 'Menu' });
+    await waitFor(() => expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['Legal entities', 'Locations', 'Structure', 'Company rules', 'Access and privacy', 'My security']));
     expect(api).toHaveBeenCalledWith(`${PERMS_PATH}?keys=org.structure.view,org.settings.manage,org.entity.statutory.manage,pay.range.view,pay.range.manage,employee.profile.view,employee.change.manage,employee.change.approve,employee.salary.manage,request.raise_on_behalf,access.role.manage,employee.identity.manage,employee.identity.approve`, {}, 'tok');
   });
 
@@ -66,8 +66,8 @@ describe('/yx layout: organisation pages follow the grants, not the role', () =>
     (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
     route({ 'GET /auth/mfa': { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' }, [`GET ${PERMS_PATH}`]: ['pay.range.view'] });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    const nav = await screen.findByRole('navigation', { name: 'Settings' });
-    await waitFor(() => expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['My security', 'Legal entities', 'Locations', 'Structure']));
+    const nav = await screen.findByRole('navigation', { name: 'Menu' });
+    await waitFor(() => expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['Legal entities', 'Locations', 'Structure', 'My security']));
   });
 });
 

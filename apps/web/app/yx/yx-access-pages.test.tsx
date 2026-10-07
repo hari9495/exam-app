@@ -166,7 +166,7 @@ describe('/yx layout: access and privacy links follow the grants', () => {
         <p>page</p>
       </YxAppLayout>,
     );
-    const nav = await screen.findByRole('navigation', { name: 'Settings' });
+    const nav = await screen.findByRole('navigation', { name: 'Menu' });
     await waitFor(() => expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(expect.arrayContaining(['Identity and bank changes', 'Roles & access'])));
     expect(within(nav).queryByRole('link', { name: 'Who accessed my data' })).toBeNull();
   });

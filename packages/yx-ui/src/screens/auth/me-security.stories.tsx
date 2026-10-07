@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { MeSecurityScreen, type HistoryFilter, type MeSecurityScreenProps } from './me-security';
-import { SecurityShell } from './shell';
+import { WorkspaceShell, type WorkspaceLink } from './shell';
 import { MFA_ENROLLED, MFA_NONE, MY_HISTORY, MY_SESSIONS, NOW, RECOVERY_CODES, TOTP_SETUP } from './data';
 
 const meta: Meta = { title: 'Screens/Security/My security', parameters: { layout: 'fullscreen' } };
@@ -10,17 +10,18 @@ type S = StoryObj;
 
 const wait = (ms = 500) => new Promise<void>((r) => setTimeout(r, ms));
 
-const LINKS = [
-  { id: 'me' as const, label: 'My security', href: '#me' },
-  { id: 'activity' as const, label: 'Login activity', href: '#activity' },
-  { id: 'settings' as const, label: 'Security settings', href: '#settings' },
+const LINKS: WorkspaceLink[] = [
+  { id: 'directory', label: 'Directory', href: '#directory', group: 'People' },
+  { id: 'activity', label: 'Login activity', href: '#activity', group: 'Security' },
+  { id: 'settings', label: 'Security settings', href: '#settings', group: 'Security' },
+  { id: 'me', label: 'My security', href: '#me', group: 'Me' },
 ];
 
 function Page(over: Partial<MeSecurityScreenProps>) {
   const [filter, setFilter] = useState<HistoryFilter>('all');
   const history = filter === 'all' ? MY_HISTORY : { ...MY_HISTORY, data: MY_HISTORY.data.filter((e) => (filter === 'success' ? e.result === 'success' : e.result !== 'success')) };
   return (
-    <SecurityShell active="me" links={LINKS} homeHref="#home" profileHref="#profile" name="Divya Raghunathan" email="divya.r@kaverifoods.in" onSignOut={() => {}}>
+    <WorkspaceShell active="me" links={LINKS} company="Kaveri Foods Pvt Ltd" profileHref="#profile" name="Divya Raghunathan" email="divya.r@kaverifoods.in" onSignOut={() => {}}>
       <MeSecurityScreen
         state="ready"
         mfa={MFA_ENROLLED}
@@ -43,7 +44,7 @@ function Page(over: Partial<MeSecurityScreenProps>) {
         now={NOW}
         {...over}
       />
-    </SecurityShell>
+    </WorkspaceShell>
   );
 }
 
