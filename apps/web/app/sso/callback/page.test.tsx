@@ -10,7 +10,7 @@ jest.mock('next/navigation', () => ({ useRouter: jest.fn() }));
 
 // The API hands the result over in the URL fragment (never sent to a server or in a Referer).
 const atCallback = (fragment: string) => window.history.replaceState(null, '', `/sso/callback${fragment ? `#${fragment}` : ''}`);
-jest.mock('../../../lib/api-client', () => ({ apiFetch: jest.fn() }));
+jest.mock('../../../lib/api-client', () => ({ apiFetch: jest.fn(), YX_SESSION_KEY: 'yxSession' }));
 jest.mock('../../../lib/auth-context', () => ({
   useAuth: jest.fn(),
   SSO_PENDING_SLUG_KEY: 'ssoPendingOrganizationSlug',
@@ -180,14 +180,25 @@ describe('SsoCallbackPage', () => {
     const accessToken = fakeJwt({ sub: 'u1', role: 'org_admin' });
     (apiFetch as jest.Mock)
       .mockResolvedValueOnce({ mfaRequired: true, mfaToken: 'pending', factors: ['totp'] })
-      .mockResolvedValueOnce({ accessToken });
+      .mockResolvedValueOnce({ accessToken })
+      .mockResolvedValueOnce(['exam:manage']);
 
     render(<SsoCallbackPage />);
     expect(await screen.findByRole('heading', { name: "Confirm it's you" })).toBeInTheDocument();
     expect(window.sessionStorage.getItem('yxSsoReturn')).toBeNull();
     await userEvent.type(screen.getByLabelText(/6-digit code from your authenticator app/), '123456');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/users'));
+    // An admin with exam permissions keeps the role console.
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/users'));
+    expect(window.sessionStorage.getItem('yxSession')).toBe('1');
+  });
+
+  it('lands a YukthiX SSO sign-in without exam/ATS permissions in YukthiX', async () => {
+    window.sessionStorage.setItem('yxSsoReturn', '1');
+    atCallback('code=abc123');
+    (apiFetch as jest.Mock).mockResolvedValueOnce({ accessToken: fakeJwt({ sub: 'u2', role: 'panel' }) }).mockResolvedValueOnce(['employee.profile.view']);
+    render(<SsoCallbackPage />);
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/people/directory'));
   });
 
   it('sends a YukthiX sign-in that must enrol to the YukthiX set-up page', async () => {

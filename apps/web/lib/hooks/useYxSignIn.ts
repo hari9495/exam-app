@@ -3,12 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CompanyOption, SignInFields, SignInStep, SsoProviderOption } from '@yukthix/ui/auth';
-import { apiFetch } from '../api-client';
+import { apiFetch, YX_SESSION_KEY } from '../api-client';
 import { goTo } from '../navigate';
 import { botChallengeToken } from '../bot-challenge';
 import { useAuth, YX_SSO_RETURN_KEY } from '../auth-context';
 import { decodeJwtPayload } from '../jwt';
-import { roleToLandingPath } from '../staff-routing';
+import { yxLandingPath } from '../yx-landing';
 import type { MfaProof } from '../../components/auth/SecondFactorForm';
 import type { MfaChallenge } from './useStaffLogin';
 
@@ -59,20 +59,22 @@ export function useYxSignIn() {
     }
   };
 
-  function finish(result: SignedIn) {
+  // Lands in YukthiX unless the person holds exam/ATS permissions (then their role's console, as before).
+  async function finish(result: SignedIn) {
     login('', result.accessToken);
+    window.sessionStorage.setItem(YX_SESSION_KEY, '1');
     const role = decodeJwtPayload(result.accessToken)?.role as string | undefined;
-    router.push(result.mfa?.required ? '/yx/setup-mfa' : roleToLandingPath(role));
+    router.push(result.mfa?.required ? '/yx/setup-mfa' : await yxLandingPath(result.accessToken, role));
   }
 
-  function settle(outcome: Outcome) {
+  async function settle(outcome: Outcome) {
     if ('mfaRequired' in outcome) return setChallenge(outcome);
     if ('selectionRequired' in outcome) {
       setSelectionToken(outcome.selectionToken);
       setCompanies(outcome.companies);
       return setStep('choose-company');
     }
-    finish(outcome);
+    await finish(outcome);
   }
 
   const goToIdp = (url: string) => {
@@ -103,7 +105,7 @@ export function useYxSignIn() {
     signIn: () =>
       run('Sign-in failed', async () => {
         const challengeToken = await botChallengeToken();
-        settle(await post('/auth/staff/login', { identifier, password: fields.password, ...(challengeToken ? { challengeToken } : {}) }));
+        await settle(await post('/auth/staff/login', { identifier, password: fields.password, ...(challengeToken ? { challengeToken } : {}) }));
       }),
 
     sendCode: (channel?: 'sms' | 'whatsapp') =>
@@ -117,7 +119,7 @@ export function useYxSignIn() {
 
     verifyCode: () =>
       run('Sign-in failed', async () => {
-        settle(await post('/auth/otp/verify', { identifier, otpToken, code: fields.code.trim() }));
+        await settle(await post('/auth/otp/verify', { identifier, otpToken, code: fields.code.trim() }));
       }),
 
     // The choice is single-use: if it fails (expired, another device), the person signs in again.

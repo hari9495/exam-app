@@ -14,10 +14,13 @@ import { useOrgBranding } from '../../../lib/hooks/useBranding';
 import { useDocumentBranding } from '../../../lib/hooks/useDocumentBranding';
 import { useCurrentUser } from '../../../lib/hooks/useCurrentUser';
 import { AppShell } from '../../../components/ui-v2';
+import { useLanding } from '../../../lib/yx-landing';
 
+// Each item shows only with the permission its screen needs (an HR permission profile on role 'panel'
+// holds neither, and is sent to YukthiX instead).
 const PANEL_NAV = [
-  { href: '/v2/panel/reports', label: 'Results', icon: BarChart3 },
-  { href: '/v2/panel/interviews', label: 'Interviews', icon: CalendarClock },
+  { href: '/v2/panel/reports', label: 'Results', icon: BarChart3, permission: 'results:view' },
+  { href: '/v2/panel/interviews', label: 'Interviews', icon: CalendarClock, permission: 'interview:view_assigned' },
 ];
 const ALLOWED_ROLES = ['panel', 'recruiter', 'org_admin'];
 
@@ -27,14 +30,18 @@ export default function PanelV2Layout({ children }: { children: React.ReactNode 
   const { data: branding } = useOrgBranding();
   useDocumentBranding(branding?.name, branding?.logoUrl);
   const { data: currentUser } = useCurrentUser();
+  const access = useLanding();
+  const noExamAts = access.ready && !access.examAts && !actingSuperAdmin;
 
   useEffect(() => {
     if (!isLoading && !accessToken) {
       router.push('/login');
     } else if (!isLoading && accessToken && role && !ALLOWED_ROLES.includes(role) && !actingSuperAdmin) {
       router.push(staffLandingPath(role));
+    } else if (noExamAts) {
+      router.replace(access.landing);
     }
-  }, [isLoading, accessToken, role, actingSuperAdmin, router]);
+  }, [isLoading, accessToken, role, actingSuperAdmin, router, noExamAts, access.landing]);
 
   const orgVars = {
     ['--org-primary']: branding?.primaryColor || '#3b5fe3',
@@ -46,7 +53,7 @@ export default function PanelV2Layout({ children }: { children: React.ReactNode 
     router.push('/login');
   }
 
-  if (isLoading || !accessToken || (role !== null && !ALLOWED_ROLES.includes(role) && !actingSuperAdmin)) {
+  if (isLoading || !accessToken || (role !== null && !ALLOWED_ROLES.includes(role) && !actingSuperAdmin) || !access.ready || noExamAts) {
     return <p className="p-8 text-sm text-muted">Loading…</p>;
   }
 
@@ -60,7 +67,7 @@ export default function PanelV2Layout({ children }: { children: React.ReactNode 
     <MotionConfig reducedMotion="user">
       <div className="v2" style={{ minHeight: '100vh', ...orgVars }}>
         <AppShell
-          navItems={PANEL_NAV}
+          navItems={PANEL_NAV.filter((item) => actingSuperAdmin || access.has(item.permission)).map(({ permission: _permission, ...item }) => item)}
           orgName={orgName}
           orgLogoUrl={branding?.logoUrl ?? undefined}
           orgInitial={orgInitial}

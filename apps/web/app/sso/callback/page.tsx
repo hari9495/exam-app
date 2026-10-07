@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { apiFetch } from '../../../lib/api-client';
+import { apiFetch, YX_SESSION_KEY } from '../../../lib/api-client';
+import { yxLandingPath } from '../../../lib/yx-landing';
 import { useAuth, SSO_PENDING_SLUG_KEY } from '../../../lib/auth-context';
 import { decodeJwtPayload } from '../../../lib/jwt';
 import { MfaProof, SecondFactorForm } from '../../../components/auth/SecondFactorForm';
@@ -32,11 +33,16 @@ function SsoCallbackRedeemer() {
   const [yx] = useState(() => typeof window !== 'undefined' && window.sessionStorage.getItem(YX_SSO_RETURN_KEY) === '1');
   const signInPath = yx ? '/yx/sign-in' : '/login';
 
-  function finish(slug: string, result: { accessToken: string; mfa?: { required: boolean } }) {
+  async function finish(slug: string, result: { accessToken: string; mfa?: { required: boolean } }) {
     login(slug, result.accessToken);
     const payload = decodeJwtPayload(result.accessToken);
+    if (yx) window.sessionStorage.setItem(YX_SESSION_KEY, '1');
     if (result.mfa?.required) {
       router.push(yx ? '/yx/setup-mfa' : '/profile?mfa=setup');
+      return;
+    }
+    if (yx) {
+      router.push(await yxLandingPath(result.accessToken, payload?.role as string | undefined));
       return;
     }
     router.push(payload?.role === 'org_admin' ? '/users' : payload?.role === 'panel' ? '/reports' : '/dashboard');
@@ -82,7 +88,7 @@ function SsoCallbackRedeemer() {
           setChallenge({ mfaToken: result.mfaToken, factors: result.factors, slug: stashedSlug });
           return;
         }
-        finish(stashedSlug, result);
+        return finish(stashedSlug, result);
       })
       .catch((err: Error) => {
         setError(err.message || GENERIC_ERROR);

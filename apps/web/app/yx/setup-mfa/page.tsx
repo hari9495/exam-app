@@ -7,24 +7,25 @@ import { MfaEnrolScreen, type MfaStatus } from '@yukthix/ui/auth';
 import { Spinner } from '@yukthix/ui';
 import { useAuth } from '../../../lib/auth-context';
 import { apiFetch } from '../../../lib/api-client';
-import { roleToLandingPath } from '../../../lib/staff-routing';
+import { useLanding } from '../../../lib/yx-landing';
 import { addPasskey, confirmTotp, startTotp } from '../../../lib/yx-security';
 
 // First sign-in for an account whose role needs a second step (P12 §6.1 steps 2–3, §8 grace).
 export default function YxSetupMfaPage() {
   const router = useRouter();
-  const { accessToken, role, isLoading } = useAuth();
+  const { accessToken, isLoading } = useAuth();
   const token = accessToken ?? undefined;
   const status = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, token), enabled: Boolean(accessToken) });
-  const landing = roleToLandingPath(role ?? undefined);
+  // Where this person works: YukthiX unless they hold exam/ATS permissions.
+  const { landing, ready } = useLanding();
 
   useEffect(() => {
     if (!isLoading && !accessToken) router.replace('/yx/sign-in');
   }, [isLoading, accessToken, router]);
   // Already set up (or never needed): nothing to do here.
   useEffect(() => {
-    if (status.data && (status.data.factors.length > 0 || !status.data.required)) router.replace(landing);
-  }, [status.data, landing, router]);
+    if (ready && status.data && (status.data.factors.length > 0 || !status.data.required)) router.replace(landing);
+  }, [ready, status.data, landing, router]);
 
   if (!status.data || status.data.factors.length > 0 || !status.data.required) {
     return (

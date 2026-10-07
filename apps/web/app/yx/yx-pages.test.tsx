@@ -13,7 +13,7 @@ import YxSecuritySettingsPage from './(app)/settings/security/page';
 import YxAppLayout from './(app)/layout';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn() }));
-jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
+jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), YX_SESSION_KEY: 'yxSession' }));
 jest.mock('../../lib/navigate', () => ({ goTo: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn(), YX_SSO_RETURN_KEY: 'yxSsoReturn' }));
 jest.mock('../../lib/bot-challenge', () => ({ botChallengeToken: async () => null }));
@@ -87,6 +87,7 @@ describe('/yx/sign-in (email first, no company code)', () => {
       'GET /auth/remembered-company': { company: null },
       'POST /auth/identify': { next: 'password', providers: [] },
       'POST /auth/staff/login': { accessToken: token({ role: 'recruiter' }) },
+      'GET /rbac/me/permissions': ['exam:manage', 'results:view'],
     });
     render(<YxSignInPage />);
     expect(screen.queryByLabelText(/company/i)).toBeNull();
@@ -105,6 +106,7 @@ describe('/yx/sign-in (email first, no company code)', () => {
       'POST /auth/identify': { next: 'password', providers: [] },
       'POST /auth/staff/login': { selectionRequired: true, selectionToken: 't'.repeat(43), companies: [KAVERI, CASTINGS], expiresInSeconds: 120 },
       'POST /auth/staff/select-company': { accessToken: token({ role: 'org_admin' }) },
+      'GET /rbac/me/permissions': ['exam:manage', 'employee.profile.view'],
     });
     render(<YxSignInPage />);
     await typeIdentifier('divya.r@kaverifoods.in');
@@ -159,6 +161,7 @@ describe('/yx/sign-in (email first, no company code)', () => {
       'POST /auth/identify': { next: 'password', providers: [] },
       'POST /auth/otp/start': { otpToken: 'o'.repeat(43), expiresInSeconds: 300, resendAfterSeconds: 60 },
       'POST /auth/otp/verify': { accessToken: token({ role: 'panel' }) },
+      'GET /rbac/me/permissions': ['results:view'],
     });
     render(<YxSignInPage />);
     await typeIdentifier('divya.r@kaverifoods.in');
@@ -167,6 +170,35 @@ describe('/yx/sign-in (email first, no company code)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     await waitFor(() => expect(push).toHaveBeenCalledWith('/v2/panel/reports'));
     expect(api).toHaveBeenCalledWith('/auth/otp/verify', { method: 'POST', body: JSON.stringify({ identifier: 'divya.r@kaverifoods.in', otpToken: 'o'.repeat(43), code: '123456' }) });
+  });
+
+  it('lands HR without exam/ATS permissions in YukthiX, not the old /v2 app', async () => {
+    route({
+      'GET /auth/remembered-company': { company: null },
+      'POST /auth/identify': { next: 'password', providers: [] },
+      'POST /auth/staff/login': { accessToken: token({ role: 'panel' }) },
+      'GET /rbac/me/permissions': ['employee.profile.view'],
+    });
+    render(<YxSignInPage />);
+    await typeIdentifier('hr@demo-org.test');
+    await userEvent.type(await screen.findByLabelText(/^Password/), 'pw');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/people/directory'));
+    expect(push).not.toHaveBeenCalledWith(expect.stringMatching(/^\/v2/));
+  });
+
+  it('without the directory either, lands on My security', async () => {
+    route({
+      'GET /auth/remembered-company': { company: null },
+      'POST /auth/identify': { next: 'password', providers: [] },
+      'POST /auth/staff/login': { accessToken: token({ role: 'panel' }) },
+      'GET /rbac/me/permissions': [],
+    });
+    render(<YxSignInPage />);
+    await typeIdentifier('someone@demo-org.test');
+    await userEvent.type(await screen.findByLabelText(/^Password/), 'pw');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/me/security'));
   });
 
   it('shows the second step while a challenge is pending', async () => {

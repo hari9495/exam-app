@@ -1,0 +1,18 @@
+import { landingFor } from './yx-landing';
+
+describe('landingFor (where a YukthiX sign-in lands)', () => {
+  it('sends HR without exam/ATS permissions to the directory', () => {
+    expect(landingFor('panel', ['employee.profile.view'])).toBe('/yx/people/directory');
+  });
+
+  it('sends someone with neither to My security', () => {
+    expect(landingFor('panel', [])).toBe('/yx/me/security');
+  });
+
+  it('keeps the role console for exam/ATS people (recruiter, admin, panelist)', () => {
+    expect(landingFor('recruiter', ['exam:manage', 'results:view'])).toBe('/v2/today');
+    expect(landingFor('org_admin', ['exam:manage', 'employee.profile.view'])).toBe('/v2/users');
+    expect(landingFor('panel', ['results:view'])).toBe('/v2/panel/reports');
+    expect(landingFor('super_admin', [])).toBe('/v2/organizations');
+  });
+});
