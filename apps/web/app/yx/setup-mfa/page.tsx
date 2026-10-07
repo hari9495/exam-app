@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MfaEnrolScreen, type MfaStatus } from '@yukthix/ui/auth';
 import { Spinner } from '@yukthix/ui';
 import { useAuth } from '../../../lib/auth-context';
@@ -14,6 +14,7 @@ import { nextFromLocation } from '../../../lib/safe-next';
 // First sign-in for an account whose role needs a second step (P12 §6.1 steps 2–3, §8 grace).
 export default function YxSetupMfaPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { accessToken, isLoading, role } = useAuth();
   const token = accessToken ?? undefined;
   const status = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, token), enabled: Boolean(accessToken) });
@@ -47,7 +48,8 @@ export default function YxSetupMfaPage() {
       onAddPasskey={() => addPasskey(token)}
       onStartTotp={() => startTotp(token)}
       onConfirmTotp={(code) => confirmTotp(code, token)}
-      onContinue={() => router.push(landing)}
+      // The next page must not see the cached "no second step yet" status (banners, the console's key check).
+      onContinue={() => void queryClient.invalidateQueries({ queryKey: ['yx', 'mfa'] }).then(() => router.push(landing))}
     />
   );
 }

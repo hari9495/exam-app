@@ -153,7 +153,9 @@ export function CompaniesScreen(props: CompaniesScreenProps) {
             <FormField label="Search companies" hideLabel>
               <TextField value={search} onChange={setSearch} placeholder="Search by name or code" size="sm" />
             </FormField>
-            <Select<Lifecycle> value={lifecycle} onChange={setLifecycle} clearable placeholder="Any state" size="sm" aria-label="State" options={(Object.keys(LIFECYCLE_LABEL) as Lifecycle[]).map((v) => ({ value: v, label: LIFECYCLE_LABEL[v] }))} />
+            <div className="yx-console__filter">
+              <Select<Lifecycle> value={lifecycle} onChange={setLifecycle} clearable placeholder="Any state" size="sm" aria-label="State" options={(Object.keys(LIFECYCLE_LABEL) as Lifecycle[]).map((v) => ({ value: v, label: LIFECYCLE_LABEL[v] }))} />
+            </div>
           </div>
         }
         onRowClick={(c) => props.onOpen(c.id)}

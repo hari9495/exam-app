@@ -8,7 +8,7 @@ import { Text } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
 import { MenuItem } from '../../components/menu';
 import { Segment } from '../../components/segment';
-import { Card, ObjectHeader } from '../../components/shell';
+import { Breadcrumbs, Card, ObjectHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Timeline } from '../../components/timeline';
 import { EditorDrawer, useRun } from '../org/org-kit';
@@ -133,7 +133,7 @@ export function CompanyScreen(props: CompanyScreenProps) {
   ];
 
   return (
-    <ConsolePage crumb="Companies" title={c?.name ?? 'Company'} state={props.state} onRetry={props.onRetry} what="this company">
+    <ConsolePage crumb="Companies" title={props.state === 'ready' ? undefined : 'Company'} state={props.state} onRetry={props.onRetry} what="this company">
       {c && (
         <>
           <div>
@@ -142,6 +142,7 @@ export function CompanyScreen(props: CompanyScreenProps) {
             </Button>
           </div>
           <ObjectHeader
+            breadcrumbs={<Breadcrumbs items={[{ label: 'Console' }, { label: 'Companies' }, { label: c.name }]} />}
             name={c.name}
             icon={Building2}
             secondary={`Company code ${c.slug} · created ${day(c.createdAt)}`}

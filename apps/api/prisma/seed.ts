@@ -266,10 +266,24 @@ async function main() {
         data: { mobileNumber: '+919845012345', mobileVerifiedAt: new Date() },
       });
       await seedSignInDemo(tx, demoOrg.id, trialPlan.id, { admin: orgAdminHash, staff: panelHash });
+
+      // Step 3, the platform console (P14): the demo staff member has a name, and the demo companies use YukthiX HR.
+      // Staff sign in at /staff/sign-in and add a security key on first sign-in (P12 Q7).
+      await tx.user.updateMany({ where: { email: 'super@platform.test', organizationId: null }, data: { name: 'Anand Iyer' } });
+      for (const slug of ['demo-org', 'ganga-textiles']) {
+        const org = await tx.organization.findUnique({ where: { slug }, select: { id: true } });
+        if (org) {
+          await tx.organizationProduct.upsert({
+            where: { organizationId_productCode: { organizationId: org.id, productCode: 'hrms' } },
+            update: {},
+            create: { organizationId: org.id, productCode: 'hrms' },
+          });
+        }
+      }
     }
   }, { timeout: 60000 });
 
-  console.log(`Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
+  console.log(`Seed complete: super@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
 }
 
 // Only run when invoked as a script (prisma db seed / ts-node). Guarded so importing this module for

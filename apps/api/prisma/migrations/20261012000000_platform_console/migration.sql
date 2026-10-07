@@ -88,10 +88,10 @@ CREATE TRIGGER product_prices_keep_history BEFORE DELETE ON "product_prices"
 -- $5; Service Desk ₹999 / $10 per agent, minimum ₹999 / $10.
 INSERT INTO "products" ("code", "name", "unit") VALUES ('hrms', 'YukthiX HR', 'employee'), ('service_desk', 'YukthiX Service Desk', 'agent');
 INSERT INTO "product_prices" ("product_code", "currency", "unit_price", "minimum_monthly", "valid_from", "reason") VALUES
-  ('hrms', 'INR', 99, 499, DATE '2026-10-01', 'Launch price (PRICING-UNIT-ECONOMICS §2)'),
-  ('hrms', 'USD', 1, 5, DATE '2026-10-01', 'Launch price (PRICING-UNIT-ECONOMICS §2)'),
-  ('service_desk', 'INR', 999, 999, DATE '2026-10-01', 'Launch price (M14 Q1)'),
-  ('service_desk', 'USD', 10, 10, DATE '2026-10-01', 'Launch price (M14 Q1)');
+  ('hrms', 'INR', 99, 499, DATE '2026-10-01', 'Launch price'),
+  ('hrms', 'USD', 1, 5, DATE '2026-10-01', 'Launch price'),
+  ('service_desk', 'INR', 999, 999, DATE '2026-10-01', 'Launch price'),
+  ('service_desk', 'USD', 10, 10, DATE '2026-10-01', 'Launch price');
 
 -- The products a company uses (P14 subscriptions, before billing exists).
 CREATE TABLE "organization_products" (

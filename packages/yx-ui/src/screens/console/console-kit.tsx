@@ -78,11 +78,16 @@ export function actionWords(action: string, details: Record<string, unknown> | n
     case 'notification.sms_account_tested':
       return 'Sent a test SMS';
     case 'step_up.used':
-      return 'Confirmed it was them with their security key';
+      return 'Confirmed it was them again';
     case 'login.success':
       return 'Signed in';
+    case 'mfa.enrolled':
+      return 'Added a security key or passkey';
+    case 'organization.created':
+      return 'Created the company account';
     default:
-      return action;
+      // Anything not listed yet: the action's own words, without dots and underscores.
+      return action.replace(/[._]+/g, ' ');
   }
 }
 
@@ -94,11 +99,11 @@ export function SupportBadge({ status }: { status: SupportStatus }) {
   return <Badge tone={SUPPORT_TONE[status]}>{SUPPORT_LABEL[status]}</Badge>;
 }
 
-/** Page frame with the four load states; `crumb` is the console area. */
-export function ConsolePage({ crumb, title, description, actions, state, onRetry, what, children }: { crumb: string; title: ReactNode; description?: ReactNode; actions?: ReactNode; state: LoadState; onRetry?: () => void; what: string; children: ReactNode }) {
+/** Page frame with the four load states; `crumb` is the console area. No `title`: the page has its own object header. */
+export function ConsolePage({ crumb, title, description, actions, state, onRetry, what, children }: { crumb: string; title?: string; description?: ReactNode; actions?: ReactNode; state: LoadState; onRetry?: () => void; what: string; children: ReactNode }) {
   return (
     <div className="yx-auth__page">
-      <PageHeader breadcrumbs={<Breadcrumbs items={[{ label: 'Console' }, { label: crumb }]} />} title={title} description={description} actions={state === 'ready' ? actions : undefined} />
+      {title && <PageHeader breadcrumbs={<Breadcrumbs items={[{ label: 'Console' }, { label: crumb }]} />} title={title} description={description} actions={state === 'ready' ? actions : undefined} />}
       {state === 'loading' && (
         <div className="yx-auth__stack" aria-busy="true">
           <Skeleton height={48} />
