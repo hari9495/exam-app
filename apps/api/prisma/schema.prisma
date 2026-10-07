@@ -2230,6 +2230,8 @@ model Department {
   isDivision         Boolean   @default(false) @map("is_division")
   /// P01 §4.3: implicit "Dept head @ department subtree" grant (P02 YX-SEC-04).
   headEmployeeId     String?   @map("head_employee_id") @db.Uuid
+  /// YX-SEC-04/06: the implicit view runs from this day (set whenever the head changes).
+  headSince          DateTime? @map("head_since") @db.Date
   ownerLegalEntityId String?   @map("owner_legal_entity_id") @db.Uuid
   appliesToEntities  String[]  @default([]) @map("applies_to_entities") @db.Uuid
   archivedAt         DateTime? @map("archived_at") @db.Timestamptz(3)
@@ -2681,6 +2683,8 @@ model EmployeeProfileRequest {
   decidedBy       String?   @map("decided_by") @db.Uuid
   decidedAt       DateTime? @map("decided_at") @db.Timestamptz(3)
   decisionNote    String?   @map("decision_note") @db.VarChar(500)
+  /// YX-SEC-13: the contacts on file when the request was raised get the change notice.
+  notifyContacts  String[]  @default([]) @map("notify_contacts")
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("employee_profile_requests")

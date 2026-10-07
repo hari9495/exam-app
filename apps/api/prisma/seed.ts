@@ -100,7 +100,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   // question bank, and the audit log — but holds ZERO write keys, so every mutation route (all gated
   // on a :manage key) denies it. Deliberately NOT in EDITABLE_ROLES: its grants stay fixed read-only,
   // so an org admin can't accidentally hand it write access.
-  auditor: ['org:view', 'results:view', 'audit:view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned', 'org.structure.view', 'employee.profile.view'],
+  // Employee records are not part of the permanent base role: P02 YX-SEC-15 time-boxes auditor access, so it
+  // comes from an expiring role grant (the Auditor template in Roles & access).
+  auditor: ['org:view', 'results:view', 'audit:view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned', 'org.structure.view'],
 };
 
 async function main() {

@@ -19,6 +19,10 @@ describe('auditor role (compliance read-only)', () => {
     }
   });
 
+  it('holds no employee record key: auditor access to people is a time-boxed grant (P02 YX-SEC-15)', () => {
+    expect(ROLE_PERMISSIONS.auditor.filter((k) => k.startsWith('employee.'))).toEqual([]);
+  });
+
   it('is assignable to a user but NOT editable (its grants stay fixed read-only)', () => {
     expect(CREATABLE_ROLES).toContain('auditor');
     expect(EDITABLE_ROLES as readonly string[]).not.toContain('auditor');
