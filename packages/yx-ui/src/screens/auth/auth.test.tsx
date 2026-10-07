@@ -352,7 +352,8 @@ describe('MfaEnrolScreen', () => {
     await userEvent.click(screen.getByRole('radio', { name: 'Authenticator app' }));
     await userEvent.click(screen.getByRole('button', { name: 'Show the QR code' }));
     expect(await screen.findByRole('img', { name: /QR code/ })).toBeInTheDocument();
-    expect(screen.getByText(TOTP_SETUP.secret)).toBeInTheDocument();
+    expect(screen.getByText(TOTP_SETUP.secret.match(/.{1,4}/g)!.join(' '))).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy key' })).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText(/6-digit code/), '654321');
     await userEvent.click(screen.getByRole('button', { name: 'Turn on' }));
     expect(onConfirmTotp).toHaveBeenCalledWith('654321');

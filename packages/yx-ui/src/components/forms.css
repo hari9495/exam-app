@@ -101,6 +101,12 @@
 .yx-choice__text { display: flex; flex-direction: column; min-width: 0; }
 .yx-choice__text label { cursor: pointer; }
 .yx-choice__desc { margin: 0; font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); color: var(--yx-color-text-muted); }
+/* Card variant: a pick-one between a few rich options (e.g. second-step method). The whole card is clickable. */
+.yx-radio-group--cards .yx-choice { position: relative; align-items: center; gap: var(--yx-space-3); padding: var(--yx-space-3) var(--yx-space-4); border: var(--yx-border-width) solid var(--yx-color-border-strong); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-surface); }
+.yx-radio-group--cards .yx-choice:hover { border-color: var(--yx-color-action-primary); }
+.yx-radio-group--cards .yx-choice:has(.yx-radio[data-state="checked"]) { border-color: var(--yx-color-action-primary); background: var(--yx-color-bg-selected); }
+.yx-radio-group--cards .yx-choice__text label { font-weight: var(--yx-weight-medium); display: flex; align-items: center; gap: var(--yx-space-2); }
+.yx-radio-group--cards .yx-choice__text label::after { content: ""; position: absolute; inset: 0; }
 .yx-radio-group { display: flex; flex-direction: column; gap: var(--yx-space-3); }
 .yx-radio-group[data-orientation="horizontal"] { flex-direction: row; flex-wrap: wrap; gap: var(--yx-space-5); }
 

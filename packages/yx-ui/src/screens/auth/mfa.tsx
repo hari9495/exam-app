@@ -5,7 +5,8 @@ import { FormField } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { TextField } from '../../components/inputs';
 import { Dialog } from '../../components/overlay';
-import { Segment } from '../../components/segment';
+import { RadioGroup } from '../../components/choice';
+import { Check, Copy, Fingerprint, Smartphone } from 'lucide-react';
 import { Spinner } from '../../components/foundations';
 import { AuthFrame, RecoveryCodes, SecondFactorPanel, day, useStep, type SecondFactorPanelProps } from './kit';
 
@@ -118,14 +119,19 @@ export function MfaEnrolScreen({ allowedFactors, dueAt, onAddPasskey, onStartTot
     >
       <div className="yx-auth__form">
         {kinds.length > 1 && (
-          <Segment
-            label="Second step"
-            options={kinds.map((k) => ({ value: k, label: k === 'passkey' ? 'Passkey (recommended)' : 'Authenticator app' }))}
+          <RadioGroup
+            className="yx-radio-group--cards"
+            aria-label="Choose your second step"
             value={kind}
             onChange={(k) => {
-              setKind(k);
+              setKind(k as typeof kind);
               setError(null);
             }}
+            options={kinds.map((k) =>
+              k === 'passkey'
+                ? { value: k, label: <><Fingerprint size={18} aria-hidden />Passkey (recommended)</>, description: "Your fingerprint, face or screen lock. Quickest, and can't be phished." }
+                : { value: k, label: <><Smartphone size={18} aria-hidden />Authenticator app</>, description: 'A 6-digit code from an app on your phone.' },
+            )}
           />
         )}
         {kind === 'passkey' ? (
@@ -148,6 +154,18 @@ export function MfaEnrolScreen({ allowedFactors, dueAt, onAddPasskey, onStartTot
   );
 }
 
+/** The manual authenticator key, in groups of four, with a copy button. */
+function SecretKey({ secret }: { secret: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => void navigator.clipboard?.writeText(secret).then(() => setCopied(true));
+  return (
+    <div className="yx-auth__keyrow">
+      <span className="yx-mono yx-auth__key">{secret.match(/.{1,4}/g)?.join(' ')}</span>
+      <Button size="sm" icon={copied ? Check : Copy} onClick={copy}>{copied ? 'Copied' : 'Copy key'}</Button>
+    </div>
+  );
+}
+
 /** QR code, the manual key and the first code. Shared by enrolment and My security. */
 export function TotpConfirm({ setup, code, onCode, onSubmit, busy, error, onCancel }: {
   setup: TotpSetup;
@@ -162,9 +180,8 @@ export function TotpConfirm({ setup, code, onCode, onSubmit, busy, error, onCanc
     <form className="yx-auth__form" onSubmit={onSubmit} noValidate>
       <Text as="p">Scan this with your authenticator app, then enter the 6-digit code it shows.</Text>
       <img className="yx-auth__qr" src={setup.qrDataUrl} alt="QR code for your authenticator app" />
-      <Text as="p" tone="secondary" size="sm">
-        Can't scan it? Enter this key: <span className="yx-mono yx-auth__key">{setup.secret}</span>
-      </Text>
+      <Text as="p" tone="secondary" size="sm">Can't scan it? Enter this key in the app instead:</Text>
+      <SecretKey secret={setup.secret} />
       <FormField label="6-digit code" required>
         <TextField value={code} onChange={onCode} autoComplete="one-time-code" inputMode="numeric" maxLength={6} />
       </FormField>

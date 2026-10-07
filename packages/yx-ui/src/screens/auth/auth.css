@@ -32,8 +32,9 @@
 .yx-mark-microsoft-yellow { fill: var(--yx-mark-microsoft-yellow); }
 .yx-auth__codes { display: flex; flex-direction: column; gap: var(--yx-space-4); }
 .yx-auth__code-list { margin: 0; padding: var(--yx-space-4); list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--yx-space-2) var(--yx-space-4); background: var(--yx-color-bg-subtle); border-radius: var(--yx-radius-control); }
-.yx-auth__qr { width: calc(var(--yx-space-16) * 2.75); height: calc(var(--yx-space-16) * 2.75); align-self: flex-start; image-rendering: pixelated; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-control); }
-.yx-auth__key { overflow-wrap: anywhere; }
+.yx-auth__qr { width: calc(var(--yx-space-16) * 2.75); height: calc(var(--yx-space-16) * 2.75); align-self: center; image-rendering: pixelated; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-control); }
+.yx-auth__key { overflow-wrap: anywhere; letter-spacing: 0.04em; }
+.yx-auth__keyrow { display: flex; align-items: center; justify-content: space-between; gap: var(--yx-space-3); padding: var(--yx-space-2) var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-subtle); }
 
 /* in-app pages */
 .yx-auth__page { display: flex; flex-direction: column; gap: var(--yx-space-6); max-width: var(--yx-page-max); min-width: 0; }
