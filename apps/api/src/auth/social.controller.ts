@@ -46,7 +46,7 @@ export class SocialController {
     const slug = await this.scope.slugFor(req);
     if (!slug) {
       const [sms, whatsapp] = await Promise.all([this.otp.channelAvailable('sms'), this.otp.channelAvailable('whatsapp')]);
-      return { google, microsoft, sms, whatsapp, emailCode: true };
+      return { google, microsoft, sms, whatsapp, emailCode: true, passkey: true };
     }
     const org = await this.sso.organizationBySlug(slug.toLowerCase());
     const policy = org ? await loadTenantSecurityPolicy(this.tenantPrisma, org.id) : DEFAULT_SECURITY_POLICY;
@@ -58,6 +58,8 @@ export class SocialController {
       sms: await codeBy('sms'),
       whatsapp: await codeBy('whatsapp'),
       emailCode: await codeBy('email'),
+      // "Sign in with a passkey": where the company allows passkeys, never under SSO-only.
+      passkey: !policy.ssoOnly && policy.allowedFactors.includes('passkey'),
     };
   }
 

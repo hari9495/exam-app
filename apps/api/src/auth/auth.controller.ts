@@ -10,6 +10,7 @@ import { RefreshDto } from './dto/refresh.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SsoExchangeDto } from './dto/sso-exchange.dto';
+import { PasskeySignInDto } from './dto/mfa.dto';
 import { REFRESH_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { SkipGlobalThrottle } from '../fail-open-throttler.guard';
 import { RefreshThrottlerGuard } from './refresh-throttler.guard';
@@ -79,6 +80,23 @@ export class AuthController {
   @Throttle(STRICT_AUTH_THROTTLE)
   async selectCompany(@Body() dto: SelectCompanyDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return signInResponse(await this.authService.selectCompany(dto, resolveClientMeta(req, res)), res);
+  }
+
+  // "Sign in with a passkey" (founder decision 7 Oct 2026): a challenge for this device, then the
+  // assertion. A user-verifying passkey is the whole sign-in at AAL2 (no password, no second step).
+  @Post('passkey/options')
+  @HttpCode(200)
+  @Throttle(STRICT_AUTH_THROTTLE)
+  passkeyOptions(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    return this.authService.passkeySignInOptions(resolveClientMeta(req, res));
+  }
+
+  @Post('passkey/verify')
+  @HttpCode(200)
+  @Throttle(STRICT_AUTH_THROTTLE)
+  async passkeySignIn(@Body() dto: PasskeySignInDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const meta = resolveClientMeta(req, res);
+    return signInResponse(await this.authService.passkeySignIn(dto.credential, (await this.scope.slugFor(req)) ?? null, meta), res);
   }
 
   // "Signing in to <company>": name and logo of the company this device last signed in to, nothing

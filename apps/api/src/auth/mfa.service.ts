@@ -28,6 +28,7 @@ import {
   resolvePermissionGrants,
   revokeStaffSessions,
 } from '@exam-platform/shared';
+import type { Authenticator } from '@prisma/client';
 import { LOGIN_PROTECTION_REDIS } from './login-protection.service';
 import { OTP_RESEND_COOLDOWN_SECONDS, OTP_TTL_SECONDS, OtpService, maskMobile, normaliseMobileNumber } from './otp.service';
 import type { OtpMobileChannel } from './otp-sender';
@@ -56,7 +57,8 @@ export interface MfaUser {
 // What is kept between the first factor and the second (Redis, 5 min, keyed by sha256(token)).
 export interface PendingLogin {
   userId: string;
-  method: 'password' | 'saml' | 'oidc' | 'google' | 'microsoft' | 'otp_email' | 'otp_sms' | 'otp_whatsapp';
+  // 'passkey' never waits here: a passwordless passkey is the whole sign-in (AAL2), see AuthService.
+  method: 'password' | 'saml' | 'oidc' | 'google' | 'microsoft' | 'otp_email' | 'otp_sms' | 'otp_whatsapp' | 'passkey';
   orgSlug: string;
   identifier: string;
   breakGlass: boolean;
@@ -66,6 +68,8 @@ export interface PendingLogin {
   // Google / Microsoft only: the subject linked to the account once every factor is given.
   externalSubject?: string;
 }
+
+type Passkey = Pick<Authenticator, 'id' | 'userId' | 'organizationId' | 'credentialId' | 'publicKey' | 'signCount' | 'transports'>;
 
 export const PENDING_LOGIN_TTL_SECONDS = 5 * 60;
 const CHALLENGE_TTL_SECONDS = 5 * 60;
@@ -83,6 +87,9 @@ export const REAUTH_REQUIRED_CODE = 'REAUTH_REQUIRED';
 // app, no recovery codes (both can be copied or phished).
 export const isStaff = (user: { role: string }) => user.role === 'super_admin';
 const pendingUserKey = (userId: string) => `auth:mfa:pending-user:${userId}`;
+// Passwordless sign-in challenges are keyed by the challenge itself (the browser's autofill request
+// and a "Sign in with a passkey" click may each hold one) and hold sha256(device cookie).
+const passwordlessKey = (challenge: string) => `auth:passkey:chal:${sha256(challenge)}`;
 // 32 symbols (no 0/1/l/o) x 16 = 80 bits: offline guessing of the sha256 is out of reach.
 const RECOVERY_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
 
@@ -280,6 +287,46 @@ export class MfaService {
     return this.store(() => this.redis.getdel(`auth:mfa:chal:stepup:${sessionId}`));
   }
 
+  // ---- passwordless passkey sign-in (founder decision 7 Oct 2026; US-A-039) -----------------
+
+  // No allowCredentials: the browser offers this site's discoverable passkeys (a button, or the
+  // email field's autofill). User verification (biometric / PIN) is required: possession plus
+  // verification is the whole sign-in at AAL2. The challenge is single-use, short-lived and only
+  // redeemable from the device cookie it was issued to.
+  async passwordlessOptions(deviceId: string) {
+    const options = await generateAuthenticationOptions({ rpID: webauthnConfig().rpID, userVerification: 'required', timeout: CHALLENGE_TTL_SECONDS * 1000 });
+    await this.store(() => this.redis.set(passwordlessKey(options.challenge), sha256(deviceId), 'EX', CHALLENGE_TTL_SECONDS));
+    return options;
+  }
+
+  // The challenge this assertion answers, spent now (GETDEL), or null when it was never issued, has
+  // expired, was already used, or belongs to another device. The library re-checks it against the
+  // signed client data.
+  async takePasswordlessChallenge(credential: { response: { clientDataJSON: string } }, deviceId: string): Promise<string | null> {
+    let challenge: unknown;
+    try {
+      challenge = (JSON.parse(Buffer.from(credential.response.clientDataJSON, 'base64url').toString('utf8')) as { challenge?: unknown }).challenge;
+    } catch {
+      return null;
+    }
+    if (typeof challenge !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(challenge)) return null;
+    const device = await this.store(() => this.redis.getdel(passwordlessKey(challenge)));
+    return device && sameHash(device, sha256(deviceId)) ? challenge : null;
+  }
+
+  // The live passkey with this credential id, in any company (the credential names the account).
+  async findPasskey(credentialId: string) {
+    return this.tenantPrisma.forTenant(SUPER, (tx) => tx.authenticator.findFirst({ where: { credentialId, type: 'passkey', revokedAt: null } }));
+  }
+
+  // A passwordless assertion: signature, origin, RP, challenge, user verification, counter, and the
+  // user handle must name the account the credential belongs to.
+  async verifyPasswordless(passkey: Passkey, credential: AuthenticationResponseJSON, challenge: string): Promise<boolean> {
+    const handle = credential.response.userHandle;
+    if (!handle || Buffer.from(handle, 'base64url').toString('utf8') !== passkey.userId) return false;
+    return this.checkPasskey({ organizationId: passkey.organizationId, isSuperAdmin: false }, passkey, credential, challenge, true);
+  }
+
   private async authenticationOptions(user: MfaUser, challengeKey: string) {
     const passkeys = await this.tenantPrisma.forTenant(contextFor(user), (tx) =>
       tx.authenticator.findMany({ where: { userId: user.id, type: 'passkey', revokedAt: null }, select: { credentialId: true, transports: true } }),
@@ -339,12 +386,16 @@ export class MfaService {
       tx.authenticator.findFirst({ where: { userId: user.id, type: 'passkey', credentialId: proof.credential!.id, revokedAt: null } }),
     );
     if (!passkey) return null;
+    return (await this.checkPasskey(ctx, passkey, proof.credential as unknown as AuthenticationResponseJSON, passkeyChallenge, false)) ? 'passkey' : null;
+  }
+
+  private async checkPasskey(ctx: TenantContext, passkey: Passkey, response: AuthenticationResponseJSON, challenge: string, requireUserVerification: boolean): Promise<boolean> {
     const { rpID, origins } = webauthnConfig();
     let newCounter: number;
     try {
       const verification = await verifyAuthenticationResponse({
-        response: proof.credential as unknown as AuthenticationResponseJSON,
-        expectedChallenge: passkeyChallenge,
+        response,
+        expectedChallenge: challenge,
         expectedOrigin: origins,
         expectedRPID: rpID,
         credential: {
@@ -353,18 +404,18 @@ export class MfaService {
           counter: Number(passkey.signCount),
           transports: passkey.transports as AuthenticatorTransportFuture[],
         },
-        requireUserVerification: false,
+        requireUserVerification,
       });
-      if (!verification.verified) return null;
+      if (!verification.verified) return false;
       newCounter = verification.authenticationInfo.newCounter;
     } catch {
-      return null; // tampered, wrong origin / RP, wrong challenge, or a counter that went back
+      return false; // tampered, wrong origin / RP, wrong challenge, no user verification, or a counter that went back
     }
     // Compare-and-set on the counter: a concurrent replay of the same assertion loses.
     const { count } = await this.tenantPrisma.forTenant(ctx, (tx) =>
       tx.authenticator.updateMany({ where: { id: passkey.id, revokedAt: null, signCount: passkey.signCount }, data: { signCount: newCounter, lastUsedAt: new Date() } }),
     );
-    return count === 1 ? 'passkey' : null;
+    return count === 1;
   }
 
   // Marks the session as AAL2 proven now with `factor` (sign-in enrolment, step-up).
@@ -450,7 +501,9 @@ export class MfaService {
       // Staff (Q7): a roaming security key, with user verification.
       authenticatorSelection: isStaff(user)
         ? { authenticatorAttachment: 'cross-platform', residentKey: 'preferred', userVerification: 'required' }
-        : { residentKey: 'preferred', userVerification: 'preferred' },
+        : // Everyone else: a discoverable, user-verifying passkey, so it can be the whole sign-in
+          // (passwordless, AAL2). Older non-discoverable ones keep working as a second step.
+          { residentKey: 'required', userVerification: 'required' },
     });
     await this.store(() => this.redis.set(`auth:mfa:chal:reg:${sessionId}`, options.challenge, 'EX', CHALLENGE_TTL_SECONDS));
     return options;
@@ -468,7 +521,7 @@ export class MfaService {
         expectedChallenge: challenge,
         expectedOrigin: origins,
         expectedRPID: rpID,
-        requireUserVerification: false,
+        requireUserVerification: !isStaff(user), // staff: unchanged (Q7 rules)
       });
       info = verification.verified ? verification.registrationInfo : undefined;
     } catch {
@@ -525,7 +578,7 @@ export class MfaService {
     });
     this.sessions.notifySecurityChange(
       user,
-      'Two-step verification added to your YukthiX account',
+      factor === 'passkey' ? 'A passkey was added to your YukthiX account' : 'Two-step verification added to your YukthiX account',
       `A new ${factor === 'totp' ? 'authenticator app' : 'passkey'} was added to your account${first ? ', and every other session was signed out' : ''}.`,
     );
     return { factor, recoveryCodes };
@@ -553,6 +606,15 @@ export class MfaService {
     return { recoveryCodes };
   }
 
+  // Renames one of the account's own passkeys ("Passkey · Work laptop").
+  async renamePasskey(user: MfaUser, authenticatorId: string, label: string): Promise<void> {
+    const { count } = await this.tenantPrisma.forTenant(contextFor(user), (tx) =>
+      tx.authenticator.updateMany({ where: { id: authenticatorId, userId: user.id, type: 'passkey', revokedAt: null }, data: { label } }),
+    );
+    if (count !== 1) throw new NotFoundException('Passkey not found');
+    await this.audit.record(contextFor(user), { actorUserId: user.id, action: 'mfa.renamed', entityType: 'authenticator', entityId: authenticatorId, metadata: { label } });
+  }
+
   // The last factor may go only where MFA is not required for this account.
   async removeFactor(user: MfaUser, authenticatorId: string): Promise<void> {
     const factors = await this.activeFactors(user);
@@ -573,7 +635,7 @@ export class MfaService {
       entityId: target.id,
       metadata: { factor: target.type },
     });
-    this.sessions.notifySecurityChange(user, 'Two-step verification removed from your YukthiX account', `A ${target.type === 'totp' ? 'authenticator app' : 'passkey'} was removed from your account.`);
+    this.sessions.notifySecurityChange(user, target.type === 'passkey' ? 'A passkey was removed from your YukthiX account' : 'Two-step verification removed from your YukthiX account', `A ${target.type === 'totp' ? 'authenticator app' : 'passkey'} was removed from your account.`);
   }
 
   // ---- verified mobile number (OTP sign-in by mobile, SMS / WhatsApp fallback factor) ------

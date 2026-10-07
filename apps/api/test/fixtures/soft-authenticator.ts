@@ -13,8 +13,11 @@ const FLAG_AT = 0x40;
 export class SoftAuthenticator {
   readonly credentialId = randomBytes(32);
   private readonly privateKey: KeyObject;
-  private readonly cosePublicKey: Uint8Array;
+  readonly cosePublicKey: Uint8Array;
   counter = 0;
+  // The user handle (account id, base64url) from the registration options: a discoverable passkey
+  // returns it with every assertion, which is how a passwordless sign-in names the account.
+  userHandle?: string;
 
   constructor(
     readonly rpId = 'localhost',
@@ -46,7 +49,8 @@ export class SoftAuthenticator {
 
   // navigator.credentials.create() as @simplewebauthn/browser returns it.
   // `synced`: report a backed-up, multi-device passkey (BE + BS flags) rather than a device-bound key.
-  register(options: { challenge: string }, overrides: { origin?: string; type?: string; synced?: boolean } = {}) {
+  register(options: { challenge: string; user?: { id: string } }, overrides: { origin?: string; type?: string; synced?: boolean } = {}) {
+    this.userHandle = options.user?.id;
     const idLength = Buffer.alloc(2);
     idLength.writeUInt16BE(this.credentialId.length);
     const attested = Buffer.concat([Buffer.alloc(16), idLength, this.credentialId, this.cosePublicKey]);
@@ -62,17 +66,19 @@ export class SoftAuthenticator {
   }
 
   // navigator.credentials.get(). Each call advances the signature counter unless told not to.
-  assert(options: { challenge: string }, overrides: { origin?: string; tamper?: boolean; keepCounter?: boolean } = {}) {
+  // `userHandle`: null leaves it out, a string replaces it; `noUserVerification`: presence only (no biometric / PIN).
+  assert(options: { challenge: string }, overrides: { origin?: string; tamper?: boolean; keepCounter?: boolean; userHandle?: string | null; noUserVerification?: boolean } = {}) {
     if (!overrides.keepCounter) this.counter += 1;
     const clientDataJSON = Buffer.from(JSON.stringify({ type: 'webauthn.get', challenge: options.challenge, origin: overrides.origin ?? this.origin, crossOrigin: false }));
-    const authenticatorData = this.authData(FLAG_UP | FLAG_UV);
+    const authenticatorData = this.authData(overrides.noUserVerification ? FLAG_UP : FLAG_UP | FLAG_UV);
+    const userHandle = overrides.userHandle === null ? undefined : (overrides.userHandle ?? this.userHandle);
     const signature = sign('sha256', Buffer.concat([authenticatorData, sha256(clientDataJSON)]), this.privateKey);
     if (overrides.tamper) signature[signature.length - 1] ^= 0x01;
     return {
       id: this.id,
       rawId: this.id,
       type: 'public-key' as const,
-      response: { clientDataJSON: b64url(clientDataJSON), authenticatorData: b64url(authenticatorData), signature: b64url(signature) },
+      response: { clientDataJSON: b64url(clientDataJSON), authenticatorData: b64url(authenticatorData), signature: b64url(signature), ...(userHandle ? { userHandle } : {}) },
       clientExtensionResults: {},
     };
   }
