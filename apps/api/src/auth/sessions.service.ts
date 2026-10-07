@@ -43,6 +43,8 @@ export function clientCountry(req: Request): string | null {
 export const LOGIN_METHODS = ['password', 'saml', 'oidc', 'google', 'microsoft', 'otp_email', 'otp_sms', 'otp_whatsapp', 'totp', 'passkey', 'recovery_code', 'otp', 'admin'] as const;
 export type LoginMethod = (typeof LOGIN_METHODS)[number];
 export type LoginResult = 'success' | 'failed' | 'locked' | 'mfa_failed' | 'code_sent' | 'unlocked';
+// What 'unsuccessful' (the failed-attempts filter and the 24-hour count) means: a code being sent is not a failure.
+const UNSUCCESSFUL: LoginResult[] = ['failed', 'locked', 'mfa_failed'];
 
 export interface SessionUser {
   id: string;
@@ -410,7 +412,7 @@ export class SessionsService {
     const where: Prisma.LoginEventWhereInput = {
       ...this.tenantWhere(context),
       ...(filters.userId ? { userId: filters.userId } : {}),
-      ...(filters.result ? { result: filters.result === 'unsuccessful' ? { notIn: ['success', 'unlocked'] } : filters.result } : {}),
+      ...(filters.result ? { result: filters.result === 'unsuccessful' ? { in: UNSUCCESSFUL } : filters.result } : {}),
       ...(filters.method ? { method: filters.method } : {}),
       ...(filters.from || filters.to
         ? { createdAt: { ...(filters.from ? { gte: new Date(filters.from) } : {}), ...(filters.to ? { lte: new Date(filters.to) } : {}) } }

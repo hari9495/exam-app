@@ -202,9 +202,9 @@ describe('SessionsService', () => {
     expect(tx.loginEvent.findMany.mock.calls[0][0].where).toEqual({ organizationId: 'org-9', result: 'failed' });
   });
 
-  it("'unsuccessful' lists every result except success and an admin unlock", async () => {
+  it("'unsuccessful' lists failures, blocks and wrong second steps, not a sent code or an admin unlock", async () => {
     await service.listLoginEvents(ORG, { result: 'unsuccessful', method: 'oidc' });
-    expect(tx.loginEvent.findMany.mock.calls[0][0].where).toMatchObject({ result: { notIn: ['success', 'unlocked'] }, method: 'oidc' });
+    expect(tx.loginEvent.findMany.mock.calls[0][0].where).toMatchObject({ result: { in: ['failed', 'locked', 'mfa_failed'] }, method: 'oidc' });
   });
 
   it('escapes attacker-controlled request data in notification emails', async () => {
