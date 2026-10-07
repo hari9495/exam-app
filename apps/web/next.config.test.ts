@@ -2,6 +2,8 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const config = require('./next.config.js');
 
+export {}; // a module, so `config` doesn't clash with other test files' globals
+
 type Redirect = { source: string; destination: string; permanent: boolean };
 
 describe('classic sign-in redirects', () => {
