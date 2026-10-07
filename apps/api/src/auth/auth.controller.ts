@@ -10,7 +10,9 @@ import { RefreshDto } from './dto/refresh.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SsoExchangeDto } from './dto/sso-exchange.dto';
-import { STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
+import { REFRESH_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
+import { SkipGlobalThrottle } from '../fail-open-throttler.guard';
+import { RefreshThrottlerGuard } from './refresh-throttler.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
@@ -114,7 +116,9 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(200)
-  @Throttle(STRICT_AUTH_THROTTLE)
+  @Throttle(REFRESH_THROTTLE)
+  @SkipGlobalThrottle()
+  @UseGuards(RefreshThrottlerGuard)
   async refresh(@Body() dto: RefreshDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const refreshToken = dto.refreshToken ?? req.cookies?.[REFRESH_COOKIE];
     if (!refreshToken) {

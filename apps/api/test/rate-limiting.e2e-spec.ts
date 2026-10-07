@@ -1,10 +1,13 @@
 import { Test } from '@nestjs/testing';
-import { Controller, Get, INestApplication, Injectable, Module, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpCode, INestApplication, Injectable, Module, Post, UseGuards } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import cookieParser from 'cookie-parser';
 import { APP_GUARD } from '@nestjs/core';
 import { Throttle, ThrottlerGuard, ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import request from 'supertest';
 import { FailOpenThrottlerGuard, SkipGlobalThrottle } from '../src/fail-open-throttler.guard';
+import { RefreshThrottlerGuard } from '../src/auth/refresh-throttler.guard';
 
 // This exercises the exact @nestjs/throttler + @nest-lab/throttler-storage-redis + APP_GUARD
 // stack the real controllers use, in a standalone module decoupled from apps/api's rate-limit-
@@ -121,4 +124,67 @@ describe('Rate limiting: @SkipGlobalThrottle exempts a route from the global gua
     }
     await request(app.getHttpServer()).get('/rate-limit-probe-org').expect(429);
   }, 15000);
+});
+
+// The /auth/refresh shape: RefreshThrottlerGuard on the route, @SkipGlobalThrottle() against the
+// app-wide IP tier (limit 2 here, so it would fire first if it still applied). Every request comes
+// from the same loopback IP: two signed-in people each get their own budget (keyed on the session
+// in their refresh token, the same across rotation), and one session over its budget gets 429.
+@Controller('refresh-probe')
+class RefreshProbeController {
+  @Post()
+  @HttpCode(200)
+  @Throttle({ default: { limit: 4, ttl: seconds(5) } })
+  @SkipGlobalThrottle()
+  @UseGuards(RefreshThrottlerGuard)
+  refresh() {
+    return { ok: true };
+  }
+}
+
+@Module({
+  imports: [
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: seconds(5), limit: 2 }],
+      storage: new ThrottlerStorageRedisService(process.env.REDIS_URL ?? 'redis://localhost:6379'),
+    }),
+  ],
+  controllers: [RefreshProbeController],
+  providers: [{ provide: APP_GUARD, useClass: FailOpenThrottlerGuard }, RefreshThrottlerGuard],
+})
+class RefreshProbeModule {}
+
+describe('Rate limiting: /auth/refresh is per session, not per IP', () => {
+  let app: INestApplication;
+  const run = Date.now().toString(36); // fresh sessions per run: the Redis store outlives the test
+  const token = (familyId: string) => new JwtService().sign({ sub: 'u', familyId, jti: Math.random().toString(36) }, { secret: process.env.JWT_REFRESH_SECRET, expiresIn: '1h' });
+  const refresh = (cookie?: string) => {
+    const req = request(app.getHttpServer()).post('/refresh-probe');
+    return cookie ? req.set('Cookie', `refresh_token=${cookie}`) : req;
+  };
+
+  beforeAll(async () => {
+    process.env.JWT_REFRESH_SECRET ??= 'rate-limit-probe-refresh-secret';
+    const moduleRef = await Test.createTestingModule({ imports: [RefreshProbeModule] }).compile();
+    app = moduleRef.createNestApplication();
+    app.use(cookieParser());
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('two users on one IP each get their own budget; one session over it gets 429', async () => {
+    for (let i = 0; i < 4; i++) {
+      await refresh(token(`a-${run}`)).expect(200); // a new (rotated) token every time, same session
+      await refresh(token(`b-${run}`)).expect(200);
+    }
+    await refresh(token(`a-${run}`)).expect(429);
+    await refresh(token(`b-${run}`)).expect(429);
+    // A forged token cannot mint a new budget: it shares the IP's.
+    const forged = new JwtService().sign({ sub: 'u', familyId: `c-${run}` }, { secret: 'not-the-secret' });
+    for (let i = 0; i < 4; i++) await refresh(forged).expect(200);
+    await refresh(`garbage-${run}`).expect(429);
+  }, 20000);
 });

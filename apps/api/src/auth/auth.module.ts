@@ -30,6 +30,7 @@ import { SsoController } from './sso.controller';
 import { SocialController } from './social.controller';
 import { DNS_TXT_RESOLVER, IdentityProvidersService } from './identity-providers.service';
 import { CompanyScopeService } from './company-scope';
+import { RefreshThrottlerGuard } from './refresh-throttler.guard';
 import { IdentityProvidersController } from './identity-providers.controller';
 
 // Its own connection, fast-failing: the shared BullMQ-style connection (maxRetriesPerRequest:
@@ -67,6 +68,7 @@ function createTxtResolver() {
     IdentityProvidersService,
     { provide: DNS_TXT_RESOLVER, useFactory: createTxtResolver },
     CompanyScopeService,
+    RefreshThrottlerGuard,
   ],
   controllers: [AuthController, SamlController, SsoController, SessionsController, SecurityPolicyController, MfaController, OtpController, IdentityProvidersController, SocialController],
   exports: [AuthService, IdentityProvidersService],
