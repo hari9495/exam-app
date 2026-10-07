@@ -14,6 +14,14 @@
       then **Check record** (a step-up action; API `POST /security/identity-providers/domains/verify`). Public mail domains
       (Gmail, Outlook, Yahoo… and throwaway domains) can never be mapped or verified. A domain verified by two
       companies does not auto-route (those people use the company address or the password step).
+      Verified domains are re-checked daily (`DOMAIN_RECHECK_CRON`, default `30 5 * * *` UTC): after
+      `DOMAIN_RECHECK_MAX_FAILURES` (default 3) misses in a row the domain **lapses** -- it stops routing, the
+      company's admins are emailed, the lapse is audited (`identity_provider.domain_lapsed`) and Settings ›
+      Security shows it as Lapsed until an admin checks the record again. Transient DNS errors never count.
+- [ ] **YukthiX platform staff** sign in only at `POST /auth/platform/login` (the classic sign-in page with the
+      Organization box left empty). The company sign-in -- password, one-time code, company picker,
+      forgot-password, SSO -- never reaches a staff account, even one sharing an email and password with a
+      company account. Staff use a hardware security key as their second factor (P12 Q7).
 - [ ] **SSO-only companies** must verify their domain (or their staff use the company address), otherwise
       email-first sign-in stops at the password step, which SSO-only refuses.
 - [ ] **Remembered company.** After a sign-in the device keeps an HttpOnly, signed `yx_company` cookie (180 days)
