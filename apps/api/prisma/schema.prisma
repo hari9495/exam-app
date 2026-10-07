@@ -2062,6 +2062,11 @@ model VerifiedDomain {
   organizationId String       @map("organization_id") @db.Uuid
   domain         String       @db.VarChar(253)
   verifiedAt     DateTime     @default(now()) @map("verified_at") @db.Timestamptz(3)
+  // Scheduled re-check (W-006, migration 20261007200000_verified_domain_recheck): consecutive real
+  // misses; lapsedAt set = no longer routes until the company checks the record again.
+  lastCheckedAt  DateTime?    @map("last_checked_at") @db.Timestamptz(3)
+  failedChecks   Int          @default(0) @map("failed_checks")
+  lapsedAt       DateTime?    @map("lapsed_at") @db.Timestamptz(3)
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@id([organizationId, domain])

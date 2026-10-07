@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { IdentityProvider, Prisma } from '@prisma/client';
 import { X509Certificate } from 'crypto';
 import { AuditService, OrgSecretsCryptoService, TenantContext, TenantPrismaService, loadTenantSecurityPolicy, revokeStaffSessions } from '@exam-platform/shared';
@@ -57,6 +57,31 @@ const AUDITED: (keyof Settings)[] = [
 export const DNS_TXT_RESOLVER = 'DNS_TXT_RESOLVER';
 export type TxtResolver = (name: string) => Promise<string[][]>;
 
+// One TXT look-up: the record is there, it is not (the name has no TXT records or does not exist), or
+// DNS could not say (timeout, SERVFAIL, refused...) -- which proves nothing either way.
+export type TxtCheck = 'found' | 'missing' | 'unknown';
+const DNS_ANSWERED_NO = new Set(['ENODATA', 'ENOTFOUND']);
+export async function checkTxt(resolveTxt: TxtResolver, domain: string, expected: string): Promise<TxtCheck> {
+  try {
+    return (await resolveTxt(domain)).some((chunks) => chunks.join('') === expected) ? 'found' : 'missing';
+  } catch (error) {
+    return DNS_ANSWERED_NO.has((error as { code?: string }).code ?? '') ? 'missing' : 'unknown';
+  }
+}
+
+// After how many consecutive real misses a verified domain lapses (W-006). Configurable, at least 1.
+export function domainRecheckMaxFailures(env = process.env.DOMAIN_RECHECK_MAX_FAILURES): number {
+  const n = Number(env);
+  return Number.isInteger(n) && n >= 1 ? n : 3;
+}
+
+// The consecutive-miss counter after one re-check: a find resets it, a transient DNS error leaves it
+// alone, a real miss adds one; `lapse` once it reaches the limit.
+export function afterRecheck(failedChecks: number, outcome: TxtCheck, maxFailures: number): { failedChecks: number; lapse: boolean } {
+  const next = outcome === 'found' ? 0 : outcome === 'missing' ? failedChecks + 1 : failedChecks;
+  return { failedChecks: next, lapse: next >= maxFailures };
+}
+
 // Removes the company's verified domains that none of its providers maps any more (a claim lives
 // only as long as the mapping).
 async function pruneVerifiedDomains(tx: Prisma.TransactionClient, organizationId: string): Promise<void> {
@@ -68,6 +93,8 @@ async function pruneVerifiedDomains(tx: Prisma.TransactionClient, organizationId
 // Entra / generic OIDC providers per company, each with its email domains and JIT rule.
 @Injectable()
 export class IdentityProvidersService {
+  private readonly logger = new Logger(IdentityProvidersService.name);
+
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
@@ -312,11 +339,15 @@ export class IdentityProvidersService {
       mapped: await tx.identityProviderDomain.findMany({ where: { organizationId }, select: { domain: true }, orderBy: { domain: 'asc' } }),
       verified: await tx.verifiedDomain.findMany({ where: { organizationId } }),
     }));
-    return mapped.map(({ domain }) => ({
-      domain,
-      verifiedAt: verified.find((v) => v.domain === domain)?.verifiedAt ?? null,
-      txtRecord: { name: domain, value: this.verificationValue(organizationId, domain) },
-    }));
+    return mapped.map(({ domain }) => {
+      const row = verified.find((v) => v.domain === domain);
+      return {
+        domain,
+        verifiedAt: row && !row.lapsedAt ? row.verifiedAt : null,
+        lapsedAt: row?.lapsedAt ?? null,
+        txtRecord: { name: domain, value: this.verificationValue(organizationId, domain) },
+      };
+    });
   }
 
   // Looks the TXT record up now. Found: the domain routes email-first sign-ins to this company's
@@ -333,12 +364,79 @@ export class IdentityProvidersService {
     if (!records.some((chunks) => chunks.join('') === expected)) {
       throw new BadRequestException(`No TXT record "${expected}" on ${domain} yet. DNS changes can take a few hours; try again later.`);
     }
+    // Also how a lapsed domain is restored: the miss counter and the lapse are cleared.
+    const now = new Date();
     const row = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.verifiedDomain.upsert({ where: { organizationId_domain: { organizationId, domain } }, create: { organizationId, domain }, update: { verifiedAt: new Date() } }),
+      tx.verifiedDomain.upsert({
+        where: { organizationId_domain: { organizationId, domain } },
+        create: { organizationId, domain, verifiedAt: now, lastCheckedAt: now },
+        update: { verifiedAt: now, lastCheckedAt: now, failedChecks: 0, lapsedAt: null },
+      }),
     );
     await this.audit.record(context, { actorUserId, action: 'identity_provider.domain_verified', entityType: 'organization', entityId: organizationId, metadata: { domain } });
     this.alertAdmins(organizationId, actorUserId, `The domain ${domain} was verified: people with an @${domain} email now go straight to your identity provider.`);
     return { domain, verifiedAt: row.verifiedAt };
+  }
+
+  // Scheduled re-check of every verified domain (W-006; the 'domain-verification-recheck' sweep). A
+  // domain whose TXT record is really gone DOMAIN_RECHECK_MAX_FAILURES times in a row lapses: it stops
+  // routing sign-ins at once (SsoService skips lapsed rows), the company's admins are told and it is
+  // audited. A transient DNS error counts for nothing. Lapsed domains wait for an admin's Check record.
+  // ponytail: sequential look-ups (3 s timeout, 2 tries each); batch with a concurrency cap if the
+  // number of verified domains ever makes the nightly run slow.
+  async recheckDomains(): Promise<{ checked: number; lapsed: number }> {
+    const maxFailures = domainRecheckMaxFailures();
+    const rows = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.verifiedDomain.findMany({ where: { lapsedAt: null }, select: { organizationId: true, domain: true, verifiedAt: true, failedChecks: true } }),
+    );
+    let checked = 0;
+    let lapsed = 0;
+    for (const row of rows) {
+      // One domain's failure never stops the others' checks.
+      try {
+        const result = await this.recheckDomain(row, maxFailures);
+        if (result === 'unknown') this.logger.warn(`Could not look up the TXT record of ${row.domain}; will try again next run`);
+        else checked++;
+        if (result === 'lapsed') lapsed++;
+      } catch (error) {
+        this.logger.error(`Re-check of ${row.domain} failed: ${(error as Error).message}`);
+      }
+    }
+    return { checked, lapsed };
+  }
+
+  private async recheckDomain(
+    row: { organizationId: string; domain: string; verifiedAt: Date; failedChecks: number },
+    maxFailures: number,
+  ): Promise<'unknown' | 'recorded' | 'lapsed'> {
+    const outcome = await checkTxt(this.resolveTxt, row.domain, this.verificationValue(row.organizationId, row.domain));
+    if (outcome === 'unknown') return 'unknown';
+    const { failedChecks, lapse } = afterRecheck(row.failedChecks, outcome, maxFailures);
+    const context: TenantContext = { organizationId: row.organizationId, isSuperAdmin: false };
+    const now = new Date();
+    // Only if nothing changed since it was read: an admin's re-verify in between wins.
+    const { count } = await this.tenantPrisma.forTenant(context, (tx) =>
+      tx.verifiedDomain.updateMany({
+        where: { organizationId: row.organizationId, domain: row.domain, verifiedAt: row.verifiedAt, failedChecks: row.failedChecks, lapsedAt: null },
+        data: { lastCheckedAt: now, failedChecks, ...(lapse ? { lapsedAt: now } : {}) },
+      }),
+    );
+    if (!lapse || count !== 1) return 'recorded';
+    await this.audit.record(context, {
+      actorUserId: null,
+      action: 'identity_provider.domain_lapsed',
+      entityType: 'organization',
+      entityId: row.organizationId,
+      metadata: { domain: row.domain, failedChecks },
+    });
+    this.sessions.notifyAdmins(
+      row.organizationId,
+      'A verified email domain lapsed in your YukthiX organisation',
+      `<p>The TXT record that proves your organisation owns <b>${escapeHtml(row.domain)}</b> was not found in ${failedChecks} checks in a row.</p>` +
+        `<p>People with an @${escapeHtml(row.domain)} email are no longer sent straight to your identity provider.</p>` +
+        '<p>If the domain is still yours, put the record back and use <b>Check record</b> in <b>Settings &rsaquo; Security</b>. If it is not, remove it from your identity providers.</p>',
+    );
+    return 'lapsed';
   }
 
   // SSO-only (YX-IAM-04) needs a provider to sign in with; the last one cannot be switched off.

@@ -11,6 +11,7 @@ import { ApiUsageModule } from '../api-usage/api-usage.module';
 import { FaceEnrolmentModule } from '../face-enrolment/face-enrolment.module';
 import { ProctoringRetentionModule } from '../proctoring-retention/proctoring-retention.module';
 import { DripModule } from '../drip/drip.module';
+import { AuthModule } from '../auth/auth.module';
 
 // Runs every recurring housekeeping sweep as a cron-driven BullMQ job scheduler (one dispatcher
 // worker), replacing the per-service unref'd setInterval timers. Imports each owning module for its
@@ -27,6 +28,7 @@ import { DripModule } from '../drip/drip.module';
     FaceEnrolmentModule,
     ProctoringRetentionModule,
     DripModule,
+    AuthModule,
   ],
   providers: [
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },

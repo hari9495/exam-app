@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { createHash } from 'crypto';
 import { generate } from 'selfsigned';
 import { invalidateTenantSecurityPolicy } from '@exam-platform/shared';
-import { IdentityProvidersService } from './identity-providers.service';
+import { IdentityProvidersService, afterRecheck, checkTxt, domainRecheckMaxFailures } from './identity-providers.service';
 
 // Ported from the former organizations SSO settings tests (single SAML config on the org row) and
 // extended to several providers per company (YX-IAM-04/05).
@@ -289,7 +289,13 @@ describe('IdentityProvidersService', () => {
       resolveTxt.mockResolvedValueOnce([[v.slice(0, 10), v.slice(10)]]);
       await expect(service.verifyDomain(context, 'u1', 'kaverifoods.in')).resolves.toEqual({ domain: 'kaverifoods.in', verifiedAt: expect.any(Date) });
       expect(resolveTxt).toHaveBeenLastCalledWith('kaverifoods.in');
-      expect(tx.verifiedDomain.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: { organizationId: ORG, domain: 'kaverifoods.in' } }));
+      expect(tx.verifiedDomain.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ organizationId: ORG, domain: 'kaverifoods.in' }),
+          // Also how a lapsed domain comes back.
+          update: expect.objectContaining({ failedChecks: 0, lapsedAt: null }),
+        }),
+      );
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'identity_provider.domain_verified', metadata: { domain: 'kaverifoods.in' } }));
       expect(sessions.notifyAdmins).toHaveBeenCalled();
     });
@@ -311,10 +317,14 @@ describe('IdentityProvidersService', () => {
 
     it('lists each mapped domain with its status and record', async () => {
       tx.identityProviderDomain.findMany.mockResolvedValue([{ domain: 'kaveri.in' }, { domain: 'kaverifoods.in' }]);
-      tx.verifiedDomain.findMany.mockResolvedValue([{ domain: 'kaverifoods.in', verifiedAt: new Date('2026-10-01T00:00:00Z') }]);
+      tx.verifiedDomain.findMany.mockResolvedValue([
+        { domain: 'kaverifoods.in', verifiedAt: new Date('2026-10-01T00:00:00Z'), lapsedAt: null },
+        { domain: 'kaveri.in', verifiedAt: new Date('2026-09-01T00:00:00Z'), lapsedAt: new Date('2026-10-05T00:00:00Z') },
+      ]);
       await expect(service.domains(context)).resolves.toEqual([
-        { domain: 'kaveri.in', verifiedAt: null, txtRecord: { name: 'kaveri.in', value: service.verificationValue(ORG, 'kaveri.in') } },
-        { domain: 'kaverifoods.in', verifiedAt: new Date('2026-10-01T00:00:00Z'), txtRecord: { name: 'kaverifoods.in', value: value() } },
+        // Lapsed: not verified any more, and says since when.
+        { domain: 'kaveri.in', verifiedAt: null, lapsedAt: new Date('2026-10-05T00:00:00Z'), txtRecord: { name: 'kaveri.in', value: service.verificationValue(ORG, 'kaveri.in') } },
+        { domain: 'kaverifoods.in', verifiedAt: new Date('2026-10-01T00:00:00Z'), lapsedAt: null, txtRecord: { name: 'kaverifoods.in', value: value() } },
       ]);
     });
 
@@ -324,6 +334,96 @@ describe('IdentityProvidersService', () => {
       expect(tx.verifiedDomain.deleteMany).toHaveBeenCalledWith({ where: { organizationId: ORG, domain: { notIn: ['kaveri.in'] } } });
       await service.remove(context, 'u1', 'idp-1');
       expect(tx.verifiedDomain.deleteMany).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // W-006: verified domains are re-checked on a schedule.
+  describe('scheduled re-check of verified domains', () => {
+    const dnsError = (code: string) => Object.assign(new Error(`queryTxt ${code}`), { code });
+    const VERIFIED_AT = new Date('2026-09-01T00:00:00Z');
+    const row = (failedChecks: number) => ({ organizationId: ORG, domain: 'kaverifoods.in', verifiedAt: VERIFIED_AT, failedChecks });
+
+    it('a look-up is found, a real miss, or unknown when DNS could not answer', async () => {
+      const expected = 'yukthix-domain-verification=x';
+      const resolver = jest.fn();
+      resolver.mockResolvedValueOnce([['yukthix-domain-', 'verification=x']]);
+      await expect(checkTxt(resolver, 'a.test', expected)).resolves.toBe('found');
+      resolver.mockResolvedValueOnce([['v=spf1 -all'], ['yukthix-domain-verification=other']]);
+      await expect(checkTxt(resolver, 'a.test', expected)).resolves.toBe('missing');
+      for (const code of ['ENODATA', 'ENOTFOUND']) {
+        resolver.mockRejectedValueOnce(dnsError(code));
+        await expect(checkTxt(resolver, 'a.test', expected)).resolves.toBe('missing');
+      }
+      for (const code of ['ETIMEOUT', 'ESERVFAIL', 'ECONNREFUSED', 'EREFUSED']) {
+        resolver.mockRejectedValueOnce(dnsError(code));
+        await expect(checkTxt(resolver, 'a.test', expected)).resolves.toBe('unknown');
+      }
+      resolver.mockRejectedValueOnce(new Error('boom'));
+      await expect(checkTxt(resolver, 'a.test', expected)).resolves.toBe('unknown');
+    });
+
+    it('counts consecutive real misses only: a find resets, a transient error leaves the count, the limit lapses', () => {
+      expect(afterRecheck(0, 'missing', 3)).toEqual({ failedChecks: 1, lapse: false });
+      expect(afterRecheck(1, 'unknown', 3)).toEqual({ failedChecks: 1, lapse: false });
+      expect(afterRecheck(1, 'missing', 3)).toEqual({ failedChecks: 2, lapse: false });
+      expect(afterRecheck(2, 'found', 3)).toEqual({ failedChecks: 0, lapse: false });
+      expect(afterRecheck(2, 'missing', 3)).toEqual({ failedChecks: 3, lapse: true });
+      expect(afterRecheck(0, 'missing', 1)).toEqual({ failedChecks: 1, lapse: true });
+    });
+
+    it('the limit is configurable, 3 by default, never below 1', () => {
+      expect(domainRecheckMaxFailures(undefined)).toBe(3);
+      expect(domainRecheckMaxFailures('5')).toBe(5);
+      for (const bad of ['0', '-2', '1.5', 'x', '']) expect(domainRecheckMaxFailures(bad)).toBe(3);
+    });
+
+    it('records each answered check; the third miss in a row lapses the domain, audits it and tells the admins', async () => {
+      tx.verifiedDomain.updateMany = jest.fn().mockResolvedValue({ count: 1 });
+      tx.verifiedDomain.findMany.mockResolvedValue([row(2)]);
+      resolveTxt.mockRejectedValueOnce(dnsError('ENODATA'));
+      await expect(service.recheckDomains()).resolves.toEqual({ checked: 1, lapsed: 1 });
+      expect(tx.verifiedDomain.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { lapsedAt: null } }));
+      expect(tx.verifiedDomain.updateMany).toHaveBeenCalledWith({
+        where: { organizationId: ORG, domain: 'kaverifoods.in', verifiedAt: VERIFIED_AT, failedChecks: 2, lapsedAt: null },
+        data: { lastCheckedAt: expect.any(Date), failedChecks: 3, lapsedAt: expect.any(Date) },
+      });
+      expect(audit.record).toHaveBeenCalledWith(context, {
+        actorUserId: null,
+        action: 'identity_provider.domain_lapsed',
+        entityType: 'organization',
+        entityId: ORG,
+        metadata: { domain: 'kaverifoods.in', failedChecks: 3 },
+      });
+      expect(sessions.notifyAdmins).toHaveBeenCalledWith(ORG, expect.stringContaining('lapsed'), expect.stringContaining('kaverifoods.in'));
+    });
+
+    it('a transient DNS error changes nothing; a found record clears earlier misses', async () => {
+      tx.verifiedDomain.updateMany = jest.fn().mockResolvedValue({ count: 1 });
+      tx.verifiedDomain.findMany.mockResolvedValue([row(2)]);
+      resolveTxt.mockRejectedValueOnce(dnsError('ETIMEOUT'));
+      await expect(service.recheckDomains()).resolves.toEqual({ checked: 0, lapsed: 0 });
+      expect(tx.verifiedDomain.updateMany).not.toHaveBeenCalled();
+
+      resolveTxt.mockResolvedValueOnce([[service.verificationValue(ORG, 'kaverifoods.in')]]);
+      await expect(service.recheckDomains()).resolves.toEqual({ checked: 1, lapsed: 0 });
+      expect(tx.verifiedDomain.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { lastCheckedAt: expect.any(Date), failedChecks: 0 } }));
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(sessions.notifyAdmins).not.toHaveBeenCalled();
+    });
+
+    it('one domain failing does not stop the others', async () => {
+      tx.verifiedDomain.updateMany = jest.fn().mockRejectedValueOnce(new Error('db down')).mockResolvedValue({ count: 1 });
+      tx.verifiedDomain.findMany.mockResolvedValue([row(0), { ...row(0), domain: 'kaveri.in' }]);
+      await expect(service.recheckDomains()).resolves.toEqual({ checked: 1, lapsed: 0 });
+      expect(tx.verifiedDomain.updateMany).toHaveBeenCalledTimes(2);
+    });
+
+    it('an admin re-verifying while the check runs wins: no lapse, no alert', async () => {
+      tx.verifiedDomain.updateMany = jest.fn().mockResolvedValue({ count: 0 });
+      tx.verifiedDomain.findMany.mockResolvedValue([row(2)]);
+      await expect(service.recheckDomains()).resolves.toEqual({ checked: 1, lapsed: 0 });
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(sessions.notifyAdmins).not.toHaveBeenCalled();
     });
   });
 
