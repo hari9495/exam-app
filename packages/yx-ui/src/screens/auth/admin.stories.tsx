@@ -124,6 +124,7 @@ export const SecuritySettingsDomains: S = {
       domains={[
         { domain: 'kaverifoods.in', verifiedAt: '2026-09-20T10:00:00+05:30', txtRecord: { name: 'kaverifoods.in', value: 'yukthix-domain-verification=4f1c9a07b2d84e6c9e31a5d0c7b8f612' } },
         { domain: 'kaveri.co.in', verifiedAt: null, txtRecord: { name: 'kaveri.co.in', value: 'yukthix-domain-verification=9b2e71c04d5a46f8a1c3e7d2b6f09a35' } },
+        { domain: 'kaveri-exports.com', verifiedAt: null, lapsedAt: '2026-10-05T12:00:00+05:30', txtRecord: { name: 'kaveri-exports.com', value: 'yukthix-domain-verification=0c6d2e9f81a74b35b7e4f1a2d9c8e053' } },
       ]}
       onVerifyDomain={async () => {
         await new Promise((r) => setTimeout(r, 600));
