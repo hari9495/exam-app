@@ -10,7 +10,7 @@ import { generate } from 'selfsigned';
 import { PrismaService, TenantPrismaService, invalidateTenantSecurityPolicy } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
-import { DNS_TXT_RESOLVER } from '../src/auth/identity-providers.service';
+import { DNS_TXT_RESOLVER, IdentityProvidersService } from '../src/auth/identity-providers.service';
 import { markSteppedUp } from './fixtures/step-up';
 
 // Email-first sign-in, end to end on the real database (forced RLS, app role) and real Redis
@@ -24,7 +24,8 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
   let redis: Redis;
   const jwt = new JwtService({});
   const email = { send: jest.fn().mockResolvedValue({ success: true }) };
-  const txt = new Map<string, string[][]>();
+  // A domain's TXT records, or the DNS error its look-up fails with.
+  const txt = new Map<string, string[][] | Error>();
   const SUPER = { organizationId: null, isSuperAdmin: true };
   const runId = randomUUID().slice(0, 8);
   const BASE = 'yukthix.test';
@@ -35,6 +36,10 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
   const SHARED_PW = 'Shared-Correct-Horse-3';
   const ADMIN_PW = 'Admin-Correct-Horse-4';
   const DOMAIN = `kaveri-${runId}.test`;
+  // YukthiX platform staff with the same email and password as a company account (W-005).
+  const STAFF = `ops-${runId}@yukthix-${runId}.test`;
+  const STAFF_PW = 'Staff-Correct-Horse-6';
+  let staffId: string;
 
   let planId: string;
   const org: Record<'kaveri' | 'ashok' | 'cauvery', { id: string; slug: string; name: string }> = {} as never;
@@ -77,6 +82,7 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
     return [`auth:lp:acct:fail:${h}`, `auth:lp:acct:block:${h}`];
   };
   // Clears an identifier's counters (each limit is proven on its own below).
+  const platformLogin = (b: Browser, who: string, password: string) => call(b, 'post', '/auth/platform/login', { email: who, password });
   const resetLocks = async (identifier: string) => {
     const keys = ['*', '', ...Object.values(org).map((o) => o.slug.toLowerCase())].flatMap((s) => lockKeys(s, identifier));
     await redis.del(...keys);
@@ -93,7 +99,11 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
       .overrideProvider(EmailService)
       .useValue(email)
       .overrideProvider(DNS_TXT_RESOLVER)
-      .useValue(async (name: string) => txt.get(name) ?? [])
+      .useValue(async (name: string) => {
+        const answer = txt.get(name);
+        if (answer instanceof Error) throw answer;
+        return answer ?? [];
+      })
       .compile();
     app = moduleRef.createNestApplication();
     app.use(cookieParser());
@@ -123,12 +133,15 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
       const passwordHash = await argon2.hash(password);
       users[`${key}:${who}`] = (await tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) => tx.user.create({ data: { organizationId, email: who, passwordHash, role } }))).id;
     }
+    const staffHash = await argon2.hash(STAFF_PW);
+    staffId = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { organizationId: null, email: STAFF, passwordHash: staffHash, role: 'super_admin' } }))).id;
   });
 
   beforeEach(async () => {
     email.send.mockClear();
     await resetLocks(PERSON);
     await resetLocks(SHARED);
+    await resetLocks(STAFF);
   });
 
   afterAll(async () => {
@@ -137,6 +150,8 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
     await tenantPrisma
       .forTenant(SUPER, async (tx) => {
         await tx.refreshToken.deleteMany({ where: { user: { organizationId: { in: ids } } } });
+        await tx.refreshToken.deleteMany({ where: { userId: staffId } });
+        await tx.user.deleteMany({ where: { id: staffId } });
         await tx.user.deleteMany({ where: { organizationId: { in: ids } } });
         await tx.tenantSecurityPolicy.deleteMany({ where: { organizationId: { in: ids } } });
         await tx.identityProvider.deleteMany({ where: { organizationId: { in: ids } } });
@@ -245,6 +260,82 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
       const res = await login(browser(), SHARED, 'Not-The-Password-9');
       expect(res.status).toBe(401);
       expect(res.body.companies).toBeUndefined();
+    });
+  });
+
+  // W-005: platform staff never sign in through a company -- not by password, code, picker or reset.
+  describe('YukthiX platform staff are never reachable through the company sign-in (W-005)', () => {
+    beforeAll(async () => {
+      // The same email in a company, with the same password as the staff account.
+      const organizationId = org.cauvery.id;
+      const passwordHash = await argon2.hash(STAFF_PW);
+      users['cauvery:staff-twin'] = (await tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) => tx.user.create({ data: { organizationId, email: STAFF, passwordHash, role: 'panel' } }))).id;
+    });
+
+    it('staff email + right password on the company path: the company account only, never a "YukthiX" choice', async () => {
+      const res = await login(browser(), STAFF, STAFF_PW);
+      expect(res.status).toBe(200);
+      expect(res.body.selectionRequired).toBeUndefined();
+      expect(orgOf(res.body.accessToken)).toBe(org.cauvery.id);
+    });
+
+    it('with no company account, it is exactly the wrong-password 401, and nothing is counted against the staff account', async () => {
+      await tenantPrisma.forTenant({ organizationId: org.cauvery.id, isSuperAdmin: false }, (tx) => tx.user.update({ where: { id: users['cauvery:staff-twin'] }, data: { status: 'inactive' } }));
+      try {
+        const right = await login(browser(), STAFF, STAFF_PW);
+        const wrong = await login(browser(), STAFF, 'not-the-password');
+        expect(right.status).toBe(401);
+        expect(right.body).toEqual(wrong.body);
+        const unknown = await login(browser(), `nobody-${runId}@yukthix-${runId}.test`, STAFF_PW);
+        expect(unknown.body).toEqual(right.body);
+        expect(await events({ userId: staffId })).toEqual([]);
+        expect(await redis.exists(...lockKeys('', STAFF))).toBe(0);
+      } finally {
+        await tenantPrisma.forTenant({ organizationId: org.cauvery.id, isSuperAdmin: false }, (tx) => tx.user.update({ where: { id: users['cauvery:staff-twin'] }, data: { status: 'active' } }));
+      }
+    });
+
+    it('the company picker never lists YukthiX, and a "yukthix" choice is refused', async () => {
+      // A second company account with the same password: the picker appears, with companies only.
+      const organizationId = org.ashok.id;
+      const passwordHash = await argon2.hash(STAFF_PW);
+      const twin = (await tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) => tx.user.create({ data: { organizationId, email: STAFF, passwordHash, role: 'panel' } }))).id;
+      try {
+        const b = browser();
+        const res = await login(b, STAFF, STAFF_PW);
+        expect(res.body.selectionRequired).toBe(true);
+        expect(res.body.companies.map((c: { id: string }) => c.id).sort()).toEqual([org.ashok.id, org.cauvery.id].sort());
+        expect(res.body.companies.map((c: { name: string }) => c.name)).not.toContain('YukthiX');
+        expect((await select(b, res.body.selectionToken, 'yukthix')).status).toBe(400);
+      } finally {
+        await tenantPrisma.forTenant(SUPER, (tx) => tx.user.delete({ where: { id: twin } }));
+      }
+    });
+
+    it('one-time codes and forgot-password do not reach the staff account', async () => {
+      await setPolicy(org.cauvery.id, { otpSignInChannels: ['email'] });
+      try {
+        expect((await call(browser(), 'post', '/auth/otp/start', { identifier: STAFF })).status).toBe(200);
+        expect((await call(browser(), 'post', '/auth/forgot-password', { email: STAFF })).status).toBe(200);
+        // The code and the reset link went to the company account only.
+        expect(await events({ userId: users['cauvery:staff-twin'], result: 'code_sent' })).toHaveLength(1);
+        expect(await events({ userId: staffId })).toEqual([]);
+        expect(await prisma.passwordResetToken.count({ where: { userId: users['cauvery:staff-twin'] } })).toBe(1);
+        expect(await prisma.passwordResetToken.count({ where: { userId: staffId } })).toBe(0);
+      } finally {
+        await setPolicy(org.cauvery.id, { otpSignInChannels: [] });
+      }
+    });
+
+    it('the platform staff sign-in still works, and never signs in a company account', async () => {
+      const res = await platformLogin(browser(), STAFF.toUpperCase(), STAFF_PW);
+      expect(res.status).toBe(200);
+      const payload = jwt.decode(res.body.accessToken) as { sub: string; role: string; organizationId: string | null };
+      expect(payload).toMatchObject({ sub: staffId, role: 'super_admin', organizationId: null });
+      // A company account's credential is just a wrong credential here.
+      const company = await platformLogin(browser(), PERSON, KAVERI_PW);
+      expect(company.status).toBe(401);
+      expect(company.body).toEqual((await platformLogin(browser(), STAFF, 'not-the-password')).body);
     });
   });
 
@@ -403,7 +494,7 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
       expect((await identify(browser(), PERSON)).body).toEqual({ next: 'password', providers: [] });
 
       const [row] = (await admin('get', '/domains').expect(200)).body;
-      expect(row).toEqual({ domain: DOMAIN, verifiedAt: null, txtRecord: { name: DOMAIN, value: expect.stringMatching(/^yukthix-domain-verification=/) } });
+      expect(row).toEqual({ domain: DOMAIN, verifiedAt: null, lapsedAt: null, txtRecord: { name: DOMAIN, value: expect.stringMatching(/^yukthix-domain-verification=/) } });
       // Not published yet.
       expect((await admin('post', '/domains/verify').send({ domain: DOMAIN })).status).toBe(400);
       txt.set(DOMAIN, [['v=spf1 -all'], [row.txtRecord.value]]);
@@ -419,6 +510,45 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
       await tenantPrisma.forTenant(SUPER, (tx) => tx.verifiedDomain.create({ data: { organizationId: org.ashok.id, domain: DOMAIN } }));
       expect((await identify(browser(), PERSON)).body).toEqual({ next: 'password', providers: [] });
       await tenantPrisma.forTenant(SUPER, (tx) => tx.verifiedDomain.delete({ where: { organizationId_domain: { organizationId: org.ashok.id, domain: DOMAIN } } }));
+    });
+
+    // W-006: the scheduled re-check (the 'domain-verification-recheck' sweep runs recheckDomains).
+    it('a domain whose TXT record is removed stops routing after 3 real misses (not transient errors); re-verifying restores it', async () => {
+      const recheck = () => app.get(IdentityProvidersService).recheckDomains();
+      const routes = async () => (await identify(browser(), PERSON)).body.next === 'sso';
+      const record = (await admin('get', '/domains').expect(200)).body[0].txtRecord.value as string;
+      expect(await routes()).toBe(true);
+
+      txt.set(DOMAIN, [['v=spf1 -all']]); // the record is gone
+      await recheck();
+      txt.set(DOMAIN, Object.assign(new Error(`queryTxt ETIMEOUT ${DOMAIN}`), { code: 'ETIMEOUT' }));
+      await recheck(); // transient: does not count
+      txt.set(DOMAIN, Object.assign(new Error(`queryTxt ENODATA ${DOMAIN}`), { code: 'ENODATA' }));
+      await recheck();
+      expect(await routes()).toBe(true);
+      const counted = await tenantPrisma.forTenant(SUPER, (tx) => tx.verifiedDomain.findUnique({ where: { organizationId_domain: { organizationId: org.kaveri.id, domain: DOMAIN } } }));
+      expect(counted).toMatchObject({ failedChecks: 2, lapsedAt: null, lastCheckedAt: expect.any(Date) });
+
+      email.send.mockClear();
+      txt.set(DOMAIN, []);
+      await recheck();
+      expect(await routes()).toBe(false);
+      const [lapsed] = (await admin('get', '/domains').expect(200)).body;
+      expect(lapsed).toEqual({ domain: DOMAIN, verifiedAt: null, lapsedAt: expect.any(String), txtRecord: { name: DOMAIN, value: record } });
+      const audit = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findFirst({ where: { organizationId: org.kaveri.id, action: 'identity_provider.domain_lapsed' } }));
+      expect(audit?.actorUserId).toBeNull();
+      expect(JSON.parse(audit!.metadataJson!)).toEqual({ domain: DOMAIN, failedChecks: 3 });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: `admin-${runId}@kaveri-${runId}.test`, subject: expect.stringContaining('lapsed') }));
+      // A lapsed domain is not re-checked on its own: the admin restores it.
+      await recheck();
+      expect(await routes()).toBe(false);
+
+      txt.set(DOMAIN, [[record]]);
+      expect((await admin('post', '/domains/verify').send({ domain: DOMAIN })).status).toBe(200);
+      expect(await routes()).toBe(true);
+      expect((await admin('get', '/domains').expect(200)).body[0]).toMatchObject({ verifiedAt: expect.any(String), lapsedAt: null });
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.verifiedDomain.findUnique({ where: { organizationId_domain: { organizationId: org.kaveri.id, domain: DOMAIN } } }))).toMatchObject({ failedChecks: 0, lapsedAt: null });
     });
 
     it('with the company known, its own providers are offered (and its domains route as before)', async () => {
