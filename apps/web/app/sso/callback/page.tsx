@@ -9,6 +9,8 @@ import { useAuth } from '../../../lib/auth-context';
 import { decodeJwtPayload } from '../../../lib/jwt';
 import { MfaChallengeScreen } from '@yukthix/ui/auth';
 import { passkeyAssertion } from '../../../lib/yx-security';
+import { takeNext } from '../../../lib/safe-next';
+import { yxProofError } from '../../../lib/yx-auth-messages';
 
 const GENERIC_ERROR = 'Sign-in failed. Please try again or use your password.';
 
@@ -31,12 +33,14 @@ function SsoCallbackRedeemer() {
   const [challenge, setChallenge] = useState<{ mfaToken: string; factors: string[] } | null>(null);
   async function finish(result: { accessToken: string; mfa?: { required: boolean } }) {
     login('', result.accessToken);
+    // Back to the page the sign-in started from (?next= kept across the round trip to the company's sign-in page).
+    const next = takeNext();
     if (result.mfa?.required) {
-      router.push('/yx/setup-mfa');
+      router.push(next ? `/yx/setup-mfa?next=${encodeURIComponent(next)}` : '/yx/setup-mfa');
       return;
     }
     const payload = decodeJwtPayload(result.accessToken);
-    router.push(await yxLandingPath(result.accessToken, payload?.role as string | undefined));
+    router.push(next ?? (await yxLandingPath(result.accessToken, payload?.role as string | undefined)));
   }
 
   useEffect(() => {
@@ -91,7 +95,7 @@ function SsoCallbackRedeemer() {
         <MfaChallengeScreen
           factors={challenge.factors}
           getPasskey={() => passkeyAssertion(() => post('/auth/mfa/passkey-options', {}))}
-          submit={async (proof) => finish(await post('/auth/mfa/verify', proof))}
+          submit={async (proof) => finish(await post('/auth/mfa/verify', proof).catch((err) => Promise.reject(yxProofError(err, proof.factor))))}
           sendCode={async (channel) => {
             await post('/auth/mfa/otp/send', { channel });
           }}

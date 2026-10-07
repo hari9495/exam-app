@@ -41,6 +41,15 @@ describe('SsoCallbackPage', () => {
     expect(login).toHaveBeenCalledWith('', accessToken);
   });
 
+  it('comes back to the page the sign-in started from (?next= kept across the company sign-in page)', async () => {
+    window.sessionStorage.setItem('yx.signInNext', '/yx/people/directory');
+    atCallback('code=abc124');
+    (apiFetch as jest.Mock).mockResolvedValueOnce({ accessToken: fakeJwt({ sub: 'u1', role: 'org_admin' }) });
+    render(<SsoCallbackPage />);
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/people/directory'));
+    expect(window.sessionStorage.getItem('yx.signInNext')).toBeNull();
+  });
+
   it('shows a not-authorized message and a link back to password login for ssoError=not_provisioned', async () => {
     atCallback('ssoError=not_provisioned');
 
