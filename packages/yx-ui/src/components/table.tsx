@@ -137,6 +137,12 @@ export interface DataTableProps<R> {
    * line joined by " · " ("Thu 15 Jan 2026 · Holiday · Past"), instead of one label / value line each.
    */
   cardSummary?: boolean;
+  /**
+   * The rows form a tree (departments, cost centres): each row's parent id, or null at the top. Children follow their
+   * parent, indented with a guide line, and a parent has an expand / collapse chevron and its child count. The table
+   * becomes a treegrid: Right opens a focused row, Left closes it.
+   */
+  treeParent?: (row: R) => string | null | undefined;
 }
 
 const SELECT_W = 40;
@@ -221,7 +227,27 @@ function EditCell<R>({ c, row, onCommit, onCancel }: { c: TableColumn<R>; row: R
   return <TextField {...common} value={text} onChange={setText} onBlur={() => onCommit(text)} />;
 }
 
-type Item<R> = { kind: 'group'; key: string; label: string; rows: R[] } | { kind: 'row'; row: R; id: string };
+/** First cell of a tree row: indent with guide lines, the chevron on parents (with the child count), a spacer on leaves. */
+function TreeCell({ tree, name, onToggle, children }: { tree: { depth: number; children: number; open: boolean }; name: string; onToggle: () => void; children: ReactNode }) {
+  return (
+    <span className="yx-table__tree">
+      {Array.from({ length: tree.depth }, (_, i) => (
+        <span key={i} className="yx-table__tree-step" aria-hidden="true" />
+      ))}
+      {tree.children ? (
+        <button type="button" className="yx-table__tree-toggle" aria-expanded={tree.open} aria-label={`${tree.open ? 'Collapse' : 'Expand'} ${name}, ${tree.children} under it`} tabIndex={-1} onClick={onToggle}>
+          <Icon icon={tree.open ? ChevronDown : ChevronRight} />
+        </button>
+      ) : (
+        <span className="yx-table__tree-leaf" aria-hidden="true" />
+      )}
+      <span className="yx-table__tree-main">{children}</span>
+      {tree.children > 0 && <span className="yx-table__group-count" aria-hidden="true">{tree.children}</span>}
+    </span>
+  );
+}
+
+type Item<R> = { kind: 'group'; key: string; label: string; rows: R[] } | { kind: 'row'; row: R; id: string; tree?: { depth: number; children: number; open: boolean } };
 
 /**
  * The list view for every object (§20): sort, filter bar slot, saved views slot, columns (show / hide / reorder / resize),
@@ -260,6 +286,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
     pageSize: initialPageSize,
     virtual,
     height,
+    treeParent,
     onCellEdit,
     toolbar,
     views,
@@ -328,8 +355,39 @@ export function DataTable<R>(props: DataTableProps<R>) {
   const pages = paged ? Math.max(1, Math.ceil(sorted.length / pageSize!)) : 1;
   const pageRows = paged ? sorted.slice((page - 1) * pageSize!, page * pageSize!) : sorted;
 
+  // Tree rows the person has closed (all open at first).
+  const [closedNodes, setClosedNodes] = useState<Set<string>>(new Set());
+  const setNodeOpen = (id: string, open: boolean) =>
+    setClosedNodes((prev) => {
+      const n = new Set(prev);
+      if (open) n.delete(id);
+      else n.add(id);
+      return n;
+    });
   const items: Item<R>[] = useMemo(() => {
     const gc = groupBy ? byKey.get(groupBy) : undefined;
+    if (treeParent && !gc) {
+      // Depth-first in the current sort order; a row whose parent isn't in the list sits at the top.
+      const ids = new Set(pageRows.map(getRowId));
+      const kids = new Map<string | null, R[]>();
+      for (const row of pageRows) {
+        const p = treeParent(row);
+        const key = p && ids.has(p) ? p : null;
+        kids.set(key, [...(kids.get(key) ?? []), row]);
+      }
+      const out: Item<R>[] = [];
+      const walk = (parent: string | null, depth: number) => {
+        for (const row of kids.get(parent) ?? []) {
+          const id = getRowId(row);
+          const children = kids.get(id)?.length ?? 0;
+          const open = !closedNodes.has(id);
+          out.push({ kind: 'row', row, id, tree: { depth, children, open } });
+          if (children && open && depth < 50) walk(id, depth + 1);
+        }
+      };
+      walk(null, 0);
+      return out;
+    }
     if (!gc) return pageRows.map((row) => ({ kind: 'row' as const, row, id: getRowId(row) }));
     const out: Item<R>[] = [];
     for (const g of groupRows(pageRows, (r) => (gc.type === 'person' ? gc.person?.(r).name : gc.value(r)))) {
@@ -337,7 +395,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
       if (!collapsed.has(g.key)) for (const row of g.rows) out.push({ kind: 'row', row, id: getRowId(row) });
     }
     return out;
-  }, [pageRows, groupBy, byKey, collapsed, getRowId]);
+  }, [pageRows, groupBy, byKey, collapsed, getRowId, treeParent, closedNodes]);
 
   // ---- selection ----
   const selected = useMemo(() => new Set(selectedIds ?? []), [selectedIds]);
@@ -384,6 +442,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
     else if (k === 'End') focusRow(rowItems.length - 1);
     else if (k === 'Enter' && onRowClick && rowItems[focusIdx]) onRowClick(rowItems[focusIdx].row);
     else if ((k === ' ' || k === 'x') && selectable && rowItems[focusIdx] && !isBlocked(rowItems[focusIdx].row)) toggle(rowItems[focusIdx].id);
+    else if ((k === 'ArrowRight' || k === 'ArrowLeft') && rowItems[focusIdx]?.tree?.children) setNodeOpen(rowItems[focusIdx].id, k === 'ArrowRight');
     else return;
     e.preventDefault();
   };
@@ -557,6 +616,8 @@ export function DataTable<R>(props: DataTableProps<R>) {
         key={id}
         data-row-index={rowIndex}
         tabIndex={rowIndex === focusIdx ? 0 : -1}
+        aria-level={it.tree ? it.tree.depth + 1 : undefined}
+        aria-expanded={it.tree?.children ? it.tree.open : undefined}
         data-active={activeRowId === id || undefined}
         data-clickable={onRowClick ? true : undefined}
         onFocus={() => setFocusIdx(rowIndex)}
@@ -598,6 +659,10 @@ export function DataTable<R>(props: DataTableProps<R>) {
                 >
                   {cellText(c, row) !== '' && <Cell c={c} row={row} />}
                 </button>
+              ) : primary && it.tree ? (
+                <TreeCell tree={it.tree} name={cellText(c, row)} onToggle={() => setNodeOpen(id, !it.tree!.open)}>
+                  <Cell c={c} row={row} />
+                </TreeCell>
               ) : (
                 <Cell c={c} row={row} />
               )}
@@ -862,6 +927,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
       >
         <table
           aria-label={label}
+          role={treeParent && !groupBy ? 'treegrid' : undefined}
           aria-busy={state === 'loading' || undefined}
           // Once the person has resized columns, every width is theirs: the table is exactly that wide, no re-sharing.
           style={cards ? undefined : resized ? { width: fixedW + dataW, minWidth: fixedW + dataW } : { minWidth: fixedW + visible.reduce((t, c) => t + fitW(c), 0) }}

@@ -49,12 +49,6 @@ export function subtree(rows: MasterRecord[], id: string): Set<string> {
   return out;
 }
 
-const depthOf = (rows: MasterRecord[], r: MasterRecord): number => {
-  let depth = 0;
-  for (let p = r.parentId; p && depth < 20; depth++) p = rows.find((x) => x.id === p)?.parentId ?? null;
-  return depth;
-};
-
 /* ---------- master editor ---------- */
 
 interface Draft {
@@ -404,10 +398,11 @@ export function StructureScreen(props: StructureScreenProps) {
     key: 'name',
     header: meta.label.replace(/s$/, ''),
     value: (r) => r.name,
+    // One line: the name, then its code as a small secondary tag (a second line spilled out of the table row).
     render: (r) => (
-      <span className="yx-auth__item-main" style={kind === 'departments' ? { paddingInlineStart: `calc(var(--yx-space-4) * ${depthOf(all, r)})` } : undefined}>
-        <Text weight="medium">{r.name}</Text>
-        <Text tone="secondary" size="sm">{r.code}</Text>
+      <span className="yx-org__name">
+        <Text weight="medium" className="yx-org__name-text" title={r.name}>{r.name}</Text>
+        <span className="yx-org__code">{r.code}</span>
       </span>
     ),
     hideable: false,
@@ -415,7 +410,7 @@ export function StructureScreen(props: StructureScreenProps) {
   const ownership: TableColumn<MasterRecord> = { key: 'ownership', header: 'Ownership', value: (r) => ownershipLabel(r, props.entities), width: 200, optional: true };
   const status: TableColumn<MasterRecord> = { key: 'status', header: 'Status', value: (r) => (r.archivedAt ? 'Archived' : 'Active'), render: (r) => <StatusBadge archived={Boolean(r.archivedAt)} />, width: 110, optional: true };
   const columns: Record<MasterKind, TableColumn<MasterRecord>[]> = {
-    departments: [name, { key: 'parent', header: 'Part of', value: (r) => byId(r.parentId)?.name ?? (r.isDivision ? 'Division' : '—'), width: 170 }, ownership, status],
+    departments: [name, { key: 'parent', header: 'Part of', value: (r) => byId(r.parentId)?.name ?? (r.isDivision ? 'Division' : '—'), render: (r) => (r.isDivision && !r.parentId ? <Badge>Division</Badge> : byId(r.parentId)?.name ?? '—'), width: 150 }, ownership, status],
     designations: [name, { key: 'family', header: 'Job family', value: (r) => r.jobFamily ?? '—', width: 160 }, ownership, status],
     grades: [name, { key: 'rank', header: 'Rank', type: 'number', value: (r) => r.rank, width: 90 }, ownership, status],
     'employment-types': [name, { key: 'category', header: 'Category', value: (r) => (r.category ? CATEGORY_LABEL[r.category] : '—'), width: 170 }, ownership, status],
@@ -459,6 +454,7 @@ export function StructureScreen(props: StructureScreenProps) {
                   columns={columns[kind]}
                   rows={rows}
                   getRowId={(r) => r.id}
+                  treeParent={tree(kind) ? (r) => r.parentId ?? null : undefined}
                   rowNoun={[k.one, `${k.one}s`]}
                   cardSummary
                   empty={<EmptyState compact title={`No ${k.label.toLowerCase()} yet.`} description={k.description} action={props.canManage ? add : undefined} />}

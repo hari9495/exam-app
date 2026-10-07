@@ -1,3 +1,11 @@
 /* Settings › Organisation (P01 §8). Tokens only; no sticky bars (R8); fits 390 px phones without sideways scroll (R4, R5). */
 .yx-org__head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--yx-space-3); }
 .yx-org__editor { display: flex; flex-direction: column; gap: var(--yx-space-6); min-width: 0; }
+/* Structure name cell: name, code tag and Division mark on one line (a stacked code spilled out of the row). */
+.yx-org__name { display: inline-flex; align-items: center; gap: var(--yx-space-2); max-width: 100%; min-width: 0; vertical-align: middle; }
+.yx-org__name-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.yx-org__code {
+  flex: none; padding: 0 var(--yx-space-1); border-radius: var(--yx-radius-badge);
+  border: var(--yx-border-width) solid var(--yx-color-border); background: var(--yx-color-bg-subtle);
+  font-family: var(--yx-font-mono); font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-secondary); white-space: nowrap;
+}

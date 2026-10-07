@@ -203,7 +203,8 @@
 .yx-table td .yx-mono { white-space: nowrap; }
 .yx-table td {
   height: var(--yx-row-height);
-  padding: 0 var(--yx-space-3);
+  /* Vertical padding keeps a two-line cell (name over a code or date) inside its row instead of touching the divider. */
+  padding: var(--yx-space-half) var(--yx-space-3);
   border-bottom: var(--yx-border-width) solid var(--yx-color-border);
   background: var(--yx-color-bg-surface);
   overflow: hidden;
@@ -295,6 +296,15 @@
   min-height: var(--yx-target-min); padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer;
 }
 .yx-table__group-count { padding: 0 var(--yx-space-2); border-radius: var(--yx-radius-badge); background: var(--yx-color-bg-surface); border: var(--yx-border-width) solid var(--yx-color-border); font-size: var(--yx-text-xs); color: var(--yx-color-text-secondary); }
+/* Tree rows (DataTable treeParent): one indent step per level, a faint guide line under each ancestor's chevron. */
+.yx-table__tree { display: flex; align-items: center; gap: var(--yx-space-1); min-width: 0; }
+.yx-table__tree-step { position: relative; flex: none; align-self: stretch; width: var(--yx-space-6); }
+.yx-table__tree-step::before { content: ''; position: absolute; top: 0; bottom: 0; left: calc(var(--yx-space-3) - var(--yx-border-width)); border-left: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-table__tree-toggle, .yx-table__tree-leaf { flex: none; display: inline-grid; place-items: center; width: var(--yx-space-6); height: var(--yx-space-6); }
+.yx-table__tree-toggle { padding: 0; border: 0; border-radius: var(--yx-radius-control); background: none; color: var(--yx-color-text-secondary); cursor: pointer; }
+.yx-table__tree-toggle:hover { background: var(--yx-color-bg-subtle); color: var(--yx-color-text); }
+.yx-table__tree-toggle:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); }
+.yx-table__tree-main { min-width: 0; overflow: hidden; }
 .yx-table__foot { padding: var(--yx-space-2) var(--yx-space-3); border-top: var(--yx-border-width) solid var(--yx-color-border); }
 
 /* Narrow tables (under 600 px, set by DataTable) show each row as a card: primary cell first, then label and value pairs (R4). */

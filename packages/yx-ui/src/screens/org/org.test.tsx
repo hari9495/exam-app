@@ -160,13 +160,33 @@ describe('LocationsScreen (P01 §4.2)', () => {
 describe('StructureScreen (P01 §4.3)', () => {
   it('departments show the tree, divisions and ownership (YX-ORG-15)', () => {
     render(<Structure />);
-    const table = screen.getByRole('table', { name: 'Departments' });
+    const table = screen.getByRole('treegrid', { name: 'Departments' });
     const prod = [...table.querySelectorAll('tbody tr')].find((r) => r.textContent?.includes('Production')) as HTMLElement;
     expect(within(prod).getByText('Operations')).toBeTruthy();
     expect(within(prod).getByText('KFPL-TN only')).toBeTruthy();
     const sales = [...table.querySelectorAll('tbody tr')].find((r) => r.textContent?.startsWith('Sales')) as HTMLElement;
     expect(within(sales).getByText('Division')).toBeTruthy();
     expect(within(sales).getByText('Shared · KFPL')).toBeTruthy();
+  });
+
+  it('departments are a tree: code on the name line, chevron with child count, children collapse (keyboard too)', async () => {
+    render(<Structure />);
+    const table = screen.getByRole('treegrid', { name: 'Departments' });
+    const rowOf = (name: string) => [...table.querySelectorAll('tbody tr')].find((r) => r.querySelector('.yx-org__name-text')?.textContent === name) as HTMLElement | undefined;
+    const ops = rowOf('Operations')!;
+    // The code sits on the same line as the name, not in a second stacked line.
+    expect(ops.querySelector('.yx-org__name .yx-org__code')?.textContent).toBeTruthy();
+    expect(ops.querySelector('.yx-auth__item-main')).toBeNull();
+    expect(ops).toHaveAttribute('aria-level', '1');
+    expect(ops).toHaveAttribute('aria-expanded', 'true');
+    expect(rowOf('Production')).toHaveAttribute('aria-level', '2');
+    const toggle = within(ops).getByRole('button', { name: /^Collapse Operations, \d+ under it$/ });
+    await userEvent.click(toggle);
+    expect(rowOf('Production')).toBeUndefined();
+    expect(ops).toHaveAttribute('aria-expanded', 'false');
+    ops.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(rowOf('Production')).toBeDefined();
   });
 
   it('R1: grades show no pay, and "Show pay" appears only with pay access', async () => {
@@ -204,7 +224,7 @@ describe('StructureScreen (P01 §4.3)', () => {
   it('archive is confirmed through the row menu', async () => {
     const onArchive = ok();
     render(<Structure onArchive={onArchive} />);
-    const row = [...screen.getByRole('table', { name: 'Departments' }).querySelectorAll('tbody tr')].find((r) => r.textContent?.startsWith('Engineering')) as HTMLElement;
+    const row = [...screen.getByRole('treegrid', { name: 'Departments' }).querySelectorAll('tbody tr')].find((r) => r.textContent?.startsWith('Engineering')) as HTMLElement;
     await userEvent.click(within(row).getByRole('button', { name: /More actions|Actions/ }));
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Archive' }));
     await userEvent.click(screen.getByRole('button', { name: 'Archive' }));
