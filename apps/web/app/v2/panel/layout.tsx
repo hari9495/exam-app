@@ -49,8 +49,7 @@ export default function PanelV2Layout({ children }: { children: React.ReactNode 
   } as React.CSSProperties;
 
   async function handleLogout() {
-    await logout();
-    router.push('/login');
+    router.push(await logout());
   }
 
   if (isLoading || !accessToken || (role !== null && !ALLOWED_ROLES.includes(role) && !actingSuperAdmin) || !access.ready || noExamAts) {

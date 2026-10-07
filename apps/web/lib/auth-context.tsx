@@ -13,7 +13,8 @@ interface AuthContextValue {
   actingOrgName: string | null;
   isLoading: boolean;
   login: (organizationSlug: string, accessToken: string) => void;
-  logout: () => Promise<void>;
+  /** Signs out; resolves to the sign-in page this person uses (YukthiX or the classic one). */
+  logout: () => Promise<string>;
   switchIntoOrg: (orgId: string) => Promise<void>;
   switchOutOfOrg: () => Promise<void>;
   impersonating: boolean;
@@ -230,7 +231,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function logout() {
+  async function logout(): Promise<string> {
+    const yx = typeof window !== 'undefined' && window.sessionStorage.getItem(YX_SESSION_KEY) === '1';
     await apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({}) }).catch(() => undefined);
     applyToken(null);
     // Sibling tabs must learn the family is dead, or their next scheduled refresh runs
@@ -243,6 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.sessionStorage.removeItem(YX_SESSION_KEY);
     }
     queryClient.removeQueries({ queryKey: ['currentUser'] });
+    return yx ? '/yx/sign-in' : '/login';
   }
 
   async function switchIntoOrg(orgId: string): Promise<void> {

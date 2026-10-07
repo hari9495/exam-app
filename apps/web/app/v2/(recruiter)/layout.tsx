@@ -44,8 +44,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
   } as React.CSSProperties;
 
   async function handleLogout() {
-    await logout();
-    router.push('/login');
+    router.push(await logout());
   }
 
   if (isLoading || !accessToken || (role !== null && role !== 'recruiter' && role !== 'org_admin' && !actingSuperAdmin)) {

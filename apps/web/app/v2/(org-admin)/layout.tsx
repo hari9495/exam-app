@@ -44,8 +44,7 @@ export default function OrgAdminV2Layout({ children }: { children: React.ReactNo
   const navItems = buildStaffNav(role, actingSuperAdmin);
 
   async function handleLogout() {
-    await logout();
-    router.push('/login');
+    router.push(await logout());
   }
 
   if (isLoading || !accessToken || (role !== null && role !== 'org_admin' && !actingSuperAdmin)) {
