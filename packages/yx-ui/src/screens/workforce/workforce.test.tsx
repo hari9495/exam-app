@@ -53,6 +53,17 @@ describe('Directory (P02 Q4, YX-SEC-17)', () => {
     expect(onOpenHistory).toHaveBeenCalledWith('p-arjun');
   });
 
+  it('HR sees a Joined column; colleagues do not; a long work email breaks after the @', () => {
+    const { unmount } = render(<DirectoryScreen state="ready" page={DIRECTORY_HR} query={QUERY} onQuery={vi.fn()} choices={CHOICES} isHr />);
+    expect(screen.getByRole('columnheader', { name: /Joined/ })).toBeInTheDocument();
+    expect(screen.getAllByText('1 Jul 2024').length).toBeGreaterThan(0);
+    const email = screen.getAllByRole('cell').find((c) => c.textContent === 'arjun.kulkarni@kaverifoods.test')!;
+    expect(email.querySelector('wbr')).not.toBeNull();
+    unmount();
+    render(<DirectoryScreen state="ready" page={DIRECTORY} query={QUERY} onQuery={vi.fn()} choices={CHOICES} isHr={false} />);
+    expect(screen.queryByRole('columnheader', { name: /Joined/ })).toBeNull();
+  });
+
   it('Add person and Profile only where granted; Add person opens the hire form', async () => {
     const { unmount } = render(<DirectoryScreen state="ready" page={DIRECTORY} query={QUERY} onQuery={vi.fn()} choices={CHOICES} isHr={false} />);
     expect(screen.queryByRole('button', { name: 'Add person' })).toBeNull();

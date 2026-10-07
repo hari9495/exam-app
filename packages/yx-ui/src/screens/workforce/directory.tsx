@@ -98,8 +98,14 @@ export function DirectoryScreen({ state, onRetry, page, query, onQuery, choices,
     { key: 'department', header: 'Department', value: (r) => refName(r.department), width: 150 },
     { key: 'location', header: 'Location', value: (r) => refName(r.location), width: 150, optional: true },
     { key: 'manager', header: 'Manager', value: (r) => refName(r.manager), width: 170, optional: true },
-    ...(isHr ? [{ key: 'code', header: 'Code', type: 'id', value: (r: DirectoryPerson) => r.employeeCode ?? '', width: 110, optional: true } as TableColumn<DirectoryPerson>] : []),
-    { key: 'email', header: 'Work email', value: (r) => r.workEmail ?? '—', width: 230, optional: true },
+    ...(isHr
+      ? [
+          { key: 'code', header: 'Code', type: 'id', value: (r: DirectoryPerson) => r.employeeCode ?? '', width: 110, optional: true } as TableColumn<DirectoryPerson>,
+          { key: 'joined', header: 'Joined', value: (r: DirectoryPerson) => r.joinedOn ?? '', render: (r: DirectoryPerson) => (r.joinedOn ? dateLabel(r.joinedOn) : '—'), width: 120, optional: true } as TableColumn<DirectoryPerson>,
+        ]
+      : []),
+    // A long address breaks after the @, never mid-word ("kaverifood / s.test").
+    { key: 'email', header: 'Work email', value: (r) => r.workEmail ?? '—', render: (r) => (r.workEmail?.includes('@') ? <>{r.workEmail.replace(/@.*/, '@')}<wbr />{r.workEmail.replace(/^[^@]*@/, '')}</> : r.workEmail ?? '—'), width: 230, optional: true },
   ];
   const limit = page?.limit ?? 50;
   return (

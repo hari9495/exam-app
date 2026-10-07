@@ -177,3 +177,10 @@ describe('Who accessed my data (P02 §7)', () => {
     expect(screen.getByText('Your company has turned this view off')).toBeInTheDocument();
   });
 });
+
+describe('masked values', () => {
+  it('keep "•••• 1234" together so a narrow cell never splits the dots from the digits', async () => {
+    const { shown } = await import('./access-kit');
+    expect(shown({ holderName: 'Divya Raghunathan', ifsc: 'UTIB0000456', account: '•••• 1234' })).toBe('Divya Raghunathan · UTIB0000456 · •••• 1234');
+  });
+});

@@ -45,7 +45,8 @@ export const GENDER_LABEL: Record<string, string> = { female: 'Female', male: 'M
 /** "Holder · IFSC · •••• 1234" or the single value. */
 export function shown(v: Record<string, string | null> | null | undefined): string {
   if (!v) return 'Nothing on file';
-  return [v.holderName, v.ifsc, v.account, v.value, v.legalName].filter(Boolean).join(' · ') || 'Nothing on file';
+  // A non-breaking space keeps "•••• 1234" on one line.
+  return [v.holderName, v.ifsc, v.account, v.value, v.legalName].filter(Boolean).join(' · ').replace(/(•+) /g, '$1 ') || 'Nothing on file';
 }
 
 /** The API refused with a code the screen handles (risk warning, duplicate value). */
