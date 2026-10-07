@@ -44,12 +44,15 @@ export interface EmptyStateProps {
   /** A help link, e.g. <Link>How leave types work</Link>. */
   help?: ReactNode;
   compact?: boolean;
+  /** A 48 px colour icon (§8), e.g. <ColorIcon name="leave" size={48} />. Never an illustration (§9). */
+  icon?: ReactNode;
 }
 
 /** First-use and filtered empty states: words and a way forward, no illustration (§26). */
-export function EmptyState({ title, description, action, help, compact }: EmptyStateProps) {
+export function EmptyState({ title, description, action, help, compact, icon }: EmptyStateProps) {
   return (
     <div className="yx-empty" data-compact={compact || undefined}>
+      {icon}
       <p className="yx-empty__title">{title}</p>
       {description && <p className="yx-empty__desc">{description}</p>}
       {(action || help) && (

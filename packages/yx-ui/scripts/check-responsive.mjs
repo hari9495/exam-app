@@ -8,17 +8,18 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 
 const BASE = process.argv[2] ?? 'http://localhost:6006';
 const FILTER = process.argv[3] ?? 'Screens';
-const WIDTHS = [
-  { name: 'monitor', width: 1920, height: 1080 },
-  { name: 'laptop', width: 1366, height: 768 },
-  { name: 'small-laptop', width: 1024, height: 768 },
-  { name: 'tablet', width: 768, height: 1024 },
-  { name: 'phone', width: 390, height: 844 },
-];
-// WIDTHS=1440,1024,768,375 checks just those widths (height 900).
-if (process.env.WIDTHS) WIDTHS.splice(0, WIDTHS.length, ...process.env.WIDTHS.split(',').map((w) => ({ name: `w${w}`, width: Number(w), height: 900 })));
+// WIDTHS=1440,1024,768,375 checks other widths instead.
+const WIDTHS = process.env.WIDTHS
+  ? process.env.WIDTHS.split(',').map((w) => ({ name: `w${w}`, width: Number(w), height: Number(w) < 768 ? 812 : 900 }))
+  : [
+      { name: 'monitor', width: 1920, height: 1080 },
+      { name: 'laptop', width: 1366, height: 768 },
+      { name: 'small-laptop', width: 1024, height: 768 },
+      { name: 'tablet', width: 768, height: 1024 },
+      { name: 'phone', width: 390, height: 844 },
+    ];
 const WORKERS = Number(process.env.WORKERS ?? 6);
-const OUT = 'test-results/responsive.jsonl';
+const OUT = process.env.OUT ?? 'test-results/responsive.jsonl';
 
 mkdirSync('test-results', { recursive: true });
 if (process.env.RECHECK && existsSync(OUT)) {
