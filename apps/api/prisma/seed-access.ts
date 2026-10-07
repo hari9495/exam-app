@@ -20,7 +20,8 @@ export async function seedAccess(tx: Tx, organizationId: string, actors: { admin
   const divya = await employee('divya.raghunathan@kaverifoods.test');
   const arjun = await employee('arjun.kulkarni@kaverifoods.test');
 
-  await tx.department.updateMany({ where: { ...org, code: 'PPL', headEmployeeId: null }, data: { headEmployeeId: lakshmi } });
+  // Head from the start of FY 2025-26: her implicit view runs from that day only (YX-SEC-06).
+  await tx.department.updateMany({ where: { ...org, code: 'PPL', headEmployeeId: null }, data: { headEmployeeId: lakshmi, headSince: new Date('2025-04-01T00:00:00Z') } });
 
   // A role cloned from the HR Executive template, granted for one location (P02 §4.2–4.3).
   const template = ROLE_TEMPLATES.find((t) => t.key === 'hr_executive')!;
