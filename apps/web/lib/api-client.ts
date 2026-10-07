@@ -28,7 +28,15 @@ export function setStepUpHandler(handler: (() => Promise<boolean>) | null) {
 
 // A 401 from these means a wrong credential or code, not an expired session: refreshing is
 // pointless there (and /auth/refresh would recurse into its own handler).
-const NO_REFRESH_PATHS = new Set(['/auth/refresh', '/auth/staff/login', '/auth/mfa/verify', '/auth/mfa/passkey-options', '/auth/mfa/step-up']);
+const NO_REFRESH_PATHS = new Set([
+  '/auth/refresh',
+  '/auth/staff/login',
+  '/auth/staff/select-company',
+  '/auth/otp/verify',
+  '/auth/mfa/verify',
+  '/auth/mfa/passkey-options',
+  '/auth/mfa/step-up',
+]);
 
 // An error body can be read once; remember it for throwForResponse.
 const errorBodies = new WeakMap<Response, Record<string, unknown>>();

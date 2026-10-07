@@ -65,7 +65,7 @@ export function WalkInShareCard({ examId, groupId, orgSlug }: WalkInShareCardPro
     <div className="flex flex-col gap-3 rounded-md border border-rule bg-ground p-3 sm:flex-row sm:items-center">
       {qrDataUrl && (
         // eslint-disable-next-line @next/next/no-img-element -- a generated data: URL, not an optimizable remote asset
-        <img src={qrDataUrl} alt="QR code for walk-in registration" className="h-24 w-24 shrink-0 rounded bg-white p-1" />
+        <img src={qrDataUrl} alt="QR code for walk-in registration" className="h-24 w-24 shrink-0 rounded-sm bg-white p-1" />
       )}
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <p className="break-all font-mono text-xs text-ink">{url}</p>

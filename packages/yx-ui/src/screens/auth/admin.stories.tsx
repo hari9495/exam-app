@@ -117,6 +117,21 @@ export const SecuritySettingsSaveFails: S = {
     />
   ),
 };
+export const SecuritySettingsDomains: S = {
+  name: '2.3 Security · email domains to verify',
+  render: () => (
+    <Settings
+      domains={[
+        { domain: 'kaverifoods.in', verifiedAt: '2026-09-20T10:00:00+05:30', txtRecord: { name: 'kaverifoods.in', value: 'yukthix-domain-verification=4f1c9a07b2d84e6c9e31a5d0c7b8f612' } },
+        { domain: 'kaveri.co.in', verifiedAt: null, txtRecord: { name: 'kaveri.co.in', value: 'yukthix-domain-verification=9b2e71c04d5a46f8a1c3e7d2b6f09a35' } },
+      ]}
+      onVerifyDomain={async () => {
+        await new Promise((r) => setTimeout(r, 600));
+        throw new Error('No TXT record on kaveri.co.in yet. DNS changes can take a few hours; try again later.');
+      }}
+    />
+  ),
+};
 export const SecuritySettingsNoProviders: S = { name: '2.3 Security · no identity providers', render: () => <Settings providers={[]} /> };
 export const SecuritySettingsLoading: S = { name: '2.3 Security · loading', render: () => <Settings state="loading" policy={null} floor={null} /> };
 export const SecuritySettingsError: S = { name: '2.3 Security · could not load', render: () => <Settings state="error" policy={null} floor={null} onRetry={() => {}} /> };

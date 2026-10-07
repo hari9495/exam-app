@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useCalendarConnections, useDisconnectCalendar } from '../../../../lib/hooks/useCalendar';
 import { apiFetch } from '../../../../lib/api-client';
+import { goTo } from '../../../../lib/navigate';
 import V2CalendarPage from './page';
 
 jest.mock('../../../../lib/hooks/useCalendar', () => ({
@@ -9,6 +10,7 @@ jest.mock('../../../../lib/hooks/useCalendar', () => ({
 }));
 jest.mock('../../../../lib/auth-context', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 jest.mock('../../../../lib/api-client', () => ({ apiFetch: jest.fn() }));
+jest.mock('../../../../lib/navigate', () => ({ goTo: jest.fn() }));
 
 const searchParams = new URLSearchParams();
 jest.mock('next/navigation', () => ({ useSearchParams: () => searchParams }));
@@ -56,13 +58,11 @@ describe('V2CalendarPage', () => {
       isLoading: false,
     });
     (apiFetch as jest.Mock).mockResolvedValue({ authUrl: 'https://consent.example/google' });
-    const location = { href: '' };
-    Object.defineProperty(window, 'location', { value: location, writable: true });
 
     render(<V2CalendarPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
 
-    await waitFor(() => expect(window.location.href).toBe('https://consent.example/google'));
+    await waitFor(() => expect(goTo).toHaveBeenCalledWith('https://consent.example/google'));
     expect(apiFetch).toHaveBeenCalledWith('/calendar/google/connect', {}, 'tok');
   });
 

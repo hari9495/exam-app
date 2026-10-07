@@ -1,4 +1,5 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import Redis from 'ioredis';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { randomBytes, createHash, randomUUID, timingSafeEqual } from 'crypto';
@@ -28,12 +29,14 @@ import { escapeHtml } from '../notifications/notification-email-render';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ClientMeta, LoginMethod, SessionUser, SessionsService } from './sessions.service';
-import { LockoutSettings, LoginAttempt, LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
+import { LOGIN_PROTECTION_REDIS, LockoutSettings, LoginAttempt, LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
 import { PasswordPolicyService } from './password-policy.service';
 import { MfaService, MfaUser, PENDING_LOGIN_TTL_SECONDS, PendingLogin } from './mfa.service';
 import { MfaLoginDto, MfaProofDto } from './dto/mfa.dto';
 import { MfaOtpSendDto, OtpStartDto, OtpVerifyDto } from './dto/otp.dto';
 import { OTP_CHANNELS, OTP_RESEND_COOLDOWN_SECONDS, OTP_TTL_SECONDS, OtpChannel, OtpService, parseOtpIdentifier } from './otp.service';
+import { SelectCompanyDto } from './dto/login.dto';
+import { CompanyCard, CompanyScopeService } from './company-scope';
 
 interface TokenPair {
   accessToken: string;
@@ -44,6 +47,8 @@ interface TokenPair {
 // the client prompts enrolment, which becomes mandatory at `enrolmentDueAt` (YX-IAM-01, P12 §8).
 export interface SignedIn extends TokenPair {
   mfa?: { required: true; enrolmentDueAt: Date };
+  // The signed "last company on this device" cookie value (set by signInResponse, never in the body).
+  rememberCompany?: string;
 }
 
 // First factor accepted; the second is still owed (no session, no tokens yet).
@@ -54,7 +59,16 @@ export interface MfaChallenge {
   expiresInSeconds: number;
 }
 
-export type LoginOutcome = SignedIn | MfaChallenge;
+// The credential matched accounts in several companies (email-first sign-in): the person picks one
+// with the single-use, device-bound token; only then is that account signed in (and its MFA asked).
+export interface CompanyChoice {
+  selectionRequired: true;
+  selectionToken: string;
+  companies: ({ id: string } & CompanyCard)[];
+  expiresInSeconds: number;
+}
+
+export type LoginOutcome = SignedIn | MfaChallenge | CompanyChoice;
 
 // A code was (or, for an unknown account, seemingly was) sent. Identical for every identifier.
 export interface OtpSent {
@@ -72,6 +86,64 @@ const sameHash = (a: string | undefined, b: string) =>
 const otpSignInKey = (orgSlug: string, identifier: string) => `auth:otp:signin:${sha256(`${orgSlug}\u0000${identifier}`)}`;
 const otpMfaKey = (mfaToken: string) => `auth:otp:mfa:${sha256(mfaToken)}`;
 export const isMfaChallenge = (outcome: LoginOutcome): outcome is MfaChallenge => 'mfaRequired' in outcome;
+// Not signed in yet: a second factor or a company choice is still owed.
+export const isPending = (outcome: LoginOutcome): outcome is MfaChallenge | CompanyChoice => 'mfaRequired' in outcome || 'selectionRequired' in outcome;
+
+// Email-first sign-in (founder decision 7 Oct 2026). One person has one account per company (P12 §3);
+// with no company named, the credential is checked against each active account with that email /
+// mobile number -- at most this many, so the work per attempt stays bounded.
+export const MAX_COMPANY_ACCOUNTS = 10;
+// Lockout scope for an email / mobile number across every company (on top of each account's own).
+export const ANY_COMPANY = '*';
+export const COMPANY_PICK_TTL_SECONDS = 2 * 60;
+export const PLATFORM_CHOICE = 'yukthix';
+const pickKey = (token: string) => `auth:pick:${sha256(token)}`;
+const EXPIRED_MESSAGE = 'Your sign-in has expired. Please sign in again.';
+
+const ACCOUNT_SELECT = {
+  id: true,
+  email: true,
+  organizationId: true,
+  role: true,
+  status: true,
+  permissionProfileId: true,
+  passwordHash: true,
+  passwordRecheckPending: true,
+  mobileNumber: true,
+  mobileVerifiedAt: true,
+  organization: { select: { slug: true, name: true, logoPath: true, status: true } },
+} as const;
+type Account = {
+  id: string;
+  email: string;
+  organizationId: string | null;
+  role: string;
+  status: string;
+  permissionProfileId: string | null;
+  passwordHash: string;
+  passwordRecheckPending: boolean;
+  mobileNumber: string | null;
+  mobileVerifiedAt: Date | null;
+  organization: { slug: string; name: string; logoPath: string | null; status: string } | null;
+};
+type Policy = Awaited<ReturnType<typeof loadTenantSecurityPolicy>>;
+interface Candidate {
+  account: Account;
+  policy: Policy;
+  // Lowercased company slug ('' for YukthiX staff): the account's own lockout scope, as with an orgSlug.
+  slug: string;
+  listedBreakGlass: boolean;
+  blocked: { scope: string } | null;
+}
+// Kept in Redis (2 min) under sha256(token) while the person picks a company.
+interface CompanyPick {
+  method: PendingLogin['method'];
+  identifier: string;
+  deviceIdHash: string;
+  // proof: sha256 of the password hash that was verified (a reset in between voids the choice).
+  accounts: { userId: string; choice: string; proof: string }[];
+}
+type ParsedIdentifier = { kind: 'email' | 'mobile'; value: string };
 
 const PASSWORD_RESET_EXPIRY_MINUTES = 15;
 export const PASSWORD_CHANGE_REQUIRED_CODE = 'PASSWORD_CHANGE_REQUIRED';
@@ -115,18 +187,29 @@ export class AuthService {
     private readonly passwordPolicy: PasswordPolicyService,
     private readonly mfa: MfaService,
     private readonly otp: OtpService,
+    private readonly companyScope: CompanyScopeService,
+    @Inject(LOGIN_PROTECTION_REDIS) private readonly redis: Redis,
   ) {}
 
-  // Password sign-in (YX-IAM-06/07/10). Unknown organisation, suspended organisation, a network
-  // outside the desk allow-list, unknown email and wrong password are indistinguishable to the
-  // caller -- same 401, same argon2 cost -- so neither accounts nor organisations (or their
-  // settings) can be enumerated; and every attempt, including blocked ones, lands in login_events.
+  // Password sign-in (YX-IAM-06/07/10). With a company (orgSlug, web address or remembered company):
+  // that company's account, as before. Without one: email-first across every company. Either way an
+  // unknown organisation, a suspended one, a network outside the desk allow-list, an unknown email /
+  // number and a wrong password are indistinguishable to the caller -- same 401, same argon2 cost --
+  // so neither accounts nor organisations (or their settings) can be enumerated; and every attempt,
+  // including blocked ones, lands in login_events.
   async login(dto: LoginDto, meta: ClientMeta): Promise<LoginOutcome> {
-    const identifier = dto.email.trim().toLowerCase();
-    const orgSlug = dto.organizationSlug?.trim().toLowerCase() ?? '';
+    const parsed: ParsedIdentifier | null = dto.email !== undefined ? { kind: 'email', value: dto.email.trim().toLowerCase() } : parseOtpIdentifier(dto.identifier ?? '');
+    if (!parsed) throw new BadRequestException('Enter an email address or a mobile number');
+    const slug = dto.organizationSlug?.trim();
+    return slug ? this.loginToCompany(slug, parsed, dto.password, meta) : this.loginAnyCompany(parsed, dto.password, meta);
+  }
+
+  private async loginToCompany(slug: string, parsed: ParsedIdentifier, password: string, meta: ClientMeta): Promise<LoginOutcome> {
+    const identifier = parsed.value;
+    const orgSlug = slug.toLowerCase();
     const attempt = { identifier, method: 'password' as const, meta };
 
-    const org = dto.organizationSlug ? await this.prisma.organization.findUnique({ where: { slug: dto.organizationSlug } }) : null;
+    const org = await this.prisma.organization.findUnique({ where: { slug } });
     const orgActive = Boolean(org && isOrganizationActive(org.status));
     const organizationId = orgActive ? org!.id : null;
     const policy = organizationId ? await loadTenantSecurityPolicy(this.tenantPrisma, organizationId) : DEFAULT_SECURITY_POLICY;
@@ -134,22 +217,21 @@ export class AuthService {
     // Desk IP allow-list (YX-IAM-09): refused like a wrong password, after the same work, and not
     // counted (no guess was checked). The admin sees the real reason in login activity.
     if (organizationId && !ipAllowedForSurface(policy, 'desk', meta.ip)) {
-      await argon2.verify(await getDummyPasswordHash(), dto.password);
+      await argon2.verify(await getDummyPasswordHash(), password);
       await this.sessions.recordLoginEvent({ ...attempt, organizationId, result: 'failed', reason: 'ip_not_allowed' });
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
-    const isSuperAdminLookup = !dto.organizationSlug;
-    const user =
-      organizationId || isSuperAdminLookup
-        ? await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: isSuperAdminLookup }, (tx) =>
-            tx.user.findFirst({
-              where: isSuperAdminLookup
-                ? { email: dto.email, role: 'super_admin', organizationId: null }
-                : { email: dto.email, organizationId },
-            }),
-          )
-        : null;
+    const user = organizationId
+      ? await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+          tx.user.findFirst({
+            where:
+              parsed.kind === 'email'
+                ? { email: identifier, organizationId }
+                : { mobileNumber: identifier, mobileVerifiedAt: { not: null }, organizationId },
+          }),
+        )
+      : null;
 
     // Counted BEFORE the password is checked (atomic; a parallel burst cannot outrun the lock).
     // Break-glass accounts (YX-IAM-04) get the delay but not the long lock: their admins are
@@ -164,9 +246,9 @@ export class AuthService {
       throw new TooManyLoginAttemptsException(reserved.block.retryAfterSeconds);
     }
 
-    const passwordOk = await argon2.verify(user?.passwordHash ?? (await getDummyPasswordHash()), dto.password);
+    const passwordOk = await argon2.verify(user?.passwordHash ?? (await getDummyPasswordHash()), password);
     if (!user || !passwordOk) {
-      const reason = !dto.organizationSlug || orgActive ? (user ? 'bad_password' : 'unknown_user') : org ? 'organization_inactive' : 'unknown_organization';
+      const reason = orgActive ? (user ? 'bad_password' : 'unknown_user') : org ? 'organization_inactive' : 'unknown_organization';
       return this.rejectLogin(orgSlug, attempt, org?.id ?? null, user, reason, reserved);
     }
 
@@ -190,18 +272,217 @@ export class AuthService {
     // (bounded by the breach check's timeout; flagged accounts only): a password found breached now
     // must be changed before this very sign-in opens a session (YX-IAM-08).
     if (user.passwordRecheckPending) {
-      await this.passwordPolicy.recheckAfterLogin(user, dto.password);
+      await this.passwordPolicy.recheckAfterLogin(user, password);
+    }
+    return this.continueAfterFirstFactor(user, { method: 'password', orgSlug, identifier, breakGlass }, meta);
+  }
+
+  // Email-first (no company named). The attempt is counted atomically up front for the email /
+  // number across companies; every active account with it (at most MAX_COMPANY_ACCOUNTS) is tried in
+  // parallel, a dummy hash when there is none, so 0, 1 or many accounts cost the same and answer the
+  // same. An account its company has locked is not tried at all. Wrong everywhere: each account's
+  // company counts the failure under its own lockout settings. Right for one: signed in as with its
+  // orgSlug. Right for several: only now are those companies listed, for the person to pick one.
+  private async loginAnyCompany(parsed: ParsedIdentifier, password: string, meta: ClientMeta): Promise<LoginOutcome> {
+    const identifier = parsed.value;
+    const attempt = { identifier, method: 'password' as const, meta };
+    const reserved = await this.loginProtection.reserve(ANY_COMPANY, identifier, meta.ip, { deviceId: meta.deviceId });
+    if (reserved.block) {
+      await this.sessions.recordLoginEvent({ ...attempt, organizationId: null, result: 'locked', reason: `${reserved.block.scope}_locked` });
+      throw new TooManyLoginAttemptsException(reserved.block.retryAfterSeconds);
     }
 
-    // Second factor (YX-IAM-01/03): anyone with one enrolled must use it. Break-glass sign-in is
-    // only for accounts with MFA (YX-IAM-04); without it, the same wrong-password response.
-    const login = { method: 'password' as const, orgSlug, identifier, breakGlass };
+    const candidates = await this.toCandidates(await this.accountsFor(parsed), identifier, meta);
+    const open = candidates.filter((c) => !c.blocked);
+    // ponytail: parallel verifies (<= 10) keep wall time near one argon2 on the libuv pool; pad to a
+    // fixed count if timing across 1 vs many accounts ever needs to be exact.
+    const hashes = open.length ? open.map((c) => c.account.passwordHash) : [await getDummyPasswordHash()];
+    const proven = await Promise.all(hashes.map((hash) => argon2.verify(hash, password).catch(() => false)));
+    const results = await Promise.all(
+      open.map(async (c, i) => ({ c, reason: proven[i] ? await this.refusal(c.account, c.policy, 'password', identifier, meta.ip) : 'bad_password' })),
+    );
+    const winners = results.filter((r) => r.reason === null).map((r) => r.c);
+    for (const c of candidates.filter((x) => x.blocked)) {
+      await this.sessions.recordLoginEvent({ ...attempt, organizationId: c.account.organizationId, userId: c.account.id, result: 'locked', reason: `${c.blocked!.scope}_locked` });
+    }
+
+    if (!winners.length) {
+      for (const { c, reason } of results) {
+        // A wrong password -- or a right one where password sign-in is off -- counts under the
+        // company's own lockout. A network refusal does not (no guess was wrong).
+        const locked = reason === 'ip_not_allowed' ? false : await this.countAccountFailure(c, identifier, meta);
+        await this.sessions.recordLoginEvent({
+          ...attempt,
+          organizationId: c.account.organizationId,
+          userId: c.account.id,
+          result: 'failed',
+          reason: locked ? `${reason}+lockout_started` : reason!,
+        });
+      }
+      await this.loginProtection.registerFailure(ANY_COMPANY, identifier, meta.ip, reserved);
+      if (!candidates.length) await this.sessions.recordLoginEvent({ ...attempt, organizationId: null, result: 'failed', reason: 'unknown_user' });
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
+    }
+
+    // Proven: the counters of the email and of each account it opens are cleared. Accounts in other
+    // companies whose password differs are left alone (no failure counted, no event): the person
+    // proved who they are, and other companies' admins should not see a failed sign-in for it.
+    await this.loginProtection.registerSuccess(ANY_COMPANY, identifier, meta.ip);
+    for (const w of winners) {
+      await this.loginProtection.registerSuccess(w.slug, identifier, meta.ip);
+      if (w.account.passwordRecheckPending) await this.passwordPolicy.recheckAfterLogin(w.account, password);
+    }
+    return winners.length === 1 ? this.continueAs(winners[0], 'password', identifier, meta) : this.offerCompanies(winners, 'password', identifier, meta);
+  }
+
+  // Every active account with this email / verified mobile number, in an active company (or YukthiX
+  // staff), oldest first, capped.
+  private accountsFor(parsed: ParsedIdentifier): Promise<Account[]> {
+    return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.user.findMany({
+        where: {
+          ...(parsed.kind === 'email' ? { email: parsed.value } : { mobileNumber: parsed.value, mobileVerifiedAt: { not: null } }),
+          status: 'active',
+          OR: [{ organizationId: null, role: 'super_admin' }, { organization: { status: 'active' } }],
+        },
+        select: ACCOUNT_SELECT,
+        orderBy: { createdAt: 'asc' },
+        take: MAX_COMPANY_ACCOUNTS,
+      }),
+    );
+  }
+
+  private accountById(userId: string): Promise<Account | null> {
+    return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.user.findUnique({ where: { id: userId }, select: ACCOUNT_SELECT }));
+  }
+
+  // Each account with its company's policy and whether that company has it locked (read only).
+  private toCandidates(accounts: Account[], identifier: string, meta: ClientMeta): Promise<Candidate[]> {
+    return Promise.all(
+      accounts.map(async (account) => {
+        const policy = account.organizationId ? await loadTenantSecurityPolicy(this.tenantPrisma, account.organizationId) : DEFAULT_SECURITY_POLICY;
+        const slug = account.organization?.slug.toLowerCase() ?? '';
+        const blocked = await this.loginProtection.check(slug, identifier, meta.ip, meta.deviceId);
+        return { account, policy, slug, listedBreakGlass: policy.breakGlassUserIds.includes(account.id), blocked };
+      }),
+    );
+  }
+
+  // Why an account whose credential is proven may still not be signed in to now, or null. Checked
+  // when the credential is, and again when a company is picked.
+  private async refusal(account: Account, policy: Policy, method: PendingLogin['method'], identifier: string, ip: string | null): Promise<string | null> {
+    if (account.status !== 'active') return 'account_inactive';
+    if (!identifier.includes('@') && !(account.mobileVerifiedAt && account.mobileNumber === identifier)) return 'mobile_changed';
+    if (!account.organizationId) return method === 'password' ? null : 'otp_disabled'; // YukthiX staff: password + security key only
+    if (!isOrganizationActive(account.organization?.status)) return 'organization_inactive';
+    if (!ipAllowedForSurface(policy, 'desk', ip)) return 'ip_not_allowed';
+    if (method === 'password') return policy.ssoOnly && !policy.breakGlassUserIds.includes(account.id) ? 'sso_only' : null;
+    return policy.ssoOnly || !policy.otpSignInChannels.includes(method.slice('otp_'.length) as OtpChannel) ? 'otp_disabled' : null;
+  }
+
+  // One more failure on an account under its company's lockout; true when it started a lock (the
+  // holder -- or, for break-glass, every admin -- is told).
+  private async countAccountFailure(c: Candidate, identifier: string, meta: ClientMeta): Promise<boolean> {
+    const lockout = { maxFailedAttempts: c.policy.maxFailedAttempts, lockMinutes: c.policy.lockMinutes };
+    const counted = await this.loginProtection.reserve(c.slug, identifier, meta.ip, { deviceId: meta.deviceId, lockExempt: c.listedBreakGlass, lockout });
+    const locked = !counted.block && counted.failures > 0 && counted.failures % counted.lockEvery === 0;
+    if (locked) this.alertLocked(c.account, meta, c.listedBreakGlass);
+    return locked;
+  }
+
+  // The first factor is proven for this one account: on to its second factor, or signed in.
+  private continueAs(c: Candidate, method: PendingLogin['method'], identifier: string, meta: ClientMeta): Promise<LoginOutcome> {
+    const breakGlass = method === 'password' && c.policy.ssoOnly && c.listedBreakGlass;
+    return this.continueAfterFirstFactor(c.account, { method, orgSlug: c.slug, identifier, breakGlass }, meta);
+  }
+
+  // Second factor (YX-IAM-01/03): anyone with one enrolled must use it. Break-glass sign-in is only
+  // for accounts with MFA (YX-IAM-04); without it, the same wrong-password response.
+  private async continueAfterFirstFactor(
+    user: SessionUser & { permissionProfileId?: string | null },
+    login: Pick<PendingLogin, 'method' | 'orgSlug' | 'identifier' | 'breakGlass'>,
+    meta: ClientMeta,
+  ): Promise<LoginOutcome> {
     const hasFactor = await this.mfa.hasFactor(user);
-    if (breakGlass && !hasFactor) {
-      await this.sessions.recordLoginEvent({ ...attempt, organizationId, userId: user.id, result: 'failed', reason: 'break_glass_without_mfa' });
+    if (login.breakGlass && !hasFactor) {
+      await this.sessions.recordLoginEvent({
+        organizationId: user.organizationId,
+        userId: user.id,
+        identifier: login.identifier,
+        result: 'failed',
+        method: login.method,
+        reason: 'break_glass_without_mfa',
+        meta,
+      });
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
     return hasFactor ? this.challengeSecondFactor(user.id, login, meta) : this.finishSignIn(user, login, meta);
+  }
+
+  // Several companies matched: a 2-minute, single-use, device-bound choice. Only the companies the
+  // credential opened are listed, name and logo only.
+  private async offerCompanies(winners: Candidate[], method: PendingLogin['method'], identifier: string, meta: ClientMeta): Promise<CompanyChoice> {
+    const selectionToken = randomBytes(32).toString('base64url');
+    const pick: CompanyPick = {
+      method,
+      identifier,
+      deviceIdHash: sha256(meta.deviceId),
+      accounts: winners.map((w) => ({
+        userId: w.account.id,
+        choice: w.account.organizationId ?? PLATFORM_CHOICE,
+        proof: method === 'password' ? sha256(w.account.passwordHash) : '',
+      })),
+    };
+    await this.store(() => this.redis.set(pickKey(selectionToken), JSON.stringify(pick), 'EX', COMPANY_PICK_TTL_SECONDS));
+    const companies = await Promise.all(
+      winners.map(async (w) => ({
+        id: w.account.organizationId ?? PLATFORM_CHOICE,
+        ...(w.account.organization ? await this.companyScope.card(w.account.organization) : { name: 'YukthiX', logoUrl: null }),
+      })),
+    );
+    return { selectionRequired: true, selectionToken, companies, expiresInSeconds: COMPANY_PICK_TTL_SECONDS };
+  }
+
+  // The company picked. The token is spent whatever happens next (GETDEL); it only works from the
+  // device it was given to, only for a company the credential matched, and only while nothing that
+  // made the account usable has changed (password, status, company policy). Then that account's
+  // second factor, as for a direct sign-in.
+  async selectCompany(dto: SelectCompanyDto, meta: ClientMeta): Promise<LoginOutcome> {
+    const raw = await this.store(() => this.redis.getdel(pickKey(dto.selectionToken)));
+    const pick = raw ? (JSON.parse(raw) as CompanyPick) : null;
+    const refuse = async (reason: string, account?: Account | null): Promise<never> => {
+      await this.sessions.recordLoginEvent({
+        organizationId: account?.organizationId ?? null,
+        userId: account?.id ?? null,
+        identifier: pick?.identifier ?? null,
+        result: 'failed',
+        method: pick?.method ?? 'password',
+        reason,
+        meta,
+      });
+      throw new UnauthorizedException(EXPIRED_MESSAGE);
+    };
+    if (!pick) return refuse('company_pick_invalid');
+    if (!sameHash(pick.deviceIdHash, sha256(meta.deviceId))) return refuse('company_pick_device_mismatch');
+    const chosen = pick.accounts.find((a) => a.choice === dto.organizationId);
+    if (!chosen) return refuse('company_pick_not_matched');
+    const account = await this.accountById(chosen.userId);
+    if (!account) return refuse('unknown_user');
+    if (pick.method === 'password' && !sameHash(chosen.proof, sha256(account.passwordHash))) return refuse('password_changed', account);
+    const [c] = await this.toCandidates([account], pick.identifier, meta);
+    const reason = c.blocked ? `${c.blocked.scope}_locked` : await this.refusal(account, c.policy, pick.method, pick.identifier, meta.ip);
+    if (reason) return refuse(reason, account);
+    return this.continueAs(c, pick.method, pick.identifier, meta);
+  }
+
+  // Fail closed (as the lockout store): no choice can be kept or checked without Redis.
+  private async store<T>(op: () => Promise<T>): Promise<T> {
+    try {
+      return await op();
+    } catch (error) {
+      this.logger.error('Sign-in store unavailable', error as Error);
+      throw new ServiceUnavailableException('Sign-in is temporarily unavailable. Please try again shortly.');
+    }
   }
 
   // A company's lockout settings (YX-IAM-07); YukthiX's for platform staff and unknown organisations.
@@ -257,6 +538,8 @@ export class AuthService {
         tokens.mfa = { required: true, enrolmentDueAt: account.mfaEnrolmentDueAt };
       }
     }
+    // This device remembers the company for the next sign-in (signed cookie, set by signInResponse).
+    if (user.organizationId) tokens.rememberCompany = this.companyScope.cookieValue(user.organizationId);
     return tokens;
   }
 
@@ -356,7 +639,8 @@ export class AuthService {
     if (!(await this.otp.channelAvailable(channel))) throw new BadRequestException('Codes by text message are not available right now');
     const method = `otp_${channel}` as const;
 
-    const orgSlug = dto.organizationSlug.trim().toLowerCase();
+    const orgSlug = dto.organizationSlug?.trim().toLowerCase();
+    if (!orgSlug) return this.startOtpAnyCompany(parsed, channel, meta);
     const org = await this.prisma.organization.findUnique({ where: { slug: orgSlug } });
     let organizationId = org && isOrganizationActive(org.status) ? org.id : null;
     // A code that can't go by text message goes by email instead, where the company allows email codes.
@@ -419,7 +703,8 @@ export class AuthService {
   async completeOtpLogin(dto: OtpVerifyDto, meta: ClientMeta): Promise<LoginOutcome> {
     const parsed = parseOtpIdentifier(dto.identifier);
     if (!parsed) throw new BadRequestException('Enter an email address or a mobile number');
-    const orgSlug = dto.organizationSlug.trim().toLowerCase();
+    const orgSlug = dto.organizationSlug?.trim().toLowerCase();
+    if (!orgSlug) return this.completeOtpAnyCompany(parsed, dto, meta);
     const key = otpSignInKey(orgSlug, parsed.value);
     const record = await this.otp.peek(key);
     const method = `otp_${record?.channel ?? (parsed.kind === 'email' ? 'email' : 'sms')}` as PendingLogin['method'];
@@ -466,6 +751,92 @@ export class AuthService {
 
     const login = { method, orgSlug, identifier: parsed.value, breakGlass: false };
     return (await this.mfa.hasFactor(user)) ? this.challengeSecondFactor(user.id, login, meta) : this.finishSignIn(user, login, meta);
+  }
+
+  // Email-first code sign-in (no company named): ONE code to the address, whatever number of
+  // companies use it, and the same answer, counters and work when none does. The code is for every
+  // account that may sign in by this channel now; after it is verified, the same rule as passwords:
+  // one account signs in, several are offered as a choice.
+  private async startOtpAnyCompany(parsed: ParsedIdentifier, channel: OtpChannel, meta: ClientMeta): Promise<OtpSent> {
+    const method = `otp_${channel}` as const;
+    const block = await this.loginProtection.check(ANY_COMPANY, parsed.value, meta.ip, meta.deviceId);
+    if (block) {
+      await this.sessions.recordLoginEvent({ organizationId: null, identifier: parsed.value, result: 'locked', method, reason: `${block.scope}_locked`, meta });
+      throw new TooManyLoginAttemptsException(block.retryAfterSeconds);
+    }
+    await this.otp.reserveSend(`signin\u0000\u0000${parsed.value}`, meta.ip);
+
+    const allowed: Candidate[] = [];
+    for (const c of await this.toCandidates(await this.accountsFor(parsed), parsed.value, meta)) {
+      const reason = c.blocked ? `${c.blocked.scope}_locked` : await this.refusal(c.account, c.policy, method, parsed.value, meta.ip);
+      if (reason) await this.sessions.recordLoginEvent({ organizationId: c.account.organizationId, userId: c.account.id, identifier: parsed.value, result: 'failed', method, reason, meta });
+      else allowed.push(c);
+    }
+    const otpToken = randomBytes(32).toString('base64url');
+    const code = await this.otp.issue(otpSignInKey('', parsed.value), {
+      userIds: allowed.map((c) => c.account.id).join(','),
+      channel,
+      tokenHash: sha256(otpToken),
+      deviceIdHash: sha256(meta.deviceId),
+    });
+    const first = allowed[0];
+    if (first) {
+      // One address, one code: sent once, under the first company's sender / SMS account.
+      const { account } = first;
+      this.otp.deliver(channel, channel === 'email' ? account.email : account.mobileNumber!, code, 'sign_in', account.organizationId, {
+        userId: account.id,
+        fallbackEmail: channel !== 'email' && first.policy.otpSignInChannels.includes('email') ? account.email : null,
+      });
+      for (const c of allowed) {
+        await this.sessions.recordLoginEvent({ organizationId: c.account.organizationId, userId: c.account.id, identifier: parsed.value, result: 'code_sent', method, meta });
+      }
+    }
+    return { otpToken, expiresInSeconds: OTP_TTL_SECONDS, resendAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS };
+  }
+
+  private async completeOtpAnyCompany(parsed: ParsedIdentifier, dto: OtpVerifyDto, meta: ClientMeta): Promise<LoginOutcome> {
+    const key = otpSignInKey('', parsed.value);
+    const record = await this.otp.peek(key);
+    const method = `otp_${record?.channel ?? (parsed.kind === 'email' ? 'email' : 'sms')}` as PendingLogin['method'];
+    const event = { identifier: parsed.value, method, meta };
+    const userIds = (record?.userIds ?? '').split(',').filter(Boolean);
+
+    // Counted before the code is checked (atomic), for the address across companies.
+    const reserved = await this.loginProtection.reserve(ANY_COMPANY, parsed.value, meta.ip, { deviceId: meta.deviceId });
+    if (reserved.block) {
+      await this.sessions.recordLoginEvent({ ...event, organizationId: null, result: 'locked', reason: `${reserved.block.scope}_locked` });
+      throw new TooManyLoginAttemptsException(reserved.block.retryAfterSeconds);
+    }
+    const mine = record && sameHash(record.tokenHash, sha256(dto.otpToken)) && sameHash(record.deviceIdHash, sha256(meta.deviceId));
+    const proven = mine ? await this.otp.check(key, dto.code) : null;
+    const accounts = (await Promise.all(userIds.map((id) => this.accountById(id)))).filter((a): a is Account => a !== null);
+    const candidates = await this.toCandidates(accounts, parsed.value, meta);
+
+    if (!proven) {
+      // Wrong everywhere: the address, and each account the code was for under its company's lockout.
+      await this.loginProtection.registerFailure(ANY_COMPANY, parsed.value, meta.ip, reserved);
+      for (const c of candidates) {
+        const locked = await this.countAccountFailure(c, parsed.value, meta);
+        await this.sessions.recordLoginEvent({ ...event, organizationId: c.account.organizationId, userId: c.account.id, result: 'failed', reason: locked ? 'otp_invalid+lockout_started' : 'otp_invalid' });
+      }
+      if (!candidates.length) await this.sessions.recordLoginEvent({ ...event, organizationId: null, result: 'failed', reason: 'otp_invalid' });
+      throw new UnauthorizedException(OTP_INVALID_MESSAGE);
+    }
+
+    // The code is spent and right. Whatever could have changed since it was sent is checked again.
+    await this.loginProtection.registerSuccess(ANY_COMPANY, parsed.value, meta.ip);
+    const winners: Candidate[] = [];
+    for (const c of candidates) {
+      const reason = c.blocked ? `${c.blocked.scope}_locked` : await this.refusal(c.account, c.policy, method, parsed.value, meta.ip);
+      if (reason) await this.sessions.recordLoginEvent({ ...event, organizationId: c.account.organizationId, userId: c.account.id, result: 'failed', reason });
+      else winners.push(c);
+    }
+    if (!winners.length) {
+      if (!candidates.length) await this.sessions.recordLoginEvent({ ...event, organizationId: null, result: 'failed', reason: 'unknown_user' });
+      throw new UnauthorizedException(OTP_INVALID_MESSAGE);
+    }
+    for (const w of winners) await this.loginProtection.registerSuccess(w.slug, parsed.value, meta.ip);
+    return winners.length === 1 ? this.continueAs(winners[0], method, parsed.value, meta) : this.offerCompanies(winners, method, parsed.value, meta);
   }
 
   // OTP as the fallback second factor (YX-IAM-03): SMS / WhatsApp to a verified mobile number,
@@ -570,6 +941,18 @@ export class AuthService {
   }
 
   async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
+    // Email-first: every company account with this email gets its own link, naming the company
+    // (the answer is the same whether there are none, one or several).
+    if (!dto.organizationSlug) {
+      const accounts = (await this.accountsFor({ kind: 'email', value: dto.email.trim().toLowerCase() })).filter((a) => a.organizationId);
+      for (const account of accounts) {
+        const rawToken = await this.createResetToken(account.id);
+        this.dispatchResetEmail(account.email, rawToken, account.organizationId!, account.organization?.name).catch((error) =>
+          this.logger.error(`Failed to dispatch password reset email to ${account.email}`, error as Error),
+        );
+      }
+      return;
+    }
     const org = await this.prisma.organization.findUnique({ where: { slug: dto.organizationSlug } });
     if (!org) {
       return;
@@ -601,12 +984,13 @@ export class AuthService {
     return rawToken;
   }
 
-  private async dispatchResetEmail(email: string, rawToken: string, organizationId: string): Promise<void> {
+  private async dispatchResetEmail(email: string, rawToken: string, organizationId: string, companyName?: string): Promise<void> {
     const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password/${rawToken}`;
+    const which = companyName ? ` for your <b>${escapeHtml(companyName)}</b> account` : '';
     await this.emailService.send({
       to: email,
-      subject: 'Reset your password',
-      html: `<p>Click the link below to reset your password. This link expires in 15 minutes.</p><p><a href="${link}">${link}</a></p>`,
+      subject: companyName ? `Reset your ${companyName} password` : 'Reset your password',
+      html: `<p>Click the link below to reset your password${which}. This link expires in 15 minutes.</p><p><a href="${link}">${link}</a></p>`,
       organizationId,
     });
   }

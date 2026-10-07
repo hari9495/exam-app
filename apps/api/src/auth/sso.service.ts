@@ -11,7 +11,7 @@ import {
   isOrganizationActive,
   resolvePermissionGrants,
 } from '@exam-platform/shared';
-import { JIT_ROLES, NO_SSO_MESSAGE, OIDC_MFA_ACR_VALUES, SAML_MFA_CONTEXT_VALUES, emailDomain } from './identity-providers';
+import { JIT_ROLES, NO_SSO_MESSAGE, OIDC_MFA_ACR_VALUES, SAML_MFA_CONTEXT_VALUES, emailDomain, isPublicMailDomain } from './identity-providers';
 import type { OidcClaims } from './oidc.service';
 
 // What every IdP sign-in (SAML or OIDC) has in common once the assertion itself is verified:
@@ -117,6 +117,23 @@ export class SsoService {
     }
     if (!provider) throw new NotFoundException(NO_SSO_MESSAGE);
     return provider;
+  }
+
+  // Email-first sign-in with no company known: the identity provider for this email's domain, only
+  // when exactly one company has proven it owns the domain (DNS TXT) and maps it to an active
+  // provider. Public mail domains never route; a domain two companies have verified does not
+  // auto-route. Says only that the DOMAIN uses single sign-on, never whether an account exists.
+  async routeByVerifiedDomain(email: string): Promise<{ org: { id: string; slug: string }; provider: ProviderWithDomains } | null> {
+    const domain = emailDomain(email);
+    if (isPublicMailDomain(domain)) return null;
+    const claims = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.verifiedDomain.findMany({ where: { domain }, select: { organizationId: true }, take: 2 }),
+    );
+    if (claims.length !== 1) return null;
+    const org = await this.prisma.organization.findUnique({ where: { id: claims[0].organizationId }, select: { id: true, slug: true, status: true } });
+    if (!org || !isOrganizationActive(org.status)) return null;
+    const provider = (await this.activeProviders(org.id)).find((p) => p.domains.some((d) => d.domain === domain));
+    return provider ? { org: { id: org.id, slug: org.slug }, provider } : null;
   }
 
   // The account the IdP has vouched for. A provider only speaks for the email domains mapped to

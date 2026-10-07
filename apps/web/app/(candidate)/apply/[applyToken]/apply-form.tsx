@@ -184,7 +184,7 @@ export default function ApplyForm() {
         <div className="mb-4 flex items-center gap-3">
           {job.orgLogo ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={job.orgLogo} alt="" className="h-10 w-10 shrink-0 rounded object-contain" />
+            <img src={job.orgLogo} alt="" className="h-10 w-10 shrink-0 rounded-sm object-contain" />
           ) : null}
           <p className="text-sm font-semibold text-candidate-text-secondary">{job.orgName}</p>
         </div>
@@ -214,7 +214,7 @@ export default function ApplyForm() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
-              className="w-full rounded border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none focus:ring-2 focus:ring-candidate-primary/20"
+              className="w-full rounded-sm border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-hidden focus:ring-2 focus:ring-candidate-primary/20"
             />
           </div>
 
@@ -228,7 +228,7 @@ export default function ApplyForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full rounded border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none focus:ring-2 focus:ring-candidate-primary/20"
+              className="w-full rounded-sm border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-hidden focus:ring-2 focus:ring-candidate-primary/20"
             />
           </div>
 
@@ -240,7 +240,7 @@ export default function ApplyForm() {
               id="apply-phone"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              className="w-full rounded border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-none focus:ring-2 focus:ring-candidate-primary/20"
+              className="w-full rounded-sm border border-candidate-border px-3 py-2 text-sm focus:border-candidate-primary focus:outline-hidden focus:ring-2 focus:ring-candidate-primary/20"
             />
           </div>
 
@@ -281,7 +281,7 @@ export default function ApplyForm() {
                   type="checkbox"
                   checked={consentAccepted}
                   onChange={(e) => setConsentAccepted(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded border border-candidate-border"
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded-sm border border-candidate-border"
                 />
                 I have read and agree to the above.
               </label>

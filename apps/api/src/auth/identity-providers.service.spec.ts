@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { generate } from 'selfsigned';
 import { invalidateTenantSecurityPolicy } from '@exam-platform/shared';
 import { IdentityProvidersService } from './identity-providers.service';
@@ -10,7 +11,8 @@ describe('IdentityProvidersService', () => {
   const context = { organizationId: ORG, isSuperAdmin: false };
   let tx: any;
   let audit: { record: jest.Mock };
-  let crypto: { encrypt: jest.Mock };
+  let crypto: { encrypt: jest.Mock; hmac: jest.Mock };
+  let resolveTxt: jest.Mock;
   let sso: { jitRoleIsSafe: jest.Mock };
   let oidc: { checkIssuer: jest.Mock };
   let sessions: { notifyAdmins: jest.Mock };
@@ -53,17 +55,19 @@ describe('IdentityProvidersService', () => {
         delete: jest.fn(),
         count: jest.fn().mockResolvedValue(0),
       },
-      identityProviderDomain: { deleteMany: jest.fn(), createMany: jest.fn() },
+      identityProviderDomain: { deleteMany: jest.fn(), createMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn().mockResolvedValue(null) },
+      verifiedDomain: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn(), upsert: jest.fn(async ({ create }) => ({ ...create, verifiedAt: new Date('2026-10-07T00:00:00Z') })) },
       tenantSecurityPolicy: { findUnique: jest.fn().mockResolvedValue(null) },
       session: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
     };
     const tenantPrisma = { forTenant: jest.fn((_ctx, fn) => fn(tx)) };
     audit = { record: jest.fn() };
-    crypto = { encrypt: jest.fn((value: string) => `enc(${value})`) };
+    crypto = { encrypt: jest.fn((value: string) => `enc(${value})`), hmac: jest.fn((purpose: string, value: string) => createHash('sha256').update(`${purpose}|${value}`).digest('hex')) };
+    resolveTxt = jest.fn().mockResolvedValue([]);
     sso = { jitRoleIsSafe: jest.fn().mockResolvedValue(true) };
     oidc = { checkIssuer: jest.fn().mockResolvedValue(undefined) };
     sessions = { notifyAdmins: jest.fn() };
-    service = new IdentityProvidersService(tenantPrisma as any, audit as any, crypto as any, sso as any, oidc as any, sessions as any);
+    service = new IdentityProvidersService(tenantPrisma as any, audit as any, crypto as any, sso as any, oidc as any, sessions as any, resolveTxt);
   });
 
   describe('SAML', () => {
@@ -264,6 +268,65 @@ describe('IdentityProvidersService', () => {
     await expect(service.remove(context, 'u1', 'other')).rejects.toThrow(NotFoundException);
   });
 
+  describe('domain ownership (email-first routing)', () => {
+    const value = () => service.verificationValue(ORG, 'kaverifoods.in');
+
+    it('a public mail domain can never be mapped to a provider', async () => {
+      for (const domain of ['gmail.com', 'outlook.com', 'yahoo.co.in', 'yahoo.fr', 'rediffmail.com']) {
+        await expect(service.update(context, 'u1', 'idp-1', { domains: ['kaverifoods.in', domain] })).rejects.toThrow(/public email domain/);
+      }
+      expect(tx.identityProviderDomain.createMany).not.toHaveBeenCalled();
+    });
+
+    it('verifies a mapped domain only when its TXT record carries this company\'s value', async () => {
+      tx.identityProviderDomain.findUnique.mockResolvedValue({ organizationId: ORG, domain: 'kaverifoods.in' });
+      resolveTxt.mockResolvedValueOnce([['v=spf1 -all'], ['yukthix-domain-verification=someone-else']]);
+      await expect(service.verifyDomain(context, 'u1', 'kaverifoods.in')).rejects.toThrow(/No TXT record/);
+      expect(tx.verifiedDomain.upsert).not.toHaveBeenCalled();
+
+      // TXT strings longer than 255 bytes arrive in chunks; they are joined before comparing.
+      const v = value();
+      resolveTxt.mockResolvedValueOnce([[v.slice(0, 10), v.slice(10)]]);
+      await expect(service.verifyDomain(context, 'u1', 'kaverifoods.in')).resolves.toEqual({ domain: 'kaverifoods.in', verifiedAt: expect.any(Date) });
+      expect(resolveTxt).toHaveBeenLastCalledWith('kaverifoods.in');
+      expect(tx.verifiedDomain.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: { organizationId: ORG, domain: 'kaverifoods.in' } }));
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'identity_provider.domain_verified', metadata: { domain: 'kaverifoods.in' } }));
+      expect(sessions.notifyAdmins).toHaveBeenCalled();
+    });
+
+    it('the value differs per company and per domain (no company can reuse another\'s record)', () => {
+      expect(service.verificationValue(ORG, 'kaverifoods.in')).not.toBe(service.verificationValue('org-2', 'kaverifoods.in'));
+      expect(service.verificationValue(ORG, 'kaverifoods.in')).not.toBe(service.verificationValue(ORG, 'kaveri.in'));
+      expect(value()).toMatch(/^yukthix-domain-verification=.{32}$/);
+    });
+
+    it('refuses a domain the company has not mapped, a public domain, and a failed lookup', async () => {
+      await expect(service.verifyDomain(context, 'u1', 'kaverifoods.in')).rejects.toThrow(NotFoundException);
+      await expect(service.verifyDomain(context, 'u1', 'gmail.com')).rejects.toThrow(/public email domain/);
+      tx.identityProviderDomain.findUnique.mockResolvedValue({ organizationId: ORG, domain: 'kaverifoods.in' });
+      resolveTxt.mockRejectedValueOnce(Object.assign(new Error('queryTxt ENOTFOUND'), { code: 'ENOTFOUND' }));
+      await expect(service.verifyDomain(context, 'u1', 'kaverifoods.in')).rejects.toThrow(BadRequestException);
+      expect(resolveTxt).toHaveBeenCalledTimes(1);
+    });
+
+    it('lists each mapped domain with its status and record', async () => {
+      tx.identityProviderDomain.findMany.mockResolvedValue([{ domain: 'kaveri.in' }, { domain: 'kaverifoods.in' }]);
+      tx.verifiedDomain.findMany.mockResolvedValue([{ domain: 'kaverifoods.in', verifiedAt: new Date('2026-10-01T00:00:00Z') }]);
+      await expect(service.domains(context)).resolves.toEqual([
+        { domain: 'kaveri.in', verifiedAt: null, txtRecord: { name: 'kaveri.in', value: service.verificationValue(ORG, 'kaveri.in') } },
+        { domain: 'kaverifoods.in', verifiedAt: new Date('2026-10-01T00:00:00Z'), txtRecord: { name: 'kaverifoods.in', value: value() } },
+      ]);
+    });
+
+    it('a domain taken off every provider loses its verification', async () => {
+      tx.identityProviderDomain.findMany.mockResolvedValue([{ domain: 'kaveri.in' }]);
+      await service.update(context, 'u1', 'idp-1', { domains: ['kaveri.in'] });
+      expect(tx.verifiedDomain.deleteMany).toHaveBeenCalledWith({ where: { organizationId: ORG, domain: { notIn: ['kaveri.in'] } } });
+      await service.remove(context, 'u1', 'idp-1');
+      expect(tx.verifiedDomain.deleteMany).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it('needs an organisation context', async () => {
     await expect(service.list({ organizationId: null, isSuperAdmin: true })).rejects.toThrow(BadRequestException);
   });
@@ -276,7 +339,7 @@ describe('IdentityProvidersController permissions', () => {
   const { IdentityProvidersController } = require('./identity-providers.controller');
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { PERMISSIONS_KEY } = require('../rbac/permissions.decorator');
-  it.each(['create', 'update', 'remove'])('%s needs both org:manage_settings and org:manage_users', (method) => {
+  it.each(['create', 'update', 'remove', 'verifyDomain'])('%s needs both org:manage_settings and org:manage_users', (method) => {
     expect(Reflect.getMetadata(PERMISSIONS_KEY, IdentityProvidersController.prototype[method])).toEqual(['org:manage_settings', 'org:manage_users']);
   });
 });

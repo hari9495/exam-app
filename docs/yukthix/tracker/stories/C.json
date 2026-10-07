@@ -1,0 +1,5213 @@
+[
+  {
+    "id": "EP-C-1",
+    "type": "Epic",
+    "parent": "",
+    "title": "Step 4 · Time and leave",
+    "rules": [],
+    "docs": [
+      "M02",
+      "P03",
+      "P04",
+      "P07"
+    ],
+    "state": "New",
+    "phase": "Step 4",
+    "order": 600,
+    "depends": []
+  },
+  {
+    "id": "FT-C-01",
+    "type": "Feature",
+    "parent": "EP-C-1",
+    "title": "Approval engine (requests, routes, approvers)",
+    "rules": [
+      "YX-WF-01",
+      "YX-WF-02",
+      "YX-WF-03",
+      "YX-WF-04",
+      "YX-WF-06",
+      "YX-WF-08",
+      "YX-WF-12",
+      "YX-WF-15",
+      "YX-WF-10",
+      "YX-WF-07",
+      "YX-WF-05",
+      "YX-WF-17",
+      "YX-WF-14",
+      "YX-WF-09",
+      "YX-WF-13",
+      "YX-WF-16",
+      "YX-WF-18",
+      "YX-WF-19"
+    ],
+    "docs": [
+      "P03"
+    ],
+    "state": "New",
+    "phase": "Step 4-a workflow engine",
+    "order": 601,
+    "depends": []
+  },
+  {
+    "id": "US-C-001",
+    "type": "Story",
+    "parent": "FT-C-01",
+    "title": "Every request type has a route",
+    "story": "As an HR admin, I want each request type to have a default approval route so that no request is ever stuck without an approver.",
+    "acceptance": [
+      "Given a new request type is registered, when it has no company policy, then the default policy is used and the request still gets a route (YX-WF-01).",
+      "Given two policies match a request, when it is submitted, then the policy with the higher priority wins and its name is saved on the request (YX-WF-03).",
+      "Given a request was submitted, when HR edits the policy later, then the open request keeps its saved steps and approvers (YX-WF-02).",
+      "Given a request is submitted, when I open it, then I see the matched policy and the approvers for each step."
+    ],
+    "rules": [
+      "YX-WF-01",
+      "YX-WF-02",
+      "YX-WF-03"
+    ],
+    "docs": [
+      "P03 §4.1",
+      "P03 §4.2"
+    ],
+    "state": "New",
+    "phase": "Step 4-a workflow engine",
+    "order": 601,
+    "points": 5,
+    "priority": 1,
+    "depends": []
+  },
+  {
+    "id": "US-C-002",
+    "type": "Story",
+    "parent": "FT-C-01",
+    "title": "System finds the right approver",
+    "story": "As an employee, I want my request to go to the right person automatically so that I do not have to chase anyone.",
+    "acceptance": [
+      "Given I am also the approver at a step, when my request is submitted, then I am removed from that step and the fallback approver is used if the step becomes empty (YX-WF-04).",
+      "Given an approver leaves the company or becomes inactive, when this happens, then their open tasks move to the new approver or fallback and the timeline shows the move (YX-WF-06).",
+      "Given a step uses 'reporting manager' or 'HR admin of location', when the request is submitted, then the approver is found from the employee's current data."
+    ],
+    "rules": [
+      "YX-WF-04",
+      "YX-WF-06"
+    ],
+    "docs": [
+      "P03 §4.3"
+    ],
+    "state": "New",
+    "phase": "Step 4-a workflow engine",
+    "order": 602,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-001"
+    ]
+  },
+  {
+    "id": "US-C-003",
+    "type": "Story",
+    "parent": "FT-C-01",
+    "title": "Approver approves, rejects or sends back",
+    "story": "As a manager, I want to approve, reject or send back a request with a reason so that the employee knows what to do next.",
+    "acceptance": [
+      "Given I reject or send back a request, when I submit, then a reason is required (YX-WF-08).",
+      "Given the request type allows changes, when I approve with changes, then I must give a reason for each change (YX-WF-08).",
+      "Given any action is taken, when anyone opens the request, then the timeline shows who acted, on behalf of whom, the channel, the reason and the changes (YX-WF-12).",
+      "Given a request was sent back, when the employee resubmits with no change to condition fields, then it resumes at the step that sent it back; if condition fields changed, it restarts at step 1 with a new snapshot (YX-WF-15)."
+    ],
+    "rules": [
+      "YX-WF-08",
+      "YX-WF-12",
+      "YX-WF-15"
+    ],
+    "docs": [
+      "P03 §4.5"
+    ],
+    "state": "New",
+    "phase": "Step 4-a workflow engine",
+    "order": 603,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-002"
+    ]
+  },
+  {
+    "id": "US-C-004",
+    "type": "Story",
+    "parent": "FT-C-01",
+    "title": "Approval effects run exactly once",
+    "story": "As an HR admin, I want the result of an approval (for example a leave ledger entry) to happen exactly once so that balances are never doubled or lost.",
+    "acceptance": [
+      "Given the final approval is given, when the effect is a ledger posting, then it is written in the same transaction as the decision (YX-WF-10).",
+      "Given an effect runs as a background job, when the job is retried, then the effect is applied only once (YX-WF-10).",
+      "Given the effect fails, when the job gives up, then HR sees the failed request with the error and can retry it."
+    ],
+    "rules": [
+      "YX-WF-10"
+    ],
+    "docs": [
+      "P03 §4.5"
+    ],
+    "state": "New",
+    "phase": "Step 4-a workflow engine",
+    "order": 604,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-003"
+    ]
+  },
+  {
+    "id": "US-C-005",
+    "type": "Story",
+    "parent": "FT-C-01",
+    "title": "Manager delegates approvals while away",
+    "story": "As a manager, I want to name a delegate while I am on leave so that my team's requests are not delayed.",
+    "acceptance": [
+      "Given I set a delegate for some dates, when a request comes to me in that time, then my delegate can act on my behalf and the timeline says so (YX-WF-07).",
+      "Given my delegate has also delegated, when a request arrives, then it does not pass on to a second delegate (YX-WF-07).",
+      "Given my delegate cannot see some fields of the employee, when they open the request, then those fields stay hidden (YX-WF-07)."
+    ],
+    "rules": [
+      "YX-WF-07"
+    ],
+    "docs": [
+      "P03 §4.4"
+    ],
+    "state": "New",
+    "phase": "Step 4-a workflow engine",
+    "order": 605,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-003"
+    ]
+  },
+  {
+    "id": "US-C-006",
+    "type": "Story",
+    "parent": "FT-C-01",
+    "title": "Maker and checker are different people",
+    "story": "As a payroll admin, I want money-moving requests to need a second person so that one person cannot approve their own work.",
+    "acceptance": [
+      "Given a request type is marked maker ≠ checker (payroll run, bank file, statutory payment), when the maker tries to approve it, then the action is blocked (YX-WF-05).",
+      "Given the company has only one admin user, when the single-user exception is on, then the approval is allowed and recorded as an exception (YX-WF-05).",
+      "Given the same person is approver at two steps, when duplicate auto-approval is on, then it is never applied to the checker step (YX-WF-17)."
+    ],
+    "rules": [
+      "YX-WF-05",
+      "YX-WF-17"
+    ],
+    "docs": [
+      "P03 §4.3",
+      "P02 YX-SEC-12"
+    ],
+    "state": "New",
+    "phase": "Step 4-a workflow engine",
+    "order": 606,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-003"
+    ]
+  },
+  {
+    "id": "US-C-007",
+    "type": "Story",
+    "parent": "FT-C-01",
+    "title": "My approvals queue with the same counts everywhere",
+    "story": "As a manager, I want one list of things waiting for me so that I can clear them quickly.",
+    "acceptance": [
+      "Given I have pending tasks, when I open home, the approvals queue, mobile or a dashboard, then the pending count is the same everywhere (YX-WF-14).",
+      "Given I open the queue, when I filter by type or age, then the list and its count update together (YX-WF-14).",
+      "Given I select many leave requests, when I approve them in bulk, then each one is approved and logged separately (YX-WF-12)."
+    ],
+    "rules": [
+      "YX-WF-14",
+      "YX-WF-12"
+    ],
+    "docs": [
+      "P03 §7"
+    ],
+    "state": "New",
+    "phase": "Step 4-a workflow engine",
+    "order": 607,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-003"
+    ]
+  },
+  {
+    "id": "US-C-010",
+    "type": "Story",
+    "parent": "FT-C-01",
+    "title": "HR edits approval policies safely",
+    "story": "As an HR admin, I want to edit approval routes and test them before saving so that I do not break approvals.",
+    "acceptance": [
+      "Given I do not have workflow.policy.manage (and the owner permission for sensitive types), when I open the editor, then I cannot save (YX-WF-16).",
+      "Given I changed a policy, when I press save, then I must run Simulate first (YX-WF-16).",
+      "Given I save, when it succeeds, then a new policy version is created and the change is audited (YX-WF-16, YX-WF-02)."
+    ],
+    "rules": [
+      "YX-WF-16",
+      "YX-WF-02"
+    ],
+    "docs": [
+      "P03 §7"
+    ],
+    "state": "New",
+    "phase": "Step 4-a workflow engine",
+    "order": 608,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-001"
+    ]
+  },
+  {
+    "id": "US-C-011",
+    "type": "Story",
+    "parent": "FT-C-01",
+    "title": "HR raises a request on behalf of an employee",
+    "story": "As an HR admin, I want to raise a leave or attendance request for a worker without a phone so that their time is recorded correctly.",
+    "acceptance": [
+      "Given I hold request.raise_on_behalf, when the request type is enabled for my role, then I can raise it for the employee (YX-WF-18).",
+      "Given I raise it, when policies run, then they use the subject employee's data and the timeline says 'raised by X on behalf of Y' (YX-WF-18).",
+      "Given the request is raised, when it is saved, then the employee is notified and neither I nor the employee can approve it (YX-WF-18, YX-WF-04)."
+    ],
+    "rules": [
+      "YX-WF-18",
+      "YX-WF-04"
+    ],
+    "docs": [
+      "P03 §4.1"
+    ],
+    "state": "New",
+    "phase": "Step 4-a workflow engine",
+    "order": 609,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-002"
+    ]
+  },
+  {
+    "id": "US-C-012",
+    "type": "Story",
+    "parent": "FT-C-01",
+    "title": "Request access from a permission-denied page",
+    "story": "As an employee, I want to ask for access when I see 'permission denied' so that the right admin can give it to me.",
+    "acceptance": [
+      "Given I see the permission-denied state, when I press Request access, then I must give a reason (YX-WF-19).",
+      "Given I submit, when it routes, then it goes to the HR admin in scope of the record owner, then System Admin as fallback (YX-WF-19).",
+      "Given the area is restricted (for example POSH), when I am denied, then the Request access button is not shown (YX-WF-19)."
+    ],
+    "rules": [
+      "YX-WF-19"
+    ],
+    "docs": [
+      "P03 §6",
+      "APX-D §6.3"
+    ],
+    "state": "New",
+    "phase": "Step 4-a workflow engine",
+    "order": 610,
+    "points": 2,
+    "priority": 2,
+    "depends": [
+      "US-C-002"
+    ]
+  },
+  {
+    "id": "FT-C-02",
+    "type": "Feature",
+    "parent": "EP-C-1",
+    "title": "Notification engine (in-app, push, email, WhatsApp)",
+    "rules": [
+      "YX-NTF-01",
+      "YX-NTF-02",
+      "YX-NTF-10",
+      "YX-NTF-09",
+      "YX-NTF-03",
+      "YX-NTF-04",
+      "YX-NTF-08",
+      "YX-NTF-07",
+      "YX-NTF-14",
+      "YX-NTF-11",
+      "YX-NTF-13",
+      "YX-NTF-12",
+      "YX-NTF-05",
+      "YX-NTF-06",
+      "YX-NTF-17",
+      "YX-NTF-16"
+    ],
+    "docs": [
+      "P04"
+    ],
+    "state": "New",
+    "phase": "Step 4-a notifications",
+    "order": 611,
+    "depends": []
+  },
+  {
+    "id": "US-C-013",
+    "type": "Story",
+    "parent": "FT-C-02",
+    "title": "Notifications are sent once and never lost",
+    "story": "As an employee, I want to get each notification exactly once so that I trust the messages.",
+    "acceptance": [
+      "Given a change is rolled back, when the transaction ends, then no notification is sent (YX-NTF-01).",
+      "Given a change is committed, when the server restarts before sending, then the notification is still sent (YX-NTF-01).",
+      "Given a retry happens, when the same event, person and channel are sent again, then the person gets it only once (YX-NTF-02).",
+      "Given a send fails, when retries run out, then the attempt is logged with status and provider id (YX-NTF-10)."
+    ],
+    "rules": [
+      "YX-NTF-01",
+      "YX-NTF-02",
+      "YX-NTF-10"
+    ],
+    "docs": [
+      "P04 §4.1"
+    ],
+    "state": "New",
+    "phase": "Step 4-a notifications",
+    "order": 611,
+    "points": 5,
+    "priority": 1,
+    "depends": []
+  },
+  {
+    "id": "US-C-014",
+    "type": "Story",
+    "parent": "FT-C-02",
+    "title": "In-app inbox and push notifications",
+    "story": "As an employee, I want an inbox in the app and push messages on my phone so that I see what needs my attention.",
+    "acceptance": [
+      "Given 10 leave requests arrive for the same group in a short window, when I open the inbox, then I see one grouped item with a count (YX-NTF-09).",
+      "Given the grouped count, when I open the approvals queue, then the numbers match (YX-NTF-09, YX-WF-14).",
+      "Given I lost access to the subject record before sending, when the notification is sent, then I get nothing (YX-NTF-03)."
+    ],
+    "rules": [
+      "YX-NTF-09",
+      "YX-NTF-03"
+    ],
+    "docs": [
+      "P04 §4.2"
+    ],
+    "state": "New",
+    "phase": "Step 4-a notifications",
+    "order": 612,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-013"
+    ]
+  },
+  {
+    "id": "US-C-015",
+    "type": "Story",
+    "parent": "FT-C-02",
+    "title": "Email channel with editable templates",
+    "story": "As an HR admin, I want to edit email and in-app wording with a preview so that messages sound like our company.",
+    "acceptance": [
+      "Given I edit a template, when I insert a variable, then only variables marked external-safe can be used in email (YX-NTF-04).",
+      "Given an employee prefers Tamil, when an email is sent, then it is in Tamil with Indian number and date formats; missing language falls back to company default, then English (YX-NTF-08).",
+      "Given I press test send, when it goes, then I get the preview email; reset to default restores the original wording."
+    ],
+    "rules": [
+      "YX-NTF-04",
+      "YX-NTF-08"
+    ],
+    "docs": [
+      "P04 §4.3"
+    ],
+    "state": "New",
+    "phase": "Step 4-a notifications",
+    "order": 613,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-013"
+    ]
+  },
+  {
+    "id": "US-C-009",
+    "type": "Story",
+    "parent": "FT-C-01",
+    "title": "Approve from an email or WhatsApp link",
+    "story": "As a manager, I want to approve a simple request with one tap from a message so that I do not need to open the app.",
+    "acceptance": [
+      "Given a low-risk request type, when the approval message is sent, then it carries a signed single-use link that expires (default 72 h) (YX-WF-13).",
+      "Given I tap the link, when my permission has changed since the message, then the action is refused (YX-WF-13).",
+      "Given the request type is high risk, when the message is sent, then it has no approve link, only a link to open the app (YX-WF-13)."
+    ],
+    "rules": [
+      "YX-WF-13"
+    ],
+    "docs": [
+      "P03 §4.7"
+    ],
+    "state": "New",
+    "phase": "Step 4-a workflow engine",
+    "order": 614,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-003",
+      "US-C-015"
+    ]
+  },
+  {
+    "id": "US-C-016",
+    "type": "Story",
+    "parent": "FT-C-02",
+    "title": "WhatsApp channel with approved templates and opt-in",
+    "story": "As an HR admin, I want to connect our WhatsApp business number so that workers get key updates where they read them.",
+    "acceptance": [
+      "Given an employee has no active WhatsApp opt-in, when a WhatsApp message is due, then it goes by in-app, push or email instead and the fallback is logged (YX-NTF-14).",
+      "Given a business-initiated message, when no approved template exists, then it falls back to another channel and logs why (YX-NTF-07).",
+      "Given a number blocks us, when the block is reported, then we stop using that number until it changes (YX-NTF-11).",
+      "Given an OTP over WhatsApp, when it is sent, then it ignores quiet hours and grouping; WhatsApp message counts are logged for the company (YX-NTF-13, YX-NTF-12)."
+    ],
+    "rules": [
+      "YX-NTF-07",
+      "YX-NTF-14",
+      "YX-NTF-11",
+      "YX-NTF-13",
+      "YX-NTF-12"
+    ],
+    "docs": [
+      "P04 §4.4"
+    ],
+    "state": "New",
+    "phase": "Step 4-a notifications",
+    "order": 615,
+    "points": 5,
+    "priority": 2,
+    "depends": [
+      "US-C-013"
+    ]
+  },
+  {
+    "id": "US-C-017",
+    "type": "Story",
+    "parent": "FT-C-02",
+    "title": "Notification preferences and quiet hours",
+    "story": "As an employee, I want to choose my channels and quiet hours so that I am not disturbed at night.",
+    "acceptance": [
+      "Given a type is mandatory, when I open preferences, then I cannot turn it off (YX-NTF-05).",
+      "Given my preference, company policy and default differ, when a message is sent, then my preference wins, then company policy, then default (YX-NTF-05).",
+      "Given quiet hours 9 pm–8 am in my time zone, when a non-urgent push, WhatsApp or SMS is due, then it waits until 8 am; in-app is not delayed (YX-NTF-06)."
+    ],
+    "rules": [
+      "YX-NTF-05",
+      "YX-NTF-06"
+    ],
+    "docs": [
+      "P04 §4.7"
+    ],
+    "state": "New",
+    "phase": "Step 4-a notifications",
+    "order": 616,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-014"
+    ]
+  },
+  {
+    "id": "US-C-018",
+    "type": "Story",
+    "parent": "FT-C-02",
+    "title": "Scheduler for time-based reminders",
+    "story": "As an HR admin, I want reminders sent at the right time (check-in, expiry, due dates) so that people act before it is late.",
+    "acceptance": [
+      "Given a scheduled reminder (for example comp-off expiry in 7 days), when the time comes, then the event is raised once through the outbox (YX-NTF-01, YX-NTF-02).",
+      "Given the subject is already resolved, when the reminder time comes, then no reminder is sent.",
+      "Given the scheduler was down, when it restarts, then missed reminders are sent once, not twice (YX-NTF-02)."
+    ],
+    "rules": [
+      "YX-NTF-01",
+      "YX-NTF-02"
+    ],
+    "docs": [
+      "P04 §4.6"
+    ],
+    "state": "New",
+    "phase": "Step 4-a notifications",
+    "order": 617,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-013"
+    ]
+  },
+  {
+    "id": "US-C-008",
+    "type": "Story",
+    "parent": "FT-C-01",
+    "title": "Reminders and escalation for slow approvals",
+    "story": "As an HR admin, I want reminders and escalation when an approver is slow so that employees get answers on time.",
+    "acceptance": [
+      "Given a step has an SLA of 2 working days, when time is counted, then only working time on the approver's location calendar counts (YX-WF-09).",
+      "Given the SLA is near, when the reminder time comes, then the approver gets a reminder through the notification engine (YX-WF-09).",
+      "Given the SLA is broken, when escalation is set, then the task is escalated as configured; auto-approve happens only for types the company enabled (YX-WF-09)."
+    ],
+    "rules": [
+      "YX-WF-09"
+    ],
+    "docs": [
+      "P03 §4.6"
+    ],
+    "state": "New",
+    "phase": "Step 4-a workflow engine",
+    "order": 618,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-003",
+      "US-C-013",
+      "US-C-018"
+    ]
+  },
+  {
+    "id": "US-C-019",
+    "type": "Story",
+    "parent": "FT-C-02",
+    "title": "Admin delivery log and channel status",
+    "story": "As a system admin, I want to see failed deliveries and bounced addresses so that I can fix contact details.",
+    "acceptance": [
+      "Given a delivery failed after retries, when I open the delivery log, then I see recipient, channel, status, provider id and error (YX-NTF-10).",
+      "Given an email bounced, when it is reported, then the address is marked bad and not used until it changes (YX-NTF-11).",
+      "Given I filter by channel and date, when I search, then the log shows only matching attempts."
+    ],
+    "rules": [
+      "YX-NTF-10",
+      "YX-NTF-11"
+    ],
+    "docs": [
+      "P04 §7"
+    ],
+    "state": "New",
+    "phase": "Step 4-a notifications",
+    "order": 619,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-013"
+    ]
+  },
+  {
+    "id": "US-C-020",
+    "type": "Story",
+    "parent": "FT-C-02",
+    "title": "All screen text comes from the message catalogue",
+    "story": "As an employee, I want the app in Hindi, Tamil or Telugu so that I understand every screen.",
+    "acceptance": [
+      "Given a developer adds hard-coded screen text, when CI runs, then the build fails (YX-NTF-17).",
+      "Given an employee screen, when I pick Telugu, then all strings show in Telugu; a missing string falls back to company default, then English (YX-NTF-17).",
+      "Given an admin screen, when I pick Hindi, then it may stay in English (admin screens English first) (YX-NTF-17)."
+    ],
+    "rules": [
+      "YX-NTF-17"
+    ],
+    "docs": [
+      "P04 §4.10"
+    ],
+    "state": "New",
+    "phase": "Step 4-a notifications",
+    "order": 620,
+    "points": 5,
+    "priority": 2,
+    "depends": []
+  },
+  {
+    "id": "US-C-021",
+    "type": "Story",
+    "parent": "FT-C-02",
+    "title": "Slack and Teams notifications and approvals",
+    "story": "As a manager, I want to see and approve simple requests in Slack or Teams so that I do not switch apps.",
+    "acceptance": [
+      "Given my Slack account is not linked by SSO, when an event happens, then I get no personal data in Slack (YX-NTF-16).",
+      "Given a request type is marked chat-safe, when I press approve in Teams, then P03 permissions and self-approval are checked again at the click (YX-NTF-16, YX-WF-04).",
+      "Given the type is not chat-safe, when the card shows, then it only has an 'Open in YukthiX' link (YX-NTF-16)."
+    ],
+    "rules": [
+      "YX-NTF-16"
+    ],
+    "docs": [
+      "P04 §4.9"
+    ],
+    "state": "New",
+    "phase": "Step 4-e later waves",
+    "order": 621,
+    "points": 5,
+    "priority": 3,
+    "depends": [
+      "US-C-003",
+      "US-C-013"
+    ]
+  },
+  {
+    "id": "FT-C-03",
+    "type": "Feature",
+    "parent": "EP-C-1",
+    "title": "Statutory rule packs engine",
+    "rules": [
+      "YX-STAT-01",
+      "YX-STAT-02",
+      "YX-STAT-10",
+      "YX-STAT-05",
+      "YX-STAT-20",
+      "YX-STAT-03",
+      "YX-STAT-04",
+      "YX-STAT-06",
+      "YX-STAT-13",
+      "YX-STAT-08",
+      "YX-STAT-12",
+      "YX-STAT-23"
+    ],
+    "docs": [
+      "P07"
+    ],
+    "state": "New",
+    "phase": "Step 4-a rule packs",
+    "order": 622,
+    "depends": []
+  },
+  {
+    "id": "US-C-022",
+    "type": "Story",
+    "parent": "FT-C-03",
+    "title": "Statutory rules stored as dated, versioned data",
+    "story": "As a payroll admin, I want every legal rate and limit to come from dated rule data so that the system follows the law on each date.",
+    "acceptance": [
+      "Given any statutory rate, slab, ceiling, due date or list, when code needs it, then it reads a published rule set, never a hard-coded value (YX-STAT-01).",
+      "Given a rule set is published, when someone tries to edit it, then it is refused; only a new version can supersede or withdraw it (YX-STAT-02).",
+      "Given the statutory schema, when the app's tenant role tries to write to it, then the write fails; it is read-only and has no tenant key (YX-STAT-10)."
+    ],
+    "rules": [
+      "YX-STAT-01",
+      "YX-STAT-02",
+      "YX-STAT-10"
+    ],
+    "docs": [
+      "P07 §4.1"
+    ],
+    "state": "New",
+    "phase": "Step 4-a rule packs",
+    "order": 622,
+    "points": 5,
+    "priority": 1,
+    "depends": []
+  },
+  {
+    "id": "US-C-023",
+    "type": "Story",
+    "parent": "FT-C-03",
+    "title": "Rules evaluated for the period date",
+    "story": "As a payroll admin, I want calculations to use the rule valid on the period date so that old and new law are never mixed.",
+    "acceptance": [
+      "Given a calculation for a period, when it asks the evaluator, then the rule set valid on that period date is used and its version is stored with the result (YX-STAT-05).",
+      "Given a period that ends before 21 Nov 2025, when evaluated, then the old Acts are used; a period straddling that date is split into two segments (YX-STAT-20).",
+      "Given the same input and date, when evaluated twice, then the result is the same."
+    ],
+    "rules": [
+      "YX-STAT-05",
+      "YX-STAT-20"
+    ],
+    "docs": [
+      "P07 §4.2",
+      "P07 §4.7"
+    ],
+    "state": "New",
+    "phase": "Step 4-a rule packs",
+    "order": 623,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-022"
+    ]
+  },
+  {
+    "id": "US-C-024",
+    "type": "Story",
+    "parent": "FT-C-03",
+    "title": "YukthiX team publishes a rule change with review",
+    "story": "As a YukthiX compliance editor, I want to publish rule changes with source, tests and a second review so that wrong rules never reach customers.",
+    "acceptance": [
+      "Given a new rule set version, when I try to publish, then it must cite its legal source with a stored copy (YX-STAT-03).",
+      "Given shape validation or a golden test case fails, when I publish, then publishing is blocked (YX-STAT-04).",
+      "Given all checks pass, when I publish, then a second person must review and approve it (YX-STAT-04)."
+    ],
+    "rules": [
+      "YX-STAT-03",
+      "YX-STAT-04"
+    ],
+    "docs": [
+      "P07 §4.3"
+    ],
+    "state": "New",
+    "phase": "Step 4-a rule packs",
+    "order": 624,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-022"
+    ]
+  },
+  {
+    "id": "US-C-025",
+    "type": "Story",
+    "parent": "FT-C-03",
+    "title": "Company sees its rules and picks legal options",
+    "story": "As an HR admin, I want to see which rules apply to my entities and choose only the options the law allows so that we stay compliant.",
+    "acceptance": [
+      "Given a statutory rate, when I open the tenant view, then I cannot change it (YX-STAT-06).",
+      "Given a legal option (for example PF on actual wage), when I choose it for an entity, then it is saved with an effective date (YX-STAT-06).",
+      "Given a new employee of a given employment type, when defaults are applied, then PF, ESI, PT, LWF, bonus and gratuity applicability come from the rule set; an override is allowed only where it is marked a legal option (YX-STAT-13)."
+    ],
+    "rules": [
+      "YX-STAT-06",
+      "YX-STAT-13"
+    ],
+    "docs": [
+      "P07 §4.4"
+    ],
+    "state": "New",
+    "phase": "Step 4-a rule packs",
+    "order": 625,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-023"
+    ]
+  },
+  {
+    "id": "US-C-026",
+    "type": "Story",
+    "parent": "FT-C-03",
+    "title": "Admins are told about rule changes",
+    "story": "As a payroll admin, I want a plain message when a rule changes that affects my company so that I can prepare.",
+    "acceptance": [
+      "Given a rule change is published, when it affects my entities, then I get an in-app and email message with a plain summary and impact count (YX-STAT-08).",
+      "Given the effective date is near, when the reminder time comes, then I get a reminder (YX-STAT-08).",
+      "Given the banner, when I view it, then it shows only to admins of affected entities, from publication to effective date + 7 days, and I can dismiss it (YX-STAT-12)."
+    ],
+    "rules": [
+      "YX-STAT-08",
+      "YX-STAT-12"
+    ],
+    "docs": [
+      "P07 §4.4"
+    ],
+    "state": "New",
+    "phase": "Step 4-a rule packs",
+    "order": 626,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-024",
+      "US-C-015"
+    ]
+  },
+  {
+    "id": "US-C-027",
+    "type": "Story",
+    "parent": "FT-C-03",
+    "title": "Load the time and leave rule packs",
+    "story": "As an HR admin, I want leave, holiday, overtime and working-hour laws loaded so that leave and attendance follow each state's rules.",
+    "acceptance": [
+      "Given IN.LEAVE, IN.OSH and state S&E rule sets, when they are loaded, then maternity values, OT caps, minimum rest, working-hour limits and night windows come from them (YX-STAT-01, YX-STAT-23).",
+      "Given each rule set, when it is loaded, then it has golden test cases and a cited source (YX-STAT-03, YX-STAT-04).",
+      "Given a location's state, when the attendance engine asks for the OT cap, then it gets the value valid on that date (YX-STAT-05)."
+    ],
+    "rules": [
+      "YX-STAT-01",
+      "YX-STAT-23",
+      "YX-STAT-03",
+      "YX-STAT-04",
+      "YX-STAT-05"
+    ],
+    "docs": [
+      "P07 §8"
+    ],
+    "state": "New",
+    "phase": "Step 4-a rule packs",
+    "order": 627,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-023",
+      "US-C-024"
+    ]
+  },
+  {
+    "id": "FT-C-04",
+    "type": "Feature",
+    "parent": "EP-C-1",
+    "title": "Document storage, verification and e-sign",
+    "rules": [
+      "YX-DOC-01",
+      "YX-DOC-02",
+      "YX-DOC-03",
+      "YX-DOC-17",
+      "YX-DOC-04",
+      "YX-DOC-05",
+      "YX-DOC-06",
+      "YX-DOC-12"
+    ],
+    "docs": [
+      "P05"
+    ],
+    "state": "New",
+    "phase": "Step 4-a documents",
+    "order": 628,
+    "depends": []
+  },
+  {
+    "id": "US-C-028",
+    "type": "Story",
+    "parent": "FT-C-04",
+    "title": "Private document storage with verification",
+    "story": "As an HR admin, I want employee documents stored safely and verified so that payroll only uses checked PAN and bank proofs.",
+    "acceptance": [
+      "Given a file, when someone opens it, then access is by a short-lived signed link after a permission check; Confidential / Special downloads are audited (YX-DOC-01).",
+      "Given an upload, when the type or size is wrong or the virus scan fails, then it is quarantined and the uploader is told why (YX-DOC-02).",
+      "Given storage, when a file is saved, then it is in the tenant's region, under a tenant prefix, encrypted (YX-DOC-03).",
+      "Given a PAN or bank proof, when not yet verified, then payroll and filings do not use it; a successful penny-drop or PAN check marks it verified (YX-DOC-17)."
+    ],
+    "rules": [
+      "YX-DOC-01",
+      "YX-DOC-02",
+      "YX-DOC-03",
+      "YX-DOC-17"
+    ],
+    "docs": [
+      "P05 §4.1",
+      "P05 §4.2"
+    ],
+    "state": "New",
+    "phase": "Step 4-a documents",
+    "order": 628,
+    "points": 5,
+    "priority": 1,
+    "depends": []
+  },
+  {
+    "id": "US-C-029",
+    "type": "Story",
+    "parent": "FT-C-04",
+    "title": "Document types, versions and expiry",
+    "story": "As an HR admin, I want each document to have a type that sets its class, expiry and retention so that I do not set them by hand.",
+    "acceptance": [
+      "Given a document type, when a file is uploaded, then class, verification need, expiry and retention come from the type (YX-DOC-04).",
+      "Given a re-upload, when saved, then a new version is made and old ones stay for HR until retention ends (YX-DOC-05).",
+      "Given an expiry date, when it is near, then reminders go out and the document becomes 'expired' automatically (YX-DOC-06)."
+    ],
+    "rules": [
+      "YX-DOC-04",
+      "YX-DOC-05",
+      "YX-DOC-06"
+    ],
+    "docs": [
+      "P05 §4.2"
+    ],
+    "state": "New",
+    "phase": "Step 4-a documents",
+    "order": 629,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-028",
+      "US-C-018"
+    ]
+  },
+  {
+    "id": "US-C-030",
+    "type": "Story",
+    "parent": "FT-C-04",
+    "title": "E-sign and acknowledgement with evidence",
+    "story": "As an employee, I want to sign or accept a document with OTP so that my consent is recorded.",
+    "acceptance": [
+      "Given I sign, when it completes, then time, IP, device, OTP channel and document hash are stored (YX-DOC-12).",
+      "Given signing is complete, when the PDF is sealed, then a completion page is added (YX-DOC-12).",
+      "Given a provider certificate is used, when stored, then it is part of the evidence (YX-DOC-12)."
+    ],
+    "rules": [
+      "YX-DOC-12"
+    ],
+    "docs": [
+      "P05 §4.4"
+    ],
+    "state": "New",
+    "phase": "Step 4-a documents",
+    "order": 630,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-028"
+    ]
+  },
+  {
+    "id": "FT-C-05",
+    "type": "Feature",
+    "parent": "EP-C-1",
+    "title": "Leave setup, ledger and balances",
+    "rules": [
+      "YX-LV-03",
+      "YX-LV-14",
+      "YX-LV-04",
+      "YX-LV-11",
+      "YX-LV-12",
+      "YX-LV-01",
+      "YX-LV-02",
+      "YX-AT-11",
+      "YX-LV-13"
+    ],
+    "docs": [
+      "M02 Part A"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 631,
+    "depends": []
+  },
+  {
+    "id": "US-C-031",
+    "type": "Story",
+    "parent": "FT-C-05",
+    "title": "HR admin sets up leave types",
+    "story": "As an HR admin, I want to create leave types with eligibility, crediting, counting and year-end rules so that each type works like our policy.",
+    "acceptance": [
+      "Given I edit a leave type, when I change counting (sandwich, holidays, half days), then the live example shows the effect (YX-LV-03).",
+      "Given an unpaid (LWP) type, when I save it, then it has no balance settings (YX-LV-14).",
+      "Given I set a negative limit, when I save, then the limit is stored per type (YX-LV-04).",
+      "Given I set the leave year (calendar, financial or custom), when I save, then accruals and year end use it."
+    ],
+    "rules": [
+      "YX-LV-03",
+      "YX-LV-14",
+      "YX-LV-04"
+    ],
+    "docs": [
+      "M02 §A1",
+      "M02 §A2"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 631,
+    "points": 5,
+    "priority": 1,
+    "depends": []
+  },
+  {
+    "id": "US-C-032",
+    "type": "Story",
+    "parent": "FT-C-05",
+    "title": "Leave policies assigned by rule",
+    "story": "As an HR admin, I want to bundle leave types into a policy and assign it by entity, location, grade or type so that each employee gets the right leaves.",
+    "acceptance": [
+      "Given a policy rule for 'Chennai, Grade 3', when an employee matches, then the policy applies from that date as a dated fact.",
+      "Given I override one employee's policy, when I save, then only that employee changes and the change is dated.",
+      "Given the long-absence and notice-period settings per type, when I save, then they are stored for later use (YX-LV-11, YX-LV-12)."
+    ],
+    "rules": [
+      "YX-LV-11",
+      "YX-LV-12"
+    ],
+    "docs": [
+      "M02 §A2"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 632,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-031"
+    ]
+  },
+  {
+    "id": "US-C-033",
+    "type": "Story",
+    "parent": "FT-C-05",
+    "title": "One leave balance from the ledger",
+    "story": "As an employee, I want to see the same leave balance on every screen so that I trust it.",
+    "acceptance": [
+      "Given credits, debits, adjustments and expiries, when the balance is shown anywhere, then it is the sum of the ledger entries (YX-LV-01).",
+      "Given an LWP type, when I view my balance card, then I see 'taken this year', never a negative balance (YX-LV-14).",
+      "Given a paid type, when the balance goes negative, then it stays within the type's limit (YX-LV-04)."
+    ],
+    "rules": [
+      "YX-LV-01",
+      "YX-LV-14",
+      "YX-LV-04"
+    ],
+    "docs": [
+      "M02 §A2"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 633,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-031"
+    ]
+  },
+  {
+    "id": "US-C-034",
+    "type": "Story",
+    "parent": "FT-C-05",
+    "title": "Leave accrues automatically",
+    "story": "As an HR admin, I want leave to be credited every month or quarter by the policy so that I do not credit it by hand.",
+    "acceptance": [
+      "Given a monthly accrual with 0.5 rounding, when the job runs, then the credit is rounded per the type; the last accrual of the year trues up to the exact entitlement (YX-LV-02).",
+      "Given 'by days worked' or 'LOP-reduced' basis, when the job runs, then it reads attendance after the lock (YX-LV-02).",
+      "Given an employee is on sabbatical or long LWP, when accrual runs, then it pauses or continues as the type is set; maternity follows the statutory value (YX-LV-11).",
+      "Given a negative balance, when a new accrual is posted, then it first repays the negative (YX-LV-04)."
+    ],
+    "rules": [
+      "YX-LV-02",
+      "YX-LV-11",
+      "YX-LV-04"
+    ],
+    "docs": [
+      "M02 §A2"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 634,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-033",
+      "US-C-032"
+    ]
+  },
+  {
+    "id": "US-C-035",
+    "type": "Story",
+    "parent": "FT-C-05",
+    "title": "Holiday calendars per location",
+    "story": "As an HR admin, I want a holiday calendar for each location with optional holidays so that each office follows its own festivals.",
+    "acceptance": [
+      "Given a calendar, when I create it, then I can start from the state festival template and clone it to next year.",
+      "Given a public holiday falls on a weekly off, when the calendar setting is substitute / comp-off / none, then that is applied (starter: none) (YX-AT-11).",
+      "Given an employee transfers, when the transfer date comes, then their calendar switches and optional holidays are prorated or reset per setting (YX-LV-13).",
+      "Given optional holidays (choose N of M), when an employee picks more than N, then it is refused."
+    ],
+    "rules": [
+      "YX-AT-11",
+      "YX-LV-13"
+    ],
+    "docs": [
+      "M02 §A2"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 635,
+    "points": 5,
+    "priority": 1,
+    "depends": []
+  },
+  {
+    "id": "US-C-036",
+    "type": "Story",
+    "parent": "FT-C-05",
+    "title": "HR adjusts a balance and employee projects it",
+    "story": "As an HR admin, I want to adjust a balance with a reason, and as an employee I want to see my future balance, so that both of us plan well.",
+    "acceptance": [
+      "Given I adjust a balance, when I save without a reason, then it is refused; with a reason, a ledger entry is added (YX-LV-01).",
+      "Given an employee asks 'what is my balance on 1 Dec', when it is computed, then future accruals and booked leave are included (YX-LV-01).",
+      "Given migration opening balances, when they are imported, then they are ledger entries with reason 'opening balance' (YX-LV-01)."
+    ],
+    "rules": [
+      "YX-LV-01"
+    ],
+    "docs": [
+      "M02 §A2"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 636,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-033"
+    ]
+  },
+  {
+    "id": "US-C-037",
+    "type": "Story",
+    "parent": "FT-C-05",
+    "title": "Change the leave year in the middle",
+    "story": "As an HR admin, I want to change our leave year safely so that balances move to the new year correctly.",
+    "acceptance": [
+      "Given I change the leave year start, when I save, then a short year with pro-rata entitlements is created (YX-LV-13).",
+      "Given the short year, when the transition wizard runs, then I see a preview of carry forward per employee before approval (YX-LV-13).",
+      "Given I approve, when it finishes, then ledger entries are posted and nothing is posted twice if re-run (YX-LV-01)."
+    ],
+    "rules": [
+      "YX-LV-13",
+      "YX-LV-01"
+    ],
+    "docs": [
+      "M02 §A2"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 637,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-034"
+    ]
+  },
+  {
+    "id": "FT-C-06",
+    "type": "Feature",
+    "parent": "EP-C-1",
+    "title": "Leave requests, comp-off and year end",
+    "rules": [
+      "YX-LV-03",
+      "YX-LV-05",
+      "YX-LV-04",
+      "YX-WF-01",
+      "YX-LV-09",
+      "YX-DOC-18",
+      "YX-WF-10",
+      "YX-LV-01",
+      "YX-LV-08",
+      "YX-LV-06",
+      "YX-LV-07",
+      "YX-LV-12"
+    ],
+    "docs": [
+      "M02 Part A"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 638,
+    "depends": []
+  },
+  {
+    "id": "US-C-038",
+    "type": "Story",
+    "parent": "FT-C-06",
+    "title": "Employee applies for leave",
+    "story": "As an employee, I want to apply for leave and see how many days it counts and my balance after so that I know before I submit.",
+    "acceptance": [
+      "Given I pick a date range with half days, when the summary shows, then it counts days with the type's sandwich, holiday and weekly-off rules for my location (YX-LV-03).",
+      "Given the request breaks notice, max per request/month, block dates or attachment rules, when I try to submit, then the summary shows the warning and blocks where the rule says (YX-LV-05).",
+      "Given the request would go below the negative limit, when I submit, then it is refused (YX-LV-04).",
+      "Given I submit, when it routes, then the approval engine picks the approver and I can name a delegate while away (YX-WF-01)."
+    ],
+    "rules": [
+      "YX-LV-03",
+      "YX-LV-05",
+      "YX-LV-04",
+      "YX-WF-01"
+    ],
+    "docs": [
+      "M02 §A2"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 638,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-033",
+      "US-C-035",
+      "US-C-003"
+    ]
+  },
+  {
+    "id": "US-C-039",
+    "type": "Story",
+    "parent": "FT-C-06",
+    "title": "Manager approves leave with team view",
+    "story": "As a manager, I want to see who else is off when I approve leave so that the team is covered.",
+    "acceptance": [
+      "Given a request, when I open the approval card, then I see team availability ('2 others off').",
+      "Given a medical certificate is attached, when I open the card, then I see only 'certificate attached · verified / pending', never the file (YX-LV-09, YX-DOC-18).",
+      "Given HR verifies the certificate, when it is stored, then it is a P05 'Medical certificate' document of Special class (YX-LV-09).",
+      "Given I approve, when the decision is final, then the ledger debit is posted once (YX-WF-10)."
+    ],
+    "rules": [
+      "YX-LV-09",
+      "YX-DOC-18",
+      "YX-WF-10"
+    ],
+    "docs": [
+      "M02 §A2",
+      "P05 §4.2"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 639,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-038",
+      "US-C-028"
+    ]
+  },
+  {
+    "id": "US-C-040",
+    "type": "Story",
+    "parent": "FT-C-06",
+    "title": "Employee cancels or withdraws leave",
+    "story": "As an employee, I want to cancel leave I no longer need so that my balance comes back.",
+    "acceptance": [
+      "Given an approved leave before payroll lock, when I cancel and it is approved, then a reversing ledger entry is posted (YX-LV-01).",
+      "Given the leave is not yet approved, when I withdraw it, then it is closed without approval.",
+      "Given the leave date is in a locked period, when I cancel, then it becomes a late correction with effect in the next payroll (YX-LV-08)."
+    ],
+    "rules": [
+      "YX-LV-01",
+      "YX-LV-08"
+    ],
+    "docs": [
+      "M02 §A2"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 640,
+    "points": 2,
+    "priority": 1,
+    "depends": [
+      "US-C-039"
+    ]
+  },
+  {
+    "id": "US-C-042",
+    "type": "Story",
+    "parent": "FT-C-06",
+    "title": "Year-end wizard for carry forward, lapse and encash",
+    "story": "As an HR admin, I want a year-end wizard with a preview so that carry forward and lapse are correct for everyone.",
+    "acceptance": [
+      "Given year end, when I open the wizard, then I see a preview per employee of carry forward, lapse and encashment (YX-LV-07).",
+      "Given I approve, when it posts, then ledger entries and draft encashments are created; nothing runs outside the wizard (YX-LV-07).",
+      "Given encashment drafts, when they are created, then they go to payroll as one-time pay with the type's formula."
+    ],
+    "rules": [
+      "YX-LV-07"
+    ],
+    "docs": [
+      "M02 §A2",
+      "M02 §A1 L5"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 641,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-034",
+      "US-C-004"
+    ]
+  },
+  {
+    "id": "US-C-043",
+    "type": "Story",
+    "parent": "FT-C-06",
+    "title": "Leave during notice period",
+    "story": "As an employee serving notice, I want to know what happens if I take leave so that I am not surprised.",
+    "acceptance": [
+      "Given I am in notice, when I apply, then the sheet warns per the type policy: allowed, LOP, extends last day or blocked (YX-LV-12).",
+      "Given the policy is 'extends last day', when the leave is approved, then the new last working day goes to the exit case (YX-LV-12).",
+      "Given the policy is LOP, when approved, then the days go to payroll as LOP (YX-LV-12)."
+    ],
+    "rules": [
+      "YX-LV-12"
+    ],
+    "docs": [
+      "M02 §A2"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 642,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-038"
+    ]
+  },
+  {
+    "id": "FT-C-07",
+    "type": "Feature",
+    "parent": "EP-C-1",
+    "title": "Statutory and special leave",
+    "rules": [
+      "YX-LV-10",
+      "YX-LV-11",
+      "YX-LV-15",
+      "YX-STAT-25",
+      "YX-LV-16"
+    ],
+    "docs": [
+      "M02 Part A",
+      "P07 IN.LEAVE"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 643,
+    "depends": []
+  },
+  {
+    "id": "US-C-044",
+    "type": "Story",
+    "parent": "FT-C-07",
+    "title": "Maternity leave from the statutory template",
+    "story": "As an HR admin, I want maternity leave to follow the law automatically so that eligibility and days are always correct.",
+    "acceptance": [
+      "Given an employee applies, when she has fewer than 80 days worked in the past 12 months, then the request is refused with the reason (YX-LV-10).",
+      "Given the case (normal, 3rd child, adoption, miscarriage, tubectomy), when days are counted, then 26 / 12 / 6 / 2 weeks from P07 are used, max 8 weeks before delivery (YX-LV-10).",
+      "Given she is ESIC-covered, when the leave is approved, then it is recorded but payroll pays no employer maternity pay (YX-LV-10).",
+      "Given maternity leave is active, when someone starts an employer-initiated exit, then it is blocked; accrual continues as the law requires (YX-LV-10, YX-LV-11)."
+    ],
+    "rules": [
+      "YX-LV-10",
+      "YX-LV-11"
+    ],
+    "docs": [
+      "M02 §A2"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 643,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-038",
+      "US-C-027"
+    ]
+  },
+  {
+    "id": "US-C-045",
+    "type": "Story",
+    "parent": "FT-C-07",
+    "title": "Injury leave from an accident case",
+    "story": "As an HR admin, I want to post injury leave from a workplace accident case so that the injured person is not marked absent.",
+    "acceptance": [
+      "Given an M08 accident case, when I record injury days, then injury leave is posted only from that case, with no balance or accrual (YX-LV-15).",
+      "Given injury leave days, when the day engine runs, then they count as service and never as LOP (YX-LV-15).",
+      "Given the manager views the days, when they open them, then they see 'injury leave', never the diagnosis (YX-LV-15).",
+      "Given the ESIC accident report form and time limit, when the case is opened, then they come from P07 (YX-STAT-25)."
+    ],
+    "rules": [
+      "YX-LV-15",
+      "YX-STAT-25"
+    ],
+    "docs": [
+      "M02 §A2"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 644,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-038",
+      "US-C-027"
+    ]
+  },
+  {
+    "id": "US-C-046",
+    "type": "Story",
+    "parent": "FT-C-07",
+    "title": "Mandatory block leave for BFSI",
+    "story": "As a compliance officer, I want designated people to take their yearly block leave so that we meet regulator guidance.",
+    "acceptance": [
+      "Given the BFSI pack is on, when a designated person has no block planned by the cut-off, then they are listed for the compliance officer (YX-LV-16).",
+      "Given the block starts, when it begins, then system access is suspended until return (YX-LV-16).",
+      "Given access is needed during the block, when it is given, then a logged compliance-officer exception is required (YX-LV-16)."
+    ],
+    "rules": [
+      "YX-LV-16"
+    ],
+    "docs": [
+      "M02 §B12"
+    ],
+    "state": "New",
+    "phase": "Step 4-e later waves",
+    "order": 645,
+    "points": 3,
+    "priority": 3,
+    "depends": [
+      "US-C-038"
+    ]
+  },
+  {
+    "id": "FT-C-08",
+    "type": "Feature",
+    "parent": "EP-C-1",
+    "title": "Shifts, weekly offs and rosters",
+    "rules": [
+      "YX-AT-13",
+      "YX-AT-02",
+      "YX-AT-07",
+      "YX-WF-10",
+      "YX-AT-25",
+      "YX-AT-26"
+    ],
+    "docs": [
+      "M02 §B2"
+    ],
+    "state": "New",
+    "phase": "Step 4-c shifts and rosters",
+    "order": 646,
+    "depends": []
+  },
+  {
+    "id": "US-C-047",
+    "type": "Story",
+    "parent": "FT-C-08",
+    "title": "HR admin defines shifts",
+    "story": "As an HR admin, I want to define shifts with times, breaks, grace and thresholds so that attendance is judged fairly.",
+    "acceptance": [
+      "Given a night shift 10 pm–6 am, when I save it, then it crosses midnight and is attributed to the start date.",
+      "Given a split shift, when an employee has two shifts in one day, then each is evaluated separately (YX-AT-13).",
+      "Given grace, thresholds, break rule and OT policy, when I save, then they are stored on the shift as a dated fact."
+    ],
+    "rules": [
+      "YX-AT-13"
+    ],
+    "docs": [
+      "M02 §B2"
+    ],
+    "state": "New",
+    "phase": "Step 4-c shifts and rosters",
+    "order": 646,
+    "points": 5,
+    "priority": 1,
+    "depends": []
+  },
+  {
+    "id": "US-C-048",
+    "type": "Story",
+    "parent": "FT-C-08",
+    "title": "Weekly offs and shift patterns",
+    "story": "As an HR admin, I want weekly offs and rotating shift patterns as rules so that I do not enter each day.",
+    "acceptance": [
+      "Given a 4-on / 2-off pattern from a start date, when a date is checked, then the shift or weekly off is resolved from the pattern.",
+      "Given several sources (roster, pattern, group, company), when a date is checked, then the precedence rule decides the weekly off (YX-AT-02).",
+      "Given weekly offs, when stored, then they are never saved as holiday rows (YX-AT-02)."
+    ],
+    "rules": [
+      "YX-AT-02"
+    ],
+    "docs": [
+      "M02 §B2"
+    ],
+    "state": "New",
+    "phase": "Step 4-c shifts and rosters",
+    "order": 647,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-047"
+    ]
+  },
+  {
+    "id": "US-C-049",
+    "type": "Story",
+    "parent": "FT-C-08",
+    "title": "Manager builds and publishes a roster",
+    "story": "As a manager, I want to drag shifts onto people and publish the roster so that my team knows when to work.",
+    "acceptance": [
+      "Given I assign shifts, when two shifts overlap or rest between them is below the minimum, then the roster flags it (YX-AT-07).",
+      "Given I publish, when it is saved, then affected employees are notified (YX-AT-07).",
+      "Given an employee asks to swap with a colleague, when the colleague agrees and the approver approves, then the roster updates (YX-WF-10).",
+      "Given I copy last week, when I paste, then leave and holidays are shown as conflicts."
+    ],
+    "rules": [
+      "YX-AT-07",
+      "YX-WF-10"
+    ],
+    "docs": [
+      "M02 §B2"
+    ],
+    "state": "New",
+    "phase": "Step 4-c shifts and rosters",
+    "order": 648,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-048",
+      "US-C-003",
+      "US-C-014"
+    ]
+  },
+  {
+    "id": "US-C-050",
+    "type": "Story",
+    "parent": "FT-C-08",
+    "title": "Women's night-shift guard",
+    "story": "As an HR admin, I want the system to stop placing a woman on a night shift without consent and safeguards so that we follow the law.",
+    "acceptance": [
+      "Given a woman has no valid night-work consent for the date, when any path (manual, pattern, swap, open shift, bid, auto-roster) places her in the legal night window, then it is refused with the reason (YX-AT-25).",
+      "Given the location's safeguards checklist has lapsed, when the same is tried, then it is refused (YX-AT-25).",
+      "Given the company's night definition, when it is saved, then it can be wider but never narrower than the P07 window for the state (YX-AT-25).",
+      "Given she withdraws consent, when the next roster is published, then she is not placed at night and no adverse action is allowed."
+    ],
+    "rules": [
+      "YX-AT-25"
+    ],
+    "docs": [
+      "M02 §B2"
+    ],
+    "state": "New",
+    "phase": "Step 4-c shifts and rosters",
+    "order": 649,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-049",
+      "US-C-027"
+    ]
+  },
+  {
+    "id": "US-C-051",
+    "type": "Story",
+    "parent": "FT-C-08",
+    "title": "Night-work consents, safeguards and register",
+    "story": "As a location admin, I want consents, safeguard attestations and the night-shift register kept for me so that I am ready for an inspection.",
+    "acceptance": [
+      "Given a consent, when a woman signs it, then it is stored as a P05 document (YX-AT-26).",
+      "Given a safeguard item has a review date, when the date is near, then the location admin and HR are alerted (YX-AT-26).",
+      "Given a period, when it is locked, then the register of women night-shift workers is generated in the dated P07 format and frozen (YX-AT-26)."
+    ],
+    "rules": [
+      "YX-AT-26"
+    ],
+    "docs": [
+      "M02 §B2",
+      "M02 §B5"
+    ],
+    "state": "New",
+    "phase": "Step 4-c shifts and rosters",
+    "order": 650,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-050",
+      "US-C-030"
+    ]
+  },
+  {
+    "id": "FT-C-09",
+    "type": "Feature",
+    "parent": "EP-C-1",
+    "title": "Punches and check-in",
+    "rules": [
+      "YX-AT-01",
+      "YX-AT-23",
+      "YX-AT-13",
+      "YX-AT-24",
+      "YX-AT-15"
+    ],
+    "docs": [
+      "M02 §B1"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 651,
+    "depends": []
+  },
+  {
+    "id": "US-C-052",
+    "type": "Story",
+    "parent": "FT-C-09",
+    "title": "Employee checks in on mobile or web",
+    "story": "As an employee, I want to check in from my phone or browser and see why it fails so that my attendance is correct.",
+    "acceptance": [
+      "Given my location's geofence or IP rule, when I check in, then the punch stores source, location verdict and device, and duplicates are ignored (YX-AT-01).",
+      "Given I am outside the geofence, when I try to check in, then I see my pin, accuracy and the allowed area, a plain reason ('Outside Chennai HQ, 850 m away') and a Retry location button (YX-AT-23).",
+      "Given my attempt is refused or abandoned, when it ends, then it is logged (YX-AT-23).",
+      "Given multiple allowed locations, when I am inside any one, then the punch is accepted."
+    ],
+    "rules": [
+      "YX-AT-01",
+      "YX-AT-23"
+    ],
+    "docs": [
+      "M02 §B1"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 651,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-047"
+    ]
+  },
+  {
+    "id": "US-C-053",
+    "type": "Story",
+    "parent": "FT-C-09",
+    "title": "Biometric device and kiosk punches",
+    "story": "As an HR admin, I want punches from biometric devices and shared kiosks so that factory workers without phones are recorded.",
+    "acceptance": [
+      "Given a device pushes punches, when duplicates arrive, then they are ignored (YX-AT-01).",
+      "Given a kiosk punch by employee code + PIN or ID QR, when stored, then it carries the kiosk id and location (YX-AT-01).",
+      "Given a punch for a shift that started before the lock, when it arrives, then it attaches to that shift without a late request (YX-AT-13).",
+      "Given a CSV upload, when it is imported, then each row is validated and errors are listed by row."
+    ],
+    "rules": [
+      "YX-AT-01",
+      "YX-AT-13"
+    ],
+    "docs": [
+      "M02 §B1",
+      "P10 Q4"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 652,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-052"
+    ]
+  },
+  {
+    "id": "US-C-054",
+    "type": "Story",
+    "parent": "FT-C-09",
+    "title": "Offline check-in on mobile",
+    "story": "As a field employee, I want to check in without network so that my attendance is saved and synced later.",
+    "acceptance": [
+      "Given no connectivity, when I check in, then the punch is queued on the device with device time, GPS and accuracy and shows 'pending sync' (YX-AT-24).",
+      "Given I am back online, when sync runs, then the punch is stored with device time and server time and flagged offline (YX-AT-24).",
+      "Given a synced offline punch, when the day engine runs, then it uses the device time (YX-AT-24)."
+    ],
+    "rules": [
+      "YX-AT-24"
+    ],
+    "docs": [
+      "M02 §B1"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 653,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-052"
+    ]
+  },
+  {
+    "id": "US-C-055",
+    "type": "Story",
+    "parent": "FT-C-09",
+    "title": "Day card shows punch details",
+    "story": "As a manager, I want to see each punch's source and location on the day card so that I can check doubtful attendance.",
+    "acceptance": [
+      "Given I am in scope, when I open a day card, then I see each punch's source, map pin, distance to the nearest allowed location and verdict (YX-AT-15).",
+      "Given I am not in scope, when I try to open it, then it is refused.",
+      "Given a field-recorded punch, when shown, then the verdict says 'field-recorded' (YX-AT-15)."
+    ],
+    "rules": [
+      "YX-AT-15"
+    ],
+    "docs": [
+      "M02 §B1"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 654,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-052"
+    ]
+  },
+  {
+    "id": "FT-C-10",
+    "type": "Feature",
+    "parent": "EP-C-1",
+    "title": "Day engine, requests, overtime and muster",
+    "rules": [
+      "YX-AT-09",
+      "YX-AT-03",
+      "YX-AT-10",
+      "YX-AT-12",
+      "YX-AT-05",
+      "YX-AT-04",
+      "YX-AT-06",
+      "YX-WF-10",
+      "YX-AT-14",
+      "YX-LOCK-07",
+      "YX-AT-08",
+      "YX-PAY-24",
+      "YX-AT-15"
+    ],
+    "docs": [
+      "M02 §B3",
+      "M02 §B4",
+      "M02 §B5",
+      "M02 §B6"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 655,
+    "depends": []
+  },
+  {
+    "id": "US-C-056",
+    "type": "Story",
+    "parent": "FT-C-10",
+    "title": "Attendance mode per group",
+    "story": "As an HR admin, I want to set each group to Punch, Assumed present or Timesheet mode so that office staff do not need to punch.",
+    "acceptance": [
+      "Given a scoped setting (entity, location, department, employment type), when an employee is checked, then they resolve to exactly one mode (YX-AT-09).",
+      "Given Punch mode, when I set the missing-punch effect, then I choose block (default) or warn (YX-AT-09).",
+      "Given Assumed-present mode, when days are evaluated, then no missing-punch exceptions are raised (YX-AT-09).",
+      "Given the mode, when the muster opens, then the mode and block/warn switch are shown."
+    ],
+    "rules": [
+      "YX-AT-09"
+    ],
+    "docs": [
+      "M02 §B3"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 655,
+    "points": 3,
+    "priority": 1,
+    "depends": []
+  },
+  {
+    "id": "US-C-057",
+    "type": "Story",
+    "parent": "FT-C-10",
+    "title": "Day engine works out each day's status",
+    "story": "As an employee, I want my day status worked out correctly from my punches, leave and holidays so that I am not marked absent by mistake.",
+    "acceptance": [
+      "Given a missing check-out, when the day is evaluated, then the status is 'missing check-out', never a threshold status (YX-AT-03).",
+      "Given an employee is suspended, on long leave, pre-boarding or exited, when those days are evaluated, then no exceptions, late marks or nudges are raised (YX-AT-10).",
+      "Given a half-day leave, when the day is evaluated, then grace starts at the working half, the leave half has no late penalty, and OT uses half-day hours (YX-AT-12).",
+      "Given a late punch sync or an approved regularisation, when inputs change, then the day is re-evaluated until the period is frozen."
+    ],
+    "rules": [
+      "YX-AT-03",
+      "YX-AT-10",
+      "YX-AT-12"
+    ],
+    "docs": [
+      "M02 §B3"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 656,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-056",
+      "US-C-052",
+      "US-C-048",
+      "US-C-038"
+    ]
+  },
+  {
+    "id": "US-C-041",
+    "type": "Story",
+    "parent": "FT-C-06",
+    "title": "Comp-off credit and expiry",
+    "story": "As an employee, I want comp-off credited when I work on a holiday so that I can take a day off later.",
+    "acceptance": [
+      "Given I worked on a holiday or weekly off and it is approved, when the day is evaluated, then a comp-off credit is posted (optional manager approval).",
+      "Given the type's expiry window, when the expiry date is near, then I am notified in advance (YX-LV-06).",
+      "Given the credit expires unused, when the date passes, then an expiry ledger entry is posted (YX-LV-06)."
+    ],
+    "rules": [
+      "YX-LV-06"
+    ],
+    "docs": [
+      "M02 §A2"
+    ],
+    "state": "New",
+    "phase": "Step 4-b leave",
+    "order": 657,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-033",
+      "US-C-057",
+      "US-C-018"
+    ]
+  },
+  {
+    "id": "US-C-058",
+    "type": "Story",
+    "parent": "FT-C-10",
+    "title": "Late penalties by company policy",
+    "story": "As an HR admin, I want late arrivals counted by our policy so that penalties are fair and visible.",
+    "acceptance": [
+      "Given the late policy (for example 3 lates = half day), when lates are counted, then the tenant's policy is applied (YX-AT-05).",
+      "Given a penalty, when it is applied, then it shows on the day card and muster before it affects pay (YX-AT-05).",
+      "Given the employee is on leave for the late half, when evaluated, then no penalty is counted (YX-AT-12)."
+    ],
+    "rules": [
+      "YX-AT-05",
+      "YX-AT-12"
+    ],
+    "docs": [
+      "M02 §B3"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 658,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-057"
+    ]
+  },
+  {
+    "id": "US-C-059",
+    "type": "Story",
+    "parent": "FT-C-10",
+    "title": "Overtime counted and approved",
+    "story": "As a manager, I want to approve overtime that was really worked so that only correct OT is paid.",
+    "acceptance": [
+      "Given an employee works 7 minutes past shift end, when OT is counted, then nothing counts below the policy minimum (YX-AT-04).",
+      "Given OT above the minimum, when counted, then it is rounded down to the policy unit and capped at the P07 limit (YX-AT-04).",
+      "Given OT is pending, when payroll reads it, then only approved OT reaches payroll (YX-AT-04)."
+    ],
+    "rules": [
+      "YX-AT-04"
+    ],
+    "docs": [
+      "M02 §B3"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 659,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-057",
+      "US-C-003",
+      "US-C-027"
+    ]
+  },
+  {
+    "id": "US-C-060",
+    "type": "Story",
+    "parent": "FT-C-10",
+    "title": "Regularisation, WFH and on-duty requests",
+    "story": "As an employee, I want to fix a missed punch or mark WFH or on-duty so that my day status is correct.",
+    "acceptance": [
+      "Given I missed a punch, when I raise a regularisation, then it routes for approval and the day is re-evaluated when approved (YX-WF-10).",
+      "Given I am within the monthly limit, when I raise it, then it goes to my manager; beyond the limit it routes to HR (YX-AT-06).",
+      "Given an approved WFH or on-duty, when the day is evaluated, then the status is WFH / on duty."
+    ],
+    "rules": [
+      "YX-AT-06",
+      "YX-WF-10"
+    ],
+    "docs": [
+      "M02 §B4"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 660,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-057",
+      "US-C-003"
+    ]
+  },
+  {
+    "id": "US-C-061",
+    "type": "Story",
+    "parent": "FT-C-10",
+    "title": "Today board, muster and team calendar",
+    "story": "As a manager, I want to see my team's attendance today and for the month so that I know who is in.",
+    "acceptance": [
+      "Given I am a manager, when I open the Today board, muster, team calendar or attendance calendar, then it opens on my team, not just me (YX-AT-14).",
+      "Given I am HR, when I open them, then they open on my entity (YX-AT-14).",
+      "Given I am an employee, when I want my own view, then I use the mobile Time tab (YX-AT-14).",
+      "Given a late penalty, when it is applied, then it shows on the muster (YX-AT-05)."
+    ],
+    "rules": [
+      "YX-AT-14",
+      "YX-AT-05"
+    ],
+    "docs": [
+      "M02 §B5"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 661,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-057"
+    ]
+  },
+  {
+    "id": "US-C-062",
+    "type": "Story",
+    "parent": "FT-C-10",
+    "title": "Attendance exceptions list with nudges",
+    "story": "As an HR admin, I want a list of days still missing punches so that we fix them before payroll.",
+    "acceptance": [
+      "Given a Punch-mode employee has a working day without complete punches and no leave, WFH, on-duty, holiday or weekly off, when the day is evaluated, then an exception is raised (YX-LOCK-07).",
+      "Given Timesheet mode, when a working day has no approved timesheet, then that is the exception (YX-LOCK-07).",
+      "Given Assumed-present mode, when days are evaluated, then no exception is raised (YX-LOCK-07).",
+      "Given open exceptions, when the employee and manager are nudged, then the list shows the block/warn effect for payroll (YX-AT-08)."
+    ],
+    "rules": [
+      "YX-LOCK-07",
+      "YX-AT-08"
+    ],
+    "docs": [
+      "M02 §B5",
+      "P08 §A4b"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 662,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-057",
+      "US-C-018"
+    ]
+  },
+  {
+    "id": "US-C-063",
+    "type": "Story",
+    "parent": "FT-C-10",
+    "title": "Basic timesheets for Timesheet-mode groups",
+    "story": "As a contract employee, I want to submit my hours as a timesheet so that I am paid for approved hours.",
+    "acceptance": [
+      "Given I am in Timesheet mode, when I submit a week's hours, then they route for approval (YX-AT-09).",
+      "Given the timesheet is approved, when the day is evaluated, then the status comes from the approved hours (YX-AT-09).",
+      "Given hours are not approved, when payroll reads the feed, then they are never paid (YX-PAY-24)."
+    ],
+    "rules": [
+      "YX-AT-09",
+      "YX-PAY-24"
+    ],
+    "docs": [
+      "M02 §B7"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 663,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-056",
+      "US-C-003"
+    ]
+  },
+  {
+    "id": "US-C-064",
+    "type": "Story",
+    "parent": "FT-C-10",
+    "title": "Attendance feed to payroll",
+    "story": "As a payroll admin, I want payable days, LOP, approved OT and shift allowances from attendance so that I do not type them.",
+    "acceptance": [
+      "Given a period, when payroll asks for the feed, then it gets payable days, LOP days, approved OT hours and shift / night allowance counts per employee (YX-AT-04).",
+      "Given Assumed-present groups, when the feed is built, then LOP comes from HR's manual entry, not from punches (YX-AT-09).",
+      "Given open exceptions in a block group, when the feed is requested, then the group is marked 'not ready' (YX-AT-08)."
+    ],
+    "rules": [
+      "YX-AT-04",
+      "YX-AT-09",
+      "YX-AT-08"
+    ],
+    "docs": [
+      "M02 §B6"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 664,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-059",
+      "US-C-062"
+    ]
+  },
+  {
+    "id": "US-C-065",
+    "type": "Story",
+    "parent": "FT-C-10",
+    "title": "Finish the Time screens against the real API",
+    "story": "As the founder, I want the Time screens in packages/yx-ui/src/screens/time wired to the real API so that what we reviewed is what users get.",
+    "acceptance": [
+      "Given each Time story in packages/yx-ui/src/screens/time, when it loads, then data comes from the API, with empty, loading and error states.",
+      "Given the review files packages/yx-ui/review/TIME-REVIEW.md and TIME-REVIEW-ROUND2.md, when the screens are finished, then every open item is fixed or listed with a reason.",
+      "Given a manager opens the muster, when it loads, then it opens on the team scope (YX-AT-14).",
+      "Given a day card, when opened, then it shows punch source, pin and verdict from the API (YX-AT-15)."
+    ],
+    "rules": [
+      "YX-AT-14",
+      "YX-AT-15"
+    ],
+    "docs": [
+      "M02 §7",
+      "APX-D"
+    ],
+    "state": "New",
+    "phase": "Step 4-d punches and day engine",
+    "order": 665,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-061",
+      "US-C-055",
+      "US-C-038"
+    ]
+  },
+  {
+    "id": "FT-C-11",
+    "type": "Feature",
+    "parent": "EP-C-1",
+    "title": "Time extensions for later waves",
+    "rules": [
+      "YX-AT-16",
+      "YX-AT-17",
+      "YX-AT-18",
+      "YX-AT-19",
+      "YX-AT-25",
+      "YX-AT-07",
+      "YX-AT-20",
+      "YX-AT-21",
+      "YX-AT-22",
+      "YX-AT-27",
+      "YX-AT-28",
+      "YX-AT-29",
+      "YX-AT-30"
+    ],
+    "docs": [
+      "M02 §B8–§B12"
+    ],
+    "state": "New",
+    "phase": "Step 4-e later waves",
+    "order": 666,
+    "depends": []
+  },
+  {
+    "id": "US-C-066",
+    "type": "Story",
+    "parent": "FT-C-11",
+    "title": "Field-force location trail with consent",
+    "story": "As a field sales employee, I want location tracked only while I am on duty and with my consent so that my privacy is safe.",
+    "acceptance": [
+      "Given my group has tracking on and my consent is on record, when I check in for duty, then location points are collected until check-out (YX-AT-16).",
+      "Given I am on leave, weekly off, holiday or after check-out, when the app runs, then no points are collected unless an approved on-duty covers the day (YX-AT-16).",
+      "Given tracking is on, when I look at the app, then it shows 'Tracking on' (YX-AT-16)."
+    ],
+    "rules": [
+      "YX-AT-16"
+    ],
+    "docs": [
+      "M02 §B8"
+    ],
+    "state": "New",
+    "phase": "Step 4-e later waves",
+    "order": 666,
+    "points": 5,
+    "priority": 3,
+    "depends": [
+      "US-C-052"
+    ]
+  },
+  {
+    "id": "US-C-067",
+    "type": "Story",
+    "parent": "FT-C-11",
+    "title": "Client-site visit check-in",
+    "story": "As a field employee, I want to check in at a client site with a photo so that my visit counts as present.",
+    "acceptance": [
+      "Given I check in at a site, when it is saved, then it records the geofence verdict, a camera-only stamped photo and notes (YX-AT-17).",
+      "Given a beat plan, when the manager views it, then planned vs done is shown (YX-AT-17).",
+      "Given mock location, impossible speed or gaps, when detected, then they are flagged, never auto-penalised (YX-AT-17)."
+    ],
+    "rules": [
+      "YX-AT-17"
+    ],
+    "docs": [
+      "M02 §B8"
+    ],
+    "state": "New",
+    "phase": "Step 4-e later waves",
+    "order": 667,
+    "points": 5,
+    "priority": 3,
+    "depends": [
+      "US-C-066"
+    ]
+  },
+  {
+    "id": "US-C-068",
+    "type": "Story",
+    "parent": "FT-C-11",
+    "title": "Distance-based conveyance draft",
+    "story": "As a field employee, I want my travel distance turned into a draft mileage claim so that I claim it easily.",
+    "acceptance": [
+      "Given a duty day's distance, when it is computed, then a draft M05 mileage line is created (YX-AT-18).",
+      "Given the draft, when I do not confirm it, then nothing is reimbursed (YX-AT-18).",
+      "Given the maps add-on is off, when distance is computed, then straight-line × company factor is used (YX-AT-18)."
+    ],
+    "rules": [
+      "YX-AT-18"
+    ],
+    "docs": [
+      "M02 §B8"
+    ],
+    "state": "New",
+    "phase": "Step 4-e later waves",
+    "order": 668,
+    "points": 3,
+    "priority": 3,
+    "depends": [
+      "US-C-066"
+    ]
+  },
+  {
+    "id": "US-C-069",
+    "type": "Story",
+    "parent": "FT-C-11",
+    "title": "Auto-roster generator",
+    "story": "As a manager, I want the system to suggest a roster from demand so that I save hours each week.",
+    "acceptance": [
+      "Given hard constraints (skills, hard availability, leave, holidays, minimum rest, hour caps, women's night guard, status), when the generator runs, then none is broken (YX-AT-19, YX-AT-25).",
+      "Given company weights, when it optimises, then the result shows the score and the reasons.",
+      "Given a draft roster, when I accept it, then it is published like a normal roster (YX-AT-07)."
+    ],
+    "rules": [
+      "YX-AT-19",
+      "YX-AT-25",
+      "YX-AT-07"
+    ],
+    "docs": [
+      "M02 §B9"
+    ],
+    "state": "New",
+    "phase": "Step 4-e later waves",
+    "order": 669,
+    "points": 8,
+    "priority": 3,
+    "depends": [
+      "US-C-050"
+    ]
+  },
+  {
+    "id": "US-C-070",
+    "type": "Story",
+    "parent": "FT-C-11",
+    "title": "Open shifts and shift bidding",
+    "story": "As an employee, I want to claim open shifts or bid for shifts so that I can get the hours I want.",
+    "acceptance": [
+      "Given an open shift, when it is offered, then only employees who pass skill, location, conflict, rest and hour checks see it (YX-AT-20).",
+      "Given I claim it, when it is awarded, then the checks run again (YX-AT-20).",
+      "Given bids in a window, when it closes, then awards follow the company's tie-break rule (YX-AT-20)."
+    ],
+    "rules": [
+      "YX-AT-20"
+    ],
+    "docs": [
+      "M02 §B9"
+    ],
+    "state": "New",
+    "phase": "Step 4-e later waves",
+    "order": 670,
+    "points": 5,
+    "priority": 3,
+    "depends": [
+      "US-C-050"
+    ]
+  },
+  {
+    "id": "US-C-071",
+    "type": "Story",
+    "parent": "FT-C-11",
+    "title": "Desktop or Teams presence as punches",
+    "story": "As a WFH employee, I want my first and last active time from Teams to be my punches so that I do not punch by hand.",
+    "acceptance": [
+      "Given the company turned it on for my group and I consented, when I am active, then only presence states and times are collected (YX-AT-21).",
+      "Given presence data, when stored, then no keystrokes, screenshots, app names, URLs or files are ever collected (YX-AT-21).",
+      "Given the day, when evaluated, then first-active / last-active punches with source 'teams' or 'desktop' are used (YX-AT-21)."
+    ],
+    "rules": [
+      "YX-AT-21"
+    ],
+    "docs": [
+      "M02 §B10"
+    ],
+    "state": "New",
+    "phase": "Step 4-e later waves",
+    "order": 671,
+    "points": 5,
+    "priority": 3,
+    "depends": [
+      "US-C-057"
+    ]
+  },
+  {
+    "id": "US-C-072",
+    "type": "Story",
+    "parent": "FT-C-11",
+    "title": "Visitor management at reception",
+    "story": "As a receptionist, I want to check visitors in and out with a badge so that we know who is on site.",
+    "acceptance": [
+      "Given a visitor, when they arrive, then they need pre-registration or a host-approved walk-in (YX-AT-22).",
+      "Given the location requires NDA or safety acknowledgement, when they check in, then it is captured before entry (YX-AT-22).",
+      "Given a blocked visitor, when they try to check in, then reception is stopped; an 'on site now' list is available for emergencies (YX-AT-22)."
+    ],
+    "rules": [
+      "YX-AT-22"
+    ],
+    "docs": [
+      "M02 §B11"
+    ],
+    "state": "New",
+    "phase": "Step 4-e later waves",
+    "order": 672,
+    "points": 5,
+    "priority": 3,
+    "depends": []
+  },
+  {
+    "id": "US-C-073",
+    "type": "Story",
+    "parent": "FT-C-11",
+    "title": "Strike, lockout and lay-off day statuses",
+    "story": "As an HR admin, I want to record a strike or lay-off event so that those days are not marked absent.",
+    "acceptance": [
+      "Given a recorded strike, lockout or lay-off, when days are evaluated, then they get that status, not Absent or LOP (YX-AT-27).",
+      "Given HR changes the event's legality, when saved before the lock, then affected days are recomputed (YX-AT-27).",
+      "Given the event, when created or changed, then it is audited (YX-AT-27)."
+    ],
+    "rules": [
+      "YX-AT-27"
+    ],
+    "docs": [
+      "M02 §B12"
+    ],
+    "state": "New",
+    "phase": "Step 4-e later waves",
+    "order": 673,
+    "points": 3,
+    "priority": 3,
+    "depends": [
+      "US-C-057"
+    ]
+  },
+  {
+    "id": "US-C-074",
+    "type": "Story",
+    "parent": "FT-C-11",
+    "title": "Standby and call-out slots",
+    "story": "As a manager, I want to roster standby slots and log call-outs so that on-call staff are paid correctly.",
+    "acceptance": [
+      "Given a standby slot, when rostered, then it is not a working shift (YX-AT-28).",
+      "Given a call-out during standby, when logged, then it counts for hours, OT and minimum-rest checks (YX-AT-28).",
+      "Given standby slots in the period, when payroll reads the feed, then standby allowance per slot is sent (YX-AT-28)."
+    ],
+    "rules": [
+      "YX-AT-28"
+    ],
+    "docs": [
+      "M02 §B12"
+    ],
+    "state": "New",
+    "phase": "Step 4-e later waves",
+    "order": 674,
+    "points": 3,
+    "priority": 3,
+    "depends": [
+      "US-C-049"
+    ]
+  },
+  {
+    "id": "US-C-075",
+    "type": "Story",
+    "parent": "FT-C-11",
+    "title": "Licence gate on rosters",
+    "story": "As an HR admin, I want people without a valid licence kept off shifts that need one so that we stay safe and legal.",
+    "acceptance": [
+      "Given a shift needs a licence, when the person's licence is missing or expired, then no roster path places them (YX-AT-29).",
+      "Given a legally required licence, when someone tries to override, then it is not allowed (YX-AT-29).",
+      "Given a company-required licence, when HR overrides with a reason, then it is allowed and audited (YX-AT-29)."
+    ],
+    "rules": [
+      "YX-AT-29"
+    ],
+    "docs": [
+      "M02 §B12"
+    ],
+    "state": "New",
+    "phase": "Step 4-e later waves",
+    "order": 675,
+    "points": 3,
+    "priority": 3,
+    "depends": [
+      "US-C-049"
+    ]
+  },
+  {
+    "id": "US-C-076",
+    "type": "Story",
+    "parent": "FT-C-11",
+    "title": "Hybrid office-day compliance",
+    "story": "As a manager, I want to see how many office days each person did this week so that we follow the hybrid policy.",
+    "acceptance": [
+      "Given office geofence, kiosk or badge evidence, when the week is computed, then office days are counted against the group policy (YX-AT-30).",
+      "Given leave, holidays or approved travel, when computed, then the target is pro-rated (YX-AT-30).",
+      "Given the result, when shown, then it never feeds pay, LOP or ratings unless a P19 rule says so (YX-AT-30)."
+    ],
+    "rules": [
+      "YX-AT-30"
+    ],
+    "docs": [
+      "M02 §B12"
+    ],
+    "state": "New",
+    "phase": "Step 4-e later waves",
+    "order": 676,
+    "points": 3,
+    "priority": 3,
+    "depends": [
+      "US-C-057"
+    ]
+  },
+  {
+    "id": "EP-C-2",
+    "type": "Epic",
+    "parent": "",
+    "title": "Step 5 · Payroll and statutory",
+    "rules": [],
+    "docs": [
+      "M03",
+      "P07",
+      "P08",
+      "P05"
+    ],
+    "state": "New",
+    "phase": "Step 5",
+    "order": 700,
+    "depends": []
+  },
+  {
+    "id": "FT-C-12",
+    "type": "Feature",
+    "parent": "EP-C-2",
+    "title": "Period locks",
+    "rules": [
+      "YX-LOCK-01",
+      "YX-LOCK-04",
+      "YX-LOCK-02",
+      "YX-LOCK-03",
+      "YX-WF-11",
+      "YX-LV-08",
+      "YX-LOCK-09",
+      "YX-AT-13",
+      "YX-LOCK-05",
+      "YX-LOCK-06"
+    ],
+    "docs": [
+      "P08 Part A"
+    ],
+    "state": "New",
+    "phase": "Step 5-a period locks and audit",
+    "order": 701,
+    "depends": []
+  },
+  {
+    "id": "US-C-077",
+    "type": "Story",
+    "parent": "FT-C-12",
+    "title": "Lock service checks every pay-affecting write",
+    "story": "As a payroll admin, I want frozen and locked periods protected so that paid data never changes by accident.",
+    "acceptance": [
+      "Given a write to attendance, pay-affecting leave, payroll inputs or paid expenses, when it happens, then the lock service is checked in the same transaction (YX-LOCK-01).",
+      "Given a period is approved in payroll, when approval succeeds, then payroll, attendance and pay-affecting leave for it lock together (YX-LOCK-04).",
+      "Given the stages open → frozen → locked → filed, when a period moves, then each stage is shown on the readiness screen."
+    ],
+    "rules": [
+      "YX-LOCK-01",
+      "YX-LOCK-04"
+    ],
+    "docs": [
+      "P08 §A2",
+      "P08 §A3"
+    ],
+    "state": "New",
+    "phase": "Step 5-a period locks and audit",
+    "order": 701,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-057"
+    ]
+  },
+  {
+    "id": "US-C-078",
+    "type": "Story",
+    "parent": "FT-C-12",
+    "title": "Late requests on frozen or locked dates",
+    "story": "As an employee, I want to fix my attendance or leave for last month so that my pay is corrected next month.",
+    "acceptance": [
+      "Given a date in a frozen or locked period, when I raise a request within the company's maximum lateness, then an extra HR approval step is added (YX-LOCK-02, YX-WF-11).",
+      "Given the request is approved, when it posts, then it becomes a dated correction with arrears or LOP reversal in the next payroll; the locked period does not change (YX-LOCK-03, YX-LV-08).",
+      "Given the request is past the maximum lateness, when I try, then only HR can make a correction (YX-LOCK-02).",
+      "Given any request, when it is approved, then it never reopens the period (YX-WF-11)."
+    ],
+    "rules": [
+      "YX-LOCK-02",
+      "YX-LOCK-03",
+      "YX-WF-11",
+      "YX-LV-08"
+    ],
+    "docs": [
+      "P08 §A3",
+      "P03 §6"
+    ],
+    "state": "New",
+    "phase": "Step 5-a period locks and audit",
+    "order": 702,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-077",
+      "US-C-003"
+    ]
+  },
+  {
+    "id": "US-C-079",
+    "type": "Story",
+    "parent": "FT-C-12",
+    "title": "HR device backfill for late biometric batches",
+    "story": "As an HR admin, I want to apply a late biometric batch in one audited action so that I do not raise a request per employee.",
+    "acceptance": [
+      "Given a batch with punches for frozen or locked dates, when it arrives, then it is held, not applied (YX-AT-13).",
+      "Given I run device backfill with a reason, when it is applied, then it is one audited action and effects land in the next payroll (YX-LOCK-09, YX-LOCK-03).",
+      "Given a punch for a shift that started before the lock, when it arrives, then it attaches without backfill (YX-AT-13)."
+    ],
+    "rules": [
+      "YX-LOCK-09",
+      "YX-AT-13",
+      "YX-LOCK-03"
+    ],
+    "docs": [
+      "P08 §A3"
+    ],
+    "state": "New",
+    "phase": "Step 5-a period locks and audit",
+    "order": 703,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-078",
+      "US-C-053"
+    ]
+  },
+  {
+    "id": "FT-C-13",
+    "type": "Feature",
+    "parent": "EP-C-2",
+    "title": "Audit log",
+    "rules": [
+      "YX-AUD-01",
+      "YX-AUD-02",
+      "YX-AUD-03",
+      "YX-AUD-04",
+      "YX-AUD-05",
+      "YX-AUD-06",
+      "YX-AUD-07",
+      "YX-AUD-08",
+      "YX-AUD-09"
+    ],
+    "docs": [
+      "P08 Part B"
+    ],
+    "state": "New",
+    "phase": "Step 5-a period locks and audit",
+    "order": 704,
+    "depends": []
+  },
+  {
+    "id": "US-C-081",
+    "type": "Story",
+    "parent": "FT-C-13",
+    "title": "Tamper-proof audit trail",
+    "story": "As a system admin, I want every important change recorded in an audit log that nobody can edit so that we can prove what happened.",
+    "acceptance": [
+      "Given a change in an audited category, when it is saved, then the audit row is written in the same transaction (YX-AUD-01).",
+      "Given an audit row, when anyone tries UPDATE or DELETE, then the database refuses; actor details are a snapshot (YX-AUD-02).",
+      "Given the daily job, when it verifies the hash chain and it fails, then YukthiX security and the tenant's system admins are alerted (YX-AUD-03)."
+    ],
+    "rules": [
+      "YX-AUD-01",
+      "YX-AUD-02",
+      "YX-AUD-03"
+    ],
+    "docs": [
+      "P08 §B2",
+      "P08 §B4"
+    ],
+    "state": "New",
+    "phase": "Step 5-a period locks and audit",
+    "order": 704,
+    "points": 5,
+    "priority": 1,
+    "depends": []
+  },
+  {
+    "id": "US-C-082",
+    "type": "Story",
+    "parent": "FT-C-13",
+    "title": "Audit log and record timeline viewer",
+    "story": "As an HR admin, I want to search the audit log for my scope so that I can answer 'who changed this?'.",
+    "acceptance": [
+      "Given a record, when I open its timeline, then I see business events only; field churn is only in the audit log (YX-AUD-05).",
+      "Given restricted areas (POSH, disciplinary, medical), when I am not a member, then I cannot see their audit; Confidential / Special values are masked if I lack the field permission (YX-AUD-06).",
+      "Given I view a salary several times in 30 minutes, when sensitive-view events are written, then they are deduplicated (YX-AUD-04).",
+      "Given I export the audit log, when it downloads, then the export itself is audited (YX-AUD-07)."
+    ],
+    "rules": [
+      "YX-AUD-04",
+      "YX-AUD-05",
+      "YX-AUD-06",
+      "YX-AUD-07"
+    ],
+    "docs": [
+      "P08 §B3",
+      "P08 §B5"
+    ],
+    "state": "New",
+    "phase": "Step 5-a period locks and audit",
+    "order": 705,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-081"
+    ]
+  },
+  {
+    "id": "US-C-083",
+    "type": "Story",
+    "parent": "FT-C-13",
+    "title": "Audit retention and legal hold",
+    "story": "As a system admin, I want audit kept for 8 years and protected by legal hold so that we meet legal needs.",
+    "acceptance": [
+      "Given retention, when a tenant tries to set below 8 years, then it is refused (YX-AUD-08).",
+      "Given rows older than 13 months, when the job runs, then they move to archive; a deletion writes a deletion record (YX-AUD-08).",
+      "Given a case under legal hold, when the job runs, then its audit entries are not archived or deleted (YX-AUD-08)."
+    ],
+    "rules": [
+      "YX-AUD-08"
+    ],
+    "docs": [
+      "P08 §B2"
+    ],
+    "state": "New",
+    "phase": "Step 5-a period locks and audit",
+    "order": 706,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-081"
+    ]
+  },
+  {
+    "id": "US-C-084",
+    "type": "Story",
+    "parent": "FT-C-13",
+    "title": "Irreversible actions record what the user confirmed",
+    "story": "As an auditor, I want to see what the user saw when they confirmed an irreversible action so that the record is complete.",
+    "acceptance": [
+      "Given an irreversible action (publish payslips, release bank file, approve run, reopen, bulk change), when the user confirms in the dialog, then the audit event stores the dialog's details (YX-AUD-09).",
+      "Given the dialog, when shown, then it says exactly what will happen and how many records.",
+      "Given the user cancels, when the dialog closes, then nothing is changed or audited."
+    ],
+    "rules": [
+      "YX-AUD-09"
+    ],
+    "docs": [
+      "P08 §6",
+      "APX-D §6.4"
+    ],
+    "state": "New",
+    "phase": "Step 5-a period locks and audit",
+    "order": 707,
+    "points": 2,
+    "priority": 1,
+    "depends": [
+      "US-C-081"
+    ]
+  },
+  {
+    "id": "FT-C-14",
+    "type": "Feature",
+    "parent": "EP-C-2",
+    "title": "Documents, letters and e-sign for payroll",
+    "rules": [
+      "YX-DOC-07",
+      "YX-DOC-08",
+      "YX-DOC-09",
+      "YX-DOC-10",
+      "YX-DOC-15",
+      "YX-DOC-11",
+      "YX-DOC-16",
+      "YX-DOC-19",
+      "YX-DOC-13",
+      "YX-DOC-18"
+    ],
+    "docs": [
+      "P05"
+    ],
+    "state": "New",
+    "phase": "Step 5-b payroll setup",
+    "order": 708,
+    "depends": []
+  },
+  {
+    "id": "US-C-085",
+    "type": "Story",
+    "parent": "FT-C-14",
+    "title": "Generate payroll letters from templates",
+    "story": "As an HR admin, I want salary revision and other letters made from templates so that they are correct and consistent.",
+    "acceptance": [
+      "Given a required field is empty, when I generate, then it fails with the list of missing fields (YX-DOC-07).",
+      "Given merge fields, when I author or render, then I can only use fields I may see (YX-DOC-08).",
+      "Given an issued letter, when saved, then it is immutable with a hash; a correction supersedes it; reference numbers have no gaps per entity and type (YX-DOC-09).",
+      "Given an approval-required letter type, when issued, then it goes through P03 first (YX-DOC-10)."
+    ],
+    "rules": [
+      "YX-DOC-07",
+      "YX-DOC-08",
+      "YX-DOC-09",
+      "YX-DOC-10",
+      "YX-DOC-15"
+    ],
+    "docs": [
+      "P05 §4.3"
+    ],
+    "state": "New",
+    "phase": "Step 5-b payroll setup",
+    "order": 708,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-028",
+      "US-C-003"
+    ]
+  },
+  {
+    "id": "US-C-086",
+    "type": "Story",
+    "parent": "FT-C-14",
+    "title": "Letter verification code",
+    "story": "As a bank officer, I want to verify a salary letter with a QR code so that I know it is real.",
+    "acceptance": [
+      "Given an issued letter, when it renders, then it carries a QR / code unless the company turned it off for that type (YX-DOC-11).",
+      "Given the public verify page, when opened, then it shows only company, letter type, name, date and current / superseded (YX-DOC-11).",
+      "Given a superseded letter, when verified, then it shows 'superseded' (YX-DOC-11)."
+    ],
+    "rules": [
+      "YX-DOC-11"
+    ],
+    "docs": [
+      "P05 §4.3"
+    ],
+    "state": "New",
+    "phase": "Step 5-b payroll setup",
+    "order": 709,
+    "points": 2,
+    "priority": 2,
+    "depends": [
+      "US-C-085"
+    ]
+  },
+  {
+    "id": "US-C-087",
+    "type": "Story",
+    "parent": "FT-C-14",
+    "title": "Alumni and nominee access to pay documents",
+    "story": "As a former employee, I want to download my payslips and Form 16 after I leave so that I have them for loans and tax.",
+    "acceptance": [
+      "Given I exited, when I log in with OTP, then I can only read my own payslips, Form 16 and issued letters, for 7 years (YX-DOC-16).",
+      "Given a death in service, when HR releases documents, then each nominee gets a read-only OTP login limited to those documents, audited (YX-DOC-19).",
+      "Given the last working day passes, when I try other screens, then access is refused (YX-DOC-16)."
+    ],
+    "rules": [
+      "YX-DOC-16",
+      "YX-DOC-19"
+    ],
+    "docs": [
+      "P05 §4.6"
+    ],
+    "state": "New",
+    "phase": "Step 5-b payroll setup",
+    "order": 710,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-028"
+    ]
+  },
+  {
+    "id": "US-C-088",
+    "type": "Story",
+    "parent": "FT-C-14",
+    "title": "Document retention and deletion",
+    "story": "As a system admin, I want files deleted or anonymised after their retention period so that we keep data only as long as needed.",
+    "acceptance": [
+      "Given a file past its retention, when the job runs, then it is deleted or anonymised and logged (YX-DOC-13).",
+      "Given a legal hold, when the job runs, then the file is kept (YX-DOC-13).",
+      "Given a medical certificate, when retained, then it stays with the leave record it supports (YX-DOC-18)."
+    ],
+    "rules": [
+      "YX-DOC-13",
+      "YX-DOC-18"
+    ],
+    "docs": [
+      "P05 §4.7"
+    ],
+    "state": "New",
+    "phase": "Step 5-b payroll setup",
+    "order": 711,
+    "points": 2,
+    "priority": 2,
+    "depends": [
+      "US-C-029"
+    ]
+  },
+  {
+    "id": "FT-C-15",
+    "type": "Feature",
+    "parent": "EP-C-2",
+    "title": "Payroll setup, templates and India packs",
+    "rules": [
+      "YX-PAY-36",
+      "YX-PAY-01",
+      "YX-PAY-02",
+      "YX-PAY-17",
+      "YX-PAY-47",
+      "YX-STAT-21",
+      "YX-PAY-22",
+      "YX-STAT-09",
+      "YX-STAT-22",
+      "YX-PAY-24",
+      "YX-WF-01",
+      "YX-STAT-01",
+      "YX-STAT-03",
+      "YX-STAT-11",
+      "YX-STAT-13",
+      "YX-STAT-14",
+      "YX-STAT-15",
+      "YX-STAT-24",
+      "YX-STAT-27",
+      "YX-PAY-53",
+      "YX-PAY-10",
+      "YX-TAX-15",
+      "YX-TAX-02",
+      "YX-PAY-35",
+      "YX-DOC-15",
+      "YX-DOC-14"
+    ],
+    "docs": [
+      "M03 §6 flow 1"
+    ],
+    "state": "New",
+    "phase": "Step 5-b payroll setup",
+    "order": 712,
+    "depends": []
+  },
+  {
+    "id": "US-C-089",
+    "type": "Story",
+    "parent": "FT-C-15",
+    "title": "Payroll setup wizard per legal entity",
+    "story": "As a payroll admin, I want a setup wizard for each entity so that registrations, pay group and bank format are complete before the first run.",
+    "acceptance": [
+      "Given I switch a statute on, when I save, then a completeness check of its required fields runs and blocks file generation until complete (YX-PAY-36).",
+      "Given TAN, address and responsible person, when returns are drafted, then they come from statutory registrations and are never retyped (YX-PAY-36).",
+      "Given the wizard steps (registrations, pay group and cut-off, template, bank format, accounting, opening balances), when one is incomplete, then the readiness screen shows it."
+    ],
+    "rules": [
+      "YX-PAY-36"
+    ],
+    "docs": [
+      "M03 §6"
+    ],
+    "state": "New",
+    "phase": "Step 5-b payroll setup",
+    "order": 712,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-025"
+    ]
+  },
+  {
+    "id": "US-C-090",
+    "type": "Story",
+    "parent": "FT-C-15",
+    "title": "Salary template with safe formulas",
+    "story": "As a payroll admin, I want to build a CTC salary template with formulas so that pay is calculated the same way for everyone.",
+    "acceptance": [
+      "Given a formula, when it runs, then it uses a sandboxed expression language with no code execution (YX-PAY-01).",
+      "Given I save a template, when it has a cycle or wrong order, then save fails; a test run on a sample employee is required (YX-PAY-01).",
+      "Given I edit a template, when I save, then a new version is created and past payslips do not change (YX-PAY-01).",
+      "Given a component with its own proration formula, when prorated, then that formula is used; otherwise amount × payable days ÷ period days, never twice (YX-PAY-02)."
+    ],
+    "rules": [
+      "YX-PAY-01",
+      "YX-PAY-02"
+    ],
+    "docs": [
+      "M03 §7"
+    ],
+    "state": "New",
+    "phase": "Step 5-b payroll setup",
+    "order": 713,
+    "points": 8,
+    "priority": 1,
+    "depends": [
+      "US-C-089"
+    ]
+  },
+  {
+    "id": "US-C-091",
+    "type": "Story",
+    "parent": "FT-C-15",
+    "title": "Wage flags and the Code wage",
+    "story": "As a payroll admin, I want components flagged for PF, ESI and Code wages so that statutory bases are right whatever the component is called.",
+    "acceptance": [
+      "Given component flags, when the PF wage is computed, then it uses flags, not names (YX-PAY-17).",
+      "Given a payslip from 21 Nov 2025, when exclusions exceed 50 % of total pay, then the excess is added back to Code wages (YX-PAY-47, YX-STAT-21).",
+      "Given the add-back wage, when PF, ESI, gratuity and bonus are computed, then they use it as the base (YX-STAT-21)."
+    ],
+    "rules": [
+      "YX-PAY-17",
+      "YX-PAY-47",
+      "YX-STAT-21"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-b payroll setup",
+    "order": 714,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-090",
+      "US-C-023"
+    ]
+  },
+  {
+    "id": "US-C-092",
+    "type": "Story",
+    "parent": "FT-C-15",
+    "title": "Assign and revise compensation with checks",
+    "story": "As an HR admin, I want to assign or revise an employee's salary through approval so that every change is checked.",
+    "acceptance": [
+      "Given a revision, when submitted, then it goes through P03 and the revision letter comes from P05 (YX-WF-01).",
+      "Given the wage, when it is below max(state minimum for zone and skill, national floor wage), then a warning is shown (YX-PAY-22, YX-STAT-09, YX-STAT-22).",
+      "Given a state rate below the floor, when shown, then the tenant view says the floor is applied (YX-STAT-22).",
+      "Given pay basis hourly or daily, when saved, then the rate and OT / holiday multipliers are stored (YX-PAY-24)."
+    ],
+    "rules": [
+      "YX-PAY-22",
+      "YX-STAT-09",
+      "YX-STAT-22",
+      "YX-PAY-24",
+      "YX-WF-01"
+    ],
+    "docs": [
+      "M03 §6 flow 2"
+    ],
+    "state": "New",
+    "phase": "Step 5-b payroll setup",
+    "order": 715,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-090",
+      "US-C-003"
+    ]
+  },
+  {
+    "id": "US-C-093",
+    "type": "Story",
+    "parent": "FT-C-15",
+    "title": "Load India payroll rule packs",
+    "story": "As a payroll admin, I want PF, ESI, PT, LWF, TDS, bonus and gratuity rules loaded as dated data so that calculations follow the law.",
+    "acceptance": [
+      "Given the packs, when loaded, then IN.PF, IN.ESI, IN.PT, IN.LWF, IN.TDS, IN.BONUS, IN.GRATUITY come with sources and golden cases (YX-STAT-01, YX-STAT-03).",
+      "Given PT for a state, when computed for a year, then the ₹2,500 annual cap per employee per employer is enforced (YX-STAT-11).",
+      "Given penalties and interest, when needed, then they come from dated penalty parameters (YX-STAT-14).",
+      "Given TDS rules, when loaded, then each carries a law version IT-1961 or IT-2025 and non-salary sections are data (YX-STAT-24, YX-STAT-15)."
+    ],
+    "rules": [
+      "YX-STAT-01",
+      "YX-STAT-03",
+      "YX-STAT-11",
+      "YX-STAT-13",
+      "YX-STAT-14",
+      "YX-STAT-15",
+      "YX-STAT-24"
+    ],
+    "docs": [
+      "P07 §8"
+    ],
+    "state": "New",
+    "phase": "Step 5-b payroll setup",
+    "order": 716,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-024"
+    ]
+  },
+  {
+    "id": "US-C-094",
+    "type": "Story",
+    "parent": "FT-C-15",
+    "title": "Statutory coverage monitor",
+    "story": "As a payroll admin, I want to be warned when we cross a headcount threshold for PF or ESI so that we register on time.",
+    "acceptance": [
+      "Given a dated coverage rule, when the daily job counts headcount, then approaching and crossed thresholds are listed on the readiness screen (YX-STAT-27).",
+      "Given a threshold is crossed, when the next run is approved, then approval is blocked until the statute is on with its registration, or 'applied, number awaited' is recorded (YX-PAY-53).",
+      "Given PF once covered, when headcount drops, then coverage stays on (YX-STAT-27)."
+    ],
+    "rules": [
+      "YX-STAT-27",
+      "YX-PAY-53"
+    ],
+    "docs": [
+      "P07 §4.5"
+    ],
+    "state": "New",
+    "phase": "Step 5-b payroll setup",
+    "order": 717,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-093"
+    ]
+  },
+  {
+    "id": "US-C-095",
+    "type": "Story",
+    "parent": "FT-C-15",
+    "title": "Opening balances and year-to-date import",
+    "story": "As a payroll admin, I want to import YTD figures for people who joined mid-year so that tax and YTD totals are right.",
+    "acceptance": [
+      "Given imported YTD lines, when YTD is shown, then only payslips of the same employment in that FY up to this period count (YX-PAY-10).",
+      "Given Form 12B income, when imported, then it feeds the tax projection (YX-TAX-02).",
+      "Given an entity that started mid-year, when the quarterly return is drafted, then prior-month deductee rows come from the import; missing months block with a Fix link (YX-TAX-15)."
+    ],
+    "rules": [
+      "YX-PAY-10",
+      "YX-TAX-15",
+      "YX-TAX-02"
+    ],
+    "docs": [
+      "M03 §6 flow 1"
+    ],
+    "state": "New",
+    "phase": "Step 5-b payroll setup",
+    "order": 718,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-089"
+    ]
+  },
+  {
+    "id": "US-C-096",
+    "type": "Story",
+    "parent": "FT-C-15",
+    "title": "Payslip layout per legal entity",
+    "story": "As a payroll admin, I want to design the payslip layout per entity so that payslips look right and show what the law needs.",
+    "acceptance": [
+      "Given the layout editor, when I change sections, order or languages, then I see a sample-employee preview (YX-PAY-35).",
+      "Given the template, when stored, then it is a P05 .docx template rendered by the single pipeline and activated only after placeholders validate and a preview is viewed (YX-DOC-15).",
+      "Given Hindi, Tamil or Telugu, when the PDF renders, then fonts are embedded (YX-DOC-14).",
+      "Given a column with no values, when rendered, then it is hidden (YX-PAY-35)."
+    ],
+    "rules": [
+      "YX-PAY-35",
+      "YX-DOC-15",
+      "YX-DOC-14"
+    ],
+    "docs": [
+      "M03 §7",
+      "APX-F #27"
+    ],
+    "state": "New",
+    "phase": "Step 5-b payroll setup",
+    "order": 719,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-085"
+    ]
+  },
+  {
+    "id": "FT-C-16",
+    "type": "Feature",
+    "parent": "EP-C-2",
+    "title": "Monthly payroll run",
+    "rules": [
+      "YX-PAY-05",
+      "YX-AT-09",
+      "YX-PAY-22",
+      "YX-PAY-53",
+      "YX-AT-04",
+      "YX-PAY-02",
+      "YX-PAY-07",
+      "YX-PAY-34",
+      "YX-PAY-03",
+      "YX-PAY-04",
+      "YX-PAY-12",
+      "YX-STAT-05",
+      "YX-PAY-17",
+      "YX-PAY-33",
+      "YX-PAY-18",
+      "YX-PAY-56",
+      "YX-STAT-30",
+      "YX-PAY-19",
+      "YX-PAY-54",
+      "YX-STAT-28",
+      "YX-STAT-11",
+      "YX-PAY-06",
+      "YX-WF-05",
+      "YX-LOCK-08",
+      "YX-AT-08",
+      "YX-LOCK-04",
+      "YX-PAY-08",
+      "YX-PAY-28",
+      "YX-PAY-09",
+      "YX-PAY-11",
+      "YX-PAY-29",
+      "YX-PAY-32",
+      "YX-PAY-23",
+      "YX-PAY-26",
+      "YX-PAY-50",
+      "YX-LV-10",
+      "YX-LV-15",
+      "YX-PAY-15",
+      "YX-PAY-16",
+      "YX-PAY-24",
+      "YX-PAY-42"
+    ],
+    "docs": [
+      "M03 §6 flow 3"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 720,
+    "depends": []
+  },
+  {
+    "id": "US-C-097",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "Readiness screen and pre-run validation",
+    "story": "As a payroll admin, I want to see what blocks the run before I calculate so that I fix problems first.",
+    "acceptance": [
+      "Given the run, when validation runs, then it checks bank details, PAN (warning only), UAN / ESI numbers, compensation, attendance and more (YX-PAY-05).",
+      "Given each group, when the readiness screen opens, then it shows the attendance mode and block / warn (YX-AT-09).",
+      "Given a wage below the minimum, when validation runs, then it warns (YX-PAY-22).",
+      "Given a coverage threshold crossed, when validation runs, then it is listed (YX-PAY-53)."
+    ],
+    "rules": [
+      "YX-PAY-05",
+      "YX-AT-09",
+      "YX-PAY-22",
+      "YX-PAY-53"
+    ],
+    "docs": [
+      "M03 §6 flow 3"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 720,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-092",
+      "US-C-064"
+    ]
+  },
+  {
+    "id": "US-C-098",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "Payroll inputs: attendance, LOP and one-time pay",
+    "story": "As a payroll admin, I want attendance, LOP and one-time pay in one place so that the run has all inputs.",
+    "acceptance": [
+      "Given Punch or Timesheet groups, when inputs load, then payable days, LOP and approved OT come from the attendance feed (YX-AT-04).",
+      "Given Assumed-present groups, when inputs load, then HR enters LOP / payable days by hand (YX-AT-09).",
+      "Given LOP, when prorated, then the company's day basis (calendar, 30 or 26) is used (YX-PAY-02).",
+      "Given the cut-off, when processing starts, then inputs are frozen (YX-PAY-07)."
+    ],
+    "rules": [
+      "YX-AT-04",
+      "YX-AT-09",
+      "YX-PAY-02",
+      "YX-PAY-07"
+    ],
+    "docs": [
+      "M03 §6 flow 3"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 721,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-097"
+    ]
+  },
+  {
+    "id": "US-C-099",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "Calculate the run with per-employee progress",
+    "story": "As a payroll admin, I want to calculate payroll and see each employee's result so that I can fix failures fast.",
+    "acceptance": [
+      "Given calculation, when it runs, then I see per-employee progress and a failure names the employee, record and field with a Fix link (YX-PAY-34).",
+      "Given a salary change mid-month, when calculated, then the payslip is split into segments and each line shows its segment (YX-PAY-03).",
+      "Given an employee already has a regular payslip for the period and pay group, when another run includes them, then it is rejected (YX-PAY-04).",
+      "Given each line, when saved, then it stores its formula, inputs and rule version for the 'why this number' drawer (YX-PAY-12, YX-STAT-05)."
+    ],
+    "rules": [
+      "YX-PAY-34",
+      "YX-PAY-03",
+      "YX-PAY-04",
+      "YX-PAY-12",
+      "YX-STAT-05"
+    ],
+    "docs": [
+      "M03 §6 flow 3"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 722,
+    "points": 8,
+    "priority": 1,
+    "depends": [
+      "US-C-098",
+      "US-C-091"
+    ]
+  },
+  {
+    "id": "US-C-100",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "PF, EPS and EDLI on every payslip",
+    "story": "As a payroll admin, I want PF calculated correctly for every case so that ECR is right.",
+    "acceptance": [
+      "Given PF-eligible employees, when calculated, then employer EPF, EPS, EDLI and admin charges are on every payslip and in CTC (YX-PAY-17).",
+      "Given age 58, pre-2014 members or international workers, when calculated, then the special EPS rules apply (YX-PAY-17, YX-PAY-33).",
+      "Given the EPS higher-pension flag, when calculated, then EPS uses actual wage (YX-PAY-33)."
+    ],
+    "rules": [
+      "YX-PAY-17",
+      "YX-PAY-33"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 723,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-099",
+      "US-C-093"
+    ]
+  },
+  {
+    "id": "US-C-101",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "ESI coverage and contributions",
+    "story": "As a payroll admin, I want ESI applied by the contribution-period rules so that coverage is right.",
+    "acceptance": [
+      "Given an employee is covered at the start of the contribution period, when pay rises above the ceiling, then coverage continues until the period ends (YX-PAY-18).",
+      "Given ESI amounts, when calculated, then they round up to the next rupee and the daily-wage exemption applies (YX-PAY-18).",
+      "Given consented disability status, when coverage is tested, then the PwD ceiling from P07 is used; a change applies from the next contribution period (YX-PAY-56, YX-STAT-30)."
+    ],
+    "rules": [
+      "YX-PAY-18",
+      "YX-PAY-56",
+      "YX-STAT-30"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 724,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-099",
+      "US-C-093"
+    ]
+  },
+  {
+    "id": "US-C-102",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "Professional tax and LWF by work state",
+    "story": "As a payroll admin, I want PT and LWF deducted for the right state so that no one pays twice.",
+    "acceptance": [
+      "Given the work-location state on the deduction date, when calculated, then state slabs, frequency and deduction month come from P07 (YX-PAY-19).",
+      "Given a state change in the period, when calculated, then exactly one liable state per slot is used and shown on the payslip (YX-PAY-54, YX-STAT-28).",
+      "Given the annual PT cap of ₹2,500, when the year's total would exceed it, then the deduction is reduced (YX-STAT-11, YX-PAY-19)."
+    ],
+    "rules": [
+      "YX-PAY-19",
+      "YX-PAY-54",
+      "YX-STAT-28",
+      "YX-STAT-11"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 725,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-099",
+      "US-C-093"
+    ]
+  },
+  {
+    "id": "US-C-103",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "Variance review before approval",
+    "story": "As a payroll admin, I want to see big changes from last month so that mistakes are caught before pay goes out.",
+    "acceptance": [
+      "Given each payslip, when compared to last period, then changes above ±10 % net or any new / removed component are flagged (YX-PAY-06).",
+      "Given flagged lines, when I submit for approval, then each must be acknowledged first (YX-PAY-06).",
+      "Given I change the threshold in settings, when the next run compares, then the new threshold is used."
+    ],
+    "rules": [
+      "YX-PAY-06"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 726,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-099"
+    ]
+  },
+  {
+    "id": "US-C-104",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "Approve the run and lock the period",
+    "story": "As a finance approver, I want to approve the payroll run as a second person so that pay is checked before release.",
+    "acceptance": [
+      "Given the run, when submitted, then it follows the run's approval chain with maker ≠ checker (YX-PAY-07, YX-WF-05).",
+      "Given Punch groups with block on and open exceptions, when approval is tried, then it is blocked; with warn, they are listed as warnings (YX-LOCK-08, YX-AT-08).",
+      "Given approval, when it succeeds, then the period locks with attendance and pay-affecting leave (YX-LOCK-04).",
+      "Given approval, when done, then bank file, payslip publication and journal become available (YX-PAY-07)."
+    ],
+    "rules": [
+      "YX-PAY-07",
+      "YX-WF-05",
+      "YX-LOCK-08",
+      "YX-AT-08",
+      "YX-LOCK-04"
+    ],
+    "docs": [
+      "M03 §6 flow 3",
+      "P08 §A4b"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 727,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-103",
+      "US-C-006",
+      "US-C-077",
+      "US-C-062"
+    ]
+  },
+  {
+    "id": "US-C-080",
+    "type": "Story",
+    "parent": "FT-C-12",
+    "title": "Reopen a locked payroll",
+    "story": "As a payroll admin, I want to reopen a locked payroll in rare cases with approval so that a serious mistake can be fixed.",
+    "acceptance": [
+      "Given I request reopen, when I submit, then a reason, Payroll Admin and System Admin / owner approval are needed (YX-LOCK-05).",
+      "Given the bank file is released, payslips are published or a return is filed, when I request reopen, then it is refused (YX-LOCK-05).",
+      "Given the reopen is approved and I recalculate, when payslips change, then new versions are made and old ones are kept and marked revised (YX-LOCK-06)."
+    ],
+    "rules": [
+      "YX-LOCK-05",
+      "YX-LOCK-06"
+    ],
+    "docs": [
+      "P08 §A4"
+    ],
+    "state": "New",
+    "phase": "Step 5-a period locks and audit",
+    "order": 728,
+    "points": 5,
+    "priority": 2,
+    "depends": [
+      "US-C-104"
+    ]
+  },
+  {
+    "id": "US-C-105",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "Cancel a calculated run",
+    "story": "As a payroll admin, I want to cancel a wrong run without losing its history so that audits stay clean.",
+    "acceptance": [
+      "Given a calculated run, when I cancel it, then it is marked void, never deleted (YX-PAY-08).",
+      "Given a void run, when viewed, then its payslips show as void (YX-PAY-08).",
+      "Given the cancel, when done, then it is audited (YX-PAY-08)."
+    ],
+    "rules": [
+      "YX-PAY-08"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 729,
+    "points": 2,
+    "priority": 1,
+    "depends": [
+      "US-C-099"
+    ]
+  },
+  {
+    "id": "US-C-106",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "Salary holds and release",
+    "story": "As a payroll admin, I want to hold an employee's pay with a reason and release it later so that we handle absconding or missing documents.",
+    "acceptance": [
+      "Given a hold, when created, then it has a reason code; triggers (absconding, failed payment, exit clearance) create holds automatically (YX-PAY-28).",
+      "Given a held payslip, when the bank file is made, then it is left out (YX-PAY-28).",
+      "Given I release it, when done, then only that run's payslip is released and repeating the action changes nothing (YX-PAY-09)."
+    ],
+    "rules": [
+      "YX-PAY-28",
+      "YX-PAY-09"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 730,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-099"
+    ]
+  },
+  {
+    "id": "US-C-107",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "Recoveries, negative net and court orders",
+    "story": "As a payroll admin, I want loan EMIs, advances and court orders deducted in the right order so that pay never goes negative.",
+    "acceptance": [
+      "Given recoveries, when net would fall below the protected minimum, then the recovery is deferred (YX-PAY-11).",
+      "Given net still negative, when calculated, then net is set to zero and the shortfall carries forward to next runs and F&F (YX-PAY-29).",
+      "Given a court attachment, when calculated, then it applies after statutory deductions and before loans, by order date, within the total deduction cap (YX-PAY-32)."
+    ],
+    "rules": [
+      "YX-PAY-11",
+      "YX-PAY-29",
+      "YX-PAY-32"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 731,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-099"
+    ]
+  },
+  {
+    "id": "US-C-108",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "Subsistence allowance during suspension",
+    "story": "As a payroll admin, I want suspended employees paid subsistence allowance so that we follow standing orders.",
+    "acceptance": [
+      "Given an employee suspended pending inquiry, when the run calculates, then a subsistence-allowance component at the P07 rate replaces normal pay (YX-PAY-23).",
+      "Given the suspension ends mid-period, when calculated, then the period is split (YX-PAY-03).",
+      "Given the state's standing orders, when the rate changes by days of suspension, then the P07 rate for those days is used (YX-PAY-23)."
+    ],
+    "rules": [
+      "YX-PAY-23",
+      "YX-PAY-03"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 732,
+    "points": 2,
+    "priority": 2,
+    "depends": [
+      "US-C-099"
+    ]
+  },
+  {
+    "id": "US-C-109",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "Maternity benefit and injury pay",
+    "story": "As a payroll admin, I want maternity and injury days paid by the law and company policy so that no one is underpaid.",
+    "acceptance": [
+      "Given maternity leave, when calculated, then benefit = average daily wage of the last 3 months × days, plus medical bonus if no care given (YX-PAY-26).",
+      "Given an ESIC-covered employee, when calculated, then no employer maternity pay is made (YX-PAY-26, YX-LV-10).",
+      "Given injury leave days, when calculated, then ESI-covered get only a company top-up if set; others get at least the P07 compensation (YX-PAY-50, YX-LV-15)."
+    ],
+    "rules": [
+      "YX-PAY-26",
+      "YX-PAY-50",
+      "YX-LV-10",
+      "YX-LV-15"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 733,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-099",
+      "US-C-044",
+      "US-C-045"
+    ]
+  },
+  {
+    "id": "US-C-110",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "Statutory bonus and gratuity provision",
+    "story": "As a payroll admin, I want bonus and gratuity calculated by the law so that year-end payouts are right.",
+    "acceptance": [
+      "Given the Payment of Bonus rules, when bonus is computed, then eligibility wage, ceiling and 8.33–20 % come from P07 (YX-PAY-16).",
+      "Given each month, when calculated, then gratuity is provisioned as wage × 15/26 × years, capped (YX-PAY-15).",
+      "Given a fixed-term employee, when eligibility is checked, then pro-rata after 1 year applies (YX-PAY-15)."
+    ],
+    "rules": [
+      "YX-PAY-15",
+      "YX-PAY-16"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 734,
+    "points": 5,
+    "priority": 2,
+    "depends": [
+      "US-C-099"
+    ]
+  },
+  {
+    "id": "US-C-111",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "Hourly and daily rate pay from timesheets",
+    "story": "As a payroll admin, I want contract workers paid from approved hours so that pay matches work.",
+    "acceptance": [
+      "Given rate-based pay, when calculated, then pay = approved hours (or days) × rate × category multiplier (YX-PAY-24).",
+      "Given unapproved hours, when calculated, then they are never paid (YX-PAY-24).",
+      "Given OT and holiday multipliers from the rate card, when applied, then each line shows the multiplier (YX-PAY-12)."
+    ],
+    "rules": [
+      "YX-PAY-24",
+      "YX-PAY-12"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 735,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-099",
+      "US-C-063"
+    ]
+  },
+  {
+    "id": "US-C-112",
+    "type": "Story",
+    "parent": "FT-C-16",
+    "title": "Journal export and employee cost rates",
+    "story": "As a finance user, I want a journal export and monthly cost rates so that accounts and project costing are right.",
+    "acceptance": [
+      "Given an approved run, when I export the journal, then it follows the entity's accounting mapping (YX-PAY-07).",
+      "Given a paid month, when cost rates are computed, then cost = employer cost ÷ standard hours from the approved payslip; open months are marked provisional (YX-PAY-42).",
+      "Given cost rates, when someone without payroll / finance scope asks, then they are hidden (YX-PAY-42)."
+    ],
+    "rules": [
+      "YX-PAY-07",
+      "YX-PAY-42"
+    ],
+    "docs": [
+      "M03 §6 flow 3"
+    ],
+    "state": "New",
+    "phase": "Step 5-c payroll run",
+    "order": 736,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-104"
+    ]
+  },
+  {
+    "id": "FT-C-17",
+    "type": "Feature",
+    "parent": "EP-C-2",
+    "title": "Bank file, payments and payslips",
+    "rules": [
+      "YX-PAY-13",
+      "YX-AUD-09",
+      "YX-PAY-14",
+      "YX-PAY-31",
+      "YX-PAY-07",
+      "YX-PAY-12",
+      "YX-PAY-35",
+      "YX-DOC-01",
+      "YX-NTF-15",
+      "YX-NTF-04",
+      "YX-PAY-25"
+    ],
+    "docs": [
+      "M03 §6 flow 3"
+    ],
+    "state": "New",
+    "phase": "Step 5-d pay-out and payslips",
+    "order": 737,
+    "depends": []
+  },
+  {
+    "id": "US-C-113",
+    "type": "Story",
+    "parent": "FT-C-17",
+    "title": "Generate the bank file",
+    "story": "As a payroll admin, I want a bank file for the approved run so that salaries are paid on time.",
+    "acceptance": [
+      "Given an approved run, when the bank file is made, then account numbers and IFSC stay as text with leading zeros (YX-PAY-13).",
+      "Given the file, when built, then it includes only approved, unwithheld, verified-account payslips (YX-PAY-13).",
+      "Given a file already made, when regenerated, then a reason is required (YX-PAY-13).",
+      "Given I release it, when I confirm in the irreversible-action dialog, then the confirmation is audited (YX-AUD-09)."
+    ],
+    "rules": [
+      "YX-PAY-13",
+      "YX-AUD-09"
+    ],
+    "docs": [
+      "M03 §6 flow 3"
+    ],
+    "state": "New",
+    "phase": "Step 5-d pay-out and payslips",
+    "order": 737,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-104",
+      "US-C-084"
+    ]
+  },
+  {
+    "id": "US-C-114",
+    "type": "Story",
+    "parent": "FT-C-17",
+    "title": "Record payment status and handle failures",
+    "story": "As a payroll admin, I want to mark payments paid, failed or returned so that failed salaries get paid again.",
+    "acceptance": [
+      "Given bank results, when recorded, then each payslip has paid / failed / returned status (YX-PAY-14).",
+      "Given a return, when recorded, then the employee is notified in the app (+ SMS with no amounts) to fix bank details (YX-PAY-14).",
+      "Given corrected bank details, when checker approves and penny-drop passes, then the cooling period is skipped (YX-PAY-14).",
+      "Given a failed payment, when the next bank file or off-cycle is made, then it is included (YX-PAY-14)."
+    ],
+    "rules": [
+      "YX-PAY-14"
+    ],
+    "docs": [
+      "M03 §6 flow 3"
+    ],
+    "state": "New",
+    "phase": "Step 5-d pay-out and payslips",
+    "order": 738,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-113"
+    ]
+  },
+  {
+    "id": "US-C-115",
+    "type": "Story",
+    "parent": "FT-C-17",
+    "title": "Cash and cheque disbursement register",
+    "story": "As a payroll admin, I want to pay some workers by cash or cheque with proof so that it is still controlled.",
+    "acceptance": [
+      "Given the company enabled cash / cheque, when I set it for an employee, then a reason and approval are needed and it is audited (YX-PAY-31).",
+      "Given such payslips, when the bank file is made, then they go to the disbursement register instead (YX-PAY-31).",
+      "Given payment, when recorded, then a signature or acknowledgement upload is required (YX-PAY-31)."
+    ],
+    "rules": [
+      "YX-PAY-31"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-d pay-out and payslips",
+    "order": 739,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-113"
+    ]
+  },
+  {
+    "id": "US-C-116",
+    "type": "Story",
+    "parent": "FT-C-17",
+    "title": "Publish payslips and view them",
+    "story": "As an employee, I want to see my payslip in the app with an explanation of each number so that I understand my pay.",
+    "acceptance": [
+      "Given an approved run, when HR publishes, then employees get the payslip in the app and a notification (YX-PAY-07).",
+      "Given a payslip line, when I tap 'why this number', then I see the formula, inputs and rule version (YX-PAY-12).",
+      "Given the PDF, when rendered, then it uses the entity's payslip layout (YX-PAY-35).",
+      "Given I download it, when the link is made, then it is a short-lived signed link (YX-DOC-01)."
+    ],
+    "rules": [
+      "YX-PAY-07",
+      "YX-PAY-12",
+      "YX-PAY-35",
+      "YX-DOC-01"
+    ],
+    "docs": [
+      "M03 §7"
+    ],
+    "state": "New",
+    "phase": "Step 5-d pay-out and payslips",
+    "order": 740,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-104",
+      "US-C-096"
+    ]
+  },
+  {
+    "id": "US-C-117",
+    "type": "Story",
+    "parent": "FT-C-17",
+    "title": "Payslip PDF by email (company option)",
+    "story": "As an employee, I want my payslip emailed as a protected PDF so that I have a copy in my mail.",
+    "acceptance": [
+      "Given the entity's payslip email policy is off (default), when payslips publish, then no PDF is emailed (YX-NTF-15).",
+      "Given it is on, when sent, then the PDF is AES-256 password protected, the email states the scheme but not the password, and shows no amount (YX-NTF-15, YX-NTF-04).",
+      "Given an unverified email address, when sending, then nothing is sent (YX-NTF-15)."
+    ],
+    "rules": [
+      "YX-NTF-15",
+      "YX-NTF-04"
+    ],
+    "docs": [
+      "P04 §4.5b"
+    ],
+    "state": "New",
+    "phase": "Step 5-d pay-out and payslips",
+    "order": 741,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-116",
+      "US-C-015"
+    ]
+  },
+  {
+    "id": "US-C-118",
+    "type": "Story",
+    "parent": "FT-C-17",
+    "title": "Employee raises a query on a payslip",
+    "story": "As an employee, I want to ask a question about my payslip in the app so that I get an answer without email.",
+    "acceptance": [
+      "Given a payslip or a line, when I raise a query, then it lands in the Payroll Admin query queue (YX-PAY-25).",
+      "Given a reply, when sent, then it stays in the app (YX-PAY-25).",
+      "Given each query action, when taken, then it is audited (YX-PAY-25)."
+    ],
+    "rules": [
+      "YX-PAY-25"
+    ],
+    "docs": [
+      "M03 §7"
+    ],
+    "state": "New",
+    "phase": "Step 5-d pay-out and payslips",
+    "order": 742,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-116"
+    ]
+  },
+  {
+    "id": "FT-C-18",
+    "type": "Feature",
+    "parent": "EP-C-2",
+    "title": "Income tax (TDS) on salary",
+    "rules": [
+      "YX-TAX-01",
+      "YX-TAX-02",
+      "YX-TAX-06",
+      "YX-PAY-10",
+      "YX-TAX-03",
+      "YX-TAX-05",
+      "YX-TAX-04",
+      "YX-TAX-10",
+      "YX-TAX-11",
+      "YX-TAX-12",
+      "YX-TAX-09",
+      "YX-TAX-21",
+      "YX-TAX-13",
+      "YX-TAX-19",
+      "YX-STAT-24",
+      "YX-TAX-07",
+      "YX-TAX-20",
+      "YX-DOC-16"
+    ],
+    "docs": [
+      "M03 §5 Tax"
+    ],
+    "state": "New",
+    "phase": "Step 5-e income tax",
+    "order": 743,
+    "depends": []
+  },
+  {
+    "id": "US-C-119",
+    "type": "Story",
+    "parent": "FT-C-18",
+    "title": "Employee picks a tax regime",
+    "story": "As an employee, I want to compare the old and new regime and choose one so that I pay less tax.",
+    "acceptance": [
+      "Given no choice, when tax is computed, then the new regime is used (YX-TAX-01).",
+      "Given the cut-off has passed, when I try to change, then only HR can change it with a reason (YX-TAX-01).",
+      "Given my choice, when tax is computed, then the slab set matches the regime (YX-TAX-01)."
+    ],
+    "rules": [
+      "YX-TAX-01"
+    ],
+    "docs": [
+      "M03 §7"
+    ],
+    "state": "New",
+    "phase": "Step 5-e income tax",
+    "order": 743,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-093"
+    ]
+  },
+  {
+    "id": "US-C-120",
+    "type": "Story",
+    "parent": "FT-C-18",
+    "title": "Monthly TDS projection and tax sheet",
+    "story": "As an employee, I want to see how my monthly TDS is worked out so that I trust the deduction.",
+    "acceptance": [
+      "Given a run, when TDS is computed, then TDS = (projected annual tax − tax already deducted) ÷ remaining periods, including Form 12B and other income (YX-TAX-02).",
+      "Given an employee, when components are set, then only one tax component is allowed (YX-TAX-02).",
+      "Given my tax sheet, when shown, then it equals the tax deducted, from the same function (YX-TAX-06).",
+      "Given YTD, when shown, then only same-employment payslips in the FY up to now count (YX-PAY-10)."
+    ],
+    "rules": [
+      "YX-TAX-02",
+      "YX-TAX-06",
+      "YX-PAY-10"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-e income tax",
+    "order": 744,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-119",
+      "US-C-099"
+    ]
+  },
+  {
+    "id": "US-C-121",
+    "type": "Story",
+    "parent": "FT-C-18",
+    "title": "Declarations and proof verification",
+    "story": "As an employee, I want to declare investments and upload proofs so that my tax is reduced.",
+    "acceptance": [
+      "Given proofs are not yet verified, when TDS is projected, then declarations are used (YX-TAX-03).",
+      "Given the proof cut-off has passed, when projected, then only verified amounts count and extra tax is spread over the remaining periods (YX-TAX-03).",
+      "Given each line, when verified, then payroll or HR approves, rejects or partly approves with a comment; I cannot approve my own (YX-TAX-05)."
+    ],
+    "rules": [
+      "YX-TAX-03",
+      "YX-TAX-05"
+    ],
+    "docs": [
+      "M03 §7"
+    ],
+    "state": "New",
+    "phase": "Step 5-e income tax",
+    "order": 745,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-120",
+      "US-C-028"
+    ]
+  },
+  {
+    "id": "US-C-122",
+    "type": "Story",
+    "parent": "FT-C-18",
+    "title": "HRA exemption month by month",
+    "story": "As an employee paying rent, I want HRA exemption worked out correctly so that I get my tax benefit.",
+    "acceptance": [
+      "Given rent for some months, when computed, then exemption is calculated per month over months of actual employment and rent (YX-TAX-04).",
+      "Given rent above the P07 threshold, when declared, then landlord PAN is required (YX-TAX-04).",
+      "Given the result, when shown in the tax sheet, then each month's value is listed."
+    ],
+    "rules": [
+      "YX-TAX-04"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-e income tax",
+    "order": 746,
+    "points": 2,
+    "priority": 1,
+    "depends": [
+      "US-C-121"
+    ]
+  },
+  {
+    "id": "US-C-123",
+    "type": "Story",
+    "parent": "FT-C-18",
+    "title": "Missing PAN and residential status",
+    "story": "As a payroll admin, I want TDS handled when PAN is missing or the employee is non-resident so that we deduct the right amount.",
+    "acceptance": [
+      "Given PAN missing or inoperative, when the run happens, then it is not blocked and TDS = higher of 20 % or slab rate, flagged PANNOTAVBL (YX-TAX-10).",
+      "Given each run and filing, when it starts, then PAN operative status is checked via P10 (YX-TAX-10).",
+      "Given a non-resident, when tax is computed, then no 87A rebate; treaty rate only with a valid TRC (YX-TAX-11)."
+    ],
+    "rules": [
+      "YX-TAX-10",
+      "YX-TAX-11"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-e income tax",
+    "order": 747,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-120"
+    ]
+  },
+  {
+    "id": "US-C-124",
+    "type": "Story",
+    "parent": "FT-C-18",
+    "title": "Perquisites, leave encashment and VRS tax",
+    "story": "As a payroll admin, I want perquisites and exit payouts taxed correctly so that Form 12BA and TDS are right.",
+    "acceptance": [
+      "Given a company car or accommodation, when valued, then the P07 rules apply and they show in Form 12BA (YX-TAX-12).",
+      "Given leave encashment on exit, when taxed, then the exemption is the least of the four limbs, within the ₹25 L lifetime cap less prior use; in service it is fully taxable (YX-TAX-09).",
+      "Given VRS compensation, when taxed, then the exemption up to the P07 limit applies once per lifetime (YX-TAX-21)."
+    ],
+    "rules": [
+      "YX-TAX-12",
+      "YX-TAX-09",
+      "YX-TAX-21"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-e income tax",
+    "order": 748,
+    "points": 5,
+    "priority": 2,
+    "depends": [
+      "US-C-120"
+    ]
+  },
+  {
+    "id": "US-C-125",
+    "type": "Story",
+    "parent": "FT-C-18",
+    "title": "Tax continuity across transfers and rehires",
+    "story": "As a payroll admin, I want tax to continue when an employee moves entity or rejoins in the same year so that TDS is not wrong.",
+    "acceptance": [
+      "Given an inter-entity transfer, when it happens, then Form 12B is auto-filled in the new entity and declarations are copied (YX-TAX-13).",
+      "Given a rehire in the same FY, when TDS is computed, then YTD, TDS and Form 130 combine per PAN × TAN × FY (YX-TAX-13, YX-PAY-10).",
+      "Given gratuity paid twice, when exemption is computed, then one lifetime limit is used (YX-TAX-13)."
+    ],
+    "rules": [
+      "YX-TAX-13",
+      "YX-PAY-10"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-e income tax",
+    "order": 749,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-120"
+    ]
+  },
+  {
+    "id": "US-C-126",
+    "type": "Story",
+    "parent": "FT-C-18",
+    "title": "Income-tax law version on every computation",
+    "story": "As a payroll admin, I want old and new Income-tax Act forms used for the right periods so that filings are accepted.",
+    "acceptance": [
+      "Given a period up to 31 Mar 2026, when TDS, returns or certificates are made, then IT-1961 forms (24Q, Form 16) are used (YX-TAX-19, YX-STAT-24).",
+      "Given a later period, when made, then IT-2025 forms (Form 138, Form 130) are used (YX-TAX-19).",
+      "Given any computation, when saved, then it records its law version (YX-TAX-19)."
+    ],
+    "rules": [
+      "YX-TAX-19",
+      "YX-STAT-24"
+    ],
+    "docs": [
+      "M03 §5",
+      "P07 §4.8"
+    ],
+    "state": "New",
+    "phase": "Step 5-e income tax",
+    "order": 750,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-120"
+    ]
+  },
+  {
+    "id": "US-C-127",
+    "type": "Story",
+    "parent": "FT-C-18",
+    "title": "Year-end Form 130 for employees",
+    "story": "As an employee, I want my Form 130 (Form 16) in the app so that I can file my return.",
+    "acceptance": [
+      "Given year end, when Form 130 is made, then it uses tax actually deducted and includes leavers (YX-TAX-07).",
+      "Given Part B, when generated, then it is signed with the company DSC and published to employees and alumni (YX-DOC-16).",
+      "Given a correction return is accepted, when the corrected Part A is ready, then a revised Form 130 / 131 is generated (YX-TAX-20)."
+    ],
+    "rules": [
+      "YX-TAX-07",
+      "YX-TAX-20",
+      "YX-DOC-16"
+    ],
+    "docs": [
+      "M03 §6 flow 6"
+    ],
+    "state": "New",
+    "phase": "Step 5-e income tax",
+    "order": 751,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-120",
+      "US-C-087"
+    ]
+  },
+  {
+    "id": "FT-C-19",
+    "type": "Feature",
+    "parent": "EP-C-2",
+    "title": "Statutory files, returns and registers",
+    "rules": [
+      "YX-STAT-14",
+      "YX-PAY-21",
+      "YX-PAY-20",
+      "YX-PAY-55",
+      "YX-STAT-29",
+      "YX-PAY-54",
+      "YX-PAY-19",
+      "YX-TAX-14",
+      "YX-TAX-07",
+      "YX-TAX-15",
+      "YX-PAY-36",
+      "YX-TAX-08",
+      "YX-TAX-20",
+      "YX-TAX-19",
+      "YX-PAY-51",
+      "YX-STAT-26",
+      "YX-PAY-39",
+      "YX-STAT-16",
+      "YX-STAT-07",
+      "YX-PAY-33",
+      "YX-STAT-17"
+    ],
+    "docs": [
+      "M03 §6 flows 4-5",
+      "P07"
+    ],
+    "state": "New",
+    "phase": "Step 5-f statutory filings",
+    "order": 752,
+    "depends": []
+  },
+  {
+    "id": "US-C-128",
+    "type": "Story",
+    "parent": "FT-C-19",
+    "title": "Statutory hub and compliance calendar",
+    "story": "As a payroll admin, I want one hub showing every statutory task with due dates so that nothing is filed late.",
+    "acceptance": [
+      "Given each statute and month, when I open the hub, then I see status, file, acknowledgement, due date and P07 penalty estimate if late (YX-STAT-14).",
+      "Given a file, when downloaded, then only payroll scope can download and each download is audited (YX-PAY-21).",
+      "Given a due date is near, when the scheduler runs, then the owner is reminded."
+    ],
+    "rules": [
+      "YX-STAT-14",
+      "YX-PAY-21"
+    ],
+    "docs": [
+      "M03 §7"
+    ],
+    "state": "New",
+    "phase": "Step 5-f statutory filings",
+    "order": 752,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-104",
+      "US-C-018"
+    ]
+  },
+  {
+    "id": "US-C-129",
+    "type": "Story",
+    "parent": "FT-C-19",
+    "title": "PF ECR and ESI return files",
+    "story": "As a payroll admin, I want PF ECR and ESI files made from the locked run so that I upload them to the portals.",
+    "acceptance": [
+      "Given a locked period, when files are made, then they read statutory values stored on the payslip, not current settings (YX-PAY-20).",
+      "Given a period already generated, when regenerated before filing, then a reason is needed; after filing it is refused (YX-PAY-21).",
+      "Given ELI-eligible employees, when the ECR is built, then it carries the scheme fields and expected vs received incentive is tracked (YX-PAY-55, YX-STAT-29)."
+    ],
+    "rules": [
+      "YX-PAY-20",
+      "YX-PAY-21",
+      "YX-PAY-55",
+      "YX-STAT-29"
+    ],
+    "docs": [
+      "M03 §6 flow 4"
+    ],
+    "state": "New",
+    "phase": "Step 5-f statutory filings",
+    "order": 753,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-128",
+      "US-C-100",
+      "US-C-101"
+    ]
+  },
+  {
+    "id": "US-C-130",
+    "type": "Story",
+    "parent": "FT-C-19",
+    "title": "PT and LWF returns",
+    "story": "As a payroll admin, I want PT and LWF returns per state so that state filings are correct.",
+    "acceptance": [
+      "Given a period, when returns are made, then they are per entity and state and show the state used per employee (YX-PAY-54).",
+      "Given values, when read, then they come from the payslip (YX-PAY-20).",
+      "Given one deduction per period per employment, when the return is built, then no employee appears twice (YX-PAY-19)."
+    ],
+    "rules": [
+      "YX-PAY-54",
+      "YX-PAY-20",
+      "YX-PAY-19"
+    ],
+    "docs": [
+      "M03 §6 flow 4"
+    ],
+    "state": "New",
+    "phase": "Step 5-f statutory filings",
+    "order": 754,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-128",
+      "US-C-102"
+    ]
+  },
+  {
+    "id": "US-C-131",
+    "type": "Story",
+    "parent": "FT-C-19",
+    "title": "TDS challan pre-filled with interest",
+    "story": "As a payroll admin, I want the TDS challan pre-filled from approved runs so that I deposit the right amount.",
+    "acceptance": [
+      "Given a deposit month, when the challan opens, then TDS per section and entity TAN come from approved runs (YX-TAX-14).",
+      "Given late deduction or deposit, when computed, then interest and late fee come from P07 parameters (YX-TAX-14, YX-STAT-14).",
+      "Given I edit the challan, when I save, then a reason is required and audited (YX-TAX-14)."
+    ],
+    "rules": [
+      "YX-TAX-14",
+      "YX-STAT-14"
+    ],
+    "docs": [
+      "M03 §6 flow 5"
+    ],
+    "state": "New",
+    "phase": "Step 5-f statutory filings",
+    "order": 755,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-128",
+      "US-C-120"
+    ]
+  },
+  {
+    "id": "US-C-132",
+    "type": "Story",
+    "parent": "FT-C-19",
+    "title": "Quarterly TDS return (Form 138 / 24Q)",
+    "story": "As a payroll admin, I want the quarterly TDS return drafted and validated so that I file it on time.",
+    "acceptance": [
+      "Given the quarter, when the return is drafted, then it uses tax actually deducted and the challan window by deposit date (YX-TAX-07).",
+      "Given an entity that started mid-year, when drafted, then prior-month rows come from imported YTD; missing months block with a Fix link (YX-TAX-15).",
+      "Given deductor details, when filled, then they come from statutory registrations (YX-PAY-36).",
+      "Given a filed return, when anyone tries to change it, then it is locked; corrections need a correction return (YX-TAX-08)."
+    ],
+    "rules": [
+      "YX-TAX-07",
+      "YX-TAX-15",
+      "YX-PAY-36",
+      "YX-TAX-08"
+    ],
+    "docs": [
+      "M03 §6 flow 5"
+    ],
+    "state": "New",
+    "phase": "Step 5-f statutory filings",
+    "order": 756,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-131",
+      "US-C-126"
+    ]
+  },
+  {
+    "id": "US-C-133",
+    "type": "Story",
+    "parent": "FT-C-19",
+    "title": "Correction returns and revised certificates",
+    "story": "As a payroll admin, I want to file a correction return when we find a mistake so that employees get correct certificates.",
+    "acceptance": [
+      "Given a filed return, when I correct it, then a correction return linked to the original is created (YX-TAX-08).",
+      "Given the correction is accepted, when the corrected Part A is available, then revised Form 130 / 131 are generated and published (YX-TAX-20).",
+      "Given old periods, when corrected, then 24Q / Form 16 are used (YX-TAX-19)."
+    ],
+    "rules": [
+      "YX-TAX-08",
+      "YX-TAX-20",
+      "YX-TAX-19"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-f statutory filings",
+    "order": 757,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-132"
+    ]
+  },
+  {
+    "id": "US-C-134",
+    "type": "Story",
+    "parent": "FT-C-19",
+    "title": "PF and ESI corrections after filing",
+    "story": "As a payroll admin, I want to correct a filed PF or ESI month the legal way so that the portal data is right.",
+    "acceptance": [
+      "Given a filed ECR month, when a correction is needed, then a supplementary / arrear ECR is produced, never a regenerated original (YX-PAY-51).",
+      "Given a filed ESI month, when corrected, then a past-period contribution is produced (YX-PAY-51, YX-STAT-26).",
+      "Given excess remittance, when found, then the P07 treatment (adjustment or refund) is shown (YX-STAT-26)."
+    ],
+    "rules": [
+      "YX-PAY-51",
+      "YX-STAT-26"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-f statutory filings",
+    "order": 758,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-129"
+    ]
+  },
+  {
+    "id": "US-C-135",
+    "type": "Story",
+    "parent": "FT-C-19",
+    "title": "Always-on digital registers",
+    "story": "As a location admin, I want statutory registers made automatically each month so that I am ready for inspection.",
+    "acceptance": [
+      "Given a period locks, when registers are generated, then every register P07 requires for each location is made in the format valid on that date (YX-PAY-39, YX-STAT-16).",
+      "Given registers, when generated, then they read payslip values and are frozen and DSC-signed (YX-PAY-20, YX-PAY-39).",
+      "Given the compliance calendar, when the month ends, then a register sign-off item appears (YX-PAY-39)."
+    ],
+    "rules": [
+      "YX-PAY-39",
+      "YX-STAT-16",
+      "YX-PAY-20"
+    ],
+    "docs": [
+      "M03 §6 flow 9"
+    ],
+    "state": "New",
+    "phase": "Step 5-f statutory filings",
+    "order": 759,
+    "points": 5,
+    "priority": 2,
+    "depends": [
+      "US-C-128",
+      "US-C-077"
+    ]
+  },
+  {
+    "id": "US-C-137",
+    "type": "Story",
+    "parent": "FT-C-19",
+    "title": "Labour-law advisory feed",
+    "story": "As a compliance owner, I want short advisories about new labour laws in my states so that I can act early.",
+    "acceptance": [
+      "Given an advisory, when published, then it cites its source and passed maker ≠ checker review (YX-STAT-17).",
+      "Given my entities' states, when an advisory is published, then only the compliance owner, HR and payroll admins of those tenants see it (YX-STAT-17).",
+      "Given urgent advisories, when published, then they are notified at once; others go in a weekly digest (YX-STAT-17)."
+    ],
+    "rules": [
+      "YX-STAT-17"
+    ],
+    "docs": [
+      "P07 §4.3a"
+    ],
+    "state": "New",
+    "phase": "Step 5-f statutory filings",
+    "order": 760,
+    "points": 3,
+    "priority": 3,
+    "depends": [
+      "US-C-026"
+    ]
+  },
+  {
+    "id": "FT-C-20",
+    "type": "Feature",
+    "parent": "EP-C-2",
+    "title": "Off-cycle runs, arrears and full and final",
+    "rules": [
+      "YX-PAY-07",
+      "YX-PAY-04",
+      "YX-PAY-13",
+      "YX-PAY-52",
+      "YX-PAY-33",
+      "YX-PAY-48",
+      "YX-LV-04",
+      "YX-LV-12",
+      "YX-PAY-15",
+      "YX-PAY-49",
+      "YX-STAT-23",
+      "YX-PAY-27",
+      "YX-TAX-12",
+      "YX-DOC-19",
+      "YX-PAY-30",
+      "YX-DOC-12"
+    ],
+    "docs": [
+      "M03 §6 flow 7"
+    ],
+    "state": "New",
+    "phase": "Step 5-g off-cycle, arrears and F&F",
+    "order": 761,
+    "depends": []
+  },
+  {
+    "id": "US-C-138",
+    "type": "Story",
+    "parent": "FT-C-20",
+    "title": "Off-cycle runs for bonus and corrections",
+    "story": "As a payroll admin, I want off-cycle runs for bonus or corrections so that I do not wait for the monthly run.",
+    "acceptance": [
+      "Given an off-cycle run, when created, then it uses the same engine and approval as the regular run (YX-PAY-07).",
+      "Given an off-cycle run, when created, then it does not count as the regular payslip for the period (YX-PAY-04).",
+      "Given it is approved, when paid, then it has its own bank file (YX-PAY-13)."
+    ],
+    "rules": [
+      "YX-PAY-07",
+      "YX-PAY-04",
+      "YX-PAY-13"
+    ],
+    "docs": [
+      "M03 §6 flow 7"
+    ],
+    "state": "New",
+    "phase": "Step 5-g off-cycle, arrears and F&F",
+    "order": 761,
+    "points": 3,
+    "priority": 1,
+    "depends": [
+      "US-C-113"
+    ]
+  },
+  {
+    "id": "US-C-139",
+    "type": "Story",
+    "parent": "FT-C-20",
+    "title": "Arrears engine for back-dated changes",
+    "story": "As a payroll admin, I want back-dated salary changes paid as arrears month by month so that PF and tax are right.",
+    "acceptance": [
+      "Given a back-dated revision, when arrears run, then each month's difference = corrected − as-paid (YX-PAY-52).",
+      "Given months before go-live, when computed, then as-paid comes from the imported as-paid lines (YX-PAY-52).",
+      "Given PF / ESI / PT on arrears, when computed, then the P07 basis rules apply and PF/ESI are attributed to the month they relate to where the rule says so (YX-PAY-33)."
+    ],
+    "rules": [
+      "YX-PAY-52",
+      "YX-PAY-33"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-g off-cycle, arrears and F&F",
+    "order": 762,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-099"
+    ]
+  },
+  {
+    "id": "US-C-136",
+    "type": "Story",
+    "parent": "FT-C-19",
+    "title": "Past-dated rule change creates an arrears proposal",
+    "story": "As a payroll admin, I want to be told when a rule is changed backwards in time so that I can pay or recover the difference.",
+    "acceptance": [
+      "Given a past-dated publication, when it is published, then processed payrolls it affects are flagged per tenant (YX-STAT-07).",
+      "Given flagged payrolls, when I open them, then an arrears / recovery proposal is shown; nothing is silently recalculated (YX-STAT-07).",
+      "Given I accept the proposal, when the next run calculates, then the arrears lines appear (YX-PAY-33)."
+    ],
+    "rules": [
+      "YX-STAT-07",
+      "YX-PAY-33"
+    ],
+    "docs": [
+      "P07 §4.2"
+    ],
+    "state": "New",
+    "phase": "Step 5-f statutory filings",
+    "order": 763,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-139"
+    ]
+  },
+  {
+    "id": "US-C-140",
+    "type": "Story",
+    "parent": "FT-C-20",
+    "title": "Full and final run within 2 working days",
+    "story": "As a payroll admin, I want the F&F run created on the approved last working day so that we pay leavers within 2 working days.",
+    "acceptance": [
+      "Given an approved LWD for any exit type, when it comes, then the F&F off-cycle run is created with a 2-working-day deadline from the entity's calendar (YX-PAY-48).",
+      "Given a negative leave balance, when F&F runs, then it is deducted at the encashment rate or converted to LWP per type (YX-LV-04).",
+      "Given notice-period leave effects, when F&F runs, then the shortfall days are included (YX-LV-12).",
+      "Given gratuity eligibility, when F&F runs, then gratuity is paid by the law (5 years; fixed-term pro-rata after 1 year) (YX-PAY-15)."
+    ],
+    "rules": [
+      "YX-PAY-48",
+      "YX-LV-04",
+      "YX-LV-12",
+      "YX-PAY-15"
+    ],
+    "docs": [
+      "M03 §6 flow 7"
+    ],
+    "state": "New",
+    "phase": "Step 5-g off-cycle, arrears and F&F",
+    "order": 764,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-138"
+    ]
+  },
+  {
+    "id": "US-C-141",
+    "type": "Story",
+    "parent": "FT-C-20",
+    "title": "Retrenchment lines in F&F",
+    "story": "As a payroll admin, I want retrenchment compensation added to F&F automatically so that we follow the IR Code.",
+    "acceptance": [
+      "Given a retrenchment exit, when F&F runs, then compensation = 15 days' average pay × completed years (YX-PAY-49, YX-STAT-23).",
+      "Given notice was not given, when F&F runs, then notice pay in lieu is added (YX-PAY-49).",
+      "Given a retrenchment, when F&F runs, then the Worker Re-skilling Fund line is added and a remittance calendar item is created (YX-PAY-49, YX-STAT-23)."
+    ],
+    "rules": [
+      "YX-PAY-49",
+      "YX-STAT-23"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-g off-cycle, arrears and F&F",
+    "order": 765,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-140"
+    ]
+  },
+  {
+    "id": "US-C-142",
+    "type": "Story",
+    "parent": "FT-C-20",
+    "title": "F&F on death in service",
+    "story": "As an HR admin, I want F&F paid to nominees by their share so that the family gets money quickly and correctly.",
+    "acceptance": [
+      "Given nominations, when F&F runs, then each nominee is paid their share % to a verified bank account (YX-PAY-27).",
+      "Given no valid nomination, when HR verifies heirs' documents, then legal heirs are paid (YX-PAY-27).",
+      "Given death, when gratuity is computed, then the 5-year condition is waived and heir TDS follows P07 (YX-TAX-12).",
+      "Given nominees, when HR releases documents, then they get the nominee login (YX-DOC-19)."
+    ],
+    "rules": [
+      "YX-PAY-27",
+      "YX-TAX-12",
+      "YX-DOC-19"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-g off-cycle, arrears and F&F",
+    "order": 766,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-140",
+      "US-C-087"
+    ]
+  },
+  {
+    "id": "US-C-143",
+    "type": "Story",
+    "parent": "FT-C-20",
+    "title": "Overpayment recovery plan",
+    "story": "As a payroll admin, I want to recover an overpayment in instalments with the employee's consent so that it is fair and legal.",
+    "acceptance": [
+      "Given an overpayment, when a plan is made, then the employee's consent is recorded as a P05 acknowledgement (YX-PAY-30, YX-DOC-12).",
+      "Given a recovery across the FY, when reported, then it is in the correct year with 89(1) / Form 10E data (YX-PAY-30).",
+      "Given a write-off, when done, then approval with a reason is needed and it is audited (YX-PAY-30)."
+    ],
+    "rules": [
+      "YX-PAY-30",
+      "YX-DOC-12"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-g off-cycle, arrears and F&F",
+    "order": 767,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-107",
+      "US-C-030"
+    ]
+  },
+  {
+    "id": "FT-C-21",
+    "type": "Feature",
+    "parent": "EP-C-2",
+    "title": "Consultant payouts and non-salary TDS",
+    "rules": [
+      "YX-PAY-37",
+      "YX-PAY-38",
+      "YX-WF-05",
+      "YX-TAX-16",
+      "YX-STAT-15",
+      "YX-TAX-17"
+    ],
+    "docs": [
+      "M03 §6 flow 8"
+    ],
+    "state": "New",
+    "phase": "Step 5-h consultants",
+    "order": 768,
+    "depends": []
+  },
+  {
+    "id": "US-C-144",
+    "type": "Story",
+    "parent": "FT-C-21",
+    "title": "Consultant register",
+    "story": "As an HR admin, I want to add consultants with PAN, bank and TDS section so that we pay them correctly.",
+    "acceptance": [
+      "Given a consultant, when paid, then PAN (or recorded absence), a verified bank account and a default TDS section must be recorded (YX-PAY-37).",
+      "Given a GSTIN, when entered, then it is validated (YX-PAY-37).",
+      "Given a consultant, when payroll runs, then they get no payslip, PF, ESI, PT or LWF (YX-PAY-37)."
+    ],
+    "rules": [
+      "YX-PAY-37"
+    ],
+    "docs": [
+      "M03 §7"
+    ],
+    "state": "New",
+    "phase": "Step 5-h consultants",
+    "order": 768,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-028"
+    ]
+  },
+  {
+    "id": "US-C-145",
+    "type": "Story",
+    "parent": "FT-C-21",
+    "title": "Consultant invoices and approval",
+    "story": "As a consultant, I want to upload my monthly invoice so that I am paid without emails.",
+    "acceptance": [
+      "Given an invoice, when I upload it, then a duplicate number in the same FY is rejected (YX-PAY-38).",
+      "Given an invoice, when submitted, then it is approved through P03 with maker ≠ checker (YX-PAY-38, YX-WF-05).",
+      "Given approved invoices, when the bank file is made, then they are paid in it (YX-PAY-38)."
+    ],
+    "rules": [
+      "YX-PAY-38",
+      "YX-WF-05"
+    ],
+    "docs": [
+      "M03 §6 flow 8"
+    ],
+    "state": "New",
+    "phase": "Step 5-h consultants",
+    "order": 769,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-144",
+      "US-C-113"
+    ]
+  },
+  {
+    "id": "US-C-146",
+    "type": "Story",
+    "parent": "FT-C-21",
+    "title": "TDS on consultant invoices",
+    "story": "As a payroll admin, I want TDS on each invoice by section and threshold so that we deduct the right amount.",
+    "acceptance": [
+      "Given an invoice, when TDS is computed, then the section (194C, 194J(a), 194J(b)), rate by deductee type and thresholds come from P07 (YX-TAX-16, YX-STAT-15).",
+      "Given a s.197 certificate, when valid and within limit, then its rate applies (YX-STAT-15).",
+      "Given no PAN, when computed, then the 206AA rate applies (YX-TAX-16)."
+    ],
+    "rules": [
+      "YX-TAX-16",
+      "YX-STAT-15"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-h consultants",
+    "order": 770,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-145"
+    ]
+  },
+  {
+    "id": "US-C-147",
+    "type": "Story",
+    "parent": "FT-C-21",
+    "title": "Form 140 and Form 131 for consultants",
+    "story": "As a payroll admin, I want the consultant TDS return and certificates made for me so that I file on time.",
+    "acceptance": [
+      "Given consultant TDS, when deposited, then it uses the same challan per section as salary TDS (YX-TAX-17).",
+      "Given the quarter, when Form 140 is drafted, then it comes from paid invoices and is reconciled deposit vs deduction (YX-TAX-17).",
+      "Given filing is done, when Part A is available, then Form 131 is generated for each consultant (YX-TAX-17)."
+    ],
+    "rules": [
+      "YX-TAX-17"
+    ],
+    "docs": [
+      "M03 §6 flow 8"
+    ],
+    "state": "New",
+    "phase": "Step 5-h consultants",
+    "order": 771,
+    "points": 3,
+    "priority": 2,
+    "depends": [
+      "US-C-146",
+      "US-C-131"
+    ]
+  },
+  {
+    "id": "FT-C-22",
+    "type": "Feature",
+    "parent": "EP-C-2",
+    "title": "Special pay types and country packs",
+    "rules": [
+      "YX-PAY-40",
+      "YX-PAY-41",
+      "YX-PAY-58",
+      "YX-PAY-59",
+      "YX-STAT-31",
+      "YX-PAY-60",
+      "YX-PAY-61",
+      "YX-PAY-62",
+      "YX-AT-28",
+      "YX-PAY-63",
+      "YX-STAT-32",
+      "YX-AT-27",
+      "YX-PAY-57",
+      "YX-PAY-46",
+      "YX-TAX-18",
+      "YX-STAT-18",
+      "YX-PAY-43",
+      "YX-STAT-19",
+      "YX-PAY-44",
+      "YX-PAY-45"
+    ],
+    "docs": [
+      "M03 §5 extensions"
+    ],
+    "state": "New",
+    "phase": "Step 5-i special pay (later waves)",
+    "order": 772,
+    "depends": []
+  },
+  {
+    "id": "US-C-148",
+    "type": "Story",
+    "parent": "FT-C-22",
+    "title": "Earned wage access draw",
+    "story": "As an employee, I want to get part of my earned pay early so that I handle an emergency.",
+    "acceptance": [
+      "Given EWA is on for my group and I am eligible, when I open Get paid early, then I see the available amount = policy % × earned-to-date, fee and recovery date (YX-PAY-40).",
+      "Given blackout days, when I try to draw, then it is refused (YX-PAY-40).",
+      "Given a draw, when the next regular payroll runs, then it is recovered in full within the deduction cap (YX-PAY-41)."
+    ],
+    "rules": [
+      "YX-PAY-40",
+      "YX-PAY-41"
+    ],
+    "docs": [
+      "M03 §6 flow 10"
+    ],
+    "state": "New",
+    "phase": "Step 5-i special pay (later waves)",
+    "order": 772,
+    "points": 5,
+    "priority": 3,
+    "depends": [
+      "US-C-107"
+    ]
+  },
+  {
+    "id": "US-C-149",
+    "type": "Story",
+    "parent": "FT-C-22",
+    "title": "Weekly and fortnightly pay groups",
+    "story": "As a payroll admin, I want weekly or fortnightly runs for some groups so that daily-wage workers are paid often.",
+    "acceptance": [
+      "Given a weekly pay group, when the period comes, then it gets its own run, readiness, payslip and bank file (YX-PAY-58).",
+      "Given PF / ESI, when computed per run, then they are aggregated into the monthly return (YX-PAY-58).",
+      "Given TDS, when computed, then it is projected on annualised run pay (YX-PAY-58)."
+    ],
+    "rules": [
+      "YX-PAY-58"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-i special pay (later waves)",
+    "order": 773,
+    "points": 5,
+    "priority": 3,
+    "depends": [
+      "US-C-104"
+    ]
+  },
+  {
+    "id": "US-C-150",
+    "type": "Story",
+    "parent": "FT-C-22",
+    "title": "Piece-rate pay with minimum-wage top-up",
+    "story": "As a payroll admin, I want piece-rate workers paid by output with a minimum-wage guarantee so that pay is legal.",
+    "acceptance": [
+      "Given output and the rate card, when calculated, then earnings = Σ(output × rate valid on the output date) (YX-PAY-59).",
+      "Given earnings below the time-rate minimum for days worked, when calculated, then a named top-up line is added (YX-PAY-59, YX-STAT-31).",
+      "Given OT for piece-rated workers, when calculated, then the P07 basis is used (YX-STAT-31)."
+    ],
+    "rules": [
+      "YX-PAY-59",
+      "YX-STAT-31"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-i special pay (later waves)",
+    "order": 774,
+    "points": 5,
+    "priority": 3,
+    "depends": [
+      "US-C-099"
+    ]
+  },
+  {
+    "id": "US-C-151",
+    "type": "Story",
+    "parent": "FT-C-22",
+    "title": "Incentive and commission plans",
+    "story": "As a sales manager, I want incentive plans with tiers and caps so that my team is paid for results.",
+    "acceptance": [
+      "Given a plan from a starter template, when set up, then metric source, quota, tiers, accelerators, cap and clawback window are defined (YX-PAY-60).",
+      "Given results, when approved via P03, then they enter the run as one-time pay (YX-PAY-60).",
+      "Given a clawback, when triggered, then it is recovered through payroll recoveries (YX-PAY-60)."
+    ],
+    "rules": [
+      "YX-PAY-60"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-i special pay (later waves)",
+    "order": 775,
+    "points": 5,
+    "priority": 3,
+    "depends": [
+      "US-C-099",
+      "US-C-003"
+    ]
+  },
+  {
+    "id": "US-C-152",
+    "type": "Story",
+    "parent": "FT-C-22",
+    "title": "Tips and service-charge pooling",
+    "story": "As an outlet manager, I want tips pooled and shared fairly so that staff get their share through payroll.",
+    "acceptance": [
+      "Given a pool per outlet per period, when distributed, then it is by points, per shift or by hours from attendance (YX-PAY-61).",
+      "Given amounts paid through payroll, when calculated, then they are a named line with PF / ESI / TDS from P07 (YX-PAY-61, YX-STAT-31).",
+      "Given tips paid directly by customers, when recorded, then they appear on statements only (YX-PAY-61)."
+    ],
+    "rules": [
+      "YX-PAY-61",
+      "YX-STAT-31"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-i special pay (later waves)",
+    "order": 776,
+    "points": 3,
+    "priority": 3,
+    "depends": [
+      "US-C-099"
+    ]
+  },
+  {
+    "id": "US-C-153",
+    "type": "Story",
+    "parent": "FT-C-22",
+    "title": "On-call, standby and call-out pay",
+    "story": "As a payroll admin, I want standby and call-out paid from roster data so that on-call staff are paid fairly.",
+    "acceptance": [
+      "Given standby slots, when the run calculates, then a standby allowance per slot is paid (YX-PAY-62, YX-AT-28).",
+      "Given a call-out, when calculated, then pay = max(actual hours, call-out minimum) × rate × multiplier (YX-PAY-62).",
+      "Given minimum wage and OT floors, when checked, then P07 values apply (YX-PAY-62)."
+    ],
+    "rules": [
+      "YX-PAY-62",
+      "YX-AT-28"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-i special pay (later waves)",
+    "order": 777,
+    "points": 3,
+    "priority": 3,
+    "depends": [
+      "US-C-099",
+      "US-C-074"
+    ]
+  },
+  {
+    "id": "US-C-154",
+    "type": "Story",
+    "parent": "FT-C-22",
+    "title": "Union dues, settlements and lay-off pay",
+    "story": "As a payroll admin, I want union dues, wage settlements and lay-off pay handled by the IR rules so that we follow the law.",
+    "acceptance": [
+      "Given check-off dues, when deducted, then a recorded authorisation is required, within the cap, remitted per union with a statement (YX-PAY-63, YX-STAT-32).",
+      "Given a wage settlement by category and date, when applied, then the arrears engine computes the differences (YX-PAY-63).",
+      "Given lay-off days, when calculated, then lay-off compensation per P07 is paid; strike / lockout days follow legality and policy (YX-AT-27, YX-STAT-32)."
+    ],
+    "rules": [
+      "YX-PAY-63",
+      "YX-STAT-32",
+      "YX-AT-27"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-i special pay (later waves)",
+    "order": 778,
+    "points": 5,
+    "priority": 3,
+    "depends": [
+      "US-C-139",
+      "US-C-073"
+    ]
+  },
+  {
+    "id": "US-C-155",
+    "type": "Story",
+    "parent": "FT-C-22",
+    "title": "Actuarial census for gratuity and leave",
+    "story": "As a finance user, I want an actuarial census file per entity so that the actuary can value our liabilities.",
+    "acceptance": [
+      "Given a valuation date, when I generate the census, then it has the standard fields (dates, service, Code wage, leave balances, exits with payouts) (YX-PAY-57).",
+      "Given an actuary's layout, when chosen, then the extra columns are added (YX-PAY-57).",
+      "Given the actuary's result, when uploaded, then the provision is recorded for journals (YX-PAY-57)."
+    ],
+    "rules": [
+      "YX-PAY-57"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-i special pay (later waves)",
+    "order": 779,
+    "points": 3,
+    "priority": 3,
+    "depends": [
+      "US-C-110"
+    ]
+  },
+  {
+    "id": "US-C-156",
+    "type": "Story",
+    "parent": "FT-C-22",
+    "title": "ESOP grants, vesting and exercise",
+    "story": "As an employee with stock options, I want to see my grants and exercise vested units so that I benefit from them.",
+    "acceptance": [
+      "Given a plan pool, when a grant exceeds the unallocated pool, then it is blocked (YX-PAY-46).",
+      "Given vesting, when dates or confirmed milestones pass, then units vest; only vested units in the window can be exercised (YX-PAY-46).",
+      "Given an exercise, when taxed, then perquisite = (FMV − price) × units with FMV per P07 (YX-TAX-18, YX-STAT-18).",
+      "Given an exit, when processed, then unvested units lapse and vested follow leaver rules (YX-PAY-46)."
+    ],
+    "rules": [
+      "YX-PAY-46",
+      "YX-TAX-18",
+      "YX-STAT-18"
+    ],
+    "docs": [
+      "M03 §6 flow 12"
+    ],
+    "state": "New",
+    "phase": "Step 5-i special pay (later waves)",
+    "order": 780,
+    "points": 8,
+    "priority": 3,
+    "depends": [
+      "US-C-120"
+    ]
+  },
+  {
+    "id": "US-C-157",
+    "type": "Story",
+    "parent": "FT-C-22",
+    "title": "Country packs for legal entities",
+    "story": "As a payroll admin, I want each entity to use its country's pack so that we can pay staff outside India.",
+    "acceptance": [
+      "Given an entity's country, when pay groups, components, tax and files are set, then they come only from that country's P07 pack valid on the period date (YX-PAY-43).",
+      "Given a new pack, when added, then it is pack data, calculators and golden cases only, flagged 'verify' until a local partner confirms (YX-STAT-19).",
+      "Given module code, when reviewed, then it never branches on country (YX-STAT-19)."
+    ],
+    "rules": [
+      "YX-PAY-43",
+      "YX-STAT-19"
+    ],
+    "docs": [
+      "M03 §6 flow 11",
+      "P07 §4.6"
+    ],
+    "state": "New",
+    "phase": "Step 5-i special pay (later waves)",
+    "order": 781,
+    "points": 5,
+    "priority": 3,
+    "depends": [
+      "US-C-099"
+    ]
+  },
+  {
+    "id": "US-C-158",
+    "type": "Story",
+    "parent": "FT-C-22",
+    "title": "UAE WPS file and end-of-service gratuity",
+    "story": "As a payroll admin for a UAE entity, I want the WPS SIF file and EOSB provision so that we pay legally in the UAE.",
+    "acceptance": [
+      "Given a WPS-covered entity, when the run is approved, then the SIF file is produced in the pack's format (YX-PAY-44).",
+      "Given each month, when calculated, then end-of-service gratuity is provisioned per the pack (YX-PAY-44).",
+      "Given the statutory hub, when opened, then UAE cards show WPS per run (YX-PAY-44)."
+    ],
+    "rules": [
+      "YX-PAY-44"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-i special pay (later waves)",
+    "order": 782,
+    "points": 5,
+    "priority": 3,
+    "depends": [
+      "US-C-157"
+    ]
+  },
+  {
+    "id": "US-C-159",
+    "type": "Story",
+    "parent": "FT-C-22",
+    "title": "US 1099-NEC reporting for contractors",
+    "story": "As a finance user, I want 1099-NEC data for US contractors so that we report payments in the US.",
+    "acceptance": [
+      "Given US contractors in the consultant register, when set up, then a W-9 is stored with TIN masked (YX-PAY-45).",
+      "Given the calendar year, when totals reach the threshold, then 1099-NEC file and recipient PDF are produced (YX-PAY-45).",
+      "Given US contractors, when paid, then no US withholding is calculated (YX-PAY-45)."
+    ],
+    "rules": [
+      "YX-PAY-45"
+    ],
+    "docs": [
+      "M03 §5"
+    ],
+    "state": "New",
+    "phase": "Step 5-i special pay (later waves)",
+    "order": 783,
+    "points": 3,
+    "priority": 3,
+    "depends": [
+      "US-C-157",
+      "US-C-144"
+    ]
+  },
+  {
+    "id": "FT-C-23",
+    "type": "Feature",
+    "parent": "EP-C-2",
+    "title": "Finish the payroll screens against the real API",
+    "rules": [
+      "YX-PAY-34",
+      "YX-AUD-09",
+      "YX-PAY-01",
+      "YX-PAY-35",
+      "YX-PAY-12",
+      "YX-TAX-06",
+      "YX-PAY-25"
+    ],
+    "docs": [
+      "M03 §7",
+      "packages/yx-ui/review/PAY-CHECKLIST.md"
+    ],
+    "state": "New",
+    "phase": "Step 5-j payroll screens",
+    "order": 784,
+    "depends": []
+  },
+  {
+    "id": "US-C-160",
+    "type": "Story",
+    "parent": "FT-C-23",
+    "title": "Finish run screens (home to payments) against the API",
+    "story": "As the founder, I want the payroll run screens (pay-01 to pay-11 in packages/yx-ui/src/screens/pay) using the real API so that the parked UI fixes are done.",
+    "acceptance": [
+      "Given each story pay-01 to pay-11, when it loads, then data comes from the API with empty, loading and error states (PAY-CHECKLIST §E).",
+      "Given every item of packages/yx-ui/review/PAY-CHECKLIST.md, when the reviewer checks each story at 1440, 871 and 390 widths, then all pass or are listed with a fix.",
+      "Given calculation, publish or file generation, when it runs, then per-employee progress and named failures with Fix links show (YX-PAY-34).",
+      "Given lock, bank file release or publish, when pressed, then a confirm dialog says exactly what happens (YX-AUD-09)."
+    ],
+    "rules": [
+      "YX-PAY-34",
+      "YX-AUD-09"
+    ],
+    "docs": [
+      "M03 §7"
+    ],
+    "state": "New",
+    "phase": "Step 5-j payroll screens",
+    "order": 784,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-116",
+      "US-C-114"
+    ]
+  },
+  {
+    "id": "US-C-161",
+    "type": "Story",
+    "parent": "FT-C-23",
+    "title": "Finish setup and compensation screens against the API",
+    "story": "As the founder, I want the payroll setup screens (pay-12 to pay-19, pay-28 to pay-30) on the real API so that admins can set up payroll themselves.",
+    "acceptance": [
+      "Given each story, when it loads, then data comes from the API with empty, loading and error states.",
+      "Given the PAY-CHECKLIST money rules, when totals show, then gross = sum of earnings and net = gross − deductions, in Indian format.",
+      "Given the template builder, when I save a formula with a cycle, then the API error is shown inline (YX-PAY-01).",
+      "Given the payslip layout editor, when I change it, then the preview is the real render (YX-PAY-35)."
+    ],
+    "rules": [
+      "YX-PAY-01",
+      "YX-PAY-35"
+    ],
+    "docs": [
+      "M03 §7"
+    ],
+    "state": "New",
+    "phase": "Step 5-j payroll screens",
+    "order": 785,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-090",
+      "US-C-096"
+    ]
+  },
+  {
+    "id": "US-C-162",
+    "type": "Story",
+    "parent": "FT-C-23",
+    "title": "Finish employee pay, tax and query screens against the API",
+    "story": "As the founder, I want employee-facing pay screens (payslip viewer, tax workspace, proofs, queries, loans, EWA) on the real API so that employees see real data.",
+    "acceptance": [
+      "Given the payslip viewer, when an employee opens it, then they see only their own pay (PAY-CHECKLIST §D) and 'why this number' from line explanations (YX-PAY-12).",
+      "Given the tax workspace, when it loads, then the tax sheet equals the TDS deducted (YX-TAX-06).",
+      "Given the query queue, when an admin replies, then the employee sees it in the app (YX-PAY-25).",
+      "Given every checklist item, when reviewed once, then failures are fixed and the review is not repeated in rounds."
+    ],
+    "rules": [
+      "YX-PAY-12",
+      "YX-TAX-06",
+      "YX-PAY-25"
+    ],
+    "docs": [
+      "M03 §7"
+    ],
+    "state": "New",
+    "phase": "Step 5-j payroll screens",
+    "order": 786,
+    "points": 5,
+    "priority": 1,
+    "depends": [
+      "US-C-121",
+      "US-C-118"
+    ]
+  }
+]

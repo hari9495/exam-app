@@ -7,7 +7,8 @@ import { SamlController } from './saml.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { SamlStrategy } from './saml.strategy';
 import { SamlCacheProvider } from './saml-cache.provider';
-import { AuditModule, CryptoModule } from '@exam-platform/shared';
+import { Resolver } from 'node:dns/promises';
+import { AuditModule, CryptoModule, StorageModule } from '@exam-platform/shared';
 import { EmailModule } from '../email/email.module';
 import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connection';
 import Redis from 'ioredis';
@@ -26,7 +27,8 @@ import { SmsChannelModule } from '../sms-channel/sms-channel.module';
 import { SsoService } from './sso.service';
 import { OidcService } from './oidc.service';
 import { SsoController } from './sso.controller';
-import { IdentityProvidersService } from './identity-providers.service';
+import { DNS_TXT_RESOLVER, IdentityProvidersService } from './identity-providers.service';
+import { CompanyScopeService } from './company-scope';
 import { IdentityProvidersController } from './identity-providers.controller';
 
 // Its own connection, fast-failing: the shared BullMQ-style connection (maxRetriesPerRequest:
@@ -37,8 +39,14 @@ function createLoginProtectionRedis(): Redis {
   return Object.assign(client, { onApplicationShutdown: () => client.disconnect() });
 }
 
+// Bounded DNS lookups (domain ownership checks are an admin action, never on the sign-in path).
+function createTxtResolver() {
+  const resolver = new Resolver({ timeout: 3000, tries: 2 });
+  return (name: string) => resolver.resolveTxt(name);
+}
+
 @Module({
-  imports: [PassportModule, JwtModule.register({}), AuditModule, CryptoModule, EmailModule, PasswordPolicyModule, SmsChannelModule],
+  imports: [PassportModule, JwtModule.register({}), AuditModule, CryptoModule, StorageModule, EmailModule, PasswordPolicyModule, SmsChannelModule],
   providers: [
     AuthService,
     JwtStrategy,
@@ -55,6 +63,8 @@ function createLoginProtectionRedis(): Redis {
     SsoService,
     OidcService,
     IdentityProvidersService,
+    { provide: DNS_TXT_RESOLVER, useFactory: createTxtResolver },
+    CompanyScopeService,
   ],
   controllers: [AuthController, SamlController, SsoController, SessionsController, SecurityPolicyController, MfaController, OtpController, IdentityProvidersController],
   exports: [AuthService],

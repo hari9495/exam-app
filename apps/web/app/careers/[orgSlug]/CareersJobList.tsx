@@ -33,7 +33,7 @@ export function CareersJobList({ jobs }: { jobs: CareersJob[] }) {
               aria-label="Filter by department"
               value={department}
               onChange={(e) => setDepartment(e.target.value)}
-              className="rounded border border-candidate-border px-3 py-2 text-sm"
+              className="rounded-sm border border-candidate-border px-3 py-2 text-sm"
             >
               <option value={ALL}>All departments</option>
               {departments.map((d) => (
@@ -46,7 +46,7 @@ export function CareersJobList({ jobs }: { jobs: CareersJob[] }) {
               aria-label="Filter by location"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              className="rounded border border-candidate-border px-3 py-2 text-sm"
+              className="rounded-sm border border-candidate-border px-3 py-2 text-sm"
             >
               <option value={ALL}>All locations</option>
               {locations.map((l) => (

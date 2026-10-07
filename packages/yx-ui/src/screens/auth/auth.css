@@ -10,6 +10,11 @@
 .yx-auth__form { display: flex; flex-direction: column; gap: var(--yx-space-4); min-width: 0; }
 .yx-auth__form > p { margin: 0; }
 .yx-auth__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); }
+.yx-auth__who { justify-content: space-between; padding: var(--yx-space-2) var(--yx-space-3); background: var(--yx-color-bg-subtle); border-radius: var(--yx-radius-control); }
+.yx-auth__who-id { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.yx-auth__company-line > [role='status'] { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.yx-auth__companies { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-auth__company { display: inline-flex; align-items: center; gap: var(--yx-space-2); min-width: 0; overflow-wrap: anywhere; }
 .yx-auth__or { display: flex; flex-direction: column; gap: var(--yx-space-2); padding-top: var(--yx-space-4); border-top: var(--yx-border-width) solid var(--yx-color-border); }
 .yx-auth__codes { display: flex; flex-direction: column; gap: var(--yx-space-4); }
 .yx-auth__code-list { margin: 0; padding: var(--yx-space-4); list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--yx-space-2) var(--yx-space-4); background: var(--yx-color-bg-subtle); border-radius: var(--yx-radius-control); }

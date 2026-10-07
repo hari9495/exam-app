@@ -1,10 +1,11 @@
-import { Body, Controller, HttpCode, Param, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { createHash, timingSafeEqual } from 'crypto';
 import { PrismaService, TenantPrismaService, isOrganizationActive, ORGANIZATION_INACTIVE_MESSAGE, authCookieSecure } from '@exam-platform/shared';
-import { AuthService, LoginOutcome, isMfaChallenge } from './auth.service';
-import { LoginDto } from './dto/login.dto';
+import { AuthService, LoginOutcome, isPending } from './auth.service';
+import { LoginDto, SelectCompanyDto } from './dto/login.dto';
+import { CompanyScopeService, REMEMBERED_COMPANY_COOKIE, clearRememberedCompany, setRememberedCompany } from './company-scope';
 import { RefreshDto } from './dto/refresh.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -29,12 +30,14 @@ export function refreshCookieOptions() {
   return { httpOnly: true, sameSite: 'lax' as const, secure: authCookieSecure() };
 }
 
-// A finished sign-in sets the refresh cookie; a pending one (second factor owed) sets nothing.
+// A finished sign-in sets the refresh cookie (and remembers the company on this device); a pending
+// one (second factor or company choice owed) sets nothing.
 export function signInResponse(outcome: LoginOutcome, res: Response) {
-  if (isMfaChallenge(outcome)) {
+  if (isPending(outcome)) {
     return outcome;
   }
   res.cookie(REFRESH_COOKIE, outcome.refreshToken, refreshCookieOptions());
+  if (outcome.rememberCompany) setRememberedCompany(res, outcome.rememberCompany);
   return { accessToken: outcome.accessToken, ...(outcome.mfa ? { mfa: outcome.mfa } : {}) };
 }
 
@@ -45,22 +48,50 @@ export class AuthController {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly sessions: SessionsService,
+    private readonly scope: CompanyScopeService,
   ) {}
 
+  // The company comes from orgSlug, the web address or the remembered company; none = email-first.
   @Post('staff/login')
   @HttpCode(200)
   @Throttle(STRICT_AUTH_THROTTLE)
   async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await assertHuman(dto.challengeToken, req.ip ?? null);
-    return signInResponse(await this.authService.login(dto, resolveClientMeta(req, res)), res);
+    const organizationSlug = await this.scope.slugFor(req, dto.organizationSlug);
+    return signInResponse(await this.authService.login({ ...dto, organizationSlug }, resolveClientMeta(req, res)), res);
+  }
+
+  // The company picked when one credential matched several (single-use token from staff/login or otp/verify).
+  @Post('staff/select-company')
+  @HttpCode(200)
+  @Throttle(STRICT_AUTH_THROTTLE)
+  async selectCompany(@Body() dto: SelectCompanyDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    return signInResponse(await this.authService.selectCompany(dto, resolveClientMeta(req, res)), res);
+  }
+
+  // "Signing in to <company>": name and logo of the company this device last signed in to, nothing
+  // else. An altered cookie is dropped.
+  @Get('remembered-company')
+  @Throttle(STRICT_AUTH_THROTTLE)
+  async rememberedCompany(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const org = await this.scope.remembered(req);
+    if (!org && req.cookies?.[REMEMBERED_COMPANY_COOKIE] !== undefined) clearRememberedCompany(res);
+    return { company: org ? await this.scope.card(org) : null };
+  }
+
+  // "Not your company?": forget it on this device (back to email-first).
+  @Delete('remembered-company')
+  @HttpCode(204)
+  forgetCompany(@Res({ passthrough: true }) res: Response) {
+    clearRememberedCompany(res);
   }
 
   @Post('forgot-password')
   @HttpCode(200)
   @Throttle(STRICT_AUTH_THROTTLE)
-  async forgotPassword(@Body() dto: ForgotPasswordDto) {
-    await this.authService.forgotPassword(dto);
-    return { message: 'If an account with that organization and email exists, a reset link has been sent.' };
+  async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
+    await this.authService.forgotPassword({ ...dto, organizationSlug: await this.scope.slugFor(req, dto.organizationSlug) });
+    return { message: 'If an account with that email exists, a reset link has been sent.' };
   }
 
   @Post('reset-password')

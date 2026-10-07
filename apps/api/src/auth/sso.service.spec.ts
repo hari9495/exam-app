@@ -143,3 +143,44 @@ describe('SsoService.resolveUser (domains + JIT, YX-IAM-04/05)', () => {
     await expect(service.resolveUser(provider(), 'not-an-email')).resolves.toEqual({ reason: 'no_verified_email' });
   });
 });
+
+describe('SsoService.routeByVerifiedDomain (email-first, no company known)', () => {
+  let tx: any;
+  let prisma: any;
+  let service: SsoService;
+  const KAVERI = { id: 'org-kaveri', slug: 'kaveri-foods', status: 'active' };
+  const okta = { id: 'idp-okta', organizationId: KAVERI.id, type: 'saml', status: 'active', domains: [{ domain: 'kaverifoods.in' }] };
+
+  beforeEach(() => {
+    tx = {
+      verifiedDomain: { findMany: jest.fn().mockResolvedValue([{ organizationId: KAVERI.id }]) },
+      identityProvider: { findMany: jest.fn().mockResolvedValue([okta]) },
+    };
+    prisma = { organization: { findUnique: jest.fn().mockResolvedValue(KAVERI) } };
+    service = new SsoService(prisma, { forTenant: jest.fn((_c, fn) => fn(tx)) } as any, { record: jest.fn() } as any);
+  });
+
+  it('routes a domain exactly one company has verified and mapped to an active provider', async () => {
+    await expect(service.routeByVerifiedDomain('Divya.R@KaveriFoods.in')).resolves.toEqual({ org: { id: KAVERI.id, slug: 'kaveri-foods' }, provider: okta });
+    expect(tx.verifiedDomain.findMany).toHaveBeenCalledWith({ where: { domain: 'kaverifoods.in' }, select: { organizationId: true }, take: 2 });
+  });
+
+  it('never routes an unverified domain, a domain two companies verified, or a public mail domain', async () => {
+    tx.verifiedDomain.findMany.mockResolvedValueOnce([]);
+    await expect(service.routeByVerifiedDomain('divya.r@kaverifoods.in')).resolves.toBeNull();
+    tx.verifiedDomain.findMany.mockResolvedValueOnce([{ organizationId: KAVERI.id }, { organizationId: 'org-other' }]);
+    await expect(service.routeByVerifiedDomain('divya.r@kaverifoods.in')).resolves.toBeNull();
+    tx.verifiedDomain.findMany.mockClear();
+    for (const email of ['someone@gmail.com', 'someone@yahoo.co.in', 'someone@outlook.com']) {
+      await expect(service.routeByVerifiedDomain(email)).resolves.toBeNull();
+    }
+    expect(tx.verifiedDomain.findMany).not.toHaveBeenCalled();
+  });
+
+  it('never routes to a suspended company, or when no active provider maps the domain any more', async () => {
+    prisma.organization.findUnique.mockResolvedValueOnce({ ...KAVERI, status: 'suspended' });
+    await expect(service.routeByVerifiedDomain('divya.r@kaverifoods.in')).resolves.toBeNull();
+    tx.identityProvider.findMany.mockResolvedValueOnce([{ ...okta, domains: [{ domain: 'kaveri.in' }] }]);
+    await expect(service.routeByVerifiedDomain('divya.r@kaverifoods.in')).resolves.toBeNull();
+  });
+});

@@ -109,6 +109,7 @@ model Organization {
   webhookDeliveries             WebhookDelivery[]
   securityPolicy                TenantSecurityPolicy?
   identityProviders             IdentityProvider[]
+  verifiedDomains               VerifiedDomain[]
   channelAccounts               ChannelAccount[]
   notificationDeliveries        NotificationDelivery[]
   channelConsents               ChannelConsent[]
@@ -2053,6 +2054,19 @@ model IdentityProviderDomain {
   @@id([organizationId, domain])
   @@index([identityProviderId])
   @@map("identity_provider_domains")
+}
+
+// An email domain the company has proven it owns (DNS TXT, migration 20261007100000_verified_domains).
+// Only verified domains route an email-first sign-in straight to the company's identity provider.
+model VerifiedDomain {
+  organizationId String       @map("organization_id") @db.Uuid
+  domain         String       @db.VarChar(253)
+  verifiedAt     DateTime     @default(now()) @map("verified_at") @db.Timestamptz(3)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, domain])
+  @@index([domain])
+  @@map("verified_domains")
 }
 
 // ---- P04 notification engine: SMS channel (migration 20261006700000_sms_channel) ----------------

@@ -140,13 +140,13 @@ export function QuestionNavigator({ sections, answers, currentIndex, onSelect }:
 
       <div className="mt-4 flex flex-col gap-2 border-t border-candidate-border pt-3 text-xs text-candidate-text-tertiary">
         <span className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-sm bg-candidate-primary" /> Answered
+          <span className="h-2.5 w-2.5 rounded-xs bg-candidate-primary" /> Answered
         </span>
         <span className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-sm border border-candidate-review-border bg-candidate-review-bg" /> Marked for review
+          <span className="h-2.5 w-2.5 rounded-xs border border-candidate-review-border bg-candidate-review-bg" /> Marked for review
         </span>
         <span className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-sm bg-candidate-bg" /> Not answered
+          <span className="h-2.5 w-2.5 rounded-xs bg-candidate-bg" /> Not answered
         </span>
       </div>
     </div>

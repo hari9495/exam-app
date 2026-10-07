@@ -10,9 +10,10 @@ Agreed with the founder on 6–7 Oct 2026. Backend is built inside the exam-app 
 | — | Design docs and full UI prototype in the repo | — | PR #130 |
 | 2 | Organisation and employee core: legal entities, locations, departments, positions, the employee record with effective-dated history, reporting lines, roles and field-level visibility | P01, P02, P06, M01 | Next |
 | 3 | Platform console (YukthiX staff only, same codebase, separate locked-down area): companies and lifecycle, plans and prices, shared channel accounts (move the shared SMS account here), support sessions, audit; later billing, incidents, customer success | P14, P02 support sessions, P12 Q7 | After step 2 |
+| 3b | YukthiX Service Desk: full ITSM + ESM (incident, request catalogue, problem, change / CAB, release, assets + CMDB, knowledge, SLA / OLA, portal, email / chat / WhatsApp / Teams, automation + AI, monitoring events, on-call, status page, vendors). One engine for company helpdesks (HR / IT / Admin), YukthiX's own customer support, and a standalone product | M14, M08 | After step 3 |
 | 4 | Time and leave: attendance, regularisation, shifts and rosters, leave and balances, overtime | M02, P03, P07 | |
 | 5 | Payroll and statutory: inputs, calculation (PF, ESI, PT, TDS), approve and lock, bank file, payslips | M03, P07, P08 | |
-| 6+ | Lifecycle (onboarding, exit, F&F), expenses, performance, learning, helpdesk, engage, benefits, projects and timesheets, contract labour, ATS, mobile | M04–M13, P-series | |
+| 6+ | Lifecycle (onboarding, exit, F&F), expenses, performance, learning, engage, benefits, projects and timesheets, contract labour, ATS, mobile | M04–M13, P-series | |
 
 Cross-cutting pieces (notification engine P04, workflow engine P03, documents P05, period locks and audit P08) are built the first time a step needs them, then reused.
 

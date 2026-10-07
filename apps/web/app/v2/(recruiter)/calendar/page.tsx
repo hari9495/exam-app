@@ -10,6 +10,7 @@ import { CalendarClock, Check } from 'lucide-react';
 import { useCalendarConnections, useDisconnectCalendar } from '../../../../lib/hooks/useCalendar';
 import { useAuth } from '../../../../lib/auth-context';
 import { apiFetch } from '../../../../lib/api-client';
+import { goTo } from '../../../../lib/navigate';
 // Imported directly from Button.tsx, not the ui-v2 barrel: the barrel re-exports DataTable, which
 // pulls @tanstack/react-table (ESM) into jest and breaks the page test.
 import { Button } from '../../../../components/ui-v2/Button';
@@ -37,7 +38,7 @@ function CalendarConnections() {
     setConnecting(provider);
     try {
       const { authUrl } = await apiFetch(`/calendar/${provider}/connect`, {}, accessToken ?? undefined);
-      window.location.href = authUrl; // hand off to the provider's consent screen
+      goTo(authUrl); // hand off to the provider's consent screen
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start the connection');
       setConnecting(null);

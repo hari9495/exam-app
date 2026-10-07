@@ -18,7 +18,7 @@ export function TopBar({
         {onToggleSidebar && (
           <button type="button" onClick={onToggleSidebar} aria-label={collapsed ? 'Show sidebar' : 'Hide sidebar'}
             className="p-1.5 rounded-md text-muted-foreground hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground transition-colors">
-            {collapsed ? <PanelLeftOpen className="w-[18px] h-[18px]" strokeWidth={1.5} /> : <PanelLeftClose className="w-[18px] h-[18px]" strokeWidth={1.5} />}
+            {collapsed ? <PanelLeftOpen className="w-4.5 h-4.5" strokeWidth={1.5} /> : <PanelLeftClose className="w-4.5 h-4.5" strokeWidth={1.5} />}
           </button>
         )}
         <span className="truncate">{orgName}</span>
@@ -27,7 +27,7 @@ export function TopBar({
         <button type="button" className="hidden md:flex items-center gap-2 w-64 h-8 px-3 rounded-md border border-border bg-background text-muted-foreground text-[13px]">
           <Search className="w-4 h-4 shrink-0" strokeWidth={1.5} />
           <span className="flex-1 text-left">Search…</span>
-          <kbd className="text-[10px] font-mono border border-border rounded px-1.5 py-0.5">⌘K</kbd>
+          <kbd className="text-[10px] font-mono border border-border rounded-sm px-1.5 py-0.5">⌘K</kbd>
         </button>
         <NotificationBell />
         <Link href="/profile" className="flex items-center gap-2 no-underline text-foreground" title={displayName}>

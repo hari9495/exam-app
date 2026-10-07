@@ -1,0 +1,5239 @@
+[
+ {
+  "id": "US-G-001",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Desk admin sets ticket types, templates and status labels",
+  "story": "As a desk admin, I want ticket types, templates and our own status names, so that each kind of work has the right form and flow.",
+  "acceptance": [
+   "Given incident, service request and question types, then each has its own form and status flow.",
+   "Given a ticket of the wrong type, when an agent converts it, then its history stays and SLA targets restart under the new type.",
+   "Given a template, when an agent or rule applies it, then fields are filled, required or hidden fields are set and its checklist is added.",
+   "Given a custom status label, then it maps to one fixed system state (new, open, pending, on hold, solved) so SLA pause and reports still work."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509.042,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-088"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-002",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Agent uses saved views, boards and bulk actions",
+  "story": "As an agent, I want my own views and actions on many tickets at once, so that I clear the queue fast.",
+  "acceptance": [
+   "Given the list, then I choose columns, filters and sort, also on custom fields, and save views as personal or shared.",
+   "Given the board view, when I drag a card, then its status changes and work-in-progress limits are shown.",
+   "Given many selected tickets, when I assign, change status or priority, tag, merge or close, then it applies to all and each change is audited.",
+   "Given a saved scenario, when I run it on one or many tickets, then all its field changes, note and reply are applied together.",
+   "Given a search, when I export it, then the CSV holds only tickets and fields I may see."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509.083,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-003",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Agent sees requester context beside the ticket",
+  "story": "As an agent, I want the requester's history and assets next to the ticket, so that I do not ask what we already know.",
+  "acceptance": [
+   "Given a ticket, then a side panel shows the requester's other open and recent tickets, their assets and CIs.",
+   "Given the ticket text, then similar incidents and matching known errors are listed.",
+   "Given several tickets, then I can keep them open as tabs.",
+   "Given sensitive tickets of the requester in another queue, then they are not shown to me (YX-HD-03)."
+  ],
+  "rules": [
+   "YX-HD-03"
+  ],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509.125,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-089"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-004",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Watchers, VIPs and tickets raised for someone else",
+  "story": "As a requester, I want to add colleagues, raise tickets for others and have VIPs flagged, so that the right people stay informed.",
+  "acceptance": [
+   "Given a ticket, then requesters and agents can add watchers who get updates; people in CC of an incoming email are added automatically.",
+   "Given a watcher, then they are marked internal-only or external, and internal-only watchers never see private notes.",
+   "Given a ticket raised for someone else, then it keeps 'opened by' and 'requested for', and both can follow it.",
+   "Given a VIP requester, then the ticket is flagged and its priority or routing rule for VIPs applies."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509.167,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-005",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Agent uses side conversations and splits tickets",
+  "story": "As an agent, I want separate threads with other teams or vendors inside the ticket, so that the requester sees only what is meant for them.",
+  "acceptance": [
+   "Given a ticket, when I start a side conversation by email, Teams / Slack or a child ticket, then replies stay attached to the ticket.",
+   "Given a side conversation, then the requester never sees it.",
+   "Given one message in a ticket, when I choose \"new ticket\", then a linked ticket is made from it.",
+   "Given a ticket with two issues, when I split it, then two linked tickets exist with their own SLAs."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509.208,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-006",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Agent adds tasks to incidents and keeps standalone tasks",
+  "story": "As an agent, I want tasks inside incidents and on their own, so that all small work is tracked.",
+  "acceptance": [
+   "Given an incident, then I add tasks with assignee, due date and status.",
+   "Given open tasks, then the incident cannot be resolved until they are done or cancelled.",
+   "Given a task with no ticket, then it shows in a task list with its own status and due date."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509.25,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-007",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Agent closes with resolution codes and escalates by support level",
+  "story": "As a team lead, I want resolution codes and clear L1 / L2 / L3 steps, so that reports show how tickets are solved.",
+  "acceptance": [
+   "Given a resolve action, then a resolution code and a resolution note are required.",
+   "Given an escalation from L1 to L2 or L3, then the step, time and reason are recorded.",
+   "Given reports, then they count tickets by resolution code and by level that solved them."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509.292,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-008",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Desk admin sets reopen rules and requesters open a follow-up",
+  "story": "As a desk admin, I want reopen rules per desk, so that old tickets are handled fairly.",
+  "acceptance": [
+   "Given a desk or category, then I set who may reopen, from which states and for how many days.",
+   "Given the reopen window has passed, when the requester replies, then a follow-up ticket is made and linked to the closed one.",
+   "Given the default, then the 7-day rule of YX-HD-05 applies (YX-HD-05)."
+  ],
+  "rules": [
+   "YX-HD-05"
+  ],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509.333,
+  "points": 2,
+  "priority": 2,
+  "depends": [
+   "US-B-088"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-009",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Agent sets reminders, snoozes tickets and sees a personal calendar",
+  "story": "As an agent, I want reminders, snooze and my own calendar, so that I follow up on time.",
+  "acceptance": [
+   "Given a ticket, then I set a reminder and get notified at that time.",
+   "Given snooze until a date, then the ticket leaves my queue view until then and comes back by itself.",
+   "Given my calendar, then it shows my tasks, changes, reminders and time off and has an iCal feed."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509.375,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-010",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Agent writes rich replies and tags tickets",
+  "story": "As an agent, I want rich replies and tags, so that answers are clear and tickets are easy to find.",
+  "acceptance": [
+   "Given the editor, then I can drag in several files, paste inline images and embed a video link.",
+   "Given tags, then I add free tags to a ticket and use them in filters, rules and reports.",
+   "Given a pasted file, then it goes through the same virus scan as email attachments."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509.417,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-011",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Assignment skips agents who are away, on leave or off shift",
+  "story": "As a team lead, I want automatic assignment to respect leave and shifts, so that tickets do not wait with absent agents.",
+  "acceptance": [
+   "Given an agent on approved leave in YukthiX HR or marked out of office, then round-robin and load-based assignment skip them.",
+   "Given shift hours, then an agent outside their shift gets no new tickets.",
+   "Given an agent, then they can set their own away status and time off.",
+   "Given the team view, then the lead sees who is available now."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509.458,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-087"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-012",
+  "type": "Story",
+  "parent": "FT-B-019",
+  "title": "Desk admin runs several SLA targets on one ticket",
+  "story": "As a desk admin, I want several targets on one ticket, so that every promise is measured.",
+  "acceptance": [
+   "Given a policy, then it can set time to assign, first response, next response after each requester message, and resolution.",
+   "Given a custom measure (time with vendor, time to approve), then it can have its own target.",
+   "Given a ticket, then each target shows its own due time and state."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 514.083,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-094"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-013",
+  "type": "Story",
+  "parent": "FT-B-019",
+  "title": "SLA policy has its own conditions and business hours",
+  "story": "As a desk admin, I want start, pause and stop conditions and hours per policy, so that SLAs fit how each team works.",
+  "acceptance": [
+   "Given a policy, then pause can depend on any field (for example 'waiting for part').",
+   "Given a policy attached late, then the clock can count from ticket creation.",
+   "Given a policy, then it has its own business hours and uses the requester's, team's or site's time zone.",
+   "Given scope rules, then they combine any fields with AND / OR."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 514.167,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-094",
+   "US-B-095"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-014",
+  "type": "Story",
+  "parent": "FT-B-019",
+  "title": "SLA milestones run actions at any percentage",
+  "story": "As a team lead, I want actions at chosen points of the SLA, so that we act early.",
+  "acceptance": [
+   "Given milestones such as 50, 75, 100 and 150 %, then each can have several actions (notify, reassign, raise priority, run a rule).",
+   "Given each target, then it can have its own milestones.",
+   "Given a milestone fires, then the action is logged on the ticket (YX-HD-02)."
+  ],
+  "rules": [
+   "YX-HD-02"
+  ],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 514.25,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-096"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-015",
+  "type": "Story",
+  "parent": "FT-B-019",
+  "title": "Lead tracks period compliance targets and breach reasons",
+  "story": "As a team lead, I want monthly compliance targets and reasons for breaches, so that reports are fair.",
+  "acceptance": [
+   "Given a target like '95 % of P2 solved in 8 h each month', then the report shows progress and an at-risk warning during the month.",
+   "Given a breach, then the agent must give a reason.",
+   "Given an exclusion approved by the lead, then the ticket is left out of SLA counts and the decision is audited."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 514.333,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-098"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-016",
+  "type": "Story",
+  "parent": "FT-B-019",
+  "title": "Agent sees the SLA timeline on the ticket",
+  "story": "As an agent, I want a picture of the SLA clock, so that I understand why time ran or stopped.",
+  "acceptance": [
+   "Given a ticket, then a timeline shows running, paused and breached parts per target.",
+   "Given a pause, then the reason (status or condition) is shown.",
+   "Given the requester view, then only the due time is shown, not internal reasons."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 514.417,
+  "points": 2,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-017",
+  "type": "Story",
+  "parent": "FT-B-020",
+  "title": "Company sends desk email from its own domain and mailbox",
+  "story": "As a desk admin, I want our own mailbox and sending domain, so that emails come from us and reach the inbox.",
+  "acceptance": [
+   "Given Microsoft 365 or Gmail, then the mailbox connects by OAuth for receiving and sending; SMTP / IMAP is also possible.",
+   "Given a sending domain, then a wizard shows the SPF, DKIM and DMARC records and checks them.",
+   "Given bounces, then the admin can see and clear the bounce list for desk addresses.",
+   "Given a failed check, then sending falls back to our address and the admin is told."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 519.071,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-101"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-018",
+  "type": "Story",
+  "parent": "FT-B-020",
+  "title": "Desk admin filters and parses incoming email",
+  "story": "As a desk admin, I want rules on incoming email, so that tickets arrive sorted and filled.",
+  "acceptance": [
+   "Given a filter on sender, domain, subject, header or pattern, then the email is routed, tagged, prioritised or rejected before it becomes a ticket.",
+   "Given parsing rules (key: value lines or patterns), then values are copied into ticket fields.",
+   "Given an address, then it can have a default template."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 519.143,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-101"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-019",
+  "type": "Story",
+  "parent": "FT-B-020",
+  "title": "Requester gets an acknowledgement and replies with commands",
+  "story": "As a requester, I want an instant receipt and simple reply commands, so that I know my ticket number and can act by email.",
+  "acceptance": [
+   "Given a new email ticket, then an acknowledgement per team goes out with the number and suggested articles (YX-HD-04).",
+   "Given a reply with a keyword such as 'close' or 'approve', then the ticket is updated if the sender is allowed.",
+   "Given an agent reply with field keywords, then status, priority or assignee change.",
+   "Given an unknown command, then nothing changes and the sender gets a short help reply."
+  ],
+  "rules": [
+   "YX-HD-04"
+  ],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 519.214,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-020",
+  "type": "Story",
+  "parent": "FT-B-020",
+  "title": "Agents post known-issue banners with a 'me too' button",
+  "story": "As an agent, I want banners for known issues and maintenance, so that people do not raise the same ticket again.",
+  "acceptance": [
+   "Given a banner, then it shows on the portal and help drawer for the chosen audience or location.",
+   "Given 'me too', then the requester is linked to the open incident instead of making a new ticket.",
+   "Given a major incident, then a banner can be posted from it and ends when it is resolved."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 519.286,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-021",
+  "type": "Story",
+  "parent": "FT-B-020",
+  "title": "Public can raise tickets through an open portal safely",
+  "story": "As a desk admin, I want an open portal for people without an account, so that the public can ask for help without abuse.",
+  "acceptance": [
+   "Given open portal mode, then a person submits with an email address and confirms by a link.",
+   "Given a submission, then a bot check and per-sender rate limits apply.",
+   "Given sign-up settings, then only allowed email domains can self-register, or sign-up is by invite only."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 519.357,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-103"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-022",
+  "type": "Story",
+  "parent": "FT-B-020",
+  "title": "Portal shows our look, my time zone and reading aids",
+  "story": "As a requester, I want a portal that looks like my company and fits my needs, so that it is easy to use.",
+  "acceptance": [
+   "Given branding, then the login screen shows the company image and text and the portal uses its theme.",
+   "Given my profile, then all dates and SLA times show in my time zone and locale.",
+   "Given reading aids, then I can switch on a dyslexia-friendly font, reading mask, zoom and focus highlight."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 519.429,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-023",
+  "type": "Story",
+  "parent": "FT-B-021",
+  "title": "Agent links articles in replies and flags outdated ones",
+  "story": "As an agent, I want to insert articles and flag bad ones from the ticket, so that knowledge stays used and correct.",
+  "acceptance": [
+   "Given a reply, then I insert an article link in one click.",
+   "Given a resolved ticket, then it records which article solved it and the article reuse count goes up.",
+   "Given an outdated article, when I flag it, then the author gets a task.",
+   "Given an article, then authors see a health score from use, feedback and flags."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 523.125,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-104"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-024",
+  "type": "Story",
+  "parent": "FT-B-021",
+  "title": "Knowledge lead sees content gaps from searches",
+  "story": "As a knowledge lead, I want a list of searches with no answer, so that we write the articles people need.",
+  "acceptance": [
+   "Given searches with no result or no click, then they are grouped by topic in a report.",
+   "Given tickets closed without an article, then their topics are listed too.",
+   "Given a gap, then it can become an article-request task. Search terms stay without user ids (YX-GRO-07)."
+  ],
+  "rules": [
+   "YX-GRO-07"
+  ],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 523.25,
+  "points": 2,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-025",
+  "type": "Story",
+  "parent": "FT-B-021",
+  "title": "Author uses article templates and reusable blocks",
+  "story": "As an author, I want templates and shared text blocks, so that articles are fast to write and easy to keep right.",
+  "acceptance": [
+   "Given templates (how-to, troubleshooting, FAQ), then a new article starts from one.",
+   "Given a content block such as office address, when it changes, then every article using it shows the new text.",
+   "Given a category, then articles can be pinned or featured and carry video and files."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 523.375,
+  "points": 2,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-026",
+  "type": "Story",
+  "parent": "FT-B-023",
+  "title": "Desk keeps daily KPI snapshots with targets",
+  "story": "As a team lead, I want KPIs stored every day with targets, so that I see trends that cannot be rebuilt later.",
+  "acceptance": [
+   "Given the desk is live, then key KPIs are saved every day from day one.",
+   "Given a KPI, then it has a target and red / amber / green limits.",
+   "Given history, then trend lines and a simple forecast are shown.",
+   "Given a practice (incident, request, change), then a scorecard shows its KPIs."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 527.125,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-027",
+  "type": "Story",
+  "parent": "FT-B-023",
+  "title": "Lead uses a ready report library and time-in-status reports",
+  "story": "As a team lead, I want many ready reports, so that I do not build common reports myself.",
+  "acceptance": [
+   "Given the library, then reports are grouped by practice (incident, request, change, asset, licence, SLA, agent).",
+   "Given an agent, group or requester, then a 360 report shows their tickets, times and ratings.",
+   "Given time-in-status, then I see time per status, team and approval step and where tickets get stuck or skip steps."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 527.25,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-028",
+  "type": "Story",
+  "parent": "FT-B-023",
+  "title": "Team shows live boards on a wall screen",
+  "story": "As a team lead, I want a live board for the team screen, so that everyone sees the queue.",
+  "acceptance": [
+   "Given TV mode, then queue and SLA boards refresh by themselves full screen.",
+   "Given a threshold such as a backlog spike, then the lead gets an alert.",
+   "Given a wall screen, then it signs in with a view-only link that shows no ticket text."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 527.375,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-029",
+  "type": "Story",
+  "parent": "FT-B-024",
+  "title": "Personal data in tickets is found and masked",
+  "story": "As a requester, I want my ID numbers and passwords hidden in tickets, so that my data is safe.",
+  "acceptance": [
+   "Given ticket text or custom fields with Aadhaar, PAN, bank, card, health data or passwords, then they are found and masked in the UI and audit.",
+   "Given AI calls, then masked values are never sent.",
+   "Given reveal rights, when a user unmasks, then the reveal is audited.",
+   "Given chosen custom fields, then they are encrypted at rest and shown only to allowed roles."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 531.1,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-030",
+  "type": "Story",
+  "parent": "FT-B-024",
+  "title": "Admin sees who read what, with fuller audit detail",
+  "story": "As a company admin, I want to see who viewed or searched tickets, so that misuse can be found.",
+  "acceptance": [
+   "Given a ticket view, search or export, then who, what, when and from where is logged.",
+   "Given the audit, then it shows unset vs empty values and email events with CC.",
+   "Given the audit screen, then I filter by user, field and date."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 531.2,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-031",
+  "type": "Story",
+  "parent": "FT-B-024",
+  "title": "Desk admin limits attachment file types",
+  "story": "As a desk admin, I want a list of allowed file types, so that risky files never enter.",
+  "acceptance": [
+   "Given an allow-list, then other file types are refused in portal, email and API (case-insensitive).",
+   "Given a refused file, then the sender is told why.",
+   "Given allowed files, then the virus scan still runs."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 531.3,
+  "points": 1,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-032",
+  "type": "Story",
+  "parent": "FT-B-024",
+  "title": "Standalone desk syncs users and groups from the directory",
+  "story": "As an IT admin at a company without YukthiX HR, I want users and groups from our directory, so that the people list stays current.",
+  "acceptance": [
+   "Given AD / LDAP, Entra ID or Google Workspace, then users and attributes (department, manager) sync on a schedule, on top of SCIM.",
+   "Given a directory group, then it can map to a desk team or role.",
+   "Given a disabled user, then their desk access ends.",
+   "Given rules or approvals, then they can look up a user's group membership (read only)."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 531.4,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-121"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-033",
+  "type": "Story",
+  "parent": "FT-B-026",
+  "title": "Collaborators join tickets without a full agent seat",
+  "story": "As a desk admin, I want collaborators who help on tickets, so that experts can help without a full seat.",
+  "acceptance": [
+   "Given the collaborator role, then the person can view tickets shared with them, add internal notes and work assigned tasks.",
+   "Given a collaborator, then they cannot own a ticket or reply to the requester.",
+   "Given billing, then collaborators are listed apart from agents and priced per the founder decision on collaborators."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 539.15,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-122"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-034",
+  "type": "Story",
+  "parent": "FT-B-026",
+  "title": "New desk admin follows a guided set-up",
+  "story": "As a new desk admin, I want a set-up checklist and wizard, so that the desk is ready in an hour.",
+  "acceptance": [
+   "Given a new desk, then a wizard sets up queues, SLAs and the support email.",
+   "Given the checklist, then each step shows done or to do.",
+   "Given product updates, then a feed in the app shows what is new with help links."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 539.3,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-001",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Customer accounts, entitlements and company groups",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 539.725
+ },
+ {
+  "id": "US-G-035",
+  "type": "Story",
+  "parent": "FT-G-001",
+  "title": "Agent manages customer organisations and contacts",
+  "story": "As an agent, I want customers grouped into organisations, so that I see the whole account.",
+  "acceptance": [
+   "Given an organisation, then it has contacts, an account owner, sites and shared fields.",
+   "Given a contact, then they can belong to several organisations.",
+   "Given a customer admin contact, then they can see and follow all their organisation's tickets in the portal.",
+   "Given reports, then they can be cut by organisation."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 539.726,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-103"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-036",
+  "type": "Story",
+  "parent": "FT-G-001",
+  "title": "Customer's support plan drives SLA and routing",
+  "story": "As a team lead, I want support plans per customer, so that we give each customer what they bought.",
+  "acceptance": [
+   "Given a plan, then it has tier, hours or tickets allowed, channels, SLA and expiry.",
+   "Given a ticket, then the plan shows on it and sets SLA and routing.",
+   "Given a plan near its end or used up, then the account owner is alerted and new tickets are flagged or held per the setting."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 539.727,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-037",
+  "type": "Story",
+  "parent": "FT-G-001",
+  "title": "Company groups share settings with sub-companies",
+  "story": "As a group IT head, I want sub-companies inside our company, so that one desk serves the whole group.",
+  "acceptance": [
+   "Given a parent and sub-companies, then settings, rules and SLAs are inherited unless changed lower down.",
+   "Given an agent, then they can be limited to some sub-companies.",
+   "Given a requester, then they see only their own sub-company's catalogue and articles unless shared."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 539.728,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-038",
+  "type": "Story",
+  "parent": "FT-G-001",
+  "title": "Tickets are tagged to products with their own KB and SLAs",
+  "story": "As a support lead, I want tickets per product, so that each product team sees its work.",
+  "acceptance": [
+   "Given products or modules, then tickets carry one.",
+   "Given a product, then it can have its own articles and SLA.",
+   "Given reports, then they can be cut by product."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 539.729,
+  "points": 2,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-039",
+  "type": "Story",
+  "parent": "FT-B-027",
+  "title": "Forms show, hide and require fields by earlier answers",
+  "story": "As a desk admin, I want smart forms, so that requesters see only the questions that apply.",
+  "acceptance": [
+   "Given form rules, then fields are shown, hidden, required, locked, defaulted or filtered by other answers, the requester profile or the item.",
+   "Given a questionnaire, then it can be reused in several items.",
+   "Given the company library, then shared fields, forms and rules are defined once and used by every desk, which can add its own."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 543.062,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-124"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-040",
+  "type": "Story",
+  "parent": "FT-B-027",
+  "title": "Forms offer pickers for my assets, people and places",
+  "story": "As a requester, I want to pick my device or cost centre from a list, so that I do not type wrong values.",
+  "acceptance": [
+   "Given an asset picker, then I see only my own assets.",
+   "Given people, location, cost centre or CMDB pickers, then choices come from live data.",
+   "Given cascading fields, then the second list depends on the first."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 543.125,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-041",
+  "type": "Story",
+  "parent": "FT-B-027",
+  "title": "Requester orders several items in one cart or through an order guide",
+  "story": "As a requester, I want a cart and guided ordering, so that I ask once for all I need.",
+  "acceptance": [
+   "Given the cart, then I add several items with quantities and options and check out once.",
+   "Given checkout, then each item gets its own approvals and tasks.",
+   "Given an order guide, when I answer a few questions (role, location), then the right items are added.",
+   "Given a request for someone else, then the cart is raised for them."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 543.188,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-042",
+  "type": "Story",
+  "parent": "FT-B-027",
+  "title": "Catalogue pages are rich and requesters track stages",
+  "story": "As a requester, I want clear item pages and a stage tracker, so that I know what I get and when.",
+  "acceptance": [
+   "Given an item page, then it shows images, video, documents, delivery time and ratings.",
+   "Given my request, then I see stages: submitted, approval, fulfilment, delivered.",
+   "Given fulfilment has not started, then I can cancel."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 543.25,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-043",
+  "type": "Story",
+  "parent": "FT-B-027",
+  "title": "Approvers act from chat cards and get reminders",
+  "story": "As an approver, I want to approve from Teams, Slack or a push, so that requests are not stuck.",
+  "acceptance": [
+   "Given an approval, then a Teams or Slack card and a mobile push let me approve or reject with a comment.",
+   "Given no answer, then reminders go at set intervals.",
+   "Given a timeout, then the request is auto-approved, auto-rejected or escalated per the item setting.",
+   "Given approved leave in YukthiX HR, then approvals go to my delegate (as in US-C-005)."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 543.312,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-125"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-044",
+  "type": "Story",
+  "parent": "FT-B-027",
+  "title": "Group approvals use a quorum",
+  "story": "As a desk admin, I want group approvals with a quorum, so that committees decide properly.",
+  "acceptance": [
+   "Given a group, then the rule is any one, all, N of M or a percentage.",
+   "Given the quorum reached, then the step closes and others are told.",
+   "Given a rejection rule, then one reject can stop the request if set."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 543.375,
+  "points": 2,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-045",
+  "type": "Story",
+  "parent": "FT-B-027",
+  "title": "Request creates documents and collects e-signatures",
+  "story": "As an HR agent, I want documents made from templates inside a request, so that paperwork is done in the same flow.",
+  "acceptance": [
+   "Given a template (hand-over form, NOC), then a document is made with request data (P05).",
+   "Given e-sign, then the person signs and the signed copy is stored on the request.",
+   "Given a signature still pending, then the request waits."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 543.438,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-046",
+  "type": "Story",
+  "parent": "FT-B-028",
+  "title": "Agent moves or shares a ticket with another desk",
+  "story": "As an agent, I want to hand over or share a ticket with another desk, so that it reaches the right team without losing context.",
+  "acceptance": [
+   "Given a move to another desk, then fields are mapped and the new desk's privacy, SLA and category apply, with audit.",
+   "Given forwarding rules, then only allowed desk pairs can forward.",
+   "Given sharing, then the other team gets view, comment or full access while my team keeps ownership.",
+   "Given a sensitive ticket, then it can be moved only to a desk allowed to hold that category (YX-HD-03)."
+  ],
+  "rules": [
+   "YX-HD-03"
+  ],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 545.083,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-047",
+  "type": "Story",
+  "parent": "FT-B-028",
+  "title": "Desk admin clones a desk and delegates its admin",
+  "story": "As a company admin, I want to copy a desk set-up and give its admin to the desk lead, so that new desks start fast and safely.",
+  "acceptance": [
+   "Given a desk, then its set-up can be cloned into a new desk.",
+   "Given tickets or settings, then they can be moved between desks with audit.",
+   "Given a desk admin, then they can change only their own desk."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 545.167,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-048",
+  "type": "Story",
+  "parent": "FT-B-028",
+  "title": "HR agent sees the employee summary beside a case",
+  "story": "As an HR agent, I want the employee's basic HR facts beside the case, so that I help without switching screens.",
+  "acceptance": [
+   "Given an HR case, then grade, manager, location and tenure show beside it.",
+   "Given hidden fields for my role, then they are not shown.",
+   "Given the standalone desk without HR, then the panel shows the light people list only."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 545.25,
+  "points": 2,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-049",
+  "type": "Story",
+  "parent": "FT-B-028",
+  "title": "Employee journeys coordinate transfers, promotions and leave",
+  "story": "As an HR admin, I want journeys for life events, so that every team does its part on time.",
+  "acceptance": [
+   "Given transfer, promotion, move, leave or return in M01, then a journey starts with tasks for HR, IT, Facilities, Payroll and Security.",
+   "Given variants by region, role or unit, then the right task set is used.",
+   "Given the journey tracker, then employee, manager and HR see where it stands."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 545.333,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-127"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-050",
+  "type": "Story",
+  "parent": "FT-B-028",
+  "title": "Branches get their own hours, groups and admins",
+  "story": "As a company admin, I want branch-level set-up, so that each site runs its own way.",
+  "acceptance": [
+   "Given a site, then it has its own hours, holidays, groups, workflows and admins.",
+   "Given a requester's site, then tickets use that site's set-up.",
+   "Given a site admin, then they change only their site."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 545.417,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-051",
+  "type": "Story",
+  "parent": "FT-B-029",
+  "title": "Admin installs automation recipes and traces rule runs",
+  "story": "As a desk admin, I want ready recipes and a clear rule trace, so that automation is quick to set and easy to fix.",
+  "acceptance": [
+   "Given the recipe library, then a recipe installs in one click as a draft rule.",
+   "Given a rule run, then the trace shows each condition, pass or fail and what changed.",
+   "Given run-count limits, then a rule over its limit stops and the admin is told."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 547.083,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-130"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-052",
+  "type": "Story",
+  "parent": "FT-B-029",
+  "title": "Recurring tickets are created on a schedule",
+  "story": "As a team lead, I want tickets made on a schedule, so that routine checks are never forgotten.",
+  "acceptance": [
+   "Given a template and a pattern (daily, weekly, monthly, yearly), then tickets are created with assignee and SLA.",
+   "Given a run that was not created or not done, then it shows as missed.",
+   "Given a schedule, then it can be paused or ended."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 547.167,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-053",
+  "type": "Story",
+  "parent": "FT-B-029",
+  "title": "Desk sends timed message sequences",
+  "story": "As a desk admin, I want timed follow-up messages, so that requesters are reminded without manual work.",
+  "acceptance": [
+   "Given a sequence, then it has steps with delays and messages.",
+   "Given the requester replies or the ticket closes, then the sequence stops.",
+   "Given notification preferences, then they are respected."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 547.25,
+  "points": 2,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-054",
+  "type": "Story",
+  "parent": "FT-B-029",
+  "title": "Agent asks for approval on any ticket; only the assignee completes tasks",
+  "story": "As an agent, I want ad-hoc approvals and safe task completion, so that actions are approved and owned.",
+  "acceptance": [
+   "Given any ticket, problem or task, then I can ask a named person to approve.",
+   "Given the answer, then it is recorded on the ticket.",
+   "Given a task or approval, then only its assignee or group can complete it, even if others can see it."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 547.333,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-055",
+  "type": "Story",
+  "parent": "FT-B-029",
+  "title": "Agent follows a step-by-step runbook on the ticket",
+  "story": "As an agent, I want runbooks on tickets, so that I follow the right steps every time.",
+  "acceptance": [
+   "Given a rule or my choice, then a runbook is attached to the ticket.",
+   "Given a step, then it can ask for values in form fields with show / hide / require logic.",
+   "Given a step that calls an integration, then it uses only approved integration steps; nothing runs on devices (Q4).",
+   "Given progress, then done steps and values are saved on the ticket."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 547.417,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-056",
+  "type": "Story",
+  "parent": "FT-B-030",
+  "title": "Agent logs interactions that may not need a ticket",
+  "story": "As an agent, I want a light record for each contact, so that first-contact resolution is measured honestly.",
+  "acceptance": [
+   "Given a chat, call or walk-up, then an interaction record is made.",
+   "Given a quick answer, then it closes without a ticket.",
+   "Given more work is needed, then it becomes an incident or request with the history."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 551.1,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-057",
+  "type": "Story",
+  "parent": "FT-B-030",
+  "title": "Agents work tickets inside Teams or Slack",
+  "story": "As an agent, I want to work tickets from Teams or Slack, so that I do not switch tools.",
+  "acceptance": [
+   "Given the bot, then I can view, claim, reply, add notes and approve.",
+   "Given workflow alerts, approvals or nudges, then the bot messages the right agent or user.",
+   "Given my rights, then the bot shows only what I may see."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 551.2,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-134"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-058",
+  "type": "Story",
+  "parent": "FT-B-030",
+  "title": "Requester uses two-way SMS",
+  "story": "As a requester, I want to raise and reply to tickets by SMS, so that I get help without data or apps.",
+  "acceptance": [
+   "Given the company's SMS number (P04), then an SMS creates or updates a ticket.",
+   "Given an agent reply, then it goes back by SMS.",
+   "Given opt-out words, then SMS stops for that number."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 551.3,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-059",
+  "type": "Story",
+  "parent": "FT-B-030",
+  "title": "Chat gets pre-chat forms, rich messages and proactive prompts",
+  "story": "As a requester, I want a richer chat, so that I get help faster.",
+  "acceptance": [
+   "Given a pre-chat form, then my details reach the agent first.",
+   "Given chat, then buttons, cards and files can be sent and the chat can move to another team.",
+   "Given a page or user trigger, then a proactive message can offer help or show an outage notice.",
+   "Given the end of a chat, then I can rate it."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 551.4,
+  "points": 5,
+  "priority": 3,
+  "depends": [
+   "US-B-132"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-060",
+  "type": "Story",
+  "parent": "FT-B-031",
+  "title": "Admin builds no-code integration steps",
+  "story": "As a desk admin, I want to call other systems without code, so that fulfilment and rules do real work.",
+  "acceptance": [
+   "Given an integration step, then it has a sequence of HTTP calls with stored, masked credentials, variables, conditions and retries.",
+   "Given a response, then values map back into ticket fields.",
+   "Given rules, catalogue fulfilment and AI agents, then they can use the steps.",
+   "Given an integration, then it has an on / off switch and failures show on Jobs & errors.",
+   "Given steps that change identity systems, then they stay off until the founder decision on identity actions."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.05,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-B-131"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-061",
+  "type": "Story",
+  "parent": "FT-B-031",
+  "title": "Agent escalates a ticket to Jira, GitHub or Azure DevOps",
+  "story": "As an agent, I want to send a bug to engineering from the ticket, so that the ticket updates when the fix is done.",
+  "acceptance": [
+   "Given a ticket, then I create a linked issue in Jira, GitHub or Azure DevOps.",
+   "Given the link, then status and comments sync both ways.",
+   "Given the issue is fixed, then the ticket is updated and the requester can be told.",
+   "Given several Jira connections, then each desk picks its own."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.1,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-062",
+  "type": "Story",
+  "parent": "FT-B-031",
+  "title": "Desk admin designs ticket lifecycles visually",
+  "story": "As a desk admin, I want a visual lifecycle editor, so that each desk has the flow it needs.",
+  "acceptance": [
+   "Given the designer, then I drag statuses and allowed moves.",
+   "Given a move, then I set required fields and who may make it.",
+   "Given desks or ticket types, then each can have its own lifecycle; old tickets keep their version."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.15,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-063",
+  "type": "Story",
+  "parent": "FT-B-031",
+  "title": "Desk admin uses more field types and form layout",
+  "story": "As a desk admin, I want more field types and layout, so that forms capture clean data.",
+  "acceptance": [
+   "Given field types email, number range, phone, URL, dependent list and reference to user, asset or CI, then each validates input.",
+   "Given form layout, then sections, separators and columns can be added.",
+   "Given these fields, then they work in filters, sort and search."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.2,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-137"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-064",
+  "type": "Story",
+  "parent": "FT-B-031",
+  "title": "Desk admin creates custom record types",
+  "story": "As a desk admin, I want our own record types, so that we track things the desk does not know by default.",
+  "acceptance": [
+   "Given a new type (for example key register), then it has fields, forms, lists and permissions.",
+   "Given lookups, then it links to tickets, users and assets.",
+   "Given rules and reports, then they can use the new type.",
+   "Given RLS, then the new records are walled off per company like all desk tables."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.25,
+  "points": 8,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-065",
+  "type": "Story",
+  "parent": "FT-B-031",
+  "title": "Audit log streams to the company SIEM",
+  "story": "As a security admin, I want desk audit events in our SIEM, so that we watch the desk with our other systems.",
+  "acceptance": [
+   "Given syslog, webhook, Sentinel or Splunk, then audit events stream there signed.",
+   "Given a failure, then events are kept and retried and shown on Jobs & errors.",
+   "Given the stream, then masked values stay masked."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.3,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-066",
+  "type": "Story",
+  "parent": "FT-B-031",
+  "title": "Ticket screen changes by type, desk or brand",
+  "story": "As a desk admin, I want screen layouts per type, desk or brand, so that agents see what matters.",
+  "acceptance": [
+   "Given a layout, then fields, panels and reply templates are chosen per ticket type, desk or brand.",
+   "Given no layout, then the default is used.",
+   "Given layout changes, then they are audited."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.35,
+  "points": 2,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-067",
+  "type": "Story",
+  "parent": "FT-B-031",
+  "title": "Analyst reads desk data in BI tools",
+  "story": "As a data analyst, I want desk data in Power BI or similar, so that we join it with other data.",
+  "acceptance": [
+   "Given a BI connection, then a read-only dataset with custom fields is available.",
+   "Given a schedule, then exports can also be sent to the company storage.",
+   "Given rights, then sensitive tickets and masked fields stay out unless allowed."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.4,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-002",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Agent mobile app, help widget and employee centre",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.575
+ },
+ {
+  "id": "US-G-068",
+  "type": "Story",
+  "parent": "FT-G-002",
+  "title": "Agent works the queue from the mobile app",
+  "story": "As an agent, I want the desk on my phone, so that I can act away from my desk.",
+  "acceptance": [
+   "Given the app, then I see my queues, reply, add notes, change status and approve.",
+   "Given an SLA warning, then I get a push.",
+   "Given poor network, then I can draft offline and send later.",
+   "Given a manager, then live KPIs and SLA alerts show in the app."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.576,
+  "points": 8,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-069",
+  "type": "Story",
+  "parent": "FT-G-002",
+  "title": "Customer embeds the help widget in its site or app",
+  "story": "As a standalone desk customer, I want our help widget on our website and app, so that customers get help where they are.",
+  "acceptance": [
+   "Given the widget, then it offers KB search, ticket raise and track, chat and bot.",
+   "Given a signed-in user, then their identity is passed in a signed token.",
+   "Given iOS and Android SDKs, then the same works inside apps."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.577,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-070",
+  "type": "Story",
+  "parent": "FT-G-002",
+  "title": "Employee uses one personalised service centre",
+  "story": "As an employee, I want one place for all desks with my to-dos, so that I find help quickly.",
+  "acceptance": [
+   "Given the centre, then items and articles are shown by my audience.",
+   "Given my to-dos, then pending approvals, tasks and surveys are listed.",
+   "Given a page builder, then admins set home pages and tiles by role, department or location, including service status and booking."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.578,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-099"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-071",
+  "type": "Story",
+  "parent": "FT-G-002",
+  "title": "Company runs several brands with their own help centres",
+  "story": "As a company admin, I want several brands, so that each product line has its own look.",
+  "acceptance": [
+   "Given a brand, then it has its own help centre, domain, support address, theme and templates.",
+   "Given one agent team, then they work all brands.",
+   "Given themes, then a code-level template can be used."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.579,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-003",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Knowledge quality, audiences and surveys",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.65
+ },
+ {
+  "id": "US-G-072",
+  "type": "Story",
+  "parent": "FT-G-003",
+  "title": "Knowledge follows KCS quality checks",
+  "story": "As a knowledge lead, I want article quality scores, so that articles keep improving.",
+  "acceptance": [
+   "Given article states and agent flags, then each article has a quality index.",
+   "Given a review, then the reviewer adds coaching notes for the author.",
+   "Given reuse counts, then the report shows articles that solve most tickets."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.651,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-073",
+  "type": "Story",
+  "parent": "FT-G-003",
+  "title": "Articles are shown by department, location, role or desk",
+  "story": "As a knowledge lead, I want finer article audiences, so that people see only what applies.",
+  "acceptance": [
+   "Given an article, then its audience can be department, location, role or desk.",
+   "Given search and suggestions, then they respect the audience.",
+   "Given no audience, then the agent-only / public rule applies."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.652,
+  "points": 2,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-074",
+  "type": "Story",
+  "parent": "FT-G-003",
+  "title": "Desk admin builds surveys",
+  "story": "As a desk admin, I want my own surveys, so that we learn more than one rating.",
+  "acceptance": [
+   "Given a survey, then it has several questions, types (CSAT, NPS, CES) and branching.",
+   "Given send rules, then surveys go per desk or item with delay, sampling and throttling per requester.",
+   "Given surveys not tied to a ticket, then they can go to a segment.",
+   "Given results, then they are cut by agent, team and service and can trigger rules."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.653,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-108"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-004",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Agent presence, capacity and shifts",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.725
+ },
+ {
+  "id": "US-G-075",
+  "type": "Story",
+  "parent": "FT-G-004",
+  "title": "Agents set presence and work is pushed by capacity",
+  "story": "As a team lead, I want work pushed to free agents, so that load is balanced in real time.",
+  "acceptance": [
+   "Given presence (online, away, busy, offline), then it shows to leads.",
+   "Given capacity per channel (for example 3 chats, 10 tickets), then new work goes to the best available agent.",
+   "Given an agent at capacity or away, then they get no new pushed work."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.726,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-087"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-076",
+  "type": "Story",
+  "parent": "FT-G-004",
+  "title": "Lead plans shifts and sees staff forecasts",
+  "story": "As a team lead, I want shift rosters and forecasts, so that enough people are on duty.",
+  "acceptance": [
+   "Given rosters, then shifts can be set or imported from CSV.",
+   "Given the live view, then capacity and load per team show.",
+   "Given history, then volume and staff needed are forecast per day."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.727,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-077",
+  "type": "Story",
+  "parent": "FT-G-004",
+  "title": "Lead sees availability and productivity reports",
+  "story": "As a team lead, I want agent time and output reports, so that I coach fairly.",
+  "acceptance": [
+   "Given the report, then time online, away and busy, handle time and replies per hour are shown.",
+   "Given time logs, then billable vs non-billable and time vs capacity are shown.",
+   "Given cost rates, then cost per ticket is shown."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.728,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-005",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Client contracts and billable time",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.8
+ },
+ {
+  "id": "US-G-078",
+  "type": "Story",
+  "parent": "FT-G-005",
+  "title": "Account manager records client contracts and prepaid blocks",
+  "story": "As an account manager, I want client contracts of every type, so that we bill what we agreed.",
+  "acceptance": [
+   "Given contract types (fixed fee, hourly, block of hours or money, per device or user, project), then a client can hold several.",
+   "Given billable time, then it draws down the block.",
+   "Given a low or used-up balance, then client and account manager are alerted and overage rules apply."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.801,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-079",
+  "type": "Story",
+  "parent": "FT-G-005",
+  "title": "Agents log billable time with rates and submit timesheets",
+  "story": "As an agent, I want billable time with rates, so that clients are billed right.",
+  "acceptance": [
+   "Given a time entry, then it has billable or not, work type and rate.",
+   "Given rates by role, client and after-hours, then the right one applies.",
+   "Given a weekly timesheet, then a lead approves it before billing.",
+   "Given timers, then they can start by themselves when a ticket is opened."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.802,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-091"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-006",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Business service catalogue",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.875
+ },
+ {
+  "id": "US-G-080",
+  "type": "Story",
+  "parent": "FT-G-006",
+  "title": "Service owner publishes business services",
+  "story": "As a service owner, I want a list of our business services, so that everyone knows what we offer and at what level.",
+  "acceptance": [
+   "Given a service, then it has owner, description, hours, support team, SLA, cost, consumers and status (pipeline, live, retired).",
+   "Given requests, incidents and CIs, then they can link to a service.",
+   "Given the portfolio view, then investment against value is shown per service."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.876,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-081",
+  "type": "Story",
+  "parent": "FT-B-032",
+  "title": "Problem manager runs problem tasks and states",
+  "story": "As a problem manager, I want tasks and fuller states, so that investigations are organised.",
+  "acceptance": [
+   "Given a problem, then tasks go to several groups with due dates.",
+   "Given 'risk accepted' or 'fix deferred', then the problem can rest in that state with a reason.",
+   "Given a problem, then it has a priority and a business-impact or cost estimate."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 556.125,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-138"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-082",
+  "type": "Story",
+  "parent": "FT-B-032",
+  "title": "Problem manager sees trends that suggest problems",
+  "story": "As a problem manager, I want trend reports, so that we fix causes before more incidents.",
+  "acceptance": [
+   "Given recurring categories, CIs, resolution codes and alert clusters, then a report flags them.",
+   "Given a cluster, then 'create problem' links its incidents.",
+   "Given a fixed problem, then incidents avoided after the fix are counted."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 556.25,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-083",
+  "type": "Story",
+  "parent": "FT-B-032",
+  "title": "Requesters see known errors and fix status",
+  "story": "As a requester, I want to see known issues and when they are fixed, so that I do not chase.",
+  "acceptance": [
+   "Given a published known error, then its workaround shows on the portal and status page.",
+   "Given a ticket linked to a bug, then its status shows to the requester.",
+   "Given the fix ships, then linked requesters get a notice."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 556.375,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-084",
+  "type": "Story",
+  "parent": "FT-B-033",
+  "title": "Proven low-risk changes are auto-approved",
+  "story": "As a change manager, I want auto-approval for proven changes, so that CAB time goes to risky work.",
+  "acceptance": [
+   "Given past results per team and model, then a success score is kept.",
+   "Given a low risk score, low service criticality and a good success score, then the change is auto-approved.",
+   "Given an auto-approval, then the reason is recorded."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 561.056,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-142"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-085",
+  "type": "Story",
+  "parent": "FT-B-033",
+  "title": "Pipelines create and gate change records",
+  "story": "As a developer, I want my pipeline to raise and wait for change approval, so that deploys follow change rules without manual forms.",
+  "acceptance": [
+   "Given GitHub Actions, GitLab, Azure DevOps, Jenkins or similar, then a deploy creates and fills a change record through the API.",
+   "Given a standard change, then it approves and closes by policy (tests passed, outside freeze).",
+   "Given a normal change, then the pipeline waits until approval.",
+   "Given the result, then success or failure is recorded on the change."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 561.111,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-B-136"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-086",
+  "type": "Story",
+  "parent": "FT-B-033",
+  "title": "Change calendar checks CI windows, dependents and busy days",
+  "story": "As a change manager, I want better clash checks, so that changes do not hit busy times.",
+  "acceptance": [
+   "Given maintenance windows per CI or service, then a change outside them is flagged.",
+   "Given CMDB relations, then changes on dependent CIs at the same time are shown as clashes.",
+   "Given business events such as payroll day, then changes on those days are flagged."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 561.167,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-144"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-087",
+  "type": "Story",
+  "parent": "FT-B-033",
+  "title": "Discovery flags unauthorised changes and drift",
+  "story": "As a change manager, I want unplanned changes found, so that nothing changes without approval.",
+  "acceptance": [
+   "Given discovery sees new software, hardware or config change with no approved change, then it is flagged for review.",
+   "Given a CI baseline, then a drift raises an alert or ticket.",
+   "Given a flagged item, then it can be linked to a change or accepted with a reason."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 561.222,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-150"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-088",
+  "type": "Story",
+  "parent": "FT-B-033",
+  "title": "Change manager designs a workflow per change model",
+  "story": "As a change manager, I want a workflow per change model, so that each kind of change follows its own path.",
+  "acceptance": [
+   "Given the designer, then stages (plan, CAB, implement, review) have approvers, tasks, required fields and notices.",
+   "Given a template, then it picks its workflow.",
+   "Given affected CIs and services, then their owners are added as approvers by themselves."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 561.278,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-089",
+  "type": "Story",
+  "parent": "FT-B-033",
+  "title": "Change tasks follow an order; calendar is shared",
+  "story": "As a change manager, I want ordered change tasks and a shared calendar, so that work happens in the right order.",
+  "acceptance": [
+   "Given tasks, then each has planned start and end and dependencies.",
+   "Given recurring changes, then they are created on a schedule.",
+   "Given an iCal feed, then the change calendar shows in Outlook or Google."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 561.333,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-090",
+  "type": "Story",
+  "parent": "FT-B-033",
+  "title": "Standard changes are ordered from a change catalogue",
+  "story": "As an engineer, I want standard changes as catalogue items, so that safe changes are fast.",
+  "acceptance": [
+   "Given a standard change, then it is published as an orderable item with its form.",
+   "Given an order, then the pre-approved workflow starts.",
+   "Given access, then only technical staff see the change catalogue."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 561.389,
+  "points": 2,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-091",
+  "type": "Story",
+  "parent": "FT-B-033",
+  "title": "Affected users get planned outage notices",
+  "story": "As an employee, I want notice of planned outages that affect me, so that I can plan around them.",
+  "acceptance": [
+   "Given an approved change with downtime, then users of affected services (through the CMDB) are told.",
+   "Given the change, then a maintenance post goes to the status page and a portal banner.",
+   "Given the status page, then each component shows its uptime history."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 561.444,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-163"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-092",
+  "type": "Story",
+  "parent": "FT-B-034",
+  "title": "Release manager runs go / no-go checks",
+  "story": "As a release manager, I want release types and readiness checks, so that we release only when ready.",
+  "acceptance": [
+   "Given release types (major, minor, emergency), then each has phases and milestones.",
+   "Given a readiness checklist, then the go / no-go decision is recorded with who decided.",
+   "Given Jira or GitHub, then versions and work items are linked."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 562.125,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-146"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-093",
+  "type": "Story",
+  "parent": "FT-B-034",
+  "title": "Releases show deployments per environment and code links",
+  "story": "As a release manager, I want what is deployed where, so that we can trace any version.",
+  "acceptance": [
+   "Given environments (dev, test, staging, prod), then deployments are tracked per environment with version.",
+   "Given commits, pull requests and builds, then they show on changes and releases.",
+   "Given CIs, then they show the version deployed."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 562.25,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-094",
+  "type": "Story",
+  "parent": "FT-B-034",
+  "title": "Release keeps tests, sign-off, approved versions and notes",
+  "story": "As a release manager, I want test plans and release notes, so that quality is proven and users know what changed.",
+  "acceptance": [
+   "Given a test plan, then test cases, results, defects and UAT sign-off are kept and linked.",
+   "Given approved software versions, then they are kept in a library.",
+   "Given release notes, then they publish to the portal or KB."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 562.375,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-095",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Discovered software is normalised",
+  "story": "As an asset manager, I want clean software names, so that licence counts are right.",
+  "acceptance": [
+   "Given discovered titles, then they map to publisher, product, version and edition.",
+   "Given variants, then they merge by themselves.",
+   "Given an admin, then normalisation can be overridden or switched off per item."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.026,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-150"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-096",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Devices from many sources are matched with source priority",
+  "story": "As an IT admin, I want one record per device from all sources, so that the register is trusted.",
+  "acceptance": [
+   "Given osquery, MDM, probe, CSV, cloud and finance sources, then rules match records per CI type by chosen attributes.",
+   "Given conflicts, then source priority per field decides, and a duplicate queue shows the rest.",
+   "Given import rules, then owner, location or company are set by IP range or host name.",
+   "Given gaps (in finance but never seen, seen but not in MDM), then they are reported with a data-quality score."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.053,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-B-154"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-097",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Asset manager reclaims unused licences and seats",
+  "story": "As an asset manager, I want to reclaim unused licences, so that we do not pay for idle seats.",
+  "acceptance": [
+   "Given licence metrics (user, device, core, concurrent, subscription), then compliance uses the right one.",
+   "Given no use for N days, then the seat is proposed for reclaim.",
+   "Given reclaim, then it needs approval and the user is told first."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.079,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-153"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-098",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "IT admin finds and manages SaaS apps",
+  "story": "As an IT admin, I want a list of SaaS apps in use, so that we control shadow IT and cost.",
+  "acceptance": [
+   "Given SSO sign-in data (Entra, Google, Okta) and expense or invoice imports, then SaaS apps in use are found (read only).",
+   "Given each app, then seats, last use per user, vendor, category and renewal are shown.",
+   "Given an exit, then the leaver's SaaS seats are listed for removal.",
+   "Given a renewal, then an alert suggests seat counts from use."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.105,
+  "points": 8,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-099",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Asset manager keeps stock, consumables and reorder levels",
+  "story": "As an asset manager, I want stock rooms and consumables, so that we never run out.",
+  "acceptance": [
+   "Given models and stock rooms, then stock levels per model and room are shown.",
+   "Given consumables, then they are tracked by quantity and issued against tickets.",
+   "Given a reorder level, then a low-stock alert and a draft purchase request are made.",
+   "Given transfers, then stock moves between rooms with history."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.132,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-100",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Staff borrow loaner assets",
+  "story": "As an employee, I want to borrow a laptop or projector, so that I have it when I need it.",
+  "acceptance": [
+   "Given a loaner pool, then I book an item for a period.",
+   "Given the due date, then reminders go and overdue items escalate.",
+   "Given return, then condition notes are saved and history is kept."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.158,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-101",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Asset manager runs physical verification",
+  "story": "As an asset manager, I want audits by location, so that the register matches reality.",
+  "acceptance": [
+   "Given a campaign per location, then staff scan tags with the mobile app or employees confirm their assets.",
+   "Given results, then a found / missing / unexpected / moved report is made.",
+   "Given exceptions, then they can be fixed in bulk with audit."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.184,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-148"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-102",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Asset manager disposes assets with certificates",
+  "story": "As an asset manager, I want a proper disposal flow, so that we follow the law and books are right.",
+  "acceptance": [
+   "Given disposal, then a data-wipe or destruction certificate is required.",
+   "Given e-waste, then vendor hand-over and its certificate are kept (India E-Waste Rules).",
+   "Given sale or write-off, then the value goes to the depreciation books."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.211,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-103",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Warranty is looked up; certificates and domains are tracked",
+  "story": "As an asset manager, I want warranty and certificate dates filled in, so that nothing expires by surprise.",
+  "acceptance": [
+   "Given a serial number, then warranty is looked up from the maker (Dell, Lenovo, HP) or marked unknown.",
+   "Given TLS certificates and domains, then issuer, expiry and owner are kept.",
+   "Given an expiry near, then a renewal ticket is created."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.237,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-104",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Asset shows read-only patch and security status",
+  "story": "As an IT admin, I want patch and security state on each asset, so that we see risk without remote control.",
+  "acceptance": [
+   "Given osquery and imports from the company's tools, then OS and patch level, encryption, AV and end-of-life OS are shown.",
+   "Given a finding, then a ticket or change is created.",
+   "Given any fix, then it is done in the company's own tools; YukthiX sends no commands (Q4)."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.263,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-151"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-105",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Asset manager sees cost of ownership",
+  "story": "As a finance user, I want cost of ownership per asset and model, so that we buy smarter.",
+  "acceptance": [
+   "Given an asset, then purchase, repairs, contracts, ticket time and depreciation add up to its TCO.",
+   "Given a model, then average TCO is shown.",
+   "Given a report, then it can be exported."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.289,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-106",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Cloud resources and other inventory tools are imported",
+  "story": "As an IT admin, I want cloud and other tool data in the register, so that the CMDB is complete.",
+  "acceptance": [
+   "Given AWS, Azure, GCP or VMware read-only keys, then VMs, databases, storage and load balancers import as CIs with tags and cost.",
+   "Given Lansweeper, Device42, SCCM or Snipe-IT, then their data can be imported.",
+   "Given a schedule, then imports refresh and removed resources are marked."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.316,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-107",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Software policy flags banned software",
+  "story": "As an IT admin, I want allowed and banned software lists, so that we act on risky software.",
+  "acceptance": [
+   "Given a banned title found by discovery, then an alert and ticket are created.",
+   "Given unlicensed software, then it is flagged too.",
+   "Given removal, then it is done by the company; YukthiX only reports (Q4)."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.342,
+  "points": 2,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-108",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Admin designs the asset object model",
+  "story": "As an IT admin, I want my own asset types and links, so that the register fits our estate.",
+  "acceptance": [
+   "Given types with inheritance and typed attributes, then I model my assets.",
+   "Given references between objects and several schemas, then they are kept.",
+   "Given saved queries, then they drive rules, form pickers and reports.",
+   "Given ready types (ports, racks, SIMs, phone lines, databases, clusters), then they can be switched on."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.368,
+  "points": 8,
+  "priority": 2,
+  "depends": [
+   "US-B-156"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-109",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Employee signs asset hand-over; labels are printed",
+  "story": "As an asset manager, I want signed hand-overs and printed labels, so that we have proof and tags.",
+  "acceptance": [
+   "Given issue or return, then the employee e-signs a hand-over form with condition photos.",
+   "Given label templates, then barcode / QR labels print one at a time or in batches.",
+   "Given the signed form, then it is kept on the asset history."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.395,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-110",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "IP addresses are managed per subnet",
+  "story": "As an IT admin, I want IP addresses per subnet, so that there are no clashes.",
+  "acceptance": [
+   "Given subnets, then IPs are allocated to devices.",
+   "Given a duplicate IP in a subnet, then it is refused.",
+   "Given a subnet, then use is shown."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.421,
+  "points": 2,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-111",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Requester sees and reports on 'My assets'",
+  "story": "As an employee, I want to see my assets in the portal, so that I report issues against the right device.",
+  "acceptance": [
+   "Given My assets, then I see what is assigned to me.",
+   "Given an asset, then I raise an issue or ask for a replacement from it.",
+   "Given a check, then I confirm I still hold it."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.447,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-112",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Catalogue requests reserve stock or raise a purchase",
+  "story": "As a requester, I want to see stock and get a real device, so that requests are fulfilled fast.",
+  "acceptance": [
+   "Given an item tied to a model, then stock is shown.",
+   "Given approval, then an in-stock asset is reserved and assigned.",
+   "Given no stock, then a purchase order is made and receiving fulfils the request."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571.474,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-159"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-113",
+  "type": "Story",
+  "parent": "FT-B-036",
+  "title": "Services are modelled with a service map",
+  "story": "As a service owner, I want services mapped to CIs, so that we see which business service is hit.",
+  "acceptance": [
+   "Given business and technical services, then each is a CI with owner, criticality and support team.",
+   "Given the map, then it goes from service down to infrastructure.",
+   "Given an incident, change or alert, then an affected-service field drives priority, routing and paging."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 573.125,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-B-156"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-114",
+  "type": "Story",
+  "parent": "FT-B-036",
+  "title": "IT admin sees CMDB health",
+  "story": "As an IT admin, I want a CMDB health dashboard, so that data stays clean.",
+  "acceptance": [
+   "Given CIs, then missing required fields, duplicates, orphans and stale CIs are counted.",
+   "Given a problem, then a task goes to the CI owner.",
+   "Given trends, then health over time is shown."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 573.25,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-115",
+  "type": "Story",
+  "parent": "FT-B-036",
+  "title": "Dependency maps come from discovery; non-IT assets link to CIs",
+  "story": "As an IT admin, I want maps built from real data, so that maps are accurate without hand work.",
+  "acceptance": [
+   "Given discovery data on connections, then relations are proposed for the map.",
+   "Given a proposal, then the admin accepts or rejects it.",
+   "Given non-IT assets, then they can link to CIs and be attached to tickets."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 573.375,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-116",
+  "type": "Story",
+  "parent": "FT-B-037",
+  "title": "Asset manager keeps vendor scorecards",
+  "story": "As an asset manager, I want vendor scorecards and risk reviews, so that we choose good vendors.",
+  "acceptance": [
+   "Given a vendor, then SLA met %, escalations, tickets, cost and ratings are shown.",
+   "Given a risk review, then questionnaire, documents and next review date are kept.",
+   "Given review history, then it is kept per vendor."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.075,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-117",
+  "type": "Story",
+  "parent": "FT-B-037",
+  "title": "Purchase documents sync to accounting",
+  "story": "As a finance user, I want POs and invoices in our books, so that no double entry.",
+  "acceptance": [
+   "Given POs, goods receipts and vendor invoices, then they push to Tally, Zoho Books or YukthiX finance with GST fields.",
+   "Given a failure, then it shows on Jobs & errors.",
+   "Given a sync, then the accounting reference is saved back."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.15,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-118",
+  "type": "Story",
+  "parent": "FT-B-037",
+  "title": "Procurement handles limits, quotes and ordering of goods",
+  "story": "As a buyer, I want fuller procurement, so that spending is controlled.",
+  "acceptance": [
+   "Given approval limits, then POs over a limit need the next approver.",
+   "Given price lists and quotes, then they are compared before a PO.",
+   "Given invoices, then they are matched to PO and receipt and payment status is shown.",
+   "Given goods or services like stationery or catering, then employees order them with tracking."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.225,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-119",
+  "type": "Story",
+  "parent": "FT-B-037",
+  "title": "Agent escalates a ticket to a vendor",
+  "story": "As an agent, I want to work with a vendor from the ticket, so that vendor work is tracked.",
+  "acceptance": [
+   "Given a vendor escalation, then the vendor's case number is saved and the vendor SLA clock starts.",
+   "Given email to the vendor, then their replies are parsed back into the ticket.",
+   "Given follow-ups, then reminders go until the vendor answers."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.3,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-097"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-120",
+  "type": "Story",
+  "parent": "FT-B-037",
+  "title": "Contract SLAs give service credits and penalties",
+  "story": "As a desk admin, I want credits and penalties from contract SLAs, so that contracts are enforced.",
+  "acceptance": [
+   "Given a contract SLA with credits or penalties, then they are calculated per period.",
+   "Given a customer or vendor, then the report shows credits owed.",
+   "Given a dispute, then notes can be added."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.375,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-158"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-007",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Availability and outages",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.575
+ },
+ {
+  "id": "US-G-121",
+  "type": "Story",
+  "parent": "FT-G-007",
+  "title": "Service owner tracks outages and availability",
+  "story": "As a service owner, I want outage records and uptime, so that we know and prove availability.",
+  "acceptance": [
+   "Given an outage (full or partial) with start and end, then it links to incidents and changes.",
+   "Given availability targets per service, then uptime, MTBF and MTRS are computed.",
+   "Given planned maintenance, then it is left out of availability SLAs.",
+   "Given outages, then the status page uses them."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.576,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-008",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Service financial management",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.65
+ },
+ {
+  "id": "US-G-122",
+  "type": "Story",
+  "parent": "FT-G-008",
+  "title": "Finance sets budgets and sees spend",
+  "story": "As a finance user, I want budgets with spend, so that we stay within budget.",
+  "acceptance": [
+   "Given budgets per period and cost centre, then spend from POs, contracts, tickets and assets is shown.",
+   "Given overspend, then an alert goes to the owner.",
+   "Given history, then a forecast is shown."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.651,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-123",
+  "type": "Story",
+  "parent": "FT-G-008",
+  "title": "Agents add cost lines to tickets and changes",
+  "story": "As an agent, I want costs on tickets and changes, so that true costs are known.",
+  "acceptance": [
+   "Given a ticket or change, then time cost at a rate, fixed and material costs can be added.",
+   "Given costs, then they roll up to budgets and asset TCO.",
+   "Given closed tickets, then costs change only by a lead, with audit."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.652,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-124",
+  "type": "Story",
+  "parent": "FT-G-008",
+  "title": "Departments get chargeback statements",
+  "story": "As a finance user, I want service costs charged to departments, so that departments see what they use.",
+  "acceptance": [
+   "Given catalogue and service costs, then they post to the requesting cost centre.",
+   "Given a month, then a chargeback or showback statement is made per department.",
+   "Given a statement, then it can be exported."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.653,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-009",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Risk register",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.725
+ },
+ {
+  "id": "US-G-125",
+  "type": "Story",
+  "parent": "FT-G-009",
+  "title": "Risk owner keeps a risk register",
+  "story": "As a risk owner, I want a risk register linked to services, so that risks are managed.",
+  "acceptance": [
+   "Given a risk, then it has likelihood, impact, owner, treatment and review date.",
+   "Given links, then it connects to services, changes, problems, assets and vendors.",
+   "Given a review date, then the owner is reminded."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.726,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-010",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Client billing and profitability",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.8
+ },
+ {
+  "id": "US-G-126",
+  "type": "Story",
+  "parent": "FT-G-010",
+  "title": "Billing runs turn contracts and time into invoices",
+  "story": "As a billing user, I want invoice batches from contracts and time, so that clients are billed on time.",
+  "acceptance": [
+   "Given a billing run, then contracts, time, expenses and parts become invoice batches.",
+   "Given a batch, then it is reviewed and approved before export.",
+   "Given Tally, Zoho Books, QuickBooks or Xero, then invoices export or sync.",
+   "Given recurring contracts, then recurring invoices are made."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.801,
+  "points": 8,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-127",
+  "type": "Story",
+  "parent": "FT-G-010",
+  "title": "Client sees contract balance, time and invoices in the portal",
+  "story": "As a client admin, I want to see our balance and invoices, so that we trust the bill.",
+  "acceptance": [
+   "Given the portal, then contract balance is shown.",
+   "Given time used, then each entry links to its ticket.",
+   "Given invoices, then history with line detail is shown."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.802,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-128",
+  "type": "Story",
+  "parent": "FT-G-010",
+  "title": "Agents log parts and expenses",
+  "story": "As an agent, I want to log parts and expenses on tickets, so that they are billed.",
+  "acceptance": [
+   "Given a product, part or expense, then it is logged with cost and sell price.",
+   "Given billing, then it is included.",
+   "Given stock items, then stock goes down."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.803,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-129",
+  "type": "Story",
+  "parent": "FT-G-010",
+  "title": "Owner sees profitability per client",
+  "story": "As an MSP owner, I want profit per client, contract and agent, so that I price well.",
+  "acceptance": [
+   "Given revenue and cost of time and materials, then profit and effective hourly rate are shown.",
+   "Given the dashboard, then unbilled hours, billing status, CSAT and SLA per client are shown.",
+   "Given a period, then it can be exported."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.804,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-011",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Ticket archive",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.875
+ },
+ {
+  "id": "US-G-130",
+  "type": "Story",
+  "parent": "FT-G-011",
+  "title": "Old closed tickets move to a searchable archive",
+  "story": "As a desk admin, I want old tickets archived, so that the desk stays fast.",
+  "acceptance": [
+   "Given closed tickets older than N months, then they move to a read-only archive on a schedule.",
+   "Given search and reports, then archived tickets can still be found.",
+   "Given retention rules, then they still apply to the archive."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575.876,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-131",
+  "type": "Story",
+  "parent": "FT-B-038",
+  "title": "Event rules map, correlate and suppress alerts",
+  "story": "As an on-call engineer, I want smart event rules, so that I get one incident, not a storm.",
+  "acceptance": [
+   "Given payload fields, then they map to incident fields and CIs.",
+   "Given CI topology, then related alerts group under one root alert.",
+   "Given classification and severity mapping, then information events do not page.",
+   "Given maintenance windows from the change calendar, then alerts are muted."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 576.062,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-160"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-132",
+  "type": "Story",
+  "parent": "FT-B-038",
+  "title": "Heartbeat and simple uptime checks raise alerts",
+  "story": "As an IT lead, I want basic checks without a monitoring tool, so that we hear about downtime.",
+  "acceptance": [
+   "Given a heartbeat, when the ping does not arrive on time, then an alert is raised.",
+   "Given HTTP, ping or TLS-expiry checks, then they run from our side and alert on failure.",
+   "Given results, then they feed availability."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 576.125,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-133",
+  "type": "Story",
+  "parent": "FT-B-038",
+  "title": "Service health tiles and many alert sources",
+  "story": "As an IT lead, I want health tiles and more alert sources, so that I see service state at a glance.",
+  "acceptance": [
+   "Given a service, then a tile combines open alerts, incidents and changes.",
+   "Given tile state, then it can update the status page.",
+   "Given a catalogue of ready alert integrations and email-to-alert, then most tools connect without code."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 576.188,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-134",
+  "type": "Story",
+  "parent": "FT-B-038",
+  "title": "Log anomalies raise alerts",
+  "story": "As an IT lead, I want alerts on unusual logs, so that we catch problems early.",
+  "acceptance": [
+   "Given logs sent to the desk, then unusual patterns raise alerts.",
+   "Given an alert, then it can create an incident.",
+   "Given retention, then raw logs are kept only for the set days."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 576.25,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-135",
+  "type": "Story",
+  "parent": "FT-B-038",
+  "title": "IT sees digital experience scores from read-only data",
+  "story": "As an IT lead, I want device experience scores, so that we fix slow devices before people complain.",
+  "acceptance": [
+   "Given osquery read-only data (boot time, crashes, disk, battery), then each device and department gets a score.",
+   "Given a falling score, then a proactive ticket is created.",
+   "Given pulse surveys, then employee mood is added.",
+   "Given privacy, then no personal files or browsing data are read (Q3)."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 576.312,
+  "points": 5,
+  "priority": 3,
+  "depends": [
+   "US-B-150"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-136",
+  "type": "Story",
+  "parent": "FT-B-038",
+  "title": "RMM devices and alerts flow into the desk",
+  "story": "As an IT admin, I want RMM data in the desk, so that all device issues are in one place.",
+  "acceptance": [
+   "Given NinjaOne, Datto RMM or N-able, then devices import as assets.",
+   "Given RMM alerts, then they become tickets with the device linked.",
+   "Given actions, then they stay in the RMM tool; YukthiX sends no commands (Q4)."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 576.375,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-137",
+  "type": "Story",
+  "parent": "FT-B-038",
+  "title": "Capacity trends and plans per service",
+  "story": "As a capacity manager, I want capacity trends, so that we add capacity in time.",
+  "acceptance": [
+   "Given monitoring metrics, then thresholds and trends per CI or service are shown.",
+   "Given a breach of a threshold, then an alert is raised.",
+   "Given capacity plans, then they are kept with forecasts."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 576.438,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-138",
+  "type": "Story",
+  "parent": "FT-B-039",
+  "title": "On-call links with PagerDuty, Opsgenie or Squadcast",
+  "story": "As an on-call engineer, I want our current on-call tool linked, so that we keep it while using the desk.",
+  "acceptance": [
+   "Given a link, then tickets create and resolve alerts there.",
+   "Given acknowledgement there, then it syncs back.",
+   "Given the link is off, then our own paging is used."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 578.083,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-139",
+  "type": "Story",
+  "parent": "FT-B-039",
+  "title": "On-call overrides come from approved leave",
+  "story": "As a team lead, I want leave turned into overrides, so that no shift is left empty.",
+  "acceptance": [
+   "Given approved leave in YukthiX HR, then an override is proposed for that shift.",
+   "Given a gap in coverage, then the lead is warned before it happens.",
+   "Given the override, then it needs the colleague's acceptance."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 578.167,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-161"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-140",
+  "type": "Story",
+  "parent": "FT-B-039",
+  "title": "Phone calls ring whoever is on call",
+  "story": "As a caller, I want one number that reaches on-call, so that urgent issues reach a person.",
+  "acceptance": [
+   "Given the number, then it rings the on-call person now.",
+   "Given no answer, then voicemail becomes an alert.",
+   "Given escalation, then the next level is called."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 578.25,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-141",
+  "type": "Story",
+  "parent": "FT-B-039",
+  "title": "On-call people set paging rules and see load",
+  "story": "As an on-call engineer, I want my own paging rules, so that I am paged the way I respond.",
+  "acceptance": [
+   "Given my rules, then I choose channel and delay per step.",
+   "Given swaps and follow-the-sun rotations, then they are supported.",
+   "Given reports, then pages per person and out-of-hours load are shown."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 578.333,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-142",
+  "type": "Story",
+  "parent": "FT-B-039",
+  "title": "Alerts are acknowledged from Teams or Slack",
+  "story": "As an on-call engineer, I want to act on alerts in chat, so that I respond faster.",
+  "acceptance": [
+   "Given an alert message, then I acknowledge, escalate or close it there.",
+   "Given the action, then the time is recorded for MTTA.",
+   "Given my rights, then only allowed actions show."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 578.417,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-143",
+  "type": "Story",
+  "parent": "FT-B-041",
+  "title": "Agents propose major incidents and use a workbench",
+  "story": "As an incident manager, I want a proposal step and a workbench, so that major incidents are run in order.",
+  "acceptance": [
+   "Given an agent proposal, then a manager accepts or rejects it.",
+   "Given the workbench, then it has timeline, task board and child incidents.",
+   "Given a communication plan, then audiences, channels and schedule are set."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 581.083,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-164"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-144",
+  "type": "Story",
+  "parent": "FT-B-041",
+  "title": "Incident templates set responders and checklists",
+  "story": "As an incident manager, I want templates per incident type, so that we start fast.",
+  "acceptance": [
+   "Given a type, then responders, channel, bridge, stakeholders and checklist are set in advance.",
+   "Given declaration, then the template applies by itself.",
+   "Given changes to a template, then they are versioned."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 581.167,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-145",
+  "type": "Story",
+  "parent": "FT-B-041",
+  "title": "Incident timeline is built automatically",
+  "story": "As an incident manager, I want an automatic timeline, so that the review is easy to write.",
+  "acceptance": [
+   "Given alerts, status changes, chat, pages and recent changes, then they form a timeline.",
+   "Given the review, then it starts from the timeline.",
+   "Given edits, then the timeline keeps the original entries."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 581.25,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-165"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-146",
+  "type": "Story",
+  "parent": "FT-B-041",
+  "title": "One click opens a channel and a bridge",
+  "story": "As an incident manager, I want a channel and bridge in one click, so that responders gather quickly.",
+  "acceptance": [
+   "Given an incident, then a Teams / Slack channel and Zoom, Teams or Meet bridge are created.",
+   "Given responders, then they are invited.",
+   "Given the chat, then it is copied back to the ticket."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 581.333,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-147",
+  "type": "Story",
+  "parent": "FT-B-041",
+  "title": "Responders see 'what changed' and swarm with experts",
+  "story": "As an incident manager, I want recent changes and experts suggested, so that the cause is found fast.",
+  "acceptance": [
+   "Given affected services and CIs, then recent changes, deployments and commits are listed.",
+   "Given any ticket, then experts are suggested from past similar tickets and skills.",
+   "Given a swarm, then a linked Teams or Slack conversation opens with them."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 581.417,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-148",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "AI drafts resolution notes and hand-over summaries",
+  "story": "As an agent, I want AI help to solve and write up, so that I save time.",
+  "acceptance": [
+   "Given a ticket, then similar solved tickets, problems and articles are shown with their steps.",
+   "Given resolve, then AI drafts resolution notes for me to edit.",
+   "Given a reassignment, then a short summary is added.",
+   "Given sensitive tickets, then AI uses only data I may see (YX-HD-03)."
+  ],
+  "rules": [
+   "YX-HD-03"
+  ],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.025,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-167"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-149",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "AI helps agents and requesters write",
+  "story": "As an agent, I want help with tone and wording, so that messages are clear.",
+  "acceptance": [
+   "Given the reply box, then AI can change tone, shorten, expand and fix grammar; my text is kept until I accept.",
+   "Given a requester typing a short phrase, then AI suggests a clear description and asks for missing details.",
+   "Given AI text, then it is marked as AI-assisted in the audit."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.05,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-150",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "Virtual agent completes tasks",
+  "story": "As an employee, I want the bot to do simple tasks, so that I get things done any time.",
+  "acceptance": [
+   "Given topics, then the bot checks ticket status, raises catalogue requests with form slots and handles approvals.",
+   "Given a no-code flow builder, then admins build guided decision trees with API steps.",
+   "Given every channel (portal, widget, email, Teams, Slack), then the same topics work.",
+   "Given the setting, then the bot can be the first way into the portal with forms as fallback.",
+   "Given identity actions (password reset), then they wait for the founder decision."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.075,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-B-168"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-151",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "AI answers new emails at once",
+  "story": "As a requester, I want an instant answer to my email, so that simple issues are solved at once.",
+  "acceptance": [
+   "Given a new email, then AI replies from KB and policies.",
+   "Given 'this solved it', then the ticket closes as deflected (YX-HD-04).",
+   "Given 'still need help', then it goes to an agent."
+  ],
+  "rules": [
+   "YX-HD-04"
+  ],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.1,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-152",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "Admin builds AI agents with guardrails",
+  "story": "As a desk admin, I want AI agents for repeat work, so that routine steps are done for us.",
+  "acceptance": [
+   "Given the studio, then an AI agent chains steps and approved connector actions.",
+   "Given guardrails, then each agent has allowed data, actions and limits.",
+   "Given a step that changes data, then a human approves it unless set as safe.",
+   "Given every action, then it is logged; no action ever runs on devices (Q4)."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.125,
+  "points": 13,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-153",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "Admin controls AI in one hub",
+  "story": "As a desk admin, I want one place to control AI, so that AI is safe and worth it.",
+  "acceptance": [
+   "Given each AI skill, then it can be switched on or off per desk.",
+   "Given provider settings, then we choose the provider or bring our own key.",
+   "Given usage, then cost, accuracy, accepted and rejected suggestions, deflection and time saved are shown.",
+   "Given bot answers, then admins see sources, rate and correct them and see unanswered questions."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.15,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-E-287"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-154",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "Lead asks data questions in plain language",
+  "story": "As a team lead, I want to ask questions about our data, so that I get insight without building reports.",
+  "acceptance": [
+   "Given a question like 'P1 breaches by team last month', then a chart is shown.",
+   "Given unusual volume or topics, then an anomaly alert goes out.",
+   "Given trends, then likely causes and suggested problems are shown.",
+   "Given my rights, then answers use only data I may see."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.175,
+  "points": 8,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-155",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "Desk uses process mining and its own trained models",
+  "story": "As a desk admin, I want models trained on our history, so that routing and flow get better.",
+  "acceptance": [
+   "Given event history, then the real ticket flow, loops and bottlenecks are shown.",
+   "Given our history, then classification models can be trained and retrained on a schedule.",
+   "Given a model, then its accuracy is shown before it is used."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.2,
+  "points": 8,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-156",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "AI finds topics and sentiment trends",
+  "story": "As a team lead, I want topics and mood trends, so that I see what bothers people.",
+  "acceptance": [
+   "Given tickets, then topics are extracted and tagged.",
+   "Given tickets and survey comments, then sentiment trends show by desk, category and location.",
+   "Given a sudden change, then the lead is told."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.225,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-157",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "AI suggests the next step from written procedures",
+  "story": "As an agent, I want AI to follow our procedure, so that I do not miss steps.",
+  "acceptance": [
+   "Given steps written by admins for a ticket type, then AI proposes the next reply or action.",
+   "Given a proposal, then I approve before it runs.",
+   "Given a run, then it is logged."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.25,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-158",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "Admin copilot reviews set-up and drafts rules",
+  "story": "As a desk admin, I want AI to check our set-up, so that the desk is set up well.",
+  "acceptance": [
+   "Given rules, views and routing, then AI suggests fixes.",
+   "Given a plain-language request, then AI drafts a rule as a draft only.",
+   "Given a draft, then it runs a dry run before saving."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.275,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-159",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "Operations AI groups alerts and drafts updates",
+  "story": "As an incident manager, I want AI help in incidents, so that I focus on the fix.",
+  "acceptance": [
+   "Given related alerts, then AI groups them.",
+   "Given an incident, then responders and similar past incidents are suggested.",
+   "Given stakeholder updates and the review, then AI drafts them for approval."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.3,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-160",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "Agent searches queues in plain language",
+  "story": "As an agent, I want to type 'open VPN tickets from Pune this week', so that I find tickets fast.",
+  "acceptance": [
+   "Given plain words, then they become filters shown to me.",
+   "Given the filters, then I can save them as a view.",
+   "Given my rights, then results respect them."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.325,
+  "points": 2,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-161",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "Tickets and chats are translated both ways",
+  "story": "As an agent, I want live translation, so that requesters can write in Hindi, Telugu or Tamil.",
+  "acceptance": [
+   "Given a message, then it is translated to the reader's language.",
+   "Given my reply, then it is translated back.",
+   "Given translation, then the original text is kept."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.35,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-162",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "Search and AI answer from outside knowledge sources",
+  "story": "As an employee, I want answers from SharePoint, Confluence, Drive and Notion, so that I find everything in one place.",
+  "acceptance": [
+   "Given connected sources, then portal, agent and AI search include them without copying content into our KB.",
+   "Given source permissions, then I see only what I may see there.",
+   "Given a source removed, then its index is deleted."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.375,
+  "points": 8,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-163",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "AI drafts articles and finds gaps",
+  "story": "As a knowledge lead, I want AI article drafts, so that the KB grows from real tickets.",
+  "acceptance": [
+   "Given a cluster of solved tickets, then AI drafts a step-by-step article.",
+   "Given unanswered topics, then AI suggests new or out-of-date articles.",
+   "Given a draft, then it follows the normal review flow and has no personal data."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.4,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-164",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "AI builds a catalogue item from a procedure",
+  "story": "As a desk admin, I want a catalogue item drafted from our SOP, so that set-up is fast.",
+  "acceptance": [
+   "Given an uploaded PDF or Word SOP or text, then AI drafts the item, form and workflow.",
+   "Given the draft, then I edit or replace steps.",
+   "Given publish, then normal checks apply."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.425,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-165",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "AI flags unusual devices",
+  "story": "As an IT admin, I want AI to spot idle or failing devices, so that we reuse or fix them.",
+  "acceptance": [
+   "Given read-only device data, then idle, failing or overused devices are flagged.",
+   "Given a flag, then a ticket can be raised.",
+   "Given false flags, then admins can dismiss them."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.45,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-166",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "AI predicts change risk",
+  "story": "As a change manager, I want a risk prediction from history, so that risky changes get more care.",
+  "acceptance": [
+   "Given past changes on similar CIs and their incidents, then a predicted risk and reasons are shown.",
+   "Given the questionnaire score, then both are shown side by side.",
+   "Given a high prediction, then more approvers can be required."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.475,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-167",
+  "type": "Story",
+  "parent": "FT-B-043",
+  "title": "IT lead manages demand",
+  "story": "As an IT lead, I want ideas scored and turned into work, so that we work on what matters.",
+  "acceptance": [
+   "Given an idea or business request, then it is scored on value, cost and risk.",
+   "Given approval, then it becomes a project, change or enhancement.",
+   "Given the list, then it is ranked by score."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 585.125,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-168",
+  "type": "Story",
+  "parent": "FT-B-043",
+  "title": "IT lead runs fuller projects",
+  "story": "As an IT lead, I want Gantt, board and milestones, so that bigger IT work is planned.",
+  "acceptance": [
+   "Given a project, then Gantt, board, milestones and dependencies are available.",
+   "Given people, then resource load and timesheets are shown.",
+   "Given a company with M12, then projects link to M12 instead (as in US-B-169)."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 585.25,
+  "points": 8,
+  "priority": 3,
+  "depends": [
+   "US-B-169"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-169",
+  "type": "Story",
+  "parent": "FT-B-043",
+  "title": "Engineering keeps a catalogue of software components",
+  "story": "As an engineering lead, I want a catalogue of our services and APIs, so that we know who owns what.",
+  "acceptance": [
+   "Given a component, then it links to its repository and owner.",
+   "Given scorecards, then health and security checks are shown.",
+   "Given deployments, then delivery metrics (DORA) are shown."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 585.375,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-170",
+  "type": "Story",
+  "parent": "FT-B-044",
+  "title": "Facilities runs preventive maintenance",
+  "story": "As a facilities manager, I want planned maintenance work orders, so that equipment does not fail.",
+  "acceptance": [
+   "Given DG sets, ACs, lifts or fire systems, then schedules create work orders per AMC visit.",
+   "Given mobile, then technicians complete checklists and record meter readings.",
+   "Given a missed visit, then it is flagged."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 587.071,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-171",
+  "type": "Story",
+  "parent": "FT-B-044",
+  "title": "Dispatcher books technicians to sites",
+  "story": "As a dispatcher, I want a dispatch board, so that visits are planned well.",
+  "acceptance": [
+   "Given skill, place and travel time, then technicians are booked into slots.",
+   "Given the board, then availability and load show.",
+   "Given a visit, then parts used and customer sign-off are recorded on mobile."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 587.143,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-172",
+  "type": "Story",
+  "parent": "FT-B-044",
+  "title": "Facilities manages spaces and floor plans",
+  "story": "As a facilities manager, I want buildings, floors and spaces, so that we use space well.",
+  "acceptance": [
+   "Given sites, buildings, floors and rooms, then area, capacity and amenities are kept.",
+   "Given floor plans, then desks and rooms show on the map.",
+   "Given move requests, then they create tasks; occupancy reports are shown."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 587.214,
+  "points": 8,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-173",
+  "type": "Story",
+  "parent": "FT-B-044",
+  "title": "Room bookings order catering and AV",
+  "story": "As an employee, I want to add services to a booking, so that the room is ready.",
+  "acceptance": [
+   "Given a booking, then catering, AV and set-up can be added.",
+   "Given services, then tasks go to the right teams.",
+   "Given a cancelled booking, then its tasks are cancelled."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 587.286,
+  "points": 3,
+  "priority": 3,
+  "depends": [
+   "US-B-170"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-174",
+  "type": "Story",
+  "parent": "FT-B-044",
+  "title": "Reception checks visitors in and out",
+  "story": "As a receptionist, I want a reception view, so that the front desk runs smoothly.",
+  "acceptance": [
+   "Given today, then expected and on-site visitors are listed.",
+   "Given check-in, then a badge prints and the host is told.",
+   "Given check-out, then the time is recorded."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 587.357,
+  "points": 3,
+  "priority": 3,
+  "depends": [
+   "US-B-171"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-175",
+  "type": "Story",
+  "parent": "FT-B-044",
+  "title": "Admin manages vehicles, keys, parking and lockers",
+  "story": "As an admin team member, I want vehicles and keys tracked, so that nothing is lost.",
+  "acceptance": [
+   "Given vehicles, then drivers, lease, mileage, service and insurance expiry are kept.",
+   "Given keys, passes, parking and lockers, then issue, return and overdue alerts work.",
+   "Given a lost key, then it is recorded and a replacement task made."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 587.429,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-176",
+  "type": "Story",
+  "parent": "FT-B-045",
+  "title": "Admin adds sandboxed scripts and action buttons",
+  "story": "As a desk admin, I want small scripts in rules, so that special cases are handled.",
+  "acceptance": [
+   "Given a script, then it runs on our servers in a sandbox with time and memory limits.",
+   "Given an action button, then it calls an approved outside API.",
+   "Given errors, then they show on Jobs & errors; scripts can never reach devices (Q4)."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.056,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-177",
+  "type": "Story",
+  "parent": "FT-B-045",
+  "title": "Desk works with Zapier, Make and Power Automate",
+  "story": "As a desk admin, I want desk triggers and actions in iPaaS tools, so that we connect any app.",
+  "acceptance": [
+   "Given Zapier, Make, Power Automate or Workato, then desk triggers and actions are available.",
+   "Given scopes, then they follow API key scopes (P11).",
+   "Given failures, then they show on Jobs & errors."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.112,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-178",
+  "type": "Story",
+  "parent": "FT-B-045",
+  "title": "Company AI assistants use the desk through MCP",
+  "story": "As a company admin, I want our AI assistants to use desk data, so that staff work from Copilot or ChatGPT.",
+  "acceptance": [
+   "Given the MCP server, then assistants read and act on tickets, KB and assets under the user's rights.",
+   "Given Copilot and ChatGPT connectors, then desk actions show there.",
+   "Given every call, then it is audited."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.169,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-179",
+  "type": "Story",
+  "parent": "FT-B-045",
+  "title": "Partners build marketplace apps with an SDK",
+  "story": "As a partner developer, I want an SDK, so that I can extend the desk.",
+  "acceptance": [
+   "Given the SDK, then apps show widgets in the agent UI or portal, react to events and store settings.",
+   "Given app review, then only reviewed apps are listed.",
+   "Given install, then the admin sees the data the app uses."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.225,
+  "points": 8,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-180",
+  "type": "Story",
+  "parent": "FT-B-045",
+  "title": "Admin moves configuration packages between companies",
+  "story": "As a desk admin, I want to export and import set-up, so that set-up is reused safely.",
+  "acceptance": [
+   "Given categories, SLAs, forms and rules, then they export as a package.",
+   "Given import, then a diff is shown first.",
+   "Given import, then it is audited."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.281,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-181",
+  "type": "Story",
+  "parent": "FT-B-045",
+  "title": "Agent works from Outlook and launches remote-support tools",
+  "story": "As an agent, I want Outlook add-in and remote-support links, so that I stay in my tools.",
+  "acceptance": [
+   "Given the Outlook add-in, then I create or update tickets from a mail.",
+   "Given the company's own TeamViewer, AnyDesk or similar, then I start a session from the ticket and link and duration are logged.",
+   "Given the requester, then they can start one from the portal; YukthiX never controls the device (Q4)."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.337,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-182",
+  "type": "Story",
+  "parent": "FT-B-045",
+  "title": "Employee raises a ticket with a helper app",
+  "story": "As an employee, I want a small helper app, so that IT gets a screenshot and details.",
+  "acceptance": [
+   "Given the helper, then a ticket is raised with a screenshot and basic system details.",
+   "Given what is sent, then the employee sees it before sending.",
+   "Given the helper, then it only sends what the employee submits; it takes no commands (Q4)."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.394,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-012",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Telephony, social channels and walk-up",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.556
+ },
+ {
+  "id": "US-G-183",
+  "type": "Story",
+  "parent": "FT-G-012",
+  "title": "Agents take calls with telephony",
+  "story": "As an agent, I want calls linked to tickets, so that phone support is tracked.",
+  "acceptance": [
+   "Given Exotel, Knowlarity or another provider, then an incoming call pops the caller and their open tickets.",
+   "Given IVR, then callers check ticket status or leave voicemail that becomes a ticket.",
+   "Given recordings, then they link to the ticket; click-to-call works from the ticket."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.557,
+  "points": 8,
+  "priority": 2,
+  "depends": [
+   "US-B-135"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-184",
+  "type": "Story",
+  "parent": "FT-G-012",
+  "title": "Social messages become tickets",
+  "story": "As an agent, I want social messages as tickets, so that we answer everywhere.",
+  "acceptance": [
+   "Given Facebook, Instagram, X or Telegram, then messages become tickets.",
+   "Given a reply, then it goes back on the same channel.",
+   "Given public comments, then private data is not posted back."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.558,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-185",
+  "type": "Story",
+  "parent": "FT-G-012",
+  "title": "Employees use a walk-up desk and book appointments",
+  "story": "As an employee, I want to walk up or book a slot, so that I get face-to-face help.",
+  "acceptance": [
+   "Given QR or kiosk check-in, then I join the walk-up queue.",
+   "Given a booking, then the slot syncs with Exchange or Google calendars with reminders.",
+   "Given a visit, then it becomes an interaction, incident or request; wait times per location are shown."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.559,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-013",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "MSP mode and desk-to-desk exchange",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.612
+ },
+ {
+  "id": "US-G-186",
+  "type": "Story",
+  "parent": "FT-G-013",
+  "title": "Provider serves many client companies",
+  "story": "As an MSP, I want one desk for many clients, so that we serve all clients from one place.",
+  "acceptance": [
+   "Given client companies, then each has its own portal, SLAs, KB, catalogue and branding.",
+   "Given technicians, then they see only assigned clients, with a company filter.",
+   "Given RLS, then each client sees only its own data."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.613,
+  "points": 8,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-187",
+  "type": "Story",
+  "parent": "FT-G-013",
+  "title": "Desks exchange tickets with other desks",
+  "story": "As an agent, I want two-way ticket sync with a customer or vendor desk, so that nobody retypes tickets.",
+  "acceptance": [
+   "Given another YukthiX desk, ServiceNow, Jira SM or Freshservice, then tickets, comments and status sync both ways.",
+   "Given field mapping, then it is set per link.",
+   "Given a failure, then it shows on Jobs & errors."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.614,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-188",
+  "type": "Story",
+  "parent": "FT-G-013",
+  "title": "MSP tracks opportunities and quotes",
+  "story": "As an account manager, I want light sales tools, so that won deals become contracts.",
+  "acceptance": [
+   "Given an opportunity, then quotes can be made.",
+   "Given an accepted quote, then it becomes a contract or project.",
+   "Given the pipeline, then value by stage is shown."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.615,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-189",
+  "type": "Story",
+  "parent": "FT-G-013",
+  "title": "MSP reconciles cloud subscriptions",
+  "story": "As a billing user, I want vendor seats matched to client bills, so that we do not lose money.",
+  "acceptance": [
+   "Given Microsoft 365 seat counts per client, then they are compared with what is billed.",
+   "Given a difference, then it is flagged.",
+   "Given billing, then the corrected count is used."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.616,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-014",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Security operations desk",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.669
+ },
+ {
+  "id": "US-G-190",
+  "type": "Story",
+  "parent": "FT-G-014",
+  "title": "Security team runs a restricted security incident desk",
+  "story": "As a security analyst, I want a separate security incident desk, so that evidence and access are controlled.",
+  "acceptance": [
+   "Given a security incident, then only the security team sees it and every read is audited.",
+   "Given evidence, then an evidence log keeps who added what and when.",
+   "Given scanner findings (Defender, Qualys, Tenable), then they become tickets linked to CIs with fix SLAs.",
+   "Given response playbooks, then they attach as checklists."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.67,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-191",
+  "type": "Story",
+  "parent": "FT-G-014",
+  "title": "Managers confirm staff access in periodic reviews",
+  "story": "As a security admin, I want periodic access reviews, so that old access is removed.",
+  "acceptance": [
+   "Given a review cycle, then each manager gets a task listing staff app and group access.",
+   "Given remove, then a removal request is created.",
+   "Given the cycle, then completion is reported."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.671,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-015",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Service experience, continuity and improvement",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.725
+ },
+ {
+  "id": "US-G-192",
+  "type": "Story",
+  "parent": "FT-G-015",
+  "title": "Lead tracks an experience score next to SLAs",
+  "story": "As a team lead, I want an experience score, so that we measure how people feel, not only time.",
+  "acceptance": [
+   "Given XLA policies, then a 0–100 score combines timeliness, update frequency, CSAT, reopens and effort.",
+   "Given reports, then the score shows per ticket, service and customer.",
+   "Given a low score, then a follow-up can be triggered."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.726,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-193",
+  "type": "Story",
+  "parent": "FT-G-015",
+  "title": "Team keeps a continual improvement register",
+  "story": "As a service owner, I want a list of improvements, so that we improve on purpose.",
+  "acceptance": [
+   "Given an idea from reviews, problems, surveys or staff, then it has value, effort, owner and status.",
+   "Given an ideas portal, then users can vote.",
+   "Given done items, then before and after KPIs are recorded."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.727,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-194",
+  "type": "Story",
+  "parent": "FT-G-015",
+  "title": "Service owner keeps continuity plans and DR tests",
+  "story": "As a service owner, I want continuity plans per service, so that we recover in time.",
+  "acceptance": [
+   "Given a service, then RTO and RPO from a business impact analysis are kept.",
+   "Given continuity and DR plans, then they link to services and CIs.",
+   "Given a DR test schedule, then results are recorded and plan reviews are reminded."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.728,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-195",
+  "type": "Story",
+  "parent": "FT-G-015",
+  "title": "Company compares its metrics with peers",
+  "story": "As a company admin, I want anonymous peer benchmarks, so that we know where we stand.",
+  "acceptance": [
+   "Given opt-in, then MTTR, CSAT and FCR are compared with peers by industry and size.",
+   "Given a peer group under a minimum size, then no benchmark is shown.",
+   "Given our data, then no company can be identified."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.729,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-016",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Agent quality and growth",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.781
+ },
+ {
+  "id": "US-G-196",
+  "type": "Story",
+  "parent": "FT-G-016",
+  "title": "Reviewers score conversations and coach agents",
+  "story": "As a quality reviewer, I want scorecards for conversations, so that service quality rises.",
+  "acceptance": [
+   "Given a scorecard (tone, accuracy, procedure), then I review sampled conversations.",
+   "Given AI scoring, then all conversations get a draft score.",
+   "Given a review, then the agent can dispute and coaching notes are kept."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.782,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-197",
+  "type": "Story",
+  "parent": "FT-G-016",
+  "title": "Lead keeps a skills matrix",
+  "story": "As a team lead, I want skills with levels and training, so that routing and training fit people.",
+  "acceptance": [
+   "Given agents, then skills have proficiency levels and training records.",
+   "Given skill routing, then levels can be used.",
+   "Given gaps, then training needs are listed."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.783,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-198",
+  "type": "Story",
+  "parent": "FT-G-016",
+  "title": "Desk can switch on gamification",
+  "story": "As a team lead, I want optional points and badges, so that the team stays motivated.",
+  "acceptance": [
+   "Given gamification on, then points come from fast resolutions and good ratings.",
+   "Given badges, levels and leaderboards, then they are configurable.",
+   "Given the default, then it is off."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.784,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-017",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Customer health and relationships",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.837
+ },
+ {
+  "id": "US-G-199",
+  "type": "Story",
+  "parent": "FT-G-017",
+  "title": "Account owner runs service reviews and sees customer health",
+  "story": "As an account owner, I want service reviews and a health view, so that customers stay happy.",
+  "acceptance": [
+   "Given a customer, then a health view combines tickets, SLA and CSAT.",
+   "Given a review meeting, then a pack, actions and agreed improvements are kept.",
+   "Given the standalone desk, then this works for its own customers."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.838,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-200",
+  "type": "Story",
+  "parent": "FT-G-017",
+  "title": "Support opens proactive tickets when health drops",
+  "story": "As a YukthiX support agent, I want tickets opened when customer health drops, so that we help before they ask.",
+  "acceptance": [
+   "Given a failed payroll run, integration errors or repeated in-app errors, then a ticket is opened.",
+   "Given the ticket, then the customer is told and it is linked to the signal.",
+   "Given noise, then one ticket per signal per day at most."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.839,
+  "points": 3,
+  "priority": 3,
+  "depends": [
+   "US-B-116"
+  ],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-201",
+  "type": "Story",
+  "parent": "FT-G-017",
+  "title": "Agents see CRM context on customer tickets",
+  "story": "As an agent, I want CRM data on the ticket, so that I know the customer.",
+  "acceptance": [
+   "Given Salesforce, HubSpot or Zoho CRM, then account, deal and contract context shows on the ticket.",
+   "Given the link, then it is read only.",
+   "Given the link is off, then stored tokens are deleted."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.84,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-018",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Standalone platform options",
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.894
+ },
+ {
+  "id": "US-G-202",
+  "type": "Story",
+  "parent": "FT-G-018",
+  "title": "Attachments can live in the company storage",
+  "story": "As a company admin, I want attachments in our own bucket, so that we control our files.",
+  "acceptance": [
+   "Given an S3-compatible bucket of the company, then attachments are stored there.",
+   "Given access failure, then admins are alerted and uploads wait.",
+   "Given virus scan, then it still runs."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.895,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-203",
+  "type": "Story",
+  "parent": "FT-G-018",
+  "title": "Help centre and agent UI support more languages",
+  "story": "As a desk admin, I want more languages, so that we serve people in their language.",
+  "acceptance": [
+   "Given an article, then machine-translated drafts are made and need human review per language.",
+   "Given agents, then the UI can show more languages per user.",
+   "Given a missing translation, then the default language shows."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.896,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-204",
+  "type": "Story",
+  "parent": "FT-G-018",
+  "title": "Desk admin starts from an industry template pack",
+  "story": "As a desk admin, I want ready template packs, so that set-up is fast for our industry.",
+  "acceptance": [
+   "Given packs for schools, hospitals, factories, banks or government, then catalogues, categories and SLAs load.",
+   "Given a loaded pack, then everything can be edited.",
+   "Given a pack, then it loads in the sandbox first if wanted."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.897,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-205",
+  "type": "Story",
+  "parent": "FT-G-018",
+  "title": "Requesters help each other in a community forum",
+  "story": "As a requester, I want a community forum, so that people help each other.",
+  "acceptance": [
+   "Given the forum, then users post questions and others answer.",
+   "Given moderation, then posts can be hidden and best answers marked.",
+   "Given a good answer, then it can become an article or a post can become a ticket."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 gap check"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.898,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "FT-G-019",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Identity actions from approved requests (Entra ID / Google Workspace)",
+  "docs": [
+   "M14 Q7"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 591.0,
+  "priority": 2
+ },
+ {
+  "type": "Story",
+  "state": "New",
+  "phase": "Step 3b-4",
+  "docs": [
+   "M14 Q6/Q7"
+  ],
+  "rules": [],
+  "depends": [],
+  "evidence": "",
+  "id": "US-G-206",
+  "parent": "FT-G-019",
+  "title": "Company admin connects its identity provider with least permissions",
+  "order": 591.1,
+  "points": 5,
+  "priority": 2,
+  "story": "As a company admin, I want to connect our Entra ID or Google Workspace using our own app registration, so that the desk can act on accounts only within the permissions we grant.",
+  "acceptance": [
+   "Given identity actions are off by default, when an admin turns them on, then step-up is required and the change is audited (M14 Q7)",
+   "Given the connection screen, then only the company's own app registration is accepted and the requested permissions are listed one by one",
+   "Given a permission the action list does not need, then it is not requested",
+   "Given the connection is removed, then every identity action is disabled at once"
+  ]
+ },
+ {
+  "type": "Story",
+  "state": "New",
+  "phase": "Step 3b-4",
+  "docs": [
+   "M14 Q6/Q7"
+  ],
+  "rules": [],
+  "depends": [
+   "US-G-206"
+  ],
+  "evidence": "",
+  "id": "US-G-207",
+  "parent": "FT-G-019",
+  "title": "Password reset and account unlock after approval",
+  "order": 591.2,
+  "points": 5,
+  "priority": 2,
+  "story": "As an employee, I want my locked account unlocked or password reset through an approved request, so that I get back to work without waiting for IT to do it by hand.",
+  "acceptance": [
+   "Given an approved unlock or reset request, when the agent confirms with step-up, then the action runs in the identity provider and the result is written on the ticket (M14 Q7)",
+   "Given a reset, then YukthiX never sees or stores the new password; the provider sends the user its own reset flow or a one-time temporary password shown once",
+   "Given the action fails, then the ticket shows the provider's error and nothing is retried silently",
+   "Given any run, then the audit records who approved, who ran it, the target account and the time"
+  ]
+ },
+ {
+  "type": "Story",
+  "state": "New",
+  "phase": "Step 3b-4",
+  "docs": [
+   "M14 Q6/Q7"
+  ],
+  "rules": [],
+  "depends": [
+   "US-G-206"
+  ],
+  "evidence": "",
+  "id": "US-G-208",
+  "parent": "FT-G-019",
+  "title": "Create / disable users and change groups and licences from approved requests",
+  "order": 591.3,
+  "points": 8,
+  "priority": 2,
+  "story": "As an IT agent, I want onboarding, offboarding and access requests to create or disable accounts and change groups and licences after approval, so that access is granted and removed on time.",
+  "acceptance": [
+   "Given an approved request, when the fulfilment step runs, then the account, group or licence change is made in the provider and linked to the ticket (M14 Q7)",
+   "Given an exit in M01, when the exit date arrives, then disabling the account is raised as an approved task, not run without approval",
+   "Given the agent lacks the identity-action permission, then the action button is not shown",
+   "Given every change, then step-up and a full audit entry are required"
+  ]
+ },
+ {
+  "type": "Story",
+  "state": "New",
+  "phase": "Step 3b-4",
+  "docs": [
+   "M14 Q6",
+   "M14 Q4"
+  ],
+  "rules": [],
+  "depends": [],
+  "evidence": "",
+  "id": "US-G-209",
+  "parent": "FT-G-019",
+  "title": "Open the device in the company's own MDM console (read-only in YukthiX)",
+  "order": 591.4,
+  "points": 2,
+  "priority": 2,
+  "story": "As an IT agent, I want a button on the asset that opens the same device in our Intune or Jamf console, so that I can lock or wipe it there while YukthiX stays read-only.",
+  "acceptance": [
+   "Given an asset matched to an MDM record, then the asset page shows a link that opens that device in the company's MDM console (M14 Q6)",
+   "Given any agent, then no lock, wipe, script or remote command can be sent from YukthiX (M14 Q4)",
+   "Given the link is used, then the click is audited on the asset with the agent and time"
+  ]
+ }
+]

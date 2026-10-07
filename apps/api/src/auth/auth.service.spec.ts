@@ -10,7 +10,8 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { SessionsService } from './sessions.service';
-import { LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
+import { LOGIN_PROTECTION_REDIS, LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
+import { CompanyScopeService } from './company-scope';
 import { PasswordPolicyService } from './password-policy.service';
 import { OtpService } from './otp.service';
 
@@ -65,8 +66,22 @@ describe('AuthService', () => {
   let jwt: JwtService;
   let mfa: Record<string, jest.Mock>;
   let otp: Record<string, jest.Mock>;
+  let companyScope: { cookieValue: jest.Mock; card: jest.Mock };
+  // A tiny Redis: the company-choice token store.
+  let store: Map<string, string>;
+  let redis: { set: jest.Mock; getdel: jest.Mock };
 
   beforeEach(async () => {
+    companyScope = { cookieValue: jest.fn((id: string) => `${id}.signed`), card: jest.fn(async (org: { name: string }) => ({ name: org.name, logoUrl: null })) };
+    store = new Map();
+    redis = {
+      set: jest.fn(async (key: string, value: string) => (store.set(key, value), 'OK')),
+      getdel: jest.fn(async (key: string) => {
+        const value = store.get(key) ?? null;
+        store.delete(key);
+        return value;
+      }),
+    };
     // No second factor enrolled unless a test says so; MFA not required.
     mfa = {
       hasFactor: jest.fn().mockResolvedValue(false),
@@ -143,6 +158,8 @@ describe('AuthService', () => {
         { provide: PasswordPolicyService, useValue: passwordPolicy },
         { provide: MfaService, useValue: mfa },
         { provide: OtpService, useValue: otp },
+        { provide: CompanyScopeService, useValue: companyScope },
+        { provide: LOGIN_PROTECTION_REDIS, useValue: redis },
         JwtService,
       ],
     }).compile();
@@ -892,9 +909,8 @@ describe('AuthService', () => {
       tenantPrisma.forTenant.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
         fn({
           user: {
-            findFirst: jest.fn().mockResolvedValue({
-              id: 'u1', organizationId: null, role: 'super_admin', status: 'active', passwordHash,
-            }),
+            // Email-first: platform staff are one of the accounts with this email.
+            findMany: jest.fn().mockResolvedValue([{ id: 'u1', organizationId: null, organization: null, role: 'super_admin', status: 'active', passwordHash }]),
             update: jest.fn(),
           },
         }),
@@ -903,7 +919,7 @@ describe('AuthService', () => {
       await expect(service.login({ email: 'root@platform.test', password: 'password1' }, META)).resolves.toHaveProperty(
         'accessToken',
       );
-      // No slug means no org lookup at all -- nothing to suspend.
+      // No slug: no organisation is looked up by slug -- nothing to suspend.
       expect(prisma.organization.findUnique).not.toHaveBeenCalled();
     });
   });
@@ -1413,9 +1429,9 @@ describe('AuthService', () => {
       mfa.loadUser.mockResolvedValue({ ...ACCOUNT, role: 'super_admin', organizationId: null });
       mfa.usableFactors.mockResolvedValue([{ type: 'passkey' }]);
       prisma.organization.findUnique.mockResolvedValue(null);
-      tenantPrisma.forTenant.mockResolvedValueOnce({
-        id: 'user-1', email: 'root@platform.test', organizationId: null, role: 'super_admin', status: 'active', passwordHash: await argon2.hash('correct-password'),
-      });
+      tenantPrisma.forTenant.mockResolvedValueOnce([
+        { id: 'user-1', email: 'root@platform.test', organizationId: null, organization: null, role: 'super_admin', status: 'active', passwordHash: await argon2.hash('correct-password') },
+      ]);
       mfa.hasFactor.mockResolvedValue(true);
       const outcome = await service.login({ email: 'root@platform.test', password: 'correct-password' }, META);
       expect(outcome).toMatchObject({ mfaRequired: true, factors: ['passkey'] });
@@ -1674,6 +1690,204 @@ describe('AuthService', () => {
         await expect(service.sendMfaOtp({ mfaToken: 'M'.repeat(43), channel: 'sms' }, META)).rejects.toThrow(UnauthorizedException);
         expect(otp.reserveSend).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  // Founder decision 7 Oct 2026: no company-code box. One account per company (P12 §3); with no
+  // company named, the credential is checked against every active account with that email / number.
+  describe('email-first sign-in (no company code)', () => {
+    const EMAIL = 'divya.r@kaverifoods.in';
+    let kaveriHash: string;
+    let ashokHash: string;
+    const account = (id: string, org: string, name: string, passwordHash: string, over: object = {}) => ({
+      id,
+      email: EMAIL,
+      organizationId: org,
+      role: 'recruiter',
+      status: 'active',
+      permissionProfileId: null,
+      passwordHash,
+      passwordRecheckPending: false,
+      mobileNumber: null,
+      mobileVerifiedAt: null,
+      organization: { slug: `${name}-slug`, name, logoPath: null, status: 'active' },
+      ...over,
+    });
+    let accounts: ReturnType<typeof account>[];
+    const verify = argon2.verify as jest.Mock;
+
+    beforeAll(async () => {
+      kaveriHash = await argon2.hash('kaveri-password');
+      ashokHash = await argon2.hash('ashok-password');
+    });
+
+    beforeEach(() => {
+      accounts = [account('u-kaveri', 'org-kaveri', 'Kaveri Foods', kaveriHash), account('u-ashok', 'org-ashok', 'Ashok Textiles', ashokHash)];
+      (prisma.user as any).findMany = jest.fn(async () => accounts);
+      prisma.user.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => accounts.find((a) => a.id === where.id) ?? null);
+      verify.mockClear();
+    });
+
+    const login = (password: string, meta = META) => service.login({ email: ` ${EMAIL.toUpperCase()} `, password }, meta);
+
+    it('each company\'s password signs in to that company only, and the device remembers it', async () => {
+      const kaveri = (await login('kaveri-password')) as SignedIn;
+      expect(sessions.create).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'u-kaveri', organizationId: 'org-kaveri' }), 'password', META, undefined, null);
+      expect(kaveri.rememberCompany).toBe('org-kaveri.signed');
+      await login('ashok-password');
+      expect(sessions.create).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'u-ashok', organizationId: 'org-ashok' }), 'password', META, undefined, null);
+      // The email is counted across companies before anything is verified, and cleared on success.
+      expect(loginProtection.reserve).toHaveBeenCalledWith('*', EMAIL, META.ip, { deviceId: META.deviceId });
+      expect(loginProtection.registerSuccess).toHaveBeenCalledWith('*', EMAIL, META.ip);
+      expect(loginProtection.registerSuccess).toHaveBeenCalledWith('ashok textiles-slug', EMAIL, META.ip);
+    });
+
+    it('a wrong password never lists companies: 401, a failure on each account under its own company\'s lockout', async () => {
+      setPolicy({ maxFailedAttempts: 3, lockMinutes: 30 });
+      await expect(login('not-the-password')).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
+      expect(loginProtection.reserve).toHaveBeenCalledWith('kaveri foods-slug', EMAIL, META.ip, { deviceId: META.deviceId, lockExempt: false, lockout: { maxFailedAttempts: 3, lockMinutes: 30 } });
+      expect(loginProtection.reserve).toHaveBeenCalledWith('ashok textiles-slug', EMAIL, META.ip, expect.objectContaining({ lockout: { maxFailedAttempts: 3, lockMinutes: 30 } }));
+      expect(loginProtection.registerFailure).toHaveBeenCalledWith('*', EMAIL, META.ip, expect.anything());
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 'org-kaveri', userId: 'u-kaveri', result: 'failed', reason: 'bad_password' }));
+      expect(store.size).toBe(0);
+    });
+
+    it('the same password in both companies: only then the companies are listed (name and logo only), behind a single-use token', async () => {
+      accounts[1].passwordHash = kaveriHash;
+      const choice = (await login('kaveri-password')) as any;
+      expect(choice).toEqual({
+        selectionRequired: true,
+        selectionToken: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+        companies: [
+          { id: 'org-kaveri', name: 'Kaveri Foods', logoUrl: null },
+          { id: 'org-ashok', name: 'Ashok Textiles', logoUrl: null },
+        ],
+        expiresInSeconds: 120,
+      });
+      expect(sessions.create).not.toHaveBeenCalled();
+      expect(redis.set).toHaveBeenCalledWith(expect.stringMatching(/^auth:pick:[0-9a-f]{64}$/), expect.any(String), 'EX', 120);
+      // Stored: who may be picked and a fingerprint of the password hash -- never the hash itself.
+      expect(JSON.stringify([...store.values()])).not.toContain(kaveriHash);
+
+      const signedIn = (await service.selectCompany({ selectionToken: choice.selectionToken, organizationId: 'org-ashok' }, META)) as SignedIn;
+      expect(signedIn.accessToken).toEqual(expect.any(String));
+      expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'u-ashok' }), 'password', META, undefined, null);
+      // Single use.
+      await expect(service.selectCompany({ selectionToken: choice.selectionToken, organizationId: 'org-kaveri' }, META)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('the choice works only on the device it was given to, only for a matched company, and not after a password change', async () => {
+      accounts[1].passwordHash = kaveriHash;
+      const pick = async () => ((await login('kaveri-password')) as any).selectionToken as string;
+
+      await expect(service.selectCompany({ selectionToken: await pick(), organizationId: 'org-kaveri' }, { ...META, deviceId: 'e'.repeat(43) })).rejects.toThrow(UnauthorizedException);
+      expect(sessions.recordLoginEvent).toHaveBeenLastCalledWith(expect.objectContaining({ reason: 'company_pick_device_mismatch' }));
+
+      const token = await pick();
+      await expect(service.selectCompany({ selectionToken: token, organizationId: '99999999-9999-4999-8999-999999999999' }, META)).rejects.toThrow(UnauthorizedException);
+      expect(sessions.recordLoginEvent).toHaveBeenLastCalledWith(expect.objectContaining({ reason: 'company_pick_not_matched' }));
+      // ...and the token was spent by the wrong pick.
+      await expect(service.selectCompany({ selectionToken: token, organizationId: 'org-kaveri' }, META)).rejects.toThrow(UnauthorizedException);
+
+      const before = await pick();
+      accounts[0].passwordHash = await argon2.hash('reset-in-between');
+      await expect(service.selectCompany({ selectionToken: before, organizationId: 'org-kaveri' }, META)).rejects.toThrow(UnauthorizedException);
+      expect(sessions.recordLoginEvent).toHaveBeenLastCalledWith(expect.objectContaining({ userId: 'u-kaveri', reason: 'password_changed' }));
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it('an unknown email costs one dummy argon2 verify and answers exactly like a wrong password', async () => {
+      accounts = [];
+      await expect(login('whatever')).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
+      expect(verify).toHaveBeenCalledTimes(1);
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ organizationId: null, reason: 'unknown_user' }));
+      expect(loginProtection.registerFailure).toHaveBeenCalledWith('*', EMAIL, META.ip, expect.anything());
+    });
+
+    it('an account its company has locked is not tried at all; the other company still works', async () => {
+      loginProtection.check.mockImplementation(async (scope: string) => (scope === 'kaveri foods-slug' ? { scope: 'account', retryAfterSeconds: 600 } : null));
+      await expect(login('kaveri-password')).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
+      expect(verify.mock.calls.map(([hash]) => hash)).toEqual([ashokHash]);
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u-kaveri', result: 'locked', reason: 'account_locked' }));
+      await expect(login('ashok-password')).resolves.toHaveProperty('accessToken');
+    });
+
+    it('the email-wide lock refuses before any account is looked up', async () => {
+      loginProtection.reserve.mockResolvedValueOnce({ block: { scope: 'account', retryAfterSeconds: 60 }, failures: 0, lockExempt: false, lockEvery: 10 });
+      await expect(login('kaveri-password')).rejects.toThrow(TooManyLoginAttemptsException);
+      expect((prisma.user as any).findMany).not.toHaveBeenCalled();
+    });
+
+    it('company rules still apply: SSO-only and the desk allow-list refuse a right password like a wrong one', async () => {
+      policyLoader.mockImplementation(async (_tp: unknown, organizationId: string) =>
+        organizationId === 'org-kaveri' ? { ...DEFAULT_SECURITY_POLICY, ssoOnly: true } : { ...DEFAULT_SECURITY_POLICY, ipAllowlistDesk: ['198.51.100.0/24'] },
+      );
+      await expect(login('kaveri-password')).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u-kaveri', reason: 'sso_only' }));
+      await expect(login('ashok-password')).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u-ashok', reason: 'ip_not_allowed' }));
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it('a picked account still owes its second factor', async () => {
+      accounts[1].passwordHash = kaveriHash;
+      mfa.hasFactor.mockResolvedValue(true);
+      mfa.loadUser.mockResolvedValue({ ...accounts[1], mfaEnrolmentDueAt: new Date() });
+      const choice = (await login('kaveri-password')) as any;
+      await expect(service.selectCompany({ selectionToken: choice.selectionToken, organizationId: 'org-ashok' }, META)).resolves.toMatchObject({ mfaRequired: true });
+      expect(mfa.createPendingLogin).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u-ashok', method: 'password', orgSlug: 'ashok textiles-slug', identifier: EMAIL }));
+    });
+
+    it('with an orgSlug the company path is unchanged (no cross-company lookup)', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-kaveri', status: 'active' });
+      tenantPrisma.forTenant.mockResolvedValueOnce(accounts[0]);
+      await expect(service.login({ organizationSlug: 'Kaveri-Foods', email: EMAIL, password: 'kaveri-password' }, META)).resolves.toHaveProperty('accessToken');
+      expect((prisma.user as any).findMany).not.toHaveBeenCalled();
+      expect(loginProtection.reserve).toHaveBeenCalledWith('kaveri-foods', EMAIL, META.ip, expect.anything());
+      expect(loginProtection.reserve).not.toHaveBeenCalledWith('*', expect.anything(), expect.anything(), expect.anything());
+    });
+
+    it('one code to the address however many companies use it; after it is verified, the same picker rule', async () => {
+      policyLoader.mockImplementation(async () => ({ ...DEFAULT_SECURITY_POLICY, otpSignInChannels: ['email'] }));
+      const sent = await service.startOtpLogin({ identifier: EMAIL }, META);
+      expect(Object.keys(sent).sort()).toEqual(['expiresInSeconds', 'otpToken', 'resendAfterSeconds']);
+      expect(otp.reserveSend).toHaveBeenCalledWith(`signin\u0000\u0000${EMAIL}`, META.ip);
+      expect(otp.deliver).toHaveBeenCalledTimes(1);
+      const [key, data] = otp.issue.mock.calls[0];
+      expect(data.userIds).toBe('u-kaveri,u-ashok');
+
+      otp.peek.mockResolvedValue({ ...data, mac: 'x' });
+      otp.check.mockResolvedValue({ ...data });
+      const choice = (await service.completeOtpLogin({ identifier: EMAIL, otpToken: sent.otpToken!, code: '123456' }, META)) as any;
+      expect(otp.check).toHaveBeenCalledWith(key, '123456');
+      expect(choice.companies.map((c: { id: string }) => c.id)).toEqual(['org-kaveri', 'org-ashok']);
+      await expect(service.selectCompany({ selectionToken: choice.selectionToken, organizationId: 'org-kaveri' }, META)).resolves.toHaveProperty('accessToken');
+      expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'u-kaveri' }), 'otp_email', META, undefined, null);
+    });
+
+    it('a wrong code lists nothing and counts against each account the code was for', async () => {
+      policyLoader.mockImplementation(async () => ({ ...DEFAULT_SECURITY_POLICY, otpSignInChannels: ['email'] }));
+      otp.peek.mockResolvedValue({ userIds: 'u-kaveri,u-ashok', channel: 'email', tokenHash: createHash('sha256').update('T'.repeat(43)).digest('hex'), deviceIdHash: createHash('sha256').update(META.deviceId).digest('hex'), mac: 'x' });
+      otp.check.mockResolvedValue(null);
+      await expect(service.completeOtpLogin({ identifier: EMAIL, otpToken: 'T'.repeat(43), code: '000000' }, META)).rejects.toThrow(UnauthorizedException);
+      expect(loginProtection.reserve).toHaveBeenCalledWith('kaveri foods-slug', EMAIL, META.ip, expect.anything());
+      expect(loginProtection.reserve).toHaveBeenCalledWith('ashok textiles-slug', EMAIL, META.ip, expect.anything());
+      expect(store.size).toBe(0);
+    });
+
+    it('nothing is sent when no company lets this address sign in by code -- same answer', async () => {
+      const sent = await service.startOtpLogin({ identifier: EMAIL }, META); // default policy: codes off
+      expect(Object.keys(sent).sort()).toEqual(['expiresInSeconds', 'otpToken', 'resendAfterSeconds']);
+      expect(otp.deliver).not.toHaveBeenCalled();
+      expect(otp.issue.mock.calls[0][1].userIds).toBe('');
+    });
+
+    it('forgot password without a company: one link per company account, naming the company', async () => {
+      await service.forgotPassword({ email: EMAIL });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(prisma.passwordResetToken.create).toHaveBeenCalledTimes(2);
+      expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: EMAIL, subject: 'Reset your Kaveri Foods password', organizationId: 'org-kaveri' }));
+      expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ subject: 'Reset your Ashok Textiles password', organizationId: 'org-ashok' }));
     });
   });
 });

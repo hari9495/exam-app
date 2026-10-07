@@ -19,7 +19,7 @@ export function StatusBadge({ tone, children }: { tone: StatusTone; children: Re
   return (
     <span
       className={clsx(
-        'inline-flex items-center gap-1.5 rounded px-2 py-0.5 font-body text-xs font-semibold',
+        'inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5 font-body text-xs font-semibold',
         TONE_CLASSES[tone],
       )}
     >

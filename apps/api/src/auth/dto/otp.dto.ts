@@ -6,16 +6,17 @@ const SIX_DIGITS = /^\d{6}$/;
 // Sign-in with a one-time code, step 1. `identifier`: an email address or a mobile number (parsed
 // and normalised by the service); `channel` picks SMS or WhatsApp for a mobile number.
 export class OtpStartDto {
-  @IsString() @MinLength(1) @MaxLength(100) organizationSlug!: string;
+  // Optional: without it, email-first across companies (one code to the address, whatever matches).
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(100) organizationSlug?: string;
   @IsString() @MinLength(3) @MaxLength(320) identifier!: string;
   @IsOptional() @IsIn(['email', 'sms', 'whatsapp']) channel?: 'email' | 'sms' | 'whatsapp';
   // Bot-challenge (Turnstile) token, when configured (see bot-challenge.ts).
   @IsOptional() @IsString() @MaxLength(4096) challengeToken?: string;
 }
 
-// Step 2: the same organisation and identifier, the token step 1 returned, and the code.
+// Step 2: the same organisation (if any) and identifier, the token step 1 returned, and the code.
 export class OtpVerifyDto {
-  @IsString() @MinLength(1) @MaxLength(100) organizationSlug!: string;
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(100) organizationSlug?: string;
   @IsString() @MinLength(3) @MaxLength(320) identifier!: string;
   @Matches(TOKEN) otpToken!: string;
   @Matches(SIX_DIGITS, { message: 'code must be the 6-digit code we sent you' }) code!: string;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { SecuritySettingsScreen, type IdentityProviderRow, type SecurityFloor, type SecurityPolicy } from '@yukthix/ui/auth';
+import { SecuritySettingsScreen, type EmailDomainRow, type IdentityProviderRow, type SecurityFloor, type SecurityPolicy } from '@yukthix/ui/auth';
 import { useAuth } from '../../../../../lib/auth-context';
 import { apiFetch } from '../../../../../lib/api-client';
 import type { PaginatedResponse, StaffUser } from '../../../../../lib/types';
@@ -23,6 +23,7 @@ export default function YxSecuritySettingsPage() {
   const policy = useQuery(get<PolicyResponse>('policy', '/security/policy'));
   const providers = useQuery(get<IdentityProviderRow[]>('providers', '/security/identity-providers'));
   const users = useQuery(get<PaginatedResponse<StaffUser>>('users', '/users?pageSize=100'));
+  const domains = useQuery(get<EmailDomainRow[]>('domains', '/security/identity-providers/domains'));
 
   // A plain 403 is a missing permission; MFA_REQUIRED is the MFA floor (the layout says what to do).
   const err = policy.error as { status?: number; code?: string } | null;
@@ -39,6 +40,11 @@ export default function YxSecuritySettingsPage() {
         .filter((u) => u.role === 'org_admin' && u.status === 'active')
         .map((u) => ({ id: u.id, name: u.name || u.email, email: u.email }))}
       providersHref="/v2/settings/sso"
+      domains={domains.data ?? []}
+      onVerifyDomain={async (domain) => {
+        await apiFetch('/security/identity-providers/domains/verify', { method: 'POST', body: JSON.stringify({ domain }) }, token);
+        await queryClient.invalidateQueries({ queryKey: ['yx', 'settings', 'domains'] });
+      }}
       onSave={async (changes) => {
         await apiFetch('/security/policy', { method: 'PATCH', body: JSON.stringify(changes) }, token);
         await queryClient.invalidateQueries({ queryKey: ['yx', 'settings', 'policy'] });

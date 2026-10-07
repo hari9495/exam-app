@@ -1,0 +1,5547 @@
+[
+ {
+  "id": "EP-B-1",
+  "type": "Epic",
+  "parent": "",
+  "title": "Step 3 · Platform console",
+  "rules": [],
+  "docs": [
+   "P14",
+   "P20",
+   "P02 Q8",
+   "P12 Q7",
+   "PRICING-UNIT-ECONOMICS"
+  ],
+  "state": "New",
+  "phase": "Step 3",
+  "order": 400
+ },
+ {
+  "id": "FT-B-001",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Staff sign-in and console roles",
+  "rules": [
+   "YX-SECOPS-08",
+   "YX-CONSOLE-01",
+   "YX-CONSOLE-02",
+   "YX-CONSOLE-08"
+  ],
+  "docs": [
+   "P14 §3",
+   "P12 Q7",
+   "YX-SECOPS-08"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 401
+ },
+ {
+  "id": "US-B-001",
+  "type": "Story",
+  "parent": "FT-B-001",
+  "title": "Staff member signs in to the console with a hardware key",
+  "story": "As a YukthiX staff member, I want to sign in to the console with my own account and a hardware security key, so that no one can use a shared or stolen password.",
+  "acceptance": [
+   "Given a staff account with no hardware key, when the person tries to open the console, then sign-in is refused and they are asked to register a key first (YX-SECOPS-08).",
+   "Given a staff member with a registered key, when they sign in with password and key, then the console opens; a sign-in without the key is refused (YX-SECOPS-08).",
+   "Given a staff member, when they register keys, then they can hold two keys (main and backup) and each key can be revoked on its own.",
+   "Given the tenant app address, when anyone tries to reach the console from it, then it is not reachable; the console is a separate locked-down area (YX-CONSOLE-01).",
+   "Given any console sign-in, when it succeeds or fails, then it is written to the platform audit log (YX-CONSOLE-02)."
+  ],
+  "rules": [
+   "YX-SECOPS-08",
+   "YX-CONSOLE-01",
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P14 §3",
+   "P12 Q7",
+   "YX-SECOPS-08"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 401,
+  "points": 5,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-B-002",
+  "type": "Story",
+  "parent": "FT-B-001",
+  "title": "Super admin gives staff least-privilege console roles",
+  "story": "As a YukthiX super admin, I want to give each staff member only the console roles they need, so that nobody sees more than their job needs.",
+  "acceptance": [
+   "Given the role list (support, billing, compliance publisher, security, super admin, product analytics), when a staff account is created, then it has no role until a super admin gives one (YX-CONSOLE-01).",
+   "Given a billing staff member, when they open a company, then they see billing data and get \"No access\" on employee records (YX-CONSOLE-01).",
+   "Given a staff member without the product analytics role, when they open product analytics, then access is refused (YX-CONSOLE-08).",
+   "Given any role change, when it is saved, then the audit log keeps who changed it, when and why (YX-CONSOLE-02)."
+  ],
+  "rules": [
+   "YX-CONSOLE-01",
+   "YX-CONSOLE-08",
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P14 §3",
+   "P12 Q7",
+   "YX-SECOPS-08"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 402,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-001"
+  ]
+ },
+ {
+  "id": "US-B-003",
+  "type": "Story",
+  "parent": "FT-B-001",
+  "title": "Staff member asks for short-time elevation with a second approval",
+  "story": "As a YukthiX support engineer, I want to ask for a higher role for a short time, so that I can fix a production problem without holding that power every day.",
+  "acceptance": [
+   "Given a staff member, when they ask for elevation, then they must give a reason and a duration (YX-SECOPS-08).",
+   "Given an elevation request, when the same person tries to approve it, then the console refuses; a second staff member must approve (YX-SECOPS-08).",
+   "Given an approved elevation, when its time ends, then the role is removed automatically.",
+   "Given any elevation, when it starts, is used or ends, then each step is in the audit log (YX-CONSOLE-02)."
+  ],
+  "rules": [
+   "YX-SECOPS-08",
+   "YX-CONSOLE-01",
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P14 §3",
+   "P12 Q7",
+   "YX-SECOPS-08"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 403,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-002"
+  ]
+ },
+ {
+  "id": "US-B-004",
+  "type": "Story",
+  "parent": "FT-B-001",
+  "title": "Security lead reviews staff access every month",
+  "story": "As the YukthiX security lead, I want a monthly list of staff, roles, keys and elevations, so that I can remove access nobody needs.",
+  "acceptance": [
+   "Given the first day of the month, when the review opens, then it lists every staff account with roles, keys, last sign-in and elevations used (YX-SECOPS-08).",
+   "Given the review, when the lead marks a role \"remove\", then the role is removed and the change is audited (YX-CONSOLE-02).",
+   "Given a review not finished in 7 days, when the deadline passes, then the super admins get a reminder."
+  ],
+  "rules": [
+   "YX-SECOPS-08",
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P14 §3",
+   "P12 Q7",
+   "YX-SECOPS-08"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 404,
+  "points": 2,
+  "priority": 2,
+  "depends": [
+   "US-B-002"
+  ]
+ },
+ {
+  "id": "FT-B-002",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Platform audit",
+  "rules": [
+   "YX-CONSOLE-02",
+   "YX-CONSOLE-01"
+  ],
+  "docs": [
+   "P14 YX-CONSOLE-02",
+   "P08"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 405
+ },
+ {
+  "id": "US-B-005",
+  "type": "Story",
+  "parent": "FT-B-002",
+  "title": "Every console action is written to the platform audit log",
+  "story": "As the YukthiX security lead, I want every staff action in the console recorded with who, when and why, so that we can always explain what happened to a company.",
+  "acceptance": [
+   "Given any console action (price change, credit note, suspension, reinstatement, statutory publish, export on behalf, support session, role change), when it is saved, then the audit log keeps staff identity, time, company, reason and before / after values (YX-CONSOLE-02).",
+   "Given an action form, when the reason field is empty, then the action cannot be saved (YX-CONSOLE-02).",
+   "Given the audit log, when anyone (even a super admin) tries to edit or delete an entry, then it is refused; the log is append-only.",
+   "Given an action that affects a company, when it is saved, then it is marked \"visible to company admins\" (YX-CONSOLE-02)."
+  ],
+  "rules": [
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P14 YX-CONSOLE-02",
+   "P08"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 405,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-001"
+  ]
+ },
+ {
+  "id": "US-B-006",
+  "type": "Story",
+  "parent": "FT-B-002",
+  "title": "Security lead searches and exports the platform audit log",
+  "story": "As the YukthiX security lead, I want to search and export the platform audit log, so that I can answer a customer or auditor question quickly.",
+  "acceptance": [
+   "Given the audit log, when the lead filters by staff member, company, action type and dates, then matching entries show newest first.",
+   "Given a result list, when the lead exports it, then a CSV downloads and the export itself is audited (YX-CONSOLE-02).",
+   "Given a staff member without the security or super admin role, when they open the audit log, then access is refused (YX-CONSOLE-01)."
+  ],
+  "rules": [
+   "YX-CONSOLE-02",
+   "YX-CONSOLE-01"
+  ],
+  "docs": [
+   "P14 YX-CONSOLE-02",
+   "P08"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 406,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-005"
+  ]
+ },
+ {
+  "id": "FT-B-003",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Companies and lifecycle",
+  "rules": [
+   "YX-CONSOLE-01",
+   "YX-CONSOLE-02",
+   "YX-TEN-02"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §6 flow 5"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 407
+ },
+ {
+  "id": "US-B-007",
+  "type": "Story",
+  "parent": "FT-B-003",
+  "title": "Staff member finds a company in the console",
+  "story": "As a YukthiX support or billing staff member, I want to find a company fast, so that I can help them without asking for many details.",
+  "acceptance": [
+   "Given the companies list, when staff search by name, domain, GSTIN or company id, then matching companies show.",
+   "Given the list, then each row shows lifecycle state, products, region and sign-up date, and no employee data (YX-CONSOLE-01).",
+   "Given a staff member with no console role, when they open the list, then access is refused (YX-CONSOLE-01)."
+  ],
+  "rules": [
+   "YX-CONSOLE-01"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §6 flow 5"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 407,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-002"
+  ]
+ },
+ {
+  "id": "US-B-008",
+  "type": "Story",
+  "parent": "FT-B-003",
+  "title": "Staff member opens a company detail page",
+  "story": "As a YukthiX staff member, I want one page with a company's products, state, admins and history, so that I understand the account before I act.",
+  "acceptance": [
+   "Given a company, when staff open it, then they see products and subscription status, lifecycle state with history, admins, billing contact and support tier (YX-CONSOLE-01).",
+   "Given the detail page, then recent console actions on this company are listed with staff name and reason (YX-CONSOLE-02).",
+   "Given the detail page, then no employee, candidate or payroll record is shown (YX-CONSOLE-01)."
+  ],
+  "rules": [
+   "YX-CONSOLE-01",
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §6 flow 5"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 408,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-007"
+  ]
+ },
+ {
+  "id": "US-B-009",
+  "type": "Story",
+  "parent": "FT-B-003",
+  "title": "Platform keeps each company in one lifecycle state",
+  "story": "As YukthiX billing staff, I want each company to be in one clear state, so that access and billing follow the same rules every time.",
+  "acceptance": [
+   "Given a company, then its state is one of trial, active, past due, restricted, suspended, cancelled (grace) or deleted, and only allowed moves are possible.",
+   "Given any state change, when it happens, then a lifecycle event is saved with who or what caused it and why (YX-CONSOLE-02).",
+   "Given a restricted or suspended company, when an employee signs in, then they can still download their own payslips, Form 16 and letters (YX-TEN-02).",
+   "Given a payroll run already approved, when the company becomes restricted, then the run is not stopped (YX-TEN-02)."
+  ],
+  "rules": [
+   "YX-TEN-02",
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §6 flow 5"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 409,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-008"
+  ]
+ },
+ {
+  "id": "US-B-010",
+  "type": "Story",
+  "parent": "FT-B-003",
+  "title": "Billing staff suspend or reinstate a company with a reason",
+  "story": "As YukthiX billing staff, I want to suspend or reinstate a company from the console, so that I can act on non-payment or a customer request.",
+  "acceptance": [
+   "Given a company, when billing staff suspend or reinstate it, then a reason is required and the action is audited (YX-CONSOLE-02).",
+   "Given a suspension, when it is saved, then the company admins see a plain banner and get an email (YX-CONSOLE-02).",
+   "Given a suspended company that pays, when the payment is recorded, then the company is reinstated at once.",
+   "Given a support-only staff member, when they try to suspend a company, then the action is refused (YX-CONSOLE-01)."
+  ],
+  "rules": [
+   "YX-CONSOLE-02",
+   "YX-CONSOLE-01",
+   "YX-TEN-02"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §6 flow 5"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 410,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-009"
+  ]
+ },
+ {
+  "id": "US-B-011",
+  "type": "Story",
+  "parent": "FT-B-003",
+  "title": "Company admin sees what YukthiX staff did to their account",
+  "story": "As a company System Admin, I want to see every action YukthiX staff took on our account, so that I can trust the service.",
+  "acceptance": [
+   "Given a console action marked company-visible, when the System Admin opens Settings › Billing & Account, then it shows the date, staff name, action and reason (YX-CONSOLE-02).",
+   "Given an employee without admin roles, when they look for this list, then they cannot see it.",
+   "Given the list, when the admin exports it, then a CSV downloads."
+  ],
+  "rules": [
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §6 flow 5"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 411,
+  "points": 2,
+  "priority": 1,
+  "depends": [
+   "US-B-005"
+  ]
+ },
+ {
+  "id": "FT-B-004",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Support sessions with company approval",
+  "rules": [
+   "YX-SEC-20",
+   "YX-CONSOLE-01",
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P02 Q8",
+   "P02 §5 YX-SEC-20",
+   "P14 §3"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 412
+ },
+ {
+  "id": "US-B-012",
+  "type": "Story",
+  "parent": "FT-B-004",
+  "title": "Support agent asks a company for a support session",
+  "story": "As a YukthiX support agent, I want to ask a company for time-limited access to their data, so that I can fix their problem with their permission.",
+  "acceptance": [
+   "Given a company, when the agent asks for a session, then they must give a reason, the scope and a window (default 24 hours, at most 72 hours) (YX-SEC-20).",
+   "Given the old super-admin \"switch in\" to company data, when this story ships, then it is removed; staff reach company data only through a session (YX-CONSOLE-01).",
+   "Given a new request, when it is sent, then the company System Admins get it in-app and by email.",
+   "Given any request, when it is created, then it is audited (YX-CONSOLE-02)."
+  ],
+  "rules": [
+   "YX-SEC-20",
+   "YX-CONSOLE-01",
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P02 Q8",
+   "P02 §5 YX-SEC-20",
+   "P14 §3"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 412,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-008"
+  ]
+ },
+ {
+  "id": "US-B-013",
+  "type": "Story",
+  "parent": "FT-B-004",
+  "title": "Company admin approves or declines a support session",
+  "story": "As a company System Admin, I want to approve or decline each support session, so that YukthiX sees our data only when we allow it.",
+  "acceptance": [
+   "Given a request, when the admin opens it, then they see the agent name, reason, scope and window (YX-SEC-20).",
+   "Given a request, when the admin approves, then they may shorten the window and choose whether masked Confidential data may be shown (YX-SEC-20).",
+   "Given a request, when the admin declines or does nothing, then the agent gets no access and is told."
+  ],
+  "rules": [
+   "YX-SEC-20"
+  ],
+  "docs": [
+   "P02 Q8",
+   "P02 §5 YX-SEC-20",
+   "P14 §3"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 413,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-012"
+  ]
+ },
+ {
+  "id": "US-B-014",
+  "type": "Story",
+  "parent": "FT-B-004",
+  "title": "Support agent works only inside an approved session",
+  "story": "As a company System Admin, I want the agent limited to the approved scope and time, so that our sensitive data stays safe.",
+  "acceptance": [
+   "Given an approved session, when the agent opens restricted areas (POSH, disciplinary, grievance, whistleblower, medical), then access is refused (YX-SEC-20).",
+   "Given an approved session, when the agent views Confidential or Special fields, then they are masked unless the admin allowed them (YX-SEC-20).",
+   "Given a session, when its window ends or the admin ends it early, then access stops at once.",
+   "Given an active session, then the agent sees a banner with the company name and the time left."
+  ],
+  "rules": [
+   "YX-SEC-20",
+   "YX-CONSOLE-01"
+  ],
+  "docs": [
+   "P02 Q8",
+   "P02 §5 YX-SEC-20",
+   "P14 §3"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 414,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-013"
+  ]
+ },
+ {
+  "id": "US-B-015",
+  "type": "Story",
+  "parent": "FT-B-004",
+  "title": "Company admin sees every action in a support session",
+  "story": "As a company System Admin, I want an action-by-action log of each support session, so that I know exactly what YukthiX did.",
+  "acceptance": [
+   "Given a finished or active session, when the admin opens it, then every page viewed and every change is listed with time (YX-SEC-20).",
+   "Given the same session, then the actions are also in the platform audit log (YX-CONSOLE-02).",
+   "Given the log, when the admin exports it, then a CSV downloads."
+  ],
+  "rules": [
+   "YX-SEC-20",
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P02 Q8",
+   "P02 §5 YX-SEC-20",
+   "P14 §3"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 415,
+  "points": 2,
+  "priority": 1,
+  "depends": [
+   "US-B-014"
+  ]
+ },
+ {
+  "id": "FT-B-005",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Shared channel accounts",
+  "rules": [
+   "YX-CONSOLE-02",
+   "YX-NTF-12"
+  ],
+  "docs": [
+   "P04 §4.4–4.5a",
+   "BACKEND-ROADMAP step 3"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 416
+ },
+ {
+  "id": "US-B-016",
+  "type": "Story",
+  "parent": "FT-B-005",
+  "title": "Ops staff manage the shared YukthiX SMS account in the console",
+  "story": "As YukthiX ops staff, I want the shared Zoho CPaaS SMS account set up in the console instead of in a company's settings, so that no company admin can see or change our provider keys.",
+  "acceptance": [
+   "Given the shared SMS account settings in company settings today, when this story ships, then they move to the console and are removed from every company settings screen, and sending keeps working with no gap.",
+   "Given the console, when ops staff save the provider, sender header and keys, then secrets are stored encrypted and never shown again after save.",
+   "Given a change to the shared account, when it is saved, then a second staff member must approve it and it is audited (YX-CONSOLE-02).",
+   "Given the shared account, when staff use \"Test send\" to their own number, then they see the delivery result."
+  ],
+  "rules": [
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P04 §4.4–4.5a",
+   "BACKEND-ROADMAP step 3"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 416,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-002"
+  ]
+ },
+ {
+  "id": "US-B-017",
+  "type": "Story",
+  "parent": "FT-B-005",
+  "title": "Company admin sees whether SMS uses the shared account or their own",
+  "story": "As a company System Admin, I want to know which SMS account sends our messages, so that I can switch to our own DLT account if we want.",
+  "acceptance": [
+   "Given a company on the shared account, when the admin opens channel settings, then it shows \"YukthiX shared sender\" with no keys or secrets.",
+   "Given a company, when the admin connects its own DLT SMS account, then messages go through it; switching back to shared is allowed.",
+   "Given the shared account, when a company sends SMS, then its usage is metered per company for billing (YX-NTF-12)."
+  ],
+  "rules": [
+   "YX-NTF-12"
+  ],
+  "docs": [
+   "P04 §4.4–4.5a",
+   "BACKEND-ROADMAP step 3"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 417,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-016"
+  ]
+ },
+ {
+  "id": "US-B-018",
+  "type": "Story",
+  "parent": "FT-B-005",
+  "title": "Ops staff manage DLT headers and templates of the shared account",
+  "story": "As YukthiX ops staff, I want to see the DLT sender headers and templates of the shared account, so that only approved wording is sent.",
+  "acceptance": [
+   "Given the shared account, when staff open templates, then each shows its DLT status (pending, approved, rejected).",
+   "Given a template that is not approved, when a message tries to use it, then it is not sent on SMS and the fallback channel is used and logged.",
+   "Given any template change, when it is saved, then it is audited (YX-CONSOLE-02)."
+  ],
+  "rules": [
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P04 §4.4–4.5a",
+   "BACKEND-ROADMAP step 3"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 418,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-016"
+  ]
+ },
+ {
+  "id": "US-B-019",
+  "type": "Story",
+  "parent": "FT-B-005",
+  "title": "Ops staff see the health of shared channel accounts",
+  "story": "As YukthiX ops staff, I want delivery rates and errors for the shared accounts, so that I notice a provider problem before customers do.",
+  "acceptance": [
+   "Given the shared SMS account, when staff open its page, then they see sent, delivered and failed counts per day.",
+   "Given a failure rate above the set limit for 15 minutes, when it happens, then the on-call engineer is alerted.",
+   "Given the page, then no message text or phone number is shown, only counts and error codes."
+  ],
+  "rules": [],
+  "docs": [
+   "P04 §4.4–4.5a",
+   "BACKEND-ROADMAP step 3"
+  ],
+  "state": "New",
+  "phase": "Step 3-a",
+  "order": 419,
+  "points": 2,
+  "priority": 2,
+  "depends": [
+   "US-B-016"
+  ]
+ },
+ {
+  "id": "FT-B-006",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Products, plans and price catalogue",
+  "rules": [
+   "YX-BILL-01",
+   "YX-CONSOLE-02",
+   "YX-BILL-14",
+   "YX-BILL-11",
+   "YX-BILL-13",
+   "YX-BILL-09",
+   "YX-CONSOLE-09"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §4",
+   "PRICING-UNIT-ECONOMICS §2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 420
+ },
+ {
+  "id": "US-B-020",
+  "type": "Story",
+  "parent": "FT-B-006",
+  "title": "Billing staff keep one plan per product with dated prices",
+  "story": "As YukthiX billing staff, I want one plan per product with dated prices, so that companies buy products, never tiers.",
+  "acceptance": [
+   "Given the catalogue, when staff try to add a second plan to a product, then it is refused (YX-BILL-01).",
+   "Given a plan, then its prices are stored per currency, period and region with start dates; India starts at ₹99 per employee, recruiter seat or attempt, and $1 elsewhere (PRICING §2).",
+   "Given a price change, when it is saved, then a second staff member must approve it and it is audited (YX-CONSOLE-02)."
+  ],
+  "rules": [
+   "YX-BILL-01",
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §4",
+   "PRICING-UNIT-ECONOMICS §2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 420,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-005"
+  ]
+ },
+ {
+  "id": "US-B-021",
+  "type": "Story",
+  "parent": "FT-B-006",
+  "title": "Billing staff set discounts and minimum amounts",
+  "story": "As YukthiX billing staff, I want bundle, annual and founding discounts and the minimum per product in the catalogue, so that invoices apply them the same way for everyone.",
+  "acceptance": [
+   "Given a company with 2 products, when the invoice is built, then 10 % bundle discount applies automatically; with 3 products, 15 % (YX-BILL-01).",
+   "Given annual prepay, then the price is 10 months for 12 (PRICING §2).",
+   "Given the minimums, then HRMS is ₹499, ATS ₹999 and Proctoring ₹999 only in a month with at least one attempt, otherwise ₹0 (YX-BILL-14).",
+   "Given the founding offer, then the first 100 companies can lock ₹79 per employee for 36 months, and the list price does not change."
+  ],
+  "rules": [
+   "YX-BILL-01",
+   "YX-BILL-14"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §4",
+   "PRICING-UNIT-ECONOMICS §2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 421,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-020"
+  ]
+ },
+ {
+  "id": "US-B-022",
+  "type": "Story",
+  "parent": "FT-B-006",
+  "title": "Billing staff manage the add-on catalogue",
+  "story": "As YukthiX billing staff, I want a catalogue of add-ons, so that only partner costs and usage above fair use are charged extra.",
+  "acceptance": [
+   "Given an add-on, then its type is one of partner pass-through, usage, custom connection, customisation or priority support.",
+   "Given a partner service (EWA, benchmarking data, learning content, eKYC / DigiLocker), then the connector is included and only the partner's charge is an add-on (YX-BILL-11).",
+   "Given job-board postings, when staff try to create a YukthiX price line for them, then it is refused; posting fees stay on the customer's own board account (YX-BILL-11).",
+   "Given the EWA add-on, then its description says the regulated partner provides the funds and YukthiX never lends or holds them (YX-BILL-11)."
+  ],
+  "rules": [
+   "YX-BILL-11",
+   "YX-BILL-01"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §4",
+   "PRICING-UNIT-ECONOMICS §2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 422,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-020"
+  ]
+ },
+ {
+  "id": "US-B-023",
+  "type": "Story",
+  "parent": "FT-B-006",
+  "title": "Visitor sees the published price list",
+  "story": "As a visitor or company admin, I want to see every price before I buy, so that there are no surprises.",
+  "acceptance": [
+   "Given the website and the app before purchase, then every product, add-on, discount and minimum is shown from the same catalogue (YX-BILL-14).",
+   "Given a self-serve company, when an invoice is made, then no price outside the published list is used (YX-BILL-14).",
+   "Given the price pages, then no text uses \"plan\", \"tier\", \"premium\", \"upgrade\" or \"unlock\" (brand Part 2)."
+  ],
+  "rules": [
+   "YX-BILL-14"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §4",
+   "PRICING-UNIT-ECONOMICS §2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 423,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-021",
+   "US-B-022"
+  ]
+ },
+ {
+  "id": "US-B-024",
+  "type": "Story",
+  "parent": "FT-B-006",
+  "title": "Billing staff schedule a price change with 90 days' notice",
+  "story": "As YukthiX billing staff, I want price and feature changes to follow fixed notice rules, so that customers can plan.",
+  "acceptance": [
+   "Given a list-price change, when its start date is less than 90 days away, then it cannot be saved (YX-BILL-13).",
+   "Given a saved change, then every company's admins and billing contact get a notice at once (YX-BILL-13).",
+   "Given a company on an annual term, then its price does not change until renewal (YX-BILL-13).",
+   "Given a feature removal, then it needs at least 6 months' notice and an export path for its data (YX-BILL-13).",
+   "Given an annual renewal, then reminders with the renewal price go 30 and 7 days before (YX-BILL-13)."
+  ],
+  "rules": [
+   "YX-BILL-13"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §4",
+   "PRICING-UNIT-ECONOMICS §2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 424,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-020"
+  ]
+ },
+ {
+  "id": "US-B-025",
+  "type": "Story",
+  "parent": "FT-B-006",
+  "title": "Founder sees cost per billable unit against the price",
+  "story": "As the founder, I want to see the full running cost per billable unit each month, so that I know the $1 price stays safe.",
+  "acceptance": [
+   "Given each product, when the month closes, then the console shows the fully loaded cost per unit against the price (YX-BILL-09).",
+   "Given month 18 after launch or later, when cost per unit is above 40 % of the price, then the product is flagged (YX-BILL-09).",
+   "Given a new feature marked as a cost driver, when it is prepared for release, then the release checklist asks for it to be an add-on first (YX-BILL-09)."
+  ],
+  "rules": [
+   "YX-BILL-09"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §4",
+   "PRICING-UNIT-ECONOMICS §2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 425,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-020"
+  ]
+ },
+ {
+  "id": "US-B-026",
+  "type": "Story",
+  "parent": "FT-B-006",
+  "title": "Founder sees cost per company against its revenue",
+  "story": "As the founder, I want each company's storage, egress, AI and compute cost next to what it pays, so that I spot loss-making accounts.",
+  "acceptance": [
+   "Given metering tags, when the day closes, then storage, egress, AI and compute are attributed per company (YX-CONSOLE-09).",
+   "Given a company, then the console shows cost, billed revenue and gross margin; shared costs use a documented key (YX-CONSOLE-09).",
+   "Given a company whose cost passes the set share of revenue, then it is flagged (YX-CONSOLE-09).",
+   "Given a staff member without the product analytics role, when they open this view, then access is refused (YX-CONSOLE-09)."
+  ],
+  "rules": [
+   "YX-CONSOLE-09"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §4",
+   "PRICING-UNIT-ECONOMICS §2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 426,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-020"
+  ]
+ },
+ {
+  "id": "FT-B-007",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Usage meters and billable units",
+  "rules": [
+   "YX-BILL-08",
+   "YX-BILL-02",
+   "YX-BILL-03",
+   "YX-BILL-10",
+   "YX-BILL-12",
+   "YX-TEN-08",
+   "YX-BILL-07"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §4 meter_events",
+   "P14 Q1–Q2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 427
+ },
+ {
+  "id": "US-B-027",
+  "type": "Story",
+  "parent": "FT-B-007",
+  "title": "Platform records usage in one append-only meter ledger",
+  "story": "As YukthiX billing staff, I want all usage in one ledger, so that invoices, usage pages and alerts use the same numbers.",
+  "acceptance": [
+   "Given any metered use (employees, recruiter seats, attempts, SMS, AI credits, storage, API calls, proctor hours, partner calls), when it happens, then an event is saved with company, meter, quantity, time and source.",
+   "Given the ledger, when anyone tries to change an event, then it is refused; corrections are new events.",
+   "Given a partner add-on call, then it is metered per call with the partner reference (YX-BILL-08).",
+   "Given the move from the exam app, then old AI credit, SMS and attempt usage is loaded into the ledger."
+  ],
+  "rules": [
+   "YX-BILL-08"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §4 meter_events",
+   "P14 Q1–Q2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 427,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-020"
+  ]
+ },
+ {
+  "id": "US-B-028",
+  "type": "Story",
+  "parent": "FT-B-007",
+  "title": "Platform counts each HRMS person once a month",
+  "story": "As a company Payroll Admin, I want each person counted once a month across all our legal entities, so that we never pay twice for one person.",
+  "acceptance": [
+   "Given a person with active employment on any day of the month, then they are one unit, once across all legal entities (YX-BILL-02).",
+   "Given a person moved from entity A to B on the 11th of a 30-day month, then they are one unit, with 10/30 against A and 20/30 against B (YX-BILL-02).",
+   "Given pre-boarders, alumni, nominees and external logins, then they are never counted (YX-BILL-03).",
+   "Given a consultant paid this month, then they count once, and not again if they are also an employee this month (YX-BILL-10).",
+   "Given the snapshot, then every counted person is listed with a reason such as \"active employee\" or \"consultant paid\" (YX-BILL-02)."
+  ],
+  "rules": [
+   "YX-BILL-02",
+   "YX-BILL-03",
+   "YX-BILL-10"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §4 meter_events",
+   "P14 Q1–Q2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 428,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-B-027"
+  ]
+ },
+ {
+  "id": "US-B-029",
+  "type": "Story",
+  "parent": "FT-B-007",
+  "title": "Platform counts recruiter seats and test attempts",
+  "story": "As a company admin, I want ATS and Proctoring counted fairly, so that free roles and failed attempts do not cost us.",
+  "acceptance": [
+   "Given ATS, then users with recruiter or hiring-admin roles are seats; hiring managers and panel members are free (YX-BILL-03).",
+   "Given Proctoring, then each attempt started counts; practice attempts and attempts reset for a technical failure are free; retakes count (YX-BILL-03).",
+   "Given the snapshot, then every counted seat or attempt is listed (YX-BILL-02)."
+  ],
+  "rules": [
+   "YX-BILL-03",
+   "YX-BILL-02"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §4 meter_events",
+   "P14 Q1–Q2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 429,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-027"
+  ]
+ },
+ {
+  "id": "US-B-030",
+  "type": "Story",
+  "parent": "FT-B-007",
+  "title": "Meter starts only when the company goes live",
+  "story": "As a company admin, I want billing to start only when we go live, so that set-up and migration days are free.",
+  "acceptance": [
+   "Given a company that signs on the 3rd and marks HRMS live on the 20th, then HRMS is billed from the 20th (YX-BILL-12).",
+   "Given HRMS, then the start is the go-live date or the first live payroll run, whichever comes first (YX-BILL-12).",
+   "Given a trial, then no card or mandate is ever charged (YX-TEN-08)."
+  ],
+  "rules": [
+   "YX-BILL-12",
+   "YX-TEN-08"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §4 meter_events",
+   "P14 Q1–Q2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 430,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-027"
+  ]
+ },
+ {
+  "id": "US-B-031",
+  "type": "Story",
+  "parent": "FT-B-007",
+  "title": "Company admin downloads the list of who was counted",
+  "story": "As a company admin, I want to see and download who we were billed for, so that I can check the invoice.",
+  "acceptance": [
+   "Given an invoice line, when the admin opens it, then they see the list of counted people or seats with the reason for each (YX-BILL-02).",
+   "Given the list, when the admin downloads it, then a CSV is produced.",
+   "Given a joiner on the 20th and a leaver on the 25th, then both appear with the reason they were counted (YX-BILL-02)."
+  ],
+  "rules": [
+   "YX-BILL-02"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §4 meter_events",
+   "P14 Q1–Q2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 431,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-028"
+  ]
+ },
+ {
+  "id": "US-B-032",
+  "type": "Story",
+  "parent": "FT-B-007",
+  "title": "Company admin sees usage against fair use",
+  "story": "As a company admin, I want to see usage against fair-use limits, so that I am never surprised by overage.",
+  "acceptance": [
+   "Given the usage page, then each meter shows use against its fair-use limit with a chart (YX-BILL-07).",
+   "Given a meter at 80 % and at 100 %, then admins get an alert (YX-BILL-07).",
+   "Given usage above the limit, then overage follows the add-on's billing mode and cap (YX-BILL-07).",
+   "Given a hard SMS cap reached, when a statutory or mandatory message is sent, then it is not blocked (YX-BILL-07)."
+  ],
+  "rules": [
+   "YX-BILL-07"
+  ],
+  "docs": [
+   "P14 §3",
+   "P14 §4 meter_events",
+   "P14 Q1–Q2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 432,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-027"
+  ]
+ },
+ {
+  "id": "FT-B-008",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Self-serve sign-up and trial",
+  "rules": [
+   "YX-TEN-08",
+   "YX-TEN-01",
+   "YX-BILL-12",
+   "YX-GRO-04",
+   "YX-TEN-04",
+   "YX-GRO-06",
+   "YX-TEN-06"
+  ],
+  "docs": [
+   "P14 Q4",
+   "P14 §6 flow 1",
+   "P20 §3"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 433
+ },
+ {
+  "id": "US-B-033",
+  "type": "Story",
+  "parent": "FT-B-008",
+  "title": "Company signs up and starts a 30-day trial",
+  "story": "As a new company owner, I want to sign up myself and try the products for 30 days, so that I can decide without talking to sales.",
+  "acceptance": [
+   "Given the sign-up page, when the owner picks products, region, company details and GSTIN and verifies email or mobile, then a 30-day trial starts with no card (YX-TEN-08).",
+   "Given a trial, then live bank files, statutory filings, partner add-ons and bulk WhatsApp / SMS are switched off.",
+   "Given a trial, then a banner shows days left and set-up progress."
+  ],
+  "rules": [
+   "YX-TEN-08",
+   "YX-TEN-01"
+  ],
+  "docs": [
+   "P14 Q4",
+   "P14 §6 flow 1",
+   "P20 §3"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 433,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-009",
+   "US-B-020"
+  ]
+ },
+ {
+  "id": "US-B-034",
+  "type": "Story",
+  "parent": "FT-B-008",
+  "title": "Company admin switches on a product during the trial",
+  "story": "As a company System Admin, I want to switch on a product without losing our trial work, so that we start paid use easily.",
+  "acceptance": [
+   "Given a trial, when the admin chooses a period and payment method and accepts the terms, then the product is switched on.",
+   "Given trial data, when the admin switches on, then it becomes live data with no re-entry; the admin can choose to wipe it instead (YX-TEN-01).",
+   "Given a product switched on during the trial, then billing still starts only at go-live (YX-BILL-12).",
+   "Given an admin without billing permission, then they see \"Ask your System Admin\" instead of the button (YX-GRO-04)."
+  ],
+  "rules": [
+   "YX-TEN-01",
+   "YX-BILL-12",
+   "YX-GRO-04"
+  ],
+  "docs": [
+   "P14 Q4",
+   "P14 §6 flow 1",
+   "P20 §3"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 434,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-033"
+  ]
+ },
+ {
+  "id": "US-B-035",
+  "type": "Story",
+  "parent": "FT-B-008",
+  "title": "Trial without switch-on becomes read-only, then is deleted",
+  "story": "As YukthiX, I want trials that never switch on to end cleanly, so that data is not kept forever and customers get a fair warning.",
+  "acceptance": [
+   "Given a trial and its extension have ended with no product switched on, then the account is read-only for 30 days: view and full export allowed, no payroll runs, tests, jobs or messages (YX-TEN-08).",
+   "Given read-only, then all trial admins get reminders on day 1, day 15 and day 25 (YX-TEN-08).",
+   "Given day 30 of read-only, then the trial data is deleted and a deletion certificate is emailed (YX-TEN-08, YX-TEN-04).",
+   "Given read-only, when an admin switches on before deletion, then full use returns with no data loss (YX-TEN-08)."
+  ],
+  "rules": [
+   "YX-TEN-08",
+   "YX-TEN-04"
+  ],
+  "docs": [
+   "P14 Q4",
+   "P14 §6 flow 1",
+   "P20 §3"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 435,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-033"
+  ]
+ },
+ {
+  "id": "US-B-036",
+  "type": "Story",
+  "parent": "FT-B-008",
+  "title": "Trial gets one 14-day extension",
+  "story": "As a company admin in a trial, I want one extra 14 days when I need it, so that I can finish set-up.",
+  "acceptance": [
+   "Given day 30 and first value reached, then the trial is extended by 14 days automatically (YX-GRO-06).",
+   "Given day 30 and no first value, when the admin asks for the extension, then it is given once; a second request is refused (YX-GRO-06).",
+   "Given a staff extension, then it needs a reason, is at most 30 days, is audited and is shown to the admins (YX-GRO-06, YX-TEN-06).",
+   "Given any extension, then billing still starts only at go-live (YX-BILL-12)."
+  ],
+  "rules": [
+   "YX-GRO-06",
+   "YX-TEN-06",
+   "YX-BILL-12"
+  ],
+  "docs": [
+   "P14 Q4",
+   "P14 §6 flow 1",
+   "P20 §3"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 436,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-033"
+  ]
+ },
+ {
+  "id": "FT-B-009",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Subscriptions and changes",
+  "rules": [
+   "YX-BILL-06",
+   "YX-BILL-01",
+   "YX-BILL-13"
+  ],
+  "docs": [
+   "P14 Q3",
+   "P14 Q7"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 437
+ },
+ {
+  "id": "US-B-037",
+  "type": "Story",
+  "parent": "FT-B-009",
+  "title": "Company admin adds or removes a product or add-on",
+  "story": "As a company System Admin, I want to add or remove products and add-ons myself, so that we pay only for what we use.",
+  "acceptance": [
+   "Given a new product or add-on, when the admin adds it, then it is charged pro-rata from today (YX-BILL-06).",
+   "Given an add-on removed mid-month, then it stays until the end of the paid period (YX-BILL-06).",
+   "Given the number of products changes, then the bundle discount is recalculated automatically (YX-BILL-01)."
+  ],
+  "rules": [
+   "YX-BILL-06",
+   "YX-BILL-01"
+  ],
+  "docs": [
+   "P14 Q3",
+   "P14 Q7"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 437,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-034"
+  ]
+ },
+ {
+  "id": "US-B-038",
+  "type": "Story",
+  "parent": "FT-B-009",
+  "title": "Company admin chooses annual prepay",
+  "story": "As a company System Admin, I want to prepay for a year, so that we save money and have one payment.",
+  "acceptance": [
+   "Given annual prepay, then the price is 10 months for 12 and is paid by NEFT / RTGS.",
+   "Given growth in billable units during the year, then it is trued up monthly or quarterly in arrears (YX-BILL-06).",
+   "Given an annual term, then its price never changes mid-term (YX-BILL-13)."
+  ],
+  "rules": [
+   "YX-BILL-06",
+   "YX-BILL-13"
+  ],
+  "docs": [
+   "P14 Q3",
+   "P14 Q7"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 438,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-037"
+  ]
+ },
+ {
+  "id": "US-B-039",
+  "type": "Story",
+  "parent": "FT-B-009",
+  "title": "Company admin cancels a monthly plan at any time",
+  "story": "As a company System Admin, I want to cancel a monthly plan myself, so that we are never locked in.",
+  "acceptance": [
+   "Given a monthly plan, when the admin cancels in Settings › Billing & Account, then it ends at the end of the paid period (YX-BILL-13, YX-BILL-06).",
+   "Given a cancellation, then the admin sees what happens next: the end date, the grace period and the export.",
+   "Given a cancellation, then it is shown in the company action list and the billing contact gets an email."
+  ],
+  "rules": [
+   "YX-BILL-13",
+   "YX-BILL-06"
+  ],
+  "docs": [
+   "P14 Q3",
+   "P14 Q7"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 439,
+  "points": 2,
+  "priority": 1,
+  "depends": [
+   "US-B-037"
+  ]
+ },
+ {
+  "id": "FT-B-010",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "GST invoices",
+  "rules": [
+   "YX-BILL-02",
+   "YX-BILL-14",
+   "YX-BILL-04",
+   "YX-CONSOLE-02",
+   "YX-BILL-19",
+   "YX-BILL-20",
+   "YX-BILL-16",
+   "YX-BILL-17"
+  ],
+  "docs": [
+   "P14 §4 invoices",
+   "P14 §6 flow 2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 440
+ },
+ {
+  "id": "US-B-040",
+  "type": "Story",
+  "parent": "FT-B-010",
+  "title": "Platform raises monthly invoices on the 1st",
+  "story": "As YukthiX billing staff, I want invoices made automatically each month, so that billing needs little manual work.",
+  "acceptance": [
+   "Given the 1st of the month, then meters are snapshotted and draft invoices are made for every active company.",
+   "Given a draft that changes more than the set limit from last month, then it goes to the staff review queue; the others are issued automatically.",
+   "Given every invoice line, then it links to the monthly snapshot and the counted list (YX-BILL-02).",
+   "Given a product below its minimum, then the minimum amount is charged (YX-BILL-14)."
+  ],
+  "rules": [
+   "YX-BILL-02",
+   "YX-BILL-14"
+  ],
+  "docs": [
+   "P14 §4 invoices",
+   "P14 §6 flow 2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 440,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-028",
+   "US-B-029"
+  ]
+ },
+ {
+  "id": "US-B-041",
+  "type": "Story",
+  "parent": "FT-B-010",
+  "title": "Company receives a correct GST tax invoice",
+  "story": "As a company finance user, I want a correct GST invoice, so that we can claim input tax credit.",
+  "acceptance": [
+   "Given a Karnataka company billed from a Karnataka GSTIN, then the invoice has CGST and SGST; a Maharashtra company gets IGST (YX-BILL-04).",
+   "Given any invoice, then it shows the SAC code, both GSTINs and the place of supply (YX-BILL-04).",
+   "Given prices, then they are shown without GST and tax is added on the invoice; the published minimum is shown (YX-BILL-14).",
+   "Given an issued invoice, then the admin can download it as PDF from Settings › Billing & Account."
+  ],
+  "rules": [
+   "YX-BILL-04",
+   "YX-BILL-14"
+  ],
+  "docs": [
+   "P14 §4 invoices",
+   "P14 §6 flow 2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 441,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-040"
+  ]
+ },
+ {
+  "id": "US-B-042",
+  "type": "Story",
+  "parent": "FT-B-010",
+  "title": "Billing staff correct an invoice with a credit note",
+  "story": "As YukthiX billing staff, I want to fix a wrong invoice with a credit note, so that GST records stay correct.",
+  "acceptance": [
+   "Given an issued invoice, when staff try to edit it, then it is refused; corrections are made only by credit note (YX-BILL-04).",
+   "Given a credit note, then it needs a reason and is audited (YX-CONSOLE-02).",
+   "Given a credit note, then the company admins see it next to the invoice (YX-CONSOLE-02)."
+  ],
+  "rules": [
+   "YX-BILL-04",
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P14 §4 invoices",
+   "P14 §6 flow 2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 442,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-041"
+  ]
+ },
+ {
+  "id": "US-B-043",
+  "type": "Story",
+  "parent": "FT-B-010",
+  "title": "HRMS invoice line shows the cost split by legal entity",
+  "story": "As a company finance user, I want the HRMS cost split by legal entity, so that each entity's books carry its own share.",
+  "acceptance": [
+   "Given an HRMS line, then it shows each entity's share, pro-rata by days active (YX-BILL-02).",
+   "Given the split, then it never changes the unit count or the total (YX-BILL-02).",
+   "Given a single-entity company, then the line shows no split."
+  ],
+  "rules": [
+   "YX-BILL-02"
+  ],
+  "docs": [
+   "P14 §4 invoices",
+   "P14 §6 flow 2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 443,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-041"
+  ]
+ },
+ {
+  "id": "US-B-044",
+  "type": "Story",
+  "parent": "FT-B-010",
+  "title": "Company group gets one GST invoice per GSTIN",
+  "story": "As a group finance head, I want one GST invoice for each legal entity, so that each GSTIN claims its own credit.",
+  "acceptance": [
+   "Given a group with three GSTINs, then it receives three GST invoices whose totals equal the per-entity split (YX-BILL-19).",
+   "Given each invoice, then it uses that entity's billing address, GSTIN and place of supply (YX-BILL-19).",
+   "Given a group that asks for it, then it also gets one consolidated statement, in addition to the invoices, never instead (YX-BILL-19)."
+  ],
+  "rules": [
+   "YX-BILL-19"
+  ],
+  "docs": [
+   "P14 §4 invoices",
+   "P14 §6 flow 2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 444,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-043"
+  ]
+ },
+ {
+  "id": "US-B-045",
+  "type": "Story",
+  "parent": "FT-B-010",
+  "title": "Invoices get an IRN within the 30-day reporting limit",
+  "story": "As YukthiX finance, I want IRN reporting tracked, so that no invoice misses the e-invoice deadline.",
+  "acceptance": [
+   "Given YukthiX turnover at or above the e-invoice threshold, then each invoice is reported to the IRP and shows the IRN and QR (YX-BILL-04).",
+   "Given an invoice without an IRN on day 20, then finance is alerted (YX-BILL-20).",
+   "Given an invoice without an IRN on day 26, when finance tries to mark it final, then it is refused (YX-BILL-20).",
+   "Given the threshold, then it is held as dated data, not code (YX-BILL-20)."
+  ],
+  "rules": [
+   "YX-BILL-04",
+   "YX-BILL-20"
+  ],
+  "docs": [
+   "P14 §4 invoices",
+   "P14 §6 flow 2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 445,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-041"
+  ]
+ },
+ {
+  "id": "US-B-046",
+  "type": "Story",
+  "parent": "FT-B-010",
+  "title": "Finance records the yearly GST LUT",
+  "story": "As YukthiX finance, I want to record our Letter of Undertaking each year, so that export invoices are legal.",
+  "acceptance": [
+   "Given the LUT register, when finance adds a row, then it holds ARN, financial year, valid from / to, filed on, filed by and the document (YX-BILL-16).",
+   "Given no valid LUT for the year, when an export invoice is due, then it goes to staff review and IGST is never charged or dropped silently (YX-BILL-16).",
+   "Given an LUT that ends this financial year, when the new year starts with no new row, then finance is alerted before the first export invoice (YX-BILL-16)."
+  ],
+  "rules": [
+   "YX-BILL-16"
+  ],
+  "docs": [
+   "P14 §4 invoices",
+   "P14 §6 flow 2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 446,
+  "points": 2,
+  "priority": 1,
+  "depends": [
+   "US-B-041"
+  ]
+ },
+ {
+  "id": "US-B-047",
+  "type": "Story",
+  "parent": "FT-B-010",
+  "title": "Foreign customer gets a zero-rated export invoice",
+  "story": "As a customer outside India, I want an invoice without Indian GST, so that I pay only the right amount.",
+  "acceptance": [
+   "Given a Singapore customer and a valid LUT, then the invoice has no IGST and carries the LUT ARN and year (YX-BILL-16).",
+   "Given an export invoice, then it says \"Supply meant for export under LUT without payment of IGST\" (YX-BILL-16).",
+   "Given an export invoice, then it shows the country, currency and INR value at the exchange rate used (YX-BILL-16)."
+  ],
+  "rules": [
+   "YX-BILL-16"
+  ],
+  "docs": [
+   "P14 §4 invoices",
+   "P14 §6 flow 2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 447,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-046"
+  ]
+ },
+ {
+  "id": "US-B-048",
+  "type": "Story",
+  "parent": "FT-B-010",
+  "title": "Finance matches foreign receipts to FIRC or e-BRC",
+  "story": "As YukthiX finance, I want each foreign payment matched to its invoice and FIRC, so that GST returns and books are right.",
+  "acceptance": [
+   "Given a foreign receipt, when finance matches it, then it links to its export invoice(s) and a FIRC or e-BRC number and date (YX-BILL-17).",
+   "Given a USD receipt with no FIRC at month end, then it stays in the matching queue (YX-BILL-17).",
+   "Given a short receipt (bank charges, exchange difference), then it stays open until resolved and the realised INR is recorded (YX-BILL-17)."
+  ],
+  "rules": [
+   "YX-BILL-17"
+  ],
+  "docs": [
+   "P14 §4 invoices",
+   "P14 §6 flow 2"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 448,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-047"
+  ]
+ },
+ {
+  "id": "FT-B-011",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Payments and collections",
+  "rules": [
+   "YX-BILL-15",
+   "YX-BILL-05",
+   "YX-BILL-18"
+  ],
+  "docs": [
+   "P14 Q3",
+   "PRICING-UNIT-ECONOMICS §3"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 449
+ },
+ {
+  "id": "US-B-049",
+  "type": "Story",
+  "parent": "FT-B-011",
+  "title": "Company admin sets up bank auto-debit",
+  "story": "As a company System Admin, I want to pay by bank auto-debit, so that invoices are paid on time without effort.",
+  "acceptance": [
+   "Given a monthly plan, then the default method is e-NACH; UPI Autopay is offered below ₹15,000 a month; cards stay available at list price (YX-BILL-15).",
+   "Given any method, then YukthiX stores only gateway tokens, never card or bank details (YX-BILL-05).",
+   "Given a mandate, then its status (pending, active, failed) shows in Settings › Billing & Account."
+  ],
+  "rules": [
+   "YX-BILL-15",
+   "YX-BILL-05"
+  ],
+  "docs": [
+   "P14 Q3",
+   "PRICING-UNIT-ECONOMICS §3"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 449,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-041"
+  ]
+ },
+ {
+  "id": "US-B-050",
+  "type": "Story",
+  "parent": "FT-B-011",
+  "title": "Company paying by bank gets 2 % off and auto-matching",
+  "story": "As a company finance user, I want a discount for bank payment and automatic matching, so that paying is cheap and simple.",
+  "acceptance": [
+   "Given payment by e-NACH, UPI Autopay or NEFT, then a 2 % bank-rail discount line is shown; cards never get a surcharge (YX-BILL-15).",
+   "Given every company, then it has its own virtual account number so bank transfers match invoices automatically (YX-BILL-15).",
+   "Given a receipt that cannot be matched, then it shows on the Jobs & errors page (YX-BILL-15)."
+  ],
+  "rules": [
+   "YX-BILL-15"
+  ],
+  "docs": [
+   "P14 Q3",
+   "PRICING-UNIT-ECONOMICS §3"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 450,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-049"
+  ]
+ },
+ {
+  "id": "US-B-051",
+  "type": "Story",
+  "parent": "FT-B-011",
+  "title": "Foreign customer pays by annual prepay, ACH or SEPA",
+  "story": "As a customer outside India, I want to pay in my currency, so that paying is easy.",
+  "acceptance": [
+   "Given a non-INR customer, then payment goes through Stripe by annual prepay, ACH or SEPA (YX-BILL-15).",
+   "Given an international card, then its fee is never absorbed into the $1 price (YX-BILL-15).",
+   "Given a Stripe payment, then only gateway tokens are stored (YX-BILL-05)."
+  ],
+  "rules": [
+   "YX-BILL-15",
+   "YX-BILL-05"
+  ],
+  "docs": [
+   "P14 Q3",
+   "PRICING-UNIT-ECONOMICS §3"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 451,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-049"
+  ]
+ },
+ {
+  "id": "US-B-052",
+  "type": "Story",
+  "parent": "FT-B-011",
+  "title": "Payroll admin goes live while the mandate is pending",
+  "story": "As a company Payroll Admin, I want to run our first payroll even if the bank mandate is not active yet, so that go-live is not delayed.",
+  "acceptance": [
+   "Given a pending mandate, then the first payroll can run once and that invoice is paid by bank transfer (YX-BILL-18).",
+   "Given salary payout, then it is released only when payout partner KYB is approved, the funding account is set up and the balance check passes (YX-BILL-18).",
+   "Given a short balance, when the admin chooses partial payout, then only the chosen lines are paid and the rest stay open, never marked paid (YX-BILL-18).",
+   "Given the go-live checklist, then payment readiness is one of its items (YX-BILL-18)."
+  ],
+  "rules": [
+   "YX-BILL-18"
+  ],
+  "docs": [
+   "P14 Q3",
+   "PRICING-UNIT-ECONOMICS §3"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 452,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-049"
+  ]
+ },
+ {
+  "id": "FT-B-012",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Dunning, cancellation and exit",
+  "rules": [
+   "YX-TEN-02",
+   "YX-TEN-06",
+   "YX-CONSOLE-02",
+   "YX-TEN-05",
+   "YX-TEN-07",
+   "YX-TEN-03",
+   "YX-TEN-04"
+  ],
+  "docs": [
+   "P14 Q5",
+   "P14 Q6",
+   "P14 §6 flows 3–4"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 453
+ },
+ {
+  "id": "US-B-053",
+  "type": "Story",
+  "parent": "FT-B-012",
+  "title": "Platform follows the non-payment schedule",
+  "story": "As YukthiX billing staff, I want unpaid invoices handled by a fixed schedule, so that every company is treated the same.",
+  "acceptance": [
+   "Given an unpaid invoice, then reminders go on the due date, +3 and +7 days; admin access is read-only at +15; the company is suspended at +30.",
+   "Given a restricted or suspended company, then employees keep their payslips, Form 16 and letters, and an approved payroll run is not stopped (YX-TEN-02).",
+   "Given payment, then the company is reinstated at once.",
+   "Given each step, then admins see a plain banner with a pay-now link."
+  ],
+  "rules": [
+   "YX-TEN-02"
+  ],
+  "docs": [
+   "P14 Q5",
+   "P14 Q6",
+   "P14 §6 flows 3–4"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 453,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-050",
+   "US-B-010"
+  ]
+ },
+ {
+  "id": "US-B-054",
+  "type": "Story",
+  "parent": "FT-B-012",
+  "title": "Billing staff override the schedule for one company",
+  "story": "As YukthiX billing staff, I want to pause or change the schedule for a company, so that I can agree a payment plan.",
+  "acceptance": [
+   "Given a company, when staff pause, extend, step forward or back, or set a payment plan, then a reason and an expiry are required (YX-TEN-06).",
+   "Given an override, then it is audited and shown to the company admins (YX-TEN-06, YX-CONSOLE-02).",
+   "Given the override expires, then the automatic schedule resumes (YX-TEN-06)."
+  ],
+  "rules": [
+   "YX-TEN-06",
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P14 Q5",
+   "P14 Q6",
+   "P14 §6 flows 3–4"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 454,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-053"
+  ]
+ },
+ {
+  "id": "US-B-055",
+  "type": "Story",
+  "parent": "FT-B-012",
+  "title": "System Admin exports the whole company at any time",
+  "story": "As a company System Admin, I want a full export of our data at any time, so that we are never locked in.",
+  "acceptance": [
+   "Given a System Admin, when they ask for an export with step-up sign-in, then a job makes CSV / JSON per entity, a document archive and a manifest (YX-TEN-05).",
+   "Given the export is ready, then the admin is told in-app and by email, and the download link expires.",
+   "Given every download, then it is audited (YX-TEN-05)."
+  ],
+  "rules": [
+   "YX-TEN-05"
+  ],
+  "docs": [
+   "P14 Q5",
+   "P14 Q6",
+   "P14 §6 flows 3–4"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 455,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-B-009"
+  ]
+ },
+ {
+  "id": "US-B-056",
+  "type": "Story",
+  "parent": "FT-B-012",
+  "title": "Export includes a document pack per employee",
+  "story": "As a company HR Admin, I want one folder per employee in the export, so that we can hand documents over after we leave.",
+  "acceptance": [
+   "Given a full export, then it has one folder per employee with payslips, Form 16 and letters, plus an index (YX-TEN-07).",
+   "Given alumni, then their documents are included too (YX-TEN-07).",
+   "Given a large company, then the pack is produced in the background and the admin is told when it is ready (YX-TEN-05)."
+  ],
+  "rules": [
+   "YX-TEN-07"
+  ],
+  "docs": [
+   "P14 Q5",
+   "P14 Q6",
+   "P14 §6 flows 3–4"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 456,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-055"
+  ]
+ },
+ {
+  "id": "US-B-057",
+  "type": "Story",
+  "parent": "FT-B-012",
+  "title": "Company cancels and gets 30 days of read-only grace",
+  "story": "As a company System Admin, I want 30 days to take our data after we cancel, so that nothing is lost.",
+  "acceptance": [
+   "Given a cancellation, then the account is read-only for 30 days and a full export is ready (YX-TEN-03).",
+   "Given the grace period, then every employee can sign in and download their own payslips, Form 16 and letters (YX-TEN-07).",
+   "Given the grace period, then employees are told the deadline in-app and by email at cancellation and on day 23 (YX-TEN-07).",
+   "Given day 23, then admins get a final warning before deletion."
+  ],
+  "rules": [
+   "YX-TEN-03",
+   "YX-TEN-07"
+  ],
+  "docs": [
+   "P14 Q5",
+   "P14 Q6",
+   "P14 §6 flows 3–4"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 457,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-055"
+  ]
+ },
+ {
+  "id": "US-B-058",
+  "type": "Story",
+  "parent": "FT-B-012",
+  "title": "Platform deletes a company and issues a deletion certificate",
+  "story": "As a company System Admin, I want proof that our data is deleted, so that we meet our own privacy duties.",
+  "acceptance": [
+   "Given day 30 of grace, then live data is deleted, the company keys are destroyed and backups age out within 35 days (YX-TEN-04).",
+   "Given deletion, then a deletion certificate is issued and emailed (YX-TEN-04).",
+   "Given a legal hold, then the held data is kept and the company is told what is held and why (YX-TEN-04).",
+   "Given a suspended company that does not pay, then data is kept 90 days after suspension and then follows this path."
+  ],
+  "rules": [
+   "YX-TEN-04"
+  ],
+  "docs": [
+   "P14 Q5",
+   "P14 Q6",
+   "P14 §6 flows 3–4"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 458,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-B-057"
+  ]
+ },
+ {
+  "id": "FT-B-013",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Status page and incident notices",
+  "rules": [
+   "YX-CONSOLE-07",
+   "YX-GRO-09",
+   "YX-GRO-08",
+   "YX-CONSOLE-06"
+  ],
+  "docs": [
+   "P14 YX-CONSOLE-07",
+   "P20 §5 YX-GRO-08/09",
+   "P20 §6 flows 5–6"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 459
+ },
+ {
+  "id": "US-B-059",
+  "type": "Story",
+  "parent": "FT-B-013",
+  "title": "Visitor sees the public YukthiX status page",
+  "story": "As a customer, I want a public status page, so that I can see if YukthiX is working.",
+  "acceptance": [
+   "Given the status page, then it shows current and past availability per product, region and component (YX-CONSOLE-07).",
+   "Given probe results, then they open or update components, and a person confirms the stage wording (YX-GRO-09).",
+   "Given a visitor, when they subscribe by email, then double opt-in is used and unsubscribe takes one click.",
+   "Given the sign-in and error screens, then employees and candidates see a link to the status page (YX-GRO-09)."
+  ],
+  "rules": [
+   "YX-CONSOLE-07",
+   "YX-GRO-09"
+  ],
+  "docs": [
+   "P14 YX-CONSOLE-07",
+   "P20 §5 YX-GRO-08/09",
+   "P20 §6 flows 5–6"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 459,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-005"
+  ]
+ },
+ {
+  "id": "US-B-060",
+  "type": "Story",
+  "parent": "FT-B-013",
+  "title": "Support lead manages approved incident and maintenance templates",
+  "story": "As the YukthiX support lead, I want approved message templates for each stage, so that we speak calmly and fast when something breaks.",
+  "acceptance": [
+   "Given incidents, then templates exist for investigating, identified, monitoring, resolved and post-incident summary; maintenance has scheduled, reminder, started and completed (YX-GRO-08).",
+   "Given a template, then it has places for affected products, regions, components, impact, what to do and next update time (YX-GRO-08).",
+   "Given a template change, then a second approver is needed (YX-GRO-08)."
+  ],
+  "rules": [
+   "YX-GRO-08"
+  ],
+  "docs": [
+   "P14 YX-CONSOLE-07",
+   "P20 §5 YX-GRO-08/09",
+   "P20 §6 flows 5–6"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 460,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-059"
+  ]
+ },
+ {
+  "id": "US-B-061",
+  "type": "Story",
+  "parent": "FT-B-013",
+  "title": "On-call engineer posts a Sev-1 incident within 30 minutes",
+  "story": "As the on-call engineer, I want to post an incident notice from a template, so that customers hear from us within 30 minutes.",
+  "acceptance": [
+   "Given a Sev-1 detected at 10:00, when on-call posts from the template, then the status page, affected admins in-app and by email, and subscribers have it by 10:30 (YX-CONSOLE-07, YX-GRO-09).",
+   "Given in-app incident notices, then they are always shown and not rate-limited (YX-CONSOLE-06).",
+   "Given an incident in a company's payroll-critical window or on a statutory due date, then the message has the payroll-day note (YX-GRO-08).",
+   "Given a security incident with personal data, then the composer sends staff to the P12 legal notice path instead (YX-GRO-08)."
+  ],
+  "rules": [
+   "YX-CONSOLE-07",
+   "YX-GRO-08",
+   "YX-GRO-09",
+   "YX-CONSOLE-06"
+  ],
+  "docs": [
+   "P14 YX-CONSOLE-07",
+   "P20 §5 YX-GRO-08/09",
+   "P20 §6 flows 5–6"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 461,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-060"
+  ]
+ },
+ {
+  "id": "US-B-062",
+  "type": "Story",
+  "parent": "FT-B-013",
+  "title": "Staff schedule maintenance outside payroll-critical windows",
+  "story": "As YukthiX ops staff, I want maintenance checked against each company's payroll days, so that we never disturb payroll.",
+  "acceptance": [
+   "Given a maintenance window, when the notice would go less than 72 hours ahead, then it is refused; a reminder goes 24 hours ahead (YX-GRO-08, YX-CONSOLE-07).",
+   "Given a window on the 2nd, when a company's payroll-critical window is the last 3 and first 7 days, then it is refused for that company (YX-CONSOLE-07).",
+   "Given a statutory due date for a company's entities, then a window on that date is refused (YX-CONSOLE-07).",
+   "Given a company admin, when they change their payroll-critical window in Settings › Billing & Account, then the new window is used."
+  ],
+  "rules": [
+   "YX-CONSOLE-07",
+   "YX-GRO-08"
+  ],
+  "docs": [
+   "P14 YX-CONSOLE-07",
+   "P20 §5 YX-GRO-08/09",
+   "P20 §6 flows 5–6"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 462,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-060"
+  ]
+ },
+ {
+  "id": "FT-B-014",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Customer success",
+  "rules": [
+   "YX-CONSOLE-05",
+   "YX-GRO-10",
+   "YX-CONSOLE-06",
+   "YX-CONSOLE-08",
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P14 C8",
+   "P14 §6 flow 6",
+   "P20 YX-GRO-10"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 463
+ },
+ {
+  "id": "US-B-063",
+  "type": "Story",
+  "parent": "FT-B-014",
+  "title": "CS owner sees a health score for each company",
+  "story": "As a YukthiX CS owner, I want a health score and churn risk per company, so that I help the right customers first.",
+  "acceptance": [
+   "Given the nightly tenant-health feed, then each company gets a score 0–100, factors and a churn band (YX-CONSOLE-05).",
+   "Given the CS view, then it shows score, trend, factors and billing status, and no employee, candidate or payroll data (YX-CONSOLE-05, YX-GRO-10).",
+   "Given the health list, then it can be filtered by cohort: sign-up month, size band and product."
+  ],
+  "rules": [
+   "YX-CONSOLE-05",
+   "YX-GRO-10"
+  ],
+  "docs": [
+   "P14 C8",
+   "P14 §6 flow 6",
+   "P20 YX-GRO-10"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 463,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-008"
+  ]
+ },
+ {
+  "id": "US-B-064",
+  "type": "Story",
+  "parent": "FT-B-014",
+  "title": "CS owner gets churn-risk alerts",
+  "story": "As a YukthiX CS owner, I want alerts when a company is at risk, so that I can call them early.",
+  "acceptance": [
+   "Given a move to high churn risk or a fall of 20+ points in 30 days, then an alert goes to the company's CS owner (YX-CONSOLE-05).",
+   "Given set-up stalled over 14 days in trial, payroll not run by day 5, admins inactive 30 days or an NPS detractor, then an alert is raised (YX-CONSOLE-05).",
+   "Given an alert, when the owner acts, then they log the outcome (contacted, resolved) and notes without HR data."
+  ],
+  "rules": [
+   "YX-CONSOLE-05"
+  ],
+  "docs": [
+   "P14 C8",
+   "P14 §6 flow 6",
+   "P20 YX-GRO-10"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 464,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-063"
+  ]
+ },
+ {
+  "id": "US-B-065",
+  "type": "Story",
+  "parent": "FT-B-014",
+  "title": "CS team sends in-app messages to company admins",
+  "story": "As a YukthiX CS owner, I want to send announcements and tips to company admins, so that they use the product well.",
+  "acceptance": [
+   "Given a message, then it reaches only admin roles (System Admin, HR Admin, Payroll Admin, billing contact), never employees (YX-CONSOLE-06).",
+   "Given a message, when it has no second staff approval, then it cannot be sent (YX-CONSOLE-06).",
+   "Given non-critical messages, then an admin gets at most 2 a week, and marketing respects their opt-out; maintenance and security notices are always shown (YX-CONSOLE-06).",
+   "Given a sent message, then only delivery and read are tracked (YX-CONSOLE-06)."
+  ],
+  "rules": [
+   "YX-CONSOLE-06"
+  ],
+  "docs": [
+   "P14 C8",
+   "P14 §6 flow 6",
+   "P20 YX-GRO-10"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 465,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-063"
+  ]
+ },
+ {
+  "id": "US-B-066",
+  "type": "Story",
+  "parent": "FT-B-014",
+  "title": "Company System Admin sees their own health score",
+  "story": "As a company System Admin, I want to see our health score and next steps, so that we know what to finish.",
+  "acceptance": [
+   "Given Settings › Billing & Account, then the System Admin sees the score, factors and next steps such as \"Finish leave set-up\" (YX-CONSOLE-05).",
+   "Given other roles, then they do not see the score.",
+   "Given a next step, when the admin clicks it, then the matching set-up hub card opens."
+  ],
+  "rules": [
+   "YX-CONSOLE-05"
+  ],
+  "docs": [
+   "P14 C8",
+   "P14 §6 flow 6",
+   "P20 YX-GRO-10"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 466,
+  "points": 2,
+  "priority": 1,
+  "depends": [
+   "US-B-063"
+  ]
+ },
+ {
+  "id": "US-B-067",
+  "type": "Story",
+  "parent": "FT-B-014",
+  "title": "Growth analyst sees funnels and cohorts",
+  "story": "As a YukthiX growth analyst, I want funnels, time to first value and cohorts, so that I see where trials drop off.",
+  "acceptance": [
+   "Given the product analytics role, then the analyst sees funnels, time to first value, cohorts and feature adoption (YX-CONSOLE-08).",
+   "Given staff without that role, then access is refused, and every access is audited (YX-CONSOLE-08, YX-CONSOLE-02).",
+   "Given a company that opted out of non-essential analytics, then it sends no product-analytics events (YX-CONSOLE-08).",
+   "Given the dashboards, then they use only product metrics, milestones, set-up progress and billing status, never HR data (YX-GRO-10)."
+  ],
+  "rules": [
+   "YX-CONSOLE-08",
+   "YX-GRO-10",
+   "YX-CONSOLE-02"
+  ],
+  "docs": [
+   "P14 C8",
+   "P14 §6 flow 6",
+   "P20 YX-GRO-10"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 467,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-002"
+  ]
+ },
+ {
+  "id": "FT-B-015",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Trial journey and first value",
+  "rules": [
+   "YX-GRO-01",
+   "YX-GRO-02",
+   "YX-GRO-03",
+   "YX-GRO-04",
+   "YX-BILL-14",
+   "YX-BILL-12",
+   "YX-GRO-05",
+   "YX-GRO-10"
+  ],
+  "docs": [
+   "P20 §3",
+   "P20 §5",
+   "P20 §6 flows 1–4"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 468
+ },
+ {
+  "id": "US-B-068",
+  "type": "Story",
+  "parent": "FT-B-015",
+  "title": "New company reaches first value with a quick start lane",
+  "story": "As a new company admin, I want three short steps to see the product working, so that I see value in about 5 minutes.",
+  "acceptance": [
+   "Given each product, then a lane of at most three steps shows at the top of the set-up hub: Assess sends a library test invite, Hire posts a job, HR imports employees and shows a payslip preview (YX-GRO-01).",
+   "Given a lane, then starter templates apply in one click and sample data can stand in, labelled on every screen (YX-GRO-01).",
+   "Given an HR lane done, then no bank file or filing is offered and every go-live check stays open (YX-GRO-01)."
+  ],
+  "rules": [
+   "YX-GRO-01"
+  ],
+  "docs": [
+   "P20 §3",
+   "P20 §5",
+   "P20 §6 flows 1–4"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 468,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-033"
+  ]
+ },
+ {
+  "id": "US-B-069",
+  "type": "Story",
+  "parent": "FT-B-015",
+  "title": "Platform records first value and activation",
+  "story": "As a YukthiX growth analyst, I want first value and activation recorded per company and product, so that we can measure the trial.",
+  "acceptance": [
+   "Given a registered first-value event, then it is saved once per company and product in the milestones (YX-GRO-02).",
+   "Given activation rules, then they are versioned and a change applies only to new cohorts with a changelog note (YX-GRO-02).",
+   "Given milestones, then they are measured only through the product metrics (YX-GRO-02)."
+  ],
+  "rules": [
+   "YX-GRO-02"
+  ],
+  "docs": [
+   "P20 §3",
+   "P20 §5",
+   "P20 §6 flows 1–4"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 469,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-068"
+  ]
+ },
+ {
+  "id": "US-B-070",
+  "type": "Story",
+  "parent": "FT-B-015",
+  "title": "Trial admins get helpful nudges on day 0, 1, 3, 7 and 14",
+  "story": "As a trial admin, I want short tips that match what I still need to do, so that I finish set-up.",
+  "acceptance": [
+   "Given a trial, then nudges are chosen from set-up hub progress, never from analytics events, so opted-out companies get the same help (YX-GRO-03).",
+   "Given a step already done, then its nudge is skipped or replaced by the next step (YX-GRO-03).",
+   "Given an admin, then they get at most one lifecycle message a day and none on a day with a CS message; they can mute tips in one click (YX-GRO-03).",
+   "Given employees and candidates, then they never get nudges; trial-ending notices at T-7 and T-1 always go (YX-GRO-03)."
+  ],
+  "rules": [
+   "YX-GRO-03"
+  ],
+  "docs": [
+   "P20 §3",
+   "P20 §5",
+   "P20 §6 flows 1–4"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 470,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-069"
+  ]
+ },
+ {
+  "id": "US-B-071",
+  "type": "Story",
+  "parent": "FT-B-015",
+  "title": "Admin sees a \"Switch on\" card at the right moment",
+  "story": "As a trial admin, I want a short card when I need a paid capability, so that I can switch on without searching.",
+  "acceptance": [
+   "Given an admin opening a product the company does not have, a trial limit reached, or first value reached, then a \"Switch on\" card appears (YX-GRO-04).",
+   "Given the card, then it shows what the product does, the published price and \"Billing starts when you go live\", with Switch on, Talk to us and Not now (YX-GRO-04, YX-BILL-14, YX-BILL-12).",
+   "Given a dismissed card, then it is not shown again for 14 days, and it never hides the company's own data (YX-GRO-04)."
+  ],
+  "rules": [
+   "YX-GRO-04",
+   "YX-BILL-14",
+   "YX-BILL-12"
+  ],
+  "docs": [
+   "P20 §3",
+   "P20 §5",
+   "P20 §6 flows 1–4"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 471,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-034"
+  ]
+ },
+ {
+  "id": "US-B-072",
+  "type": "Story",
+  "parent": "FT-B-015",
+  "title": "Large trial gets a \"Talk to us\" hand-off",
+  "story": "As a YukthiX sales-assist owner, I want large trials flagged to me, so that I can help them within a day.",
+  "acceptance": [
+   "Given a trial above the size limit (for example 200 employees, 3 entities, 10 recruiters or 2,000 attempts) or asking for migration help, then a \"trial_talk_to_us\" alert goes to the owner within one business day (YX-GRO-05).",
+   "Given such a trial, then its admins see a \"Talk to us\" option to book a call; self-serve stays open (YX-GRO-05).",
+   "Given the queue, then it shows company name, size band and set-up progress, but no employee names (YX-GRO-10)."
+  ],
+  "rules": [
+   "YX-GRO-05",
+   "YX-GRO-10"
+  ],
+  "docs": [
+   "P20 §3",
+   "P20 §5",
+   "P20 §6 flows 1–4"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 472,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-064"
+  ]
+ },
+ {
+  "id": "US-B-073",
+  "type": "Story",
+  "parent": "FT-B-015",
+  "title": "Growth staff edit nudge and card wording with a second approval",
+  "story": "As YukthiX growth staff, I want to edit nudge and \"Switch on\" wording with a preview, so that we improve the words safely.",
+  "acceptance": [
+   "Given a wording change, then it needs a second staff approval before use (YX-GRO-03).",
+   "Given wording with \"upgrade\", \"plan\", \"tier\", \"premium\" or \"unlock\", then it cannot be saved (brand Part 2, YX-GRO-04).",
+   "Given each locale, then a preview shows the text before approval."
+  ],
+  "rules": [
+   "YX-GRO-03",
+   "YX-GRO-04"
+  ],
+  "docs": [
+   "P20 §3",
+   "P20 §5",
+   "P20 §6 flows 1–4"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 473,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-070"
+  ]
+ },
+ {
+  "id": "FT-B-016",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Help centre",
+  "rules": [
+   "YX-GRO-07"
+  ],
+  "docs": [
+   "P20 YX-GRO-07",
+   "P20 §6 flow 7"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 474
+ },
+ {
+  "id": "US-B-074",
+  "type": "Story",
+  "parent": "FT-B-016",
+  "title": "Visitor searches the public help centre",
+  "story": "As a company admin or employee, I want to search help.yukthix.com, so that I find answers without a ticket.",
+  "acceptance": [
+   "Given help.yukthix.com, then it is public and searchable, with articles and short captioned videos per product (YX-GRO-07).",
+   "Given an article, then it shows \"applies from\" and a last-reviewed date, and screenshots use demo data only (YX-GRO-07).",
+   "Given a search, then the term is logged without company or user id (YX-GRO-07).",
+   "Given the in-app help drawer, then each topic links to its article (YX-GRO-07)."
+  ],
+  "rules": [
+   "YX-GRO-07"
+  ],
+  "docs": [
+   "P20 YX-GRO-07",
+   "P20 §6 flow 7"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 474,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-005"
+  ]
+ },
+ {
+  "id": "US-B-075",
+  "type": "Story",
+  "parent": "FT-B-016",
+  "title": "Support lead publishes and reviews help articles",
+  "story": "As the YukthiX support lead, I want a draft, review and publish flow with translations, so that articles stay correct.",
+  "acceptance": [
+   "Given an article, then it moves draft → in review → published → archived, and the product owner reviews it (YX-GRO-07).",
+   "Given the four launch languages, when a translation is missing, then the English article shows with a notice and the gap is tracked (YX-GRO-07).",
+   "Given an article not reviewed for 12 months, then it is flagged to its owner (YX-GRO-07)."
+  ],
+  "rules": [
+   "YX-GRO-07"
+  ],
+  "docs": [
+   "P20 YX-GRO-07",
+   "P20 §6 flow 7"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 475,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-074"
+  ]
+ },
+ {
+  "id": "US-B-076",
+  "type": "Story",
+  "parent": "FT-B-016",
+  "title": "Release fails when a screen has no help article",
+  "story": "As the YukthiX support lead, I want CI to block screens without help, so that every screen has an answer.",
+  "acceptance": [
+   "Given a release with a new screen, when its help key has no published English article, then CI fails (YX-GRO-07).",
+   "Given all keys covered, then CI passes.",
+   "Given a failed check, then the CI message names each missing help key and screen."
+  ],
+  "rules": [
+   "YX-GRO-07"
+  ],
+  "docs": [
+   "P20 YX-GRO-07",
+   "P20 §6 flow 7"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 476,
+  "points": 2,
+  "priority": 1,
+  "depends": [
+   "US-B-075"
+  ]
+ },
+ {
+  "id": "FT-B-017",
+  "type": "Feature",
+  "parent": "EP-B-1",
+  "title": "Growth extras (wave 6)",
+  "rules": [
+   "YX-GRO-11",
+   "YX-GRO-12",
+   "YX-GRO-13",
+   "YX-GRO-14",
+   "YX-BILL-21",
+   "YX-GRO-15",
+   "YX-GRO-16",
+   "YX-GRO-17"
+  ],
+  "docs": [
+   "P20 §8b",
+   "P14 §8b"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 477
+ },
+ {
+  "id": "US-B-077",
+  "type": "Story",
+  "parent": "FT-B-017",
+  "title": "Users see a \"What's new\" feed per product",
+  "story": "As a company user, I want a short feed of changes for my role, so that I learn what is new.",
+  "acceptance": [
+   "Given a change entry, then it is targeted by role and by product switched on, shown once in-app and kept on a feed page (YX-GRO-11).",
+   "Given a price or feature change, then the 90-day notice still goes separately; the feed never replaces it (YX-GRO-11, YX-BILL-13).",
+   "Given an entry for a product the company has not switched on, then its users do not see it (YX-GRO-11)."
+  ],
+  "rules": [
+   "YX-GRO-11"
+  ],
+  "docs": [
+   "P20 §8b",
+   "P14 §8b"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 477,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-065"
+  ]
+ },
+ {
+  "id": "US-B-078",
+  "type": "Story",
+  "parent": "FT-B-017",
+  "title": "Users raise and vote on feature requests",
+  "story": "As a company user, I want to request and vote for features, so that YukthiX builds what we need.",
+  "acceptance": [
+   "Given a request, then each user can vote once, and it shows a status (under review, planned, in progress, shipped, not planned) (YX-GRO-12).",
+   "Given the public roadmap, then it shows only items marked public (YX-GRO-12).",
+   "Given beta access switched on for company A, then company B does not see it and company A sees it labelled \"beta\"; an admin can switch it off any time (YX-GRO-12)."
+  ],
+  "rules": [
+   "YX-GRO-12"
+  ],
+  "docs": [
+   "P20 §8b",
+   "P14 §8b"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 478,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-077"
+  ]
+ },
+ {
+  "id": "US-B-079",
+  "type": "Story",
+  "parent": "FT-B-017",
+  "title": "Admin cancelling sees reasons and save offers without dark patterns",
+  "story": "As a company System Admin, I want to cancel easily, so that I am not trapped.",
+  "acceptance": [
+   "Given cancelling a product or the company, then an optional reason prompt shows (fixed list and free text) (YX-GRO-13).",
+   "Given save offers (pause, fewer products, partner help), then \"cancel anyway\" completes in one more click (YX-GRO-13).",
+   "Given a deleted company, then win-back messages go only with marketing consent and stop on opt-out (YX-GRO-13)."
+  ],
+  "rules": [
+   "YX-GRO-13"
+  ],
+  "docs": [
+   "P20 §8b",
+   "P14 §8b"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 479,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-039",
+   "US-B-058"
+  ]
+ },
+ {
+  "id": "US-B-080",
+  "type": "Story",
+  "parent": "FT-B-017",
+  "title": "Company refers another company and both get a month of credit",
+  "story": "As a company System Admin, I want to refer another company, so that we both save money.",
+  "acceptance": [
+   "Given a referral link tied to the referrer, when the new company settles its first paid month, then both get one month of their own bill as credit (YX-GRO-14, YX-BILL-21).",
+   "Given a self-referral or a company of the same group, then no credit is given (YX-GRO-14).",
+   "Given a credit, then it is a separate invoice line, not cash, not transferable, expires after 12 months, and is reversed if the first payment is refunded (YX-BILL-21).",
+   "Given \"Powered by YukthiX\" links, then clicks and sign-ups are counted in product metrics, never with HR data (YX-GRO-14)."
+  ],
+  "rules": [
+   "YX-GRO-14",
+   "YX-BILL-21"
+  ],
+  "docs": [
+   "P20 §8b",
+   "P14 §8b"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 480,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-041"
+  ]
+ },
+ {
+  "id": "US-B-081",
+  "type": "Story",
+  "parent": "FT-B-017",
+  "title": "Visitor uses free salary and tax calculators",
+  "story": "As a visitor, I want free CTC, tax regime, HRA, gratuity, PF / ESI and leave encashment calculators, so that I get a quick answer.",
+  "acceptance": [
+   "Given a calculator, then it uses the same versioned calculators as payroll and gives the same result as the payroll preview for the same inputs and FY (YX-GRO-15).",
+   "Given a result, then it shows the rule-set version and a \"not tax advice\" note (YX-GRO-15).",
+   "Given no sign-up, then inputs are not stored beyond the session unless the user asks to email the result with consent (YX-GRO-15)."
+  ],
+  "rules": [
+   "YX-GRO-15"
+  ],
+  "docs": [
+   "P20 §8b",
+   "P14 §8b"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 481,
+  "points": 8,
+  "priority": 2,
+  "depends": [
+   "US-B-074"
+  ]
+ },
+ {
+  "id": "US-B-082",
+  "type": "Story",
+  "parent": "FT-B-017",
+  "title": "Visitor makes an offer, appointment or payslip letter for free",
+  "story": "As a visitor, I want free letter generators, so that I can make a letter quickly.",
+  "acceptance": [
+   "Given a letter generator, then it uses the product letter templates (YX-GRO-15).",
+   "Given a generated letter, then inputs are not stored after the session unless the user asks for an email (YX-GRO-15).",
+   "Given any generated letter, then it shows the template version and a note that the user must check it."
+  ],
+  "rules": [
+   "YX-GRO-15"
+  ],
+  "docs": [
+   "P20 §8b",
+   "P14 §8b"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 482,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-081"
+  ]
+ },
+ {
+  "id": "US-B-083",
+  "type": "Story",
+  "parent": "FT-B-017",
+  "title": "Visitor browses the public integrations directory",
+  "story": "As a visitor, I want a list of integrations, so that I know what YukthiX connects to.",
+  "acceptance": [
+   "Given the directory, then each integration shows partner, category, what data moves, direction and status (live, beta, coming) (YX-GRO-16).",
+   "Given the directory, then it is built from the same catalogue the product uses, so it never lists an integration the product does not have (YX-GRO-16).",
+   "Given an integration whose status changes in the catalogue, then the directory shows the new status the same day (YX-GRO-16)."
+  ],
+  "rules": [
+   "YX-GRO-16"
+  ],
+  "docs": [
+   "P20 §8b",
+   "P14 §8b"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 483,
+  "points": 2,
+  "priority": 3,
+  "depends": [
+   "US-B-074"
+  ]
+ },
+ {
+  "id": "US-B-084",
+  "type": "Story",
+  "parent": "FT-B-017",
+  "title": "Admins and partners take academy courses with certificates",
+  "story": "As a company admin or partner, I want courses with a certificate, so that I can prove my skills.",
+  "acceptance": [
+   "Given a course passed, then a certificate is issued with an expiry date and a public verify link (YX-GRO-17).",
+   "Given a partner, then certification is needed before they implement for customers (YX-GRO-17).",
+   "Given a certificate past its expiry, when someone opens the verify link, then it shows \"expired\" (YX-GRO-17)."
+  ],
+  "rules": [
+   "YX-GRO-17"
+  ],
+  "docs": [
+   "P20 §8b",
+   "P14 §8b"
+  ],
+  "state": "New",
+  "phase": "Step 3-b",
+  "order": 484,
+  "points": 8,
+  "priority": 3,
+  "depends": [
+   "US-B-075"
+  ]
+ },
+ {
+  "id": "EP-B-2",
+  "type": "Epic",
+  "parent": "",
+  "title": "Step 3b · YukthiX Service Desk (ITSM + ESM)",
+  "rules": [],
+  "docs": [
+   "M14",
+   "M08 §3–5"
+  ],
+  "state": "New",
+  "phase": "Step 3b",
+  "order": 500
+ },
+ {
+  "id": "FT-B-018",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Tickets and queues (incident core)",
+  "rules": [
+   "YX-HD-01",
+   "YX-HD-03",
+   "YX-HD-05"
+  ],
+  "docs": [
+   "M14 §1",
+   "M08 §3–5"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 501
+ },
+ {
+  "id": "US-B-085",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Desk admin sets up queues and categories",
+  "story": "As a desk admin, I want queues with members, categories and business hours, so that each ticket goes to the right team.",
+  "acceptance": [
+   "Given a queue, then it has agents, a lead, a business-hours calendar and categories (YX-HD-01).",
+   "Given a category, then it has first-response and resolution targets per priority and a \"sensitive\" flag (YX-HD-03).",
+   "Given any change, then it is audited (P08)."
+  ],
+  "rules": [
+   "YX-HD-01",
+   "YX-HD-03"
+  ],
+  "docs": [
+   "M14 §1",
+   "M08 §3–5"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 501,
+  "points": 3,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-B-086",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Employee raises a ticket from the portal",
+  "story": "As an employee, I want to raise a ticket with a category and attachments, so that I get help.",
+  "acceptance": [
+   "Given the portal, when the employee picks a category, writes the issue and adds files, then a ticket is created and routed by category to a queue (YX-HD-01).",
+   "Given impact and urgency, then priority is set from the impact × urgency matrix.",
+   "Given a new ticket, then the requester gets a reference number and sees status and SLA in \"My tickets\"."
+  ],
+  "rules": [
+   "YX-HD-01"
+  ],
+  "docs": [
+   "M14 §1",
+   "M08 §3–5"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 502,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-085"
+  ]
+ },
+ {
+  "id": "US-B-087",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Ticket is assigned automatically or by hand",
+  "story": "As a team lead, I want tickets assigned by rules, so that work is shared fairly.",
+  "acceptance": [
+   "Given a queue set to round-robin, then new tickets go to the next available agent; manual assignment is always possible (YX-HD-01).",
+   "Given load-based assignment, then the agent with the fewest open tickets gets the next one.",
+   "Given skill or location rules, then only agents with that skill or location get matching tickets."
+  ],
+  "rules": [
+   "YX-HD-01"
+  ],
+  "docs": [
+   "M14 §1",
+   "M08 §3–5"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 503,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-086"
+  ]
+ },
+ {
+  "id": "US-B-088",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Ticket moves through statuses with pause, reopen and auto-close",
+  "story": "As an agent, I want clear statuses, so that SLA clocks are fair to me and the requester.",
+  "acceptance": [
+   "Given statuses new → in progress → waiting on requester → resolved → closed / reopened, then SLA pauses while waiting on the requester (YX-HD-01).",
+   "Given a resolved ticket with no reply for 3 days, then it closes automatically (YX-HD-05).",
+   "Given a closed ticket, then the requester can reopen it within 7 days (YX-HD-05)."
+  ],
+  "rules": [
+   "YX-HD-01",
+   "YX-HD-05"
+  ],
+  "docs": [
+   "M14 §1",
+   "M08 §3–5"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 504,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-086"
+  ]
+ },
+ {
+  "id": "US-B-089",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Agent works tickets in the agent desk",
+  "story": "As an IT agent, I want a list and a detail view with replies, notes and mentions, so that I can work fast.",
+  "acceptance": [
+   "Given the agent desk, then the agent sees queue views with SLA badges and opens a ticket detail.",
+   "Given a ticket, when the agent writes an internal note, then the requester never sees it.",
+   "Given an @mention, then the mentioned colleague gets a notification.",
+   "Given a reply, then the requester gets it in-app and by email."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §1",
+   "M08 §3–5"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 505,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-B-087"
+  ]
+ },
+ {
+  "id": "US-B-090",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Agents see collision warnings and use canned responses",
+  "story": "As an agent, I want to know when a colleague is on the same ticket and to reuse saved replies, so that we do not answer twice.",
+  "acceptance": [
+   "Given two agents open one ticket, then each sees \"X is also viewing / replying\".",
+   "Given canned responses, when an agent inserts one, then its variables fill in (requester name, ticket number).",
+   "Given a team, then a lead can manage shared canned responses."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §1",
+   "M08 §3–5"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 506,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-089"
+  ]
+ },
+ {
+  "id": "US-B-091",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Agent logs time spent on a ticket",
+  "story": "As an agent, I want to log time per ticket, so that the team sees the effort.",
+  "acceptance": [
+   "Given a ticket, when the agent starts or adds time, then it is saved with the agent and date.",
+   "Given time entries, then the ticket shows the total and reports can sum them.",
+   "Given a closed ticket, then its time entries can no longer be changed except by a team lead, with audit."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §1",
+   "M08 §3–5"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 507,
+  "points": 2,
+  "priority": 2,
+  "depends": [
+   "US-B-089"
+  ]
+ },
+ {
+  "id": "US-B-092",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Agent merges duplicates and links tickets",
+  "story": "As an agent, I want to merge duplicates and link parent and child tickets, so that related work stays together.",
+  "acceptance": [
+   "Given two duplicate tickets, when the agent merges them, then one stays open with both conversations and the other requester is told.",
+   "Given a parent ticket, then child tickets can be created and the parent shows their status.",
+   "Given any two tickets, then they can be linked as related."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §1",
+   "M08 §3–5"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 508,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-089"
+  ]
+ },
+ {
+  "id": "US-B-093",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Sensitive and private tickets are seen only by the right agents",
+  "story": "As an employee, I want payroll, medical and personal tickets seen only by that team, so that my privacy is safe.",
+  "acceptance": [
+   "Given a payroll-category ticket, then IT agents cannot see it (YX-HD-03).",
+   "Given a requester who marks a ticket \"private\", then only the assigned queue agents see it (YX-HD-03).",
+   "Given access to a sensitive ticket, then it is enforced in the database (RLS) as well as the app and audited."
+  ],
+  "rules": [
+   "YX-HD-03"
+  ],
+  "docs": [
+   "M14 §1",
+   "M08 §3–5"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-086"
+  ]
+ },
+ {
+  "id": "FT-B-019",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "SLA, OLA and business hours",
+  "rules": [
+   "YX-HD-01",
+   "YX-HD-02"
+  ],
+  "docs": [
+   "M14 §9",
+   "M08 YX-HD-01/02"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 510
+ },
+ {
+  "id": "US-B-094",
+  "type": "Story",
+  "parent": "FT-B-019",
+  "title": "Desk admin defines SLA policies",
+  "story": "As a desk admin, I want SLAs per priority, category, customer or contract, so that targets match what we promised.",
+  "acceptance": [
+   "Given an SLA policy, then it sets first-response and resolution targets per priority and can apply by category, customer or contract.",
+   "Given a ticket, then the most specific matching policy is applied and shown on the ticket.",
+   "Given SLA timers, then they use the queue business hours (YX-HD-01)."
+  ],
+  "rules": [
+   "YX-HD-01"
+  ],
+  "docs": [
+   "M14 §9",
+   "M08 YX-HD-01/02"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 510,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-085"
+  ]
+ },
+ {
+  "id": "US-B-095",
+  "type": "Story",
+  "parent": "FT-B-019",
+  "title": "Desk admin sets business hours and holidays",
+  "story": "As a desk admin, I want business hours and holiday calendars per team and location, so that SLAs do not run at night or on holidays.",
+  "acceptance": [
+   "Given a team or location, then it uses a P03 calendar with working hours and holidays.",
+   "Given pause conditions (waiting on requester, waiting on vendor), then the clock stops while they apply (YX-HD-01).",
+   "Given a holiday, then no SLA time is counted on that day."
+  ],
+  "rules": [
+   "YX-HD-01"
+  ],
+  "docs": [
+   "M14 §9",
+   "M08 YX-HD-01/02"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 511,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-094"
+  ]
+ },
+ {
+  "id": "US-B-096",
+  "type": "Story",
+  "parent": "FT-B-019",
+  "title": "Agents and leads get breach warnings and escalations",
+  "story": "As a team lead, I want warnings before an SLA breach, so that we act in time.",
+  "acceptance": [
+   "Given a ticket at 80 % of its target, then the agent is warned (YX-HD-02).",
+   "Given a breach, then the queue lead is told and the escalation chain moves to the next level (YX-HD-02).",
+   "Given an escalation chain, then the admin can set its levels and wait times."
+  ],
+  "rules": [
+   "YX-HD-02"
+  ],
+  "docs": [
+   "M14 §9",
+   "M08 YX-HD-01/02"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 512,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-094"
+  ]
+ },
+ {
+  "id": "US-B-097",
+  "type": "Story",
+  "parent": "FT-B-019",
+  "title": "Teams agree OLAs and vendor underpinning contracts",
+  "story": "As a desk admin, I want OLAs between internal teams and contracts with vendors, so that hand-offs also have targets.",
+  "acceptance": [
+   "Given a task handed to another internal team, then that team's OLA timer starts.",
+   "Given a ticket waiting on a vendor, then the underpinning contract target is tracked.",
+   "Given an OLA breach, then the receiving team lead is warned (YX-HD-02)."
+  ],
+  "rules": [
+   "YX-HD-02"
+  ],
+  "docs": [
+   "M14 §9",
+   "M08 YX-HD-01/02"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 513,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-096"
+  ]
+ },
+ {
+  "id": "US-B-098",
+  "type": "Story",
+  "parent": "FT-B-019",
+  "title": "Lead and customer see SLA reports",
+  "story": "As a team lead, I want SLA reports and a customer-facing SLA dashboard, so that we show how we perform.",
+  "acceptance": [
+   "Given a period, then the report shows met and breached targets per priority, queue and agent.",
+   "Given an external customer, then their portal dashboard shows SLA results for their own tickets only.",
+   "Given any SLA report, then it can be exported to CSV."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §9",
+   "M08 YX-HD-01/02"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 514,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-096"
+  ]
+ },
+ {
+  "id": "FT-B-020",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Self-service portal and email",
+  "rules": [
+   "YX-HD-04",
+   "YX-SEC-21"
+  ],
+  "docs": [
+   "M14 §10",
+   "M08 §7"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 515
+ },
+ {
+  "id": "US-B-099",
+  "type": "Story",
+  "parent": "FT-B-020",
+  "title": "Requester uses a branded self-service portal",
+  "story": "As an employee, I want a simple portal with my company's branding, so that raising and tracking tickets is easy.",
+  "acceptance": [
+   "Given a company, then the portal shows its logo and colours and works well on mobile.",
+   "Given \"My tickets\", then the requester sees status and SLA for each ticket.",
+   "Given the standalone product, then the portal can be white-labelled on the company's own domain."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §10",
+   "M08 §7"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 515,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-086"
+  ]
+ },
+ {
+  "id": "US-B-100",
+  "type": "Story",
+  "parent": "FT-B-020",
+  "title": "Employee raises a ticket from the in-app help drawer",
+  "story": "As an employee using YukthiX, I want to ask for help from the screen I am on, so that the agent sees the context.",
+  "acceptance": [
+   "Given the in-app help drawer, when the employee raises a ticket, then the screen name and product are added to the ticket.",
+   "Given the drawer, then help articles for that screen show first (YX-HD-04).",
+   "Given the drawer ticket, then the requester can follow it in \"My tickets\" like any other ticket."
+  ],
+  "rules": [
+   "YX-HD-04"
+  ],
+  "docs": [
+   "M14 §10",
+   "M08 §7"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 516,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-099"
+  ]
+ },
+ {
+  "id": "US-B-101",
+  "type": "Story",
+  "parent": "FT-B-020",
+  "title": "Emails become tickets with threading",
+  "story": "As an agent, I want emails to support addresses turned into tickets, so that nothing is lost in a mailbox.",
+  "acceptance": [
+   "Given an email to a team address, then a ticket is created in that team's queue.",
+   "Given a reply to a ticket email, then it is added to the same ticket, not a new one.",
+   "Given several addresses per team, then each maps to its own queue and category."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §10",
+   "M08 §7"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 517,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-086"
+  ]
+ },
+ {
+  "id": "US-B-102",
+  "type": "Story",
+  "parent": "FT-B-020",
+  "title": "Email channel blocks spam, loops and bad files",
+  "story": "As a desk admin, I want spam, mail loops and unsafe attachments stopped, so that the queue stays clean and safe.",
+  "acceptance": [
+   "Given spam, then it goes to a spam folder, not the queue.",
+   "Given an auto-reply loop, then the loop is detected and stopped after a set number of messages.",
+   "Given an attachment, then it is virus-scanned before agents can open it."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §10",
+   "M08 §7"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 518,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-101"
+  ]
+ },
+ {
+  "id": "US-B-103",
+  "type": "Story",
+  "parent": "FT-B-020",
+  "title": "External customers and guests raise tickets",
+  "story": "As an external customer or guest, I want to raise and follow tickets, so that I get support without being an employee.",
+  "acceptance": [
+   "Given an external customer or guest, then they sign in with OTP and see only their own tickets (YX-SEC-21).",
+   "Given external requesters, then they are free and never billed as agents.",
+   "Given an external requester, then their account expires when no longer needed and access is audited (YX-SEC-21)."
+  ],
+  "rules": [
+   "YX-SEC-21"
+  ],
+  "docs": [
+   "M14 §10",
+   "M08 §7"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 519,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-099"
+  ]
+ },
+ {
+  "id": "FT-B-021",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Knowledge base",
+  "rules": [
+   "YX-HD-04",
+   "YX-GRO-07"
+  ],
+  "docs": [
+   "M14 §8",
+   "M08 YX-HD-04"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 520
+ },
+ {
+  "id": "US-B-104",
+  "type": "Story",
+  "parent": "FT-B-021",
+  "title": "Agent writes and publishes knowledge articles",
+  "story": "As a support agent, I want versioned articles with review, so that answers stay correct.",
+  "acceptance": [
+   "Given an article, then it has versions, a review and approval step, and a review-by date.",
+   "Given an audience, then an article is either agent-only or public.",
+   "Given the four launch languages, then each article can have translations."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §8",
+   "M08 YX-HD-04"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 520,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-085"
+  ]
+ },
+ {
+  "id": "US-B-105",
+  "type": "Story",
+  "parent": "FT-B-021",
+  "title": "Requester sees suggested articles while typing",
+  "story": "As an employee, I want articles suggested while I type, so that I may not need a ticket.",
+  "acceptance": [
+   "Given the requester types a subject, then matching articles are suggested (YX-HD-04).",
+   "Given the requester clicks \"This solved it\", then no ticket is created and it counts as deflected (YX-HD-04).",
+   "Given any article, then readers can say if it helped."
+  ],
+  "rules": [
+   "YX-HD-04"
+  ],
+  "docs": [
+   "M14 §8",
+   "M08 YX-HD-04"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 521,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-104"
+  ]
+ },
+ {
+  "id": "US-B-106",
+  "type": "Story",
+  "parent": "FT-B-021",
+  "title": "Agent makes an article from a resolved ticket",
+  "story": "As an agent, I want to turn a good answer into an article in one click, so that others benefit.",
+  "acceptance": [
+   "Given a resolved ticket, when the agent clicks \"Create article\", then a draft is made from the question and answer, without the requester's personal data.",
+   "Given the draft, then it follows the normal review flow.",
+   "Given the new article, then it links back to the source ticket for agents only."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §8",
+   "M08 YX-HD-04"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 522,
+  "points": 2,
+  "priority": 1,
+  "depends": [
+   "US-B-104"
+  ]
+ },
+ {
+  "id": "US-B-107",
+  "type": "Story",
+  "parent": "FT-B-021",
+  "title": "Public help centre runs on the knowledge base",
+  "story": "As a standalone Service Desk customer, I want a public help centre for my own customers, so that they help themselves.",
+  "acceptance": [
+   "Given public articles, then they show on the company's public help centre with search.",
+   "Given YukthiX's own help.yukthix.com, then it moves onto this engine and keeps every YX-GRO-07 behaviour (CI check, languages, review flags) (YX-GRO-07).",
+   "Given search terms, then they are logged without user ids (YX-GRO-07)."
+  ],
+  "rules": [
+   "YX-GRO-07"
+  ],
+  "docs": [
+   "M14 §8",
+   "M08 YX-HD-04"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 523,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-104",
+   "US-B-075"
+  ]
+ },
+ {
+  "id": "FT-B-022",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Customer satisfaction",
+  "rules": [
+   "YX-HD-05",
+   "YX-CONSOLE-05"
+  ],
+  "docs": [
+   "M14 §18",
+   "M08 YX-HD-05"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 524
+ },
+ {
+  "id": "US-B-108",
+  "type": "Story",
+  "parent": "FT-B-022",
+  "title": "Requester rates a closed ticket",
+  "story": "As a requester, I want to rate the help I got, so that the team can improve.",
+  "acceptance": [
+   "Given a ticket closes, then a satisfaction rating is asked for (YX-HD-05).",
+   "Given a bad rating, then the team lead gets a follow-up task.",
+   "Given ratings, then CSAT per agent and queue shows in reports."
+  ],
+  "rules": [
+   "YX-HD-05"
+  ],
+  "docs": [
+   "M14 §18",
+   "M08 YX-HD-05"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 524,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-088"
+  ]
+ },
+ {
+  "id": "US-B-109",
+  "type": "Story",
+  "parent": "FT-B-022",
+  "title": "Desk admin runs NPS surveys",
+  "story": "As a desk admin, I want NPS surveys on a schedule, so that we know how customers feel overall.",
+  "acceptance": [
+   "Given a survey schedule, then requesters get at most one NPS survey in the set period.",
+   "Given YukthiX's own support, then NPS results feed the customer health score (YX-CONSOLE-05).",
+   "Given a detractor score, then a follow-up task goes to the account owner."
+  ],
+  "rules": [
+   "YX-CONSOLE-05"
+  ],
+  "docs": [
+   "M14 §18",
+   "M08 YX-HD-05"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 525,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-108"
+  ]
+ },
+ {
+  "id": "FT-B-023",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Core reports",
+  "rules": [
+   "YX-HD-03",
+   "YX-HD-04"
+  ],
+  "docs": [
+   "M14 §19",
+   "P09"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 526
+ },
+ {
+  "id": "US-B-110",
+  "type": "Story",
+  "parent": "FT-B-023",
+  "title": "Team lead sees ready dashboards",
+  "story": "As a team lead, I want ready dashboards, so that I see the team's work at a glance.",
+  "acceptance": [
+   "Given the dashboards, then they show backlog, ageing, SLA, first-contact resolution, agent performance, deflection and MTTA / MTTR.",
+   "Given a lead, then they see only their own queues unless they have wider rights.",
+   "Given sensitive queues, then numbers show but ticket details stay hidden from others (YX-HD-03)."
+  ],
+  "rules": [
+   "YX-HD-03",
+   "YX-HD-04"
+  ],
+  "docs": [
+   "M14 §19",
+   "P09"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 526,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-096",
+   "US-B-105"
+  ]
+ },
+ {
+  "id": "US-B-111",
+  "type": "Story",
+  "parent": "FT-B-023",
+  "title": "Lead builds custom and scheduled reports",
+  "story": "As a team lead, I want custom reports sent by email on a schedule, so that managers get updates without asking.",
+  "acceptance": [
+   "Given the P09 report builder, then the lead can make a ticket report with chosen fields and filters.",
+   "Given a schedule, then the report is emailed and the recipient's rights are checked.",
+   "Given any report, then it can be exported to CSV / XLSX."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §19",
+   "P09"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 527,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-110"
+  ]
+ },
+ {
+  "id": "FT-B-024",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Desk roles, security and audit",
+  "rules": [],
+  "docs": [
+   "M14 §20",
+   "P02",
+   "P12"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 528
+ },
+ {
+  "id": "US-B-112",
+  "type": "Story",
+  "parent": "FT-B-024",
+  "title": "Desk admin assigns desk roles",
+  "story": "As a desk admin, I want roles for requester, agent, team lead, change manager, CAB member, asset manager and admin, so that people see only what they need.",
+  "acceptance": [
+   "Given each role, then its rights are fixed and shown before it is given.",
+   "Given field and record permissions, then hidden fields never reach the browser.",
+   "Given any role change, then it is audited."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §20",
+   "P02",
+   "P12"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 528,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-085"
+  ]
+ },
+ {
+  "id": "US-B-113",
+  "type": "Story",
+  "parent": "FT-B-024",
+  "title": "Every desk table is isolated per company and audited",
+  "story": "As a company admin, I want our desk data walled off from other companies, so that no one else sees it.",
+  "acceptance": [
+   "Given any desk table, then it has forced row-level security per company.",
+   "Given any change to a ticket, asset or setting, then an audit entry is written (P08).",
+   "Given retention rules, then closed tickets are kept or deleted per the company setting."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §20",
+   "P02",
+   "P12"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 529,
+  "points": 5,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-B-114",
+  "type": "Story",
+  "parent": "FT-B-024",
+  "title": "Agents sign in with SSO and MFA",
+  "story": "As a desk admin, I want agents to use our SSO and MFA, so that sign-in is safe.",
+  "acceptance": [
+   "Given company SSO, then agents sign in through it (P12).",
+   "Given MFA required, then an agent without it cannot open the agent desk.",
+   "Given an agent removed from the company SSO, then their desk access ends at the next sign-in check."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §20",
+   "P02",
+   "P12"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 530,
+  "points": 2,
+  "priority": 1,
+  "depends": [
+   "US-B-112"
+  ]
+ },
+ {
+  "id": "US-B-115",
+  "type": "Story",
+  "parent": "FT-B-024",
+  "title": "Requester asks for their data or deletion",
+  "story": "As a requester, I want to ask for my ticket data or its deletion, so that my DPDP / GDPR rights are met.",
+  "acceptance": [
+   "Given an access request, then the export lists all tickets and messages of that person.",
+   "Given an erasure request, then personal data is removed or anonymised unless a legal hold applies.",
+   "Given any request, then it is logged with date, decision and who handled it."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §20",
+   "P02",
+   "P12"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 531,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-113"
+  ]
+ },
+ {
+  "id": "FT-B-025",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "YukthiX customer support in the console",
+  "rules": [
+   "YX-CONSOLE-01",
+   "YX-CONSOLE-03",
+   "YX-CONSOLE-04",
+   "YX-SEC-20"
+  ],
+  "docs": [
+   "M14 §21",
+   "P14 Q8",
+   "P02 Q8"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 532
+ },
+ {
+  "id": "US-B-116",
+  "type": "Story",
+  "parent": "FT-B-025",
+  "title": "Customer tickets land in the platform console",
+  "story": "As a YukthiX support agent, I want customer tickets in the console with company details, so that I help with full context.",
+  "acceptance": [
+   "Given a customer company raises a ticket, then it lands in the console queue.",
+   "Given a ticket, then the agent sees company, products, support tier, health and billing status, and no HR data (YX-CONSOLE-01).",
+   "Given product support, then it stays separate from the company's own HR helpdesk (YX-CONSOLE-03)."
+  ],
+  "rules": [
+   "YX-CONSOLE-01",
+   "YX-CONSOLE-03"
+  ],
+  "docs": [
+   "M14 §21",
+   "P14 Q8",
+   "P02 Q8"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 532,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-089",
+   "US-B-008"
+  ]
+ },
+ {
+  "id": "US-B-117",
+  "type": "Story",
+  "parent": "FT-B-025",
+  "title": "Support follows the included support hours and targets",
+  "story": "As a YukthiX customer, I want known support hours and response times, so that I know when to expect an answer.",
+  "acceptance": [
+   "Given standard support, then hours are Mon–Sat 9:00–19:00 IST with extended hours on payroll days (YX-CONSOLE-03).",
+   "Given a Severity-1 incident, then it is handled 24×7 for every customer (YX-CONSOLE-04).",
+   "Given targets, then Sev-1 is 1 hour, Sev-2 4 hours and Sev-3 1 business day to first response (YX-CONSOLE-03)."
+  ],
+  "rules": [
+   "YX-CONSOLE-03",
+   "YX-CONSOLE-04"
+  ],
+  "docs": [
+   "M14 §21",
+   "P14 Q8",
+   "P02 Q8"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 533,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-116",
+   "US-B-094"
+  ]
+ },
+ {
+  "id": "US-B-118",
+  "type": "Story",
+  "parent": "FT-B-025",
+  "title": "Priority Support tickets are served first",
+  "story": "As a Priority Support customer, I want our tickets picked first, so that we get the faster service we paid for.",
+  "acceptance": [
+   "Given two tickets of the same severity, then the Priority Support ticket is picked before the Standard one (YX-CONSOLE-04).",
+   "Given every ticket, then it carries the company's support tier (YX-CONSOLE-04).",
+   "Given a Priority Support customer, then they get a monthly report of response and resolution against their targets (YX-CONSOLE-04)."
+  ],
+  "rules": [
+   "YX-CONSOLE-04"
+  ],
+  "docs": [
+   "M14 §21",
+   "P14 Q8",
+   "P02 Q8"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 534,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-117"
+  ]
+ },
+ {
+  "id": "US-B-119",
+  "type": "Story",
+  "parent": "FT-B-025",
+  "title": "Agent asks for a support session from the ticket",
+  "story": "As a YukthiX support agent, I want to request a support session from the ticket, so that the company approves it with context.",
+  "acceptance": [
+   "Given a ticket, when the agent clicks \"Request access\", then a support session request is sent with the ticket as reason (YX-SEC-20).",
+   "Given the session, then it follows the approval, scope and audit rules (YX-SEC-20).",
+   "Given the session, then its status (asked, approved, declined, ended) shows on the ticket."
+  ],
+  "rules": [
+   "YX-SEC-20"
+  ],
+  "docs": [
+   "M14 §21",
+   "P14 Q8",
+   "P02 Q8"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 535,
+  "points": 2,
+  "priority": 1,
+  "depends": [
+   "US-B-116",
+   "US-B-014"
+  ]
+ },
+ {
+  "id": "US-B-120",
+  "type": "Story",
+  "parent": "FT-B-025",
+  "title": "The support@ mailbox moves into the desk",
+  "story": "As the YukthiX support lead, I want support@ emails to become tickets, so that we stop working from a mailbox.",
+  "acceptance": [
+   "Given support@yukthix.com, then new emails become console tickets with threading.",
+   "Given open email threads at switch-over, then they are imported as tickets.",
+   "Given a customer email from an unknown address, then the ticket is held for an agent to link it to the right company."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §21",
+   "P14 Q8",
+   "P02 Q8"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 536,
+  "points": 2,
+  "priority": 1,
+  "depends": [
+   "US-B-116",
+   "US-B-101"
+  ]
+ },
+ {
+  "id": "FT-B-026",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Service Desk product and agent pricing",
+  "rules": [
+   "YX-TEN-08",
+   "YX-BILL-01",
+   "YX-BILL-14"
+  ],
+  "docs": [
+   "M14 Q1–Q2",
+   "PRICING-UNIT-ECONOMICS §2"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 537
+ },
+ {
+  "id": "US-B-121",
+  "type": "Story",
+  "parent": "FT-B-026",
+  "title": "Company without YukthiX HR uses the Service Desk alone",
+  "story": "As an IT manager at a company without YukthiX HR, I want to use the Service Desk on its own, so that we get ITSM without buying HR.",
+  "acceptance": [
+   "Given sign-up for Service Desk only, then the company gets a light people list (name, email, team, location) with import from CSV.",
+   "Given the standalone product, then it has the same 30-day trial with no card and no free tier (YX-TEN-08).",
+   "Given the company later adds YukthiX HR, then the people list links to the HR employee records."
+  ],
+  "rules": [
+   "YX-TEN-08"
+  ],
+  "docs": [
+   "M14 Q1–Q2",
+   "PRICING-UNIT-ECONOMICS §2"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 537,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-033",
+   "US-B-099"
+  ]
+ },
+ {
+  "id": "US-B-122",
+  "type": "Story",
+  "parent": "FT-B-026",
+  "title": "Service Desk is billed per agent",
+  "story": "As a company admin, I want to pay per agent only, so that requesters and approvers are free.",
+  "acceptance": [
+   "Given India, then the price is ₹999 per agent per month, $10 elsewhere, one plan with every feature (YX-BILL-01).",
+   "Given requesters, approvers and assets, then they are free and unlimited.",
+   "Given billing, then the minimum is ₹999 a month, annual is 10 months for 12, and the founding offer is ₹799 locked 36 months for the first 100 companies (YX-BILL-14)."
+  ],
+  "rules": [
+   "YX-BILL-01",
+   "YX-BILL-14"
+  ],
+  "docs": [
+   "M14 Q1–Q2",
+   "PRICING-UNIT-ECONOMICS §2"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 538,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-112",
+   "US-B-040"
+  ]
+ },
+ {
+  "id": "US-B-123",
+  "type": "Story",
+  "parent": "FT-B-026",
+  "title": "HR helpdesk agents are included in the HRMS price",
+  "story": "As a company HR Admin, I want our HR helpdesk included in HRMS, so that we pay extra only for IT and other desks.",
+  "acceptance": [
+   "Given HR helpdesk agents (employee tickets, KB, SLA), then they are included in the ₹99 HRMS price.",
+   "Given IT, Admin, Facilities or other desk agents, then each is billed ₹999 per month.",
+   "Given an agent on both HR and IT desks, then they are billed once as a Service Desk agent."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Q1–Q2",
+   "PRICING-UNIT-ECONOMICS §2"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 539,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-122"
+  ]
+ },
+ {
+  "id": "FT-B-027",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Service catalogue and requests",
+  "rules": [],
+  "docs": [
+   "M14 §2",
+   "P03",
+   "P18"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 540
+ },
+ {
+  "id": "US-B-124",
+  "type": "Story",
+  "parent": "FT-B-027",
+  "title": "Team publishes catalogue items with forms",
+  "story": "As a desk admin, I want catalogue items with their own forms, so that requests have the right details from the start.",
+  "acceptance": [
+   "Given a team (IT, HR, Admin, Facilities, Finance), then it can publish catalogue items with a P18 form, a cost and an audience.",
+   "Given an audience rule, then only matching people see the item.",
+   "Given a request, then it is created from the item with the form answers."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §2",
+   "P03",
+   "P18"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 540,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-099"
+  ]
+ },
+ {
+  "id": "US-B-125",
+  "type": "Story",
+  "parent": "FT-B-027",
+  "title": "Requests go through multi-step approvals",
+  "story": "As a requester, I want my request approved by the right people, so that it is done without chasing.",
+  "acceptance": [
+   "Given an item with approvals (manager, cost centre owner, asset owner), then they run in order through P03.",
+   "Given a rejection, then the request stops and the requester sees the reason.",
+   "Given approvers, then they can approve from email or mobile and are never billed."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §2",
+   "P03",
+   "P18"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 541,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-124"
+  ]
+ },
+ {
+  "id": "US-B-126",
+  "type": "Story",
+  "parent": "FT-B-027",
+  "title": "One request creates tasks for several teams",
+  "story": "As a requester, I want one request to start all needed tasks, so that I ask only once.",
+  "acceptance": [
+   "Given a bundle item, then one request creates fulfilment tasks for several teams.",
+   "Given each task, then it has its own SLA.",
+   "Given all tasks done, then the request resolves automatically."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §2",
+   "P03",
+   "P18"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 542,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-124"
+  ]
+ },
+ {
+  "id": "US-B-127",
+  "type": "Story",
+  "parent": "FT-B-027",
+  "title": "Onboarding and exit requests come from M01",
+  "story": "As an HR Admin, I want joiner and leaver requests to start IT and admin tasks, so that day one is ready.",
+  "acceptance": [
+   "Given an M01 onboarding, then an onboarding request is created with tasks for laptop, accounts and access card.",
+   "Given an exit, then an offboarding request lists assets to return and accounts to close.",
+   "Given a joining date change in M01, then the task due dates move with it."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §2",
+   "P03",
+   "P18"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 543,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-126"
+  ]
+ },
+ {
+  "id": "FT-B-028",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Enterprise service desks",
+  "rules": [
+   "YX-HD-03"
+  ],
+  "docs": [
+   "M14 §17",
+   "M08 confidentiality"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 544
+ },
+ {
+  "id": "US-B-128",
+  "type": "Story",
+  "parent": "FT-B-028",
+  "title": "Company runs separate HR, Admin, Facilities, Finance and Legal desks",
+  "story": "As a company admin, I want separate desks per department, so that each team runs its own work.",
+  "acceptance": [
+   "Given a workspace, then it has its own catalogue, SLAs, agents and privacy settings.",
+   "Given an agent of one workspace, then they do not see tickets of another unless added.",
+   "Given an employee, then they see all desks in one portal."
+  ],
+  "rules": [
+   "YX-HD-03"
+  ],
+  "docs": [
+   "M14 §17",
+   "M08 confidentiality"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 544,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-124"
+  ]
+ },
+ {
+  "id": "US-B-129",
+  "type": "Story",
+  "parent": "FT-B-028",
+  "title": "Sensitive desk categories follow M08 confidentiality",
+  "story": "As an employee, I want HR and legal matters kept private, so that I can ask freely.",
+  "acceptance": [
+   "Given a sensitive category in any workspace, then only that queue's agents see it (YX-HD-03).",
+   "Given grievance, POSH or whistleblower matters, then the desk points to the M08 case flow and does not store them as tickets.",
+   "Given a sensitive ticket, then every read is audited (YX-HD-03)."
+  ],
+  "rules": [
+   "YX-HD-03"
+  ],
+  "docs": [
+   "M14 §17",
+   "M08 confidentiality"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 545,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-128"
+  ]
+ },
+ {
+  "id": "FT-B-029",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Automation rules",
+  "rules": [],
+  "docs": [
+   "M14 §11",
+   "P22"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 546
+ },
+ {
+  "id": "US-B-130",
+  "type": "Story",
+  "parent": "FT-B-029",
+  "title": "Desk admin builds no-code rules",
+  "story": "As a desk admin, I want rules that run on create, update or time, so that routine work happens by itself.",
+  "acceptance": [
+   "Given a rule, then it has a trigger (created, updated, time-based), conditions and actions, built without code in P22.",
+   "Given a rule test, then a dry run shows which tickets it would change.",
+   "Given every rule run, then it is logged on the ticket."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §11",
+   "P22"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 546,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-087"
+  ]
+ },
+ {
+  "id": "US-B-131",
+  "type": "Story",
+  "parent": "FT-B-029",
+  "title": "Rules assign, notify, escalate, create tasks and call webhooks",
+  "story": "As a desk admin, I want rich rule actions, so that I can automate most steps.",
+  "acceptance": [
+   "Given actions, then a rule can assign, set fields, notify, escalate, create tasks and call a webhook.",
+   "Given a webhook that fails, then it retries and shows on the Jobs & errors page.",
+   "Given rules that would loop, then the loop is stopped and the admin is warned."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §11",
+   "P22"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 547,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-130"
+  ]
+ },
+ {
+  "id": "FT-B-030",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Chat and messaging channels",
+  "rules": [
+   "YX-NTF-14",
+   "YX-HD-04"
+  ],
+  "docs": [
+   "M14 §10",
+   "P04"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 548
+ },
+ {
+  "id": "US-B-132",
+  "type": "Story",
+  "parent": "FT-B-030",
+  "title": "Requester chats live and the chat becomes a ticket",
+  "story": "As a requester, I want live chat with an agent, so that small questions get answered fast.",
+  "acceptance": [
+   "Given an online agent, then the requester can chat from the portal or the in-app drawer.",
+   "Given a chat, when it ends unresolved or no agent is free, then it becomes a ticket with the transcript.",
+   "Given agents, then each sees their open chats and can take several at once up to a set limit."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §10",
+   "P04"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 548,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-B-099"
+  ]
+ },
+ {
+  "id": "US-B-133",
+  "type": "Story",
+  "parent": "FT-B-030",
+  "title": "Requester raises and follows a ticket on WhatsApp",
+  "story": "As an employee, I want to use WhatsApp for help, so that I reach support from my phone.",
+  "acceptance": [
+   "Given the company's own WhatsApp Business number connected (P04), then a message creates or updates a ticket.",
+   "Given replies, then the agent's answer goes back on WhatsApp only with an active opt-in (YX-NTF-14).",
+   "Given no WhatsApp number connected, then the channel is off and replies go by email and in-app."
+  ],
+  "rules": [
+   "YX-NTF-14"
+  ],
+  "docs": [
+   "M14 §10",
+   "P04"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 549,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-086"
+  ]
+ },
+ {
+  "id": "US-B-134",
+  "type": "Story",
+  "parent": "FT-B-030",
+  "title": "Requester raises tickets from Microsoft Teams or Slack",
+  "story": "As an employee, I want to ask for help inside Teams or Slack, so that I do not change tools.",
+  "acceptance": [
+   "Given the Teams or Slack bot, then a requester can raise a ticket and get updates in the chat.",
+   "Given the bot, then it suggests articles before raising a ticket (YX-HD-04).",
+   "Given an update on the ticket, then the requester gets it in the same Teams or Slack chat."
+  ],
+  "rules": [
+   "YX-HD-04"
+  ],
+  "docs": [
+   "M14 §10",
+   "P04"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 550,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-086"
+  ]
+ },
+ {
+  "id": "US-B-135",
+  "type": "Story",
+  "parent": "FT-B-030",
+  "title": "Agent logs a phone call as a ticket",
+  "story": "As an agent, I want to log a call as a ticket, so that phone requests are tracked too.",
+  "acceptance": [
+   "Given a call, when the agent logs it, then a ticket is created with channel \"phone\" and the call notes.",
+   "Given later click-to-call, then the design leaves a place for the call reference.",
+   "Given a phone ticket, then the SLA and status rules are the same as other tickets (YX-HD-01)."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §10",
+   "P04"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 551,
+  "points": 2,
+  "priority": 2,
+  "depends": [
+   "US-B-089"
+  ]
+ },
+ {
+  "id": "FT-B-031",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Desk API and custom fields",
+  "rules": [],
+  "docs": [
+   "M14 §20",
+   "P11",
+   "P18"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 552
+ },
+ {
+  "id": "US-B-136",
+  "type": "Story",
+  "parent": "FT-B-031",
+  "title": "Developer uses the desk REST API and webhooks",
+  "story": "As a company developer, I want an API and webhooks, so that other systems can create and follow tickets.",
+  "acceptance": [
+   "Given an API key with scopes, then tickets, requests and assets can be read and written per the scope (P11).",
+   "Given webhooks, then events (created, updated, resolved) are sent signed and retried.",
+   "Given API limits, then the P11 limits apply."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §20",
+   "P11",
+   "P18"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 552,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-113"
+  ]
+ },
+ {
+  "id": "US-B-137",
+  "type": "Story",
+  "parent": "FT-B-031",
+  "title": "Desk admin adds custom fields and forms",
+  "story": "As a desk admin, I want custom fields on tickets and assets, so that we capture what we need.",
+  "acceptance": [
+   "Given P18 custom fields, then they can be added to tickets, requests and assets.",
+   "Given a field marked sensitive, then only allowed roles see it.",
+   "Given a custom field, then it can be used in rules, filters and reports."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §20",
+   "P11",
+   "P18"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-124"
+  ]
+ },
+ {
+  "id": "FT-B-032",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Problem management",
+  "rules": [],
+  "docs": [
+   "M14 §3"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 554
+ },
+ {
+  "id": "US-B-138",
+  "type": "Story",
+  "parent": "FT-B-032",
+  "title": "Agent raises a problem from repeated incidents",
+  "story": "As a problem manager, I want similar incidents suggested as a problem, so that we fix the root cause.",
+  "acceptance": [
+   "Given several similar incidents, then the system suggests a problem record.",
+   "Given a problem, then incidents can be linked to it.",
+   "Given a problem, then it has owner, status and priority."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §3"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 554,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-092"
+  ]
+ },
+ {
+  "id": "US-B-139",
+  "type": "Story",
+  "parent": "FT-B-032",
+  "title": "Problem manager records root cause and known errors",
+  "story": "As a problem manager, I want root-cause notes and known errors with workarounds, so that agents fix incidents faster.",
+  "acceptance": [
+   "Given a problem, then the manager can record 5-whys and fishbone notes.",
+   "Given a known error, then its workaround is shown to agents on linked and matching incidents.",
+   "Given a known error, then it can be published as a knowledge article."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §3"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 555,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-138"
+  ]
+ },
+ {
+  "id": "US-B-140",
+  "type": "Story",
+  "parent": "FT-B-032",
+  "title": "Fixed problem closes its incidents in bulk",
+  "story": "As a problem manager, I want linked incidents closed when the fix is done, so that requesters hear at once.",
+  "acceptance": [
+   "Given a problem linked to a change, when the change is done and the problem is resolved, then the linked incidents can be resolved in one step with a message to each requester.",
+   "Given links, then incident ↔ problem ↔ change are visible on each record.",
+   "Given a bulk close, then each incident keeps a note linking to the problem."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §3"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 556,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-139"
+  ]
+ },
+ {
+  "id": "FT-B-033",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Change enablement",
+  "rules": [],
+  "docs": [
+   "M14 §4"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 557
+ },
+ {
+  "id": "US-B-141",
+  "type": "Story",
+  "parent": "FT-B-033",
+  "title": "Change manager raises standard, normal and emergency changes",
+  "story": "As a change manager, I want three change types, so that small safe changes are fast and risky ones are checked.",
+  "acceptance": [
+   "Given a standard change, then it comes from a pre-approved template and needs no CAB.",
+   "Given a normal change, then it needs risk assessment and CAB approval.",
+   "Given an emergency change, then it uses a short emergency approval and is reviewed afterwards."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §4"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 557,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-112"
+  ]
+ },
+ {
+  "id": "US-B-142",
+  "type": "Story",
+  "parent": "FT-B-033",
+  "title": "Change gets a risk score from a questionnaire",
+  "story": "As a change manager, I want a risk score from fixed questions, so that risk is judged the same way every time.",
+  "acceptance": [
+   "Given the risk questionnaire, then answers give a risk score and level.",
+   "Given a high risk level, then more approvers are required.",
+   "Given the questionnaire, then a desk admin can change questions and weights, and old changes keep the version they used."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §4"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 558,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-141"
+  ]
+ },
+ {
+  "id": "US-B-143",
+  "type": "Story",
+  "parent": "FT-B-033",
+  "title": "CAB members approve changes in meetings",
+  "story": "As a CAB member, I want an agenda and approvals, so that we decide changes together.",
+  "acceptance": [
+   "Given a CAB meeting, then it lists the changes to review with risk and plans.",
+   "Given each change, then each CAB member records approve, reject or more info.",
+   "Given decisions, then they are saved on the change with the meeting notes."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §4"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 559,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-142"
+  ]
+ },
+ {
+  "id": "US-B-144",
+  "type": "Story",
+  "parent": "FT-B-033",
+  "title": "Change calendar shows blackouts and conflicts",
+  "story": "As a change manager, I want a calendar with freeze windows, so that changes do not clash.",
+  "acceptance": [
+   "Given blackout or freeze windows, then a change in them is blocked unless it is an emergency.",
+   "Given two changes on the same CI at the same time, then a conflict is shown.",
+   "Given the calendar, then it shows planned changes and releases by date."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §4"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 560,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-141"
+  ]
+ },
+ {
+  "id": "US-B-145",
+  "type": "Story",
+  "parent": "FT-B-033",
+  "title": "Change carries plans and a post-implementation review",
+  "story": "As a change manager, I want implementation, back-out and test plans and a review, so that we learn from each change.",
+  "acceptance": [
+   "Given a normal change, then implementation, back-out and test plans are required before approval.",
+   "Given a finished change, then a post-implementation review records the result.",
+   "Given a change, then it links to affected CIs and releases."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §4"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 561,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-141"
+  ]
+ },
+ {
+  "id": "FT-B-034",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Release and deployment",
+  "rules": [],
+  "docs": [
+   "M14 §5"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 562
+ },
+ {
+  "id": "US-B-146",
+  "type": "Story",
+  "parent": "FT-B-034",
+  "title": "Release manager groups changes into a release",
+  "story": "As a release manager, I want releases with tasks and sign-offs, so that deployments are planned.",
+  "acceptance": [
+   "Given a release, then it groups changes and shows on the release calendar.",
+   "Given deployment tasks, then each has an owner and a due time.",
+   "Given sign-offs, then the release cannot close until all are given."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §5"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 562,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-144"
+  ]
+ },
+ {
+  "id": "FT-B-035",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Asset management",
+  "rules": [],
+  "docs": [
+   "M14 §6",
+   "M14 Q3–Q4",
+   "M01 assets"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 563
+ },
+ {
+  "id": "US-B-147",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Asset manager keeps a register with lifecycle history",
+  "story": "As an asset manager, I want every asset with its lifecycle, so that I know what we own and where it is.",
+  "acceptance": [
+   "Given asset types (hardware, software, mobile, furniture, vehicles, access cards), then each asset has a lifecycle: ordered → in stock → assigned → in repair → retired / disposed.",
+   "Given any change, then it is kept in the asset history.",
+   "Given the M01 simple asset register, then its data moves here and M01 uses this model."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §6",
+   "M14 Q3–Q4",
+   "M01 assets"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 563,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-112"
+  ]
+ },
+ {
+  "id": "US-B-148",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Asset manager assigns and scans assets",
+  "story": "As an asset manager, I want to assign assets and scan their tags, so that check-in and check-out are quick.",
+  "acceptance": [
+   "Given an asset, then it can be assigned to a person, location or department, and checked in or out.",
+   "Given a barcode or QR tag, then the mobile app (M04) scan opens the asset.",
+   "Given M01 onboarding or exit, then assets are issued or returned through this flow."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §6",
+   "M14 Q3–Q4",
+   "M01 assets"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 564,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-147",
+   "US-B-127"
+  ]
+ },
+ {
+  "id": "US-B-149",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Finance tracks warranty, AMC, lease and depreciation",
+  "story": "As a finance user, I want warranties, AMCs, leases and depreciation tracked, so that renewals and books are right.",
+  "acceptance": [
+   "Given warranty, AMC or lease end dates, then reminders go before expiry.",
+   "Given depreciation, then straight line and written-down value methods are available.",
+   "Given a period, then a depreciation report can be exported."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §6",
+   "M14 Q3–Q4",
+   "M01 assets"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 565,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-147"
+  ]
+ },
+ {
+  "id": "US-B-150",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "IT admin enrols devices with osquery",
+  "story": "As an IT admin, I want devices found automatically, so that the inventory is always current.",
+  "acceptance": [
+   "Given the company enrolment key, then osquery enrols through our TLS enrol, config and logger endpoints; no own agent code runs on devices.",
+   "Given each device, then it has its own revocable key, TLS uses our pinned certificate, and the company secret can be rotated.",
+   "Given collected data, then it is inventory only: no browsing history, no files, no personal data."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §6",
+   "M14 Q3–Q4",
+   "M01 assets"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 566,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-B-147"
+  ]
+ },
+ {
+  "id": "US-B-151",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Discovery never runs remote actions",
+  "story": "As a company IT admin, I want YukthiX unable to control our devices, so that a YukthiX breach cannot reach them.",
+  "acceptance": [
+   "Given the agent, then it runs only our fixed read-only query pack.",
+   "Given any request for remote commands, scripts or ad-hoc live queries, then the API has no way to send them.",
+   "Given remote control needs, then the docs point to the company's own MDM."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §6",
+   "M14 Q3–Q4",
+   "M01 assets"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 567,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-150"
+  ]
+ },
+ {
+  "id": "US-B-152",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "IT admin downloads signed installers",
+  "story": "As an IT admin, I want code-signed installers for Windows and macOS, so that devices trust them.",
+  "acceptance": [
+   "Given Windows and macOS installers, then they are code-signed and carry the company enrolment settings.",
+   "Given Linux, then a package and a script are provided.",
+   "Given a new installer version, then devices on the old version are listed for update."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §6",
+   "M14 Q3–Q4",
+   "M01 assets"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 568,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-150"
+  ]
+ },
+ {
+  "id": "US-B-153",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "Asset manager tracks software licences",
+  "story": "As an asset manager, I want licence entitlements against installations, so that we stay compliant.",
+  "acceptance": [
+   "Given a licence, then entitlements are compared with discovered installations.",
+   "Given more installs than entitlements, then a compliance alert is raised.",
+   "Given a renewal date, then reminders go before it."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §6",
+   "M14 Q3–Q4",
+   "M01 assets"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 569,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-150"
+  ]
+ },
+ {
+  "id": "US-B-154",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "IT admin imports devices from MDM and CSV",
+  "story": "As an IT admin, I want devices from Intune, Jamf, Google Workspace or CSV, so that we start with a full list.",
+  "acceptance": [
+   "Given an Intune, Jamf or Google Workspace connection, then devices import and update on a schedule.",
+   "Given a CSV file, then a preview shows errors before import.",
+   "Given the same device from two sources, then they are merged by serial number."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §6",
+   "M14 Q3–Q4",
+   "M01 assets"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 570,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-147"
+  ]
+ },
+ {
+  "id": "US-B-155",
+  "type": "Story",
+  "parent": "FT-B-035",
+  "title": "IT admin finds office devices with a read-only probe",
+  "story": "As an IT admin, I want an office probe to find printers and network devices, so that unmanaged devices are in the list.",
+  "acceptance": [
+   "Given the office probe, then it uses read-only SNMP and ARP only; nmap is not used or bundled.",
+   "Given found devices, then they appear as \"discovered\" until the admin confirms them as assets.",
+   "Given the probe, then it is set up with a company key and can be switched off at any time."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §6",
+   "M14 Q3–Q4",
+   "M01 assets"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 571,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-150"
+  ]
+ },
+ {
+  "id": "FT-B-036",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Configuration management (CMDB)",
+  "rules": [],
+  "docs": [
+   "M14 §7"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 572
+ },
+ {
+  "id": "US-B-156",
+  "type": "Story",
+  "parent": "FT-B-036",
+  "title": "IT admin keeps configuration items and their relations",
+  "story": "As an IT admin, I want CIs with relations and a map, so that I see what depends on what.",
+  "acceptance": [
+   "Given CI types, then each has custom attributes.",
+   "Given relations (runs on, depends on, connected to), then a visual dependency map is shown.",
+   "Given a CI, then its history and baselines are kept."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §7"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 572,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-B-147"
+  ]
+ },
+ {
+  "id": "US-B-157",
+  "type": "Story",
+  "parent": "FT-B-036",
+  "title": "Agent sees the impact of an incident or change",
+  "story": "As a change manager, I want impact analysis from the CMDB, so that I know what a change may break.",
+  "acceptance": [
+   "Given an incident or change on a CI, then the CIs and services that depend on it are listed.",
+   "Given a change, then affected CI owners can be added as approvers.",
+   "Given impact analysis, then it shows the open incidents on the dependent CIs."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §7"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 573,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-156",
+   "US-B-141"
+  ]
+ },
+ {
+  "id": "FT-B-037",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Vendors, contracts and procurement",
+  "rules": [],
+  "docs": [
+   "M14 §15"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 574
+ },
+ {
+  "id": "US-B-158",
+  "type": "Story",
+  "parent": "FT-B-037",
+  "title": "Asset manager keeps vendors and contracts",
+  "story": "As an asset manager, I want vendors and contracts with renewal dates, so that nothing expires by surprise.",
+  "acceptance": [
+   "Given a contract, then it has vendor, value, SLA and renewal date.",
+   "Given a renewal date, then reminders go before it.",
+   "Given a vendor SLA, then it is used as an underpinning contract on tickets."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §15"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 574,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-147"
+  ]
+ },
+ {
+  "id": "US-B-159",
+  "type": "Story",
+  "parent": "FT-B-037",
+  "title": "Requester asks to buy an asset and it is received into stock",
+  "story": "As an asset manager, I want purchase requests, orders and receiving, so that new assets enter the register correctly.",
+  "acceptance": [
+   "Given a purchase request, then it follows approvals and becomes a purchase order to a vendor.",
+   "Given goods received, then assets are created \"in stock\" with the PO reference.",
+   "Given a part delivery, then only the received quantity is added to stock and the order stays open."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §15"
+  ],
+  "state": "New",
+  "phase": "Step 3b-3",
+  "order": 575,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-158",
+   "US-B-125"
+  ]
+ },
+ {
+  "id": "FT-B-038",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Monitoring and event management",
+  "rules": [],
+  "docs": [
+   "M14 §12"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 576
+ },
+ {
+  "id": "US-B-160",
+  "type": "Story",
+  "parent": "FT-B-038",
+  "title": "Monitoring alerts create and close incidents",
+  "story": "As an on-call engineer, I want alerts from monitoring tools to become incidents, so that nothing is missed.",
+  "acceptance": [
+   "Given webhooks from Prometheus / Grafana, Datadog, Azure Monitor, CloudWatch or uptime tools, then alerts are received and checked.",
+   "Given repeated or related alerts, then they are de-duplicated and grouped into one incident.",
+   "Given a recovery alert, then the incident closes automatically with a note."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §12"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 576,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-B-131"
+  ]
+ },
+ {
+  "id": "FT-B-039",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "On-call and escalation",
+  "rules": [],
+  "docs": [
+   "M14 §13",
+   "P04"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 577
+ },
+ {
+  "id": "US-B-161",
+  "type": "Story",
+  "parent": "FT-B-039",
+  "title": "Team lead sets on-call schedules and rotations",
+  "story": "As a team lead, I want on-call rotations, so that someone is always responsible.",
+  "acceptance": [
+   "Given a schedule, then rotations, hand-over times and overrides can be set.",
+   "Given now, then the console shows who is on call for each team.",
+   "Given a holiday or leave, then an override can hand the shift to a colleague."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §13",
+   "P04"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 577,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-112"
+  ]
+ },
+ {
+  "id": "US-B-162",
+  "type": "Story",
+  "parent": "FT-B-039",
+  "title": "On-call engineer is paged and acknowledges",
+  "story": "As an on-call engineer, I want to be paged by SMS, call or push, so that I wake up for real problems.",
+  "acceptance": [
+   "Given an urgent incident, then the on-call person is paged by SMS, call or push through P04.",
+   "Given no acknowledgement in the set time, then the escalation policy pages the next level.",
+   "Given acknowledgement, then the time is recorded for MTTA."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §13",
+   "P04"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 578,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-161",
+   "US-B-160"
+  ]
+ },
+ {
+  "id": "FT-B-040",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Status pages for companies",
+  "rules": [
+   "YX-GRO-09"
+  ],
+  "docs": [
+   "M14 §14",
+   "P20 YX-GRO-09"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 579
+ },
+ {
+  "id": "US-B-163",
+  "type": "Story",
+  "parent": "FT-B-040",
+  "title": "Company publishes its own status pages",
+  "story": "As a company IT lead, I want public and private status pages, so that our users see service health.",
+  "acceptance": [
+   "Given components, then the company can publish public or private (signed-in) status pages using the same engine as the YukthiX status page (YX-GRO-09).",
+   "Given an incident, then updates post to the page and subscribers are notified.",
+   "Given subscribers, then sign-up uses double opt-in and one-click unsubscribe."
+  ],
+  "rules": [
+   "YX-GRO-09"
+  ],
+  "docs": [
+   "M14 §14",
+   "P20 YX-GRO-09"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 579,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-059",
+   "US-B-160"
+  ]
+ },
+ {
+  "id": "FT-B-041",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Major incident",
+  "rules": [],
+  "docs": [
+   "M14 §1"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 580
+ },
+ {
+  "id": "US-B-164",
+  "type": "Story",
+  "parent": "FT-B-041",
+  "title": "Lead declares a major incident with a war-room",
+  "story": "As an incident manager, I want to declare a major incident, so that the right people work together at once.",
+  "acceptance": [
+   "Given an incident, when the manager declares it major, then a war-room (bridge) is opened and key people are paged.",
+   "Given stakeholder updates, then reminders go on the set schedule until resolved.",
+   "Given the incident, then all linked tickets show a banner."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §1"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 580,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-162"
+  ]
+ },
+ {
+  "id": "US-B-165",
+  "type": "Story",
+  "parent": "FT-B-041",
+  "title": "Team writes a post-incident review",
+  "story": "As an incident manager, I want a review after a major incident, so that we prevent it next time.",
+  "acceptance": [
+   "Given a resolved major incident, then a review task is created with timeline, cause, fix and actions.",
+   "Given actions, then each has an owner and a due date and can become a problem record.",
+   "Given the review, then it can be shared with customers as a post-incident summary."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §1"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 581,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-B-164"
+  ]
+ },
+ {
+  "id": "FT-B-042",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "AI assistance",
+  "rules": [
+   "YX-HD-03",
+   "YX-HD-04"
+  ],
+  "docs": [
+   "M14 §11",
+   "P10"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 582
+ },
+ {
+  "id": "US-B-166",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "AI suggests category, routing and duplicates",
+  "story": "As a team lead, I want AI to categorise and route new tickets, so that agents start work sooner.",
+  "acceptance": [
+   "Given a new ticket, then AI suggests category, priority and queue with a confidence level.",
+   "Given low confidence, then the ticket goes to manual triage.",
+   "Given a likely duplicate, then the agent is shown the matching ticket."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §11",
+   "P10"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 582,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-087"
+  ]
+ },
+ {
+  "id": "US-B-167",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "AI suggests replies, articles and summaries",
+  "story": "As an agent, I want suggested replies, article links and a summary, so that I answer faster.",
+  "acceptance": [
+   "Given a ticket, then AI offers a draft reply and related articles; the agent must review before sending.",
+   "Given a long ticket, then a short summary is shown.",
+   "Given sentiment or urgency signals, then the ticket is flagged.",
+   "Given sensitive categories, then AI uses only data the agent may already see (YX-HD-03)."
+  ],
+  "rules": [
+   "YX-HD-03"
+  ],
+  "docs": [
+   "M14 §11",
+   "P10"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 583,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-B-166",
+   "US-B-104"
+  ]
+ },
+ {
+  "id": "US-B-168",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "Virtual agent answers from the knowledge base",
+  "story": "As an employee, I want a virtual agent that answers from articles and policies, so that I get help at any time.",
+  "acceptance": [
+   "Given a question, then the virtual agent answers from published articles and policies with links.",
+   "Given it cannot answer, then it raises a ticket with the conversation.",
+   "Given an answer that solves it, then it counts as deflected (YX-HD-04)."
+  ],
+  "rules": [
+   "YX-HD-04"
+  ],
+  "docs": [
+   "M14 §11",
+   "P10"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-B-167"
+  ]
+ },
+ {
+  "id": "FT-B-043",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Projects and tasks",
+  "rules": [],
+  "docs": [
+   "M14 §16"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 585
+ },
+ {
+  "id": "US-B-169",
+  "type": "Story",
+  "parent": "FT-B-043",
+  "title": "IT lead runs simple projects and tasks",
+  "story": "As an IT lead, I want simple projects and tasks for work that is not a ticket, so that all IT work is in one place.",
+  "acceptance": [
+   "Given a project, then it has tasks with owners, due dates and status.",
+   "Given a company with M12, then projects link to it instead of duplicating.",
+   "Given a ticket that turns into larger work, then it can be linked to a project task."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §16"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 585,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-112"
+  ]
+ },
+ {
+  "id": "FT-B-044",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Facilities booking and visitors",
+  "rules": [],
+  "docs": [
+   "M14 §17"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 586
+ },
+ {
+  "id": "US-B-170",
+  "type": "Story",
+  "parent": "FT-B-044",
+  "title": "Employee books a room or desk",
+  "story": "As an employee, I want to book a room or desk, so that I have a place to work or meet.",
+  "acceptance": [
+   "Given rooms and desks per location, then employees can book free slots.",
+   "Given a clash, then the second booking is refused.",
+   "Given a no-show, then the booking is released after the set time."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §17"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 586,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-128"
+  ]
+ },
+ {
+  "id": "US-B-171",
+  "type": "Story",
+  "parent": "FT-B-044",
+  "title": "Employee requests a visitor pass or maintenance",
+  "story": "As an employee, I want to request a visitor pass or a repair, so that the facilities team acts.",
+  "acceptance": [
+   "Given a visitor request, then the facilities desk gets it with visitor name and time.",
+   "Given a maintenance request, then it becomes a facilities ticket with location.",
+   "Given a visitor pass, then the host is told when the visitor arrives."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §17"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 587,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-B-128"
+  ]
+ },
+ {
+  "id": "FT-B-045",
+  "type": "Feature",
+  "parent": "EP-B-2",
+  "title": "Importers, sandbox and integrations",
+  "rules": [],
+  "docs": [
+   "M14 §20",
+   "P15",
+   "P23"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 588
+ },
+ {
+  "id": "US-B-172",
+  "type": "Story",
+  "parent": "FT-B-045",
+  "title": "Desk admin imports from other help desks",
+  "story": "As a desk admin, I want to import tickets, articles and assets from Zoho Desk, Freshservice, Jira SM or CSV, so that switching is easy.",
+  "acceptance": [
+   "Given a source, then a dry run shows counts and errors before import.",
+   "Given an import, then old ids are kept as references and history is preserved.",
+   "Given a failed import, then it can be rolled back."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §20",
+   "P15",
+   "P23"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 588,
+  "points": 8,
+  "priority": 1,
+  "depends": [
+   "US-B-113",
+   "US-B-104",
+   "US-B-147"
+  ]
+ },
+ {
+  "id": "US-B-173",
+  "type": "Story",
+  "parent": "FT-B-045",
+  "title": "Desk admin tests configuration in a sandbox",
+  "story": "As a desk admin, I want to try rule and form changes in a sandbox, so that live work is not broken.",
+  "acceptance": [
+   "Given a P15 sandbox, then desk settings can be copied and changed there.",
+   "Given tested changes, then they can be promoted to live with an audit entry.",
+   "Given a sandbox, then no email, SMS or WhatsApp reaches real requesters from it."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §20",
+   "P15",
+   "P23"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 589,
+  "points": 3,
+  "priority": 3,
+  "depends": [
+   "US-B-130"
+  ]
+ },
+ {
+  "id": "US-B-174",
+  "type": "Story",
+  "parent": "FT-B-045",
+  "title": "Desk admin connects integrations from the marketplace",
+  "story": "As a desk admin, I want ready integrations (Teams, Slack, Google Workspace, Microsoft 365, Intune, Jamf, Jira / GitHub, monitoring), so that we connect tools in minutes.",
+  "acceptance": [
+   "Given the P23 marketplace, then each integration shows what data moves and can be switched on by an admin.",
+   "Given an integration, then its secrets are stored encrypted and its errors show on the Jobs & errors page.",
+   "Given an integration switched off, then it stops at once and its stored secrets are deleted."
+  ],
+  "rules": [],
+  "docs": [
+   "M14 §20",
+   "P15",
+   "P23"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-B-136"
+  ]
+ }
+]

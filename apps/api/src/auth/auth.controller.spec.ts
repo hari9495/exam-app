@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { SessionsService } from './sessions.service';
+import { CompanyScopeService } from './company-scope';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { createHash } from 'crypto';
 
@@ -46,6 +47,7 @@ describe('AuthController.ssoExchange', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: SessionsService, useValue: sessions },
+        { provide: CompanyScopeService, useValue: { slugFor: jest.fn(async (_req: unknown, slug?: string) => slug) } },
       ],
     }).compile();
     controller = moduleRef.get(AuthController);

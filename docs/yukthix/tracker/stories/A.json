@@ -1,0 +1,4627 @@
+[
+ {
+  "id": "EP-A-1",
+  "type": "Epic",
+  "parent": "",
+  "title": "Step 0 · PostgreSQL and tenant isolation",
+  "rules": [],
+  "docs": [
+   "P01 §5",
+   "spec D10"
+  ],
+  "state": "Done",
+  "phase": "Step 0",
+  "order": 0,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #128 · branch feat/yukthix-postgres"
+ },
+ {
+  "id": "FT-A-001",
+  "type": "Feature",
+  "parent": "EP-A-1",
+  "title": "Move the database to PostgreSQL 17",
+  "rules": [],
+  "docs": [
+   "spec D10",
+   "P01 §9"
+  ],
+  "state": "Done",
+  "phase": "Step 0",
+  "order": 10,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #128 · d35ec1f4 · 19e8f2a9"
+ },
+ {
+  "id": "US-A-001",
+  "type": "Story",
+  "parent": "FT-A-001",
+  "title": "The product runs on PostgreSQL 17",
+  "story": "As a company admin, I want YukthiX to run on PostgreSQL so that we get one database that supports row-level security for every company.",
+  "acceptance": [
+   "Given a fresh environment, when docker-compose starts, then PostgreSQL 17 runs instead of SQL Server.",
+   "Given the Prisma schema, when migrations run, then one fresh PostgreSQL baseline creates every table.",
+   "Given unbounded text columns and the real ON DELETE actions, when the schema is compared with SQL Server, then no column is cut short and no delete rule is lost.",
+   "Given an org slug or email typed in another case, when it is looked up, then it still matches."
+  ],
+  "rules": [],
+  "docs": [
+   "spec D10",
+   "P01 §9"
+  ],
+  "state": "Done",
+  "phase": "Step 0",
+  "order": 11,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #128 · d35ec1f4 · 19e8f2a9 · f06de45f · 351b2f1f"
+ },
+ {
+  "id": "US-A-002",
+  "type": "Story",
+  "parent": "FT-A-001",
+  "title": "Existing exam-app features keep working on PostgreSQL",
+  "story": "As a recruiter, I want every exam-app screen to keep working after the move so that nothing breaks for current customers.",
+  "acceptance": [
+   "Given raw SQL, the seed and scripts, when they run on PostgreSQL, then they give the same results as before.",
+   "Given staff and admin search, when a user types any case, then the search is case-insensitive.",
+   "Given the recycle bin, when rows are purged, then each row is purged in its own transaction.",
+   "Given the e2e suites, when they run in one worker with AI calls offline, then they pass or assert the current behaviour."
+  ],
+  "rules": [],
+  "docs": [
+   "spec D10"
+  ],
+  "state": "Done",
+  "phase": "Step 0",
+  "order": 12,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #128 · 34cba973 · 11c0966d · e9612d6e · 52535396 · f95e0cb6 · 81cb4073"
+ },
+ {
+  "id": "FT-A-002",
+  "type": "Feature",
+  "parent": "EP-A-1",
+  "title": "Tenant isolation with forced row-level security",
+  "rules": [],
+  "docs": [
+   "P01 §5"
+  ],
+  "state": "Done",
+  "phase": "Step 0",
+  "order": 20,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #128 · bf1441bd · ffedebe0 · e4c00860"
+ },
+ {
+  "id": "US-A-003",
+  "type": "Story",
+  "parent": "FT-A-002",
+  "title": "Every company table has forced row-level security",
+  "story": "As a company admin, I want the database itself to stop any other company from reading our rows so that a coding mistake can never leak our data.",
+  "acceptance": [
+   "Given any table with organization_id, when the app role reads it without a company set, then it gets no rows (fail-closed) (YX-ORG-14).",
+   "Given company A's context, when the app reads or writes company B's rows, then the database refuses (YX-ORG-14).",
+   "Given child tables like attempts, answers and results, when they are checked, then they also carry organization_id and forced RLS (YX-ORG-14).",
+   "Given a new model without organization_id or forced RLS, when CI runs rls-isolation.e2e-spec.ts, then the build fails (YX-ORG-14)."
+  ],
+  "rules": [
+   "YX-ORG-14"
+  ],
+  "docs": [
+   "P01 §5 #1–2",
+   "P01 §9"
+  ],
+  "state": "Done",
+  "phase": "Step 0",
+  "order": 21,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #128 · bf1441bd · e4c00860 · 002c83a7 · test/rls-isolation.e2e-spec.ts, test/tenant-isolation.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-004",
+  "type": "Story",
+  "parent": "FT-A-002",
+  "title": "Company context is set per transaction",
+  "story": "As a company admin, I want the company context to live only inside one database transaction so that a pooled connection can never carry another company's context.",
+  "acceptance": [
+   "Given forTenant(), when a transaction opens, then the company and user are set with set_config local to that transaction (YX-ORG-14).",
+   "Given the transaction ends, when the same pooled connection is reused, then no company context remains (YX-ORG-14).",
+   "Given soft-delete queries, when they run inside forTenant(), then they keep the company filter (YX-ORG-14)."
+  ],
+  "rules": [
+   "YX-ORG-14"
+  ],
+  "docs": [
+   "P01 §5 #3"
+  ],
+  "state": "Done",
+  "phase": "Step 0",
+  "order": 22,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #128 · ffedebe0 · packages/shared/src/prisma/tenant-prisma.service.spec.ts"
+ },
+ {
+  "id": "US-A-005",
+  "type": "Story",
+  "parent": "FT-A-002",
+  "title": "The app connects as a non-owner role",
+  "story": "As YukthiX staff, I want the app to use a database role that cannot bypass RLS so that only migrations run with owner rights.",
+  "acceptance": [
+   "Given CI, when migrations run, then they run as the owner role (YX-ORG-14).",
+   "Given CI, when the app and tests run, then they use the NOBYPASSRLS app role (YX-ORG-14).",
+   "Given a production deploy, when the README is followed, then the three database roles (owner, app login, app_runtime) are created before the first migrate deploy."
+  ],
+  "rules": [
+   "YX-ORG-14"
+  ],
+  "docs": [
+   "P01 §5 #4"
+  ],
+  "state": "Done",
+  "phase": "Step 0",
+  "order": 23,
+  "points": 2,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #128 · 002c83a7 · .github/workflows/ci.yml · README deploy notes"
+ },
+ {
+  "id": "US-A-006",
+  "type": "Story",
+  "parent": "FT-A-002",
+  "title": "Security fixes found while moving to PostgreSQL",
+  "story": "As a company admin, I want the issues found during the move fixed so that the new base is safe.",
+  "acceptance": [
+   "Given an org webhook URL, when it is saved, then it must be a public https endpoint.",
+   "Given a code review regeneration, when it is asked for, then attempt ownership is checked first.",
+   "Given the monitoring socket, when a user joins, then permission profiles and org overrides apply (YX-SEC-05)."
+  ],
+  "rules": [
+   "YX-SEC-05"
+  ],
+  "docs": [
+   "P01 §5"
+  ],
+  "state": "Done",
+  "phase": "Step 0",
+  "order": 24,
+  "points": 2,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #128 · c4f6935f · 0b105ead · c9566ce1"
+ },
+ {
+  "id": "US-A-007",
+  "type": "Story",
+  "parent": "FT-A-002",
+  "title": "Move live customer data from SQL Server to PostgreSQL",
+  "story": "As YukthiX staff, I want a tested export, load and cut-over plan so that current customers move to PostgreSQL without data loss.",
+  "acceptance": [
+   "Given a copy of production, when the export and load run, then row counts match for every table.",
+   "Given the loaded data, when rls-isolation checks run, then every company sees only its own rows (YX-ORG-14).",
+   "Given the cut-over rehearsal, when it finishes, then the downtime and rollback steps are written down."
+  ],
+  "rules": [
+   "YX-ORG-14"
+  ],
+  "docs": [
+   "P01 §9",
+   "deferred D-019"
+  ],
+  "state": "New",
+  "phase": "Step 0",
+  "order": 90,
+  "points": 5,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "EP-A-2",
+  "type": "Epic",
+  "parent": "",
+  "title": "Step 1 · Login and security",
+  "rules": [],
+  "docs": [
+   "P12",
+   "P04 §4.4–4.5a"
+  ],
+  "state": "Done",
+  "phase": "Step 1",
+  "order": 100,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · branch feat/yukthix-login"
+ },
+ {
+  "id": "FT-A-010",
+  "type": "Feature",
+  "parent": "EP-A-2",
+  "title": "Sessions and login protection",
+  "rules": [],
+  "docs": [
+   "P12 §5",
+   "P12 Q8"
+  ],
+  "state": "Done",
+  "phase": "Step 1a",
+  "order": 110,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 7a194c11 · 87ce70ff"
+ },
+ {
+  "id": "US-A-010",
+  "type": "Story",
+  "parent": "FT-A-010",
+  "title": "See and sign out my active sessions",
+  "story": "As an employee, I want to see where I am signed in and sign out any session so that a lost device cannot stay signed in.",
+  "acceptance": [
+   "Given I sign in, when the session is created, then it is stored server-side with device, IP, idle and absolute expiry (YX-IAM-06).",
+   "Given my session is idle longer than the limit, when I make a request, then I get 'Session expired' (YX-IAM-06).",
+   "Given Me › Security, when I click 'Sign out' on a session, then its tokens stop working at once (YX-IAM-06).",
+   "Given an admin, when they revoke a session in their company, then that user is signed out (YX-IAM-06)."
+  ],
+  "rules": [
+   "YX-IAM-06"
+  ],
+  "docs": [
+   "P12 §5",
+   "P12 §7"
+  ],
+  "state": "Done",
+  "phase": "Step 1a",
+  "order": 111,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 7a194c11 · 87ce70ff · f8c813f0 · test/login-sessions.e2e-spec.ts · sessions.service.spec.ts"
+ },
+ {
+  "id": "US-A-011",
+  "type": "Story",
+  "parent": "FT-A-010",
+  "title": "Login history for me and for admins",
+  "story": "As an HR admin, I want to see every login attempt in my company so that I can spot attacks.",
+  "acceptance": [
+   "Given any sign-in attempt, when it ends, then an append-only login_events row records result, method, IP and time (YX-IAM-10).",
+   "Given Me › Security, when I open login history, then I see only my own events (YX-IAM-10).",
+   "Given Admin › Login activity, when an admin filters by method or 'unsuccessful', then they see their company's events only (YX-IAM-10).",
+   "Given a session revocation or MFA change, when it happens, then it is logged too (YX-IAM-10)."
+  ],
+  "rules": [
+   "YX-IAM-10"
+  ],
+  "docs": [
+   "P12 §5",
+   "P12 §7"
+  ],
+  "state": "Done",
+  "phase": "Step 1a",
+  "order": 112,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 87ce70ff · 8395d394 · 07fad7b4 · test/login-sessions.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-012",
+  "type": "Story",
+  "parent": "FT-A-010",
+  "title": "Account lockout the company can tune within the YukthiX floor",
+  "story": "As a company admin, I want to set how many failed logins lock an account so that we stop guessing attacks without locking people out too easily.",
+  "acceptance": [
+   "Given repeated failed logins, when the company limit is reached, then the account is locked for the set time (YX-IAM-07).",
+   "Given the lockout settings, when an admin enters values weaker than the YukthiX minimum, then saving is refused (YX-IAM-07).",
+   "Given a locked account, when an admin clicks 'Unlock' on Login activity, then the person can sign in again and the action is logged (YX-IAM-07, YX-IAM-10).",
+   "Given many parallel failed attempts, when they race, then the lock is applied atomically (YX-IAM-07)."
+  ],
+  "rules": [
+   "YX-IAM-07",
+   "YX-IAM-10"
+  ],
+  "docs": [
+   "P12 §5"
+  ],
+  "state": "Done",
+  "phase": "Step 1 lockout-policy",
+  "order": 113,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · a9b3f128 · 45fa6929 · dc998422 · 9460a7af · 349e80e9 · test/account-lockout.e2e-spec.ts · login-protection.service.spec.ts"
+ },
+ {
+  "id": "US-A-013",
+  "type": "Story",
+  "parent": "FT-A-010",
+  "title": "Bot check and new-device / new-country alerts",
+  "story": "As an employee, I want to be told when someone signs in to my account from a new device or country so that I can act fast.",
+  "acceptance": [
+   "Given a sign-in from a new device, when it succeeds, then I get a notification (YX-IAM-07).",
+   "Given a sign-in from a new country (geo header), when it succeeds, then I get a notification (YX-IAM-07).",
+   "Given the public login page is under attack and Turnstile keys are set, when someone signs in, then a bot check is shown (YX-IAM-07).",
+   "Given the sign-in API, when an unknown email is tried, then the reply does not reveal which company exists (YX-IAM-07)."
+  ],
+  "rules": [
+   "YX-IAM-07"
+  ],
+  "docs": [
+   "P12 §5"
+  ],
+  "state": "Done",
+  "phase": "Step 1 fix-review",
+  "order": 114,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 31e289f6 · 8916e0c8 · bot-challenge.spec.ts · test/login-protection.e2e-spec.ts"
+ },
+ {
+  "id": "FT-A-011",
+  "type": "Feature",
+  "parent": "EP-A-2",
+  "title": "Passwords and company security policy",
+  "rules": [],
+  "docs": [
+   "P12 §5",
+   "P12 Q8"
+  ],
+  "state": "Done",
+  "phase": "Step 1b",
+  "order": 120,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 8a37fee7 · 724a4762"
+ },
+ {
+  "id": "US-A-014",
+  "type": "Story",
+  "parent": "FT-A-011",
+  "title": "Strong passwords with a breached-password check",
+  "story": "As an employee, I want the system to refuse weak or leaked passwords so that my account is hard to break.",
+  "acceptance": [
+   "Given a new password shorter than 12 characters, when I save it, then it is refused (YX-IAM-08).",
+   "Given a password found in a breach list, when I set or change it, then it is refused (YX-IAM-08).",
+   "Given an existing breached password, when I sign in, then I must change it first (YX-IAM-08).",
+   "Given passwords, when stored, then they use argon2 and never expire on a timer (YX-IAM-08)."
+  ],
+  "rules": [
+   "YX-IAM-08"
+  ],
+  "docs": [
+   "P12 §5",
+   "P12 Q8"
+  ],
+  "state": "Done",
+  "phase": "Step 1b",
+  "order": 121,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 8a37fee7 · a50e83e7 · 34f19553 · password-policy.service.spec.ts · test/security-policy.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-015",
+  "type": "Story",
+  "parent": "FT-A-011",
+  "title": "Company security policy page with the YukthiX minimum shown",
+  "story": "As a company admin, I want one page to set MFA scope, session limits and password rules so that our company can be stricter than the YukthiX floor.",
+  "acceptance": [
+   "Given Settings › Security, when I open it, then each setting shows the YukthiX minimum next to it (YX-IAM-06).",
+   "Given an idle limit above 8 h or an absolute limit above 12 h, when I save, then it is refused (YX-IAM-06).",
+   "Given MFA scope 'everyone', when saved, then every user must use two-step sign-in (YX-IAM-01).",
+   "Given a policy change, when saved, then it needs step-up and is logged (YX-IAM-02, YX-IAM-10).",
+   "Given the policy, when a request arrives, then it is enforced at sign-in and on every request (YX-IAM-06)."
+  ],
+  "rules": [
+   "YX-IAM-06",
+   "YX-IAM-01",
+   "YX-IAM-02",
+   "YX-IAM-10"
+  ],
+  "docs": [
+   "P12 §7"
+  ],
+  "state": "Done",
+  "phase": "Step 1b",
+  "order": 122,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 19f4540b · 5919361c · 724a4762 · tenant-security-policy.spec.ts · security-policy.service.spec.ts · test/security-policy.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-016",
+  "type": "Story",
+  "parent": "FT-A-011",
+  "title": "IP allow-lists for desk, admin console and API",
+  "story": "As a company admin, I want to allow sign-in only from our office networks so that stolen passwords are useless elsewhere.",
+  "acceptance": [
+   "Given a desk allow-list, when a staff request comes from outside it, then it is refused (YX-IAM-09).",
+   "Given an admin allow-list, when any admin-grade permission is used from outside it, then it is refused (YX-IAM-09).",
+   "Given an API allow-list, when an API key is used from outside it, then it is refused (YX-IAM-09).",
+   "Given candidate and external portals, when no list includes them, then they are not blocked (YX-IAM-09)."
+  ],
+  "rules": [
+   "YX-IAM-09"
+  ],
+  "docs": [
+   "P12 §5"
+  ],
+  "state": "Done",
+  "phase": "Step 1b",
+  "order": 123,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 19f4540b · 1a79f4b7 · api-key-auth.guard.spec.ts · permissions.guard.spec.ts"
+ },
+ {
+  "id": "FT-A-012",
+  "type": "Feature",
+  "parent": "EP-A-2",
+  "title": "Two-step verification and step-up",
+  "rules": [],
+  "docs": [
+   "P12 §5",
+   "P12 Q1"
+  ],
+  "state": "Done",
+  "phase": "Step 1c",
+  "order": 130,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 515085cb · 036b227a"
+ },
+ {
+  "id": "US-A-017",
+  "type": "Story",
+  "parent": "FT-A-012",
+  "title": "Passkeys, authenticator apps and recovery codes",
+  "story": "As an HR admin, I want to add a passkey or an authenticator app so that my account needs two steps to sign in.",
+  "acceptance": [
+   "Given Me › Security, when I add a passkey or TOTP app, then it is saved as a factor (YX-IAM-03).",
+   "Given I enrol my first factor, when it is saved, then recovery codes are shown once and each works only once (YX-IAM-11).",
+   "Given a second sign-in step, when I use the passkey or TOTP, then the session reaches AAL2 (YX-IAM-03).",
+   "Given first-factor enrolment, when I do it, then it needs a fresh sign-in and never counts as step-up (YX-IAM-02)."
+  ],
+  "rules": [
+   "YX-IAM-03",
+   "YX-IAM-11",
+   "YX-IAM-02"
+  ],
+  "docs": [
+   "P12 §5",
+   "P12 §6"
+  ],
+  "state": "Done",
+  "phase": "Step 1c",
+  "order": 131,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 2fe4bbb3 · 515085cb · b1f073a8 · bccaa019 · test/mfa.e2e-spec.ts · mfa.service.spec.ts · TwoStepSection.test.tsx"
+ },
+ {
+  "id": "US-A-018",
+  "type": "Story",
+  "parent": "FT-A-012",
+  "title": "MFA is mandatory for sensitive roles",
+  "story": "As a company admin, I want people in sensitive roles to use two-step sign-in so that HR and payroll data stay safe.",
+  "acceptance": [
+   "Given a user with a sensitive permission and no factor, when they use it, then it is refused until they enrol (YX-IAM-01).",
+   "Given an existing user in a sensitive role, when they sign in, then they get a 14-day grace to enrol, then it is enforced (YX-IAM-01).",
+   "Given YukthiX staff, when they sign in, then they get no grace (YX-IAM-01).",
+   "Given a role or permission-profile change, when saved, then the person's sessions end (YX-IAM-06)."
+  ],
+  "rules": [
+   "YX-IAM-01",
+   "YX-IAM-06"
+  ],
+  "docs": [
+   "P12 §5",
+   "P12 §8"
+  ],
+  "state": "Done",
+  "phase": "Step 1c",
+  "order": 132,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · a4341228 · 036b227a · 49c5a896 · mfa.spec.ts · permissions.guard.spec.ts"
+ },
+ {
+  "id": "US-A-019",
+  "type": "Story",
+  "parent": "FT-A-012",
+  "title": "Step-up before sensitive actions",
+  "story": "As an HR admin, I want to re-verify before a sensitive action so that a left-open session cannot be misused.",
+  "acceptance": [
+   "Given a step-up action, when my last AAL2 check is older than 15 minutes, then I am asked to re-verify (YX-IAM-02).",
+   "Given I re-verified within 15 minutes, when I do another step-up action, then I am not asked again (YX-IAM-02).",
+   "Given a step-up, when it succeeds, then the audit entry records it (YX-IAM-02).",
+   "Given a one-time code, when used as step-up, then it is refused (YX-IAM-03)."
+  ],
+  "rules": [
+   "YX-IAM-02",
+   "YX-IAM-03"
+  ],
+  "docs": [
+   "P12 §5"
+  ],
+  "state": "Done",
+  "phase": "Step 1c",
+  "order": 133,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 036b227a · 8d171bdf · StepUpProvider.test.tsx · test/mfa.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-020",
+  "type": "Story",
+  "parent": "FT-A-012",
+  "title": "Admin MFA reset needs a second admin",
+  "story": "As a company admin, I want a lost-device reset for a sensitive-role user to need a second admin so that one person cannot take over an account.",
+  "acceptance": [
+   "Given a sensitive-role user lost their factors, when admin A asks for a reset, then admin B must approve (YX-IAM-11).",
+   "Given the reset is approved, when it completes, then the user's sessions end and it is logged (YX-IAM-10).",
+   "Given admin A, when they try to approve their own request, then it is refused (YX-SEC-11)."
+  ],
+  "rules": [
+   "YX-IAM-11",
+   "YX-IAM-10",
+   "YX-SEC-11"
+  ],
+  "docs": [
+   "P12 §5"
+  ],
+  "state": "Done",
+  "phase": "Step 1c",
+  "order": 134,
+  "points": 2,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 515085cb · mfa.service.spec.ts · test/mfa.e2e-spec.ts"
+ },
+ {
+  "id": "FT-A-013",
+  "type": "Feature",
+  "parent": "EP-A-2",
+  "title": "One-time codes and the generic SMS channel",
+  "rules": [],
+  "docs": [
+   "P12 Q1",
+   "P04 §4.4–4.5a"
+  ],
+  "state": "Done",
+  "phase": "Step 1d / sms-channel",
+  "order": 140,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 6e99a91f · cb8c1e6d"
+ },
+ {
+  "id": "US-A-021",
+  "type": "Story",
+  "parent": "FT-A-013",
+  "title": "Sign in with a one-time code by email or mobile",
+  "story": "As an employee without a work email, I want to sign in with a code sent to my verified mobile so that I can use YukthiX in the field.",
+  "acceptance": [
+   "Given a verified email or mobile, when I ask for a code, then it is sent at once and expires quickly (YX-NTF-13).",
+   "Given the code message, when it is sent, then it carries only the code, its purpose and expiry, no other data (YX-NTF-04, YX-NTF-13).",
+   "Given System Admin or Payroll Admin, when they choose OTP as the only second factor, then it is refused (YX-IAM-03).",
+   "Given repeated code requests, when the per-identifier cap is reached, then more codes are refused for the hour (YX-IAM-07)."
+  ],
+  "rules": [
+   "YX-NTF-13",
+   "YX-NTF-04",
+   "YX-IAM-03",
+   "YX-IAM-07"
+  ],
+  "docs": [
+   "P12 §3",
+   "P04 §4.5a"
+  ],
+  "state": "Done",
+  "phase": "Step 1d",
+  "order": 141,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 9d9961ee · f6a5559c · 6e99a91f · 5c8cd1d0 · test/otp-sign-in.e2e-spec.ts · otp.service.spec.ts"
+ },
+ {
+  "id": "US-A-022",
+  "type": "Story",
+  "parent": "FT-A-013",
+  "title": "Connect any SMS gateway by configuration",
+  "story": "As a company admin, I want to plug in our own SMS gateway, or use YukthiX's shared account, so that codes reach our people.",
+  "acceptance": [
+   "Given a gateway's HTTP config, when it is saved, then the templated adapter sends through it without code changes (YX-NTF-07).",
+   "Given an SMS, when it is sent, then it uses a DLT-registered template (YX-NTF-07).",
+   "Given no valid template for the type, when a send is tried, then it falls back to email and the reason is logged (YX-NTF-07).",
+   "Given secrets, when an admin views the account, then they are write-only and never shown back."
+  ],
+  "rules": [
+   "YX-NTF-07"
+  ],
+  "docs": [
+   "P04 §4.4"
+  ],
+  "state": "Done",
+  "phase": "Step 1 sms-channel",
+  "order": 142,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 37c15118 · 45178a02 · e57c7aa7 · http-gateways.spec.ts · http-provider.spec.ts · twilio-provider.spec.ts"
+ },
+ {
+  "id": "US-A-023",
+  "type": "Story",
+  "parent": "FT-A-013",
+  "title": "SMS failover, delivery log and delivery reports",
+  "story": "As a company admin, I want to see every SMS attempt and its status so that I can fix delivery problems.",
+  "acceptance": [
+   "Given a failed send, when another account is set, then the message fails over to it (YX-NTF-10).",
+   "Given every attempt, when it ends, then the delivery log records status and provider id (YX-NTF-10).",
+   "Given a delivery report callback, when it arrives with a valid token, then the status is updated (YX-NTF-10).",
+   "Given an opt-out report from the provider, when it arrives, then that number is no longer used (YX-NTF-11)."
+  ],
+  "rules": [
+   "YX-NTF-10",
+   "YX-NTF-11"
+  ],
+  "docs": [
+   "P04 §4.4",
+   "P04 §6"
+  ],
+  "state": "Done",
+  "phase": "Step 1 sms-channel",
+  "order": 143,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · cb8c1e6d · dc83450a · sms-callbacks.spec.ts · test/sms-channel.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-024",
+  "type": "Story",
+  "parent": "FT-A-013",
+  "title": "SMS consent, metering and a monthly cap",
+  "story": "As a company admin, I want SMS sent only to people who agreed and within our monthly cap so that we follow TRAI rules and control cost.",
+  "acceptance": [
+   "Given no active SMS consent, when a code would go by SMS, then it goes only if the person asked for SMS (YX-NTF-14).",
+   "Given each SMS, when sent, then it is metered for the company with its parts (YX-NTF-12).",
+   "Given the monthly cap is reached, when another SMS is due, then it is not sent and the fallback is logged (YX-NTF-12).",
+   "Given an OTP SMS, when sent, then it counts toward the quota but skips quiet hours and digests (YX-NTF-13)."
+  ],
+  "rules": [
+   "YX-NTF-14",
+   "YX-NTF-12",
+   "YX-NTF-13"
+  ],
+  "docs": [
+   "P04 §4.4",
+   "P04 §4.5a"
+  ],
+  "state": "Done",
+  "phase": "Step 1 sms-channel",
+  "order": 144,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 37c15118 · cb8c1e6d · 9182ed3d · 9be582ad · test/sms-channel.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-025",
+  "type": "Story",
+  "parent": "FT-A-013",
+  "title": "Settings › Notifications › SMS screen",
+  "story": "As a company admin, I want a screen to manage SMS accounts, test a send and read the delivery log so that I don't need YukthiX support.",
+  "acceptance": [
+   "Given the SMS page, when I add an account, then secrets are write-only (YX-NTF-07).",
+   "Given 'Test send', when I send to my number, then the result shows in the delivery log (YX-NTF-10).",
+   "Given a phone-width screen, when I open the log, then rows show as cards with masked numbers (YX-NTF-10)."
+  ],
+  "rules": [
+   "YX-NTF-07",
+   "YX-NTF-10"
+  ],
+  "docs": [
+   "P04 §7"
+  ],
+  "state": "Done",
+  "phase": "Step 1 sms-channel",
+  "order": 145,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · f1f084e2 · 634f1e8b · sms-settings.test.tsx"
+ },
+ {
+  "id": "US-A-026",
+  "type": "Story",
+  "parent": "FT-A-013",
+  "title": "WhatsApp authentication codes",
+  "story": "As an employee, I want to get my sign-in code on WhatsApp so that I get it even when SMS is slow.",
+  "acceptance": [
+   "Given a company WhatsApp number with an approved authentication template, when I ask for a code on WhatsApp, then it is sent at once (YX-NTF-13, YX-NTF-07).",
+   "Given no approved template, when a WhatsApp code is due, then it falls back to SMS or email and logs why (YX-NTF-07).",
+   "Given I never opted in or asked on WhatsApp, when a code is due, then WhatsApp is not used (YX-NTF-14)."
+  ],
+  "rules": [
+   "YX-NTF-13",
+   "YX-NTF-07",
+   "YX-NTF-14"
+  ],
+  "docs": [
+   "P04 §4.4",
+   "P04 §4.5a",
+   "deferred D-080"
+  ],
+  "state": "New",
+  "phase": "Step 1 follow-up",
+  "order": 195,
+  "points": 3,
+  "priority": 3,
+  "depends": [
+   "US-A-021"
+  ]
+ },
+ {
+  "id": "FT-A-014",
+  "type": "Feature",
+  "parent": "EP-A-2",
+  "title": "Single sign-on",
+  "rules": [],
+  "docs": [
+   "P12 §5",
+   "P12 Q2"
+  ],
+  "state": "Done",
+  "phase": "Step 1e",
+  "order": 150,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 2411c632 · 272ffe08"
+ },
+ {
+  "id": "US-A-027",
+  "type": "Story",
+  "parent": "FT-A-014",
+  "title": "Several identity providers per company",
+  "story": "As a company admin, I want to connect Google, Microsoft Entra and SAML providers so that each email domain signs in with its own provider.",
+  "acceptance": [
+   "Given several providers, when each maps its own email domains, then a user is sent to the right one (YX-IAM-04).",
+   "Given Google, Entra or a generic OIDC issuer, when a user signs in, then the OIDC flow completes (YX-IAM-04).",
+   "Given any provider change, when saved, then every company admin gets an email (YX-IAM-10).",
+   "Given a generic issuer, when saved, then its discovery URLs are DNS-checked and pinned (YX-IAM-04)."
+  ],
+  "rules": [
+   "YX-IAM-04",
+   "YX-IAM-10"
+  ],
+  "docs": [
+   "P12 §5",
+   "P12 §6"
+  ],
+  "state": "Done",
+  "phase": "Step 1e",
+  "order": 151,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 26fd22ed · 2411c632 · 272ffe08 · 0f211510 · test/sso-oidc.e2e-spec.ts · test/saml-sso.e2e-spec.ts · identity-providers.service.spec.ts"
+ },
+ {
+  "id": "US-A-028",
+  "type": "Story",
+  "parent": "FT-A-014",
+  "title": "Create users on first SSO sign-in (JIT)",
+  "story": "As a company admin, I want new staff to get an account on their first SSO sign-in so that IT doesn't create each one.",
+  "acceptance": [
+   "Given an allowed domain, when a new person signs in by SSO, then a user is created with the default role (YX-IAM-05).",
+   "Given a domain not allowed, when someone signs in, then no user is created (YX-IAM-05).",
+   "Given JIT rules, when a user is created, then a sensitive role is never given automatically (YX-IAM-05).",
+   "Given the provider asserts MFA with fixed values, when the user signs in, then the session counts as AAL2 (YX-IAM-01)."
+  ],
+  "rules": [
+   "YX-IAM-05",
+   "YX-IAM-01"
+  ],
+  "docs": [
+   "P12 §5"
+  ],
+  "state": "Done",
+  "phase": "Step 1e",
+  "order": 152,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 2411c632 · 8edd092e · 0728daa0 · test/sso-oidc.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-029",
+  "type": "Story",
+  "parent": "FT-A-014",
+  "title": "SSO-only with break-glass admins",
+  "story": "As a company admin, I want to switch off passwords for normal users so that everyone must use our identity provider.",
+  "acceptance": [
+   "Given SSO-only on, when a normal user tries a password, then it fails (YX-IAM-04).",
+   "Given fewer than 2 break-glass admins, when I turn on SSO-only, then saving is refused (YX-IAM-04).",
+   "Given a break-glass admin signs in with a password and MFA, when it succeeds, then all admins are alerted (YX-IAM-04).",
+   "Given SSO-only is turned on or a provider is disabled, when saved, then sessions opened through it end (YX-IAM-06)."
+  ],
+  "rules": [
+   "YX-IAM-04",
+   "YX-IAM-06"
+  ],
+  "docs": [
+   "P12 §5"
+  ],
+  "state": "Done",
+  "phase": "Step 1e",
+  "order": 153,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 8b952b70 · saml-sso.e2e-spec.ts · sso.service.spec.ts"
+ },
+ {
+  "id": "US-A-030",
+  "type": "Story",
+  "parent": "FT-A-014",
+  "title": "SSO hardening from the security review",
+  "story": "As a company admin, I want our SSO to resist known attacks so that nobody can sign in as our staff through another provider.",
+  "acceptance": [
+   "Given a provider, when it asserts an email outside its own domains, then sign-in is refused (YX-IAM-04).",
+   "Given the SSO code in the callback, when it is redeemed, then it is device-bound, in the URL fragment and used once (YX-IAM-04).",
+   "Given a replayed SAML assertion, when it arrives, then the atomic replay check refuses it (YX-IAM-04).",
+   "Given an IdP change, when it is made, then it needs user-admin rights (YX-IAM-05)."
+  ],
+  "rules": [
+   "YX-IAM-04",
+   "YX-IAM-05"
+  ],
+  "docs": [
+   "P12 §5"
+  ],
+  "state": "Done",
+  "phase": "Step 1 fix-review",
+  "order": 154,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · de02f469 · 834105c4 · 4d0c6d98 · 7164745b · saml-cache.provider.spec.ts · page.test.tsx (sso/callback)"
+ },
+ {
+  "id": "FT-A-015",
+  "type": "Feature",
+  "parent": "EP-A-2",
+  "title": "Sign in without a company code",
+  "rules": [],
+  "docs": [
+   "P12 §6"
+  ],
+  "state": "Done",
+  "phase": "Step 1 login-no-code",
+  "order": 160,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 5dbcd4ee · c1d694ff"
+ },
+ {
+  "id": "US-A-031",
+  "type": "Story",
+  "parent": "FT-A-015",
+  "title": "Email-first sign-in with a company picker",
+  "story": "As an employee, I want to sign in with just my work email so that I never need to know a company code.",
+  "acceptance": [
+   "Given my email belongs to one company, when I enter it and my password, then I sign in to that company (YX-IAM-04).",
+   "Given my email is in several companies, when the password matches more than one, then a company picker shows only those (YX-IAM-07).",
+   "Given 0 or 1 matching accounts, when I sign in, then the response takes about the same time (YX-IAM-07).",
+   "Given the picker, when I choose, then a one-use selection token tied to my device and valid 2 minutes completes sign-in (YX-IAM-07)."
+  ],
+  "rules": [
+   "YX-IAM-04",
+   "YX-IAM-07"
+  ],
+  "docs": [
+   "P12 §6"
+  ],
+  "state": "Done",
+  "phase": "Step 1 login-no-code",
+  "order": 161,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 5dbcd4ee · de468070 · 3bfa5fca · 25b85613 · test/email-first-sign-in.e2e-spec.ts · auth.test.tsx"
+ },
+ {
+  "id": "US-A-032",
+  "type": "Story",
+  "parent": "FT-A-015",
+  "title": "Company from the web address or a remembered company",
+  "story": "As an employee, I want my company's own address or my last company to be remembered so that sign-in is one step.",
+  "acceptance": [
+   "Given a company subdomain under YX_BASE_DOMAIN, when I open it, then the sign-in page is for that company (YX-IAM-04).",
+   "Given I signed in before on this device, when I return, then my company is remembered and can be changed (YX-IAM-04).",
+   "Given forgot password, when I enter my work email only, then a reset link is sent without asking for a company (YX-IAM-08)."
+  ],
+  "rules": [
+   "YX-IAM-04",
+   "YX-IAM-08"
+  ],
+  "docs": [
+   "P12 §6"
+  ],
+  "state": "Done",
+  "phase": "Step 1 login-no-code",
+  "order": 162,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 5dbcd4ee · e3661bfc · 2b42bd8e · company-scope.spec.ts"
+ },
+ {
+  "id": "US-A-033",
+  "type": "Story",
+  "parent": "FT-A-015",
+  "title": "Verify company email domains by DNS TXT",
+  "story": "As a company admin, I want to prove we own our email domain so that only verified domains send people to our SSO.",
+  "acceptance": [
+   "Given a domain, when I add it, then the TXT record to publish is shown (YX-IAM-04).",
+   "Given 'Check record', when the TXT record is found, then the domain is marked verified (YX-IAM-04).",
+   "Given an unverified domain, when someone signs in email-first, then it does not route them to our provider (YX-IAM-04)."
+  ],
+  "rules": [
+   "YX-IAM-04"
+  ],
+  "docs": [
+   "P12 §5"
+  ],
+  "state": "Done",
+  "phase": "Step 1 login-no-code",
+  "order": 163,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · c1d694ff · 1fdd57c9 · c729d661"
+ },
+ {
+  "id": "US-A-034",
+  "type": "Story",
+  "parent": "FT-A-015",
+  "title": "Staff accounts never show in the company picker",
+  "story": "As YukthiX staff, I want my staff account kept out of the company sign-in so that staff only sign in through the locked-down console path with hardware keys.",
+  "acceptance": [
+   "Given a staff account with the same email and password as a company account, when that email signs in email-first, then no 'YukthiX' choice is shown (YX-SECOPS-08).",
+   "Given a staff account, when it tries to sign in on a company page, then it is refused with a neutral message (YX-SECOPS-08).",
+   "Given the console sign-in path, when a staff member signs in, then a hardware security key is required (YX-SECOPS-08, YX-IAM-01)."
+  ],
+  "rules": [
+   "YX-SECOPS-08",
+   "YX-IAM-01"
+  ],
+  "docs": [
+   "P12 Q7",
+   "open-work W-005",
+   "deferred D-050"
+  ],
+  "state": "New",
+  "phase": "Step 1 follow-up",
+  "order": 170,
+  "points": 2,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-035",
+  "type": "Story",
+  "parent": "FT-A-015",
+  "title": "Re-check verified email domains regularly",
+  "story": "As a company admin, I want verified domains re-checked so that a lapsed domain stops routing people to our SSO.",
+  "acceptance": [
+   "Given a verified domain, when the scheduled DNS re-check runs, then it still needs the TXT record (YX-IAM-04).",
+   "Given the record is missing on two checks in a row, when the job runs, then the domain is marked unverified and admins are emailed (YX-IAM-04, YX-IAM-10).",
+   "Given an unverified domain, when someone signs in email-first, then it no longer routes to SSO (YX-IAM-04)."
+  ],
+  "rules": [
+   "YX-IAM-04",
+   "YX-IAM-10"
+  ],
+  "docs": [
+   "P12 §5",
+   "open-work W-006",
+   "deferred D-046"
+  ],
+  "state": "New",
+  "phase": "Step 1 follow-up",
+  "order": 171,
+  "points": 2,
+  "priority": 1,
+  "depends": [
+   "US-A-033"
+  ]
+ },
+ {
+  "id": "FT-A-016",
+  "type": "Feature",
+  "parent": "EP-A-2",
+  "title": "Login and security screens",
+  "rules": [],
+  "docs": [
+   "P12 §7"
+  ],
+  "state": "Done",
+  "phase": "Step 1g",
+  "order": 180,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · d6ea28d4 · 07fad7b4"
+ },
+ {
+  "id": "US-A-036",
+  "type": "Story",
+  "parent": "FT-A-016",
+  "title": "YukthiX sign-in, second step and Me › Security screens",
+  "story": "As an employee, I want clear sign-in and security screens so that I can manage my factors, sessions and history myself.",
+  "acceptance": [
+   "Given /yx/sign-in, when I sign in, then the second step and step-up prompt use the YukthiX design (YX-IAM-02).",
+   "Given Me › Security, when I open it, then I see passkeys, TOTP, recovery codes, sessions and login history (YX-IAM-06, YX-IAM-10).",
+   "Given Admin › Login activity, when an admin opens it, then failed-login spikes and sessions are listed (YX-IAM-10).",
+   "Given a phone width, when a table is shown, then it turns into cards without page side-scrolling."
+  ],
+  "rules": [
+   "YX-IAM-02",
+   "YX-IAM-06",
+   "YX-IAM-10"
+  ],
+  "docs": [
+   "P12 §7"
+  ],
+  "state": "Done",
+  "phase": "Step 1g",
+  "order": 181,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · d6ea28d4 · 111c9d4a · 07fad7b4 · e82cd72a · yx-pages.test.tsx · auth.test.tsx · SecondFactorForm.test.tsx"
+ },
+ {
+  "id": "FT-A-017",
+  "type": "Feature",
+  "parent": "EP-A-2",
+  "title": "Step 1 security review and follow-ups",
+  "rules": [],
+  "docs": [
+   "P12"
+  ],
+  "state": "Done",
+  "phase": "Step 1 fix-review",
+  "order": 190,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 31e289f6 · bccaa019 · 377eca4c"
+ },
+ {
+  "id": "US-A-037",
+  "type": "Story",
+  "parent": "FT-A-017",
+  "title": "Fix every finding of the step 1 security review",
+  "story": "As a company admin, I want the independent review's findings fixed before release so that login is safe on day one.",
+  "acceptance": [
+   "Given a sign-in, when an org does not exist, then the reply gives no hint (YX-IAM-07).",
+   "Given YukthiX super admins, when they enrol MFA, then only device-bound security keys are accepted (YX-SECOPS-08).",
+   "Given the dependency audit gate, when CI runs, then no high or critical advisory is open (YX-SECOPS-04).",
+   "Given the monitoring socket, when the roster ticks, then each socket is re-validated (YX-IAM-06)."
+  ],
+  "rules": [
+   "YX-IAM-07",
+   "YX-SECOPS-08",
+   "YX-SECOPS-04",
+   "YX-IAM-06"
+  ],
+  "docs": [
+   "P12 §5"
+  ],
+  "state": "Done",
+  "phase": "Step 1 fix-review",
+  "order": 191,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · 31e289f6 · bccaa019 · c6219563 · 377eca4c · 65817257 · dcd9593f"
+ },
+ {
+  "id": "US-A-038",
+  "type": "Story",
+  "parent": "FT-A-017",
+  "title": "Identity re-verification as a recovery route",
+  "story": "As an HR admin who lost every factor, I want to recover by re-verifying my identity so that I am not stuck when no second admin is available.",
+  "acceptance": [
+   "Given a sensitive-role user with no factors, when no second admin can approve, then they can recover by identity re-verification (YX-IAM-11).",
+   "Given the re-verification passes, when recovery completes, then old factors and sessions are revoked and all admins are alerted (YX-IAM-11, YX-IAM-10).",
+   "Given a sensitive-role account with no factor, when someone uses the email reset link, then it does not bypass MFA enrolment (YX-IAM-11)."
+  ],
+  "rules": [
+   "YX-IAM-11",
+   "YX-IAM-10"
+  ],
+  "docs": [
+   "P12 §5",
+   "deferred D-077"
+  ],
+  "state": "New",
+  "phase": "Step 1 follow-up",
+  "order": 192,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-A-020"
+  ]
+ },
+ {
+  "id": "US-A-039",
+  "type": "Story",
+  "parent": "FT-A-017",
+  "title": "Passkey-only sign-in",
+  "story": "As an employee, I want to sign in with only my passkey so that I don't need a password at all.",
+  "acceptance": [
+   "Given a registered discoverable passkey, when I choose 'Sign in with passkey', then I sign in without a password at AAL2 (YX-IAM-03).",
+   "Given a company with SSO-only on, when a normal user tries passkey-only, then the company rule applies (YX-IAM-04).",
+   "Given the sign-in, when it ends, then a login event records method 'passkey' (YX-IAM-10)."
+  ],
+  "rules": [
+   "YX-IAM-03",
+   "YX-IAM-04",
+   "YX-IAM-10"
+  ],
+  "docs": [
+   "P12 §3",
+   "deferred D-075"
+  ],
+  "state": "New",
+  "phase": "Step 1 follow-up",
+  "order": 193,
+  "points": 3,
+  "priority": 3,
+  "depends": [
+   "US-A-017"
+  ]
+ },
+ {
+  "id": "US-A-040",
+  "type": "Story",
+  "parent": "FT-A-017",
+  "title": "Keep login logs at least one year, then purge",
+  "story": "As a company admin, I want login logs kept for at least a year so that we can investigate incidents and meet DPDP rules.",
+  "acceptance": [
+   "Given a login event 11 months old, when an investigator searches, then it is found (YX-SECOPS-07).",
+   "Given the retention job, when it runs, then it purges only events and expired sessions older than the 1-year minimum (YX-SECOPS-07).",
+   "Given the purge, when it runs, then it uses its own audited database role (YX-SECOPS-07)."
+  ],
+  "rules": [
+   "YX-SECOPS-07"
+  ],
+  "docs": [
+   "P12 §5",
+   "P12 §9",
+   "deferred D-063"
+  ],
+  "state": "New",
+  "phase": "Step 1 follow-up",
+  "order": 194,
+  "points": 2,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "EP-A-3",
+  "type": "Epic",
+  "parent": "",
+  "title": "Design docs and UI prototype",
+  "rules": [],
+  "docs": [
+   "packages/yx-ui",
+   "docs/yukthix/design"
+  ],
+  "state": "Done",
+  "phase": "UI prototype",
+  "order": 200,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #130 · branch feat/yukthix-workspace"
+ },
+ {
+  "id": "FT-A-020",
+  "type": "Feature",
+  "parent": "EP-A-3",
+  "title": "YukthiX design system package",
+  "rules": [],
+  "docs": [
+   "brand/DESIGN-SYSTEM.md"
+  ],
+  "state": "Done",
+  "phase": "UI prototype",
+  "order": 210,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · a9869401 · PR #130"
+ },
+ {
+  "id": "US-A-050",
+  "type": "Story",
+  "parent": "FT-A-020",
+  "title": "Design system in the monorepo as packages/yx-ui",
+  "story": "As a developer, I want one shared component package so that every YukthiX screen looks and behaves the same.",
+  "acceptance": [
+   "Given packages/yx-ui, when an app imports it, then tokens, shell and components work under Next's React types.",
+   "Given the token check, when a component uses a raw colour, then check-tokens fails.",
+   "Given the component tests, when vitest runs, then components, data, overlay, shell and charts tests pass."
+  ],
+  "rules": [],
+  "docs": [
+   "brand/DESIGN-SYSTEM.md",
+   "packages/yx-ui/README.md"
+  ],
+  "state": "Done",
+  "phase": "UI prototype",
+  "order": 211,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #129 · a9869401 · aaedb2c2 · components.test.tsx · shell.test.tsx · scripts/check-tokens.mjs"
+ },
+ {
+  "id": "FT-A-021",
+  "type": "Feature",
+  "parent": "EP-A-3",
+  "title": "Screen prototypes for every module",
+  "rules": [],
+  "docs": [
+   "APX-D",
+   "packages/yx-ui/docs/SCREENS-BRIEF.md"
+  ],
+  "state": "Done",
+  "phase": "UI prototype",
+  "order": 220,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #130 · 5b607e04"
+ },
+ {
+  "id": "US-A-051",
+  "type": "Story",
+  "parent": "FT-A-021",
+  "title": "2,946 Storybook stories over 16 screen groups",
+  "story": "As the founder, I want every planned screen as a clickable prototype so that I can review the product before the backend is built.",
+  "acceptance": [
+   "Given Storybook, when it is built, then 2,946 stories render across 16 screen groups (auth, people, time, pay, hiring, settings, platform and more).",
+   "Given each screen, when opened, then it uses only yx-ui components and tokens.",
+   "Given the screens, when exported, then apps can import them and wire them to real APIs."
+  ],
+  "rules": [],
+  "docs": [
+   "APX-D",
+   "packages/yx-ui/docs/SCREENS-BRIEF.md"
+  ],
+  "state": "Done",
+  "phase": "UI prototype",
+  "order": 221,
+  "points": 8,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #130 · 5b607e04 · e4a858ad · storybook-static"
+ },
+ {
+  "id": "FT-A-022",
+  "type": "Feature",
+  "parent": "EP-A-3",
+  "title": "Screen review tooling",
+  "rules": [],
+  "docs": [
+   "packages/yx-ui/review/RULES.md"
+  ],
+  "state": "Done",
+  "phase": "UI prototype",
+  "order": 230,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #130 · ab2b9928 · 3f37d883"
+ },
+ {
+  "id": "US-A-052",
+  "type": "Story",
+  "parent": "FT-A-022",
+  "title": "Screen review rules R1–R11 and checklists",
+  "story": "As the founder, I want fixed review rules so that every reviewer checks every screen the same way in one go.",
+  "acceptance": [
+   "Given review/RULES.md, when a reviewer starts, then rules R1–R11 apply in full (e.g. R11: pick-one uses the joined Segment control).",
+   "Given the pay checklist, when a pay story is reviewed, then every item is recorded pass or fail.",
+   "Given the time review reports, when read, then each finding names the screen and width."
+  ],
+  "rules": [],
+  "docs": [
+   "packages/yx-ui/review/RULES.md",
+   "PAY-CHECKLIST.md"
+  ],
+  "state": "Done",
+  "phase": "UI prototype",
+  "order": 231,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #130 · ab2b9928 · review/RULES.md · review/TIME-REVIEW.md"
+ },
+ {
+  "id": "US-A-053",
+  "type": "Story",
+  "parent": "FT-A-022",
+  "title": "Responsive and dead-button checks",
+  "story": "As the founder, I want automatic checks for phone layouts and dead buttons so that problems are found without manual clicking.",
+  "acceptance": [
+   "Given check-responsive, when it runs over all stories and widths, then 14,560 of 14,560 checks pass (no page side-scroll).",
+   "Given scan-dead-buttons, when it runs, then it lists every button with no action.",
+   "Given the PAY-33 incentive table, when shown at phone width, then it scrolls inside its box."
+  ],
+  "rules": [],
+  "docs": [
+   "packages/yx-ui/scripts"
+  ],
+  "state": "Done",
+  "phase": "UI prototype",
+  "order": 232,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #130 · 3f37d883 · ad7fb32a · scripts/check-responsive.mjs · scripts/scan-dead-buttons.mjs"
+ },
+ {
+  "id": "US-A-054",
+  "type": "Story",
+  "parent": "FT-A-022",
+  "title": "Run screenshot and accessibility tests in CI",
+  "story": "As the founder, I want screenshot and axe tests to run in CI so that visual and accessibility regressions are caught.",
+  "acceptance": [
+   "Given test:visual, when CI runs on Linux, then it compares against Linux baselines.",
+   "Given test:a11y, when CI runs, then axe finds no serious or critical issue on wired screens.",
+   "Given a failure, when CI ends, then the diff image is attached to the run."
+  ],
+  "rules": [],
+  "docs": [
+   "deferred D-002"
+  ],
+  "state": "New",
+  "phase": "UI prototype",
+  "order": 260,
+  "points": 3,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "FT-A-023",
+  "type": "Feature",
+  "parent": "EP-A-3",
+  "title": "Design docs and tracker in the repo",
+  "rules": [],
+  "docs": [
+   "docs/yukthix"
+  ],
+  "state": "Done",
+  "phase": "UI prototype",
+  "order": 240,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #130 · 7ccb1d98 · 351edcae"
+ },
+ {
+  "id": "US-A-055",
+  "type": "Story",
+  "parent": "FT-A-023",
+  "title": "Design docs, roadmap, go-live checklist and tracker in the repo",
+  "story": "As the founder, I want all design docs and the tracker next to the code so that every build step cites the doc it follows.",
+  "acceptance": [
+   "Given docs/yukthix/design, when opened, then every P, M, T and APX doc is present.",
+   "Given BACKEND-ROADMAP.md, when read, then each step lists its design docs and status.",
+   "Given the tracker, when build_tracker.py runs, then the workbook lists rules, steps, screens, deferred items and PRs."
+  ],
+  "rules": [],
+  "docs": [
+   "BACKEND-ROADMAP.md",
+   "GO-LIVE-CHECKLIST.md",
+   "tracker"
+  ],
+  "state": "Done",
+  "phase": "UI prototype",
+  "order": 241,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "PR #130 · 7ccb1d98 · cebf68f2 · b7f88606 · 351edcae · bd6143d0"
+ },
+ {
+  "id": "FT-A-024",
+  "type": "Feature",
+  "parent": "EP-A-3",
+  "title": "Wire the prototype buttons step by step",
+  "rules": [],
+  "docs": [
+   "open-work W-007",
+   "deferred D-001"
+  ],
+  "state": "New",
+  "phase": "UI prototype",
+  "order": 250,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-056",
+  "type": "Story",
+  "parent": "FT-A-024",
+  "title": "CI fails when a wired screen has a dead button",
+  "story": "As the founder, I want a CI gate on wired screens so that no screen ships with buttons that do nothing.",
+  "acceptance": [
+   "Given a list of wired screens, when scan-dead-buttons runs in CI, then any dead button on them fails the build.",
+   "Given an unwired prototype screen, when the scan runs, then it is reported but does not fail the build.",
+   "Given the scan report, when published, then it shows the remaining count (1,039 at start)."
+  ],
+  "rules": [],
+  "docs": [
+   "open-work W-007"
+  ],
+  "state": "New",
+  "phase": "UI prototype",
+  "order": 251,
+  "points": 2,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-057",
+  "type": "Story",
+  "parent": "FT-A-024",
+  "title": "Wire the platform screens (platform-a, platform-b)",
+  "story": "As an HR admin, I want every button on the platform screens (platform-a, platform-b) to do its real action so that I can use the product, not a demo.",
+  "acceptance": [
+   "Given the Step 3 backend step is merged, when the screens are wired, then each button calls its real API or opens its real page.",
+   "Given the wired screens, when scan-dead-buttons runs, then it finds 0 dead buttons on them.",
+   "Given a button whose feature is not built yet, when shown, then it is hidden or disabled with a reason, never silent."
+  ],
+  "rules": [],
+  "docs": [
+   "open-work W-007",
+   "deferred D-001"
+  ],
+  "state": "New",
+  "phase": "Step 3",
+  "order": 480,
+  "points": 8,
+  "priority": 2,
+  "depends": [
+   "US-A-056"
+  ]
+ },
+ {
+  "id": "US-A-058",
+  "type": "Story",
+  "parent": "FT-A-024",
+  "title": "Wire the service desk and ops screens",
+  "story": "As an HR admin, I want every button on the service desk and ops screens to do its real action so that I can use the product, not a demo.",
+  "acceptance": [
+   "Given the Step 3b backend step is merged, when the screens are wired, then each button calls its real API or opens its real page.",
+   "Given the wired screens, when scan-dead-buttons runs, then it finds 0 dead buttons on them.",
+   "Given a button whose feature is not built yet, when shown, then it is hidden or disabled with a reason, never silent."
+  ],
+  "rules": [],
+  "docs": [
+   "open-work W-007",
+   "deferred D-001"
+  ],
+  "state": "New",
+  "phase": "Step 3b",
+  "order": 580,
+  "points": 8,
+  "priority": 2,
+  "depends": [
+   "US-A-056"
+  ]
+ },
+ {
+  "id": "US-A-059",
+  "type": "Story",
+  "parent": "FT-A-024",
+  "title": "Wire the time and leave screens",
+  "story": "As an HR admin, I want every button on the time and leave screens to do its real action so that I can use the product, not a demo.",
+  "acceptance": [
+   "Given the Step 4 backend step is merged, when the screens are wired, then each button calls its real API or opens its real page.",
+   "Given the wired screens, when scan-dead-buttons runs, then it finds 0 dead buttons on them.",
+   "Given a button whose feature is not built yet, when shown, then it is hidden or disabled with a reason, never silent."
+  ],
+  "rules": [],
+  "docs": [
+   "open-work W-007",
+   "deferred D-001"
+  ],
+  "state": "New",
+  "phase": "Step 4",
+  "order": 680,
+  "points": 8,
+  "priority": 2,
+  "depends": [
+   "US-A-056"
+  ]
+ },
+ {
+  "id": "US-A-060",
+  "type": "Story",
+  "parent": "FT-A-024",
+  "title": "Wire the pay screens",
+  "story": "As an HR admin, I want every button on the pay screens to do its real action so that I can use the product, not a demo.",
+  "acceptance": [
+   "Given the Step 5 backend step is merged, when the screens are wired, then each button calls its real API or opens its real page.",
+   "Given the wired screens, when scan-dead-buttons runs, then it finds 0 dead buttons on them.",
+   "Given a button whose feature is not built yet, when shown, then it is hidden or disabled with a reason, never silent."
+  ],
+  "rules": [],
+  "docs": [
+   "open-work W-007",
+   "deferred D-001"
+  ],
+  "state": "New",
+  "phase": "Step 5",
+  "order": 780,
+  "points": 8,
+  "priority": 2,
+  "depends": [
+   "US-A-056"
+  ]
+ },
+ {
+  "id": "US-A-061",
+  "type": "Story",
+  "parent": "FT-A-024",
+  "title": "Wire the hiring, proctoring, growth, portals and notification screens",
+  "story": "As an HR admin, I want every button on the hiring, proctoring, growth, portals and notification screens to do its real action so that I can use the product, not a demo.",
+  "acceptance": [
+   "Given the Step 6+ backend step is merged, when the screens are wired, then each button calls its real API or opens its real page.",
+   "Given the wired screens, when scan-dead-buttons runs, then it finds 0 dead buttons on them.",
+   "Given a button whose feature is not built yet, when shown, then it is hidden or disabled with a reason, never silent."
+  ],
+  "rules": [],
+  "docs": [
+   "open-work W-007",
+   "deferred D-001"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 1480,
+  "points": 13,
+  "priority": 2,
+  "depends": [
+   "US-A-056"
+  ]
+ },
+ {
+  "id": "EP-A-4",
+  "type": "Epic",
+  "parent": "",
+  "title": "Step 2 · Organisation and employee core",
+  "rules": [],
+  "docs": [
+   "P01",
+   "P02",
+   "P06",
+   "M01 §3.1–3.4, §3.9–3.10"
+  ],
+  "state": "Active",
+  "phase": "Step 2",
+  "order": 300,
+  "priority": 1,
+  "depends": [],
+  "evidence": "branch feat/yukthix-org · 20 commits (3d325fba…95573e26)"
+ },
+ {
+  "id": "FT-A-030",
+  "type": "Feature",
+  "parent": "EP-A-4",
+  "title": "2a · Organisation structure",
+  "rules": [],
+  "docs": [
+   "P01 §4.1–4.3, §4.6"
+  ],
+  "state": "Done",
+  "phase": "Step 2a",
+  "order": 310,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 58d87661 · 670ac48a · 10b3cfe4"
+ },
+ {
+  "id": "US-A-070",
+  "type": "Story",
+  "parent": "FT-A-030",
+  "title": "Legal entities with one default and a fixed data region",
+  "story": "As a company admin, I want to add our registered companies so that payroll and statutory work per employer.",
+  "acceptance": [
+   "Given a company, when it is created, then it gets one default legal entity (YX-ORG-01).",
+   "Given several entities, when I mark one default, then exactly one stays default (YX-ORG-01).",
+   "Given a legal entity, when created, then its country and data region are set and cannot be edited later (YX-ORG-30, YX-SEC-19).",
+   "Given PAN, TAN, GSTIN or CIN, when entered, then the format is validated."
+  ],
+  "rules": [
+   "YX-ORG-01",
+   "YX-ORG-30",
+   "YX-SEC-19"
+  ],
+  "docs": [
+   "P01 §4.1",
+   "P01 Q2"
+  ],
+  "state": "Done",
+  "phase": "Step 2a",
+  "order": 311,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 58d87661 · 670ac48a · test/org-structure.e2e-spec.ts · org-structure.spec.ts"
+ },
+ {
+  "id": "US-A-071",
+  "type": "Story",
+  "parent": "FT-A-030",
+  "title": "Locations belong to one legal entity",
+  "story": "As an HR admin, I want to add work locations with state and time zone so that holidays, PT and times follow the right place.",
+  "acceptance": [
+   "Given a location, when saved without state or time zone, then it is refused (YX-ORG-02).",
+   "Given a location, when saved, then it belongs to exactly one legal entity (YX-ORG-02).",
+   "Given a geofence and network ranges, when entered, then they are stored on the location."
+  ],
+  "rules": [
+   "YX-ORG-02"
+  ],
+  "docs": [
+   "P01 §4.2"
+  ],
+  "state": "Done",
+  "phase": "Step 2a",
+  "order": 312,
+  "points": 2,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 58d87661 · 670ac48a · test/org-structure.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-072",
+  "type": "Story",
+  "parent": "FT-A-030",
+  "title": "Department tree with divisions",
+  "story": "As an HR admin, I want departments in a tree so that reports and visibility work on a department and its subtree.",
+  "acceptance": [
+   "Given a department move, when it would create a cycle, then it is refused (YX-ORG-03).",
+   "Given a department move, when saved, then its whole subtree moves with it (YX-ORG-03).",
+   "Given a top-level department, when flagged as division, then it is only a label (P01 Q7)."
+  ],
+  "rules": [
+   "YX-ORG-03"
+  ],
+  "docs": [
+   "P01 §4.3",
+   "P01 Q7"
+  ],
+  "state": "Done",
+  "phase": "Step 2a",
+  "order": 313,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 58d87661 · 670ac48a · org-structure.spec.ts"
+ },
+ {
+  "id": "US-A-073",
+  "type": "Story",
+  "parent": "FT-A-030",
+  "title": "Shared or entity-only masters with unique codes",
+  "story": "As an HR admin, I want designations, grades and types shared across the group or kept to one entity so that groups keep one structure.",
+  "acceptance": [
+   "Given a shared master, when limited to some entities, then only those entities can use it (YX-ORG-15).",
+   "Given an entity-only master, when used for another entity's employee, then it is refused (YX-ORG-15).",
+   "Given a blank code, when saved, then the system generates one unique in its scope (YX-ORG-05).",
+   "Given a duplicate name or code in the same scope, when saved, then it is refused (YX-ORG-05)."
+  ],
+  "rules": [
+   "YX-ORG-15",
+   "YX-ORG-05"
+  ],
+  "docs": [
+   "P01 §4.3",
+   "P01 Q3"
+  ],
+  "state": "Done",
+  "phase": "Step 2a",
+  "order": 314,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 58d87661 · 670ac48a · org-structure.spec.ts"
+ },
+ {
+  "id": "US-A-074",
+  "type": "Story",
+  "parent": "FT-A-030",
+  "title": "Used masters are archived, not deleted",
+  "story": "As an HR admin, I want used masters archived instead of deleted so that history stays correct.",
+  "acceptance": [
+   "Given a master used by any record, when I delete it, then it is refused and I can archive it (YX-ORG-04).",
+   "Given an archived master, when someone picks it for a new assignment, then it is not offered (YX-ORG-04).",
+   "Given an archived master, when restored, then it can be used again (YX-ORG-04)."
+  ],
+  "rules": [
+   "YX-ORG-04"
+  ],
+  "docs": [
+   "P01 §4"
+  ],
+  "state": "Done",
+  "phase": "Step 2a",
+  "order": 315,
+  "points": 2,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 670ac48a · 10b3cfe4 · test/org-structure.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-075",
+  "type": "Story",
+  "parent": "FT-A-030",
+  "title": "Cost centres and dated grade pay ranges",
+  "story": "As a payroll admin, I want cost centres per entity and pay ranges per grade by date so that cost and pay checks are correct.",
+  "acceptance": [
+   "Given a cost centre, when its parent is in another entity, then it is refused (YX-ORG-08).",
+   "Given grade pay ranges, when two ranges overlap for the same grade, entity and currency, then it is refused (YX-HIS-02).",
+   "Given a range in force or in the past, when edited, then the past is never rewritten (YX-HIS-07).",
+   "Given a user without pay access, when they open grades, then pay ranges are hidden (YX-SEC-07)."
+  ],
+  "rules": [
+   "YX-ORG-08",
+   "YX-HIS-02",
+   "YX-HIS-07",
+   "YX-SEC-07"
+  ],
+  "docs": [
+   "P01 §4.3"
+  ],
+  "state": "Done",
+  "phase": "Step 2a",
+  "order": 316,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 58d87661 · 670ac48a · org-structure.spec.ts"
+ },
+ {
+  "id": "US-A-076",
+  "type": "Story",
+  "parent": "FT-A-030",
+  "title": "Entity statutory identifiers are Confidential",
+  "story": "As a company admin, I want our entity's statutory numbers protected so that only the right people see them.",
+  "acceptance": [
+   "Given statutory identifiers, when a user without org.entity.statutory.manage opens the entity, then only 'on file / missing' shows (YX-SEC-07).",
+   "Given an allowed user, when they open the identifiers, then step-up is asked (YX-IAM-02).",
+   "Given the identifiers are read, when shown, then the read is audited (YX-SEC-09)."
+  ],
+  "rules": [
+   "YX-SEC-07",
+   "YX-SEC-09",
+   "YX-IAM-02"
+  ],
+  "docs": [
+   "P02 §4.4"
+  ],
+  "state": "Done",
+  "phase": "Step 2a",
+  "order": 317,
+  "points": 2,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 3d325fba · 670ac48a · 10b3cfe4"
+ },
+ {
+  "id": "US-A-077",
+  "type": "Story",
+  "parent": "FT-A-030",
+  "title": "Scoped settings show where a value comes from",
+  "story": "As an HR admin, I want a setting to resolve from the most specific scope and show its source so that I know why a value applies.",
+  "acceptance": [
+   "Given a value at tenant and entity, when resolved for that entity, then the entity value wins (YX-ORG-12, YX-ORG-18).",
+   "Given an employee, when a setting resolves, then it uses the assignment in force on the as-of date (YX-ORG-18).",
+   "Given a dated setting, when resolved for a past period, then the value in force then is used (YX-ORG-18).",
+   "Given the settings screen, when a value is inherited, then it says from where (YX-ORG-12)."
+  ],
+  "rules": [
+   "YX-ORG-12",
+   "YX-ORG-18"
+  ],
+  "docs": [
+   "P01 §4.6"
+  ],
+  "state": "Done",
+  "phase": "Step 2a",
+  "order": 318,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 670ac48a · 7e8bfb52 · org-settings.service.ts · settings-registry.ts"
+ },
+ {
+  "id": "US-A-078",
+  "type": "Story",
+  "parent": "FT-A-030",
+  "title": "Settings › Organisation screens wired",
+  "story": "As a company admin, I want working screens for entities, locations and structure so that I set up the company without support.",
+  "acceptance": [
+   "Given Settings › Organisation, when opened, then legal entities, locations and structure tabs load from the API (YX-ORG-12).",
+   "Given archive, restore and delete, when chosen in a row menu, then each asks to confirm (YX-ORG-04).",
+   "Given my permissions, when navigation renders, then only pages I can open are shown (GET /rbac/me/permissions) (YX-SEC-01).",
+   "Given every structure change, when saved, then an audit entry is written in the same transaction."
+  ],
+  "rules": [
+   "YX-ORG-12",
+   "YX-ORG-04",
+   "YX-SEC-01"
+  ],
+  "docs": [
+   "P01 §8"
+  ],
+  "state": "Done",
+  "phase": "Step 2a",
+  "order": 319,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 10b3cfe4 · b090e49b · ea573922 · org.test.tsx · yx-org-pages.test.tsx · audit.service.spec.ts"
+ },
+ {
+  "id": "US-A-079",
+  "type": "Story",
+  "parent": "FT-A-030",
+  "title": "Pick parents in a tree and set entity-specific settings",
+  "story": "As an HR admin, I want to pick a parent department from a tree and set a rule for one entity so that set-up matches how we think.",
+  "acceptance": [
+   "Given the department form, when I choose a parent, then a tree view is shown, not a flat list (YX-ORG-03).",
+   "Given a scoped setting, when I open an entity, then I can set or reset its own value (YX-ORG-12).",
+   "Given an override, when saved, then the screen shows the source changing from tenant to entity (YX-ORG-12)."
+  ],
+  "rules": [
+   "YX-ORG-03",
+   "YX-ORG-12"
+  ],
+  "docs": [
+   "P01 §8",
+   "deferred D-030",
+   "deferred D-031"
+  ],
+  "state": "New",
+  "phase": "Step 2a follow-up",
+  "order": 320,
+  "points": 3,
+  "priority": 3,
+  "depends": [
+   "US-A-078"
+  ]
+ },
+ {
+  "id": "FT-A-031",
+  "type": "Feature",
+  "parent": "EP-A-4",
+  "title": "2b · Effective-dated history",
+  "rules": [],
+  "docs": [
+   "P06"
+  ],
+  "state": "Done",
+  "phase": "Step 2b",
+  "order": 330,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 1c41b543 · 7e8bfb52 · 8bbb7018"
+ },
+ {
+  "id": "US-A-080",
+  "type": "Story",
+  "parent": "FT-A-031",
+  "title": "Employees join through a join change",
+  "story": "As an HR admin, I want to add an employee with a joining date so that their employment and first assignment start correctly.",
+  "acceptance": [
+   "Given a new joiner, when added, then an employment and first assignment are created by a join change (YX-HIS-01).",
+   "Given an employee code, when blank, then it is generated per entity or per company as set (YX-ORG-16).",
+   "Given an employee with an open employment, when another is opened in the company, then it is refused (YX-ORG-06).",
+   "Given the new rows, when stored, then they carry forced RLS (YX-ORG-14)."
+  ],
+  "rules": [
+   "YX-HIS-01",
+   "YX-ORG-16",
+   "YX-ORG-06",
+   "YX-ORG-14"
+  ],
+  "docs": [
+   "P01 §4.4",
+   "P06 §4.3"
+  ],
+  "state": "Done",
+  "phase": "Step 2b",
+  "order": 331,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 1c41b543 · 7e8bfb52 · test/employee-history.e2e-spec.ts · test/rls-isolation.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-081",
+  "type": "Story",
+  "parent": "FT-A-031",
+  "title": "Job changes are requested and approved by someone else",
+  "story": "As an HR admin, I want every promotion, transfer or revision to be a change approved by another person so that nobody edits history alone.",
+  "acceptance": [
+   "Given a dated fact, when anyone tries to write it outside an approved change, then the database trigger refuses (YX-HIS-01).",
+   "Given a change, when the requester or the subject tries to approve, then it is refused (YX-SEC-11).",
+   "Given an approval, when given, then step-up is asked (YX-IAM-02).",
+   "Given a promotion with a pay change, when approved, then compensation changes in the same change (YX-EMP-05)."
+  ],
+  "rules": [
+   "YX-HIS-01",
+   "YX-SEC-11",
+   "YX-IAM-02",
+   "YX-EMP-05"
+  ],
+  "docs": [
+   "P06 §4.3",
+   "M01 §3.3"
+  ],
+  "state": "Done",
+  "phase": "Step 2b",
+  "order": 332,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 1c41b543 · ddc92a0e · 7e8bfb52 · employee-history.service.spec.ts · test/employee-history.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-082",
+  "type": "Story",
+  "parent": "FT-A-031",
+  "title": "History has no gaps, overlaps or reporting loops",
+  "story": "As an HR admin, I want the system to keep job history clean so that payroll and reports can trust it.",
+  "acceptance": [
+   "Given current rows, when two overlap for the same person, then the GiST constraint refuses (YX-HIS-02).",
+   "Given an employment, when a change would leave a day without an assignment, then it is refused (YX-HIS-03, YX-ORG-07).",
+   "Given a manager, when they are not employed on every day or would create a loop, then it is refused (YX-ORG-09).",
+   "Given a location, cost centre or master, when not live or not open to the employer, then it is refused (YX-ORG-04, YX-ORG-08, YX-ORG-15)."
+  ],
+  "rules": [
+   "YX-HIS-02",
+   "YX-HIS-03",
+   "YX-ORG-07",
+   "YX-ORG-09",
+   "YX-ORG-04",
+   "YX-ORG-08",
+   "YX-ORG-15"
+  ],
+  "docs": [
+   "P06 §4.2",
+   "P01 §6"
+  ],
+  "state": "Done",
+  "phase": "Step 2b",
+  "order": 333,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 1c41b543 · 7e8bfb52 · history-rules.spec.ts · test/employee-history.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-083",
+  "type": "Story",
+  "parent": "FT-A-031",
+  "title": "Scheduled changes apply on their date",
+  "story": "As an HR admin, I want a promotion approved today for 1 Oct to apply by itself on 1 Oct so that I don't need to remember it.",
+  "acceptance": [
+   "Given a future change, when approved, then it shows as scheduled (YX-ORG-10).",
+   "Given the effective date, when 00:00 arrives in the employee's location time zone, then the change becomes effective (YX-HIS-04).",
+   "Given the sweep runs twice, when it re-runs, then no row is applied twice (YX-HIS-05).",
+   "Given applying, when it runs, then rows close and open in one transaction (YX-HIS-05)."
+  ],
+  "rules": [
+   "YX-ORG-10",
+   "YX-HIS-04",
+   "YX-HIS-05"
+  ],
+  "docs": [
+   "P06 §4.3",
+   "P06 Q3"
+  ],
+  "state": "Done",
+  "phase": "Step 2b",
+  "order": 334,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 7e8bfb52 · scheduled-sweeps.worker.service.spec.ts · test/employee-history.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-084",
+  "type": "Story",
+  "parent": "FT-A-031",
+  "title": "Earlier changes rebase later scheduled ones",
+  "story": "As an HR admin, I want a new transfer dated before a scheduled increment to recalculate that increment so that values stay right.",
+  "acceptance": [
+   "Given a scheduled % increment, when a change is inserted before it, then the increment keeps its % on the new base (YX-HIS-06).",
+   "Given the rebase, when I approve, then I see the recalculated values and confirm first (YX-HIS-06).",
+   "Given a scheduled change, when I move its date or values, then it goes back for approval; cancel needs a reason (YX-HIS-01)."
+  ],
+  "rules": [
+   "YX-HIS-06",
+   "YX-HIS-01"
+  ],
+  "docs": [
+   "P06 §4.4",
+   "P06 Q7"
+  ],
+  "state": "Done",
+  "phase": "Step 2b",
+  "order": 335,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 7e8bfb52 · 8bbb7018 · employee-history.service.spec.ts"
+ },
+ {
+  "id": "US-A-085",
+  "type": "Story",
+  "parent": "FT-A-031",
+  "title": "Past corrections supersede, never delete",
+  "story": "As an HR admin, I want to correct a past mistake while keeping what we believed before so that audits stay explainable.",
+  "acceptance": [
+   "Given a past-dated change, when approved, then replaced rows are marked superseded with who, when and why (YX-HIS-07).",
+   "Given recorded and superseded times, when stored, then they come from the database clock (YX-HIS-07).",
+   "Given a change before the company's retro limit, when sent, then only a System Admin override with a reason is allowed (YX-HIS-12, YX-ORG-10).",
+   "Given a past change, when saved, then the affected payroll months are flagged on it (YX-HIS-12)."
+  ],
+  "rules": [
+   "YX-HIS-07",
+   "YX-HIS-12",
+   "YX-ORG-10"
+  ],
+  "docs": [
+   "P06 §4.5",
+   "P06 Q5"
+  ],
+  "state": "Done",
+  "phase": "Step 2b",
+  "order": 336,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 1c41b543 · 7e8bfb52 · dde92c0b · test/employee-history.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-086",
+  "type": "Story",
+  "parent": "FT-A-031",
+  "title": "Read history as on any date",
+  "story": "As a manager, I want to see my team member's job as on a date so that I can answer 'who was their manager on 1 Jul?'.",
+  "acceptance": [
+   "Given as-of, when asked 'as corrected now' or 'as recorded at T', then the right values return (YX-HIS-10).",
+   "Given a manager, when they read a person's history, then only the periods they managed are visible (YX-SEC-06, YX-HIS-10).",
+   "Given segments(from, to), when called, then each period where a fact changed is returned (YX-HIS-10).",
+   "Given the person or their manager, when they read history, then only approved changes show, without the impact (YX-SEC-06)."
+  ],
+  "rules": [
+   "YX-HIS-10",
+   "YX-SEC-06"
+  ],
+  "docs": [
+   "P06 §4.7"
+  ],
+  "state": "Done",
+  "phase": "Step 2b",
+  "order": 337,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 7e8bfb52 · 63ec5516 · test/employee-history.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-087",
+  "type": "Story",
+  "parent": "FT-A-031",
+  "title": "Impact preview and 'Show pay'",
+  "story": "As an HR admin, I want to see what else a change affects before approving, and see pay only when I ask, so that I approve with care and pay stays private.",
+  "acceptance": [
+   "Given a change, when reviewed, then the impact preview lists derived effects before approval (YX-HIS-11).",
+   "Given job history, when opened, then pay is hidden until 'Show pay' and only for pay access (YX-SEC-07).",
+   "Given someone views another person's pay, when shown, then the view is audited (YX-SEC-09)."
+  ],
+  "rules": [
+   "YX-HIS-11",
+   "YX-SEC-07",
+   "YX-SEC-09"
+  ],
+  "docs": [
+   "P06 §4.3",
+   "P02 §4.4"
+  ],
+  "state": "Done",
+  "phase": "Step 2b",
+  "order": 338,
+  "points": 2,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 7e8bfb52 · 39c0229c · employee-history.service.spec.ts"
+ },
+ {
+  "id": "US-A-088",
+  "type": "Story",
+  "parent": "FT-A-031",
+  "title": "People › Job history and Job changes screens",
+  "story": "As an HR admin, I want screens to see a timeline and handle waiting, scheduled and done changes so that I can run job changes daily.",
+  "acceptance": [
+   "Given Job history, when I pick a date, then the record as on that date shows, with scheduled changes styled differently (YX-HIS-10).",
+   "Given a change that touches the past, when listed, then it is marked 'Changes the past' (YX-HIS-07).",
+   "Given Review, when opened, then the impact shows and Approve confirms recalculated later changes (YX-HIS-11, YX-HIS-06).",
+   "Given the change form, when before the retro limit, then it asks for the override reason (YX-HIS-12)."
+  ],
+  "rules": [
+   "YX-HIS-10",
+   "YX-HIS-07",
+   "YX-HIS-11",
+   "YX-HIS-06",
+   "YX-HIS-12"
+  ],
+  "docs": [
+   "P06 §7"
+  ],
+  "state": "Done",
+  "phase": "Step 2b",
+  "order": 339,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 8bbb7018 · 7c246268 · history.test.tsx · yx-people-pages.test.tsx"
+ },
+ {
+  "id": "FT-A-032",
+  "type": "Feature",
+  "parent": "EP-A-4",
+  "title": "2c · Employee record, persons, org chart, probation and bulk changes",
+  "rules": [],
+  "docs": [
+   "P01 §4.4–4.5a",
+   "M01 §3.1–3.4, §3.10"
+  ],
+  "state": "Active",
+  "phase": "Step 2c",
+  "order": 340,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · dde92c0b · 33b18e60 · 0b1f1f94 · 95573e26"
+ },
+ {
+  "id": "US-A-090",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "One person record per human",
+  "story": "As an HR admin, I want each human to have one person record in our company so that a candidate who joins keeps one history.",
+  "acceptance": [
+   "Given a hire, when saved, then a person with employee and login roles is created (YX-ORG-26).",
+   "Given an email or phone of an existing person, when a new hire uses it, then it is not linked silently (409 POSSIBLE_SAME_PERSON) (YX-ORG-27).",
+   "Given HR links by personId, when confirmed, then person_link_log records it as confirmed (YX-ORG-27).",
+   "Given persons, when read, then they never cross companies (YX-ORG-26, YX-ORG-14)."
+  ],
+  "rules": [
+   "YX-ORG-26",
+   "YX-ORG-27",
+   "YX-ORG-14"
+  ],
+  "docs": [
+   "P01 §4.5a"
+  ],
+  "state": "Done",
+  "phase": "Step 2c",
+  "order": 341,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · dde92c0b · 33b18e60 · test/people-core.e2e-spec.ts · test/rls-isolation.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-091",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "'Possible same person' queue with reversible merge",
+  "story": "As an HR admin, I want to confirm or reject possible duplicates and undo a wrong merge so that no two records describe one person.",
+  "acceptance": [
+   "Given verified email, phone, PAN or UAN, when a new role record matches, then it auto-links (YX-ORG-27).",
+   "Given conflicting keys or name + DOB similarity, when found, then a proposal appears in the queue; a name alone never links (YX-ORG-27).",
+   "Given a merge, when undone, then each role and its records go back to the original person (YX-ORG-27).",
+   "Given any link, merge or unmerge, when done, then person_link_log records basis, actor and reason (YX-ORG-27)."
+  ],
+  "rules": [
+   "YX-ORG-27"
+  ],
+  "docs": [
+   "P01 §4.5a"
+  ],
+  "state": "New",
+  "phase": "Step 2c",
+  "order": 342,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-A-090"
+  ]
+ },
+ {
+  "id": "US-A-092",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "Dotted-line managers",
+  "story": "As an HR admin, I want to add a secondary manager to an assignment so that project leads can see and give feedback.",
+  "acceptance": [
+   "Given a dotted-line manager, when saved with an assignment, then they must be employed on every day (YX-ORG-09).",
+   "Given a dotted-line manager, when approvals route, then they are never in the chain unless a policy names them (YX-EMP-04).",
+   "Given a person, when they are made their own dotted-line manager, then it is refused (YX-ORG-09)."
+  ],
+  "rules": [
+   "YX-EMP-04",
+   "YX-ORG-09"
+  ],
+  "docs": [
+   "M01 §3.2",
+   "M01 Q5"
+  ],
+  "state": "Done",
+  "phase": "Step 2c",
+  "order": 343,
+  "points": 2,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · dde92c0b · 33b18e60 · test/people-core.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-093",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "Org chart as on any date",
+  "story": "As an employee, I want an org chart with search and expand so that I know who reports to whom.",
+  "acceptance": [
+   "Given the org chart, when opened, then managers, dotted lines and report counts show (YX-EMP-04).",
+   "Given an HR admin, when they pick a past date, then the chart shows as on that date (YX-HIS-10).",
+   "Given any viewer, when the chart loads, then only Public fields show and no pay (YX-SEC-07)."
+  ],
+  "rules": [
+   "YX-EMP-04",
+   "YX-HIS-10",
+   "YX-SEC-07"
+  ],
+  "docs": [
+   "M01 §3.2"
+  ],
+  "state": "Active",
+  "phase": "Step 2c",
+  "order": 344,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 0b1f1f94 (API) · org-chart screen in progress (uncommitted)"
+ },
+ {
+  "id": "US-A-094",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "Colleague directory",
+  "story": "As an employee, I want to search colleagues by name, entity, location or department so that I can find and contact people.",
+  "acceptance": [
+   "Given the directory, when I search, then only Public fields show (YX-SEC-17).",
+   "Given HR, when they search, then codes and joining dates also show (YX-SEC-07).",
+   "Given a search with % or _, when run, then wildcards are escaped.",
+   "Given a department filter, when chosen, then its whole subtree is included."
+  ],
+  "rules": [
+   "YX-SEC-17",
+   "YX-SEC-07"
+  ],
+  "docs": [
+   "P02 Q4",
+   "M01 §1"
+  ],
+  "state": "Active",
+  "phase": "Step 2c",
+  "order": 345,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 0b1f1f94 (API) · people/directory screen and workforce screens uncommitted"
+ },
+ {
+  "id": "US-A-095",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "Manager Team page",
+  "story": "As a manager, I want a team page with direct, indirect and dotted-line reports so that I see my people and their probation ends.",
+  "acceptance": [
+   "Given my team, when opened, then direct, indirect and dotted-line reports show (YX-SEC-05).",
+   "Given a report on probation, when listed, then the end date shows (YX-LC-01).",
+   "Given my reports, when listed, then no pay shows without the team-salary grant (YX-SEC-07)."
+  ],
+  "rules": [
+   "YX-SEC-05",
+   "YX-LC-01",
+   "YX-SEC-07"
+  ],
+  "docs": [
+   "M01 §3.10",
+   "P02 Q2"
+  ],
+  "state": "Active",
+  "phase": "Step 2c",
+  "order": 346,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 0b1f1f94 (API employees/:id/reports, team) · team screen in progress"
+ },
+ {
+  "id": "US-A-096",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "Managers raise job changes for their team",
+  "story": "As a manager, I want to start a promotion, transfer or manager change for my team so that HR gets a complete request.",
+  "acceptance": [
+   "Given request.raise_on_behalf, when I raise a change, then the subject must be in my current subtree (YX-SEC-27).",
+   "Given a pay field, when I lack the pay grant, then I cannot change it (YX-SEC-27).",
+   "Given a change I raised, when it is up for approval, then I can never approve it (YX-SEC-11, YX-SEC-27).",
+   "Given my raised changes, when listed, then I see and can withdraw only those I raised."
+  ],
+  "rules": [
+   "YX-SEC-27",
+   "YX-SEC-11"
+  ],
+  "docs": [
+   "M01 §3.10",
+   "P02 §4.6"
+  ],
+  "state": "Done",
+  "phase": "Step 2c",
+  "order": 347,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 33b18e60 · 95573e26 (Team Manager profile) · test/people-core.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-097",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "Probation plans, reviews and confirmation",
+  "story": "As an HR admin, I want probation tracked with reminders so that no confirmation is missed.",
+  "acceptance": [
+   "Given a joiner on probation, when added, then a plan with the default length per type or grade is created (YX-LC-01).",
+   "Given N days before the end, when the sweep runs, then the manager gets a review reminder once (YX-LC-01).",
+   "Given no action by the end date, when the sweep runs, then it escalates to HR; auto-confirm only if switched on (YX-LC-01).",
+   "Given an extension, when beyond the company maximum, then it is refused (YX-LC-01)."
+  ],
+  "rules": [
+   "YX-LC-01"
+  ],
+  "docs": [
+   "M01 §3.4",
+   "M01 Q3"
+  ],
+  "state": "Active",
+  "phase": "Step 2c",
+  "order": 348,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · dde92c0b · 33b18e60 · 0b1f1f94 · test/people-core.e2e-spec.ts · probation screen in progress"
+ },
+ {
+  "id": "US-A-098",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "Bulk job changes by CSV or 'reassign reports'",
+  "story": "As an HR admin, I want to upload many changes or move all of a leaving manager's reports at once so that a reorg takes one approval.",
+  "acceptance": [
+   "Given a CSV, when uploaded, then a dry run shows per-row errors and impact (YX-HIS-11).",
+   "Given errors, when any row fails, then nothing is stored (all or nothing) (YX-HIS-01).",
+   "Given the batch, when approved once with step-up by someone outside it, then all changes apply together (YX-SEC-11, YX-IAM-02).",
+   "Given 'reassign reports', when used, then each report gets a manager-change of type P06 (YX-EMP-05)."
+  ],
+  "rules": [
+   "YX-HIS-11",
+   "YX-HIS-01",
+   "YX-SEC-11",
+   "YX-IAM-02",
+   "YX-EMP-05"
+  ],
+  "docs": [
+   "M01 §3.2–3.3",
+   "P06 §7"
+  ],
+  "state": "Active",
+  "phase": "Step 2c",
+  "order": 349,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · dde92c0b · 0b1f1f94 · bulk-csv.spec.ts · test/people-core.e2e-spec.ts · bulk-changes screen in progress"
+ },
+ {
+  "id": "US-A-099",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "Employee codes and login links",
+  "story": "As an HR admin, I want to correct an employee code with a reason and link a login so that the record stays right.",
+  "acceptance": [
+   "Given a code correction, when saved, then a reason is required and audited (YX-ORG-16).",
+   "Given a switch to company-wide codes, when clashes exist, then they are listed and the switch is refused (YX-ORG-16).",
+   "Given linking a login, when the email is not the record's work email or is my own login, then it is refused (YX-ORG-16).",
+   "Given link or unlink, when done, then step-up is asked (YX-IAM-02)."
+  ],
+  "rules": [
+   "YX-ORG-16",
+   "YX-IAM-02"
+  ],
+  "docs": [
+   "P01 Q4"
+  ],
+  "state": "Done",
+  "phase": "Step 2c",
+  "order": 350,
+  "points": 2,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 33b18e60 · 0b1f1f94 · 63ec5516 · test/people-core.e2e-spec.ts"
+ },
+ {
+  "id": "US-A-100",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "Structured names, addresses and phones",
+  "story": "As an HR admin, I want names in parts and structured addresses so that letters and statutory files use the right form.",
+  "acceptance": [
+   "Given a name, when saved, then given, family, optional patronymic and grandfather's name, name order and native-script legal name are kept (YX-ORG-28).",
+   "Given an address, when saved, then it uses ISO 3166 country and subdivision and the country's postal-code pattern (YX-ORG-28).",
+   "Given a phone, when saved, then it is validated and stored in E.164 and shown in national format (YX-ORG-28).",
+   "Given search, when I type the native-script name, then the person is found (YX-ORG-28)."
+  ],
+  "rules": [
+   "YX-ORG-28"
+  ],
+  "docs": [
+   "P01 §4.4",
+   "P21"
+  ],
+  "state": "New",
+  "phase": "Step 2c",
+  "order": 351,
+  "points": 3,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "US-A-101",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "Company gender list; gender and marital status by date",
+  "story": "As an employee, I want to self-declare my gender from an inclusive list so that my record is right and reports stay private.",
+  "acceptance": [
+   "Given the tenant gender list, when first set up, then it has female, male, transgender, non-binary and prefer not to say (YX-ORG-29).",
+   "Given a gender or marital-status change, when made, then it is a dated change with an impact preview (YX-HIS-14).",
+   "Given headcount by gender, when a group is small, then it is suppressed (YX-SEC-14).",
+   "Given each value, when mapped, then it maps to the categories statutory reports need (YX-ORG-29)."
+  ],
+  "rules": [
+   "YX-ORG-29",
+   "YX-HIS-14",
+   "YX-SEC-14"
+  ],
+  "docs": [
+   "P01 §4.4",
+   "P06 §4.1"
+  ],
+  "state": "New",
+  "phase": "Step 2c",
+  "order": 352,
+  "points": 3,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "US-A-102",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "Full employee record with sections",
+  "story": "As an HR admin, I want one employee record with overview, personal, family and nominees, emergency contacts and activity so that everything about a person is in one place.",
+  "acceptance": [
+   "Given the record, when opened, then Overview shows photo, role, location, manager and status badges like 'On probation · ends 1 Apr'.",
+   "Given the Personal section, when the employee edits it, then the change saves directly and the old value stays in history (YX-SEC-07).",
+   "Given family and nominees, when shares are entered, then they must total 100 % per nomination type.",
+   "Given each field, when shown, then its sensitivity class decides who sees it (YX-SEC-07)."
+  ],
+  "rules": [
+   "YX-SEC-07"
+  ],
+  "docs": [
+   "M01 §3.1",
+   "P02 §4.5"
+  ],
+  "state": "New",
+  "phase": "Step 2c",
+  "order": 353,
+  "points": 5,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-103",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "India identity fields, validated and masked",
+  "story": "As an HR admin, I want PAN, Aadhaar, UAN, ESIC and IFSC checked on entry so that statutory filings don't fail later.",
+  "acceptance": [
+   "Given PAN, UAN, ESIC or IFSC, when entered, then the format is validated (YX-EMP-01).",
+   "Given Aadhaar, when entered, then the Verhoeff checksum is checked and it is stored encrypted, shown as last 4 (YX-EMP-01, YX-SEC-08).",
+   "Given an unmasked Aadhaar view by an allowed role, when shown, then it is audited (YX-SEC-08).",
+   "Given the same PAN, Aadhaar or salary bank account on another active employee, when saved, then a blocking warning names that record; HR may override with a reason (YX-EMP-02)."
+  ],
+  "rules": [
+   "YX-EMP-01",
+   "YX-EMP-02",
+   "YX-SEC-08"
+  ],
+  "docs": [
+   "M01 §3.1",
+   "P01 §4.4"
+  ],
+  "state": "New",
+  "phase": "Step 2c",
+  "order": 354,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-A-102"
+  ]
+ },
+ {
+  "id": "US-A-104",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "Custom fields on the employee",
+  "story": "As an HR admin, I want to add our own fields to the employee record so that we capture what our company needs.",
+  "acceptance": [
+   "Given a custom field, when created, then it has a type, validation, section, sensitivity class and self-edit flag (YX-EMP-03).",
+   "Given a Confidential custom field, when a user without access reads the record, then it is hidden (YX-EMP-03, YX-SEC-07).",
+   "Given a self-edit field, when the employee changes it, then it saves directly; otherwise only HR can edit (YX-EMP-03)."
+  ],
+  "rules": [
+   "YX-EMP-03",
+   "YX-SEC-07"
+  ],
+  "docs": [
+   "M01 §3.1"
+  ],
+  "state": "New",
+  "phase": "Step 2c",
+  "order": 355,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-A-102"
+  ]
+ },
+ {
+  "id": "US-A-105",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "Salary and reimbursement bank accounts",
+  "story": "As an employee, I want my salary bank account on my record so that pay goes to the right account from the right date.",
+  "acceptance": [
+   "Given a salary account, when changed, then it is a dated fact effective from the approved date (YX-HIS-01).",
+   "Given an optional reimbursement account, when added, then it is kept apart from the salary account.",
+   "Given the account number, when shown, then it is masked (••••6789) except to allowed roles (YX-SEC-07, YX-SEC-09)."
+  ],
+  "rules": [
+   "YX-HIS-01",
+   "YX-SEC-07",
+   "YX-SEC-09"
+  ],
+  "docs": [
+   "M01 §3.1",
+   "M01 Q4",
+   "P06 §4.1"
+  ],
+  "state": "New",
+  "phase": "Step 2c",
+  "order": 356,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-A-102"
+  ]
+ },
+ {
+  "id": "US-A-106",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "Transfer to another legal entity",
+  "story": "As an HR admin, I want to move a person to another entity with clear options so that PF, ESI and TDS move to the new employer.",
+  "acceptance": [
+   "Given an inter-entity transfer, when approved, then the old employment closes and a new one opens on the same employee (YX-ORG-11).",
+   "Given the five transfer options, when the form opens, then they are pre-filled from company defaults and can be changed (YX-ORG-17).",
+   "Given the chosen options, when previewed, then the impact shows them before confirmation (YX-ORG-17).",
+   "Given the transfer, when done, then person, documents and history stay one employee (YX-ORG-11)."
+  ],
+  "rules": [
+   "YX-ORG-11",
+   "YX-ORG-17"
+  ],
+  "docs": [
+   "P01 Q5",
+   "M01 §3.3",
+   "deferred D-037"
+  ],
+  "state": "New",
+  "phase": "Step 2c",
+  "order": 357,
+  "points": 5,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "US-A-107",
+  "type": "Story",
+  "parent": "FT-A-032",
+  "title": "Org and employee events reach other parts",
+  "story": "As an HR admin, I want hires and job changes to update logins, managers and access at once so that nobody keeps old access.",
+  "acceptance": [
+   "Given a change becomes effective, when committed, then employee.change.effective goes through an outbox, never for a rolled-back change (YX-HIS-05).",
+   "Given an assignment change, when effective, then implicit Employee, Manager and Department-head grants are recomputed (YX-SEC-04).",
+   "Given an employee with a login, when the manager changes, then User.managerId is derived from the assignment.",
+   "Given a master change, when saved, then org.master.changed is emitted."
+  ],
+  "rules": [
+   "YX-HIS-05",
+   "YX-SEC-04"
+  ],
+  "docs": [
+   "P01 §7",
+   "P06 §4.3",
+   "deferred D-029",
+   "deferred D-035"
+  ],
+  "state": "New",
+  "phase": "Step 2c",
+  "order": 358,
+  "points": 5,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "FT-A-033",
+  "type": "Feature",
+  "parent": "EP-A-4",
+  "title": "2d · Access, roles, record scopes and field sensitivity",
+  "rules": [],
+  "docs": [
+   "P02"
+  ],
+  "state": "New",
+  "phase": "Step 2d",
+  "order": 360,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-110",
+  "type": "Story",
+  "parent": "FT-A-033",
+  "title": "Every HR endpoint declares a permission",
+  "story": "As a company admin, I want every HR API to check a permission so that no endpoint is open by mistake.",
+  "acceptance": [
+   "Given a new HR endpoint without a permission, when CI runs, then the build fails (YX-SEC-01).",
+   "Given every report column and export, when defined, then it declares its permission and field class (YX-SEC-01).",
+   "Given the permission catalogue, when listed, then keys follow domain.object.action (YX-SEC-01)."
+  ],
+  "rules": [
+   "YX-SEC-01"
+  ],
+  "docs": [
+   "P02 §4.1"
+  ],
+  "state": "New",
+  "phase": "Step 2d",
+  "order": 361,
+  "points": 2,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-111",
+  "type": "Story",
+  "parent": "FT-A-033",
+  "title": "Roles as data, templates and custom roles",
+  "story": "As a company admin, I want to clone a role template or build a custom role so that roles fit our company.",
+  "acceptance": [
+   "Given role templates, when a company starts, then Employee, Manager, HR Admin, HR Executive, Payroll Admin and the others exist (YX-SEC-02).",
+   "Given business logic, when it checks access, then it checks permissions only, never role names (YX-SEC-02).",
+   "Given a template, when edited, then it can be restored to the YukthiX version (YX-SEC-02).",
+   "Given exam-app users, when migrated, then org_admin maps to System Admin + HR Admin and profiles become custom roles (YX-SEC-02)."
+  ],
+  "rules": [
+   "YX-SEC-02"
+  ],
+  "docs": [
+   "P02 §4.2",
+   "P02 §8"
+  ],
+  "state": "New",
+  "phase": "Step 2d",
+  "order": 362,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-A-110"
+  ]
+ },
+ {
+  "id": "US-A-112",
+  "type": "Story",
+  "parent": "FT-A-033",
+  "title": "Several role grants per user, each with a scope",
+  "story": "As a company admin, I want to give one person HR Admin for one entity and Payroll for another so that access matches their job.",
+  "acceptance": [
+   "Given a user, when granted several roles, then each grant has its own scope and optional dates (YX-SEC-03).",
+   "Given several grants, when access is checked, then rights are the union of grants (YX-SEC-03).",
+   "Given an auditor grant, when its end date passes, then it expires on its own (YX-SEC-15).",
+   "Given the User.role string, when grants exist, then guards use grants (YX-SEC-03)."
+  ],
+  "rules": [
+   "YX-SEC-03",
+   "YX-SEC-15"
+  ],
+  "docs": [
+   "P02 §3",
+   "P02 §4.2"
+  ],
+  "state": "New",
+  "phase": "Step 2d",
+  "order": 363,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-A-111"
+  ]
+ },
+ {
+  "id": "US-A-113",
+  "type": "Story",
+  "parent": "FT-A-033",
+  "title": "Implicit Employee, Manager and Department-head grants",
+  "story": "As a manager, I want my access to follow my team automatically so that HR doesn't assign it by hand.",
+  "acceptance": [
+   "Given an employee, when active, then they hold Employee @ self (YX-SEC-04).",
+   "Given anyone with reports, when the assignment changes, then Manager @ team is recomputed (YX-SEC-04).",
+   "Given a department head, when set, then they get Department head @ department subtree (YX-SEC-04).",
+   "Given view vs approve, when defaults apply, then view covers the whole subtree and approve only direct reports (P02 Q2) (YX-SEC-04)."
+  ],
+  "rules": [
+   "YX-SEC-04"
+  ],
+  "docs": [
+   "P02 §3",
+   "P02 Q2"
+  ],
+  "state": "New",
+  "phase": "Step 2d",
+  "order": 364,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-A-112",
+   "US-A-107"
+  ]
+ },
+ {
+  "id": "US-A-114",
+  "type": "Story",
+  "parent": "FT-A-033",
+  "title": "One visibility service for every read",
+  "story": "As an employee, I want nobody to reach my record by guessing an id so that my data is safe.",
+  "acceptance": [
+   "Given any list, record, report or export, when read, then it passes through the visibility service (YX-SEC-05).",
+   "Given an employee, when they fetch another employee's record by id, then they get nothing (YX-SEC-05).",
+   "Given counts and charts, when shown, then they include only visible records (YX-SEC-05).",
+   "Given a manager transferred out, when the next day comes, then they lose access to the team's new records (YX-SEC-06)."
+  ],
+  "rules": [
+   "YX-SEC-05",
+   "YX-SEC-06"
+  ],
+  "docs": [
+   "P02 §4.3"
+  ],
+  "state": "New",
+  "phase": "Step 2d",
+  "order": 365,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-A-113"
+  ]
+ },
+ {
+  "id": "US-A-115",
+  "type": "Story",
+  "parent": "FT-A-033",
+  "title": "Field registry with sensitivity classes",
+  "story": "As an HR admin, I want each field labelled Public to Special so that the server hides or masks what a role may not see.",
+  "acceptance": [
+   "Given every personal field, when registered, then it has a class: Public, Internal, Personal, Confidential or Special (YX-SEC-07).",
+   "Given a role × class level hidden, masked, read, edit or edit_with_approval, when a read happens, then the server redacts (YX-SEC-07).",
+   "Given a write to a field the role cannot edit, when sent, then the server rejects it (YX-SEC-07).",
+   "Given exports and API responses, when produced, then the same rules apply (YX-SEC-07)."
+  ],
+  "rules": [
+   "YX-SEC-07"
+  ],
+  "docs": [
+   "P02 §4.4"
+  ],
+  "state": "New",
+  "phase": "Step 2d",
+  "order": 366,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-A-111"
+  ]
+ },
+ {
+  "id": "US-A-116",
+  "type": "Story",
+  "parent": "FT-A-033",
+  "title": "Masked values with an audited reveal",
+  "story": "As a payroll admin, I want to reveal a masked bank account when needed so that I can work, with a record of each look.",
+  "acceptance": [
+   "Given a masked value, when I have reveal rights and click 'Show', then it is shown (YX-SEC-07).",
+   "Given the reveal, when done, then the audit records who, whose, which field and when (YX-SEC-09).",
+   "Given Aadhaar, when shown to anyone without employee.aadhaar.view, then only the last 4 show (YX-SEC-08)."
+  ],
+  "rules": [
+   "YX-SEC-09",
+   "YX-SEC-08",
+   "YX-SEC-07"
+  ],
+  "docs": [
+   "P02 §4.4",
+   "P02 §7"
+  ],
+  "state": "New",
+  "phase": "Step 2d",
+  "order": 367,
+  "points": 2,
+  "priority": 1,
+  "depends": [
+   "US-A-115"
+  ]
+ },
+ {
+  "id": "US-A-117",
+  "type": "Story",
+  "parent": "FT-A-033",
+  "title": "Role risk check and effective-access preview",
+  "story": "As a company admin, I want a warning before I save a risky role so that I don't give too much access by mistake.",
+  "acceptance": [
+   "Given a role with Confidential access over many people or prepare + approve, when saved, then warnings show with an effective-access preview (YX-SEC-18).",
+   "Given I save past the warnings, when confirmed, then it is audited and other admins are notified (YX-SEC-18).",
+   "Given hard limits (restricted areas, self-approval, Aadhaar audit, directory limits), when someone tries to grant past them, then it is not possible (YX-SEC-18).",
+   "Given a System Admin who grants themselves an HR role, when saved, then other admins are notified (YX-SEC-18)."
+  ],
+  "rules": [
+   "YX-SEC-18"
+  ],
+  "docs": [
+   "P02 Q5",
+   "P02 Q1",
+   "P02 §7"
+  ],
+  "state": "New",
+  "phase": "Step 2d",
+  "order": 368,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-A-112"
+  ]
+ },
+ {
+  "id": "US-A-118",
+  "type": "Story",
+  "parent": "FT-A-033",
+  "title": "Approval for bank, PAN and legal-name changes",
+  "story": "As an employee, I want to request a change of bank account, PAN or legal name with proof so that it is checked before payroll uses it.",
+  "acceptance": [
+   "Given a change to bank account, PAN, legal name or statutory address, when I submit it, then it needs approval with an old → new diff and proof (YX-SEC-13).",
+   "Given the change is approved, when it applies, then the old contact is notified (YX-SEC-13).",
+   "Given a new bank account, when approved, then payouts use it only after the cooling period (YX-SEC-13).",
+   "Given Personal fields like personal phone, when I edit them, then they save directly (YX-SEC-07)."
+  ],
+  "rules": [
+   "YX-SEC-13",
+   "YX-SEC-07"
+  ],
+  "docs": [
+   "P02 §4.5",
+   "M01 §3.1"
+  ],
+  "state": "New",
+  "phase": "Step 2d",
+  "order": 369,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-A-105",
+   "US-A-103"
+  ]
+ },
+ {
+  "id": "US-A-119",
+  "type": "Story",
+  "parent": "FT-A-033",
+  "title": "No self-approval anywhere",
+  "story": "As a company admin, I want nobody to approve their own request or role grant so that there is always a second pair of eyes.",
+  "acceptance": [
+   "Given any request, when the requester or a proxy who raised it tries to approve, then it is refused (YX-SEC-11, YX-SEC-27).",
+   "Given a role grant, when the grantee tries to approve it, then it is refused (YX-SEC-11).",
+   "Given a role grant with Confidential access, when made, then it is an approvable change (YX-SEC-11)."
+  ],
+  "rules": [
+   "YX-SEC-11",
+   "YX-SEC-27"
+  ],
+  "docs": [
+   "P02 §4.6"
+  ],
+  "state": "New",
+  "phase": "Step 2d",
+  "order": 370,
+  "points": 2,
+  "priority": 1,
+  "depends": [
+   "US-A-112"
+  ]
+ },
+ {
+  "id": "US-A-120",
+  "type": "Story",
+  "parent": "FT-A-033",
+  "title": "Exports and breakdowns hide small groups",
+  "story": "As an employee, I want salary breakdowns of tiny groups hidden so that my pay can't be worked out from a report.",
+  "acceptance": [
+   "Given a breakdown of Confidential or Special data with fewer than the threshold (default 5), when a viewer without individual access opens it, then it shows 'suppressed' (YX-SEC-14).",
+   "Given the threshold, when an admin sets it, then it must be between 3 and 10 (YX-SEC-14).",
+   "Given a viewer with individual-level access, when they open it, then the figures show (YX-SEC-14)."
+  ],
+  "rules": [
+   "YX-SEC-14"
+  ],
+  "docs": [
+   "P02 §4.4",
+   "P09 Q2"
+  ],
+  "state": "New",
+  "phase": "Step 2d",
+  "order": 371,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-A-115"
+  ]
+ },
+ {
+  "id": "FT-A-034",
+  "type": "Feature",
+  "parent": "EP-A-4",
+  "title": "2e · People and Settings screens wired",
+  "rules": [],
+  "docs": [
+   "APX-D",
+   "P01 §8",
+   "P02 §7"
+  ],
+  "state": "Active",
+  "phase": "Step 2e",
+  "order": 380,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 7c246268 · b090e49b · uncommitted people screens"
+ },
+ {
+  "id": "US-A-125",
+  "type": "Story",
+  "parent": "FT-A-034",
+  "title": "People screens wired: directory, org chart, team, probation, bulk changes",
+  "story": "As an HR admin, I want the People screens to use real data so that I can run day-to-day HR in YukthiX.",
+  "acceptance": [
+   "Given each People page, when opened, then it loads from the /api/v1/people routes (YX-SEC-05).",
+   "Given a user without the permission, when navigation renders, then the page is not shown and the API still refuses (YX-SEC-01).",
+   "Given each wired page, when scan-dead-buttons runs, then it finds 0 dead buttons."
+  ],
+  "rules": [
+   "YX-SEC-05",
+   "YX-SEC-01"
+  ],
+  "docs": [
+   "APX-D",
+   "M01 §6"
+  ],
+  "state": "Active",
+  "phase": "Step 2e",
+  "order": 381,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": "feat/yukthix-org · 7c246268 (history, changes) · uncommitted: people/directory, screens/workforce, orgchart.tsx, history-kit.tsx"
+ },
+ {
+  "id": "US-A-126",
+  "type": "Story",
+  "parent": "FT-A-034",
+  "title": "Employee record workspace screen",
+  "story": "As an HR admin, I want the employee record screen wired so that I can open any person and see every section I may see.",
+  "acceptance": [
+   "Given the record, when opened, then each section loads and hides what my role may not see (YX-SEC-07).",
+   "Given the Job section, when opened, then it shows the P06 timeline with a 'Change' action (YX-HIS-11).",
+   "Given masked fields, when I may reveal, then 'Show' is offered and audited (YX-SEC-09)."
+  ],
+  "rules": [
+   "YX-SEC-07",
+   "YX-HIS-11",
+   "YX-SEC-09"
+  ],
+  "docs": [
+   "M01 §3.1",
+   "P01 §8"
+  ],
+  "state": "New",
+  "phase": "Step 2e",
+  "order": 382,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-A-102",
+   "US-A-115"
+  ]
+ },
+ {
+  "id": "US-A-127",
+  "type": "Story",
+  "parent": "FT-A-034",
+  "title": "Settings › Roles & access screens",
+  "story": "As a company admin, I want screens to manage roles and grants so that I control access without support.",
+  "acceptance": [
+   "Given Roles & access, when opened, then templates, permissions by module and a field-class matrix show (YX-SEC-02).",
+   "Given a user's access tab, when opened, then grants with scope and dates and an effective-access preview show (YX-SEC-03, YX-SEC-18).",
+   "Given 'who has this role', when clicked, then holders are listed."
+  ],
+  "rules": [
+   "YX-SEC-02",
+   "YX-SEC-03",
+   "YX-SEC-18"
+  ],
+  "docs": [
+   "P02 §7"
+  ],
+  "state": "New",
+  "phase": "Step 2e",
+  "order": 383,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-A-111",
+   "US-A-117"
+  ]
+ },
+ {
+  "id": "US-A-128",
+  "type": "Story",
+  "parent": "FT-A-034",
+  "title": "Entity and period switcher on every aggregate screen",
+  "story": "As an HR admin in a group company, I want every summary to say which entities and period it covers so that I never read the wrong company's numbers.",
+  "acceptance": [
+   "Given the app shell, when it loads, then the entity switcher defaults to all entities I may see, never a hidden default (YX-ORG-13).",
+   "Given any aggregate screen, when shown, then it states its scope: entity · location · period (YX-ORG-13).",
+   "Given I narrow the scope, when I move to another aggregate screen, then the same scope applies and is shown (YX-ORG-13)."
+  ],
+  "rules": [
+   "YX-ORG-13"
+  ],
+  "docs": [
+   "P01 §8"
+  ],
+  "state": "New",
+  "phase": "Step 2e",
+  "order": 384,
+  "points": 3,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-129",
+  "type": "Story",
+  "parent": "FT-A-034",
+  "title": "Company chooses directory fields",
+  "story": "As a company admin, I want to choose which fields colleagues see in the directory so that it fits our culture and privacy.",
+  "acceptance": [
+   "Given directory settings, when opened, then only Public, Internal and allow-listed Personal fields can be chosen (YX-SEC-17).",
+   "Given Confidential or Special fields, when listed, then they cannot be selected (YX-SEC-17).",
+   "Given an employee hides their birthday or personal phone, when colleagues search, then it is hidden whatever the company setting (YX-SEC-17)."
+  ],
+  "rules": [
+   "YX-SEC-17"
+  ],
+  "docs": [
+   "P02 Q4"
+  ],
+  "state": "New",
+  "phase": "Step 2e",
+  "order": 385,
+  "points": 2,
+  "priority": 2,
+  "depends": [
+   "US-A-094"
+  ]
+ },
+ {
+  "id": "FT-A-035",
+  "type": "Feature",
+  "parent": "EP-A-4",
+  "title": "Step 2 independent security review",
+  "rules": [],
+  "docs": [
+   "P01",
+   "P02",
+   "P06"
+  ],
+  "state": "New",
+  "phase": "Step 2 review",
+  "order": 390,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-130",
+  "type": "Story",
+  "parent": "FT-A-035",
+  "title": "Independent security review of step 2 and fixes",
+  "story": "As the founder, I want an independent review of step 2 with every finding fixed so that the people core is safe before the PR.",
+  "acceptance": [
+   "Given the step 2 branch, when reviewed, then cross-company access, id guessing and field leaks are tested (YX-ORG-14, YX-SEC-05, YX-SEC-07).",
+   "Given each finding, when fixed, then a test proves it and the full test run is green.",
+   "Given the review is done, when the PR opens stacked on #130, then the report lists what was fixed and what was accepted."
+  ],
+  "rules": [
+   "YX-ORG-14",
+   "YX-SEC-05",
+   "YX-SEC-07"
+  ],
+  "docs": [
+   "BACKEND-ROADMAP.md"
+  ],
+  "state": "New",
+  "phase": "Step 2 review",
+  "order": 391,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-A-114",
+   "US-A-115",
+   "US-A-125"
+  ]
+ },
+ {
+  "id": "EP-A-5",
+  "type": "Epic",
+  "parent": "",
+  "title": "Later steps · rules from the step 0–2 docs",
+  "rules": [],
+  "docs": [
+   "P01",
+   "P02",
+   "P06",
+   "P12",
+   "M01"
+  ],
+  "state": "New",
+  "phase": "Step 3+",
+  "order": 400,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "FT-A-040",
+  "type": "Feature",
+  "parent": "EP-A-5",
+  "title": "Step 3 · YukthiX staff access and support",
+  "rules": [],
+  "docs": [
+   "P02 Q8",
+   "P12 Q7",
+   "P14"
+  ],
+  "state": "New",
+  "phase": "Step 3",
+  "order": 410,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-140",
+  "type": "Story",
+  "parent": "FT-A-040",
+  "title": "Support sessions the company approves",
+  "story": "As a company admin, I want YukthiX support to see our data only in a session we approve so that staff never have standing access.",
+  "acceptance": [
+   "Given a support request, when a company admin approves it, then a session opens for a fixed window (default 24 h, max 72 h) with a reason (YX-SEC-20).",
+   "Given a support session, when staff read data, then restricted areas are denied and Confidential/Special are masked by default (YX-SEC-20, YX-SEC-10).",
+   "Given the window ends, when time passes, then access ends on its own (YX-SEC-15).",
+   "Given every staff action, when done, then it is audited and listed for the company's admins (YX-SEC-20)."
+  ],
+  "rules": [
+   "YX-SEC-20",
+   "YX-SEC-15",
+   "YX-SEC-10"
+  ],
+  "docs": [
+   "P02 Q8",
+   "P01 §5 #2"
+  ],
+  "state": "New",
+  "phase": "Step 3",
+  "order": 411,
+  "points": 5,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-141",
+  "type": "Story",
+  "parent": "FT-A-040",
+  "title": "Staff elevation needs a second person",
+  "story": "As YukthiX staff, I want just-in-time production access approved by a colleague so that no one holds standing admin rights.",
+  "acceptance": [
+   "Given a staff member, when they ask for production elevation, then a second staff member must approve and it auto-expires (YX-SECOPS-08).",
+   "Given staff sign-in, when done, then only hardware security keys are accepted (YX-SECOPS-08).",
+   "Given staff actions, when a month ends, then they are listed for the monthly review (YX-SECOPS-08)."
+  ],
+  "rules": [
+   "YX-SECOPS-08"
+  ],
+  "docs": [
+   "P12 Q7"
+  ],
+  "state": "New",
+  "phase": "Step 3",
+  "order": 412,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-A-034"
+  ]
+ },
+ {
+  "id": "US-A-142",
+  "type": "Story",
+  "parent": "FT-A-040",
+  "title": "Recover a staff account that lost its keys",
+  "story": "As YukthiX staff, I want a safe recovery when I lose my security keys so that I am not locked out for good.",
+  "acceptance": [
+   "Given a staff member with no working key, when they ask for recovery, then two other staff must approve (YX-IAM-11, YX-SECOPS-08).",
+   "Given recovery, when completed, then old keys are revoked and the action is audited (YX-IAM-10).",
+   "Given staff enrolment, when done, then two keys are registered (YX-SECOPS-08)."
+  ],
+  "rules": [
+   "YX-IAM-11",
+   "YX-SECOPS-08",
+   "YX-IAM-10"
+  ],
+  "docs": [
+   "P12 Q7",
+   "deferred D-103"
+  ],
+  "state": "New",
+  "phase": "Step 3",
+  "order": 413,
+  "points": 3,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "US-A-143",
+  "type": "Story",
+  "parent": "FT-A-040",
+  "title": "Proctor-service grant per slot",
+  "story": "As a company admin, I want YukthiX proctors to see only the sessions they watch, only during the slot, so that proctoring doesn't open our data.",
+  "acceptance": [
+   "Given the proctoring add-on opt-in, when a proctor is assigned a slot, then a grant covers only that slot's sessions and time (YX-SEC-23).",
+   "Given the slot ends, when time passes, then the grant expires (YX-SEC-23).",
+   "Given MFA or confidentiality terms are missing, when a grant is due, then it is not issued (YX-SEC-23).",
+   "Given every view, when made, then it is audited and listed for the company's admins (YX-SEC-23)."
+  ],
+  "rules": [
+   "YX-SEC-23"
+  ],
+  "docs": [
+   "P02 §4.7",
+   "T04"
+  ],
+  "state": "New",
+  "phase": "Step 3",
+  "order": 414,
+  "points": 3,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "US-A-144",
+  "type": "Story",
+  "parent": "FT-A-040",
+  "title": "Shared SMS account moves to the platform console",
+  "story": "As YukthiX staff, I want the shared SMS account managed in the platform console so that companies only see their own accounts.",
+  "acceptance": [
+   "Given the platform console, when staff open channel accounts, then the shared SMS account is managed there (YX-NTF-12).",
+   "Given a company, when it opens Settings › SMS, then it sees usage of the shared account but not its secrets (YX-NTF-12).",
+   "Given the monthly cap, when counted, then the month follows each company's time zone (YX-NTF-12)."
+  ],
+  "rules": [
+   "YX-NTF-12"
+  ],
+  "docs": [
+   "BACKEND-ROADMAP.md step 3",
+   "deferred D-056"
+  ],
+  "state": "New",
+  "phase": "Step 3",
+  "order": 415,
+  "points": 3,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "FT-A-041",
+  "type": "Feature",
+  "parent": "EP-A-5",
+  "title": "Step 3b · Restricted areas",
+  "rules": [],
+  "docs": [
+   "P02 §4.3",
+   "M08"
+  ],
+  "state": "New",
+  "phase": "Step 3b",
+  "order": 510,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-145",
+  "type": "Story",
+  "parent": "FT-A-041",
+  "title": "Restricted cases visible only to their members",
+  "story": "As an IC member, I want POSH and other restricted cases visible only to appointed members so that complainants are protected.",
+  "acceptance": [
+   "Given a POSH, disciplinary, grievance, whistleblower or medical case, when someone not a member queries it, then the database returns no rows (YX-SEC-10).",
+   "Given a company admin or YukthiX support without membership, when they run a report, then the cases are not included (YX-SEC-10).",
+   "Given a restricted area, when shown, then it has a lock badge and member list (YX-SEC-10)."
+  ],
+  "rules": [
+   "YX-SEC-10"
+  ],
+  "docs": [
+   "P02 §4.3",
+   "P02 §7"
+  ],
+  "state": "New",
+  "phase": "Step 3b",
+  "order": 511,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-A-114"
+  ]
+ },
+ {
+  "id": "FT-A-042",
+  "type": "Feature",
+  "parent": "EP-A-5",
+  "title": "Step 4 · Host postings",
+  "rules": [],
+  "docs": [
+   "P01 §4.4",
+   "M01 §3.3"
+  ],
+  "state": "New",
+  "phase": "Step 4",
+  "order": 610,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-146",
+  "type": "Story",
+  "parent": "FT-A-042",
+  "title": "Deputation, secondment and client-site postings",
+  "story": "As an HR admin, I want to post someone to a host entity or client site so that their holidays, PT state and geofence follow where they work.",
+  "acceptance": [
+   "Given a posting on the assignment, when saved, then the employing entity does not change (YX-ORG-21, YX-EMP-07).",
+   "Given a host location, when set, then holiday calendar, PT state and geofence come from it for those dates (YX-ORG-21, YX-EMP-07).",
+   "Given a recharge flag, when set, then the person is listed in the monthly recharge report (YX-ORG-21, YX-EMP-07).",
+   "Given start and end, when made, then they are dated changes with an impact preview (YX-HIS-11)."
+  ],
+  "rules": [
+   "YX-ORG-21",
+   "YX-EMP-07",
+   "YX-HIS-11"
+  ],
+  "docs": [
+   "P01 E8",
+   "M01 §3.3"
+  ],
+  "state": "New",
+  "phase": "Step 4",
+  "order": 611,
+  "points": 5,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "FT-A-043",
+  "type": "Feature",
+  "parent": "EP-A-5",
+  "title": "Step 5 · Payroll-linked history and duties",
+  "rules": [],
+  "docs": [
+   "P06",
+   "P02",
+   "P01"
+  ],
+  "state": "New",
+  "phase": "Step 5",
+  "order": 710,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-150",
+  "type": "Story",
+  "parent": "FT-A-043",
+  "title": "Corrections into processed payroll",
+  "story": "As a payroll admin, I want past corrections that touch paid months to come to me and flow as arrears so that issued payslips never change.",
+  "acceptance": [
+   "Given a change reaching a processed payroll, when sent, then a Payroll Admin approval step is added (YX-HIS-12).",
+   "Given the correction is approved, when the next run happens, then arrears or recoveries are computed per month with the reason (YX-HIS-08, YX-ORG-10).",
+   "Given issued payslips, when a correction applies, then they are never altered (YX-HIS-08)."
+  ],
+  "rules": [
+   "YX-HIS-12",
+   "YX-HIS-08",
+   "YX-ORG-10"
+  ],
+  "docs": [
+   "P06 §4.5",
+   "P06 Q4",
+   "deferred D-034"
+  ],
+  "state": "New",
+  "phase": "Step 5",
+  "order": 711,
+  "points": 5,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-151",
+  "type": "Story",
+  "parent": "FT-A-043",
+  "title": "Payroll runs freeze their inputs",
+  "story": "As a payroll admin, I want each run to store the inputs it used so that any payslip can be reproduced later.",
+  "acceptance": [
+   "Given a payroll run, when computed, then the as-on result and segments per employee are stored with the rule-pack version (YX-HIS-09).",
+   "Given a later correction, when a past payslip is reproduced, then it matches the issued one (YX-HIS-09).",
+   "Given the frozen inputs, when an auditor opens a payslip, then the rule-pack version used is shown (YX-HIS-09)."
+  ],
+  "rules": [
+   "YX-HIS-09"
+  ],
+  "docs": [
+   "P06 §4.7"
+  ],
+  "state": "New",
+  "phase": "Step 5",
+  "order": 712,
+  "points": 3,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-152",
+  "type": "Story",
+  "parent": "FT-A-043",
+  "title": "Mid-period change policy",
+  "story": "As a payroll admin, I want to choose how a mid-month change is split so that pay follows our policy.",
+  "acceptance": [
+   "Given a change type, when the company picks segments, cut-off day N or next month + arrears, then payroll follows it (YX-HIS-13).",
+   "Given statutory items, when computed, then they use the legal basis whatever the policy (YX-HIS-13).",
+   "Given a salary revision on 15 Sep with segments, when September runs, then two segments are paid (YX-HIS-13)."
+  ],
+  "rules": [
+   "YX-HIS-13"
+  ],
+  "docs": [
+   "P06 §4.6",
+   "P06 Q6"
+  ],
+  "state": "New",
+  "phase": "Step 5",
+  "order": 713,
+  "points": 3,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-153",
+  "type": "Story",
+  "parent": "FT-A-043",
+  "title": "Statutory defaults per employment type",
+  "story": "As a payroll admin, I want PF, ESI, PT, LWF, bonus and gratuity defaults to come from the employment type so that statutory treatment is right from day one.",
+  "acceptance": [
+   "Given an employment-type category, when an employee joins, then default applicability comes from P07 data, never code (YX-ORG-20).",
+   "Given a default the law leaves open, when the company overrides it, then it is allowed and stored as a dated flag (YX-ORG-20).",
+   "Given a statute the law makes mandatory or excluded, when someone overrides it, then it is blocked (YX-ORG-20)."
+  ],
+  "rules": [
+   "YX-ORG-20"
+  ],
+  "docs": [
+   "P01 §4.3",
+   "P07",
+   "deferred D-023"
+  ],
+  "state": "New",
+  "phase": "Step 5",
+  "order": 714,
+  "points": 5,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-154",
+  "type": "Story",
+  "parent": "FT-A-043",
+  "title": "Payroll maker and checker are different people",
+  "story": "As a company admin, I want payroll runs, bank files and statutory payments approved by someone other than the preparer so that fraud is hard.",
+  "acceptance": [
+   "Given two or more approvers for an entity, when the preparer tries to approve, then the button is disabled with a reason (YX-SEC-12).",
+   "Given only one eligible user, when they self-approve, then a reason is required and the System Admin is notified (YX-SEC-12).",
+   "Given the approval, when done, then step-up is asked (YX-IAM-02)."
+  ],
+  "rules": [
+   "YX-SEC-12",
+   "YX-IAM-02"
+  ],
+  "docs": [
+   "P02 Q6"
+  ],
+  "state": "New",
+  "phase": "Step 5",
+  "order": 715,
+  "points": 3,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-155",
+  "type": "Story",
+  "parent": "FT-A-043",
+  "title": "Fast bank fix after a returned salary",
+  "story": "As a payroll admin, I want a returned salary re-paid quickly to a corrected account so that the employee isn't left without pay.",
+  "acceptance": [
+   "Given a returned payment, when a new account is approved by a checker other than the maker and a penny drop succeeds, then the cooling period is waived (YX-SEC-25).",
+   "Given the fast fix, when applied, then the employee and old contact are still notified (YX-SEC-25).",
+   "Given the maker approves their own entry or the penny drop fails, when tried, then the normal cooling period applies (YX-SEC-25, YX-SEC-13)."
+  ],
+  "rules": [
+   "YX-SEC-25",
+   "YX-SEC-13"
+  ],
+  "docs": [
+   "P02 §4.5"
+  ],
+  "state": "New",
+  "phase": "Step 5",
+  "order": 716,
+  "points": 2,
+  "priority": 2,
+  "depends": [
+   "US-A-118"
+  ]
+ },
+ {
+  "id": "US-A-156",
+  "type": "Story",
+  "parent": "FT-A-043",
+  "title": "Employees see only their own rows in statutory registers",
+  "story": "As an employee, I want PF, ESI and tax registers to show only my row so that colleagues' data stays private.",
+  "acceptance": [
+   "Given an employee-role user, when they open a PF or ESI register, then only their own row shows (YX-SEC-16).",
+   "Given an HR Executive, when they open it, then identifiers are masked (YX-SEC-16, YX-SEC-07).",
+   "Given an employee guesses another row id in the API, when they call it, then nothing is returned (YX-SEC-16, YX-SEC-05)."
+  ],
+  "rules": [
+   "YX-SEC-16",
+   "YX-SEC-07",
+   "YX-SEC-05"
+  ],
+  "docs": [
+   "P02 §9"
+  ],
+  "state": "New",
+  "phase": "Step 5",
+  "order": 717,
+  "points": 2,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-157",
+  "type": "Story",
+  "parent": "FT-A-043",
+  "title": "Inter-entity transfer continuity checklist",
+  "story": "As a payroll admin, I want a checklist on every inter-entity transfer so that UAN, ESI, Form 12B, loans and leave move correctly.",
+  "acceptance": [
+   "Given an inter-entity transfer, when approved, then a checklist opens: UAN, ESI IP, Form 12B, declarations, loans, leave ledger, gratuity (YX-EMP-08).",
+   "Given open items, when payroll pre-flight runs, then they are shown (YX-EMP-08).",
+   "Given gratuity paid at transfer, when final exit comes, then the exemption already used is carried so the lifetime cap holds (YX-EMP-08)."
+  ],
+  "rules": [
+   "YX-EMP-08"
+  ],
+  "docs": [
+   "M01 §3.3"
+  ],
+  "state": "New",
+  "phase": "Step 5",
+  "order": 718,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-A-106"
+  ]
+ },
+ {
+  "id": "FT-A-044",
+  "type": "Feature",
+  "parent": "EP-A-5",
+  "title": "Before the pilot · security programme",
+  "rules": [],
+  "docs": [
+   "P12 §5",
+   "P12 §8"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 760,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-160",
+  "type": "Story",
+  "parent": "FT-A-044",
+  "title": "Per-company data keys and encryption",
+  "story": "As a company admin, I want our Confidential and Special data encrypted with our own data key so that a leak of one company's key never exposes others.",
+  "acceptance": [
+   "Given Confidential and Special fields, when stored, then they use envelope encryption with a per-company key from a cloud KMS (YX-SECOPS-01).",
+   "Given keys, when a year passes, then they are rotated (YX-SECOPS-01).",
+   "Given any connection, when made, then TLS 1.2+ with HSTS is used (YX-SECOPS-01)."
+  ],
+  "rules": [
+   "YX-SECOPS-01"
+  ],
+  "docs": [
+   "P12 Q3"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 761,
+  "points": 8,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-161",
+  "type": "Story",
+  "parent": "FT-A-044",
+  "title": "Bring your own key (BYOK)",
+  "story": "As a company admin, I want to connect our own key in Azure, AWS or Google so that we control access to our data.",
+  "acceptance": [
+   "Given a customer-managed key, when connected, then YukthiX gets wrap / unwrap only and data keys are wrapped by it (YX-SECOPS-11).",
+   "Given connecting or rotating, when started, then the screen explains that revoking makes data unreadable and asks for typed confirmation (YX-SECOPS-11).",
+   "Given key health checks, when access fails, then admins are alerted; every key operation is logged (YX-SECOPS-11)."
+  ],
+  "rules": [
+   "YX-SECOPS-11"
+  ],
+  "docs": [
+   "P12 Q3"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 762,
+  "points": 5,
+  "priority": 2,
+  "depends": [
+   "US-A-160"
+  ]
+ },
+ {
+  "id": "US-A-162",
+  "type": "Story",
+  "parent": "FT-A-044",
+  "title": "Deleting a company destroys its keys",
+  "story": "As a company admin, I want our data unreadable after we leave so that old backups can't expose us.",
+  "acceptance": [
+   "Given a deleted company, when the grace period ends, then its data keys are destroyed and recorded (YX-SECOPS-02).",
+   "Given an old backup, when restored, then the company's Special fields cannot be decrypted (YX-SECOPS-02).",
+   "Given the key destruction, when done, then a crypto-shredding record is kept with the date (YX-SECOPS-02)."
+  ],
+  "rules": [
+   "YX-SECOPS-02"
+  ],
+  "docs": [
+   "P12 §5",
+   "P14"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 763,
+  "points": 3,
+  "priority": 1,
+  "depends": [
+   "US-A-160"
+  ]
+ },
+ {
+  "id": "US-A-163",
+  "type": "Story",
+  "parent": "FT-A-044",
+  "title": "Secrets in a secrets manager",
+  "story": "As YukthiX staff, I want all secrets in a secrets manager with rotation so that no secret sits in code or images.",
+  "acceptance": [
+   "Given database, API and partner credentials, when deployed, then they come only from the secrets manager (YX-SECOPS-03).",
+   "Given a secret in code, when CI runs gitleaks, then the build fails (YX-SECOPS-03).",
+   "Given the rotation schedule, when due, then secrets are rotated (YX-SECOPS-03)."
+  ],
+  "rules": [
+   "YX-SECOPS-03"
+  ],
+  "docs": [
+   "P12 §5"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 764,
+  "points": 3,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-164",
+  "type": "Story",
+  "parent": "FT-A-044",
+  "title": "Secure-development gates in CI",
+  "story": "As YukthiX staff, I want CI to block releases with serious findings so that known holes never ship.",
+  "acceptance": [
+   "Given CI, when it runs, then dependency scan, SAST, secret scan, container and IaC scans run and an SBOM is made per release (YX-SECOPS-04).",
+   "Given staging, when a release is prepared, then DAST runs (YX-SECOPS-04).",
+   "Given an open Critical or High finding, when a release is tried, then it is blocked unless formally risk-accepted (YX-SECOPS-04)."
+  ],
+  "rules": [
+   "YX-SECOPS-04"
+  ],
+  "docs": [
+   "P12 Q5"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 765,
+  "points": 5,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-165",
+  "type": "Story",
+  "parent": "FT-A-044",
+  "title": "Vulnerability tracker and pen test",
+  "story": "As YukthiX staff, I want every finding tracked against an SLA and a pen test before the pilot so that buyers can trust us.",
+  "acceptance": [
+   "Given a finding, when triaged, then its due date follows the SLA: Critical 72 h, High 14 d, Medium 45 d, Low 90 d (YX-SECOPS-05).",
+   "Given the payroll pilot, when it is near, then an independent pen test is done and its findings tracked (YX-SECOPS-06).",
+   "Given a major architecture change, when it ships, then a new pen test is scheduled (YX-SECOPS-06)."
+  ],
+  "rules": [
+   "YX-SECOPS-05",
+   "YX-SECOPS-06"
+  ],
+  "docs": [
+   "P12 Q5"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 766,
+  "points": 3,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-166",
+  "type": "Story",
+  "parent": "FT-A-044",
+  "title": "Incident response and breach notices",
+  "story": "As a company admin, I want YukthiX to tell us fast about any incident that affects us so that we can meet our own duties.",
+  "acceptance": [
+   "Given a written plan with severities and roles, when an incident is found, then CERT-In is told within 6 hours where reportable (YX-SECOPS-07).",
+   "Given an affected company, when the incident is confirmed, then it is told within 24 hours and updated until closed (YX-SECOPS-07).",
+   "Given every incident, when closed, then a post-mortem is written (YX-SECOPS-07)."
+  ],
+  "rules": [
+   "YX-SECOPS-07"
+  ],
+  "docs": [
+   "P12 Q6"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 767,
+  "points": 3,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-167",
+  "type": "Story",
+  "parent": "FT-A-044",
+  "title": "One-click breach containment",
+  "story": "As a company owner, I want one 'contain' action during a breach so that every session, key and payout is frozen at once.",
+  "acceptance": [
+   "Given 'contain' with a reason and step-up, when used, then sessions, API keys, OAuth and partner grants are revoked and MFA is forced (YX-SECOPS-12).",
+   "Given containment, when someone changes a bank account, runs a bulk export or releases a payout, then it is blocked with a clear message and a banner shows (YX-SECOPS-12).",
+   "Given lifting containment, when done, then it needs a second person and both actions are audited (YX-SECOPS-12).",
+   "Given containment starts, when saved, then the DPDP / CERT-In clock record opens (YX-SECOPS-07)."
+  ],
+  "rules": [
+   "YX-SECOPS-12",
+   "YX-SECOPS-07"
+  ],
+  "docs": [
+   "P12 §8b"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 768,
+  "points": 5,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "US-A-168",
+  "type": "Story",
+  "parent": "FT-A-044",
+  "title": "Sub-processor checks and change notice",
+  "story": "As a company admin, I want to know which sub-processors handle our data and get notice of changes so that we can object in time.",
+  "acceptance": [
+   "Given a new sub-processor, when onboarded, then it is security-assessed first and yearly after (YX-SECOPS-09).",
+   "Given the sub-processor list, when published, then it is public (YX-SECOPS-09).",
+   "Given a change, when planned, then companies are told 30 days ahead (YX-SECOPS-09)."
+  ],
+  "rules": [
+   "YX-SECOPS-09"
+  ],
+  "docs": [
+   "P12 §5",
+   "APX-G"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 769,
+  "points": 2,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "US-A-169",
+  "type": "Story",
+  "parent": "FT-A-044",
+  "title": "ISO 27001 controls with continuous evidence",
+  "story": "As the founder, I want controls mapped once and evidence collected all the time so that ISO 27001 and SOC 2 audits are easy.",
+  "acceptance": [
+   "Given the control set, when mapped, then each control points to its evidence source (YX-SECOPS-10).",
+   "Given the compliance tool, when it runs, then evidence is collected continuously, not per audit (YX-SECOPS-10).",
+   "Given public launch, when reached, then ISO 27001 certification is in place (YX-SECOPS-10)."
+  ],
+  "rules": [
+   "YX-SECOPS-10"
+  ],
+  "docs": [
+   "P12 Q4"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 770,
+  "points": 3,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "US-A-170",
+  "type": "Story",
+  "parent": "FT-A-044",
+  "title": "SCIM provisioning and fast deprovisioning",
+  "story": "As a company admin, I want our identity provider to create and disable users so that leavers lose access within minutes.",
+  "acceptance": [
+   "Given a SCIM token for Entra, Okta or Google, when users sync, then they are created and updated (YX-IAM-05).",
+   "Given the IdP disables a user, when SCIM sends active=false, then all their sessions end within 5 minutes (YX-IAM-05).",
+   "Given a linked employee, when disabled, then HR's exit checklist is flagged, not auto-exited (YX-IAM-05).",
+   "Given a provider is disabled, when saved, then sessions opened through it end (YX-IAM-05)."
+  ],
+  "rules": [
+   "YX-IAM-05"
+  ],
+  "docs": [
+   "P12 Q2",
+   "deferred D-085",
+   "deferred D-086"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 771,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-A-028"
+  ]
+ },
+ {
+  "id": "FT-A-045",
+  "type": "Feature",
+  "parent": "EP-A-5",
+  "title": "Privacy programme · DPDP readiness",
+  "rules": [],
+  "docs": [
+   "P02 §6",
+   "APX-G"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 780,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-175",
+  "type": "Story",
+  "parent": "FT-A-045",
+  "title": "Versioned legal documents and acceptances",
+  "story": "As a company admin, I want terms and notices versioned with every acceptance recorded so that we can prove consent.",
+  "acceptance": [
+   "Given a legal document, when published, then it is versioned per locale (YX-SEC-28).",
+   "Given an acceptance or withdrawal, when made, then an append-only row records who, version, when, IP and device (YX-SEC-28).",
+   "Given a material change, when published, then users must re-accept before continued use (YX-SEC-28).",
+   "Given privacy.notice.publish, when a user lacks it, then they cannot publish the company notice (YX-SEC-28)."
+  ],
+  "rules": [
+   "YX-SEC-28"
+  ],
+  "docs": [
+   "P02 §6",
+   "APX-G §3"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 781,
+  "points": 3,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-176",
+  "type": "Story",
+  "parent": "FT-A-045",
+  "title": "Privacy officer with a public contact",
+  "story": "As a company admin, I want to name our privacy officer so that people know whom to contact.",
+  "acceptance": [
+   "Given no privacy-officer contact, when someone publishes a privacy notice, then it is refused (YX-SEC-29).",
+   "Given the contact, when a notice is published, then it is printed in the notice and the contact page (YX-SEC-29).",
+   "Given the Privacy officer role template, when granted, then it holds the privacy request, register and breach permissions (YX-SEC-29)."
+  ],
+  "rules": [
+   "YX-SEC-29"
+  ],
+  "docs": [
+   "P02 §6.1"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 782,
+  "points": 2,
+  "priority": 1,
+  "depends": [
+   "US-A-175"
+  ]
+ },
+ {
+  "id": "US-A-177",
+  "type": "Story",
+  "parent": "FT-A-045",
+  "title": "Data-subject request tracker",
+  "story": "As a privacy officer, I want every access, correction and erasure request tracked with a due date so that we always answer in time.",
+  "acceptance": [
+   "Given a request, when logged, then identity is verified and an SLA due date within the legal maximum is set (YX-SEC-30).",
+   "Given the due date nears, when not closed, then reminders and escalation are sent (YX-SEC-30).",
+   "Given an erasure, when done, then data not under retention is deleted or anonymised and the reply lists what was kept and why (YX-SEC-30)."
+  ],
+  "rules": [
+   "YX-SEC-30"
+  ],
+  "docs": [
+   "P02 §6.1"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 783,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-A-176"
+  ]
+ },
+ {
+  "id": "US-A-178",
+  "type": "Story",
+  "parent": "FT-A-045",
+  "title": "Requests and consent per person across all roles",
+  "story": "As an ex-employee who is now a candidate, I want one access request to cover everything about me so that I don't ask each part separately.",
+  "acceptance": [
+   "Given an access request, when run, then the export covers every role of the person and lists them (YX-SEC-36).",
+   "Given an erasure, when decided, then each role is checked against its own retention; kept records keep the name and PAN they need (YX-SEC-36).",
+   "Given a consent withdrawal, when made, then it applies to every role using that purpose (YX-SEC-36)."
+  ],
+  "rules": [
+   "YX-SEC-36"
+  ],
+  "docs": [
+   "P02 §5",
+   "P01 §4.5a"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 784,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-A-177",
+   "US-A-090"
+  ]
+ },
+ {
+  "id": "US-A-179",
+  "type": "Story",
+  "parent": "FT-A-045",
+  "title": "DPIA register, record of processing and retention schedule",
+  "story": "As a privacy officer, I want registers that fill themselves from enabled features so that we stay ready for the regulator.",
+  "acceptance": [
+   "Given a higher-risk feature, when enabled, then the user is prompted to adopt a starter DPIA (YX-SEC-31).",
+   "Given enabled modules, when the record of processing is opened, then it is seeded and exportable (YX-SEC-31).",
+   "Given retention values, when edited, then they stay within the legal minimum and range and the public page is regenerated (YX-SEC-31)."
+  ],
+  "rules": [
+   "YX-SEC-31"
+  ],
+  "docs": [
+   "P02 §6.1"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 785,
+  "points": 5,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "US-A-180",
+  "type": "Story",
+  "parent": "FT-A-045",
+  "title": "Breach records with legal clocks",
+  "story": "As a privacy officer, I want a breach record to start the legal clocks so that we never miss a deadline.",
+  "acceptance": [
+   "Given a breach recorded at 10:00, when saved, then Board and affected-person notices are due at once and a detailed Board report within 72 h (YX-SEC-32).",
+   "Given a YukthiX incident affecting the company, when marked, then a linked breach record is created in the company (YX-SEC-32).",
+   "Given GDPR applies, when recorded, then the 72 h authority clock is added (YX-SEC-32)."
+  ],
+  "rules": [
+   "YX-SEC-32"
+  ],
+  "docs": [
+   "P02 §6.1"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 786,
+  "points": 3,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-181",
+  "type": "Story",
+  "parent": "FT-A-045",
+  "title": "DPDP Rules dates and consent-manager adapter",
+  "story": "As a privacy officer, I want each DPDP duty to show the date it applies from so that we know what is live.",
+  "acceptance": [
+   "Given DPDP milestones, when stored, then they are dated rule data (YX-SEC-34).",
+   "Given Nov 2026, when it arrives, then the consent-manager adapter can accept and report consents (YX-SEC-34).",
+   "Given 13 May 2027, when it arrives, then every main duty is live (YX-SEC-34)."
+  ],
+  "rules": [
+   "YX-SEC-34"
+  ],
+  "docs": [
+   "P02 §6.2"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 787,
+  "points": 5,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-182",
+  "type": "Story",
+  "parent": "FT-A-045",
+  "title": "Plain-language notices, one-year logs and erasure notice",
+  "story": "As an employee, I want a privacy notice that lists each purpose in plain words so that I understand how my data is used.",
+  "acceptance": [
+   "Given a notice, when generated, then it is itemised per purpose with data items, withdrawal, rights and complaint route (YX-SEC-35).",
+   "Given processing and traffic logs, when kept, then they stay at least 1 year (YX-SEC-35).",
+   "Given an inactive-user erasure under the Rules' schedule, when due, then a 48-hour notice is sent first (YX-SEC-35)."
+  ],
+  "rules": [
+   "YX-SEC-35"
+  ],
+  "docs": [
+   "P02 §6.2"
+  ],
+  "state": "New",
+  "phase": "Before pilot",
+  "order": 788,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-A-175"
+  ]
+ },
+ {
+  "id": "FT-A-046",
+  "type": "Feature",
+  "parent": "EP-A-5",
+  "title": "Step 6+ · Lifecycle, modules and global readiness",
+  "rules": [],
+  "docs": [
+   "P01",
+   "P02",
+   "P06",
+   "M01"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 810,
+  "priority": 1,
+  "depends": []
+ },
+ {
+  "id": "US-A-185",
+  "type": "Story",
+  "parent": "FT-A-046",
+  "title": "Rehire on the same employee record",
+  "story": "As an HR admin, I want a returning employee to get a new employment on their old record so that history and PAN stay one.",
+  "acceptance": [
+   "Given an ex-employee, when rehired, then a new employment with rehire_of is opened on the existing record (YX-ORG-19).",
+   "Given the five rehire options, when the form opens, then company defaults are pre-filled and can be changed (YX-ORG-19).",
+   "Given the options, when previewed, then the impact shows before confirmation (YX-ORG-19)."
+  ],
+  "rules": [
+   "YX-ORG-19"
+  ],
+  "docs": [
+   "P01 D3"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 811,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-A-106"
+  ]
+ },
+ {
+  "id": "US-A-186",
+  "type": "Story",
+  "parent": "FT-A-046",
+  "title": "Contract end, extension, conversion and retirement changes",
+  "story": "As an HR admin, I want contract ends and retirement extensions as dated changes so that people never fall off by mistake.",
+  "acceptance": [
+   "Given fixed-term, intern or apprentice employment, when created, then contract_end_on is required (YX-ORG-20).",
+   "Given an extension or conversion to permanent, when approved, then it is a dated change that moves the end date or type (YX-HIS-15).",
+   "Given a conversion, when effective, then the new type's statutory defaults apply from that date (YX-HIS-15, YX-ORG-20).",
+   "Given retirement extension or re-employment, when made, then it is a dated change (YX-HIS-15)."
+  ],
+  "rules": [
+   "YX-HIS-15",
+   "YX-ORG-20"
+  ],
+  "docs": [
+   "P06 §5",
+   "P01 E6"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 812,
+  "points": 3,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "US-A-187",
+  "type": "Story",
+  "parent": "FT-A-046",
+  "title": "Long absence as a dated status",
+  "story": "As an HR admin, I want sabbatical, maternity and long leave as a status with an expected return so that pay and tasks follow.",
+  "acceptance": [
+   "Given a long absence, when started, then a dated status with expected return is created by a change (YX-EMP-06, YX-HIS-14).",
+   "Given the return, when recorded, then return-to-work tasks fire (YX-EMP-06).",
+   "Given the impact preview, when shown, then it lists expected attendance, accrual pause and zero-wage months (YX-HIS-14)."
+  ],
+  "rules": [
+   "YX-EMP-06",
+   "YX-HIS-14"
+  ],
+  "docs": [
+   "M01 §3.3",
+   "P06 §4.1"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 813,
+  "points": 3,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "US-A-188",
+  "type": "Story",
+  "parent": "FT-A-046",
+  "title": "Bulk restructure: merge or close an entity",
+  "story": "As an HR admin, I want one wizard to move everyone when we merge or close an entity so that a restructure is one approval.",
+  "acceptance": [
+   "Given a merge or close, when the wizard runs, then all open employments move with YX-ORG-17 options as editable defaults (YX-ORG-22, YX-EMP-07).",
+   "Given the batch, when previewed, then there is one impact preview and one approval (YX-ORG-22).",
+   "Given the closing entity, when it still has an open employment or an unlocked last payroll, then it cannot be closed (YX-EMP-07, YX-ORG-04)."
+  ],
+  "rules": [
+   "YX-ORG-22",
+   "YX-EMP-07",
+   "YX-ORG-04",
+   "YX-ORG-17"
+  ],
+  "docs": [
+   "P01 E8",
+   "M01 §3.3"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 814,
+  "points": 5,
+  "priority": 3,
+  "depends": [
+   "US-A-106"
+  ]
+ },
+ {
+  "id": "US-A-189",
+  "type": "Story",
+  "parent": "FT-A-046",
+  "title": "Annual health check-up",
+  "story": "As an HR admin, I want eligible workers listed each year for a free health check-up so that we follow the OSH Code.",
+  "acceptance": [
+   "Given P07 IN.OSH rules, when the yearly job runs, then eligible workers per establishment are listed and get a scheduling task (YX-EMP-13).",
+   "Given outcomes and reports, when stored, then they are Special class; the manager sees only scheduled / done (YX-EMP-13).",
+   "Given the check-up, when paid, then nothing is charged to the employee (YX-EMP-13)."
+  ],
+  "rules": [
+   "YX-EMP-13"
+  ],
+  "docs": [
+   "M01 §3.1"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 815,
+  "points": 3,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "US-A-190",
+  "type": "Story",
+  "parent": "FT-A-046",
+  "title": "External login catalogue",
+  "story": "As a company admin, I want every outside login (candidate, alumni, trainer, vendor) to follow one catalogue so that none gets more than its own records.",
+  "acceptance": [
+   "Given an external login, when created, then it uses a catalogued template with sign-in method, assurance, data classes, portal and end trigger (YX-SEC-33).",
+   "Given its grant, when checked, then it covers named records only and is not a billed seat (YX-SEC-21).",
+   "Given the end trigger, when reached, then the login expires; every sign-in and view is audited (YX-SEC-21).",
+   "Given templates reaching others' Special data, when used, then AAL2 is required (YX-SEC-33)."
+  ],
+  "rules": [
+   "YX-SEC-21",
+   "YX-SEC-33"
+  ],
+  "docs": [
+   "P02 §4.7"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 816,
+  "points": 5,
+  "priority": 1,
+  "depends": [
+   "US-A-021"
+  ]
+ },
+ {
+  "id": "US-A-191",
+  "type": "Story",
+  "parent": "FT-A-046",
+  "title": "API keys as service grants",
+  "story": "As a company admin, I want each API key limited to a scope and field classes so that an integration reads only what it needs.",
+  "acceptance": [
+   "Given a key, when created, then it has a scope and an explicit list of allowed field classes (YX-SEC-22).",
+   "Given a field class not listed, when the API answers, then that field is redacted (YX-SEC-22).",
+   "Given each call, when made, then it is audited under the key's name; keys expire and can be revoked (YX-SEC-22)."
+  ],
+  "rules": [
+   "YX-SEC-22"
+  ],
+  "docs": [
+   "P02 §4.8",
+   "P11"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 817,
+  "points": 3,
+  "priority": 2,
+  "depends": [
+   "US-A-115"
+  ]
+ },
+ {
+  "id": "US-A-192",
+  "type": "Story",
+  "parent": "FT-A-046",
+  "title": "Test takers see only their own attempts",
+  "story": "As an employee taking a training test, I want only me to see my attempts and results so that my scores stay private.",
+  "acceptance": [
+   "Given a training or skills test, when I open results, then I see only my own attempts (YX-SEC-26).",
+   "Given evaluators and L&D, when they open attempts, then only those in their P02 scope show (YX-SEC-26).",
+   "Given test results, when classed, then they are Confidential (YX-SEC-26)."
+  ],
+  "rules": [
+   "YX-SEC-26"
+  ],
+  "docs": [
+   "P02 §4.3"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 818,
+  "points": 2,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "US-A-193",
+  "type": "Story",
+  "parent": "FT-A-046",
+  "title": "New manager reads the current review cycle",
+  "story": "As a new manager mid-cycle, I want to read my new report's current-cycle reviews and goals so that I can rate them fairly.",
+  "acceptance": [
+   "Given a manager change during an open cycle, when the new manager opens the review, then the whole cycle's review, goals, check-ins and PIP are readable (YX-SEC-24).",
+   "Given the old manager's private 1-on-1 notes, when the new manager looks, then they are not shown (YX-SEC-24).",
+   "Given the cycle closes, when the next cycle starts, then normal period-bound visibility applies again (YX-SEC-06)."
+  ],
+  "rules": [
+   "YX-SEC-24",
+   "YX-SEC-06"
+  ],
+  "docs": [
+   "P02 §4.3",
+   "M06"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 819,
+  "points": 2,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "US-A-194",
+  "type": "Story",
+  "parent": "FT-A-046",
+  "title": "Positions",
+  "story": "As an HR admin, I want positions separate from people so that vacancies and budgets are visible.",
+  "acceptance": [
+   "Given position-based mode, when an assignment is saved, then it must reference a position of the same entity (YX-EMP-09).",
+   "Given a position, when incumbents' FTE would exceed its FTE, then it is refused (YX-EMP-09).",
+   "Given job-based mode (starter), when used, then positions are optional and nothing is blocked (YX-EMP-09).",
+   "Given a vacant position, when 'Open requisition' is clicked, then an M10 requisition is linked to it (YX-EMP-09)."
+  ],
+  "rules": [
+   "YX-EMP-09"
+  ],
+  "docs": [
+   "M01 §3.9",
+   "deferred D-024"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 820,
+  "points": 8,
+  "priority": 2,
+  "depends": []
+ },
+ {
+  "id": "US-A-195",
+  "type": "Story",
+  "parent": "FT-A-046",
+  "title": "Workforce-planning scenarios",
+  "story": "As an HR head, I want to try hiring and cost scenarios without touching live data so that we can plan the year.",
+  "acceptance": [
+   "Given a scenario, when edited, then live data never changes (YX-EMP-10).",
+   "Given the forecast, when computed, then it uses headcount, cost, attrition rate per department and backfill lag (YX-EMP-10).",
+   "Given an approved scenario, when approved, then it creates positions or plan lines; scenarios are Confidential (YX-EMP-10)."
+  ],
+  "rules": [
+   "YX-EMP-10"
+  ],
+  "docs": [
+   "M01 §3.9"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 821,
+  "points": 8,
+  "priority": 3,
+  "depends": [
+   "US-A-194"
+  ]
+ },
+ {
+  "id": "US-A-196",
+  "type": "Story",
+  "parent": "FT-A-046",
+  "title": "Show career paths and IDPs from M06 on the record",
+  "story": "As an employee, I want to see my career path and development plan from my profile so that I know my next step.",
+  "acceptance": [
+   "Given Me › Career, when opened, then it shows M06 career paths and IDP without a copy in M01 (YX-EMP-11).",
+   "Given workforce scenarios, when computed, then they use only the aggregate attrition rate, never an individual risk band (YX-EMP-12).",
+   "Given the succession view, when opened, then the IDP and talent-pool links come from M06 (YX-EMP-11)."
+  ],
+  "rules": [
+   "YX-EMP-11",
+   "YX-EMP-12"
+  ],
+  "docs": [
+   "M01 §3.9",
+   "M06"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 822,
+  "points": 2,
+  "priority": 3,
+  "depends": []
+ },
+ {
+  "id": "US-A-197",
+  "type": "Story",
+  "parent": "FT-A-046",
+  "title": "Data residency per region and region moves",
+  "story": "As a company admin in the UAE, I want our entity's data kept in-country so that we follow local law.",
+  "acceptance": [
+   "Given an entity's data region, when data is stored, then records, files, backups and indexes stay there (YX-SEC-37).",
+   "Given a multi-region company, when the home region reads another region, then only the directory card is copied; Special data never leaves (YX-SEC-37).",
+   "Given a region move, when requested, then it needs a legal basis, YukthiX approval, updated DPA and notices, and gives a deletion certificate (YX-SEC-38)."
+  ],
+  "rules": [
+   "YX-SEC-37",
+   "YX-SEC-38"
+  ],
+  "docs": [
+   "P02 §5",
+   "P21"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 1400,
+  "points": 8,
+  "priority": 3,
+  "depends": []
+ },
+ {
+  "id": "US-A-198",
+  "type": "Story",
+  "parent": "FT-A-046",
+  "title": "IP allow-lists may include the mobile app and portals",
+  "story": "As a company admin, I want to choose whether our IP allow-lists also apply to the mobile app and external portals so that strict sites can lock everything down.",
+  "acceptance": [
+   "Given the option off (default), when the mobile app or a portal signs in, then the allow-list is not applied (YX-IAM-09).",
+   "Given the option on, when a mobile or portal request comes from outside the list, then it is refused (YX-IAM-09).",
+   "Given the setting changes, when saved, then it needs step-up and is logged (YX-IAM-02, YX-IAM-10)."
+  ],
+  "rules": [
+   "YX-IAM-09",
+   "YX-IAM-02",
+   "YX-IAM-10"
+  ],
+  "docs": [
+   "P12 §5",
+   "deferred D-069"
+  ],
+  "state": "New",
+  "phase": "Step 6+",
+  "order": 1450,
+  "points": 2,
+  "priority": 3,
+  "depends": []
+ }
+]

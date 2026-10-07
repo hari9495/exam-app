@@ -119,7 +119,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                     ? results?.find((row) => row.attemptId === flag.counterpartAttemptId)
                     : undefined;
                 return (
-                  <li key={index} className="rounded border border-gray-200 p-3 text-sm">
+                  <li key={index} className="rounded-sm border border-gray-200 p-3 text-sm">
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <span>{flag.detail}</span>
                       <StatusBadge tone={SEVERITY_TONE[flag.severity] ?? 'neutral'}>{flag.severity}</StatusBadge>
@@ -173,7 +173,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                 <img
                   src={referenceImageUrl}
                   alt="Reference photo"
-                  className="h-20 w-20 rounded object-cover"
+                  className="h-20 w-20 rounded-sm object-cover"
                 />
                 <div className="text-sm text-gray-700">
                   <p className="font-medium capitalize">{candidate.faceEnrolment.status.replace(/_/g, ' ')}</p>
@@ -208,10 +208,10 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                         >
                           {/* Alt text distinguishes this from the header photo above (both would
                               otherwise say "Reference photo", which is noise for screen readers). */}
-                          <img src={referenceImageUrl} alt="Reference photo (comparison)" className="h-24 w-24 rounded object-cover" />
+                          <img src={referenceImageUrl} alt="Reference photo (comparison)" className="h-24 w-24 rounded-sm object-cover" />
                         </button>
                       ) : (
-                        <div className="flex h-24 w-24 items-center justify-center rounded bg-gray-100 p-1 text-center text-[10px] text-gray-400">
+                        <div className="flex h-24 w-24 items-center justify-center rounded-sm bg-gray-100 p-1 text-center text-[10px] text-gray-400">
                           Reference photo no longer retained
                         </div>
                       )}
@@ -224,10 +224,10 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                           onClick={() => setSelectedFaceImage({ src: mismatch.snapshotUrl as string, title: 'Flagged snapshot' })}
                           aria-label="View flagged snapshot full size"
                         >
-                          <img src={mismatch.snapshotUrl} alt="Flagged snapshot" className="h-24 w-24 rounded object-cover" />
+                          <img src={mismatch.snapshotUrl} alt="Flagged snapshot" className="h-24 w-24 rounded-sm object-cover" />
                         </button>
                       ) : (
-                        <div className="flex h-24 w-24 items-center justify-center rounded bg-gray-100 text-xs text-gray-400">
+                        <div className="flex h-24 w-24 items-center justify-center rounded-sm bg-gray-100 text-xs text-gray-400">
                           No image
                         </div>
                       )}
@@ -255,7 +255,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
           <h2 className="mb-2 text-lg font-medium">Technical Issues During Exam</h2>
           <ul className="flex flex-col gap-1.5">
             {technicalIssues.map((event) => (
-              <li key={event.id} className="flex items-baseline gap-2 rounded border border-gray-200 p-2.5 text-sm">
+              <li key={event.id} className="flex items-baseline gap-2 rounded-sm border border-gray-200 p-2.5 text-sm">
                 <span className="whitespace-nowrap text-xs text-gray-500">{new Date(event.occurredAt).toLocaleString()}</span>
                 {/* Recruiters read this section, so it gets the same plain-English
                     translation as System Logs; the raw message stays on hover. */}
@@ -279,7 +279,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
               return (
                 <div
                   key={index}
-                  className={`rounded border-2 p-2 text-left ${entry.kind === 'violation' ? 'border-red-500' : 'border-gray-200'}`}
+                  className={`rounded-sm border-2 p-2 text-left ${entry.kind === 'violation' ? 'border-red-500' : 'border-gray-200'}`}
                 >
                   {entry.snapshot !== '' ? (
                     <button
@@ -288,10 +288,10 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                       aria-label={`Webcam snapshot at ${formatSnapshotTime(entry.occurredAt)}`}
                       className="block w-full"
                     >
-                      <img src={entry.snapshot} alt="" className="mb-1 h-20 w-full rounded object-cover" />
+                      <img src={entry.snapshot} alt="" className="mb-1 h-20 w-full rounded-sm object-cover" />
                     </button>
                   ) : !screenshot && !entry.screenshotCapReached ? (
-                    <div className="mb-1 flex h-20 w-full items-center justify-center rounded bg-gray-100 text-xs text-gray-400">
+                    <div className="mb-1 flex h-20 w-full items-center justify-center rounded-sm bg-gray-100 text-xs text-gray-400">
                       No image
                     </div>
                   ) : null}
@@ -303,7 +303,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                       className="block w-full"
                     >
                       <p className="text-[10px] font-medium uppercase text-gray-400">Screen capture</p>
-                      <img src={screenshot} alt="" className="mb-1 h-20 w-full rounded object-cover" />
+                      <img src={screenshot} alt="" className="mb-1 h-20 w-full rounded-sm object-cover" />
                     </button>
                   )}
                   {!screenshot && entry.screenshotCapReached && (
@@ -335,7 +335,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
         onClose={() => setSelectedSnapshot(null)}
       >
         {selectedSnapshot && selectedSnapshot.snapshot !== '' && (
-          <img src={selectedSnapshot.snapshot} alt="Webcam snapshot" className="w-full rounded" />
+          <img src={selectedSnapshot.snapshot} alt="Webcam snapshot" className="w-full rounded-sm" />
         )}
       </Modal>
 
@@ -347,7 +347,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Open screen capture in a new tab"
-              className="absolute right-2 top-2 rounded bg-black/60 p-1.5 text-white transition-colors hover:bg-black/80"
+              className="absolute right-2 top-2 rounded-sm bg-black/60 p-1.5 text-white transition-colors hover:bg-black/80"
             >
               <ExternalLink size={16} />
             </a>
@@ -357,7 +357,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
              *  shrinks the rendered image on BOTH axes and centers it, instead of the
              *  browser's default flush-left alignment dumping all the resulting slack
              *  as blank space on one side. object-contain never crops the evidence. */}
-            <div className="flex h-[60vh] items-center justify-center overflow-hidden rounded bg-ground">
+            <div className="flex h-[60vh] items-center justify-center overflow-hidden rounded-sm bg-ground">
               <img src={selectedScreenshot} alt="Screen capture" className="max-h-full max-w-full object-contain" />
             </div>
           </div>
@@ -365,7 +365,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
       </Modal>
 
       <Modal open={selectedFaceImage !== null} title={selectedFaceImage?.title ?? ''} onClose={() => setSelectedFaceImage(null)}>
-        {selectedFaceImage && <img src={selectedFaceImage.src} alt={selectedFaceImage.title} className="w-full rounded" />}
+        {selectedFaceImage && <img src={selectedFaceImage.src} alt={selectedFaceImage.title} className="w-full rounded-sm" />}
       </Modal>
 
       {attemptId && (
@@ -434,7 +434,7 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                     <p className="mb-2 text-sm text-gray-800">
                       {question.questionText}
                       {question.counted === false && (
-                        <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">Not counted</span>
+                        <span className="ml-2 rounded-sm bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">Not counted</span>
                       )}
                     </p>
                     {question.type === 'code' || question.type === 'essay' || question.type === 'file_upload' || question.type === 'spoken' ? (
@@ -472,26 +472,26 @@ export function CandidateReportPanel({ examId, candidateId, attemptId, backSlot,
                                   href={file.url ?? '#'}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="flex items-center gap-2 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-candidate-primary no-underline"
+                                  className="flex items-center gap-2 rounded-sm border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-candidate-primary no-underline"
                                 >
-                                  <Download className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                                  <Download className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                                   <span className="min-w-0 flex-1 truncate">{file.fileName}</span>
-                                  <span className="flex-shrink-0 text-xs text-gray-500">{Math.max(1, Math.round(file.size / 1024))} KB</span>
+                                  <span className="shrink-0 text-xs text-gray-500">{Math.max(1, Math.round(file.size / 1024))} KB</span>
                                 </a>
                               ))}
                             </div>
                           )
                         ) : question.type === 'essay' ? (
-                          <div className="whitespace-pre-wrap break-words rounded bg-gray-50 p-3 text-sm text-gray-800">
+                          <div className="whitespace-pre-wrap wrap-break-word rounded-sm bg-gray-50 p-3 text-sm text-gray-800">
                             {question.answerText?.trim() ? question.answerText : 'Not attempted.'}
                           </div>
                         ) : (
-                          <pre className="overflow-x-auto rounded bg-gray-50 p-3 text-xs text-gray-800">
+                          <pre className="overflow-x-auto rounded-sm bg-gray-50 p-3 text-xs text-gray-800">
                             {question.answerText?.trim() ? question.answerText : 'Not attempted.'}
                           </pre>
                         )}
                         {question.gradingFeedback && (
-                          <p className="rounded border border-gray-200 p-2 text-xs text-gray-700">
+                          <p className="rounded-sm border border-gray-200 p-2 text-xs text-gray-700">
                             <span className="font-medium">Feedback: </span>
                             {question.gradingFeedback}
                           </p>
