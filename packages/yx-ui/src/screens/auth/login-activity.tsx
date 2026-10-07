@@ -7,7 +7,7 @@ import { ConfirmDialog } from '../../components/overlay';
 import { Select } from '../../components/select';
 import { PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
-import { RESULTS, deviceLabel, methodLabel, when } from './kit';
+import { RESULTS, deviceLabel, methodLabel, when, ipLabel } from './kit';
 import { LoginEventsTable } from './tables';
 import type { LoginEventRow, Page, PersonOption, SessionRow } from './types';
 
@@ -163,7 +163,7 @@ function SessionsTable({ sessions, sessionsState, onSessionsPage, onRevokeSessio
       width: 220,
     },
     { key: 'seen', header: 'Last active', value: (s) => s.lastSeenAt, render: (s) => when(s.lastSeenAt), width: 190 },
-    { key: 'ip', header: 'IP address', value: (s) => s.ipAddress ?? '', optional: true, width: 150 },
+    { key: 'ip', header: 'IP address', value: (s) => ipLabel(s.ipAddress), optional: true, width: 150 },
     { key: 'since', header: 'Signed in', value: (s) => s.createdAt, render: (s) => when(s.createdAt), optional: true, width: 190 },
   ];
   return (

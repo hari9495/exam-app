@@ -264,3 +264,12 @@ export function RecoveryCodes({ codes, onDone, doneLabel = 'Done' }: { codes: st
     </div>
   );
 }
+
+/** An IP address in plain words: this computer, the local network, or the address itself. */
+export function ipLabel(ip: string | null | undefined): string {
+  if (!ip) return '';
+  const v = ip.replace(/^::ffff:/, '');
+  if (v === '::1' || v.startsWith('127.')) return 'This computer';
+  if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|f[cd][0-9a-f]{2}:)/i.test(v)) return `Local network · ${v}`;
+  return v;
+}

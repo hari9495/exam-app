@@ -6,7 +6,7 @@ import { FormField } from '../../components/field';
 import { TextArea } from '../../components/inputs';
 import { ConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
-import { RESULTS, deviceLabel, methodLabel, when } from './kit';
+import { RESULTS, deviceLabel, methodLabel, when, ipLabel } from './kit';
 import type { LoginEventRow, Page } from './types';
 
 export interface LoginEventsTableProps {
@@ -68,7 +68,7 @@ export function LoginEventsTable({ page, state, onRetry, onPageChange, showPerso
     },
     { key: 'method', header: 'Method', value: (r) => methodLabel(r.method), width: 160 },
     { key: 'device', header: 'Device', value: (r) => deviceLabel(r.userAgent), optional: true, width: 170 },
-    { key: 'ip', header: 'IP address', value: (r) => r.ipAddress ?? '', optional: true, width: 150 },
+    { key: 'ip', header: 'IP address', value: (r) => ipLabel(r.ipAddress), optional: true, width: 150 },
   ];
   return (
     <div className="yx-auth__stack">

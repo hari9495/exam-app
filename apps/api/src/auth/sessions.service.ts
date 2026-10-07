@@ -461,7 +461,7 @@ export class SessionsService {
     if (!user.organizationId) return;
     this.notifyAdmins(user.organizationId, 'Break-glass sign-in to your YukthiX organisation', 'Break-glass account used', [
       text(`The break-glass account ${user.email} just signed in with a password while SSO-only is on.`),
-      details([['IP address', meta.ip ?? 'Unknown'], ['Device', describeDevice(meta.userAgent) ?? 'Unknown device']]),
+      details([['IP address', ipInWords(meta.ip)], ['Device', describeDevice(meta.userAgent) ?? 'Unknown device']]),
       text("If this wasn't expected, review Login activity and sign out that session."),
       button('Open Login activity', appUrl('/yx/admin/login-activity')),
     ]);
@@ -493,7 +493,7 @@ export class SessionsService {
   }
 
   private facts(meta: ClientMeta, timeZone: string | null): SignInFacts {
-    return { when: new Date(), timeZone, userAgent: meta.userAgent, country: meta.country, ip: meta.ip };
+    return { when: new Date(), timeZone, userAgent: meta.userAgent, country: meta.country, ip: meta.ip ? ipInWords(meta.ip) : null };
   }
 
   // The recipient's company name and time zone, then the email. Fire-and-forget; never throws.
@@ -513,4 +513,13 @@ export class SessionsService {
       .catch((error) => this.logger.error(`Failed to send security notification to user ${user.id}`, error as Error));
   }
 
+}
+
+// An IP address in plain words for emails: this computer, the local network, or the address itself.
+function ipInWords(ip: string | null): string {
+  if (!ip) return 'Unknown';
+  const v = ip.replace(/^::ffff:/, '');
+  if (v === '::1' || v.startsWith('127.')) return 'This computer';
+  if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|f[cd][0-9a-f]{2}:)/i.test(v)) return `Local network · ${v}`;
+  return v;
 }

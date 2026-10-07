@@ -810,3 +810,15 @@ describe('passkey as a sign-in method', () => {
     expect(screen.getByText(/with passkey$/)).toBeInTheDocument();
   });
 });
+
+describe('ipLabel', () => {
+  it('names this computer and the local network in plain words', async () => {
+    const { ipLabel } = await import('./kit');
+    expect(ipLabel('::1')).toBe('This computer');
+    expect(ipLabel('::ffff:127.0.0.1')).toBe('This computer');
+    expect(ipLabel('192.168.1.5')).toBe('Local network · 192.168.1.5');
+    expect(ipLabel('172.20.0.4')).toBe('Local network · 172.20.0.4');
+    expect(ipLabel('49.207.12.34')).toBe('49.207.12.34');
+    expect(ipLabel(null)).toBe('');
+  });
+});

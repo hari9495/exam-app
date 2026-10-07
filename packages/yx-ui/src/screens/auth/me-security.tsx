@@ -9,7 +9,7 @@ import { ConfirmDialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { MethodCards } from '../../components/choice';
 import { Card, PageHeader } from '../../components/shell';
-import { RecoveryCodes, day, deviceLabel, methodLabel, setupMethodOptions, useStep, when, type SetupMethod } from './kit';
+import { RecoveryCodes, day, deviceLabel, methodLabel, setupMethodOptions, useStep, when, type SetupMethod, ipLabel } from './kit';
 import { TotpConfirm, type TotpSetup } from './mfa';
 import { LoginEventsTable } from './tables';
 import type { LoginEventRow, MfaFactor, MfaStatus, Page, SessionRow } from './types';
@@ -280,7 +280,7 @@ function SessionsCard({ sessions, onSignOutSession, onSignOutOthers }: { session
                   {s.current && <Badge tone="success">This browser</Badge>}
                 </span>
                 <Text tone="secondary" size="sm">
-                  {[s.ipAddress, s.geo, `active ${when(s.lastSeenAt)}`].filter(Boolean).join(' · ')}
+                  {[ipLabel(s.ipAddress), s.geo, `active ${when(s.lastSeenAt)}`].filter(Boolean).join(' · ')}
                 </Text>
                 <Text tone="secondary" size="sm">Signed in {when(s.createdAt)} with {methodLabel(s.method).toLowerCase()}{s.assuranceLevel === 'aal2' && s.method !== 'passkey' ? ' and a second step' : ''}</Text>
               </div>
