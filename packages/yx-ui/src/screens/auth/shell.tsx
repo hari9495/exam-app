@@ -1,6 +1,7 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import { Activity, BookUser, Briefcase, Building2, CalendarClock, ClipboardCheck, Eye, FileStack, GitFork, History, IdCard, KeyRound, ListChecks, LockKeyhole, MapPin, MessageSquare, Network, Settings, ShieldCheck, UserRound, Users } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
+import { ColorIcon, type ColorIconName } from '../../components/color-icon';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
@@ -36,6 +37,8 @@ export interface WorkspaceShellProps {
 
 const ICONS: Record<WorkspacePage, IconComponent> = { me: ShieldCheck, activity: Activity, settings: Settings, sms: MessageSquare, entities: Building2, locations: MapPin, structure: Network, directory: BookUser, 'org-chart': GitFork, team: Users, 'job-history': History, 'job-changes': CalendarClock, probation: ClipboardCheck, 'bulk-changes': FileStack, profile: UserRound, 'profile-requests': IdCard, access: KeyRound, privacy: Eye, 'company-rules': ListChecks, 'access-settings': LockKeyhole };
 const GROUP_ICONS: Record<WorkspaceGroup, IconComponent> = { People: Users, Organisation: Building2, Access: KeyRound, Security: ShieldCheck, Me: UserRound };
+// The rail draws colour icons (§8); the panel's page links stay Lucide outline.
+const GROUP_ART: Record<WorkspaceGroup, ColorIconName> = { People: 'area.people', Organisation: 'orgUnit', Access: 'area.access', Security: 'area.security', Me: 'area.me' };
 
 /**
  * Product frame for the YukthiX workspace pages: rail with one area per group, a side panel with that area's pages
@@ -58,8 +61,8 @@ export function WorkspaceShell({ active, links, company, hiringHref, profileHref
     onNavigate(href);
   };
   const rail: RailItem[] = [
-    ...groups.map((g) => ({ id: g, label: g, short: g === 'Organisation' ? 'Org' : undefined, icon: GROUP_ICONS[g], href: links.find((l) => l.group === g)!.href })),
-    ...(hiringHref ? [{ id: 'hiring', label: 'Hiring', icon: Briefcase, href: hiringHref }] : []),
+    ...groups.map((g) => ({ id: g, label: g, short: g === 'Organisation' ? 'Org' : undefined, icon: GROUP_ICONS[g], art: <ColorIcon name={GROUP_ART[g]} size={20} />, href: links.find((l) => l.group === g)!.href })),
+    ...(hiringHref ? [{ id: 'hiring', label: 'Hiring', icon: Briefcase, art: <ColorIcon name="area.hiring" size={20} />, href: hiringHref }] : []),
   ];
   const home = links[0]?.href ?? profileHref;
   return (

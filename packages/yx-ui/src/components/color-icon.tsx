@@ -37,6 +37,10 @@ export const COLOR_ICONS = {
   'area.learning': e('Learning', 'BookOpen', { 20: F.bookOpen20, 24: F.bookOpen24, 32: F.bookOpen32, 48: F.bookOpen48 }),
   'area.analytics': e('Analytics', 'DataTrending', { 20: F.dataTrending20, 24: F.dataTrending24, 32: F.dataTrending32, 48: F.dataTrending48 }),
   'area.settings': e('Settings', 'Settings', { 20: F.settings20, 24: F.settings24, 32: F.settings32, 48: F.settings48 }),
+  // Workspace rail areas (the live app's sidebar groups)
+  'area.access': e('Roles and access', 'PersonKey', { 20: F.personKey20, 24: F.personKey24, 32: F.personKey32 }),
+  'area.security': e('Security', 'ShieldCheckmark', { 20: F.shieldCheckmark20, 24: F.shieldCheckmark24, 48: F.shieldCheckmark48 }),
+  'area.me': e('Me', 'Person', { 20: F.person20, 24: F.person24, 32: F.person32, 48: F.person48 }),
   // Home tiles, empty states, setup and help
   'leave': e('Leave', 'Beach', { 20: F.beach20, 24: F.beach24, 32: F.beach32, 48: F.beach48 }),
   'holidays': e('Holiday calendar', 'Calendar', { 20: F.calendar20, 24: F.calendar24, 32: F.calendar32, 48: F.calendar48 }),

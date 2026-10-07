@@ -34,6 +34,14 @@ describe('WorkspaceShell', () => {
     expect(document.querySelector('.yx-shell__tabs')).toBeNull();
   });
 
+  it('rail areas draw Fluent colour icons (§8); the panel page links stay Lucide outline', () => {
+    shell({ hiringHref: '/v2/today' });
+    const rail = screen.getByRole('navigation', { name: 'Areas' });
+    for (const l of within(rail).getAllByRole('link')) expect(l.querySelector('.yx-color-icon img')).not.toBeNull();
+    expect(within(rail).getAllByRole('link')).toHaveLength(5);
+    expect(screen.getByRole('navigation', { name: 'Menu' }).querySelector('.yx-color-icon')).toBeNull();
+  });
+
   it('offers hiring only when given (people with exam/ATS permissions)', () => {
     const { unmount } = shell();
     expect(screen.queryByRole('link', { name: /Hiring/ })).toBeNull();
