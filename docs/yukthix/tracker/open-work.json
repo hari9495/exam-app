@@ -3,8 +3,8 @@
   "id": "W-001",
   "area": "Step 2 · Org & employee core",
   "item": "Parts 2c employee record, 2d access & field visibility, 2e People/Settings screens wired; then independent security review, fix every finding, push feat/yukthix-org",
-  "status": "In progress",
-  "next": "Background build running; open a PR stacked on #130 when green"
+  "status": "Done",
+  "next": "PR #131 opened 7 Oct 2026 (stacked on #130); 15 review findings fixed; all suites green"
  },
  {
   "id": "W-002",
@@ -23,7 +23,7 @@
  {
   "id": "W-004",
   "area": "Branches",
-  "item": "Merge order to main: #128 PostgreSQL → #129 login → #130 workspace → step 2 PR",
+  "item": "Merge order to main: #128 PostgreSQL → #129 login → #130 workspace → #131 step 2",
   "status": "Open",
   "next": "Founder approval per PR"
  },
@@ -101,7 +101,7 @@
   "id": "W-015",
   "area": "CI · dependencies",
   "item": "Port the same dependency fixes (security patches, Jest 30, Tailwind 4) to #128 PostgreSQL so its CI passes",
-  "status": "In progress",
-  "next": "Background job on feat/yukthix-postgres"
+  "status": "Done",
+  "next": "Ported to #128; CI passing"
  }
 ]

@@ -24,7 +24,7 @@ OUT = HERE / 'YukthiX-Tracker.xlsx'
 # Roadmap step -> design docs it builds (BACKEND-ROADMAP.md). Edit when the roadmap changes.
 STEP_DOCS = {'0': ['P01'], '1': ['P12', 'P04'], '2': ['P01', 'P02', 'P06', 'M01'], '3': ['P14', 'P20'],
              '3b': ['M14', 'M08'], '4': ['M02', 'P03', 'P07'], '5': ['M03', 'P07', 'P08']}
-DONE, IN_PROGRESS = {'0', '1'}, {'2'}
+DONE, IN_PROGRESS = {'0', '1', '2'}, set()
 RULE_STATUSES = ['Built + tested', 'Built, no test cites it', 'Tested, code not linked', 'UI prototype only',
                  'Verify (step done, not linked)', 'In progress', 'Not started', 'Not needed']
 WORK_STATUSES = ['Open', 'In progress', 'Done', 'Parked', 'Not started', 'Accepted (won\'t do)', 'Moved to a step']
