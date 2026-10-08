@@ -20,6 +20,9 @@ describe('YukthiX sign-in words', () => {
     expect(yxAuthMessage(locked(60), 'x')).toBe('Too many tries. Try again in 60 seconds.');
     expect(yxAuthMessage(locked(900), 'x')).toBe('Too many tries. Try again in 15 minutes.');
     expect(tryAgainIn(7200)).toBe('Too many tries. Try again in 2 hours.');
+    // Precise enough to count down on screen.
+    expect(tryAgainIn(1781)).toBe('Too many tries. Try again in 29 min 41 sec.');
+    expect(tryAgainIn(3900)).toBe('Too many tries. Try again in 1 h 5 min.');
   });
 
   it('a wrong password reads the same as an unknown email; other messages pass through', () => {

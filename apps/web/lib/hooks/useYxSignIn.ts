@@ -10,7 +10,7 @@ import { useAuth } from '../auth-context';
 import { decodeJwtPayload } from '../jwt';
 import { yxLandingPath } from '../yx-landing';
 import { keepNextForRoundTrip, takeNext } from '../safe-next';
-import { yxAuthMessage, yxProofError } from '../yx-auth-messages';
+import { lockWaitSeconds, tryAgainIn, yxAuthMessage, yxProofError } from '../yx-auth-messages';
 import { WebAuthnAbortService, browserSupportsWebAuthn, browserSupportsWebAuthnAutofill } from '@simplewebauthn/browser';
 import { passkeySignInAssertion } from '../yx-security';
 
@@ -70,7 +70,22 @@ export function useYxSignIn() {
   const [passkeyCapable, setPasskeyCapable] = useState(false);
   const [autofillRound, setAutofillRound] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setErrorText] = useState<string | null>(null);
+  // An account / IP lock counts down to the second on screen (the API still enforces it).
+  const [lockUntil, setLockUntil] = useState<number | null>(null);
+  const [, setTick] = useState(0);
+  const setError = (text: string | null) => {
+    setErrorText(text);
+    setLockUntil(null);
+  };
+  useEffect(() => {
+    if (!lockUntil) return;
+    const id = setInterval(() => {
+      if (Date.now() >= lockUntil) setError(null);
+      else setTick((n) => n + 1);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [lockUntil]);
   const identifier = fields.identifier.trim();
   const mobile = fields.mobile.trim();
   // Codes go to the mobile number on the mobile steps, else to the work email.
@@ -108,6 +123,8 @@ export function useYxSignIn() {
       await task();
     } catch (err) {
       setError(message(err, fallback));
+      const wait = lockWaitSeconds(err);
+      if (wait) setLockUntil(Date.now() + wait * 1000);
       onError?.();
     } finally {
       setBusy(false);
@@ -208,7 +225,7 @@ export function useYxSignIn() {
     codeChannel,
     redirectingTo,
     busy,
-    error,
+    error: lockUntil ? tryAgainIn((lockUntil - Date.now()) / 1000) : error,
     challenge,
     setField: (field: keyof SignInFields, value: string) => setFields((f) => ({ ...f, [field]: value })),
 

@@ -16,11 +16,22 @@ const PLAIN: Record<string, string> = {
 
 const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
 
-/** The real wait the API gave with its lock (retryAfterSeconds), in plain words. */
+/** The real wait the API gave with its lock (retryAfterSeconds), in plain words; precise enough to count down. */
 export function tryAgainIn(seconds: number): string {
-  if (seconds <= 90) return `Too many tries. Try again in ${plural(Math.max(1, Math.ceil(seconds)), 'second')}.`;
-  if (seconds <= 90 * 60) return `Too many tries. Try again in ${plural(Math.ceil(seconds / 60), 'minute')}.`;
-  return `Too many tries. Try again in ${plural(Math.ceil(seconds / 3600), 'hour')}.`;
+  const t = Math.max(1, Math.ceil(seconds));
+  const [h, m, sec] = [Math.floor(t / 3600), Math.floor((t % 3600) / 60), t % 60];
+  const parts =
+    t <= 60 ? plural(t, 'second')
+    : t < 3600 ? (sec ? `${m} min ${sec} sec` : plural(m, 'minute'))
+    : m ? `${h} h ${m} min` : plural(h, 'hour');
+  return `Too many tries. Try again in ${parts}.`;
+}
+
+/** Seconds the API's account / IP lock asks us to wait, if this error is that lock. */
+export function lockWaitSeconds(err: unknown): number | null {
+  const text = err instanceof Error ? err.message : '';
+  const wait = (err as { body?: { retryAfterSeconds?: unknown } } | null)?.body?.retryAfterSeconds;
+  return text === API_LOCKED && typeof wait === 'number' && wait > 0 ? wait : null;
 }
 
 /** A failed sign-in step as one sentence. A 429 other than the account / IP lock is the request throttle. */
