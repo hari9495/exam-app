@@ -2043,7 +2043,7 @@
   "story": "As a company admin, I want our entity's statutory numbers protected so that only the right people see them.",
   "acceptance": [
    "Given statutory identifiers, when a user without org.entity.statutory.manage opens the entity, then only 'on file / missing' shows (YX-SEC-07).",
-   "Given an allowed user, when they open the identifiers, then step-up is asked (YX-IAM-02).",
+   "Given an allowed user, when they save a change to the identifiers, then step-up is asked (YX-IAM-02); opening them is not stepped up but every opening is audited (founder decision 9 Oct 2026).",
    "Given the identifiers are read, when shown, then the read is audited (YX-SEC-09)."
   ],
   "rules": [
