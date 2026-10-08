@@ -186,7 +186,11 @@ export class LeaveService implements OnModuleInit {
     if (rules.noticeDays && daysBetween(today, dto.from) < rules.noticeDays) blocks.push(`${t.name} needs ${daysText(rules.noticeDays)} notice.`);
     if (rules.minDays !== null && total > 0 && total < rules.minDays) blocks.push(`${t.name} is at least ${daysText(rules.minDays)} at a time.`);
     if (rules.maxDays !== null && total > rules.maxDays) blocks.push(`${t.name} is at most ${daysText(rules.maxDays)} at a time.`);
+    // DECISION NEEDED: maternity / paternity eligibility (gender, 80 days worked in 12 months, YX-LV-10) needs Personal
+    // data and attendance history; batch 1 checks only the statutory length and leaves eligibility to the approvers.
     if (t.kind === 'maternity' && total > (await maternityDays(tx, dto.from))) blocks.push(`Maternity leave is at most ${await maternityDays(tx, dto.from)} days (Maternity Benefit Act).`);
+    // DECISION NEEDED: P05 documents are not built yet, so a certificate is not uploaded here: the employee confirms
+    // they will give it to HR, HR marks it verified (Special data), and approvers see only its status (YX-LV-09).
     const certificateNeeded = rules.certificateAfterDays !== null && total > rules.certificateAfterDays;
     // Overlap (a first half and a second half of one date may sit side by side).
     const clash = await tx.$queryRaw<{ on: string }[]>`
