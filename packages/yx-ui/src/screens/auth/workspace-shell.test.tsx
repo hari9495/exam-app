@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { WorkspaceShell, type WorkspaceLink } from './shell';
+import { THEME_STORAGE_KEY, WorkspaceShell, type WorkspaceLink } from './shell';
 
 const LINKS: WorkspaceLink[] = [
   { id: 'directory', label: 'Directory', href: '/yx/people/directory', group: 'People' },
@@ -59,6 +59,21 @@ describe('WorkspaceShell', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Account menu for Lakshmi Venkatesan' }));
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Sign out' }));
     expect(onSignOut).toHaveBeenCalled();
+  });
+
+  it('theme: follows the OS until a choice is made in the account menu, which is remembered (validation 8 Oct 2026)', async () => {
+    window.localStorage.removeItem(THEME_STORAGE_KEY);
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true }) as unknown as typeof window.matchMedia;
+    const { unmount } = shell();
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    await userEvent.click(screen.getByRole('button', { name: 'Account menu for Lakshmi Venkatesan' }));
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Light' }));
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('light');
+    unmount();
+    shell();
+    expect(document.documentElement.dataset.theme).toBe('light');
+    window.localStorage.removeItem(THEME_STORAGE_KEY);
   });
 
   it('client-side navigation from the panel', async () => {
