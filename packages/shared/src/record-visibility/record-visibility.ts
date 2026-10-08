@@ -36,8 +36,10 @@ export const TENANT_SCOPE: GrantScope = Object.freeze({ type: 'tenant', id: null
 export function grantScopesFor(key: string): readonly GrantScopeType[] {
   // Reading the structure masters is Public / Internal configuration every HR screen needs, whatever the scope.
   if (key.startsWith('employee.') || key === 'request.raise_on_behalf' || key === 'org.structure.view') return GRANT_SCOPE_TYPES;
-  // M02 leave and attendance of people: scoped like employee records; the leave set-up is company configuration.
-  if ((key.startsWith('leave.') && key !== 'leave.settings.manage') || key.startsWith('attendance.')) return GRANT_SCOPE_TYPES;
+  // M02 leave and attendance of people: scoped like employee records. The leave set-up is company configuration: it
+  // may be granted per legal entity like org.settings.manage, but changing it needs the company-wide grant.
+  if (key === 'leave.settings.manage') return ['tenant', 'legal_entity'];
+  if (key.startsWith('leave.') || key.startsWith('attendance.')) return GRANT_SCOPE_TYPES;
   if (key.startsWith('org.') || key.startsWith('pay.range.')) return ['tenant', 'legal_entity'];
   return ['tenant'];
 }

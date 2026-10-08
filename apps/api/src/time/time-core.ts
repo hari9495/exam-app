@@ -265,6 +265,8 @@ export async function visibleSql(tx: Tx, c: CompanyContext, v: Viewer, own: stri
 /** One employee: visible as self, team or through `key`? (404 otherwise: the same answer as an unknown person.) */
 export async function mustSee(tx: Tx, c: CompanyContext, v: Viewer, own: string | null, key: TimeKey, employeeId: string, date: string, team = true): Promise<'self' | 'team' | 'granted'> {
   if (own === employeeId) return 'self';
+  // A company-wide grant matches any id: the employee must exist in this company first (RLS-bound read).
+  if (!(await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: employeeId }, select: { id: true } }))) throw new NotFoundException('Not found');
   const [row] = await tx.$queryRaw<{ team: boolean; granted: boolean }[]>`
     SELECT ${team ? await implicitSql(tx, c, own, Prisma.sql`${employeeId}::uuid`, Prisma.sql`${date}::date`) : Prisma.sql`FALSE`} AS team,
            ${has(v, key) ? inScopeSql(c, v, key, Prisma.sql`${employeeId}::uuid`, Prisma.sql`${date}::date`, own) : Prisma.sql`FALSE`} AS granted`;
@@ -276,6 +278,7 @@ export async function mustSee(tx: Tx, c: CompanyContext, v: Viewer, own: string 
 /** Holds `key` over this employee today (explicit grant, never the implicit manager view). */
 export async function grantCovers(tx: Tx, c: CompanyContext, v: Viewer, own: string | null, key: TimeKey, employeeId: string, date: string): Promise<boolean> {
   if (!has(v, key)) return false;
+  if (!(await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: employeeId }, select: { id: true } }))) return false;
   if (tenantWide(v, key)) return true;
   const [row] = await tx.$queryRaw<{ ok: boolean }[]>`SELECT ${inScopeSql(c, v, key, Prisma.sql`${employeeId}::uuid`, Prisma.sql`${date}::date`, own)} AS ok`;
   return Boolean(row?.ok);
