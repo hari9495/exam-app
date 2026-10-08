@@ -286,8 +286,10 @@ export class ChatService {
       const s = await this.agentSession(tx, a, id);
       const q = await tx.sdChatQueue.findFirstOrThrow({ where: { organizationId: org, id: s.queueId } });
       const person = (await this.tickets.personNames(tx, org, [s.personId])).get(s.personId);
+      const ticket = s.ticketId ? await tx.sdTicket.findFirst({ where: { organizationId: org, id: s.ticketId }, select: { id: true, number: true } }) : null;
       return {
         ...this.sessionView(s),
+        ticket,
         person: person?.name ?? '',
         queue: q.name,
         // US-G-059: the pre-chat answers reach the agent first (sensitive answers stay out of the summary).
