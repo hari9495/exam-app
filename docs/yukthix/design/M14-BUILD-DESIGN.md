@@ -49,6 +49,7 @@ Words used in this doc:
 | D8 | **Customer support is first-class**, as strong as service management. A desk is created as an **Employee help desk** or a **Customer support desk**, each with a ready starter set-up; same engine underneath. One plan, ₹999 per agent, covers both (keeps Q8). | §3, SD-1.33, §17 D8 |
 | D9 | **No read receipts and no email open tracking** (privacy; we block tracking pixels). | §9, §17 D9 |
 | D10 | **HIPAA deferred**: only if a US health customer comes. Not in the plan. | §17 D10 |
+| D11 | Live-chat "Seen" markers built (chat only); tours / campaigns priority 3; Messenger + Instagram in 3b-2; desk kind fixed at creation. | §17 D11 |
 
 Also followed: M08 (cases stay in M08; its YX-HD-01…05 become the starter rules here), P02 (scopes, restricted areas, external logins, support sessions), P03 (approvals), P04 (notifications, quiet hours, no sensitive data outside the app), P08 (audit), P10 (AI registry, connectors), P11 (API rules), P12 (MFA, step-up), P14 (meter ledger, support tiers, console).
 
@@ -1032,7 +1033,7 @@ Each slice is one pull request with its migration, API, tests and (where listed)
 | SD-2.34 | Wire 3b-2 screens; dead-button scan (also covers SD-2.35…2.39) | US-A-058 |
 | SD-2.35 | Skill and language routing with fall-back, "next ticket" by SLA and priority, live supervisor console that can reassign | US-G-239, US-G-225 |
 | SD-2.36 | Portal and widget sign-in for customers: SAML, OpenID Connect, social, signed token (JWT), optional second factor | US-G-229 |
-| SD-2.37 | Messenger: one ongoing conversation across visits and devices, push / email fallback (no read receipts, D9), wait time and queue position, visitor → contact, home cards, page-aware help | US-G-235, US-G-236 |
+| SD-2.37 | Messenger: one ongoing conversation across visits and devices, push / email fallback, "Seen" markers in chat only (D11; no email open tracking, D9), wait time and queue position, visitor → contact, home cards, page-aware help | US-G-235, US-G-236 |
 | SD-2.38 | Customer events API on the contact timeline; saved segments used in routing, SLAs, messages, surveys and article audiences | US-G-237 |
 | SD-2.39 | Proactive messages: targeted banners, posts and chat prompts; event-triggered service notices (P04 preferences, no pixels) | US-G-238 |
 
@@ -1134,6 +1135,7 @@ Each slice is one pull request with its migration, API, tests and (where listed)
 | D8 | **Customer support first-class; two desk kinds.** A desk is created as "Employee help desk" or "Customer support desk", each with a starter set-up (fields, channels, views, reports, SLAs); one engine; one ₹999 plan covers both (Q8 kept). Gaps from the [Zoho Desk pass](M14-ZOHO-DESK-PASS.md) and the [customer-support leaders pass](M14-CS-LEADERS-PASS.md) are now slices (§16). |
 | D9 | **Read receipts and email open tracking: not built** (privacy; tracking pixels are blocked inbound too). Outbound and proactive reports count replies and tickets, not opens. |
 | D10 | **HIPAA: deferred.** Only if a US health customer comes. Recorded here, not in any slice or story. |
+| D11 | **Founder confirmed 8 Oct 2026:** (a) "Seen" markers **are built in live chat only** (in-window, nothing hidden; not email tracking, so D9 still holds for email); (b) product tours and outbound campaigns stay priority 3 in 3b-4; (c) Facebook Messenger and Instagram DMs move to 3b-2; (d) a desk's kind is chosen only at creation and never changes. |
 
 ### D1 · Live chat transport (open since M14 "Still to decide")
 
