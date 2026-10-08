@@ -43,6 +43,7 @@ import { SocialIdentity, SocialProvider, isSocialProvider } from './social-sign-
 import { emailDomain } from './identity-providers';
 import { action, appUrl, details, passwordResetEmail, text } from '../email/account-emails';
 import { EmailLookService } from '../email/email-look.service';
+import { PASSWORD_RESET_EXPIRY_MINUTES, issuePasswordToken } from './password-tokens';
 
 interface TokenPair {
   accessToken: string;
@@ -167,7 +168,6 @@ export interface SocialProof extends SocialIdentity {
 }
 type ParsedIdentifier = { kind: 'email' | 'mobile'; value: string };
 
-const PASSWORD_RESET_EXPIRY_MINUTES = 15;
 export const PASSWORD_CHANGE_REQUIRED_CODE = 'PASSWORD_CHANGE_REQUIRED';
 const INVALID_CREDENTIALS = 'Invalid credentials';
 
@@ -1227,13 +1227,9 @@ export class AuthService {
     );
   }
 
-  // A single-use reset token (stored as sha256 only), valid PASSWORD_RESET_EXPIRY_MINUTES.
-  private async createResetToken(userId: string): Promise<string> {
-    const rawToken = randomBytes(32).toString('hex');
-    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-    const expiresAt = new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000);
-    await this.prisma.passwordResetToken.create({ data: { userId, tokenHash, expiresAt } });
-    return rawToken;
+  // A single-use reset token (stored as sha256 only), valid PASSWORD_RESET_EXPIRY_MINUTES; older links stop working.
+  private createResetToken(userId: string): Promise<string> {
+    return issuePasswordToken(this.prisma, userId, 'reset');
   }
 
   private async dispatchResetEmail(email: string, rawToken: string, organizationId: string, companyName?: string, yukthix = false): Promise<void> {

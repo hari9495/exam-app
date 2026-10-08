@@ -11,10 +11,11 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuditService } from '@exam-platform/shared';
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes } from 'crypto';
 import { EmailService } from '../email/email.service';
 import { EmailLookService } from '../email/email-look.service';
-import { inviteEmail, passwordResetEmail } from '../email/account-emails';
+import { appUrl, inviteEmail, passwordResetEmail, staffInviteEmail, staffPromotionEmail } from '../email/account-emails';
+import { ACCOUNT_SETUP_EXPIRY_HOURS, PASSWORD_RESET_EXPIRY_MINUTES, issuePasswordToken } from '../auth/password-tokens';
 import { QuotaService } from '../billing/quota.service';
 import { SuperAdminEmailDto } from './dto/super-admin-email.dto';
 import { BulkCreateUsersDto } from './dto/bulk-create-users.dto';
@@ -78,10 +79,6 @@ const SUPER_ADMIN_SELECT = { id: true, email: true, createdAt: true } as const;
 
 export type SuperAdminRecord = Pick<User, 'id' | 'email' | 'createdAt'>;
 
-// Mirrors OrganizationsService's PASSWORD_RESET_EXPIRY_MINUTES (apps/api/src/organizations/organizations.service.ts)
-// -- same policy, reused verbatim rather than shared cross-module, matching this codebase's existing pattern
-// of each service owning its own small local constants.
-const PASSWORD_RESET_EXPIRY_MINUTES = 15;
 
 @Injectable()
 export class UsersService {
@@ -497,17 +494,7 @@ export class UsersService {
       }),
     );
 
-    const rawToken = randomBytes(32).toString('hex');
-    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-    await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.passwordResetToken.create({
-        data: {
-          userId: newAdmin.id,
-          tokenHash,
-          expiresAt: new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000),
-        },
-      }),
-    );
+    const rawToken = await this.tenantPrisma.forTenant(context, (tx) => issuePasswordToken(tx, newAdmin.id, 'setup'));
 
     this.dispatchInviteEmail(dto.email, rawToken).catch((error) =>
       this.logger.error(`Failed to dispatch super_admin invite email to ${dto.email}`, error as Error),
@@ -594,11 +581,7 @@ export class UsersService {
         ssoSkipped = true;
         return;
       }
-      const rawToken = randomBytes(32).toString('hex');
-      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-      await tx.passwordResetToken.create({
-        data: { userId: target.id, tokenHash, expiresAt: new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000) },
-      });
+      const rawToken = await issuePasswordToken(tx, target.id, 'reset');
       pending = { email: target.email, rawToken };
     });
     await this.audit.record(context, {
@@ -648,11 +631,7 @@ export class UsersService {
         // link is ever needed, and sending one would promise an access path that doesn't
         // apply. Skip the token and the email entirely rather than send a dead link.
         if (!ssoEnabled) {
-          const rawToken = randomBytes(32).toString('hex');
-          const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-          await tx.passwordResetToken.create({
-            data: { userId: user.id, tokenHash, expiresAt: new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000) },
-          });
+          const rawToken = await issuePasswordToken(tx, user.id, 'setup');
           this.dispatchResetLink(email, rawToken, context.organizationId as string, 'invite').catch((error) =>
             this.logger.error(`Failed to dispatch invite email to ${email}`, error as Error),
           );
@@ -677,25 +656,21 @@ export class UsersService {
   private async dispatchResetLink(email: string, rawToken: string, organizationId: string, type: 'invite' | 'password_reset') {
     const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/reset-password/${rawToken}`;
     const [{ company, firstName }, look] = await Promise.all([this.looks.recipient(organizationId, email), this.looks.forCompany(organizationId, type)]);
-    const input = { to: email, link, company, firstName, look, minutes: PASSWORD_RESET_EXPIRY_MINUTES };
-    const mail = await (type === 'invite' ? inviteEmail(input) : passwordResetEmail(input));
+    const input = { to: email, link, company, firstName, look };
+    const mail = await (type === 'invite'
+      ? inviteEmail({ ...input, hours: ACCOUNT_SETUP_EXPIRY_HOURS })
+      : passwordResetEmail({ ...input, minutes: PASSWORD_RESET_EXPIRY_MINUTES }));
     return this.emailService.send({ to: email, ...mail, organizationId });
   }
 
+  // YukthiX staff emails: YukthiX-owned wording, never company-editable.
   private async dispatchInviteEmail(email: string, rawToken: string): Promise<void> {
-    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/reset-password/${rawToken}`;
-    await this.emailService.send({
-      to: email,
-      subject: 'Welcome — set up your platform administrator account',
-      html: `<p>You've been invited as a platform administrator on the Examination Platform. Click the link below to set your password and get started. This link expires in 15 minutes.</p><p><a href="${link}">${link}</a></p>`,
-    });
+    const mail = await staffInviteEmail(email, appUrl(`/yx/reset-password/${rawToken}`), ACCOUNT_SETUP_EXPIRY_HOURS);
+    await this.emailService.send({ to: email, ...mail });
   }
 
   private async dispatchPromotionEmail(email: string): Promise<void> {
-    await this.emailService.send({
-      to: email,
-      subject: 'Your account now has platform administrator access',
-      html: `<p>Your account on the Examination Platform has been granted platform administrator access. No action is needed — sign in as usual with your existing password.</p>`,
-    });
+    const mail = await staffPromotionEmail(email);
+    await this.emailService.send({ to: email, ...mail });
   }
 }

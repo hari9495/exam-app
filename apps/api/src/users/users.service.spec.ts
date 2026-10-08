@@ -799,6 +799,7 @@ describe('UsersService', () => {
             tokenCreateCall = args;
             return {};
           },
+          updateMany: async () => ({ count: 0 }),
         },
       }),
     );
@@ -817,6 +818,15 @@ describe('UsersService', () => {
     expect(tokenCreateCall).toEqual(
       expect.objectContaining({ data: expect.objectContaining({ userId: 'new-sa' }) }),
     );
+    // Founder, 8 Oct 2026: an invitation link works for 72 hours.
+    const ttl = (tokenCreateCall as { data: { expiresAt: Date } }).data.expiresAt.getTime() - Date.now();
+    expect(ttl).toBeGreaterThan(71.9 * 3_600_000);
+    expect(ttl).toBeLessThanOrEqual(72 * 3_600_000);
+    await new Promise((resolve) => setImmediate(resolve));
+    const mail = emailService.send.mock.calls.at(-1)![0];
+    expect(mail).toEqual(expect.objectContaining({ to: 'new@platform.test', fromName: 'YukthiX', subject: "You're invited to the YukthiX team" }));
+    expect(mail.text).toContain('for 72 hours');
+    expect(mail.html).not.toMatch(/Examination Platform/);
     expect(audit.record).toHaveBeenCalledWith(
       { organizationId: null, isSuperAdmin: true },
       { actorUserId: 'actor-1', action: 'user.super_admin_invited', entityType: 'user', entityId: 'new-sa' },
@@ -1197,12 +1207,16 @@ describe('UsersService', () => {
       const tx = {
         identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', organizationId: 'org1' }) },
-        passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok1' }) },
+        passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok1' }), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
       const result = await service.requestPasswordReset(ctx, 't1', 'admin1');
       expect(result).toEqual({ success: true, emailSent: true });
       expect(tx.passwordResetToken.create).toHaveBeenCalled();
+      // A reset link still works for only 15 minutes.
+      const ttl = tx.passwordResetToken.create.mock.calls[0][0].data.expiresAt.getTime() - Date.now();
+      expect(ttl).toBeGreaterThan(14.9 * 60_000);
+      expect(ttl).toBeLessThanOrEqual(15 * 60_000);
       // organizationId must reach EmailService so it resolves the org's own SMTP config
       // instead of silently falling back to the platform transporter (which has no
       // SMTP_HOST in production and fakes success via an Ethereal test account -- see
@@ -1216,7 +1230,7 @@ describe('UsersService', () => {
       const tx = {
         identityProvider: { count: jest.fn().mockResolvedValue(1) },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', organizationId: 'org1' }) },
-        passwordResetToken: { create: jest.fn() },
+        passwordResetToken: { create: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
 
@@ -1235,7 +1249,7 @@ describe('UsersService', () => {
       const tx = {
         identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', organizationId: 'org1' }) },
-        passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok1' }) },
+        passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok1' }), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
       emailService.send.mockResolvedValueOnce({ success: false });
@@ -1270,7 +1284,7 @@ describe('UsersService', () => {
             .mockResolvedValueOnce(null),          // new@b.com    -> created
           create: jest.fn().mockResolvedValue(created),
         },
-        passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok' }) },
+        passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok' }), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
       const result = await service.bulkCreate(ctx, { emails: ['exists@b.com', 'new@b.com'], role: 'recruiter' }, 'admin1');
@@ -1303,7 +1317,7 @@ describe('UsersService', () => {
       const tx = {
         identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) },
-        passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok' }) },
+        passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok' }), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
       quota.checkSoftLimit.mockRejectedValueOnce(new Error('billing DB unreachable'));
@@ -1319,7 +1333,7 @@ describe('UsersService', () => {
       const tx = {
         identityProvider: { count: jest.fn().mockResolvedValue(1) },
         user: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) },
-        passwordResetToken: { create: jest.fn() },
+        passwordResetToken: { create: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
 

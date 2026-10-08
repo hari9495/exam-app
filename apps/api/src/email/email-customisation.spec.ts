@@ -1,4 +1,4 @@
-import { CompanyLook, EMAIL_TYPES, EmailType, accountLockedEmail, codeEmail, companyWelcomeEmail, fromNameFor, newSignInEmail, passwordResetEmail, wordingFor } from './account-emails';
+import { CompanyLook, EMAIL_TYPES, EmailType, accountLockedEmail, codeEmail, companyWelcomeEmail, fromNameFor, inviteEmail, newSignInEmail, passwordResetEmail, staffInviteEmail, staffPromotionEmail, wordingFor } from './account-emails';
 import { checkField, fill } from './email-wording';
 
 // P04 Q5: companies re-word and brand the account emails; the security-critical parts stay locked.
@@ -111,17 +111,44 @@ describe('company look on the account emails', () => {
   });
 
   it('the new-company welcome is YukthiX-owned and plain', async () => {
-    const mail = await companyWelcomeEmail({ to: 'sunita@godavari.test', adminName: 'Sunita Rao', company: 'Godavari Agro', link: LINK, minutes: 15 });
+    const mail = await companyWelcomeEmail({ to: 'sunita@godavari.test', adminName: 'Sunita Rao', company: 'Godavari Agro', link: LINK, hours: 72 });
     expect(mail.subject).toBe('Godavari Agro is ready on YukthiX');
     expect(mail.fromName).toBe('YukthiX');
     expect(mail.text).toContain("Hi Sunita, we've set up Godavari Agro on YukthiX, and you're its first System Admin.");
     expect(mail.html).toContain(`href="${LINK}"`);
     expect(mail.text).not.toMatch(/Examination Platform/);
+    expect(mail.text).toContain('The link works once, for 72 hours.');
+    expect(mail.text).not.toMatch(/minutes/);
+  });
+
+  it('an invitation says its link works for 72 hours; a reset still says 15 minutes', async () => {
+    const invite = await inviteEmail({ to: 'a@b.test', company: 'Kaveri', link: LINK, hours: 72 });
+    expect(invite.text).toContain('The link works once, for 72 hours. Missed it? Choose Forgot password on the sign-in page.');
+    expect(invite.text).not.toMatch(/minutes/);
+    const reset = await passwordResetEmail({ to: 'a@b.test', company: 'Kaveri', link: LINK, minutes: 15 });
+    expect(reset.text).toContain('The link works once and expires in 15 minutes.');
+    // A company's own invite wording may say how long the link works.
+    expect(wordingFor('invite', { ...BARE, intro: 'Valid for {{hours}} hours.' }, { hours: '72' }).intro).toBe('Valid for 72 hours.');
+  });
+
+  it('YukthiX staff invite and promotion emails are YukthiX-owned, in the account-email layout', async () => {
+    const invite = await staffInviteEmail('ravi@yukthix.test', LINK, 72);
+    expect(invite.fromName).toBe('YukthiX');
+    expect(invite.subject).toBe("You're invited to the YukthiX team");
+    expect(invite.html).toContain(`href="${LINK}"`);
+    expect(invite.text).toContain('The link works once, for 72 hours.');
+    const promoted = await staffPromotionEmail('ravi@yukthix.test');
+    expect(promoted.fromName).toBe('YukthiX');
+    expect(promoted.text).toContain('platform administrator access');
+    for (const m of [invite, promoted]) {
+      expect(m.text).not.toMatch(/Examination Platform|unsubscribe/i);
+      expect(m.html).toContain('yx-btn'); // the YukthiX account-email layout
+    }
   });
 
   it('every type renders its YukthiX wording with no company look', () => {
     for (const type of Object.keys(EMAIL_TYPES) as EmailType[]) {
-      const w = wordingFor(type, null, { firstName: 'Asha', companyName: 'Kaveri', code: '1', minutes: '5', device: 'x', change: 'c', changeShort: 'c' });
+      const w = wordingFor(type, null, { firstName: 'Asha', companyName: 'Kaveri', code: '1', minutes: '5', hours: '72', device: 'x', change: 'c', changeShort: 'c' });
       expect(w.subject.length).toBeGreaterThan(0);
       expect(w.heading.length).toBeGreaterThan(0);
     }

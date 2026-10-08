@@ -80,7 +80,7 @@ function sampleEmail(type: EmailType, base: { to: string; company: string; first
     case 'mobile_code':
       return codeEmail({ ...base, code: '532112', minutes: 5, purpose: type === 'sign_in_code' ? 'sign_in' : type === 'verification_code' ? 'mfa' : 'mobile' });
     case 'invite':
-      return inviteEmail({ ...base, link: SAMPLE_LINK, minutes: 15 });
+      return inviteEmail({ ...base, link: SAMPLE_LINK, hours: 72 });
     case 'password_reset':
       return passwordResetEmail({ ...base, link: SAMPLE_LINK, minutes: 15 });
     case 'password_breached':

@@ -240,6 +240,7 @@ export const VARIABLE_LABELS: Record<string, string> = {
   companyName: 'Company name',
   code: 'The code',
   minutes: 'Minutes it works',
+  hours: 'Hours it works',
   device: 'Device, such as "Chrome on Windows"',
   change: 'What changed (sentence)',
   changeShort: 'What changed (short)',
@@ -282,7 +283,7 @@ export const EMAIL_TYPES = {
   sign_in_code: def('Sign-in codes', 'Sign-in code', 'Someone signs in with a code sent by email.', ['code', 'minutes'], { subject: '{{code}} is your YukthiX sign-in code', heading: 'Your sign-in code', intro: 'Enter this code to sign in to {{companyName}}.' }, CODE_LOCKED),
   verification_code: def('Sign-in codes', 'Verification code', "Someone confirms it's them with a code sent by email.", ['code', 'minutes'], { subject: '{{code}} is your YukthiX verification code', heading: 'Your verification code', intro: "Enter this code to confirm it's you at {{companyName}}." }, CODE_LOCKED),
   mobile_code: def('Sign-in codes', 'Mobile number code', 'Someone adds a mobile number and gets the code by email.', ['code', 'minutes'], { subject: '{{code}} is your YukthiX verification code', heading: 'Verify your mobile number', intro: 'Enter this code to verify your mobile number at {{companyName}}.' }, CODE_LOCKED),
-  invite: def('Your account', 'Invitation', 'An admin adds a person, who then sets their password.', ['minutes'], { subject: "You're invited to {{companyName}} on YukthiX", heading: 'Welcome to {{companyName}}', intro: 'Hi {{firstName}}, you have a new account at {{companyName}}. Set your password to get started.', buttonLabel: 'Set your password' }, LINK_LOCKED),
+  invite: def('Your account', 'Invitation', 'An admin adds a person, who then sets their password.', ['hours'], { subject: "You're invited to {{companyName}} on YukthiX", heading: 'Welcome to {{companyName}}', intro: 'Hi {{firstName}}, you have a new account at {{companyName}}. Set your password to get started.', buttonLabel: 'Set your password' }, LINK_LOCKED),
   password_reset: def('Your account', 'Password reset', 'Someone asks to reset their password.', ['minutes'], { subject: 'Reset your {{companyName}} password', heading: 'Reset your password', intro: 'We got a request to reset the password for your {{companyName}} account on YukthiX.', buttonLabel: 'Reset password' }, [...LINK_LOCKED, 'The "Didn\'t ask for this?" safety line']),
   password_breached: def('Your account', 'Password found in a breach', "A person's password turns up in a known data breach.", [], { subject: 'Change your YukthiX password', heading: 'Time for a new password', buttonLabel: 'Open My security' }, ['Why the password must change', 'Where the button goes']),
   new_sign_in: def('Security alerts', 'New sign-in', 'An account is signed in to from a new device.', ['device'], { subject: 'New sign-in to your YukthiX account', heading: 'New sign-in to your account', intro: "Your {{companyName}} account was just signed in to from a device we haven't seen before.", buttonLabel: 'This wasn’t me' }, SIGN_IN_LOCKED),
@@ -410,16 +411,12 @@ export function passwordResetEmail(i: Personal & { link: string; minutes: number
 }
 
 /** A person an admin added: set a password to get in (the link is a one-time reset link). */
-export function inviteEmail(i: Personal & { link: string; minutes: number }): Promise<RenderedEmail> {
+export function inviteEmail(i: Personal & { link: string; hours: number }): Promise<RenderedEmail> {
   return companyEmail('invite', {
     ...i,
-    values: { minutes: String(i.minutes) },
-    preheader: `Set your password within ${i.minutes} minutes.`,
-    facts: [
-      action(i.link),
-      text(`The link works once and expires in ${i.minutes} minutes. If it has expired, choose Forgot password on the sign-in page to get a new one.`),
-      pasteLink(i.link),
-    ],
+    values: { hours: String(i.hours) },
+    preheader: `Set your password within ${i.hours} hours.`,
+    facts: [action(i.link), text(`The link works once, for ${i.hours} hours. Missed it? Choose Forgot password on the sign-in page.`), pasteLink(i.link)],
   });
 }
 
@@ -507,7 +504,7 @@ export function noticeEmail(i: { to: string; company?: string | null; subject: s
 }
 
 /** YukthiX's welcome to a new company's first System Admin (YukthiX-owned, not company-editable). */
-export async function companyWelcomeEmail(i: { to: string; adminName?: string | null; company: string; link: string; minutes: number }): Promise<RenderedEmail> {
+export async function companyWelcomeEmail(i: { to: string; adminName?: string | null; company: string; link: string; hours: number }): Promise<RenderedEmail> {
   const mail = await renderAccountEmail({
     to: i.to,
     company: i.company,
@@ -518,8 +515,43 @@ export async function companyWelcomeEmail(i: { to: string; adminName?: string | 
       text(`Hi ${firstNameOf(i.adminName)}, we've set up ${i.company} on YukthiX, and you're its first System Admin.`),
       text('Set your password to sign in. Then add your company details, invite your team and choose who can do what.'),
       button('Set your password', i.link),
-      text(`The link works once and expires in ${i.minutes} minutes. If it has expired, choose Forgot password on the sign-in page to get a new one.`),
+      text(`The link works once, for ${i.hours} hours. Missed it? Choose Forgot password on the sign-in page.`),
       pasteLink(i.link),
+    ],
+  });
+  return { ...mail, fromName: 'YukthiX' };
+}
+
+/** YukthiX staff: an invitation to the platform console (YukthiX-owned, not company-editable). */
+export async function staffInviteEmail(to: string, link: string, hours: number): Promise<RenderedEmail> {
+  const mail = await renderAccountEmail({
+    to,
+    subject: "You're invited to the YukthiX team",
+    preheader: `Set your password within ${hours} hours.`,
+    heading: 'Welcome to the YukthiX team',
+    blocks: [
+      text("Hi there, you've been added as a YukthiX platform administrator. You'll look after the companies that use YukthiX from the platform console."),
+      text("Set your password to sign in. Then you'll add a security key, which every YukthiX team member uses to sign in."),
+      button('Set your password', link),
+      text(`The link works once, for ${hours} hours. Missed it? Ask the person who invited you to send a new one.`),
+      pasteLink(link),
+    ],
+  });
+  return { ...mail, fromName: 'YukthiX' };
+}
+
+/** YukthiX staff: an existing account now has platform administrator access. */
+export async function staffPromotionEmail(to: string): Promise<RenderedEmail> {
+  const mail = await renderAccountEmail({
+    to,
+    subject: "You're now a YukthiX platform administrator",
+    preheader: 'Sign in again with your usual password.',
+    heading: "You're on the YukthiX team",
+    blocks: [
+      text('Your account now has YukthiX platform administrator access, so you can look after the companies that use YukthiX from the platform console.'),
+      text("We've signed you out everywhere. Sign in again with your usual password, and add a security key when asked."),
+      button('Sign in', appUrl('/staff/sign-in')),
+      text("Didn't expect this? Contact the YukthiX team right away."),
     ],
   });
   return { ...mail, fromName: 'YukthiX' };
