@@ -312,7 +312,7 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
   return (
     <div className="yx-auth__page">
       <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Settings' }, { label: 'Roles & access' }]} />}
+        breadcrumbs={<Breadcrumbs items={[{ label: 'Access' }, { label: 'Roles & access' }]} />}
         title="Roles & access"
         description="Who holds which role, over which people, and from when."
         actions={state === 'ready' ? <Button variant="primary" onClick={() => setGiving(true)}>Give access</Button> : undefined}

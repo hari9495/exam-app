@@ -139,7 +139,7 @@ export function SecuritySettingsScreen(props: SecuritySettingsScreenProps) {
   return (
     <div className="yx-auth__page">
       <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Settings' }, { label: 'People & Access' }, { label: 'Security' }]} />}
+        breadcrumbs={<Breadcrumbs items={[{ label: 'Security' }, { label: 'Security settings' }]} />}
         title="Security"
         description="Sign-in, second steps, single sign-on, sessions, network allow-lists and passwords."
         facts={props.updatedAt ? <span>Last changed {when(props.updatedAt)}</span> : undefined}

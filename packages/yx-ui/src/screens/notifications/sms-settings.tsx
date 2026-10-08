@@ -406,7 +406,7 @@ export function SmsSettingsScreen(props: SmsSettingsScreenProps) {
   return (
     <div className="yx-auth__page">
       <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Settings' }, { label: 'Notifications' }, { label: 'SMS' }]} />}
+        breadcrumbs={<Breadcrumbs items={[{ label: 'Security' }, { label: 'Text messages (SMS)' }]} />}
         title={platform ? 'YukthiX shared SMS account' : 'Text messages (SMS)'}
         description={platform ? 'The account companies use unless they add their own.' : 'One-time codes by text: which account sends them, your monthly limit and what was sent.'}
       />

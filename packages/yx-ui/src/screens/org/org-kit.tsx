@@ -64,7 +64,7 @@ export function ownershipLabel(r: { ownerLegalEntityId?: string | null; appliesT
 export function OrgPage({ group = 'Organisation', crumb, title, description, actions, state, onRetry, what, children }: { group?: string; crumb: string; title: string; description: string; actions?: ReactNode; state: LoadState; onRetry?: () => void; what: string; children: ReactNode }) {
   return (
     <div className="yx-auth__page">
-      <PageHeader breadcrumbs={<Breadcrumbs items={[{ label: 'Settings' }, { label: group }, { label: crumb }]} />} title={title} description={description} actions={state === 'ready' ? actions : undefined} />
+      <PageHeader breadcrumbs={<Breadcrumbs items={[{ label: group }, { label: crumb }]} />} title={title} description={description} actions={state === 'ready' ? actions : undefined} />
       {state === 'loading' && (
         <div className="yx-auth__stack" aria-busy="true">
           <Skeleton height={48} />
