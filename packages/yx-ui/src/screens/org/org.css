@@ -9,3 +9,6 @@
   border: var(--yx-border-width) solid var(--yx-color-border); background: var(--yx-color-bg-subtle);
   font-family: var(--yx-font-mono); font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-secondary); white-space: nowrap;
 }
+
+/* A rule's values sit close to their labels: no wide gap between 'Applies to' and 'Value'. */
+.yx-org__rule-values { max-inline-size: 48rem; }

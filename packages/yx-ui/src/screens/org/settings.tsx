@@ -164,6 +164,7 @@ function SettingBlock({ settingKey, def, rows, names, canEdit, blockedReason, to
         action={blockedReason ? <Button size="sm" disabled>Change</Button> : canEdit ? <Button size="sm" onClick={onEdit}>Change</Button> : undefined}
       />
       {rows.length > 0 && (
+        <div className="yx-org__rule-values">
         <DataTable
           label={`${def.label}: values set`}
           columns={columns}
@@ -172,6 +173,7 @@ function SettingBlock({ settingKey, def, rows, names, canEdit, blockedReason, to
           rowNoun={['value', 'values']}
           rowActions={canEdit && !blockedReason ? (r) => (inForce(r) ? null : <MenuItem destructive onSelect={() => onRemove(r)}>Remove</MenuItem>) : undefined}
         />
+        </div>
       )}
     </div>
   );
