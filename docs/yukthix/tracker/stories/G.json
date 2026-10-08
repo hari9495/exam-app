@@ -4833,7 +4833,7 @@
   "id": "US-G-195",
   "type": "Story",
   "parent": "FT-G-015",
-  "title": "Company compares its metrics with peers",
+  "title": "Company compares its metrics with peers (dropped by founder 8 Oct 2026, M14 D7)",
   "story": "As a company admin, I want anonymous peer benchmarks, so that we know where we stand.",
   "acceptance": [
    "Given opt-in, then MTTR, CSAT and FCR are compared with peers by industry and size.",
@@ -4844,7 +4844,7 @@
   "docs": [
    "M14 gap check"
   ],
-  "state": "New",
+  "state": "Removed",
   "phase": "Step 3b-4",
   "order": 590.729,
   "points": 3,

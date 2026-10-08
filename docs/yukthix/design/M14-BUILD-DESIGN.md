@@ -1090,9 +1090,19 @@ Each slice is one pull request with its migration, API, tests and (where listed)
 
 ---
 
-## 17. Open decisions
+## 17. Decisions D1–D7
 
-Only things the founder has **not** decided yet. Each has options and a recommendation.
+**All decided by the founder on 8 Oct 2026** (the options below are kept as the record of what was weighed):
+
+| # | Decision |
+|---|---|
+| D1 | Live chat: **A, our own socket.io server** (reuse the exam-runtime pattern, Redis adapter). |
+| D2 | Agents counted **once per person if an agent on any day of the month**; same-day add-and-remove is free. |
+| D3 | **Owners pay, setup is free:** desk admins who only configure and CAB members are free; problem / change / release managers, asset managers / CMDB owners, on-call responders, status-page editors and identity-action operators are paid (unless already agents). |
+| D4 | **The whole engine on one HR desk** per company inside ₹99 HRMS; any second desk is a paid `service_desk`; a desk's kind cannot change after creation. |
+| D5 | Inbound mail: **decide together with hosting (P13)**, behind our adapter; we re-check SPF / DKIM / DMARC ourselves. |
+| D6 | Reset / unlock proof: **a. in-app with MFA**; if locked out, a one-time code to the phone or personal email on the HR record (never from the ticket) **plus manager approval**. |
+| D7 | Peer benchmarks: **not built.** US-G-195 is dropped; no cross-company comparisons. |
 
 ### D1 · Live chat transport (open since M14 "Still to decide")
 
@@ -1163,4 +1173,5 @@ Comparing a company's metrics with other companies uses other tenants' data, eve
 
 | Date | Change |
 |---|---|
+| 8 Oct 2026 | Founder decided D1–D7 (§17); D7 drops peer benchmarks (US-G-195). |
 | 8 Oct 2026 | First draft: data model, roles and licensing, engines, API, screens, security, tests, 130 slices, open decisions D1–D7. |
