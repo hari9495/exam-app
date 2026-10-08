@@ -1,14 +1,13 @@
 import { useState } from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ForgotPasswordScreen, ResetPasswordScreen, SignInScreen, StaffSignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
 import { MfaChallengeScreen, MfaEnrolScreen, StepUpDialog } from './mfa';
 import { MeSecurityScreen, type MeSecurityScreenProps } from './me-security';
-import { LoginActivityScreen, NO_FILTERS, type LoginActivityScreenProps } from './login-activity';
+import { ANY_FAILURE, LoginActivityScreen, NO_FILTERS, type LoginActivityScreenProps } from './login-activity';
 import { SecuritySettingsScreen, policyChanges, policyErrors, type SecuritySettingsScreenProps } from './security-settings';
 import { deviceLabel, errorText } from './kit';
-import { unlockableIds } from './tables';
 import type { LoginEventRow } from './types';
 import { ADMINS, COMPANIES, FLOOR, IDPS, MFA_ENROLLED, MFA_NONE, MY_HISTORY, MY_SESSIONS, NOW, ORG_EVENTS, ORG_SESSIONS, PEOPLE, POLICY, PROVIDERS, RECOVERY_CODES, TOTP_SETUP } from './data';
 import { GROUP_2 } from '../settings/registry-g1-g2';
@@ -539,11 +538,36 @@ describe('LoginActivityScreen', () => {
     expect(screen.getAllByText('Code by SMS').length).toBeGreaterThan(0);
   });
 
-  it('flags a spike of failed attempts and filters to them', async () => {
+  it('flags a spike of failed attempts once, and filters to the same failures the count means', async () => {
     const onFiltersChange = vi.fn();
     render(<Activity failedLast24h={46} onFiltersChange={onFiltersChange} />);
+    expect(screen.getAllByText(/46 failed/)).toHaveLength(1);
     await userEvent.click(screen.getByRole('button', { name: 'Show failed attempts' }));
-    expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed' }));
+    expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ result: ANY_FAILURE }));
+    // The same set is a choice in the Result filter, so the chosen filter reads back.
+    await userEvent.click(screen.getByRole('combobox', { name: 'Result' }));
+    expect(await screen.findByRole('option', { name: 'Any failure' })).toBeInTheDocument();
+  });
+
+  it('below a spike the count is a header fact', () => {
+    render(<Activity failedLast24h={2} />);
+    expect(screen.getByText('2 failed attempts in the last 24 hours')).toBeInTheDocument();
+  });
+
+  it('the Method filter lists Single sign-on once, for both kinds of provider', async () => {
+    render(<Activity />);
+    await userEvent.click(screen.getByRole('combobox', { name: 'Method' }));
+    expect(await screen.findAllByRole('option', { name: 'Single sign-on' })).toHaveLength(1);
+  });
+
+  it('the Person filter asks the host to search (every user, not the first page) and keeps the matches it is given', async () => {
+    const onPeopleSearch = vi.fn();
+    render(<Activity onPeopleSearch={onPeopleSearch} people={[{ id: 'u-1', name: 'Divya Raghunathan', email: 'divya.r@kaverifoods.in' }]} />);
+    await userEvent.click(screen.getByRole('combobox', { name: 'Person' }));
+    await userEvent.type(await screen.findByPlaceholderText('Name or email'), 'zzz');
+    await waitFor(() => expect(onPeopleSearch).toHaveBeenCalledWith('zzz'));
+    // Not filtered locally: what the host returned is what is listed.
+    expect(screen.getByRole('option', { name: /Divya/ })).toBeInTheDocument();
   });
 
   it('signs a person out after confirming', async () => {
@@ -579,17 +603,18 @@ describe('LoginActivityScreen', () => {
     expect(within(sso).getByText('Two-step')).toBeInTheDocument();
   });
 
-  it('offers Unlock only on the newest lock of each person, and not after an unlock or a sign-in', () => {
-    const row = (id: string, userId: string, result: LoginEventRow['result'], reason: string | null = null) =>
-      ({ id, userId, identifier: `${userId}@x.test`, result, method: 'password', reason, ipAddress: null, userAgent: null, geo: null, newDevice: false, createdAt: '2026-10-08T06:00:00Z' }) as LoginEventRow;
-    const rows = [
-      row('a3', 'a', 'failed', 'bad_password+lockout_started'),
-      row('a2', 'a', 'unlocked', 'admin_unlock'),
-      row('a1', 'a', 'locked', 'account_locked'),
-      row('b2', 'b', 'success'),
-      row('b1', 'b', 'locked', 'account_locked'),
-    ];
-    expect([...unlockableIds(rows)]).toEqual(['a3']);
+  it('offers Unlock only where the API says the lock still stands, never inferred from the page; the locking attempt is marked', () => {
+    const row = (id: string, result: LoginEventRow['result'], reason: string | null = null, lockActive = false) =>
+      ({ ...ORG_EVENTS.data[1], id, result, reason, lockActive }) as LoginEventRow;
+    // Filtered to failures: the sign-in that ended lock a3 is not on the page, and the API says so.
+    const rows = [row('a3', 'failed', 'bad_password+lockout_started'), row('b1', 'failed', 'bad_password+lockout_started', true), row('b0', 'failed', 'bad_password')];
+    render(<Activity onUnlock={vi.fn()} events={{ ...ORG_EVENTS, data: rows, total: 3 }} />);
+    expect(screen.getAllByRole('button', { name: /^Unlock / })).toHaveLength(1);
+    const [a3, b1, b0] = screen.getAllByRole('row').slice(1);
+    expect(within(b1).getByRole('button', { name: /^Unlock / })).toBeInTheDocument();
+    expect(within(a3).getByText('Locked the account')).toBeInTheDocument();
+    expect(within(b1).getByText('Locked the account')).toBeInTheDocument();
+    expect(within(b0).queryByText('Locked the account')).toBeNull();
   });
 
   it('offers no Unlock without the permission (no handler)', () => {

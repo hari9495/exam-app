@@ -8,6 +8,7 @@ import { ToastProvider } from '../components/ui';
 import { SuperAdminActingBanner } from '../components/SuperAdminActingBanner';
 import { ImpersonationBanner } from '../components/ImpersonationBanner';
 import { StepUpProvider } from '../components/auth/StepUpProvider';
+import { THEME_SCRIPT } from '../lib/theme-script';
 
 // Without this the browser tab fell back to showing the raw hostname, and with
 // no icon file it showed the generic globe. `template` lets an individual page
@@ -27,6 +28,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
+        {/* Light or dark before first paint (the OS setting unless chosen in the account menu): no flash. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
         <QueryProvider>
           <ToastProvider>
             <AuthProvider>

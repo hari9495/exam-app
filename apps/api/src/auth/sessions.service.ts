@@ -58,6 +58,10 @@ export type LoginMethod = (typeof LOGIN_METHODS)[number];
 export type LoginResult = 'success' | 'failed' | 'locked' | 'mfa_failed' | 'code_sent' | 'unlocked';
 // What 'unsuccessful' (the failed-attempts filter and the 24-hour count) means: a code being sent is not a failure.
 const UNSUCCESSFUL: LoginResult[] = ['failed', 'locked', 'mfa_failed'];
+// The Method filter's "Single sign-on": a company identity provider of either kind.
+const SSO_METHODS: LoginMethod[] = ['saml', 'oidc'];
+// A row where an account lock shows: the failure that started one, or an attempt refused while locked.
+const showsLock = (r: { result: string; reason: string | null }) => r.result === 'locked' || Boolean(r.reason?.includes('lockout_started'));
 
 export interface SessionUser {
   id: string;
@@ -423,13 +427,16 @@ export class SessionsService {
     return { wasLocked };
   }
 
-  async listLoginEvents(context: TenantContext, filters: LoginEventFilters) {
+  // `lockState` (the admin screen): each person's newest lock row on the page says whether that lock still
+  // stands (`lockActive`), read from the login-protection store -- a later sign-in, an admin unlock or the
+  // lock running out all clear it -- so Unlock is offered only where it does something (validation 8 Oct 2026).
+  async listLoginEvents(context: TenantContext, filters: LoginEventFilters, options: { lockState?: boolean } = {}) {
     const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
     const where: Prisma.LoginEventWhereInput = {
       ...this.tenantWhere(context),
       ...(filters.userId ? { userId: filters.userId } : {}),
       ...(filters.result ? { result: filters.result === 'unsuccessful' ? { in: UNSUCCESSFUL } : filters.result } : {}),
-      ...(filters.method ? { method: filters.method } : {}),
+      ...(filters.method ? { method: filters.method === 'sso' ? { in: SSO_METHODS } : filters.method } : {}),
       ...(filters.from || filters.to
         ? { createdAt: { ...(filters.from ? { gte: new Date(filters.from) } : {}), ...(filters.to ? { lte: new Date(filters.to) } : {}) } }
         : {}),
@@ -439,7 +446,22 @@ export class SessionsService {
         tx.loginEvent.findMany({ where, select: LOGIN_EVENT_SELECT, orderBy: { createdAt: 'desc' }, skip, take }),
         tx.loginEvent.count({ where }),
       ]);
-      return buildPaginatedResponse(rows, total, page, pageSize);
+      if (!options.lockState || !context.organizationId) return buildPaginatedResponse(rows, total, page, pageSize);
+      const org = await tx.organization.findUnique({ where: { id: context.organizationId }, select: { slug: true } });
+      const slug = org?.slug.trim().toLowerCase();
+      const seen = new Set<string>();
+      const withLock = await Promise.all(
+        rows.map(async (r) => {
+          if (!r.userId || !r.identifier || !showsLock(r) || seen.has(r.userId)) return { ...r, lockActive: false };
+          seen.add(r.userId);
+          const identifier = r.identifier.trim().toLowerCase();
+          // The same (scope, identifier) pairs unlockAccount clears.
+          const checks: [string, string][] = [...(slug ? [[slug, identifier] as [string, string]] : []), [ANY_COMPANY, identifier], ['mfa', r.userId], ['stepup', r.userId]];
+          const blocks = await Promise.all(checks.map(([scope, id]) => this.loginProtection.check(scope, id, null)));
+          return { ...r, lockActive: blocks.some((b) => b?.scope === 'account') };
+        }),
+      );
+      return buildPaginatedResponse(withLock, total, page, pageSize);
     });
   }
 

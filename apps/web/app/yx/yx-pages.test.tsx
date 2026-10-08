@@ -632,6 +632,20 @@ describe('/yx/admin/login-activity', () => {
     expect(api.mock.calls.some(([p]) => /^\/security\/login-events\?result=unsuccessful&from=.+&pageSize=1$/.test(p))).toBe(true);
   });
 
+  it('the Person filter searches the API as the admin types, so every user is findable, not only the first page', async () => {
+    route({
+      'GET /security/login-events': { ...EMPTY_PAGE, total: 0 },
+      'GET /security/sessions': { ...EMPTY_PAGE, total: 0 },
+      'GET /users': { data: [{ id: 'u-7', email: 'zara.k@kaverifoods.in', name: 'Zara Khan', role: 'recruiter' }], total: 1, page: 1, pageSize: 25, totalPages: 1 },
+    });
+    wrap(<YxLoginActivityPage />);
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Person' }));
+    await userEvent.type(await screen.findByPlaceholderText('Name or email'), 'zara');
+    await waitFor(() => expect(api.mock.calls.some(([p]) => p === '/users?pageSize=25&search=zara')).toBe(true));
+    await userEvent.click(await screen.findByRole('option', { name: /Zara Khan/ }));
+    await waitFor(() => expect(api.mock.calls.some(([p]) => /^\/security\/login-events\?userId=u-7/.test(p))).toBe(true));
+  });
+
   it('says "no access" to someone without the permission, not "check your connection"', async () => {
     const forbidden = Object.assign(new Error('Forbidden'), { status: 403 });
     route({ 'GET /security/login-events': forbidden, 'GET /security/sessions': forbidden, 'GET /users': forbidden });

@@ -40,6 +40,7 @@ const METHODS: Record<string, string> = {
   password: 'Password',
   saml: 'Single sign-on',
   oidc: 'Single sign-on',
+  sso: 'Single sign-on', // the Method filter: saml or oidc
   google: 'Google',
   microsoft: 'Microsoft',
   otp_email: 'Code by email',

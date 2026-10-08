@@ -40,6 +40,17 @@ const GROUP_ICONS: Record<WorkspaceGroup, IconComponent> = { People: Users, Orga
 // The rail draws colour icons (§8); the panel's page links stay Lucide outline.
 const GROUP_ART: Record<WorkspaceGroup, ColorIconName> = { People: 'area.people', Organisation: 'orgUnit', Access: 'area.access', Security: 'area.security', Me: 'area.me' };
 
+/** localStorage key of an explicit light / dark choice; absent = follow the OS. */
+export const THEME_STORAGE_KEY = 'yx-theme';
+export function readThemeChoice(): ThemeChoice {
+  try {
+    const t = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return t === 'light' || t === 'dark' ? t : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
 /**
  * Product frame for the YukthiX workspace pages: rail with one area per group, a side panel with that area's pages
  * (the menu sheet on phones lists every area, since there is no rail), top bar with the company and the account menu.
@@ -47,8 +58,22 @@ const GROUP_ART: Record<WorkspaceGroup, ColorIconName> = { People: 'area.people'
 export function WorkspaceShell({ active, links, company, hiringHref, profileHref, name, email, onSignOut, onNavigate, children }: WorkspaceShellProps) {
   const groups = GROUPS.filter((g) => links.some((l) => l.group === g));
   const activeGroup = links.find((l) => l.id === active)?.group;
-  const [theme, setTheme] = useState<ThemeChoice>('light');
+  // The OS setting unless the person chose light or dark here; the choice is kept per browser and the host's
+  // sign-in pages read the same key before they paint (apps/web lib/theme-script).
+  const [theme, setTheme] = useState<ThemeChoice>('system');
   const [density, setDensity] = useState<DensityChoice>('comfortable');
+  useEffect(() => {
+    setTheme(readThemeChoice());
+  }, []);
+  const chooseTheme = (t: ThemeChoice) => {
+    setTheme(t);
+    try {
+      if (t === 'system') window.localStorage.removeItem(THEME_STORAGE_KEY);
+      else window.localStorage.setItem(THEME_STORAGE_KEY, t);
+    } catch {
+      /* private mode: this visit only */
+    }
+  };
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = theme === 'system' ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme;
@@ -111,7 +136,7 @@ export function WorkspaceShell({ active, links, company, hiringHref, profileHref
               onProfile={() => open(profileHref)}
               onPreferences={() => open(profileHref)}
               theme={theme}
-              onThemeChange={setTheme}
+              onThemeChange={chooseTheme}
               density={density}
               onDensityChange={setDensity}
             />

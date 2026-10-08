@@ -211,6 +211,34 @@ describe('SessionsService', () => {
     expect(tx.loginEvent.findMany.mock.calls[0][0].where).toMatchObject({ result: { in: ['failed', 'locked', 'mfa_failed'] }, method: 'oidc' });
   });
 
+  it("method 'sso' means a company identity provider of either kind", async () => {
+    await service.listLoginEvents(ORG, { method: 'sso' });
+    expect(tx.loginEvent.findMany.mock.calls[0][0].where).toMatchObject({ method: { in: ['saml', 'oidc'] } });
+  });
+
+  it("with lockState, each person's newest lock row says whether the lock still stands (from the store); older rows never", async () => {
+    const ev = (id: string, userId: string, result: string, reason: string | null = null) => ({ id, userId, identifier: ` ${userId.toUpperCase()}@x.test `, result, method: 'password', reason, createdAt: new Date() });
+    tx.loginEvent.findMany.mockResolvedValue([
+      ev('a3', 'a', 'failed', 'bad_password+lockout_started'),
+      ev('a2', 'a', 'failed', 'bad_password'),
+      ev('a1', 'a', 'locked', 'account_locked'),
+      ev('b1', 'b', 'failed', 'bad_password+lockout_started'),
+      ev('c1', 'c', 'success'),
+    ]);
+    tx.loginEvent.count.mockResolvedValue(5);
+    tx.organization = { findUnique: jest.fn().mockResolvedValue({ slug: 'Kaveri' }) };
+    const check = jest.fn(async (scope: string, id: string) => (scope === 'kaveri' && id === 'a@x.test' ? { scope: 'account', retryAfterSeconds: 60 } : null));
+    service = new SessionsService(tenantPrisma as any, audit as any, email as any, { check } as any);
+    const { data } = await service.listLoginEvents(ORG, {}, { lockState: true });
+    expect(data.map((r: any) => [r.id, r.lockActive])).toEqual([['a3', true], ['a2', false], ['a1', false], ['b1', false], ['c1', false]]);
+    // The same scopes unlockAccount clears: the company, every company (W-016), the second step and step-up.
+    expect(check.mock.calls.filter(([, id]) => id === 'b@x.test' || id === 'b').map(([scope]) => scope)).toEqual(['kaveri', '*', 'mfa', 'stepup']);
+    // The own-history path never asks the store.
+    check.mockClear();
+    await service.listLoginEvents(ORG, {});
+    expect(check).not.toHaveBeenCalled();
+  });
+
   it('escapes attacker-controlled request data in notification emails', async () => {
     service.notifyNewDevice(USER, { ...META, ip: '<img src=x onerror=alert(1)>' });
     await sent();

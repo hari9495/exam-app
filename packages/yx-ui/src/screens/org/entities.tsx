@@ -147,11 +147,29 @@ function StatutoryDrawer({ entity, onClose, onLoad, onSave }: { entity: LegalEnt
 /* ---------- company rules (YX-ORG-12, YX-ORG-16) ---------- */
 
 // `justSaved`: the form is redrawn with the saved rules, so "Saved." is remembered by the parent.
+/** YX-ORG-16: the API refuses company-wide codes while two people share one, and lists them (409 EMPLOYEE_CODE_CLASHES). */
+export interface EmployeeCodeClash {
+  code: string;
+  employees: { id: string; name: string; legalEntity: string }[];
+}
+const clashesOf = (e: unknown): EmployeeCodeClash[] | null => {
+  const list = (e as { body?: { clashes?: unknown } } | null)?.body?.clashes;
+  return Array.isArray(list) && list.length ? (list as EmployeeCodeClash[]) : null;
+};
+
 function RulesForm({ rules, canManage, onSave, justSaved = false }: { rules: CompanyRules; canManage: boolean; onSave: (changes: { employeeCodeScope?: string; defaultOwnership?: string }) => Promise<void>; justSaved?: boolean }) {
   const [codeScope, setCodeScope] = useState(rules.employeeCodeScope.value);
   const [ownership, setOwnership] = useState(rules.defaultOwnership.value);
   const [saved, setSaved] = useState(false);
+  const [clashes, setClashes] = useState<EmployeeCodeClash[] | null>(null);
   const { busy, error, run } = useRun();
+  const save = () =>
+    run('rules', () =>
+      onSave(changes).catch((e) => {
+        setClashes(clashesOf(e));
+        throw e;
+      }),
+    ).then(setSaved);
   const changes = {
     ...(codeScope !== rules.employeeCodeScope.value ? { employeeCodeScope: codeScope } : {}),
     ...(ownership !== rules.defaultOwnership.value ? { defaultOwnership: ownership } : {}),
@@ -159,17 +177,28 @@ function RulesForm({ rules, canManage, onSave, justSaved = false }: { rules: Com
   const dirty = Object.keys(changes).length > 0;
   const source = (s: 'default' | 'company') => (s === 'default' ? 'YukthiX starter, not changed yet' : 'Set for your company');
   return (
-    <form className="yx-auth__settings" onSubmit={(e) => { e.preventDefault(); void run('rules', () => onSave(changes)).then(setSaved); }} noValidate>
+    <form className="yx-auth__settings" onSubmit={(e) => { e.preventDefault(); void save(); }} noValidate>
       <FormSection title="Company rules">
         <FormField label="Employee codes are unique" helper={`${source(rules.employeeCodeScope.source)}. Switching to company-wide is blocked while two people share a code.`}>
-          <Segment label="Employee codes are unique" options={[{ value: 'legal_entity' as const, label: 'Per legal entity' }, { value: 'tenant' as const, label: 'Across the company' }]} value={codeScope} onChange={(v) => { setCodeScope(v); setSaved(false); }} />
+          <Segment label="Employee codes are unique" options={[{ value: 'legal_entity' as const, label: 'Per legal entity' }, { value: 'tenant' as const, label: 'Across the company' }]} value={codeScope} onChange={(v) => { setCodeScope(v); setSaved(false); setClashes(null); }} />
         </FormField>
+        {clashes && (
+          <InlineAlert tone="danger" title="These codes are used in more than one legal entity. Change them first.">
+            <ul className="yx-auth__clashes">
+              {clashes.map((c) => (
+                <li key={c.code}>
+                  <strong>{c.code}</strong>: {c.employees.map((e) => `${e.name} (${e.legalEntity})`).join(', ')}
+                </li>
+              ))}
+            </ul>
+          </InlineAlert>
+        )}
         <FormField label="New departments, designations and grades are" helper={`${source(rules.defaultOwnership.source)}. A shared one can still be limited to some entities.`}>
           <Segment label="New masters are" options={[{ value: 'shared' as const, label: 'Shared' }, { value: 'entity_only' as const, label: 'Entity-only' }]} value={ownership} onChange={(v) => { setOwnership(v); setSaved(false); }} />
         </FormField>
       </FormSection>
       {(saved || justSaved) && !dirty && <InlineAlert tone="success">Saved.</InlineAlert>}
-      {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
+      {error && !clashes && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
       {canManage && (
         <div className="yx-auth__row yx-auth__save">
           <Button type="submit" variant="primary" loading={busy === 'rules'} disabled={!dirty}>Save rules</Button>

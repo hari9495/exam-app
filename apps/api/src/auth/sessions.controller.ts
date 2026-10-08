@@ -88,6 +88,6 @@ export class SessionsController {
   @Get('security/login-events')
   @RequirePermissions('audit:view')
   loginEvents(@CurrentTenant() ctx: TenantContext, @Query() query: LoginEventsQueryDto) {
-    return this.sessions.listLoginEvents(ctx, query);
+    return this.sessions.listLoginEvents(ctx, query, { lockState: true });
   }
 }

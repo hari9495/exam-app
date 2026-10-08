@@ -31,23 +31,8 @@ const signInMethod = (r: LoginEventRow) =>
 /** The API's minimum: the reason goes on the audit log. */
 export const UNLOCK_REASON_MIN = 10;
 
-/** A row that shows a known person's account locking: the place to offer Unlock. */
-export const showsLock = (r: LoginEventRow) => Boolean(r.userId) && (r.result === 'locked' || Boolean(r.reason?.includes('lockout_started')));
-
-/**
- * Where Unlock is offered: only on each person's newest lock row, and only when nothing newer for them
- * (a sign-in, an unlock) shows the lock is over. Rows come newest first; older lock rows are history.
- */
-export function unlockableIds(rows: LoginEventRow[]): Set<string> {
-  const settled = new Set<string>();
-  const ids = new Set<string>();
-  for (const r of rows) {
-    if (!r.userId || settled.has(r.userId)) continue;
-    if (showsLock(r)) ids.add(r.id);
-    if (showsLock(r) || r.result === 'success' || r.result === 'unlocked') settled.add(r.userId);
-  }
-  return ids;
-}
+/** The failed attempt that locked the account (the API notes it in the reason). */
+const lockedTheAccount = (r: LoginEventRow) => Boolean(r.reason?.includes('lockout_started'));
 
 function UnlockDialog({ row, onUnlock }: { row: LoginEventRow; onUnlock: (row: LoginEventRow, reason: string) => Promise<void> }) {
   const [reason, setReason] = useState('');
@@ -70,7 +55,9 @@ function UnlockDialog({ row, onUnlock }: { row: LoginEventRow; onUnlock: (row: L
 
 /** Sign-in attempts, newest first (YX-IAM-10). Server-paged; becomes cards on phones. */
 export function LoginEventsTable({ page, state, onRetry, onPageChange, showPerson, filtered, onClearFilters, label, onUnlock }: LoginEventsTableProps) {
-  const unlockable = unlockableIds(page?.data ?? []);
+  // Unlock only where the API says the lock still stands (`lockActive`): never inferred from the rows on
+  // this page, which a filter can hide the later sign-in or unlock from (validation 8 Oct 2026).
+  const unlockable = Boolean(onUnlock) && (page?.data ?? []).some((r) => r.lockActive);
   const columns: TableColumn<LoginEventRow>[] = [
     { key: 'when', header: 'When', value: (r) => r.createdAt, render: (r) => <span className="yx-auth__nowrap">{when(r.createdAt)}</span>, width: 200, hideable: false },
     ...(showPerson ? [{ key: 'who', header: 'Email or number', value: (r: LoginEventRow) => r.identifier, render: (r: LoginEventRow) => <span className="yx-auth__nowrap">{r.identifier}</span>, width: 250 }] : []),
@@ -82,6 +69,7 @@ export function LoginEventsTable({ page, state, onRetry, onPageChange, showPerso
         <span className="yx-auth__badges">
           <Badge tone={RESULTS[r.result]?.tone ?? 'neutral'}>{RESULTS[r.result]?.label ?? r.result}</Badge>
           {r.newDevice && <Badge tone="info">New device</Badge>}
+          {lockedTheAccount(r) && <Badge tone="warning">Locked the account</Badge>}
         </span>
       ),
       width: 200,
@@ -105,7 +93,7 @@ export function LoginEventsTable({ page, state, onRetry, onPageChange, showPerso
         onClearFilters={onClearFilters}
         rowNoun={['sign-in attempt', 'sign-in attempts']}
         // The Unlock column only when a row on this page can be unlocked: no empty column otherwise.
-        rowButtons={onUnlock && unlockable.size ? (r) => (unlockable.has(r.id) ? <UnlockDialog row={r} onUnlock={onUnlock} /> : null) : undefined}
+        rowButtons={onUnlock && unlockable ? (r) => (r.lockActive ? <UnlockDialog row={r} onUnlock={onUnlock} /> : null) : undefined}
         cardSummary
       />
       {page && page.total > page.pageSize && <Pagination page={page.page} pageSize={page.pageSize} total={page.total} onPageChange={onPageChange} />}

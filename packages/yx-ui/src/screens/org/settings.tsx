@@ -6,6 +6,7 @@ import { InlineAlert } from '../../components/feedback';
 import { FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { MenuItem } from '../../components/menu';
+import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
 import { DataTable, type TableColumn } from '../../components/table';
 import { dayKey } from '../../lib/dates';
@@ -41,6 +42,9 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'attendance.missing_punch_effect': { block_payroll_approval: 'Hold payroll approval', warning_only: 'Warn only' },
 };
 export const valueLabel = (key: string, value: unknown) => VALUE_LABEL[key]?.[String(value)] ?? String(value);
+
+/** A single choice of 2-4 short options is the joined Segment control, never a dropdown (DESIGN R11; validation 8 Oct 2026). */
+const isPickOne = (count: number) => count >= 2 && count <= 4;
 
 export interface SettingsSection {
   title: string;
@@ -111,7 +115,11 @@ function SettingEditor({ settingKey, def, choices, today, onClose, onSave }: { s
       <FormSection title="Applies to">
         {scopes.length > 1 && (
           <FormField id="set-scope" label="Applies to" helper="The most specific value wins: a grade over an employment type, an entity over the company.">
-            <Select value={draft.scopeType} onChange={(v) => v && set({ scopeType: v, scopeId: null })} options={scopes.map((s) => ({ value: s, label: SCOPE_LABEL[s] }))} aria-label="Applies to" />
+            {isPickOne(scopes.length) ? (
+              <Segment label="Applies to" value={draft.scopeType} onChange={(scopeType) => set({ scopeType, scopeId: null })} options={scopes.map((s) => ({ value: s, label: SCOPE_LABEL[s] }))} />
+            ) : (
+              <Select value={draft.scopeType} onChange={(v) => v && set({ scopeType: v, scopeId: null })} options={scopes.map((s) => ({ value: s, label: SCOPE_LABEL[s] }))} aria-label="Applies to" />
+            )}
           </FormField>
         )}
         {draft.scopeType !== 'tenant' && (
@@ -122,7 +130,11 @@ function SettingEditor({ settingKey, def, choices, today, onClose, onSave }: { s
       </FormSection>
       <FormSection title="Value">
         <FormField id="set-value" label={def.label} required error={errorOf('set-value')}>
-          <Select value={draft.value} onChange={(value) => set({ value })} options={def.values.map((v) => ({ value: v, label: valueLabel(settingKey, v) }))} aria-label={def.label} />
+          {isPickOne(def.values.length) ? (
+            <Segment label={def.label} value={draft.value ?? ''} onChange={(value) => set({ value })} options={def.values.map((v) => ({ value: v, label: valueLabel(settingKey, v) }))} />
+          ) : (
+            <Select value={draft.value} onChange={(value) => set({ value })} options={def.values.map((v) => ({ value: v, label: valueLabel(settingKey, v) }))} aria-label={def.label} />
+          )}
         </FormField>
         {def.dated && (
           <FormField id="set-from" label="Applies from" required helper="Earlier days keep the value they had." error={errorOf('set-from')}>

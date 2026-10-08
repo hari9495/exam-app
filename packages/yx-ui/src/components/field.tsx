@@ -65,7 +65,10 @@ export function FormField({ label, children, required = false, optional, helper,
   const autoId = useId();
   const fieldId = id ?? `yx-field-${autoId}`;
   const [internalError, setInternalError] = useState<string | null>(null);
-  const shownError = error ?? internalError;
+  // No error under a field while the person is typing in it (founder review 8 Oct 2026): it shows again when they
+  // leave the field or press Save. One rule for every field, whatever set the error.
+  const [typing, setTyping] = useState(false);
+  const shownError = typing ? null : error ?? internalError;
   const helperId = helper ? `${fieldId}-helper` : undefined;
   const errorId = shownError ? `${fieldId}-error` : undefined;
 
@@ -80,7 +83,20 @@ export function FormField({ label, children, required = false, optional, helper,
         setInternalError,
       }}
     >
-      <div className={cx('yx-field', className)} data-invalid={shownError ? true : undefined} data-disabled={disabled || undefined}>
+      <div
+        className={cx('yx-field', className)}
+        data-invalid={shownError ? true : undefined}
+        data-disabled={disabled || undefined}
+        // Bubble phase, never capture: React flushes a capture-phase state update before it runs the
+        // input's own onChange, so the controlled input re-rendered with its old value and the browser's
+        // first keystroke (or a pasted value) was wiped (validation 8 Oct 2026). In the bubble phase this
+        // update and the input's onChange are one batch.
+        onInput={(e) => {
+          const t = e.target as HTMLElement;
+          if (t instanceof HTMLTextAreaElement || (t instanceof HTMLInputElement && !['checkbox', 'radio'].includes(t.type))) setTyping(true);
+        }}
+        onBlur={() => setTyping(false)}
+      >
         <label htmlFor={fieldId} className="yx-field__label" data-hidden={hideLabel || undefined}>
           <span>{label}</span>
           {required && <span className="yx-field__req">Required</span>}
