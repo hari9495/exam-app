@@ -113,9 +113,9 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     key: 'desk_lead',
     name: 'Desk Team Lead',
     typicalScope: 'tenant',
-    summary: 'An agent who also assigns tickets to others, changes many at once and shares views.',
+    summary: 'An agent who also assigns and merges tickets, changes many at once, sees who read a ticket, shows masked values (after a security check) and approves SLA exclusions.',
     cannot: 'Set up the desk.',
-    permissions: [...DESK_AGENT, 'desk.ticket.assign', 'desk.ticket.bulk', 'desk.ticket.merge', 'desk.report.view'],
+    permissions: [...DESK_AGENT, 'desk.ticket.assign', 'desk.ticket.bulk', 'desk.ticket.merge', 'desk.report.view', 'desk.audit.view', 'desk.pii.unmask'],
   },
   {
     key: 'desk_collaborator',

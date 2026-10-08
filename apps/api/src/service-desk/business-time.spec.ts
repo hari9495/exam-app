@@ -68,4 +68,22 @@ describe('business time (§8.2)', () => {
     expect(isValidZone('Asia/Kolkata')).toBe(true);
     expect(isValidZone('Mars/Olympus')).toBe(false);
   });
+
+  it("keeps the second half of a half-day holiday when the calendar says so (founder decision 8 Oct 2026)", () => {
+    const cal: CalendarSpec = { ...ist, halfDayOpen: "second", holidays: [{ on: "2026-10-21", halfDay: true }] };
+    // Wed 21 Oct is open 13:30-18:00 only: 09:00-13:30 counts nothing.
+    expect(businessSecondsBetween(cal, at("2026-10-21T09:00:00+05:30"), at("2026-10-21T13:30:00+05:30"))).toBe(0);
+    expect(businessSecondsBetween(cal, at("2026-10-21T00:00:00+05:30"), at("2026-10-22T00:00:00+05:30"))).toBe(4.5 * H);
+    expect(addBusinessSeconds(cal, at("2026-10-21T09:00:00+05:30"), H)).toEqual(at("2026-10-21T14:30:00+05:30"));
+  });
+
+  it("takes away only the leave half of a person's day (half-day leave, founder decision 8 Oct 2026)", () => {
+    const morningOff: CalendarSpec = { ...ist, leave: [{ on: "2026-10-07", part: "first" }] };
+    const afternoonOff: CalendarSpec = { ...ist, leave: [{ on: "2026-10-07", part: "second" }] };
+    const day = [at("2026-10-07T00:00:00+05:30"), at("2026-10-08T00:00:00+05:30")] as const;
+    expect(businessSecondsBetween(morningOff, ...day)).toBe(4.5 * H);
+    expect(businessSecondsBetween(morningOff, at("2026-10-07T09:00:00+05:30"), at("2026-10-07T13:30:00+05:30"))).toBe(0);
+    expect(businessSecondsBetween(afternoonOff, at("2026-10-07T13:30:00+05:30"), at("2026-10-07T18:00:00+05:30"))).toBe(0);
+    expect(businessSecondsBetween({ ...ist, leave: [{ on: "2026-10-07", part: "full" }] }, ...day)).toBe(0);
+  });
 });

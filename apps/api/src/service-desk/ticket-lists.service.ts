@@ -5,6 +5,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { Tx } from '../org-structure/org-structure.service';
 import { DeskActor, audit, canLead, has, visibleTickets } from './desk-access';
 import { TicketFiltersDto, TicketListQueryDto, ViewDto } from './dto';
+import { MeService } from './me.service';
 
 // SD-1.07 agent desk lists (US-B-089, US-G-002, US-G-010): filters, saved views, the board, CSV export. Every list
 // starts from the visibility filter (§5.7), so a search, a count or an export never holds a ticket the person may
@@ -43,6 +44,13 @@ export class TicketListsService {
     if (f.categoryIds?.length) and.push({ categoryId: { in: f.categoryIds } });
     if (f.tags?.length) and.push({ tags: { hasSome: f.tags } });
     if (f.vip !== undefined) and.push({ vip: f.vip });
+    const snoozed = await MeService.snoozedIds(tx, a.ctx.organizationId, a.userId);
+    if (f.snoozed === 'only') and.push({ id: { in: snoozed } });
+    else if (f.snoozed !== 'show' && snoozed.length) and.push({ id: { notIn: snoozed } });
+    if (f.breaching) {
+      const soon = await tx.sdSlaTimer.findMany({ where: { organizationId: a.ctx.organizationId, kind: 'sla', state: { in: ['running', 'paused'] }, OR: [{ breachedAt: { not: null } }, { dueAt: { lte: new Date(Date.now() + 4 * 3_600_000) } }] }, select: { ticketId: true }, take: 5000 });
+      and.push({ id: { in: [...new Set(soon.map((x) => x.ticketId))] } });
+    }
     if (f.assignee === 'me') and.push({ assigneeUserId: a.userId });
     else if (f.assignee === 'none') and.push({ assigneeUserId: null });
     else if (f.assignee) and.push({ assigneeUserId: f.assignee });
@@ -93,6 +101,15 @@ export class TicketListsService {
       tx.person.findMany({ where: { organizationId: org, id: { in: [...pick('requesterPersonId'), ...pick('requestedForPersonId')] } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }),
       tx.user.findMany({ where: { organizationId: org, id: { in: pick('assigneeUserId') } }, select: { id: true, name: true, email: true } }),
     ]);
+    // The nearest live response target of each ticket (US-G-016 on the list: due time and missed or not).
+    const timers = rows.length ? await tx.sdSlaTimer.findMany({ where: { organizationId: org, kind: 'sla', ticketId: { in: rows.map((r) => r.id) }, state: { in: ['running', 'paused'] } }, select: { ticketId: true, dueAt: true, breachedAt: true, state: true } }) : [];
+    const sla = new Map<string, { dueAt: Date | null; breached: boolean; paused: boolean }>();
+    for (const x of timers) {
+      const cur = sla.get(x.ticketId);
+      const breached = Boolean(x.breachedAt) || Boolean(cur?.breached);
+      const dueAt = [cur?.dueAt, x.state === 'running' ? x.dueAt : null].filter((d): d is Date => Boolean(d)).sort((p, q) => p.getTime() - q.getTime())[0] ?? null;
+      sla.set(x.ticketId, { dueAt, breached, paused: x.state === 'paused' && (cur?.paused ?? true) });
+    }
     const m = <T extends { id: string }>(xs: T[]) => new Map(xs.map((x) => [x.id, x]));
     const [D, S, T, C, G, P, U] = [m(desks), m(statuses), m(types), m(cats), m(groups), m(people), m(users)];
     const person = (id: string | null) => {
@@ -121,6 +138,8 @@ export class TicketListsService {
       sensitive: t.sensitive,
       private: t.private,
       version: t.version,
+      tier: t.tier,
+      sla: sla.get(t.id) ?? null,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
       // Lead-only actions show only to those who may do them.
@@ -138,6 +157,8 @@ export class TicketListsService {
       const rows = await tx.sdTicket.findMany({ where, orderBy: ORDER[sort ?? view?.sort ?? 'updated_desc'], take: EXPORT_CAP });
       const items = await this.enrich(tx, a, rows);
       await audit(tx, a, 'desk.ticket.exported', 'sd_ticket', a.userId, { rows: items.length, filters: { ...(view?.filters ?? {}), ...rest } });
+      // US-G-030: an export counts as reading every ticket in it.
+      if (rows.length) await tx.sdTicketRead.createMany({ data: rows.map((t) => ({ organizationId: t.organizationId, deskId: t.deskId, ticketId: t.id, userId: a.userId, access: 'export' })) });
       const header = ['Number', 'Subject', 'Desk', 'Type', 'Status', 'Priority', 'Category', 'Group', 'Requester', 'Requested for', 'Assignee', 'Tags', 'VIP', 'Raised', 'Updated'];
       const body = items.map((t) => [t.number, t.subject, t.desk, t.type, t.status, `P${t.priority}`, t.category, t.group, t.requester, t.requestedFor, t.assignee, t.tags.join(' '), t.vip ? 'Yes' : 'No', t.createdAt.toISOString(), t.updatedAt.toISOString()].map(safeCell));
       return stringify([header, ...body]);

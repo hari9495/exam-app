@@ -1,4 +1,4 @@
-import { chooseAgent, isAvailable } from './assignment';
+import { chooseAgent, isAvailable, onLeaveNow } from './assignment';
 
 // SD-1.06 assignment rules (US-B-087, US-G-011).
 describe('automatic assignment', () => {
@@ -40,5 +40,17 @@ describe('automatic assignment', () => {
     expect(isAvailable(night, new Date('2026-10-09T17:00:00Z'))).toBe(true); // Fri 22:30 IST
     expect(isAvailable(night, new Date('2026-10-09T23:00:00Z'))).toBe(true); // Sat 04:30 IST, Friday's shift
     expect(isAvailable(night, new Date('2026-10-10T17:00:00Z'))).toBe(false); // Sat 22:30 IST
+  });
+});
+
+describe('half-day leave (founder decision 8 Oct 2026)', () => {
+  it('is away only for the leave half', () => {
+    const morning = new Date('2026-10-07T10:00:00+05:30');
+    const afternoon = new Date('2026-10-07T15:00:00+05:30');
+    expect(onLeaveNow('first', 'Asia/Kolkata', morning)).toBe(true);
+    expect(onLeaveNow('first', 'Asia/Kolkata', afternoon)).toBe(false);
+    expect(onLeaveNow('second', 'Asia/Kolkata', morning)).toBe(false);
+    expect(onLeaveNow('second', 'Asia/Kolkata', afternoon)).toBe(true);
+    expect(onLeaveNow('full', 'Asia/Kolkata', afternoon)).toBe(true);
   });
 });

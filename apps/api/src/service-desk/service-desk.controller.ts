@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -8,7 +8,8 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
-import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
+import { MODERATE_UPLOAD_THROTTLE, PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
+import { RequireStepUp } from '../auth/step-up.decorator';
 import { AttachmentsService } from './attachments.service';
 import { DeskAccessService, assertOwnSession, visibleTickets } from './desk-access';
 import { DesksService } from './desks.service';
@@ -48,7 +49,35 @@ import {
   VipDto,
   ViewDto,
   WatcherDto,
+  ComplianceTargetsDto,
+  EscalateDto,
+  LinkDto,
+  LinkPersonDto,
+  MergeDto,
+  MonthQueryDto,
+  ParentDto,
+  RangeQueryDto,
+  ReadsQueryDto,
+  ReasonDto,
+  ReminderDto,
+  ResolutionCodeDto,
+  ResolveDto,
+  SideConversationDto,
+  SideMessageDto,
+  SlaPolicyDto,
+  SlaVersionDto,
+  SnoozeDto,
+  SplitDto,
+  StandaloneTaskDto,
+  TaskDto,
+  TemplateDto,
+  TrackerDto,
+  UpdateSlaPolicyDto,
+  UpdateTaskDto,
 } from './dto';
+import { MeService } from './me.service';
+import { SlaService } from './sla.service';
+import { WorkService } from './work.service';
 import { PresenceService } from './presence.service';
 import { RequesterService } from './requester.service';
 import { TicketListsService } from './ticket-lists.service';
@@ -355,7 +384,7 @@ export class DeskTicketsController {
   @Get('tickets/:id')
   @RequirePermissions(VIEW)
   async get(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.tickets.get(await this.access.actor(req, t), id);
+    return this.tickets.get(await this.access.actor(req, t), id, req.ip);
   }
 
   @Patch('tickets/:id')
@@ -586,5 +615,371 @@ export class DeskFilesController {
     res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
     res.setHeader('Cache-Control', 'private, no-store');
     res.end(f.data);
+  }
+}
+
+/**
+ * Batch 2 (SD-1.09 … SD-1.17): merge, links, family, split, side threads, tasks, templates, resolve, escalate, PII,
+ * read log, reminders and calendar, SLA set-up and timelines, the agent bill and HR's possible-duplicate list.
+ */
+@Controller('desk')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class DeskWorkController {
+  constructor(
+    private readonly access: DeskAccessService,
+    private readonly tickets: TicketsService,
+    private readonly work: WorkService,
+    private readonly sla: SlaService,
+    private readonly me: MeService,
+  ) {}
+
+  private actor(req: Request, t: TenantContext) {
+    return this.access.actor(req, t);
+  }
+
+  @Get('tickets/:id/work')
+  @RequirePermissions(VIEW)
+  async overview(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.work.overview(await this.actor(req, t), id);
+  }
+
+  @Get('tickets/:id/sla')
+  @RequirePermissions(VIEW)
+  async slaTimeline(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    const a = await this.actor(req, t);
+    return this.tickets.tx(a, async (tx) => this.sla.ticketView(tx, a, (await this.tickets.load(tx, a, id)).t));
+  }
+
+  @Post('tickets/:id/links')
+  @RequirePermissions('desk.ticket.work')
+  async link(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LinkDto) {
+    assertOwnSession(req);
+    return this.work.link(await this.actor(req, t), id, dto);
+  }
+
+  @Delete('tickets/:id/links/:linkId')
+  @RequirePermissions('desk.ticket.work')
+  async unlink(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('linkId', ParseUUIDPipe) linkId: string) {
+    assertOwnSession(req);
+    return this.work.unlink(await this.actor(req, t), id, linkId);
+  }
+
+  @Put('tickets/:id/parent')
+  @RequirePermissions('desk.ticket.work')
+  async parent(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ParentDto) {
+    assertOwnSession(req);
+    return this.work.setParent(await this.actor(req, t), id, dto.parentId);
+  }
+
+  @Put('tickets/:id/tracker')
+  @RequirePermissions('desk.ticket.work')
+  async tracker(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TrackerDto) {
+    assertOwnSession(req);
+    return this.work.setTracker(await this.actor(req, t), id, dto.tracker);
+  }
+
+  @Post('tickets/:id/merge')
+  @HttpCode(200)
+  @RequirePermissions('desk.ticket.merge')
+  async merge(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: MergeDto) {
+    assertOwnSession(req);
+    return this.work.merge(await this.actor(req, t), id, dto);
+  }
+
+  @Post('tickets/:id/split')
+  @RequirePermissions('desk.ticket.work')
+  async split(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SplitDto) {
+    assertOwnSession(req);
+    return this.work.split(await this.actor(req, t), id, dto);
+  }
+
+  @Post('tickets/:id/side-conversations')
+  @RequirePermissions('desk.ticket.work')
+  async side(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SideConversationDto) {
+    assertOwnSession(req);
+    return this.work.startSide(await this.actor(req, t), id, dto);
+  }
+
+  @Post('tickets/:id/side-conversations/:sideId/messages')
+  @RequireAnyPermission('desk.ticket.work', 'desk.ticket.note')
+  async sideMessage(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('sideId', ParseUUIDPipe) sideId: string, @Body() dto: SideMessageDto) {
+    assertOwnSession(req);
+    return this.work.sideMessage(await this.actor(req, t), id, sideId, dto.bodyHtml);
+  }
+
+  @Post('tickets/:id/side-conversations/:sideId/close')
+  @HttpCode(200)
+  @RequirePermissions('desk.ticket.work')
+  async closeSide(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('sideId', ParseUUIDPipe) sideId: string) {
+    assertOwnSession(req);
+    return this.work.closeSide(await this.actor(req, t), id, sideId);
+  }
+
+  @Post('tickets/:id/tasks')
+  @RequirePermissions('desk.task.work')
+  async addTask(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TaskDto) {
+    assertOwnSession(req);
+    return this.work.addTask(await this.actor(req, t), id, dto);
+  }
+
+  @Get('tasks')
+  @RequirePermissions('desk.task.work')
+  async tasks(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    return this.work.taskList(await this.actor(req, t));
+  }
+
+  @Post('tasks')
+  @RequirePermissions('desk.task.work')
+  async addStandalone(@Req() req: Request, @CurrentTenant() t: TenantContext, @Body() dto: StandaloneTaskDto) {
+    assertOwnSession(req);
+    return this.work.addStandalone(await this.actor(req, t), dto);
+  }
+
+  @Patch('tasks/:taskId')
+  @RequirePermissions('desk.task.work')
+  async updateTask(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('taskId', ParseUUIDPipe) taskId: string, @Body() dto: UpdateTaskDto) {
+    assertOwnSession(req);
+    return this.work.updateTask(await this.actor(req, t), taskId, dto);
+  }
+
+  @Get('desks/:id/templates')
+  @RequireAnyPermission(...SETUP_READ)
+  async templates(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.work.templates(await this.actor(req, t), id);
+  }
+
+  @Post('desks/:id/templates')
+  @RequirePermissions('desk.settings.manage')
+  async addTemplate(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TemplateDto) {
+    assertOwnSession(req);
+    return this.work.saveTemplate(await this.actor(req, t), id, null, dto);
+  }
+
+  @Patch('desks/:id/templates/:templateId')
+  @RequirePermissions('desk.settings.manage')
+  async editTemplate(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('templateId', ParseUUIDPipe) templateId: string, @Body() dto: TemplateDto) {
+    assertOwnSession(req);
+    return this.work.saveTemplate(await this.actor(req, t), id, templateId, dto);
+  }
+
+  @Post('desks/:id/resolution-codes')
+  @RequirePermissions('desk.settings.manage')
+  async addCode(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ResolutionCodeDto) {
+    assertOwnSession(req);
+    return this.work.saveResolutionCode(await this.actor(req, t), id, null, dto);
+  }
+
+  @Patch('desks/:id/resolution-codes/:codeId')
+  @RequirePermissions('desk.settings.manage')
+  async editCode(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('codeId', ParseUUIDPipe) codeId: string, @Body() dto: ResolutionCodeDto) {
+    assertOwnSession(req);
+    return this.work.saveResolutionCode(await this.actor(req, t), id, codeId, dto);
+  }
+
+  @Post('tickets/:id/templates/:templateId')
+  @HttpCode(200)
+  @RequirePermissions('desk.ticket.work')
+  async applyTemplate(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('templateId', ParseUUIDPipe) templateId: string, @Body() dto: VersionDto) {
+    assertOwnSession(req);
+    return this.work.applyTemplate(await this.actor(req, t), id, templateId, dto.version);
+  }
+
+  @Post('tickets/:id/resolve')
+  @HttpCode(200)
+  @RequirePermissions('desk.ticket.work')
+  async resolve(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ResolveDto) {
+    assertOwnSession(req);
+    return this.work.resolve(await this.actor(req, t), id, dto);
+  }
+
+  @Post('tickets/:id/escalate')
+  @HttpCode(200)
+  @RequirePermissions('desk.ticket.work')
+  async escalate(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: EscalateDto) {
+    assertOwnSession(req);
+    return this.work.escalate(await this.actor(req, t), id, dto);
+  }
+
+  /** YX-SD-15: step-up (AAL2 in the last minutes) plus desk.pii.unmask; every view audited. */
+  @Post('tickets/:id/unmask/:valueId')
+  @HttpCode(200)
+  @RequirePermissions('desk.pii.unmask')
+  @RequireStepUp()
+  async unmask(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('valueId', ParseUUIDPipe) valueId: string) {
+    assertOwnSession(req);
+    return this.work.unmask(await this.actor(req, t), id, valueId);
+  }
+
+  @Get('audit/reads')
+  @RequirePermissions('desk.audit.view')
+  async reads(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: ReadsQueryDto) {
+    return this.work.reads(await this.actor(req, t), q.ticketId);
+  }
+
+  @Post('tickets/:id/sla/:timerId/breach-reason')
+  @HttpCode(200)
+  @RequirePermissions('desk.ticket.work')
+  async breachReason(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('timerId', ParseUUIDPipe) timerId: string, @Body() dto: ReasonDto) {
+    assertOwnSession(req);
+    const a = await this.actor(req, t);
+    return this.tickets.tx(a, async (tx) => {
+      const { t: ticket, access } = await this.tickets.load(tx, a, id);
+      if (access !== 'agent') throw new NotFoundException('No such ticket.');
+      return this.sla.breachReason(tx, a, ticket, timerId, dto.reason);
+    });
+  }
+
+  @Post('tickets/:id/sla/:timerId/exclusion')
+  @HttpCode(200)
+  @RequirePermissions('desk.ticket.work')
+  async exclusion(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('timerId', ParseUUIDPipe) timerId: string, @Body() dto: ReasonDto) {
+    assertOwnSession(req);
+    const a = await this.actor(req, t);
+    return this.tickets.tx(a, async (tx) => {
+      const { t: ticket, access } = await this.tickets.load(tx, a, id);
+      if (access !== 'agent') throw new NotFoundException('No such ticket.');
+      return this.sla.exclude(tx, a, ticket, timerId, dto.reason);
+    });
+  }
+
+  // ---- SLA set-up (SD-1.14, SD-1.16) ----
+
+  @Get('desks/:id/sla-policies')
+  @RequirePermissions('desk.sla.manage')
+  async policies(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.sla.policies(await this.actor(req, t), id);
+  }
+
+  @Post('desks/:id/sla-policies')
+  @RequirePermissions('desk.sla.manage')
+  async addPolicy(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SlaPolicyDto) {
+    assertOwnSession(req);
+    return this.sla.createPolicy(await this.actor(req, t), id, dto);
+  }
+
+  @Post('sla-policies/:id/versions')
+  @RequirePermissions('desk.sla.manage')
+  async addVersion(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SlaVersionDto) {
+    assertOwnSession(req);
+    return this.sla.addVersion(await this.actor(req, t), id, dto);
+  }
+
+  @Patch('sla-policies/:id')
+  @RequirePermissions('desk.sla.manage')
+  async editPolicy(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateSlaPolicyDto) {
+    assertOwnSession(req);
+    return this.sla.updatePolicy(await this.actor(req, t), id, dto);
+  }
+
+  @Put('desks/:id/sla-targets')
+  @RequirePermissions('desk.sla.manage')
+  async targets(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ComplianceTargetsDto) {
+    assertOwnSession(req);
+    return this.sla.setComplianceTargets(await this.actor(req, t), id, dto);
+  }
+
+  @Get('desks/:id/sla-compliance')
+  @RequireAnyPermission('desk.report.view', 'desk.sla.manage')
+  async compliance(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: MonthQueryDto) {
+    return this.sla.compliance(await this.actor(req, t), id, q.month);
+  }
+
+  // ---- reminders, snooze, calendar (SD-1.11) ----
+
+  @Get('me/reminders')
+  @RequirePermissions(VIEW)
+  async reminders(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    return this.me.reminders(await this.actor(req, t));
+  }
+
+  @Post('me/reminders')
+  @RequirePermissions(VIEW)
+  async addReminder(@Req() req: Request, @CurrentTenant() t: TenantContext, @Body() dto: ReminderDto) {
+    assertOwnSession(req);
+    return this.me.addReminder(await this.actor(req, t), dto);
+  }
+
+  @Post('me/reminders/:id/done')
+  @HttpCode(200)
+  @RequirePermissions(VIEW)
+  async doneReminder(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    assertOwnSession(req);
+    return this.me.doneReminder(await this.actor(req, t), id);
+  }
+
+  @Post('tickets/:id/snooze')
+  @HttpCode(200)
+  @RequirePermissions(VIEW)
+  async snooze(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SnoozeDto) {
+    assertOwnSession(req);
+    return this.me.snooze(await this.actor(req, t), id, dto.until);
+  }
+
+  @Delete('tickets/:id/snooze')
+  @RequirePermissions(VIEW)
+  async unsnooze(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    assertOwnSession(req);
+    return this.me.unsnooze(await this.actor(req, t), id);
+  }
+
+  @Get('me/calendar')
+  @RequirePermissions(VIEW)
+  async calendar(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: RangeQueryDto) {
+    return this.me.calendar(await this.actor(req, t), q.from, q.to);
+  }
+
+  /** A new secret iCal link; the old one stops working. */
+  @Post('me/calendar-feed')
+  @RequirePermissions(VIEW)
+  async newFeed(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    assertOwnSession(req);
+    return this.me.newFeed(await this.actor(req, t));
+  }
+
+  @Delete('me/calendar-feed')
+  @RequirePermissions(VIEW)
+  async revokeFeed(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    assertOwnSession(req);
+    return this.me.revokeFeed(await this.actor(req, t));
+  }
+
+  // ---- the agent bill (SD-1.13) and HR's possible duplicates (founder decision 8 Oct 2026) ----
+
+  @Get('billing/agents')
+  @RequirePermissions('desk.desk.create')
+  async billing(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: MonthQueryDto) {
+    return this.me.billingAgents(await this.actor(req, t), q.month);
+  }
+
+  @Get('people/possible-duplicates')
+  @RequirePermissions('employee.change.manage')
+  async duplicates(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    return this.me.duplicates(await this.actor(req, t));
+  }
+
+  @Post('people/possible-duplicates/:personId/link')
+  @HttpCode(200)
+  @RequirePermissions('employee.change.manage')
+  async linkDuplicate(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('personId', ParseUUIDPipe) personId: string, @Body() dto: LinkPersonDto) {
+    assertOwnSession(req);
+    return this.me.linkDuplicate(await this.actor(req, t), personId, dto.intoPersonId);
+  }
+}
+
+/** The personal iCal feed (US-G-009): no session (calendar apps cannot sign in); the secret in the link is the key. */
+@Controller('desk/calendar-feed')
+export class CalendarFeedController {
+  constructor(private readonly me: MeService) {}
+
+  @Get(':org/:user/:file')
+  @Throttle(PUBLIC_API_THROTTLE)
+  async feed(@Param('org', ParseUUIDPipe) org: string, @Param('user', ParseUUIDPipe) user: string, @Param('file') file: string, @Res() res: Response) {
+    const token = String(file).replace(/\.ics$/, '');
+    const body = await this.me.feed(org, user, token);
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.end(body);
   }
 }

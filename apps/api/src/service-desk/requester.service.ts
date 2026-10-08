@@ -43,9 +43,10 @@ export class RequesterService {
 
   /**
    * The person behind this login (P01 §4.5a login role). A login with no person gets one on its first ticket. An unlinked
-   * person with the same email is never linked silently (YX-ORG-27), so the new person then has no email.
+   * person with the same email is never linked silently (YX-ORG-27), so the new person then has no email. Founder
+   * decision 8 Oct 2026: HR sees such people in a "possible duplicate, link?" list and links them on purpose
+   * (MeService.duplicates / linkDuplicate).
    */
-  // DECISION NEEDED: should HR be asked to link a login to an existing person with the same email, instead of a new person?
   async personOf(tx: Tx, r: Requester, create: boolean): Promise<string | null> {
     const org = r.ctx.organizationId;
     const role = await tx.personRole.findFirst({ where: { organizationId: org, roleType: 'login', sourceTable: 'users', sourceId: r.userId, endOn: null }, select: { personId: true } });
@@ -59,20 +60,32 @@ export class RequesterService {
   }
 
   /** Records the person may follow: raised by them, for them, or watched by them. */
-  private mine(org: string, personId: string): Prisma.SdTicketWhereInput {
-    return { organizationId: org, OR: [{ requesterPersonId: personId }, { requestedForPersonId: personId }] };
+  private mine(org: string, ids: string[]): Prisma.SdTicketWhereInput {
+    return { organizationId: org, OR: [{ requesterPersonId: { in: ids } }, { requestedForPersonId: { in: ids } }] };
   }
 
-  private async visibleIds(tx: Tx, org: string, personId: string) {
-    return (await tx.sdTicketWatcher.findMany({ where: { organizationId: org, personId }, select: { ticketId: true } })).map((w) => w.ticketId);
+  private async visibleIds(tx: Tx, org: string, ids: string[]) {
+    return (await tx.sdTicketWatcher.findMany({ where: { organizationId: org, personId: { in: ids } }, select: { ticketId: true } })).map((w) => w.ticketId);
   }
 
-  async ownTicket(tx: Tx, r: Requester, id: string): Promise<{ t: Ticket; personId: string }> {
+  /** The person and any persons HR merged into them (their earlier tickets stay theirs). */
+  private async idsOf(tx: Tx, org: string, personId: string): Promise<string[]> {
+    return [personId, ...(await tx.person.findMany({ where: { organizationId: org, mergedInto: personId }, select: { id: true } })).map((p) => p.id)];
+  }
+
+  /** May this person follow ticket t (raised by them, for them, or watched by them)? */
+  private async follows(tx: Tx, org: string, ids: string[], t: { id: string; requesterPersonId: string; requestedForPersonId: string | null }) {
+    if (ids.includes(t.requesterPersonId) || (t.requestedForPersonId && ids.includes(t.requestedForPersonId))) return true;
+    return Boolean(await tx.sdTicketWatcher.findFirst({ where: { organizationId: org, ticketId: t.id, personId: { in: ids } }, select: { id: true } }));
+  }
+
+  async ownTicket(tx: Tx, r: Requester, id: string): Promise<{ t: Ticket; personId: string; ids: string[] }> {
+    const org = r.ctx.organizationId;
     const personId = await this.personOf(tx, r, false);
-    const t = personId ? await tx.sdTicket.findFirst({ where: { id, organizationId: r.ctx.organizationId } }) : null;
-    const watching = t && personId ? Boolean(await tx.sdTicketWatcher.findFirst({ where: { organizationId: r.ctx.organizationId, ticketId: t.id, personId }, select: { id: true } })) : false;
-    if (!t || !personId || !(t.requesterPersonId === personId || t.requestedForPersonId === personId || watching)) throw new NotFoundException('No such ticket.');
-    return { t, personId };
+    const t = personId ? await tx.sdTicket.findFirst({ where: { id, organizationId: org } }) : null;
+    const ids = personId ? await this.idsOf(tx, org, personId) : [];
+    if (!t || !personId || !(await this.follows(tx, org, ids, t))) throw new NotFoundException('No such ticket.');
+    return { t, personId, ids };
   }
 
   /** Employee help desks the person can raise to, with the parts of their set-up the raise form shows. */
@@ -137,8 +150,9 @@ export class RequesterService {
     return this.tx(r, async (tx) => {
       const personId = await this.personOf(tx, r, false);
       if (!personId) return [];
-      const watched = await this.visibleIds(tx, org, personId);
-      const rows = await tx.sdTicket.findMany({ where: { organizationId: org, OR: [...(this.mine(org, personId).OR ?? []), { id: { in: watched } }] }, orderBy: { updatedAt: 'desc' }, take: 200 });
+      const ids = await this.idsOf(tx, org, personId);
+      const watched = await this.visibleIds(tx, org, ids);
+      const rows = await tx.sdTicket.findMany({ where: { organizationId: org, OR: [...(this.mine(org, ids).OR ?? []), { id: { in: watched } }] }, orderBy: { updatedAt: 'desc' }, take: 200 });
       const statuses = new Map((await tx.sdStatus.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.statusId) } }, select: { id: true, label: true } })).map((s) => [s.id, s.label]));
       const desks = new Map((await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.deskId) } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
       return rows.map((t) => ({
@@ -149,7 +163,7 @@ export class RequesterService {
         status: statuses.get(t.statusId) ?? '',
         systemState: t.systemState,
         private: t.private || t.sensitive,
-        role: t.requesterPersonId === personId ? 'requester' : t.requestedForPersonId === personId ? 'requested_for' : 'watcher',
+        role: ids.includes(t.requesterPersonId) ? 'requester' : t.requestedForPersonId && ids.includes(t.requestedForPersonId) ? 'requested_for' : 'watcher',
         createdAt: t.createdAt,
         updatedAt: t.updatedAt,
       }));
@@ -160,10 +174,17 @@ export class RequesterService {
   async get(r: Requester, id: string) {
     const org = r.ctx.organizationId;
     return this.tx(r, async (tx) => {
-      const { t, personId } = await this.ownTicket(tx, r, id);
-      const messages = await tx.sdTicketMessage.findMany({ where: { organizationId: org, ticketId: t.id, kind: 'reply' }, orderBy: { createdAt: 'asc' } });
+      const { t, ids } = await this.ownTicket(tx, r, id);
+      // YX-SD-08: tickets merged into this one show here, but only those this person followed themselves.
+      const merged = [];
+      for (const m of await tx.sdTicket.findMany({ where: { organizationId: org, mergedIntoId: t.id } })) if (await this.follows(tx, org, ids, m)) merged.push(m.id);
+      const tickets = [t.id, ...merged];
+      const messages = await tx.sdTicketMessage.findMany({ where: { organizationId: org, ticketId: { in: tickets }, kind: { in: ['reply', 'system'] } }, orderBy: { createdAt: 'asc' } });
       const replyIds = messages.map((m) => m.id);
-      const files = await tx.sdAttachment.findMany({ where: { organizationId: org, ticketId: t.id, OR: [{ side: 'requester' }, { messageId: { in: replyIds } }] }, orderBy: { createdAt: 'asc' } });
+      const files = await tx.sdAttachment.findMany({ where: { organizationId: org, ticketId: { in: tickets }, OR: [{ side: 'requester' }, { messageId: { in: replyIds } }] }, orderBy: { createdAt: 'asc' } });
+      const due = await this.tickets.sla.requesterDue(tx, org, t.id);
+      const desk0 = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { reopenWindowDays: true, requesterCanReopen: true } });
+      const reopenUntil = t.systemState === 'solved' && t.resolvedAt && desk0.requesterCanReopen ? new Date(t.resolvedAt.getTime() + desk0.reopenWindowDays * 86_400_000) : null;
       const events = await tx.sdTicketEvent.findMany({ where: { organizationId: org, ticketId: t.id, requesterVisible: true, kind: 'status_changed' }, orderBy: { at: 'asc' } });
       const [status, desk] = await Promise.all([tx.sdStatus.findFirst({ where: { organizationId: org, id: t.statusId } }), tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId } })]);
       const labels = new Map((await tx.sdStatus.findMany({ where: { organizationId: org, deskId: t.deskId } })).map((s) => [s.id, s.label]));
@@ -181,12 +202,19 @@ export class RequesterService {
         requester: people.get(t.requesterPersonId)?.name ?? null,
         requestedFor: t.requestedForPersonId ? (people.get(t.requestedForPersonId)?.name ?? null) : null,
         assignee: t.assigneeUserId ? (users.get(t.assigneeUserId) ?? null) : null,
-        canReply: t.systemState !== 'closed',
+        // A reply always goes through: within the reopen window it reopens this ticket, after it a follow-up starts.
+        canReply: !t.mergedIntoId,
+        replyStartsFollowUp: t.systemState === 'closed' || (t.systemState === 'solved' && (!reopenUntil || reopenUntil < new Date())),
+        reopenUntil,
+        mergedInto: t.mergedIntoId ? ((await tx.sdTicket.findFirst({ where: { organizationId: org, id: t.mergedIntoId }, select: { number: true } }))?.number ?? null) : null,
+        // US-G-016: only when it should be resolved, never internal reasons.
+        resolveBy: due?.resolveBy ?? null,
+        targetPaused: due?.paused ?? false,
         messages: messages.map((m) => ({
           id: m.id,
           side: m.side,
           author: m.authorUserId ? (users.get(m.authorUserId) ?? 'Support') : m.authorPersonId ? (people.get(m.authorPersonId)?.name ?? 'You') : 'YukthiX',
-          mine: m.authorPersonId === personId,
+          mine: Boolean(m.authorPersonId && ids.includes(m.authorPersonId)),
           bodyHtml: m.bodyHtml,
           createdAt: m.createdAt,
         })),
@@ -196,25 +224,40 @@ export class RequesterService {
     });
   }
 
-  /** A requester reply moves a waiting or resolved ticket back to work; a closed ticket takes no more replies. */
+  /**
+   * A requester reply moves a waiting ticket back to work. A resolved ticket reopens within the desk's reopen window
+   * (YX-SD-10, starter 7 days) when the desk lets requesters reopen; after the window, or on a closed ticket, the reply
+   * starts a follow-up ticket linked to the old one (US-G-008).
+   */
   async reply(r: Requester, id: string, dto: RequesterReplyDto) {
     if (r.acting) throw new ForbiddenException('Not available while acting for someone else');
     const org = r.ctx.organizationId;
     return this.tx(r, async (tx) => {
       const { t, personId } = await this.ownTicket(tx, r, id);
-      if (t.systemState === 'closed') throw new ConflictException('This ticket is closed. Raise a new ticket.');
-      const bodyHtml = cleanHtml(textToHtml(dto.text));
-      const bodyText = htmlToText(bodyHtml);
+      if (t.mergedIntoId) throw new ConflictException('This ticket was joined with another one. Reply there.');
+      const { bodyHtml, bodyText, found } = this.tickets.cleanMasked(textToHtml(dto.text));
       if (!bodyText) throw new BadRequestException('Write a message first.');
+      const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId } });
+      const windowOpen = t.systemState === 'solved' && desk.requesterCanReopen && t.resolvedAt && t.resolvedAt.getTime() + desk.reopenWindowDays * 86_400_000 >= Date.now();
+      if (t.systemState === 'closed' || (t.systemState === 'solved' && !windowOpen)) {
+        if (dto.attachmentIds?.length) throw new BadRequestException('Send files on the new ticket once it is made.');
+        const n = await this.tickets.createIn(tx, r, { deskId: t.deskId, typeId: t.typeId, categoryId: t.categoryId ?? undefined, subject: `Follow-up: ${t.subject}`.slice(0, 200), bodyHtml, requesterPersonId: personId, openedByUserId: r.userId, channel: 'portal', private: t.private, side: 'requester', authorPersonId: personId });
+        await tx.sdTicketLink.create({ data: { organizationId: org, fromTicketId: n.id, toTicketId: t.id, kind: 'follow_up', createdBy: r.userId } });
+        await audit(tx, r, 'desk.ticket.follow_up_raised', 'sd_ticket', t.id, { followUpId: n.id, number: n.number });
+        return { id: null, reopened: false, followUp: { id: n.id, number: n.number } };
+      }
       const m = await tx.sdTicketMessage.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, kind: 'reply', side: 'requester', authorPersonId: personId, bodyHtml, bodyText, channel: 'portal' } });
+      await this.tickets.keepPii(tx, t, m.id, found);
       await this.tickets.attach(tx, r, t, m.id, dto.attachmentIds ?? [], { personId });
       if (t.systemState === 'pending' || t.systemState === 'solved') {
         const open = await tx.sdStatus.findFirst({ where: { organizationId: org, deskId: t.deskId, systemState: 'open', active: true, OR: [{ ticketTypeId: t.typeId }, { ticketTypeId: null }] }, orderBy: [{ ticketTypeId: { sort: 'asc', nulls: 'last' } }, { sortOrder: 'asc' }] });
         if (open) await this.tickets.applyIn(tx, { ctx: r.ctx, userId: r.userId, keys: new Set(), roles: new Map() } as DeskActor, t, { statusId: open.id }, 'The requester replied');
       }
+      // The next-response target starts (SD-1.14).
+      await this.tickets.sla.sync(tx, t.id);
       await emit(tx, org, 'helpdesk.ticket.replied', { ticketId: t.id, deskId: t.deskId, messageId: m.id, side: 'requester' });
       await audit(tx, r, 'desk.ticket.requester_replied', 'sd_ticket', t.id, { number: t.number, messageId: m.id, attachments: dto.attachmentIds?.length ?? 0 });
-      return { id: m.id, reopened: t.systemState === 'solved' };
+      return { id: m.id, reopened: t.systemState === 'solved', followUp: null };
     });
   }
 
@@ -224,9 +267,9 @@ export class RequesterService {
     if (!dto.email) throw new BadRequestException("Give your colleague's email.");
     const org = r.ctx.organizationId;
     return this.tx(r, async (tx) => {
-      const { t, personId } = await this.ownTicket(tx, r, id);
+      const { t, personId, ids } = await this.ownTicket(tx, r, id);
       // Only the requester and the person it is for choose who follows it; a follower cannot add more.
-      if (t.requesterPersonId !== personId && t.requestedForPersonId !== personId) throw new ForbiddenException('Only the person who raised it, or the person it is for, adds followers.');
+      if (!ids.includes(t.requesterPersonId) && !(t.requestedForPersonId && ids.includes(t.requestedForPersonId))) throw new ForbiddenException('Only the person who raised it, or the person it is for, adds followers.');
       const emp = await tx.employee.findFirst({ where: { organizationId: org, workEmail: dto.email }, select: { personId: true } });
       const person = emp?.personId ?? (await tx.person.findFirst({ where: { organizationId: org, status: 'active', primaryEmail: dto.email }, select: { id: true } }))?.id;
       // The same answer whether or not the email belongs to someone here, so it cannot be used to look people up.

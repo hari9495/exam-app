@@ -50,3 +50,14 @@ export function chooseAgent(method: AssignmentMethod, candidates: readonly Candi
   const next = pool.find((c) => lastAssignedUserId !== null && c.userId.localeCompare(lastAssignedUserId) > 0);
   return (next ?? pool[0]).userId;
 }
+
+/**
+ * Founder decision 8 Oct 2026: half-day leave means away only for that half. The first half runs to 13:00 local time,
+ * the second half from 13:00; a full day is away all day.
+ */
+export function onLeaveNow(part: 'full' | 'first' | 'second', zone: string, now: Date): boolean {
+  if (part === 'full') return true;
+  const local = DateTime.fromJSDate(now, { zone });
+  const morning = local.hour < 13;
+  return part === 'first' ? morning : !morning;
+}

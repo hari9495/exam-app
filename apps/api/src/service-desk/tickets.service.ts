@@ -1,11 +1,13 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { OrgSecretsCryptoService, TenantPrismaService } from '@exam-platform/shared';
 import { Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { NotificationsService } from '../notifications/notifications.service';
-import { chooseAgent, isAvailable } from './assignment';
+import { chooseAgent, isAvailable, onLeaveNow } from './assignment';
 import { cleanHtml, htmlToText } from './rich-text';
+import { PiiFound, maskPii, maskPiiHtml } from './pii';
+import { SlaService } from './sla.service';
 import {
   DeskActor,
   SEAT_REQUIRED,
@@ -43,6 +45,8 @@ export interface Changes {
   resolutionCode?: string | null;
   resolutionNote?: string | null;
   typeId?: string;
+  /** US-G-220: what the tickets linked to a tracker are told when it is solved. */
+  linkedReplyHtml?: string | null;
 }
 
 export interface CreateInput {
@@ -62,6 +66,8 @@ export interface CreateInput {
   /** Who wrote the first message: the requester (portal) or an agent raising it for them. */
   side: 'requester' | 'agent';
   authorPersonId?: string | null;
+  /** SD-1.09: a child of this ticket (side conversation with another team). */
+  parentId?: string;
 }
 
 interface Notice {
@@ -77,7 +83,23 @@ export class TicketsService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifications: NotificationsService,
+    readonly sla: SlaService,
+    private readonly crypto: OrgSecretsCryptoService,
   ) {}
+
+  // ------------------------------------------------------------------------------------------ PII (SD-1.12, YX-SD-15)
+
+  /** Cleans rich text and masks personal data in it; the masked text is all that is ever stored in the message. */
+  cleanMasked(html: string): { bodyHtml: string; bodyText: string; found: PiiFound[] } {
+    const { html: bodyHtml, found } = maskPiiHtml(cleanHtml(html));
+    return { bodyHtml, bodyText: htmlToText(bodyHtml), found };
+  }
+
+  /** The originals of masked values, encrypted, for a step-up unmask (each view audited). */
+  async keepPii(tx: Tx, t: { organizationId: string; deskId: string; id: string }, messageId: string | null, found: PiiFound[]) {
+    if (!found.length) return;
+    await tx.sdSensitiveValue.createMany({ data: found.map((f) => ({ organizationId: t.organizationId, deskId: t.deskId, ticketId: t.id, messageId, kind: f.kind, masked: f.masked.slice(0, 40), valueEncrypted: this.crypto.encrypt(f.value) })) });
+  }
 
   tx<T>(a: { ctx: DeskActor['ctx'] }, fn: (tx: Tx) => Promise<T>) {
     return this.tenantPrisma.forTenant(a.ctx, fn);
@@ -112,9 +134,9 @@ export class TicketsService {
     const n = counter.n;
     const groupId = cat?.groupId ?? null;
     const assigneeUserId = groupId ? await this.pickAssignee(tx, org, desk.id, groupId) : null;
-    const bodyHtml = cleanHtml(input.bodyHtml);
-    const bodyText = htmlToText(bodyHtml);
+    const { bodyHtml, bodyText, found } = this.cleanMasked(input.bodyHtml);
     if (!bodyText) throw new BadRequestException('Describe the issue.');
+    const subject = maskPii(input.subject);
 
     const t = await tx.sdTicket.create({
       data: {
@@ -128,8 +150,9 @@ export class TicketsService {
         impact: input.impact ?? null,
         urgency: input.urgency ?? null,
         categoryId: cat?.id ?? null,
-        subject: input.subject,
+        subject: subject.text,
         requesterPersonId: input.requesterPersonId,
+        parentId: input.parentId ?? null,
         requestedForPersonId: input.requestedForPersonId ?? null,
         openedByUserId: input.openedByUserId,
         assigneeUserId,
@@ -142,7 +165,7 @@ export class TicketsService {
         createdBy: a.userId,
       },
     });
-    await tx.sdTicketMessage.create({
+    const first = await tx.sdTicketMessage.create({
       data: {
         organizationId: org,
         deskId: desk.id,
@@ -156,12 +179,15 @@ export class TicketsService {
         channel: input.channel,
       },
     });
+    await this.keepPii(tx, t, null, subject.found);
+    await this.keepPii(tx, t, first.id, found);
     await this.event(tx, t, 'created', null, t.number, { by: a.userId, requesterVisible: true });
     if (assigneeUserId) await this.event(tx, t, 'assigned', null, assigneeUserId, { by: null, reason: 'Assigned automatically' });
     if (input.requestedForPersonId) await this.addWatcherIn(tx, a, t, input.requestedForPersonId, false);
     await emit(tx, org, 'helpdesk.ticket.created', { ticketId: t.id, deskId: desk.id, number: t.number, channel: input.channel });
     if (assigneeUserId) await emit(tx, org, 'helpdesk.ticket.assigned', { ticketId: t.id, deskId: desk.id, assigneeUserId });
-    await audit(tx, a, 'desk.ticket.created', 'sd_ticket', t.id, { number: t.number, deskId: desk.id, channel: input.channel, assigneeUserId, priority, vip, sensitive: t.sensitive });
+    await audit(tx, a, 'desk.ticket.created', 'sd_ticket', t.id, { number: t.number, deskId: desk.id, channel: input.channel, assigneeUserId, priority, vip, sensitive: t.sensitive, maskedValues: found.length + subject.found.length });
+    await this.sla.sync(tx, t.id);
     return tx.sdTicket.findUniqueOrThrow({ where: { id: t.id } });
   }
 
@@ -269,12 +295,19 @@ export class TicketsService {
   }
 
   /**
-   * US-G-011 approved leave from YukthiX HR (M02). M02 leave is not built yet, so nobody is on leave here; when it
-   * lands, this reads its approved leave for `now` and nothing else changes.
+   * US-G-011 approved leave from YukthiX HR (M02). Founder decision 8 Oct 2026: a half-day leave makes the agent away
+   * only for that half (before or after 13:00 in the agent's shift zone, India time when no shift is set). M02 leave is
+   * not built yet, so leaveToday() returns nothing; when it lands, only that seam changes.
    */
-  // DECISION NEEDED: confirm half-day leave counts as away for the whole day once M02 exists.
-  private async onApprovedLeave(_tx: Tx, _org: string, _userIds: string[], _now: Date): Promise<Set<string>> {
-    return new Set();
+  private async onApprovedLeave(tx: Tx, org: string, userIds: string[], now: Date): Promise<Set<string>> {
+    const leave = await this.leaveToday(tx, org, userIds, now);
+    const zones = new Map((await tx.sdAgentStatus.findMany({ where: { organizationId: org, userId: { in: userIds } }, select: { userId: true, shiftTimeZone: true } })).map((s) => [s.userId, s.shiftTimeZone]));
+    return new Set(leave.filter((l) => onLeaveNow(l.part, zones.get(l.userId) ?? 'Asia/Kolkata', now)).map((l) => l.userId));
+  }
+
+  /** Seam until M02: approved leave covering today, per agent, as a full day or one half. */
+  async leaveToday(_tx: Tx, _org: string, _userIds: string[], _now: Date): Promise<{ userId: string; part: 'full' | 'first' | 'second' }[]> {
+    return [];
   }
 
   // ------------------------------------------------------------------------------------------ reading
@@ -287,15 +320,26 @@ export class TicketsService {
   }
 
   /** The agent's (or collaborator's, or desk admin's read-only) view of one ticket. */
-  async get(a: DeskActor, id: string) {
+  /**
+   * YX-SD-17 / US-G-030 read log: who opened which ticket, when and from where, one row per viewer and ticket per 30
+   * minutes. Opening a sensitive or private ticket also writes its audit row (batch 1), now on the same 30-minute rule.
+   */
+  async logRead(tx: Tx, a: DeskActor, t: Ticket, access: TicketAccess | 'export', ip?: string | null) {
+    const recent = await tx.sdTicketRead.findFirst({ where: { organizationId: a.ctx.organizationId, ticketId: t.id, userId: a.userId, readAt: { gt: new Date(Date.now() - 30 * 60_000) } }, select: { id: true } });
+    if (recent) return;
+    await tx.sdTicketRead.create({ data: { organizationId: a.ctx.organizationId, deskId: t.deskId, ticketId: t.id, userId: a.userId, access, ip: ip?.slice(0, 45) ?? null } });
+    if (t.sensitive || t.private) await audit(tx, a, 'desk.ticket.opened', 'sd_ticket', t.id, { number: t.number, access });
+  }
+
+  async get(a: DeskActor, id: string, ip?: string | null) {
     return this.tx(a, async (tx) => {
       const { t, access } = await this.load(tx, a, id);
       const org = a.ctx.organizationId;
-      // YX-SD-17 seam: every opening of a sensitive or private ticket is recorded (the deduplicated read log is SD-1.12).
-      if (t.sensitive || t.private) await audit(tx, a, 'desk.ticket.opened', 'sd_ticket', t.id, { number: t.number, access });
+      await this.logRead(tx, a, t, access, ip);
       const [messages, attachments, watchers, collaborators, time, desk, type, status, cat, group] = await Promise.all([
-        tx.sdTicketMessage.findMany({ where: { organizationId: org, ticketId: t.id }, orderBy: { createdAt: 'asc' } }),
-        tx.sdAttachment.findMany({ where: { organizationId: org, ticketId: t.id }, orderBy: { createdAt: 'asc' } }),
+        // Merged tickets' conversations stay on the surviving ticket (YX-SD-08); side threads have their own panel.
+        tx.sdTicketMessage.findMany({ where: { organizationId: org, ticketId: { in: [t.id, ...(await this.mergedIds(tx, org, t.id))] }, kind: { not: 'side' } }, orderBy: { createdAt: 'asc' } }),
+        tx.sdAttachment.findMany({ where: { organizationId: org, ticketId: { in: [t.id, ...(await this.mergedIds(tx, org, t.id))] } }, orderBy: { createdAt: 'asc' } }),
         tx.sdTicketWatcher.findMany({ where: { organizationId: org, ticketId: t.id } }),
         tx.sdTicketCollaborator.findMany({ where: { organizationId: org, ticketId: t.id } }),
         tx.sdTimeEntry.findMany({ where: { organizationId: org, ticketId: t.id }, orderBy: { workedOn: 'desc' } }),
@@ -325,6 +369,7 @@ export class TicketsService {
         openedBy: t.openedByUserId ? users.get(t.openedByUserId) ?? null : null,
         messages: messages.map((m) => ({
           id: m.id,
+          fromTicketId: m.ticketId === t.id ? null : m.ticketId,
           kind: m.kind,
           side: m.side,
           author: who(m),
@@ -342,9 +387,18 @@ export class TicketsService {
     });
   }
 
+  /** Tickets merged into this one (their messages and files stay theirs, shown here). */
+  async mergedIds(tx: Tx, org: string, id: string): Promise<string[]> {
+    return (await tx.sdTicket.findMany({ where: { organizationId: org, mergedIntoId: id }, select: { id: true } })).map((x) => x.id);
+  }
+
   summary(t: Ticket) {
     return {
       id: t.id,
+      tier: t.tier,
+      parentId: t.parentId,
+      mergedIntoId: t.mergedIntoId,
+      tracker: t.tracker,
       number: t.number,
       deskId: t.deskId,
       subject: t.subject,
@@ -468,7 +522,11 @@ export class TicketsService {
       state = s.systemState;
       log.push(['status_changed', t.statusId, s.id, true]);
       const wasDone = t.systemState === 'solved' || t.systemState === 'closed';
-      if (s.systemState === 'solved' && t.systemState !== 'solved') data.resolvedAt = new Date();
+      if ((s.systemState === 'solved' || s.systemState === 'closed') && OPEN_STATES.includes(t.systemState)) await this.checkResolvable(tx, t, c);
+      if (s.systemState === 'solved' && t.systemState !== 'solved') {
+        data.resolvedAt = new Date();
+        data.resolvedTier = t.tier;
+      }
       if (s.systemState === 'closed') data.closedAt = new Date();
       if (wasDone && OPEN_STATES.includes(s.systemState)) {
         data.reopenCount = { increment: 1 };
@@ -538,7 +596,45 @@ export class TicketsService {
     }
     if (data.priority) await emit(tx, org, 'helpdesk.ticket.priority_changed', { ticketId: t.id, deskId: t.deskId, from: t.priority, to: priority });
     await audit(tx, a, 'desk.ticket.updated', 'sd_ticket', t.id, { number: t.number, changes: log.map(([kind, from, to]) => ({ kind, from, to })), reason });
-    return after;
+    // A status, priority, category, type or group change can pause, resume, stop or re-target SLA timers (§8.3).
+    await this.sla.sync(tx, t.id);
+    if (state === 'solved' && after.tracker && t.systemState !== 'solved') await this.solveTracked(tx, a, after, c.linkedReplyHtml ?? null);
+    return tx.sdTicket.findUniqueOrThrow({ where: { id: t.id } });
+  }
+
+  /**
+   * YX-SD-11 and US-G-006: resolving needs every task done or cancelled, and a resolution code and note when the desk
+   * asks for them (codes from the desk's own list).
+   */
+  private async checkResolvable(tx: Tx, t: Ticket, c: Changes) {
+    const org = t.organizationId;
+    const open = await tx.sdTask.count({ where: { organizationId: org, ticketId: t.id, state: { in: ['open', 'in_progress'] } } });
+    if (open) throw new ConflictException({ statusCode: 409, code: 'TASKS_OPEN', message: `Finish or cancel the ${open} open task${open > 1 ? 's' : ''} first.` });
+    const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { resolutionRequired: true } });
+    const code = c.resolutionCode !== undefined ? c.resolutionCode : t.resolutionCode;
+    const note = c.resolutionNote !== undefined ? c.resolutionNote : t.resolutionNote;
+    if (code && !(await tx.sdResolutionCode.findFirst({ where: { organizationId: org, deskId: t.deskId, code, active: true }, select: { id: true } }))) throw new BadRequestException('Choose a resolution code of this desk.');
+    if (desk.resolutionRequired && (!code || !note?.trim())) throw new BadRequestException({ statusCode: 400, code: 'RESOLUTION_REQUIRED', message: 'This desk needs a resolution code and a note to resolve a ticket.' });
+  }
+
+  /**
+   * US-G-220: when a tracker is solved, every open ticket linked to it gets one reply and is solved too (a reply from
+   * its requester reopens it). Only tickets on the tracker's own desk are linked (the solving agent answers them).
+   */
+  private async solveTracked(tx: Tx, a: DeskActor, tracker: Ticket, html: string | null) {
+    const org = tracker.organizationId;
+    const links = await tx.sdTicketLink.findMany({ where: { organizationId: org, toTicketId: tracker.id, kind: 'tracked_by' } });
+    const text = html && htmlToText(cleanHtml(html)) ? html : `<p>Good news: the problem you reported (${tracker.number}) is fixed. Reply here if you still see it.</p>`;
+    for (const l of links) {
+      let linked = await tx.sdTicket.findFirst({ where: { organizationId: org, id: l.fromTicketId, deskId: tracker.deskId, systemState: { in: OPEN_STATES } } });
+      if (!linked) continue;
+      const { bodyHtml, bodyText, found } = this.cleanMasked(text);
+      const m = await tx.sdTicketMessage.create({ data: { organizationId: org, deskId: linked.deskId, ticketId: linked.id, kind: 'reply', side: 'agent', authorUserId: a.userId, bodyHtml, bodyText, channel: 'agent' } });
+      await this.keepPii(tx, linked, m.id, found);
+      if (!linked.firstResponseAt) linked = await tx.sdTicket.update({ where: { id: linked.id }, data: { firstResponseAt: new Date() } });
+      const solved = await this.firstStatus(tx, org, linked.deskId, linked.typeId, 'solved');
+      await this.applyIn(tx, a, linked, { statusId: solved.id, resolutionCode: tracker.resolutionCode, resolutionNote: tracker.resolutionNote }, `Tracker ${tracker.number} solved`);
+    }
   }
 
   private requireLead(a: DeskActor, t: Ticket, message: string) {
@@ -570,8 +666,10 @@ export class TicketsService {
       if (access !== 'agent') throw new ForbiddenException(SEAT_REQUIRED);
       requireWork(a, t.deskId);
       if (dto.typeId === t.typeId) throw new BadRequestException('The ticket already has that type.');
-      // SLA targets restart under the new type when SLA timers arrive (SD-1.14/1.15).
-      return this.summary(await this.applyIn(tx, a, t, { typeId: dto.typeId }, dto.reason ?? 'Type changed'));
+      const after = await this.applyIn(tx, a, t, { typeId: dto.typeId }, dto.reason ?? 'Type changed');
+      // YX-SD-09: response targets start again under the new type.
+      await this.sla.restart(tx, t.id, 'Ticket type changed');
+      return this.summary(after);
     });
   }
 
@@ -595,6 +693,7 @@ export class TicketsService {
     await this.event(tx, t, 'assigned', cur.assigneeUserId, userId, { by: a.userId, reason: why ?? null });
     await emit(tx, org, 'helpdesk.ticket.assigned', { ticketId: t.id, deskId: t.deskId, assigneeUserId: userId });
     await audit(tx, a, 'desk.ticket.assigned', 'sd_ticket', t.id, { number: t.number, from: cur.assigneeUserId, to: userId });
+    await this.sla.sync(tx, t.id);
     return after;
   }
 
@@ -623,13 +722,14 @@ export class TicketsService {
       } else if (!((access === 'agent' || access === 'collaborator') && has(a, 'desk.ticket.note'))) {
         throw new ForbiddenException('You cannot add notes to this ticket.');
       }
-      const bodyHtml = cleanHtml(dto.bodyHtml);
-      const bodyText = htmlToText(bodyHtml);
+      if (t.mergedIntoId) throw new ConflictException('This ticket was merged. Write on the ticket it was merged into.');
+      const { bodyHtml, bodyText, found } = this.cleanMasked(dto.bodyHtml);
       if (!bodyText) throw new BadRequestException('Write a message first.');
       const mentions = dto.kind === 'note' ? await this.mentionable(tx, a, t, access, dto.mentions ?? []) : [];
       const m = await tx.sdTicketMessage.create({
         data: { organizationId: org, deskId: t.deskId, ticketId: t.id, kind: dto.kind, side: 'agent', authorUserId: a.userId, bodyHtml, bodyText, mentions, channel: 'agent' },
       });
+      await this.keepPii(tx, t, m.id, found);
       await this.attach(tx, a, t, m.id, dto.attachmentIds ?? []);
       let after = t;
       if (dto.kind === 'reply' && !t.firstResponseAt) after = await tx.sdTicket.update({ where: { id: t.id }, data: { firstResponseAt: new Date() } });
@@ -637,6 +737,8 @@ export class TicketsService {
         if (access !== 'agent' || !canWork(a, t.deskId)) throw new ForbiddenException(SEAT_REQUIRED);
         after = await this.applyIn(tx, a, after, { statusId: dto.statusId });
       }
+      // A reply meets the first / next response targets.
+      if (dto.kind === 'reply') await this.sla.sync(tx, t.id);
       await emit(tx, org, dto.kind === 'reply' ? 'helpdesk.ticket.replied' : 'helpdesk.ticket.note_added', { ticketId: t.id, deskId: t.deskId, messageId: m.id });
       await audit(tx, a, dto.kind === 'reply' ? 'desk.ticket.replied' : 'desk.ticket.note_added', 'sd_ticket', t.id, { number: t.number, messageId: m.id, attachments: dto.attachmentIds?.length ?? 0, mentions });
       if (mentions.length) notices.push({ type: 'helpdesk.note.mention', to: mentions, ticket: after });
@@ -684,10 +786,10 @@ export class TicketsService {
       if (!m) throw new NotFoundException('No such message.');
       if (m.kind !== 'note') throw new BadRequestException('A reply sent to the requester cannot be edited.');
       if (m.authorUserId !== a.userId) throw new ForbiddenException('Only the author edits a note.');
-      const bodyHtml = cleanHtml(dto.bodyHtml);
-      const bodyText = htmlToText(bodyHtml);
+      const { bodyHtml, bodyText, found } = this.cleanMasked(dto.bodyHtml);
       if (!bodyText) throw new BadRequestException('Write the note first.');
       await tx.sdTicketMessage.update({ where: { id: m.id }, data: { bodyHtml, bodyText, editedAt: new Date() } });
+      await this.keepPii(tx, t, m.id, found);
       await audit(tx, a, 'desk.ticket.note_edited', 'sd_ticket', t.id, { messageId: m.id, beforeLength: m.bodyText.length, afterLength: bodyText.length });
       return { id: m.id };
     });
@@ -817,9 +919,12 @@ export class TicketsService {
       if (!html) continue;
       const bodyText = htmlToText(html);
       if (!bodyText) continue;
-      await tx.sdTicketMessage.create({ data: { organizationId: a.ctx.organizationId, deskId: t.deskId, ticketId: t.id, kind, side: 'agent', authorUserId: a.userId, bodyHtml: cleanHtml(html), bodyText, channel: 'agent' } });
+      const clean = this.cleanMasked(html);
+      const m = await tx.sdTicketMessage.create({ data: { organizationId: a.ctx.organizationId, deskId: t.deskId, ticketId: t.id, kind, side: 'agent', authorUserId: a.userId, bodyHtml: clean.bodyHtml, bodyText: clean.bodyText, channel: 'agent' } });
+      await this.keepPii(tx, t, m.id, clean.found);
       if (kind === 'reply' && !cur.firstResponseAt) cur = await tx.sdTicket.update({ where: { id: t.id }, data: { firstResponseAt: new Date() } });
     }
+    if (x.reply) await this.sla.sync(tx, t.id);
     await audit(tx, a, 'desk.ticket.scenario_run', 'sd_ticket', t.id, { scenarioId, name: s.name });
     return cur;
   }

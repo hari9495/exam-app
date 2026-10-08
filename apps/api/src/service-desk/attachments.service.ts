@@ -9,7 +9,7 @@ import { fromBuffer } from 'file-type';
 import { AuditService, BlobStorageService, TenantPrismaService } from '@exam-platform/shared';
 import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
 import { Tx } from '../org-structure/org-structure.service';
-import { DeskActor, SEAT_REQUIRED, audit, canWork, has } from './desk-access';
+import { DeskActor, SEAT_REQUIRED, audit, canWork, deskSystem, has } from './desk-access';
 import { BLOCKED_TYPES } from './desks.service';
 import { Requester, RequesterService } from './requester.service';
 import { Scanner, scannerFromEnv } from './scanner';
@@ -185,13 +185,13 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
     const { organizationId, attachmentId } = job.data;
     if (!organizationId || !attachmentId) return;
     const ctx = { organizationId, isSuperAdmin: false };
-    const row = await this.tenantPrisma.forTenant(ctx, (tx) => tx.sdAttachment.findFirst({ where: { organizationId, id: attachmentId } }));
+    const row = await deskSystem(this.tenantPrisma, ctx, (tx) => tx.sdAttachment.findFirst({ where: { organizationId, id: attachmentId } }));
     if (!row || row.scanStatus !== 'pending') return;
     // No scanner: stay pending (fail closed) and try again later.
     if (!this.scanner) throw new Error('No virus scanner configured');
     const result = await this.scanner.scan(await this.get(row.blobKey));
     if (result.verdict === 'error') throw new Error(result.detail);
-    await this.tenantPrisma.forTenant(ctx, async (tx) => {
+    await deskSystem(this.tenantPrisma, ctx, async (tx) => {
       const res = await tx.sdAttachment.updateMany({ where: { organizationId, id: row.id, scanStatus: 'pending' }, data: { scanStatus: result.verdict, scanDetail: result.detail.slice(0, 200), scannedAt: new Date() } });
       if (res.count) {
         await AuditService.recordIn(tx, ctx, { actorUserId: null, action: `desk.attachment.${result.verdict}`, entityType: 'sd_ticket', entityId: row.ticketId, metadata: { attachmentId: row.id, scanner: this.scanner!.name, detail: result.detail } });
@@ -201,7 +201,7 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async sweep() {
-    const rows = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+    const rows = await deskSystem(this.tenantPrisma, { organizationId: null, isSuperAdmin: true }, (tx) =>
       tx.sdAttachment.findMany({ where: { scanStatus: 'pending', createdAt: { lt: new Date(Date.now() - 5 * 60_000) } }, select: { id: true, organizationId: true }, take: 500 }),
     );
     for (const r of rows) await this.enqueue(r.organizationId, r.id);
@@ -247,7 +247,7 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
     } catch {
       throw new NotFoundException('This link has expired. Open the file again from the ticket.');
     }
-    const row = await this.tenantPrisma.forTenant({ organizationId: claims.o, isSuperAdmin: false }, (tx) => tx.sdAttachment.findFirst({ where: { organizationId: claims.o, id: claims.a } }));
+    const row = await this.tenantPrisma.forTenant({ organizationId: claims.o, isSuperAdmin: false, userId: claims.u }, (tx) => tx.sdAttachment.findFirst({ where: { organizationId: claims.o, id: claims.a } }));
     if (!row || row.scanStatus !== 'clean') throw new NotFoundException('No such file.');
     return { data: await this.get(row.blobKey), fileName: row.fileName, contentType: row.contentType, inline: INLINE.has(row.contentType) };
   }

@@ -1,6 +1,7 @@
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   ArrayUnique,
   IsArray,
   IsBoolean,
@@ -108,6 +109,30 @@ export class UpdateDeskDto {
   @IsOptional()
   @IsIn(['active', 'archived'])
   status?: 'active' | 'archived';
+
+  /** YX-SD-11: resolving needs a resolution code and note. */
+  @IsOptional()
+  @IsBoolean()
+  resolutionRequired?: boolean;
+
+  /** YX-SD-10 / US-G-008: days after resolving in which the requester may reopen. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(90)
+  reopenWindowDays?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  requesterCanReopen?: boolean;
+
+  /** Days after resolving with no reply before the ticket closes by itself; null = never. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsInt()
+  @Min(1)
+  @Max(90)
+  autoCloseDays?: number | null;
 }
 
 export class AddMemberDto {
@@ -470,6 +495,11 @@ export class CalendarDto {
 export class UpdateCalendarDto {
   @IsInt()
   version!: number;
+
+  /** On a half-day holiday this half of the working day stays open (founder decision 8 Oct 2026). */
+  @IsOptional()
+  @IsIn(['first', 'second'])
+  halfDayOpenHalf?: 'first' | 'second';
 
   @IsOptional()
   @Text(1, 100)
@@ -838,6 +868,17 @@ export class TicketFiltersDto {
   @IsBoolean()
   vip?: boolean;
 
+  /** US-G-009: snoozed tickets leave my list until they wake; 'show' keeps them, 'only' lists just them. */
+  @IsOptional()
+  @IsIn(['show', 'only'])
+  snoozed?: 'show' | 'only';
+
+  /** Breaching soon: a response target missed or due within 4 hours. */
+  @IsOptional()
+  @Transform(({ value }) => (value === 'true' || value === true ? true : value === 'false' || value === false ? false : value))
+  @IsBoolean()
+  breaching?: boolean;
+
   @IsOptional()
   @trim()
   @IsString()
@@ -947,4 +988,443 @@ export class BulkDto {
   @ValidateNested()
   @Type(() => BulkActionDto)
   action!: BulkActionDto;
+}
+
+// ------------------------------------------------------------------------------------------ batch 2 (SD-1.09 to SD-1.17)
+
+export const LINK_KINDS = ['related', 'blocks', 'caused_by', 'tracked_by'] as const;
+export const TASK_STATES = ['open', 'in_progress', 'done', 'cancelled'] as const;
+
+export class LinkDto {
+  @IsUUID()
+  ticketId!: string;
+
+  @IsIn(LINK_KINDS)
+  kind!: (typeof LINK_KINDS)[number];
+}
+
+export class MergeDto {
+  @IsUUID()
+  intoTicketId!: string;
+
+  @IsInt()
+  version!: number;
+}
+
+export class SplitDto {
+  /** A reply the requester already saw (theirs or an agent reply); internal notes are never split out. */
+  @IsOptional()
+  @IsUUID()
+  messageId?: string;
+
+  @Text(1, 200)
+  subject!: string;
+
+  @IsOptional()
+  @Text(1, 20000)
+  text?: string;
+}
+
+export class ParentDto {
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  parentId!: string | null;
+}
+
+export class SideConversationDto {
+  @IsIn(['note_thread', 'child_ticket'])
+  channel!: 'note_thread' | 'child_ticket';
+
+  @Text(1, 200)
+  subject!: string;
+
+  @IsOptional()
+  @Text(1, 200)
+  withWhom?: string;
+
+  @IsString()
+  @MaxLength(200000)
+  bodyHtml!: string;
+
+  /** child_ticket: the desk of the other team, and optionally its type and category. */
+  @IsOptional()
+  @IsUUID()
+  deskId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  typeId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
+}
+
+export class SideMessageDto {
+  @IsString()
+  @MaxLength(200000)
+  bodyHtml!: string;
+}
+
+export class TaskDto {
+  @Text(1, 200)
+  title!: string;
+
+  @IsOptional()
+  @Text(0, 2000)
+  note?: string;
+
+  @IsOptional()
+  @IsUUID()
+  assigneeUserId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  groupId?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dueAt?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  checklist?: boolean;
+}
+
+export class StandaloneTaskDto extends TaskDto {
+  @IsUUID()
+  deskId!: string;
+}
+
+export class UpdateTaskDto {
+  @IsInt()
+  version!: number;
+
+  @IsOptional()
+  @Text(1, 200)
+  title?: string;
+
+  @IsOptional()
+  @Text(0, 2000)
+  note?: string;
+
+  @IsOptional()
+  @IsIn(TASK_STATES)
+  state?: (typeof TASK_STATES)[number];
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  assigneeUserId?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsDateString()
+  dueAt?: string | null;
+}
+
+export class TemplateDefaultsDto {
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  groupId?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(4)
+  priority?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(40, { each: true })
+  tags?: string[];
+}
+
+export class TemplateDto {
+  @Text(1, 100)
+  name!: string;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  ticketTypeId?: string | null;
+
+  @ValidateNested()
+  @Type(() => TemplateDefaultsDto)
+  defaults!: TemplateDefaultsDto;
+
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(200, { each: true })
+  checklist!: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+}
+
+export class ResolutionCodeDto {
+  @Matches(/^[a-z0-9][a-z0-9_]{0,39}$/, { message: 'A code is lower-case letters, digits and _ (up to 40)' })
+  code!: string;
+
+  @Text(1, 100)
+  label!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+}
+
+export class ResolveDto {
+  @IsInt()
+  version!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  resolutionCode?: string;
+
+  @IsOptional()
+  @Text(0, 2000)
+  resolutionNote?: string;
+
+  /** US-G-220: the message every ticket linked to this tracker gets when it is solved. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  linkedReplyHtml?: string;
+}
+
+export class EscalateDto {
+  @IsIn(TIERS)
+  tier!: (typeof TIERS)[number];
+
+  @IsOptional()
+  @IsUUID()
+  groupId?: string;
+
+  @Text(3, 500)
+  reason!: string;
+}
+
+export class TrackerDto {
+  @IsBoolean()
+  tracker!: boolean;
+}
+
+export class ReminderDto {
+  @IsDateString()
+  remindAt!: string;
+
+  @IsOptional()
+  @Text(0, 300)
+  note?: string;
+
+  @IsOptional()
+  @IsUUID()
+  ticketId?: string;
+}
+
+export class SnoozeDto {
+  @IsDateString()
+  until!: string;
+}
+
+export class RangeQueryDto {
+  @IsDateString()
+  from!: string;
+
+  @IsDateString()
+  to!: string;
+}
+
+export class MonthQueryDto {
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'Month as YYYY-MM' })
+  month!: string;
+}
+
+export class ReasonDto {
+  @Text(3, 500)
+  reason!: string;
+}
+
+export class LinkPersonDto {
+  @IsUUID()
+  intoPersonId!: string;
+}
+
+export class ReadsQueryDto {
+  @IsUUID()
+  ticketId!: string;
+}
+
+// ---- SLA (SD-1.14 to SD-1.17) ----
+
+export const SLA_METRIC_LIST = ['assign', 'first_response', 'next_response', 'resolution', 'group', 'task'] as const;
+export const MILESTONE_ACTION_LIST = ['notify_assignee', 'notify_group_leads', 'notify_desk_leads', 'raise_priority', 'move_to_group'] as const;
+
+export class MilestoneActionDto {
+  @IsIn(MILESTONE_ACTION_LIST)
+  type!: (typeof MILESTONE_ACTION_LIST)[number];
+
+  @IsOptional()
+  @IsUUID()
+  groupId?: string;
+}
+
+export class MilestoneDto {
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  percent!: number;
+
+  @IsArray()
+  @ArrayMaxSize(5)
+  @ValidateNested({ each: true })
+  @Type(() => MilestoneActionDto)
+  actions!: MilestoneActionDto[];
+}
+
+export class SlaTargetDto {
+  @IsIn(SLA_METRIC_LIST)
+  metric!: (typeof SLA_METRIC_LIST)[number];
+
+  /** Minutes for P1, P2, P3, P4 (null = no target for that priority). */
+  @IsArray()
+  @ArrayMinSize(4)
+  @ArrayMaxSize(4)
+  @Transform(({ value }) => value)
+  minutes!: (number | null)[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(8)
+  @ValidateNested({ each: true })
+  @Type(() => MilestoneDto)
+  milestones?: MilestoneDto[];
+}
+
+export class ScopeRuleDto {
+  @IsIn(['priority', 'category', 'type', 'kind', 'channel', 'group', 'vip', 'tag'])
+  field!: 'priority' | 'category' | 'type' | 'kind' | 'channel' | 'group' | 'vip' | 'tag';
+
+  @IsIn(['in', 'not_in'])
+  op!: 'in' | 'not_in';
+
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(60, { each: true })
+  values!: string[];
+}
+
+export class ScopeDto {
+  @IsIn(['all', 'any'])
+  match!: 'all' | 'any';
+
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => ScopeRuleDto)
+  rules!: ScopeRuleDto[];
+}
+
+export class SlaVersionDto {
+  /** From when the new version applies (now or later); open tickets keep the version they started with. */
+  @IsOptional()
+  @IsDateString()
+  validFrom?: string;
+
+  @ValidateNested()
+  @Type(() => ScopeDto)
+  scope!: ScopeDto;
+
+  @IsIn(['desk', 'calendar', 'requester_location'])
+  calendarSource!: 'desk' | 'calendar' | 'requester_location';
+
+  @IsOptional()
+  @IsUUID()
+  calendarId?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => SlaTargetDto)
+  targets!: SlaTargetDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsIn(['new', 'open', 'pending', 'on_hold'], { each: true })
+  pauseStates?: string[];
+
+  @IsOptional()
+  @IsIn(['keep', 'retroactive'])
+  recount?: 'keep' | 'retroactive';
+}
+
+export class SlaPolicyDto extends SlaVersionDto {
+  @Text(1, 100)
+  name!: string;
+
+  @IsIn(['sla', 'ola'])
+  kind!: 'sla' | 'ola';
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1000)
+  sortOrder?: number;
+}
+
+export class UpdateSlaPolicyDto {
+  @IsInt()
+  version!: number;
+
+  @IsOptional()
+  @Text(1, 100)
+  name?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1000)
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+}
+
+export class ComplianceTargetDto {
+  @IsIn(SLA_METRIC_LIST)
+  metric!: (typeof SLA_METRIC_LIST)[number];
+
+  @ValidateIf((_, v) => v !== null)
+  @IsInt()
+  @Min(1)
+  @Max(4)
+  priority!: number | null;
+
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  targetPercent!: number;
+}
+
+export class ComplianceTargetsDto {
+  @IsArray()
+  @ArrayMaxSize(40)
+  @ValidateNested({ each: true })
+  @Type(() => ComplianceTargetDto)
+  targets!: ComplianceTargetDto[];
 }

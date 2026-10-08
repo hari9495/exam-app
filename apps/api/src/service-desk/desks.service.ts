@@ -90,6 +90,10 @@ export class DesksService {
       attachmentTypes: d.attachmentTypes,
       attachmentMaxMb: d.attachmentMaxMb,
       vipRaisesPriority: d.vipRaisesPriority,
+      resolutionRequired: d.resolutionRequired,
+      reopenWindowDays: d.reopenWindowDays,
+      requesterCanReopen: d.requesterCanReopen,
+      autoCloseDays: d.autoCloseDays,
       status: d.status,
       version: d.version,
     };
@@ -513,6 +517,7 @@ export class DesksService {
         id: c.id,
         name: c.name,
         timeZone: c.timeZone,
+        halfDayOpenHalf: c.halfDayOpenHalf,
         version: c.version,
         hours: hours.filter((h) => h.calendarId === c.id).map((h) => ({ id: h.id, weekday: h.weekday, startMinute: h.startMinute, endMinute: h.endMinute, validFrom: iso(h.validFrom), validTo: iso(h.validTo) })),
         holidays: holidays.filter((h) => h.calendarId === c.id).map((h) => ({ id: h.id, on: iso(h.holidayOn), name: h.name, halfDay: h.halfDay })),

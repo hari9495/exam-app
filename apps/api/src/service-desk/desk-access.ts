@@ -24,6 +24,10 @@ export const DESK_KEYS = [
   'desk.member.manage',
   'desk.sla.manage',
   'desk.desk.create',
+  'desk.task.work',
+  'desk.audit.view',
+  'desk.pii.unmask',
+  'desk.report.view',
   'request.raise_on_behalf',
 ] as const;
 export type DeskKey = (typeof DESK_KEYS)[number];
@@ -90,6 +94,7 @@ export class DeskAccessService {
 }
 
 export const has = (a: DeskActor, key: DeskKey) => a.keys.has(key);
+export const isLead = (a: DeskActor, deskId: string) => a.roles.get(deskId) === 'lead';
 export const isAgentOn = (a: DeskActor, deskId: string) => ['agent', 'lead'].includes(a.roles.get(deskId) ?? '');
 export const canWork = (a: DeskActor, deskId: string) => has(a, 'desk.ticket.work') && isAgentOn(a, deskId);
 export const canLead = (a: DeskActor, deskId: string, key: 'desk.ticket.assign' | 'desk.ticket.bulk' | 'desk.ticket.merge') => has(a, key) && a.roles.get(deskId) === 'lead';
@@ -154,4 +159,20 @@ export function audit(tx: Tx, a: { ctx: CompanyContext; userId: string }, action
 /** A business event through the transactional outbox (YX-NTF-01). Sensitive records carry ids only (YX-API-10). */
 export function emit(tx: Tx, organizationId: string, eventType: string, payload: Record<string, unknown>) {
   return tx.eventOutbox.create({ data: { organizationId, eventType, payload: payload as Prisma.InputJsonValue } });
+}
+
+/**
+ * §5.7: the desk's own background work (SLA timers, virus scan, auto-close, reminders, the meter) runs with
+ * app.sd_system on inside its transaction, so the restrictive visibility policy lets it reach sensitive records. No
+ * request path calls this; a person always reads through their own session.
+ */
+export function deskSystem<T>(tenantPrisma: TenantPrismaService, ctx: TenantContext, fn: (tx: Tx) => Promise<T>, options?: { timeout?: number }): Promise<T> {
+  return tenantPrisma.forTenant(
+    ctx,
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.sd_system', 'on', true)`;
+      return fn(tx);
+    },
+    options,
+  );
 }
