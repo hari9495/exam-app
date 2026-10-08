@@ -237,6 +237,16 @@ describe('Time and leave batch 1', () => {
       expect((await api('emp', 'get', `/time/requests/${ids.req2}`).expect(200)).body.status).toBe('rejected');
     });
 
+    it("an HR admin never approves their own leave: the HR step goes to the next tier (here the System Admin)", async () => {
+      await inA((tx) => tx.leaveLedgerEntry.create({ data: { organizationId: org.A.id, employeeId: ids.hrEmp, leaveTypeId: ids.EL, entryOn: new Date(`${today}T00:00:00Z`), kind: 'opening', days: 10, reason: 'Test opening balance' } }));
+      await api('hrAdmin', 'post', '/time/me/leave').send({ leaveTypeId: ids.EL, from: d(17), to: d(20), delegateUserId: users.other }).expect(201);
+      const first = (await inbox('boss')).find((x) => x.title.startsWith('hrAdmin') && x.title.includes('(4 days)'))!;
+      expect(first.summary).toEqual(expect.arrayContaining([{ label: 'Approves for them while away', value: `other ${run}` }]));
+      await decide('boss', first.taskId, 'approve').expect(200);
+      expect((await inbox('hrAdmin')).some((x) => x.title.startsWith('hrAdmin'))).toBe(false);
+      expect((await inbox('adminA')).some((x) => x.title.startsWith('hrAdmin') && x.step.name === 'HR')).toBe(true);
+    });
+
     it('withdraw a pending request; cancel approved leave with approval, which credits the days back', async () => {
       const w = (await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.CL, from: d(8), to: d(8) }).expect(201)).body.id;
       await api('peer', 'post', `/time/me/leave/${w}/withdraw`).expect(404);

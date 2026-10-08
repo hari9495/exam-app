@@ -355,8 +355,6 @@ export function evaluateDay(i: DayInput): DayResult {
   if (i.holiday && !i.holiday.halfDay) return { ...none, status: 'holiday' };
   const leavePart = i.leave;
   const offHalf: 'first' | 'second' | null = leavePart ?? (i.holiday ? (i.holiday.openHalf === 'first' ? 'second' : 'first') : null);
-  if (i.mode === 'assumed_present') return { ...none, status: 'present', leavePart };
-  if (i.mode === 'timesheet') return { ...none, status: 'no_timesheet', leavePart };
 
   const r = i.rule;
   const end = r.shiftEnd > r.shiftStart ? r.shiftEnd : r.shiftEnd + 1440;
@@ -375,6 +373,12 @@ export function evaluateDay(i: DayInput): DayResult {
   if (fix && fix.outMinute !== null && (fix.kind === 'missed_out' || fix.kind === 'wrong_time')) lastOut = instantAt(i.on, i.zone, fix.outMinute < r.shiftStart && r.shiftEnd < r.shiftStart ? fix.outMinute + 1440 : fix.outMinute);
   if (firstIn && lastOut && lastOut <= firstIn) lastOut = null;
   const regularised = Boolean(fix);
+  // Punches are still recorded in the other modes (D1) and shown on the day, but they never set its status.
+  if (i.mode !== 'punch') {
+    const both = firstIn && lastOut;
+    const shown = { firstIn, lastOut, workedMinutes: both ? Math.floor((lastOut!.getTime() - firstIn!.getTime()) / 60_000) : null };
+    return { ...none, ...shown, status: i.mode === 'assumed_present' ? 'present' : 'no_timesheet', leavePart };
+  }
   const nowMin = minutesInto(i.on, i.zone, i.now);
   const dayOver = nowMin >= workEnd + 240;
 

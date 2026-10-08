@@ -309,12 +309,14 @@ export async function holdersOf(tx: Tx, org: string, key: TimeKey, employeeId: s
  * Who approves the HR step (and anything no manager can): holders of leave.approve over the employee; else the
  * company's leave set-up holders; else its System Admins, so a request never lacks an approver.
  */
-export async function hrApprovers(tx: Tx, org: string, employeeId: string, today: string): Promise<string[]> {
-  const hr = await holdersOf(tx, org, 'leave.approve', employeeId, today);
+export async function hrApprovers(tx: Tx, org: string, employeeId: string, today: string, notUserId?: string | null): Promise<string[]> {
+  // The person the request is about never approves it (YX-WF-04), so an HR admin's own leave goes to the next tier.
+  const others = (ids: string[]) => ids.filter((x) => x !== notUserId);
+  const hr = others(await holdersOf(tx, org, 'leave.approve', employeeId, today));
   if (hr.length) return hr;
-  const setup = await holdersOf(tx, org, 'leave.settings.manage', employeeId, today);
+  const setup = others(await holdersOf(tx, org, 'leave.settings.manage', employeeId, today));
   if (setup.length) return setup;
-  return (await tx.user.findMany({ where: { organizationId: org, role: 'org_admin', status: 'active' }, select: { id: true }, take: 25 })).map((u) => u.id);
+  return others((await tx.user.findMany({ where: { organizationId: org, role: 'org_admin', status: 'active' }, select: { id: true }, take: 25 })).map((u) => u.id));
 }
 
 /** Dates of a month (yyyy-mm). */

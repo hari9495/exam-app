@@ -148,7 +148,7 @@ export class AttendanceService implements OnModuleInit {
       const r = await tx.attendanceRequest.create({
         data: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: dto.kind, inMinute: needIn ? dto.inMinute! : null, outMinute: needOut ? dto.outMinute! : null, reason: dto.reason, raisedBy: c.userId ?? null },
       });
-      const hr = await hrApprovers(tx, org, f.employeeId, today);
+      const hr = await hrApprovers(tx, org, f.employeeId, today, f.userId);
       const steps: StepSpec[] = [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24 }];
       if (used >= limit) steps.push({ name: 'HR', approvers: [{ kind: 'users', userIds: hr }], mode: 'any', remindAfterHours: 24 });
       const fix = dto.kind === 'full_day' ? 'Present all day' : [needIn ? `in ${hhmm(dto.inMinute!)}` : '', needOut ? `out ${hhmm(dto.outMinute!)}` : ''].filter(Boolean).join(', ');

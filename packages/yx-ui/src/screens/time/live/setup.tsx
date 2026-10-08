@@ -11,7 +11,7 @@ import { Segment } from '../../../components/segment';
 import { Select } from '../../../components/select';
 import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
-import { LivePage, WEEKDAYS, clock, dayText, offsText } from './kit';
+import { LivePage, WEEKDAYS, clock, dateText, dayText, offsText } from './kit';
 import type { LeaveRules, LeaveTypeRow, LoadState, LocationRule, PolicyLine, TimeSetup, YearEndPreview } from './types';
 
 // HR › Leave set-up (TIM-26 / 27 / 28 / 29) and the attendance basics of each location: leave types with their
@@ -305,12 +305,12 @@ function Policies({ data, onCreatePolicy, onAddVersion, onAssign, onRemoveAssign
               ) : (
                 <p className="yx-tim-muted">No entitlements yet. Use “Change from a date” to add them.</p>
               )}
-              {current && <p className="yx-tim-note">In force from {dayText(current.validFrom)}{pol.versions.some((v) => v.validFrom > data.today) ? ' · a later change is waiting' : ''}.</p>}
+              {current && <p className="yx-tim-note">In force from {dateText(current.validFrom)}{pol.versions.some((v) => v.validFrom > data.today) ? ' · a later change is waiting' : ''}.</p>}
               <div className="yx-tim-row">
                 {pol.assignments.map((a) => (
                   <span key={a.id} className="yx-tim-row">
                     <Badge tone="info">
-                      {a.scopeName} from {dayText(a.validFrom)}
+                      {a.scopeName} from {dateText(a.validFrom)}
                     </Badge>
                     {a.removable && (
                       <Button size="sm" loading={busy === a.id} onClick={() => void run(a.id, () => onRemoveAssignment(a.id))}>
@@ -533,7 +533,7 @@ function Holidays({ data, onCreateCalendar, onAddHoliday, onRemoveHoliday }: { d
             <tbody>
               {cal.holidays.map((h) => (
                 <tr key={h.id}>
-                  <td>{dayText(h.on)} {h.on.slice(0, 4)}</td>
+                  <td>{dateText(h.on)}</td>
                   <td>
                     {h.name}
                     {h.halfDay ? ' (half day)' : ''}
@@ -618,7 +618,7 @@ function Attendance({ data, onSetRule }: { data: TimeSetup; onSetRule: TimeSetup
               <td>
                 {l.rule.shiftName} {clock(l.rule.shiftStart)} to {clock(l.rule.shiftEnd)} · {l.rule.graceMinutes} min grace
                 {l.rule.starter ? <span className="yx-tim-note"> (starter)</span> : null}
-                {l.upcoming.length ? <span className="yx-tim-note"> · changes on {dayText(l.upcoming[0].validFrom!)}</span> : null}
+                {l.upcoming.length ? <span className="yx-tim-note"> · changes on {dateText(l.upcoming[0].validFrom!)}</span> : null}
               </td>
               <td>{offsText(l.rule.weeklyOffs)}</td>
               <td>
@@ -778,7 +778,7 @@ function YearEnd({ today, onPreview, onRun }: { today: string; onPreview: TimeSe
           {preview.lapses > 0 && !queued && (
             <ConfirmDialog
               trigger={<Button variant="primary">Post year end</Button>}
-              title={`Post year end for ${dayText(preview.yearEnd)}?`}
+              title={`Post year end for ${dateText(preview.yearEnd)}?`}
               consequence={`${preview.lapses} lapses are added to the ledger. They are not removed later; a correction is a new adjustment.`}
               confirmLabel="Post year end"
               onConfirm={async () => {

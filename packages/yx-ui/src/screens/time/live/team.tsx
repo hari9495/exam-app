@@ -292,7 +292,7 @@ export function LeaveBalancesScreen(p: LeaveBalancesScreenProps) {
                       const b = x.balances.find((y) => y.leaveTypeId === t.id);
                       return (
                         <td key={t.id} className="yx-tim-num">
-                          {!b ? '' : b.hasBalance ? b.balance : `${b.takenThisYear} taken`}
+                          {!b ? '' : b.hasBalance ? b.balance : b.takenThisYear ? `${b.takenThisYear} taken` : ''}
                         </td>
                       );
                     })}

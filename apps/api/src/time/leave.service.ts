@@ -325,7 +325,7 @@ export class LeaveService implements OnModuleInit {
       });
       await tx.leaveRequestDay.createMany({ data: p.days.map((d) => ({ organizationId: org, requestId: req.id, employeeId: f.employeeId, leaveOn: asDate(d.on), part: d.part, portion: d.portion, countedAs: d.countedAs })) });
       const hr = p.type.rules.hrApprovalAboveDays;
-      const hrUsers = await hrApprovers(tx, org, f.employeeId, today);
+      const hrUsers = await hrApprovers(tx, org, f.employeeId, today, f.userId);
       const steps: StepSpec[] = [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24, timeoutHours: 72, onTimeout: 'escalate' }];
       if (hr !== null) {
         steps.push({
@@ -346,6 +346,8 @@ export class LeaveService implements OnModuleInit {
         // YX-LV-09: approvers see the certificate's status only, never the file; a medical reason never.
         ...(req.certificate !== 'none' ? [{ label: 'Certificate', value: req.certificate === 'verified' ? 'Attached · verified' : 'To be given · pending' }] : []),
         ...(reason && !p.type.rules.medical ? [{ label: 'Reason', value: reason.slice(0, 300) }] : []),
+        // P03 Q3: the approver knows who takes over the employee's own approvals while they are away.
+        ...(dto.delegateUserId ? [{ label: 'Approves for them while away', value: (await tx.user.findFirst({ where: { organizationId: org, id: dto.delegateUserId }, select: { name: true, email: true } }))?.name ?? 'A colleague' }] : []),
       ];
       const sub = await this.engine.submit(tx, c, {
         type: LEAVE_REQUEST,
@@ -470,7 +472,7 @@ export class LeaveService implements OnModuleInit {
         steps: [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24 }],
         payload: {},
         payloadFields: [],
-        fallbackUserIds: await hrApprovers(tx, c.organizationId, f.employeeId, today),
+        fallbackUserIds: await hrApprovers(tx, c.organizationId, f.employeeId, today, f.userId),
       });
       notices.push(...sub.notices);
       await tx.leaveRequest.update({ where: { id: r.id }, data: { cancelWfRequestId: sub.id } });

@@ -57,7 +57,12 @@ const day = (s: string) => new Date(`${s}T00:00:00.000Z`);
 
 export async function seedTime(tx: Tx, organizationId: string) {
   const org = { organizationId };
-  if (await tx.leaveType.findFirst({ where: { ...org, code: 'EL' } })) return;
+  if (await tx.leaveType.findFirst({ where: { ...org, code: 'EL' } })) {
+    // Seeded already: only bring the last week's days up to date (the day engine is idempotent).
+    const c = { organizationId, isSuperAdmin: false, userId: null };
+    for (const e of await tx.employee.findMany({ where: org, select: { id: true } })) await new DayEngine().evaluate(tx, c, e.id, addDays(todayIn('Asia/Kolkata'), -7), todayIn('Asia/Kolkata'));
+    return;
+  }
   const loc = async (code: string) => tx.location.findFirstOrThrow({ where: { ...org, code } });
   const blr = await loc('BLR-HO');
   const maa = await loc('MAA-OFF');

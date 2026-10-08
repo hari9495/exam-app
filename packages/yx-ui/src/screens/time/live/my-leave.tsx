@@ -12,7 +12,7 @@ import { Select } from '../../../components/select';
 import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
 import { LivePicker } from '../../desk/service-form';
-import { LivePage, LeaveStatusBadge, addDays, daysText, dayText, rangeText } from './kit';
+import { LivePage, LeaveStatusBadge, addDays, dateText, daysText, dayText, rangeText } from './kit';
 import type { LeaveInput, LeavePlan, LeaveRequestRow, LoadState, MyLeave, PersonOption } from './types';
 
 // Me › Leave (TIM-17 / 18 / 19 / 23): balances from the ledger (YX-LV-01; unpaid types show "taken this year",
@@ -41,7 +41,7 @@ export function MyLeaveScreen(p: MyLeaveScreenProps) {
   return (
     <LivePage
       title="My leave"
-      description={d ? `Leave year ${dayText(d.year.start)} to ${dayText(d.year.end)}. Balances are the sum of every credit and debit.` : undefined}
+      description={d ? `Leave year ${dateText(d.year.start)} to ${dateText(d.year.end)}. Each balance is the sum of its credits and debits.` : undefined}
       state={p.state}
       onRetry={p.onRetry}
       what="your leave"
@@ -54,7 +54,8 @@ export function MyLeaveScreen(p: MyLeaveScreenProps) {
       {d && (
         <>
           <section aria-label="Balances" className="yx-tim-cards">
-            {d.balances.map((b) => (
+            {/* Unpaid leave shows what was taken; maternity and paternity are per event, so they are only in the apply list. */}
+            {d.balances.filter((b) => b.hasBalance || b.kind === 'lop').map((b) => (
               <Card key={b.leaveTypeId} title={b.name} actions={b.paid ? undefined : <Badge tone="neutral">Unpaid</Badge>}>
                 {b.hasBalance ? (
                   <>
@@ -291,8 +292,16 @@ function ApplyDrawer({ data, onClose, onPreview, onApply, onFindPeople }: { data
               />
             ) : (
               <>
-                <Segment label="First day" value={fromHalf} onChange={setFromHalf} options={[{ value: 'full', label: 'Whole day' }, { value: 'second', label: 'From the second half' }]} />
-                <Segment label="Last day" value={toHalf} onChange={setToHalf} options={[{ value: 'full', label: 'Whole day' }, { value: 'first', label: 'Until the first half' }]} />
+                <div className="yx-tim-stack" data-gap="sm">
+                  <span className="yx-tim-note">{dayText(from)}</span>
+                  <Segment label={`${dayText(from)}: whole day or second half`} value={fromHalf} onChange={setFromHalf} options={[{ value: 'full', label: 'Whole day' }, { value: 'second', label: 'Second half only' }]} />
+                </div>
+                {end > from && (
+                  <div className="yx-tim-stack" data-gap="sm">
+                    <span className="yx-tim-note">{dayText(end)}</span>
+                    <Segment label={`${dayText(end)}: whole day or first half`} value={toHalf} onChange={setToHalf} options={[{ value: 'full', label: 'Whole day' }, { value: 'first', label: 'First half only' }]} />
+                  </div>
+                )}
               </>
             )}
           </div>
