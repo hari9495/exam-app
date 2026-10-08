@@ -325,7 +325,7 @@ function OverviewTab({ persona, relation, onReveal }: { persona: Persona; relati
                   <span>
                     {e.name} · {e.relation}
                   </span>
-                  <span className="yx-mono">{formatPhone(e.phone)}</span>
+                  <span>{formatPhone(e.phone)}</span>
                 </li>
               ))}
             </ul>
