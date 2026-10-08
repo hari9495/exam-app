@@ -17,3 +17,4 @@ load/tokens.json
 # Claude Code local session/config + skills lockfile (per-machine tooling state, not product)
 .claude/
 skills-lock.json
+.desk-files/
