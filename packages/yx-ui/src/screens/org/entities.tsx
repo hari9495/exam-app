@@ -147,7 +147,8 @@ function StatutoryDrawer({ entity, onClose, onLoad, onSave }: { entity: LegalEnt
 
 /* ---------- company rules (YX-ORG-12, YX-ORG-16) ---------- */
 
-function RulesForm({ rules, canManage, onSave }: { rules: CompanyRules; canManage: boolean; onSave: (changes: { employeeCodeScope?: string; defaultOwnership?: string }) => Promise<void> }) {
+// `justSaved`: the form is redrawn with the saved rules, so "Saved." is remembered by the parent.
+function RulesForm({ rules, canManage, onSave, justSaved = false }: { rules: CompanyRules; canManage: boolean; onSave: (changes: { employeeCodeScope?: string; defaultOwnership?: string }) => Promise<void>; justSaved?: boolean }) {
   const [codeScope, setCodeScope] = useState(rules.employeeCodeScope.value);
   const [ownership, setOwnership] = useState(rules.defaultOwnership.value);
   const [saved, setSaved] = useState(false);
@@ -168,7 +169,7 @@ function RulesForm({ rules, canManage, onSave }: { rules: CompanyRules; canManag
           <Segment label="New masters are" options={[{ value: 'shared' as const, label: 'Shared' }, { value: 'entity_only' as const, label: 'Entity-only' }]} value={ownership} onChange={(v) => { setOwnership(v); setSaved(false); }} />
         </FormField>
       </FormSection>
-      {saved && !dirty && <InlineAlert tone="success">Saved.</InlineAlert>}
+      {(saved || justSaved) && !dirty && <InlineAlert tone="success">Saved.</InlineAlert>}
       {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
       {canManage && (
         <div className="yx-auth__row yx-auth__save">
@@ -241,6 +242,7 @@ export function LegalEntitiesScreen(props: LegalEntitiesScreenProps) {
     { key: 'status', header: 'Status', value: (e) => (e.archivedAt ? 'Archived' : e.isDefault ? 'Default' : 'Active'), render: (e) => <StatusBadge archived={Boolean(e.archivedAt)} isDefault={e.isDefault} />, width: 110 },
   ];
 
+  const [rulesSaved, setRulesSaved] = useState(false);
   const add = <Button onClick={() => setEditing({ entity: null, key: Date.now() })}>Add legal entity</Button>;
   return (
     <OrgPage
@@ -286,7 +288,7 @@ export function LegalEntitiesScreen(props: LegalEntitiesScreenProps) {
         />
       </section>
 
-      {props.rules && <RulesForm key={JSON.stringify(props.rules)} rules={props.rules} canManage={props.canManage} onSave={props.onSaveRules} />}
+      {props.rules && <RulesForm key={JSON.stringify(props.rules)} rules={props.rules} canManage={props.canManage} justSaved={rulesSaved} onSave={(c) => props.onSaveRules(c).then(() => setRulesSaved(true))} />}
 
       {editing && <EntityEditor key={editing.key} entity={editing.entity} states={props.states} onClose={() => setEditing(null)} onSave={(input) => props.onSave(editing.entity?.id ?? null, input)} />}
       {dialog}
