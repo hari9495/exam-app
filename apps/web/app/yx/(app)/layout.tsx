@@ -88,8 +88,10 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   // Admin menus only for people who can change them (founder review 7 Oct 2026): a manager may READ the structure
   // (department and location pickers use it) but gets no Organisation / Access settings in the menu.
   const settingsAdmin = perms.has('org.settings.manage');
-  const org = settingsAdmin || perms.has('pay.range.view') ? [...ORG, ...(settingsAdmin ? [COMPANY_RULES] : [])] : [];
   const hr = perms.has('employee.profile.view') || perms.has('employee.change.manage') || perms.has('employee.change.approve');
+  // HR reads the structure it hires into (read-only pages; changes stay with org.settings.manage). A manager who
+  // only reads it for pickers still gets no Organisation menu (founder review 8 Oct 2026).
+  const org = settingsAdmin || perms.has('pay.range.view') || (hr && perms.has('org.structure.view')) ? [...ORG, ...(settingsAdmin ? [COMPANY_RULES] : [])] : [];
   const employee = Boolean(team.data?.managerId);
   const manager = Boolean(team.data?.members.length);
   const bulk = perms.has('employee.change.manage') || perms.has('employee.change.approve');
