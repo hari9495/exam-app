@@ -1077,7 +1077,7 @@ Each slice is one pull request with its migration, API, tests and (where listed)
 | SD-4.24 | Telephony, social channels, walk-up and appointments | US-G-183, US-G-184, US-G-185 |
 | SD-4.25 | MSP mode, desk-to-desk exchange, opportunities and quotes, cloud subscription check | US-G-186, US-G-187, US-G-188, US-G-189 |
 | SD-4.26 | Security incident desk and access reviews | US-G-190, US-G-191 |
-| SD-4.27 | Experience score, improvement register, continuity plans, peer benchmarks | US-G-192, US-G-193, US-G-194, US-G-195 |
+| SD-4.27 | Experience score, improvement register, continuity plans (peer benchmarks dropped, D7) | US-G-192, US-G-193, US-G-194 |
 | SD-4.28 | Conversation quality reviews, skills matrix, gamification | US-G-196, US-G-197, US-G-198 |
 | SD-4.29 | Customer health, proactive tickets, CRM context | US-G-199, US-G-200, US-G-201 |
 | SD-4.30 | Company storage bucket, more languages, industry packs, community forum | US-G-202, US-G-203, US-G-204, US-G-205 |
