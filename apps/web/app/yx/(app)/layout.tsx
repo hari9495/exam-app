@@ -46,6 +46,8 @@ const PRIVACY: WorkspaceLink = { id: 'privacy', label: 'Who accessed my data', h
 const DESK_HELP: WorkspaceLink = { id: 'desk-help', label: 'Help centre', href: '/yx/desk/help', group: 'Service desk' };
 const DESK_TICKETS: WorkspaceLink = { id: 'desk-tickets', label: 'Tickets', href: '/yx/desk/tickets', group: 'Service desk' };
 const DESK_SETUP: WorkspaceLink = { id: 'desk-setup', label: 'Desk set-up', href: '/yx/desk/setup', group: 'Service desk' };
+const DESK_CALENDAR: WorkspaceLink = { id: 'desk-calendar', label: 'My calendar', href: '/yx/desk/calendar', group: 'Service desk' };
+const DESK_PEOPLE: WorkspaceLink = { id: 'desk-people', label: 'People to check', href: '/yx/desk/people', group: 'Service desk' };
 
 // Links follow the role; the API still checks every permission (audit:view, org:manage_users,
 // org:manage_settings) and the pages show "no access" on a 403. Platform staff outside any company use the
@@ -126,8 +128,10 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ? []
     : [
         DESK_HELP,
-        ...(perms.has('desk.ticket.view') ? [DESK_TICKETS] : []),
+        ...(perms.has('desk.ticket.view') ? [DESK_TICKETS, DESK_CALENDAR] : []),
         ...(perms.has('desk.desk.create') || perms.has('desk.settings.manage') || perms.has('desk.member.manage') ? [DESK_SETUP] : []),
+        // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
+        ...(perms.has('employee.change.manage') ? [DESK_PEOPLE] : []),
       ];
   const links = [...staff, ...desk, ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not Profile.

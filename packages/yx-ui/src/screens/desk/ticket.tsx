@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { MessageSquare, Send, Ticket as TicketIcon, UserPlus, X } from 'lucide-react';
 import { Button, IconButton } from '../../components/button';
 import { Badge, PersonLabel, Tag } from '../../components/display';
@@ -51,6 +51,12 @@ export interface TicketScreenProps {
   /** Tells others this person is here, and whether typing (YX-SD-07). */
   onTyping: (typing: boolean) => void;
   onOpenTicket: (id: string) => void;
+  /** Batch 2 cards for the right-hand rail (response targets, tasks, related tickets, side threads, reminders). */
+  rail?: ReactNode;
+  /** Opens the resolve dialog (resolution code and note) instead of resolving at once. */
+  onResolveClick?: () => void;
+  /** Opens the support-level dialog (L1 / L2 / L3). */
+  onEscalateClick?: () => void;
 }
 
 const empty = (html: string) => !html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
@@ -111,6 +117,8 @@ export function TicketScreen(props: TicketScreenProps) {
           <>
             <StatusBadge label={t.status?.label ?? ''} state={t.systemState} />
             <PriorityBadge priority={t.priority} />
+            {t.tier && <Badge tone="neutral">Level {t.tier}</Badge>}
+            {t.tracker && <Badge tone="info">Tracker</Badge>}
             <TicketFlags sensitive={t.sensitive} private={t.private} vip={t.vip} />
             {t.access === 'observer' && <Badge tone="neutral">Read-only: you set this desk up</Badge>}
             {t.access === 'collaborator' && <Badge tone="neutral">You are a collaborator: notes only</Badge>}
@@ -125,7 +133,7 @@ export function TicketScreen(props: TicketScreenProps) {
               </Button>
             )}
             {work && solved && t.systemState !== 'solved' && t.systemState !== 'closed' && (
-              <Button variant="primary" loading={busy === 'update'} onClick={() => update({ statusId: solved.id })}>
+              <Button variant="primary" loading={busy === 'update'} onClick={() => (props.onResolveClick ? props.onResolveClick() : update({ statusId: solved.id }))}>
                 Resolve
               </Button>
             )}
@@ -135,6 +143,7 @@ export function TicketScreen(props: TicketScreenProps) {
           work ? (
             <>
               <MenuItem onSelect={() => setConvertOpen(true)}>Change ticket type</MenuItem>
+              {props.onEscalateClick && <MenuItem onSelect={props.onEscalateClick}>Move to another support level</MenuItem>}
               {d.scenarios
                 .filter((s) => s.active)
                 .map((s) => (
@@ -161,6 +170,7 @@ export function TicketScreen(props: TicketScreenProps) {
                   <span className="yx-ops-msg__meta">
                     <span className="yx-ops-msg__who">{m.author}</span>
                     {m.kind === 'note' && <Badge tone="warning">Internal note: {first} never sees it</Badge>}
+                    {m.fromTicketId && <Badge tone="neutral">From a merged ticket</Badge>}
                     <span>{when(m.createdAt)}</span>
                     {m.editedAt && <span>· edited</span>}
                   </span>
@@ -301,6 +311,7 @@ export function TicketScreen(props: TicketScreenProps) {
           <Card title="Time spent">
             <TimePanel ticket={t} work={work} busy={busy === 'time'} onAdd={(m, n) => void run('time', () => props.onAddTime(m, n))} />
           </Card>
+          {props.rail}
         </div>
       </div>
       <PriorityDialog value={priorityAsk} onClose={() => setPriorityAsk(null)} onSave={(p, reason) => update({ priority: p, priorityReason: reason })} />
@@ -324,6 +335,19 @@ const EVENT_WORDS: Record<string, string> = {
   watcher_removed: 'Someone stopped following it',
   collaborator_added: 'Collaborator added',
   collaborator_removed: 'Collaborator removed',
+  linked: 'Linked',
+  unlinked: 'Link removed',
+  merged: 'Merged into',
+  merged_in: 'Ticket merged in',
+  split: 'Split into',
+  parent_changed: 'Parent changed',
+  tracker_changed: 'Tracker changed',
+  side_started: 'Side conversation started',
+  task_added: 'Task added',
+  task_changed: 'Task changed',
+  tier_changed: 'Support level changed',
+  sla_milestone: 'Response target milestone',
+  sla_breached: 'Response target missed',
 };
 
 export function eventText(e: TimelineEntry): string {

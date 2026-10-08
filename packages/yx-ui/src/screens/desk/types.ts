@@ -19,6 +19,10 @@ export interface DeskSummary {
   attachmentTypes: string[];
   attachmentMaxMb: number;
   vipRaisesPriority: boolean;
+  resolutionRequired?: boolean;
+  reopenWindowDays?: number;
+  requesterCanReopen?: boolean;
+  autoCloseDays?: number | null;
   status: 'active' | 'archived';
   version: number;
   myRole?: DeskRole | null;
@@ -104,6 +108,7 @@ export interface Calendar {
   id: string;
   name: string;
   timeZone: string;
+  halfDayOpenHalf?: 'first' | 'second';
   version: number;
   hours: { id: string; weekday: number; startMinute: number; endMinute: number; validFrom: string; validTo: string | null }[];
   holidays: { id: string; on: string; name: string; halfDay: boolean }[];
@@ -147,6 +152,8 @@ export interface TicketRow {
   sensitive: boolean;
   private: boolean;
   version: number;
+  tier?: string;
+  sla?: { dueAt: string | null; breached: boolean; paused: boolean } | null;
   createdAt: string;
   updatedAt: string;
   canBulk: boolean;
@@ -169,6 +176,8 @@ export interface TicketFilters {
   tags?: string[];
   vip?: boolean;
   search?: string;
+  snoozed?: 'show' | 'only';
+  breaching?: boolean;
 }
 
 export interface SavedTicketView {
@@ -185,6 +194,7 @@ export interface SavedTicketView {
 
 export interface TicketMessage {
   id: string;
+  fromTicketId?: string | null;
   kind: 'reply' | 'note' | 'system';
   side: 'agent' | 'requester' | 'system';
   author: string;
@@ -217,6 +227,12 @@ export interface TicketDetail {
   tags: string[];
   firstResponseAt: string | null;
   resolvedAt: string | null;
+  resolutionCode?: string | null;
+  resolutionNote?: string | null;
+  tier?: string;
+  parentId?: string | null;
+  mergedIntoId?: string | null;
+  tracker?: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -320,6 +336,13 @@ export interface MyTicket {
   requestedFor: string | null;
   assignee: string | null;
   canReply: boolean;
+  /** A reply now starts a follow-up ticket (closed, or past the reopen window). */
+  replyStartsFollowUp?: boolean;
+  reopenUntil?: string | null;
+  mergedInto?: string | null;
+  /** US-G-016: only when it should be resolved, never internal reasons. */
+  resolveBy?: string | null;
+  targetPaused?: boolean;
   messages: { id: string; side: 'agent' | 'requester' | 'system'; author: string; mine: boolean; bodyHtml: string; createdAt: string }[];
   attachments: Attachment[];
   history: { at: string; from: string | null; to: string | null }[];
@@ -334,4 +357,118 @@ export interface RaiseInput {
   impact?: number;
   urgency?: number;
   private?: boolean;
+}
+
+// ---- batch 2 (SD-1.09 to SD-1.17) ----
+
+export interface TicketBrief {
+  id: string;
+  number: string;
+  subject: string;
+  systemState: SystemState;
+  deskId: string;
+  tracker: boolean;
+}
+
+export interface SlaTimerView {
+  id: string;
+  kind: 'sla' | 'ola';
+  metric: string;
+  label: string;
+  state: 'running' | 'paused' | 'met' | 'cancelled';
+  breached: boolean;
+  startedAt: string;
+  dueAt: string | null;
+  breachedAt: string | null;
+  metAt: string | null;
+  targetSeconds: number;
+  usedSeconds: number;
+  percent: number;
+  pauseReason: string | null;
+  breachReason: string | null;
+  excluded: boolean;
+  exclusionReason: string | null;
+  cancelReason: string | null;
+  segments: { from: string; to: string; state: 'running' | 'paused' | 'breached'; reason: string | null }[];
+}
+
+export interface TaskView {
+  id: string;
+  ticketId: string | null;
+  deskId: string;
+  title: string;
+  note: string | null;
+  checklist: boolean;
+  state: 'open' | 'in_progress' | 'done' | 'cancelled';
+  assigneeUserId: string | null;
+  assignee: string | null;
+  groupId: string | null;
+  dueAt: string | null;
+  version: number;
+  doneAt: string | null;
+  ticket?: { id: string; number: string; subject: string | null } | null;
+}
+
+export interface TicketWork {
+  parent: TicketBrief | null;
+  children: TicketBrief[];
+  merged: TicketBrief[];
+  mergedInto: TicketBrief | null;
+  links: { id: string; kind: string; words: string; ticket: TicketBrief; direction: 'in' | 'out' }[];
+  sideConversations: { id: string; channel: 'note_thread' | 'child_ticket'; subject: string; withWhom: string | null; state: 'open' | 'closed'; createdBy: string; createdAt: string; childTicket: TicketBrief | null; messages: { id: string; author: string; bodyHtml: string; createdAt: string }[] }[];
+  tasks: TaskView[];
+  sla: SlaTimerView[];
+  reminders: { id: string; kind: 'remind' | 'snooze'; remindAt: string; note: string | null }[];
+  maskedValues: { id: string; kind: string; masked: string; messageId: string | null }[];
+  canUnmask: boolean;
+  canSeeReads: boolean;
+  canExclude: boolean;
+  canMerge: boolean;
+}
+
+export interface DeskTemplates {
+  templates: { id: string; name: string; ticketTypeId: string | null; defaults: { categoryId?: string; groupId?: string; priority?: number; tags?: string[] }; checklist: string[]; active: boolean }[];
+  resolutionCodes: { id: string; code: string; label: string; active: boolean }[];
+}
+
+export interface CalendarItem {
+  id: string;
+  kind: 'reminder' | 'snooze' | 'task' | 'sla';
+  at: string;
+  title: string;
+  ticketId: string | null;
+}
+
+export interface SlaTarget {
+  metric: string;
+  minutes: (number | null)[];
+  milestones?: { percent: number; actions: { type: string; groupId?: string }[] }[];
+}
+
+export interface SlaPolicyView {
+  id: string;
+  name: string;
+  kind: 'sla' | 'ola';
+  sortOrder: number;
+  active: boolean;
+  version: number;
+  versions: { id: string; version: number; validFrom: string; scope: { match: 'all' | 'any'; rules: { field: string; op: string; values: string[] }[] }; calendarSource: string; calendarId: string | null; targets: SlaTarget[]; pauseStates: string[]; recount: string }[];
+}
+
+export interface SlaSetup {
+  policies: SlaPolicyView[];
+  complianceTargets: { metric: string; priority: number | null; targetPercent: number }[];
+}
+
+export interface ComplianceReport {
+  month: string;
+  lines: { metric: string; label: string; priority: number | null; kept: number; missed: number; open: number; excluded: number; percent: number | null; target: number | null; atRisk: boolean }[];
+}
+
+export interface DuplicatePerson {
+  personId: string;
+  name: string;
+  loginEmail: string;
+  tickets: number;
+  possibleMatch: { personId: string; name: string; employeeCode: string | null };
 }

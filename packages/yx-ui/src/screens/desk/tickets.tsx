@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '../../components/button';
+import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
@@ -33,6 +34,8 @@ export const BUILT_IN_VIEWS: { id: string; name: string; filters: TicketFilters 
   { id: 'mine', name: 'My open tickets', filters: { assignee: 'me', states: OPEN_STATES } },
   { id: 'unassigned', name: 'Unassigned', filters: { assignee: 'none', states: OPEN_STATES } },
   { id: 'open', name: 'All open', filters: { states: OPEN_STATES } },
+  { id: 'breaching', name: 'Breaching soon', filters: { breaching: true, states: OPEN_STATES } },
+  { id: 'snoozed', name: 'Snoozed by me', filters: { snoozed: 'only' } },
   { id: 'all', name: 'All tickets', filters: {} },
 ];
 
@@ -108,6 +111,22 @@ export function DeskTicketsScreen(props: DeskTicketsScreenProps) {
     { key: 'requester', header: 'Requester', type: 'person', value: (t) => t.requester ?? '', person: (t) => ({ name: t.requester ?? 'Someone', secondary: t.requestedFor ? `for ${t.requestedFor}` : undefined }), width: 200 },
     { key: 'status', header: 'Status', value: (t) => t.status, render: (t) => <StatusBadge label={t.status} state={t.systemState} />, width: 170 },
     { key: 'priority', header: 'Priority', value: (t) => t.priority, render: (t) => <PriorityBadge priority={t.priority} />, width: 130 },
+    {
+      key: 'sla',
+      header: 'Due',
+      value: (t) => t.sla?.dueAt ?? '',
+      render: (t) =>
+        !t.sla ? (
+          <span className="yx-ops-muted">—</span>
+        ) : t.sla.breached ? (
+          <Badge tone="danger">Target missed</Badge>
+        ) : t.sla.paused && !t.sla.dueAt ? (
+          <Badge tone="warning">Paused</Badge>
+        ) : (
+          <span>{when(t.sla.dueAt)}</span>
+        ),
+      width: 170,
+    },
     { key: 'assignee', header: 'Owner', value: (t) => t.assignee ?? 'Unassigned', width: 160 },
     { key: 'desk', header: 'Desk', value: (t) => t.desk, width: 140, optional: true },
     { key: 'category', header: 'Category', value: (t) => t.category ?? '—', width: 160, optional: true },

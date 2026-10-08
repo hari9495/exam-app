@@ -1,5 +1,5 @@
 // Fictional sample data for the Service Desk stories and tests (Kaveri Foods demo company).
-import type { CannedResponse, DeskDetail, DeskSummary, MyTicket, MyTicketRow, RaiseDesk, RequesterContext, TicketDetail, TicketRow, TimelineEntry } from './types';
+import type { CalendarItem, CannedResponse, ComplianceReport, DeskDetail, DeskTemplates, SlaSetup, TicketWork, DeskSummary, MyTicket, MyTicketRow, RaiseDesk, RequesterContext, TicketDetail, TicketRow, TimelineEntry } from './types';
 
 export const DESK: DeskSummary = {
   id: 'd-it',
@@ -152,3 +152,56 @@ export const MY_TICKET: MyTicket = {
   attachments: TICKET.attachments,
   history: [{ at: '2026-10-07T05:00:00Z', from: 'New', to: 'In progress' }],
 };
+
+// ---- batch 2 (SD-1.09 to SD-1.17) ----
+
+export const WORK: TicketWork = {
+  parent: null,
+  children: [],
+  merged: [],
+  mergedInto: null,
+  links: [{ id: 'l1', kind: 'related', words: 'Related to', direction: 'out', ticket: { id: 't9', number: 'IT-1031', subject: 'VPN slow on Fridays', systemState: 'open', deskId: 'd-it', tracker: false } }],
+  sideConversations: [{ id: 's1', channel: 'note_thread', subject: 'Ask the network team', withWhom: 'Network team', state: 'open', createdBy: 'Suresh Pillai', createdAt: '2026-10-08T05:00:00Z', childTicket: null, messages: [{ id: 'sm1', author: 'Suresh Pillai', bodyHtml: '<p>Is router 3 on the old firmware?</p>', createdAt: '2026-10-08T05:00:00Z' }] }],
+  tasks: [
+    { id: 'k1', ticketId: 't1', deskId: 'd-it', title: 'Check the VPN client version', note: null, checklist: false, state: 'open', assigneeUserId: 'u-imran', assignee: 'Imran Sheikh', groupId: null, dueAt: '2026-10-09T10:00:00Z', version: 1, doneAt: null },
+    { id: 'k2', ticketId: 't1', deskId: 'd-it', title: 'Tell Divya the fix', note: null, checklist: true, state: 'done', assigneeUserId: null, assignee: null, groupId: null, dueAt: null, version: 2, doneAt: '2026-10-08T06:00:00Z' },
+  ],
+  sla: [
+    { id: 'x1', kind: 'sla', metric: 'first_response', label: 'First response', state: 'met', breached: false, startedAt: '2026-10-07T04:00:00Z', dueAt: null, breachedAt: null, metAt: '2026-10-07T04:20:00Z', targetSeconds: 3600, usedSeconds: 1200, percent: 33, pauseReason: null, breachReason: null, excluded: false, exclusionReason: null, cancelReason: null, segments: [{ from: '2026-10-07T04:00:00Z', to: '2026-10-07T04:20:00Z', state: 'running', reason: null }] },
+    {
+      id: 'x2', kind: 'sla', metric: 'resolution', label: 'Resolution', state: 'running', breached: true, startedAt: '2026-10-07T04:00:00Z', dueAt: '2026-10-07T12:00:00Z', breachedAt: '2026-10-07T12:00:00Z', metAt: null, targetSeconds: 28800, usedSeconds: 30000, percent: 104, pauseReason: null, breachReason: null, excluded: false, exclusionReason: null, cancelReason: null,
+      segments: [
+        { from: '2026-10-07T04:00:00Z', to: '2026-10-07T06:00:00Z', state: 'running', reason: null },
+        { from: '2026-10-07T06:00:00Z', to: '2026-10-07T08:00:00Z', state: 'paused', reason: 'Waiting on requester' },
+        { from: '2026-10-07T08:00:00Z', to: '2026-10-07T12:00:00Z', state: 'running', reason: null },
+        { from: '2026-10-07T12:00:00Z', to: '2026-10-07T12:20:00Z', state: 'breached', reason: null },
+      ],
+    },
+  ],
+  reminders: [{ id: 'r1', kind: 'remind', remindAt: '2026-10-09T04:30:00Z', note: 'Chase the vendor' }],
+  maskedValues: [{ id: 'v1', kind: 'pan', masked: '[PAN ••234F]', messageId: 'm1' }],
+  canUnmask: true,
+  canSeeReads: true,
+  canExclude: true,
+  canMerge: true,
+};
+
+export const TEMPLATES: DeskTemplates = {
+  templates: [{ id: 'tp1', name: 'New joiner laptop', ticketTypeId: null, defaults: { tags: ['joiner'] }, checklist: ['Pick a laptop', 'Install software'], active: true }],
+  resolutionCodes: [
+    { id: 'rc1', code: 'fixed', label: 'Fixed', active: true },
+    { id: 'rc2', code: 'workaround', label: 'Workaround given', active: true },
+  ],
+};
+
+export const CAL_ITEMS: CalendarItem[] = [
+  { id: 'r-1', kind: 'reminder', at: '2026-10-09T04:30:00Z', title: 'Reminder: IT-1042 · VPN keeps disconnecting (Chase the vendor)', ticketId: 't1' },
+  { id: 's-1', kind: 'sla', at: '2026-10-09T09:00:00Z', title: 'Resolve by: IT-1043', ticketId: 't2' },
+];
+
+export const SLA_SETUP: SlaSetup = {
+  policies: [{ id: 'p1', name: 'IT standard', kind: 'sla', sortOrder: 0, active: true, version: 1, versions: [{ id: 'pv1', version: 1, validFrom: '2026-01-01T00:00:00Z', scope: { match: 'all', rules: [] }, calendarSource: 'desk', calendarId: null, targets: [{ metric: 'first_response', minutes: [30, 60, 240, 480] }, { metric: 'resolution', minutes: [240, 480, 1440, 2880] }], pauseStates: ['pending', 'on_hold'], recount: 'keep' }] }],
+  complianceTargets: [{ metric: 'resolution', priority: 2, targetPercent: 95 }],
+};
+
+export const COMPLIANCE: ComplianceReport = { month: '2026-10', lines: [{ metric: 'resolution', label: 'Resolution', priority: 2, kept: 18, missed: 2, open: 3, excluded: 1, percent: 90, target: 95, atRisk: true }] };

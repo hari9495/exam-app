@@ -63,7 +63,7 @@ describe('/yx layout: the People group follows grants and the employee record', 
   it('HR sees the whole People group', async () => {
     route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: ['employee.profile.view', 'employee.change.manage'], 'GET /people/employees': [PERSON], 'GET /people/team': NO_TEAM });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(await links()).toEqual(['Profile', 'Directory', 'Org chart', 'Job history', 'Job changes', 'Probation', 'Bulk changes', 'Help centre', 'My security']));
+    await waitFor(async () => expect(await links()).toEqual(['Profile', 'Directory', 'Org chart', 'Job history', 'Job changes', 'Probation', 'Bulk changes', 'Help centre', 'People to check', 'My security']));
   });
 
   it('a manager sees the directory, their team, history and probations; raising on behalf adds Job changes', async () => {

@@ -31,6 +31,8 @@ export const YX_KEYS = [
   'desk.settings.manage',
   'desk.member.manage',
   'desk.sla.manage',
+  // Batch 2: monthly SLA compliance for leads.
+  'desk.report.view',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

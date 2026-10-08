@@ -14,3 +14,10 @@
 .yx-desk-matrix th, .yx-desk-matrix td { padding: var(--yx-space-2); text-align: left; border-bottom: var(--yx-border-width) solid var(--yx-color-border); font-size: var(--yx-text-sm); }
 .yx-desk-matrix caption { text-align: left; padding-bottom: var(--yx-space-2); }
 .yx-desk-setup .yx-ops-list__item[data-active] { background: var(--yx-color-bg-selected); margin-inline: calc(var(--yx-space-2) * -1); padding-inline: var(--yx-space-2); border-radius: var(--yx-radius-control); }
+/* SLA timeline (US-G-016): stretches in proportion to their length; the words are in each part for screen readers. */
+.yx-desk-sla-bar { display: flex; width: 100%; height: var(--yx-space-2); border-radius: var(--yx-radius-control); overflow: hidden; background: var(--yx-color-border); }
+.yx-desk-sla-bar__part { display: block; min-width: var(--yx-space-half); }
+.yx-desk-sla-bar__part[data-state="running"] { background: var(--yx-color-success-text); }
+.yx-desk-sla-bar__part[data-state="paused"] { background: repeating-linear-gradient(45deg, var(--yx-color-warning-text), var(--yx-color-warning-text) var(--yx-space-1), var(--yx-color-border) var(--yx-space-1), var(--yx-color-border) var(--yx-space-2)); }
+.yx-desk-sla-bar__part[data-state="breached"] { background: var(--yx-color-danger-text); }
+.yx-desk-cal-day { font-weight: var(--yx-weight-medium); margin: var(--yx-space-3) 0 var(--yx-space-1); }

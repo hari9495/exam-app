@@ -15,7 +15,8 @@ import { Dialog } from '../../components/overlay';
 import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { useRun } from '../org/org-kit';
 import { DeskPage, PRIORITY_LABEL, STATE_LABEL } from './desk-kit';
-import type { Calendar, CannedResponse, DeskDetail, DeskGroup, DeskKind, DeskMember, DeskRole, DeskSummary, LoadState, SeatCost, SystemState } from './types';
+import type { Calendar, CannedResponse, DeskDetail, DeskGroup, DeskKind, DeskMember, DeskRole, DeskSummary, DuplicatePerson, LoadState, SeatCost, SystemState } from './types';
+import { DuplicatesCard, SlaTab, WorkSetupTab, type SlaTabProps, type WorkSetupProps } from './setup-sla';
 
 // Desk set-up (APX-D §5.8, SD-1.01 / SD-1.02, D8 / D11): desks, seats with their cost shown first, groups and how they
 // share work, categories, ticket types and status labels, the priority matrix, saved replies, scenarios, numbering,
@@ -49,7 +50,7 @@ export interface DeskSetupScreenProps {
   calendars: Calendar[];
   canCalendars: boolean;
   onCreateDesk: (input: { name: string; key: string; kind: DeskKind }) => Promise<void>;
-  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId'>> & { nextNumber?: number }) => Promise<void>;
+  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays'>> & { nextNumber?: number }) => Promise<void>;
   onSearchUsers: (q: string) => Promise<{ id: string; name: string | null; email: string }[]>;
   onSeatCost: (userId: string, role: DeskRole) => Promise<SeatCost>;
   onAddMember: (input: { userId: string; role: DeskRole; tier?: string }) => Promise<void>;
@@ -63,6 +64,15 @@ export interface DeskSetupScreenProps {
   onSaveScenario: (id: string | null, input: { name: string; actions: { statusId?: string; priority?: number; addTags?: string[]; reply?: string } }) => Promise<void>;
   onAddHoliday: (calendarId: string, input: { on: string; name: string; halfDay: boolean }) => Promise<void>;
   onSetHours: (calendarId: string, input: { effectiveFrom: string; hours: { weekday: number; startMinute: number; endMinute: number }[] }) => Promise<void>;
+  /** Founder decision 8 Oct 2026: which half of a half-day holiday stays open. */
+  onSetHalfDay?: (calendar: Calendar, half: 'first' | 'second') => Promise<void>;
+  /** Batch 2 tabs: response targets, and resolution codes with templates. */
+  sla?: Omit<SlaTabProps, 'detail' | 'calendars'>;
+  workSetup?: Omit<WorkSetupProps, 'detail'>;
+  /** HR only: logins that may be the same person as an existing one. */
+  duplicates?: { rows: DuplicatePerson[]; onLink: (personId: string, intoPersonId: string) => Promise<void> } | null;
+  /** Service Desk admins: paid agents this month (D2: anyone who was an agent on any day, counted once). */
+  billing?: { month: string; paidAgents: number; collaborators: number } | null;
 }
 
 export function DeskSetupScreen(props: DeskSetupScreenProps) {
@@ -108,6 +118,12 @@ export function DeskSetupScreen(props: DeskSetupScreenProps) {
           {d ? <DeskTabs key={d.desk.id} {...props} detail={d} /> : <EmptyState compact title="Choose a desk to set it up." />}
         </div>
       )}
+      {props.billing && (
+        <InlineAlert tone="info" title={`${props.billing.paidAgents} paid agent${props.billing.paidAgents === 1 ? '' : 's'} in ${props.billing.month}`}>
+          Each person is counted once a month, however many desks they work on. HR desk agents inside YukthiX HR and {props.billing.collaborators} collaborator{props.billing.collaborators === 1 ? '' : 's'} are free.
+        </InlineAlert>
+      )}
+      {props.duplicates && <DuplicatesCard rows={props.duplicates.rows} onLink={props.duplicates.onLink} />}
       <NewDeskDrawer open={creating} onOpenChange={setCreating} onCreate={props.onCreateDesk} />
     </DeskPage>
   );
@@ -186,6 +202,8 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
           <TabsTrigger value="replies">Saved replies</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
           {props.canCalendars && <TabsTrigger value="calendars">Calendars</TabsTrigger>}
+          {props.sla && <TabsTrigger value="sla">Response targets</TabsTrigger>}
+          {props.workSetup && <TabsTrigger value="resolve">Codes and templates</TabsTrigger>}
         </TabsList>
         <TabsContent value="members">
           <MembersTab {...props} />
@@ -211,6 +229,16 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
         {props.canCalendars && (
           <TabsContent value="calendars">
             <CalendarsTab {...props} />
+          </TabsContent>
+        )}
+        {props.sla && (
+          <TabsContent value="sla">
+            <SlaTab {...props.sla} detail={d} calendars={props.calendars} />
+          </TabsContent>
+        )}
+        {props.workSetup && (
+          <TabsContent value="resolve">
+            <WorkSetupTab {...props.workSetup} detail={d} />
           </TabsContent>
         )}
       </Tabs>
@@ -675,6 +703,10 @@ function SettingsTab(props: TabProps) {
   const [maxMb, setMaxMb] = useState<number | null>(x.attachmentMaxMb);
   const [vip, setVip] = useState(x.vipRaisesPriority);
   const [calendarId, setCalendarId] = useState<string | null>(x.calendarId);
+  const [needCode, setNeedCode] = useState(Boolean(x.resolutionRequired));
+  const [reopenDays, setReopenDays] = useState<number | null>(x.reopenWindowDays ?? 7);
+  const [canReopen, setCanReopen] = useState(x.requesterCanReopen ?? true);
+  const [closeDays, setCloseDays] = useState<number | null>(x.autoCloseDays === undefined ? 3 : x.autoCloseDays);
   const { busy, error, run } = useRun();
   const can = props.detail.canSetUp;
   return (
@@ -704,6 +736,14 @@ function SettingsTab(props: TabProps) {
         <NumberField value={maxMb} onChange={setMaxMb} min={1} max={25} disabled={!can} />
       </FormField>
       <Switch label="VIP requesters get one step higher priority" checked={vip} onChange={setVip} disabled={!can} />
+      <Switch label="Resolving needs a resolution code and a note" checked={needCode} onChange={setNeedCode} disabled={!can} />
+      <Switch label="Requesters may reopen a resolved ticket by replying" checked={canReopen} onChange={setCanReopen} disabled={!can} />
+      <FormField label="Days a requester may reopen" helper="After this, or once closed, a reply starts a new linked ticket.">
+        <NumberField value={reopenDays} onChange={setReopenDays} min={0} max={90} disabled={!can} />
+      </FormField>
+      <FormField label="Close resolved tickets after (days without a reply)" helper="Empty: never close by itself.">
+        <NumberField value={closeDays} onChange={setCloseDays} min={1} max={90} disabled={!can} />
+      </FormField>
       {can && (
         <div className="yx-ops-row">
           <Button
@@ -720,6 +760,10 @@ function SettingsTab(props: TabProps) {
                   attachmentMaxMb: maxMb ?? x.attachmentMaxMb,
                   vipRaisesPriority: vip,
                   calendarId,
+                  resolutionRequired: needCode,
+                  requesterCanReopen: canReopen,
+                  reopenWindowDays: reopenDays ?? 7,
+                  autoCloseDays: closeDays,
                   ...(next ? { nextNumber: next } : {}),
                 }),
               )
@@ -754,6 +798,11 @@ function CalendarsTab(props: TabProps) {
             <div className="yx-ops-stack" data-gap="sm">
               <p>{current.length ? current.map((h) => `${DAYS[h.weekday - 1]} ${hhmm(h.startMinute)}–${hhmm(h.endMinute)}`).join(', ') : 'No working hours today'}</p>
               {c.hours.some((h) => h.validFrom > today) && <p className="yx-ops-muted">New hours are planned from {c.hours.filter((h) => h.validFrom > today)[0].validFrom}.</p>}
+              {props.onSetHalfDay && (
+                <FormField label="On a half-day holiday, open in the">
+                  <Segment label="On a half-day holiday, open in the" options={[{ value: 'first', label: 'First half' }, { value: 'second', label: 'Second half' }]} value={c.halfDayOpenHalf ?? 'first'} onChange={(h) => h !== (c.halfDayOpenHalf ?? 'first') && void run(`half-${c.id}`, () => props.onSetHalfDay!(c, h))} />
+                </FormField>
+              )}
               <p className="yx-ops-muted">Holidays: {c.holidays.length ? c.holidays.map((h) => `${h.on} ${h.name}${h.halfDay ? ' (half day)' : ''}`).join(' · ') : 'none'}</p>
               <span className="yx-ops-row">
                 <TextField size="sm" type="date" aria-label="Holiday date" value={on} onChange={setOn} />

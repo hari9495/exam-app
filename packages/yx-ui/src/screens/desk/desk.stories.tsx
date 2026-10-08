@@ -4,7 +4,10 @@ import { HelpCentreScreen, MyTicketScreen } from './help';
 import { BUILT_IN_VIEWS, DeskTicketsScreen } from './tickets';
 import { TicketScreen } from './ticket';
 import { DeskSetupScreen } from './setup';
-import { CANNED, CONTEXT, DESK, DETAIL, HR_DESK, MY_ROWS, MY_TICKET, RAISE_DESKS, ROWS, TICKET, TIMELINE } from './data';
+import { CAL_ITEMS, CANNED, COMPLIANCE, CONTEXT, DESK, DETAIL, HR_DESK, MY_ROWS, MY_TICKET, RAISE_DESKS, ROWS, SLA_SETUP, TICKET, TIMELINE, WORK } from './data';
+import { TicketWorkRail } from './work';
+import { MyCalendarScreen } from './calendar';
+import { SlaTab } from './setup-sla';
 
 const meta: Meta = { title: 'Screens/Service desk/Phase 3b-1 (wired screens)', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -55,6 +58,34 @@ const list = (layout: 'list' | 'board') =>
 export const Tickets: S = { name: 'HLP-02 Agent desk · list', render: () => list('list') };
 export const Board: S = { name: 'HLP-02 Agent desk · board', render: () => list('board') };
 
+const rail = (ticket: typeof TICKET) => (
+  <TicketWorkRail
+    ticket={ticket}
+    detail={DETAIL}
+    work={WORK}
+    desks={[DESK]}
+    meId="u-suresh"
+    onFindTicket={async () => []}
+    onOpenTicket={() => {}}
+    onLink={noop}
+    onUnlink={noop}
+    onMerge={noop}
+    onSplit={async () => ({ id: 'n' })}
+    onSetParent={noop}
+    onSetTracker={noop}
+    onStartSide={noop}
+    onSideMessage={noop}
+    onCloseSide={noop}
+    onAddTask={noop}
+    onUpdateTask={noop}
+    onBreachReason={noop}
+    onExclude={noop}
+    onRemind={noop}
+    onSnooze={noop}
+    onDoneReminder={noop}
+    onUnmask={async () => 'ABCPE1234F'}
+  />
+);
 const workspace = (ticket = TICKET, others = [{ userId: 'u-farah', name: 'Farah Khan', typing: true }]) =>
   shell(
     'desk-tickets',
@@ -84,6 +115,9 @@ const workspace = (ticket = TICKET, others = [{ userId: 'u-farah', name: 'Farah 
       onSearchPeople={async () => []}
       onTyping={() => {}}
       onOpenTicket={() => {}}
+      rail={rail(ticket)}
+      onResolveClick={() => {}}
+      onEscalateClick={() => {}}
     />,
   );
 export const Workspace: S = { name: 'HLP-03 Ticket workspace · agent, colleague typing', render: () => workspace() };
@@ -122,3 +156,6 @@ export const Setup: S = {
       />,
     ),
 };
+
+export const Calendar: S = { name: 'SD-1.11 My calendar', render: () => shell('desk-tickets', <MyCalendarScreen state="ready" items={CAL_ITEMS} tasks={WORK.tasks} feed={null} onOpenTicket={() => {}} onNewFeed={async () => 'https://api.example.test/desk/calendar-feed/o/u/secret.ics'} onRevokeFeed={noop} />) };
+export const SlaSetupTab: S = { name: 'SD-1.14 Response targets (desk set-up tab)', render: () => shell('desk-setup', <SlaTab detail={DETAIL} calendars={[]} setup={SLA_SETUP} compliance={COMPLIANCE} month="2026-10" onMonth={() => {}} onCreatePolicy={noop} onAddVersion={noop} onUpdatePolicy={noop} onSaveTargets={noop} />) };

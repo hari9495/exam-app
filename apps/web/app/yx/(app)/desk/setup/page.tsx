@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { DeskSetupScreen, type Calendar, type CannedResponse, type DeskDetail, type DeskSummary, type SeatCost } from '@yukthix/ui/desk';
+import { DeskSetupScreen, type Calendar, type CannedResponse, type ComplianceReport, type DeskDetail, type DeskSummary, type DeskTemplates, type SeatCost, type SlaSetup } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useYxPermissions } from '../../../../../lib/yx-org';
 import { deskState, useDesk, useDeskWrite } from '../../../../../lib/yx-desk';
 
 // Service desk › Desk set-up (APX-D §5.8, M14 SD-1.01/1.02): desks, seats (cost shown first), groups, categories, types,
-// statuses, priority matrix, saved replies, scenarios, numbering, files and business calendars.
+// statuses, priority matrix, saved replies, scenarios, numbering, files and business calendars; batch 2 (SD-1.10 …
+// SD-1.17): resolve and reopen rules, resolution codes, templates, response targets (SLA / OLA) with monthly
+// compliance, which half of a half-day holiday is open, and the paid agents of the month.
 export default function YxDeskSetupPage() {
   const { accessToken } = useAuth();
   const token = accessToken ?? undefined;
@@ -22,6 +24,12 @@ export default function YxDeskSetupPage() {
   const canned = useDesk<CannedResponse[]>(selected ? `/desks/${selected}/canned-responses` : null);
   const canCalendars = perms.has('desk.sla.manage');
   const calendars = useDesk<Calendar[]>(canCalendars ? '/calendars' : null);
+  const [month, setMonth] = useState(() => new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 7));
+  const sla = useDesk<SlaSetup>(selected && canCalendars ? `/desks/${selected}/sla-policies` : null);
+  const canReport = perms.has('desk.report.view') || canCalendars;
+  const compliance = useDesk<ComplianceReport>(selected && canReport ? `/desks/${selected}/sla-compliance?month=${month}` : null);
+  const templates = useDesk<DeskTemplates>(selected ? `/desks/${selected}/templates` : null);
+  const billing = useDesk<{ month: string; paidAgents: number; collaborators: unknown[] }>(perms.has('desk.desk.create') ? `/billing/agents?month=${month}` : null);
   const write = useDeskWrite();
   const base = `/desks/${selected}`;
   const version = detail.data?.desk.version ?? 0;
@@ -78,6 +86,41 @@ export default function YxDeskSetupPage() {
       }}
       onSetHours={async (calendarId, input) => {
         await write(`/calendars/${calendarId}/hours`, 'PUT', input);
+      }}
+      onSetHalfDay={async (calendar, half) => {
+        await write(`/calendars/${calendar.id}`, 'PATCH', { version: calendar.version, halfDayOpenHalf: half });
+      }}
+      billing={billing.data ? { month: billing.data.month, paidAgents: billing.data.paidAgents, collaborators: billing.data.collaborators.length } : null}
+      sla={
+        canCalendars
+          ? {
+              setup: sla.data ?? null,
+              compliance: compliance.data ?? null,
+              month,
+              onMonth: setMonth,
+              onCreatePolicy: async (input) => {
+                await write(`${base}/sla-policies`, 'POST', input);
+              },
+              onAddVersion: async (policyId, input) => {
+                await write(`/sla-policies/${encodeURIComponent(policyId)}/versions`, 'POST', input);
+              },
+              onUpdatePolicy: async (policyId, change) => {
+                await write(`/sla-policies/${encodeURIComponent(policyId)}`, 'PATCH', change);
+              },
+              onSaveTargets: async (targets) => {
+                await write(`${base}/sla-targets`, 'PUT', { targets });
+              },
+            }
+          : undefined
+      }
+      workSetup={{
+        templates: templates.data ?? null,
+        onSaveCode: async (id, input) => {
+          await write(id ? `${base}/resolution-codes/${id}` : `${base}/resolution-codes`, id ? 'PATCH' : 'POST', input);
+        },
+        onSaveTemplate: async (id, input) => {
+          await write(id ? `${base}/templates/${id}` : `${base}/templates`, id ? 'PATCH' : 'POST', input);
+        },
       }}
     />
   );

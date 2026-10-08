@@ -251,6 +251,8 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
             {t.canReply ? (
               <Card title="Reply">
                 <div className="yx-ops-stack">
+                  {t.replyStartsFollowUp && <InlineAlert tone="info">{t.systemState === 'closed' ? 'This ticket is closed.' : 'The time to reopen this ticket has passed.'} Your reply starts a new ticket linked to this one.</InlineAlert>}
+                  {!t.replyStartsFollowUp && t.systemState === 'solved' && t.reopenUntil && <p className="yx-ops-muted">Not fixed? Reply by {when(t.reopenUntil)} and the ticket opens again.</p>}
                   <FormField label="Your reply" hideLabel>
                     <TextArea value={text} onChange={setText} rows={4} placeholder="Write to the team" maxLength={20000} />
                   </FormField>
@@ -287,8 +289,8 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
                 </div>
               </Card>
             ) : (
-              <InlineAlert tone="info" title="This ticket is closed">
-                Raise a new ticket if you still need help.
+              <InlineAlert tone="info" title={t.mergedInto ? `Joined with ${t.mergedInto}` : 'This ticket is closed'}>
+                {t.mergedInto ? 'Follow that ticket for updates.' : 'Raise a new ticket if you still need help.'}
               </InlineAlert>
             )}
           </div>
@@ -297,6 +299,8 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
               <div className="yx-ops-stack" data-gap="sm">
                 <StatusBadge label={t.status} state={t.systemState} />
                 <p className="yx-ops-muted">{t.assignee ? `${t.assignee} is working on it.` : 'Waiting for someone in the team to pick it up.'}</p>
+                {t.resolveBy && <p>We aim to resolve it by {when(t.resolveBy)}.</p>}
+                {t.targetPaused && <p className="yx-ops-muted">The team is waiting for something before it can go on.</p>}
                 {t.private && <p className="yx-ops-muted">Private: only the team’s agents can see it.</p>}
                 {t.history.length > 0 && (
                   <ul className="yx-ops-list" aria-label="Status changes">
