@@ -3094,6 +3094,10 @@ model SdTicket {
   tracker              Boolean                  @default(false)
   tier                 String                   @default("L1") @db.VarChar(2)
   resolvedTier         String?                  @map("resolved_tier") @db.VarChar(2)
+  customerAccountId    String?                  @map("customer_account_id") @db.Uuid
+  productId            String?                  @map("product_id") @db.Uuid
+  planTier             String?                  @map("plan_tier") @db.VarChar(40)
+  senderVerified       Boolean                  @default(true) @map("sender_verified")
   version              Int                      @default(1)
   search               Unsupported("tsvector")?
   createdBy            String?                  @map("created_by") @db.Uuid
@@ -3119,6 +3123,9 @@ model SdTicketMessage {
   mentions           String[]  @default([]) @db.Uuid
   channel            String    @db.VarChar(10)
   sideConversationId String?   @map("side_conversation_id") @db.Uuid
+  emailMessageId     String?   @map("email_message_id") @db.VarChar(300)
+  senderVerified     Boolean   @default(true) @map("sender_verified")
+  inboundEmailId     String?   @map("inbound_email_id") @db.Uuid
   editedAt           DateTime? @map("edited_at") @db.Timestamptz(3)
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -3382,6 +3389,7 @@ model SdSensitiveValue {
   kind           String   @db.VarChar(10)
   masked         String   @db.VarChar(40)
   valueEncrypted String   @map("value_encrypted")
+  seq            Int      @default(0) @db.SmallInt
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("sd_sensitive_values")
@@ -3522,4 +3530,295 @@ model SdSlaComplianceTarget {
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("sd_sla_compliance_targets")
+}
+
+// ---------------------------------------------------------------------------------------------
+// M14 Service Desk batch 3 (SD-1.18 … SD-1.23, SD-1.28): email in and out, portals, banners, customers.
+
+model SdCustomerAccount {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(120)
+  emailDomains   String[] @default([]) @map("email_domains")
+  ownerUserId    String?  @map("owner_user_id") @db.Uuid
+  parentId       String?  @map("parent_id") @db.Uuid
+  status         String   @default("active") @db.VarChar(10)
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, name])
+  @@map("sd_customer_accounts")
+}
+
+model SdCustomerContact {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  accountId          String?  @map("account_id") @db.Uuid
+  personId           String   @map("person_id") @db.Uuid
+  role               String   @default("member") @db.VarChar(10)
+  seesAccountTickets Boolean  @default(false) @map("sees_account_tickets")
+  status             String   @default("active") @db.VarChar(10)
+  createdBy          String?  @map("created_by") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("sd_customer_contacts")
+}
+
+model SdEntitlement {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  accountId      String    @map("account_id") @db.Uuid
+  plan           String    @db.VarChar(60)
+  tier           String    @db.VarChar(40)
+  ticketsAllowed Int?      @map("tickets_allowed")
+  hoursAllowed   Int?      @map("hours_allowed")
+  channels       String[]  @default(["email", "portal"])
+  whenUsedUp     String    @default("flag") @map("when_used_up") @db.VarChar(6)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("sd_entitlements")
+}
+
+model SdProduct {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(100)
+  deskId         String?  @map("desk_id") @db.Uuid
+  active         Boolean  @default(true)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, name])
+  @@map("sd_products")
+}
+
+model SdAgentAccountScope {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  accountId      String   @map("account_id") @db.Uuid
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, userId, accountId])
+  @@map("sd_agent_account_scope")
+}
+
+model SdSendingDomain {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId          String    @map("organization_id") @db.Uuid
+  domain                  String    @db.Citext
+  dkimSelector            String    @default("yukthix") @map("dkim_selector") @db.VarChar(63)
+  dkimPrivateKeyEncrypted String    @map("dkim_private_key_encrypted")
+  dkimPublicKey           String    @map("dkim_public_key")
+  spfOk                   Boolean   @default(false) @map("spf_ok")
+  dkimOk                  Boolean   @default(false) @map("dkim_ok")
+  dmarcOk                 Boolean   @default(false) @map("dmarc_ok")
+  checkDetail             Json      @default("{}") @map("check_detail")
+  status                  String    @default("pending") @db.VarChar(10)
+  lastCheckedAt           DateTime? @map("last_checked_at") @db.Timestamptz(3)
+  createdBy               String?   @map("created_by") @db.Uuid
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, domain])
+  @@map("sd_sending_domains")
+}
+
+model SdMailbox {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId         String    @map("organization_id") @db.Uuid
+  deskId                 String    @map("desk_id") @db.Uuid
+  address                String    @db.Citext
+  kind                   String    @db.VarChar(12)
+  displayName            String?   @map("display_name") @db.VarChar(100)
+  tokenHash              String?   @map("token_hash") @db.Char(64)
+  signingSecretEncrypted String?   @map("signing_secret_encrypted")
+  configEncrypted        String?   @map("config_encrypted")
+  sendingDomainId        String?   @map("sending_domain_id") @db.Uuid
+  defaultCategoryId      String?   @map("default_category_id") @db.Uuid
+  defaultTypeId          String?   @map("default_type_id") @db.Uuid
+  defaultTemplateId      String?   @map("default_template_id") @db.Uuid
+  autoAck                Boolean   @default(true) @map("auto_ack")
+  ackText                String?   @map("ack_text") @db.VarChar(2000)
+  trustedForwarders      String[]  @default([]) @map("trusted_forwarders")
+  status                 String    @default("active") @db.VarChar(10)
+  pollCursor             String?   @map("poll_cursor") @db.VarChar(500)
+  lastPolledAt           DateTime? @map("last_polled_at") @db.Timestamptz(3)
+  lastError              String?   @map("last_error") @db.VarChar(500)
+  version                Int       @default(1)
+  createdBy              String?   @map("created_by") @db.Uuid
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, address])
+  @@map("sd_mailboxes")
+}
+
+model SdInboundEmail {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  mailboxId      String    @map("mailbox_id") @db.Uuid
+  deskId         String    @map("desk_id") @db.Uuid
+  rawBlobKey     String?   @map("raw_blob_key") @db.VarChar(500)
+  messageId      String    @map("message_id") @db.VarChar(300)
+  fromAddress    String?   @map("from_address") @db.Citext
+  fromName       String?   @map("from_name") @db.VarChar(200)
+  toAddresses    String[]  @default([]) @map("to_addresses")
+  subject        String?   @db.VarChar(300)
+  remoteIp       String?   @map("remote_ip") @db.VarChar(45)
+  spf            String?   @db.VarChar(12)
+  dkim           String?   @db.VarChar(12)
+  dmarc          String?   @db.VarChar(12)
+  dmarcPolicy    String?   @map("dmarc_policy") @db.VarChar(12)
+  arc            String?   @db.VarChar(12)
+  senderVerified Boolean   @default(false) @map("sender_verified")
+  signed         Boolean   @default(false)
+  flags          String[]  @default([])
+  verdict        String    @default("pending") @db.VarChar(10)
+  reason         String?   @db.VarChar(300)
+  ticketId       String?   @map("ticket_id") @db.Uuid
+  messageRowId   String?   @map("message_row_id") @db.Uuid
+  receivedAt     DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
+  processedAt    DateTime? @map("processed_at") @db.Timestamptz(3)
+  releasedBy     String?   @map("released_by") @db.Uuid
+  releasedAt     DateTime? @map("released_at") @db.Timestamptz(3)
+  rawPurgeAfter  DateTime  @default(dbgenerated("(CURRENT_TIMESTAMP + '30 days'::interval)")) @map("raw_purge_after") @db.Timestamptz(3)
+
+  @@unique([organizationId, mailboxId, messageId])
+  @@map("sd_inbound_emails")
+}
+
+model SdEmailRule {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  mailboxId      String   @map("mailbox_id") @db.Uuid
+  sortOrder      Int      @default(0) @map("sort_order") @db.SmallInt
+  name           String   @db.VarChar(100)
+  field          String   @db.VarChar(8)
+  headerName     String?  @map("header_name") @db.VarChar(100)
+  op             String   @db.VarChar(12)
+  value          String   @db.VarChar(200)
+  action         String   @db.VarChar(12)
+  actionValue    Json     @default("{}") @map("action_value")
+  stop           Boolean  @default(false)
+  active         Boolean  @default(true)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("sd_email_rules")
+}
+
+model SdEmailSuppression {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  address        String    @db.Citext
+  kind           String    @db.VarChar(10)
+  reason         String?   @db.VarChar(300)
+  mailboxId      String?   @map("mailbox_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  clearedAt      DateTime? @map("cleared_at") @db.Timestamptz(3)
+  clearedBy      String?   @map("cleared_by") @db.Uuid
+
+  @@map("sd_email_suppressions")
+}
+
+model SdPortal {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  slug           String   @db.VarChar(40)
+  name           String   @db.VarChar(100)
+  signUp         String   @default("closed") @map("sign_up") @db.VarChar(16)
+  allowedDomains String[] @default([]) @map("allowed_domains")
+  openRequests   Boolean  @default(false) @map("open_requests")
+  accentColour   String   @default("#2563eb") @map("accent_colour") @db.VarChar(7)
+  loginTitle     String?  @map("login_title") @db.VarChar(100)
+  loginText      String?  @map("login_text") @db.VarChar(500)
+  readingAids    Boolean  @default(true) @map("reading_aids")
+  status         String   @default("active") @db.VarChar(10)
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, slug])
+  @@map("sd_portals")
+}
+
+model SdPortalDesk {
+  organizationId String @map("organization_id") @db.Uuid
+  portalId       String @map("portal_id") @db.Uuid
+  deskId         String @map("desk_id") @db.Uuid
+
+  @@id([portalId, deskId])
+  @@map("sd_portal_desks")
+}
+
+model SdPortalSession {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  portalId       String    @map("portal_id") @db.Uuid
+  personId       String    @map("person_id") @db.Uuid
+  tokenHash      String    @map("token_hash") @db.Char(64)
+  ip             String?   @db.VarChar(45)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  lastSeenAt     DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, tokenHash])
+  @@map("sd_portal_sessions")
+}
+
+model SdPortalRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  portalId       String    @map("portal_id") @db.Uuid
+  deskId         String    @map("desk_id") @db.Uuid
+  email          String    @db.Citext
+  name           String    @db.VarChar(100)
+  payload        Json
+  tokenHash      String    @map("token_hash") @db.Char(64)
+  ip             String?   @db.VarChar(45)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  confirmedAt    DateTime? @map("confirmed_at") @db.Timestamptz(3)
+  ticketId       String?   @map("ticket_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, tokenHash])
+  @@map("sd_portal_requests")
+}
+
+model SdBanner {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  deskId         String    @map("desk_id") @db.Uuid
+  audience       String    @default("everyone") @db.VarChar(10)
+  locationId     String?   @map("location_id") @db.Uuid
+  text           String    @db.VarChar(300)
+  severity       String    @default("warning") @db.VarChar(8)
+  ticketId       String?   @map("ticket_id") @db.Uuid
+  startsAt       DateTime  @default(now()) @map("starts_at") @db.Timestamptz(3)
+  endsAt         DateTime? @map("ends_at") @db.Timestamptz(3)
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("sd_banners")
+}
+
+model SdBannerVote {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  bannerId       String   @map("banner_id") @db.Uuid
+  personId       String   @map("person_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, bannerId, personId])
+  @@map("sd_banner_votes")
 }

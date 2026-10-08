@@ -8,7 +8,7 @@
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
-    "/node_modules/(openid-client|oauth4webapi|jose)/.+\\.js$": [
+    "/node_modules/(openid-client|oauth4webapi|jose|email-reply-parser)/.+\\.js$": [
       "ts-jest",
       {
         "tsconfig": {
@@ -25,6 +25,6 @@
   ],
   "maxWorkers": 1,
   "transformIgnorePatterns": [
-    "/node_modules/(?!(openid-client|oauth4webapi|jose)/)"
+    "/node_modules/(?!(openid-client|oauth4webapi|jose|email-reply-parser)/)"
   ]
 }
