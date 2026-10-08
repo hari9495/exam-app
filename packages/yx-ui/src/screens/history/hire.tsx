@@ -4,7 +4,7 @@ import { Checkbox } from '../../components/choice';
 import { DatePicker } from '../../components/date';
 import { Drawer } from '../../components/drawer';
 import { InlineAlert } from '../../components/feedback';
-import { ErrorSummary, FieldRow, FormField, FormSection, type FormErrorItem } from '../../components/field';
+import { ErrorSummary, FieldRow, FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
@@ -159,7 +159,6 @@ export interface HireDrawerProps {
 export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreated }: HireDrawerProps) {
   const [draft, setDraft] = useState<HireDraft>(EMPTY_HIRE);
   const [dirty, setDirty] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const [match, setMatch] = useState<string | null>(null);
@@ -174,7 +173,8 @@ export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreate
     }
   };
   const { input, errors } = hireInput(draft, options.canPay);
-  const errorOf = (id: string) => (showErrors ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   const entity = draft.legalEntityId;
   const choices = useMemo(
     () => ({
@@ -189,7 +189,7 @@ export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreate
     [options, entity],
   );
   const save = async () => {
-    if (!input) return setShowErrors(true);
+    if (!input) return saveErrors.reveal();
     if (match && !sameConfirmed) return;
     setBusy(true);
     setFailed(null);
@@ -222,7 +222,7 @@ export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreate
       }
     >
       <form className="yx-org__editor" onSubmit={(e) => { e.preventDefault(); void save(); }} noValidate>
-        {showErrors && errors.length > 0 && <ErrorSummary errors={errors} />}
+        <ErrorSummary errors={saveErrors.shownErrors} />
         <FormSection title="Person">
           <FieldRow>
             <FormField id="hire-given" label="First name" required error={errorOf('hire-given')}>

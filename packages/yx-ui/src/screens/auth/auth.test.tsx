@@ -247,6 +247,27 @@ describe('SecuritySettingsScreen email domains', () => {
   });
 });
 
+describe('SecuritySettingsScreen save errors', () => {
+  it('after a failed Save, typing in another field shows no new error', async () => {
+    render(<SecuritySettingsScreen state="ready" policy={POLICY} floor={FLOOR} providers={IDPS} admins={ADMINS} providersHref="#" onSave={vi.fn()} />);
+    const lock = screen.getByRole('textbox', { name: /Lock after/ });
+    await userEvent.clear(lock);
+    await userEvent.type(lock, '2');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Lock after must be between');
+
+    const pwd = screen.getByRole('textbox', { name: /Minimum password length/ });
+    await userEvent.clear(pwd);
+    await userEvent.type(pwd, '1');
+    expect(screen.queryByText(/Minimum password length must be between/)).toBeNull();
+    await userEvent.type(pwd, '4');
+
+    await userEvent.clear(lock);
+    await userEvent.type(lock, '5');
+    expect(screen.queryByText(/Lock after must be between/)).toBeNull();
+  });
+});
+
 describe('StaffSignInScreen', () => {
   it('takes a staff email and password, with no company or other ways in', async () => {
     const onSubmit = vi.fn();

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
 import { EmptyState } from '../../components/feedback';
-import { FieldRow, FormField, FormSection, type FormErrorItem } from '../../components/field';
+import { FieldRow, FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
@@ -74,16 +74,16 @@ function LocationEditor({ location, entities, states, onClose, onSave }: { locat
     ipRanges: location?.ipRanges.join('\n') ?? '',
   });
   const [dirty, setDirty] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
   const { busy, error, run } = useRun();
   const set = (patch: Partial<Draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
     setDirty(true);
   };
   const { input, errors } = locationInput(draft);
-  const errorOf = (id: string) => (showErrors ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   const save = () => {
-    if (!input) return setShowErrors(true);
+    if (!input) return saveErrors.reveal();
     void run('save', () => onSave(input)).then((ok) => ok && onClose());
   };
   return (
@@ -92,8 +92,7 @@ function LocationEditor({ location, entities, states, onClose, onSave }: { locat
       onClose={onClose}
       dirty={dirty}
       title={location ? `Edit ${location.name}` : 'Add location'}
-      errors={errors}
-      showErrors={showErrors}
+      errors={saveErrors.shownErrors}
       saving={busy === 'save'}
       failed={error}
       saveLabel={location ? 'Save changes' : 'Add location'}

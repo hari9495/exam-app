@@ -97,7 +97,6 @@ export function EditorDrawer({
   onClose,
   dirty,
   errors,
-  showErrors,
   saving,
   failed,
   saveLabel,
@@ -109,8 +108,8 @@ export function EditorDrawer({
   open: boolean;
   onClose: () => void;
   dirty: boolean;
+  /** Only the errors to show now (from useSaveErrors). */
   errors: FormErrorItem[];
-  showErrors: boolean;
   saving: boolean;
   failed: string | null;
   saveLabel: string;
@@ -133,7 +132,7 @@ export function EditorDrawer({
       }
     >
       <form className="yx-org__editor" onSubmit={(e) => { e.preventDefault(); onSave(); }} noValidate>
-        {showErrors && errors.length > 0 && <ErrorSummary errors={errors} />}
+        <ErrorSummary errors={errors} />
         {children}
         {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
       </form>

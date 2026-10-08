@@ -3,7 +3,7 @@ import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { MenuItem } from '../../components/menu';
 import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
-import { FormField, FormSection, type FormErrorItem } from '../../components/field';
+import { FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
@@ -42,16 +42,16 @@ function EntityEditor({ entity, states, onClose, onSave }: { entity: LegalEntity
     address: addressDraft(entity?.registeredAddress),
   });
   const [dirty, setDirty] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
   const { busy, error, run } = useRun();
   const set = (patch: Partial<Draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
     setDirty(true);
   };
   const { input, errors } = entityInput(draft);
-  const errorOf = (id: string) => (showErrors ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   const save = () => {
-    if (!input) return setShowErrors(true);
+    if (!input) return saveErrors.reveal();
     void run('save', () => onSave(input)).then((ok) => ok && onClose());
   };
   return (
@@ -61,8 +61,7 @@ function EntityEditor({ entity, states, onClose, onSave }: { entity: LegalEntity
       dirty={dirty}
       title={entity ? `Edit ${entity.name}` : 'Add legal entity'}
       subtitle="India · data kept in India"
-      errors={errors}
-      showErrors={showErrors}
+      errors={saveErrors.shownErrors}
       saving={busy === 'save'}
       failed={error}
       saveLabel={entity ? 'Save changes' : 'Add legal entity'}
@@ -108,7 +107,6 @@ function StatutoryDrawer({ entity, onClose, onLoad, onSave }: { entity: LegalEnt
   const [ids, setIds] = useState<StatutoryIds | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
   const { busy, error, run } = useRun();
   useEffect(() => {
     onLoad().then(setIds, (e) => setLoadError(errorText(e)));
@@ -116,19 +114,20 @@ function StatutoryDrawer({ entity, onClose, onLoad, onSave }: { entity: LegalEnt
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const errors = ids ? statutoryErrors(ids) : [];
+  const saveErrors = useSaveErrors(errors);
   const save = () => {
     if (!ids) return;
-    if (errors.length) return setShowErrors(true);
+    if (errors.length) return saveErrors.reveal();
     void run('save', () => onSave(ids)).then((ok) => ok && onClose());
   };
   return (
-    <EditorDrawer open onClose={onClose} dirty={dirty} title={`Identifiers · ${entity.shortName}`} subtitle={entity.name} errors={errors} showErrors={showErrors} saving={busy === 'save'} failed={error} saveLabel="Save identifiers" onSave={save}>
+    <EditorDrawer open onClose={onClose} dirty={dirty} title={`Identifiers · ${entity.shortName}`} subtitle={entity.name} errors={saveErrors.shownErrors} saving={busy === 'save'} failed={error} saveLabel="Save identifiers" onSave={save}>
       <InlineAlert tone="info">Opening and changing these is recorded. You confirm it’s you before saving.</InlineAlert>
       {loadError && <InlineAlert tone="danger" title="Couldn’t open the identifiers">{loadError}</InlineAlert>}
       {!ids && !loadError && <Skeleton height={200} />}
       {ids &&
         ID_FIELDS.map((f) => (
-          <FormField key={f.key} id={`le-${f.key}`} label={f.label} helper={f.hint} error={showErrors ? errors.find((e) => e.fieldId === `le-${f.key}`)?.message : undefined}>
+          <FormField key={f.key} id={`le-${f.key}`} label={f.label} helper={f.hint} error={saveErrors.errorOf(`le-${f.key}`)}>
             <TextField
               value={ids[f.key] ?? ''}
               onChange={(v) => {

@@ -3,7 +3,7 @@ import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { DatePicker } from '../../components/date';
 import { InlineAlert } from '../../components/feedback';
-import { FormField, FormSection, type FormErrorItem } from '../../components/field';
+import { FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { MenuItem } from '../../components/menu';
 import { Select } from '../../components/select';
@@ -93,7 +93,6 @@ function SettingEditor({ settingKey, def, choices, today, onClose, onSave }: { s
   const scopes = def.scopes.filter((s) => s === 'tenant' || (choices[s]?.length ?? 0) > 0);
   const [draft, setDraft] = useState<Draft>({ scopeType: scopes[0] ?? 'tenant', scopeId: null, value: null, validFrom: null });
   const [dirty, setDirty] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
   const { busy, error, run } = useRun();
   const set = (patch: Partial<Draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
@@ -101,13 +100,14 @@ function SettingEditor({ settingKey, def, choices, today, onClose, onSave }: { s
   };
   const { input, errors } = settingInput(settingKey, def, draft);
   const from = draft.validFrom ? dayKey(draft.validFrom) : null;
-  const errorOf = (id: string) => (showErrors ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   const save = () => {
-    if (!input) return setShowErrors(true);
+    if (!input) return saveErrors.reveal();
     void run('save', () => onSave(input)).then((ok) => ok && onClose());
   };
   return (
-    <EditorDrawer open onClose={onClose} dirty={dirty} title={def.label} subtitle={`Starter value: ${valueLabel(settingKey, def.default)}`} errors={errors} showErrors={showErrors} saving={busy === 'save'} failed={error} saveLabel="Save" onSave={save}>
+    <EditorDrawer open onClose={onClose} dirty={dirty} title={def.label} subtitle={`Starter value: ${valueLabel(settingKey, def.default)}`} errors={saveErrors.shownErrors} saving={busy === 'save'} failed={error} saveLabel="Save" onSave={save}>
       <FormSection title="Applies to">
         {scopes.length > 1 && (
           <FormField id="set-scope" label="Applies to" helper="The most specific value wins: a grade over an employment type, an entity over the company.">

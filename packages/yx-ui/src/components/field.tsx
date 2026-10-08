@@ -130,11 +130,31 @@ export interface FormErrorItem {
   message: string;
 }
 
+/**
+ * "Reward early, punish late": errors show only for fields that were invalid at the last Save
+ * (`reveal`), and each one disappears as soon as it becomes valid. A field that was fine at Save
+ * never shows an error while typing; the next `reveal` re-snapshots. `reset` on Cancel / saved.
+ */
+export function useSaveErrors(errors: FormErrorItem[], initiallyShown = false) {
+  const [flagged, setFlagged] = useState<Set<string> | null>(() => (initiallyShown ? new Set(errors.map((e) => e.fieldId)) : null));
+  const shownErrors = flagged ? errors.filter((e) => flagged.has(e.fieldId)) : [];
+  return {
+    errorOf: (id: string) => shownErrors.find((e) => e.fieldId === id)?.message,
+    shownErrors,
+    showErrors: shownErrors.length > 0,
+    reveal: () => setFlagged(new Set(errors.map((e) => e.fieldId))),
+    reset: () => setFlagged(null),
+  };
+}
+
 /** Top-of-form summary for long forms; each item links to its field (§16). Receives focus when it appears. */
 export function ErrorSummary({ errors, title = 'Fix these before saving' }: { errors: FormErrorItem[]; title?: string }) {
   const ref = useRef<HTMLDivElement>(null);
+  const prev = useRef(0);
+  // Focus only when the list grows (a Save that failed), never when fixing a field shrinks it mid-typing.
   useEffect(() => {
-    if (errors.length) ref.current?.focus();
+    if (errors.length > prev.current) ref.current?.focus();
+    prev.current = errors.length;
   }, [errors.length]);
   if (!errors.length) return null;
   return (

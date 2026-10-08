@@ -4,7 +4,7 @@ import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
-import { ErrorSummary, FormField, FormSection } from '../../components/field';
+import { ErrorSummary, FormField, FormSection, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { NumberField, PasswordField, TextArea, TextField } from '../../components/inputs';
 import { ConfirmDialog } from '../../components/overlay';
@@ -190,7 +190,6 @@ interface EditorProps {
 
 export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider, examplesHref, onSave, onDelete }: EditorProps) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(account));
-  const [showErrors, setShowErrors] = useState(false);
   const [status, setStatus] = useState<{ kind: 'idle' | 'saving' } | { kind: 'failed'; message: string }>({ kind: 'idle' });
   const [dirty, setDirty] = useState(false);
   const set = (patch: Partial<Draft>) => {
@@ -207,11 +206,12 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
   };
   const secretsSet = new Set(account?.secretsSet ?? []);
   const { input, errors } = accountInput(draft, account);
-  const errorOf = (id: string) => (showErrors ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   const providers = (['http', 'twilio', ...(allowDevProvider || account?.provider === 'dev' ? ['dev'] : [])] as SmsProvider[]).map((p) => ({ value: p, label: p === 'http' ? 'Any gateway' : p === 'twilio' ? 'Twilio' : 'Development' }));
 
   const save = async () => {
-    if (!input) return setShowErrors(true);
+    if (!input) return saveErrors.reveal();
     setStatus({ kind: 'saving' });
     try {
       await onSave(input);
@@ -255,7 +255,7 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
     >
       <form className="yx-ntf__editor" onSubmit={(e) => { e.preventDefault(); void save(); }} noValidate>
         <InlineAlert tone="info">Secrets are saved encrypted and never shown again. You confirm it’s you before saving.</InlineAlert>
-        {showErrors && errors.length > 0 && <ErrorSummary errors={errors} />}
+        <ErrorSummary errors={saveErrors.shownErrors} />
 
         <FormSection title="Account">
           <FormField id="sms-name" label="Name" required error={errorOf('sms-name')}>
