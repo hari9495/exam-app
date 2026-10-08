@@ -79,6 +79,8 @@ export class RequesterService {
     return Boolean(await tx.sdTicketWatcher.findFirst({ where: { organizationId: org, ticketId: t.id, personId: { in: ids } }, select: { id: true } }));
   }
 
+  // DECISION NEEDED: §5.7 lets only the requester and requested-for person see a sensitive or private ticket, so a
+  // follower (watcher) loses it once it turns private or sensitive. Confirm, or add watchers to the SQL policy.
   async ownTicket(tx: Tx, r: Requester, id: string): Promise<{ t: Ticket; personId: string; ids: string[] }> {
     const org = r.ctx.organizationId;
     const personId = await this.personOf(tx, r, false);

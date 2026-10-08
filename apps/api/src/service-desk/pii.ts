@@ -48,6 +48,7 @@ export function luhnValid(digits: string): boolean {
   return sum % 10 === 0;
 }
 
+// DECISION NEEDED: health words are masked everywhere (YX-SD-15), also on HR medical tickets where agents need them; confirm the list and whether HR desks skip it.
 const HEALTH = ['hiv', 'aids', 'cancer', 'tuberculosis', 'diabetes', 'pregnant', 'pregnancy', 'miscarriage', 'depression', 'hepatitis', 'chemotherapy', 'dialysis'];
 const tail = (s: string, n = 4) => s.slice(-n);
 const LABEL: Record<PiiKind, string> = { aadhaar: 'Aadhaar', pan: 'PAN', card: 'Card', bank: 'Bank account', password: 'Password', health: 'Health detail' };

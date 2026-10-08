@@ -21,6 +21,7 @@ export interface CalendarSpec {
   hours: readonly CalendarHours[];
   holidays: readonly { on: string; halfDay: boolean }[];
   /** Founder decision 8 Oct 2026: on a half-day holiday this half of the working time stays open (default first). */
+  // DECISION NEEDED: read as "the half that stays open" (default first = morning worked, afternoon off, as batch 1 did); flip if the founder meant the half that is the holiday.
   halfDayOpen?: 'first' | 'second';
   /**
    * A person's approved leave (M02), for timers that follow one person (task OLAs, assignment). A half-day leave takes
