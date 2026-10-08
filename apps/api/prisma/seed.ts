@@ -6,6 +6,7 @@ import { seedAccess } from './seed-access';
 import { CONSULTANT, seedSignInDemo } from './seed-sign-in';
 import { DESK_PERMISSIONS, seedServiceDesk } from './seed-service-desk';
 import { seedServiceDeskSla } from './seed-service-desk-sla';
+import { seedServiceDeskChannels } from './seed-service-desk-channels';
 
 const prisma = new PrismaClient();
 
@@ -301,10 +302,12 @@ async function main() {
       await seedServiceDesk(tx, demoOrg.id, { admin: await userId('admin@demo-org.test'), hr: await userId('hr@demo-org.test'), panel: await userId('panel@demo-org.test'), passwordHash: panelHash });
       // Batch 2: SLA and OLA policies, resolution codes, a template and a ticket close to its breach (seed-service-desk-sla.ts).
       await seedServiceDeskSla(tx, demoOrg.id);
+      // Batch 3: support addresses, the Customer Care desk with its portal, customers and banners (seed-service-desk-channels.ts).
+      await seedServiceDeskChannels(tx, demoOrg.id);
     }
   }, { timeout: 60000 });
 
-  console.log(`Seed complete: super@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); Service Desk: it-agent@ / it-lead@ / it-collab@demo-org.test / Passw0rd!2026; admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
+  console.log(`Seed complete: super@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); Service Desk: it-agent@ / it-lead@ / it-collab@demo-org.test / Passw0rd!2026, customer portal /yx/portal/demo-org/care (asha@annapurna-stores.test, sign-in code from scripts/desk-portal-code.ts); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
 }
 
 // Only run when invoked as a script (prisma db seed / ts-node). Guarded so importing this module for
