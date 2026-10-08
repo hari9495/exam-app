@@ -181,11 +181,12 @@
   --yx-row-height: 32px;
 }
 
-/* mobile (§2, §36): 16 px body, 44 px targets */
+/* mobile (§2, §36): 16 px body, 44 px targets -- small buttons and inputs too (validation 8 Oct 2026) */
 @media (max-width: 767px) {
   :root {
     --yx-text-body: var(--yx-text-lg);
     --yx-leading-body: var(--yx-leading-lg);
+    --yx-control-sm: 44px;
     --yx-control-md: 44px;
     --yx-control-lg: 44px;
     --yx-target-min: 44px;
