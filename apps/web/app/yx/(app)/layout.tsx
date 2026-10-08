@@ -42,6 +42,10 @@ const ID_CHANGES: WorkspaceLink = { id: 'profile-requests', label: 'Identity and
 const ACCESS: WorkspaceLink = { id: 'access', label: 'Roles & access', href: '/yx/settings/access', group: 'Access' };
 const ACCESS_SETTINGS: WorkspaceLink = { id: 'access-settings', label: 'Access and privacy', href: '/yx/settings/access-settings', group: 'Access' };
 const PRIVACY: WorkspaceLink = { id: 'privacy', label: 'Who accessed my data', href: '/yx/me/privacy', group: 'Me' };
+// M14 Service Desk (3b-1): everyone raises tickets; desk members work them; desk admins set desks up.
+const DESK_HELP: WorkspaceLink = { id: 'desk-help', label: 'Help centre', href: '/yx/desk/help', group: 'Service desk' };
+const DESK_TICKETS: WorkspaceLink = { id: 'desk-tickets', label: 'Tickets', href: '/yx/desk/tickets', group: 'Service desk' };
+const DESK_SETUP: WorkspaceLink = { id: 'desk-setup', label: 'Desk set-up', href: '/yx/desk/setup', group: 'Service desk' };
 
 // Links follow the role; the API still checks every permission (audit:view, org:manage_users,
 // org:manage_settings) and the pages show "no access" on a 403. Platform staff outside any company use the
@@ -118,7 +122,14 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   const emails = perms.has('notification.template.manage') || support ? [EMAILS] : [];
   const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(employee ? [PRIVACY] : [])];
   const supportEndsAt = support ? (decodeJwtPayload(accessToken)?.supportEndsAt as string | undefined) : undefined;
-  const links = [...staff, ...security];
+  const desk = support
+    ? []
+    : [
+        DESK_HELP,
+        ...(perms.has('desk.ticket.view') ? [DESK_TICKETS] : []),
+        ...(perms.has('desk.desk.create') || perms.has('desk.settings.manage') || perms.has('desk.member.manage') ? [DESK_SETUP] : []),
+      ];
+  const links = [...staff, ...desk, ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not Profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
   return (

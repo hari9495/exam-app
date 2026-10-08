@@ -25,6 +25,12 @@ export const YX_KEYS = [
   'org.support_access.approve',
   // P04 Q5: Settings › Notifications › Email.
   'notification.template.manage',
+  // M14 Service Desk (3b-1): tickets for desk members, set-up for desk and Service Desk admins.
+  'desk.ticket.view',
+  'desk.desk.create',
+  'desk.settings.manage',
+  'desk.member.manage',
+  'desk.sla.manage',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 
