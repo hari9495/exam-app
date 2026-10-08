@@ -1,6 +1,6 @@
 const mockVerify = jest.fn();
 const mockSendMail = jest.fn();
-const mockCreateTransport = jest.fn((..._args: unknown[]) => ({ verify: mockVerify, sendMail: mockSendMail }));
+const mockCreateTransport = jest.fn((..._args: unknown[]) => ({ verify: mockVerify, sendMail: mockSendMail, on: jest.fn() }));
 const mockCreateTestAccount = jest.fn();
 
 jest.mock('nodemailer', () => ({

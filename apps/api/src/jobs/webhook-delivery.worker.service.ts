@@ -3,7 +3,7 @@ import { Job, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { createHmac } from 'crypto';
 import { TenantPrismaService, OrgSecretsCryptoService } from '@exam-platform/shared';
-import { REDIS_CONNECTION } from './redis-connection';
+import { REDIS_CONNECTION, logBullErrors } from './redis-connection';
 import { WEBHOOK_DELIVERIES_QUEUE_NAME } from './webhook-deliveries.queue';
 import { assertPublicWebhookTarget } from '../integrations/webhook-url-allowlist';
 
@@ -23,7 +23,7 @@ export class WebhookDeliveryWorkerService implements OnModuleDestroy {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly cryptoService: OrgSecretsCryptoService,
   ) {
-    this.worker = new Worker(WEBHOOK_DELIVERIES_QUEUE_NAME, (job) => this.handle(job), { connection: this.connection });
+    this.worker = logBullErrors(new Worker(WEBHOOK_DELIVERIES_QUEUE_NAME, (job) => this.handle(job), { connection: this.connection }), WEBHOOK_DELIVERIES_QUEUE_NAME);
     // BullMQ fires 'failed' after every failed attempt, including ones that will
     // still retry -- only mark the row permanently failed once attemptsMade has
     // reached the job's configured attempts ceiling (job.opts.attempts).

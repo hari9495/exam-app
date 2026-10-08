@@ -135,14 +135,14 @@ export class EmailService {
       if (org?.smtpHost && org.smtpUser && org.smtpPasswordEncrypted) {
         const { transporter } = await this.getOrBuildTransporter(organizationId, () =>
           Promise.resolve({
-            transporter: nodemailer.createTransport(
+            transporter: this.watch(nodemailer.createTransport(
               buildSmtpTransportOptions({
                 host: org.smtpHost as string,
                 port: org.smtpPort ?? 587,
                 user: org.smtpUser as string,
                 password: this.cryptoService.decrypt(org.smtpPasswordEncrypted as string),
               }),
-            ),
+            )),
             deliverable: true,
           }),
         );
@@ -197,17 +197,26 @@ export class EmailService {
     return promise;
   }
 
+  /**
+   * A pooled transport reports a dead connection as an 'error' event; with no listener that event would throw and stop
+   * the API. A refused or dropped SMTP connection is logged and the send that needed it fails on its own.
+   */
+  private watch(t: Transporter): Transporter {
+    t.on('error', (e: Error) => this.logger.error(`SMTP transport error: ${e.message}`));
+    return t;
+  }
+
   private async createPlatformTransporter(): Promise<ResolvedTransport> {
     if (process.env.SMTP_HOST) {
       return {
-        transporter: nodemailer.createTransport(
+        transporter: this.watch(nodemailer.createTransport(
           buildSmtpTransportOptions({
             host: process.env.SMTP_HOST,
             port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587,
             user: process.env.SMTP_USER,
             password: process.env.SMTP_PASS,
           }),
-        ),
+        )),
         deliverable: true,
       };
     }
@@ -219,12 +228,12 @@ export class EmailService {
         `Sends will be refused unless ${ALLOW_UNDELIVERABLE}=true.`,
     );
     return {
-      transporter: nodemailer.createTransport({
+      transporter: this.watch(nodemailer.createTransport({
         host: testAccount.smtp.host,
         port: testAccount.smtp.port,
         secure: testAccount.smtp.secure,
         auth: { user: testAccount.user, pass: testAccount.pass },
-      }),
+      })),
       deliverable: false,
     };
   }

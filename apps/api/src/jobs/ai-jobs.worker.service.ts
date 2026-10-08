@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { TenantPrismaService } from '@exam-platform/shared';
-import { REDIS_CONNECTION } from './redis-connection';
+import { REDIS_CONNECTION, logBullErrors } from './redis-connection';
 import { AI_JOBS_QUEUE, AI_JOBS_QUEUE_NAME } from './ai-jobs.queue';
 import { AI_JOB_PROCESSORS, JobProcessor } from './processors/job-processor.interface';
 
@@ -25,7 +25,7 @@ export class AiJobsWorkerService implements OnModuleDestroy {
     @Inject(AI_JOB_PROCESSORS) processors: JobProcessor[],
   ) {
     this.processorsByType = new Map(processors.map((processor) => [processor.type, processor]));
-    this.worker = new Worker(AI_JOBS_QUEUE_NAME, (job) => this.handle(job), { connection: this.connection });
+    this.worker = logBullErrors(new Worker(AI_JOBS_QUEUE_NAME, (job) => this.handle(job), { connection: this.connection }), AI_JOBS_QUEUE_NAME);
   }
 
   private async handle(job: Job<AiJobPayload>): Promise<unknown> {

@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { Job, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { TenantPrismaService, OrgSecretsCryptoService } from '@exam-platform/shared';
-import { REDIS_CONNECTION } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
 import { HRIS_EXPORTS_QUEUE_NAME } from './hris-exports.queue';
 import { assertAllowedWebhookUrl, assertPublicWebhookTarget } from '../integrations/webhook-url-allowlist';
 import { getHrisConnector } from './providers';
@@ -27,7 +27,7 @@ export class HrisExportWorkerService implements OnModuleDestroy {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly cryptoService: OrgSecretsCryptoService,
   ) {
-    this.worker = new Worker(HRIS_EXPORTS_QUEUE_NAME, (job) => this.handle(job), { connection: this.connection });
+    this.worker = logBullErrors(new Worker(HRIS_EXPORTS_QUEUE_NAME, (job) => this.handle(job), { connection: this.connection }), HRIS_EXPORTS_QUEUE_NAME);
     // Mark permanently failed only once the retry ceiling is reached (mirrors the other delivery
     // workers) — BullMQ fires 'failed' after every attempt, retryable ones included.
     this.worker.on('failed', (job) => {

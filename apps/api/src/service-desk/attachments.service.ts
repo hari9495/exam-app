@@ -7,7 +7,7 @@ import { promises as fs } from 'fs';
 import { join, resolve } from 'path';
 import { fromBuffer } from 'file-type';
 import { AuditService, BlobStorageService, TenantPrismaService } from '@exam-platform/shared';
-import { REDIS_CONNECTION } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
 import { Tx } from '../org-structure/org-structure.service';
 import { DeskActor, SEAT_REQUIRED, audit, canWork, has } from './desk-access';
 import { BLOCKED_TYPES } from './desks.service';
@@ -81,7 +81,7 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
     private readonly tickets: TicketsService,
     private readonly requesters: RequesterService,
   ) {
-    this.queue = new Queue(SCAN_QUEUE, { connection });
+    this.queue = logBullErrors(new Queue(SCAN_QUEUE, { connection }), SCAN_QUEUE);
     // A key of its own for file links, derived from the API secret, so a link can never pass as a sign-in token.
     const secret = process.env.JWT_ACCESS_SECRET;
     if (!secret) throw new Error('JWT_ACCESS_SECRET is required');
@@ -89,7 +89,7 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit() {
-    this.worker = new Worker(SCAN_QUEUE, (job) => this.scanJob(job), { connection: this.connection });
+    this.worker = logBullErrors(new Worker(SCAN_QUEUE, (job) => this.scanJob(job), { connection: this.connection }), SCAN_QUEUE);
     // Files left pending by a lost job (Redis restart) are queued again every ten minutes.
     await this.queue.upsertJobScheduler('sd-scan-sweep', { every: 10 * 60_000 }, { name: 'sweep', data: {} });
   }

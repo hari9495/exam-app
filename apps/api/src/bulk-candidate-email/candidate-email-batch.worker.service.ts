@@ -2,7 +2,7 @@ import { ConflictException, Inject, Injectable, Logger, OnModuleDestroy } from '
 import { Job, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { TenantPrismaService } from '@exam-platform/shared';
-import { REDIS_CONNECTION } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
 import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
 import { CANDIDATE_EMAIL_BATCHES_QUEUE_NAME } from './candidate-email-batches.queue';
 
@@ -33,7 +33,7 @@ export class CandidateEmailBatchWorkerService implements OnModuleDestroy {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly candidateEmails: CandidateEmailsService,
   ) {
-    this.worker = new Worker(CANDIDATE_EMAIL_BATCHES_QUEUE_NAME, (job) => this.handle(job), { connection: this.connection });
+    this.worker = logBullErrors(new Worker(CANDIDATE_EMAIL_BATCHES_QUEUE_NAME, (job) => this.handle(job), { connection: this.connection }), CANDIDATE_EMAIL_BATCHES_QUEUE_NAME);
     this.worker.on('failed', (job, err) => {
       this.logger.error(`candidate-email batch job ${job?.id} failed: ${err?.message}`, err as Error);
     });
