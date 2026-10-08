@@ -231,7 +231,7 @@ export function SecondFactorPanel({ factors, getPasskey, submit, sendCode, recov
       <Button type="submit" variant="primary" fullWidth loading={busy} disabled={choice !== 'passkey' && !code.trim()}>
         {choice === 'passkey' ? 'Use my passkey' : 'Confirm'}
       </Button>
-      {several && <Button disabled={busy} onClick={back}>Choose another way</Button>}
+      {several && <Button fullWidth disabled={busy} onClick={back}>Choose another way</Button>}
     </form>
   );
 }
