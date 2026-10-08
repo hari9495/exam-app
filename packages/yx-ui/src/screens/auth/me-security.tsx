@@ -155,11 +155,17 @@ function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFa
         )}
         {!totp && error && <InlineAlert tone="danger">{error}</InlineAlert>}
         {!totp && !codes && mfa.factors.length > 0 && (
-          <div className="yx-auth__row">
-            <Button disabled={busy} onClick={() => void run(async () => setCodes(await onNewRecoveryCodes()))}>
-              New recovery codes ({mfa.recoveryCodesRemaining} left)
-            </Button>
-          </div>
+          <section className="yx-auth__stack" aria-labelledby="yx-recovery">
+            <Heading level={4} as="h3" id="yx-recovery">Recovery codes</Heading>
+            <Text as="p" tone="secondary" size="sm">
+              {mfa.recoveryCodesRemaining} of 10 left. Use one if you lose your passkey or phone. Making new codes stops the old ones.
+            </Text>
+            <div className="yx-auth__row">
+              <Button disabled={busy} onClick={() => void run(async () => setCodes(await onNewRecoveryCodes()))}>
+                Make new codes
+              </Button>
+            </div>
+          </section>
         )}
       </div>
       <ConfirmDialog
@@ -215,7 +221,7 @@ function MobileCard({ mfa, onSendMobileCode, onVerifyMobile, onRemoveMobile }: M
       {mfa.mobileNumber ? (
         <div className="yx-auth__item">
           <div className="yx-auth__item-main">
-            <Text weight="medium" className="yx-mono">{formatPhone(mfa.mobileNumber)}</Text>
+            <Text weight="medium">{formatPhone(mfa.mobileNumber)}</Text>
             <Text tone="secondary" size="sm">Verified. Used for sign-in codes where your company allows them.</Text>
           </div>
           <ConfirmDialog

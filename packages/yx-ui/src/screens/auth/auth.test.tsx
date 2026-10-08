@@ -433,7 +433,7 @@ describe('MeSecurityScreen', () => {
 
   it('shows new recovery codes once', async () => {
     render(<Me onNewRecoveryCodes={async () => RECOVERY_CODES} />);
-    await userEvent.click(screen.getByRole('button', { name: /New recovery codes/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Make new codes' }));
     expect(await screen.findByRole('list', { name: 'Recovery codes' })).toBeInTheDocument();
   });
 

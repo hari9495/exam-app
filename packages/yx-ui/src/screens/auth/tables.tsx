@@ -24,6 +24,10 @@ export interface LoginEventsTableProps {
   onUnlock?: (row: LoginEventRow, reason: string) => Promise<void>;
 }
 
+/** A sign-in with a second step reads "Password + passkey" (the API records it as reason mfa_<factor>). */
+const signInMethod = (r: LoginEventRow) =>
+  r.result === 'success' && r.reason?.startsWith('mfa_') ? `${methodLabel(r.method)} + ${methodLabel(r.reason.slice(4)).toLowerCase()}` : methodLabel(r.method);
+
 /** The API's minimum: the reason goes on the audit log. */
 export const UNLOCK_REASON_MIN = 10;
 
@@ -66,7 +70,7 @@ export function LoginEventsTable({ page, state, onRetry, onPageChange, showPerso
       ),
       width: 190,
     },
-    { key: 'method', header: 'Method', value: (r) => methodLabel(r.method), width: 160 },
+    { key: 'method', header: 'Method', value: signInMethod, width: 200 },
     { key: 'device', header: 'Device', value: (r) => deviceLabel(r.userAgent), optional: true, width: 170 },
     { key: 'ip', header: 'IP address', value: (r) => ipLabel(r.ipAddress), optional: true, width: 150 },
   ];
