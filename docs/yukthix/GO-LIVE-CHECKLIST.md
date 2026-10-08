@@ -16,6 +16,7 @@ Things deliberately left for launch. Development runs locally until then (test k
 | 9 | After first deploy | Everyone signs in once more (old tokens had no session); admins review email domains on existing SSO providers | From the login PR (#129) |
 | 10 | Security programme | Pen test before the payroll pilot; incident plan and CERT-In 6-hour process; log retention ≥ 1 year | P12 §8 |
 | 11 | Company sign-in addresses | Set YX_BASE_DOMAIN, wildcard DNS + wildcard TLS certificate, and have SSO companies verify their email domains (details below) | Needed once the domain (item 1) exists; until then sign-in is email-first |
+| 12 | Attachment virus scanning (Service Desk) | Run ClamAV `clamd` as a side container with `freshclam` updating signatures hourly; set `SD_CLAMD_HOST` / `SD_CLAMD_PORT` on the API. Never set `SD_SCANNER=dev-fake` (the laptop stand-in that only knows the EICAR test file; the API refuses it in production). Configure blob storage (`AZURE_STORAGE_*`) so desk files never use the laptop folder `.desk-files` | Without a scanner every desk file stays "being checked" and cannot be opened (fail closed). M14 §14.2 |
 
 
 ## Sign-in without a company code (founder decision 7 Oct 2026)

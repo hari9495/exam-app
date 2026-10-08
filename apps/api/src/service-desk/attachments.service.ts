@@ -10,6 +10,7 @@ import { AuditService, BlobStorageService, TenantPrismaService } from '@exam-pla
 import { REDIS_CONNECTION } from '../jobs/redis-connection';
 import { Tx } from '../org-structure/org-structure.service';
 import { DeskActor, SEAT_REQUIRED, audit, canWork, has } from './desk-access';
+import { BLOCKED_TYPES } from './desks.service';
 import { Requester, RequesterService } from './requester.service';
 import { Scanner, scannerFromEnv } from './scanner';
 import { Ticket, TicketsService } from './tickets.service';
@@ -43,7 +44,7 @@ export async function checkFile(name: string, data: Buffer, allowed: readonly st
   if (!data.length) return { ok: false, reason: 'The file is empty.' };
   if (data.length > maxMb * 1024 * 1024) return { ok: false, reason: `Files can be up to ${maxMb} MB.` };
   const ext = (name.match(/\.([A-Za-z0-9]{1,10})$/)?.[1] ?? '').toLowerCase();
-  if (!ext || !allowed.map((x) => x.toLowerCase()).includes(ext)) return { ok: false, reason: `This desk accepts ${allowed.join(', ')} files only.` };
+  if (!ext || BLOCKED_TYPES.has(ext) || !allowed.map((x) => x.toLowerCase()).includes(ext)) return { ok: false, reason: `This desk accepts ${allowed.join(', ')} files only.` };
   const sniffed = await fromBuffer(data);
   if (TEXT_TYPES[ext]) {
     // Text has no signature: refuse anything that looks binary or is not UTF-8.

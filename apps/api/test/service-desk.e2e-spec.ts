@@ -100,6 +100,8 @@ describe('Service Desk core (M14 §5–§7, §12.1, §14, §15)', () => {
       ids.divyaPerson = (await tx.person.create({ data: { organizationId: org.A.id, givenName: 'Divya', familyName: 'R', primaryEmail: `divya-person-${run}@sd.test` } })).id;
       await tx.personRole.create({ data: { organizationId: org.A.id, personId: ids.divyaPerson, roleType: 'login', sourceTable: 'users', sourceId: users.divya, startOn: new Date('2026-01-01') } });
       ids.arjunPerson = (await tx.person.create({ data: { organizationId: org.A.id, givenName: 'Arjun', primaryEmail: `arjun-${run}@sd.test` } })).id;
+      ids.outsiderPerson = (await tx.person.create({ data: { organizationId: org.A.id, givenName: 'Olu', primaryEmail: `outsider-person-${run}@sd.test` } })).id;
+      await tx.personRole.create({ data: { organizationId: org.A.id, personId: ids.outsiderPerson, roleType: 'login', sourceTable: 'users', sourceId: users.outsider, startOn: new Date('2026-01-01') } });
     });
   });
 
@@ -335,6 +337,13 @@ describe('Service Desk core (M14 §5–§7, §12.1, §14, §15)', () => {
       const others = (await api('agent2', 'post', `/desk/tickets/${ids.t1}/presence`).send({ typing: false }).expect(200)).body;
       expect(others).toEqual([expect.objectContaining({ userId: users.agent1, typing: true })]);
       await api('outsider', 'post', `/desk/tickets/${ids.t1}/presence`).send({ typing: false }).expect(404);
+      // Agents find colleagues only (an employee or a login), never other people records such as applicants.
+      const people = (await api('agent1', 'get', '/desk/people?search=').expect(200)).body.map((p: { id: string }) => p.id);
+      expect(people).toContain(ids.divyaPerson);
+      expect(people).not.toContain(ids.arjunPerson);
+      expect((await api('agent1', 'get', '/desk/people?search=%25').expect(200)).body).toEqual([]);
+      await api('agent1', 'post', `/desk/tickets/${ids.t1}/watchers`).send({ personId: ids.arjunPerson }).expect(400);
+      await api('agent1', 'post', '/desk/tickets').send({ deskId: ids.desk, requesterPersonId: ids.arjunPerson, subject: 'x', bodyHtml: '<p>y</p>' }).expect(400);
       const ctx = (await api('agent1', 'get', `/desk/tickets/${ids.t1}/context`).expect(200)).body;
       expect(ctx.person.name).toBe('Divya R');
       expect(ctx.otherTickets.length).toBeGreaterThan(0);
@@ -411,6 +420,46 @@ describe('Service Desk core (M14 §5–§7, §12.1, §14, §15)', () => {
     });
   });
 
+  describe('security review fixes', () => {
+    it('nobody gives themselves a seat that opens tickets; System Admins hear about new seats', async () => {
+      await api('deskAdmin', 'post', `/desk/desks/${ids.desk}/members`).send({ userId: users.deskAdmin, role: 'agent' }).expect(403);
+      await api('adminA', 'post', `/desk/desks/${ids.desk}/members`).send({ userId: users.adminA, role: 'lead' }).expect(403);
+      await api('deskAdmin', 'post', `/desk/desks/${ids.desk}/members`).send({ userId: users.divya, role: 'collaborator' }).expect(201);
+      const bell = await tenantPrisma.forTenant(asA(), (tx) => tx.userNotification.findMany({ where: { recipientUserId: users.adminA, type: 'helpdesk.seat.granted' } }));
+      expect(bell).toHaveLength(1);
+    });
+
+    it('a desk admin may tighten privacy but never open a restricted desk up', async () => {
+      const v = (await api('deskAdmin', 'get', `/desk/desks/${ids.desk}`).expect(200)).body.desk.version;
+      await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}`).send({ version: v, privacy: 'restricted' }).expect(200);
+      await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}`).send({ version: v + 1, privacy: 'standard' }).expect(403);
+      await api('deskAdmin', 'patch', `/desk/desks/${ids.desk}`).send({ version: v + 1, attachmentTypes: ['pdf', 'svg'] }).expect(400);
+      await api('adminA', 'patch', `/desk/desks/${ids.desk}`).send({ version: v + 1, privacy: 'standard' }).expect(200);
+    });
+
+    it('a collaborator mentions only people already on the ticket and sees no seat details', async () => {
+      await api('collab', 'post', `/desk/tickets/${ids.t1}/messages`).send({ kind: 'note', bodyHtml: '<p>x</p>', mentions: [users.divya] }).expect(400);
+      await api('collab', 'post', `/desk/tickets/${ids.t1}/messages`).send({ kind: 'note', bodyHtml: '<p>for you</p>', mentions: [users.agent1] }).expect(201);
+      expect(await tenantPrisma.forTenant(asA(), (tx) => tx.sdTicketCollaborator.count({ where: { ticketId: ids.t1, userId: users.divya } }))).toBe(0);
+      const d = (await api('collab', 'get', `/desk/desks/${ids.desk}`).expect(200)).body;
+      expect(d.members.every((m: { email: string | null }) => m.email === null)).toBe(true);
+      expect(d.scenarios).toEqual([]);
+    });
+
+    it('only the requester adds followers, with the same answer for unknown emails; agents cannot declassify', async () => {
+      await api('divya', 'post', `/desk/my/tickets/${ids.t1}/watchers`).send({ email: `outsider-person-${run}@sd.test` }).expect(201);
+      expect((await api('divya', 'post', `/desk/my/tickets/${ids.t1}/watchers`).send({ email: `nobody-${run}@sd.test` }).expect(201)).body).toEqual({ added: true });
+      await api('outsider', 'get', `/desk/my/tickets/${ids.t1}`).expect(200);
+      await api('outsider', 'post', `/desk/my/tickets/${ids.t1}/watchers`).send({ email: `arjun-${run}@sd.test` }).expect(403);
+      const p = (await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.desk, categoryId: ids.category, subject: 'Private again', description: 'x', private: true }).expect(201)).body;
+      const t = (await api('agent1', 'get', `/desk/tickets/${p.id}`).expect(200)).body;
+      await api('agent1', 'patch', `/desk/tickets/${p.id}`).send({ version: t.version, private: false }).expect(403);
+      await api('lead', 'patch', `/desk/tickets/${p.id}`).send({ version: t.version, private: false }).expect(200);
+      const opened = await tenantPrisma.forTenant(asA(), (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'desk.ticket.opened', entityId: p.id } }));
+      expect(opened).toBeGreaterThan(0);
+    });
+  });
+
   describe('company isolation (forced RLS, §5.1, §15.1)', () => {
     it("company B's admin and agents never reach company A's desks, tickets or files", async () => {
       expect((await api('adminB', 'get', '/desk/desks').expect(200)).body).toEqual([]);
@@ -458,6 +507,11 @@ describe('Service Desk core (M14 §5–§7, §12.1, §14, §15)', () => {
       await api('adminA', 'delete', `/desk/desks/${ids.desk}/members/${ids['member:agent2']}`).expect(200);
       expect(await tenantPrisma.forTenant(asA(), (tx) => tx.sdTicket.count({ where: { deskId: ids.desk, assigneeUserId: users.agent2, systemState: { in: ['new', 'open', 'pending'] } } }))).toBe(0);
       await api('agent2', 'get', `/desk/tickets/${ids.t1}`).expect(404);
+      // A collaborator whose seat ends loses every record they were added to.
+      await api('adminA', 'delete', `/desk/desks/${ids.desk}/members/${ids['member:collab']}`).expect(200);
+      await api('collab', 'get', `/desk/tickets/${ids.t1}`).expect(404);
+      expect((await api('collab', 'get', '/desk/tickets').expect(200)).body.items).toEqual([]);
+      expect(await tenantPrisma.forTenant(asA(), (tx) => tx.sdTicketCollaborator.count({ where: { userId: users.collab } }))).toBe(0);
       void tickets;
     });
   });

@@ -17,6 +17,7 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   // M14 §11.2 Service Desk (3b-1).
   { type: 'helpdesk.note.mention', group: 'mentions', label: 'You are mentioned in a ticket note' },
   { type: 'helpdesk.ticket.assigned', group: 'assignments', label: 'A ticket is assigned to you' },
+  { type: 'helpdesk.seat.granted', group: 'assignments', label: 'Someone was given a seat on a desk' },
 ];
 
 export const NOTIFICATION_TYPE_BY_KEY = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));

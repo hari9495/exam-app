@@ -319,16 +319,7 @@ export class DeskTicketsController {
   async people(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: SearchQueryDto) {
     const a = await this.access.actor(req, t);
     if (![...a.roles.values()].some((r) => r === 'agent' || r === 'lead')) return [];
-    const search = q.search ?? '';
-    return this.tickets.tx(a, async (tx) => {
-      const rows = await tx.person.findMany({
-        where: { organizationId: a.ctx.organizationId, status: 'active', ...(search ? { OR: [{ givenName: { contains: search, mode: 'insensitive' } }, { familyName: { contains: search, mode: 'insensitive' } }, { primaryEmail: { contains: search, mode: 'insensitive' } }] } : {}) },
-        select: { id: true, givenName: true, familyName: true, preferredName: true, primaryEmail: true },
-        orderBy: { givenName: 'asc' },
-        take: 20,
-      });
-      return rows.map((p) => ({ id: p.id, name: [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' '), email: p.primaryEmail }));
-    });
+    return this.tickets.searchPeople(a, q.search ?? '');
   }
 
   @Get('tickets')

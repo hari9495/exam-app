@@ -70,3 +70,16 @@ describe('virus scanner choice (§14.2)', () => {
     expect(scannerFromEnv({ SD_CLAMD_HOST: 'clamav' }, quiet)?.name).toBe('clamd');
   });
 });
+
+describe("the requester's routes refuse anyone acting for someone else (review fix)", () => {
+  it('impersonation and YukthiX support sessions get 403, the person themselves gets through', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { RequesterService } = require('./requester.service');
+    const svc = new RequesterService({} as never, {} as never, {} as never);
+    const tenant = { organizationId: 'o1', isSuperAdmin: false };
+    const req = (user: object) => ({ user }) as never;
+    expect(() => svc.who(req({ userId: 'u1', role: 'panel', impersonatorUserId: 'staff' }), tenant)).toThrow(/acting for someone else/);
+    expect(() => svc.who(req({ userId: 'u1', role: 'super_admin', actingSuperAdmin: true }), tenant)).toThrow(/acting for someone else/);
+    expect(svc.who(req({ userId: 'u1', role: 'panel' }), tenant)).toMatchObject({ userId: 'u1', acting: false });
+  });
+});

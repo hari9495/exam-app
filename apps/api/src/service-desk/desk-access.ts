@@ -127,7 +127,8 @@ export async function visibleTickets(tx: Tx, a: DeskActor): Promise<Prisma.SdTic
     OR: [
       { deskId: { in: reach.agent } },
       { deskId: { in: reach.observe }, sensitive: false, private: false },
-      { id: { in: collab } },
+      // A collaborator reaches a record only while they still hold a seat on its desk.
+      { id: { in: collab }, deskId: { in: [...a.roles.keys()] } },
     ],
   };
 }
@@ -136,7 +137,7 @@ export async function visibleTickets(tx: Tx, a: DeskActor): Promise<Prisma.SdTic
 export async function ticketAccess(tx: Tx, a: DeskActor, t: { id: string; deskId: string; sensitive: boolean; private: boolean }): Promise<TicketAccess | null> {
   if (!has(a, 'desk.ticket.view')) return null;
   if (isAgentOn(a, t.deskId)) return 'agent';
-  const collab = await tx.sdTicketCollaborator.findFirst({ where: { organizationId: a.ctx.organizationId, ticketId: t.id, userId: a.userId }, select: { userId: true } });
+  const collab = a.roles.has(t.deskId) && (await tx.sdTicketCollaborator.findFirst({ where: { organizationId: a.ctx.organizationId, ticketId: t.id, userId: a.userId }, select: { userId: true } }));
   if (collab) return 'collaborator';
   if (a.roles.get(t.deskId) === 'admin' && !t.sensitive && !t.private) {
     const desk = await tx.sdDesk.findFirst({ where: { organizationId: a.ctx.organizationId, id: t.deskId }, select: { privacy: true } });

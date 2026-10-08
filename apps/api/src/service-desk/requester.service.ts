@@ -32,6 +32,8 @@ export class RequesterService {
   who(req: Request, tenant: TenantContext): Requester {
     const user = req.user as { userId?: string; role: string; permissionProfileId?: string | null; impersonatorUserId?: string; actingSuperAdmin?: boolean };
     if (!user?.userId) throw new ForbiddenException('Not authenticated');
+    // Someone acting for another person (impersonation, a YukthiX support session) never sees that person's own tickets.
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else');
     return { ctx: companyOf(tenant), userId: user.userId, acting: Boolean(user.impersonatorUserId || user.actingSuperAdmin), user: { ...user, organizationId: tenant.organizationId } };
   }
 
@@ -223,10 +225,12 @@ export class RequesterService {
     const org = r.ctx.organizationId;
     return this.tx(r, async (tx) => {
       const { t, personId } = await this.ownTicket(tx, r, id);
+      // Only the requester and the person it is for choose who follows it; a follower cannot add more.
+      if (t.requesterPersonId !== personId && t.requestedForPersonId !== personId) throw new ForbiddenException('Only the person who raised it, or the person it is for, adds followers.');
       const emp = await tx.employee.findFirst({ where: { organizationId: org, workEmail: dto.email }, select: { personId: true } });
       const person = emp?.personId ?? (await tx.person.findFirst({ where: { organizationId: org, status: 'active', primaryEmail: dto.email }, select: { id: true } }))?.id;
-      if (!person) throw new BadRequestException('Nobody in the company has that email.');
-      await this.tickets.addWatcherIn(tx, r, t, person, true, personId);
+      // The same answer whether or not the email belongs to someone here, so it cannot be used to look people up.
+      if (person) await this.tickets.addWatcherIn(tx, r, t, person, true, personId);
       return { added: true };
     });
   }

@@ -317,7 +317,7 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
                   <FormField label="Colleague's work email">
                     <TextField value={watcher} onChange={setWatcher} type="email" />
                   </FormField>
-                  {added && <p className="yx-ops-muted">{added} will get updates.</p>}
+                  {added && <p className="yx-ops-muted">If {added} works here, they will get updates.</p>}
                   <div className="yx-ops-row">
                     <Button
                       disabled={!watcher.includes('@')}

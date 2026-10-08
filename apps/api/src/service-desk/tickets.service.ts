@@ -104,10 +104,12 @@ export class TicketsService {
     let priority = (input.impact && input.urgency ? await this.matrix(tx, org, desk.id, input.impact, input.urgency) : null) ?? cat?.defaultPriority ?? 3;
     if (vip && desk.vipRaisesPriority) priority = Math.max(1, priority - 1);
 
-    const [{ n }] = await tx.$queryRaw<{ n: bigint }[]>`
+    const [counter] = await tx.$queryRaw<{ n: bigint }[]>`
       UPDATE sd_counters SET next_number = next_number + 1
       WHERE organization_id = ${org}::uuid AND desk_id = ${desk.id}::uuid
       RETURNING next_number - 1 AS n`;
+    if (!counter) throw new ConflictException('This desk has no ticket numbering. Ask the desk admin to check its settings.');
+    const n = counter.n;
     const groupId = cat?.groupId ?? null;
     const assigneeUserId = groupId ? await this.pickAssignee(tx, org, desk.id, groupId) : null;
     const bodyHtml = cleanHtml(input.bodyHtml);
@@ -166,8 +168,11 @@ export class TicketsService {
   /** An agent raises a ticket for a requester (§12.1 POST /tickets). */
   async createByAgent(a: DeskActor, dto: AgentCreateTicketDto) {
     requireWork(a, dto.deskId);
-    const t = await this.tx(a, (tx) =>
-      this.createIn(tx, a, {
+    const t = await this.tx(a, async (tx) => {
+      for (const p of [dto.requesterPersonId, dto.requestedForPersonId]) {
+        if (p && !(await this.internalPerson(tx, a.ctx.organizationId, p))) throw new BadRequestException('No such person in this company.');
+      }
+      return this.createIn(tx, a, {
         deskId: dto.deskId,
         typeId: dto.typeId,
         categoryId: dto.categoryId,
@@ -182,10 +187,40 @@ export class TicketsService {
         private: dto.private,
         tags: dto.tags,
         side: 'agent',
-      }),
-    );
+      });
+    });
     if (t.assigneeUserId) void this.notify(a, { type: 'helpdesk.ticket.assigned', to: [t.assigneeUserId], ticket: t });
     return { id: t.id, number: t.number };
+  }
+
+  /**
+   * People an agent may raise for or add as followers: colleagues (an employee or a login of the company). Applicants and
+   * other P01 persons are never reachable through the desk (customer contacts arrive with SD-1.28).
+   */
+  async internalPerson(tx: Tx, org: string, personId: string): Promise<boolean> {
+    const [row] = await tx.$queryRaw<{ ok: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1 FROM persons p JOIN person_roles r ON r.organization_id = p.organization_id AND r.person_id = p.id
+        WHERE p.organization_id = ${org}::uuid AND p.id = ${personId}::uuid AND p.status = 'active'
+          AND r.role_type IN ('employee', 'login') AND (r.end_on IS NULL OR r.end_on >= (now() AT TIME ZONE 'Asia/Kolkata')::date)) AS ok`;
+    return Boolean(row?.ok);
+  }
+
+  /** Name / email search over colleagues only (see internalPerson). */
+  async searchPeople(a: DeskActor, search: string) {
+    const org = a.ctx.organizationId;
+    // LIKE wildcards typed by the agent are matched literally.
+    const like = `%${search.replace(/[\\%_]/g, (c) => '\\' + c)}%`;
+    return this.tx(a, async (tx) => {
+      const rows = await tx.$queryRaw<{ id: string; given_name: string; family_name: string | null; preferred_name: string | null; primary_email: string | null }[]>`
+        SELECT p.id, p.given_name, p.family_name, p.preferred_name, p.primary_email FROM persons p
+        WHERE p.organization_id = ${org}::uuid AND p.status = 'active'
+          AND EXISTS (SELECT 1 FROM person_roles r WHERE r.organization_id = p.organization_id AND r.person_id = p.id
+                      AND r.role_type IN ('employee', 'login') AND (r.end_on IS NULL OR r.end_on >= (now() AT TIME ZONE 'Asia/Kolkata')::date))
+          AND (${search} = '' OR p.given_name ILIKE ${like} OR p.family_name ILIKE ${like} OR p.primary_email::text ILIKE ${like})
+        ORDER BY p.given_name, p.family_name LIMIT 20`;
+      return rows.map((p) => ({ id: p.id, name: [p.preferred_name || p.given_name, p.family_name].filter(Boolean).join(' '), email: p.primary_email }));
+    });
   }
 
   private async category(tx: Tx, org: string, deskId: string, id: string, activeOnly: boolean) {
@@ -256,6 +291,8 @@ export class TicketsService {
     return this.tx(a, async (tx) => {
       const { t, access } = await this.load(tx, a, id);
       const org = a.ctx.organizationId;
+      // YX-SD-17 seam: every opening of a sensitive or private ticket is recorded (the deduplicated read log is SD-1.12).
+      if (t.sensitive || t.private) await audit(tx, a, 'desk.ticket.opened', 'sd_ticket', t.id, { number: t.number, access });
       const [messages, attachments, watchers, collaborators, time, desk, type, status, cat, group] = await Promise.all([
         tx.sdTicketMessage.findMany({ where: { organizationId: org, ticketId: t.id }, orderBy: { createdAt: 'asc' } }),
         tx.sdAttachment.findMany({ where: { organizationId: org, ticketId: t.id }, orderBy: { createdAt: 'asc' } }),
@@ -441,10 +478,13 @@ export class TicketsService {
     }
     if (c.subject !== undefined && c.subject !== t.subject) {
       data.subject = c.subject;
-      log.push(['subject_changed', t.subject, c.subject, true]);
+      // A sensitive or private ticket's subject is never copied into the timeline or the audit log.
+      const hide = t.sensitive || t.private;
+      log.push(['subject_changed', hide ? null : t.subject, hide ? null : c.subject, true]);
     }
     if (c.categoryId !== undefined && c.categoryId !== t.categoryId) {
       const cat = c.categoryId ? await this.category(tx, org, t.deskId, c.categoryId, true) : null;
+      if (t.sensitive && !cat?.sensitive) this.requireLead(a, t, 'Only a team lead moves a sensitive ticket out of its sensitive category.');
       data.categoryId = cat?.id ?? null;
       // §5.7: a sensitive category makes the ticket visible only to the desk's agents.
       data.sensitive = Boolean(cat?.sensitive);
@@ -478,6 +518,7 @@ export class TicketsService {
       }
     }
     if (c.private !== undefined && c.private !== t.private) {
+      if (!c.private) this.requireLead(a, t, 'Only a team lead makes a private ticket visible to more people.');
       data.private = c.private;
       log.push(['privacy_changed', String(t.private), String(c.private), false]);
     }
@@ -498,6 +539,10 @@ export class TicketsService {
     if (data.priority) await emit(tx, org, 'helpdesk.ticket.priority_changed', { ticketId: t.id, deskId: t.deskId, from: t.priority, to: priority });
     await audit(tx, a, 'desk.ticket.updated', 'sd_ticket', t.id, { number: t.number, changes: log.map(([kind, from, to]) => ({ kind, from, to })), reason });
     return after;
+  }
+
+  private requireLead(a: DeskActor, t: Ticket, message: string) {
+    if (a.roles.get(t.deskId) !== 'lead') throw new ForbiddenException(message);
   }
 
   /** PATCH /tickets/:id (version checked, YX-SD-07). */
@@ -581,7 +626,7 @@ export class TicketsService {
       const bodyHtml = cleanHtml(dto.bodyHtml);
       const bodyText = htmlToText(bodyHtml);
       if (!bodyText) throw new BadRequestException('Write a message first.');
-      const mentions = dto.kind === 'note' ? await this.mentionable(tx, a, t, dto.mentions ?? []) : [];
+      const mentions = dto.kind === 'note' ? await this.mentionable(tx, a, t, access, dto.mentions ?? []) : [];
       const m = await tx.sdTicketMessage.create({
         data: { organizationId: org, deskId: t.deskId, ticketId: t.id, kind: dto.kind, side: 'agent', authorUserId: a.userId, bodyHtml, bodyText, mentions, channel: 'agent' },
       });
@@ -605,14 +650,17 @@ export class TicketsService {
    * People who may be mentioned: anyone with a seat on the desk or already on the record. A mentioned desk collaborator
    * is added to the record, which is how a collaborator reaches it (§5.2).
    */
-  private async mentionable(tx: Tx, a: DeskActor, t: Ticket, ids: string[]): Promise<string[]> {
+  private async mentionable(tx: Tx, a: DeskActor, t: Ticket, access: TicketAccess, ids: string[]): Promise<string[]> {
     if (!ids.length) return [];
     const org = a.ctx.organizationId;
     const seats = await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId: t.deskId, userId: { in: ids }, ...activeOn(todayIst()) }, select: { userId: true, role: true } });
     const collabs = await tx.sdTicketCollaborator.findMany({ where: { organizationId: org, ticketId: t.id, userId: { in: ids } }, select: { userId: true } });
-    const ok = new Set([...seats.map((s) => s.userId), ...collabs.map((c) => c.userId)]);
+    // An agent may bring desk colleagues in; a collaborator may only mention people who already see the ticket.
+    const onTicket = seats.filter((s) => s.role === 'agent' || s.role === 'lead').map((s) => s.userId);
+    const ok = new Set([...(access === 'agent' ? seats.map((s) => s.userId) : onTicket), ...collabs.map((c) => c.userId)]);
     const bad = ids.filter((u) => !ok.has(u));
-    if (bad.length) throw new BadRequestException('You can mention only people on this desk or on this ticket.');
+    if (bad.length) throw new BadRequestException(access === 'agent' ? 'You can mention only people on this desk or on this ticket.' : 'You can mention only people already on this ticket.');
+    if (access !== 'agent') return ids;
     for (const s of seats) {
       // Admins see standard tickets anyway; collaborators reach a record only when added. Never on a private one by mention
       // unless the agent chose to (they wrote the note).
@@ -667,7 +715,7 @@ export class TicketsService {
       const { t, access } = await this.load(tx, a, id);
       if (access !== 'agent') throw new ForbiddenException(SEAT_REQUIRED);
       requireWork(a, t.deskId);
-      if (!(await tx.person.findFirst({ where: { organizationId: a.ctx.organizationId, id: dto.personId, status: 'active' }, select: { id: true } }))) throw new BadRequestException('No such person in this company.');
+      if (!(await this.internalPerson(tx, a.ctx.organizationId, dto.personId!))) throw new BadRequestException('No such person in this company.');
       const w = await this.addWatcherIn(tx, a, t, dto.personId!, false);
       return { id: w?.id ?? null };
     });

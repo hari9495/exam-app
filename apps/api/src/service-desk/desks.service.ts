@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { NotificationsService } from '../notifications/notifications.service';
 import { Tx } from '../org-structure/org-structure.service';
 import { addDays, todayIst } from '../org-structure/org-validation';
 import { isValidZone } from './business-time';
@@ -34,6 +35,8 @@ import {
 const day = (iso: string) => new Date(`${iso}T00:00:00Z`);
 const iso = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 const OPEN_STATES = ['new', 'open', 'pending', 'on_hold'];
+/** §14.2: types no desk may allow, whatever its admin chooses (they run code or render as a page). */
+export const BLOCKED_TYPES = new Set(['exe', 'dll', 'msi', 'msp', 'bat', 'cmd', 'com', 'scr', 'pif', 'cpl', 'ps1', 'psm1', 'vbs', 'vbe', 'js', 'jse', 'mjs', 'wsf', 'wsh', 'hta', 'sh', 'bash', 'jar', 'apk', 'app', 'dmg', 'iso', 'lnk', 'reg', 'html', 'htm', 'xhtml', 'shtml', 'svg', 'xml', 'xsl', 'php', 'asp', 'aspx', 'jsp', 'py', 'pl', 'rb', 'swf', 'docm', 'xlsm', 'pptm']);
 
 function uniqueViolation(e: unknown, message: string): never {
   if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException(message);
@@ -45,7 +48,10 @@ function uniqueViolation(e: unknown, message: string): never {
 
 @Injectable()
 export class DesksService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   private tx<T>(a: DeskActor, fn: (tx: Tx) => Promise<T>) {
     return this.tenantPrisma.forTenant(a.ctx, fn);
@@ -148,26 +154,29 @@ export class DesksService {
       const users = await tx.user.findMany({ where: { organizationId: org, id: { in: members.map((m) => m.userId) } }, select: { id: true, name: true, email: true } });
       const name = new Map(users.map((u) => [u.id, u]));
       const today = todayIst();
+      // Collaborators get only what writing a note needs: no emails, no seats' details, no scenarios (review fix).
+      const limited = a.roles.get(id) === 'collaborator' && !has(a, 'desk.desk.create');
+      const shown = limited ? members.filter((m) => iso(m.validFrom)! <= today) : members;
       return {
         desk: this.deskView(desk),
         types: types.map((t) => ({ id: t.id, kind: t.kind, name: t.name, active: t.active, sortOrder: t.sortOrder })),
         statuses: statuses.map((s) => ({ id: s.id, label: s.label, systemState: s.systemState, ticketTypeId: s.ticketTypeId, sortOrder: s.sortOrder, active: s.active })),
         categories: categories.map((c) => ({ id: c.id, name: c.name, parentId: c.parentId, sensitive: c.sensitive, defaultGroupId: c.defaultGroupId, defaultPriority: c.defaultPriority, active: c.active, sortOrder: c.sortOrder })),
-        groups: groups.map((g) => ({ id: g.id, name: g.name, tier: g.tier, assignmentMethod: g.assignmentMethod, maxOpenPerAgent: g.maxOpenPerAgent, active: g.active, memberIds: groupMembers.filter((m) => m.groupId === g.id).map((m) => m.userId) })),
+        groups: groups.map((g) => ({ id: g.id, name: g.name, tier: g.tier, assignmentMethod: g.assignmentMethod, maxOpenPerAgent: g.maxOpenPerAgent, active: g.active, memberIds: limited ? [] : groupMembers.filter((m) => m.groupId === g.id).map((m) => m.userId) })),
         matrix: matrix.map((m) => ({ impact: m.impact, urgency: m.urgency, priority: m.priority })),
-        members: members.map((m) => ({
+        members: shown.map((m) => ({
           id: m.id,
           userId: m.userId,
           name: name.get(m.userId)?.name ?? name.get(m.userId)?.email ?? 'Someone',
-          email: name.get(m.userId)?.email ?? null,
+          email: limited ? null : (name.get(m.userId)?.email ?? null),
           role: m.role,
           tier: m.tier,
-          skills: m.skills,
+          skills: limited ? [] : m.skills,
           validFrom: iso(m.validFrom),
           validTo: iso(m.validTo),
           active: iso(m.validFrom)! <= today,
         })),
-        scenarios: scenarios.filter((s) => s.active || canSetUp(a, id, 'desk.settings.manage')).map((s) => ({ id: s.id, name: s.name, actions: s.actions, active: s.active })),
+        scenarios: limited ? [] : scenarios.filter((s) => s.active || canSetUp(a, id, 'desk.settings.manage')).map((s) => ({ id: s.id, name: s.name, actions: s.actions, active: s.active })),
         myRole: a.roles.get(id) ?? null,
         canSetUp: canSetUp(a, id, 'desk.settings.manage'),
         canManageMembers: canSetUp(a, id, 'desk.member.manage'),
@@ -180,6 +189,15 @@ export class DesksService {
     const org = a.ctx.organizationId;
     return this.tx(a, async (tx) => {
       const before = await this.desk(tx, a, id);
+      // A desk admin may only tighten privacy; opening a restricted desk up is the Service Desk admin's call.
+      if (dto.privacy && dto.privacy !== before.privacy && dto.privacy === 'standard' && !has(a, 'desk.desk.create')) throw new ForbiddenException('Only a Service Desk admin opens a restricted desk.');
+      const blocked = (dto.attachmentTypes ?? []).filter((x) => BLOCKED_TYPES.has(x));
+      if (blocked.length) throw new BadRequestException(`These file types are never allowed: ${blocked.join(', ')}.`);
+      if (dto.numberPrefix !== undefined || dto.numberSuffix !== undefined) {
+        const prefix = dto.numberPrefix ?? before.numberPrefix;
+        const suffix = dto.numberSuffix ?? before.numberSuffix;
+        if (await tx.sdDesk.findFirst({ where: { organizationId: org, id: { not: id }, numberPrefix: prefix, numberSuffix: suffix }, select: { id: true } })) throw new ConflictException('Another desk already numbers its tickets like that. Choose another prefix.');
+      }
       if (dto.calendarId && !(await tx.businessCalendar.findFirst({ where: { organizationId: org, id: dto.calendarId }, select: { id: true } }))) throw new BadRequestException('No such calendar.');
       const { version, nextNumber, ...fields } = dto;
       const res = await tx.sdDesk.updateMany({ where: { organizationId: org, id, version }, data: { ...fields, version: { increment: 1 } } });
@@ -233,9 +251,12 @@ export class DesksService {
   async addMember(a: DeskActor, deskId: string, dto: AddMemberDto) {
     requireSetUp(a, deskId, 'desk.member.manage');
     const org = a.ctx.organizationId;
+    let added: { id: string; cost: { paid: boolean; reason: string }; desk: string; admins: string[] };
     try {
-      return await this.tx(a, async (tx) => {
+      added = await this.tx(a, async (tx) => {
         const desk = await this.desk(tx, a, deskId);
+        // Nobody gives themselves a seat that opens tickets (P02 YX-SEC-11 four eyes); another admin does it.
+        if (dto.userId === a.userId && dto.role !== 'admin') throw new ForbiddenException('Ask another admin to give you a seat that opens tickets.');
         const user = await tx.user.findFirst({ where: { organizationId: org, id: dto.userId, status: 'active' }, select: { id: true } });
         if (!user) throw new BadRequestException('No such person in this company.');
         const cost = await this.seatCost(tx, a, desk, dto.userId, dto.role);
@@ -244,11 +265,17 @@ export class DesksService {
         });
         await audit(tx, a, 'desk.member.added', 'sd_desk_member', m.id, { deskId, userId: dto.userId, role: dto.role, paid: cost.paid });
         if (dto.role === 'agent' || dto.role === 'lead') await emit(tx, org, 'helpdesk.agent_seat.granted', { deskId, userId: dto.userId, paid: cost.paid });
-        return { id: m.id, cost };
+        const admins = dto.role === 'admin' ? [] : (await tx.user.findMany({ where: { organizationId: org, role: 'org_admin', status: 'active' }, select: { id: true } })).map((u) => u.id);
+        return { id: m.id, cost, desk: desk.name, admins };
       });
     } catch (e) {
       uniqueViolation(e, 'That person already has a role on this desk. End it first to change it.');
     }
+    // A seat that opens tickets is told to the company's System Admins (in-app), so a quiet self-serve grant shows.
+    await this.notifications
+      .notify(a.ctx, a.userId, added.admins, 'helpdesk.seat.granted', { entityType: 'sd_desk', entityId: deskId, contextText: `${dto.role} seat on ${added.desk}`, linkPath: '/yx/desk/setup' })
+      .catch(() => undefined);
+    return { id: added.id, cost: added.cost };
   }
 
   /** Ends a seat today (never deleted: who was an agent when stays known). Their open tickets go back to the queue. */
@@ -272,6 +299,8 @@ export class DesksService {
         await tx.sdGroupMember.deleteMany({ where: { organizationId: org, deskId, userId: m.userId } });
         await emit(tx, org, 'helpdesk.agent_seat.removed', { deskId, userId: m.userId });
       }
+      // Records they were added to as a collaborator close with the seat.
+      await tx.sdTicketCollaborator.deleteMany({ where: { organizationId: org, deskId, userId: m.userId } });
       await audit(tx, a, 'desk.member.ended', 'sd_desk_member', m.id, { deskId, userId: m.userId, role: m.role, validTo });
       return { ended: true };
     });

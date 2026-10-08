@@ -13,3 +13,4 @@
 .yx-desk-matrix { border-collapse: collapse; width: 100%; }
 .yx-desk-matrix th, .yx-desk-matrix td { padding: var(--yx-space-2); text-align: left; border-bottom: var(--yx-border-width) solid var(--yx-color-border); font-size: var(--yx-text-sm); }
 .yx-desk-matrix caption { text-align: left; padding-bottom: var(--yx-space-2); }
+.yx-desk-setup .yx-ops-list__item[data-active] { background: var(--yx-color-bg-selected); margin-inline: calc(var(--yx-space-2) * -1); padding-inline: var(--yx-space-2); border-radius: var(--yx-radius-control); }
