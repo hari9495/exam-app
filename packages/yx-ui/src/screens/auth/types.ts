@@ -54,6 +54,8 @@ export interface LoginEventRow {
   geo: string | null;
   newDevice: boolean;
   createdAt: string;
+  /** Admin list only: this lock row's lock still stands (the API reads the login-protection store), so Unlock does something. */
+  lockActive?: boolean;
 }
 
 export interface Page<T> {

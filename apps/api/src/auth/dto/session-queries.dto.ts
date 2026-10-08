@@ -37,8 +37,9 @@ export class LoginEventsQueryDto extends MyLoginHistoryQueryDto {
   @IsUUID()
   userId?: string;
 
+  // 'sso' = a company identity provider of either kind (saml or oidc): one "Single sign-on" filter.
   @IsOptional()
-  @IsIn(LOGIN_METHODS)
+  @IsIn([...LOGIN_METHODS, 'sso'])
   method?: string;
 }
 
