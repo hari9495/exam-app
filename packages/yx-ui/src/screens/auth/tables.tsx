@@ -70,7 +70,7 @@ export function LoginEventsTable({ page, state, onRetry, onPageChange, showPerso
       ),
       width: 190,
     },
-    { key: 'method', header: 'Method', value: signInMethod, width: 200 },
+    { key: 'method', header: 'Method', value: signInMethod, width: 260 },
     { key: 'device', header: 'Device', value: (r) => deviceLabel(r.userAgent), optional: true, width: 170 },
     { key: 'ip', header: 'IP address', value: (r) => ipLabel(r.ipAddress), optional: true, width: 150 },
   ];
