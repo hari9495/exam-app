@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider, useAuth } from './auth-context';
+import { AuthProvider, SESSION_HINT_KEY, useAuth } from './auth-context';
 import { useCurrentUser } from './hooks/useCurrentUser';
 import { fakeJwt } from './test-utils/fake-jwt';
 
@@ -18,9 +18,51 @@ function renderWithQueryClient(ui: React.ReactElement, client = new QueryClient(
 describe('AuthProvider', () => {
   const originalFetch = global.fetch;
 
+  // Every test below starts as a browser that signed in before (the refresh cookie is HttpOnly, so this
+  // flag is what tells the provider to try /auth/refresh at all).
+  beforeEach(() => window.localStorage.setItem(SESSION_HINT_KEY, '1'));
+
   afterEach(() => {
     global.fetch = originalFetch;
     window.sessionStorage.clear();
+    window.localStorage.clear();
+  });
+
+  it('a browser that never signed in does not call /auth/refresh on mount (no 401 on the sign-in page)', async () => {
+    window.localStorage.clear();
+    global.fetch = jest.fn(async (url) => {
+      throw new Error(`Unexpected fetch to ${url}`);
+    }) as unknown as typeof fetch;
+    renderWithQueryClient(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByText(/no-token/)).toBeInTheDocument());
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('the hint is set when a token arrives and cleared when the session is over', async () => {
+    window.localStorage.clear();
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/logout')) return new Response('{}', { status: 200 });
+      throw new Error(`Unexpected fetch to ${url}`);
+    }) as unknown as typeof fetch;
+    let auth: ReturnType<typeof useAuth> | undefined;
+    function Consumer() {
+      auth = useAuth();
+      return null;
+    }
+    renderWithQueryClient(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(auth?.isLoading).toBe(false));
+    act(() => auth!.login('kaveri', fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'recruiter' })));
+    expect(window.localStorage.getItem(SESSION_HINT_KEY)).toBe('1');
+    await act(() => auth!.logout());
+    expect(window.localStorage.getItem(SESSION_HINT_KEY)).toBeNull();
   });
 
   it('silently refreshes on mount and exposes the resulting access token', async () => {
