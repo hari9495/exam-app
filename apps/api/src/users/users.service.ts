@@ -18,6 +18,7 @@ import { SuperAdminEmailDto } from './dto/super-admin-email.dto';
 import { BulkCreateUsersDto } from './dto/bulk-create-users.dto';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 import { PasswordPolicyService } from '../auth/password-policy.service';
+import { securityChangeEmail } from '../email/account-emails';
 
 /**
  * A User record with `passwordHash` (and any other sensitive fields) excluded.
@@ -415,7 +416,7 @@ export class UsersService {
     );
 
     if (!(await argon2.verify(user.passwordHash, dto.currentPassword))) {
-      throw new UnauthorizedException('Current password is incorrect');
+      throw new UnauthorizedException('Your current password is wrong. Try again.');
     }
 
     const { passwordHash, passwordRecheckPending } = await this.passwordPolicy.hashNewPassword(dto.newPassword, user.organizationId);
@@ -460,6 +461,21 @@ export class UsersService {
       entityType: 'user',
       entityId: userId,
     });
+
+    // YX-IAM-10: the owner hears about every security change, so a stolen session can't change it quietly.
+    const org = user.organizationId
+      ? await this.tenantPrisma.forTenant(context, (tx) => tx.organization.findUnique({ where: { id: user.organizationId! }, select: { name: true } }))
+      : null;
+    securityChangeEmail({
+      to: user.email,
+      company: org?.name,
+      subject: 'Your YukthiX password was changed',
+      what: 'The password for your account was just changed. You stay signed in on the device that changed it; every other device was signed out.',
+      when: new Date(),
+      timeZone: user.timeZone,
+    })
+      .then((mail) => this.emailService.send({ to: user.email, ...mail, organizationId: user.organizationId ?? undefined }))
+      .catch((error) => this.logger.error(`Failed to send password-changed notice to user ${userId}`, error as Error));
   }
 
   async listSuperAdmins(

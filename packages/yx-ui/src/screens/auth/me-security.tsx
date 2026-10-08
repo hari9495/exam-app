@@ -4,7 +4,7 @@ import { Button } from '../../components/button';
 import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Heading, Text } from '../../components/foundations';
-import { TextField } from '../../components/inputs';
+import { PasswordField, TextField } from '../../components/inputs';
 import { ConfirmDialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { MethodCards } from '../../components/choice';
@@ -37,6 +37,10 @@ export interface MeSecurityScreenProps {
   onSendMobileCode: (mobileNumber: string) => Promise<string>;
   onVerifyMobile: (code: string) => Promise<void>;
   onRemoveMobile: () => Promise<void>;
+  /** Changes the password; other devices are signed out, this one stays. Omit to hide the card (no password to change). */
+  onChangePassword?: (currentPassword: string, newPassword: string) => Promise<void>;
+  /** The company's minimum length (YukthiX floor 12). */
+  passwordMinLength?: number;
   onSignOutSession: (session: SessionRow) => Promise<void>;
   onSignOutOthers: () => Promise<void>;
   /** Fixed "today" for stories and tests. */
@@ -59,6 +63,7 @@ export function MeSecurityScreen(props: MeSecurityScreenProps) {
       {state === 'ready' && mfa && (
         <>
           <TwoStepCard {...props} mfa={mfa} />
+          {props.onChangePassword && <PasswordCard onChangePassword={props.onChangePassword} minLength={props.passwordMinLength ?? 12} />}
           <MobileCard {...props} mfa={mfa} />
           <SessionsCard sessions={sessions ?? []} onSignOutSession={props.onSignOutSession} onSignOutOthers={props.onSignOutOthers} />
           <Card title="Sign-in history" actions={
@@ -194,6 +199,64 @@ function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFa
           <TextField value={name} onChange={setName} maxLength={64} />
         </FormField>
       </ConfirmDialog>
+    </Card>
+  );
+}
+
+function PasswordCard({ onChangePassword, minLength }: { onChangePassword: (current: string, next: string) => Promise<void>; minLength: number }) {
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [again, setAgain] = useState('');
+  const [done, setDone] = useState(false);
+  const { busy, error, setError, run } = useStep();
+  const reset = () => {
+    setOpen(false);
+    setCurrent('');
+    setNext('');
+    setAgain('');
+    setError(null);
+  };
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (next.length < minLength) return setError(`Use at least ${minLength} characters.`);
+    if (next !== again) return setError('The two new passwords are not the same.');
+    if (next === current) return setError('Choose a password you have not used here before.');
+    void run(async () => {
+      await onChangePassword(current, next);
+      reset();
+      setDone(true);
+    });
+  };
+  return (
+    <Card title="Password">
+      {!open ? (
+        <div className="yx-auth__item">
+          <div className="yx-auth__item-main">
+            <Text tone="secondary" size="sm">
+              {done ? 'Password changed. Other devices were signed out, and we emailed you about it.' : 'Change it any time. Other devices are signed out; you stay signed in here.'}
+            </Text>
+          </div>
+          <Button size="sm" onClick={() => { setDone(false); setOpen(true); }}>Change password</Button>
+        </div>
+      ) : (
+        <form className="yx-auth__form" onSubmit={submit} noValidate>
+          <FormField label="Current password" required>
+            <PasswordField value={current} onChange={setCurrent} autoComplete="current-password" maxLength={1024} />
+          </FormField>
+          <FormField label="New password" required helper={`At least ${minLength} characters. Passwords found in known breaches are refused.`}>
+            <PasswordField value={next} onChange={setNext} autoComplete="new-password" maxLength={128} />
+          </FormField>
+          <FormField label="New password again" required>
+            <PasswordField value={again} onChange={setAgain} autoComplete="new-password" maxLength={128} />
+          </FormField>
+          {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+          <div className="yx-auth__row">
+            <Button type="submit" variant="primary" loading={busy} disabled={!current || !next || !again}>Change password</Button>
+            <Button onClick={reset}>Cancel</Button>
+          </div>
+        </form>
+      )}
     </Card>
   );
 }

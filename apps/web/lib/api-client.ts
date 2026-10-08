@@ -39,6 +39,8 @@ const NO_REFRESH_PATHS = new Set([
   '/auth/mfa/verify',
   '/auth/mfa/passkey-options',
   '/auth/mfa/step-up',
+  // A wrong current password, not an expired session.
+  '/users/me/change-password',
 ]);
 
 // An error body can be read once; remember it for throwForResponse.

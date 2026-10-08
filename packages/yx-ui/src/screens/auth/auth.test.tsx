@@ -450,6 +450,23 @@ describe('MeSecurityScreen', () => {
     clicked.mockRestore();
   });
 
+  it('changes the password after checking the two new ones match', async () => {
+    const onChangePassword = vi.fn().mockResolvedValue(undefined);
+    render(<Me onChangePassword={onChangePassword} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    await userEvent.type(screen.getByLabelText(/^Current password/), 'Passw0rd!2026');
+    await userEvent.type(screen.getAllByLabelText(/^New password/)[0], 'Kaveri@Test2026');
+    await userEvent.type(screen.getAllByLabelText(/^New password/)[1], 'Kaveri@Test2027');
+    await userEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(await screen.findByText('The two new passwords are not the same.')).toBeInTheDocument();
+    expect(onChangePassword).not.toHaveBeenCalled();
+    await userEvent.clear(screen.getAllByLabelText(/^New password/)[1]);
+    await userEvent.type(screen.getAllByLabelText(/^New password/)[1], 'Kaveri@Test2026');
+    await userEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(onChangePassword).toHaveBeenCalledWith('Passw0rd!2026', 'Kaveri@Test2026');
+    expect(await screen.findByText(/Password changed/)).toBeInTheDocument();
+  });
+
   it('verifies a mobile number by text', async () => {
     const onSendMobileCode = vi.fn().mockResolvedValue('+919845012345');
     const onVerifyMobile = vi.fn().mockResolvedValue(undefined);

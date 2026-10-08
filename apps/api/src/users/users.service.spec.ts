@@ -642,9 +642,10 @@ describe('UsersService', () => {
     tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
       fn({
         user: {
-          findUniqueOrThrow: async () => ({ id: 'user-1', passwordHash: storedHash }),
+          findUniqueOrThrow: async () => ({ id: 'user-1', email: 'u1@b.com', organizationId: 'org-1', timeZone: null, passwordHash: storedHash }),
           update: userUpdate,
         },
+        organization: { findUnique: async () => ({ name: 'Kaveri Foods' }) },
         refreshToken: { updateMany: refreshTokenUpdateMany },
         session: { updateMany: sessionUpdateMany },
       }),
@@ -674,6 +675,9 @@ describe('UsersService', () => {
       { organizationId: 'org-1', isSuperAdmin: false },
       { actorUserId: 'user-1', action: 'password.changed', entityType: 'user', entityId: 'user-1' },
     );
+    // The owner is told (YX-IAM-10).
+    await new Promise((r) => setTimeout(r, 50));
+    expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'u1@b.com', subject: 'Your YukthiX password was changed' }));
   });
 
   it('listSuperAdmins returns a paginated page of only super_admin users via the bypass context', async () => {

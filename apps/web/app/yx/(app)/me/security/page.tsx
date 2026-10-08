@@ -56,6 +56,7 @@ export default function YxMySecurityPage() {
       onRemoveMobile={() => after(apiFetch('/auth/otp/mobile', { method: 'DELETE' }, token))}
       onSignOutSession={(s) => after(apiFetch(`/auth/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' }, token))}
       onSignOutOthers={() => after(post('/auth/sessions/revoke-others', token))}
+      onChangePassword={(currentPassword, newPassword) => after(post('/users/me/change-password', token, { currentPassword, newPassword }))}
     />
   );
 }
