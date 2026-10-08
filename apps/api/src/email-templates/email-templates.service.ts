@@ -5,6 +5,7 @@ import {
   EMAIL_TYPES,
   EmailType,
   EmailTypeDef,
+  PRIMARY,
   RenderedEmail,
   VARIABLE_LABELS,
   accountLockedEmail,
@@ -139,6 +140,7 @@ export class EmailTemplatesService {
       companyName: org?.name ?? '',
       /** The company logo (Settings › Branding), whether or not emails show it. */
       logoUrl,
+      defaultAccent: PRIMARY,
       branding: branding ? { showLogo: branding.showLogo, accentColor: branding.accentColor, senderName: branding.senderName, replyTo: branding.replyTo } : NO_BRANDING,
       variables: VARIABLE_LABELS,
       emails: (Object.entries(EMAIL_TYPES) as [EmailType, EmailTypeDef][]).map(([type, d]) => {

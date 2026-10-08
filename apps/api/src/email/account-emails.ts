@@ -76,7 +76,8 @@ const style = (accent: string) => `
     .yx-card .yx-btn table td, .yx-card .yx-btn a { background-color: ${accent} !important; color: #FFFFFF !important; }
   }`;
 
-const PRIMARY = '#3B5FE3';
+/** YukthiX blue: the button colour when a company picks none. */
+export const PRIMARY = '#3B5FE3';
 const HEX = /^#[0-9A-F]{6}$/i;
 const compiled = new Map<string, Promise<string>>();
 
