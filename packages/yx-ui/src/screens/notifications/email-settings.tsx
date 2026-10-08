@@ -218,8 +218,9 @@ export function EmailEditor({ row, overview, onBack, onSave, onReset, onPreview,
           <FormSection title="Add a placeholder" description="Goes where your cursor is. Each is filled in for every person.">
             <div className="yx-ntf__chips">
               {row.variables.map((v) => (
-                <Button key={v} size="sm" onClick={() => insert(v)} aria-label={`Add ${overview.variables[v] ?? v}`}>
-                  {`{{${v}}}`} <Text as="span" tone="secondary" size="sm">{overview.variables[v] ?? v}</Text>
+                <Button key={v} size="sm" className="yx-ntf__placeholder" onClick={() => insert(v)} aria-label={`Add ${overview.variables[v] ?? v}`}>
+                  <span>{overview.variables[v] ?? v}</span>
+                  <Text as="span" tone="secondary" size="sm" className="yx-mono">{`{{${v}}}`}</Text>
                 </Button>
               ))}
             </div>

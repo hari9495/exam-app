@@ -11,6 +11,9 @@
 .yx-ntf__meta dt { color: var(--yx-color-text-secondary); }
 .yx-ntf__meta dd { margin: 0; overflow-wrap: anywhere; }
 .yx-ntf__chips { display: flex; flex-wrap: wrap; gap: var(--yx-space-2); }
+/* One placeholder per row: the friendly name on the left, the code on the right; both wrap inside the button. */
+.yx-ntf__chips .yx-ntf__placeholder { inline-size: 100%; block-size: auto; min-block-size: var(--yx-control-md); padding-block: var(--yx-space-2); white-space: normal; text-align: start; }
+.yx-ntf__placeholder .yx-button__label { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--yx-space-1) var(--yx-space-3); inline-size: 100%; overflow-wrap: anywhere; }
 .yx-ntf__colour { display: flex; align-items: center; gap: var(--yx-space-2); }
 .yx-ntf__swatch { inline-size: var(--yx-control-md); block-size: var(--yx-control-md); padding: 2px; border: var(--yx-border-width) solid var(--yx-color-border-strong); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-surface); cursor: pointer; }
 .yx-ntf__swatch:hover { border-color: var(--yx-color-text-secondary); }
