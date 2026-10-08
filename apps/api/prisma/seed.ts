@@ -4,6 +4,7 @@ import { seedOrgStructure } from './seed-org-structure';
 import { seedEmployees } from './seed-employees';
 import { seedAccess } from './seed-access';
 import { CONSULTANT, seedSignInDemo } from './seed-sign-in';
+import { DESK_PERMISSIONS, seedServiceDesk } from './seed-service-desk';
 
 const prisma = new PrismaClient();
 
@@ -64,6 +65,8 @@ export const PERMISSIONS = [
   { key: 'org.support_access.approve', description: 'Approve, decline and end YukthiX support sessions' },
   // P04 Q5: a company's branding and wording of the account emails.
   { key: 'notification.template.manage', description: 'Brand and re-word the emails YukthiX sends your people' },
+  // M14 §6.2 Service Desk phase 3b-1 (also in the service_desk_core migration).
+  ...DESK_PERMISSIONS,
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -118,6 +121,11 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'org.support_access.approve',
     // P04 Q5: the System Admin brands and re-words the account emails.
     'notification.template.manage',
+    // M14 §6.1: the System Admin sets up desks; seeing tickets always needs a seat on the desk.
+    'desk.desk.create',
+    'desk.settings.manage',
+    'desk.member.manage',
+    'desk.sla.manage',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -284,10 +292,12 @@ async function main() {
           });
         }
       }
+      // M14 Service Desk phase 3b-1: an IT desk and the free HR desk with a few tickets (seed-service-desk.ts).
+      await seedServiceDesk(tx, demoOrg.id, { admin: await userId('admin@demo-org.test'), hr: await userId('hr@demo-org.test'), panel: await userId('panel@demo-org.test'), passwordHash: panelHash });
     }
   }, { timeout: 60000 });
 
-  console.log(`Seed complete: super@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
+  console.log(`Seed complete: super@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); Service Desk: it-agent@ / it-lead@ / it-collab@demo-org.test / Passw0rd!2026; admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
 }
 
 // Only run when invoked as a script (prisma db seed / ts-node). Guarded so importing this module for
