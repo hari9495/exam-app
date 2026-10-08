@@ -29,7 +29,7 @@ import { escapeHtml } from '../notifications/notification-email-render';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ClientMeta, LoginMethod, SessionUser, SessionsService } from './sessions.service';
-import { LOGIN_PROTECTION_REDIS, LockoutSettings, LoginAttempt, LoginBlock, LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
+import { ANY_COMPANY, LOGIN_PROTECTION_REDIS, LockoutSettings, LoginAttempt, LoginBlock, LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
 import { PasswordPolicyService } from './password-policy.service';
 import { MfaService, MfaUser, PENDING_LOGIN_TTL_SECONDS, PendingLogin, isStaff } from './mfa.service';
 import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
@@ -97,8 +97,8 @@ export const isPending = (outcome: LoginOutcome): outcome is MfaChallenge | Comp
 // with no company named, the credential is checked against each active account with that email /
 // mobile number -- at most this many, so the work per attempt stays bounded.
 export const MAX_COMPANY_ACCOUNTS = 10;
-// Lockout scope for an email / mobile number across every company (on top of each account's own).
-export const ANY_COMPANY = '*';
+// Lockout scope for an email / mobile number across every company (W-016: see LoginProtectionService).
+export { ANY_COMPANY };
 export const COMPANY_PICK_TTL_SECONDS = 2 * 60;
 // Lockout scope of the YukthiX platform staff sign-in (no company slug is ever empty).
 export const PLATFORM_SCOPE = '';
@@ -285,12 +285,17 @@ export class AuthService {
     // The company's lockout settings apply to every identifier under its slug -- real account or not,
     // organisation active or not -- so the lock behaviour reveals nothing about either.
     const listedBreakGlass = Boolean(user && policy.breakGlassUserIds.includes(user.id));
+    // The identifier lock (W-016) holds this path as it holds email-first; a break-glass account is
+    // never held by it (YX-IAM-04), as it is never held by its company's long lock.
+    const lockedOut = async (block: LoginBlock): Promise<never> => {
+      await this.sessions.recordLoginEvent({ ...attempt, organizationId: org?.id ?? null, userId: user?.id ?? null, result: 'locked', reason: `${block.scope}_locked` });
+      throw new TooManyLoginAttemptsException(block.retryAfterSeconds);
+    };
+    const block = listedBreakGlass ? null : await this.companyPathBlock(orgSlug, identifier, meta);
+    if (block) return lockedOut(block);
     const lockout = await this.lockoutFor(org?.id ?? null);
     const reserved = await this.loginProtection.reserve(orgSlug, identifier, meta.ip, { deviceId: meta.deviceId, lockExempt: listedBreakGlass, lockout });
-    if (reserved.block) {
-      await this.sessions.recordLoginEvent({ ...attempt, organizationId: org?.id ?? null, userId: user?.id ?? null, result: 'locked', reason: `${reserved.block.scope}_locked` });
-      throw new TooManyLoginAttemptsException(reserved.block.retryAfterSeconds);
-    }
+    if (reserved.block) return lockedOut(reserved.block);
 
     const passwordOk = await argon2.verify(user?.passwordHash ?? (await getDummyPasswordHash()), password);
     if (!user || !passwordOk) {
@@ -326,9 +331,10 @@ export class AuthService {
   // Email-first (no company named). The attempt is counted atomically up front for the email /
   // number across companies; every active account with it (at most MAX_COMPANY_ACCOUNTS) is tried in
   // parallel, a dummy hash when there is none, so 0, 1 or many accounts cost the same and answer the
-  // same. An account its company has locked is not tried at all. Wrong everywhere: each account's
-  // company counts the failure under its own lockout settings. Right for one: signed in as with its
-  // orgSlug. Right for several: only now are those companies listed, for the person to pick one.
+  // same. An account its company has locked (on its own page) is not tried at all. Wrong everywhere:
+  // the email's identifier lock counts it (W-016), and a locked email answers 429 here as on a
+  // company page. Right for one: signed in as with its orgSlug. Right for several: only now are
+  // those companies listed, for the person to pick one.
   private async loginAnyCompany(parsed: ParsedIdentifier, password: string, meta: ClientMeta): Promise<LoginOutcome> {
     const identifier = parsed.value;
     const attempt = { identifier, method: 'password' as const, meta };
@@ -353,10 +359,10 @@ export class AuthService {
     }
 
     if (!winners.length) {
+      // Counted for the email only (reserved above; W-016), never under the accounts' companies, so
+      // the lock is the same whether or not accounts have it. When it locks, their holders are told.
+      const { locked } = await this.loginProtection.registerFailure(ANY_COMPANY, identifier, meta.ip, reserved);
       for (const { c, reason } of results) {
-        // A wrong password -- or a right one where password sign-in is off -- counts under the
-        // company's own lockout. A network refusal does not (no guess was wrong).
-        const locked = reason === 'ip_not_allowed' ? false : await this.countAccountFailure(c, identifier, meta);
         await this.sessions.recordLoginEvent({
           ...attempt,
           organizationId: c.account.organizationId,
@@ -364,8 +370,8 @@ export class AuthService {
           result: 'failed',
           reason: locked ? `${reason}+lockout_started` : reason!,
         });
+        if (locked) this.alertLocked(c.account, meta, c.listedBreakGlass);
       }
-      await this.loginProtection.registerFailure(ANY_COMPANY, identifier, meta.ip, reserved);
       if (!candidates.length) await this.sessions.recordLoginEvent({ ...attempt, organizationId: null, result: 'failed', reason: 'unknown_user' });
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
@@ -435,14 +441,20 @@ export class AuthService {
     return policy.ssoOnly || !policy.otpSignInChannels.includes(method.slice('otp_'.length) as OtpChannel) ? 'otp_disabled' : null;
   }
 
-  // One more failure on an account under its company's lockout; true when it started a lock (the
-  // holder -- or, for break-glass, every admin -- is told).
-  private async countAccountFailure(c: Candidate, identifier: string, meta: ClientMeta): Promise<boolean> {
-    const lockout = { maxFailedAttempts: c.policy.maxFailedAttempts, lockMinutes: c.policy.lockMinutes };
-    const counted = await this.loginProtection.reserve(c.slug, identifier, meta.ip, { deviceId: meta.deviceId, lockExempt: c.listedBreakGlass, lockout });
-    const locked = !counted.block && counted.failures > 0 && counted.failures % counted.lockEvery === 0;
-    if (locked) this.alertLocked(c.account, meta, c.listedBreakGlass, counted.lockedForSeconds);
-    return locked;
+  // A sign-in that names the company is held by the identifier lock (W-016) and by the company's own
+  // counter -- both the same for every typed identifier -- and is told the longer wait. Read-only.
+  private async companyPathBlock(orgSlug: string, identifier: string, meta: ClientMeta): Promise<LoginBlock | null> {
+    const [mine, company] = await Promise.all([
+      this.loginProtection.check(ANY_COMPANY, identifier, meta.ip, meta.deviceId),
+      this.loginProtection.check(orgSlug, identifier, meta.ip, meta.deviceId),
+    ]);
+    return !mine || (company && company.retryAfterSeconds > mine.retryAfterSeconds) ? company : mine;
+  }
+
+  // A failed company sign-in that named the company: one more failure for the typed identifier's own
+  // lock too (W-016), under YukthiX's lockout, whether or not an account has it.
+  private async countIdentifierFailure(identifier: string, meta: ClientMeta): Promise<void> {
+    await this.loginProtection.reserve(ANY_COMPANY, identifier, meta.ip, { deviceId: meta.deviceId });
   }
 
   // The first factor is proven for this one account: on to its second factor, or signed in.
@@ -556,6 +568,9 @@ export class AuthService {
     const viaIdp = login.method === 'saml' || login.method === 'oidc';
     if (!viaIdp) {
       await this.loginProtection.registerSuccess(login.orgSlug, login.identifier, meta.ip, { deviceId: meta.deviceId, trustDevice: true });
+      // The identifier lock (W-016) too: cleared, and this device keeps its own counter for it, so a
+      // stranger typing this email elsewhere cannot lock its owner out here.
+      if (user.organizationId) await this.loginProtection.registerSuccess(ANY_COMPANY, login.identifier, meta.ip, { deviceId: meta.deviceId, trustDevice: true });
     }
     // A password found in a breach on re-check (YX-IAM-08) is changed before any session opens:
     // the client is sent to the reset page with a fresh single-use token. Only after every factor.
@@ -784,7 +799,7 @@ export class AuthService {
       }
     }
 
-    const block = await this.loginProtection.check(orgSlug, parsed.value, meta.ip, meta.deviceId);
+    const block = await this.companyPathBlock(orgSlug, parsed.value, meta);
     if (block) {
       await this.sessions.recordLoginEvent({ organizationId, identifier: parsed.value, result: 'locked', method, reason: `${block.scope}_locked`, meta });
       throw new TooManyLoginAttemptsException(block.retryAfterSeconds);
@@ -839,18 +854,23 @@ export class AuthService {
 
     // Counted before the code is checked (atomic; see LoginProtectionService), under the lockout
     // settings of the organisation the slug names -- the same counter and settings as passwords.
+    // The identifier lock (W-016) first, as on every company path.
     const slugOrg = await this.prisma.organization.findUnique({ where: { slug: orgSlug }, select: { id: true } });
+    const lockedOut = async (block: LoginBlock): Promise<never> => {
+      await this.sessions.recordLoginEvent({ ...event, userId: record?.userId || null, result: 'locked', reason: `${block.scope}_locked` });
+      throw new TooManyLoginAttemptsException(block.retryAfterSeconds);
+    };
+    const block = await this.companyPathBlock(orgSlug, parsed.value, meta);
+    if (block) return lockedOut(block);
     const reserved = await this.loginProtection.reserve(orgSlug, parsed.value, meta.ip, { deviceId: meta.deviceId, lockout: await this.lockoutFor(slugOrg?.id ?? null) });
-    if (reserved.block) {
-      await this.sessions.recordLoginEvent({ ...event, userId: record?.userId || null, result: 'locked', reason: `${reserved.block.scope}_locked` });
-      throw new TooManyLoginAttemptsException(reserved.block.retryAfterSeconds);
-    }
+    if (reserved.block) return lockedOut(reserved.block);
 
     const mine = record && sameHash(record.tokenHash, sha256(dto.otpToken)) && sameHash(record.deviceIdHash, sha256(meta.deviceId));
     const proven = mine ? await this.otp.check(key, dto.code) : null;
     const user = proven?.userId ? await this.mfa.loadUser(proven.userId) : null;
     if (!proven || !user) {
       const { locked } = await this.loginProtection.registerFailure(orgSlug, parsed.value, meta.ip, reserved);
+      await this.countIdentifierFailure(parsed.value, meta);
       await this.sessions.recordLoginEvent({ ...event, userId: record?.userId || null, result: 'failed', reason: locked ? 'otp_invalid+lockout_started' : 'otp_invalid' });
       const holder = locked && record?.userId ? await this.mfa.loadUser(record.userId) : null;
       if (holder) this.sessions.notifyLocked(holder, meta, reserved.lockedForSeconds);
@@ -942,11 +962,11 @@ export class AuthService {
     const candidates = await this.toCandidates(accounts, parsed.value, meta);
 
     if (!proven) {
-      // Wrong everywhere: the address, and each account the code was for under its company's lockout.
-      await this.loginProtection.registerFailure(ANY_COMPANY, parsed.value, meta.ip, reserved);
+      // Wrong: counted for the address only (W-016), whoever the code was for; their holders are told of a lock.
+      const { locked } = await this.loginProtection.registerFailure(ANY_COMPANY, parsed.value, meta.ip, reserved);
       for (const c of candidates) {
-        const locked = await this.countAccountFailure(c, parsed.value, meta);
         await this.sessions.recordLoginEvent({ ...event, organizationId: c.account.organizationId, userId: c.account.id, result: 'failed', reason: locked ? 'otp_invalid+lockout_started' : 'otp_invalid' });
+        if (locked) this.alertLocked(c.account, meta, c.listedBreakGlass);
       }
       if (!candidates.length) await this.sessions.recordLoginEvent({ ...event, organizationId: null, result: 'failed', reason: 'otp_invalid' });
       throw new UnauthorizedException(OTP_INVALID_MESSAGE);
@@ -1127,6 +1147,8 @@ export class AuthService {
     reserved: LoginAttempt,
   ): Promise<never> {
     const { locked } = await this.loginProtection.registerFailure(orgSlug, attempt.identifier, attempt.meta.ip, reserved);
+    // W-016: a company sign-in's failure also counts toward the identifier lock (never staff's).
+    if (orgSlug !== PLATFORM_SCOPE) await this.countIdentifierFailure(attempt.identifier, attempt.meta);
     await this.sessions.recordLoginEvent({
       ...attempt,
       organizationId,
@@ -1289,6 +1311,7 @@ export class AuthService {
     await this.mfa.cancelPendingLogins(resetToken.userId);
     if (owner) {
       await this.loginProtection.registerSuccess(owner.organization?.slug ?? '', owner.email.toLowerCase(), null);
+      if (owner.organizationId) await this.loginProtection.registerSuccess(ANY_COMPANY, owner.email.toLowerCase(), null);
       await this.loginProtection.registerSuccess('mfa', resetToken.userId, null);
     }
 

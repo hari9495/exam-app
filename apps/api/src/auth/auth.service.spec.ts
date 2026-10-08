@@ -961,11 +961,12 @@ describe('AuthService', () => {
       setPolicy({ maxFailedAttempts: 3, lockMinutes: 60 });
       tenantPrisma.forTenant.mockResolvedValueOnce(null); // unknown account: same settings as a real one
       await expect(service.login(DTO, META)).rejects.toBeInstanceOf(UnauthorizedException);
-      expect(loginProtection.reserve).toHaveBeenLastCalledWith('demo-org', 'admin@demo-org.test', META.ip, expect.objectContaining({ lockout: { maxFailedAttempts: 3, lockMinutes: 60 } }));
+      expect(loginProtection.reserve).toHaveBeenCalledWith('demo-org', 'admin@demo-org.test', META.ip, expect.objectContaining({ lockout: { maxFailedAttempts: 3, lockMinutes: 60 } }));
 
+      loginProtection.reserve.mockClear();
       prisma.organization.findUnique.mockResolvedValue(null);
       await expect(service.login(DTO, META)).rejects.toBeInstanceOf(UnauthorizedException);
-      expect(loginProtection.reserve).toHaveBeenLastCalledWith('demo-org', 'admin@demo-org.test', META.ip, expect.objectContaining({ lockout: DEFAULT_LOCKOUT }));
+      expect(loginProtection.reserve).toHaveBeenCalledWith('demo-org', 'admin@demo-org.test', META.ip, expect.objectContaining({ lockout: DEFAULT_LOCKOUT }));
     });
 
     it('a correct password does not get through a lock either', async () => {
@@ -1742,14 +1743,76 @@ describe('AuthService', () => {
       expect(loginProtection.registerSuccess).toHaveBeenCalledWith('ashok textiles-slug', EMAIL, META.ip);
     });
 
-    it('a wrong password never lists companies: 401, a failure on each account under its own company\'s lockout', async () => {
+    it('a wrong password never lists companies: 401, counted for the email only, never under the accounts\' companies (W-016)', async () => {
       setPolicy({ maxFailedAttempts: 3, lockMinutes: 30 });
       await expect(login('not-the-password')).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
-      expect(loginProtection.reserve).toHaveBeenCalledWith('kaveri foods-slug', EMAIL, META.ip, { deviceId: META.deviceId, lockExempt: false, lockout: { maxFailedAttempts: 3, lockMinutes: 30 } });
-      expect(loginProtection.reserve).toHaveBeenCalledWith('ashok textiles-slug', EMAIL, META.ip, expect.objectContaining({ lockout: { maxFailedAttempts: 3, lockMinutes: 30 } }));
+      expect(loginProtection.reserve).toHaveBeenCalledTimes(1);
+      expect(loginProtection.reserve).toHaveBeenCalledWith('*', EMAIL, META.ip, { deviceId: META.deviceId });
       expect(loginProtection.registerFailure).toHaveBeenCalledWith('*', EMAIL, META.ip, expect.anything());
       expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 'org-kaveri', userId: 'u-kaveri', result: 'failed', reason: 'bad_password' }));
       expect(store.size).toBe(0);
+    });
+
+    describe('the identifier lock (W-016): the same answer for every email, on every path', () => {
+      const LOCK = { scope: 'account' as const, retryAfterSeconds: 840 };
+      const answer = (p: Promise<unknown>) => p.then(() => 'signed in', (e: { getStatus?: () => number; getResponse?: () => unknown }) => [e.getStatus?.(), e.getResponse?.()]);
+      const locked = [429, { statusCode: 429, message: 'Too many sign-in attempts. Please wait and try again.', retryAfterSeconds: 840 }];
+
+      it('a locked email answers 429 with retryAfterSeconds, right password or not, account or not, with no company named', async () => {
+        loginProtection.reserve.mockResolvedValue({ block: LOCK, failures: 0, lockExempt: false });
+        const known = await answer(login('kaveri-password'));
+        accounts = [];
+        const unknown = await answer(login('kaveri-password'));
+        expect(known).toEqual(locked);
+        expect(unknown).toEqual(known);
+        expect(verify).not.toHaveBeenCalled(); // nothing is checked while locked
+      });
+
+      it('the company page refuses a locked email the same way, before its own counter, account or not', async () => {
+        prisma.organization.findUnique.mockResolvedValue({ id: 'org-kaveri', status: 'active' });
+        loginProtection.check.mockImplementation(async (scope: string) => (scope === '*' ? LOCK : null));
+        tenantPrisma.forTenant.mockResolvedValueOnce(accounts[0]);
+        const known = await answer(service.login({ organizationSlug: 'kaveri-foods', email: EMAIL, password: 'kaveri-password' }, META));
+        tenantPrisma.forTenant.mockResolvedValueOnce(null);
+        const unknown = await answer(service.login({ organizationSlug: 'kaveri-foods', email: EMAIL, password: 'kaveri-password' }, META));
+        expect(known).toEqual(locked);
+        expect(unknown).toEqual(known);
+        expect(loginProtection.check).toHaveBeenCalledWith('*', EMAIL, META.ip, META.deviceId);
+        expect(loginProtection.reserve).not.toHaveBeenCalled();
+        expect(verify).not.toHaveBeenCalled();
+      });
+
+      it('a wrong password on a company page counts toward the email\'s lock too, account or not', async () => {
+        prisma.organization.findUnique.mockResolvedValue({ id: 'org-kaveri', status: 'active' });
+        for (const user of [accounts[0], null]) {
+          loginProtection.reserve.mockClear();
+          tenantPrisma.forTenant.mockResolvedValueOnce(user);
+          await expect(service.login({ organizationSlug: 'kaveri-foods', email: EMAIL, password: 'wrong' }, META)).rejects.toThrow(new UnauthorizedException('Invalid credentials'));
+          expect(loginProtection.reserve).toHaveBeenCalledWith('kaveri-foods', EMAIL, META.ip, expect.anything());
+          expect(loginProtection.reserve).toHaveBeenCalledWith('*', EMAIL, META.ip, { deviceId: META.deviceId });
+        }
+      });
+
+      it('when the email locks, each account holder is told; a full sign-in clears the lock and trusts the device', async () => {
+        loginProtection.registerFailure.mockResolvedValue({ failures: 10, locked: true });
+        await expect(login('not-the-password')).rejects.toThrow(UnauthorizedException);
+        expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'u-kaveri' }), META, undefined);
+        expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'u-ashok' }), META, undefined);
+        expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u-kaveri', reason: 'bad_password+lockout_started' }));
+
+        await login('kaveri-password');
+        expect(loginProtection.registerSuccess).toHaveBeenCalledWith('*', EMAIL, META.ip, { deviceId: META.deviceId, trustDevice: true });
+      });
+
+      it('a break-glass account is never held by the email lock on its company page (YX-IAM-04)', async () => {
+        prisma.organization.findUnique.mockResolvedValue({ id: 'org-kaveri', status: 'active' });
+        setPolicy({ breakGlassUserIds: ['u-kaveri'] });
+        loginProtection.check.mockResolvedValue(LOCK);
+        tenantPrisma.forTenant.mockResolvedValueOnce(accounts[0]);
+        await service.login({ organizationSlug: 'kaveri-foods', email: EMAIL, password: 'kaveri-password' }, META).catch(() => undefined);
+        expect(loginProtection.check).not.toHaveBeenCalledWith('*', expect.anything(), expect.anything(), expect.anything());
+        expect(loginProtection.reserve).toHaveBeenCalledWith('kaveri-foods', EMAIL, META.ip, expect.objectContaining({ lockExempt: true }));
+      });
     });
 
     it('the same password in both companies: only then the companies are listed (name and logo only), behind a single-use token', async () => {
@@ -1865,13 +1928,14 @@ describe('AuthService', () => {
       expect(sessions.create).toHaveBeenCalledWith(expect.objectContaining({ id: 'u-kaveri' }), 'otp_email', META, undefined, null);
     });
 
-    it('a wrong code lists nothing and counts against each account the code was for', async () => {
+    it('a wrong code lists nothing and is counted for the address only (W-016)', async () => {
       policyLoader.mockImplementation(async () => ({ ...DEFAULT_SECURITY_POLICY, otpSignInChannels: ['email'] }));
       otp.peek.mockResolvedValue({ userIds: 'u-kaveri,u-ashok', channel: 'email', tokenHash: createHash('sha256').update('T'.repeat(43)).digest('hex'), deviceIdHash: createHash('sha256').update(META.deviceId).digest('hex'), mac: 'x' });
       otp.check.mockResolvedValue(null);
       await expect(service.completeOtpLogin({ identifier: EMAIL, otpToken: 'T'.repeat(43), code: '000000' }, META)).rejects.toThrow(UnauthorizedException);
-      expect(loginProtection.reserve).toHaveBeenCalledWith('kaveri foods-slug', EMAIL, META.ip, expect.anything());
-      expect(loginProtection.reserve).toHaveBeenCalledWith('ashok textiles-slug', EMAIL, META.ip, expect.anything());
+      expect(loginProtection.reserve).toHaveBeenCalledTimes(1);
+      expect(loginProtection.reserve).toHaveBeenCalledWith('*', EMAIL, META.ip, { deviceId: META.deviceId });
+      expect(loginProtection.registerFailure).toHaveBeenCalledWith('*', EMAIL, META.ip, expect.anything());
       expect(store.size).toBe(0);
     });
 

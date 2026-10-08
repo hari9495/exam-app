@@ -4833,7 +4833,7 @@
   "id": "US-G-195",
   "type": "Story",
   "parent": "FT-G-015",
-  "title": "Company compares its metrics with peers",
+  "title": "Company compares its metrics with peers (dropped by founder 8 Oct 2026, M14 D7)",
   "story": "As a company admin, I want anonymous peer benchmarks, so that we know where we stand.",
   "acceptance": [
    "Given opt-in, then MTTR, CSAT and FCR are compared with peers by industry and size.",
@@ -4844,7 +4844,7 @@
   "docs": [
    "M14 gap check"
   ],
-  "state": "New",
+  "state": "Removed",
   "phase": "Step 3b-4",
   "order": 590.729,
   "points": 3,
@@ -5235,5 +5235,1088 @@
    "Given any agent, then no lock, wipe, script or remote command can be sent from YukthiX (M14 Q4)",
    "Given the link is used, then the click is audited on the asset with the agent and time"
   ]
+ },
+ {
+  "id": "US-G-210",
+  "type": "Story",
+  "parent": "FT-B-026",
+  "title": "Admin creates a desk as an employee help desk or a customer support desk",
+  "story": "As a company admin, I want to pick \"Employee help desk\" or \"Customer support desk\" when I create a desk, so that it starts with the right fields, channels, views, reports and SLAs.",
+  "acceptance": [
+   "Given a new desk, when I choose its kind, then the matching starter set-up is copied in (fields, channels, views, reports, SLAs, rules, portal texts) and I can edit all of it after (M14 D8)",
+   "Given an employee help desk, then requesters are people from the company directory, the portal and in-app drawer are on, and internal categories (IT, HR, Admin) are offered",
+   "Given a customer support desk, then requesters are outside contacts and accounts, email, help centre, widget and chat are on, and CSAT, first-response and resolution SLAs are set",
+   "Given both kinds, then the same engine, tables and permissions are used; the kind only changes the starter set-up and default wording",
+   "Given billing, then agents on either kind cost ₹999 under the one plan (M14 Q1, Q8); the free HR desk rule (D4) is unchanged"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 D8",
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 539.301,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-211",
+  "type": "Story",
+  "parent": "FT-G-001",
+  "title": "Agent finds and merges duplicate contacts and accounts",
+  "story": "As an agent, I want duplicate contacts and accounts found and merged, so that one customer has one history.",
+  "acceptance": [
+   "Given contacts with the same email, phone or a close name in one account, then they are listed as likely duplicates",
+   "Given a merge, when I pick the record to keep and the field values, then tickets, notes, chats and memberships move to it and the other record is kept as an alias",
+   "Given a merge, then it is audited and can be undone within 30 days",
+   "Given an incoming email from an alias address, then it lands on the kept contact"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 539.73,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-212",
+  "type": "Story",
+  "parent": "FT-G-001",
+  "title": "Agent works on many contacts at once, keeps notes and follows a customer",
+  "story": "As an agent, I want bulk actions, notes and follow on contacts and accounts, so that I manage customers as easily as tickets.",
+  "acceptance": [
+   "Given selected contacts or accounts, when I change a field, add a tag, or move them to an account, then it applies to all and each change is audited",
+   "Given a contact or account, then I can add internal notes that requesters never see",
+   "Given I follow a contact or account, then I am told when they raise or update a ticket"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 539.731,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-213",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Agent pins notes, schedules replies, bookmarks, prints and downloads tickets",
+  "story": "As an agent, I want small workspace helpers, so that I keep important facts in view and send replies at the right time.",
+  "acceptance": [
+   "Given a note or message, when I pin it, then it shows at the top of the ticket for all agents",
+   "Given a reply, when I choose a send time, then it is sent then in the requester's time zone and can be cancelled before",
+   "Given a ticket, then I can bookmark it, print a clean view and download all its attachments as one zip that holds only files I may see",
+   "Given my settings, then I choose my own default after-reply action (stay, next ticket, back to list) and my personal panel layout"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509.459,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-214",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Desk admin sets the ticket number format",
+  "story": "As a desk admin, I want our own ticket number format, so that numbers match what customers already know.",
+  "acceptance": [
+   "Given a desk, then I set prefix, suffix and start number; numbers stay unique per company",
+   "Given a format change, then old numbers keep working in search and email threading"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509.46,
+  "points": 2,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-215",
+  "type": "Story",
+  "parent": "FT-B-021",
+  "title": "Public help centre is found by search engines and keeps old links working",
+  "story": "As a knowledge lead, I want our public help centre to rank in search engines, so that customers find answers before they write.",
+  "acceptance": [
+   "Given public articles, then a sitemap, page titles, meta descriptions and canonical links are produced; private articles never appear",
+   "Given an article whose address changes, then the old address sends a permanent redirect to the new one",
+   "Given an article, then the author can set its search title and description"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass",
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 523.376,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-216",
+  "type": "Story",
+  "parent": "FT-B-021",
+  "title": "Readers follow, print and quote articles by short numbers",
+  "story": "As a reader, I want to follow articles, print them and quote a short number, so that I keep up with changes and can point others to them.",
+  "acceptance": [
+   "Given a category or article, when I follow it, then I am told when it changes (P04 preferences apply)",
+   "Given an article, then I can download it as PDF or print a clean page",
+   "Given an article, then it has a short stable number that keeps working when the title changes"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 523.377,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-217",
+  "type": "Story",
+  "parent": "FT-B-021",
+  "title": "Knowledge base has a category tree under each space",
+  "story": "As a knowledge lead, I want categories, sections and sub-sections, so that large knowledge bases stay easy to browse.",
+  "acceptance": [
+   "Given a space, then I build a tree of categories, sections and sub-sections and reorder it by drag",
+   "Given audiences, then a reader sees only branches with articles they may read"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 523.378,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-218",
+  "type": "Story",
+  "parent": "FT-B-024",
+  "title": "Deleted contacts, articles and views can be restored from a recycle bin",
+  "story": "As a desk admin, I want deleted items kept for a while, so that mistakes can be undone.",
+  "acceptance": [
+   "Given a deleted contact, account, article, view, macro or rule, then it goes to the recycle bin and can be restored within the set window",
+   "Given the window ends, then the item is purged by the retention job and the purge is audited",
+   "Given tickets, then they are never hard-deleted by agents (YX-SD-19)"
+  ],
+  "rules": [
+   "YX-SD-19"
+  ],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 531.401,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-219",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Agent works the inbox from the keyboard, sees shared drafts and is not reopened by a thank-you",
+  "story": "As an agent, I want a fast keyboard-first inbox, so that I handle many conversations without the mouse.",
+  "acceptance": [
+   "Given the inbox, then a command bar and keyboard shortcuts let me assign, snooze, tag, apply a scenario and move to the next ticket",
+   "Given a teammate is drafting a reply on a ticket, then I see their draft is in progress and can take it over with their consent or a lead's",
+   "Given a solved ticket, when the customer only replies with thanks, then it is marked and not reopened; any other reply reopens it as usual"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509.461,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-220",
+  "type": "Story",
+  "parent": "FT-B-018",
+  "title": "Agent links many customer tickets to one tracker and tells them all when it is fixed",
+  "story": "As an agent, I want one tracker for a bug or outage that many customers report, so that everyone hears when it is fixed.",
+  "acceptance": [
+   "Given a tracker ticket, when I link customer tickets to it, then they show its state and an internal link to the engineering issue",
+   "Given the tracker is solved, then each linked customer gets one message (template, their language) and their ticket is solved unless they reply",
+   "Given a linked ticket, then its own SLA still runs until it is solved"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 509.462,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-221",
+  "type": "Story",
+  "parent": "FT-G-001",
+  "title": "Contacts join their company by email domain and one person is one contact on every channel",
+  "story": "As an agent, I want contacts placed in their company and linked across channels, so that I see one customer everywhere.",
+  "acceptance": [
+   "Given an account with email domains, when a new contact writes from that domain, then they join that account",
+   "Given the same person on email, phone, WhatsApp and chat, then the identities can be linked to one contact (by a verified match or by an agent) and all conversations show together",
+   "Given a link is wrong, then an agent can unlink it and it is audited"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 539.732,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-222",
+  "type": "Story",
+  "parent": "FT-B-021",
+  "title": "Author schedules when an article is published and when it expires",
+  "story": "As an author, I want to publish and retire articles at set times, so that content matches product releases.",
+  "acceptance": [
+   "Given an approved article, then I can set a publish time and an expiry or review date",
+   "Given the expiry date, then the article is hidden or flagged for review and the owner is told"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 523.379,
+  "points": 2,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-223",
+  "type": "Story",
+  "parent": "FT-B-023",
+  "title": "Lead sees one self-service funnel from help-centre visits to tickets",
+  "story": "As a support lead, I want to see how many customers solve things themselves, so that I invest in the right content.",
+  "acceptance": [
+   "Given a period, then the report shows help-centre and widget views, searches, article reads, bot answers, \"this solved it\" and tickets raised, as one funnel",
+   "Given a topic or article, then I see its self-service rate and the tickets raised after reading it",
+   "Given the counts, then no user ids are kept for anonymous visitors (YX-GRO-07)"
+  ],
+  "rules": [
+   "YX-GRO-07"
+  ],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-1",
+  "order": 527.376,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-224",
+  "type": "Story",
+  "parent": "FT-B-031",
+  "title": "Desk admin adds formula fields, coloured pick-lists and translated field labels",
+  "story": "As a desk admin, I want calculated fields, colours on pick-list values and labels in several languages, so that forms are clear for every team and customer.",
+  "acceptance": [
+   "Given a formula field, then its value is computed with the P19 expression language from other fields and is read-only",
+   "Given a pick-list value, then I give it a colour that shows in lists and boards with a text label (never colour alone)",
+   "Given field labels and values, then I add translations and readers see their own language with a fallback"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.401,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-225",
+  "type": "Story",
+  "parent": "FT-G-004",
+  "title": "Lead acts from a live supervisor console",
+  "story": "As a team lead, I want a live view of traffic, waiting work and agent load that I can act on, so that I fix problems as they happen.",
+  "acceptance": [
+   "Given the console, then it shows the last hour of traffic, unassigned and overdue work and each agent's load per channel, updated live",
+   "Given a waiting ticket or chat, when I drag it to an agent or team, then it is reassigned and audited",
+   "Given an agent, then I can change their status or capacity from the console"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass",
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.729,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-226",
+  "type": "Story",
+  "parent": "FT-B-030",
+  "title": "Agent books a meeting with a customer from the ticket",
+  "story": "As an agent, I want to book a call or video meeting from the ticket, so that hard problems are solved face to face.",
+  "acceptance": [
+   "Given a ticket, when I book a meeting, then the invite goes to the requester with a video link from the company's connected tool (Zoom, Teams, Google Meet)",
+   "Given the meeting, then it shows on the ticket timeline and my calendar"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 551.401,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-227",
+  "type": "Story",
+  "parent": "FT-G-002",
+  "title": "Admin sees help-centre and web-form analytics with consent",
+  "story": "As a desk admin, I want visit, search and form drop-off counts, so that I improve the help centre and forms.",
+  "acceptance": [
+   "Given the help centre and web forms, then our own privacy-friendly counts show views, searches, drop-off and goals without user ids",
+   "Given the company adds its own analytics tag, then it loads only after the visitor consents"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.58,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-228",
+  "type": "Story",
+  "parent": "FT-G-002",
+  "title": "Admin themes the help centre with custom CSS and page templates",
+  "story": "As a desk admin, I want our own CSS and page templates, so that the help centre looks like our website.",
+  "acceptance": [
+   "Given a brand, then I edit CSS and safe page templates with a preview and version history",
+   "Given templates, then custom JavaScript is not allowed on our domain and every template is sanitised (ASVS L2)",
+   "Given a bad template, then I can roll back to an earlier version"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass",
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.581,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-229",
+  "type": "Story",
+  "parent": "FT-G-002",
+  "title": "Customers sign in to the portal with SSO, a signed token or a second factor",
+  "story": "As a desk admin, I want customers to sign in the way they already do, so that they do not need one more password.",
+  "acceptance": [
+   "Given SAML, OpenID Connect or social sign-in set up per brand, then customers sign in with it",
+   "Given our own site, when it passes a signed token (JWT) for a signed-in user, then the portal and widget trust that identity",
+   "Given the setting, then portal users can be asked for a second factor",
+   "Given any sign-in, then it is audited and outside contacts stay limited to their own records (YX-SEC-21)"
+  ],
+  "rules": [
+   "YX-SEC-21"
+  ],
+  "docs": [
+   "M14 Zoho Desk pass",
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.582,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-230",
+  "type": "Story",
+  "parent": "FT-B-029",
+  "title": "Admin schedules bulk actions on tickets",
+  "story": "As a desk admin, I want actions that run on many tickets at a set time, so that end-of-day sweeps happen by themselves.",
+  "acceptance": [
+   "Given a schedule and a filter, then the action runs on all matching tickets at that time",
+   "Given each run, then a trace shows how many changed and the rule-run limits apply"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 547.418,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-231",
+  "type": "Story",
+  "parent": "FT-B-028",
+  "title": "Agents see a team feed of record activity",
+  "story": "As an agent, I want a feed of what my team is doing on records I follow, so that I keep up without opening each one.",
+  "acceptance": [
+   "Given records I follow, then their updates show in my team feed",
+   "Given sensitive records, then they never show in a feed for people who cannot see them (YX-HD-03)"
+  ],
+  "rules": [
+   "YX-HD-03"
+  ],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 545.418,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-232",
+  "type": "Story",
+  "parent": "FT-B-031",
+  "title": "Desk links GitLab, Linear, Google Chat and cloud-drive files",
+  "story": "As a desk admin, I want more everyday tools connected, so that agents do not switch apps.",
+  "acceptance": [
+   "Given GitLab or Linear, then escalation and two-way sync work as for GitHub and Jira (SD-2.15)",
+   "Given Google Chat, then desk notifications can go there like Teams and Slack",
+   "Given Google Drive or OneDrive, then an agent attaches a file or a link from the drive and it is virus-scanned like other files"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.402,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-233",
+  "type": "Story",
+  "parent": "FT-B-031",
+  "title": "Admin sees API usage and gets alerts near the limit",
+  "story": "As a company admin, I want to see our API use and be warned early, so that integrations do not stop by surprise.",
+  "acceptance": [
+   "Given API keys, then a dashboard shows calls per key and endpoint over time",
+   "Given a threshold, then admins are told when use crosses it (P11 limits apply)"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.403,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-234",
+  "type": "Story",
+  "parent": "FT-B-024",
+  "title": "Company schedules encrypted backups of its desk data",
+  "story": "As a company admin, I want scheduled backups, so that I keep my own copy of desk data.",
+  "acceptance": [
+   "Given a schedule (weekly to quarterly), then a full or changed-since-last export is made",
+   "Given an export, then it is encrypted with a password the admin sets and the download link expires",
+   "Given each backup, then it is audited"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 531.402,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-235",
+  "type": "Story",
+  "parent": "FT-B-030",
+  "title": "Customer keeps one ongoing conversation in the messenger across visits and devices",
+  "story": "As a customer, I want to come back to the same conversation later, so that I never repeat myself or wait on an open page.",
+  "acceptance": [
+   "Given a signed-in or verified customer, then the messenger shows their past conversations and they can continue one on web or in the app",
+   "Given the customer has left, when an agent replies, then they get a push notification or an email with the reply and can answer from there into the same conversation",
+   "Given a wait, then the messenger shows the expected reply time or queue position and the team's office hours",
+   "Given an anonymous visitor who later signs in or gives a verified email, then their conversation joins their contact record",
+   "Given consent rules, then no tracking pixel or read receipt is used for the email fallback (M14 D9)"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 551.402,
+  "points": 8,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-236",
+  "type": "Story",
+  "parent": "FT-G-002",
+  "title": "Desk admin designs the messenger home and page-aware help",
+  "story": "As a desk admin, I want a messenger home with the right cards for each page and customer, so that customers find help before they write.",
+  "acceptance": [
+   "Given the messenger, then I arrange its home cards (search, recent conversation, status, articles, news, ask a question) per brand",
+   "Given a page address or customer segment, then suggested articles and cards change to match",
+   "Given an outage on the status page, then the home shows it first"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.583,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-237",
+  "type": "Story",
+  "parent": "FT-B-031",
+  "title": "Company sends customer events and builds segments for routing, messages and articles",
+  "story": "As a desk admin, I want the customer's product activity and segments in the desk, so that agents, rules and content fit each customer.",
+  "acceptance": [
+   "Given the events API, then the company's app sends events such as \"signed up\" or \"payment failed\" and they show on the contact timeline",
+   "Given contact and account fields and events, then I build saved segments",
+   "Given a segment, then it can be used in routing, SLA conditions, proactive messages, surveys and article audiences",
+   "Given events, then they follow the company's retention settings and are never sent to AI for sensitive desks"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.404,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-238",
+  "type": "Story",
+  "parent": "FT-B-030",
+  "title": "Desk sends targeted in-app banners, posts and service notices",
+  "story": "As a support lead, I want to reach customers before they write, so that known problems and changes do not turn into tickets.",
+  "acceptance": [
+   "Given a segment and pages, then I show a banner, a post or a chat prompt in the messenger or on the company's site",
+   "Given an event via API (for example an order is delayed), then a service notice can go to that customer on their preferred channel with P04 preferences and quiet hours respected",
+   "Given a message, then reports show how many saw it and how many tickets followed, without tracking pixels (M14 D9)"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 551.403,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-239",
+  "type": "Story",
+  "parent": "FT-G-004",
+  "title": "Work is routed by skill, language and priority, and agents pull the next best ticket",
+  "story": "As a support lead, I want tickets and chats to reach the agent with the right skills first, so that customers get the right answer fast.",
+  "acceptance": [
+   "Given skills and languages on agents and on tickets, then routing picks an available agent with the needed skills and falls back after a set wait",
+   "Given an agent clicks \"next\", then they get the most urgent ticket they are skilled for, ordered by SLA due time and priority",
+   "Given routing decisions, then the reason is shown on the ticket"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-2",
+  "order": 553.73,
+  "points": 5,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-240",
+  "type": "Story",
+  "parent": "FT-G-012",
+  "title": "More messaging and review channels become tickets",
+  "story": "As a desk admin, I want LINE, WeChat, WeCom, Arattai, app-store reviews, video comments and fax as sources, so that we answer customers where they are.",
+  "acceptance": [
+   "Given a connected channel, then messages or reviews become tickets and replies go back on the same channel where it allows",
+   "Given fax, then it is switched on only when a company asks for it"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.56,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-241",
+  "type": "Story",
+  "parent": "FT-G-012",
+  "title": "Developers plug any messaging channel into the desk",
+  "story": "As a developer, I want a channel API, so that a messaging channel we use can feed the desk.",
+  "acceptance": [
+   "Given a registered channel, then inbound messages post to a signed endpoint and become conversations",
+   "Given an agent reply, then it is sent to the channel's webhook with retries and a signature",
+   "Given the channel, then it shows in the unified inbox like built-in channels"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass",
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.561,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-242",
+  "type": "Story",
+  "parent": "FT-G-012",
+  "title": "Agents answer every messaging channel in one inbox",
+  "story": "As an agent, I want chat, WhatsApp, SMS, social and other messaging in one live inbox, so that I do not switch screens.",
+  "acceptance": [
+   "Given messaging channels, then live conversations from all of them show in one inbox with the channel marked",
+   "Given a conversation, then I can reply on the same channel or move it to email",
+   "Given a call dashboard, then call volume, missed calls and wait times show per line"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass",
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.562,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-243",
+  "type": "Story",
+  "parent": "FT-G-016",
+  "title": "Agents take short training courses inside the desk",
+  "story": "As a team lead, I want lessons and quizzes for agents in a standalone desk, so that new agents learn our way of working.",
+  "acceptance": [
+   "Given a course, then it has lessons from KB articles and a quiz; progress is tracked",
+   "Given an HRMS company, then M07 learning is used instead"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.785,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-244",
+  "type": "Story",
+  "parent": "FT-G-018",
+  "title": "Community gets points, badges and moderated article comments",
+  "story": "As a community manager, I want points, badges and public comments with moderation, so that helpful customers are recognised and content stays clean.",
+  "acceptance": [
+   "Given helpful posts and accepted answers, then members earn points and badges such as top helper",
+   "Given public comments on articles, then they wait for or pass moderation and can be hidden",
+   "Given the help centre, then it can be offered in 40+ languages from translated content (US-G-203)"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.899,
+  "points": 3,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-245",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "Rules use an AI step and AI fills any pick-list field",
+  "story": "As a desk admin, I want an AI step inside normal rules, so that tickets are classified, summarised or drafted as they arrive.",
+  "acceptance": [
+   "Given a rule, then an AI action can classify, summarise, detect language or intent, or draft, and its output is used by later steps",
+   "Given any pick-list field, then AI can suggest its value with a confidence score; below the threshold nothing is set",
+   "Given AI is off or has no key or credits, then the step is skipped and the trace says why (M14 Q9)"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass",
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.476,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-246",
+  "type": "Story",
+  "parent": "FT-B-045",
+  "title": "Desk admin imports from Zendesk, Freshdesk, Intercom and Help Scout",
+  "story": "As a desk admin moving from another tool, I want tickets, contacts, companies and articles imported, so that history is not lost.",
+  "acceptance": [
+   "Given a source, then the same dry run, id references and rollback as other importers apply (US-B-172)",
+   "Given a second YukthiX company of ours, then data (not only configuration) can be moved between them with approval"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass",
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.395,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-247",
+  "type": "Story",
+  "parent": "FT-B-045",
+  "title": "Desk links contact enrichment, Google Contacts, email marketing, project, inventory and password-vault tools",
+  "story": "As a desk admin, I want more business tools linked, so that agents see and share what they need.",
+  "acceptance": [
+   "Given enrichment, then company size, logo and location can be added to contacts from an outside source the company chooses",
+   "Given Google Contacts or an email-marketing tool, then contacts sync with consent kept",
+   "Given Asana, Trello or similar, then a ticket can create a linked task there",
+   "Given an inventory app, then stock levels show on related tickets",
+   "Given a password-vault link, then a secret is shared with an agent through the vault and never stored in the ticket",
+   "Given the mobile app, then marketplace extensions can show in mobile slots"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.396,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-248",
+  "type": "Story",
+  "parent": "FT-G-017",
+  "title": "Agent sees and acts on online-shop orders beside the ticket",
+  "story": "As an agent at an online shop, I want the customer's orders next to the ticket, so that I answer order questions at once.",
+  "acceptance": [
+   "Given Shopify, WooCommerce or another connected shop, then recent orders, items, payment and delivery status show beside the ticket",
+   "Given Stripe or another payment tool, then the customer's payments, subscriptions and failed charges show beside the ticket (read only)",
+   "Given the right permission, then the agent can refund, cancel or edit an order in the shop with a confirm step, and it is audited",
+   "Given the link is off, then stored tokens are deleted"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 Zoho Desk pass",
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.841,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-249",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "AI agent follows written procedures and takes approved actions for customers",
+  "story": "As a desk admin, I want the AI agent to follow our written steps and call approved actions, so that it resolves order and account questions, not only FAQs.",
+  "acceptance": [
+   "Given a procedure written in plain language with steps, checks and connector actions (for example check order, start a return), then the AI agent follows it in chat, email and the messenger",
+   "Given an action that changes data or money, then the customer confirms and the action runs only within limits the admin set; otherwise it hands over to an agent",
+   "Given a test set of sample conversations, then the admin runs them before going live and sees each answer, step and source",
+   "Given AI-only notes (short facts not shown in the help centre), then the AI agent can use them as sources",
+   "Given Q9, then this runs only with the company's own key or YukthiX AI credits"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.477,
+  "points": 8,
+  "priority": 1,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-250",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "AI agent answers phone calls",
+  "story": "As a desk admin, I want the AI agent to answer simple calls, so that callers do not wait for routine answers.",
+  "acceptance": [
+   "Given telephony is connected, then the AI agent answers from the same content and procedures by voice",
+   "Given it cannot help or the caller asks, then the call goes to a person with a transcript and summary",
+   "Given recording laws, then callers are told the call is answered by AI and may be recorded"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.478,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-251",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "Agent asks the AI copilot questions beside the ticket",
+  "story": "As an agent, I want to ask the copilot how to solve this ticket, so that I get an answer with sources from our articles and past tickets.",
+  "acceptance": [
+   "Given a ticket, when I ask a question, then the copilot answers from internal and public articles and similar solved tickets I may see, with links",
+   "Given an answer, then I can insert it into my reply and edit it before sending (YX-AI-01)",
+   "Given repeated agent replies, then the copilot suggests a new canned response for a lead to approve"
+  ],
+  "rules": [
+   "YX-AI-01"
+  ],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.479,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-252",
+  "type": "Story",
+  "parent": "FT-B-042",
+  "title": "Help-centre search shows an AI answer above the results",
+  "story": "As a customer, I want a direct answer when I search the help centre, so that I do not read several articles.",
+  "acceptance": [
+   "Given a search, then a short AI answer built only from articles I may read shows above the results with links to them",
+   "Given low confidence, then no AI answer is shown",
+   "Given feedback on the answer, then it counts in the self-service funnel"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 584.48,
+  "points": 3,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-253",
+  "type": "Story",
+  "parent": "FT-G-016",
+  "title": "AI reviews every conversation, including the AI agent's, and flags risks",
+  "story": "As a quality lead, I want every conversation scored and risky ones flagged, so that reviewers spend time where it matters.",
+  "acceptance": [
+   "Given a scorecard, then AI drafts a score for each conversation by people and by the AI agent; reviewers confirm or change it",
+   "Given signs of churn risk, escalation, a knowledge gap or a stuck bot loop, then the conversation is flagged for review",
+   "Given several reviewers, then calibration sessions compare their scores on the same conversations"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.786,
+  "points": 5,
+  "priority": 2,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-254",
+  "type": "Story",
+  "parent": "FT-G-017",
+  "title": "Support sends consented outbound messages and series to customer segments",
+  "story": "As a support lead, I want to send onboarding and service messages to segments of customers, so that common questions are answered before they are asked.",
+  "acceptance": [
+   "Given a segment, then I send an email, in-app message, SMS or WhatsApp message, or a series with waits and branches",
+   "Given consent and opt-out, then only customers who allow it get non-service messages and every message has an unsubscribe (YX-NTF-14)",
+   "Given results, then replies and tickets raised are counted; opens are not tracked (M14 D9)"
+  ],
+  "rules": [
+   "YX-NTF-14"
+  ],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.842,
+  "points": 8,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
+ },
+ {
+  "id": "US-G-255",
+  "type": "Story",
+  "parent": "FT-G-017",
+  "title": "Desk shows in-product tours, tooltips and checklists",
+  "story": "As a support lead, I want short guided tours inside our product, so that customers learn a feature instead of raising a ticket.",
+  "acceptance": [
+   "Given the messenger script on the company's app, then a tour, tooltip or checklist shows to a segment on a chosen page",
+   "Given a tour, then the customer can skip it and it is not shown again",
+   "Given content, then it is built from safe templates, no custom JavaScript (ASVS L2)"
+  ],
+  "rules": [],
+  "docs": [
+   "M14 CS leaders pass"
+  ],
+  "state": "New",
+  "phase": "Step 3b-4",
+  "order": 590.843,
+  "points": 5,
+  "priority": 3,
+  "depends": [],
+  "evidence": ""
  }
 ]

@@ -29,7 +29,7 @@ import {
   text,
 } from '../email/account-emails';
 import { buildPaginatedResponse, resolvePaginationParams } from '../common/paginated-response';
-import { LoginProtectionService } from './login-protection.service';
+import { ANY_COMPANY, LoginProtectionService } from './login-protection.service';
 
 // Who is signing in from where. `deviceId` is the raw value of the long-lived device cookie;
 // only its sha256 is ever stored.
@@ -392,10 +392,13 @@ export class SessionsService {
     if (!target?.organization) throw new NotFoundException('User not found');
 
     // The same (scope, identifier) pairs sign-in counts under (AuthService / MfaController).
+    // Each identifier's own lock (W-016, ANY_COMPANY) too: an unlocked person can sign in without the company named.
     const slug = target.organization.slug.trim().toLowerCase();
     const accounts: [string, string][] = [
-      [slug, target.email.trim().toLowerCase()],
-      ...(target.mobileNumber ? [[slug, target.mobileNumber] as [string, string]] : []),
+      ...[slug, ANY_COMPANY].flatMap((scope) => [
+        [scope, target.email.trim().toLowerCase()] as [string, string],
+        ...(target.mobileNumber ? [[scope, target.mobileNumber] as [string, string]] : []),
+      ]),
       ['mfa', target.id],
       ['stepup', target.id],
     ];

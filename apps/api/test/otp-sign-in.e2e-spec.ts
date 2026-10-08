@@ -103,10 +103,12 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
   // that would otherwise have to wait for the clock (each limit is proven on its own below).
   const limitKey = (subject: string) => sha(subject);
   const lockKey = (slug: string, identifier: string) => sha(`${slug}\u0000${identifier}`);
+  // An identifier's lock keys: the company's and its own across companies (W-016).
+  const lockBlocks = (slug: string, identifier: string) => [slug, '*'].map((scope) => `auth:lp:acct:block:${lockKey(scope, identifier)}`);
   async function resetLimits(slug: string, identifier: string) {
     const s = limitKey(`signin\u0000${slug}\u0000${identifier}`);
-    const l = lockKey(slug, identifier);
-    await redis.del(`auth:otp:cool:${s}`, `auth:otp:sends:${s}`, `auth:lp:acct:fail:${l}`, `auth:lp:acct:block:${l}`);
+    const fails = [slug, '*'].map((scope) => `auth:lp:acct:fail:${lockKey(scope, identifier)}`);
+    await redis.del(`auth:otp:cool:${s}`, `auth:otp:sends:${s}`, ...fails, ...lockBlocks(slug, identifier));
   }
 
   async function signInByCode(slug: string, who: string, opts: { identifier?: string; channel?: string } = {}) {
@@ -321,10 +323,10 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
       const code = (await lastEmailCode(FIELD))!;
       const wrong = code === '000000' ? '111111' : '000000';
       for (let i = 0; i < OTP_MAX_ATTEMPTS; i++) {
-        await redis.del(`auth:lp:acct:block:${lockKey(A().slug, FIELD)}`); // skip the progressive delay, keep the count
+        await redis.del(...lockBlocks(A().slug, FIELD)); // skip the progressive delay, keep the count
         await verifyOtp(b, A().slug, FIELD, started.body.otpToken, wrong).expect(401);
       }
-      await redis.del(`auth:lp:acct:block:${lockKey(A().slug, FIELD)}`);
+      await redis.del(...lockBlocks(A().slug, FIELD));
       await verifyOtp(b, A().slug, FIELD, started.body.otpToken, code).expect(401);
       await resetLimits(A().slug, FIELD);
     });
@@ -332,7 +334,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     it('brute force across codes: the shared account lockout locks after 10 failures and tells the user', async () => {
       const ip = freshIp();
       for (let i = 0; i < 10; i++) {
-        await redis.del(`auth:otp:cool:${limitKey(`signin\u0000${A().slug}\u0000${LOCKED}`)}`, `auth:lp:acct:block:${lockKey(A().slug, LOCKED)}`);
+        await redis.del(`auth:otp:cool:${limitKey(`signin\u0000${A().slug}\u0000${LOCKED}`)}`, ...lockBlocks(A().slug, LOCKED));
         const b = { ip };
         const started = await startOtp(b, A().slug, LOCKED).expect(200);
         const code = (await lastEmailCode(LOCKED))!;
