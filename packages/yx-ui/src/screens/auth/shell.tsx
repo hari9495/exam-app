@@ -1,13 +1,13 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { Activity, BookUser, Briefcase, Building2, CalendarClock, ClipboardCheck, Eye, FileStack, GitFork, History, IdCard, KeyRound, LifeBuoy, ListChecks, LockKeyhole, Mail, MapPin, MessageSquare, Network, Settings, ShieldCheck, UserRound, Users } from 'lucide-react';
+import { Activity, BookUser, Briefcase, Building2, CalendarClock, CircleHelp, ClipboardCheck, Eye, FileStack, GitFork, Headset, History, IdCard, KeyRound, LifeBuoy, ListChecks, LockKeyhole, Mail, MapPin, MessageSquare, Network, Settings, ShieldCheck, SlidersHorizontal, Ticket, UserRound, Users } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type WorkspacePage = 'me' | 'activity' | 'settings' | 'sms' | 'entities' | 'locations' | 'structure' | 'directory' | 'org-chart' | 'team' | 'job-history' | 'job-changes' | 'probation' | 'bulk-changes' | 'profile' | 'profile-requests' | 'access' | 'privacy' | 'company-rules' | 'access-settings' | 'support-access' | 'emails';
+export type WorkspacePage = 'me' | 'activity' | 'settings' | 'sms' | 'entities' | 'locations' | 'structure' | 'directory' | 'org-chart' | 'team' | 'job-history' | 'job-changes' | 'probation' | 'bulk-changes' | 'profile' | 'profile-requests' | 'access' | 'privacy' | 'company-rules' | 'access-settings' | 'support-access' | 'emails' | 'desk-help' | 'desk-tickets' | 'desk-setup';
 /** Sidebar groups, in this order. */
-export type WorkspaceGroup = 'People' | 'Organisation' | 'Access' | 'Security' | 'Me';
-const GROUPS: WorkspaceGroup[] = ['People', 'Organisation', 'Access', 'Security', 'Me'];
+export type WorkspaceGroup = 'People' | 'Service desk' | 'Organisation' | 'Access' | 'Security' | 'Me';
+const GROUPS: WorkspaceGroup[] = ['People', 'Service desk', 'Organisation', 'Access', 'Security', 'Me'];
 
 export interface WorkspaceLink {
   id: WorkspacePage;
@@ -34,8 +34,8 @@ export interface WorkspaceShellProps {
   children: ReactNode;
 }
 
-const ICONS: Record<WorkspacePage, IconComponent> = { me: ShieldCheck, activity: Activity, settings: Settings, sms: MessageSquare, entities: Building2, locations: MapPin, structure: Network, directory: BookUser, 'org-chart': GitFork, team: Users, 'job-history': History, 'job-changes': CalendarClock, probation: ClipboardCheck, 'bulk-changes': FileStack, profile: UserRound, 'profile-requests': IdCard, access: KeyRound, privacy: Eye, 'company-rules': ListChecks, 'access-settings': LockKeyhole, 'support-access': LifeBuoy, emails: Mail };
-const GROUP_ICONS: Record<WorkspaceGroup, IconComponent> = { People: Users, Organisation: Building2, Access: KeyRound, Security: ShieldCheck, Me: UserRound };
+const ICONS: Record<WorkspacePage, IconComponent> = { me: ShieldCheck, activity: Activity, settings: Settings, sms: MessageSquare, entities: Building2, locations: MapPin, structure: Network, directory: BookUser, 'org-chart': GitFork, team: Users, 'job-history': History, 'job-changes': CalendarClock, probation: ClipboardCheck, 'bulk-changes': FileStack, profile: UserRound, 'profile-requests': IdCard, access: KeyRound, privacy: Eye, 'company-rules': ListChecks, 'access-settings': LockKeyhole, 'support-access': LifeBuoy, emails: Mail, 'desk-help': CircleHelp, 'desk-tickets': Ticket, 'desk-setup': SlidersHorizontal };
+const GROUP_ICONS: Record<WorkspaceGroup, IconComponent> = { People: Users, 'Service desk': Headset, Organisation: Building2, Access: KeyRound, Security: ShieldCheck, Me: UserRound };
 
 /**
  * Product frame for the YukthiX workspace pages: rail with one area per group, a side panel with that area's pages
@@ -58,7 +58,7 @@ export function WorkspaceShell({ active, links, company, hiringHref, profileHref
     onNavigate(href);
   };
   const rail: RailItem[] = [
-    ...groups.map((g) => ({ id: g, label: g, short: g === 'Organisation' ? 'Org' : undefined, icon: GROUP_ICONS[g], href: links.find((l) => l.group === g)!.href })),
+    ...groups.map((g) => ({ id: g, label: g, short: g === 'Organisation' ? 'Org' : g === 'Service desk' ? 'Desk' : undefined, icon: GROUP_ICONS[g], href: links.find((l) => l.group === g)!.href })),
     ...(hiringHref ? [{ id: 'hiring', label: 'Hiring', icon: Briefcase, href: hiringHref }] : []),
   ];
   const home = links[0]?.href ?? profileHref;
