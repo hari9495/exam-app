@@ -87,11 +87,15 @@ export function FormField({ label, children, required = false, optional, helper,
         className={cx('yx-field', className)}
         data-invalid={shownError ? true : undefined}
         data-disabled={disabled || undefined}
-        onInputCapture={(e) => {
+        // Bubble phase, never capture: React flushes a capture-phase state update before it runs the
+        // input's own onChange, so the controlled input re-rendered with its old value and the browser's
+        // first keystroke (or a pasted value) was wiped (validation 8 Oct 2026). In the bubble phase this
+        // update and the input's onChange are one batch.
+        onInput={(e) => {
           const t = e.target as HTMLElement;
           if (t instanceof HTMLTextAreaElement || (t instanceof HTMLInputElement && !['checkbox', 'radio'].includes(t.type))) setTyping(true);
         }}
-        onBlurCapture={() => setTyping(false)}
+        onBlur={() => setTyping(false)}
       >
         <label htmlFor={fieldId} className="yx-field__label" data-hidden={hideLabel || undefined}>
           <span>{label}</span>
