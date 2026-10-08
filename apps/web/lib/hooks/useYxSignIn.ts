@@ -40,6 +40,8 @@ const redeemedSocialCodes = new Set<string>();
 const PROVIDER_NAME: Record<SocialProvider, string> = { google: 'Google', microsoft: 'Microsoft' };
 // The same words whatever the reason (no account, address not verified, method off ...): nothing to enumerate.
 export const SOCIAL_FAILED = "We couldn't sign you in with that account. Try another way, or ask your admin.";
+/** Under the API's 5-minute passkey challenge (mfa.service CHALLENGE_TTL_SECONDS). */
+const AUTOFILL_RENEW_MS = 4 * 60 * 1000;
 export const PASSKEY_FAILED = "We couldn't sign you in with that passkey. Try another way, or ask your admin.";
 // The person closed the passkey prompt, or another ceremony replaced it: not an error to show.
 const isCancelled = (err: unknown) => err instanceof Error && (err.name === 'NotAllowedError' || err.name === 'AbortError');
@@ -171,6 +173,8 @@ export function useYxSignIn() {
   useEffect(() => {
     if (step !== 'identify' || !options?.passkey) return;
     let live = true;
+    // The server's challenge lasts 5 minutes but the autofill waits for ever: re-arm it before the challenge lapses.
+    const renew = setTimeout(() => setAutofillRound((n) => n + 1), AUTOFILL_RENEW_MS);
     void browserSupportsWebAuthnAutofill().then(async (ok) => {
       if (!ok || !live) return;
       let credential: unknown;
@@ -183,6 +187,7 @@ export function useYxSignIn() {
     });
     return () => {
       live = false;
+      clearTimeout(renew);
       WebAuthnAbortService.cancelCeremony();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
