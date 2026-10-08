@@ -54,6 +54,11 @@ export const YX_KEYS = [
   'desk.catalog.manage',
   'desk.rule.manage',
   'desk.integration.manage',
+  // Step 4 time and leave: HR views in scope, balances, set-up.
+  'leave.settings.manage',
+  'leave.view',
+  'leave.balance.adjust',
+  'attendance.view',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

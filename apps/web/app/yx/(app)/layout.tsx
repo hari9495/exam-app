@@ -60,6 +60,14 @@ const DESK_REPORTS: WorkspaceLink = { id: 'desk-reports', label: 'Reports', href
 // 3b-2 batch 1: everyone orders from the catalogue and answers the approvals waiting for them (P03, implicit).
 const DESK_CATALOG: WorkspaceLink = { id: 'desk-catalog', label: 'Service catalogue', href: '/yx/desk/catalog', group: 'Service desk' };
 const APPROVALS: WorkspaceLink = { id: 'approvals', label: 'Approvals', href: '/yx/approvals', group: 'Me' };
+// Step 4 time and leave (M02): everyone with an employee record has their own leave and attendance; managers see
+// their team, HR its people in scope; set-up for the leave set-up key.
+const MY_LEAVE: WorkspaceLink = { id: 'my-leave', label: 'My leave', href: '/yx/time/leave', group: 'Time' };
+const MY_ATTENDANCE: WorkspaceLink = { id: 'my-attendance', label: 'My attendance', href: '/yx/time/attendance', group: 'Time' };
+const TEAM_LEAVE: WorkspaceLink = { id: 'team-leave', label: 'Team leave', href: '/yx/time/team', group: 'Time' };
+const MUSTER: WorkspaceLink = { id: 'muster', label: 'Attendance muster', href: '/yx/time/muster', group: 'Time' };
+const BALANCES: WorkspaceLink = { id: 'leave-balances', label: 'Leave balances', href: '/yx/time/balances', group: 'Time' };
+const TIME_SETUP: WorkspaceLink = { id: 'time-setup', label: 'Leave set-up', href: '/yx/time/setup', group: 'Time' };
 
 // Links follow the role; the API still checks every permission (audit:view, org:manage_users,
 // org:manage_settings) and the pages show "no access" on a 403. Platform staff outside any company use the
@@ -156,7 +164,14 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         ...(perms.has('desk.directory.manage') ? [DESK_PEOPLE_LIST] : []),
         ...(perms.has('desk.desk.create') ? [DESK_PRIVACY] : []),
       ];
-  const links = [...staff, ...desk, ...(support ? [] : [APPROVALS]), ...security];
+  const time = [
+    ...(employee && !support ? [MY_LEAVE, MY_ATTENDANCE] : []),
+    ...(manager || perms.has('leave.view') ? [TEAM_LEAVE] : []),
+    ...(manager || perms.has('attendance.view') ? [MUSTER] : []),
+    ...(perms.has('leave.view') ? [BALANCES] : []),
+    ...(perms.has('leave.settings.manage') ? [TIME_SETUP] : []),
+  ];
+  const links = [...staff, ...time, ...desk, ...(support ? [] : [APPROVALS]), ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not Profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
   return (
