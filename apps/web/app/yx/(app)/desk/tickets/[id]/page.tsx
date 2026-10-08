@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   EscalateDialog,
+  RequestPanel,
   ResolveDialog,
   TicketKbCard,
   TicketScreen,
@@ -22,6 +23,8 @@ import {
   type TicketPage,
   type TicketWork,
   type TimelineEntry,
+  type TicketRequestView,
+  type PickOption,
 } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../../../../lib/api-client';
 import { useAuth } from '../../../../../../lib/auth-context';
@@ -51,6 +54,8 @@ export default function YxDeskTicketPage() {
   // Batch 4 (US-G-023, US-B-106): articles used on this ticket, and the spaces the agent may write in.
   const kbLinks = useDesk<TicketArticleLink[]>(`${path}/kb-links`);
   const kbSpaces = useDesk<{ id: string; name: string; canAuthor: boolean }[]>('/kb/spaces');
+  // 3b-2: ordered items with their approvals and tasks, and ad-hoc approvals on this ticket.
+  const request = useDesk<TicketRequestView>(`${path}/request`);
   const write = useDeskWrite();
   const upload = useDeskUpload();
   const openFile = useDeskFile();
@@ -135,6 +140,14 @@ export default function YxDeskTicketPage() {
         rail={
           t && d ? (
             <>
+            {request.data && (
+              <RequestPanel
+                view={request.data}
+                canAsk={Boolean(t.canWork)}
+                onAsk={(input) => write(`${path}/approvals`, 'POST', input)}
+                onFindPeople={(q) => apiFetch(`/workflow/people?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>}
+              />
+            )}
             <TicketKbCard
               links={kbLinks.data ?? []}
               solved={['solved', 'closed'].includes(t.systemState)}

@@ -9,7 +9,7 @@ import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useYxPermissions } from '../../../../../lib/yx-org';
 import { deskState, useDesk, useDeskWrite } from '../../../../../lib/yx-desk';
-import type { SetupChecklist } from '@yukthix/ui/desk';
+import { CatalogAdmin, RulesAdmin, type CatalogItemAdmin, type CatalogSchema, type DeskRule, type DeskRuleSchema, type DryRunResult, type PickOption, type RuleRun, type RuleWebhook, type SetupChecklist } from '@yukthix/ui/desk';
 
 // Service desk › Desk set-up (APX-D §5.8, M14 SD-1.01/1.02): desks, seats (cost shown first), groups, categories, types,
 // statuses, priority matrix, saved replies, scenarios, numbering, files and business calendars; batch 2 (SD-1.10 …
@@ -52,6 +52,16 @@ function YxDeskSetupPageInner() {
   // Batch 4: the set-up checklist and the 3-step wizard (Service Desk admins).
   const canStart = perms.has('desk.desk.create') || perms.has('desk.settings.manage');
   const checklist = useDesk<SetupChecklist>(canStart ? '/setup/checklist' : null);
+  // 3b-2 batch 1: the catalogue and the desk's automation rules (each tab only with its key; the API checks the seat).
+  const canCatalog = perms.has('desk.catalog.manage');
+  const canRules = perms.has('desk.rule.manage');
+  const canHooks = perms.has('desk.integration.manage');
+  const items = useDesk<CatalogItemAdmin[]>(selected && canCatalog ? `/catalog/admin/items?deskId=${selected}` : null);
+  const catalogSchema = useDesk<CatalogSchema>(selected && canCatalog ? `/catalog/admin/schema?deskId=${selected}` : null);
+  const rules = useDesk<DeskRule[]>(selected && canRules ? `/rules?deskId=${selected}` : null);
+  const ruleSchema = useDesk<DeskRuleSchema>(selected && canRules ? `/rules/schema?deskId=${selected}` : null);
+  const hooks = useDesk<RuleWebhook[]>(canRules && canHooks ? '/automation-webhooks' : null);
+  const findPeople = (q: string) => apiFetch(`/workflow/people?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>;
   const base = `/desks/${selected}`;
   const version = detail.data?.desk.version ?? 0;
   return (
@@ -212,6 +222,37 @@ function YxDeskSetupPageInner() {
               },
             }
           : undefined
+      }
+      catalog={
+        canCatalog && selected ? (
+          <CatalogAdmin
+            items={items.data ?? []}
+            schema={catalogSchema.data ?? null}
+            onLoad={(id) => apiFetch(`/desk/catalog/admin/items/${encodeURIComponent(id)}`, {}, token) as Promise<CatalogItemAdmin>}
+            onCreate={(input) => write<CatalogItemAdmin>('/catalog/admin/items', 'POST', { deskId: selected, ...input })}
+            onSave={(item, input) => write<CatalogItemAdmin>(`/catalog/admin/items/${encodeURIComponent(item.id)}`, 'PATCH', { version: item.version, ...input })}
+            onPublish={(item) => write<CatalogItemAdmin>(`/catalog/admin/items/${encodeURIComponent(item.id)}/publish`, 'POST', { version: item.version })}
+            onRetire={(item) => write<CatalogItemAdmin>(`/catalog/admin/items/${encodeURIComponent(item.id)}/retire`, 'POST', { version: item.version })}
+            onFindPeople={findPeople}
+            onPick={(kind, q) => apiFetch(`/desk/my/pick/${kind}?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>}
+          />
+        ) : undefined
+      }
+      rules={
+        canRules && selected ? (
+          <RulesAdmin
+            rules={rules.data ?? []}
+            schema={ruleSchema.data ?? null}
+            webhooks={canHooks ? (hooks.data ?? []) : null}
+            onSave={(rule, input) => (rule ? write(`/rules/${encodeURIComponent(rule.id)}`, 'PATCH', { version: rule.version, ...input }) : write('/rules', 'POST', { deskId: selected, ...input }))}
+            onStatus={(rule, status) => write(`/rules/${encodeURIComponent(rule.id)}/status`, 'POST', { version: rule.version, status })}
+            onRuns={(rule) => apiFetch(`/desk/rules/${encodeURIComponent(rule.id)}/runs`, {}, token) as Promise<RuleRun[]>}
+            onDryRun={(rule) => write<DryRunResult>(`/rules/${encodeURIComponent(rule.id)}/dry-run`, 'POST')}
+            onInstall={(key) => write(`/recipes/${encodeURIComponent(key)}/install`, 'POST', { deskId: selected })}
+            onAddWebhook={canHooks ? (input) => write<{ secret: string }>('/automation-webhooks', 'POST', input) : undefined}
+            onWebhookActive={canHooks ? (hook, active) => write(`/automation-webhooks/${encodeURIComponent(hook.id)}/active`, 'POST', { active }) : undefined}
+          />
+        ) : undefined
       }
       workSetup={{
         templates: templates.data ?? null,

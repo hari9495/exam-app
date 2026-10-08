@@ -50,6 +50,10 @@ export const YX_KEYS = [
   'org.yukthix_support.raise',
   // Batch 4: the standalone people list and directory sync.
   'desk.directory.manage',
+  // 3b-2 batch 1: the catalogue, desk rules and webhooks.
+  'desk.catalog.manage',
+  'desk.rule.manage',
+  'desk.integration.manage',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

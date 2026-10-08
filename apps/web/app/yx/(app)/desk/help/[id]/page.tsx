@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { MyTicketScreen, type MyTicket } from '@yukthix/ui/desk';
+import { MyTicketScreen, RequestTracker, type MyRequestView, type MyTicket } from '@yukthix/ui/desk';
 import { useCurrentUser } from '../../../../../../lib/hooks/useCurrentUser';
 import { deskState, useDesk, useDeskFile, useDeskUpload, useDeskWrite } from '../../../../../../lib/yx-desk';
 
@@ -13,6 +13,8 @@ export default function YxDeskMyTicketPage() {
   const path = `/my/tickets/${encodeURIComponent(id)}`;
   // Files show "being checked" until the scan finishes; the page looks again every 10 seconds while any is pending.
   const ticket = useDesk<MyTicket>(path, { refetchInterval: 10_000 });
+  // 3b-2: a catalogue request shows what was ordered and its stages, with cancel while it can.
+  const request = useDesk<MyRequestView>(`/my/requests/${encodeURIComponent(id)}`);
   const write = useDeskWrite();
   const upload = useDeskUpload();
   const openFile = useDeskFile();
@@ -32,6 +34,15 @@ export default function YxDeskMyTicketPage() {
         await write(`${path}/watchers`, 'POST', { email });
       }}
       onRate={(score, comment) => write(`${path}/rating`, 'POST', { score, ...(comment ? { comment } : {}) })}
+      request={
+        request.data?.items.length ? (
+          <RequestTracker
+            request={request.data}
+            timeZone={me.data?.timeZone ?? undefined}
+            onCancel={(itemId, reason) => write(itemId ? `/my/requests/${encodeURIComponent(id)}/items/${encodeURIComponent(itemId)}/cancel` : `/my/requests/${encodeURIComponent(id)}/cancel`, 'POST', reason ? { reason } : {})}
+          />
+        ) : null
+      }
     />
   );
 }

@@ -57,6 +57,9 @@ const DESK_PRIVACY: WorkspaceLink = { id: 'desk-privacy', label: 'Privacy reques
 const DESK_KNOWN_ISSUES: WorkspaceLink = { id: 'desk-known-issues', label: 'Known issues', href: '/yx/desk/known-issues', group: 'Service desk' };
 const DESK_KNOWLEDGE: WorkspaceLink = { id: 'desk-knowledge', label: 'Knowledge', href: '/yx/desk/knowledge', group: 'Service desk' };
 const DESK_REPORTS: WorkspaceLink = { id: 'desk-reports', label: 'Reports', href: '/yx/desk/reports', group: 'Service desk' };
+// 3b-2 batch 1: everyone orders from the catalogue and answers the approvals waiting for them (P03, implicit).
+const DESK_CATALOG: WorkspaceLink = { id: 'desk-catalog', label: 'Service catalogue', href: '/yx/desk/catalog', group: 'Service desk' };
+const APPROVALS: WorkspaceLink = { id: 'approvals', label: 'Approvals', href: '/yx/approvals', group: 'Me' };
 
 // Links follow the role; the API still checks every permission (audit:view, org:manage_users,
 // org:manage_settings) and the pages show "no access" on a 403. Platform staff outside any company use the
@@ -137,8 +140,9 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ? []
     : [
         DESK_HELP,
+        DESK_CATALOG,
         ...(perms.has('desk.ticket.view') ? [DESK_TICKETS, DESK_CALENDAR] : []),
-        ...(perms.has('desk.desk.create') || perms.has('desk.settings.manage') || perms.has('desk.member.manage') || perms.has('desk.mailbox.manage') || perms.has('desk.portal.manage') ? [DESK_SETUP] : []),
+        ...(perms.has('desk.desk.create') || perms.has('desk.settings.manage') || perms.has('desk.member.manage') || perms.has('desk.mailbox.manage') || perms.has('desk.portal.manage') || perms.has('desk.catalog.manage') || perms.has('desk.rule.manage') ? [DESK_SETUP] : []),
         // Batch 3: customer admins, and agents (the API lets only Customer support desk agents read).
         ...(perms.has('desk.customer.manage') || perms.has('desk.ticket.view') ? [DESK_CUSTOMERS] : []),
         // Batch 4: knowledge, for those who read, write or publish articles.
@@ -152,7 +156,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         ...(perms.has('desk.directory.manage') ? [DESK_PEOPLE_LIST] : []),
         ...(perms.has('desk.desk.create') ? [DESK_PRIVACY] : []),
       ];
-  const links = [...staff, ...desk, ...security];
+  const links = [...staff, ...desk, ...(support ? [] : [APPROVALS]), ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not Profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
   return (

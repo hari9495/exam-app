@@ -4,6 +4,8 @@ const { withSentryConfig } = require('@sentry/nextjs');
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  // A second dev server for end-to-end tests builds into its own folder (NEXT_DIST_DIR=.next-e2e).
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   // The YukthiX design system (packages/yx-ui) ships TypeScript source.
   transpilePackages: ['@yukthix/ui'],
   experimental: {
