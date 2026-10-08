@@ -17,6 +17,7 @@ import { useRun } from '../org/org-kit';
 import { DeskPage, PRIORITY_LABEL, STATE_LABEL } from './desk-kit';
 import type { Calendar, CannedResponse, DeskDetail, DeskGroup, DeskKind, DeskMember, DeskRole, DeskSummary, DuplicatePerson, LoadState, SeatCost, SystemState } from './types';
 import { DuplicatesCard, SlaTab, WorkSetupTab, type SlaTabProps, type WorkSetupProps } from './setup-sla';
+import { BannersTab, EmailTab, PortalTab, type BannerSetupProps, type EmailSetupProps, type PortalSetupProps } from './setup-channels';
 
 // Desk set-up (APX-D §5.8, SD-1.01 / SD-1.02, D8 / D11): desks, seats with their cost shown first, groups and how they
 // share work, categories, ticket types and status labels, the priority matrix, saved replies, scenarios, numbering,
@@ -69,6 +70,10 @@ export interface DeskSetupScreenProps {
   /** Batch 2 tabs: response targets, and resolution codes with templates. */
   sla?: Omit<SlaTabProps, 'detail' | 'calendars'>;
   workSetup?: Omit<WorkSetupProps, 'detail'>;
+  /** Batch 3 tabs, each only for people who may use it: email in and out, outside help pages, known-issue banners. */
+  email?: EmailSetupProps;
+  portals?: PortalSetupProps;
+  banners?: BannerSetupProps;
   /** HR only: logins that may be the same person as an existing one. */
   duplicates?: { rows: DuplicatePerson[]; onLink: (personId: string, intoPersonId: string) => Promise<void> } | null;
   /** Service Desk admins: paid agents this month (D2: anyone who was an agent on any day, counted once). */
@@ -204,6 +209,9 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
           {props.canCalendars && <TabsTrigger value="calendars">Calendars</TabsTrigger>}
           {props.sla && <TabsTrigger value="sla">Response targets</TabsTrigger>}
           {props.workSetup && <TabsTrigger value="resolve">Codes and templates</TabsTrigger>}
+          {props.email && <TabsTrigger value="email">Email</TabsTrigger>}
+          {props.portals && <TabsTrigger value="portal">Portal</TabsTrigger>}
+          {props.banners && <TabsTrigger value="banners">Banners</TabsTrigger>}
         </TabsList>
         <TabsContent value="members">
           <MembersTab {...props} />
@@ -239,6 +247,21 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
         {props.workSetup && (
           <TabsContent value="resolve">
             <WorkSetupTab {...props.workSetup} detail={d} />
+          </TabsContent>
+        )}
+        {props.email && (
+          <TabsContent value="email">
+            <EmailTab {...props.email} detail={d} />
+          </TabsContent>
+        )}
+        {props.portals && (
+          <TabsContent value="portal">
+            <PortalTab {...props.portals} desks={props.desks} />
+          </TabsContent>
+        )}
+        {props.banners && (
+          <TabsContent value="banners">
+            <BannersTab {...props.banners} />
           </TabsContent>
         )}
       </Tabs>
@@ -799,8 +822,8 @@ function CalendarsTab(props: TabProps) {
               <p>{current.length ? current.map((h) => `${DAYS[h.weekday - 1]} ${hhmm(h.startMinute)}–${hhmm(h.endMinute)}`).join(', ') : 'No working hours today'}</p>
               {c.hours.some((h) => h.validFrom > today) && <p className="yx-ops-muted">New hours are planned from {c.hours.filter((h) => h.validFrom > today)[0].validFrom}.</p>}
               {props.onSetHalfDay && (
-                <FormField label="On a half-day holiday, open in the">
-                  <Segment label="On a half-day holiday, open in the" options={[{ value: 'first', label: 'First half' }, { value: 'second', label: 'Second half' }]} value={c.halfDayOpenHalf ?? 'first'} onChange={(h) => h !== (c.halfDayOpenHalf ?? 'first') && void run(`half-${c.id}`, () => props.onSetHalfDay!(c, h))} />
+                <FormField label="Working half" helper="On a half-day holiday, the desk works only this half of the day.">
+                  <Segment label="Working half" options={[{ value: 'first', label: 'Morning' }, { value: 'second', label: 'Afternoon' }]} value={c.halfDayOpenHalf ?? 'first'} onChange={(h) => h !== (c.halfDayOpenHalf ?? 'first') && void run(`half-${c.id}`, () => props.onSetHalfDay!(c, h))} />
                 </FormField>
               )}
               <p className="yx-ops-muted">Holidays: {c.holidays.length ? c.holidays.map((h) => `${h.on} ${h.name}${h.halfDay ? ' (half day)' : ''}`).join(' · ') : 'none'}</p>

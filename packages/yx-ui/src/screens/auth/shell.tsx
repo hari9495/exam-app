@@ -4,7 +4,7 @@ import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type WorkspacePage = 'me' | 'activity' | 'settings' | 'sms' | 'entities' | 'locations' | 'structure' | 'directory' | 'org-chart' | 'team' | 'job-history' | 'job-changes' | 'probation' | 'bulk-changes' | 'profile' | 'profile-requests' | 'access' | 'privacy' | 'company-rules' | 'access-settings' | 'support-access' | 'emails' | 'desk-help' | 'desk-tickets' | 'desk-setup' | 'desk-calendar' | 'desk-people';
+export type WorkspacePage = 'me' | 'activity' | 'settings' | 'sms' | 'entities' | 'locations' | 'structure' | 'directory' | 'org-chart' | 'team' | 'job-history' | 'job-changes' | 'probation' | 'bulk-changes' | 'profile' | 'profile-requests' | 'access' | 'privacy' | 'company-rules' | 'access-settings' | 'support-access' | 'emails' | 'desk-help' | 'desk-tickets' | 'desk-setup' | 'desk-calendar' | 'desk-people' | 'desk-customers';
 /** Sidebar groups, in this order. */
 export type WorkspaceGroup = 'People' | 'Service desk' | 'Organisation' | 'Access' | 'Security' | 'Me';
 const GROUPS: WorkspaceGroup[] = ['People', 'Service desk', 'Organisation', 'Access', 'Security', 'Me'];
@@ -34,7 +34,7 @@ export interface WorkspaceShellProps {
   children: ReactNode;
 }
 
-const ICONS: Record<WorkspacePage, IconComponent> = { me: ShieldCheck, activity: Activity, settings: Settings, sms: MessageSquare, entities: Building2, locations: MapPin, structure: Network, directory: BookUser, 'org-chart': GitFork, team: Users, 'job-history': History, 'job-changes': CalendarClock, probation: ClipboardCheck, 'bulk-changes': FileStack, profile: UserRound, 'profile-requests': IdCard, access: KeyRound, privacy: Eye, 'company-rules': ListChecks, 'access-settings': LockKeyhole, 'support-access': LifeBuoy, emails: Mail, 'desk-help': CircleHelp, 'desk-tickets': Ticket, 'desk-setup': SlidersHorizontal, 'desk-calendar': CalendarDays, 'desk-people': UserSearch };
+const ICONS: Record<WorkspacePage, IconComponent> = { me: ShieldCheck, activity: Activity, settings: Settings, sms: MessageSquare, entities: Building2, locations: MapPin, structure: Network, directory: BookUser, 'org-chart': GitFork, team: Users, 'job-history': History, 'job-changes': CalendarClock, probation: ClipboardCheck, 'bulk-changes': FileStack, profile: UserRound, 'profile-requests': IdCard, access: KeyRound, privacy: Eye, 'company-rules': ListChecks, 'access-settings': LockKeyhole, 'support-access': LifeBuoy, emails: Mail, 'desk-help': CircleHelp, 'desk-tickets': Ticket, 'desk-setup': SlidersHorizontal, 'desk-calendar': CalendarDays, 'desk-people': UserSearch, 'desk-customers': Briefcase };
 const GROUP_ICONS: Record<WorkspaceGroup, IconComponent> = { People: Users, 'Service desk': Headset, Organisation: Building2, Access: KeyRound, Security: ShieldCheck, Me: UserRound };
 
 /**

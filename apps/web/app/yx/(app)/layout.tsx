@@ -17,6 +17,7 @@ import { useOrgBranding } from '../../../lib/hooks/useBranding';
 import { useYxPermissions } from '../../../lib/yx-org';
 import { usePeople } from '../../../lib/yx-people';
 import type { TeamMember } from '@yukthix/ui/workforce';
+import { DeskHelpButton } from './desk-help';
 
 const ME: WorkspaceLink = { id: 'me', label: 'My security', href: '/yx/me/security', group: 'Me' };
 const ACTIVITY: WorkspaceLink = { id: 'activity', label: 'Login activity', href: '/yx/admin/login-activity', group: 'Security' };
@@ -48,6 +49,7 @@ const DESK_TICKETS: WorkspaceLink = { id: 'desk-tickets', label: 'Tickets', href
 const DESK_SETUP: WorkspaceLink = { id: 'desk-setup', label: 'Desk set-up', href: '/yx/desk/setup', group: 'Service desk' };
 const DESK_CALENDAR: WorkspaceLink = { id: 'desk-calendar', label: 'My calendar', href: '/yx/desk/calendar', group: 'Service desk' };
 const DESK_PEOPLE: WorkspaceLink = { id: 'desk-people', label: 'People to check', href: '/yx/desk/people', group: 'Service desk' };
+const DESK_CUSTOMERS: WorkspaceLink = { id: 'desk-customers', label: 'Customers', href: '/yx/desk/customers', group: 'Service desk' };
 
 // Links follow the role; the API still checks every permission (audit:view, org:manage_users,
 // org:manage_settings) and the pages show "no access" on a 403. Platform staff outside any company use the
@@ -129,7 +131,9 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     : [
         DESK_HELP,
         ...(perms.has('desk.ticket.view') ? [DESK_TICKETS, DESK_CALENDAR] : []),
-        ...(perms.has('desk.desk.create') || perms.has('desk.settings.manage') || perms.has('desk.member.manage') ? [DESK_SETUP] : []),
+        ...(perms.has('desk.desk.create') || perms.has('desk.settings.manage') || perms.has('desk.member.manage') || perms.has('desk.mailbox.manage') || perms.has('desk.portal.manage') ? [DESK_SETUP] : []),
+        // Batch 3: customer admins, and agents (the API lets only Customer support desk agents read).
+        ...(perms.has('desk.customer.manage') || perms.has('desk.ticket.view') ? [DESK_CUSTOMERS] : []),
         // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
         ...(perms.has('employee.change.manage') ? [DESK_PEOPLE] : []),
       ];
@@ -179,6 +183,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
           </InlineAlert>
         )}
         {children}
+        {!support && <DeskHelpButton />}
       </div>
     </WorkspaceShell>
   );

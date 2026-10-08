@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Attachment, LoadState, TicketFilters } from '@yukthix/ui/desk';
 import { API_BASE, apiFetch, apiFetchBlob } from './api-client';
 import { useAuth } from './auth-context';
@@ -6,10 +6,10 @@ import { useAuth } from './auth-context';
 // API glue for the Service Desk (/desk/*, M14 phase 3b-1). The screens in @yukthix/ui/desk stay presentational; every
 // call is checked again on the server (keys, seats, own records).
 
-/** One GET under /desk, cached under ['desk', path]. */
-export function useDesk<T>(path: string | null, opts: { refetchInterval?: number } = {}) {
+/** One GET under /desk, cached under ['desk', path]. keepPrevious: show the last answer while a new search or filter loads. */
+export function useDesk<T>(path: string | null, { keepPrevious, ...opts }: { refetchInterval?: number; keepPrevious?: boolean } = {}) {
   const { accessToken } = useAuth();
-  return useQuery<T>({ queryKey: ['desk', path], queryFn: () => apiFetch(`/desk${path}`, {}, accessToken ?? undefined), enabled: Boolean(accessToken && path), retry: false, ...opts });
+  return useQuery<T>({ queryKey: ['desk', path], queryFn: () => apiFetch(`/desk${path}`, {}, accessToken ?? undefined), enabled: Boolean(accessToken && path), retry: false, ...(keepPrevious ? { placeholderData: keepPreviousData } : {}), ...opts });
 }
 
 /** Calls the desk API and refreshes every desk query. */

@@ -12,11 +12,13 @@ import { Segment } from '../../components/segment';
 import { FileUpload } from '../../components/upload';
 import { Card } from '../../components/shell';
 import { useRun } from '../org/org-kit';
-import { DeskPage, MessageBody, StatusBadge, sizeText, when } from './desk-kit';
-import type { Attachment, LoadState, MyTicket, MyTicketRow, RaiseDesk, RaiseInput } from './types';
+import { DeskPage, MessageBody, StatusBadge, browserTimeZone, sizeText, when } from './desk-kit';
+import { ReadingAidsCard, ReadingAidsFrame, useReadingAids } from './reading-aids';
+import type { Attachment, BannerSeverity, LoadState, MyTicket, MyTicketRow, PublicBanner, RaiseDesk, RaiseInput } from './types';
 
 // HLP-01 Help centre, wired (US-B-086, US-G-004, YX-SD-16): raise a ticket with the right desk, follow my tickets.
-// Search and the assistant arrive with the knowledge base (SD-1.24) and AI (3b-4).
+// Batch 3: known-issue banners with "Me too" (US-G-020), reading aids, times in the person's own zone, and the in-app
+// Help drawer (US-B-100). Search and the assistant arrive with the knowledge base (SD-1.24) and AI (3b-4).
 
 export interface HelpCentreProps {
   state: LoadState;
@@ -25,6 +27,11 @@ export interface HelpCentreProps {
   tickets: MyTicketRow[];
   onRaise: (input: RaiseInput) => Promise<{ id: string; number: string }>;
   onOpen: (id: string) => void;
+  /** Known issues with "Me too". */
+  banners?: PublicBanner[];
+  onMeToo?: (id: string) => Promise<unknown>;
+  /** The person's own time zone (IANA name); the browser's when empty. */
+  timeZone?: string;
 }
 
 const URGENCY = [
@@ -38,69 +45,115 @@ export function HelpCentreScreen(props: HelpCentreProps) {
   const [open, setOpen] = useState(false);
   const [raised, setRaised] = useState<string | null>(null);
   const [show, setShow] = useState<'open' | 'all'>('open');
+  const [aids, setAids] = useReadingAids();
+  const tz = props.timeZone || browserTimeZone();
   const rows = props.tickets.filter((t) => show === 'all' || !['solved', 'closed'].includes(t.systemState));
   return (
-    <DeskPage
-      title="Help centre"
-      description="Raise a ticket with the right team and follow it here."
-      state={props.state}
-      onRetry={props.onRetry}
-      what="your tickets"
-      actions={
-        <Button variant="primary" icon={Plus} onClick={() => setOpen(true)} disabled={!props.desks.length}>
-          Raise a ticket
-        </Button>
-      }
-    >
-      {raised && (
-        <InlineAlert tone="success" title="Ticket raised">
-          Your ticket number is {raised}. The team will reply here.
-        </InlineAlert>
-      )}
-      <Card title="My tickets" actions={<Segment label="Which tickets" options={[{ value: 'open', label: 'Open' }, { value: 'all', label: 'All' }]} value={show} onChange={setShow} />}>
-        {rows.length === 0 ? (
-          <EmptyState compact title={show === 'open' ? 'You have no open tickets.' : 'You have no tickets yet.'} description="When you raise a ticket, you can follow it here." />
-        ) : (
-          <ul className="yx-ops-list" aria-label="My tickets">
-            {rows.map((t) => (
-              <li key={t.id} className="yx-ops-list__item">
-                <span className="yx-ops-list__main">
-                  <button type="button" className="yx-desk-link" onClick={() => props.onOpen(t.id)}>
-                    {t.subject}
-                  </button>
-                  <span className="yx-ops-list__sub">
-                    <span className="yx-ops-mono">{t.number}</span> · {t.desk} · raised {when(t.createdAt)}
-                    {t.role === 'requested_for' ? ' · raised for you' : t.role === 'watcher' ? ' · you follow it' : ''}
-                  </span>
-                </span>
-                <span className="yx-ops-row">
-                  {t.private && (
-                    <Badge tone="neutral">
-                      <Lock aria-hidden size={12} /> Private
-                    </Badge>
-                  )}
-                  <StatusBadge label={t.status} state={t.systemState} />
-                </span>
-              </li>
-            ))}
-          </ul>
+    <ReadingAidsFrame value={aids}>
+      <DeskPage
+        title="Help centre"
+        description="Raise a ticket with the right team and follow it here."
+        state={props.state}
+        onRetry={props.onRetry}
+        what="your tickets"
+        actions={
+          <Button variant="primary" icon={Plus} onClick={() => setOpen(true)} disabled={!props.desks.length}>
+            Raise a ticket
+          </Button>
+        }
+      >
+        {props.banners && props.onMeToo && <BannerList banners={props.banners} onMeToo={props.onMeToo} />}
+        {raised && (
+          <InlineAlert tone="success" title="Ticket raised">
+            Your ticket number is {raised}. The team will reply here.
+          </InlineAlert>
         )}
-      </Card>
-      <RaiseDrawer
-        open={open}
-        onOpenChange={setOpen}
-        desks={props.desks}
-        onRaise={async (input) => {
-          const r = await props.onRaise(input);
-          setRaised(r.number);
-          setOpen(false);
-        }}
-      />
-    </DeskPage>
+        <Card title="My tickets" actions={<Segment label="Which tickets" options={[{ value: 'open', label: 'Open' }, { value: 'all', label: 'All' }]} value={show} onChange={setShow} />}>
+          {rows.length === 0 ? (
+            <EmptyState compact title={show === 'open' ? 'You have no open tickets.' : 'You have no tickets yet.'} description="When you raise a ticket, you can follow it here." />
+          ) : (
+            <ul className="yx-ops-list" aria-label="My tickets">
+              {rows.map((t) => (
+                <li key={t.id} className="yx-ops-list__item">
+                  <span className="yx-ops-list__main">
+                    <button type="button" className="yx-desk-link" onClick={() => props.onOpen(t.id)}>
+                      {t.subject}
+                    </button>
+                    <span className="yx-ops-list__sub">
+                      <span className="yx-ops-mono">{t.number}</span> · {t.desk} · raised {when(t.createdAt, tz)}
+                      {t.role === 'requested_for' ? ' · raised for you' : t.role === 'watcher' ? ' · you follow it' : ''}
+                    </span>
+                  </span>
+                  <span className="yx-ops-row">
+                    {t.private && (
+                      <Badge tone="neutral">
+                        <Lock aria-hidden size={12} /> Private
+                      </Badge>
+                    )}
+                    <StatusBadge label={t.status} state={t.systemState} />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="yx-ops-muted">Times are in your time zone: {tz}.</p>
+        </Card>
+        <ReadingAidsCard value={aids} onChange={setAids} />
+        <RaiseDrawer
+          open={open}
+          onOpenChange={setOpen}
+          desks={props.desks}
+          onRaise={async (input) => {
+            const r = await props.onRaise(input);
+            setRaised(r.number);
+            setOpen(false);
+          }}
+        />
+      </DeskPage>
+    </ReadingAidsFrame>
   );
 }
 
-function RaiseDrawer({ open, onOpenChange, desks, onRaise }: { open: boolean; onOpenChange: (o: boolean) => void; desks: RaiseDesk[]; onRaise: (i: RaiseInput) => Promise<void> }) {
+const SEVERITY: Record<BannerSeverity, { tone: 'info' | 'warning' | 'danger'; title: string }> = {
+  info: { tone: 'info', title: 'For your information' },
+  warning: { tone: 'warning', title: 'Known issue' },
+  outage: { tone: 'danger', title: 'Service down' },
+};
+
+/** Known issues at the top of a help page (US-G-020). "Me too" follows the team's incident instead of a new ticket. */
+export function BannerList({ banners, onMeToo }: { banners: PublicBanner[]; onMeToo: (id: string) => Promise<unknown> }) {
+  const [joined, setJoined] = useState<string[]>([]);
+  const { busy, error, run } = useRun();
+  if (!banners.length) return null;
+  return (
+    <section className="yx-ops-stack" data-gap="sm" aria-label="Known issues">
+      {error && <InlineAlert tone="danger" title="That didn't work">{error}</InlineAlert>}
+      {banners.map((b) => {
+        const on = b.meToo || joined.includes(b.id);
+        return (
+          <InlineAlert
+            key={b.id}
+            tone={SEVERITY[b.severity].tone}
+            title={SEVERITY[b.severity].title}
+            actions={
+              b.canMeToo ? (
+                <Button size="sm" disabled={on} loading={busy === b.id} onClick={() => void run(b.id, async () => { await onMeToo(b.id); setJoined((j) => [...j, b.id]); })}>
+                  {on ? 'You are on it' : 'Me too'}
+                </Button>
+              ) : undefined
+            }
+          >
+            {b.text}
+            {joined.includes(b.id) && <> We added you to this issue. You will hear when it is fixed.</>}
+          </InlineAlert>
+        );
+      })}
+    </section>
+  );
+}
+
+/** The raise-a-ticket fields, shared by the Help centre and the in-app Help drawer. */
+function useRaiseForm(desks: RaiseDesk[]) {
   const [deskId, setDeskId] = useState<string | null>(desks.length === 1 ? desks[0].id : null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [typeId, setTypeId] = useState<string | null>(null);
@@ -108,32 +161,93 @@ function RaiseDrawer({ open, onOpenChange, desks, onRaise }: { open: boolean; on
   const [details, setDetails] = useState('');
   const [urgency, setUrgency] = useState<string>('3');
   const [isPrivate, setPrivate] = useState(false);
-  const { busy, error, run } = useRun();
   const desk = desks.find((d) => d.id === deskId);
   const category = desk?.categories.find((c) => c.id === categoryId);
-  const ready = Boolean(deskId && subject.trim() && details.trim());
-  const reset = () => {
-    setCategoryId(null);
-    setTypeId(null);
+  const fields = (
+    <>
+      <FormField label="Which team?" required>
+        <Select
+          value={deskId}
+          onChange={(v) => {
+            setDeskId(v);
+            setCategoryId(null);
+            setTypeId(null);
+          }}
+          options={desks.map((d) => ({ value: d.id, label: d.name }))}
+          placeholder="Choose a team"
+        />
+      </FormField>
+      {desk && (
+        <>
+          <FormField label="What is it about?" optional>
+            <Select
+              value={categoryId}
+              onChange={setCategoryId}
+              clearable
+              options={desk.categories.map((c) => ({ value: c.id, label: c.parentId ? `· ${c.name}` : c.name, description: c.sensitive ? 'Private: only this team’s agents see it' : undefined }))}
+              placeholder="Choose a topic"
+            />
+          </FormField>
+          {desk.types.length > 1 && (
+            <FormField label="Kind of ticket" optional>
+              <Select value={typeId} onChange={setTypeId} clearable options={desk.types.map((t) => ({ value: t.id, label: t.name }))} placeholder="Choose a kind" />
+            </FormField>
+          )}
+        </>
+      )}
+      <FormField label="Subject" required helper="One line, e.g. “VPN drops when I work from home”">
+        <TextField value={subject} onChange={setSubject} maxLength={200} />
+      </FormField>
+      <FormField label="Details" required helper="Add dates, error messages or steps so the team can help faster. You can add files after raising it.">
+        <TextArea value={details} onChange={setDetails} rows={5} maxLength={20000} />
+      </FormField>
+      <FormField label="How soon do you need it?">
+        <Segment label="How soon do you need it?" options={URGENCY.map((u) => ({ value: u.value, label: u.label }))} value={urgency} onChange={setUrgency} />
+      </FormField>
+      {category?.sensitive ? (
+        <InlineAlert tone="info" title="Private by default">
+          Only this team’s agents can see tickets about {category.name.toLowerCase()}.
+        </InlineAlert>
+      ) : (
+        <Checkbox checked={isPrivate} onChange={setPrivate} label="Keep this private" description="Only the team's agents can see it, not their admins." />
+      )}
+    </>
+  );
+  return {
+    fields,
+    ready: Boolean(deskId && subject.trim() && details.trim()),
+    dirty: Boolean(subject || details),
+    input: (): RaiseInput => ({ deskId: deskId!, categoryId: categoryId ?? undefined, typeId: typeId ?? undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: Number(urgency), private: isPrivate || undefined }),
+    clear: () => {
+      setSubject('');
+      setDetails('');
+      setPrivate(false);
+    },
   };
+}
+
+function RaiseDrawer({ open, onOpenChange, desks, onRaise }: { open: boolean; onOpenChange: (o: boolean) => void; desks: RaiseDesk[]; onRaise: (i: RaiseInput) => Promise<void> }) {
+  const form = useRaiseForm(desks);
+  const { busy, error, run } = useRun();
   return (
     <Drawer
       open={open}
       onOpenChange={onOpenChange}
       title="Raise a ticket"
       subtitle="We send it to the right team. You can follow it in My tickets."
-      dirty={Boolean(subject || details)}
+      dirty={form.dirty}
       footer={
         <>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             variant="primary"
             loading={busy === 'raise'}
-            disabled={!ready}
+            disabled={!form.ready}
             onClick={() =>
-              void run('raise', () =>
-                onRaise({ deskId: deskId!, categoryId: categoryId ?? undefined, typeId: typeId ?? undefined, subject: subject.trim(), description: details.trim(), impact: 3, urgency: Number(urgency), private: isPrivate || undefined }),
-              )
+              void run('raise', async () => {
+                await onRaise(form.input());
+                form.clear();
+              })
             }
           >
             Raise ticket
@@ -143,50 +257,85 @@ function RaiseDrawer({ open, onOpenChange, desks, onRaise }: { open: boolean; on
     >
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="The ticket was not raised">{error}</InlineAlert>}
-        <FormField label="Which team?" required>
-          <Select
-            value={deskId}
-            onChange={(v) => {
-              setDeskId(v);
-              reset();
-            }}
-            options={desks.map((d) => ({ value: d.id, label: d.name }))}
-            placeholder="Choose a team"
-          />
-        </FormField>
-        {desk && (
-          <>
-            <FormField label="What is it about?" optional>
-              <Select
-                value={categoryId}
-                onChange={setCategoryId}
-                clearable
-                options={desk.categories.map((c) => ({ value: c.id, label: c.parentId ? `· ${c.name}` : c.name, description: c.sensitive ? 'Private: only this team’s agents see it' : undefined }))}
-                placeholder="Choose a topic"
-              />
-            </FormField>
-            {desk.types.length > 1 && (
-              <FormField label="Kind of ticket" optional>
-                <Select value={typeId} onChange={setTypeId} clearable options={desk.types.map((t) => ({ value: t.id, label: t.name }))} placeholder="Choose a kind" />
-              </FormField>
-            )}
-          </>
-        )}
-        <FormField label="Subject" required helper="One line, e.g. “VPN drops when I work from home”">
-          <TextField value={subject} onChange={setSubject} maxLength={200} />
-        </FormField>
-        <FormField label="Details" required helper="Add dates, error messages or steps so the team can help faster. You can add files after raising it.">
-          <TextArea value={details} onChange={setDetails} rows={5} maxLength={20000} />
-        </FormField>
-        <FormField label="How soon do you need it?">
-          <Segment label="How soon do you need it?" options={URGENCY.map((u) => ({ value: u.value, label: u.label }))} value={urgency} onChange={setUrgency} />
-        </FormField>
-        {category?.sensitive ? (
-          <InlineAlert tone="info" title="Private by default">
-            Only this team’s agents can see tickets about {category.name.toLowerCase()}.
+        {form.fields}
+      </div>
+    </Drawer>
+  );
+}
+
+export interface HelpDrawerProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  desks: RaiseDesk[];
+  tickets: MyTicketRow[];
+  banners: PublicBanner[];
+  onMeToo: (id: string) => Promise<unknown>;
+  /** The page adds the screen the drawer was opened on. */
+  onRaise: (input: RaiseInput) => Promise<{ id: string; number: string }>;
+  ticketHref: (id: string) => string;
+}
+
+/** The in-app Help drawer (US-B-100), open from every page: known issues, raise a ticket, my open tickets. */
+export function HelpDrawer(props: HelpDrawerProps) {
+  const form = useRaiseForm(props.desks);
+  const [raised, setRaised] = useState<string | null>(null);
+  const { busy, error, run } = useRun();
+  const open = props.tickets.filter((t) => !['solved', 'closed'].includes(t.systemState));
+  return (
+    <Drawer
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      title="Help"
+      subtitle="Ask a team for help without leaving this page."
+      dirty={form.dirty}
+      footer={
+        <>
+          <Button onClick={() => props.onOpenChange(false)}>Close</Button>
+          <Button
+            variant="primary"
+            loading={busy === 'raise'}
+            disabled={!form.ready}
+            onClick={() =>
+              void run('raise', async () => {
+                const r = await props.onRaise(form.input());
+                setRaised(r.number);
+                form.clear();
+              })
+            }
+          >
+            Raise ticket
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-ops-stack">
+        <BannerList banners={props.banners} onMeToo={props.onMeToo} />
+        {raised && (
+          <InlineAlert tone="success" title="Ticket raised">
+            Your ticket number is {raised}. The team will reply in the Help centre.
           </InlineAlert>
+        )}
+        {error && <InlineAlert tone="danger" title="The ticket was not raised">{error}</InlineAlert>}
+        <h3 className="yx-ops-card__title">Raise a ticket</h3>
+        {form.fields}
+        <h3 className="yx-ops-card__title">My open tickets</h3>
+        {open.length ? (
+          <ul className="yx-ops-list" aria-label="My open tickets">
+            {open.map((t) => (
+              <li key={t.id} className="yx-ops-list__item">
+                <span className="yx-ops-list__main">
+                  <a className="yx-desk-link" href={props.ticketHref(t.id)}>
+                    {t.subject}
+                  </a>
+                  <span className="yx-ops-list__sub">
+                    <span className="yx-ops-mono">{t.number}</span> · {t.status}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
         ) : (
-          <Checkbox checked={isPrivate} onChange={setPrivate} label="Keep this private" description="Only the team's agents can see it, not their admins." />
+          <p className="yx-ops-muted">You have no open tickets.</p>
         )}
       </div>
     </Drawer>
@@ -204,6 +353,7 @@ export interface MyTicketScreenProps {
   onUpload: (file: File) => Promise<Attachment>;
   onOpenFile: (attachmentId: string) => Promise<void>;
   onAddWatcher: (email: string) => Promise<void>;
+  timeZone?: string;
 }
 
 /** The requester's view of one ticket: replies only, never the team's internal notes (YX-SD-13). */
@@ -223,7 +373,7 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
   return (
     <DeskPage
       title={t ? t.subject : 'Ticket'}
-      description={t ? `${t.number} · ${t.desk.name} · raised ${when(t.createdAt)}${t.requestedFor ? ` for ${t.requestedFor}` : ''}` : undefined}
+      description={t ? `${t.number} · ${t.desk.name} · raised ${when(t.createdAt, props.timeZone)}${t.requestedFor ? ` for ${t.requestedFor}` : ''}` : undefined}
       state={props.state}
       onRetry={props.onRetry}
       what="this ticket"
@@ -239,7 +389,7 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
                   <li key={m.id} className="yx-ops-msg" data-kind={m.mine ? 'mine' : undefined}>
                     <span className="yx-ops-msg__meta">
                       <span className="yx-ops-msg__who">{m.mine ? 'You' : m.author}</span>
-                      <span>{when(m.createdAt)}</span>
+                      <span>{when(m.createdAt, props.timeZone)}</span>
                     </span>
                     <MessageBody html={m.bodyHtml} />
                     <FileList files={byMessage.get(m.id) ?? []} onOpen={(id) => void run(`file-${id}`, () => props.onOpenFile(id))} />
@@ -252,7 +402,7 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
               <Card title="Reply">
                 <div className="yx-ops-stack">
                   {t.replyStartsFollowUp && <InlineAlert tone="info">{t.systemState === 'closed' ? 'This ticket is closed.' : 'The time to reopen this ticket has passed.'} Your reply starts a new ticket linked to this one.</InlineAlert>}
-                  {!t.replyStartsFollowUp && t.systemState === 'solved' && t.reopenUntil && <p className="yx-ops-muted">Not fixed? Reply by {when(t.reopenUntil)} and the ticket opens again.</p>}
+                  {!t.replyStartsFollowUp && t.systemState === 'solved' && t.reopenUntil && <p className="yx-ops-muted">Not fixed? Reply by {when(t.reopenUntil, props.timeZone)} and the ticket opens again.</p>}
                   <FormField label="Your reply" hideLabel>
                     <TextArea value={text} onChange={setText} rows={4} placeholder="Write to the team" maxLength={20000} />
                   </FormField>
@@ -299,7 +449,7 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
               <div className="yx-ops-stack" data-gap="sm">
                 <StatusBadge label={t.status} state={t.systemState} />
                 <p className="yx-ops-muted">{t.assignee ? `${t.assignee} is working on it.` : 'Waiting for someone in the team to pick it up.'}</p>
-                {t.resolveBy && <p>We aim to resolve it by {when(t.resolveBy)}.</p>}
+                {t.resolveBy && <p>We aim to resolve it by {when(t.resolveBy, props.timeZone)}.</p>}
                 {t.targetPaused && <p className="yx-ops-muted">The team is waiting for something before it can go on.</p>}
                 {t.private && <p className="yx-ops-muted">Private: only the team’s agents can see it.</p>}
                 {t.history.length > 0 && (
@@ -307,7 +457,7 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
                     {t.history.map((h) => (
                       <li key={h.at} className="yx-ops-list__item">
                         <span className="yx-ops-list__sub">
-                          {h.to} · {when(h.at)}
+                          {h.to} · {when(h.at, props.timeZone)}
                         </span>
                       </li>
                     ))}

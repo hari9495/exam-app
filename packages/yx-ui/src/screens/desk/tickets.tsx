@@ -103,7 +103,7 @@ export function DeskTicketsScreen(props: DeskTicketsScreenProps) {
       render: (t) => (
         <span className="yx-ops-row">
           <span>{t.subject}</span>
-          <TicketFlags sensitive={t.sensitive} private={t.private} vip={t.vip} />
+          <TicketFlags sensitive={t.sensitive} private={t.private} vip={t.vip} unverified={t.senderVerified === false} />
         </span>
       ),
       width: 320,

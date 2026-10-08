@@ -160,6 +160,11 @@ export function TicketScreen(props: TicketScreenProps) {
           Check before you reply so the requester is not answered twice.
         </InlineAlert>
       )}
+      {t.senderVerified === false && (
+        <InlineAlert tone="warning" title="Sender not verified">
+          We could not prove who sent this email. Do not share private details until you are sure.
+        </InlineAlert>
+      )}
       {error && <InlineAlert tone="danger" title="That didn't work">{error}</InlineAlert>}
       <div className="yx-ops-ws">
         <div className="yx-ops-ws__main">
@@ -171,6 +176,7 @@ export function TicketScreen(props: TicketScreenProps) {
                     <span className="yx-ops-msg__who">{m.author}</span>
                     {m.kind === 'note' && <Badge tone="warning">Internal note: {first} never sees it</Badge>}
                     {m.fromTicketId && <Badge tone="neutral">From a merged ticket</Badge>}
+                    {m.senderVerified === false && <Badge tone="warning">Not verified</Badge>}
                     <span>{when(m.createdAt)}</span>
                     {m.editedAt && <span>· edited</span>}
                   </span>
@@ -295,6 +301,7 @@ export function TicketScreen(props: TicketScreenProps) {
           <Card title="Requester">
             <RequesterPanel ticket={t} context={props.context} onOpenTicket={props.onOpenTicket} />
           </Card>
+          <SourceCard ticket={t} />
           <Card title="People on this ticket">
             <PeoplePanel
               ticket={t}
@@ -390,6 +397,23 @@ function TagEditor({ tags, disabled, onChange }: { tags: string[]; disabled: boo
         )}
       </div>
     </FormField>
+  );
+}
+
+/** Batch 3: the customer company, plan and product, the screen help was asked from, and values read from the email. */
+function SourceCard({ ticket: t }: { ticket: TicketDetail }) {
+  const read = Object.entries(t.fields ?? {}).filter(([k, v]) => k !== 'screen' && (typeof v === 'string' || typeof v === 'number'));
+  const items = [
+    ...(t.customer ? [{ label: 'Company', value: t.customer.account.name }, { label: 'Plan', value: t.customer.plan ?? 'No plan' }] : []),
+    ...(t.product ? [{ label: 'Product', value: t.product.name }] : []),
+    ...(t.screen ? [{ label: 'Raised from', value: t.screen }] : []),
+    ...read.map(([k, v]) => ({ label: `${k.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())} (from the email)`, value: String(v) })),
+  ];
+  if (!items.length) return null;
+  return (
+    <Card title={t.customer || t.product ? 'Customer' : 'Where it came from'}>
+      <DescriptionList items={items} />
+    </Card>
   );
 }
 

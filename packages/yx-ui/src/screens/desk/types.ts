@@ -157,6 +157,10 @@ export interface TicketRow {
   createdAt: string;
   updatedAt: string;
   canBulk: boolean;
+  channel?: string;
+  customerAccountId?: string | null;
+  /** False when an email's sender could not be proven (SPF / DKIM / DMARC). */
+  senderVerified?: boolean;
 }
 
 export interface TicketPage {
@@ -203,6 +207,7 @@ export interface TicketMessage {
   channel: string;
   createdAt: string;
   editedAt: string | null;
+  senderVerified?: boolean;
 }
 
 export interface TicketDetail {
@@ -254,6 +259,14 @@ export interface TicketDetail {
   watchers: { id: string; personId: string; name: string; email: string | null; external: boolean }[];
   collaborators: { userId: string; name: string }[];
   time: { totalMinutes: number; entries: { id: string; minutes: number; note: string | null; workedOn: string; who: string; mine: boolean }[] };
+  /** Batch 3: false when we could not prove who sent the email. */
+  senderVerified?: boolean;
+  customer?: { account: { id: string; name: string }; plan: string | null } | null;
+  product?: { id: string; name: string } | null;
+  /** The screen the in-app help drawer was opened on. */
+  screen?: string | null;
+  /** Values read from the email by rules (e.g. order_number); may also hold `screen`. */
+  fields?: Record<string, unknown> | null;
 }
 
 export interface TimelineEntry {
@@ -471,4 +484,300 @@ export interface DuplicatePerson {
   loginEmail: string;
   tickets: number;
   possibleMatch: { personId: string; name: string; employeeCode: string | null };
+}
+
+// ---- batch 3 (SD-1.18 to SD-1.23, SD-1.28): email, portals, banners, customers ----
+
+export type MailboxKind = 'hosted' | 'forward' | 'm365_oauth' | 'gmail_oauth' | 'imap';
+
+export interface Mailbox {
+  id: string;
+  deskId: string;
+  address: string;
+  kind: MailboxKind;
+  displayName: string | null;
+  sendingDomainId: string | null;
+  defaultCategoryId: string | null;
+  defaultTypeId: string | null;
+  defaultTemplateId: string | null;
+  autoAck: boolean;
+  ackText: string | null;
+  trustedForwarders: string[];
+  status: 'active' | 'paused';
+  lastPolledAt: string | null;
+  lastError: string | null;
+  config?: Record<string, unknown> | null;
+  version: number;
+  sendsMail?: boolean;
+  sendsFromOwnDomain?: boolean;
+}
+
+export interface MailboxInput {
+  address?: string;
+  kind?: MailboxKind;
+  displayName?: string;
+  sendingDomainId?: string | null;
+  defaultCategoryId?: string | null;
+  defaultTypeId?: string | null;
+  autoAck?: boolean;
+  ackText?: string;
+  trustedForwarders?: string[];
+  status?: 'active' | 'paused';
+  config?: Record<string, string | number>;
+}
+
+/** Shown once, right after a hosted or forward mailbox is made or its address is replaced. */
+export interface WebhookSecret {
+  webhookUrl: string;
+  signingSecret: string;
+}
+
+export type RuleField = 'from' | 'domain' | 'to' | 'subject' | 'body' | 'header';
+export type RuleOp = 'contains' | 'equals' | 'starts_with' | 'ends_with';
+export type RuleAction = 'route' | 'tag' | 'priority' | 'reject' | 'spam' | 'parse_field';
+
+export interface MailRuleInput {
+  name: string;
+  field: RuleField;
+  headerName?: string;
+  op: RuleOp;
+  value: string;
+  action: RuleAction;
+  actionValue?: { categoryId?: string; tag?: string; priority?: number; key?: string; field?: string };
+  stop?: boolean;
+  active?: boolean;
+  sortOrder?: number;
+}
+export interface MailRule extends MailRuleInput {
+  id: string;
+}
+
+export type InboundVerdict = 'held' | 'spam' | 'rejected' | 'loop' | 'bounce' | 'accepted';
+
+export interface InboundEmail {
+  id: string;
+  receivedAt: string;
+  from: string;
+  fromName: string | null;
+  subject: string | null;
+  verdict: InboundVerdict;
+  reason: string | null;
+  checks: { spf?: string | null; dkim?: string | null; dmarc?: string | null; dmarcPolicy?: string | null; arc?: string | null; verified?: boolean; signed?: boolean } | null;
+  flags: string[];
+  ticketId: string | null;
+  released: boolean;
+}
+
+export interface InboundEmailDetail {
+  id: string;
+  from: string;
+  fromName: string | null;
+  to: string;
+  subject: string | null;
+  verdict: InboundVerdict;
+  reason: string | null;
+  flags: string[];
+  receivedAt: string;
+  text: string;
+  files: string[];
+}
+
+export interface SendingDomain {
+  id: string;
+  domain: string;
+  status: 'pending' | 'verified' | 'failed';
+  lastCheckedAt: string | null;
+  records: { type: 'TXT'; host: string; value: string; ok: boolean; what: string }[];
+}
+
+export interface Bounce {
+  id: string;
+  address: string;
+  kind: 'bounce' | 'complaint';
+  reason: string | null;
+  createdAt: string;
+}
+
+export type PortalSignUp = 'closed' | 'allowed_domains' | 'open';
+
+export interface PortalInput {
+  slug: string;
+  name: string;
+  deskIds: string[];
+  signUp: PortalSignUp;
+  allowedDomains?: string[];
+  openRequests?: boolean;
+  accentColour?: string;
+  loginTitle?: string;
+  loginText?: string;
+  readingAids?: boolean;
+  status?: 'active' | 'off';
+}
+export interface PortalView {
+  id: string;
+  slug: string;
+  name: string;
+  deskIds: string[];
+  signUp: PortalSignUp;
+  allowedDomains: string[];
+  openRequests: boolean;
+  accentColour: string | null;
+  loginTitle: string | null;
+  loginText: string | null;
+  readingAids: boolean;
+  status: 'active' | 'off';
+  version: number;
+  address: string;
+}
+
+export type BannerSeverity = 'info' | 'warning' | 'outage';
+export type BannerAudience = 'everyone' | 'employees' | 'customers';
+
+export interface BannerInput {
+  text: string;
+  severity: BannerSeverity;
+  audience: BannerAudience;
+  ticketId?: string | null;
+  locationId?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+}
+export interface Banner {
+  id: string;
+  deskId: string;
+  text: string;
+  severity: BannerSeverity;
+  audience: BannerAudience;
+  locationId: string | null;
+  ticketId: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  endedAt: string | null;
+  live: boolean;
+  meToo: number;
+  ticket: { id: string; number: string; systemState: SystemState } | null;
+}
+
+/** A live banner as a requester (employee or outside customer) sees it. */
+export interface PublicBanner {
+  id: string;
+  text: string;
+  severity: BannerSeverity;
+  canMeToo: boolean;
+  meToo: boolean;
+}
+
+export interface CustomerPlan {
+  plan: string;
+  tier: string;
+  inherited: boolean;
+}
+
+export interface CustomerAccountRow {
+  id: string;
+  name: string;
+  emailDomains: string[];
+  parentId: string | null;
+  parent: string | null;
+  status: 'active' | 'inactive';
+  contacts: number;
+  plan: CustomerPlan | null;
+  version: number;
+}
+
+export type ContactRole = 'primary' | 'billing' | 'technical' | 'member';
+
+export interface CustomerContact {
+  id: string;
+  personId: string;
+  name: string;
+  email: string;
+  role: ContactRole;
+  seesAccountTickets: boolean;
+  status: 'active' | 'inactive';
+}
+
+export interface Entitlement {
+  id: string;
+  plan: string;
+  tier: string;
+  ticketsAllowed: number | null;
+  hoursAllowed: number | null;
+  channels: string[];
+  whenUsedUp: 'flag' | 'hold';
+  validFrom: string;
+  validTo: string | null;
+}
+
+export interface CustomerAccount {
+  id: string;
+  name: string;
+  emailDomains: string[];
+  status: 'active' | 'inactive';
+  version: number;
+  owner: { id: string; name: string } | null;
+  parent: { id: string; name: string } | null;
+  children: { id: string; name: string }[];
+  plan: CustomerPlan | null;
+  contacts: CustomerContact[];
+  entitlements: Entitlement[];
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  deskId: string | null;
+  active: boolean;
+}
+
+// ---- the outside portal (no YukthiX sign-in) ----
+
+export interface PortalHome {
+  company: string;
+  portal: { name: string; accentColour: string | null; loginTitle: string | null; loginText: string | null; readingAids: boolean; openRequests: boolean; signUp: PortalSignUp };
+  desks: { id: string; name: string; categories: { id: string; name: string; parentId: string | null }[]; products: { id: string; name: string }[] }[];
+  banners: PublicBanner[];
+}
+
+export interface PortalMe {
+  name: string;
+  email: string;
+  account: string | null;
+  seesAccountTickets: boolean;
+}
+
+export interface PortalTicketRow {
+  id: string;
+  number: string;
+  subject: string;
+  status: string;
+  systemState: SystemState;
+  mine: boolean;
+  raisedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PortalTicket {
+  id: string;
+  number: string;
+  subject: string;
+  desk: string;
+  status: string;
+  systemState: SystemState;
+  createdAt: string;
+  raisedBy: string | null;
+  mine: boolean;
+  canReply: boolean;
+  resolveBy: string | null;
+  messages: { id: string; side: 'agent' | 'requester' | 'system'; author: string; mine: boolean; bodyHtml: string; createdAt: string }[];
+  files: { id: string; fileName: string; scanStatus: string }[];
+}
+
+export interface PortalRaiseInput {
+  deskId: string;
+  categoryId?: string;
+  productId?: string;
+  subject: string;
+  description: string;
 }

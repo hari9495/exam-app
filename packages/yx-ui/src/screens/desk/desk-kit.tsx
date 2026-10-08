@@ -1,5 +1,7 @@
-import type { ReactNode } from 'react';
-import { Lock, Star } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
+import { Copy, Lock, Star } from 'lucide-react';
+import { Button } from '../../components/button';
+import { TextField } from '../../components/inputs';
 import { Badge, type BadgeTone } from '../../components/display';
 import { ErrorState, NoAccessState, Skeleton } from '../../components/feedback';
 import { PageHeader } from '../../components/shell';
@@ -24,9 +26,10 @@ export function PriorityBadge({ priority }: { priority: number }) {
 }
 
 /** Private, sensitive and VIP marks, each in words (never colour alone). */
-export function TicketFlags({ sensitive, private: isPrivate, vip }: { sensitive?: boolean; private?: boolean; vip?: boolean }) {
+export function TicketFlags({ sensitive, private: isPrivate, vip, unverified }: { sensitive?: boolean; private?: boolean; vip?: boolean; unverified?: boolean }) {
   return (
     <>
+      {unverified && <Badge tone="warning">Not verified</Badge>}
       {(sensitive || isPrivate) && (
         <Badge tone="neutral">
           <Lock aria-hidden size={12} /> {sensitive ? 'Sensitive' : 'Private'}
@@ -41,11 +44,38 @@ export function TicketFlags({ sensitive, private: isPrivate, vip }: { sensitive?
   );
 }
 
-/** "8 Oct 2026, 3:42 pm" in the viewer's own time zone. */
-export function when(iso: string | null | undefined): string {
+/** "8 Oct 2026, 3:42 pm" in the viewer's own time zone, or in `timeZone` when given (an IANA name). */
+export function when(iso: string | null | undefined, timeZone?: string): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return `${formatDate(d)}, ${new Intl.DateTimeFormat('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).format(d)}`;
+  const time = new Intl.DateTimeFormat('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, ...(timeZone ? { timeZone } : {}) }).format(d);
+  if (!timeZone) return `${formatDate(d)}, ${time}`;
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric' }).formatToParts(d).map((x) => [x.type, x.value]));
+  return `${formatDate(new Date(Number(p.year), Number(p.month) - 1, Number(p.day)))}, ${time}`;
+}
+
+/** The browser's own time zone, the fallback when the account has none. */
+export const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** A value to copy, with its own button (DNS records, webhook addresses). */
+export function CopyValue({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <span className="yx-ops-row">
+      <TextField size="sm" aria-label={label} value={value} readOnly onFocus={(e) => e.currentTarget.select()} />
+      <Button
+        size="sm"
+        icon={Copy}
+        aria-label={`Copy ${label.toLowerCase()}`}
+        onClick={() => {
+          void navigator.clipboard?.writeText(value).catch(() => undefined);
+          setCopied(true);
+        }}
+      >
+        {copied ? 'Copied' : 'Copy'}
+      </Button>
+    </span>
+  );
 }
 
 /** "1 h 25 min". */

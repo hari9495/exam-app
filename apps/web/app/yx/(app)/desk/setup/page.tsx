@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { DeskSetupScreen, type Calendar, type CannedResponse, type ComplianceReport, type DeskDetail, type DeskSummary, type DeskTemplates, type SeatCost, type SlaSetup } from '@yukthix/ui/desk';
+import { DeskSetupScreen, type Banner, type Bounce, type Calendar, type CannedResponse, type ComplianceReport, type DeskDetail, type DeskSummary, type DeskTemplates, type InboundEmail, type InboundEmailDetail, type InboundVerdict, type Mailbox, type MailRule, type PortalView, type SeatCost, type SendingDomain, type SlaSetup, type TicketPage, type WebhookSecret } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useYxPermissions } from '../../../../../lib/yx-org';
@@ -10,7 +10,8 @@ import { deskState, useDesk, useDeskWrite } from '../../../../../lib/yx-desk';
 // Service desk › Desk set-up (APX-D §5.8, M14 SD-1.01/1.02): desks, seats (cost shown first), groups, categories, types,
 // statuses, priority matrix, saved replies, scenarios, numbering, files and business calendars; batch 2 (SD-1.10 …
 // SD-1.17): resolve and reopen rules, resolution codes, templates, response targets (SLA / OLA) with monthly
-// compliance, which half of a half-day holiday is open, and the paid agents of the month.
+// compliance, which half of a half-day holiday is open, and the paid agents of the month; batch 3 (SD-1.18 … SD-1.23):
+// email (mailboxes, rules, held mail, sending domains, bounce list), outside help pages and known-issue banners.
 export default function YxDeskSetupPage() {
   const { accessToken } = useAuth();
   const token = accessToken ?? undefined;
@@ -30,6 +31,18 @@ export default function YxDeskSetupPage() {
   const compliance = useDesk<ComplianceReport>(selected && canReport ? `/desks/${selected}/sla-compliance?month=${month}` : null);
   const templates = useDesk<DeskTemplates>(selected ? `/desks/${selected}/templates` : null);
   const billing = useDesk<{ month: string; paidAgents: number; collaborators: unknown[] }>(perms.has('desk.desk.create') ? `/billing/agents?month=${month}` : null);
+  // Batch 3 tabs, each only for people who hold its key (the API checks the desk too and answers 403).
+  const canEmail = perms.has('desk.mailbox.manage');
+  const canPortal = perms.has('desk.portal.manage');
+  const canBanner = perms.has('desk.ticket.work');
+  const [verdict, setVerdict] = useState<InboundVerdict | 'all'>('held');
+  const mailboxes = useDesk<Mailbox[]>(selected && canEmail ? `/desks/${selected}/mailboxes` : null);
+  const inbound = useDesk<InboundEmail[]>(selected && canEmail ? `/desks/${selected}/inbound-emails?verdict=${verdict}` : null, { keepPrevious: true });
+  const domains = useDesk<SendingDomain[]>(canEmail ? '/sending-domains' : null);
+  const bounces = useDesk<Bounce[]>(canEmail ? '/bounces' : null);
+  const portals = useDesk<PortalView[]>(canPortal ? '/portals' : null);
+  const banners = useDesk<Banner[]>(selected && canBanner ? `/desks/${selected}/banners` : null);
+  const openTickets = useDesk<TicketPage>(selected && canBanner ? `/tickets?deskIds=${selected}&states=new,open,pending,on_hold&limit=100` : null);
   const write = useDeskWrite();
   const base = `/desks/${selected}`;
   const version = detail.data?.desk.version ?? 0;
@@ -109,6 +122,68 @@ export default function YxDeskSetupPage() {
               },
               onSaveTargets: async (targets) => {
                 await write(`${base}/sla-targets`, 'PUT', { targets });
+              },
+            }
+          : undefined
+      }
+      email={
+        canEmail
+          ? {
+              state: deskState(mailboxes, inbound),
+              mailboxes: mailboxes.data ?? [],
+              inbound: inbound.data ?? [],
+              domains: domains.data ?? [],
+              bounces: bounces.data ?? [],
+              verdict,
+              onVerdict: setVerdict,
+              onCreateMailbox: (input) => write<Mailbox & Partial<WebhookSecret>>(`${base}/mailboxes`, 'POST', input),
+              onUpdateMailbox: async (m, change) => {
+                await write(`${base}/mailboxes/${m.id}`, 'PATCH', { version: m.version, ...change });
+              },
+              onRotate: (m) => write<WebhookSecret>(`${base}/mailboxes/${m.id}/rotate`, 'POST'),
+              onLoadRules: (m) => apiFetch(`/desk${base}/mailboxes/${m.id}/rules`, {}, token) as Promise<MailRule[]>,
+              onSaveRule: async (m, id, input) => {
+                await write(id ? `${base}/mailboxes/${m.id}/rules/${id}` : `${base}/mailboxes/${m.id}/rules`, id ? 'PATCH' : 'POST', input);
+              },
+              onDeleteRule: async (m, id) => {
+                await write(`${base}/mailboxes/${m.id}/rules/${id}`, 'DELETE');
+              },
+              onOpenOriginal: (id) => apiFetch(`/desk${base}/inbound-emails/${encodeURIComponent(id)}`, {}, token) as Promise<InboundEmailDetail>,
+              onRelease: (id) => write(`${base}/inbound-emails/${encodeURIComponent(id)}/release`, 'POST'),
+              onAddDomain: async (domain) => {
+                await write('/sending-domains', 'POST', { domain });
+              },
+              onCheckDomain: async (id) => {
+                await write(`/sending-domains/${encodeURIComponent(id)}/verify-dns`, 'POST');
+              },
+              onClearBounce: async (id) => {
+                await write(`/bounces/${encodeURIComponent(id)}/clear`, 'POST');
+              },
+            }
+          : undefined
+      }
+      portals={
+        canPortal
+          ? {
+              state: deskState(portals),
+              portals: portals.data ?? [],
+              onSave: async (p, input) => {
+                await write(p ? `/portals/${p.id}` : '/portals', p ? 'PATCH' : 'POST', p ? { version: p.version, ...input } : input);
+              },
+            }
+          : undefined
+      }
+      banners={
+        canBanner
+          ? {
+              state: deskState(banners),
+              banners: banners.data ?? [],
+              openTickets: (openTickets.data?.items ?? []).map((t) => ({ id: t.id, number: t.number, subject: t.subject })),
+              onSave: async (b, input) => {
+                await write(b ? `${base}/banners/${b.id}` : `${base}/banners`, b ? 'PATCH' : 'POST', input);
+              },
+              onEnd: async (b) => {
+                await write(`${base}/banners/${b.id}/end`, 'POST');
               },
             }
           : undefined

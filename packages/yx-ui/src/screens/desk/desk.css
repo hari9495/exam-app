@@ -21,3 +21,15 @@
 .yx-desk-sla-bar__part[data-state="paused"] { background: repeating-linear-gradient(45deg, var(--yx-color-warning-text), var(--yx-color-warning-text) var(--yx-space-1), var(--yx-color-border) var(--yx-space-1), var(--yx-color-border) var(--yx-space-2)); }
 .yx-desk-sla-bar__part[data-state="breached"] { background: var(--yx-color-danger-text); }
 .yx-desk-cal-day { font-weight: var(--yx-weight-medium); margin: var(--yx-space-3) 0 var(--yx-space-1); }
+/* Batch 3: reading aids (saved per browser), the outside portal's brand band, the in-app Help button, plain-text email. */
+.yx-reading[data-font], .yx-reading[data-font] * { font-family: "Atkinson Hyperlegible", Verdana, sans-serif; letter-spacing: 0.01em; }
+.yx-reading[data-large] { zoom: 1.25; }
+.yx-reading[data-focus] :focus-visible { outline: calc(var(--yx-focus-width) * 2) solid var(--yx-color-focus-ring); outline-offset: var(--yx-focus-width); }
+.yx-reading-mask { position: fixed; inset-inline: 0; background: var(--yx-color-scrim); pointer-events: none; z-index: var(--yx-z-toast); }
+.yx-desk-portal { min-height: 100vh; background: var(--yx-color-bg-page); }
+.yx-desk-portal__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-3); padding: var(--yx-space-3) var(--yx-space-4); background: var(--yx-color-bg-surface); border-top: var(--yx-space-1) solid var(--yx-portal-accent, var(--yx-color-focus-ring)); border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-desk-portal__brand { display: flex; flex-direction: column; min-width: 0; }
+.yx-desk-portal__company { font-weight: var(--yx-weight-medium); overflow-wrap: anywhere; }
+.yx-desk-portal__main { max-width: calc(var(--yx-space-16) * 14); margin-inline: auto; padding: var(--yx-space-4); display: flex; flex-direction: column; gap: var(--yx-space-4); }
+.yx-desk-help-fab { position: fixed; inset-block-end: var(--yx-space-4); inset-inline-end: var(--yx-space-4); z-index: var(--yx-z-sticky); }
+.yx-desk-plain { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--yx-font-mono); font-size: var(--yx-text-sm); margin: 0; padding: var(--yx-space-3); background: var(--yx-color-bg-subtle); border-radius: var(--yx-radius-control); max-height: 60vh; overflow: auto; }

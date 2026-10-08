@@ -1,5 +1,5 @@
 // Fictional sample data for the Service Desk stories and tests (Kaveri Foods demo company).
-import type { CalendarItem, CannedResponse, ComplianceReport, DeskDetail, DeskTemplates, SlaSetup, TicketWork, DeskSummary, MyTicket, MyTicketRow, RaiseDesk, RequesterContext, TicketDetail, TicketRow, TimelineEntry } from './types';
+import type { Banner, Bounce, CustomerAccount, CustomerAccountRow, InboundEmail, Mailbox, PortalHome, PortalTicket, PortalTicketRow, PortalView, Product, PublicBanner, SendingDomain, CalendarItem, CannedResponse, ComplianceReport, DeskDetail, DeskTemplates, SlaSetup, TicketWork, DeskSummary, MyTicket, MyTicketRow, RaiseDesk, RequesterContext, TicketDetail, TicketRow, TimelineEntry } from './types';
 
 export const DESK: DeskSummary = {
   id: 'd-it',
@@ -205,3 +205,98 @@ export const SLA_SETUP: SlaSetup = {
 };
 
 export const COMPLIANCE: ComplianceReport = { month: '2026-10', lines: [{ metric: 'resolution', label: 'Resolution', priority: 2, kept: 18, missed: 2, open: 3, excluded: 1, percent: 90, target: 95, atRisk: true }] };
+
+// ---- batch 3 (SD-1.18 to SD-1.23, SD-1.28) ----
+
+export const CS_DESK: DeskSummary = { ...DESK, id: 'd-cs', key: 'CS', name: 'Customer support', kind: 'customer_support', audience: 'customer', numberPrefix: 'CS-', canSetUp: true, myRole: 'admin' };
+
+export const MAILBOXES: Mailbox[] = [
+  { id: 'mb1', deskId: 'd-it', address: 'it-help@kaveri.test', kind: 'forward', displayName: 'Kaveri IT help', sendingDomainId: 'sd1', defaultCategoryId: 'c-net', defaultTypeId: null, defaultTemplateId: null, autoAck: true, ackText: 'We have your email. Your ticket is {{ticket.number}}.', trustedForwarders: ['kaveri.test'], status: 'active', lastPolledAt: null, lastError: null, version: 1, sendsMail: true, sendsFromOwnDomain: false },
+  { id: 'mb2', deskId: 'd-it', address: 'helpdesk@kaveri.test', kind: 'imap', displayName: null, sendingDomainId: null, defaultCategoryId: null, defaultTypeId: null, defaultTemplateId: null, autoAck: false, ackText: null, trustedForwarders: [], status: 'paused', lastPolledAt: '2026-10-08T05:00:00Z', lastError: 'The mail server refused the password', version: 3 },
+];
+
+export const INBOUND: InboundEmail[] = [
+  { id: 'in1', receivedAt: '2026-10-08T04:10:00Z', from: 'ceo@kaveri-foods.example', fromName: 'Ananya Rao', subject: 'Urgent: wire the payment today', verdict: 'held', reason: 'The sender could not be proven', checks: { spf: 'fail', dkim: 'none', dmarc: 'fail', dmarcPolicy: 'reject', arc: null, verified: false, signed: false }, flags: ['sender_not_verified', 'display_name_lookalike'], ticketId: null, released: false },
+  { id: 'in2', receivedAt: '2026-10-08T03:00:00Z', from: 'mailer-daemon@mail.example', fromName: null, subject: 'Undelivered mail', verdict: 'bounce', reason: 'Bounce for old.vendor@example.com', checks: { spf: 'pass', dkim: 'pass', dmarc: 'pass', dmarcPolicy: 'none', arc: null, verified: true, signed: true }, flags: [], ticketId: null, released: false },
+];
+
+export const SENDING_DOMAINS: SendingDomain[] = [
+  {
+    id: 'sd1',
+    domain: 'kaveri.test',
+    status: 'pending',
+    lastCheckedAt: '2026-10-08T05:30:00Z',
+    records: [
+      { type: 'TXT', host: 'kaveri.test', value: 'v=spf1 include:mail.yukthix.test ~all', ok: true, what: 'Lets our servers send for you (SPF)' },
+      { type: 'TXT', host: 'yx1._domainkey.kaveri.test', value: 'v=DKIM1; k=rsa; p=MIIBIjANBg', ok: false, what: 'Signs your desk email (DKIM)' },
+      { type: 'TXT', host: '_dmarc.kaveri.test', value: 'v=DMARC1; p=none', ok: false, what: 'Tells others what to do with fakes (DMARC)' },
+    ],
+  },
+];
+
+export const BOUNCES: Bounce[] = [{ id: 'b1', address: 'old.vendor@example.com', kind: 'bounce', reason: 'Mailbox does not exist', createdAt: '2026-10-08T03:00:00Z' }];
+
+export const PORTALS: PortalView[] = [
+  { id: 'po1', slug: 'help', name: 'Kaveri customer help', deskIds: ['d-cs'], signUp: 'allowed_domains', allowedDomains: ['retailer.example'], openRequests: true, accentColour: null, loginTitle: 'Help for Kaveri Foods partners', loginText: 'Sign in with the email you use with us.', readingAids: true, status: 'active', version: 1, address: 'https://app.yukthix.test/yx/portal/kaveri/help' },
+];
+
+export const BANNERS: Banner[] = [
+  { id: 'bn1', deskId: 'd-it', text: 'VPN is slow for people working from home. We are on it.', severity: 'warning', audience: 'employees', locationId: null, ticketId: 't9', startsAt: null, endsAt: null, endedAt: null, live: true, meToo: 12, ticket: { id: 't9', number: 'IT-1031', systemState: 'open' } },
+];
+
+export const MY_BANNERS: PublicBanner[] = [{ id: 'bn1', text: 'VPN is slow for people working from home. We are on it.', severity: 'warning', canMeToo: true, meToo: false }];
+
+export const ACCOUNT_ROWS: CustomerAccountRow[] = [
+  { id: 'ac1', name: 'Sunrise Retail', emailDomains: ['sunrise.example'], parentId: null, parent: null, status: 'active', contacts: 2, plan: { plan: 'Gold support', tier: 'gold', inherited: false }, version: 1 },
+  { id: 'ac2', name: 'Sunrise Retail South', emailDomains: [], parentId: 'ac1', parent: 'Sunrise Retail', status: 'active', contacts: 1, plan: { plan: 'Gold support', tier: 'gold', inherited: true }, version: 1 },
+];
+
+export const ACCOUNT: CustomerAccount = {
+  id: 'ac1',
+  name: 'Sunrise Retail',
+  emailDomains: ['sunrise.example'],
+  status: 'active',
+  version: 1,
+  owner: { id: 'u-farah', name: 'Farah Khan' },
+  parent: null,
+  children: [{ id: 'ac2', name: 'Sunrise Retail South' }],
+  plan: { plan: 'Gold support', tier: 'gold', inherited: false },
+  contacts: [
+    { id: 'co1', personId: 'p1', name: 'Kiran Shetty', email: 'kiran@sunrise.example', role: 'primary', seesAccountTickets: true, status: 'active' },
+    { id: 'co2', personId: 'p2', name: 'Leela Das', email: 'leela@sunrise.example', role: 'member', seesAccountTickets: false, status: 'active' },
+  ],
+  entitlements: [{ id: 'en1', plan: 'Gold support', tier: 'gold', ticketsAllowed: 50, hoursAllowed: 40, channels: ['email', 'portal'], whenUsedUp: 'flag', validFrom: '2026-04-01', validTo: '2027-03-31' }],
+};
+
+export const PRODUCTS: Product[] = [{ id: 'pr1', name: 'Kaveri billing app', deskId: 'd-cs', active: true }];
+
+export const PORTAL_HOME: PortalHome = {
+  company: 'Kaveri Foods',
+  portal: { name: 'Kaveri customer help', accentColour: null, loginTitle: 'Help for Kaveri Foods partners', loginText: 'Sign in with the email you use with us.', readingAids: true, openRequests: true, signUp: 'allowed_domains' },
+  desks: [{ id: 'd-cs', name: 'Customer support', categories: [{ id: 'cc1', name: 'Orders', parentId: null }], products: [{ id: 'pr1', name: 'Kaveri billing app' }] }],
+  banners: [{ id: 'bn2', text: 'Order tracking is down. We expect it back by 4 pm.', severity: 'outage', canMeToo: true, meToo: false }],
+};
+
+export const PORTAL_ROWS: PortalTicketRow[] = [
+  { id: 'pt1', number: 'CS-1004', subject: 'Order 4471 not delivered', status: 'In progress', systemState: 'open', mine: true, raisedBy: 'Kiran Shetty', createdAt: '2026-10-07T04:30:00Z', updatedAt: '2026-10-08T05:10:00Z' },
+  { id: 'pt2', number: 'CS-1006', subject: 'Invoice shows the wrong tax', status: 'New', systemState: 'new', mine: false, raisedBy: 'Leela Das', createdAt: '2026-10-08T02:00:00Z', updatedAt: '2026-10-08T02:00:00Z' },
+];
+
+export const PORTAL_TICKET: PortalTicket = {
+  id: 'pt1',
+  number: 'CS-1004',
+  subject: 'Order 4471 not delivered',
+  desk: 'Customer support',
+  status: 'In progress',
+  systemState: 'open',
+  createdAt: '2026-10-07T04:30:00Z',
+  raisedBy: 'Kiran Shetty',
+  mine: true,
+  canReply: true,
+  resolveBy: '2026-10-09T12:30:00Z',
+  messages: [
+    { id: 'pm1', side: 'requester', author: 'Kiran Shetty', mine: true, bodyHtml: '<p>Order 4471 was due on Monday.</p>', createdAt: '2026-10-07T04:30:00Z' },
+    { id: 'pm2', side: 'agent', author: 'Suresh Pillai', mine: false, bodyHtml: '<p>We are checking with the courier.</p>', createdAt: '2026-10-07T06:30:00Z' },
+  ],
+  files: [],
+};
