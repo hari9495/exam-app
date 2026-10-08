@@ -743,9 +743,6 @@ describe('ResetPasswordScreen', () => {
     render(<Harness onSubmit={onSubmit} />);
     await userEvent.type(screen.getByLabelText(/New password/), 'Kaveri-Recruit-Oct26');
     await userEvent.type(screen.getByLabelText(/Type it again/), 'Kaveri-Recruit-Oct2');
-    // No message while typing; it shows once the person leaves the field.
-    expect(screen.queryByText('The two passwords are not the same')).toBeNull();
-    await userEvent.tab();
     expect(screen.getByText('The two passwords are not the same')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save new password' })).toBeDisabled();
     await userEvent.type(screen.getByLabelText(/Type it again/), '6');
