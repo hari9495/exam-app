@@ -310,6 +310,11 @@
 .yx-table__tree-toggle:hover { background: var(--yx-color-bg-subtle); color: var(--yx-color-text); }
 .yx-table__tree-toggle:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); }
 .yx-table__tree-main { min-width: 0; overflow: hidden; }
+/* Parents read as headings; children hang off them with an elbow line (founder review 8 Oct 2026). */
+.yx-table__tree-main[data-parent] { font-weight: var(--yx-weight-semibold); }
+.yx-table__tree-step--elbow::after { content: ''; position: absolute; top: 50%; left: calc(var(--yx-space-3) - var(--yx-border-width)); width: var(--yx-space-3); border-top: var(--yx-border-width) solid var(--yx-color-border-strong); }
+.yx-table__tree-step--elbow::before { border-left-color: var(--yx-color-border-strong); }
+.yx-table__tree-count { flex: none; font-size: var(--yx-text-xs); color: var(--yx-color-text-secondary); white-space: nowrap; }
 .yx-table__foot { padding: var(--yx-space-2) var(--yx-space-3); border-top: var(--yx-border-width) solid var(--yx-color-border); }
 
 /* Narrow tables (under 600 px, set by DataTable) show each row as a card: primary cell first, then label and value pairs (R4). */
