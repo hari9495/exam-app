@@ -244,7 +244,7 @@ export class WorkService {
       if (dto.channel === 'child_ticket') {
         if (!dto.deskId) throw new BadRequestException('Choose the team (desk) to ask.');
         if (t.parentId) throw new BadRequestException('This ticket is itself a child; start the thread from its parent.');
-        const desk = await tx.sdDesk.findFirst({ where: { organizationId: org, id: dto.deskId, status: 'active' }, select: { id: true } });
+        const desk = await tx.sdDesk.findFirst({ where: { organizationId: org, id: dto.deskId, status: 'active', kind: { not: 'customer_support' } }, select: { id: true } });
         if (!desk) throw new NotFoundException('No such desk.');
         const me = await this.agentPerson(tx, a);
         // A sensitive or private ticket's child stays private on the other desk too.

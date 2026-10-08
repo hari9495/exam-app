@@ -287,6 +287,8 @@ export class TicketsService {
     const onLeave = await this.onApprovedLeave(tx, org, seated, now);
     const free = seated.filter((u) => isAvailable(statuses.get(u), now) && !onLeave.has(u));
     if (!free.length) return null;
+    // ponytail: counted under the caller's own visibility (§5.7), so a requester's raise does not count sensitive tickets
+    // they cannot see; load balancing is then slightly off for them. A counts-only SQL function fixes it if it matters.
     const counts = await tx.sdTicket.groupBy({ by: ['assigneeUserId'], where: { organizationId: org, assigneeUserId: { in: free }, systemState: { in: OPEN_STATES } }, _count: { _all: true } });
     const open = new Map(counts.map((c) => [c.assigneeUserId!, c._count._all]));
     const chosen = chooseAgent(group.assignment_method as 'round_robin' | 'load', free.map((userId) => ({ userId, open: open.get(userId) ?? 0 })), group.last_assigned_user_id, group.max_open_per_agent);
@@ -535,10 +537,13 @@ export class TicketsService {
       }
     }
     if (c.subject !== undefined && c.subject !== t.subject) {
-      data.subject = c.subject;
+      // YX-SD-15: personal data in a new subject is masked like message text (review fix).
+      const masked = maskPii(c.subject);
+      data.subject = masked.text;
+      await this.keepPii(tx, t, null, masked.found);
       // A sensitive or private ticket's subject is never copied into the timeline or the audit log.
       const hide = t.sensitive || t.private;
-      log.push(['subject_changed', hide ? null : t.subject, hide ? null : c.subject, true]);
+      log.push(['subject_changed', hide ? null : t.subject, hide ? null : masked.text, true]);
     }
     if (c.categoryId !== undefined && c.categoryId !== t.categoryId) {
       const cat = c.categoryId ? await this.category(tx, org, t.deskId, c.categoryId, true) : null;

@@ -503,6 +503,32 @@ describe('Service Desk batch 2 (M14 §5.7, §6.3, §7, §8, §15.2)', () => {
     });
   });
 
+  describe('security review fixes (batch 2)', () => {
+    it('a collaborator seat alone cannot set reminders on, or snooze, tickets they were not added to', async () => {
+      await api('collab', 'post', '/desk/me/reminders').send({ remindAt: new Date(Date.now() + 3_600_000).toISOString(), ticketId: ids.plain }).expect(404);
+      await api('collab', 'post', `/desk/tickets/${ids.plain}/snooze`).send({ until: new Date(Date.now() + 3_600_000).toISOString() }).expect(404);
+      // On a ticket they were added to, they may.
+      await api('collab', 'post', '/desk/me/reminders').send({ remindAt: new Date(Date.now() + 3_600_000).toISOString(), ticketId: ids.sensitive }).expect(201);
+    });
+
+    it('linking people needs employee.change.manage for the whole company, and never your own login', async () => {
+      const p = await tenantPrisma.forTenant(asA(), (tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name: `hr-team-${run}`, permissionsJson: JSON.stringify(ROLE_TEMPLATES.find((t) => t.key === 'hr_admin')!.permissions) } }));
+      await tenantPrisma.forTenant(asA(), (tx) => tx.roleGrant.create({ data: { organizationId: org.A.id, userId: users.agent2, permissionProfileId: p.id, scopeType: 'all_reports', validFrom: new Date('2026-01-01'), status: 'active', reason: 'team HR', grantedBy: users.adminA } }));
+      await api('agent2', 'get', '/desk/people/possible-duplicates').expect(403);
+    });
+
+    it('a new subject is masked like message text', async () => {
+      const v = (await ticket(ids.plain)).version;
+      await api('agent1', 'patch', `/desk/tickets/${ids.plain}`).send({ version: v, subject: 'Wi-Fi slow, card 4111 1111 1111 1111' }).expect(200);
+      expect((await ticket(ids.plain)).subject).toBe('Wi-Fi slow, card [Card ••1111]');
+    });
+
+    it('a child ticket never goes to a customer support desk', async () => {
+      const care = (await api('adminA', 'post', '/desk/desks').send({ name: `Care ${run}`, key: 'CARE', kind: 'customer_support' }).expect(201)).body;
+      await api('agent1', 'post', `/desk/tickets/${ids.plain}/side-conversations`).send({ channel: 'child_ticket', subject: 'x', deskId: care.id, bodyHtml: '<p>x</p>' }).expect(404);
+    });
+  });
+
   describe('a login with no person: a new one on the first ticket, then HR links it (founder decision 8 Oct 2026)', () => {
     it('never links by email on its own; HR sees the possible duplicate and links it; the tickets follow', async () => {
       const t = (await api('newbie', 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject: 'Need VPN access', description: 'New here.' }).expect(201)).body;

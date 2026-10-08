@@ -6,7 +6,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { Tx } from '../org-structure/org-structure.service';
 import { addDays, todayIst } from '../org-structure/org-validation';
 import { checkLoginLink } from '../people/persons';
-import { DeskActor, activeOn, audit, deskSystem, has } from './desk-access';
+import { buildViewer, tenantWide } from '../access/scope';
+import { DeskActor, activeOn, audit, deskSystem, has, ticketAccess } from './desk-access';
 import { ReminderDto } from './dto';
 import { OPEN_STATES } from './tickets.service';
 
@@ -56,8 +57,9 @@ export class MeService {
 
   /** A ticket the person may open as an agent or collaborator (404 otherwise). */
   private async ticketFor(tx: Tx, a: DeskActor, ticketId: string) {
-    const t = await tx.sdTicket.findFirst({ where: { organizationId: a.ctx.organizationId, id: ticketId }, select: { id: true, deskId: true } });
-    if (!t || !a.roles.has(t.deskId)) throw new NotFoundException('No such ticket.');
+    // The same reach as opening the ticket (review fix): a collaborator seat alone does not reach every ticket of a desk.
+    const t = await tx.sdTicket.findFirst({ where: { organizationId: a.ctx.organizationId, id: ticketId }, select: { id: true, deskId: true, sensitive: true, private: true } });
+    if (!t || !(await ticketAccess(tx, a, t))) throw new NotFoundException('No such ticket.');
     return t;
   }
 
@@ -328,11 +330,15 @@ export class MeService {
     });
   }
 
+  /**
+   * Linking people is a company-wide HR act: the list spans every desk-made person and a link can land on any employee,
+   * so employee.change.manage must be held for the whole company, not for one entity, location or team (review fix).
+   */
   private async hrKey(a: DeskActor) {
     const user = await this.tenantPrisma.forTenant(a.ctx, (tx) => tx.user.findFirst({ where: { organizationId: a.ctx.organizationId, id: a.userId }, select: { role: true, permissionProfileId: true } }));
     if (!user) return false;
-    const keys = await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: user.role, organizationId: a.ctx.organizationId, permissionProfileId: user.permissionProfileId, userId: a.userId }, ['employee.change.manage']);
-    return keys.has('employee.change.manage');
+    const viewer = await buildViewer(this.prisma, this.tenantPrisma, { role: user.role, organizationId: a.ctx.organizationId, permissionProfileId: user.permissionProfileId, userId: a.userId }, ['employee.change.manage']);
+    return tenantWide(viewer, 'employee.change.manage');
   }
 
   /**
@@ -351,6 +357,7 @@ export class MeService {
       const role = await tx.personRole.findFirst({ where: { organizationId: org, personId: p.id, roleType: 'login', sourceTable: 'users', endOn: null } });
       if (!role || p.primaryEmail || (await tx.employee.findFirst({ where: { organizationId: org, personId: p.id }, select: { id: true } }))) throw new BadRequestException('Only a person the Service Desk made for a login is linked here.');
       const user = await tx.user.findFirstOrThrow({ where: { organizationId: org, id: role.sourceId }, select: { id: true, email: true } });
+      if (user.id === a.userId) throw new ForbiddenException('Someone else links your own login.');
       const emp = await tx.employee.findFirst({ where: { organizationId: org, personId: into.id } });
       // The same evidence the list showed: the login's email is the other person's email or work email.
       const same = (x: string | null | undefined) => Boolean(x && x.toLowerCase() === user.email.toLowerCase());

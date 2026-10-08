@@ -220,7 +220,7 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
   async linkForAgent(a: DeskActor, ticketId: string, attachmentId: string) {
     return this.tenantPrisma.forTenant(a.ctx, async (tx) => {
       const { t } = await this.tickets.load(tx, a, ticketId);
-      const row = await tx.sdAttachment.findFirst({ where: { organizationId: a.ctx.organizationId, ticketId: t.id, id: attachmentId } });
+      const row = await tx.sdAttachment.findFirst({ where: { organizationId: a.ctx.organizationId, ticketId: { in: [t.id, ...(await this.tickets.mergedIds(tx, a.ctx.organizationId, t.id))] }, id: attachmentId } });
       if (!row) throw new NotFoundException('No such file.');
       const link = this.linkFor(row, a.userId);
       await audit(tx, a, 'desk.attachment.opened', 'sd_ticket', t.id, { attachmentId: row.id });
