@@ -39,7 +39,7 @@ export default function YxSecuritySettingsPage() {
       admins={(users.data?.data ?? [])
         .filter((u) => u.role === 'org_admin' && u.status === 'active')
         .map((u) => ({ id: u.id, name: u.name || u.email, email: u.email }))}
-      providersHref="/v2/settings/sso"
+      providersHref="/yx/settings/identity-providers"
       domains={domains.data ?? []}
       onVerifyDomain={async (domain) => {
         await apiFetch('/security/identity-providers/domains/verify', { method: 'POST', body: JSON.stringify({ domain }) }, token);

@@ -20,6 +20,7 @@ import type { TeamMember } from '@yukthix/ui/workforce';
 const ME: WorkspaceLink = { id: 'me', label: 'My security', href: '/yx/me/security', group: 'Me' };
 const ACTIVITY: WorkspaceLink = { id: 'activity', label: 'Login activity', href: '/yx/admin/login-activity', group: 'Security' };
 const SETTINGS: WorkspaceLink = { id: 'settings', label: 'Security settings', href: '/yx/settings/security', group: 'Security' };
+const IDPS: WorkspaceLink = { id: 'identity-providers', label: 'Single sign-on providers', href: '/yx/settings/identity-providers', group: 'Security' };
 const SMS: WorkspaceLink = { id: 'sms', label: 'Text messages (SMS)', href: '/yx/settings/sms', group: 'Security' };
 const ORG: WorkspaceLink[] = [
   { id: 'entities', label: 'Legal entities', href: '/yx/settings/legal-entities', group: 'Organisation' },
@@ -44,7 +45,7 @@ const PRIVACY: WorkspaceLink = { id: 'privacy', label: 'Who accessed my data', h
 // org:manage_settings) and the pages show "no access" on a 403. Platform staff outside any company
 // manage the YukthiX shared SMS account.
 function linksFor(role: string | null, acting: boolean): WorkspaceLink[] {
-  if (acting || role === 'org_admin') return [ACTIVITY, SETTINGS, SMS, ME];
+  if (acting || role === 'org_admin') return [ACTIVITY, SETTINGS, IDPS, SMS, ME];
   if (role === 'super_admin') return [SMS, ME];
   if (role === 'auditor') return [ACTIVITY, ME];
   return [ME];

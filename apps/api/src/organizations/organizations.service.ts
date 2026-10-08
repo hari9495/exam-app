@@ -45,6 +45,8 @@ export interface BrandingResponse {
   primaryColor: string | null;
   accentColor: string | null;
   textColor: string | null;
+  // The organisation's web address (only on the signed-in GET /organizations/branding).
+  slug?: string;
   // When true (and a logo is set), the login page renders the org logo as a tone-on-tone
   // watermark on the navy panel. Exposed on the public branding endpoint too -- it's just a
   // boolean, safe pre-login.
@@ -445,7 +447,9 @@ export class OrganizationsService {
   async getBranding(context: TenantContext): Promise<BrandingResponse> {
     const organizationId = this.requireOrganizationId(context);
     const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
-    return this.toBrandingResponse(org!);
+    // The slug too: settings pages build the SAML metadata URL from it, and the sign-in context has
+    // none for anyone who signed in with just an email.
+    return { ...(await this.toBrandingResponse(org!)), slug: org!.slug };
   }
 
   async updateBrandingColors(context: TenantContext, actorUserId: string, dto: UpdateBrandingColorsDto): Promise<BrandingResponse> {

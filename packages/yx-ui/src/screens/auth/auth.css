@@ -63,3 +63,4 @@
 
 /* §12 two-tier sidebar: the desktop panel shows only the area chosen in the rail; the phone sheet shows all. */
 .yx-shell__panel .yx-workspace__area[data-other-area] { display: none; }
+.yx-auth__url { overflow-wrap: anywhere; min-width: 0; }

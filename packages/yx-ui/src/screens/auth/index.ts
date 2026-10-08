@@ -7,3 +7,4 @@ export { LoginActivityScreen, NO_FILTERS, FAILED_SPIKE_AT, type LoginActivityFil
 export { SecuritySettingsScreen, SESSION_DEFAULTS, policyChanges, policyErrors, type SecuritySettingsScreenProps } from './security-settings';
 export { WorkspaceShell, type WorkspaceGroup, type WorkspaceLink, type WorkspacePage, type WorkspaceShellProps } from './shell';
 export { deviceLabel, errorText } from './kit';
+export { IdentityProvidersScreen, IDP_TYPE_LABEL, idpDraftOf, idpInput, type IdentityProvidersScreenProps, type IdpDraft } from './identity-providers';

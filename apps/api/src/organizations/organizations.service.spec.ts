@@ -723,6 +723,14 @@ describe('OrganizationsService', () => {
       expect(result).toEqual({ name: 'Acme Corp', logoUrl: null, primaryColor: '#1a73e8', accentColor: '#fbbc04', textColor: '#ffffff' });
     });
 
+    it("includes the org's slug (the SAML metadata URL needs it; email-first sign-in has none)", async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Acme Corp', slug: 'acme', logoPath: null });
+
+      const result = await service.getBranding({ organizationId: 'org-1', isSuperAdmin: false });
+
+      expect(result.slug).toBe('acme');
+    });
+
     it('throws BadRequestException when the caller has no organization context', async () => {
       await expect(service.getBranding({ organizationId: null, isSuperAdmin: true })).rejects.toThrow(BadRequestException);
       expect(prisma.organization.findUnique).not.toHaveBeenCalled();
