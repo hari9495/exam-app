@@ -10,7 +10,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CompanyContext } from '../org-structure/org-structure.service';
 import { MODERATE_UPLOAD_THROTTLE, PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
 import { ApprovalsEngine } from './approvals-engine.service';
-import { ApprovalCards, Provider } from './approval-channels';
+import { ApprovalCards, FakeChannelTransport, Provider } from './approval-channels';
 
 // SD-2.06: the page behind an approval card's link (single-use action token) and a person's own linked chat apps and
 // phones. See approval-channels.ts for the cards and the token rules.
@@ -123,6 +123,28 @@ export class ChannelLinksController {
     const m = this.me(req, t);
     const rows = await this.tenantPrisma.forTenant(m, (tx) => tx.channelLink.findMany({ where: { organizationId: m.organizationId, userId: m.userId }, orderBy: { createdAt: 'asc' } }));
     return { typedLinksAllowed: this.cards.typedLinksAllowed, links: rows.map((r) => ({ id: r.id, provider: r.provider, label: r.label, createdAt: r.createdAt })) };
+  }
+
+  /**
+   * Local demo only (the dev transport): the cards sent to my own linked apps, newest first, so a person can open a
+   * card's link without a real Teams or Slack. Never available with a real transport.
+   */
+  @Get('sent')
+  async sent(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    const m = this.me(req, t);
+    const fake = this.cards.transport as FakeChannelTransport | null;
+    if (!fake || fake.name !== 'dev-fake') throw new NotFoundException('Not available.');
+    const mine = await this.tenantPrisma.forTenant(m, (tx) => tx.channelLink.findMany({ where: { organizationId: m.organizationId, userId: m.userId }, select: { provider: true, externalRef: true } }));
+    const refs = new Set(mine.map((l) => `${l.provider}:${l.externalRef}`));
+    return fake.sent
+      .filter((x) => refs.has(`${x.provider}:${x.externalRef}`))
+      .slice(-20)
+      .reverse()
+      .map((x) => {
+        const p = x.payload as { title?: string; text?: string; body?: { text?: string }[] };
+        const url = JSON.stringify(x.payload).match(/https?:\/\/[^"]+/)?.[0] ?? null;
+        return { provider: x.provider, at: x.at, title: p.body?.[0]?.text ?? p.text ?? p.title ?? '', url };
+      });
   }
 
   /**

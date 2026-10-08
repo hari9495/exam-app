@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { MyTicketScreen, RequestTracker, type MyRequestView, type MyTicket } from '@yukthix/ui/desk';
+import { MyDocumentsCard, MyTicketScreen, RequestTracker, type MyRequestView, type MyTicket, type RequestDocument } from '@yukthix/ui/desk';
 import { useCurrentUser } from '../../../../../../lib/hooks/useCurrentUser';
 import { deskState, useDesk, useDeskFile, useDeskUpload, useDeskWrite } from '../../../../../../lib/yx-desk';
 
@@ -15,6 +15,8 @@ export default function YxDeskMyTicketPage() {
   const ticket = useDesk<MyTicket>(path, { refetchInterval: 10_000 });
   // 3b-2: a catalogue request shows what was ordered and its stages, with cancel while it can.
   const request = useDesk<MyRequestView>(`/my/requests/${encodeURIComponent(id)}`);
+  // SD-2.07: documents made inside the request, signed here in the app.
+  const docs = useDesk<RequestDocument[]>(`/my/requests/${encodeURIComponent(id)}/documents`);
   const write = useDeskWrite();
   const upload = useDeskUpload();
   const openFile = useDeskFile();
@@ -35,12 +37,23 @@ export default function YxDeskMyTicketPage() {
       }}
       onRate={(score, comment) => write(`${path}/rating`, 'POST', { score, ...(comment ? { comment } : {}) })}
       request={
-        request.data?.items.length ? (
-          <RequestTracker
-            request={request.data}
-            timeZone={me.data?.timeZone ?? undefined}
-            onCancel={(itemId, reason) => write(itemId ? `/my/requests/${encodeURIComponent(id)}/items/${encodeURIComponent(itemId)}/cancel` : `/my/requests/${encodeURIComponent(id)}/cancel`, 'POST', reason ? { reason } : {})}
-          />
+        request.data?.items.length || docs.data?.length ? (
+          <>
+            {docs.data?.length ? (
+              <MyDocumentsCard
+                documents={docs.data}
+                onSign={(doc, typedName) => write(`/my/documents/${encodeURIComponent(doc.id)}/sign`, 'POST', { decision: 'sign', typedName, agree: true })}
+                onDecline={(doc, reason) => write(`/my/documents/${encodeURIComponent(doc.id)}/sign`, 'POST', { decision: 'decline', typedName: '', reason })}
+              />
+            ) : null}
+            {request.data?.items.length ? (
+              <RequestTracker
+                request={request.data}
+                timeZone={me.data?.timeZone ?? undefined}
+                onCancel={(itemId, reason) => write(itemId ? `/my/requests/${encodeURIComponent(id)}/items/${encodeURIComponent(itemId)}/cancel` : `/my/requests/${encodeURIComponent(id)}/cancel`, 'POST', reason ? { reason } : {})}
+              />
+            ) : null}
+          </>
         ) : null
       }
     />

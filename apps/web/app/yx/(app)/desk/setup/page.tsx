@@ -8,7 +8,9 @@ import { DeskSetupScreen, type Banner, type Bounce, type Calendar, type CannedRe
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useYxPermissions } from '../../../../../lib/yx-org';
+import { useCurrentUser } from '../../../../../lib/hooks/useCurrentUser';
 import { deskState, useDesk, useDeskWrite } from '../../../../../lib/yx-desk';
+import { ChatQueuesAdmin, DeskOrgAdmin, LifecycleAdmin, SchedulesAdmin, type BranchView, type ChatQueue, type DocTemplate, type JourneySetup, type LifecycleSetup, type RecurringView, type SequenceDef } from '@yukthix/ui/desk';
 import { CatalogAdmin, RulesAdmin, type CatalogItemAdmin, type CatalogSchema, type DeskRule, type DeskRuleSchema, type DryRunResult, type PickOption, type RuleRun, type RuleWebhook, type SetupChecklist } from '@yukthix/ui/desk';
 
 // Service desk › Desk set-up (APX-D §5.8, M14 SD-1.01/1.02): desks, seats (cost shown first), groups, categories, types,
@@ -21,6 +23,7 @@ function YxDeskSetupPageInner() {
   const { accessToken } = useAuth();
   const token = accessToken ?? undefined;
   const perms = useYxPermissions();
+  const me = useCurrentUser();
   const desks = useDesk<DeskSummary[]>('/desks');
   const [selected, setSelected] = useState<string | null>(null);
   useEffect(() => {
@@ -62,6 +65,20 @@ function YxDeskSetupPageInner() {
   const rules = useDesk<DeskRule[]>(selected && canRules ? `/rules?deskId=${selected}` : null);
   const ruleSchema = useDesk<DeskRuleSchema>(selected && canRules ? `/rules/schema?deskId=${selected}` : null);
   const hooks = useDesk<RuleWebhook[]>(canRules && canHooks ? '/automation-webhooks' : null);
+  // 3b-2 batch 2 tabs: lifecycles, schedules and sequences, live chat queues, desk organisation and journeys.
+  const canLifecycle = perms.has('desk.lifecycle.manage');
+  const canChat = perms.has('desk.channel.manage');
+  const canOrg = perms.has('desk.settings.manage') || perms.has('desk.desk.create');
+  const lifecycles = useDesk<LifecycleSetup>(selected && canLifecycle ? `/lifecycles?deskId=${selected}` : null);
+  const recurring = useDesk<RecurringView[]>(selected && canRules ? `/recurring?deskId=${selected}` : null);
+  const sequences = useDesk<SequenceDef[]>(selected && canRules ? `/sequences?deskId=${selected}` : null);
+  const chatQueues = useDesk<ChatQueue[]>(selected && canChat ? `/chat/queues?deskId=${selected}` : null);
+  const branches = useDesk<BranchView[]>(selected && canOrg ? `/desks/${selected}/branches` : null);
+  const locations = useDesk<{ id: string; label: string }[]>(canOrg ? '/my/pick/locations?q=' : null);
+  const docTemplates = useDesk<{ fields: { key: string; label: string }[]; templates: DocTemplate[] }>(selected && canCatalog ? `/doc-templates?deskId=${selected}` : null);
+  const journeys = useDesk<JourneySetup>(canCatalog ? '/journeys' : null);
+  const groups = (detail.data?.groups ?? []).map((g) => ({ id: g.id, name: g.name }));
+  const zone = me.data?.timeZone || 'Asia/Kolkata';
   const findPeople = (q: string) => apiFetch(`/workflow/people?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>;
   const base = `/desks/${selected}`;
   const version = detail.data?.desk.version ?? 0;
@@ -222,6 +239,89 @@ function YxDeskSetupPageInner() {
                 await write(`${base}/banners/${b.id}/end`, 'POST');
               },
             }
+          : undefined
+      }
+      more={
+        selected
+          ? [
+              ...(canLifecycle
+                ? [
+                    {
+                      value: 'lifecycles',
+                      label: 'Lifecycles',
+                      node: (
+                        <LifecycleAdmin
+                          setup={lifecycles.data}
+                          onCreate={(input) => write('/lifecycles', 'POST', { deskId: selected, ...input, draft: {} })}
+                          onSave={(lc, draft) => write(`/lifecycles/${encodeURIComponent(lc.id)}`, 'PATCH', { version: lc.version, draft })}
+                          onCheck={(lc) => write<{ ok: boolean; problem: string | null }>(`/lifecycles/${encodeURIComponent(lc.id)}/check`, 'POST')}
+                          onPublish={(lc) => write(`/lifecycles/${encodeURIComponent(lc.id)}/publish`, 'POST', { version: lc.version })}
+                          onRetire={(lc) => write(`/lifecycles/${encodeURIComponent(lc.id)}/retire`, 'POST', { version: lc.version })}
+                        />
+                      ),
+                    },
+                  ]
+                : []),
+              ...(canRules
+                ? [
+                    {
+                      value: 'schedules',
+                      label: 'Schedules',
+                      node: (
+                        <SchedulesAdmin
+                          timeZone={zone}
+                          groups={groups}
+                          recurring={recurring.data ?? []}
+                          sequences={sequences.data ?? []}
+                          onCreate={(input) => write('/recurring', 'POST', { deskId: selected, ...input })}
+                          onState={(r, state) => write(`/recurring/${encodeURIComponent(r.id)}`, 'PATCH', { version: r.version, state })}
+                          onSaveSequence={(seq, input) => (seq ? write(`/sequences/${encodeURIComponent(seq.id)}`, 'PATCH', { version: seq.version, ...input }) : write('/sequences', 'POST', { deskId: selected, ...input }))}
+                        />
+                      ),
+                    },
+                  ]
+                : []),
+              ...(canChat
+                ? [
+                    {
+                      value: 'chat',
+                      label: 'Live chat',
+                      node: <ChatQueuesAdmin queues={chatQueues.data ?? []} groups={groups} onSave={(q, input) => (q ? write(`/chat/queues/${encodeURIComponent(q.id)}`, 'PATCH', { version: q.version, ...input }) : write('/chat/queues', 'POST', { deskId: selected, ...input }))} />,
+                    },
+                  ]
+                : []),
+              ...(canOrg
+                ? [
+                    {
+                      value: 'organisation',
+                      label: 'Organisation',
+                      node: (
+                        <DeskOrgAdmin
+                          deskId={selected}
+                          deskKind={detail.data?.desk.kind ?? 'custom'}
+                          desks={(desks.data ?? []).map((x) => ({ id: x.id, name: x.name }))}
+                          forwardTo={detail.data?.desk.forwardTo ?? []}
+                          canCreateDesks={perms.has('desk.desk.create')}
+                          branches={branches.data ?? []}
+                          locations={(locations.data ?? []).map((l) => ({ id: l.id, name: l.label }))}
+                          groups={groups}
+                          templates={canCatalog ? (docTemplates.data?.templates ?? []) : null}
+                          docFields={docTemplates.data?.fields ?? []}
+                          onForwardTo={(deskIds) => write(`${base}/forward-to`, 'PUT', { deskIds })}
+                          onClone={async (input) => {
+                            const d = await write<{ id: string }>(`${base}/clone`, 'POST', input);
+                            setSelected(d.id);
+                          }}
+                          onStarterPack={() => write<{ items: number; sla: boolean }>(`${base}/starter-pack`, 'POST')}
+                          onAddBranch={(input) => write(`${base}/branches`, 'POST', input)}
+                          onSaveTemplate={(tpl, input) => (tpl ? write(`/doc-templates/${encodeURIComponent(tpl.id)}`, 'PATCH', { version: tpl.version, ...input }) : write('/doc-templates', 'POST', { deskId: selected, ...input }))}
+                          journeys={canCatalog ? { setup: journeys.data, onSave: (input) => write('/journeys', 'POST', input) } : null}
+                        />
+                      ),
+                    },
+                  ]
+                : []),
+            ]
           : undefined
       }
       catalog={

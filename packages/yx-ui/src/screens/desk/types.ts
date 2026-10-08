@@ -28,6 +28,8 @@ export interface DeskSummary {
   myRole?: DeskRole | null;
   canSetUp?: boolean;
   canWork?: boolean;
+  /** SD-2.10: desks this desk may move tickets to. */
+  forwardTo?: string[];
 }
 
 export interface DeskType {

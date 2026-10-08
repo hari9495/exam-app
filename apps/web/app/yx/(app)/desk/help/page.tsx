@@ -1,9 +1,9 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 import { Spinner } from '@yukthix/ui';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { HelpCentreScreen, type KbArticleView, type KbHome, type KbSuggestion, type MyTicketRow, type PublicBanner, type RaiseDesk } from '@yukthix/ui/desk';
+import { ChatPromptBanner, HelpCentreScreen, type KbArticleView, type KbHome, type KbSuggestion, type MyTicketRow, type PublicBanner, type RaiseDesk } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useCurrentUser } from '../../../../../lib/hooks/useCurrentUser';
@@ -26,7 +26,12 @@ function YxDeskHelpPageInner() {
   const tickets = useDesk<MyTicketRow[]>('/my/tickets');
   const banners = useDesk<PublicBanner[]>('/my/banners');
   const write = useDeskWrite();
+  // SD-2.19: a proactive chat offer for this page, shown after its delay when an agent is online.
+  const prompt = useDesk<{ queueId: string; desk: string; text: string; afterSeconds: number } | null>('/my/chat/prompt?path=/yx/desk/help');
+  const [dismissed, setDismissed] = useState(false);
   return (
+    <>
+    {!dismissed && <div className="yx-auth__page"><ChatPromptBanner prompt={prompt.data ?? null} onChat={() => router.push(`/yx/desk/chat?queue=${encodeURIComponent(prompt.data!.queueId)}`)} onDismiss={() => setDismissed(true)} /></div>}
     <HelpCentreScreen
       state={deskState(desks, tickets)}
       onRetry={() => void Promise.all([desks.refetch(), tickets.refetch()])}
@@ -58,6 +63,7 @@ function YxDeskHelpPageInner() {
         onSolved: (id) => write(`/my/kb/articles/${encodeURIComponent(id)}/feedback`, 'POST', { solved: true }),
       }}
     />
+    </>
   );
 }
 

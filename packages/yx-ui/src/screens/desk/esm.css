@@ -35,3 +35,29 @@
 .yx-esm-field-editor { border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); padding: var(--yx-space-3); margin: 0; min-width: 0; display: flex; flex-direction: column; gap: var(--yx-space-2); }
 .yx-esm-rule, .yx-esm-item-panel { padding-bottom: var(--yx-space-3); border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
 .yx-esm-action { align-items: flex-end; }
+/* 3b-2 batch 2: live chat, the lifecycle grid, documents. Tokens only. */
+.yx-chat-layout { display: grid; grid-template-columns: minmax(calc(var(--yx-space-16) * 4), 1fr) minmax(0, 3fr); gap: var(--yx-space-4); align-items: start; }
+@media (max-width: 900px) { .yx-chat-layout { grid-template-columns: minmax(0, 1fr); } }
+.yx-chat { display: flex; flex-direction: column; gap: var(--yx-space-3); }
+.yx-chat__log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-2); max-height: 55vh; overflow-y: auto; }
+.yx-chat__bubble { align-self: flex-start; max-width: 80%; display: flex; flex-direction: column; gap: var(--yx-space-1); padding: var(--yx-space-2) var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
+.yx-chat__bubble[data-mine] { align-self: flex-end; background: var(--yx-color-bg-subtle); }
+.yx-chat__who { font-size: var(--yx-text-xs); font-weight: var(--yx-weight-semibold); color: var(--yx-color-text-secondary); }
+.yx-chat__text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.yx-chat__card { display: flex; flex-direction: column; gap: var(--yx-space-1); padding: var(--yx-space-2); border-inline-start: var(--yx-space-1) solid var(--yx-color-link); }
+.yx-chat__card p { margin: 0; }
+.yx-chat__system { align-self: center; font-size: var(--yx-text-xs); color: var(--yx-color-text-muted); text-align: center; }
+.yx-chat__meta { font-size: var(--yx-text-xs); color: var(--yx-color-text-muted); }
+.yx-chat__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-1); }
+/* Clickable must look clickable: bordered rows with hover, pointer and a focus ring. */
+.yx-chat__pick, .yx-chat__attach { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--yx-space-half); width: 100%; padding: var(--yx-space-2) var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border-strong); border-radius: var(--yx-radius-card); cursor: pointer; background: var(--yx-color-bg-surface); }
+.yx-chat__attach { flex-direction: row; align-items: center; width: auto; gap: var(--yx-space-1); font-size: var(--yx-text-sm); }
+.yx-chat__pick:hover, .yx-chat__attach:hover { background: var(--yx-color-bg-subtle); border-color: var(--yx-color-link); }
+.yx-chat__pick:focus-visible, .yx-chat__attach:focus-within { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); }
+.yx-chat__pick[aria-current] { border-color: var(--yx-color-link); }
+.yx-lc-grid { display: flex; flex-direction: column; overflow-x: auto; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); }
+.yx-lc-grid__row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(calc(var(--yx-space-16) * 1.5), 1fr); align-items: center; border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-lc-grid__row > * { padding: var(--yx-space-1) var(--yx-space-2); font-size: var(--yx-text-sm); }
+.yx-lc-grid__row [role="columnheader"], .yx-lc-grid__row [role="rowheader"] { font-weight: var(--yx-weight-semibold); color: var(--yx-color-text-secondary); }
+.yx-doc-text { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; margin: 0; padding: var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); max-height: 40vh; overflow-y: auto; }
+.yx-act { max-width: calc(var(--yx-space-16) * 10); margin-inline: auto; padding: var(--yx-space-6) var(--yx-space-4); }

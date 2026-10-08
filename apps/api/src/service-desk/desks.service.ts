@@ -77,6 +77,7 @@ export class DesksService {
 
   private deskView(d: Prisma.SdDeskGetPayload<object>) {
     return {
+      forwardTo: d.forwardTo,
       id: d.id,
       key: d.key,
       name: d.name,

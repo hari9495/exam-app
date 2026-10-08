@@ -39,3 +39,7 @@ export { CatalogAdmin, FormBuilder, type CatalogAdminProps } from './catalog-adm
 export { RulesAdmin, type RulesAdminProps } from './rules-admin';
 export { RequestPanel } from './request-panel';
 export { resolveForm, answersToSend, formProblems, toServerGroup, fromServerGroup, inLang, EMPTY_FORM, COLOUR_TONE, type FormDef, type FormFieldDef, type FormSectionDef, type FormLang, type Answers, type AnswerValue, type ServerGroup } from '../../lib/forms';
+// Phase 3b-2 batch 2 (SD-2.06 … SD-2.11, SD-2.13, SD-2.17 … SD-2.19).
+export * from './esm2-types';
+export { ChatWindow, RequesterChatScreen, AgentChatScreen, ChatPromptBanner, type ChatLive, type RequesterChatProps, type AgentChatProps } from './chat';
+export { TicketEsmRail, HrSummaryCard, MyDocumentsCard, ActionLinkScreen, ChannelLinksCard, LifecycleAdmin, SchedulesAdmin, ChatQueuesAdmin, DeskOrgAdmin, type TicketEsmRailProps, type LifecycleAdminProps, type SchedulesAdminProps, type DeskOrgAdminProps } from './esm2';
