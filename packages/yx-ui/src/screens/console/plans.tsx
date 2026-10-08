@@ -19,14 +19,23 @@ const STATE: Record<ProductPrice['state'], { label: string; tone: 'success' | 'i
 const isoAfter = (today: string, days: number) => new Date(Date.parse(`${today}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 const twoDecimals = (n: number | null) => n !== null && Math.round(n * 100) === n * 100;
 
-/** The request body, or what to fix. Mirrors the API's checks (90 days' notice once a price is in force); the API checks again. */
+/**
+ * The request body, or what to fix. Mirrors the API's checks: a price rise gives 90 days' notice; a cut (neither the unit
+ * price nor the minimum above the price it follows, or the next planned one below it) may start at once. The API checks again.
+ */
 export function priceInput(d: { currency: 'INR' | 'USD'; unitPrice: number | null; minimumMonthly: number | null; validFrom: string; reason: string }, product: Product, today: string): { input: NewPrice | null; errors: FormErrorItem[] } {
   const errors: FormErrorItem[] = [];
   if (d.unitPrice === null || d.unitPrice <= 0 || !twoDecimals(d.unitPrice)) errors.push({ fieldId: 'pr-unit', message: 'Enter a price above zero, with at most 2 decimals' });
   if (d.minimumMonthly === null || d.minimumMonthly < 0 || !twoDecimals(d.minimumMonthly)) errors.push({ fieldId: 'pr-min', message: 'Enter the monthly minimum (0 or more)' });
-  const inForce = product.prices.some((p) => p.currency === d.currency && p.state === 'current');
-  const earliest = inForce ? isoAfter(today, NOTICE_DAYS) : today;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.validFrom) || d.validFrom < earliest) errors.push({ fieldId: 'pr-from', message: inForce ? `Customers get 90 days' notice: choose ${earliest} or later` : 'Choose today or a later date' });
+  const noticeFrom = isoAfter(today, NOTICE_DAYS);
+  const mine = product.prices.filter((p) => p.currency === d.currency).sort((a, b) => a.validFrom.localeCompare(b.validFrom));
+  const before = mine.filter((p) => p.validFrom < d.validFrom).at(-1);
+  const after = mine.find((p) => p.validFrom > d.validFrom);
+  const rise = (prev: { unitPrice: number | null; minimumMonthly: number | null }, next: { unitPrice: number | null; minimumMonthly: number | null }) =>
+    (next.unitPrice ?? 0) > (prev.unitPrice ?? 0) || (next.minimumMonthly ?? 0) > (prev.minimumMonthly ?? 0);
+  const shortNotice = (before && rise(before, d) && d.validFrom < noticeFrom) || (after && rise(d, after) && after.validFrom < noticeFrom);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.validFrom) || d.validFrom < today) errors.push({ fieldId: 'pr-from', message: 'Choose today or a later date' });
+  else if (shortNotice) errors.push({ fieldId: 'pr-from', message: `A price rise gives customers 90 days' notice: choose ${noticeFrom} or later` });
   if (d.reason.trim().length < 5) errors.push({ fieldId: 'pr-reason', message: 'Write a reason of at least 5 characters' });
   return errors.length ? { input: null, errors } : { input: { currency: d.currency, unitPrice: d.unitPrice!, minimumMonthly: d.minimumMonthly!, validFrom: d.validFrom, reason: d.reason.trim() }, errors };
 }
@@ -59,7 +68,7 @@ function PriceDrawer({ product, today, onClose, onSave }: { product: Product; to
         void run('save', () => onSave(input)).then((ok) => ok && onClose());
       }}
     >
-      <FormSection title="Price" description="A price in force never changes. A new one starts on a date at least 90 days away, so every customer is told in time.">
+      <FormSection title="Price" description="A price in force never changes. A lower price may start today. A higher one starts at least 90 days away, so every customer is told in time.">
         <FormField label="Currency">
           <Segment label="Currency" options={[{ value: 'INR', label: 'Rupees (India)' }, { value: 'USD', label: 'US dollars' }]} value={draft.currency} onChange={(currency) => set({ currency })} />
         </FormField>

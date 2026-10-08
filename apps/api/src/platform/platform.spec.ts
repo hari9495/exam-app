@@ -9,6 +9,7 @@ import { isAssignableKey } from '../rbac/assignable-permissions';
 import { PlatformController, SupportAccessController } from './platform.controller';
 import { PlatformStaffGuard } from './platform-staff.guard';
 import { enforceSupportSession } from './support-session-access';
+import { isRise } from './platform.service';
 
 const handlers = (controller: { prototype: object }) => {
   const proto = controller.prototype as Record<string, unknown>;
@@ -46,6 +47,16 @@ describe('platform console routes (P14 YX-CONSOLE-01, P02 Q8)', () => {
       expect({ key, assignable: isAssignableKey(key) }).toEqual({ key, assignable: false });
     }
     expect(isAssignableKey('org.structure.view')).toBe(true);
+  });
+});
+
+describe('price changes (YX-BILL-13, founder 8 Oct 2026)', () => {
+  it('a rise is either part going up; a cut or the same price is not', () => {
+    const now = { unitPrice: 99, minimumMonthly: 499 };
+    expect(isRise(now, { unitPrice: 109, minimumMonthly: 499 })).toBe(true);
+    expect(isRise(now, { unitPrice: 89, minimumMonthly: 549 })).toBe(true);
+    expect(isRise(now, { unitPrice: 89, minimumMonthly: 499 })).toBe(false);
+    expect(isRise(now, { unitPrice: 99, minimumMonthly: 499 })).toBe(false);
   });
 });
 

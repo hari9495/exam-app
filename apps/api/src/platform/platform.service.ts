@@ -41,6 +41,10 @@ const TRIAL_DAYS = 30; // P14 YX-TEN-08
 const PRICE_NOTICE_DAYS = 90; // P14 YX-BILL-13
 
 const money = (d: Prisma.Decimal) => Number(d.toString());
+/** A rise if either the unit price or the monthly minimum goes up from the price it follows. */
+type PricePoint = { unitPrice: Prisma.Decimal | number; minimumMonthly: Prisma.Decimal | number };
+const num = (v: Prisma.Decimal | number) => Number(v.toString());
+export const isRise = (prev: PricePoint, next: PricePoint) => num(next.unitPrice) > num(prev.unitPrice) || num(next.minimumMonthly) > num(prev.minimumMonthly);
 
 @Injectable()
 export class PlatformService {
@@ -213,17 +217,24 @@ export class PlatformService {
   }
 
   /**
-   * A new price from a date. With a price already in force, the new one starts at least 90 days out (YX-BILL-13:
-   * 90 days' notice of a list-price change); a price in force is never edited, only followed by a new one.
+   * A new price from a date. A price RISE starts at least 90 days out (YX-BILL-13: 90 days' notice of a list-price
+   * change); a CUT (neither the unit price nor the minimum above the price it follows) may start at once (founder,
+   * 8 Oct 2026). A price in force is never edited, only followed by a new one.
    */
   async schedulePrice(actorUserId: string, code: string, dto: PriceDto) {
     const today = todayIst();
     if (dto.validFrom < today || Number.isNaN(asDate(dto.validFrom).getTime())) throw new BadRequestException('The new price cannot start in the past.');
     await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
       if (!(await tx.product.findUnique({ where: { code } }))) throw new NotFoundException('Product not found');
-      const inForce = await tx.productPrice.findFirst({ where: { productCode: code, currency: dto.currency, validFrom: { lte: asDate(today) } } });
+      // The prices either side of the new one (in force or planned). Slotting a cut in before a planned price must
+      // not turn that one into a rise at short notice either.
+      const same = { productCode: code, currency: dto.currency };
+      const before = await tx.productPrice.findFirst({ where: { ...same, validFrom: { lt: asDate(dto.validFrom) } }, orderBy: { validFrom: 'desc' } });
+      const after = await tx.productPrice.findFirst({ where: { ...same, validFrom: { gt: asDate(dto.validFrom) } }, orderBy: { validFrom: 'asc' } });
       const earliest = addDays(today, PRICE_NOTICE_DAYS);
-      if (inForce && dto.validFrom < earliest) throw new BadRequestException(`Customers get 90 days' notice of a price change: the new price can start on ${earliest} at the earliest.`);
+      if ((before && isRise(before, dto) && dto.validFrom < earliest) || (after && isRise(dto, after) && after.validFrom < asDate(earliest))) {
+        throw new BadRequestException(`Customers get 90 days' notice of a price rise: the new price can start on ${earliest} at the earliest. A lower price may start at once.`);
+      }
       try {
         const row = await tx.productPrice.create({ data: { productCode: code, currency: dto.currency, unitPrice: dto.unitPrice, minimumMonthly: dto.minimumMonthly, validFrom: asDate(dto.validFrom), reason: dto.reason.trim(), createdBy: actorUserId } });
         await AuditService.recordIn(tx, PLATFORM, { actorUserId, action: 'platform.price.scheduled', entityType: 'product_price', entityId: row.id, metadata: { product: code, currency: dto.currency, unitPrice: dto.unitPrice, minimumMonthly: dto.minimumMonthly, validFrom: dto.validFrom, reason: dto.reason.trim() } });

@@ -29,11 +29,14 @@ describe('platform console: inputs mirror the API rules', () => {
     expect(supportInput({ reason: 'Payroll stuck at readiness', ticket: 'bad ticket!', hours: 4 }).errors.map((e) => e.fieldId)).toEqual(['sr-ticket']);
   });
 
-  it("a new price gives 90 days' notice once a price is in force (YX-BILL-13)", () => {
+  it("a price rise gives 90 days' notice; a cut may start at once (YX-BILL-13, founder 8 Oct 2026)", () => {
     const d = { currency: 'INR' as const, unitPrice: 109, minimumMonthly: 549, validFrom: '2026-12-01', reason: 'New financial year' };
     expect(priceInput(d, PRODUCTS[0], TODAY).errors[0]).toMatchObject({ fieldId: 'pr-from', message: expect.stringContaining('2027-01-06') });
     expect(priceInput({ ...d, validFrom: '2027-01-06' }, PRODUCTS[0], TODAY).input).toMatchObject({ validFrom: '2027-01-06', unitPrice: 109 });
     expect(priceInput({ ...d, unitPrice: 99.999, validFrom: '2027-02-01' }, PRODUCTS[0], TODAY).errors.map((e) => e.fieldId)).toEqual(['pr-unit']);
+    expect(priceInput({ ...d, unitPrice: 89, minimumMonthly: 499, validFrom: TODAY }, PRODUCTS[0], TODAY).input).toMatchObject({ unitPrice: 89, validFrom: TODAY });
+    // A lower unit price with a higher minimum is still a rise for small companies.
+    expect(priceInput({ ...d, unitPrice: 89, minimumMonthly: 599, validFrom: TODAY }, PRODUCTS[0], TODAY).errors.map((e) => e.fieldId)).toEqual(['pr-from']);
     const fresh = { ...PRODUCTS[0], prices: [] };
     expect(priceInput({ ...d, validFrom: TODAY }, fresh, TODAY).input).not.toBeNull();
   });

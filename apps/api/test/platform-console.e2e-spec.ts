@@ -104,7 +104,8 @@ describe('YukthiX platform console (step 3)', () => {
       await api('staff', 'post', '/platform/companies').send({ ...body, extra: 'x' }).expect(400);
       org.A = (await api('staff', 'post', '/platform/companies').send(body).expect(201)).body.id;
       await api('staff', 'post', '/platform/companies').send(body).expect(409);
-      expect(sent.some((m) => m.to === body.adminEmail)).toBe(true);
+      // YukthiX's own welcome (founder, 8 Oct 2026), not the old exam-app email.
+      expect(sent.find((m) => m.to === body.adminEmail)?.subject).toBe('Godavari Agro is ready on YukthiX');
 
       const detail = (await api('staff', 'get', `/platform/companies/${org.A}`).expect(200)).body;
       expect(detail).toMatchObject({ name: 'Godavari Agro', slug: slugA, lifecycle: 'trial', signInAllowed: true, products: ['hrms'], employees: 0, trialExtended: false });
@@ -196,12 +197,20 @@ describe('YukthiX platform console (step 3)', () => {
       await api('adminA', 'get', '/platform/products').expect(403);
     });
 
-    it('a new price gives 90 days notice, needs a step-up, and a price in force is never removed', async () => {
+    it('a price rise gives 90 days notice, a cut may start at once; needs a step-up, and a price in force is never removed', async () => {
       const at = (days: number) => addDays(todayIst(), days);
       const body = { currency: 'INR', unitPrice: 109, minimumMonthly: 549, reason: 'Test price change' };
       await up('staff');
       expect((await api('staff', 'post', '/platform/products/hrms/prices').send({ ...body, validFrom: at(10) }).expect(400)).body.message).toContain(at(90));
       await api('staff', 'post', '/platform/products/hrms/prices').send({ ...body, validFrom: at(-1) }).expect(400);
+      // A cut may start at once (founder, 8 Oct 2026); a lower unit price with a higher minimum is still a rise.
+      await api('staff', 'post', '/platform/products/hrms/prices').send({ ...body, unitPrice: 89, minimumMonthly: 549, validFrom: at(5) }).expect(400);
+      const cutPlans = (await api('staff', 'post', '/platform/products/hrms/prices').send({ ...body, unitPrice: 89, minimumMonthly: 499, validFrom: at(5) }).expect(201)).body;
+      const cut = cutPlans.find((p: { code: string }) => p.code === 'hrms').prices.find((r: { validFrom: string }) => r.validFrom === at(5));
+      expect(cut).toMatchObject({ state: 'scheduled', unitPrice: 89 });
+      // Back up to 99 straight after the cut is a rise at short notice.
+      expect((await api('staff', 'post', '/platform/products/hrms/prices').send({ ...body, unitPrice: 99, minimumMonthly: 499, validFrom: at(6) }).expect(400)).body.message).toContain('price rise');
+      await api('staff', 'delete', `/platform/products/prices/${cut.id}`).expect(200);
       await api('staff', 'post', '/platform/products/hrms/prices').send({ ...body, unitPrice: 0, validFrom: at(400) }).expect(400);
       await api('staff', 'post', '/platform/products/hrms/prices').send({ ...body, unitPrice: 99.999, validFrom: at(400) }).expect(400);
       await api('staff', 'post', '/platform/products/nope/prices').send({ ...body, validFrom: at(400) }).expect(404);
@@ -368,6 +377,8 @@ describe('YukthiX platform console (step 3)', () => {
       expect(actions).toEqual(expect.arrayContaining(['platform.company.created', 'platform.company.lifecycle', 'support_session.approved']));
       expect(actions).not.toContain('platform.cross_tenant_read');
       expect(page.data[0].company).toBe('Godavari Agro');
+      // A fresh read, so it is on the newest page whatever else the suite did before.
+      await api('staff', 'get', '/platform/companies').expect(200);
       const reads = (await api('staff', 'get', '/platform/audit?reads=true').expect(200)).body.data;
       expect(reads.some((r: { action: string; details: { purpose?: string } }) => r.action === 'platform.cross_tenant_read' && r.details?.purpose === 'companies.list')).toBe(true);
       await api('adminA', 'get', '/platform/audit').expect(403);
