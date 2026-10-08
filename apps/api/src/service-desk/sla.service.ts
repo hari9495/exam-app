@@ -6,7 +6,8 @@ import { AuditService, TenantContext, TenantPrismaService } from '@exam-platform
 import { NotificationsService } from '../notifications/notifications.service';
 import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
 import { Tx } from '../org-structure/org-structure.service';
-import { todayIst } from '../org-structure/org-validation';
+import { addDays, todayIst } from '../org-structure/org-validation';
+import { approvedLeaveOfUsers } from '../time/time-core';
 import { CalendarSpec, businessSecondsBetween } from './business-time';
 import { DeskActor, activeOn, audit, deskSystem, emit, has, isLead, requireSetUp, requireWork } from './desk-access';
 import { ComplianceTargetsDto, SlaPolicyDto, SlaVersionDto, UpdateSlaPolicyDto } from './dto';
@@ -103,11 +104,13 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Seam until M02: approved leave of one person (full or half days). A task OLA that follows a person then skips the
-   * half they are away (founder decision 8 Oct 2026). M02 is not built, so nobody is on leave yet.
+   * M02 approved leave of one person (full or half days), a year either side of today. A task OLA that follows a
+   * person then skips the half they are away (founder decision 8 Oct 2026).
    */
-  async leaveOf(_tx: Tx, _org: string, _userId: string | null): Promise<CalendarSpec['leave']> {
-    return [];
+  async leaveOf(tx: Tx, org: string, userId: string | null): Promise<CalendarSpec['leave']> {
+    if (!userId) return [];
+    const today = todayIst();
+    return (await approvedLeaveOfUsers(tx, org, [userId], addDays(today, -366), addDays(today, 366))).map((l) => ({ on: l.on, part: l.part }));
   }
 
   private async versionCalendar(tx: Tx, t: TicketRow, v: Version): Promise<string | null> {

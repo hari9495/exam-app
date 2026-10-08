@@ -528,6 +528,13 @@ export class ApprovalsEngine {
     return this.delegateIn(tx, ctx, userId, { delegateUserId: to, startsOn, endsOn }, 'leave', null);
   }
 
+  /** M02 seam: cancelled leave takes back the delegation its approval made (never a manual one). */
+  async revokeLeaveDelegations(tx: Tx, ctx: CompanyContext, userId: string, startsOn: string, endsOn: string) {
+    const n = await tx.wfDelegation.updateMany({ where: { organizationId: ctx.organizationId, userId, source: 'leave', revokedAt: null, startsOn: new Date(`${startsOn}T00:00:00Z`), endsOn: new Date(`${endsOn}T00:00:00Z`) }, data: { revokedAt: new Date() } });
+    if (n.count) await AuditService.recordIn(tx, ctx, { actorUserId: null, action: 'workflow.delegation.revoked', entityType: 'wf_delegation', entityId: userId, metadata: { source: 'leave', startsOn, endsOn, count: n.count } });
+    return n.count;
+  }
+
   async revokeDelegation(ctx: CompanyContext, userId: string, id: string) {
     return this.tenantPrisma.forTenant(ctx, async (tx) => {
       const n = await tx.wfDelegation.updateMany({ where: { organizationId: ctx.organizationId, id, userId, revokedAt: null }, data: { revokedAt: new Date() } });

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, TenantPrismaService } from '@exam-platform/shared';
 import { Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
+import { approvedLeaveOfUsers } from '../time/time-core';
 import { NotificationsService } from '../notifications/notifications.service';
 import { chooseAgent, isAvailable, onLeaveNow } from './assignment';
 import { cleanHtml, htmlToText } from './rich-text';
@@ -362,8 +363,8 @@ export class TicketsService {
 
   /**
    * US-G-011 approved leave from YukthiX HR (M02). Founder decision 8 Oct 2026: a half-day leave makes the agent away
-   * only for that half (before or after 13:00 in the agent's shift zone, India time when no shift is set). M02 leave is
-   * not built yet, so leaveToday() returns nothing; when it lands, only that seam changes.
+   * only for that half (before or after 13:00 in the agent's shift zone, India time when no shift is set). The days
+   * come from M02 leave (approvedLeaveOfUsers).
    */
   private async onApprovedLeave(tx: Tx, org: string, userIds: string[], now: Date): Promise<Set<string>> {
     const leave = await this.leaveToday(tx, org, userIds, now);
@@ -371,9 +372,10 @@ export class TicketsService {
     return new Set(leave.filter((l) => onLeaveNow(l.part, zones.get(l.userId) ?? 'Asia/Kolkata', now)).map((l) => l.userId));
   }
 
-  /** Seam until M02: approved leave covering today, per agent, as a full day or one half. */
-  async leaveToday(_tx: Tx, _org: string, _userIds: string[], _now: Date): Promise<{ userId: string; part: 'full' | 'first' | 'second' }[]> {
-    return [];
+  /** M02 approved leave covering today (in India time, as the half-day cut-off above), per agent, full day or one half. */
+  async leaveToday(tx: Tx, org: string, userIds: string[], now: Date): Promise<{ userId: string; part: 'full' | 'first' | 'second' }[]> {
+    const today = todayIst(now);
+    return (await approvedLeaveOfUsers(tx, org, userIds, today, today)).map((l) => ({ userId: l.userId, part: l.part }));
   }
 
   // ------------------------------------------------------------------------------------------ reading

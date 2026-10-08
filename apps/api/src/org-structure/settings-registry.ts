@@ -51,6 +51,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
     values: ['punch', 'assumed_present', 'timesheet'],
     default: 'punch',
   },
+  // M02 L1: the leave year starts in this month (1 = calendar year, 4 = financial year), per company or legal entity.
+  'leave.year_start_month': { label: 'Leave year starts in', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'], default: '1' },
+  // M02 Q5: regularisations a month with manager approval; beyond that HR approves too.
+  'attendance.regularise_monthly_limit': { label: 'Fixes a month with manager approval only', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '2', '3', '4', '5', '6', '8', '10'], default: '4' },
   'attendance.missing_punch_effect': {
     label: 'Missing punches',
     scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'],
