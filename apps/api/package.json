@@ -45,6 +45,7 @@
     "imapflow": "2.0.6",
     "ioredis": "5.10.1",
     "ipaddr.js": "1.9.1",
+    "ldapts": "8.1.8",
     "libphonenumber-js": "^1.13.14",
     "luxon": "3.7.2",
     "mailauth": "5.0.3",

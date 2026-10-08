@@ -109,6 +109,8 @@ model Organization {
   trialEndsAt                   DateTime?                 @map("trial_ends_at") @db.Timestamptz(3)
   trialExtendedAt               DateTime?                 @map("trial_extended_at") @db.Timestamptz(3)
   lifecycleChangedAt            DateTime                  @default(now()) @map("lifecycle_changed_at") @db.Timestamptz(3)
+  /// SD-1.31: YukthiX's own company (slug yukthix), home of the YukthiX Support desk.
+  isPlatform                    Boolean                   @default(false) @map("is_platform")
   users                         User[]
   auditLogs                     AuditLog[]
   webhookDeliveries             WebhookDelivery[]
@@ -3098,6 +3100,8 @@ model SdTicket {
   productId            String?                  @map("product_id") @db.Uuid
   planTier             String?                  @map("plan_tier") @db.VarChar(40)
   senderVerified       Boolean                  @default(true) @map("sender_verified")
+  ratingAskedAt        DateTime?                @map("rating_asked_at") @db.Timestamptz(3)
+  contentRemovedAt     DateTime?                @map("content_removed_at") @db.Timestamptz(3)
   version              Int                      @default(1)
   search               Unsupported("tsvector")?
   createdBy            String?                  @map("created_by") @db.Uuid
@@ -3543,6 +3547,8 @@ model SdCustomerAccount {
   ownerUserId    String?  @map("owner_user_id") @db.Uuid
   parentId       String?  @map("parent_id") @db.Uuid
   status         String   @default("active") @db.VarChar(10)
+  /// SD-1.31: in the platform tenant only, the customer company this account stands for.
+  linkedTenantId String?  @map("linked_tenant_id") @db.Uuid
   version        Int      @default(1)
   createdBy      String?  @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -3821,4 +3827,474 @@ model SdBannerVote {
 
   @@unique([organizationId, bannerId, personId])
   @@map("sd_banner_votes")
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// M14 Service Desk phase 3b-1, batch 4 (SD-1.24 … SD-1.27, SD-1.29 … SD-1.31): knowledge, CSAT / NPS, reports,
+// directory sync, privacy, YukthiX's own support. Migration 20261018000000_service_desk_knowledge.
+
+model SdKbSpace {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  deskId         String?  @map("desk_id") @db.Uuid
+  slug           String   @db.VarChar(40)
+  name           String   @db.VarChar(100)
+  audience       String   @db.VarChar(10)
+  languages      String[] @default(["en"])
+  status         String   @default("active") @db.VarChar(10)
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, slug])
+  @@map("sd_kb_spaces")
+}
+
+model SdKbCategory {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  spaceId        String   @map("space_id") @db.Uuid
+  parentId       String?  @map("parent_id") @db.Uuid
+  name           String   @db.VarChar(100)
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("sd_kb_categories")
+}
+
+model SdKbArticle {
+  id               String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String                   @map("organization_id") @db.Uuid
+  spaceId          String                   @map("space_id") @db.Uuid
+  categoryId       String?                  @map("category_id") @db.Uuid
+  number           Int
+  slug             String                   @db.VarChar(80)
+  language         String                   @default("en") @db.VarChar(2)
+  translationOfId  String?                  @map("translation_of_id") @db.Uuid
+  audience         String                   @db.VarChar(10)
+  state            String                   @default("draft") @db.VarChar(10)
+  ownerUserId      String?                  @map("owner_user_id") @db.Uuid
+  title            String                   @db.VarChar(200)
+  summary          String?                  @db.VarChar(300)
+  bodyHtml         String                   @default("") @map("body_html")
+  bodyText         String                   @default("") @map("body_text")
+  seoTitle         String?                  @map("seo_title") @db.VarChar(70)
+  seoDescription   String?                  @map("seo_description") @db.VarChar(160)
+  publishedVersion Int?                     @map("published_version")
+  publishedAt      DateTime?                @map("published_at") @db.Timestamptz(3)
+  publishAt        DateTime?                @map("publish_at") @db.Timestamptz(3)
+  expiresAt        DateTime?                @map("expires_at") @db.Timestamptz(3)
+  expiryAction     String                   @default("flag") @map("expiry_action") @db.VarChar(6)
+  reviewDueOn      DateTime?                @map("review_due_on") @db.Date
+  featured         Boolean                  @default(false)
+  outdated         Boolean                  @default(false)
+  outdatedReason   String?                  @map("outdated_reason") @db.VarChar(300)
+  sourceTicketId   String?                  @map("source_ticket_id") @db.Uuid
+  deletedAt        DateTime?                @map("deleted_at") @db.Timestamptz(3)
+  search           Unsupported("tsvector")?
+  version          Int                      @default(1)
+  createdBy        String?                  @map("created_by") @db.Uuid
+  createdAt        DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime                 @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, number])
+  @@map("sd_kb_articles")
+}
+
+model SdKbArticleVersion {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  articleId      String    @map("article_id") @db.Uuid
+  version        Int
+  title          String    @db.VarChar(200)
+  summary        String?   @db.VarChar(300)
+  bodyHtml       String    @map("body_html")
+  note           String?   @db.VarChar(300)
+  authorUserId   String    @map("author_user_id") @db.Uuid
+  submittedAt    DateTime? @map("submitted_at") @db.Timestamptz(3)
+  reviewedBy     String?   @map("reviewed_by") @db.Uuid
+  reviewedAt     DateTime? @map("reviewed_at") @db.Timestamptz(3)
+  reviewNote     String?   @map("review_note") @db.VarChar(300)
+  publishedAt    DateTime? @map("published_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, articleId, version])
+  @@map("sd_kb_article_versions")
+}
+
+model SdKbSlugHistory {
+  organizationId String   @map("organization_id") @db.Uuid
+  spaceId        String   @map("space_id") @db.Uuid
+  language       String   @db.VarChar(2)
+  slug           String   @db.VarChar(80)
+  articleId      String   @map("article_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, spaceId, language, slug])
+  @@map("sd_kb_slug_history")
+}
+
+model SdKbBlock {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  key            String   @db.VarChar(40)
+  name           String   @db.VarChar(100)
+  bodyHtml       String   @map("body_html")
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, key])
+  @@map("sd_kb_blocks")
+}
+
+model SdKbTemplate {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(100)
+  bodyHtml       String   @map("body_html")
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, name])
+  @@map("sd_kb_templates")
+}
+
+model SdKbLink {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  articleId      String   @map("article_id") @db.Uuid
+  ticketId       String   @map("ticket_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  kind           String   @db.VarChar(8)
+  byUserId       String?  @map("by_user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, articleId, ticketId, kind])
+  @@map("sd_kb_links")
+}
+
+model SdKbFeedback {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  articleId      String   @map("article_id") @db.Uuid
+  personId       String?  @map("person_id") @db.Uuid
+  helpful        Boolean
+  comment        String?  @db.VarChar(500)
+  source         String   @db.VarChar(8)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("sd_kb_feedback")
+}
+
+model SdKbEvent {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  spaceId        String?  @map("space_id") @db.Uuid
+  kind           String   @db.VarChar(8)
+  articleId      String?  @map("article_id") @db.Uuid
+  query          String?  @db.VarChar(200)
+  results        Int?     @db.SmallInt
+  source         String   @db.VarChar(8)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("sd_kb_events")
+}
+
+model SdKbFollow {
+  organizationId String   @map("organization_id") @db.Uuid
+  articleId      String   @map("article_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, articleId, userId])
+  @@map("sd_kb_follows")
+}
+
+model SdRating {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  ticketId       String   @map("ticket_id") @db.Uuid
+  personId       String   @map("person_id") @db.Uuid
+  agentUserId    String?  @map("agent_user_id") @db.Uuid
+  groupId        String?  @map("group_id") @db.Uuid
+  score          Int      @db.SmallInt
+  comment        String?  @db.VarChar(1000)
+  channel        String   @db.VarChar(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, ticketId])
+  @@map("sd_ratings")
+}
+
+model SdSurvey {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  deskId         String    @map("desk_id") @db.Uuid
+  name           String    @db.VarChar(100)
+  question       String    @db.VarChar(300)
+  everyDays      Int       @default(90) @map("every_days") @db.SmallInt
+  periodDays     Int       @default(90) @map("period_days") @db.SmallInt
+  nextRunAt      DateTime  @default(now()) @map("next_run_at") @db.Timestamptz(3)
+  lastRunAt      DateTime? @map("last_run_at") @db.Timestamptz(3)
+  active         Boolean   @default(true)
+  version        Int       @default(1)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("sd_surveys")
+}
+
+model SdSurveyResponse {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  surveyId       String   @map("survey_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  personId       String   @map("person_id") @db.Uuid
+  accountId      String?  @map("account_id") @db.Uuid
+  score          Int      @db.SmallInt
+  comment        String?  @db.VarChar(1000)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("sd_survey_responses")
+}
+
+model SdSurveyToken {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  kind           String    @db.VarChar(4)
+  tokenHash      String    @map("token_hash") @db.Char(64)
+  ticketId       String?   @map("ticket_id") @db.Uuid
+  surveyId       String?   @map("survey_id") @db.Uuid
+  personId       String    @map("person_id") @db.Uuid
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt         DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, tokenHash])
+  @@map("sd_survey_tokens")
+}
+
+model SdKpiDaily {
+  organizationId String   @map("organization_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  day            DateTime @db.Date
+  metric         String   @db.VarChar(24)
+  value          Decimal  @db.Decimal(12, 2)
+  target         Decimal? @db.Decimal(12, 2)
+  rag            String?  @db.VarChar(5)
+
+  @@id([organizationId, deskId, day, metric])
+  @@map("sd_kpi_daily")
+}
+
+model SdKpiTarget {
+  organizationId String   @map("organization_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  metric         String   @db.VarChar(24)
+  target         Decimal  @db.Decimal(12, 2)
+  amber          Decimal  @db.Decimal(12, 2)
+  higherIsBetter Boolean  @map("higher_is_better")
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@id([organizationId, deskId, metric])
+  @@map("sd_kpi_targets")
+}
+
+model SdReport {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  ownerUserId    String   @map("owner_user_id") @db.Uuid
+  name           String   @db.VarChar(100)
+  columns        String[]
+  filters        Json     @default("{}")
+  shared         Boolean  @default(false)
+  version        Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("sd_reports")
+}
+
+model SdReportSchedule {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  reportId       String    @map("report_id") @db.Uuid
+  frequency      String    @db.VarChar(8)
+  recipients     String[]  @db.Uuid
+  nextRunAt      DateTime  @map("next_run_at") @db.Timestamptz(3)
+  lastRunAt      DateTime? @map("last_run_at") @db.Timestamptz(3)
+  lastResult     String?   @map("last_result") @db.VarChar(300)
+  active         Boolean   @default(true)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("sd_report_schedules")
+}
+
+model SdWallboard {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String    @db.VarChar(100)
+  deskIds        String[]  @map("desk_ids") @db.Uuid
+  tokenHash      String    @map("token_hash") @db.Char(64)
+  backlogAlert   Int?      @map("backlog_alert")
+  lastAlertAt    DateTime? @map("last_alert_at") @db.Timestamptz(3)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, tokenHash])
+  @@map("sd_wallboards")
+}
+
+model SdDirectorySource {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  kind            String    @db.VarChar(4)
+  name            String    @db.VarChar(100)
+  configEncrypted String?   @map("config_encrypted")
+  scimTokenHash   String?   @map("scim_token_hash") @db.Char(64)
+  groupMap        Json      @default("[]") @map("group_map")
+  schedule        String    @default("daily") @db.VarChar(6)
+  status          String    @default("active") @db.VarChar(8)
+  lastSyncAt      DateTime? @map("last_sync_at") @db.Timestamptz(3)
+  lastResult      Json?     @map("last_result")
+  version         Int       @default(1)
+  createdBy       String?   @map("created_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("sd_directory_sources")
+}
+
+model SdDirectoryPerson {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  sourceId          String   @map("source_id") @db.Uuid
+  externalId        String   @map("external_id") @db.VarChar(200)
+  userName          String   @map("user_name") @db.Citext
+  personId          String   @map("person_id") @db.Uuid
+  active            Boolean  @default(true)
+  groups            String[] @default([])
+  department        String?  @db.VarChar(100)
+  managerExternalId String?  @map("manager_external_id") @db.VarChar(200)
+  lastSeenAt        DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, sourceId, externalId])
+  @@map("sd_directory_people")
+}
+
+model SdPrivacyRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  personId       String    @map("person_id") @db.Uuid
+  kind           String    @db.VarChar(8)
+  source         String    @db.VarChar(6)
+  note           String?   @db.VarChar(500)
+  status         String    @default("open") @db.VarChar(8)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decisionNote   String?   @map("decision_note") @db.VarChar(500)
+  result         Json?
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  doneAt         DateTime? @map("done_at") @db.Timestamptz(3)
+
+  @@map("sd_privacy_requests")
+}
+
+model SdPrivacySettings {
+  organizationId  String   @id @map("organization_id") @db.Uuid
+  retentionMonths Int?     @map("retention_months") @db.SmallInt
+  legalHold       Boolean  @default(false) @map("legal_hold")
+  binDays         Int      @default(30) @map("bin_days") @db.SmallInt
+  updatedBy       String?  @map("updated_by") @db.Uuid
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("sd_privacy_settings")
+}
+
+model SdRecycleBin {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  kind           String    @db.VarChar(16)
+  entityId       String    @map("entity_id") @db.Uuid
+  deskId         String?   @map("desk_id") @db.Uuid
+  label          String    @db.VarChar(200)
+  data           Json
+  deletedBy      String?   @map("deleted_by") @db.Uuid
+  deletedAt      DateTime  @default(now()) @map("deleted_at") @db.Timestamptz(3)
+  purgeAfter     DateTime  @map("purge_after") @db.Timestamptz(3)
+  restoredAt     DateTime? @map("restored_at") @db.Timestamptz(3)
+
+  @@map("sd_recycle_bin")
+}
+
+model SdSupportBridge {
+  organizationId String   @id @map("organization_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("sd_support_bridge")
+}
+
+model SdConsoleAgent {
+  organizationId String   @map("organization_id") @db.Uuid
+  staffUserId    String   @map("staff_user_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, staffUserId])
+  @@map("sd_console_agents")
+}
+
+model SdSupportIntake {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  fromTenantId   String    @map("from_tenant_id") @db.Uuid
+  fromUserId     String    @map("from_user_id") @db.Uuid
+  fromName       String?   @map("from_name") @db.VarChar(200)
+  fromEmail      String    @map("from_email") @db.Citext
+  accountId      String    @map("account_id") @db.Uuid
+  ticketId       String?   @map("ticket_id") @db.Uuid
+  subject        String?   @db.VarChar(200)
+  bodyText       String    @map("body_text") @db.VarChar(10000)
+  severity       Int       @default(3) @db.SmallInt
+  screen         String?   @db.VarChar(200)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  processedAt    DateTime? @map("processed_at") @db.Timestamptz(3)
+  resultTicketId String?   @map("result_ticket_id") @db.Uuid
+  error          String?   @db.VarChar(300)
+
+  @@map("sd_support_intake")
+}
+
+model SdDirectoryGroup {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  sourceId       String   @map("source_id") @db.Uuid
+  displayName    String   @map("display_name") @db.VarChar(200)
+  externalId     String?  @map("external_id") @db.VarChar(200)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, sourceId, displayName])
+  @@map("sd_directory_groups")
+}
+
+model SdPeople {
+  organizationId String   @map("organization_id") @db.Uuid
+  personId       String   @map("person_id") @db.Uuid
+  team           String?  @db.VarChar(100)
+  locationId     String?  @map("location_id") @db.Uuid
+  source         String   @default("manual") @db.VarChar(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([organizationId, personId])
+  @@map("sd_people")
 }
