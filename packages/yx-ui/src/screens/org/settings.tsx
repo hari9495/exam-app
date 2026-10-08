@@ -153,7 +153,7 @@ function SettingBlock({ settingKey, def, rows, names, canEdit, blockedReason, to
     { key: 'scope', header: 'Applies to', value: names, render: (r) => <span className="yx-auth__item-main"><Text weight="medium">{names(r)}</Text>{r.scopeType !== 'tenant' && <Text tone="secondary" size="sm">{SCOPE_LABEL[r.scopeType]}</Text>}</span>, hideable: false },
     { key: 'value', header: 'Value', value: (r) => valueLabel(settingKey, r.value), width: 200 },
     ...(def.dated
-      ? [{ key: 'from', header: 'From', value: (r: SettingOverride) => r.validFrom ?? '', render: (r: SettingOverride) => (r.validFrom ? <span>{dateLabel(r.validFrom)} {r.validFrom > today && <Badge tone="info">Scheduled</Badge>}</span> : '—'), width: 170 }]
+      ? [{ key: 'from', header: 'From', value: (r: SettingOverride) => r.validFrom ?? '', render: (r: SettingOverride) => (r.validFrom ? <span className="yx-org__from">{dateLabel(r.validFrom)}{r.validFrom > today && <Badge tone="info">Scheduled</Badge>}</span> : '—'), width: 230 }]
       : []),
   ];
   return (

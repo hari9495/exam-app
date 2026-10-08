@@ -12,3 +12,5 @@
 
 /* One rule = its name, its Change button and its values in one compact block (no button far off at the page edge). */
 .yx-org__rule { max-inline-size: 48rem; }
+/* Date and its Scheduled badge on one line. */
+.yx-org__from { display: inline-flex; align-items: center; gap: var(--yx-space-2); white-space: nowrap; }
