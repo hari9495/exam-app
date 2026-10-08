@@ -242,7 +242,9 @@ def main():
     ws = sheet(wb, 'Open work', wh, wrows, [8, 26, 90, 14, 16, 40, 14, 30], keep, wrap=(3, 6, 8))
     dropdown(ws, 'E', WORK_STATUSES, len(wrows))
     defer = json.loads((HERE / 'deferred.json').read_text(encoding='utf-8'))
-    frows = [[d['id'], d['step'], d['source'], d['date'], d['item'], 'Open (verify)', None, None, None] for d in defer]
+    # status / note are set in deferred.json when a validation pass closes a row; the (you) columns still win if filled.
+    frows = [[d['id'], d['step'], d['source'], d['date'], d['item'], d.get('status', 'Open (verify)'), d.get('status'), None, d.get('note')]
+             for d in defer]
     fh = ['ID', 'Step', 'Build job', 'Date', 'Left out / not finished (as reported by the build job)', 'Status (start)', 'Status (you)', 'Owner (you)', 'Notes (you)']
     ws = sheet(wb, 'Deferred', fh, frows, [8, 6, 22, 11, 100, 13, 16, 14, 30], keep, wrap=(5, 9))
     dropdown(ws, 'G', WORK_STATUSES, len(frows))
