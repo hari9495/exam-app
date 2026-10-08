@@ -67,6 +67,7 @@ export class FakeChannelTransport implements ChannelTransport {
   }
 }
 
+// DECISION NEEDED: how long a card's link works. 8 hours (a working day) for now; a reminder sends a fresh card.
 const LINK_MINUTES = Number(process.env.APPROVAL_LINK_MINUTES ?? 480);
 type Claims = { k: string; o: string; u: string };
 

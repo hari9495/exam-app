@@ -235,6 +235,7 @@ export class ChatService {
     });
   }
 
+  // DECISION NEEDED: a requester who leaves an active chat counts as "left" (not resolved) in first-contact resolution.
   async endByRequester(r: Requester, id: string) {
     const s = await this.tx(r, (tx) => this.ownSession(tx, r, id));
     if (s.state === 'ended') throw new ConflictException('This chat has ended.');

@@ -111,6 +111,8 @@ export class DesksService {
         const freeHrTaken = Boolean(await tx.sdDesk.findFirst({ where: { organizationId: org, billingClass: 'hrms_included' }, select: { id: true } }));
         const billingClass = dto.kind === 'hr' && hrms && !freeHrTaken ? 'hrms_included' : 'service_desk';
         const calendarId = await this.officeHours(tx, a);
+        // DECISION NEEDED: an existing HR desk keeps its privacy (the starter pack only marks its sensitive categories
+        // private); should the pack also make it restricted?
         // SD-2.09: a new HR desk is restricted (M08: only its agents see its tickets, never a desk admin without a seat).
         const desk = await tx.sdDesk.create({ data: { organizationId: org, key: dto.key, name: dto.name, kind: dto.kind, billingClass, calendarId, privacy: STARTER_PACKS[dto.kind]?.restricted ? 'restricted' : 'standard', numberPrefix: `${dto.key}-`, createdBy: a.userId } });
         const d = { organizationId: org, deskId: desk.id };

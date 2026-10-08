@@ -193,6 +193,8 @@ export class DeskOrgService {
 
   // ------------------------------------------------------------------------------------------ share (US-G-046)
 
+  // DECISION NEEDED: the design lists a third share level, 'full' (the other desk works the ticket). Built: view and
+  // comment; to hand over the work, the ticket is moved.
   async share(a: DeskActor, id: string, dto: { deskId: string; level: 'view' | 'comment' }) {
     return this.tx(a, async (tx) => {
       const org = a.ctx.organizationId;

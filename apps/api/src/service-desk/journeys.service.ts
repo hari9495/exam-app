@@ -37,6 +37,8 @@ export class JourneysService implements OnModuleInit {
     private readonly tickets: TicketsService,
   ) {}
 
+  // DECISION NEEDED: M01 has no exit flow yet (employee.exit_scheduled is the agreed event name), and a changed joining
+  // date does not move task due dates yet (US-B-127 third line): both need M01 events that do not exist today.
   onModuleInit() {
     this.automation.subscribe(async (ev) => {
       if (ev.type !== 'employee.joined' && ev.type !== 'employee.exit_scheduled') return;

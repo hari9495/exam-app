@@ -243,6 +243,8 @@ export class DocumentsService {
     });
   }
 
+  // DECISION NEEDED: P05 asks click-to-accept with a one-time code for employee acceptance; this signs with the typed
+  // name inside a signed-in (MFA-aware) session and records the sign-in strength. Add the OTP step, or keep this?
   /** Sign (or decline) in the app. Evidence: typed name, time, IP, device, sign-in strength, hash of the document. */
   async sign(r: Requester, docId: string, dto: { decision: 'sign' | 'decline'; typedName: string; reason?: string }, meta: { ip: string | null; userAgent: string | null; assurance: string | null }) {
     if (r.acting) throw new ForbiddenException('Not available while acting for someone else');

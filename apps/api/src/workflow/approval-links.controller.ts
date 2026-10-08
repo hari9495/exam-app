@@ -147,6 +147,8 @@ export class ChannelLinksController {
       });
   }
 
+  // DECISION NEEDED: Teams / Slack linking in production goes through each provider's sign-in (the YukthiX app
+  // registrations are a go-live line); until then only the dev transport allows typing an account id.
   /**
    * A phone registers its push token for its own signed-in person. Teams and Slack link through the provider's sign-in in
    * production (go-live); typing an id is for the local demo only, so nobody can point their cards at someone else.
