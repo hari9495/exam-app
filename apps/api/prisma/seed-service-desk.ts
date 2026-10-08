@@ -45,6 +45,8 @@ const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000);
 
 export async function seedServiceDesk(tx: Tx, organizationId: string, actors: { admin: string; hr: string; panel: string; passwordHash: string }) {
   const org = { organizationId };
+  // The restrictive visibility policy (§5.7) has no super-admin escape: seeding is desk system work.
+  await tx.$executeRaw`SELECT set_config('app.sd_system', 'on', true)`;
   if (await tx.sdDesk.findFirst({ where: { ...org, key: 'IT' } })) return;
 
   // ---- people and their desk roles (P02 role templates, granted company-wide; reach comes from the seats) ----

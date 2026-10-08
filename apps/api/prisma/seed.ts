@@ -5,6 +5,7 @@ import { seedEmployees } from './seed-employees';
 import { seedAccess } from './seed-access';
 import { CONSULTANT, seedSignInDemo } from './seed-sign-in';
 import { DESK_PERMISSIONS, seedServiceDesk } from './seed-service-desk';
+import { seedServiceDeskSla } from './seed-service-desk-sla';
 
 const prisma = new PrismaClient();
 
@@ -294,6 +295,8 @@ async function main() {
       }
       // M14 Service Desk phase 3b-1: an IT desk and the free HR desk with a few tickets (seed-service-desk.ts).
       await seedServiceDesk(tx, demoOrg.id, { admin: await userId('admin@demo-org.test'), hr: await userId('hr@demo-org.test'), panel: await userId('panel@demo-org.test'), passwordHash: panelHash });
+      // Batch 2: SLA and OLA policies, resolution codes, a template and a ticket close to its breach (seed-service-desk-sla.ts).
+      await seedServiceDeskSla(tx, demoOrg.id);
     }
   }, { timeout: 60000 });
 
