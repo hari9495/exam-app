@@ -10,6 +10,7 @@ import { MultiSelect, Select } from '../../components/select';
 import { Segment } from '../../components/segment';
 import { FileUpload } from '../../components/upload';
 import { RichTextEditor } from '../../components/editor';
+import { InsertArticleButton, articleLinkHtml, type ArticleOption } from './ticket-kb';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '../../components/menu';
 import { Dialog } from '../../components/overlay';
 import { Card, DescriptionList, ObjectHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
@@ -57,6 +58,9 @@ export interface TicketScreenProps {
   onResolveClick?: () => void;
   /** Opens the support-level dialog (L1 / L2 / L3). */
   onEscalateClick?: () => void;
+  /** Batch 4 (US-G-023): find an article the requester can open, to insert in the reply. */
+  onFindArticle?: (q: string) => Promise<ArticleOption[]>;
+  onArticleInserted?: (articleId: string) => void;
 }
 
 const empty = (html: string) => !html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
@@ -239,6 +243,15 @@ export function TicketScreen(props: TicketScreenProps) {
                               ))}
                           </MenuContent>
                         </Menu>
+                      )}
+                      {work && mode === 'reply' && props.onFindArticle && (
+                        <InsertArticleButton
+                          onFind={props.onFindArticle}
+                          onInsert={(a) => {
+                            setDraft((x) => `${x}${articleLinkHtml(a)}`);
+                            props.onArticleInserted?.(a.id);
+                          }}
+                        />
                       )}
                       <Button variant="primary" icon={Send} onClick={send} disabled={empty(draft)} loading={busy === 'send'}>
                         {mode === 'note' ? 'Add note' : 'Send reply'}

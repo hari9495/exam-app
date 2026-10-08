@@ -8,3 +8,5 @@ export { PlansScreen, priceInput, type PlansScreenProps } from './plans';
 export { SupportSessionsScreen, type SupportSessionsScreenProps } from './support';
 export { PlatformAuditScreen, type PlatformAuditScreenProps } from './audit';
 export { LIFECYCLE_LABEL, SUPPORT_LABEL, actionWords } from './console-kit';
+// Batch 4: YukthiX support
+export { SupportDeskQueueScreen, SupportDeskTicketScreen, TenantPanel, textToParagraphs, sessionWords, type SupportDeskQueueScreenProps, type SupportDeskTicketScreenProps, type DeskQueueRow, type DeskConsoleTicket, type DeskConsoleMessage, type DeskTenantPanel, type DeskConsoleSession } from './support-desk';

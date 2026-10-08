@@ -1,0 +1,12 @@
+/* Batch 4: the public help centre (/yx/help/<company>/<space>), suggestions in the raise form, the article panel. */
+.yx-help-public { max-width: 72ch; margin-inline: auto; padding: var(--yx-space-6) var(--yx-space-4); display: grid; gap: var(--yx-space-6); }
+.yx-help-public__title { font-weight: var(--yx-weight-semibold); font-size: var(--yx-text-2xl); line-height: var(--yx-leading-2xl); margin: 0; }
+.yx-help-public__crumbs { font-size: var(--yx-text-sm); }
+.yx-desk-kb-suggest { border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); padding: var(--yx-space-3); background: var(--yx-color-bg-subtle); }
+.yx-desk-kb-suggest .yx-ops-muted { display: flex; align-items: center; gap: var(--yx-space-1); margin: 0 0 var(--yx-space-2); }
+.yx-desk-kb-article .yx-desk-body { font-size: var(--yx-text-md); }
+.yx-desk-kb-tree { display: grid; gap: var(--yx-space-4); }
+@media print {
+  .yx-help-public__actions, .yx-help-public__crumbs { display: none; }
+  .yx-help-public { max-width: none; padding: 0; }
+}

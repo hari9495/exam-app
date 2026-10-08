@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useState } from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
 import { LogOut, Send } from 'lucide-react';
 import { Button } from '../../components/button';
 import { EmptyState, InlineAlert } from '../../components/feedback';
@@ -11,6 +11,7 @@ import { useRun } from '../org/org-kit';
 import { DeskPage, MessageBody, StatusBadge, browserTimeZone, when } from './desk-kit';
 import { BannerList } from './help';
 import { ReadingAidsCard, ReadingAidsFrame, useReadingAids } from './reading-aids';
+import { ArticleDrawer, RateTicketCard, SuggestList, useSuggestions, type KbArticleView, type KbSuggestion } from './help-kb';
 import type { LoadState, PortalHome, PortalMe, PortalRaiseInput, PortalTicket, PortalTicketRow } from './types';
 
 // The outside help page (§9.3, US-G-021): a company's customers sign in with a 6-digit email code (no password, no
@@ -38,6 +39,21 @@ export interface PortalScreenProps {
   onBack: () => void;
   onReply: (text: string) => Promise<void>;
   onSignOut: () => Promise<void>;
+  /** Batch 4: help articles (public ones before sign-in; the desk's own after), suggestions while typing. */
+  kb?: PortalKbProps;
+  /** SD-1.26: rate a solved ticket. */
+  onRate?: (score: number, comment?: string) => Promise<unknown>;
+  /** SD-1.30: ask for a copy of one's data, or its erasure. */
+  privacy?: { requests: { id: string; kind: string; status: string; createdAt: string; decisionNote: string | null }[]; onAsk: (kind: 'access' | 'erasure', note?: string) => Promise<unknown>; onDownload: (id: string) => Promise<void> };
+}
+
+export interface PortalKbProps {
+  onSearch: (q: string) => Promise<KbSuggestion[]>;
+  onArticle: (number: number, language?: string) => Promise<KbArticleView>;
+  onFeedback: (articleId: string, helpful: boolean) => Promise<unknown>;
+  onSolved: (articleId: string) => Promise<unknown>;
+  /** Opened from a link (?article=12). */
+  openNumber?: number | null;
 }
 
 const ACCENT = /^#[0-9a-fA-F]{6}$/;
@@ -68,6 +84,7 @@ export function PortalScreen(props: PortalScreenProps) {
           )}
         </header>
         <main className="yx-desk-portal__main">
+          {props.kb && props.state === 'ready' && h && !props.ticket && !props.ticketState && <PortalKbCard kb={props.kb} />}
           {body}
           {h?.portal.readingAids && <ReadingAidsCard value={aids} onChange={setAids} />}
         </main>
@@ -76,14 +93,50 @@ export function PortalScreen(props: PortalScreenProps) {
   );
 }
 
+/** "Find an answer": search the help articles; an article opens in a side panel with "This solved it". */
+function PortalKbCard({ kb }: { kb: PortalKbProps }) {
+  const [q, setQ] = useState('');
+  const found = useSuggestions(q, kb.onSearch);
+  const [article, setArticle] = useState<KbArticleView | null>(null);
+  const open = (n: number, lang?: string) => void kb.onArticle(n, lang).then(setArticle, () => setArticle(null));
+  useEffect(() => {
+    if (kb.openNumber) open(kb.openNumber);
+    // Only when the link changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kb.openNumber]);
+  return (
+    <Card title="Find an answer">
+      <div className="yx-ops-stack" data-gap="sm">
+        <FormField label="Search help articles" hideLabel>
+          <TextField value={q} onChange={setQ} placeholder="Search help articles" maxLength={100} />
+        </FormField>
+        {q.trim().length >= 3 && !found.length && <p className="yx-ops-muted">No article matches. Ask us below.</p>}
+        <SuggestList items={found} onOpen={(a) => open(a.number)} />
+      </div>
+      {article && (
+        <ArticleDrawer
+          open
+          onOpenChange={(o) => !o && setArticle(null)}
+          article={article}
+          onLanguage={(l) => open(article.number, l)}
+          onFeedback={(h) => kb.onFeedback(article.id, h)}
+          onSolved={() => kb.onSolved(article.id)}
+          onStillNeedHelp={() => setArticle(null)}
+        />
+      )}
+    </Card>
+  );
+}
+
 /** Team, topic, product, subject and details: shared by "Ask without an account" and the signed-in raise form. */
-function usePortalRaiseForm(desks: PortalHome['desks']) {
+function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest?: (q: string) => Promise<KbSuggestion[]>) {
   const [deskId, setDeskId] = useState<string | null>(desks.length === 1 ? desks[0].id : null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [productId, setProductId] = useState<string | null>(null);
   const [subject, setSubject] = useState('');
   const [details, setDetails] = useState('');
   const desk = desks.find((d) => d.id === deskId);
+  const suggestions = useSuggestions(`${subject} ${details.slice(0, 200)}`, onSuggest);
   return {
     ready: Boolean(deskId && subject.trim() && details.trim()),
     input: (): PortalRaiseInput => ({ deskId: deskId!, ...(categoryId ? { categoryId } : {}), ...(productId ? { productId } : {}), subject: subject.trim(), description: details.trim() }),
@@ -120,6 +173,7 @@ function usePortalRaiseForm(desks: PortalHome['desks']) {
         <FormField label="Subject" required>
           <TextField value={subject} onChange={setSubject} maxLength={200} />
         </FormField>
+        <SuggestList items={suggestions} />
         <FormField label="Details" required helper="Dates, error messages and steps help us answer faster.">
           <TextArea value={details} onChange={setDetails} rows={5} maxLength={20000} />
         </FormField>
@@ -137,7 +191,7 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
   const [askName, setAskName] = useState('');
   const [askEmail, setAskEmail] = useState('');
   const [asked, setAsked] = useState(false);
-  const form = usePortalRaiseForm(h.desks);
+  const form = usePortalRaiseForm(h.desks, props.kb?.onSearch);
   const { busy, error, run } = useRun();
   return (
     <>
@@ -225,7 +279,7 @@ export function PortalHomeView(props: PortalScreenProps & { home: PortalHome; me
   const [show, setShow] = useState<'open' | 'all'>('open');
   const [raising, setRaising] = useState(false);
   const [raised, setRaised] = useState<string | null>(null);
-  const form = usePortalRaiseForm(props.home.desks);
+  const form = usePortalRaiseForm(props.home.desks, props.kb?.onSearch);
   const { busy, error, run } = useRun();
   const tz = props.timeZone || browserTimeZone();
   const rows = props.tickets.filter((t) => show === 'all' || !['solved', 'closed'].includes(t.systemState));
@@ -294,7 +348,48 @@ export function PortalHomeView(props: PortalScreenProps & { home: PortalHome; me
           </div>
         )}
       </Card>
+      {props.privacy && <PrivacyRequestCard {...props.privacy} />}
     </>
+  );
+}
+
+/** SD-1.30: a copy of my data, or its erasure (the company decides; a copy is downloaded here once ready). */
+export function PrivacyRequestCard({ requests, onAsk, onDownload }: NonNullable<PortalScreenProps['privacy']>) {
+  const [kind, setKind] = useState<'access' | 'erasure'>('access');
+  const { busy, error, run } = useRun();
+  return (
+    <Card title="My data">
+      <div className="yx-ops-stack" data-gap="sm">
+        {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+        <Segment label="What do you want?" options={[{ value: 'access', label: 'A copy of my data' }, { value: 'erasure', label: 'Delete my data' }]} value={kind} onChange={setKind} />
+        {kind === 'erasure' && <p className="yx-ops-muted">Your words and files are removed from your tickets; the tickets stay as facts. The company may keep data the law asks it to keep.</p>}
+        <div className="yx-ops-row">
+          <Button loading={busy === 'ask'} onClick={() => void run('ask', () => onAsk(kind))}>
+            Send request
+          </Button>
+        </div>
+        {requests.length > 0 && (
+          <ul className="yx-ops-list" aria-label="My requests">
+            {requests.map((r) => (
+              <li key={r.id} className="yx-ops-list__item">
+                <span className="yx-ops-list__main">
+                  <span>{r.kind === 'access' ? 'A copy of my data' : 'Delete my data'}</span>
+                  <span className="yx-ops-list__sub">
+                    {r.status === 'open' ? 'Waiting for the company' : r.status === 'done' ? 'Done' : 'Refused'}
+                    {r.decisionNote ? ` · ${r.decisionNote}` : ''}
+                  </span>
+                </span>
+                {r.kind === 'access' && r.status === 'done' && (
+                  <Button size="sm" loading={busy === r.id} onClick={() => void run(r.id, () => onDownload(r.id))}>
+                    Download
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -343,6 +438,7 @@ export function PortalTicketView(props: PortalScreenProps) {
             </ol>
             {t.files.length > 0 && <p className="yx-ops-muted">Files on this ticket: {t.files.map((f) => f.fileName).join(', ')}</p>}
           </Card>
+          {props.onRate && (t.canRate || t.rating) && <RateTicketCard rating={t.rating ?? null} onRate={props.onRate} />}
           {t.canReply ? (
             <Card title="Reply">
               <div className="yx-ops-stack">

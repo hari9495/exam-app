@@ -359,6 +359,9 @@ export interface MyTicket {
   messages: { id: string; side: 'agent' | 'requester' | 'system'; author: string; mine: boolean; bodyHtml: string; createdAt: string }[];
   attachments: Attachment[];
   history: { at: string; from: string | null; to: string | null }[];
+  /** SD-1.26: the person's rating (1–5), and whether they may rate it now. */
+  rating?: number | null;
+  canRate?: boolean;
 }
 
 export interface RaiseInput {
@@ -759,6 +762,9 @@ export interface PortalTicketRow {
 }
 
 export interface PortalTicket {
+  /** SD-1.26: the person's rating (1–5), and whether they may rate it now. */
+  rating?: number | null;
+  canRate?: boolean;
   id: string;
   number: string;
   subject: string;

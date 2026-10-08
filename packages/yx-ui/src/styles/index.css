@@ -35,3 +35,5 @@
 @import "../screens/console/console.css";
 @import "../screens/ops/ops.css";
 @import "../screens/desk/desk.css";
+@import "../screens/desk/help-public.css";
+@import "../screens/desk/reports.css";

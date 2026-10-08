@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Lock, Paperclip, Plus, Send } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
@@ -14,11 +14,14 @@ import { Card } from '../../components/shell';
 import { useRun } from '../org/org-kit';
 import { DeskPage, MessageBody, StatusBadge, browserTimeZone, sizeText, when } from './desk-kit';
 import { ReadingAidsCard, ReadingAidsFrame, useReadingAids } from './reading-aids';
+import { PrivacyRequestCard, type PortalScreenProps } from './portal';
+import { ArticleDrawer, KnowledgeCard, RateTicketCard, SuggestList, useSuggestions, type KbArticleView, type KbHome, type KbSuggestion } from './help-kb';
 import type { Attachment, BannerSeverity, LoadState, MyTicket, MyTicketRow, PublicBanner, RaiseDesk, RaiseInput } from './types';
 
 // HLP-01 Help centre, wired (US-B-086, US-G-004, YX-SD-16): raise a ticket with the right desk, follow my tickets.
 // Batch 3: known-issue banners with "Me too" (US-G-020), reading aids, times in the person's own zone, and the in-app
-// Help drawer (US-B-100). Search and the assistant arrive with the knowledge base (SD-1.24) and AI (3b-4).
+// Help drawer (US-B-100). Batch 4: help articles to search and browse, suggestions while typing, "This solved it"
+// (SD-1.24, US-B-105) and rating a solved ticket (SD-1.26). The assistant arrives with AI (3b-4).
 
 export interface HelpCentreProps {
   state: LoadState;
@@ -32,6 +35,20 @@ export interface HelpCentreProps {
   onMeToo?: (id: string) => Promise<unknown>;
   /** The person's own time zone (IANA name); the browser's when empty. */
   timeZone?: string;
+  /** Batch 4: the help articles of the company (absent: no knowledge base yet). */
+  kb?: HelpKbProps;
+  /** SD-1.30: a copy of my desk data, or its erasure. */
+  privacy?: PortalScreenProps['privacy'];
+}
+
+export interface HelpKbProps {
+  home: KbHome | null;
+  onSearch: (q: string) => Promise<KbSuggestion[]>;
+  onArticle: (number: number, language?: string) => Promise<KbArticleView>;
+  onFeedback: (articleId: string, helpful: boolean) => Promise<unknown>;
+  onSolved: (articleId: string) => Promise<unknown>;
+  /** Opened from a link (?article=12). */
+  openNumber?: number | null;
 }
 
 const URGENCY = [
@@ -48,6 +65,14 @@ export function HelpCentreScreen(props: HelpCentreProps) {
   const [aids, setAids] = useReadingAids();
   const tz = props.timeZone || browserTimeZone();
   const rows = props.tickets.filter((t) => show === 'all' || !['solved', 'closed'].includes(t.systemState));
+  const [article, setArticle] = useState<KbArticleView | null>(null);
+  const kb = props.kb;
+  const openArticle = (n: number, lang?: string) => void kb?.onArticle(n, lang).then(setArticle, () => setArticle(null));
+  useEffect(() => {
+    if (kb?.openNumber) openArticle(kb.openNumber);
+    // Only when the link changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kb?.openNumber]);
   return (
     <ReadingAidsFrame value={aids}>
       <DeskPage
@@ -68,6 +93,7 @@ export function HelpCentreScreen(props: HelpCentreProps) {
             Your ticket number is {raised}. The team will reply here.
           </InlineAlert>
         )}
+        {kb && <KnowledgeCard home={kb.home} onSearch={kb.onSearch} onOpen={(a) => openArticle(a.number)} />}
         <Card title="My tickets" actions={<Segment label="Which tickets" options={[{ value: 'open', label: 'Open' }, { value: 'all', label: 'All' }]} value={show} onChange={setShow} />}>
           {rows.length === 0 ? (
             <EmptyState compact title={show === 'open' ? 'You have no open tickets.' : 'You have no tickets yet.'} description="When you raise a ticket, you can follow it here." />
@@ -99,9 +125,27 @@ export function HelpCentreScreen(props: HelpCentreProps) {
           <p className="yx-ops-muted">Times are in your time zone: {tz}.</p>
         </Card>
         <ReadingAidsCard value={aids} onChange={setAids} />
+        {props.privacy && <PrivacyRequestCard {...props.privacy} />}
+        {article && kb && (
+          <ArticleDrawer
+            open
+            onOpenChange={(o) => !o && setArticle(null)}
+            article={article}
+            timeZone={tz}
+            onLanguage={(l) => openArticle(article.number, l)}
+            onFeedback={(h) => kb.onFeedback(article.id, h)}
+            onSolved={() => kb.onSolved(article.id)}
+            onStillNeedHelp={() => {
+              setArticle(null);
+              setOpen(true);
+            }}
+          />
+        )}
         <RaiseDrawer
           open={open}
           onOpenChange={setOpen}
+          onSuggest={kb?.onSearch}
+          onOpenSuggestion={(a) => openArticle(a.number)}
           desks={props.desks}
           onRaise={async (input) => {
             const r = await props.onRaise(input);
@@ -152,8 +196,8 @@ export function BannerList({ banners, onMeToo }: { banners: PublicBanner[]; onMe
   );
 }
 
-/** The raise-a-ticket fields, shared by the Help centre and the in-app Help drawer. */
-function useRaiseForm(desks: RaiseDesk[]) {
+/** The raise-a-ticket fields, shared by the Help centre and the in-app Help drawer. Articles are suggested while typing. */
+function useRaiseForm(desks: RaiseDesk[], suggest?: { onSuggest?: (q: string) => Promise<KbSuggestion[]>; onOpen?: (a: KbSuggestion) => void; hrefOf?: (a: KbSuggestion) => string }) {
   const [deskId, setDeskId] = useState<string | null>(desks.length === 1 ? desks[0].id : null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [typeId, setTypeId] = useState<string | null>(null);
@@ -163,6 +207,7 @@ function useRaiseForm(desks: RaiseDesk[]) {
   const [isPrivate, setPrivate] = useState(false);
   const desk = desks.find((d) => d.id === deskId);
   const category = desk?.categories.find((c) => c.id === categoryId);
+  const suggestions = useSuggestions(`${subject} ${details.slice(0, 200)}`, suggest?.onSuggest);
   const fields = (
     <>
       <FormField label="Which team?" required>
@@ -198,6 +243,7 @@ function useRaiseForm(desks: RaiseDesk[]) {
       <FormField label="Subject" required helper="One line, e.g. “VPN drops when I work from home”">
         <TextField value={subject} onChange={setSubject} maxLength={200} />
       </FormField>
+      <SuggestList items={suggestions} onOpen={suggest?.onOpen} hrefOf={suggest?.hrefOf} />
       <FormField label="Details" required helper="Add dates, error messages or steps so the team can help faster. You can add files after raising it.">
         <TextArea value={details} onChange={setDetails} rows={5} maxLength={20000} />
       </FormField>
@@ -226,8 +272,8 @@ function useRaiseForm(desks: RaiseDesk[]) {
   };
 }
 
-function RaiseDrawer({ open, onOpenChange, desks, onRaise }: { open: boolean; onOpenChange: (o: boolean) => void; desks: RaiseDesk[]; onRaise: (i: RaiseInput) => Promise<void> }) {
-  const form = useRaiseForm(desks);
+function RaiseDrawer({ open, onOpenChange, desks, onRaise, onSuggest, onOpenSuggestion }: { open: boolean; onOpenChange: (o: boolean) => void; desks: RaiseDesk[]; onRaise: (i: RaiseInput) => Promise<void>; onSuggest?: (q: string) => Promise<KbSuggestion[]>; onOpenSuggestion?: (a: KbSuggestion) => void }) {
+  const form = useRaiseForm(desks, { onSuggest, onOpen: onOpenSuggestion });
   const { busy, error, run } = useRun();
   return (
     <Drawer
@@ -273,11 +319,14 @@ export interface HelpDrawerProps {
   /** The page adds the screen the drawer was opened on. */
   onRaise: (input: RaiseInput) => Promise<{ id: string; number: string }>;
   ticketHref: (id: string) => string;
+  /** Batch 4: articles suggested while typing; they open in the Help centre in a new tab. */
+  onSuggest?: (q: string) => Promise<KbSuggestion[]>;
+  articleHref?: (a: KbSuggestion) => string;
 }
 
 /** The in-app Help drawer (US-B-100), open from every page: known issues, raise a ticket, my open tickets. */
 export function HelpDrawer(props: HelpDrawerProps) {
-  const form = useRaiseForm(props.desks);
+  const form = useRaiseForm(props.desks, { onSuggest: props.onSuggest, hrefOf: props.articleHref });
   const [raised, setRaised] = useState<string | null>(null);
   const { busy, error, run } = useRun();
   const open = props.tickets.filter((t) => !['solved', 'closed'].includes(t.systemState));
@@ -354,6 +403,8 @@ export interface MyTicketScreenProps {
   onOpenFile: (attachmentId: string) => Promise<void>;
   onAddWatcher: (email: string) => Promise<void>;
   timeZone?: string;
+  /** SD-1.26: rate a solved ticket (shown when the ticket says it can be rated or was rated). */
+  onRate?: (score: number, comment?: string) => Promise<unknown>;
 }
 
 /** The requester's view of one ticket: replies only, never the team's internal notes (YX-SD-13). */
@@ -445,6 +496,7 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
             )}
           </div>
           <div className="yx-ops-ws__rail">
+            {props.onRate && (t.canRate || t.rating) && <RateTicketCard rating={t.rating ?? null} onRate={props.onRate} />}
             <Card title="Status">
               <div className="yx-ops-stack" data-gap="sm">
                 <StatusBadge label={t.status} state={t.systemState} />

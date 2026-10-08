@@ -1,10 +1,10 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { Building2, FileClock, LifeBuoy, MessageSquare, ReceiptIndianRupee, ScrollText, ShieldCheck, Tags } from 'lucide-react';
+import { Building2, FileClock, Inbox, LifeBuoy, MessageSquare, ReceiptIndianRupee, ScrollText, ShieldCheck, Tags } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type ConsolePageId = 'companies' | 'support' | 'plans' | 'channels' | 'audit';
+export type ConsolePageId = 'companies' | 'support-desk' | 'support' | 'plans' | 'channels' | 'audit';
 type ConsoleGroup = 'Customers' | 'Catalogue' | 'Channels' | 'Security';
 
 interface ConsoleLink {
@@ -18,6 +18,8 @@ interface ConsoleLink {
 /** The console's pages (P14 §7); billing, incidents and customer success come later. */
 export const CONSOLE_LINKS: ConsoleLink[] = [
   { id: 'companies', label: 'Companies', href: '/staff/companies', group: 'Customers', icon: Building2 },
+  // Before Support sessions: the layout picks the first link whose href starts the path.
+  { id: 'support-desk', label: 'Support desk', href: '/staff/support-desk', group: 'Customers', icon: Inbox },
   { id: 'support', label: 'Support sessions', href: '/staff/support', group: 'Customers', icon: LifeBuoy },
   { id: 'plans', label: 'Plans and prices', href: '/staff/plans', group: 'Catalogue', icon: Tags },
   { id: 'channels', label: 'Shared SMS account', href: '/staff/channels', group: 'Channels', icon: MessageSquare },

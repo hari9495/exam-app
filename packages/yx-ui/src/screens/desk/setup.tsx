@@ -18,6 +18,7 @@ import { DeskPage, PRIORITY_LABEL, STATE_LABEL } from './desk-kit';
 import type { Calendar, CannedResponse, DeskDetail, DeskGroup, DeskKind, DeskMember, DeskRole, DeskSummary, DuplicatePerson, LoadState, SeatCost, SystemState } from './types';
 import { DuplicatesCard, SlaTab, WorkSetupTab, type SlaTabProps, type WorkSetupProps } from './setup-sla';
 import { BannersTab, EmailTab, PortalTab, type BannerSetupProps, type EmailSetupProps, type PortalSetupProps } from './setup-channels';
+import { SetupStart, type SetupStartProps } from './setup-start';
 
 // Desk set-up (APX-D §5.8, SD-1.01 / SD-1.02, D8 / D11): desks, seats with their cost shown first, groups and how they
 // share work, categories, ticket types and status labels, the priority matrix, saved replies, scenarios, numbering,
@@ -42,6 +43,8 @@ const toMin = (s: string | null) => (s ? Number(s.slice(0, 2)) * 60 + Number(s.s
 export interface DeskSetupScreenProps {
   state: LoadState;
   onRetry?: () => void;
+  /** The tab to open first (links from the set-up checklist: ?tab=sla). */
+  initialTab?: string;
   desks: DeskSummary[];
   canCreate: boolean;
   selectedId: string | null;
@@ -78,6 +81,8 @@ export interface DeskSetupScreenProps {
   duplicates?: { rows: DuplicatePerson[]; onLink: (personId: string, intoPersonId: string) => Promise<void> } | null;
   /** Service Desk admins: paid agents this month (D2: anyone who was an agent on any day, counted once). */
   billing?: { month: string; paidAgents: number; collaborators: number } | null;
+  /** Batch 4, Service Desk admins: the set-up checklist, the 3-step wizard and what is new. */
+  start?: SetupStartProps;
 }
 
 export function DeskSetupScreen(props: DeskSetupScreenProps) {
@@ -98,6 +103,7 @@ export function DeskSetupScreen(props: DeskSetupScreenProps) {
         ) : undefined
       }
     >
+      {props.start && <SetupStart {...props.start} />}
       {props.desks.length === 0 ? (
         <EmptyState title="No desks yet." description={props.canCreate ? 'Create the first desk: an Employee help desk (IT, HR, Admin…) or a Customer support desk.' : 'Ask your Service Desk admin to add you to a desk.'} />
       ) : (
@@ -194,7 +200,7 @@ function NewDeskDrawer({ open, onOpenChange, onCreate }: { open: boolean; onOpen
 
 function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
   const d = props.detail;
-  const [tab, setTab] = useState('members');
+  const [tab, setTab] = useState(props.initialTab ?? 'members');
   return (
     <Card title={d.desk.name}>
       <Tabs value={tab} onValueChange={setTab}>
