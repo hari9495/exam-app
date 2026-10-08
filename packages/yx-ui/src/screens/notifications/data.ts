@@ -99,11 +99,11 @@ export const EMAIL_OVERVIEW: EmailOverview = {
   logoUrl: null,
   defaultAccent: '#3B5FE3',
   branding: { showLogo: true, accentColor: null, senderName: null, replyTo: null },
-  variables: { firstName: 'First name ("there" when unknown)', companyName: 'Company name', minutes: 'Minutes it works', code: 'The code', device: 'Device' },
+  variables: { firstName: 'First name ("there" when unknown)', companyName: 'Company name', minutes: 'Minutes it works', hours: 'Hours it works', code: 'The code', device: 'Device' },
   emails: [
     { type: 'sign_in_code', group: 'Sign-in codes', name: 'Sign-in code', sentWhen: 'Someone signs in with a code sent by email.', button: false, variables: ['firstName', 'companyName', 'code', 'minutes'], locked: ['The code', 'How long the code works'], defaults: { subject: '{{code}} is your YukthiX sign-in code', heading: 'Your sign-in code', intro: 'Enter this code to sign in to {{companyName}}.', buttonLabel: '', footer: '' }, custom: null, updatedAt: null },
     { type: 'password_reset', group: 'Your account', name: 'Password reset', sentWhen: 'Someone asks to reset their password.', button: true, variables: ['firstName', 'companyName', 'minutes'], locked: ['Where the button goes', 'How long the link works'], defaults: resetDefaults, custom: null, updatedAt: null },
-    { type: 'invite', group: 'Your account', name: 'Invitation', sentWhen: 'An admin adds a person, who then sets their password.', button: true, variables: ['firstName', 'companyName', 'minutes'], locked: ['Where the button goes'], defaults: { subject: "You're invited to {{companyName}} on YukthiX", heading: 'Welcome to {{companyName}}', intro: 'Hi {{firstName}}, you have a new account at {{companyName}}.', buttonLabel: 'Set your password', footer: '' }, custom: { subject: 'Welcome to Kaveri Foods, {{firstName}}', heading: 'Welcome aboard', intro: 'Hi {{firstName}}, the People team is glad to have you.', buttonLabel: 'Set your password', footer: 'Kaveri People Team' }, updatedAt: '2026-10-08T05:00:00Z' },
+    { type: 'invite', group: 'Your account', name: 'Invitation', sentWhen: 'An admin adds a person, who then sets their password.', button: true, variables: ['firstName', 'companyName', 'hours'], locked: ['Where the button goes'], defaults: { subject: "You're invited to {{companyName}} on YukthiX", heading: 'Welcome to {{companyName}}', intro: 'Hi {{firstName}}, you have a new account at {{companyName}}.', buttonLabel: 'Set your password', footer: '' }, custom: { subject: 'Welcome to Kaveri Foods, {{firstName}}', heading: 'Welcome aboard', intro: 'Hi {{firstName}}, the People team is glad to have you.', buttonLabel: 'Set your password', footer: 'Kaveri People Team' }, updatedAt: '2026-10-08T05:00:00Z' },
   ],
 };
 
