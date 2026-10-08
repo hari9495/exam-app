@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Transform } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsDateString, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
@@ -23,6 +23,14 @@ export class DecideDto {
   @IsString()
   @MaxLength(1000)
   reason?: string;
+}
+
+export class PeopleQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(60)
+  q?: string;
 }
 
 export class DelegationDto {
@@ -86,6 +94,14 @@ export class WorkflowController {
   decide(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DecideDto) {
     const m = me(req, t, true);
     return this.engine.decide(m.ctx, m.userId, id, dto.decision, dto.reason ?? null, 'web');
+  }
+
+  /** Colleagues to choose as a delegate or a named approver: active logins of the company, names only. */
+  @Get('people')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  people(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: PeopleQueryDto) {
+    const m = me(req, t);
+    return this.engine.people(m.ctx, q.q ?? '');
   }
 
   @Get('delegations')

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Lock, Paperclip, Plus, Send } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
@@ -405,6 +405,8 @@ export interface MyTicketScreenProps {
   timeZone?: string;
   /** SD-1.26: rate a solved ticket (shown when the ticket says it can be rated or was rated). */
   onRate?: (score: number, comment?: string) => Promise<unknown>;
+  /** 3b-2: what was ordered on this request, with its stages (shown above the conversation). */
+  request?: ReactNode;
 }
 
 /** The requester's view of one ticket: replies only, never the team's internal notes (YX-SD-13). */
@@ -434,6 +436,7 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
         <div className="yx-ops-ws">
           <div className="yx-ops-ws__main">
             {error && <InlineAlert tone="danger" title="That didn't work">{error}</InlineAlert>}
+            {props.request}
             <Card title="Conversation">
               <ol className="yx-ops-conv" aria-label="Conversation">
                 {t.messages.map((m) => (

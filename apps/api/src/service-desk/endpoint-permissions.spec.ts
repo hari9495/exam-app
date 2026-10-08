@@ -51,7 +51,7 @@ describe('every Service Desk endpoint declares a permission (YX-SEC-01)', () => 
   it('3b-2: the catalogue, cart and requests of the requester, and P03 approvals, are implicit (own records only)', () => {
     expect(undeclared(MyCatalogController).sort()).toEqual(['cancel', 'cancelItem', 'catalogue', 'checkout', 'guide', 'itemPage', 'pick', 'request', 'resolveGuide']);
     // An approver is anyone a request names (P03): the engine checks the task is theirs.
-    expect(undeclared(WorkflowController).sort()).toEqual(['decide', 'delegate', 'delegations', 'history', 'inbox', 'request', 'revoke']);
+    expect(undeclared(WorkflowController).sort()).toEqual(['decide', 'delegate', 'delegations', 'history', 'inbox', 'people', 'request', 'revoke']);
     expect(Reflect.getMetadata(PERMISSIONS_KEY, DeskCatalogController.prototype.askApproval)).toEqual(['desk.ticket.work']);
     expect(Reflect.getMetadata(PERMISSIONS_KEY, DeskRulesController.prototype.create)).toEqual(['desk.rule.manage']);
   });

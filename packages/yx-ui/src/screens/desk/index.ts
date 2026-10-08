@@ -30,3 +30,12 @@ export { PeopleListScreen, ScimTokenBox, type PeopleListScreenProps, type DeskPe
 export { PrivacyScreen, type PrivacyScreenProps, type PrivacyRequestRow, type PrivacySettings, type PrivacyStatus } from './privacy';
 export { SetupStart, KnownIssuesScreen, DeskSignUpScreen, presetPolicy, PRESETS, WHATS_NEW, type SetupStartProps, type SetupChecklist, type ChecklistStep, type TargetPreset, type KnownIssuesScreenProps, type DeskSignUpScreenProps, type DeskSignUpInput } from './setup-start';
 export { InsertArticleButton, TicketKbCard, articleLinkHtml, type ArticleOption, type TicketArticleLink, type TicketKbCardProps } from './ticket-kb';
+// Phase 3b-2 batch 1 (SD-2.01 … SD-2.05, SD-2.12): catalogue, cart, order guides, approvals (P03), desk rules (P19).
+export * from './esm-types';
+export { CatalogScreen, RequestTracker, LANGS, type CatalogScreenProps } from './catalog';
+export { ServiceForm, LivePicker, ChoiceLabel, type ServiceFormProps } from './service-form';
+export { ApprovalsScreen, type ApprovalsScreenProps } from './approvals';
+export { CatalogAdmin, FormBuilder, type CatalogAdminProps } from './catalog-admin';
+export { RulesAdmin, type RulesAdminProps } from './rules-admin';
+export { RequestPanel } from './request-panel';
+export { resolveForm, answersToSend, formProblems, toServerGroup, fromServerGroup, inLang, EMPTY_FORM, COLOUR_TONE, type FormDef, type FormFieldDef, type FormSectionDef, type FormLang, type Answers, type AnswerValue, type ServerGroup } from '../../lib/forms';

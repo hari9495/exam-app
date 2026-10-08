@@ -532,6 +532,14 @@ export class ApprovalsEngine {
     return new Map(rows.map((u) => [u.id, u.name?.trim() || u.email]));
   }
 
+  /** Active logins of the company by name (to pick a delegate or a named approver). Names only, 20 at most. */
+  async people(ctx: CompanyContext, q: string) {
+    return this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const rows = await tx.user.findMany({ where: { organizationId: ctx.organizationId, status: 'active', ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { email: { startsWith: q, mode: 'insensitive' } }] } : {}) }, select: { id: true, name: true, email: true }, orderBy: { name: 'asc' }, take: 20 });
+      return rows.map((u) => ({ id: u.id, label: u.name?.trim() || u.email.split('@')[0], detail: null }));
+    });
+  }
+
   /** What is waiting for me (YX-WF-14: the one query every count uses). */
   async inbox(ctx: CompanyContext, userId: string) {
     return this.tenantPrisma.forTenant(ctx, async (tx) => {

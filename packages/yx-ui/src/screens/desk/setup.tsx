@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
@@ -76,6 +76,9 @@ export interface DeskSetupScreenProps {
   /** Batch 3 tabs, each only for people who may use it: email in and out, outside help pages, known-issue banners. */
   email?: EmailSetupProps;
   portals?: PortalSetupProps;
+  /** 3b-2 batch 1 tabs, built by the page (each only for people who hold its key). */
+  catalog?: ReactNode;
+  rules?: ReactNode;
   banners?: BannerSetupProps;
   /** HR only: logins that may be the same person as an existing one. */
   duplicates?: { rows: DuplicatePerson[]; onLink: (personId: string, intoPersonId: string) => Promise<void> } | null;
@@ -218,6 +221,8 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
           {props.email && <TabsTrigger value="email">Email</TabsTrigger>}
           {props.portals && <TabsTrigger value="portal">Portal</TabsTrigger>}
           {props.banners && <TabsTrigger value="banners">Banners</TabsTrigger>}
+          {props.catalog && <TabsTrigger value="catalog">Catalogue</TabsTrigger>}
+          {props.rules && <TabsTrigger value="rules">Rules</TabsTrigger>}
         </TabsList>
         <TabsContent value="members">
           <MembersTab {...props} />
@@ -270,6 +275,8 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
             <BannersTab {...props.banners} />
           </TabsContent>
         )}
+        {props.catalog && <TabsContent value="catalog">{props.catalog}</TabsContent>}
+        {props.rules && <TabsContent value="rules">{props.rules}</TabsContent>}
       </Tabs>
     </Card>
   );
