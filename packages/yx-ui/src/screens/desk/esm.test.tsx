@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { answersToSend, formProblems, fromServerGroup, resolveForm, toServerGroup, type FormDef } from '../../lib/forms';
 import { ApprovalsScreen } from './approvals';
 import { CatalogScreen } from './catalog';
+import { CatalogAdmin } from './catalog-admin';
 import type { ApprovalTask, CatalogItemPage } from './esm-types';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -100,5 +101,20 @@ describe('approvals inbox (P03)', () => {
     expect(onDecide).toHaveBeenCalledWith(TASK, 'reject', 'Not this quarter');
     await ue.click(screen.getByRole('button', { name: 'Approve' }));
     expect(onDecide).toHaveBeenCalledWith(TASK, 'approve', '');
+  });
+});
+
+describe('catalogue set-up: the company line above which a person must approve (founder 9 Oct 2026)', () => {
+  it('shows the amount and saves a new one', async () => {
+    const onHighValue = vi.fn(async () => undefined);
+    const none = vi.fn(async () => { throw new Error('unused'); });
+    render(<CatalogAdmin items={[]} schema={null} onLoad={none} onCreate={none} onSave={none} onPublish={none} onRetire={none} onFindPeople={async () => []} onPick={async () => []} highValueAbove={50000} onHighValue={onHighValue} />);
+    const box = screen.getByRole('textbox', { name: 'Amount' });
+    expect(box).toHaveValue('50,000');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await ue.clear(box);
+    await ue.type(box, '75000');
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    expect(onHighValue).toHaveBeenCalledWith(75000);
   });
 });

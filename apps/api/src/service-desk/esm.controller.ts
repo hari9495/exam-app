@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
@@ -16,6 +16,7 @@ import {
   AnswersDto,
   CancelDto,
   CatalogItemDto,
+  CatalogSettingsDto,
   CheckoutDto,
   DeskQueryDto,
   OrderGuideDto,
@@ -89,6 +90,19 @@ export class DeskCatalogController {
   async retire(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: VersionOnlyDto) {
     assertOwnSession(req);
     return this.catalog.retire(await this.access.actor(req, t), id, dto.version);
+  }
+
+  @Get('catalog/admin/settings')
+  @RequirePermissions('desk.catalog.manage')
+  async catalogSettings(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    return this.catalog.catalogSettings(await this.access.actor(req, t));
+  }
+
+  @Put('catalog/admin/settings')
+  @RequirePermissions('desk.catalog.manage')
+  async setCatalogSettings(@Req() req: Request, @CurrentTenant() t: TenantContext, @Body() dto: CatalogSettingsDto) {
+    assertOwnSession(req);
+    return this.catalog.setCatalogSettings(await this.access.actor(req, t), dto);
   }
 
   @Get('catalog/admin/questionnaires')

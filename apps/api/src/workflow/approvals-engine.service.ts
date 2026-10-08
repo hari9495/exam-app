@@ -68,14 +68,16 @@ export interface SubmitInput {
   /** Values skip conditions and the cost-centre resolver read. */
   payload: RecordValues;
   payloadFields: FieldDef[];
-  /** Who approves a step nobody else can (e.g. the desk's leads). */
+  /** Who approves a step nobody else can (e.g. the desk's leads). The company's HR Admins are told when it happens. */
   fallbackUserIds: string[];
+  /** 'high' for this request only (e.g. a costly order): it then never auto-approves or auto-rejects on timeout. */
+  risk?: 'high';
 }
 
 export interface Notice {
   to: string[];
   requestId: string;
-  type: 'workflow.approval.needed' | 'workflow.approval.reminder' | 'workflow.approval.decided';
+  type: 'workflow.approval.needed' | 'workflow.approval.reminder' | 'workflow.approval.decided' | 'workflow.approval.no_approver';
   title: string;
   link: string;
   text: string;
@@ -226,6 +228,18 @@ export class ApprovalsEngine {
     return [...new Set(ids)].filter((id) => ok.has(id));
   }
 
+  /** Active people holding the HR Admin key set (org.settings.manage) through their profile or a role grant in force today. */
+  private async hrAdmins(tx: Tx, org: string): Promise<string[]> {
+    const profiles = (await tx.permissionProfile.findMany({ where: { organizationId: org, permissionsJson: { contains: '"org.settings.manage"' } }, select: { id: true } })).map((p) => p.id);
+    if (!profiles.length) return [];
+    const today = new Date(`${todayIst()}T00:00:00Z`);
+    const [byProfile, byGrant] = await Promise.all([
+      tx.user.findMany({ where: { organizationId: org, permissionProfileId: { in: profiles } }, select: { id: true }, take: MAX.users }),
+      tx.roleGrant.findMany({ where: { organizationId: org, permissionProfileId: { in: profiles }, status: 'active', validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] }, select: { userId: true }, take: MAX.users }),
+    ]);
+    return this.active(tx, org, [...byProfile.map((u) => u.id), ...byGrant.map((g) => g.userId)]);
+  }
+
   /** The delegate who holds tasks for this approver today (never chained), or null. */
   private async delegateOf(tx: Tx, org: string, userId: string, type: string): Promise<string | null> {
     const today = new Date(`${todayIst()}T00:00:00Z`);
@@ -249,6 +263,7 @@ export class ApprovalsEngine {
     const excluded = new Set([input.requesterUserId, input.raisedByUserId].filter((x): x is string => Boolean(x)));
     const fallback = await this.active(tx, org, input.fallbackUserIds);
     const steps: FrozenStep[] = [];
+    const noApprover: string[] = [];
     for (const s of input.steps) {
       const skip = s.skipIf ? evaluate(s.skipIf, input.payload, input.payloadFields).pass : false;
       let ids = await this.active(tx, org, (await Promise.all(s.approvers.map((a) => this.resolve(tx, org, a, input)))).flat());
@@ -256,7 +271,10 @@ export class ApprovalsEngine {
       // YX-WF-04 / 18: the requester and the person who raised it for them are taken out (unless self-approval is allowed;
       // even then only the requester, never a proxy raiser).
       ids = ids.filter((id) => !(id === input.raisedByUserId && id !== input.requesterUserId) && (self || !excluded.has(id)));
-      if (!ids.length && !skip) ids = fallback.filter((id) => !excluded.has(id));
+      if (!ids.length && !skip) {
+        ids = fallback.filter((id) => !excluded.has(id));
+        if (ids.length) noApprover.push(s.name);
+      }
       if (!ids.length && !skip) throw new BadRequestException({ statusCode: 400, code: 'NO_APPROVER', message: `No one can approve the step "${s.name}" for this request. Ask the desk admin to check the approvers.` });
       steps.push({ ...s, approverIds: ids, need: needOf(s, ids.length), state: skip ? 'skipped' : 'waiting' });
     }
@@ -271,13 +289,15 @@ export class ApprovalsEngine {
         requesterUserId: input.requesterUserId,
         raisedByUserId: input.raisedByUserId,
         steps: steps as unknown as Prisma.InputJsonValue,
-        risk: type.risk,
+        risk: input.risk ?? type.risk,
       },
     });
     await this.log(tx, org, req.id, null, null, input.raisedByUserId ?? input.requesterUserId, null, 'submitted', null, 'web');
     for (const [i, s] of steps.entries()) if (s.state === 'skipped') await this.log(tx, org, req.id, null, i, null, null, 'skipped', 'The step condition held', 'system');
     await AuditService.recordIn(tx, ctx, { actorUserId: input.raisedByUserId ?? input.requesterUserId, action: 'workflow.request.submitted', entityType: 'wf_request', entityId: req.id, metadata: { type: type.key, subjectType: input.subjectType, subjectId: input.subjectId, steps: steps.map((s) => ({ name: s.name, approvers: s.approverIds, state: s.state })) } });
     const notices: Notice[] = [];
+    // Founder decision 9 Oct 2026: the leads approve it, and HR Admins hear about it so they can fix the data behind it.
+    if (noApprover.length) notices.push({ to: await this.hrAdmins(tx, org), requestId: req.id, type: 'workflow.approval.no_approver', title: req.title, link: '/yx/people/directory', text: `No approver found for "${noApprover.join('", "')}", so the desk's team leads got it. Check the manager or cost-centre owner` });
     const after = await this.advance(tx, ctx, req.id, notices);
     return { id: req.id, status: after.status, notices };
   }
@@ -429,7 +449,7 @@ export class ApprovalsEngine {
     if (t.dueAt && t.dueAt <= now) {
       const action = s.onTimeout ?? 'escalate';
       // P03 Q2: auto-actions only where the type allows them and never for high-risk types; otherwise escalate.
-      if ((action === 'approve' || action === 'reject') && type.autoActions && type.risk !== 'high') {
+      if ((action === 'approve' || action === 'reject') && type.autoActions && req.risk !== 'high') {
         await this.log(tx, org, req.id, t.id, t.step, null, null, action === 'approve' ? 'auto_approved' : 'auto_rejected', `No answer within ${s.timeoutHours} hours`, 'system');
         await AuditService.recordIn(tx, ctx, { actorUserId: null, action: `workflow.request.auto_${action === 'approve' ? 'approved' : 'rejected'}`, entityType: 'wf_request', entityId: req.id, metadata: { step: t.step, after: s.timeoutHours } });
         await this.settle(tx, ctx, req, t.step, action === 'approve' ? 'approved' : 'rejected', notices, `${s.name}: no answer in time`);

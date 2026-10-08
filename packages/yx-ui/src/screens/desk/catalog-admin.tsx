@@ -8,7 +8,7 @@ import { Drawer } from '../../components/drawer';
 import { RichTextEditor } from '../../components/editor';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
-import { NumberField, TextField } from '../../components/inputs';
+import { CurrencyField, NumberField, TextField } from '../../components/inputs';
 import { MultiSelect, Select } from '../../components/select';
 import { Segment } from '../../components/segment';
 import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
@@ -36,6 +36,9 @@ export interface CatalogAdminProps {
   /** Colleagues by name (named approvers). */
   onFindPeople: (q: string) => Promise<PickOption[]>;
   onPick: (kind: PickKind, q: string) => Promise<PickOption[]>;
+  /** Company rule: an order costing more than this always needs a person to approve it (never auto-approved). */
+  highValueAbove?: number | null;
+  onHighValue?: (rupees: number) => Promise<unknown>;
 }
 
 const STATE_TONE = { draft: 'neutral', published: 'success', retired: 'warning' } as const;
@@ -103,6 +106,7 @@ export function CatalogAdmin(props: CatalogAdminProps) {
           A cost-centre owner approval falls back to the desk's leads for: {props.schema.costCentresWithoutOwner.join(', ')}. Set owners under Organisation › Cost centres.
         </InlineAlert>
       )}
+      {props.onHighValue && props.highValueAbove != null && <HighValueRule key={props.highValueAbove} value={props.highValueAbove} onSave={props.onHighValue} />}
       <Card title="Catalogue items">
         <div className="yx-ops-row">
           <FormField label="New item name" hideLabel>
@@ -139,6 +143,24 @@ export function CatalogAdmin(props: CatalogAdminProps) {
       </Card>
       {editing && <ItemEditor key={`${editing.id}-${editing.version}`} item={editing} {...props} onClose={() => setEditing(null)} onSaved={setEditing} />}
     </div>
+  );
+}
+
+/** Company-wide (every desk): orders above the line wait for a person, even when an item says to approve on timeout. */
+function HighValueRule({ value, onSave }: { value: number; onSave: (rupees: number) => Promise<unknown> }) {
+  const [v, setV] = useState<number | null>(value);
+  const { busy, error, run } = useRun();
+  return (
+    <Card title="Always needs a person to approve above">
+      <div className="yx-ops-row">
+        <FormField label="Amount" hideLabel error={error} helper="For the whole company. An order that costs more is never approved automatically when time runs out; it goes to the approver's manager instead.">
+          <CurrencyField value={v} onChange={setV} min={0} max={100_000_000} />
+        </FormField>
+        <Button disabled={v == null || v === value || busy === 'save'} onClick={() => void run('save', () => onSave(v!))}>
+          Save
+        </Button>
+      </div>
+    </Card>
   );
 }
 

@@ -35,6 +35,7 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'workflow.approval.needed', group: 'approvals', label: 'A request needs your approval' },
   { type: 'workflow.approval.reminder', group: 'reminders', label: 'A request is still waiting for your approval' },
   { type: 'workflow.approval.decided', group: 'approvals', label: 'A request you sent or were asked about was decided' },
+  { type: 'workflow.approval.no_approver', group: 'approvals', label: 'No approver was found for a request step, so the desk leads got it' },
   { type: 'helpdesk.request.stage', group: 'reminders', label: 'Something you ordered moved to its next stage' },
   { type: 'helpdesk.rule.notify', group: 'assignments', label: 'A desk rule sent you a message' },
   { type: 'helpdesk.rule.failed', group: 'reminders', label: 'A desk rule failed or stopped at its limit' },

@@ -31,18 +31,19 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'agent' | 'lead' | 'deskAdmin' | 'boss' | 'mgr' | 'emp' | 'cco' | 'other' | 'empB';
+  type Who = 'adminA' | 'adminB' | 'agent' | 'lead' | 'deskAdmin' | 'hrAdmin' | 'boss' | 'mgr' | 'emp' | 'cco' | 'other' | 'empB';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'patch' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const ctxA = () => ({ organizationId: org.A.id, isSuperAdmin: false });
   const system = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>, o = org.A.id) =>
     tenantPrisma.forTenant({ organizationId: o, isSuperAdmin: false }, async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.sd_system', 'on', true)`;
       return fn(tx);
     });
-  const today = new Date().toISOString().slice(0, 10);
+  // The company calendar is India time (todayIst), so the test's "today" is too (UTC lags it after 6:30 pm UTC).
+  const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
   const inbox = async (who: Who) => (await api(who, 'get', '/workflow/approvals/inbox').expect(200)).body as { taskId: string; title: string; summary: { label: string; value: string }[]; onBehalfOf: string | null }[];
   const decide = (who: Who, taskId: string, decision: 'approve' | 'reject', reason?: string) => api(who, 'post', `/workflow/approvals/tasks/${taskId}/decide`).send({ decision, ...(reason ? { reason } : {}) });
   /** Events are handled by the outbox dispatcher (this process or another API on the same database): wait for the run. */
@@ -104,6 +105,7 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       ['agent', 'A', 'panel', 'desk_agent'],
       ['lead', 'A', 'panel', 'desk_lead'],
       ['deskAdmin', 'A', 'panel', 'desk_admin'],
+      ['hrAdmin', 'A', 'panel', 'hr_admin'],
       ['boss', 'A', 'panel', null],
       ['mgr', 'A', 'panel', null],
       ['emp', 'A', 'panel', null],
@@ -358,6 +360,44 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       const req = (await api('emp', 'get', `/desk/my/requests/${out.requests[0].ticketId}`).expect(200)).body;
       expect(req.items[0].stage).toBe('fulfilment');
       expect(req.items[0].approval.log.map((l: { action: string }) => l.action)).toContain('auto_approved');
+    });
+
+    it('founder 9 Oct: an order above "Always needs a person to approve above" never auto-approves; it escalates', async () => {
+      expect((await api('deskAdmin', 'get', '/desk/catalog/admin/settings').expect(200)).body).toEqual({ highValueAbove: 50000 });
+      await api('agent', 'put', '/desk/catalog/admin/settings').send({ highValueAbove: 20000 }).expect(403);
+      await api('deskAdmin', 'put', '/desk/catalog/admin/settings').send({ highValueAbove: -1 }).expect(400);
+      await api('deskAdmin', 'put', '/desk/catalog/admin/settings').send({ highValueAbove: 20000 }).expect(200);
+      expect(await system((tx) => tx.setting.findFirst({ where: { organizationId: org.A.id, key: 'desk.catalog.high_value_above', scopeType: 'tenant' }, select: { value: true } }))).toEqual({ value: 20000 });
+      const it = (await api('deskAdmin', 'post', '/desk/catalog/admin/items').send({ deskId: ids.it, name: 'Monitor', cost: 15000, draft: { approval: [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', timeoutHours: 1, onTimeout: 'approve' }], fulfilment: [{ title: 'Hand over a monitor', groupId: ids.itTeam }] } }).expect(201)).body;
+      await api('deskAdmin', 'post', `/desk/catalog/admin/items/${it.id}/publish`).send({ version: it.version }).expect(200);
+      // Two monitors cost ₹30,000, above the ₹20,000 line: high risk.
+      const out = (await api('emp', 'post', '/desk/my/catalog/checkout').send({ items: [{ itemId: it.id, answers: {}, quantity: 2 }] }).expect(201)).body;
+      await engine.tick(new Date(Date.now() + 2 * 3_600_000));
+      const req = (await api('emp', 'get', `/desk/my/requests/${out.requests[0].ticketId}`).expect(200)).body;
+      expect(req.items[0].stage).toBe('approval');
+      const r = await system((tx) => tx.wfRequest.findFirstOrThrow({ where: { title: `Monitor for emp ${run}` }, orderBy: { submittedAt: 'asc' }, select: { id: true, risk: true } }));
+      expect(r.risk).toBe('high');
+      const log = (await system((tx) => tx.wfAction.findMany({ where: { requestId: r.id } }))).map((a) => a.action);
+      expect(log).toContain('escalated');
+      expect(log).not.toContain('auto_approved');
+      // One monitor (₹15,000) is under the line and still auto-approves as the item says.
+      const one = (await api('emp', 'post', '/desk/my/catalog/checkout').send({ items: [{ itemId: it.id, answers: {} }] }).expect(201)).body;
+      await engine.tick(new Date(Date.now() + 2 * 3_600_000));
+      expect((await api('emp', 'get', `/desk/my/requests/${one.requests[0].ticketId}`).expect(200)).body.items[0].stage).toBe('fulfilment');
+    });
+
+    it('founder 9 Oct: no approver for a step, so the leads get it and the HR Admins get a notice (bell and email)', async () => {
+      const send = app.get(EmailService).send as jest.Mock;
+      send.mockClear();
+      const out = (await api('emp', 'post', '/desk/my/catalog/checkout').send({ items: [{ itemId: ids.laptop, answers: { model: 'std', cc: ids.ccNoOwner } }] }).expect(201)).body;
+      const item = await system((tx) => tx.sdRequestItem.findFirstOrThrow({ where: { ticketId: out.requests[0].ticketId }, select: { approvalRequestId: true } }));
+      const req = await system((tx) => tx.wfRequest.findFirstOrThrow({ where: { id: item.approvalRequestId! } }));
+      expect((req.steps as { approverIds: string[] }[])[1].approverIds).toEqual([users.lead]);
+      const bell = await system((tx) => tx.userNotification.findMany({ where: { recipientUserId: users.hrAdmin, type: 'workflow.approval.no_approver', entityId: req.id } }));
+      expect(bell).toHaveLength(1);
+      expect(bell[0].contextText).toContain('Cost-centre owner');
+      expect(send.mock.calls.some(([m]) => m.to === `hrAdmin@esm-${run}.test`)).toBe(true);
+      await api('emp', 'post', `/desk/my/requests/${out.requests[0].ticketId}/cancel`).send({ reason: 'Test done' }).expect(200);
     });
 
     it('delegation: by hand (open tasks move, "on behalf of" is kept) and from leave (to the manager)', async () => {

@@ -129,6 +129,14 @@ export class UpdateCatalogItemDto {
   draft?: ItemDraftDto;
 }
 
+export class CatalogSettingsDto {
+  /** Rupees: an order costing more than this always needs a person to approve it (never auto-approved). */
+  @IsInt()
+  @Min(0)
+  @Max(100_000_000)
+  highValueAbove!: number;
+}
+
 export class VersionOnlyDto {
   @IsInt()
   version!: number;

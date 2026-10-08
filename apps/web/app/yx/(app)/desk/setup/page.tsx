@@ -57,6 +57,7 @@ function YxDeskSetupPageInner() {
   const canRules = perms.has('desk.rule.manage');
   const canHooks = perms.has('desk.integration.manage');
   const items = useDesk<CatalogItemAdmin[]>(selected && canCatalog ? `/catalog/admin/items?deskId=${selected}` : null);
+  const catalogRules = useDesk<{ highValueAbove: number }>(selected && canCatalog ? '/catalog/admin/settings' : null);
   const catalogSchema = useDesk<CatalogSchema>(selected && canCatalog ? `/catalog/admin/schema?deskId=${selected}` : null);
   const rules = useDesk<DeskRule[]>(selected && canRules ? `/rules?deskId=${selected}` : null);
   const ruleSchema = useDesk<DeskRuleSchema>(selected && canRules ? `/rules/schema?deskId=${selected}` : null);
@@ -235,6 +236,8 @@ function YxDeskSetupPageInner() {
             onRetire={(item) => write<CatalogItemAdmin>(`/catalog/admin/items/${encodeURIComponent(item.id)}/retire`, 'POST', { version: item.version })}
             onFindPeople={findPeople}
             onPick={(kind, q) => apiFetch(`/desk/my/pick/${kind}?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>}
+            highValueAbove={catalogRules.data?.highValueAbove ?? null}
+            onHighValue={(highValueAbove) => write('/catalog/admin/settings', 'PUT', { highValueAbove })}
           />
         ) : undefined
       }

@@ -18,7 +18,7 @@
 .yx-desk-sla-bar { display: flex; width: 100%; height: var(--yx-space-2); border-radius: var(--yx-radius-control); overflow: hidden; background: var(--yx-color-border); }
 .yx-desk-sla-bar__part { display: block; min-width: var(--yx-space-half); }
 .yx-desk-sla-bar__part[data-state="running"] { background: var(--yx-color-success-text); }
-.yx-desk-sla-bar__part[data-state="paused"] { background: repeating-linear-gradient(45deg, var(--yx-color-warning-text), var(--yx-color-warning-text) var(--yx-space-1), var(--yx-color-border) var(--yx-space-1), var(--yx-color-border) var(--yx-space-2)); }
+.yx-desk-sla-bar__part[data-state="paused"] { background: var(--yx-color-warning-text); }
 .yx-desk-sla-bar__part[data-state="breached"] { background: var(--yx-color-danger-text); }
 .yx-desk-cal-day { font-weight: var(--yx-weight-medium); margin: var(--yx-space-3) 0 var(--yx-space-1); }
 /* Batch 3: reading aids (saved per browser), the outside portal's brand band, the in-app Help button, plain-text email. */

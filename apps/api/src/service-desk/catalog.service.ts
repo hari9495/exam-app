@@ -7,7 +7,7 @@ import { FieldDef, Group, RecordValues, RuleError, evaluate, parseGroup } from '
 import { Answers, EMPTY_FORM, FormDef, FormField, FormRule, REQUESTER_FIELDS, checkAnswers, expandQuestionnaires, formSchema, parseForm, pickedIds, summarise } from '../rules-engine/forms';
 import { ApprovalsEngine, Notice, Outcome, StepSpec, parseSteps } from '../workflow/approvals-engine.service';
 import { DESK_KEYS, DeskActor, audit, emit, has, requireDesk, requireSetUp, requireWork } from './desk-access';
-import { AdhocApprovalDto, CatalogItemDto, CheckoutDto, ItemDraftDto, OrderGuideDto, QuestionnaireDto, UpdateCatalogItemDto } from './dto-esm';
+import { AdhocApprovalDto, CatalogItemDto, CatalogSettingsDto, CheckoutDto, ItemDraftDto, OrderGuideDto, QuestionnaireDto, UpdateCatalogItemDto } from './dto-esm';
 import { Requester, RequesterService } from './requester.service';
 import { cleanHtml, htmlToText } from './rich-text';
 import { OPEN_STATES, Ticket, TicketsService } from './tickets.service';
@@ -48,6 +48,10 @@ const EXTRA_FIELDS: FieldDef[] = [
 ];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
+// Founder decision 9 Oct 2026: a company setting (scoped settings table, company-wide) for "Always needs a person to
+// approve above". An order costing more is high risk: on timeout it escalates, never auto-approves.
+const HIGH_VALUE_KEY = 'desk.catalog.high_value_above';
+const HIGH_VALUE_DEFAULT = 50_000;
 const rupees = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const like = (q: string) => `%${q.replace(/[\\%_]/g, (c) => '\\' + c)}%`;
 
@@ -346,6 +350,30 @@ export class CatalogService implements OnModuleInit {
     if (!has(a, 'desk.catalog.manage') || !(has(a, 'desk.desk.create') || [...a.roles.values()].includes('admin'))) throw new ForbiddenException('You need the catalogue permission and a desk admin role (desk.catalog.manage).');
   }
 
+  private async highValueAbove(tx: Tx, org: string): Promise<number> {
+    const row = await tx.setting.findFirst({ where: { organizationId: org, key: HIGH_VALUE_KEY, scopeType: 'tenant', scopeId: org }, select: { value: true } });
+    return typeof row?.value === 'number' ? row.value : HIGH_VALUE_DEFAULT;
+  }
+
+  async catalogSettings(a: DeskActor) {
+    this.requireCatalog(a);
+    return this.tx(a, async (tx) => ({ highValueAbove: await this.highValueAbove(tx, a.ctx.organizationId) }));
+  }
+
+  async setCatalogSettings(a: DeskActor, dto: CatalogSettingsDto) {
+    this.requireCatalog(a);
+    return this.tx(a, async (tx) => {
+      const org = a.ctx.organizationId;
+      const from = await this.highValueAbove(tx, org);
+      const where = { organizationId: org, key: HIGH_VALUE_KEY, scopeType: 'tenant', scopeId: org, validFrom: null };
+      const row = await tx.setting.findFirst({ where, select: { id: true } });
+      if (row) await tx.setting.update({ where: { id: row.id }, data: { value: dto.highValueAbove, updatedBy: a.userId } });
+      else await tx.setting.create({ data: { ...where, value: dto.highValueAbove, updatedBy: a.userId } });
+      await audit(tx, a, 'desk.catalog.settings_changed', 'setting', HIGH_VALUE_KEY, { highValueAbove: { from, to: dto.highValueAbove } });
+      return { highValueAbove: dto.highValueAbove };
+    });
+  }
+
   async questionnaires(a: DeskActor) {
     this.requireCatalog(a);
     return this.tx(a, (tx) => tx.sdQuestionnaire.findMany({ where: { organizationId: a.ctx.organizationId }, orderBy: { name: 'asc' } }));
@@ -593,6 +621,7 @@ export class CatalogService implements OnModuleInit {
             continue;
           }
           const cost = l.item.cost === null ? null : Number(l.item.cost) * l.quantity;
+          const highRisk = cost !== null && cost > (await this.highValueAbove(tx, org));
           const leads = (await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId, role: 'lead', validTo: null }, select: { userId: true } })).map((m) => m.userId);
           const sub = await this.approvals.submit(tx, r.ctx, {
             type: ITEM_REQUEST,
@@ -607,6 +636,7 @@ export class CatalogService implements OnModuleInit {
             payload: { ...(l.values as RecordValues), quantity: l.quantity, total_cost: cost },
             payloadFields: [...formSchema(l.form), ...EXTRA_FIELDS],
             fallbackUserIds: leads,
+            ...(highRisk ? { risk: 'high' as const } : {}),
           });
           notices.push(...sub.notices);
           const cur = await tx.sdRequestItem.findFirstOrThrow({ where: { id: ri.id } });
