@@ -463,7 +463,8 @@ export class ApprovalsEngine {
   // ------------------------------------------------------------------------------------------ delegation
 
   private async moveOpenTasks(tx: Tx, org: string, from: string, to: string, types: string[]) {
-    const open = await tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: from, status: 'open' } });
+    // Never chained (YX-WF-07): only the person's own tasks move, not those they already hold for someone else.
+    const open = await tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: from, onBehalfOfUserId: null, status: 'open' } });
     let moved = 0;
     for (const t of open) {
       const req = await tx.wfRequest.findFirstOrThrow({ where: { id: t.requestId } });
@@ -471,7 +472,7 @@ export class ApprovalsEngine {
       // Never to the requester or the person who raised it, and never twice to the same person on one step.
       if (to === req.requesterUserId || to === req.raisedByUserId) continue;
       if (await tx.wfTask.findFirst({ where: { organizationId: org, requestId: t.requestId, step: t.step, assigneeUserId: to, status: 'open' } })) continue;
-      await tx.wfTask.update({ where: { id: t.id }, data: { assigneeUserId: to, onBehalfOfUserId: t.onBehalfOfUserId ?? from, version: { increment: 1 }, updatedAt: new Date() } });
+      await tx.wfTask.update({ where: { id: t.id }, data: { assigneeUserId: to, onBehalfOfUserId: from, version: { increment: 1 }, updatedAt: new Date() } });
       await this.log(tx, org, t.requestId, t.id, t.step, to, from, 'delegated', 'Delegated while away', 'system');
       moved++;
     }

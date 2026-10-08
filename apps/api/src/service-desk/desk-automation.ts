@@ -215,6 +215,11 @@ export class DeskAutomation implements RecordTypeHandler, OnModuleInit {
         return `Team ${a.groupId ? 'set' : 'kept'}${owner ? ', owner set' : ''}`;
       }
       case 'set_field': {
+        // §5.7: a rule never takes a sensitive ticket out of its sensitive category (that would show it to more people).
+        if (a.field === 'category' && t.sensitive) {
+          const to = await tx.sdCategory.findFirst({ where: { organizationId: org, deskId: t.deskId, id: a.value as string }, select: { sensitive: true } });
+          if (!to?.sensitive) return 'Not changed: a rule keeps a sensitive ticket in a sensitive category';
+        }
         const c = a.field === 'priority' ? { priority: a.value as number, priorityReason: why } : a.field === 'category' ? { categoryId: a.value as string } : a.field === 'type' ? { typeId: a.value as string } : { statusId: a.value as string };
         await this.tickets.applyIn(tx, robot, t, c, why);
         return `${a.field} set`;
@@ -241,7 +246,7 @@ export class DeskAutomation implements RecordTypeHandler, OnModuleInit {
       }
       case 'notify': {
         const to =
-          a.to === 'assignee' ? [t.assigneeUserId] : a.to === 'user' ? [a.userId as string] : a.to === 'group' ? (t.groupId ? (await tx.sdGroupMember.findMany({ where: { organizationId: org, groupId: t.groupId }, select: { userId: true } })).map((m) => m.userId) : []) : (await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId: t.deskId, role: 'lead', validTo: null }, select: { userId: true } })).map((m) => m.userId);
+          a.to === 'assignee' ? [t.assigneeUserId] : a.to === 'user' ? (await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId: t.deskId, userId: a.userId as string, validTo: null }, select: { userId: true } })).map((m) => m.userId) : a.to === 'group' ? (t.groupId ? (await tx.sdGroupMember.findMany({ where: { organizationId: org, groupId: t.groupId }, select: { userId: true } })).map((m) => m.userId) : []) : (await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId: t.deskId, role: 'lead', validTo: null }, select: { userId: true } })).map((m) => m.userId);
         const ids = [...new Set(to.filter((x): x is string => Boolean(x)))];
         // In-app only, in the run's own transaction; a sensitive or private ticket is named by its number only (YX-SD-14).
         const context = `${t.sensitive || t.private ? t.number : `${t.number} · ${t.subject}`} · ${a.message as string}`.slice(0, 500);
@@ -385,14 +390,24 @@ export class DeskAutomation implements RecordTypeHandler, OnModuleInit {
       await this.rule(tx, a, id);
       const runs = await this.engine.runs(tx, a.ctx.organizationId, id);
       const numbers = new Map((await tx.sdTicket.findMany({ where: { organizationId: a.ctx.organizationId, id: { in: runs.map((r) => r.recordId) } }, select: { id: true, number: true } })).map((t) => [t.id, t.number]));
-      return runs.map((r) => ({ id: r.id, at: r.at, ruleVersion: r.ruleVersion, trigger: r.trigger, ticketId: r.recordId, ticket: numbers.get(r.recordId) ?? null, outcome: r.outcome, depth: r.depth, trace: r.trace, actions: r.actions, error: r.error }));
+      // A run on a ticket the reader cannot open (sensitive, private, restricted desk) shows only that it ran: no
+      // ticket, no condition results, no outcome (they would give away what the ticket says).
+      return runs.map((r) => {
+        const ticket = numbers.get(r.recordId) ?? null;
+        return ticket
+          ? { id: r.id, at: r.at, ruleVersion: r.ruleVersion, trigger: r.trigger, ticketId: r.recordId, ticket, outcome: r.outcome, depth: r.depth, trace: r.trace, actions: r.actions, error: r.error }
+          : { id: r.id, at: r.at, ruleVersion: r.ruleVersion, trigger: r.trigger, ticketId: null, ticket: null, outcome: 'hidden', depth: r.depth, trace: [], actions: [], error: null };
+      });
     });
   }
 
+  /**
+   * The dry run reads tickets as the person running it (no system rights): a desk admin who may not open sensitive or
+   * private tickets never learns which of them a condition would match.
+   */
   async dryRun(a: DeskActor, id: string) {
     return this.tx(a, async (tx) => {
       await this.rule(tx, a, id);
-      await this.system(tx);
       return this.engine.dryRun(tx, a.ctx.organizationId, this, id);
     });
   }

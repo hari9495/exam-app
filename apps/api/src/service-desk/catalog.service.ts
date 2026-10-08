@@ -708,7 +708,7 @@ export class CatalogService implements OnModuleInit {
     return order.map((s, i) => ({ stage: s, state: ri.stage === 'rejected' || ri.stage === 'cancelled' ? (i === 0 ? 'done' : 'stopped') : i < at || ri.stage === 'delivered' ? 'done' : i === at ? 'current' : 'next' }));
   }
 
-  private async itemsView(tx: Tx, org: string, ticketId: string, o: { agent: boolean }) {
+  private async itemsView(tx: Tx, org: string, ticketId: string, o: { agent: boolean; canCancel?: boolean }) {
     const items = await tx.sdRequestItem.findMany({ where: { organizationId: org, ticketId }, orderBy: { createdAt: 'asc' } });
     const versions = await tx.sdCatalogItemVersion.findMany({ where: { organizationId: org, OR: items.map((i) => ({ itemId: i.itemId, version: i.itemVersion })) } });
     const names = new Map((await tx.sdCatalogItem.findMany({ where: { organizationId: org, id: { in: items.map((i) => i.itemId) } }, select: { id: true, name: true } })).map((i) => [i.id, i.name]));
@@ -728,7 +728,7 @@ export class CatalogService implements OnModuleInit {
         stage: ri.stage,
         stageAt: ri.stageAt,
         tracker: this.stages(ri, steps.length > 0),
-        canCancel: ri.stage === 'submitted' || ri.stage === 'approval',
+        canCancel: (ri.stage === 'submitted' || ri.stage === 'approval') && o.canCancel !== false,
         // Agents of the desk fulfil it and see every answer; anyone else sees the summary without sensitive answers.
         answers: o.agent ? ri.answers : summarise(form, ri.answers as Answers, await this.checkPicksNames(tx, org, form, ri.answers as Answers)),
         approval: route ? { status: route.status, steps: route.steps.map((s) => ({ name: s.name, state: s.state, rule: s.rule, approvers: s.approvers, waitingFor: s.waitingFor })), log: o.agent ? route.log : route.log.filter((l) => ['approved', 'self_approved', 'rejected', 'auto_approved', 'auto_rejected'].includes(l.action)) } : null,
@@ -749,8 +749,9 @@ export class CatalogService implements OnModuleInit {
   /** GET /requests/{id}/stages for the requester (or the person it is for). */
   async myRequest(r: Requester, ticketId: string) {
     return this.tx(r, async (tx) => {
-      const { t } = await this.requesters.ownTicket(tx, r, ticketId);
-      return { ticketId: t.id, number: t.number, subject: t.subject, systemState: t.systemState, items: await this.itemsView(tx, r.ctx.organizationId, t.id, { agent: false }) };
+      const { t, ids } = await this.requesters.ownTicket(tx, r, ticketId);
+      const party = ids.includes(t.requesterPersonId) || Boolean(t.requestedForPersonId && ids.includes(t.requestedForPersonId));
+      return { ticketId: t.id, number: t.number, subject: t.subject, systemState: t.systemState, items: await this.itemsView(tx, r.ctx.organizationId, t.id, { agent: false, canCancel: party }) };
     });
   }
 
@@ -759,7 +760,9 @@ export class CatalogService implements OnModuleInit {
     if (r.acting) throw new ForbiddenException('Not available while acting for someone else');
     return this.tx(r, async (tx) => {
       const org = r.ctx.organizationId;
-      const { t } = await this.requesters.ownTicket(tx, r, ticketId);
+      const { t, ids } = await this.requesters.ownTicket(tx, r, ticketId);
+      // Only the person who ordered, or the person it is for, cancels; a follower of the ticket does not.
+      if (!ids.includes(t.requesterPersonId) && !(t.requestedForPersonId && ids.includes(t.requestedForPersonId))) throw new ForbiddenException('Only the person who ordered this, or the person it is for, can cancel it.');
       await tx.$queryRaw`SELECT id FROM sd_request_items WHERE organization_id = ${org}::uuid AND ticket_id = ${t.id}::uuid FOR UPDATE`;
       const items = await tx.sdRequestItem.findMany({ where: { organizationId: org, ticketId: t.id, ...(itemId ? { id: itemId } : {}) } });
       if (itemId && !items.length) throw new NotFoundException('No such item.');

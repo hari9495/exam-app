@@ -44,6 +44,7 @@ const OUTCOME: Record<RuleRun['outcome'], { label: string; tone: 'success' | 'ne
   loop_stopped: { label: 'Stopped a loop', tone: 'warning' },
   limit_stopped: { label: 'Over its limit', tone: 'warning' },
   dry_run: { label: 'Dry run', tone: 'info' },
+  hidden: { label: 'Ran on a ticket you cannot open', tone: 'neutral' },
 };
 const ACTIONS: { value: DeskRuleAction['type']; label: string }[] = [
   { value: 'assign', label: 'Assign to a team' },

@@ -244,9 +244,10 @@ export interface RuleRun {
   at: string;
   ruleVersion: number;
   trigger: string;
-  ticketId: string;
+  /** null when the run was on a ticket the reader cannot open (then nothing else about it is shown). */
+  ticketId: string | null;
   ticket: string | null;
-  outcome: 'matched' | 'not_matched' | 'failed' | 'loop_stopped' | 'limit_stopped' | 'dry_run';
+  outcome: 'matched' | 'not_matched' | 'failed' | 'loop_stopped' | 'limit_stopped' | 'dry_run' | 'hidden';
   depth: number;
   trace: { id: string; label: string; operator: string; expected: unknown; actual: unknown; pass: boolean }[];
   actions: { type: string; result: string }[];

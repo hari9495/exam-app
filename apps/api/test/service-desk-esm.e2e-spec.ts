@@ -303,6 +303,17 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       await api('emp', 'post', `/desk/my/requests/${ids.order1}/cancel`).send({}).expect(409);
     });
 
+    it('review fix: someone who only follows the request cannot cancel it', async () => {
+      const out = (await api('emp', 'post', '/desk/my/catalog/checkout').send({ items: [{ itemId: ids.laptop, answers: { model: 'std', cc: ids.cc } }] }).expect(201)).body;
+      const ticketId = out.requests[0].ticketId;
+      const otherPerson = (await system((tx) => tx.personRole.findFirstOrThrow({ where: { roleType: 'login', sourceId: users.other } }))).personId;
+      await system((tx) => tx.sdTicketWatcher.create({ data: { organizationId: org.A.id, deskId: ids.it, ticketId, personId: otherPerson } }));
+      const seen = (await api('other', 'get', `/desk/my/requests/${ticketId}`).expect(200)).body;
+      expect(seen.items[0].canCancel).toBe(false);
+      await api('other', 'post', `/desk/my/requests/${ticketId}/cancel`).send({}).expect(403);
+      await api('emp', 'post', `/desk/my/requests/${ticketId}/cancel`).send({}).expect(200);
+    });
+
     it('a requester never approves their own request; a step may allow it, and then it is logged as self-approval', async () => {
       const mk = async (name: string, selfApproval: 'never' | 'allowed') => {
         const it = (await api('deskAdmin', 'post', '/desk/catalog/admin/items').send({ deskId: ids.it, name, draft: { approval: [{ name: 'Named', approvers: [{ kind: 'users', userIds: [users.emp] }], mode: 'any', selfApproval }], fulfilment: [] } }).expect(201)).body;
@@ -355,6 +366,9 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       await api('mgr', 'post', '/workflow/delegations').send({ delegateUserId: users.other, startsOn: today, endsOn: today }).expect(201);
       const t = (await inbox('other')).find((x) => x.title.startsWith('New laptop'))!;
       expect(t.onBehalfOf).toBe(`mgr ${run}`);
+      // Review fix: delegation never chains: what "other" holds for mgr stays with "other" when they delegate too.
+      await api('other', 'post', '/workflow/delegations').send({ delegateUserId: users.boss, startsOn: today, endsOn: today }).expect(201);
+      expect((await inbox('boss')).some((x) => x.taskId === t.taskId)).toBe(false);
       await decide('other', t.taskId, 'approve').expect(200);
       const log = (await api('emp', 'get', `/desk/my/requests/${out.requests[0].ticketId}`).expect(200)).body.items[0].approval.log;
       expect(log[0]).toMatchObject({ action: 'approved', by: `other ${run}`, onBehalfOf: `mgr ${run}` });
@@ -410,7 +424,7 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       expect(ticket.tags).toContain('printer');
       expect(ticket.groupId).toBe(ids.adminTeam);
       const trace = (await api('deskAdmin', 'get', `/desk/rules/${rule.id}/runs`).expect(200)).body;
-      expect(trace[0].trace[0]).toMatchObject({ field: 'subject', pass: true });
+      expect(trace.find((x: { ticketId: string }) => x.ticketId === t.id).trace[0]).toMatchObject({ field: 'subject', pass: true });
       // Dry run: which recent tickets it would change, changing nothing.
       const dry = (await api('deskAdmin', 'post', `/desk/rules/${rule.id}/dry-run`).expect(200)).body;
       expect(dry.matched).toBeGreaterThanOrEqual(1);
@@ -437,6 +451,26 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       const runs = await runsOf(rule.id, (r) => r.some((x) => x.outcome === 'limit_stopped'));
       expect(runs.map((x) => x.outcome).filter((o) => o !== 'not_matched')).toEqual(['matched', 'limit_stopped']);
       expect((await system((tx) => tx.rule.findFirstOrThrow({ where: { id: rule.id } }))).status).toBe('paused');
+    });
+
+    it('review fix: a rule never takes a sensitive ticket out of its category; dry runs and run lists never show it to a desk admin', async () => {
+      const [secret, open] = await system(async (tx) => [
+        (await tx.sdCategory.create({ data: { organizationId: org.A.id, deskId: ids.it, name: `Secret ${run}`, sensitive: true } })).id,
+        (await tx.sdCategory.findFirstOrThrow({ where: { deskId: ids.it, sensitive: false, name: 'Other' } })).id,
+      ]);
+      const rule = (await api('deskAdmin', 'post', '/desk/rules').send({ deskId: ids.it, name: 'Declassify', trigger: { type: 'created' }, condition: { id: 'g', join: 'and', items: [{ id: 'c1', field: 'subject', operator: 'contains', value: 'whistle' }] }, actions: [{ type: 'set_field', field: 'category', value: open }] }).expect(201)).body;
+      await api('deskAdmin', 'post', `/desk/rules/${rule.id}/status`).send({ version: rule.version, status: 'active' }).expect(200);
+      const t = (await api('emp', 'post', '/desk/my/tickets').send({ deskId: ids.it, categoryId: secret, subject: `whistle about my manager ${run}`, description: 'Private.' }).expect(201)).body;
+      await runsOf(rule.id, (r) => r.some((x) => x.recordId === t.id && x.outcome === 'matched'));
+      const after = await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: t.id } }));
+      expect(after).toMatchObject({ sensitive: true, categoryId: secret });
+      // The desk admin (no right to sensitive tickets) learns nothing about it from the rule's screens.
+      const runs = (await api('deskAdmin', 'get', `/desk/rules/${rule.id}/runs`).expect(200)).body;
+      expect(runs.find((x: { ticketId: string | null; outcome: string }) => x.outcome === 'hidden')).toMatchObject({ ticketId: null, trace: [], actions: [] });
+      expect(JSON.stringify(runs)).not.toContain(t.id);
+      const dry = (await api('deskAdmin', 'post', `/desk/rules/${rule.id}/dry-run`).expect(200)).body;
+      expect(dry.records.map((x: { recordId: string }) => x.recordId)).not.toContain(t.id);
+      await api('deskAdmin', 'post', `/desk/rules/${rule.id}/status`).send({ version: rule.version + 1, status: 'retired' }).expect(200);
     });
 
     it('recipes install as drafts filled in with the desk', async () => {
