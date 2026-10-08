@@ -206,3 +206,8 @@ export function Form({ onSubmit, className, ...rest }: Omit<HTMLAttributes<HTMLF
     />
   );
 }
+
+/** A control inside a field that is not that field (e.g. the calendar's month / year pickers): no label, id or error from it. */
+export function NoField({ children }: { children: ReactNode }) {
+  return <FieldContext.Provider value={null}>{children}</FieldContext.Provider>;
+}
