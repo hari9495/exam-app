@@ -59,7 +59,7 @@ describe('/yx layout: organisation pages follow the grants, not the role', () =>
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
     const nav = await screen.findByRole('navigation', { name: 'Menu' });
     await waitFor(() => expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['Legal entities', 'Locations', 'Structure', 'My security']));
-    expect(api).toHaveBeenCalledWith(`${PERMS_PATH}?keys=org.structure.view,org.settings.manage,org.entity.statutory.manage,pay.range.view,pay.range.manage,employee.profile.view,employee.change.manage,employee.change.approve,employee.salary.manage,request.raise_on_behalf,access.role.manage,employee.identity.manage,employee.identity.approve,org.support_access.approve`, {}, 'tok');
+    expect(api).toHaveBeenCalledWith(`${PERMS_PATH}?keys=org.structure.view,org.settings.manage,org.entity.statutory.manage,pay.range.view,pay.range.manage,employee.profile.view,employee.change.manage,employee.change.approve,employee.salary.manage,request.raise_on_behalf,access.role.manage,employee.identity.manage,employee.identity.approve,org.support_access.approve,notification.template.manage`, {}, 'tok');
   });
 
   it('pay-range access alone shows the structure pages but not the settings it cannot read', async () => {
@@ -198,6 +198,18 @@ describe('/yx layout: support access (P02 Q8, step 3)', () => {
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
     const nav = await screen.findByRole('navigation', { name: 'Menu' });
     await waitFor(() => expect(within(nav).getByRole('link', { name: 'Support access' })).toHaveAttribute('href', '/yx/settings/support-access'));
+  });
+
+  it('a System Admin finds Emails (P04 Q5) under Security; without the key there is no link', async () => {
+    route({ 'GET /auth/mfa': { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' }, [`GET ${PERMS_PATH}`]: ['notification.template.manage'] });
+    const { unmount } = wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    const nav = await screen.findByRole('navigation', { name: 'Menu' });
+    await waitFor(() => expect(within(nav).getByRole('link', { name: 'Emails' })).toHaveAttribute('href', '/yx/settings/emails'));
+    unmount();
+    route({ 'GET /auth/mfa': { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' }, [`GET ${PERMS_PATH}`]: [] });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    const plain = await screen.findByRole('navigation', { name: 'Menu' });
+    expect(within(plain).queryByRole('link', { name: 'Emails' })).not.toBeInTheDocument();
   });
 
   it('YukthiX staff on a support session see the company pages read-only, with a banner to leave', async () => {

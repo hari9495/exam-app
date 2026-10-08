@@ -23,6 +23,7 @@ const ACTIVITY: WorkspaceLink = { id: 'activity', label: 'Login activity', href:
 const SETTINGS: WorkspaceLink = { id: 'settings', label: 'Security settings', href: '/yx/settings/security', group: 'Security' };
 const SMS: WorkspaceLink = { id: 'sms', label: 'Text messages (SMS)', href: '/yx/settings/sms', group: 'Security' };
 const SUPPORT: WorkspaceLink = { id: 'support-access', label: 'Support access', href: '/yx/settings/support-access', group: 'Security' };
+const EMAILS: WorkspaceLink = { id: 'emails', label: 'Emails', href: '/yx/settings/emails', group: 'Security' };
 const ORG: WorkspaceLink[] = [
   { id: 'entities', label: 'Legal entities', href: '/yx/settings/legal-entities', group: 'Organisation' },
   { id: 'locations', label: 'Locations', href: '/yx/settings/locations', group: 'Organisation' },
@@ -113,7 +114,9 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     // Read by anyone who reads the structure; changed with org.settings.manage (+ access.role.manage for guarded keys).
     ...(settingsAdmin ? [ACCESS_SETTINGS] : []),
   ];
-  const security = [...linksFor(role, actingSuperAdmin), ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(employee ? [PRIVACY] : [])];
+  // P04 Q5: the company's email branding and wording, for those who hold the key (read-only in a support session).
+  const emails = perms.has('notification.template.manage') || support ? [EMAILS] : [];
+  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(employee ? [PRIVACY] : [])];
   const supportEndsAt = support ? (decodeJwtPayload(accessToken)?.supportEndsAt as string | undefined) : undefined;
   const links = [...staff, ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not Profile.

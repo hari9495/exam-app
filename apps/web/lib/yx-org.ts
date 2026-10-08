@@ -23,6 +23,8 @@ export const YX_KEYS = [
   'employee.identity.approve',
   // P02 Q8 (step 3): the System Admin decides on YukthiX support sessions.
   'org.support_access.approve',
+  // P04 Q5: Settings › Notifications › Email.
+  'notification.template.manage',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

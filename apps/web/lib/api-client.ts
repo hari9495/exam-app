@@ -74,7 +74,8 @@ async function doFetch(path: string, options: RequestInit, accessToken?: string)
   }
 }
 
-const DETAIL_FIELDS = ['personIds', 'clashes'] as const;
+// errors: per-field problems from a form the API checks (Settings › Notifications › Email).
+const DETAIL_FIELDS = ['personIds', 'clashes', 'errors'] as const;
 
 async function throwForResponse(response: Response): Promise<never> {
   const body = await errorBody(response);

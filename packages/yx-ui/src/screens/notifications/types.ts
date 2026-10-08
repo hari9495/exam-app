@@ -73,3 +73,57 @@ export interface SmsTestResult {
   to: string | null;
   error: string | null;
 }
+
+// ---- Settings › Notifications › Email (P04 Q5, apps/api/src/email-templates) ----
+
+export type EmailField = 'subject' | 'heading' | 'intro' | 'buttonLabel' | 'footer';
+export type EmailWording = Record<EmailField, string>;
+
+export interface EmailBranding {
+  showLogo: boolean;
+  /** #RRGGBB; null = YukthiX blue. */
+  accentColor: string | null;
+  /** Shown as "<name> via YukthiX"; null = the company name. */
+  senderName: string | null;
+  replyTo: string | null;
+}
+
+export interface EmailTypeRow {
+  type: string;
+  group: string;
+  name: string;
+  sentWhen: string;
+  button: boolean;
+  /** Placeholders this email may use. */
+  variables: string[];
+  /** What always stays, in plain words. */
+  locked: string[];
+  defaults: EmailWording;
+  /** The company's wording; null = YukthiX wording. */
+  custom: EmailWording | null;
+  updatedAt: string | null;
+}
+
+export interface EmailOverview {
+  companyName: string;
+  /** The company logo from Branding settings, if any. */
+  logoUrl: string | null;
+  /** The button colour when the company picks none (YukthiX blue). */
+  defaultAccent: string;
+  branding: EmailBranding;
+  /** Placeholder name -> plain words. */
+  variables: Record<string, string>;
+  emails: EmailTypeRow[];
+}
+
+export interface EmailPreview {
+  subject: string;
+  html: string;
+  fromName?: string;
+  to: string;
+}
+
+export interface EmailDraft {
+  wording: EmailWording;
+  branding?: EmailBranding;
+}
