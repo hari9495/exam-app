@@ -348,15 +348,18 @@ export class DirectoryService {
     return row;
   }
 
-  /** The login of this person (if any) gets the mapped seats while active and in the group; otherwise those seats end. */
-  private async applySeats(tx: Tx, org: string, map: GroupMap, row: { personId: string; active: boolean; groups: string[] }) {
+  /**
+   * The login of this person (if any) gets the mapped seats while active and in the group. Founder decision 8 Oct 2026:
+   * leaving a group ends only a seat this directory source gave; a seat an admin gave by hand stays. A user disabled in
+   * the directory (or gone from it) loses every desk seat (US-G-032: they have left).
+   */
+  private async applySeats(tx: Tx, org: string, map: GroupMap, row: { personId: string; sourceId: string; active: boolean; groups: string[] }) {
     const login = await tx.personRole.findFirst({ where: { organizationId: org, personId: row.personId, roleType: 'login', sourceTable: 'users', endOn: null }, select: { sourceId: true } });
     if (!login?.sourceId) return;
     const userId = login.sourceId;
     const seats = await tx.sdDeskMember.findMany({ where: { organizationId: org, userId, validTo: null } });
     const sys = { ctx: { organizationId: org, isSuperAdmin: false }, userId: null };
     if (!row.active) {
-      // US-G-032: a disabled user's desk access ends.
       for (const m of seats) await endSeatIn(tx, sys, m, 'Disabled in the company directory');
       return;
     }
@@ -367,12 +370,12 @@ export class DirectoryService {
       if (wanted && !has && !seats.some((s) => s.deskId === m.deskId)) {
         const user = await tx.user.findFirst({ where: { organizationId: org, id: userId, status: 'active' }, select: { id: true } });
         if (!user) continue;
-        const seat = await tx.sdDeskMember.create({ data: { organizationId: org, deskId: m.deskId, userId, role: m.role, validFrom: new Date(`${todayIst()}T00:00:00Z`) } });
-        await audit(tx, sys as never, 'desk.member.added', 'sd_desk_member', seat.id, { deskId: m.deskId, userId, role: m.role, by: 'directory group', group: m.group });
+        const seat = await tx.sdDeskMember.create({ data: { organizationId: org, deskId: m.deskId, userId, role: m.role, validFrom: new Date(`${todayIst()}T00:00:00Z`), grantedBy: 'directory', directorySourceId: row.sourceId } });
+        await audit(tx, sys as never, 'desk.member.added', 'sd_desk_member', seat.id, { deskId: m.deskId, userId, role: m.role, by: 'directory group', group: m.group, sourceId: row.sourceId });
         if (m.role !== 'collaborator') await emit(tx, org, 'helpdesk.agent_seat.granted', { deskId: m.deskId, userId, by: 'directory' });
-      // DECISION NEEDED: leaving a mapped directory group ends the desk seat at once (even one an admin also gave by
-      // hand). Confirm, or only end seats the directory itself granted.
-      } else if (!wanted && has) await endSeatIn(tx, sys, has, `No longer in the directory group ${m.group}`);
+      } else if (!wanted && has && has.grantedBy === 'directory' && has.directorySourceId === row.sourceId) {
+        await endSeatIn(tx, sys, has, `No longer in the directory group ${m.group}`);
+      }
     }
   }
 

@@ -2,11 +2,12 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { Button, FormField, InlineAlert, Spinner, TextArea } from '@yukthix/ui';
+import { Button, FormField, InlineAlert, Segment, Spinner, TextArea } from '@yukthix/ui';
 import { API_BASE } from '../../../../../lib/api-client';
 
-// The one-click rating link from a "How did we do?" or NPS email (SD-1.26, D9: no tracking pixels). Opening the page
-// does not use the link up; the score in the link is sent once, then a comment may follow. The link works once.
+// The rating link from a "How did we do?" or NPS email (SD-1.26, D9: no tracking pixels). Founder decision 8 Oct 2026:
+// opening the page records nothing (email link scanners open links, and the link works once). The score in the link is
+// only chosen on the page; the person presses "Confirm my rating", then a comment may follow.
 
 interface LinkInfo {
   kind: 'csat' | 'nps';
@@ -22,17 +23,14 @@ function RatePage() {
   const search = useSearchParams();
   const base = `${API_BASE}/desk/rate/${encodeURIComponent(org)}/${encodeURIComponent(token)}`;
   const [info, setInfo] = useState<LinkInfo | null>(null);
-  const [state, setState] = useState<'loading' | 'ask' | 'sent' | 'used' | 'gone' | 'error'>('loading');
+  const [state, setState] = useState<'loading' | 'ask' | 'sending' | 'sent' | 'used' | 'gone' | 'error'>('loading');
   const [score, setScore] = useState<number | null>(null);
   const [comment, setComment] = useState('');
   const [commented, setCommented] = useState(false);
   const once = useRef(false);
 
-  // DECISION NEEDED: the score in the link is sent by this page's script on open (one click, as asked). Plain link
-  // scanners only fetch the page and never spend the token, but a scanner that runs scripts could. If that shows up,
-  // switch to "press to confirm" (drop the auto-send below).
   const answer = async (s: number) => {
-    setScore(s);
+    setState('sending');
     const r = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ score: s }) }).catch(() => null);
     setState(!r ? 'error' : r.ok ? 'sent' : r.status === 409 ? 'used' : r.status === 404 ? 'gone' : 'error');
   };
@@ -47,8 +45,8 @@ function RatePage() {
       setInfo(i);
       if (i.used) return setState('used');
       const s = Number(search.get('score'));
-      if (search.get('score') !== null && Number.isInteger(s) && s >= i.min && s <= i.max) await answer(s);
-      else setState('ask');
+      if (search.get('score') !== null && Number.isInteger(s) && s >= i.min && s <= i.max) setScore(s);
+      setState('ask');
     })();
     // Runs once for the link.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -64,13 +62,19 @@ function RatePage() {
       {state === 'loading' && <Spinner label="Loading" size="md" />}
       {info && <p className="yx-ops-muted">{info.company}</p>}
       {info && <h1 className="yx-help-public__title">{info.question}</h1>}
-      {state === 'ask' && info && (
-        <div className="yx-ops-row" role="group" aria-label={info.kind === 'csat' ? '1 very poor to 5 very good' : '0 not at all likely to 10 very likely'}>
-          {Array.from({ length: info.max - info.min + 1 }, (_, i) => info.min + i).map((s) => (
-            <Button key={s} onClick={() => void answer(s)}>
-              {s}
+      {(state === 'ask' || state === 'sending') && info && (
+        <div className="yx-ops-stack">
+          <Segment
+            label={info.kind === 'csat' ? 'Your rating, 1 very poor to 5 very good' : 'Your answer, 0 not at all likely to 10 very likely'}
+            options={Array.from({ length: info.max - info.min + 1 }, (_, i) => ({ value: info.min + i, label: String(info.min + i) }))}
+            value={score}
+            onChange={setScore}
+          />
+          <div className="yx-ops-row">
+            <Button variant="primary" disabled={score === null || state === 'sending'} onClick={() => score !== null && void answer(score)}>
+              Confirm my rating
             </Button>
-          ))}
+          </div>
         </div>
       )}
       {state === 'sent' && (

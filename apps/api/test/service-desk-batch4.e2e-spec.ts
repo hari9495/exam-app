@@ -476,8 +476,28 @@ describe('Service Desk batch 4: knowledge, ratings, reports, directory, privacy,
       await scim('patch', `/Users/${created.id}`).send({ Operations: [{ op: 'replace', value: { active: false } }] }).expect(200);
       expect(await seat()).toBeNull();
       expect(g.displayName).toBe('IT agents');
+      Object.assign(ids, { scimBase: base, scimToken: src.scimToken, scimGroup: g.id, scimDivya: created.id });
       // Company B's source cannot see company A's users.
       expect((await request(server()).get(`/api/v1/desk/scim/${org.B.id}/${srcB.id}/v2/Users`).set('Authorization', `Bearer ${srcB.scimToken}`).expect(200)).body.totalResults).toBe(0);
+    });
+
+    it('founder decision 8 Oct 2026: leaving a group ends only the seat the directory gave; a seat given by hand stays', async () => {
+      const scim = (method: 'patch', path: string) => request(server())[method](`${ids.scimBase}${path}`).set('Authorization', `Bearer ${ids.scimToken}`);
+      const seat = () => system((tx) => tx.sdDeskMember.findFirst({ where: { deskId: ids.it, userId: users.divya, validTo: null } }));
+      const removeFromGroup = () => scim('patch', `/Groups/${ids.scimGroup}`).send({ Operations: [{ op: 'remove', path: `members[value eq "${ids.scimDivya}"]` }] }).expect(200);
+      // Back on and in the group: the directory gives the seat.
+      await scim('patch', `/Users/${ids.scimDivya}`).send({ Operations: [{ op: 'replace', value: { active: true } }] }).expect(200);
+      expect(await seat()).toMatchObject({ role: 'collaborator', grantedBy: 'directory' });
+      await removeFromGroup();
+      expect(await seat()).toBeNull();
+      // An admin gives the same seat by hand; joining and leaving the group leaves it alone.
+      await api('adminA', 'post', `/desk/desks/${ids.it}/members`).send({ userId: users.divya, role: 'collaborator' }).expect(201);
+      await scim('patch', `/Groups/${ids.scimGroup}`).send({ Operations: [{ op: 'add', path: 'members', value: [{ value: ids.scimDivya }] }] }).expect(200);
+      await removeFromGroup();
+      expect(await seat()).toMatchObject({ role: 'collaborator', grantedBy: 'manual' });
+      // Disabled in the directory: she has left, so every seat ends (US-G-032).
+      await scim('patch', `/Users/${ids.scimDivya}`).send({ Operations: [{ op: 'replace', value: { active: false } }] }).expect(200);
+      expect(await seat()).toBeNull();
     });
   });
 

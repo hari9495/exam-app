@@ -2940,6 +2940,9 @@ model SdDeskMember {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   endedBy        String?   @map("ended_by") @db.Uuid
   endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
+  /// 'manual' (an admin) or 'directory' (a directory group mapping of directorySourceId).
+  grantedBy         String  @default("manual") @map("granted_by") @db.VarChar(10)
+  directorySourceId String? @map("directory_source_id") @db.Uuid
 
   @@map("sd_desk_members")
 }
