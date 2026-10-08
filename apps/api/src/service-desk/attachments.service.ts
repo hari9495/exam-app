@@ -101,7 +101,8 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
 
   // ------------------------------------------------------------------------------------------ storage
 
-  private async put(key: string, data: Buffer, type: string): Promise<string> {
+  /** Stores bytes in blob storage (a laptop folder when none is configured, never in production). */
+  async put(key: string, data: Buffer, type: string): Promise<string> {
     if (this.blobs.isConfigured()) return this.blobs.upload(key, data, type);
     if (process.env.NODE_ENV === 'production') throw new Error('Blob storage is not configured');
     const path = join(this.localDir, key);
@@ -110,16 +111,26 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
     return `local:${key}`;
   }
 
-  private async get(ref: string): Promise<Buffer> {
+  async get(ref: string): Promise<Buffer> {
     if (!ref.startsWith('local:')) return this.blobs.downloadToBuffer(ref);
     const path = resolve(this.localDir, ref.slice('local:'.length));
     if (!path.startsWith(this.localDir)) throw new Error('Bad file key');
     return fs.readFile(path);
   }
 
+  /** Removes stored bytes (raw email after 30 days, §5.2). */
+  async drop(ref: string): Promise<void> {
+    if (!ref.startsWith('local:')) {
+      await this.blobs.deleteByUrl(ref);
+      return;
+    }
+    const path = resolve(this.localDir, ref.slice('local:'.length));
+    if (path.startsWith(this.localDir)) await fs.rm(path, { force: true });
+  }
+
   // ------------------------------------------------------------------------------------------ upload
 
-  private async store(tx: Tx, ctx: { organizationId: string }, t: Ticket, file: { originalname: string; buffer: Buffer }, side: 'agent' | 'requester', by: { userId?: string; personId?: string }) {
+  async store(tx: Tx, ctx: { organizationId: string }, t: Ticket, file: { originalname: string; buffer: Buffer }, side: 'agent' | 'requester', by: { userId?: string; personId?: string }) {
     const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: ctx.organizationId, id: t.deskId } });
     const name = safeName(file.originalname);
     const check = await checkFile(name, file.buffer, desk.attachmentTypes, desk.attachmentMaxMb);
@@ -145,7 +156,7 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
     return row;
   }
 
-  private async enqueue(organizationId: string, attachmentId: string) {
+  async enqueue(organizationId: string, attachmentId: string) {
     await this.queue.add('scan', { organizationId, attachmentId }, { jobId: `scan-${attachmentId}`, attempts: 8, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: 100 });
   }
 

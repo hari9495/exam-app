@@ -82,6 +82,7 @@ import { PresenceService } from './presence.service';
 import { RequesterService } from './requester.service';
 import { TicketListsService } from './ticket-lists.service';
 import { TicketsService } from './tickets.service';
+import { PortalService } from './portal.service';
 
 // M14 §12.1, /api/v1/desk. Every staff route declares its permission key (YX-SEC-01) and the service also checks the
 // person's seat on the desk (§6). Writes are made by the signed-in person themselves (assertOwnSession). The requester
@@ -554,7 +555,21 @@ export class MyTicketsController {
   constructor(
     private readonly requesters: RequesterService,
     private readonly files: AttachmentsService,
+    private readonly portals: PortalService,
   ) {}
+
+  /** US-G-020: known-issue banners for employees (their location too). */
+  @Get('banners')
+  banners(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    return this.portals.myBanners(this.requesters.who(req, t));
+  }
+
+  /** "Me too": follow the linked incident instead of raising a new ticket. */
+  @Post('banners/:id/me-too')
+  @HttpCode(200)
+  meToo(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.portals.myMeToo(this.requesters.who(req, t), id);
+  }
 
   @Get('desks')
   desks(@Req() req: Request, @CurrentTenant() t: TenantContext) {

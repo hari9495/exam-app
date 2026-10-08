@@ -132,6 +132,8 @@ export class RequesterService {
         private: dto.private,
         side: 'requester',
         authorPersonId: personId,
+        // US-B-100: the screen the in-app help drawer was opened on.
+        custom: dto.screen ? { screen: dto.screen } : undefined,
       });
     });
     return { id: t.id, number: t.number };
@@ -233,34 +235,51 @@ export class RequesterService {
    */
   async reply(r: Requester, id: string, dto: RequesterReplyDto) {
     if (r.acting) throw new ForbiddenException('Not available while acting for someone else');
-    const org = r.ctx.organizationId;
     return this.tx(r, async (tx) => {
       const { t, personId } = await this.ownTicket(tx, r, id);
-      if (t.mergedIntoId) throw new ConflictException('This ticket was joined with another one. Reply there.');
-      const { bodyHtml, bodyText, found } = this.tickets.cleanMasked(textToHtml(dto.text));
-      if (!bodyText) throw new BadRequestException('Write a message first.');
-      const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId } });
-      const windowOpen = t.systemState === 'solved' && desk.requesterCanReopen && t.resolvedAt && t.resolvedAt.getTime() + desk.reopenWindowDays * 86_400_000 >= Date.now();
-      if (t.systemState === 'closed' || (t.systemState === 'solved' && !windowOpen)) {
-        if (dto.attachmentIds?.length) throw new BadRequestException('Send files on the new ticket once it is made.');
-        const n = await this.tickets.createIn(tx, r, { deskId: t.deskId, typeId: t.typeId, categoryId: t.categoryId ?? undefined, subject: `Follow-up: ${t.subject}`.slice(0, 200), bodyHtml, requesterPersonId: personId, openedByUserId: r.userId, channel: 'portal', private: t.private, side: 'requester', authorPersonId: personId });
-        await tx.sdTicketLink.create({ data: { organizationId: org, fromTicketId: n.id, toTicketId: t.id, kind: 'follow_up', createdBy: r.userId } });
-        await audit(tx, r, 'desk.ticket.follow_up_raised', 'sd_ticket', t.id, { followUpId: n.id, number: n.number });
-        return { id: null, reopened: false, followUp: { id: n.id, number: n.number } };
-      }
-      const m = await tx.sdTicketMessage.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, kind: 'reply', side: 'requester', authorPersonId: personId, bodyHtml, bodyText, channel: 'portal' } });
-      await this.tickets.keepPii(tx, t, m.id, found);
-      await this.tickets.attach(tx, r, t, m.id, dto.attachmentIds ?? [], { personId });
-      if (t.systemState === 'pending' || t.systemState === 'solved') {
-        const open = await tx.sdStatus.findFirst({ where: { organizationId: org, deskId: t.deskId, systemState: 'open', active: true, OR: [{ ticketTypeId: t.typeId }, { ticketTypeId: null }] }, orderBy: [{ ticketTypeId: { sort: 'asc', nulls: 'last' } }, { sortOrder: 'asc' }] });
-        if (open) await this.tickets.applyIn(tx, { ctx: r.ctx, userId: r.userId, keys: new Set(), roles: new Map() } as DeskActor, t, { statusId: open.id }, 'The requester replied');
-      }
-      // The next-response target starts (SD-1.14).
-      await this.tickets.sla.sync(tx, t.id);
-      await emit(tx, org, 'helpdesk.ticket.replied', { ticketId: t.id, deskId: t.deskId, messageId: m.id, side: 'requester' });
-      await audit(tx, r, 'desk.ticket.requester_replied', 'sd_ticket', t.id, { number: t.number, messageId: m.id, attachments: dto.attachmentIds?.length ?? 0 });
-      return { id: m.id, reopened: t.systemState === 'solved', followUp: null };
+      return this.replyIn(tx, r, t, personId, textToHtml(dto.text), { channel: 'portal', attachmentIds: dto.attachmentIds });
     });
+  }
+
+  /**
+   * The requester's reply, by any channel (in-app, outside portal, email). A waiting ticket goes back to work; a
+   * resolved one reopens within the desk's reopen window (YX-SD-10) when the desk lets requesters reopen; after the
+   * window, or on a closed ticket, the reply starts a follow-up ticket linked to the old one (US-G-008).
+   */
+  async replyIn(
+    tx: Tx,
+    who: { ctx: CompanyContext; userId: string | null },
+    t: Ticket,
+    personId: string,
+    html: string,
+    o: { channel: 'portal' | 'email'; attachmentIds?: string[]; emailMessageId?: string | null; inboundEmailId?: string | null; senderVerified?: boolean },
+  ): Promise<{ id: string | null; reopened: boolean; followUp: { id: string; number: string } | null }> {
+    const org = who.ctx.organizationId;
+    if (t.mergedIntoId) throw new ConflictException('This ticket was joined with another one. Reply there.');
+    const { bodyHtml, bodyText, found } = this.tickets.cleanMasked(html);
+    if (!bodyText) throw new BadRequestException('Write a message first.');
+    const by = { ctx: who.ctx, userId: who.userId as string };
+    const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId } });
+    const windowOpen = t.systemState === 'solved' && desk.requesterCanReopen && t.resolvedAt && t.resolvedAt.getTime() + desk.reopenWindowDays * 86_400_000 >= Date.now();
+    if (t.systemState === 'closed' || (t.systemState === 'solved' && !windowOpen)) {
+      if (o.attachmentIds?.length) throw new BadRequestException('Send files on the new ticket once it is made.');
+      const n = await this.tickets.createIn(tx, who, { deskId: t.deskId, typeId: t.typeId, categoryId: t.categoryId ?? undefined, subject: `Follow-up: ${t.subject}`.slice(0, 200), bodyHtml, requesterPersonId: personId, openedByUserId: who.userId, channel: o.channel, private: t.private, side: 'requester', authorPersonId: personId, customerAccountId: t.customerAccountId, productId: t.productId, emailMessageId: o.emailMessageId, inboundEmailId: o.inboundEmailId, senderVerified: o.senderVerified });
+      await tx.sdTicketLink.create({ data: { organizationId: org, fromTicketId: n.id, toTicketId: t.id, kind: 'follow_up', createdBy: who.userId } });
+      await audit(tx, by, 'desk.ticket.follow_up_raised', 'sd_ticket', t.id, { followUpId: n.id, number: n.number, channel: o.channel });
+      return { id: null, reopened: false, followUp: { id: n.id, number: n.number } };
+    }
+    const m = await tx.sdTicketMessage.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, kind: 'reply', side: 'requester', authorPersonId: personId, bodyHtml, bodyText, channel: o.channel, emailMessageId: o.emailMessageId ?? null, inboundEmailId: o.inboundEmailId ?? null, senderVerified: o.senderVerified ?? true } });
+    await this.tickets.keepPii(tx, t, m.id, found);
+    await this.tickets.attach(tx, by, t, m.id, o.attachmentIds ?? [], { personId });
+    if (t.systemState === 'pending' || t.systemState === 'solved') {
+      const open = await tx.sdStatus.findFirst({ where: { organizationId: org, deskId: t.deskId, systemState: 'open', active: true, OR: [{ ticketTypeId: t.typeId }, { ticketTypeId: null }] }, orderBy: [{ ticketTypeId: { sort: 'asc', nulls: 'last' } }, { sortOrder: 'asc' }] });
+      if (open) await this.tickets.applyIn(tx, { ...by, keys: new Set(), roles: new Map() } as DeskActor, t, { statusId: open.id }, o.channel === 'email' ? 'The requester replied by email' : 'The requester replied');
+    }
+    // The next-response target starts (SD-1.14).
+    await this.tickets.sla.sync(tx, t.id);
+    await emit(tx, org, 'helpdesk.ticket.replied', { ticketId: t.id, deskId: t.deskId, messageId: m.id, side: 'requester', channel: o.channel });
+    await audit(tx, by, 'desk.ticket.requester_replied', 'sd_ticket', t.id, { number: t.number, messageId: m.id, attachments: o.attachmentIds?.length ?? 0, channel: o.channel });
+    return { id: m.id, reopened: t.systemState === 'solved', followUp: null };
   }
 
   /** US-G-004: a requester adds a colleague (by their email) to follow the ticket. */

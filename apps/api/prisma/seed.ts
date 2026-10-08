@@ -127,6 +127,10 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'desk.settings.manage',
     'desk.member.manage',
     'desk.sla.manage',
+    // M14 batch 3: mailboxes, portals and customers.
+    'desk.mailbox.manage',
+    'desk.portal.manage',
+    'desk.customer.manage',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],

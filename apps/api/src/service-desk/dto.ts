@@ -564,6 +564,11 @@ export class RaiseTicketDto {
   @IsOptional()
   @IsUUID()
   requestedForPersonId?: string;
+
+  /** US-B-100: the screen the in-app help drawer was opened on (shown to the agent). */
+  @IsOptional()
+  @Matches(/^[\w\-./ ]{1,100}$/, { message: 'Screen name is not valid' })
+  screen?: string;
 }
 
 export class AgentCreateTicketDto {
@@ -1313,8 +1318,8 @@ export class SlaTargetDto {
 }
 
 export class ScopeRuleDto {
-  @IsIn(['priority', 'category', 'type', 'kind', 'channel', 'group', 'vip', 'tag'])
-  field!: 'priority' | 'category' | 'type' | 'kind' | 'channel' | 'group' | 'vip' | 'tag';
+  @IsIn(['priority', 'category', 'type', 'kind', 'channel', 'group', 'vip', 'tag', 'plan', 'product', 'account'])
+  field!: 'priority' | 'category' | 'type' | 'kind' | 'channel' | 'group' | 'vip' | 'tag' | 'plan' | 'product' | 'account';
 
   @IsIn(['in', 'not_in'])
   op!: 'in' | 'not_in';

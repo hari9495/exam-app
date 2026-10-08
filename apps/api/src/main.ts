@@ -7,6 +7,7 @@ import { AppModule } from './app.module';
 import { InternalAppModule } from './internal-app.module';
 import { resolveInternalBindHost } from './bootstrap-config';
 import { mountSmsCallbackBody } from './sms-channel/sms-channel.controller';
+import { mountInboundMailBody } from './service-desk/channels.controller';
 import { companyOriginPattern } from './auth/company-scope';
 
 // Express's default 100kb JSON body limit rejects the public job-application endpoint's
@@ -24,6 +25,8 @@ async function bootstrap() {
   app.use('/api/v1/billing/stripe/webhook', raw({ type: 'application/json' }));
   // SMS gateway callbacks are HMAC-verified over their raw bytes too.
   mountSmsCallbackBody(app);
+  // Service Desk inbound mail: raw MIME, HMAC-verified over its exact bytes (M14 §9.1).
+  mountInboundMailBody(app);
   app.use(json({ limit: JSON_BODY_LIMIT }));
   app.use(urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
   app.use(cookieParser());

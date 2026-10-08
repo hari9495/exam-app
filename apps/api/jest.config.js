@@ -7,13 +7,13 @@ module.exports = {
   // suite already gets via test:e2e. Excluded from this no-DB unit run so CI stays green;
   // without this, record-visibility.integration.spec.ts fails on DATABASE_URL-not-found.
   testPathIgnorePatterns: ['/node_modules/', '\\.integration\\.spec\\.ts$'],
-  // openid-client, oauth4webapi, jose and email-reply-parser ship ESM only. Node loads them through require(esm);
+  // openid-client, oauth4webapi and jose ship ESM only. Node loads them through require(esm);
   // Jest's CommonJS loader cannot, so they are down-levelled here (same in test/jest-e2e.json).
   transform: {
-    '/node_modules/(openid-client|oauth4webapi|jose|email-reply-parser)/.+\\.js$': ['ts-jest', { tsconfig: { allowJs: true }, isolatedModules: true }],
+    '/node_modules/(openid-client|oauth4webapi|jose)/.+\\.js$': ['ts-jest', { tsconfig: { allowJs: true }, isolatedModules: true }],
     '^.+\\.(t|j)s$': 'ts-jest',
   },
-  transformIgnorePatterns: ['/node_modules/(?!(openid-client|oauth4webapi|jose|email-reply-parser)/)'],
+  transformIgnorePatterns: ['/node_modules/(?!(openid-client|oauth4webapi|jose)/)'],
   collectCoverageFrom: [
     '**/*.(t|j)s',
   ],

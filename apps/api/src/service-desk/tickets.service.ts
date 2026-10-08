@@ -6,8 +6,10 @@ import { todayIst } from '../org-structure/org-validation';
 import { NotificationsService } from '../notifications/notifications.service';
 import { chooseAgent, isAvailable, onLeaveNow } from './assignment';
 import { cleanHtml, htmlToText } from './rich-text';
-import { PiiFound, maskPii, maskPiiHtml } from './pii';
+import { PiiFound, maskPii, maskPiiHtml, unmaskHealth } from './pii';
 import { SlaService } from './sla.service';
+import { MailOutService } from './mail-out.service';
+import { contactAccount, planFor, planUsedUp } from './customers.service';
 import {
   DeskActor,
   SEAT_REQUIRED,
@@ -60,7 +62,7 @@ export interface CreateInput {
   requesterPersonId: string;
   requestedForPersonId?: string;
   openedByUserId: string | null;
-  channel: 'portal' | 'agent' | 'api';
+  channel: 'portal' | 'agent' | 'api' | 'email';
   private?: boolean;
   tags?: string[];
   /** Who wrote the first message: the requester (portal) or an agent raising it for them. */
@@ -68,6 +70,20 @@ export interface CreateInput {
   authorPersonId?: string | null;
   /** SD-1.09: a child of this ticket (side conversation with another team). */
   parentId?: string;
+  /** SD-1.28: the customer account and product; the plan tier is read from the account's plan when not given. */
+  customerAccountId?: string | null;
+  productId?: string | null;
+  /** SD-1.19: an email whose sender was not proven (§14.3). */
+  senderVerified?: boolean;
+  /** An email rule's priority (US-G-018). */
+  priority?: number;
+  /** Values parsed from the email by rules (US-G-018), and the screen the help drawer was opened on (US-B-100). */
+  custom?: Record<string, string>;
+  /** The first message's email Message-ID and inbound row (threading, "show original"). */
+  emailMessageId?: string | null;
+  inboundEmailId?: string | null;
+  /** The plan check, worked out beforehand by a caller that cannot count the account's tickets itself (the portal). */
+  usedUp?: boolean;
 }
 
 interface Notice {
@@ -85,6 +101,7 @@ export class TicketsService {
     private readonly notifications: NotificationsService,
     readonly sla: SlaService,
     private readonly crypto: OrgSecretsCryptoService,
+    readonly mailOut: MailOutService,
   ) {}
 
   // ------------------------------------------------------------------------------------------ PII (SD-1.12, YX-SD-15)
@@ -98,7 +115,7 @@ export class TicketsService {
   /** The originals of masked values, encrypted, for a step-up unmask (each view audited). */
   async keepPii(tx: Tx, t: { organizationId: string; deskId: string; id: string }, messageId: string | null, found: PiiFound[]) {
     if (!found.length) return;
-    await tx.sdSensitiveValue.createMany({ data: found.map((f) => ({ organizationId: t.organizationId, deskId: t.deskId, ticketId: t.id, messageId, kind: f.kind, masked: f.masked.slice(0, 40), valueEncrypted: this.crypto.encrypt(f.value) })) });
+    await tx.sdSensitiveValue.createMany({ data: found.map((f, seq) => ({ organizationId: t.organizationId, deskId: t.deskId, ticketId: t.id, messageId, kind: f.kind, masked: f.masked.slice(0, 40), valueEncrypted: this.crypto.encrypt(f.value), seq })) });
   }
 
   tx<T>(a: { ctx: DeskActor['ctx'] }, fn: (tx: Tx) => Promise<T>) {
@@ -108,7 +125,7 @@ export class TicketsService {
   // ------------------------------------------------------------------------------------------ creating
 
   /** The shared create path (portal, agent, API): numbering, routing, assignment, first message (YX-SD-01/03/04). */
-  async createIn(tx: Tx, a: { ctx: DeskActor['ctx']; userId: string }, input: CreateInput): Promise<Ticket> {
+  async createIn(tx: Tx, a: { ctx: DeskActor['ctx']; userId: string | null }, input: CreateInput): Promise<Ticket> {
     const org = a.ctx.organizationId;
     const desk = await tx.sdDesk.findFirst({ where: { organizationId: org, id: input.deskId, status: 'active' } });
     if (!desk) throw new NotFoundException('No such desk.');
@@ -123,7 +140,7 @@ export class TicketsService {
     }
     const forWhom = input.requestedForPersonId ?? input.requesterPersonId;
     const vip = Boolean((await tx.sdRequesterFlag.findUnique({ where: { organizationId_personId: { organizationId: org, personId: forWhom } } }))?.vip);
-    let priority = (input.impact && input.urgency ? await this.matrix(tx, org, desk.id, input.impact, input.urgency) : null) ?? cat?.defaultPriority ?? 3;
+    let priority = input.priority ?? (input.impact && input.urgency ? await this.matrix(tx, org, desk.id, input.impact, input.urgency) : null) ?? cat?.defaultPriority ?? 3;
     if (vip && desk.vipRaisesPriority) priority = Math.max(1, priority - 1);
 
     const [counter] = await tx.$queryRaw<{ n: bigint }[]>`
@@ -137,6 +154,14 @@ export class TicketsService {
     const { bodyHtml, bodyText, found } = this.cleanMasked(input.bodyHtml);
     if (!bodyText) throw new BadRequestException('Describe the issue.');
     const subject = maskPii(input.subject);
+    // SD-1.28: a customer desk ticket carries the contact's account and the account's plan tier as it is today.
+    const accountId = desk.kind === 'customer_support' ? (input.customerAccountId !== undefined ? input.customerAccountId : await contactAccount(tx, org, input.requesterPersonId)) : null;
+    const plan = accountId ? await planFor(tx, org, accountId) : null;
+    if (input.productId && !(await tx.sdProduct.findFirst({ where: { organizationId: org, id: input.productId, active: true, OR: [{ deskId: null }, { deskId: desk.id }] }, select: { id: true } }))) {
+      throw new BadRequestException('Choose a product of this desk.');
+    }
+    const usedUp = plan ? (input.usedUp ?? (await planUsedUp(tx, org, accountId!, plan))) : false;
+    const holdState = usedUp && plan?.whenUsedUp === 'hold' ? await tx.sdStatus.findFirst({ where: { organizationId: org, deskId: desk.id, systemState: 'on_hold', active: true, OR: [{ ticketTypeId: type.id }, { ticketTypeId: null }] }, orderBy: [{ sortOrder: 'asc' }] }) : null;
 
     const t = await tx.sdTicket.create({
       data: {
@@ -145,7 +170,7 @@ export class TicketsService {
         seq: n,
         number: `${desk.numberPrefix}${n}${desk.numberSuffix}`,
         typeId: type.id,
-        statusId: status.id,
+        statusId: holdState?.id ?? status.id,
         priority,
         impact: input.impact ?? null,
         urgency: input.urgency ?? null,
@@ -161,7 +186,12 @@ export class TicketsService {
         sensitive: Boolean(cat?.sensitive),
         private: Boolean(input.private),
         vip,
-        tags: input.tags ?? [],
+        tags: [...new Set([...(input.tags ?? []), ...(usedUp ? ['plan-used-up'] : [])])].slice(0, 20),
+        custom: input.custom ?? {},
+        customerAccountId: accountId,
+        productId: input.productId ?? null,
+        planTier: plan?.tier ?? null,
+        senderVerified: input.senderVerified ?? true,
         createdBy: a.userId,
       },
     });
@@ -177,6 +207,9 @@ export class TicketsService {
         bodyHtml,
         bodyText,
         channel: input.channel,
+        emailMessageId: input.emailMessageId ?? null,
+        inboundEmailId: input.inboundEmailId ?? null,
+        senderVerified: input.senderVerified ?? true,
       },
     });
     await this.keepPii(tx, t, null, subject.found);
@@ -186,7 +219,8 @@ export class TicketsService {
     if (input.requestedForPersonId) await this.addWatcherIn(tx, a, t, input.requestedForPersonId, false);
     await emit(tx, org, 'helpdesk.ticket.created', { ticketId: t.id, deskId: desk.id, number: t.number, channel: input.channel });
     if (assigneeUserId) await emit(tx, org, 'helpdesk.ticket.assigned', { ticketId: t.id, deskId: desk.id, assigneeUserId });
-    await audit(tx, a, 'desk.ticket.created', 'sd_ticket', t.id, { number: t.number, deskId: desk.id, channel: input.channel, assigneeUserId, priority, vip, sensitive: t.sensitive, maskedValues: found.length + subject.found.length });
+    if (usedUp) await this.event(tx, t, 'plan_used_up', null, plan!.plan, { by: null, reason: plan!.whenUsedUp === 'hold' ? 'Held: the plan is used up' : 'The plan is used up' });
+    await audit(tx, { ctx: a.ctx, userId: a.userId as string }, 'desk.ticket.created', 'sd_ticket', t.id, { number: t.number, deskId: desk.id, channel: input.channel, assigneeUserId, priority, vip, sensitive: t.sensitive, maskedValues: found.length + subject.found.length, accountId, planTier: plan?.tier ?? null, senderVerified: input.senderVerified ?? true });
     await this.sla.sync(tx, t.id);
     return tx.sdTicket.findUniqueOrThrow({ where: { id: t.id } });
   }
@@ -196,7 +230,7 @@ export class TicketsService {
     requireWork(a, dto.deskId);
     const t = await this.tx(a, async (tx) => {
       for (const p of [dto.requesterPersonId, dto.requestedForPersonId]) {
-        if (p && !(await this.internalPerson(tx, a.ctx.organizationId, p))) throw new BadRequestException('No such person in this company.');
+        if (p && !(await this.deskPerson(tx, a, dto.deskId, p))) throw new BadRequestException('No such person in this company.');
       }
       return this.createIn(tx, a, {
         deskId: dto.deskId,
@@ -232,12 +266,26 @@ export class TicketsService {
     return Boolean(row?.ok);
   }
 
-  /** Name / email search over colleagues only (see internalPerson). */
+  /**
+   * SD-1.28: on a Customer support desk an agent also raises for (and adds as followers) the desk's outside contacts,
+   * within the accounts the agent is limited to (US-G-037).
+   */
+  async deskPerson(tx: Tx, a: DeskActor, deskId: string, personId: string): Promise<boolean> {
+    if (await this.internalPerson(tx, a.ctx.organizationId, personId)) return true;
+    const desk = await tx.sdDesk.findFirst({ where: { organizationId: a.ctx.organizationId, id: deskId }, select: { kind: true } });
+    if (desk?.kind !== 'customer_support') return false;
+    const contacts = await tx.sdCustomerContact.findMany({ where: { organizationId: a.ctx.organizationId, personId, status: 'active' }, select: { accountId: true } });
+    return contacts.some((c) => !a.accounts || (c.accountId !== null && a.accounts.includes(c.accountId)));
+  }
+
+  /** Name / email search over colleagues, plus outside contacts for agents of Customer support desks. */
   async searchPeople(a: DeskActor, search: string) {
     const org = a.ctx.organizationId;
     // LIKE wildcards typed by the agent are matched literally.
     const like = `%${search.replace(/[\\%_]/g, (c) => '\\' + c)}%`;
     return this.tx(a, async (tx) => {
+      const customerSeat = (await tx.sdDesk.findMany({ where: { organizationId: org, kind: 'customer_support' }, select: { id: true } })).some((d) => ['agent', 'lead'].includes(a.roles.get(d.id) ?? ''));
+      const outside = customerSeat && search ? await this.searchContacts(tx, a, like) : [];
       const rows = await tx.$queryRaw<{ id: string; given_name: string; family_name: string | null; preferred_name: string | null; primary_email: string | null }[]>`
         SELECT p.id, p.given_name, p.family_name, p.preferred_name, p.primary_email FROM persons p
         WHERE p.organization_id = ${org}::uuid AND p.status = 'active'
@@ -245,8 +293,22 @@ export class TicketsService {
                       AND r.role_type IN ('employee', 'login') AND (r.end_on IS NULL OR r.end_on >= (now() AT TIME ZONE 'Asia/Kolkata')::date))
           AND (${search} = '' OR p.given_name ILIKE ${like} OR p.family_name ILIKE ${like} OR p.primary_email::text ILIKE ${like})
         ORDER BY p.given_name, p.family_name LIMIT 20`;
-      return rows.map((p) => ({ id: p.id, name: [p.preferred_name || p.given_name, p.family_name].filter(Boolean).join(' '), email: p.primary_email }));
+      return [...rows.map((p) => ({ id: p.id, name: [p.preferred_name || p.given_name, p.family_name].filter(Boolean).join(' '), email: p.primary_email, customer: false })), ...outside].slice(0, 30);
     });
+  }
+
+  private async searchContacts(tx: Tx, a: DeskActor, like: string) {
+    const rows = await tx.$queryRaw<{ id: string; given_name: string; family_name: string | null; primary_email: string | null; account_id: string | null }[]>`
+      SELECT p.id, p.given_name, p.family_name, p.primary_email, c.account_id FROM persons p
+      JOIN sd_customer_contacts c ON c.organization_id = p.organization_id AND c.person_id = p.id AND c.status = 'active'
+      WHERE p.organization_id = ${a.ctx.organizationId}::uuid AND p.status = 'active'
+        AND (p.given_name ILIKE ${like} OR p.family_name ILIKE ${like} OR p.primary_email::text ILIKE ${like})
+      ORDER BY p.given_name, p.family_name LIMIT 20`;
+    const seen = new Set<string>();
+    return rows
+      .filter((c) => !a.accounts || (c.account_id !== null && a.accounts.includes(c.account_id)))
+      .filter((c) => !seen.has(c.id) && Boolean(seen.add(c.id)))
+      .map((p) => ({ id: p.id, name: [p.given_name, p.family_name].filter(Boolean).join(' '), email: p.primary_email, customer: true }));
   }
 
   private async category(tx: Tx, org: string, deskId: string, id: string, activeOnly: boolean) {
@@ -354,8 +416,16 @@ export class TicketsService {
       const people = await this.personNames(tx, org, [t.requesterPersonId, t.requestedForPersonId, ...watchers.map((w) => w.personId), ...messages.map((m) => m.authorPersonId)]);
       const users = await this.userNames(tx, org, [t.assigneeUserId, t.openedByUserId, ...messages.map((m) => m.authorUserId), ...collaborators.map((c) => c.userId), ...time.map((e) => e.userId)]);
       const who = (m: { authorUserId: string | null; authorPersonId: string | null }) => (m.authorUserId ? users.get(m.authorUserId) : m.authorPersonId ? people.get(m.authorPersonId)?.name : null) ?? 'YukthiX';
+      const health = await this.healthWords(tx, a, t, desk.kind, access);
+      const [account, product] = await Promise.all([
+        t.customerAccountId ? tx.sdCustomerAccount.findFirst({ where: { organizationId: org, id: t.customerAccountId }, select: { id: true, name: true } }) : null,
+        t.productId ? tx.sdProduct.findFirst({ where: { organizationId: org, id: t.productId }, select: { id: true, name: true } }) : null,
+      ]);
       return {
         ...this.summary(t),
+        subject: health.get('subject') ? unmaskHealth(t.subject, health.get('subject')!) : t.subject,
+        customer: account ? { account, plan: t.planTier } : null,
+        product,
         access,
         canWork: access === 'agent' && canWork(a, t.deskId),
         canNote: (access === 'agent' || access === 'collaborator') && has(a, 'desk.ticket.note'),
@@ -376,8 +446,9 @@ export class TicketsService {
           side: m.side,
           author: who(m),
           mine: m.authorUserId === a.userId,
-          bodyHtml: m.bodyHtml,
+          bodyHtml: health.get(m.id) ? unmaskHealth(m.bodyHtml, health.get(m.id)!) : m.bodyHtml,
           channel: m.channel,
+          senderVerified: m.senderVerified,
           createdAt: m.createdAt,
           editedAt: m.editedAt,
         })),
@@ -387,6 +458,25 @@ export class TicketsService {
         time: { totalMinutes: time.reduce((s, e) => s + e.minutes, 0), entries: time.map((e) => ({ id: e.id, minutes: e.minutes, note: e.note, workedOn: e.workedOn.toISOString().slice(0, 10), who: users.get(e.userId) ?? 'Someone', mine: e.userId === a.userId })) },
       };
     });
+  }
+
+  /**
+   * Founder decision 8 Oct 2026: on an HR desk the desk's own agents see health words on a ticket that is already
+   * restricted (sensitive or private). Nobody else, and never Aadhaar, PAN, card, bank or passwords. Per message id
+   * ('subject' for the subject), the original words in order.
+   */
+  private async healthWords(tx: Tx, a: DeskActor, t: Ticket, deskKind: string, access: TicketAccess): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>();
+    if (deskKind !== 'hr' || access !== 'agent' || !(t.sensitive || t.private) || !canWork(a, t.deskId)) return out;
+    const rows = await tx.sdSensitiveValue.findMany({ where: { organizationId: a.ctx.organizationId, ticketId: t.id, kind: 'health' }, orderBy: [{ createdAt: 'asc' }, { seq: 'asc' }] });
+    // An edited note or subject was masked again: only its latest batch matches the text stored now.
+    const latest = new Map<string, number>();
+    for (const r of rows) latest.set(r.messageId ?? 'subject', r.createdAt.getTime());
+    for (const r of rows) {
+      const k = r.messageId ?? 'subject';
+      if (r.createdAt.getTime() === latest.get(k)) out.set(k, [...(out.get(k) ?? []), this.crypto.decrypt(r.valueEncrypted)]);
+    }
+    return out;
   }
 
   /** Tickets merged into this one (their messages and files stay theirs, shown here). */
@@ -426,6 +516,12 @@ export class TicketsService {
       resolutionNote: t.resolutionNote,
       reopenCount: t.reopenCount,
       version: t.version,
+      customerAccountId: t.customerAccountId,
+      productId: t.productId,
+      planTier: t.planTier,
+      senderVerified: t.senderVerified,
+      screen: (t.custom as Record<string, unknown>)?.screen ?? null,
+      fields: t.custom,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
     };
@@ -636,6 +732,7 @@ export class TicketsService {
       const { bodyHtml, bodyText, found } = this.cleanMasked(text);
       const m = await tx.sdTicketMessage.create({ data: { organizationId: org, deskId: linked.deskId, ticketId: linked.id, kind: 'reply', side: 'agent', authorUserId: a.userId, bodyHtml, bodyText, channel: 'agent' } });
       await this.keepPii(tx, linked, m.id, found);
+      await this.mailOut.queueReply(org, linked.id, m.id);
       if (!linked.firstResponseAt) linked = await tx.sdTicket.update({ where: { id: linked.id }, data: { firstResponseAt: new Date() } });
       const solved = await this.firstStatus(tx, org, linked.deskId, linked.typeId, 'solved');
       await this.applyIn(tx, a, linked, { statusId: solved.id, resolutionCode: tracker.resolutionCode, resolutionNote: tracker.resolutionNote }, `Tracker ${tracker.number} solved`);
@@ -750,6 +847,8 @@ export class TicketsService {
       return { id: m.id, ticket: this.summary(after) };
     });
     for (const n of notices) void this.notify(a, n);
+    // SD-1.18: the requester of an email ticket (or an outside contact) hears by email, once the reply is committed.
+    if (dto.kind === 'reply') await this.mailOut.queueReply(a.ctx.organizationId, result.ticket.id, result.id);
     return result;
   }
 
@@ -802,7 +901,7 @@ export class TicketsService {
 
   // ------------------------------------------------------------------------------------------ watchers, collaborators (SD-1.04)
 
-  async addWatcherIn(tx: Tx, a: { ctx: DeskActor['ctx']; userId?: string }, t: Ticket, personId: string, fromRequester: boolean, addedByPersonId?: string) {
+  async addWatcherIn(tx: Tx, a: { ctx: DeskActor['ctx']; userId?: string | null }, t: Ticket, personId: string, fromRequester: boolean, addedByPersonId?: string) {
     const org = a.ctx.organizationId;
     if (personId === t.requesterPersonId) return null;
     const internal = await tx.personRole.findFirst({ where: { organizationId: org, personId, roleType: { in: ['employee', 'login'] }, endOn: null }, select: { id: true } });
@@ -822,7 +921,7 @@ export class TicketsService {
       const { t, access } = await this.load(tx, a, id);
       if (access !== 'agent') throw new ForbiddenException(SEAT_REQUIRED);
       requireWork(a, t.deskId);
-      if (!(await this.internalPerson(tx, a.ctx.organizationId, dto.personId!))) throw new BadRequestException('No such person in this company.');
+      if (!(await this.deskPerson(tx, a, t.deskId, dto.personId!))) throw new BadRequestException('No such person in this company.');
       const w = await this.addWatcherIn(tx, a, t, dto.personId!, false);
       return { id: w?.id ?? null };
     });
@@ -927,6 +1026,7 @@ export class TicketsService {
       const clean = this.cleanMasked(html);
       const m = await tx.sdTicketMessage.create({ data: { organizationId: a.ctx.organizationId, deskId: t.deskId, ticketId: t.id, kind, side: 'agent', authorUserId: a.userId, bodyHtml: clean.bodyHtml, bodyText: clean.bodyText, channel: 'agent' } });
       await this.keepPii(tx, t, m.id, clean.found);
+      if (kind === 'reply') await this.mailOut.queueReply(a.ctx.organizationId, t.id, m.id);
       if (kind === 'reply' && !cur.firstResponseAt) cur = await tx.sdTicket.update({ where: { id: t.id }, data: { firstResponseAt: new Date() } });
     }
     if (x.reply) await this.sla.sync(tx, t.id);

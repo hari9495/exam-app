@@ -119,7 +119,7 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
   // ------------------------------------------------------------------------------------------ policy choice (§8.3)
 
   private facts(t: TicketRow): TicketFacts {
-    return { priority: t.priority, categoryId: t.categoryId, typeId: t.typeId, kind: t.kind, channel: t.channel, groupId: t.groupId, vip: t.vip, tags: t.tags };
+    return { priority: t.priority, categoryId: t.categoryId, typeId: t.typeId, kind: t.kind, channel: t.channel, groupId: t.groupId, vip: t.vip, tags: t.tags, planTier: t.planTier, productId: t.productId, customerAccountId: t.customerAccountId };
   }
 
   /** First policy in order whose scope fits; a policy the ticket already uses keeps its pinned version. */

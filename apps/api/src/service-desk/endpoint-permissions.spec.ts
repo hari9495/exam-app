@@ -3,6 +3,7 @@ import { PATH_METADATA } from '@nestjs/common/constants';
 import { PERMISSIONS_ANY_KEY, PERMISSIONS_KEY } from '../rbac/permissions.decorator';
 import { CalendarFeedController, DeskFilesController, DeskSetupController, DeskTicketsController, DeskWorkController, MyTicketsController } from './service-desk.controller';
 import { STEP_UP_REQUIRED } from '../auth/step-up.decorator';
+import { DeskChannelsController, InboundMailController, PortalController } from './channels.controller';
 import { checkFile, safeName } from './attachments.service';
 import { EICAR_TEST_STRING, DevFakeScanner, scannerFromEnv } from './scanner';
 
@@ -18,20 +19,28 @@ const undeclared = (controller: { prototype: object }) => {
 };
 
 describe('every Service Desk endpoint declares a permission (YX-SEC-01)', () => {
-  it.each([DeskSetupController, DeskTicketsController, DeskWorkController])('%p', (controller) => {
+  it.each([DeskSetupController, DeskTicketsController, DeskWorkController, DeskChannelsController])('%p', (controller) => {
     expect(handlers(controller).length).toBeGreaterThan(5);
     expect(undeclared(controller)).toEqual([]);
   });
 
   it('only the requester routes and the signed file link are implicit', () => {
-    expect(undeclared(MyTicketsController).sort()).toEqual(['desks', 'get', 'link', 'list', 'raise', 'reply', 'upload', 'watch']);
+    expect(undeclared(MyTicketsController).sort()).toEqual(['banners', 'desks', 'get', 'link', 'list', 'meToo', 'raise', 'reply', 'upload', 'watch']);
     expect(undeclared(DeskFilesController)).toEqual(['download']);
     // The iCal feed: no session, the secret in the link is the key (US-G-009).
     expect(undeclared(CalendarFeedController)).toEqual(['feed']);
+    // SD-1.19: the provider's webhook (signed per mailbox, no session).
+    expect(undeclared(InboundMailController)).toEqual(['receive']);
+    // SD-1.22: the outside portal (Turnstile, one-time codes, then its own session; never a staff key).
+    expect(undeclared(PortalController).sort()).toEqual(['confirm', 'get', 'info', 'list', 'me', 'meToo', 'raise', 'reply', 'request', 'signIn', 'signOut', 'verify']);
   });
 
   it('showing a masked value needs step-up (YX-SD-15)', () => {
     expect(Reflect.getMetadata(STEP_UP_REQUIRED, DeskWorkController.prototype.unmask)).toBe(true);
+  });
+
+  it('a new webhook secret for a mailbox needs step-up (SD-1.19)', () => {
+    expect(Reflect.getMetadata(STEP_UP_REQUIRED, DeskChannelsController.prototype.rotate)).toBe(true);
   });
 });
 

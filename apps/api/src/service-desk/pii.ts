@@ -48,7 +48,9 @@ export function luhnValid(digits: string): boolean {
   return sum % 10 === 0;
 }
 
-// DECISION NEEDED: health words are masked everywhere (YX-SD-15), also on HR medical tickets where agents need them; confirm the list and whether HR desks skip it.
+// Health words are masked on save everywhere (YX-SD-15). Founder decision 8 Oct 2026: on an HR desk, the desk's own
+// agents see them again on a ticket that is already restricted (sensitive or private), through unmaskHealth below;
+// Aadhaar, PAN, card, bank and passwords stay masked for everyone (step-up unmask only).
 const HEALTH = ['hiv', 'aids', 'cancer', 'tuberculosis', 'diabetes', 'pregnant', 'pregnancy', 'miscarriage', 'depression', 'hepatitis', 'chemotherapy', 'dialysis'];
 const tail = (s: string, n = 4) => s.slice(-n);
 const LABEL: Record<PiiKind, string> = { aadhaar: 'Aadhaar', pan: 'PAN', card: 'Card', bank: 'Bank account', password: 'Password', health: 'Health detail' };
@@ -97,4 +99,13 @@ export function maskPiiHtml(html: string): { html: string; found: PiiFound[] } {
     })
     .join('');
   return { html: out, found };
+}
+
+export const HEALTH_MASK = maskOf('health', '');
+
+/** Puts health words back, in the order they were found (sd_sensitive_values.seq). Every other mask stays. */
+export function unmaskHealth(html: string, words: readonly string[]): string {
+  let i = 0;
+  const esc = (w: string) => w.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+  return html.split(HEALTH_MASK).reduce((out, part, n) => (n === 0 ? part : out + (i < words.length ? esc(words[i++]) : HEALTH_MASK) + part), '');
 }

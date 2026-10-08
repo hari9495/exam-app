@@ -18,6 +18,15 @@ export interface SendEmailInput {
   fromName?: string;
   /** A company's validated reply-to address. */
   replyTo?: string;
+  /**
+   * Service Desk mail (M14 §9.2): our Message-ID and the thread it answers, extra headers (Auto-Submitted on automatic
+   * mail) and the company's DKIM signature when it sends from its own verified domain.
+   */
+  messageId?: string;
+  inReplyTo?: string;
+  references?: string[];
+  headers?: Record<string, string>;
+  dkim?: { domainName: string; keySelector: string; privateKey: string };
 }
 
 export interface SendEmailResult {
@@ -111,6 +120,11 @@ export class EmailService {
         html: input.html,
         ...(input.text !== undefined ? { text: input.text } : {}),
         ...(input.attachments ? { attachments: input.attachments } : {}),
+        ...(input.messageId ? { messageId: input.messageId } : {}),
+        ...(input.inReplyTo ? { inReplyTo: input.inReplyTo } : {}),
+        ...(input.references?.length ? { references: input.references } : {}),
+        ...(input.headers ? { headers: input.headers } : {}),
+        ...(input.dkim ? { dkim: input.dkim } : {}),
       });
       const previewUrl = nodemailer.getTestMessageUrl(info) || undefined;
       if (previewUrl) {

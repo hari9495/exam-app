@@ -21,6 +21,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'helpdesk.ticket.sla_warning', group: 'reminders', label: 'A ticket is close to missing a response target' },
   { type: 'helpdesk.ticket.sla_breached', group: 'reminders', label: 'A ticket missed a response target' },
   { type: 'helpdesk.reminder.due', group: 'reminders', label: 'A desk reminder you set is due' },
+  { type: 'helpdesk.email.held', group: 'reminders', label: 'An email to your desk is held for a check' },
+  { type: 'helpdesk.plan.used_up', group: 'reminders', label: 'A customer has used up their support plan' },
 ];
 
 export const NOTIFICATION_TYPE_BY_KEY = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));

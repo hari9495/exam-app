@@ -36,7 +36,7 @@
     "cookie-parser": "^1.4.6",
     "csv-parse": "^7.0.1",
     "csv-stringify": "^6.5.1",
-    "email-reply-parser": "2.3.9",
+    "email-reply-parser": "1.9.4",
     "exceljs": "^4.4.0",
     "file-type": "16.5.4",
     "free-email-domains": "1.12.20",

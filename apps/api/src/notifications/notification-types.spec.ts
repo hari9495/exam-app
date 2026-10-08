@@ -22,6 +22,8 @@ describe('notification catalog', () => {
       'helpdesk.ticket.sla_warning',
       'helpdesk.ticket.sla_breached',
       'helpdesk.reminder.due',
+      'helpdesk.email.held',
+      'helpdesk.plan.used_up',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

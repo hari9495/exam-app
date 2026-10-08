@@ -4,6 +4,7 @@ import { Request } from 'express';
 import { AuditService, PrismaService, TenantContext, TenantPrismaService, resolvePermissionGrants } from '@exam-platform/shared';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
+import { accountScopeOf } from './customers.service';
 
 // Who may do what on which desk (M14 §6). Two things must both hold, checked on the server for every route:
 //   1. the permission key, held company-wide through the person's role, profile or role grant (P02 YX-SEC-01);
@@ -28,11 +29,14 @@ export const DESK_KEYS = [
   'desk.audit.view',
   'desk.pii.unmask',
   'desk.report.view',
+  'desk.mailbox.manage',
+  'desk.portal.manage',
+  'desk.customer.manage',
   'request.raise_on_behalf',
 ] as const;
 export type DeskKey = (typeof DESK_KEYS)[number];
 export type DeskRole = 'agent' | 'lead' | 'admin' | 'collaborator';
-export type SetupKey = 'desk.settings.manage' | 'desk.member.manage' | 'desk.sla.manage';
+export type SetupKey = 'desk.settings.manage' | 'desk.member.manage' | 'desk.sla.manage' | 'desk.mailbox.manage' | 'desk.portal.manage';
 /** How the signed-in person sees one ticket. observer = a desk admin's read-only view of a standard ticket. */
 export type TicketAccess = 'agent' | 'observer' | 'collaborator';
 
@@ -42,6 +46,8 @@ export interface DeskActor {
   keys: ReadonlySet<string>;
   /** Seats held today, by desk. */
   roles: ReadonlyMap<string, DeskRole>;
+  /** US-G-037: the customer accounts (with sub-accounts) this agent is limited to on Customer support desks; absent = all. */
+  accounts?: readonly string[] | null;
 }
 
 interface RequestUser {
@@ -89,7 +95,21 @@ export class DeskAccessService {
     const seats = await this.tenantPrisma.forTenant(ctx, (tx) =>
       tx.sdDeskMember.findMany({ where: { organizationId: ctx.organizationId, userId: user.userId, ...activeOn(todayIst()) }, select: { deskId: true, role: true } }),
     );
-    return { ctx, userId: user.userId, keys, roles: new Map(seats.map((s) => [s.deskId, s.role as DeskRole])) };
+    const accounts = await this.tenantPrisma.forTenant(ctx, (tx) => accountScopeOf(tx, ctx.organizationId, user.userId!));
+    return { ctx, userId: user.userId, keys, roles: new Map(seats.map((s) => [s.deskId, s.role as DeskRole])), accounts };
+  }
+
+  /** An active colleague's keys and seats without a request: email commands from a proven, signed agent email (SD-1.20). */
+  async actorFor(organizationId: string, userId: string): Promise<DeskActor | null> {
+    const ctx = { organizationId, isSuperAdmin: false, userId };
+    const user = await this.tenantPrisma.forTenant(ctx, (tx) => tx.user.findFirst({ where: { organizationId, id: userId, status: 'active' }, select: { role: true, permissionProfileId: true } }));
+    if (!user) return null;
+    const keys = await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: user.role, organizationId, permissionProfileId: user.permissionProfileId, userId }, [...DESK_KEYS]);
+    const { seats, accounts } = await this.tenantPrisma.forTenant(ctx, async (tx) => ({
+      seats: await tx.sdDeskMember.findMany({ where: { organizationId, userId, ...activeOn(todayIst()) }, select: { deskId: true, role: true } }),
+      accounts: await accountScopeOf(tx, organizationId, userId),
+    }));
+    return { ctx, userId, keys, roles: new Map(seats.map((s) => [s.deskId, s.role as DeskRole])), accounts };
   }
 }
 
@@ -127,8 +147,10 @@ export async function visibleTickets(tx: Tx, a: DeskActor): Promise<Prisma.SdTic
   const standard = adminDesks.length ? (await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: adminDesks }, privacy: 'standard' }, select: { id: true } })).map((d) => d.id) : [];
   const reach = deskReach(a, new Set(standard));
   const collab = (await tx.sdTicketCollaborator.findMany({ where: { organizationId: org, userId: a.userId }, select: { ticketId: true } })).map((c) => c.ticketId);
+  const scoped = await accountLimit(tx, a);
   return {
     organizationId: org,
+    ...(scoped ? { AND: [scoped] } : {}),
     OR: [
       { deskId: { in: reach.agent } },
       { deskId: { in: reach.observe }, sensitive: false, private: false },
@@ -139,8 +161,12 @@ export async function visibleTickets(tx: Tx, a: DeskActor): Promise<Prisma.SdTic
 }
 
 /** How the person sees this ticket, or null (then the caller answers 404). */
-export async function ticketAccess(tx: Tx, a: DeskActor, t: { id: string; deskId: string; sensitive: boolean; private: boolean }): Promise<TicketAccess | null> {
+export async function ticketAccess(tx: Tx, a: DeskActor, t: { id: string; deskId: string; sensitive: boolean; private: boolean; customerAccountId?: string | null }): Promise<TicketAccess | null> {
   if (!has(a, 'desk.ticket.view')) return null;
+  if (a.accounts && !(t.customerAccountId && a.accounts.includes(t.customerAccountId))) {
+    const desk = await tx.sdDesk.findFirst({ where: { organizationId: a.ctx.organizationId, id: t.deskId }, select: { kind: true } });
+    if (desk?.kind === 'customer_support') return null;
+  }
   if (isAgentOn(a, t.deskId)) return 'agent';
   const collab = a.roles.has(t.deskId) && (await tx.sdTicketCollaborator.findFirst({ where: { organizationId: a.ctx.organizationId, ticketId: t.id, userId: a.userId }, select: { userId: true } }));
   if (collab) return 'collaborator';
@@ -149,6 +175,13 @@ export async function ticketAccess(tx: Tx, a: DeskActor, t: { id: string; deskId
     if (desk?.privacy === 'standard') return 'observer';
   }
   return null;
+}
+
+/** US-G-037: an agent limited to some accounts sees, on Customer support desks, only those accounts' tickets. */
+async function accountLimit(tx: Tx, a: DeskActor): Promise<Prisma.SdTicketWhereInput | null> {
+  if (!a.accounts) return null;
+  const customerDesks = (await tx.sdDesk.findMany({ where: { organizationId: a.ctx.organizationId, kind: 'customer_support' }, select: { id: true } })).map((d) => d.id);
+  return { OR: [{ deskId: { notIn: customerDesks } }, { customerAccountId: { in: [...a.accounts] } }] };
 }
 
 /** One audit row in the caller's transaction (P08: no change without its audit row). */

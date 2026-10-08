@@ -28,7 +28,8 @@ export const DEFAULT_MILESTONES: Milestone[] = [
 
 // ------------------------------------------------------------------------------------------ scope (US-G-013)
 
-export const SCOPE_FIELDS = ['priority', 'category', 'type', 'kind', 'channel', 'group', 'vip', 'tag'] as const;
+// plan / product / account: a customer's support plan tier, product and account drive SLAs on Customer support desks (US-G-036, US-G-038).
+export const SCOPE_FIELDS = ['priority', 'category', 'type', 'kind', 'channel', 'group', 'vip', 'tag', 'plan', 'product', 'account'] as const;
 export type ScopeField = (typeof SCOPE_FIELDS)[number];
 export interface ScopeRule {
   field: ScopeField;
@@ -48,6 +49,9 @@ export interface TicketFacts {
   groupId: string | null;
   vip: boolean;
   tags: string[];
+  planTier?: string | null;
+  productId?: string | null;
+  customerAccountId?: string | null;
 }
 
 function factValues(t: TicketFacts, field: ScopeField): string[] {
@@ -68,6 +72,12 @@ function factValues(t: TicketFacts, field: ScopeField): string[] {
       return [String(t.vip)];
     case 'tag':
       return t.tags;
+    case 'plan':
+      return t.planTier ? [t.planTier] : [];
+    case 'product':
+      return t.productId ? [t.productId] : [];
+    case 'account':
+      return t.customerAccountId ? [t.customerAccountId] : [];
   }
 }
 
