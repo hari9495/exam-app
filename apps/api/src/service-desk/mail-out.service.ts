@@ -247,7 +247,8 @@ export class MailOutService implements OnModuleInit, OnModuleDestroy {
     const portalLink = portal ? await this.portalLink(tx, org, portal.portalId, t.id) : link;
     let body: string;
     let subject = `[${t.number}] ${neutral ? 'Your ticket' : t.subject}`;
-    if (kind === 'reply' && !neutral && o.html) {
+    // An email ticket gets the reply itself; a portal ticket's outside requester gets a notice with the portal link.
+    if (kind === 'reply' && !neutral && o.html && t.channel === 'email') {
       body = o.html;
     } else if (kind === 'reply' || kind === 'notice') {
       body = `<p>There is a new reply on your ticket ${esc(t.number)}.</p><p><a href="${esc(portalLink)}">Open your ticket</a></p>`;

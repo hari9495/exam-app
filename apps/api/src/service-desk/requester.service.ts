@@ -73,14 +73,16 @@ export class RequesterService {
     return [personId, ...(await tx.person.findMany({ where: { organizationId: org, mergedInto: personId }, select: { id: true } })).map((p) => p.id)];
   }
 
-  /** May this person follow ticket t (raised by them, for them, or watched by them)? */
-  private async follows(tx: Tx, org: string, ids: string[], t: { id: string; requesterPersonId: string; requestedForPersonId: string | null }) {
+  /**
+   * May this person follow ticket t (raised by them, for them, or watched by them)? Founder decision 8 Oct 2026: a
+   * follower loses sight of a ticket once it is private or sensitive (as in SQL, §5.7), even if they hold another seat.
+   */
+  private async follows(tx: Tx, org: string, ids: string[], t: { id: string; requesterPersonId: string; requestedForPersonId: string | null; private: boolean; sensitive: boolean }) {
     if (ids.includes(t.requesterPersonId) || (t.requestedForPersonId && ids.includes(t.requestedForPersonId))) return true;
+    if (t.private || t.sensitive) return false;
     return Boolean(await tx.sdTicketWatcher.findFirst({ where: { organizationId: org, ticketId: t.id, personId: { in: ids } }, select: { id: true } }));
   }
 
-  // DECISION NEEDED: §5.7 lets only the requester and requested-for person see a sensitive or private ticket, so a
-  // follower (watcher) loses it once it turns private or sensitive. Confirm, or add watchers to the SQL policy.
   async ownTicket(tx: Tx, r: Requester, id: string): Promise<{ t: Ticket; personId: string; ids: string[] }> {
     const org = r.ctx.organizationId;
     const personId = await this.personOf(tx, r, false);
@@ -156,7 +158,7 @@ export class RequesterService {
       if (!personId) return [];
       const ids = await this.idsOf(tx, org, personId);
       const watched = await this.visibleIds(tx, org, ids);
-      const rows = await tx.sdTicket.findMany({ where: { organizationId: org, OR: [...(this.mine(org, ids).OR ?? []), { id: { in: watched } }] }, orderBy: { updatedAt: 'desc' }, take: 200 });
+      const rows = await tx.sdTicket.findMany({ where: { organizationId: org, OR: [...(this.mine(org, ids).OR ?? []), { id: { in: watched }, private: false, sensitive: false }] }, orderBy: { updatedAt: 'desc' }, take: 200 });
       const statuses = new Map((await tx.sdStatus.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.statusId) } }, select: { id: true, label: true } })).map((s) => [s.id, s.label]));
       const desks = new Map((await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.deskId) } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
       return rows.map((t) => ({

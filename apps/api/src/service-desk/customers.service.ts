@@ -125,7 +125,8 @@ export class CustomersService {
   /** Agents limited to some accounts see only those (US-G-037). */
   private async scopeFilter(tx: Tx, a: DeskActor): Promise<Prisma.SdCustomerAccountWhereInput> {
     const scope = await accountScopeOf(tx, a.ctx.organizationId, a.userId);
-    return scope ? { id: { in: scope } } : {};
+    // Under AND, so it never replaces an id the caller asked for (review fix).
+    return scope ? { AND: [{ id: { in: scope } }] } : {};
   }
 
   async accounts(a: DeskActor, search = '') {

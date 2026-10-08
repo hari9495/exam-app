@@ -172,7 +172,9 @@ export class MailInService implements OnModuleInit, OnModuleDestroy {
     const box = await tx.sdMailbox.findFirstOrThrow({ where: { organizationId: org, id: row.mailboxId } });
     const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: box.deskId } });
     const flags = new Set<string>(row.flags);
+    let note: string | null = null;
     const finish = async (o: Outcome): Promise<Outcome> => {
+      o.reason ??= note;
       await tx.sdInboundEmail.update({
         where: { id: row.id },
         data: {
@@ -221,14 +223,18 @@ export class MailInService implements OnModuleInit, OnModuleDestroy {
 
     // 3. Who sent it (§14.3).
     const ownDomains = [...new Set([...own.map((o) => o.address.split('@')[1].toLowerCase()), ...(await tx.sdSendingDomain.findMany({ where: { organizationId: org }, select: { domain: true } })).map((d) => d.domain.toLowerCase())])];
-    let verified = Boolean(release) || row.senderVerified;
+    // proven: the checks passed. A desk admin's release lets the email through, but it never becomes proven.
+    let verified = row.senderVerified;
     let signed = row.signed;
     if (!release) {
       if (!facts) return finish({ verdict: 'held', reason: 'The sender could not be checked' });
       const v = senderVerdict(facts, { ownDomains, trustedForwarders: box.trustedForwarders });
       verified = v.verified;
       signed = v.signed;
-      if (!verified) flags.add('sender_not_verified');
+      if (!verified) {
+        flags.add('sender_not_verified');
+        note = v.reason;
+      }
       await tx.sdInboundEmail.update({ where: { id: row.id }, data: { senderVerified: v.verified, signed: v.signed } });
       if (v.action === 'reject') return finish({ verdict: 'rejected', reason: v.reason });
       if (v.action === 'hold') return finish({ verdict: 'held', reason: v.reason });
@@ -254,8 +260,8 @@ export class MailInService implements OnModuleInit, OnModuleDestroy {
     if (r.spam && !release) return finish({ verdict: 'spam', reason: r.spam });
 
     // 7. Threading.
-    const thread = await this.findThread(tx, org, desk.id, p, verified);
-    if (thread) return finish(await this.onThread(tx, org, row, p, thread, { verified, signed, released: Boolean(release) }));
+    const thread = await this.findThread(tx, org, desk.id, p, verified || Boolean(release));
+    if (thread) return finish(await this.onThread(tx, org, row, p, thread, { verified: verified || Boolean(release), proven: verified, signed, released: Boolean(release) }));
 
     // 8. A new ticket.
     return finish(await this.newTicket(tx, org, row, p, box, desk, r, { verified, released: Boolean(release) }));
@@ -310,7 +316,7 @@ export class MailInService implements OnModuleInit, OnModuleDestroy {
 
   // ------------------------------------------------------------------------------------------ replies on a ticket
 
-  private async onThread(tx: Tx, org: string, row: { id: string }, p: ParsedEmail, t: Ticket, s: { verified: boolean; signed: boolean; released: boolean }): Promise<Outcome> {
+  private async onThread(tx: Tx, org: string, row: { id: string }, p: ParsedEmail, t: Ticket, s: { verified: boolean; proven: boolean; signed: boolean; released: boolean }): Promise<Outcome> {
     const from = p.from!.address;
     if (!s.verified) return { verdict: 'held', reason: `A reply to ${t.number} from a sender that is not proven` };
     // An agent of the desk (their work login's email) writing into the thread: commands and an internal note.
@@ -333,18 +339,18 @@ export class MailInService implements OnModuleInit, OnModuleDestroy {
     const { commands, rest } = readCommands(p.text);
     if (commands.length) {
       const known = commands.filter((c) => c.name === 'close' && isRequester);
-      if (known.length !== commands.length) return { ...(await this.append(tx, org, row, p, t, personId, rest)), help: { ticketId: t.id, to: from, html: helpHtml(commands) } };
+      if (known.length !== commands.length) return { ...(await this.append(tx, org, row, p, t, personId, rest, s.proven)), help: { ticketId: t.id, to: from, html: helpHtml(commands) } };
       const closed = await this.requesterClose(tx, org, t);
-      const res = rest ? await this.append(tx, org, row, p, t, personId, rest) : { verdict: 'accepted' as const, ticketId: t.id };
+      const res = rest ? await this.append(tx, org, row, p, t, personId, rest, s.proven) : { verdict: 'accepted' as const, ticketId: t.id };
       return closed ? res : { ...res, help: { ticketId: t.id, to: from, html: '<p>We could not close the ticket by email. Open it in the help centre to close it.</p>' } };
     }
-    return this.append(tx, org, row, p, t, personId, p.text);
+    return this.append(tx, org, row, p, t, personId, p.text, s.proven);
   }
 
   /** The requester's email reply, exactly like a portal reply: reopens within the window, else a linked follow-up. */
-  private async append(tx: Tx, org: string, row: { id: string }, p: ParsedEmail, t: Ticket, personId: string, text: string): Promise<Outcome> {
+  private async append(tx: Tx, org: string, row: { id: string }, p: ParsedEmail, t: Ticket, personId: string, text: string, proven: boolean): Promise<Outcome> {
     const ctx = { organizationId: org, isSuperAdmin: false };
-    const res = await this.requesters.replyIn(tx, { ctx, userId: null }, t, personId, textToHtml(text || '(no text)'), { channel: 'email', emailMessageId: p.messageId || null, inboundEmailId: row.id });
+    const res = await this.requesters.replyIn(tx, { ctx, userId: null }, t, personId, textToHtml(text || '(no text)'), { channel: 'email', emailMessageId: p.messageId || null, inboundEmailId: row.id, senderVerified: proven });
     if (res.followUp) {
       const n = await tx.sdTicket.findFirstOrThrow({ where: { organizationId: org, id: res.followUp.id } });
       const first = await tx.sdTicketMessage.findFirst({ where: { organizationId: org, ticketId: n.id }, orderBy: { createdAt: 'asc' }, select: { id: true } });
