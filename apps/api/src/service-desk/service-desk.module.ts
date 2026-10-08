@@ -36,14 +36,25 @@ import { WorkflowModule } from '../workflow/workflow.module';
 import { CatalogService } from './catalog.service';
 import { DeskAutomation } from './desk-automation';
 import { DeskCatalogController, DeskRulesController, MyCatalogController } from './esm.controller';
+import { JwtModule } from '@nestjs/jwt';
+import { ChatGateway } from './chat.gateway';
+import { ChatService } from './chat.service';
+import { DeskOrgService } from './desk-org.service';
+import { DocumentsService } from './documents.service';
+import { DeskChatController, DeskOrgController, MyChatController } from './esm2.controller';
+import { JourneysService } from './journeys.service';
+import { LifecyclesService } from './lifecycles.service';
+import { RecurringService } from './recurring.service';
 
 // M14 Service Desk, phase 3b-1: batch 1 (SD-1.01 … SD-1.08), batch 2 (SD-1.09 … SD-1.17), batch 3 (SD-1.18 …
 // SD-1.23, SD-1.28: email in and out, portals and outside requesters, banners, customers) and batch 4 (SD-1.24 …
 // SD-1.27, SD-1.29 … SD-1.31: knowledge and the public help centre, CSAT / NPS, reports, the standalone product,
 // privacy, YukthiX's own support in the console). Phase 3b-2 batch 1 (SD-2.01 … SD-2.05, SD-2.12): the service
-// catalogue, cart and order guides on the shared P18 / P19 / P03 engines, and desk automation rules.
+// catalogue, cart and order guides on the shared P18 / P19 / P03 engines, and desk automation rules. Batch 2 (SD-2.06 …
+// SD-2.11, SD-2.13, SD-2.17 … SD-2.19): approval cards (workflow module), documents and e-sign, journeys, starter packs,
+// moves / shares / clone / branches / HR summary, lifecycles, recurring records and sequences, interactions, live chat.
 @Module({
-  imports: [AuditModule, StorageModule, NotificationsModule, CryptoModule, EmailModule, AuthModule, PlatformModule, OrganizationsModule, RulesEngineModule, WorkflowModule],
+  imports: [AuditModule, StorageModule, NotificationsModule, CryptoModule, EmailModule, AuthModule, PlatformModule, OrganizationsModule, RulesEngineModule, WorkflowModule, JwtModule.register({})],
   controllers: [
     DeskSetupController,
     DeskTicketsController,
@@ -67,6 +78,9 @@ import { DeskCatalogController, DeskRulesController, MyCatalogController } from 
     DeskCatalogController,
     DeskRulesController,
     MyCatalogController,
+    DeskOrgController,
+    DeskChatController,
+    MyChatController,
   ],
   providers: [
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },
@@ -94,6 +108,13 @@ import { DeskCatalogController, DeskRulesController, MyCatalogController } from 
     SupportBridgeService,
     CatalogService,
     DeskAutomation,
+    DeskOrgService,
+    LifecyclesService,
+    DocumentsService,
+    JourneysService,
+    RecurringService,
+    ChatService,
+    ChatGateway,
   ],
 })
 export class ServiceDeskModule {}

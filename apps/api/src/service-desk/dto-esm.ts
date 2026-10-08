@@ -64,6 +64,11 @@ export class CatalogItemDto {
   @Max(365)
   deliveryDays?: number | null;
 
+  /** SD-2.08: only for joiner / leaver journeys; never listed in the catalogue. */
+  @IsOptional()
+  @IsBoolean()
+  journeyOnly?: boolean;
+
   @IsOptional()
   @IsObject()
   audience?: unknown;
@@ -107,6 +112,11 @@ export class UpdateCatalogItemDto {
   @Min(0)
   @Max(365)
   deliveryDays?: number | null;
+
+  /** SD-2.08: only for joiner / leaver journeys; never listed in the catalogue. */
+  @IsOptional()
+  @IsBoolean()
+  journeyOnly?: boolean;
 
   /** null = everyone who can raise to the desk. */
   @IsOptional()

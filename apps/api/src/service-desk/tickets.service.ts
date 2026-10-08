@@ -10,6 +10,8 @@ import { PiiFound, maskPii, maskPiiHtml, unmaskHealth } from './pii';
 import { SlaService } from './sla.service';
 import { MailOutService } from './mail-out.service';
 import { contactAccount, planFor, planUsedUp } from './customers.service';
+import { Transition, checkMove } from './lifecycle';
+import { profileOf } from './people-facts';
 import {
   DeskActor,
   SEAT_REQUIRED,
@@ -64,7 +66,7 @@ export interface CreateInput {
   requesterPersonId: string;
   requestedForPersonId?: string;
   openedByUserId: string | null;
-  channel: 'portal' | 'agent' | 'api' | 'email';
+  channel: 'portal' | 'agent' | 'api' | 'email' | 'chat' | 'phone' | 'walk_up';
   private?: boolean;
   tags?: string[];
   /** Who wrote the first message: the requester (portal) or an agent raising it for them. */
@@ -136,7 +138,9 @@ export class TicketsService {
       : await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: desk.id, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
     if (!type) throw new BadRequestException('Choose a ticket type of this desk.');
     const cat = input.categoryId ? await this.category(tx, org, desk.id, input.categoryId, true) : null;
-    const status = await this.firstStatus(tx, org, desk.id, type.id, 'new');
+    // SD-2.11: a type with a lifecycle starts in its start status and the ticket keeps that version.
+    const pin = await lifecyclePin(tx, org, desk.id, type.id);
+    const status = pin ? await tx.sdStatus.findFirstOrThrow({ where: { organizationId: org, id: pin.startStatusId } }) : await this.firstStatus(tx, org, desk.id, type.id, 'new');
     for (const p of [input.requesterPersonId, input.requestedForPersonId]) {
       if (p && !(await tx.person.findFirst({ where: { organizationId: org, id: p, status: 'active' }, select: { id: true } }))) throw new BadRequestException('No such person in this company.');
     }
@@ -151,7 +155,11 @@ export class TicketsService {
       RETURNING next_number - 1 AS n`;
     if (!counter) throw new ConflictException('This desk has no ticket numbering. Ask the desk admin to check its settings.');
     const n = counter.n;
-    const groupId = cat?.groupId ?? null;
+    // US-G-050: the requester's site (branch) brings its own team and hours.
+    const branch = (await tx.sdDeskBranch.count({ where: { organizationId: org, deskId: desk.id } }))
+      ? await tx.sdDeskBranch.findFirst({ where: { organizationId: org, deskId: desk.id, locationId: String((await profileOf(tx, org, forWhom))['requester.location'] ?? '00000000-0000-0000-0000-000000000000') } })
+      : null;
+    const groupId = branch?.groupId ?? cat?.groupId ?? null;
     const assigneeUserId = groupId ? await this.pickAssignee(tx, org, desk.id, groupId) : null;
     const { bodyHtml, bodyText, found } = this.cleanMasked(input.bodyHtml);
     if (!bodyText) throw new BadRequestException('Describe the issue.');
@@ -186,7 +194,11 @@ export class TicketsService {
         groupId,
         channel: input.channel,
         sensitive: Boolean(cat?.sensitive),
-        private: Boolean(input.private),
+        // SD-2.09 (M08): some categories make every ticket in them private.
+        private: Boolean(input.private) || Boolean(cat?.privateByDefault),
+        branchId: branch?.id ?? null,
+        lifecycleId: pin?.lifecycleId ?? null,
+        lifecycleVersion: pin?.version ?? null,
         vip,
         tags: [...new Set([...(input.tags ?? []), ...(usedUp ? ['plan-used-up'] : [])])].slice(0, 20),
         custom: input.custom ?? {},
@@ -317,7 +329,7 @@ export class TicketsService {
     const c = await tx.sdCategory.findFirst({ where: { organizationId: org, deskId, id, ...(activeOnly ? { active: true } : {}) } });
     if (!c) throw new BadRequestException('Choose a category of this desk.');
     const parent = c.parentId ? await tx.sdCategory.findFirst({ where: { organizationId: org, id: c.parentId } }) : null;
-    return { id: c.id, sensitive: c.sensitive || Boolean(parent?.sensitive), groupId: c.defaultGroupId ?? parent?.defaultGroupId ?? null, defaultPriority: c.defaultPriority ?? parent?.defaultPriority ?? null };
+    return { id: c.id, sensitive: c.sensitive || Boolean(parent?.sensitive), privateByDefault: c.privateByDefault || Boolean(parent?.privateByDefault), groupId: c.defaultGroupId ?? parent?.defaultGroupId ?? null, defaultPriority: c.defaultPriority ?? parent?.defaultPriority ?? null };
   }
 
   async firstStatus(tx: Tx, org: string, deskId: string, typeId: string, state: string) {
@@ -610,6 +622,12 @@ export class TicketsService {
       if (!type) throw new BadRequestException('Choose a ticket type of this desk.');
       data.typeId = type.id;
       log.push(['type_changed', t.typeId, type.id, false]);
+      // SD-2.11: the new type's lifecycle (if any) applies from now; the ticket moves to its start when its status is
+      // not part of it.
+      const pin = await lifecyclePin(tx, org, t.deskId, type.id);
+      data.lifecycleId = pin?.lifecycleId ?? null;
+      data.lifecycleVersion = pin?.version ?? null;
+      if (pin && !c.statusId && !pin.statusIds.includes(t.statusId)) c.statusId = pin.startStatusId;
       // YX-SD-09: a label made only for the old type moves to the new type's label for the same system state.
       const cur = await tx.sdStatus.findFirstOrThrow({ where: { organizationId: org, id: t.statusId } });
       if (cur.ticketTypeId && !c.statusId) c.statusId = (await this.firstStatus(tx, org, t.deskId, type.id, cur.systemState)).id;
@@ -650,6 +668,8 @@ export class TicketsService {
       // §5.7: a sensitive category makes the ticket visible only to the desk's agents.
       data.sensitive = Boolean(cat?.sensitive);
       log.push(['category_changed', t.categoryId, cat?.id ?? null, false]);
+      // SD-2.09: moving into a private-by-default category makes the ticket private (never the other way).
+      if (cat?.privateByDefault && !t.private && c.private === undefined) c.private = true;
     }
     let priority = t.priority;
     if (c.priority !== undefined && c.priority !== t.priority) {
@@ -715,6 +735,9 @@ export class TicketsService {
     const org = t.organizationId;
     const open = await tx.sdTask.count({ where: { organizationId: org, ticketId: t.id, state: { in: ['open', 'in_progress'] } } });
     if (open) throw new ConflictException({ statusCode: 409, code: 'TASKS_OPEN', message: `Finish or cancel the ${open} open task${open > 1 ? 's' : ''} first.` });
+    // US-G-045: a request waits while a document is waiting for its signature.
+    const unsigned = await tx.sdRequestDocument.count({ where: { organizationId: org, ticketId: t.id, status: 'pending' } });
+    if (unsigned) throw new ConflictException({ statusCode: 409, code: 'SIGNATURE_PENDING', message: 'A document is still waiting for a signature. Wait for it, or withdraw it.' });
     const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { resolutionRequired: true } });
     const code = c.resolutionCode !== undefined ? c.resolutionCode : t.resolutionCode;
     const note = c.resolutionNote !== undefined ? c.resolutionNote : t.resolutionNote;
@@ -755,8 +778,36 @@ export class TicketsService {
       requireWork(a, t.deskId);
       await this.checkVersion(tx, a, t, dto.version);
       const { version: _v, ...changes } = dto;
+      if (changes.statusId) await this.checkLifecycle(tx, a, t, changes.statusId, changes);
       return this.summary(await this.applyIn(tx, a, t, changes));
     });
+  }
+
+  /**
+   * SD-2.11: an agent's status change must be an allowed move of the ticket's lifecycle version, by the right person,
+   * with its fields filled and its condition met. Tickets without a lifecycle move freely, as before.
+   */
+  async checkLifecycle(tx: Tx, a: DeskActor, t: Ticket, toStatusId: string, c: Changes = {}) {
+    if (!t.lifecycleId || !t.lifecycleVersion || toStatusId === t.statusId) return;
+    const org = t.organizationId;
+    const v = await tx.sdLifecycleVersion.findFirst({ where: { organizationId: org, lifecycleId: t.lifecycleId, version: t.lifecycleVersion } });
+    if (!v) return;
+    const labels = new Map((await tx.sdStatus.findMany({ where: { organizationId: org, deskId: t.deskId }, select: { id: true, label: true } })).map((x) => [x.id, x.label]));
+    const pick = <K extends keyof Changes & keyof Ticket>(k: K) => (c[k] !== undefined ? c[k] : t[k]);
+    const why = checkMove({ transitions: v.transitions as unknown as Transition[] }, t.statusId, toStatusId, {
+      values: { category: pick('categoryId') as string | null, group: pick('groupId') as string | null, priority: (pick('priority') as number) ?? t.priority, tier: t.tier, assigned: t.assigneeUserId ? 'yes' : 'no', vip: t.vip ? 'yes' : 'no', tags: (pick('tags') as string[]) ?? t.tags },
+      filled: {
+        category: Boolean(pick('categoryId')),
+        group: Boolean(pick('groupId')),
+        assignee: Boolean(t.assigneeUserId),
+        resolution_code: Boolean(pick('resolutionCode')),
+        resolution_note: Boolean(String(pick('resolutionNote') ?? '').trim()),
+        impact: Boolean(pick('impact')),
+        urgency: Boolean(pick('urgency')),
+      },
+      lead: a.roles.get(t.deskId) === 'lead',
+    }, (id) => labels.get(id) ?? 'that status');
+    if (why) throw new ConflictException({ statusCode: 409, code: 'MOVE_NOT_ALLOWED', message: why });
   }
 
   async checkVersion(tx: Tx, a: DeskActor, t: Ticket, version: number) {
@@ -1057,6 +1108,7 @@ export class TicketsService {
         await this.tx(a, async (tx) => {
           const { t, access } = await this.load(tx, a, id);
           if (access !== 'agent' || !canLead(a, t.deskId, 'desk.ticket.bulk')) throw new ForbiddenException('Only a team lead of this desk changes many tickets at once.');
+          if (action.statusId) await this.checkLifecycle(tx, a, t, action.statusId);
           let cur = await this.applyIn(
             tx,
             a,
@@ -1103,4 +1155,12 @@ export class TicketsService {
     }
   }
 
+}
+
+/** SD-2.11: the active lifecycle version of a desk's ticket type, if it has one. */
+export async function lifecyclePin(tx: Tx, org: string, deskId: string, typeId: string) {
+  const lc = await tx.sdLifecycle.findFirst({ where: { organizationId: org, deskId, ticketTypeId: typeId, state: 'active' }, select: { id: true, currentVersion: true } });
+  if (!lc?.currentVersion) return null;
+  const v = await tx.sdLifecycleVersion.findFirstOrThrow({ where: { organizationId: org, lifecycleId: lc.id, version: lc.currentVersion } });
+  return { lifecycleId: lc.id, version: v.version, startStatusId: v.startStatusId, statusIds: v.statusIds };
 }

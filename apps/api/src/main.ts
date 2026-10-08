@@ -9,6 +9,7 @@ import { resolveInternalBindHost } from './bootstrap-config';
 import { mountSmsCallbackBody } from './sms-channel/sms-channel.controller';
 import { mountInboundMailBody } from './service-desk/channels.controller';
 import { companyOriginPattern } from './auth/company-scope';
+import { ChatIoAdapter } from './service-desk/chat-io.adapter';
 
 // Express's default 100kb JSON body limit rejects the public job-application endpoint's
 // résumé upload before it reaches the handler -- POST /public/jobs/:applyToken/apply carries
@@ -39,6 +40,8 @@ async function bootstrap() {
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
   app.setGlobalPrefix('api/v1');
+  // SD-2.18: live chat sockets shared across API servers through Redis (D1).
+  app.useWebSocketAdapter(new ChatIoAdapter(app));
   app.enableShutdownHooks();
   await app.listen(process.env.API_PORT ?? 3001);
 

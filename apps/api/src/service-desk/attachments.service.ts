@@ -156,8 +156,24 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
     return row;
   }
 
-  async enqueue(organizationId: string, attachmentId: string) {
-    await this.queue.add('scan', { organizationId, attachmentId }, { jobId: `scan-${attachmentId}`, attempts: 8, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: 100 });
+  async enqueue(organizationId: string, attachmentId: string, kind: 'ticket' | 'chat' = 'ticket') {
+    await this.queue.add('scan', { organizationId, attachmentId, kind }, { jobId: `scan-${attachmentId}`, attempts: 8, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: 100 });
+  }
+
+  /** SD-2.19: a file sent in a live chat (the chat's desk rules for types and size), scanned like any ticket file. */
+  async storeChatFile(tx: Tx, ctx: { organizationId: string }, session: { id: string; deskId: string }, file: { originalname: string; buffer: Buffer }, userId: string) {
+    const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: ctx.organizationId, id: session.deskId } });
+    const name = safeName(file.originalname);
+    const check = await checkFile(name, file.buffer, desk.attachmentTypes, desk.attachmentMaxMb);
+    if (!check.ok) throw new BadRequestException({ statusCode: 400, code: 'FILE_REFUSED', message: `${name} was not added. ${check.reason}` });
+    const id = randomUUID();
+    const blobKey = await this.put(`desk/${ctx.organizationId}/chat/${session.id}/${id}`, file.buffer, check.contentType!);
+    return tx.sdChatFile.create({ data: { id, organizationId: ctx.organizationId, deskId: session.deskId, sessionId: session.id, uploadedByUserId: userId, blobKey, fileName: name, contentType: check.contentType!, sizeBytes: file.buffer.length, sha256: createHash('sha256').update(file.buffer).digest('hex') } });
+  }
+
+  /** A link to a clean chat file, for someone the caller already checked may see the chat. */
+  chatLink(row: { id: string; organizationId: string; scanStatus: string }, userId: string) {
+    return this.linkFor(row, userId, 'c');
   }
 
   /** An agent's file (or a collaborator's, for a note): internal until it is sent with a reply. */
@@ -191,10 +207,11 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
 
   // ------------------------------------------------------------------------------------------ scan
 
-  async scanJob(job: Job<{ organizationId?: string; attachmentId?: string }>): Promise<void> {
+  async scanJob(job: Job<{ organizationId?: string; attachmentId?: string; kind?: 'ticket' | 'chat' }>): Promise<void> {
     if (job.name === 'sweep') return this.sweep();
     const { organizationId, attachmentId } = job.data;
     if (!organizationId || !attachmentId) return;
+    if (job.data.kind === 'chat') return this.scanChatFile(organizationId, attachmentId);
     const ctx = { organizationId, isSuperAdmin: false };
     const row = await deskSystem(this.tenantPrisma, ctx, (tx) => tx.sdAttachment.findFirst({ where: { organizationId, id: attachmentId } }));
     if (!row || row.scanStatus !== 'pending') return;
@@ -211,19 +228,35 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
     if (result.verdict === 'infected') this.logger.warn(`Infected desk attachment ${row.id} quarantined (${result.detail})`);
   }
 
+  private async scanChatFile(organizationId: string, id: string) {
+    const ctx = { organizationId, isSuperAdmin: false };
+    const row = await deskSystem(this.tenantPrisma, ctx, (tx) => tx.sdChatFile.findFirst({ where: { organizationId, id } }));
+    if (!row || row.scanStatus !== 'pending') return;
+    if (!this.scanner) throw new Error('No virus scanner configured');
+    const result = await this.scanner.scan(await this.get(row.blobKey));
+    if (result.verdict === 'error') throw new Error(result.detail);
+    await deskSystem(this.tenantPrisma, ctx, async (tx) => {
+      const res = await tx.sdChatFile.updateMany({ where: { organizationId, id, scanStatus: 'pending' }, data: { scanStatus: result.verdict, scanDetail: result.detail.slice(0, 200), scannedAt: new Date() } });
+      if (res.count) await AuditService.recordIn(tx, ctx, { actorUserId: null, action: `desk.chat_file.${result.verdict}`, entityType: 'sd_chat_session', entityId: row.sessionId, metadata: { fileId: id, scanner: this.scanner!.name, detail: result.detail } });
+    });
+  }
+
   private async sweep() {
-    const rows = await deskSystem(this.tenantPrisma, { organizationId: null, isSuperAdmin: true }, (tx) =>
-      tx.sdAttachment.findMany({ where: { scanStatus: 'pending', createdAt: { lt: new Date(Date.now() - 5 * 60_000) } }, select: { id: true, organizationId: true }, take: 500 }),
-    );
+    const old = new Date(Date.now() - 5 * 60_000);
+    const [rows, chat] = await deskSystem(this.tenantPrisma, { organizationId: null, isSuperAdmin: true }, async (tx) => [
+      await tx.sdAttachment.findMany({ where: { scanStatus: 'pending', createdAt: { lt: old } }, select: { id: true, organizationId: true }, take: 500 }),
+      await tx.sdChatFile.findMany({ where: { scanStatus: 'pending', createdAt: { lt: old } }, select: { id: true, organizationId: true }, take: 500 }),
+    ]);
     for (const r of rows) await this.enqueue(r.organizationId, r.id);
+    for (const r of chat) await this.enqueue(r.organizationId, r.id, 'chat');
   }
 
   // ------------------------------------------------------------------------------------------ download
 
-  private linkFor(row: { id: string; organizationId: string; scanStatus: string }, userId: string) {
+  private linkFor(row: { id: string; organizationId: string; scanStatus: string }, userId: string, kind: 't' | 'c' = 't') {
     if (row.scanStatus === 'pending') throw new ConflictException({ statusCode: 409, code: 'FILE_NOT_SCANNED', message: 'This file is still being checked for viruses. Try again in a minute.' });
     if (row.scanStatus !== 'clean') throw new GoneException({ statusCode: 410, code: 'FILE_BLOCKED', message: 'This file was blocked because it may be harmful.' });
-    const token = this.links.sign({ a: row.id, o: row.organizationId, u: userId }, { expiresIn: LINK_SECONDS, audience: 'sd-file' });
+    const token = this.links.sign({ a: row.id, o: row.organizationId, u: userId, ...(kind === 'c' ? { k: 'c' } : {}) }, { expiresIn: LINK_SECONDS, audience: 'sd-file' });
     return { url: `/desk/files/${token}`, expiresInSeconds: LINK_SECONDS };
   }
 
@@ -252,13 +285,17 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
 
   /** GET /desk/files/:token. The token is the only key: short-lived, bound to one file, re-checked as clean. */
   async download(token: string): Promise<{ data: Buffer; fileName: string; contentType: string; inline: boolean }> {
-    let claims: { a: string; o: string; u: string };
+    let claims: { a: string; o: string; u: string; k?: string };
     try {
       claims = this.links.verify(token, { audience: 'sd-file' });
     } catch {
       throw new NotFoundException('This link has expired. Open the file again from the ticket.');
     }
-    const row = await this.tenantPrisma.forTenant({ organizationId: claims.o, isSuperAdmin: false, userId: claims.u }, (tx) => tx.sdAttachment.findFirst({ where: { organizationId: claims.o, id: claims.a } }));
+    const ctx = { organizationId: claims.o, isSuperAdmin: false, userId: claims.u };
+    // A chat file's link is re-checked under the chat's own visibility (its requester or the desk's agents).
+    const where = { organizationId: claims.o, id: claims.a };
+    const select = { scanStatus: true, blobKey: true, fileName: true, contentType: true };
+    const row = await this.tenantPrisma.forTenant(ctx, (tx) => (claims.k === 'c' ? tx.sdChatFile.findFirst({ where, select }) : tx.sdAttachment.findFirst({ where, select })));
     if (!row || row.scanStatus !== 'clean') throw new NotFoundException('No such file.');
     return { data: await this.get(row.blobKey), fileName: row.fileName, contentType: row.contentType, inline: INLINE.has(row.contentType) };
   }

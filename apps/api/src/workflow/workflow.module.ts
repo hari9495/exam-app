@@ -6,6 +6,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { REDIS_CONNECTION, createRedisConnection, logBullErrors } from '../jobs/redis-connection';
 import { ApprovalsEngine } from './approvals-engine.service';
 import { WorkflowController } from './workflow.controller';
+import { ApprovalCards } from './approval-channels';
+import { ActionLinkController, ChannelLinksController } from './approval-links.controller';
 
 const QUEUE = 'wf-jobs';
 
@@ -47,8 +49,8 @@ export class WorkflowJobs implements OnModuleInit, OnModuleDestroy {
 // P03 approvals engine (shared platform engine): modules register request types with ApprovalsEngine.
 @Module({
   imports: [AuditModule, NotificationsModule],
-  controllers: [WorkflowController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ApprovalsEngine, WorkflowJobs],
-  exports: [ApprovalsEngine],
+  controllers: [WorkflowController, ActionLinkController, ChannelLinksController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ApprovalCards, ApprovalsEngine, WorkflowJobs],
+  exports: [ApprovalsEngine, ApprovalCards],
 })
 export class WorkflowModule {}

@@ -2,13 +2,13 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { Tx } from '../org-structure/org-structure.service';
-import { todayIst } from '../org-structure/org-validation';
 import { FieldDef, Group, RecordValues, RuleError, evaluate, parseGroup } from '../rules-engine/conditions';
 import { Answers, EMPTY_FORM, FormDef, FormField, FormRule, REQUESTER_FIELDS, checkAnswers, expandQuestionnaires, formSchema, parseForm, pickedIds, summarise } from '../rules-engine/forms';
 import { ApprovalsEngine, Notice, Outcome, StepSpec, parseSteps } from '../workflow/approvals-engine.service';
 import { DESK_KEYS, DeskActor, audit, emit, has, requireDesk, requireSetUp, requireWork } from './desk-access';
 import { AdhocApprovalDto, CatalogItemDto, CatalogSettingsDto, CheckoutDto, ItemDraftDto, OrderGuideDto, QuestionnaireDto, UpdateCatalogItemDto } from './dto-esm';
 import { Requester, RequesterService } from './requester.service';
+import { profileOf } from './people-facts';
 import { cleanHtml, htmlToText } from './rich-text';
 import { OPEN_STATES, Ticket, TicketsService } from './tickets.service';
 
@@ -95,6 +95,10 @@ export class CatalogService implements OnModuleInit {
       autoActions: true,
       onDecided: (tx, req, outcome) => this.itemDecided(tx, req, outcome),
       requesterLink: (req) => `/yx/desk/help?request=${req.subjectId}`,
+      cardPreview: async (tx, req) => {
+        const ri = await tx.sdRequestItem.findFirst({ where: { organizationId: req.organizationId, id: req.subjectId }, select: { ticketId: true } });
+        return ri ? this.previewOfTicket(tx, req.organizationId, ri.ticketId) : 'neutral';
+      },
     });
     this.approvals.register({
       key: TICKET_APPROVAL,
@@ -103,7 +107,16 @@ export class CatalogService implements OnModuleInit {
       autoActions: false,
       onDecided: (tx, req, outcome) => this.adhocDecided(tx, req, outcome),
       requesterLink: (req) => `/yx/desk/tickets/${req.subjectId}`,
+      cardPreview: (tx, req) => this.previewOfTicket(tx, req.organizationId, req.subjectId),
     });
+  }
+
+  /** SD-2.06: a sensitive or private ticket's approvals never show their words outside the app (YX-SD-14). */
+  private async previewOfTicket(tx: Tx, org: string, ticketId: string): Promise<'full' | 'neutral'> {
+    const t = await tx.sdTicket.findFirst({ where: { organizationId: org, id: ticketId }, select: { sensitive: true, private: true, deskId: true } });
+    if (!t || t.sensitive || t.private) return 'neutral';
+    const desk = await tx.sdDesk.findFirst({ where: { organizationId: org, id: t.deskId }, select: { privacy: true } });
+    return desk?.privacy === 'standard' ? 'full' : 'neutral';
   }
 
   private tx<T>(a: { ctx: DeskActor['ctx'] }, fn: (tx: Tx) => Promise<T>) {
@@ -113,14 +126,8 @@ export class CatalogService implements OnModuleInit {
   // ------------------------------------------------------------------------------------------ the requester's profile
 
   /** The person's department, location, cost centre and legal entity today (P01), for audiences and form rules. */
-  async profileOf(tx: Tx, org: string, personId: string): Promise<RecordValues> {
-    const today = new Date(`${todayIst()}T00:00:00Z`);
-    const emp = await tx.employee.findFirst({ where: { organizationId: org, personId }, select: { id: true } });
-    const a = emp
-      ? await tx.employeeAssignment.findFirst({ where: { organizationId: org, employeeId: emp.id, supersededAt: null, validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] }, orderBy: { validFrom: 'desc' } })
-      : null;
-    const cc = a ? await tx.assignmentCostCentre.findFirst({ where: { organizationId: org, assignmentId: a.id }, orderBy: { percent: 'desc' } }) : null;
-    return { 'requester.department': a?.departmentId ?? null, 'requester.location': a?.locationId ?? null, 'requester.legal_entity': a?.legalEntityId ?? null, 'requester.cost_centre': cc?.costCentreId ?? null };
+  profileOf(tx: Tx, org: string, personId: string): Promise<RecordValues> {
+    return profileOf(tx, org, personId);
   }
 
   private seesItem(item: Item, profile: RecordValues) {
@@ -207,7 +214,7 @@ export class CatalogService implements OnModuleInit {
   }
 
   private itemView(i: Item) {
-    return { id: i.id, deskId: i.deskId, categoryId: i.categoryId, name: i.name, shortText: i.shortText, state: i.state, currentVersion: i.currentVersion, audience: i.audience, cost: i.cost === null ? null : Number(i.cost), currency: i.currency, deliveryDays: i.deliveryDays, sortOrder: i.sortOrder, draft: i.draft, version: i.version, updatedAt: i.updatedAt };
+    return { id: i.id, deskId: i.deskId, categoryId: i.categoryId, name: i.name, shortText: i.shortText, state: i.state, currentVersion: i.currentVersion, audience: i.audience, cost: i.cost === null ? null : Number(i.cost), currency: i.currency, deliveryDays: i.deliveryDays, journeyOnly: i.journeyOnly, sortOrder: i.sortOrder, draft: i.draft, version: i.version, updatedAt: i.updatedAt };
   }
 
   async adminItems(a: DeskActor, deskId: string) {
@@ -243,7 +250,7 @@ export class CatalogService implements OnModuleInit {
       const draft = dto.draft ? await this.safeDraft(tx, org, dto.deskId, dto.draft) : {};
       if (await tx.sdCatalogItem.findFirst({ where: { organizationId: org, deskId: dto.deskId, name: dto.name }, select: { id: true } })) throw new ConflictException('This desk already has an item with that name.');
       const item = await tx.sdCatalogItem.create({
-        data: { organizationId: org, deskId: dto.deskId, categoryId: dto.categoryId ?? null, name: dto.name, shortText: dto.shortText || null, audience: (audience ?? Prisma.DbNull) as unknown as Prisma.InputJsonValue, cost: dto.cost ?? null, deliveryDays: dto.deliveryDays ?? null, sortOrder: dto.sortOrder ?? 0, draft: draft as Prisma.InputJsonValue, createdBy: a.userId },
+        data: { organizationId: org, deskId: dto.deskId, categoryId: dto.categoryId ?? null, name: dto.name, shortText: dto.shortText || null, audience: (audience ?? Prisma.DbNull) as unknown as Prisma.InputJsonValue, cost: dto.cost ?? null, deliveryDays: dto.deliveryDays ?? null, journeyOnly: dto.journeyOnly ?? false, sortOrder: dto.sortOrder ?? 0, draft: draft as Prisma.InputJsonValue, createdBy: a.userId },
       });
       await audit(tx, a, 'desk.catalog.item_created', 'sd_catalog_item', item.id, { deskId: dto.deskId, name: dto.name });
       return this.itemView(item);
@@ -273,6 +280,7 @@ export class CatalogService implements OnModuleInit {
           ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
           ...(dto.cost !== undefined ? { cost: dto.cost } : {}),
           ...(dto.deliveryDays !== undefined ? { deliveryDays: dto.deliveryDays } : {}),
+          ...(dto.journeyOnly !== undefined ? { journeyOnly: dto.journeyOnly } : {}),
           ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
           ...(audience !== undefined ? { audience: (audience ?? Prisma.DbNull) as unknown as Prisma.InputJsonValue } : {}),
           ...(draft ? { draft: draft as Prisma.InputJsonValue } : {}),
@@ -443,7 +451,7 @@ export class CatalogService implements OnModuleInit {
       const personId = await this.requesters.personOf(tx, r, false);
       const profile = personId ? await this.profileOf(tx, org, personId) : {};
       const desks = await tx.sdDesk.findMany({ where: { organizationId: org, status: 'active', kind: { not: 'customer_support' } }, select: { id: true, name: true } });
-      const items = await tx.sdCatalogItem.findMany({ where: { organizationId: org, state: 'published', deskId: { in: desks.map((d) => d.id) } }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+      const items = await tx.sdCatalogItem.findMany({ where: { organizationId: org, state: 'published', journeyOnly: false, deskId: { in: desks.map((d) => d.id) } }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
       const cats = new Map((await tx.sdCategory.findMany({ where: { organizationId: org, id: { in: items.map((i) => i.categoryId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map((c) => [c.id, c.name]));
       const deskName = new Map(desks.map((d) => [d.id, d.name]));
       const guides = await tx.sdOrderGuide.findMany({ where: { organizationId: org, active: true }, select: { id: true, name: true, description: true } });
@@ -456,7 +464,7 @@ export class CatalogService implements OnModuleInit {
 
   private async visibleItem(tx: Tx, r: Requester, id: string): Promise<{ item: Item; v: Version; profile: RecordValues }> {
     const org = r.ctx.organizationId;
-    const item = await tx.sdCatalogItem.findFirst({ where: { organizationId: org, id, state: 'published' } });
+    const item = await tx.sdCatalogItem.findFirst({ where: { organizationId: org, id, state: 'published', journeyOnly: false } });
     const desk = item && (await tx.sdDesk.findFirst({ where: { organizationId: org, id: item.deskId, status: 'active' }, select: { kind: true } }));
     const personId = await this.requesters.personOf(tx, r, false);
     const profile = personId ? await this.profileOf(tx, org, personId) : {};
@@ -510,7 +518,7 @@ export class CatalogService implements OnModuleInit {
       if (Object.keys(errors).length) throw new BadRequestException({ statusCode: 400, code: 'FORM_ERRORS', message: 'Check the answers.', errors });
       const rec = { ...(values as RecordValues), ...profile };
       const ids = new Set((g.rules as unknown as { when: Group; itemIds: string[] }[]).filter((x) => evaluate(x.when, rec, formSchema(form)).pass).flatMap((x) => x.itemIds));
-      const items = await tx.sdCatalogItem.findMany({ where: { organizationId: org, id: { in: [...ids] }, state: 'published' } });
+      const items = await tx.sdCatalogItem.findMany({ where: { organizationId: org, id: { in: [...ids] }, state: 'published', journeyOnly: false } });
       return items.filter((i) => this.seesItem(i, profile)).map((i) => ({ id: i.id, name: i.name, shortText: i.shortText, cost: i.cost === null ? null : Number(i.cost) }));
     });
   }
@@ -580,7 +588,7 @@ export class CatalogService implements OnModuleInit {
       const errors: Record<number, Record<string, string>> = {};
       const lines: { item: Item; v: Version; form: FormDef; values: Answers; quantity: number; names: Map<string, string> }[] = [];
       for (const [i, line] of dto.items.entries()) {
-        const item = await tx.sdCatalogItem.findFirst({ where: { organizationId: org, id: line.itemId, state: 'published' } });
+        const item = await tx.sdCatalogItem.findFirst({ where: { organizationId: org, id: line.itemId, state: 'published', journeyOnly: false } });
         const desk = item && (await tx.sdDesk.findFirst({ where: { organizationId: org, id: item.deskId, status: 'active' }, select: { kind: true } }));
         if (!item || !desk || desk.kind === 'customer_support' || !this.seesItem(item, profile)) throw new NotFoundException('No such catalogue item.');
         const v = await tx.sdCatalogItemVersion.findFirstOrThrow({ where: { organizationId: org, itemId: item.id, version: item.currentVersion! } });
@@ -656,7 +664,7 @@ export class CatalogService implements OnModuleInit {
   // ------------------------------------------------------------------------------------------ approvals → fulfilment
 
   /** US-B-126: the item's plan becomes tasks for its teams, each with its OLA as the due time. */
-  private async startFulfilment(tx: Tx, a: { ctx: DeskActor['ctx'] }, t: Ticket, ri: ReqItem, v: Version) {
+  async startFulfilment(tx: Tx, a: { ctx: DeskActor['ctx'] }, t: Ticket, ri: ReqItem, v: Version, dueBy?: Date) {
     const org = a.ctx.organizationId;
     const plan = v.fulfilment as unknown as FulfilmentTask[];
     await tx.sdRequestItem.update({ where: { id: ri.id }, data: { stage: 'fulfilment', stageAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
@@ -664,7 +672,7 @@ export class CatalogService implements OnModuleInit {
     for (const [i, p] of plan.entries()) {
       // The team may have been switched off since publishing: the task then waits on the desk with no team.
       const group = await tx.sdGroup.findFirst({ where: { organizationId: org, deskId: ri.deskId, id: p.groupId, active: true }, select: { id: true } });
-      const k = await tx.sdTask.create({ data: { organizationId: org, deskId: ri.deskId, ticketId: t.id, title: p.title.slice(0, 200), note: p.note ?? null, groupId: group?.id ?? null, dueAt: p.olaHours ? new Date(Date.now() + p.olaHours * 3_600_000) : null, sortOrder: i, requestItemId: ri.id } });
+      const k = await tx.sdTask.create({ data: { organizationId: org, deskId: ri.deskId, ticketId: t.id, title: p.title.slice(0, 200), note: p.note ?? null, groupId: group?.id ?? null, dueAt: dueBy ?? (p.olaHours ? new Date(Date.now() + p.olaHours * 3_600_000) : null), sortOrder: i, requestItemId: ri.id } });
       await this.tickets.event(tx, t, 'task_added', null, k.title.slice(0, 100), { by: null, reason: `Fulfilment of ${item.name}` });
     }
     await this.tickets.event(tx, t, 'request_stage', 'approval', 'fulfilment', { by: null, reason: item.name, requesterVisible: true });

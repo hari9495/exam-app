@@ -6,7 +6,8 @@ import { Tx } from '../org-structure/org-structure.service';
 import { addDays, todayIst } from '../org-structure/org-validation';
 import { isValidZone } from './business-time';
 import { cleanHtml, htmlToText } from './rich-text';
-import { STARTER_HOURS, starterFor, starterPriority } from './starter';
+import { PRIVATE_BY_DEFAULT, STARTER_HOURS, STARTER_PACKS, starterFor, starterPriority } from './starter';
+import { EMPTY_FORM } from '../rules-engine/forms';
 import { DeskActor, activeOn, audit, canSetUp, emit, has, isAgentOn, requireSetUp, requireWork } from './desk-access';
 import {
   AddMemberDto,
@@ -109,17 +110,19 @@ export class DesksService {
         const freeHrTaken = Boolean(await tx.sdDesk.findFirst({ where: { organizationId: org, billingClass: 'hrms_included' }, select: { id: true } }));
         const billingClass = dto.kind === 'hr' && hrms && !freeHrTaken ? 'hrms_included' : 'service_desk';
         const calendarId = await this.officeHours(tx, a);
-        const desk = await tx.sdDesk.create({ data: { organizationId: org, key: dto.key, name: dto.name, kind: dto.kind, billingClass, calendarId, numberPrefix: `${dto.key}-`, createdBy: a.userId } });
+        // SD-2.09: a new HR desk is restricted (M08: only its agents see its tickets, never a desk admin without a seat).
+        const desk = await tx.sdDesk.create({ data: { organizationId: org, key: dto.key, name: dto.name, kind: dto.kind, billingClass, calendarId, privacy: STARTER_PACKS[dto.kind]?.restricted ? 'restricted' : 'standard', numberPrefix: `${dto.key}-`, createdBy: a.userId } });
         const d = { organizationId: org, deskId: desk.id };
         await tx.sdCounter.create({ data: { ...d, nextNumber: 1001 } });
         const starter = starterFor(dto.kind);
         await tx.sdTicketType.createMany({ data: starter.types.map((t, i) => ({ ...d, kind: t.kind, name: t.name, sortOrder: i })) });
         await tx.sdStatus.createMany({ data: starter.statuses.map((s, i) => ({ ...d, label: s.label, systemState: s.systemState, sortOrder: i })) });
         const group = await tx.sdGroup.create({ data: { ...d, name: `${dto.name} team`, assignmentMethod: 'round_robin' } });
-        await tx.sdCategory.createMany({ data: starter.categories.map((c, i) => ({ ...d, name: c.name, sensitive: Boolean(c.sensitive), defaultGroupId: group.id, sortOrder: i })) });
+        await tx.sdCategory.createMany({ data: starter.categories.map((c, i) => ({ ...d, name: c.name, sensitive: Boolean(c.sensitive), privateByDefault: PRIVATE_BY_DEFAULT.has(`${dto.kind}:${c.name}`), defaultGroupId: group.id, sortOrder: i })) });
         const cells = [1, 2, 3, 4].flatMap((impact) => [1, 2, 3, 4].map((urgency) => ({ ...d, impact, urgency, priority: starterPriority(impact, urgency) })));
         await tx.sdPriorityMatrix.createMany({ data: cells });
-        await audit(tx, a, 'desk.desk.created', 'sd_desk', desk.id, { key: desk.key, name: desk.name, kind: desk.kind, billingClass });
+        const pack = await installPack(tx, a, desk);
+        await audit(tx, a, 'desk.desk.created', 'sd_desk', desk.id, { key: desk.key, name: desk.name, kind: desk.kind, billingClass, starterPack: pack });
         return this.deskView(desk);
       });
     } catch (e) {
@@ -662,4 +665,38 @@ export async function endSeatIn(tx: Tx, a: { ctx: DeskActor['ctx']; userId: stri
   // Records they were added to as a collaborator close with the seat.
   await tx.sdTicketCollaborator.deleteMany({ where: { organizationId: org, deskId: m.deskId, userId: m.userId } });
   await audit(tx, { ctx: a.ctx, userId: a.userId as string }, 'desk.member.ended', 'sd_desk_member', m.id, { deskId: m.deskId, userId: m.userId, role: m.role, validTo, ...(why ? { why } : {}) });
+}
+
+/**
+ * SD-2.09: the desk kind's starter pack (catalogue items fulfilled by the desk's own team, SLA targets, M08 privacy for
+ * HR categories). Adds only what is missing, so it is safe to run again on an existing desk.
+ */
+export async function installPack(tx: Tx, a: { ctx: DeskActor['ctx']; userId: string | null }, desk: { id: string; kind: string }) {
+  const pack = STARTER_PACKS[desk.kind];
+  if (!pack) return null;
+  const org = a.ctx.organizationId;
+  const d = { organizationId: org, deskId: desk.id };
+  for (const name of [...PRIVATE_BY_DEFAULT].filter((k) => k.startsWith(`${desk.kind}:`)).map((k) => k.slice(desk.kind.length + 1))) {
+    await tx.sdCategory.updateMany({ where: { ...d, name, sensitive: true }, data: { privateByDefault: true } });
+  }
+  const team = await tx.sdGroup.findFirst({ where: { ...d, active: true }, orderBy: { createdAt: 'asc' }, select: { id: true } });
+  let items = 0;
+  for (const [i, it] of pack.items.entries()) {
+    if (!team || (await tx.sdCatalogItem.findFirst({ where: { ...d, name: it.name }, select: { id: true } }))) continue;
+    let cat = await tx.sdCategory.findFirst({ where: { ...d, name: it.category }, select: { id: true } });
+    cat ??= await tx.sdCategory.create({ data: { ...d, name: it.category, defaultGroupId: team.id, sortOrder: 50 }, select: { id: true } });
+    const approval = it.managerApproves ? [{ name: 'Manager', approvers: [{ kind: 'manager', level: 1 }], mode: 'any' }] : [];
+    const fulfilment = it.tasks.map((t) => ({ title: t.title, groupId: team.id, olaHours: t.olaHours }));
+    const draft = { bodyHtml: '', media: [], form: EMPTY_FORM, approval, fulfilment };
+    const row = await tx.sdCatalogItem.create({ data: { ...d, categoryId: cat.id, name: it.name, shortText: it.shortText, state: 'published', currentVersion: 1, deliveryDays: it.deliveryDays, journeyOnly: Boolean(it.journeyOnly), sortOrder: 100 + i, draft: draft as unknown as Prisma.InputJsonValue, createdBy: a.userId } });
+    await tx.sdCatalogItemVersion.create({ data: { ...d, itemId: row.id, version: 1, form: EMPTY_FORM as unknown as Prisma.InputJsonValue, approval: approval as unknown as Prisma.InputJsonValue, fulfilment: fulfilment as unknown as Prisma.InputJsonValue, publishedBy: a.userId } });
+    items++;
+  }
+  let sla = false;
+  if (!(await tx.sdSlaPolicy.findFirst({ where: { ...d, kind: 'sla' }, select: { id: true } }))) {
+    const p = await tx.sdSlaPolicy.create({ data: { ...d, name: 'Starter targets', kind: 'sla', createdBy: a.userId } });
+    await tx.sdSlaPolicyVersion.create({ data: { ...d, policyId: p.id, version: 1, scope: {}, calendarSource: 'desk', targets: [{ metric: 'first_response', minutes: pack.firstResponse }, { metric: 'resolution', minutes: pack.resolution }], createdBy: a.userId } });
+    sla = true;
+  }
+  return { items, sla };
 }
