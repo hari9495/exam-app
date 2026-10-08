@@ -109,8 +109,10 @@ export async function checkSender(raw: Buffer, env: Envelope, fromAddress: strin
 export function resolverFromEnv(env = process.env): DnsResolver | undefined {
   if (!env.SD_MAIL_DEV_DNS) return undefined;
   if (env.NODE_ENV === 'production') throw new Error('SD_MAIL_DEV_DNS is for laptops only.');
-  const zone = JSON.parse(readFileSync(env.SD_MAIL_DEV_DNS, 'utf8')) as Record<string, string[]>;
+  const file = env.SD_MAIL_DEV_DNS;
   return async (name, type) => {
+    // Read on every look-up, so a test can add records while the API runs.
+    const zone = JSON.parse(readFileSync(file, 'utf8')) as Record<string, string[]>;
     const hit = zone[`${type}:${name.toLowerCase()}`];
     if (hit) return type === 'TXT' ? hit.map((x) => [x]) : hit;
     if (type === 'TXT' || type === 'MX' || type === 'A' || type === 'AAAA') {

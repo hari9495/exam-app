@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
@@ -161,7 +161,16 @@ export class MailInService implements OnModuleInit, OnModuleDestroy {
         return null;
       });
     }
-    const outcome = await deskSystem(this.tenantPrisma, ctx, (tx) => this.decide(tx, organizationId, row, p, facts, release), { timeout: 60_000 });
+    let outcome: Outcome;
+    try {
+      outcome = await deskSystem(this.tenantPrisma, ctx, (tx) => this.decide(tx, organizationId, row, p, facts, release), { timeout: 60_000 });
+    } catch (e) {
+      // A business refusal (an archived desk, a category gone) holds the email for a person instead of retrying for ever.
+      if (!(e instanceof HttpException)) throw e;
+      const reason = `Could not be filed: ${(e.getResponse() as { message?: string }).message ?? e.message}`.slice(0, 300);
+      await deskSystem(this.tenantPrisma, ctx, (tx) => tx.sdInboundEmail.update({ where: { id: row.id }, data: { verdict: 'held', reason, processedAt: new Date() } }));
+      outcome = { verdict: 'held', reason, heldDeskId: row.deskId };
+    }
     // After commit: scans, automatic mail, notices.
     for (const id of outcome.scan ?? []) await this.files.enqueue(organizationId, id);
     if (outcome.ack) await this.out.sendForTicket(ctx, outcome.ack.ticketId, 'ack', { html: outcome.ack.html });
@@ -205,7 +214,7 @@ export class MailInService implements OnModuleInit, OnModuleDestroy {
           fromAddress: p.from?.address ?? null,
           fromName: p.from?.name || null,
           toAddresses: [...p.to, ...p.cc].slice(0, 20),
-          subject: p.subject || null,
+          subject: p.subject ? maskPii(p.subject).text.slice(0, 300) : null,
           ...(facts ? { spf: facts.spf, dkim: facts.dkim, dmarc: facts.dmarc, dmarcPolicy: facts.dmarcPolicy, arc: facts.arc } : {}),
         },
       });

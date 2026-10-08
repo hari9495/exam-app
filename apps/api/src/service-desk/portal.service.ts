@@ -485,7 +485,7 @@ export class PortalService {
     if (send) {
       const link = `${webOrigin()}/yx/portal/${org.slug}/${portal.slug}/confirm?token=${token}`;
       void this.email
-        .send({ to: dto.email, organizationId: org.id, fromName: portal.name, subject: `Confirm your request to ${org.name}`, html: `<p>Hello ${esc(dto.name)},</p><p>Please confirm your request "${esc(dto.subject)}" so we can open a ticket:</p><p><a href="${esc(link)}">Confirm my request</a></p><p>The link works for 24 hours. If you did not ask for help, ignore this email.</p>`, text: `Confirm your request "${dto.subject}": ${link} (works for 24 hours). If you did not ask for help, ignore this email.`, headers: { 'Auto-Submitted': 'auto-generated' } })
+        .send({ to: dto.email, organizationId: org.id, fromName: portal.name, subject: `Confirm your request to ${org.name}`, html: `<p>Hello,</p><p>Please confirm the request you sent to ${esc(org.name)} so we can open a ticket:</p><p><a href="${esc(link)}">Confirm my request</a></p><p>The link works for 24 hours. If you did not ask for help, ignore this email.</p>`, text: `Confirm the request you sent to ${org.name}: ${link} (works for 24 hours). If you did not ask for help, ignore this email.`, headers: { 'Auto-Submitted': 'auto-generated' } })
         .catch((e) => this.logger.warn(`Portal request link not sent: ${(e as Error).message}`));
     }
     return { sent: true };
