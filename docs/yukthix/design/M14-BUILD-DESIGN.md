@@ -3,7 +3,7 @@
 > **Status:** 📝 Draft for founder review, 8 Oct 2026. Docs only, no code yet.
 > **Scope:** the detailed build design for [M14](M14-itsm-service-desk.md) (scope, gap check, decisions Q1–Q10). It turns M14 into tables, permissions, APIs, jobs, screens, tests and a build order of small pull requests.
 > **Order:** four phases, built one after the other: **3b-1 Core → 3b-2 ESM → 3b-3 ITIL → 3b-4 Operations** (M14 Q5).
-> **Backlog:** every slice in §16 names its stories. Base stories are `US-B-085…174` (B.json, epic EP-B-2). Gap-check stories are `US-G-001…209` (G.json). A few step-3b stories live in A.json and E.json and are linked too.
+> **Backlog:** every slice in §16 names its stories. Base stories are `US-B-085…174` (B.json, epic EP-B-2). Gap-check and pass stories are `US-G-001…255` (G.json; US-G-210…255 come from the [Zoho Desk pass](M14-ZOHO-DESK-PASS.md) and the [customer-support leaders pass](M14-CS-LEADERS-PASS.md)). A few step-3b stories live in A.json and E.json and are linked too.
 > **Clean-room:** all features are described in our own words. No competitor text, screens or field names are copied.
 
 ---
@@ -46,6 +46,9 @@ Words used in this doc:
 | Q8 | One plan. No free tier, no add-on SKUs, no day passes, cloud only. | §6.3 |
 | Q9 | AI not in the ₹999. Bring-your-own key = free. YukthiX AI = paid credits (pack sizes set in P14 before 3b-4). | §10.4, SD-4.09 |
 | Q10 | Collaborators are free. | §6.3 |
+| D8 | **Customer support is first-class**, as strong as service management. A desk is created as an **Employee help desk** or a **Customer support desk**, each with a ready starter set-up; same engine underneath. One plan, ₹999 per agent, covers both (keeps Q8). | §3, SD-1.33, §17 D8 |
+| D9 | **No read receipts and no email open tracking** (privacy; we block tracking pixels). | §9, §17 D9 |
+| D10 | **HIPAA deferred**: only if a US health customer comes. Not in the plan. | §17 D10 |
 
 Also followed: M08 (cases stay in M08; its YX-HD-01…05 become the starter rules here), P02 (scopes, restricted areas, external logins, support sessions), P03 (approvals), P04 (notifications, quiet hours, no sensitive data outside the app), P08 (audit), P10 (AI registry, connectors), P11 (API rules), P12 (MFA, step-up), P14 (meter ledger, support tiers, console).
 
@@ -72,6 +75,19 @@ How use 2 works (in simple steps):
 Why narrow functions: no customer session and no console agent ever gets broad cross-tenant rights. Each function is `SECURITY DEFINER`, takes only the fields it needs, and is covered by tests (§15).
 
 When a standalone company later buys YukthiX HR, nothing moves: its people are already P01 `persons`. HR employee records link to the same persons (US-B-121).
+
+### Two desk kinds (D8)
+
+Every desk is created as one of two kinds. The kind only picks the **starter set-up** that is copied in; everything stays editable and runs on the same tables, code and permissions (SD-1.33, US-G-210). Billing follows §6.3 for both.
+
+| | Employee help desk (service management, ITSM + ESM) | Customer support desk (outside customers and guests) |
+|---|---|---|
+| Requesters | Employees from the people list / HR | Contacts and accounts, guests (open portal) |
+| Fields | Category, impact × urgency, location, asset / CI, department | Account, product, plan / entitlement, order number, language |
+| Channels | Portal, in-app drawer, email, Teams / Slack, catalogue | Email, help centre, messenger / widget, chat, WhatsApp and social DMs |
+| Views | My team's open work, awaiting approval, breaching soon | Unassigned, waiting on us, VIP accounts, by product |
+| Reports | SLA, backlog, MTTR, catalogue use | First response, resolution, CSAT, self-service funnel, top contact reasons |
+| SLAs | By priority, business hours of the team | By customer plan (entitlement), first response + resolution |
 
 ---
 
@@ -579,6 +595,7 @@ Breach: the timer becomes `breached`, event `helpdesk.ticket.sla_breached`, esca
 - nodemailer, DKIM-signed with the company's key when they send from their own domain. The set-up screen checks SPF, DKIM and DMARC records and shows what to fix (US-G-017).
 - Every outgoing mail carries `Message-ID`, `In-Reply-To`, `References`, our signed reply-to token, and `Auto-Submitted: auto-replied` on automatic mails.
 - Bounces and complaints update the P04 channel status for that address (YX-NTF-11) and show in the desk's bounce list.
+- **No read receipts or open tracking (D9):** no tracking pixels or tracked links in replies, outbound messages or chat; reports count replies and tickets instead.
 
 ### 9.3 Portal and in-app help drawer (3b-1)
 
@@ -936,19 +953,19 @@ Every slice ships its tests. Every phase ends with a full green run and an indep
 
 Each slice is one pull request with its migration, API, tests and (where listed) wired screen. IDs are stable; new slices get the next free number in their phase. "Stories" link to B.json (US-B), G.json (US-G), A.json (US-A), D.json (US-D) and E.json (US-E).
 
-### 16.1 Phase 3b-1 · Core (32 slices)
+### 16.1 Phase 3b-1 · Core (34 slices)
 
 | ID | Slice | Stories |
 |---|---|---|
 | SD-1.01 | Desk foundation: desks, members (dated), groups, categories, types, statuses, priority matrix; RLS; desk keys and role templates; desk set-up API | US-B-085, US-B-112, US-B-113 |
 | SD-1.02 | Shared business calendars (hours dated, holidays) and the business-time module | US-B-095 |
-| SD-1.03 | Ticket core: create / read / update, numbering, system states and custom labels, type convert, timeline, outbox events | US-B-086, US-B-088, US-G-001 |
+| SD-1.03 | Ticket core: create / read / update, numbering, system states and custom labels, type convert, timeline, outbox events; free ticket number format (prefix, suffix, start) | US-B-086, US-B-088, US-G-001, US-G-214 |
 | SD-1.04 | Requesters: persons as requesters, requested-for, watchers / CC, VIP | US-G-004 |
 | SD-1.05 | Attachments: upload, type allow-list, ClamAV scan queue, signed downloads | US-B-102, US-G-031 |
 | SD-1.06 | Assignment: manual, round-robin, load; skip away / leave / off shift | US-B-087, US-G-011 |
 | SD-1.07 | Agent desk lists: saved views, filters, board, bulk, scenarios, tags, CSV export | US-B-089, US-G-002, US-G-010 |
 | SD-1.08 | Ticket workspace: replies, notes, mentions, rich text, canned responses, collision presence, time tracking, requester context panel | US-B-090, US-B-091, US-G-003 |
-| SD-1.09 | Merge, link, parent / child, split, side conversations | US-B-092, US-G-005 |
+| SD-1.09 | Merge, link, parent / child, split, side conversations; tracker tickets that tell every linked customer when a fix lands | US-B-092, US-G-005, US-G-220 |
 | SD-1.10 | Tasks and checklists, templates, resolution codes, tier escalation, reopen rules, auto-close | US-G-006, US-G-007, US-G-008 |
 | SD-1.11 | Reminders, snooze, personal calendar with iCal feed | US-G-009 |
 | SD-1.12 | Sensitive / private records (restrictive RLS), PII masking, read log | US-B-093, US-G-029, US-G-030 |
@@ -963,21 +980,23 @@ Each slice is one pull request with its migration, API, tests and (where listed)
 | SD-1.21 | Portal and in-app help drawer: raise, my records, themes, login screen, time zones, reading aids | US-B-086, US-B-099, US-B-100, US-G-022 |
 | SD-1.22 | Open portal and external requesters: OTP login, email-link check, Turnstile, limits, allowed domains | US-B-103, US-G-021 |
 | SD-1.23 | Known-issue banners with "me too" | US-G-020 |
-| SD-1.24 | Knowledge core: spaces, articles, versions, review, audiences, languages, suggest while typing, article from ticket | US-B-104, US-B-105, US-B-106 |
-| SD-1.25 | Public help centre, insert article in reply, solved-by, outdated flag, content-gap report, templates, blocks | US-B-107, US-G-023, US-G-024, US-G-025 |
+| SD-1.24 | Knowledge core: spaces, articles, versions, review, audiences, languages, suggest while typing, article from ticket; category tree under spaces; scheduled publish and expiry | US-B-104, US-B-105, US-B-106, US-G-217, US-G-222 |
+| SD-1.25 | Public help centre, insert article in reply, solved-by, outdated flag, content-gap report, templates, blocks; SEO (sitemap, meta, permanent redirects), follow / PDF / short numbers for articles | US-B-107, US-G-023, US-G-024, US-G-025, US-G-215, US-G-216 |
 | SD-1.26 | CSAT on close and NPS surveys | US-B-108, US-B-109 |
-| SD-1.27 | Reports: ready dashboards, KPI snapshots, report library, time-in-status, wallboard, custom and scheduled reports, SLA reports for customers | US-B-098, US-B-110, US-B-111, US-G-026, US-G-027, US-G-028 |
-| SD-1.28 | Customer accounts, contacts, entitlements, products, company groups and agent account scope | US-G-035, US-G-036, US-G-037, US-G-038 |
+| SD-1.27 | Reports: ready dashboards, KPI snapshots, report library, time-in-status, wallboard, custom and scheduled reports, SLA reports for customers; self-service funnel report | US-B-098, US-B-110, US-B-111, US-G-026, US-G-027, US-G-028, US-G-223 |
+| SD-1.28 | Customer accounts, contacts, entitlements, products, company groups and agent account scope; duplicate merge, bulk actions, notes and follow on contacts and accounts; join by email domain; one contact across channels | US-G-035, US-G-036, US-G-037, US-G-038, US-G-211, US-G-212, US-G-221 |
 | SD-1.29 | Standalone product: sign-up, light people list, CSV import, directory sync (LDAP, SCIM, group mapping), SSO / MFA reuse, set-up wizard | US-B-114, US-B-121, US-G-032, US-G-034 |
-| SD-1.30 | Requester privacy requests and retention | US-B-115 |
+| SD-1.30 | Requester privacy requests and retention; recycle bin with restore window | US-B-115, US-G-218 |
 | SD-1.31 | YukthiX support in the console: platform desk, intake / my-tickets functions, tenant panel, tiers and hours, Priority Support order, Sev-1 24×7, support-session request, support@ move | US-B-116, US-B-117, US-B-118, US-B-119, US-B-120 |
-| SD-1.32 | Wire 3b-1 screens (HLP-01…05, drawer, set-up, console queue); dead-button scan | US-A-058 |
+| SD-1.32 | Wire 3b-1 screens (HLP-01…05, drawer, set-up, console queue); dead-button scan (also covers SD-1.33…1.34) | US-A-058 |
+| SD-1.33 | Desk kinds: "Employee help desk" or "Customer support desk" chosen at creation, each copying its starter set-up (fields, channels, views, reports, SLAs, rules, portal texts) (D8) | US-G-210 |
+| SD-1.34 | Agent workspace helpers: pin, send later, bookmarks, print, attachments as one zip, personal defaults, command bar and shortcuts, shared-draft view, thank-you detector | US-G-213, US-G-219 |
 
-### 16.2 Phase 3b-2 · ESM (34 slices)
+### 16.2 Phase 3b-2 · ESM (39 slices)
 
 | ID | Slice | Stories |
 |---|---|---|
-| SD-2.01 | P19 conditions and P18 forms for desks: dynamic form rules, question library, more field types and layout (builds P19 core if missing) | US-B-137, US-G-039, US-G-063 |
+| SD-2.01 | P19 conditions and P18 forms for desks: dynamic form rules, question library, more field types and layout (builds P19 core if missing); formula fields, pick-list colours, translated field labels | US-B-137, US-G-039, US-G-063, US-G-224 |
 | SD-2.02 | Live-data pickers: people, locations, cost centres (my devices and CMDB pickers switch on in 3b-3) | US-G-040 |
 | SD-2.03 | Catalogue items: versions, audience, rich pages, stage tracker, cancel | US-B-124, US-G-042 |
 | SD-2.04 | Cart, order guides, bundles → tasks for several teams with OLAs | US-B-126, US-G-041 |
@@ -986,31 +1005,36 @@ Each slice is one pull request with its migration, API, tests and (where listed)
 | SD-2.07 | Documents and e-signature inside requests (P05) | US-G-045 |
 | SD-2.08 | Join / exit requests from M01 and employee journeys | US-B-127, US-G-049 |
 | SD-2.09 | ESM desks: HR, Admin, Facilities, Finance, Legal starter packs; sensitive categories with M08 rules; restricted desks | US-B-128, US-B-129, US-A-145 |
-| SD-2.10 | HR summary panel, move / share records, clone desk, delegated desk admin, branches | US-G-046, US-G-047, US-G-048, US-G-050 |
+| SD-2.10 | HR summary panel, move / share records, clone desk, delegated desk admin, branches; team activity feed | US-G-046, US-G-047, US-G-048, US-G-050, US-G-231 |
 | SD-2.11 | Lifecycle designer | US-G-062 |
 | SD-2.12 | Automation rules: triggers, conditions, actions, trace, recipes | US-B-130, US-B-131, US-G-051 |
-| SD-2.13 | Recurring records and timed message sequences | US-G-052, US-G-053 |
-| SD-2.14 | Desk REST API and webhooks, connector framework, no-code HTTP steps | US-B-136, US-G-060, US-E-279 |
-| SD-2.15 | Escalate to Jira, GitHub, Azure DevOps with two-way sync | US-G-061 |
+| SD-2.13 | Recurring records and timed message sequences; scheduled bulk actions | US-G-052, US-G-053, US-G-230 |
+| SD-2.14 | Desk REST API and webhooks, connector framework, no-code HTTP steps; API usage dashboard and alerts | US-B-136, US-G-060, US-E-279, US-G-233 |
+| SD-2.15 | Escalate to Jira, GitHub, Azure DevOps with two-way sync; GitLab and Linear | US-G-061, US-G-232 |
 | SD-2.16 | Runbooks on records | US-G-055 |
-| SD-2.17 | Interactions (chat, call, walk-up) and phone logging | US-B-135, US-G-056 |
+| SD-2.17 | Interactions (chat, call, walk-up) and phone logging; customer meetings with a video link from the ticket | US-B-135, US-G-056, US-G-226 |
 | SD-2.18 | Live chat transport (per §17 D1), sessions, queues, chat → ticket | US-B-132 |
 | SD-2.19 | Chat extras: pre-chat form, cards, files, rating, hand-over, proactive prompts | US-G-059 |
 | SD-2.20 | Help widget and mobile SDK | US-G-069 |
-| SD-2.21 | WhatsApp channel | US-B-133 |
-| SD-2.22 | Teams / Slack: requester bot and agent work in chat | US-B-134, US-G-057, US-E-282 |
+| SD-2.21 | WhatsApp channel; Facebook Messenger and Instagram direct messages (moved from SD-4.24 so customer desks have them early, D8) | US-B-133, US-G-184 |
+| SD-2.22 | Teams / Slack: requester bot and agent work in chat; Google Chat notifications; attach files from Google Drive / OneDrive | US-B-134, US-G-057, US-E-282, US-G-232 |
 | SD-2.23 | Two-way SMS | US-G-058 |
 | SD-2.24 | Agent mailbox sync for matched threads | US-E-283 |
 | SD-2.25 | Presence, capacity and push routing | US-G-075 |
 | SD-2.26 | Shifts, volume forecast, availability and productivity reports | US-G-076, US-G-077 |
 | SD-2.27 | Agent mobile app API (queue, reply, approve, SLA alerts, offline drafts) | US-G-068 |
-| SD-2.28 | Employee service centre, page builder, several brands | US-G-070, US-G-071 |
+| SD-2.28 | Employee service centre, page builder, several brands; custom CSS and safe page templates (no custom JavaScript); help-centre and web-form analytics with consent | US-G-070, US-G-071, US-G-228, US-G-227 |
 | SD-2.29 | KCS quality, article audiences, survey builder | US-G-072, US-G-073, US-G-074 |
 | SD-2.30 | Custom record types, layouts by type / desk / brand | US-G-064, US-G-066 |
-| SD-2.31 | Audit stream to SIEM, BI reporting dataset | US-G-065, US-G-067 |
+| SD-2.31 | Audit stream to SIEM, BI reporting dataset; scheduled encrypted backups | US-G-065, US-G-067, US-G-234 |
 | SD-2.32 | Client contracts, prepaid blocks, billable time, rate cards, timesheets | US-G-078, US-G-079 |
 | SD-2.33 | Business service portfolio | US-G-080 |
-| SD-2.34 | Wire 3b-2 screens; dead-button scan | US-A-058 |
+| SD-2.34 | Wire 3b-2 screens; dead-button scan (also covers SD-2.35…2.39) | US-A-058 |
+| SD-2.35 | Skill and language routing with fall-back, "next ticket" by SLA and priority, live supervisor console that can reassign | US-G-239, US-G-225 |
+| SD-2.36 | Portal and widget sign-in for customers: SAML, OpenID Connect, social, signed token (JWT), optional second factor | US-G-229 |
+| SD-2.37 | Messenger: one ongoing conversation across visits and devices, push / email fallback (no read receipts, D9), wait time and queue position, visitor → contact, home cards, page-aware help | US-G-235, US-G-236 |
+| SD-2.38 | Customer events API on the contact timeline; saved segments used in routing, SLAs, messages, surveys and article audiences | US-G-237 |
+| SD-2.39 | Proactive messages: targeted banners, posts and chat prompts; event-triggered service notices (P04 preferences, no pixels) | US-G-238 |
 
 ### 16.3 Phase 3b-3 · ITIL (30 slices)
 
@@ -1047,7 +1071,7 @@ Each slice is one pull request with its migration, API, tests and (where listed)
 | SD-3.29 | Ticket archive | US-G-130 |
 | SD-3.30 | Wire 3b-3 screens; dead-button scan | US-A-058 |
 
-### 16.4 Phase 3b-4 · Operations (34 slices)
+### 16.4 Phase 3b-4 · Operations (38 slices)
 
 | ID | Slice | Stories |
 |---|---|---|
@@ -1060,9 +1084,9 @@ Each slice is one pull request with its migration, API, tests and (where listed)
 | SD-4.07 | Status pages for companies (and YukthiX's own) | US-B-163 |
 | SD-4.08 | Major incident: propose / accept, war-room, workbench, comms plan, templates, auto timeline, channel and bridge, what changed, swarming, review | US-B-164, US-B-165, US-G-143, US-G-144, US-G-145, US-G-146, US-G-147 |
 | SD-4.09 | AI foundation for the desk: P10 registry entries, BYO key vs credits, AI hub, guardrails, kill switch, evals, EU notices | US-G-153, US-E-287, US-E-288, US-E-289, US-E-290, US-E-292, US-E-293 |
-| SD-4.10 | AI triage: category, routing, duplicates; topics and sentiment | US-B-166, US-G-156 |
-| SD-4.11 | AI agent help: replies, articles, summaries, resolution notes, writing help, translation, next step from procedures | US-B-167, US-G-148, US-G-149, US-G-157, US-G-161 |
-| SD-4.12 | Virtual agent and instant AI answers to new emails | US-B-168, US-G-150, US-G-151 |
+| SD-4.10 | AI triage: category, routing, duplicates; topics and sentiment; AI step inside rules; AI value for any pick-list field | US-B-166, US-G-156, US-G-245 |
+| SD-4.11 | AI agent help: replies, articles, summaries, resolution notes, writing help, translation, next step from procedures; agent asks the copilot beside the ticket; suggested new canned responses | US-B-167, US-G-148, US-G-149, US-G-157, US-G-161, US-G-251 |
+| SD-4.12 | Virtual agent and instant AI answers to new emails; AI answer above help-centre search results | US-B-168, US-G-150, US-G-151, US-G-252 |
 | SD-4.13 | AI drafts: KB articles, catalogue item from a procedure, admin copilot | US-G-158, US-G-163, US-G-164 |
 | SD-4.14 | Plain-language queue search, data questions, process mining | US-G-154, US-G-155, US-G-160 |
 | SD-4.15 | Predictions: change risk, unusual devices, operations AI | US-G-159, US-G-165, US-G-166 |
@@ -1071,26 +1095,30 @@ Each slice is one pull request with its migration, API, tests and (where listed)
 | SD-4.18 | Projects, demand, software components catalogue | US-B-169, US-G-167, US-G-168, US-G-169 |
 | SD-4.19 | Facilities: spaces, floor plans, room / desk booking with catering and AV, visitors, reception | US-B-170, US-B-171, US-G-172, US-G-173, US-G-174 |
 | SD-4.20 | Preventive maintenance, dispatch board, vehicles, keys, parking, lockers | US-G-170, US-G-171, US-G-175 |
-| SD-4.21 | Importers (Zoho Desk, Freshservice, Jira SM, CSV) and sandbox | US-B-172, US-B-173 |
-| SD-4.22 | Marketplace, Zapier / Make / Power Automate, SDK, sandboxed scripts and action buttons, config packages | US-B-174, US-G-176, US-G-177, US-G-179, US-G-180 |
+| SD-4.21 | Importers (Zoho Desk, Freshservice, Jira SM, CSV) and sandbox; also Zendesk, Freshdesk, Intercom and Help Scout importers; move data between two companies with approval | US-B-172, US-B-173, US-G-246 |
+| SD-4.22 | Marketplace, Zapier / Make / Power Automate, SDK, sandboxed scripts and action buttons, config packages; links for contact enrichment, Google Contacts, email marketing, project tools, inventory apps and password vaults; extension slots in the mobile app | US-B-174, US-G-176, US-G-177, US-G-179, US-G-180, US-G-247 |
 | SD-4.23 | Outlook add-in, launch links to the company's remote-support tool, helper app | US-G-181, US-G-182 |
-| SD-4.24 | Telephony, social channels, walk-up and appointments | US-G-183, US-G-184, US-G-185 |
+| SD-4.24 | Telephony, social channels, walk-up and appointments; LINE, WeChat, WeCom, Arattai, app-store reviews, video comments, fax on request (Messenger / Instagram DMs moved to SD-2.21) | US-G-183, US-G-184, US-G-185, US-G-240 |
 | SD-4.25 | MSP mode, desk-to-desk exchange, opportunities and quotes, cloud subscription check | US-G-186, US-G-187, US-G-188, US-G-189 |
 | SD-4.26 | Security incident desk and access reviews | US-G-190, US-G-191 |
 | SD-4.27 | Experience score, improvement register, continuity plans (peer benchmarks dropped, D7) | US-G-192, US-G-193, US-G-194 |
-| SD-4.28 | Conversation quality reviews, skills matrix, gamification | US-G-196, US-G-197, US-G-198 |
+| SD-4.28 | Conversation quality reviews, skills matrix, gamification; short agent courses; AI review of every conversation incl. the AI agent, risk flags, calibration | US-G-196, US-G-197, US-G-198, US-G-243, US-G-253 |
 | SD-4.29 | Customer health, proactive tickets, CRM context | US-G-199, US-G-200, US-G-201 |
-| SD-4.30 | Company storage bucket, more languages, industry packs, community forum | US-G-202, US-G-203, US-G-204, US-G-205 |
+| SD-4.30 | Company storage bucket, more languages, industry packs, community forum; community points and badges, moderated public article comments, 40+ help-centre languages | US-G-202, US-G-203, US-G-204, US-G-205, US-G-244 |
 | SD-4.31 | Connect Entra ID / Google Workspace with fewest permissions | US-G-206 |
 | SD-4.32 | Identity actions: reset, unlock, create / disable, groups, licences, with approval, step-up and audit | US-G-207, US-G-208 |
 | SD-4.33 | Open the device in the company's MDM console | US-G-209 |
-| SD-4.34 | Wire 3b-4 screens; dead-button scan | US-A-058 |
+| SD-4.34 | Wire 3b-4 screens; dead-button scan (also covers SD-4.35…4.38) | US-A-058 |
+| SD-4.35 | Unified live inbox for all messaging channels, messaging-channel API, call dashboard | US-G-242, US-G-241 |
+| SD-4.36 | Online-shop and payment context beside the ticket (Shopify, WooCommerce, Stripe) with confirmed, audited order actions | US-G-248 |
+| SD-4.37 | AI agent procedures for customers: written steps, approved actions with confirm and limits, test sets before go-live, AI-only notes; AI on phone calls | US-G-249, US-G-250 |
+| SD-4.38 | Outbound messages and series to consented segments; product tours, tooltips and checklists (service use, unsubscribe, no open tracking, D9) | US-G-254, US-G-255 |
 
-**Total: 130 slices** (32 + 34 + 30 + 34). Every story `US-B-085…174` and `US-G-001…209` is in at least one slice.
+**Total: 141 slices** (34 + 39 + 30 + 38). Every story `US-B-085…174` and `US-G-001…255` is in at least one slice (US-G-195 dropped, D7). The "wire screens" slice of each phase (SD-1.32, SD-2.34, SD-3.30, SD-4.34) also wires the screens of the slices numbered after it. Slices added on 8 Oct 2026 come from the [Zoho Desk pass](M14-ZOHO-DESK-PASS.md) and the [customer-support leaders pass](M14-CS-LEADERS-PASS.md).
 
 ---
 
-## 17. Decisions D1–D7
+## 17. Decisions D1–D10
 
 **All decided by the founder on 8 Oct 2026** (the options below are kept as the record of what was weighed):
 
@@ -1103,6 +1131,9 @@ Each slice is one pull request with its migration, API, tests and (where listed)
 | D5 | Inbound mail: **decide together with hosting (P13)**, behind our adapter; we re-check SPF / DKIM / DMARC ourselves. |
 | D6 | Reset / unlock proof: **a. in-app with MFA**; if locked out, a one-time code to the phone or personal email on the HR record (never from the ticket) **plus manager approval**. |
 | D7 | Peer benchmarks: **not built.** US-G-195 is dropped; no cross-company comparisons. |
+| D8 | **Customer support first-class; two desk kinds.** A desk is created as "Employee help desk" or "Customer support desk", each with a starter set-up (fields, channels, views, reports, SLAs); one engine; one ₹999 plan covers both (Q8 kept). Gaps from the [Zoho Desk pass](M14-ZOHO-DESK-PASS.md) and the [customer-support leaders pass](M14-CS-LEADERS-PASS.md) are now slices (§16). |
+| D9 | **Read receipts and email open tracking: not built** (privacy; tracking pixels are blocked inbound too). Outbound and proactive reports count replies and tickets, not opens. |
+| D10 | **HIPAA: deferred.** Only if a US health customer comes. Recorded here, not in any slice or story. |
 
 ### D1 · Live chat transport (open since M14 "Still to decide")
 
@@ -1162,6 +1193,12 @@ Q7 fixed approval, agent step-up and audit. Not yet fixed: how we know the **req
 Comparing a company's metrics with other companies uses other tenants' data, even when aggregated.
 **Recommendation:** opt-in only (a company sees benchmarks only if it shares its own), at least 10 companies in every bucket, metrics only (no text), named in the privacy notice.
 
+### D8–D10 · Customer support (decided 8 Oct 2026)
+
+- **D8:** the desk kind is chosen at creation and only picks the starter set-up (§3). Because the engine is the same, every customer-support gap found in the two passes is added to existing slices or new slices (SD-1.33…1.34, SD-2.35…2.39, SD-4.35…4.38), not a separate product.
+- **D9:** applies to email replies, outbound messages and live chat "seen" markers. The Zoho pass line "read receipt on a reply" is closed as not built.
+- **D10:** the Zoho pass line "HIPAA readiness" is closed as deferred. If a US health customer comes, it needs a BAA, PHI rules and a review of sub-processors before any slice is planned.
+
 ### Already scheduled elsewhere (not new decisions)
 
 - AI credit pack sizes and prices: set in P14 before 3b-4 starts (Q9).
@@ -1173,5 +1210,6 @@ Comparing a company's metrics with other companies uses other tenants' data, eve
 
 | Date | Change |
 |---|---|
+| 8 Oct 2026 | Founder decisions D8–D10 (§2, §17): customer support first-class with two desk kinds (§3), no read receipts, HIPAA deferred. Folded in the Zoho Desk pass and the customer-support leaders pass: 11 new slices (SD-1.33…1.34, SD-2.35…2.39, SD-4.35…4.38), 25 slices extended, stories US-G-210…255; 141 slices in total. |
 | 8 Oct 2026 | Founder decided D1–D7 (§17); D7 drops peer benchmarks (US-G-195). |
 | 8 Oct 2026 | First draft: data model, roles and licensing, engines, API, screens, security, tests, 130 slices, open decisions D1–D7. |

@@ -7,7 +7,8 @@
 > 3. **Sold as its own product**: works for a company that has not bought YukthiX HR (light people list only), or as an add-on.
 >
 > **Build:** roadmap **step 3b**, right after the platform console. Until then, YukthiX support runs from a support@ mailbox.
-> **Build design:** tables, roles and licensing, APIs, SLA engine, channels, security, tests and the 130-slice build order are in [M14-BUILD-DESIGN.md](M14-BUILD-DESIGN.md).
+> **Build design:** tables, roles and licensing, APIs, SLA engine, channels, security, tests and the 141-slice build order are in [M14-BUILD-DESIGN.md](M14-BUILD-DESIGN.md).
+> **Competitor passes (8 Oct 2026):** [Zoho Desk pass](M14-ZOHO-DESK-PASS.md) and [customer-support leaders pass](M14-CS-LEADERS-PASS.md) (Zendesk, Freshdesk, Intercom, Help Scout); their gaps are folded into the build design (D8–D10).
 > **Bar:** every feature below is in scope. Features can be phased inside step 3b, but none is dropped. Same quality bar as the rest: forced RLS per tenant, OWASP ASVS L2, proven libraries, audit on every change.
 
 ## Relation to existing docs

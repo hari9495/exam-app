@@ -1,6 +1,6 @@
 # M14 · Zoho Desk deep pass (help-centre level)
 
-> **Status:** 📝 For founder review, 8 Oct 2026. Docs only. Nothing in [M14-BUILD-DESIGN.md](M14-BUILD-DESIGN.md) or the stories has been changed.
+> **Status:** 📝 For founder review, 8 Oct 2026. Docs only. **Folded in (8 Oct 2026):** every MISSING / PARTLY line is now in a slice of [M14-BUILD-DESIGN.md](M14-BUILD-DESIGN.md) §16 and a story US-G-211…248 (see also the [customer-support leaders pass](M14-CS-LEADERS-PASS.md)). Founder decisions: read receipts not built (D9), HIPAA deferred (D10).
 > **Why:** the M14 gap check (7 Oct 2026) looked at Zoho Desk only at feature-page level. This pass walks Zoho's public help centre index by index and checks each capability against the 130 build slices (SD-1.01…SD-4.34), the stories (US-B-085…174, US-G-001…209) and the founder decisions (M14 Q1–Q10, build design D1–D7).
 
 ## Method
