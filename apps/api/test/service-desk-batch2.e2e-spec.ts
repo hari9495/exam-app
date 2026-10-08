@@ -498,7 +498,9 @@ describe('Service Desk batch 2 (M14 §5.7, §6.3, §7, §8, §15.2)', () => {
       expect(ola.map((x) => [x.groupId, x.state])).toEqual([[ids.group, 'met'], [g2.id, 'running']]);
       const task = (await api('agent1', 'post', `/desk/tickets/${t.id}/tasks`).send({ title: 'Replace the port', groupId: g2.id }).expect(201)).body;
       expect((await timers(t.id)).find((x) => x.taskId === task.id)?.state).toBe('running');
-      await api('agent1', 'patch', `/desk/tasks/${task.id}`).send({ version: 1, state: 'done' }).expect(200);
+      // US-G-054 (3b-2): a task given to a team is completed by a member of that team only.
+      await api('agent1', 'patch', `/desk/tasks/${task.id}`).send({ version: 1, state: 'done' }).expect(403);
+      await api('agent2', 'patch', `/desk/tasks/${task.id}`).send({ version: 1, state: 'done' }).expect(200);
       expect((await timers(t.id)).find((x) => x.taskId === task.id)?.state).toBe('met');
     });
   });
