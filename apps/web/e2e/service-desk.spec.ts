@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { signIn } from './fixtures/sign-in';
 
-// M14 Service Desk, phase 3b-1 batch 1, main flow on the seeded Kaveri Foods demo: an employee raises a ticket in the
+// M14 Service Desk, phase 3b-1 batches 1 and 2. Main flow on the seeded Kaveri Foods demo: an employee raises a ticket in the
 // Help centre; an IT agent takes it, replies and resolves it; the employee sees the reply and the new status, and never
 // the agent's internal note.
 //
@@ -59,8 +59,9 @@ test('raise → assign → reply → resolve', async ({ browser }) => {
   await agent.getByRole('button', { name: 'Send reply' }).click();
   await expect(agent.getByText('I have added you to the intranet group')).toBeVisible();
 
-  // 3. Resolve.
+  // 3. Resolve (batch 2: a dialog asks how it was solved; the IT desk does not require a code).
   await agent.getByRole('button', { name: 'Resolve' }).click();
+  await agent.getByRole('dialog').getByRole('button', { name: 'Resolve' }).click();
   await expect(agent.getByRole('combobox', { name: 'Status', exact: true })).toContainText('Resolved');
 
   // 4. Divya sees the reply and the new status, never the note.
@@ -70,4 +71,23 @@ test('raise → assign → reply → resolve', async ({ browser }) => {
   await expect(employee.getByText('I have added you to the intranet group')).toBeVisible();
   await expect(employee.getByText('Resolved').first()).toBeVisible();
   await expect(employee.getByText(/proxy logs/)).toHaveCount(0);
+});
+
+// Batch 2 (SD-1.14 … SD-1.16): the seeded ticket close to its resolution target shows in "Breaching soon", and its
+// workspace draws the response-target timeline with the time used and when it is due (or that it was missed).
+test('SLA: a ticket near its breach is listed and its timeline shows', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const agent = await (await browser.newContext()).newPage();
+  await signIn(agent, 'it-agent@demo-org.test', PASSWORD);
+  await agent.waitForURL(/\/yx\/desk\/tickets/);
+  await agent.getByRole('button', { name: /View:/ }).click();
+  await agent.getByRole('menuitemradio', { name: 'Breaching soon' }).or(agent.getByRole('menuitem', { name: 'Breaching soon' })).click();
+  await agent.getByText('Payroll export keeps timing out').first().click();
+  await expect(agent.getByRole('heading', { name: 'Payroll export keeps timing out' })).toBeVisible();
+  await expect(agent.getByRole('heading', { name: 'Response targets' })).toBeVisible();
+  await expect(agent.getByRole('list', { name: 'Resolution timeline' })).toBeVisible();
+  await expect(agent.getByText(/Due .*|missed at/).first()).toBeVisible();
+  await expect(agent.getByRole('meter', { name: /Resolution time used/ }).or(agent.getByText(/% of 8 h/)).first()).toBeVisible();
+  // The open task blocks resolving until it is done (US-G-006).
+  await expect(agent.getByText('Check the export server logs')).toBeVisible();
 });
