@@ -9,6 +9,7 @@ import { seedServiceDeskSla } from './seed-service-desk-sla';
 import { seedServiceDeskChannels } from './seed-service-desk-channels';
 import { seedServiceDeskKnowledge, seedYukthixSupport } from './seed-service-desk-knowledge';
 import { seedServiceDeskEsm } from './seed-service-desk-esm';
+import { TIME_PERMISSIONS, seedTime } from './seed-time';
 
 const prisma = new PrismaClient();
 
@@ -73,6 +74,8 @@ export const PERMISSIONS = [
   { key: 'notification.template.manage', description: 'Brand and re-word the emails YukthiX sends your people' },
   // M14 §6.2 Service Desk phase 3b-1 (also in the service_desk_core migration).
   ...DESK_PERMISSIONS,
+  // M02 step 4 leave and attendance (also in the time_leave migration).
+  ...TIME_PERMISSIONS,
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -146,6 +149,10 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'desk.survey.manage',
     'desk.directory.manage',
     'org.yukthix_support.raise',
+    // M02: the System Admin sets up leave and attendance and reads them; medical data and approvals stay with HR.
+    'leave.settings.manage',
+    'leave.view',
+    'attendance.view',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -325,8 +332,11 @@ async function main() {
       // Phase 3b-2 batch 1: the IT and HR catalogue, an order guide, the question library and a desk rule
       // (seed-service-desk-esm.ts); Arjun Kulkarni signs in as arjun@demo-org.test.
       await seedServiceDeskEsm(tx, demoOrg.id);
+      // Step 4 time and leave batch 1: holiday calendars, leave types and policies with Karnataka / Tamil Nadu floors,
+      // balances, pending requests through P03 and a week of punches (seed-time.ts).
+      await seedTime(tx, demoOrg.id);
     }
-  }, { timeout: 60000 });
+  }, { timeout: 180000 });
 
   console.log(`Seed complete: super@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); Service Desk: it-agent@ / it-lead@ / it-collab@ / arjun@demo-org.test / Passw0rd!2026, customer portal /yx/portal/demo-org/care (asha@annapurna-stores.test, sign-in code from scripts/desk-portal-code.ts); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
 }
