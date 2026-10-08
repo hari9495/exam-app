@@ -20,6 +20,7 @@ import { ParsedEmail, parseEmail } from './mail-parse';
 import { COMMAND_HELP, EmailCommand, readCommands, runRules } from './mail-rules';
 import { RequesterService } from './requester.service';
 import { textToHtml } from './rich-text';
+import { maskPii } from './pii';
 import { OPEN_STATES, Ticket, TicketsService } from './tickets.service';
 
 // SD-1.19 / SD-1.20 email in (US-B-101, US-B-102, US-G-017 … US-G-019; §9.1, §14.3, §14.4). One pipeline for every
@@ -117,7 +118,8 @@ export class MailInService implements OnModuleInit, OnModuleDestroy {
 
   /** Stores the raw mail and its row (once per Message-ID) and queues it. */
   async accept(organizationId: string, box: { id: string; deskId: string }, raw: Buffer, env: Partial<WebhookEnvelope> & { trustReceived?: boolean }) {
-    const head = raw.subarray(0, 64 * 1024).toString('latin1');
+    // The header block only (a body line must never set the key a retry is matched on).
+    const head = raw.subarray(0, 64 * 1024).toString('latin1').split(/\r?\n\r?\n/)[0];
     const mid = /^message-id:\s*(<[^<>\s]{1,290}>)/im.exec(head)?.[1] ?? `<${sha256(raw)}@no-message-id.invalid>`;
     const id = randomUUID();
     const ctx = { organizationId, isSuperAdmin: false };
@@ -211,6 +213,9 @@ export class MailInService implements OnModuleInit, OnModuleDestroy {
 
     // 1. Delivery reports update the bounce list (US-G-017).
     if (p.report) {
+      // Anyone can send something that looks like a bounce: only a report about mail we really sent changes the list.
+      const ours = p.ourIds.length ? await tx.sdTicketMessage.count({ where: { organizationId: org, emailMessageId: { in: p.ourIds } } }) : 0;
+      if (!ours) return finish({ verdict: 'rejected', reason: 'A delivery report about mail we did not send' });
       for (const a of p.report.recipients) await this.out.suppress(tx, org, a, p.report.kind, p.report.detail, box.id);
       return finish({ verdict: 'bounce', reason: `${p.report.kind === 'bounce' ? 'Bounce' : 'Complaint'} for ${p.report.recipients.join(', ')}`.slice(0, 300) });
     }
@@ -773,7 +778,7 @@ export class MailInService implements OnModuleInit, OnModuleDestroy {
     if (row.verdict === 'accepted') throw new NotFoundException('Open the ticket to read this email.');
     const p = row.rawBlobKey ? await parseEmail(await this.files.get(row.rawBlobKey)) : null;
     await this.tenantPrisma.forTenant(a.ctx, (tx) => audit(tx, a, 'desk.inbound_email.opened', 'sd_inbound_email', id));
-    return { id: row.id, from: row.fromAddress, fromName: row.fromName, to: row.toAddresses, subject: row.subject, verdict: row.verdict, reason: row.reason, flags: row.flags, receivedAt: row.receivedAt, text: p?.fullText.slice(0, 20_000) ?? null, files: p?.attachments.map((f) => f.fileName) ?? [] };
+    return { id: row.id, from: row.fromAddress, fromName: row.fromName, to: row.toAddresses, subject: row.subject, verdict: row.verdict, reason: row.reason, flags: row.flags, receivedAt: row.receivedAt, text: p ? maskPii(p.fullText.slice(0, 20_000)).text : null, files: p?.attachments.map((f) => f.fileName) ?? [] };
   }
 
   /** A desk admin lets a held (or spam) email through: it is processed as if its sender were proven (audited). */

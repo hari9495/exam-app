@@ -318,11 +318,15 @@ describe('Service Desk batch 3: email, portal, banners, customers (M14 §9, §14
 
   describe('spoofing (§14.3, founder rule)', () => {
     it('a spoofed copy of a known customer fails DMARC p=reject and is held; nothing is made; the desk admin can release it', async () => {
-      const row = await mailIn(ids['addr:care'], { from: `asha@${CUST}`, subject: 'Please change our bank account', text: 'Send money to the new account.' });
+      const row = await mailIn(ids['addr:care'], { from: `asha@${CUST}`, subject: 'Please change our bank account', text: 'Send money to the new account. Our PAN is ABCPK1234Z.' });
       expect(row).toMatchObject({ verdict: 'held', senderVerified: false, dmarc: 'fail', dmarcPolicy: 'reject', ticketId: null });
       expect(row.reason).toMatch(/DMARC/);
       const held = (await api('deskAdmin', 'get', `/desk/desks/${ids.care}/inbound-emails?verdict=held`).expect(200)).body;
       expect(held.some((h: { id: string }) => h.id === row.id)).toBe(true);
+      // "Show original" is plain text with personal data masked (review fix).
+      const original = (await api('deskAdmin', 'get', `/desk/desks/${ids.care}/inbound-emails/${row.id}`).expect(200)).body;
+      expect(original.text).toContain('[PAN ••234Z]');
+      expect(original.text).not.toContain('ABCPK1234Z');
       // Agents cannot see or release held mail; company B cannot reach it at all.
       await api('agent1', 'get', `/desk/desks/${ids.care}/inbound-emails`).expect(403);
       await api('adminB', 'post', `/desk/desks/${ids.care}/inbound-emails/${row.id}/release`).expect(404);
@@ -498,32 +502,41 @@ describe('Service Desk batch 3: email, portal, banners, customers (M14 §9, §14
     });
 
     it('bounces fill the bounce list; nothing is sent to a bounced address until it is cleared', async () => {
-      const dsn = Buffer.from(
-        [
-          `From: MAILER-DAEMON@${CUST}`,
-          `To: ${ids['addr:care']}`,
-          'Subject: Undelivered',
-          `Message-ID: <dsn-${run}@${CUST}>`,
-          'MIME-Version: 1.0',
-          'Content-Type: multipart/report; report-type=delivery-status; boundary="r"',
-          '',
-          '--r',
-          'Content-Type: text/plain',
-          '',
-          'Could not deliver.',
-          '--r',
-          'Content-Type: message/delivery-status',
-          '',
-          'Reporting-MTA: dns; mx.test',
-          '',
-          `Final-Recipient: rfc822; ravi@${CUST}`,
-          'Action: failed',
-          'Status: 5.1.1',
-          '--r--',
-          '',
-        ].join('\r\n'),
-      );
-      expect((await settle((await post(ids['addr:care'], dsn).expect(202)).body.id)).verdict).toBe('bounce');
+      const ours = (await waitSent((m) => m.to === `asha@${CUST}` && m.html.includes('It ships today'))).messageId!;
+      const dsn = (quote: string, n: string) =>
+        Buffer.from(
+          [
+            `From: MAILER-DAEMON@${CUST}`,
+            `To: ${ids['addr:care']}`,
+            'Subject: Undelivered',
+            `Message-ID: <dsn-${n}-${run}@${CUST}>`,
+            'MIME-Version: 1.0',
+            'Content-Type: multipart/report; report-type=delivery-status; boundary="r"',
+            '',
+            '--r',
+            'Content-Type: text/plain',
+            '',
+            'Could not deliver.',
+            '--r',
+            'Content-Type: message/delivery-status',
+            '',
+            'Reporting-MTA: dns; mx.test',
+            '',
+            `Final-Recipient: rfc822; ravi@${CUST}`,
+            'Action: failed',
+            'Status: 5.1.1',
+            '--r',
+            'Content-Type: text/rfc822-headers',
+            '',
+            `Message-ID: ${quote}`,
+            '--r--',
+            '',
+          ].join('\r\n'),
+        );
+      // Anyone can forge a bounce: one that is not about mail we sent changes nothing (review fix).
+      expect((await settle((await post(ids['addr:care'], dsn(`<made-up-${run}@${CUST}>`, 'forged')).expect(202)).body.id)).verdict).toBe('rejected');
+      expect((await api('deskAdmin', 'get', '/desk/bounces').expect(200)).body.map((x: { address: string }) => x.address)).not.toContain(`ravi@${CUST}`);
+      expect((await settle((await post(ids['addr:care'], dsn(ours, 'real')).expect(202)).body.id)).verdict).toBe('bounce');
       const list = (await api('deskAdmin', 'get', '/desk/bounces').expect(200)).body;
       const b = list.find((x: { address: string }) => x.address === `ravi@${CUST}`);
       expect(b).toMatchObject({ kind: 'bounce' });
@@ -684,12 +697,27 @@ describe('Service Desk batch 3: email, portal, banners, customers (M14 §9, §14
       await api('agent1', 'patch', `/desk/tickets/${inc.id}`).send({ version: (await ticket(inc.id)).version, statusId: ids['it:Resolved'] }).expect(200);
       expect((await api('divya', 'get', '/desk/my/banners').expect(200)).body.map((x: { id: string }) => x.id)).not.toContain(b.id);
       await api('divya', 'post', `/desk/my/banners/${b.id}/me-too`).expect(404);
+      // An incident that turned private after its banner went up adds nobody (review fix).
+      const inc2 = (await api('agent1', 'post', '/desk/tickets').send({ deskId: ids.it, requesterPersonId: ids.divyaPerson, subject: 'VPN down', bodyHtml: '<p>vpn</p>' }).expect(201)).body;
+      const b2 = (await api('agent1', 'post', `/desk/desks/${ids.it}/banners`).send({ text: 'VPN is down', severity: 'outage', audience: 'employees', ticketId: inc2.id }).expect(201)).body;
+      await api('agent1', 'patch', `/desk/tickets/${inc2.id}`).send({ version: (await ticket(inc2.id)).version, private: true }).expect(200);
+      await api('divya', 'post', `/desk/my/banners/${b2.id}/me-too`).expect(404);
+      expect(await system((tx) => tx.sdTicketWatcher.count({ where: { ticketId: inc2.id, personId: ids.divyaPerson } }))).toBe(0);
+      expect(await system((tx) => tx.sdBannerVote.count({ where: { bannerId: b2.id } }))).toBe(0);
       // Only agents of the desk post banners.
       await api('hrAgent', 'post', `/desk/desks/${ids.it}/banners`).send({ text: 'x', severity: 'info', audience: 'everyone' }).expect(403);
     });
   });
 
   describe('customers and agent scope (SD-1.28)', () => {
+    it('a lead limited to some accounts cannot end another account\'s plan', async () => {
+      const plan = (await api('lead', 'get', `/desk/customers/accounts/${ids.annapurna}`).expect(200)).body.entitlements[0].id;
+      await api('adminA', 'put', `/desk/customers/agents/${users.lead}/accounts`).send({ accountIds: [ids.otherCo] }).expect(200);
+      await api('lead', 'post', `/desk/customers/entitlements/${plan}/end`).send({ validTo: '2026-12-31' }).expect(404);
+      await api('adminA', 'put', `/desk/customers/agents/${users.lead}/accounts`).send({ accountIds: [] }).expect(200);
+      expect((await system((tx) => tx.sdEntitlement.findFirstOrThrow({ where: { id: plan } }))).validTo).toBeNull();
+    });
+
     it('an agent limited to Other Co sees none of Annapurna\'s tickets or contacts', async () => {
       await api('lead', 'put', `/desk/customers/agents/${users.scoped}/accounts`).send({ accountIds: [ids.otherCo] }).expect(200);
       await api('scoped', 'get', `/desk/tickets/${ids.raviTicket}`).expect(404);

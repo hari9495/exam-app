@@ -216,6 +216,8 @@ export class PortalService {
     // Followed as the desk: the person cannot read the incident before they follow it (and only a standard one is linked).
     await deskSystem(this.tenantPrisma, by.ctx, async (sys) => {
       const t = await sys.sdTicket.findFirstOrThrow({ where: { organizationId: org, id: b.ticketId! } });
+      // The incident turned private or sensitive after the banner went up: nobody is added to it (review fix).
+      if (t.private || t.sensitive) throw new NotFoundException('No such banner.');
       await this.tickets.addWatcherIn(sys, by, t, personId, true, personId);
       await this.tickets.event(sys, t, 'me_too', null, null, { by: null, byPerson: personId, reason: 'Someone has the same problem (banner)' });
     });
@@ -493,22 +495,22 @@ export class PortalService {
   async confirm(orgSlug: string, portalSlug: string, token: string, ip: string | null) {
     const { org, portal, deskIds } = await this.portalOf(orgSlug, portalSlug);
     const ctx = { organizationId: org.id, isSuperAdmin: false };
+    // 1. The link and the person (made a contact if new; the link proved the address).
     const req = await this.tenantPrisma.forTenant(ctx, async (tx) => {
       const r = await tx.sdPortalRequest.findFirst({ where: { organizationId: org.id, portalId: portal.id, tokenHash: sha256(token) } });
       if (!r || r.expiresAt.getTime() < Date.now()) throw new NotFoundException('This link has expired. Send your request again.');
       if (r.confirmedAt) throw new ConflictException('This request was already confirmed. Sign in to follow it.');
-      // One click makes one ticket, even when the link is opened twice at once.
-      const won = await tx.sdPortalRequest.updateMany({ where: { id: r.id, confirmedAt: null }, data: { confirmedAt: new Date() } });
-      if (!won.count) throw new ConflictException('This request was already confirmed. Sign in to follow it.');
-      if (!(await this.eligible(tx, org.id, portal, r.email)).ok) throw new NotFoundException('This link has expired. Send your request again.');
-      const personId = (await ensureContact(tx, org.id, r.email, r.name, null)).personId;
-      return { ...r, personId };
+      if (!(await this.eligible(tx, org.id, portal, r.email)).ok || !deskIds.includes(r.deskId)) throw new NotFoundException('This link has expired. Send your request again.');
+      return { ...r, personId: (await ensureContact(tx, org.id, r.email, r.name, null)).personId };
     });
     const p = req.payload as { subject: string; description: string; categoryId: string | null; productId: string | null };
     const s: PortalSession = { organizationId: org.id, orgSlug: org.slug, portalId: portal.id, portalSlug: portal.slug, personId: req.personId, sessionId: '' };
     const usedUp = await this.usedUp(org.id, req.deskId, req.personId);
+    // 2. One click makes one ticket, in one transaction with the link being used up: two clicks at once make one
+    //    ticket, and a failure leaves the link usable (review fix).
     const t = await this.asPortal(s, async (tx) => {
-      if (!deskIds.includes(req.deskId)) throw new NotFoundException('No such desk.');
+      const won = await tx.sdPortalRequest.updateMany({ where: { id: req.id, confirmedAt: null }, data: { confirmedAt: new Date() } });
+      if (!won.count) throw new ConflictException('This request was already confirmed. Sign in to follow it.');
       const n = await this.tickets.createIn(tx, { ctx, userId: null }, { deskId: req.deskId, categoryId: p.categoryId ?? undefined, productId: p.productId, subject: p.subject, bodyHtml: textToHtml(p.description), requesterPersonId: req.personId, openedByUserId: null, channel: 'portal', side: 'requester', authorPersonId: req.personId, usedUp });
       await tx.sdPortalRequest.update({ where: { id: req.id }, data: { ticketId: n.id } });
       return n;

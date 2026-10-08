@@ -300,7 +300,8 @@ export class CustomersService {
       await this.requireManage(tx, a);
       const org = a.ctx.organizationId;
       const e = await tx.sdEntitlement.findFirst({ where: { organizationId: org, id } });
-      if (!e) throw new NotFoundException('No such plan.');
+      // An agent limited to some accounts changes only their plans (review fix).
+      if (!e || !(await tx.sdCustomerAccount.findFirst({ where: { organizationId: org, id: e.accountId, ...(await this.scopeFilter(tx, a)) }, select: { id: true } }))) throw new NotFoundException('No such plan.');
       const to = dto.validTo.slice(0, 10);
       if (to < e.validFrom.toISOString().slice(0, 10)) throw new BadRequestException('The end date is before the plan starts.');
       await tx.sdEntitlement.update({ where: { id }, data: { validTo: day(to) } });

@@ -34,6 +34,8 @@ export interface ParsedEmail {
   /** More files than we take. */
   droppedAttachments: number;
   report: { kind: 'bounce' | 'complaint'; recipients: string[]; detail: string } | null;
+  /** Our own Message-IDs quoted anywhere in the email (a genuine delivery report quotes the mail it is about). */
+  ourIds: string[];
 }
 
 const addresses = (a: AddressObject | AddressObject[] | undefined): string[] =>
@@ -45,9 +47,9 @@ const addresses = (a: AddressObject | AddressObject[] | undefined): string[] =>
 
 const ids = (v: unknown): string[] => (Array.isArray(v) ? v : typeof v === 'string' ? v.split(/\s+/) : []).map((x: string) => x.trim()).filter((x) => /^<[^<>\s]{1,290}>$/.test(x));
 
-/** The reply part of a plain-text email. */
+/** The reply part of a plain-text email (only the first 20,000 characters are looked at). */
 export function visibleReply(text: string): string {
-  const cut = text.split(REPLY_MARKER)[0];
+  const cut = text.split(REPLY_MARKER)[0].slice(0, 20_000);
   return new EmailReplyParser().parseReply(cut).trim();
 }
 
@@ -102,5 +104,6 @@ export async function parseEmail(raw: Buffer): Promise<ParsedEmail> {
     attachments: files.slice(0, MAX_ATTACHMENTS).map((a) => ({ fileName: a.filename ?? 'attachment', contentType: a.contentType, content: a.content, inline: a.related || a.contentDisposition === 'inline' })),
     droppedAttachments: Math.max(0, files.length - MAX_ATTACHMENTS),
     report: reportType ? readReport(reportType, m.attachments, m.text ?? '') : null,
+    ourIds: reportType ? [...new Set([...raw.toString('latin1').matchAll(/<sd\.[0-9a-f-]{36}@[^<>\s]{1,200}>/gi)].map((x) => x[0]))].slice(0, 20) : [],
   };
 }
