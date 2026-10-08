@@ -31,6 +31,12 @@ describe('notification catalog', () => {
       'helpdesk.nps.detractor',
       'helpdesk.backlog.alert',
       'helpdesk.privacy.request',
+      'workflow.approval.needed',
+      'workflow.approval.reminder',
+      'workflow.approval.decided',
+      'helpdesk.request.stage',
+      'helpdesk.rule.notify',
+      'helpdesk.rule.failed',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

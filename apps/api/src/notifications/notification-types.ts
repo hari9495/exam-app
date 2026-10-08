@@ -31,6 +31,13 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'helpdesk.nps.detractor', group: 'reminders', label: 'A customer gave a low NPS score' },
   { type: 'helpdesk.backlog.alert', group: 'reminders', label: 'A desk queue is above its alert line' },
   { type: 'helpdesk.privacy.request', group: 'approvals', label: 'A privacy request about desk data is waiting' },
+  // P03 approvals engine and Service Desk 3b-2 (SD-2.03 … SD-2.05, SD-2.12).
+  { type: 'workflow.approval.needed', group: 'approvals', label: 'A request needs your approval' },
+  { type: 'workflow.approval.reminder', group: 'reminders', label: 'A request is still waiting for your approval' },
+  { type: 'workflow.approval.decided', group: 'approvals', label: 'A request you sent or were asked about was decided' },
+  { type: 'helpdesk.request.stage', group: 'reminders', label: 'Something you ordered moved to its next stage' },
+  { type: 'helpdesk.rule.notify', group: 'assignments', label: 'A desk rule sent you a message' },
+  { type: 'helpdesk.rule.failed', group: 'reminders', label: 'A desk rule failed or stopped at its limit' },
 ];
 
 export const NOTIFICATION_TYPE_BY_KEY = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));
