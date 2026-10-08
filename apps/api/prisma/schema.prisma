@@ -2846,14 +2846,15 @@ model EventOutbox {
 // ---- Service Desk phase 3b-1 (M14-BUILD-DESIGN §5.2). Composite keys and guards live in the migration SQL. ----
 
 model BusinessCalendar {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  name           String   @db.VarChar(100)
-  timeZone       String   @map("time_zone") @db.VarChar(64)
-  version        Int      @default(1)
-  createdBy      String?  @map("created_by") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  name            String   @db.VarChar(100)
+  timeZone        String   @map("time_zone") @db.VarChar(64)
+  halfDayOpenHalf String   @default("first") @map("half_day_open_half") @db.VarChar(6)
+  version         Int      @default(1)
+  createdBy       String?  @map("created_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, id])
   @@map("business_calendars")
@@ -2888,24 +2889,28 @@ model BusinessCalendarHoliday {
 }
 
 model SdDesk {
-  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId    String   @map("organization_id") @db.Uuid
-  key               String   @db.VarChar(10)
-  name              String   @db.VarChar(100)
-  kind              String   @db.VarChar(20)
-  billingClass      String   @map("billing_class") @db.VarChar(16)
-  privacy           String   @default("standard") @db.VarChar(10)
-  calendarId        String?  @map("calendar_id") @db.Uuid
-  numberPrefix      String   @map("number_prefix") @db.VarChar(12)
-  numberSuffix      String   @default("") @map("number_suffix") @db.VarChar(12)
-  attachmentTypes   String[] @default(["pdf", "png", "jpg", "jpeg", "gif", "txt", "csv", "docx", "xlsx", "pptx"]) @map("attachment_types")
-  attachmentMaxMb   Int      @default(10) @map("attachment_max_mb") @db.SmallInt
-  vipRaisesPriority Boolean  @default(true) @map("vip_raises_priority")
-  status            String   @default("active") @db.VarChar(10)
-  version           Int      @default(1)
-  createdBy         String?  @map("created_by") @db.Uuid
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  key                String   @db.VarChar(10)
+  name               String   @db.VarChar(100)
+  kind               String   @db.VarChar(20)
+  billingClass       String   @map("billing_class") @db.VarChar(16)
+  privacy            String   @default("standard") @db.VarChar(10)
+  calendarId         String?  @map("calendar_id") @db.Uuid
+  numberPrefix       String   @map("number_prefix") @db.VarChar(12)
+  numberSuffix       String   @default("") @map("number_suffix") @db.VarChar(12)
+  attachmentTypes    String[] @default(["pdf", "png", "jpg", "jpeg", "gif", "txt", "csv", "docx", "xlsx", "pptx"]) @map("attachment_types")
+  attachmentMaxMb    Int      @default(10) @map("attachment_max_mb") @db.SmallInt
+  vipRaisesPriority  Boolean  @default(true) @map("vip_raises_priority")
+  resolutionRequired Boolean  @default(false) @map("resolution_required")
+  reopenWindowDays   Int      @default(7) @map("reopen_window_days") @db.SmallInt
+  requesterCanReopen Boolean  @default(true) @map("requester_can_reopen")
+  autoCloseDays      Int?     @default(3) @map("auto_close_days") @db.SmallInt
+  status             String   @default("active") @db.VarChar(10)
+  version            Int      @default(1)
+  createdBy          String?  @map("created_by") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, id])
   @@map("sd_desks")
@@ -3084,6 +3089,11 @@ model SdTicket {
   reopenCount          Int                      @default(0) @map("reopen_count")
   resolutionCode       String?                  @map("resolution_code") @db.VarChar(40)
   resolutionNote       String?                  @map("resolution_note") @db.VarChar(2000)
+  parentId             String?                  @map("parent_id") @db.Uuid
+  mergedIntoId         String?                  @map("merged_into_id") @db.Uuid
+  tracker              Boolean                  @default(false)
+  tier                 String                   @default("L1") @db.VarChar(2)
+  resolvedTier         String?                  @map("resolved_tier") @db.VarChar(2)
   version              Int                      @default(1)
   search               Unsupported("tsvector")?
   createdBy            String?                  @map("created_by") @db.Uuid
@@ -3094,22 +3104,23 @@ model SdTicket {
 }
 
 model SdTicketMessage {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
-  deskId         String    @map("desk_id") @db.Uuid
-  ticketId       String    @map("ticket_id") @db.Uuid
-  sensitive      Boolean   @default(false)
-  private        Boolean   @default(false)
-  kind           String    @db.VarChar(8)
-  side           String    @db.VarChar(10)
-  authorUserId   String?   @map("author_user_id") @db.Uuid
-  authorPersonId String?   @map("author_person_id") @db.Uuid
-  bodyHtml       String    @map("body_html")
-  bodyText       String    @map("body_text")
-  mentions       String[]  @default([]) @db.Uuid
-  channel        String    @db.VarChar(10)
-  editedAt       DateTime? @map("edited_at") @db.Timestamptz(3)
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  deskId             String    @map("desk_id") @db.Uuid
+  ticketId           String    @map("ticket_id") @db.Uuid
+  sensitive          Boolean   @default(false)
+  private            Boolean   @default(false)
+  kind               String    @db.VarChar(8)
+  side               String    @db.VarChar(10)
+  authorUserId       String?   @map("author_user_id") @db.Uuid
+  authorPersonId     String?   @map("author_person_id") @db.Uuid
+  bodyHtml           String    @map("body_html")
+  bodyText           String    @map("body_text")
+  mentions           String[]  @default([]) @db.Uuid
+  channel            String    @db.VarChar(10)
+  sideConversationId String?   @map("side_conversation_id") @db.Uuid
+  editedAt           DateTime? @map("edited_at") @db.Timestamptz(3)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("sd_ticket_messages")
 }
@@ -3244,4 +3255,271 @@ model SdView {
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("sd_views")
+}
+
+// ---------------------------------------------------------------- M14 Service Desk, phase 3b-1 batch 2 (SD-1.09 to SD-1.17)
+
+model SdTicketLink {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  fromTicketId   String   @map("from_ticket_id") @db.Uuid
+  toTicketId     String   @map("to_ticket_id") @db.Uuid
+  kind           String   @db.VarChar(12)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, fromTicketId, toTicketId, kind])
+  @@map("sd_ticket_links")
+}
+
+model SdSideConversation {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  deskId         String    @map("desk_id") @db.Uuid
+  ticketId       String    @map("ticket_id") @db.Uuid
+  sensitive      Boolean   @default(false)
+  private        Boolean   @default(false)
+  channel        String    @db.VarChar(12)
+  subject        String    @db.VarChar(200)
+  withWhom       String?   @map("with_whom") @db.VarChar(200)
+  childTicketId  String?   @map("child_ticket_id") @db.Uuid
+  state          String    @default("open") @db.VarChar(6)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  closedAt       DateTime? @map("closed_at") @db.Timestamptz(3)
+
+  @@map("sd_side_conversations")
+}
+
+model SdTask {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  deskId         String    @map("desk_id") @db.Uuid
+  ticketId       String?   @map("ticket_id") @db.Uuid
+  sensitive      Boolean   @default(false)
+  private        Boolean   @default(false)
+  title          String    @db.VarChar(200)
+  note           String?   @db.VarChar(2000)
+  checklist      Boolean   @default(false)
+  assigneeUserId String?   @map("assignee_user_id") @db.Uuid
+  groupId        String?   @map("group_id") @db.Uuid
+  dueAt          DateTime? @map("due_at") @db.Timestamptz(3)
+  state          String    @default("open") @db.VarChar(12)
+  sortOrder      Int       @default(0) @map("sort_order")
+  version        Int       @default(1)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+  doneAt         DateTime? @map("done_at") @db.Timestamptz(3)
+  doneBy         String?   @map("done_by") @db.Uuid
+
+  @@map("sd_tasks")
+}
+
+model SdTemplate {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  ticketTypeId   String?  @map("ticket_type_id") @db.Uuid
+  name           String   @db.VarChar(100)
+  defaults       Json     @default("{}")
+  checklist      String[] @default([])
+  active         Boolean  @default(true)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("sd_templates")
+}
+
+model SdResolutionCode {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  code           String   @db.VarChar(40)
+  label          String   @db.VarChar(100)
+  active         Boolean  @default(true)
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("sd_resolution_codes")
+}
+
+model SdReminder {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  deskId         String?   @map("desk_id") @db.Uuid
+  ticketId       String?   @map("ticket_id") @db.Uuid
+  kind           String    @default("remind") @db.VarChar(8)
+  remindAt       DateTime  @map("remind_at") @db.Timestamptz(3)
+  note           String?   @db.VarChar(300)
+  notifiedAt     DateTime? @map("notified_at") @db.Timestamptz(3)
+  doneAt         DateTime? @map("done_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("sd_reminders")
+}
+
+model SdCalendarFeed {
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  tokenHash      String   @map("token_hash") @db.Char(64)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([organizationId, userId])
+  @@map("sd_calendar_feeds")
+}
+
+model SdSensitiveValue {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  ticketId       String   @map("ticket_id") @db.Uuid
+  messageId      String?  @map("message_id") @db.Uuid
+  sensitive      Boolean  @default(false)
+  private        Boolean  @default(false)
+  kind           String   @db.VarChar(10)
+  masked         String   @db.VarChar(40)
+  valueEncrypted String   @map("value_encrypted")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("sd_sensitive_values")
+}
+
+model SdTicketRead {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  ticketId       String   @map("ticket_id") @db.Uuid
+  sensitive      Boolean  @default(false)
+  private        Boolean  @default(false)
+  userId         String   @map("user_id") @db.Uuid
+  access         String   @db.VarChar(12)
+  ip             String?  @db.VarChar(45)
+  readAt         DateTime @default(now()) @map("read_at") @db.Timestamptz(3)
+
+  @@map("sd_ticket_reads")
+}
+
+/// P14 meter ledger: one row per company, meter and day. Append-only.
+model MeterEvent {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  meter          String   @db.VarChar(40)
+  onDay          DateTime @map("on_day") @db.Date
+  quantity       Int
+  subjectIds     String[] @default([]) @map("subject_ids") @db.Uuid
+  recordedAt     DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, meter, onDay])
+  @@map("meter_events")
+}
+
+model SdSlaPolicy {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  name           String   @db.VarChar(100)
+  kind           String   @default("sla") @db.VarChar(4)
+  sortOrder      Int      @default(0) @map("sort_order")
+  active         Boolean  @default(true)
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("sd_sla_policies")
+}
+
+model SdSlaPolicyVersion {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  policyId       String   @map("policy_id") @db.Uuid
+  version        Int
+  validFrom      DateTime @default(now()) @map("valid_from") @db.Timestamptz(3)
+  scope          Json     @default("{}")
+  calendarSource String   @default("desk") @map("calendar_source") @db.VarChar(20)
+  calendarId     String?  @map("calendar_id") @db.Uuid
+  targets        Json
+  pauseStates    String[] @default(["pending", "on_hold"]) @map("pause_states")
+  recount        String   @default("keep") @db.VarChar(12)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([policyId, version])
+  @@map("sd_sla_policy_versions")
+}
+
+model SdSlaTimer {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  deskId               String    @map("desk_id") @db.Uuid
+  ticketId             String    @map("ticket_id") @db.Uuid
+  sensitive            Boolean   @default(false)
+  private              Boolean   @default(false)
+  policyVersionId      String    @map("policy_version_id") @db.Uuid
+  kind                 String    @db.VarChar(4)
+  metric               String    @db.VarChar(20)
+  groupId              String?   @map("group_id") @db.Uuid
+  taskId               String?   @map("task_id") @db.Uuid
+  calendarId           String?   @map("calendar_id") @db.Uuid
+  state                String    @db.VarChar(10)
+  startedAt            DateTime  @map("started_at") @db.Timestamptz(3)
+  resumedAt            DateTime? @map("resumed_at") @db.Timestamptz(3)
+  usedSeconds          Int       @default(0) @map("used_seconds")
+  targetSeconds        Int       @map("target_seconds")
+  dueAt                DateTime? @map("due_at") @db.Timestamptz(3)
+  pausedSince          DateTime? @map("paused_since") @db.Timestamptz(3)
+  pauseReason          String?   @map("pause_reason") @db.VarChar(100)
+  nextMilestonePercent Int?      @map("next_milestone_percent") @db.SmallInt
+  nextMilestoneAt      DateTime? @map("next_milestone_at") @db.Timestamptz(3)
+  jobVersion           Int       @default(0) @map("job_version")
+  breachedAt           DateTime? @map("breached_at") @db.Timestamptz(3)
+  metAt                DateTime? @map("met_at") @db.Timestamptz(3)
+  cancelledAt          DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  cancelReason         String?   @map("cancel_reason") @db.VarChar(100)
+  breachReason         String?   @map("breach_reason") @db.VarChar(500)
+  breachReasonBy       String?   @map("breach_reason_by") @db.Uuid
+  excluded             Boolean   @default(false)
+  exclusionReason      String?   @map("exclusion_reason") @db.VarChar(500)
+  excludedBy           String?   @map("excluded_by") @db.Uuid
+  excludedAt           DateTime? @map("excluded_at") @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("sd_sla_timers")
+}
+
+model SdSlaTimerEvent {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  ticketId       String   @map("ticket_id") @db.Uuid
+  sensitive      Boolean  @default(false)
+  private        Boolean  @default(false)
+  timerId        String   @map("timer_id") @db.Uuid
+  kind           String   @db.VarChar(12)
+  percent        Int?     @db.SmallInt
+  jobVersion     Int?     @map("job_version")
+  reason         String?  @db.VarChar(500)
+  byUserId       String?  @map("by_user_id") @db.Uuid
+  at             DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("sd_sla_timer_events")
+}
+
+model SdSlaComplianceTarget {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  metric         String   @db.VarChar(20)
+  priority       Int?     @db.SmallInt
+  targetPercent  Decimal  @map("target_percent") @db.Decimal(5, 2)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("sd_sla_compliance_targets")
 }
