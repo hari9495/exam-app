@@ -586,13 +586,13 @@
   "docs": [
    "P12 §5"
   ],
-  "state": "Done",
+  "state": "Active",
   "phase": "Step 1c",
   "order": 134,
   "points": 2,
   "priority": 1,
   "depends": [],
-  "evidence": "PR #129 · 515085cb · mfa.service.spec.ts · test/mfa.e2e-spec.ts"
+  "evidence": "PR #129 · 515085cb · mfa.service.spec.ts · test/mfa.e2e-spec.ts · API done, screen pending: no web screen calls security/mfa-resets yet"
  },
  {
   "id": "FT-A-013",
@@ -1020,12 +1020,13 @@
    "open-work W-005",
    "deferred D-050"
   ],
-  "state": "New",
+  "state": "Done",
   "phase": "Step 1 follow-up",
   "order": 170,
   "points": 2,
   "priority": 1,
-  "depends": []
+  "depends": [],
+  "evidence": "PR #129 · W-005 · auth.service.ts · test/email-first-sign-in.e2e-spec.ts (staff never in the picker, refused on the company path) · criterion 3 (hardware key for staff) still open, see D-074"
  },
  {
   "id": "US-A-035",
@@ -1047,14 +1048,73 @@
    "open-work W-006",
    "deferred D-046"
   ],
-  "state": "New",
+  "state": "Done",
   "phase": "Step 1 follow-up",
   "order": 171,
   "points": 2,
   "priority": 1,
   "depends": [
    "US-A-033"
-  ]
+  ],
+  "evidence": "PR #129 · DOMAIN_RECHECK_CRON · lapse after 3 misses, admins emailed, audit identity_provider.domain_lapsed · test/email-first-sign-in.e2e-spec.ts (domain re-check)"
+ },
+ {
+  "id": "US-A-199",
+  "type": "Story",
+  "parent": "FT-A-015",
+  "title": "Continue with Google or Microsoft",
+  "story": "As an employee, I want to sign in with my Google or Microsoft account so that I do not need a YukthiX password.",
+  "acceptance": [
+   "Given the company allows Google (or Microsoft), when I click \"Continue with Google\", then I go to YukthiX's own sign-in app and come back signed in to my company (YX-IAM-07).",
+   "Given the switch is off or no YukthiX account matches, when I come back, then one neutral message shows: \"We couldn't sign you in with that account. Try another way, or ask your admin.\" (YX-IAM-07).",
+   "Given a staff account, when it tries Google or Microsoft on the company page, then it is refused with the same message (YX-SECOPS-08).",
+   "Given accounts in more than one company, when I come back, then the company picker shows (YX-IAM-07).",
+   "Given no OAuth app is configured, when the sign-in page loads, then the button is hidden."
+  ],
+  "rules": [
+   "YX-IAM-07",
+   "YX-SECOPS-08"
+  ],
+  "docs": [
+   "P12 §6",
+   "GO-LIVE §Sign-in",
+   "VALIDATION-2026-10-08-area1 row 12"
+  ],
+  "state": "Done",
+  "phase": "Step 1 login-no-code",
+  "order": 172,
+  "points": 3,
+  "priority": 1,
+  "depends": [],
+  "evidence": "social.controller.ts · social-sign-in.ts · test/social-sign-in.e2e-spec.ts · seen live with the mock IdP 8 Oct 2026"
+ },
+ {
+  "id": "US-A-200",
+  "type": "Story",
+  "parent": "FT-A-015",
+  "title": "One lock answer on every sign-in path (W-016)",
+  "story": "As a company admin, I want a locked email or number to get the same answer on every sign-in path so that an attacker cannot route around the lock.",
+  "acceptance": [
+   "Given a locked identifier, when it tries any path (with or without a company, password, code, Google, Microsoft or passkey), then the same 429 \"Too many tries\" answer with the wait time comes back (YX-IAM-07).",
+   "Given a successful sign-in, when it completes, then the identifier lock clears (YX-IAM-07).",
+   "Given a break-glass account, when it signs in, then the identifier lock does not apply (YX-IAM-04).",
+   "Given an admin unlock, when it completes, then the identifier lock clears too (YX-IAM-07)."
+  ],
+  "rules": [
+   "YX-IAM-07",
+   "YX-IAM-04"
+  ],
+  "docs": [
+   "P12 W-016",
+   "VALIDATION-2026-10-08-area1 row 20"
+  ],
+  "state": "Done",
+  "phase": "Step 1 login-no-code",
+  "order": 173,
+  "points": 2,
+  "priority": 1,
+  "depends": [],
+  "evidence": "login-protection.service.ts · auth.service.ts · test/email-first-sign-in.e2e-spec.ts (identifier lock)"
  },
  {
   "id": "FT-A-016",
@@ -1099,6 +1159,168 @@
   "priority": 1,
   "depends": [],
   "evidence": "PR #129 · d6ea28d4 · 111c9d4a · 07fad7b4 · e82cd72a · yx-pages.test.tsx · auth.test.tsx · SecondFactorForm.test.tsx"
+ },
+ {
+  "id": "US-A-201",
+  "type": "Story",
+  "parent": "FT-A-016",
+  "title": "Change password from My security",
+  "story": "As an employee, I want to change my password from My security so that a leaked password stops working everywhere else.",
+  "acceptance": [
+   "Given My security, when I type my current and new password, then the new one must pass the password rules and the breached-password check (YX-IAM-08).",
+   "Given the change succeeds, when it completes, then every other session is signed out, this one stays, and I get an email (YX-IAM-06, YX-IAM-10).",
+   "Given a wrong current password, when I submit, then \"Your current password is wrong. Try again.\" shows and nothing changes (YX-IAM-08)."
+  ],
+  "rules": [
+   "YX-IAM-08",
+   "YX-IAM-06",
+   "YX-IAM-10"
+  ],
+  "docs": [
+   "P12 §7",
+   "VALIDATION-2026-10-08-area2 row 8"
+  ],
+  "state": "Done",
+  "phase": "Step 1g",
+  "order": 182,
+  "points": 2,
+  "priority": 1,
+  "depends": [],
+  "evidence": "users.service.ts changePassword · me-security.tsx PasswordCard · seen live 8 Oct 2026"
+ },
+ {
+  "id": "US-A-202",
+  "type": "Story",
+  "parent": "FT-A-016",
+  "title": "Rename a passkey",
+  "story": "As an employee, I want to name my passkeys so that I can tell my phone from my laptop.",
+  "acceptance": [
+   "Given a passkey in My security, when I click Rename and confirm it's you, then the new name shows in the list (YX-IAM-02).",
+   "Given the rename, when it completes, then it is logged as mfa.renamed (YX-IAM-10)."
+  ],
+  "rules": [
+   "YX-IAM-02",
+   "YX-IAM-10"
+  ],
+  "docs": [
+   "P12 §7",
+   "VALIDATION-2026-10-08-area2 row 2"
+  ],
+  "state": "Done",
+  "phase": "Step 1g",
+  "order": 183,
+  "points": 1,
+  "priority": 1,
+  "depends": [],
+  "evidence": "mfa.service.ts renamePasskey · PATCH auth/mfa/authenticators/:id · auth.test.tsx"
+ },
+ {
+  "id": "US-A-203",
+  "type": "Story",
+  "parent": "FT-A-016",
+  "title": "Copy or download recovery codes",
+  "story": "As an employee, I want to copy or download my recovery codes so that I do not lose them.",
+  "acceptance": [
+   "Given new recovery codes, when they show, then \"Copy codes\" and \"Download\" save them (YX-IAM-11).",
+   "Given the codes, when I have not ticked \"I have saved my recovery codes\", then Continue stays off (YX-IAM-11).",
+   "Given the download, when it runs, then it happens in the browser and the server keeps no copy (YX-IAM-11)."
+  ],
+  "rules": [
+   "YX-IAM-11"
+  ],
+  "docs": [
+   "P12 §7",
+   "VALIDATION-2026-10-08-area2 row 6"
+  ],
+  "state": "Done",
+  "phase": "Step 1g",
+  "order": 184,
+  "points": 1,
+  "priority": 1,
+  "depends": [],
+  "evidence": "kit.tsx RecoveryCodes · auth.test.tsx \"downloads the recovery codes\""
+ },
+ {
+  "id": "US-A-204",
+  "type": "Story",
+  "parent": "FT-A-016",
+  "title": "Verify or remove a mobile number in My security",
+  "story": "As an employee, I want to verify my mobile number myself so that I can get sign-in codes by text.",
+  "acceptance": [
+   "Given My security, when I type a number and click \"Text me a code\", then a code is texted and \"Verify number\" confirms it (YX-IAM-03).",
+   "Given a verified number, when I open My security, then it reads \"Verified. Used for sign-in codes where your company allows them.\" (YX-IAM-03).",
+   "Given Remove, when I confirm, then the number is removed, logged and I am emailed (YX-IAM-10)."
+  ],
+  "rules": [
+   "YX-IAM-03",
+   "YX-IAM-10"
+  ],
+  "docs": [
+   "P12 §7",
+   "VALIDATION-2026-10-08-area2 row 7"
+  ],
+  "state": "Done",
+  "phase": "Step 1g",
+  "order": 185,
+  "points": 2,
+  "priority": 1,
+  "depends": [],
+  "evidence": "me-security.tsx MobileCard · POST auth/otp/mobile · mfa.service.ts removeMobile · auth.test.tsx"
+ },
+ {
+  "id": "US-A-205",
+  "type": "Story",
+  "parent": "FT-A-016",
+  "title": "Login activity filters: result, method, person and dates",
+  "story": "As a company admin, I want to filter login activity so that I can find one person's or one day's sign-ins fast.",
+  "acceptance": [
+   "Given Login activity, when I set Result, Method, Person or a date range, then only matching events of my company show (YX-IAM-10).",
+   "Given 20 or more failed attempts in the last 24 hours, when the page loads, then a warning banner with \"Show failed attempts\" shows (YX-IAM-10).",
+   "Given the \"Signed in now\" tab, when the page loads, then the tab shows the session count (YX-IAM-06)."
+  ],
+  "rules": [
+   "YX-IAM-10",
+   "YX-IAM-06"
+  ],
+  "docs": [
+   "P12 §7",
+   "VALIDATION-2026-10-08-area2 rows 17-18"
+  ],
+  "state": "Done",
+  "phase": "Step 1g",
+  "order": 186,
+  "points": 2,
+  "priority": 1,
+  "depends": [],
+  "evidence": "login-activity.tsx · tables.tsx · GET security/login-events · seen live 8 Oct 2026"
+ },
+ {
+  "id": "US-A-206",
+  "type": "Story",
+  "parent": "FT-A-016",
+  "title": "Unlock a person with a reason, step-up and an email",
+  "story": "As a company admin, I want to unlock a locked person with a written reason so that every unlock is explained and the person knows.",
+  "acceptance": [
+   "Given a Failed row with the \"Locked the account\" badge, when I click Unlock, then a reason of at least 10 characters and step-up are needed (YX-IAM-02, YX-IAM-07).",
+   "Given the unlock, when it completes, then the account and identifier locks clear, audit account.unlocked and an \"Unlocked by admin\" row are written, and the person gets \"Your YukthiX account was unlocked\" (YX-IAM-07, YX-IAM-10).",
+   "Given a lock that is over, when I look at the row, then no Unlock is offered (YX-IAM-07)."
+  ],
+  "rules": [
+   "YX-IAM-02",
+   "YX-IAM-07",
+   "YX-IAM-10"
+  ],
+  "docs": [
+   "P12 §7",
+   "VALIDATION-2026-10-08-area2 rows 22-23"
+  ],
+  "state": "Done",
+  "phase": "Step 1g",
+  "order": 187,
+  "points": 2,
+  "priority": 1,
+  "depends": [],
+  "evidence": "sessions.service.ts unlockAccount · POST security/users/:id/unlock · tables.tsx UnlockDialog · unit test \"unlocks a locked person only with a reason\""
  },
  {
   "id": "FT-A-017",
@@ -1193,14 +1415,15 @@
    "P12 §3",
    "deferred D-075"
   ],
-  "state": "New",
+  "state": "Done",
   "phase": "Step 1 follow-up",
   "order": 193,
   "points": 3,
   "priority": 3,
   "depends": [
    "US-A-017"
-  ]
+  ],
+  "evidence": "PR #129 · POST /auth/passkey/verify · \"Sign in with a passkey\" on /yx/sign-in · test/passkey-sign-in.e2e-spec.ts"
  },
  {
   "id": "US-A-040",
@@ -1820,7 +2043,7 @@
   "story": "As a company admin, I want our entity's statutory numbers protected so that only the right people see them.",
   "acceptance": [
    "Given statutory identifiers, when a user without org.entity.statutory.manage opens the entity, then only 'on file / missing' shows (YX-SEC-07).",
-   "Given an allowed user, when they open the identifiers, then step-up is asked (YX-IAM-02).",
+   "Given an allowed user, when they save a change to the identifiers, then step-up is asked (YX-IAM-02); opening them is not stepped up but every opening is audited (founder decision 9 Oct 2026).",
    "Given the identifiers are read, when shown, then the read is audited (YX-SEC-09)."
   ],
   "rules": [
