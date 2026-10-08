@@ -8,6 +8,8 @@ import { MeSecurityScreen, type MeSecurityScreenProps } from './me-security';
 import { LoginActivityScreen, NO_FILTERS, type LoginActivityScreenProps } from './login-activity';
 import { SecuritySettingsScreen, policyChanges, policyErrors, type SecuritySettingsScreenProps } from './security-settings';
 import { deviceLabel, errorText } from './kit';
+import { unlockableIds } from './tables';
+import type { LoginEventRow } from './types';
 import { ADMINS, COMPANIES, FLOOR, IDPS, MFA_ENROLLED, MFA_NONE, MY_HISTORY, MY_SESSIONS, NOW, ORG_EVENTS, ORG_SESSIONS, PEOPLE, POLICY, PROVIDERS, RECOVERY_CODES, TOTP_SETUP } from './data';
 import { GROUP_2 } from '../settings/registry-g1-g2';
 
@@ -554,6 +556,19 @@ describe('LoginActivityScreen', () => {
     expect(within(pk).getByText('Passkey')).toBeInTheDocument();
     expect(within(pk).queryByText('Two-step')).toBeNull();
     expect(within(sso).getByText('Two-step')).toBeInTheDocument();
+  });
+
+  it('offers Unlock only on the newest lock of each person, and not after an unlock or a sign-in', () => {
+    const row = (id: string, userId: string, result: LoginEventRow['result'], reason: string | null = null) =>
+      ({ id, userId, identifier: `${userId}@x.test`, result, method: 'password', reason, ipAddress: null, userAgent: null, geo: null, newDevice: false, createdAt: '2026-10-08T06:00:00Z' }) as LoginEventRow;
+    const rows = [
+      row('a3', 'a', 'failed', 'bad_password+lockout_started'),
+      row('a2', 'a', 'unlocked', 'admin_unlock'),
+      row('a1', 'a', 'locked', 'account_locked'),
+      row('b2', 'b', 'success'),
+      row('b1', 'b', 'locked', 'account_locked'),
+    ];
+    expect([...unlockableIds(rows)]).toEqual(['a3']);
   });
 
   it('offers no Unlock without the permission (no handler)', () => {
