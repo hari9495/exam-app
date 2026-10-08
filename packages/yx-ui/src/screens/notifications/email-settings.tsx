@@ -39,6 +39,7 @@ export function brandingErrors(b: EmailBranding): Partial<Record<keyof EmailBran
   else if (b.accentColor && contrastWithWhite(b.accentColor) < 4.5) e.accentColor = 'White button text is hard to read on this colour. Choose a darker one.';
   if (b.senderName && /yukthi/i.test(b.senderName)) e.senderName = '"via YukthiX" is added for you. Use your company’s own name.';
   else if (b.senderName && !/^[\p{L}\p{N} &'.,()-]{2,60}$/u.test(b.senderName.trim())) e.senderName = 'Use 2 to 60 letters, numbers, spaces and & \' . , ( ) -';
+  else if (b.senderName && /[\p{L}\p{N}-]{2,}\.\p{L}{2,}/u.test(b.senderName)) e.senderName = 'Use a name, not a web address.';
   if (b.replyTo && !/^[^@\s<>"]+@[^@\s<>"]+\.[^@\s<>"]+$/.test(b.replyTo.trim())) e.replyTo = 'Enter a valid email address';
   return e;
 }

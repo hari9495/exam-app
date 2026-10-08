@@ -94,5 +94,7 @@ describe('EmailSettingsScreen', () => {
     expect(contrastWithWhite('#3B5FE3')).toBeGreaterThan(4.5);
     expect(contrastWithWhite('#FFD966')).toBeLessThan(4.5);
     expect(brandingErrors({ showLogo: true, accentColor: null, senderName: 'YukthiX Payroll', replyTo: 'nope' })).toEqual({ senderName: expect.any(String), replyTo: 'Enter a valid email address' });
+    expect(brandingErrors({ showLogo: true, accentColor: null, senderName: 'secure-bank.example', replyTo: null })).toEqual({ senderName: 'Use a name, not a web address.' });
+    expect(brandingErrors({ showLogo: true, accentColor: '#0B6E4F', senderName: 'Kaveri Foods Pvt. Ltd.', replyTo: 'hr@kaveri.example' })).toEqual({});
   });
 });

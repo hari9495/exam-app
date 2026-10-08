@@ -58,6 +58,8 @@ export function brandingProblems(b: BrandingDto): { value: Branding; problems: P
     if (senderName.length < 2) problems.senderName = 'Use at least 2 characters.';
     else if (!/^[\p{L}\p{N} &'.,()-]+$/u.test(senderName)) problems.senderName = 'Use letters, numbers, spaces and & \' . , ( ) - only.';
     else if (/yukthi/i.test(senderName)) problems.senderName = '"via YukthiX" is added for you. Use your company’s own name.';
+    // A name, not a web address: "bank.example via YukthiX" must not look like it comes from somewhere else.
+    else if (/[\p{L}\p{N}-]{2,}\.\p{L}{2,}/u.test(senderName)) problems.senderName = 'Use a name, not a web address.';
   }
   const replyTo = b.replyTo?.trim().toLowerCase() || null;
   return { value: { showLogo: b.showLogo, accentColor, senderName, replyTo }, problems };

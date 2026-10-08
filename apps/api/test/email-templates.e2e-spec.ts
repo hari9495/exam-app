@@ -138,6 +138,7 @@ describe('Company email branding and wording (P04 Q5)', () => {
     const bad = await api('adminA', 'put', '/notifications/email/branding').send({ ...good, accentColor: '#FFD966', senderName: 'YukthiX Security' }).expect(400);
     expect(Object.keys(bad.body.errors).sort()).toEqual(['accentColor', 'senderName']);
     await api('adminA', 'put', '/notifications/email/branding').send({ ...good, senderName: 'Boss <ceo@evil.test>' }).expect(400);
+    await api('adminA', 'put', '/notifications/email/branding').send({ ...good, senderName: 'secure-bank.example' }).expect(400);
     await api('adminA', 'put', '/notifications/email/branding').send({ ...good, replyTo: 'not an email' }).expect(400);
     const saved = (await api('adminA', 'put', '/notifications/email/branding').send(good).expect(200)).body;
     expect(saved.branding).toEqual({ ...good, accentColor: '#0B6E4F', replyTo: 'hr@kaveri.example' });
