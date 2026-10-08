@@ -130,10 +130,10 @@ function LocationEditor({ location, entities, states, onClose, onSave }: { locat
         {draft.fence && (
           <FieldRow>
             <FormField id="loc-lat" label="Latitude" required error={errorOf('loc-lat')}>
-              <NumberField value={draft.lat} onChange={(lat) => set({ lat })} min={-90} max={90} />
+              <NumberField value={draft.lat} onChange={(lat) => set({ lat })} min={-90} max={90} decimals />
             </FormField>
             <FormField id="loc-lng" label="Longitude" required error={errorOf('loc-lng')}>
-              <NumberField value={draft.lng} onChange={(lng) => set({ lng })} min={-180} max={180} />
+              <NumberField value={draft.lng} onChange={(lng) => set({ lng })} min={-180} max={180} decimals />
             </FormField>
             <FormField id="loc-radius" label="Radius" required error={errorOf('loc-radius')}>
               <NumberField value={draft.radiusM} onChange={(radiusM) => set({ radiusM })} min={10} max={5000} suffix="m" />
