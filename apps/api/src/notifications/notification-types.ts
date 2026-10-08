@@ -14,6 +14,9 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'reminder.offer_expiring', group: 'reminders', label: 'An offer you sent is about to expire' },
   { type: 'reminder.interview_upcoming', group: 'reminders', label: 'You have an interview coming up' },
   { type: 'reminder.feedback_owed', group: 'reminders', label: 'You still owe interview feedback' },
+  // M14 §11.2 Service Desk (3b-1).
+  { type: 'helpdesk.note.mention', group: 'mentions', label: 'You are mentioned in a ticket note' },
+  { type: 'helpdesk.ticket.assigned', group: 'assignments', label: 'A ticket is assigned to you' },
 ];
 
 export const NOTIFICATION_TYPE_BY_KEY = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));

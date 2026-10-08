@@ -16,6 +16,8 @@ describe('notification catalog', () => {
       'reminder.offer_expiring',
       'reminder.interview_upcoming',
       'reminder.feedback_owed',
+      'helpdesk.note.mention',
+      'helpdesk.ticket.assigned',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

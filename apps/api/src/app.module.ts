@@ -1,3 +1,4 @@
+import { ServiceDeskModule } from './service-desk/service-desk.module';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, HttpAdapterHost } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
@@ -156,6 +157,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     OrgStructureModule,
     EmployeeHistoryModule,
     PeopleModule,
+    ServiceDeskModule,
     AccessModule,
     FieldPermissionsModule,
     RecycleBinModule,
