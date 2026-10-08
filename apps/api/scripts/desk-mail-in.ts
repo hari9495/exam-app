@@ -1,16 +1,18 @@
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { readFileSync } from 'fs';
-import { basename } from 'path';
+import { basename, join } from 'path';
 import { signWebhook } from '../src/service-desk/mail-adapters';
 import { DEV_MAILBOXES } from '../prisma/seed-service-desk-channels';
+import { dkimSign } from 'mailauth';
 
 // LAPTOP ONLY. Sends one email to a seeded desk mailbox through the hosted-mail webhook, exactly as a mail provider
 // would (raw MIME, signed with the mailbox's dev secret). Usage, from apps/api:
 //   npx ts-node scripts/desk-mail-in.ts --to care --from someone@new-customer.test --subject "Damaged pack" --text "Two packs were torn."
 //   npx ts-node scripts/desk-mail-in.ts --to care --from ravi@annapurna-stores.test --subject "Re: [CARE-502] ..." --in-reply-to "<sd.<message id>@kaverifoods.test>"
 // Options: --to it|care, --from, --name, --subject, --text, --cc, --in-reply-to, --file <path>, --ip (sending server,
-// default 198.51.100.20), --api (default http://localhost:3401). Mail from .test domains has no SPF / DKIM / DMARC, so the
+// default 198.51.100.20), --api (default http://localhost:3401), --dkim <private key PEM file> --selector <name> (signs
+// the mail for its From domain; the API proves it only when it runs with SD_MAIL_DEV_DNS holding the public key). Mail from .test domains has no SPF / DKIM / DMARC, so the
 // desk treats the sender as not proven: a known person's address is held for a desk admin, a new outside address makes
 // a ticket marked "Sender not verified".
 
@@ -20,6 +22,8 @@ const arg = (k: string, d = '') => {
 };
 
 async function main() {
+  // apps/api/.env (variables already set win, e.g. REDIS_URL for the e2e servers).
+  process.loadEnvFile?.(join(__dirname, '../.env'));
   const box = DEV_MAILBOXES[(arg('to', 'care') as 'it' | 'care')] ?? DEV_MAILBOXES.care;
   const from = arg('from', 'new.customer@example-shop.test');
   const name = arg('name', from.split('@')[0]);
@@ -58,7 +62,11 @@ async function main() {
         `--${boundary}--`,
       ]
     : ['Content-Type: text/plain; charset=utf-8', '', text];
-  const raw = Buffer.from([...head, ...body].join('\r\n') + '\r\n', 'utf8');
+  let raw = Buffer.from([...head, ...body].join('\r\n') + '\r\n', 'utf8');
+  if (arg('dkim')) {
+    const signed = await dkimSign(raw, { signatureData: [{ signingDomain: from.split('@')[1], selector: arg('selector', 'dev'), privateKey: readFileSync(arg('dkim'), 'utf8') }] } as never);
+    raw = Buffer.concat([Buffer.from(signed.signatures), raw]);
+  }
 
   const prisma = new PrismaClient();
   const org = await prisma.organization.findUniqueOrThrow({ where: { slug: 'demo-org' }, select: { id: true } });
@@ -78,7 +86,7 @@ async function main() {
     },
     body: raw,
   });
-  console.log(res.status, await res.text());
+  console.log(`${res.status} ${await res.text()}`);
 }
 
 main().catch((e) => {

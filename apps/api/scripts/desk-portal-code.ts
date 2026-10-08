@@ -1,3 +1,4 @@
+import { join } from 'path';
 import { PrismaClient } from '@prisma/client';
 import Redis from 'ioredis';
 import { createHash, randomInt } from 'crypto';
@@ -11,7 +12,9 @@ import { OrgSecretsCryptoService } from '@exam-platform/shared';
 // Then type the email and the code on http://localhost:3400/yx/portal/demo-org/care.
 
 async function main() {
-  const [email = 'asha@annapurna-stores.test', orgSlug = 'demo-org', portalSlug = 'care'] = process.argv.slice(2);
+  // apps/api/.env (variables already set win, e.g. REDIS_URL for the e2e servers).
+  process.loadEnvFile?.(join(__dirname, '../.env'));
+  const [email = 'asha@annapurna-stores.test', orgSlug = 'demo-org', portalSlug = 'care'] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
   if (process.env.NODE_ENV === 'production') throw new Error('Laptops only.');
   const prisma = new PrismaClient();
   const { org, portal } = await prisma.$transaction(async (tx) => {
@@ -27,6 +30,8 @@ async function main() {
   const mac = new OrgSecretsCryptoService().hmac('otp', `${key}\u0000${code}`);
   const redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
   await redis.multi().del(key).hset(key, { email: address, mac, attempts: '0' }).expire(key, 300).exec();
+  // --clear-wait: also lift the 60-second wait before the next "Send me a code" (so a test can sign in again at once).
+  if (process.argv.includes('--clear-wait')) await redis.del(`auth:otp:cool:${createHash('sha256').update(`sd-portal:${org.id}:${portal.id}:${address}`).digest('hex')}`);
   await redis.quit();
   console.log(`Sign-in code for ${address} on /yx/portal/${orgSlug}/${portalSlug}: ${code} (5 minutes)`);
 }
