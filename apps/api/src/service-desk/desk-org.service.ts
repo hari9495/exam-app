@@ -5,7 +5,7 @@ import { buildViewer, covers, grantPeriods, implicitPeriods } from '../access/sc
 import { displayName } from '../employee-history/employee-history.service';
 import { Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
-import { DeskActor, SEAT_REQUIRED, audit, emit, has, isAgentOn, requireDesk, requireSetUp } from './desk-access';
+import { DeskActor, SEAT_REQUIRED, audit, deskSystem, emit, has, isAgentOn, requireDesk, requireSetUp } from './desk-access';
 import { textToHtml } from './rich-text';
 import { CreateInput, OPEN_STATES, Ticket, TicketsService } from './tickets.service';
 
@@ -125,7 +125,9 @@ export class DeskOrgService {
    * line the requester sees. Files come along (the same stored, scanned bytes).
    */
   async move(a: DeskActor, id: string, dto: { deskId: string; categoryId?: string; reason: string }) {
-    const out = await this.tx(a, async (tx) => {
+    // The rights are checked here (key, agent seat on the ticket's desk, allowed pair); writing onto the other desk is the
+    // desk's own step (the mover may hold no seat there, and a restricted desk's rows are not theirs to read back).
+    const out = await deskSystem(this.tenantPrisma, a.ctx, async (tx) => {
       const org = a.ctx.organizationId;
       const t = await this.working(tx, a, id);
       if (!OPEN_STATES.includes(t.systemState)) throw new ConflictException('Only an open ticket can be moved.');

@@ -35,12 +35,13 @@ export const RECHECK_MS = 30_000;
 export const EVENTS_PER_MINUTE = 30;
 export const MAX_FRAME_BYTES = 16 * 1024;
 
-function origins() {
+/** The web app's own origins, read when a browser connects (not when this file loads, before the .env is read). */
+function origin(o: string | undefined, cb: (err: Error | null, ok?: boolean) => void) {
   const company = companyOriginPattern();
-  return company ? [process.env.WEB_ORIGIN ?? '', company].filter(Boolean) : process.env.WEB_ORIGIN;
+  cb(null, Boolean(o && (o === process.env.WEB_ORIGIN || (company && company.test(o)))));
 }
 
-@WebSocketGateway({ namespace: '/desk-chat', cors: { origin: origins(), credentials: true }, maxHttpBufferSize: MAX_FRAME_BYTES })
+@WebSocketGateway({ namespace: '/desk-chat', cors: { origin, credentials: true }, maxHttpBufferSize: MAX_FRAME_BYTES })
 export class ChatGateway implements OnGatewayConnection, OnGatewayInit, OnModuleDestroy {
   @WebSocketServer()
   server!: Namespace;

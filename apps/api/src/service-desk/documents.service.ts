@@ -211,10 +211,11 @@ export class DocumentsService {
 
   async list(a: DeskActor, ticketId: string) {
     return this.tx(a, async (tx) => {
-      const { t } = await this.tickets.load(tx, a, ticketId);
+      const { t, access } = await this.tickets.load(tx, a, ticketId);
       const docs = await tx.sdRequestDocument.findMany({ where: { organizationId: a.ctx.organizationId, ticketId: t.id }, orderBy: { createdAt: 'asc' } });
       const templates = await tx.sdDocTemplate.findMany({ where: { organizationId: a.ctx.organizationId, deskId: t.deskId, active: true }, select: { id: true, name: true, needsSignature: true }, orderBy: { name: 'asc' } });
-      return { documents: docs.map((d) => ({ ...this.view(d), evidence: d.evidence })), templates };
+      // The signing evidence (address, device) is for the desk's agents only, not observers or shared desks.
+      return { documents: docs.map((d) => ({ ...this.view(d), evidence: access === 'agent' ? d.evidence : null })), templates };
     });
   }
 

@@ -2,7 +2,7 @@ import { INestApplicationContext, Logger } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import Redis from 'ioredis';
-import { ServerOptions } from 'socket.io';
+import { Server, ServerOptions } from 'socket.io';
 
 // D1: socket.io across several API servers. Each server publishes room messages through Redis and receives the others'
 // (the official @socket.io/redis-adapter), so a requester on one server and the agent on another share the chat room.
@@ -23,7 +23,8 @@ export class ChatIoAdapter extends IoAdapter {
     return server;
   }
 
-  async dispose() {
-    this.clients.forEach((c) => c.disconnect());
+  async close(server: Server) {
+    await super.close(server);
+    this.clients.splice(0).forEach((c) => c.disconnect());
   }
 }
