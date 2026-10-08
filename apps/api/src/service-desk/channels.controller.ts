@@ -10,7 +10,7 @@ import { CredentialThrottle } from '../auth/credential-throttler.guard';
 import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard, assertStepUp } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
-import { PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
+import { INBOUND_MAIL_THROTTLE, PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { CustomersService } from './customers.service';
 import { DeskAccessService, assertOwnSession } from './desk-access';
 import {
@@ -338,7 +338,7 @@ export class InboundMailController {
 
   @Post(':org/:token')
   @HttpCode(202)
-  @Throttle(PUBLIC_API_THROTTLE)
+  @Throttle(INBOUND_MAIL_THROTTLE)
   receive(@Param('org', ParseUUIDPipe) org: string, @Param('token') token: string, @Req() req: Request, @Body() body: unknown) {
     return this.mailIn.webhook(org, String(token), req.headers, Buffer.isBuffer(body) ? body : Buffer.alloc(0), req.ip ?? null);
   }

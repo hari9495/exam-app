@@ -23,4 +23,7 @@ export const REFRESH_THROTTLE = { default: { limit: isTest ? 10_000 : 30, ttl: s
 export const STRICT_AI_GENERATE_THROTTLE = { default: { limit: isTest ? 10_000 : 10, ttl: seconds(60) } };
 export const MODERATE_UPLOAD_THROTTLE = { default: { limit: isTest ? 10_000 : 10, ttl: seconds(60) } };
 export const PUBLIC_API_THROTTLE = { default: { limit: isTest ? 10_000 : 60, ttl: seconds(60) } };
+// Service Desk inbound mail webhook: one mail provider posts every company's mail from a few addresses. Each post is
+// signed per mailbox and each sender is limited (20 in 10 minutes), so this only caps raw volume per provider address.
+export const INBOUND_MAIL_THROTTLE = { default: { limit: isTest ? 10_000 : 1200, ttl: seconds(60) } };
 export const STRICT_WALK_IN_THROTTLE = { default: { limit: isTest ? 10_000 : 20, ttl: seconds(60) } };
