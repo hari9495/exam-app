@@ -43,7 +43,7 @@ export class TimeSetupService {
   overview(ctx: TenantContext, user: ScopeUser) {
     return this.run(ctx, user, false, async (tx, c) => {
       const org = c.organizationId;
-      const [types, policies, versions, assignments, calendars, holidays, locations, rules, statutory] = await Promise.all([
+      const [types, policies, versions, assignments, calendars, holidays, locations, rules, statutory, entities] = await Promise.all([
         tx.leaveType.findMany({ where: { organizationId: org }, orderBy: [{ active: 'desc' }, { code: 'asc' }] }),
         tx.leavePolicy.findMany({ where: { organizationId: org }, orderBy: { name: 'asc' } }),
         tx.leavePolicyVersion.findMany({ where: { organizationId: org }, orderBy: { validFrom: 'desc' } }),
@@ -53,6 +53,7 @@ export class TimeSetupService {
         tx.location.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' } }),
         tx.locationAttendanceRule.findMany({ where: { organizationId: org }, orderBy: { validFrom: 'desc' } }),
         tx.statutoryRuleSet.findMany({ where: { statute: 'IN.SE' }, orderBy: { jurisdiction: 'asc' } }),
+        tx.legalEntity.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
       ]);
       const scopeName = await this.scopeNames(tx, org, assignments.map((a) => ({ type: a.scopeType, id: a.scopeId })));
       const today = todayIst();
@@ -88,6 +89,7 @@ export class TimeSetupService {
             upcoming: mine.filter((r) => dateOf(r.validFrom) > today).map((r) => this.ruleView(r)),
           };
         }),
+        entities,
         statutory: statutory.map((s) => ({ jurisdiction: s.jurisdiction, version: s.version, validFrom: dateOf(s.validFrom), values: s.values, source: s.source, verify: s.verify })),
       };
     });
