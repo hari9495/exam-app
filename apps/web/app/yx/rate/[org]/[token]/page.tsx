@@ -28,6 +28,9 @@ function RatePage() {
   const [commented, setCommented] = useState(false);
   const once = useRef(false);
 
+  // DECISION NEEDED: the score in the link is sent by this page's script on open (one click, as asked). Plain link
+  // scanners only fetch the page and never spend the token, but a scanner that runs scripts could. If that shows up,
+  // switch to "press to confirm" (drop the auto-send below).
   const answer = async (s: number) => {
     setScore(s);
     const r = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ score: s }) }).catch(() => null);

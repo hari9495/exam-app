@@ -236,6 +236,7 @@ export class SupportBridgeService {
     return { ticket: full, severityLabel: SEVERITY_LABEL[t.priority] ?? '', tier: t.planTier ?? 'standard', tenant, session, linkable: accounts };
   }
 
+  // DECISION NEEDED: payroll-day extended support hours are not modelled; tiers use the fixed calendars of the seed.
   /** YX-CONSOLE-01: account facts only. Read across tenants through the audited platformRead (purpose recorded). */
   private async tenantPanel(a: DeskActor, staffUserId: string, accountId: string) {
     const org = a.ctx.organizationId;

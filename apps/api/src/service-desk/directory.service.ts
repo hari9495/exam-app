@@ -370,6 +370,8 @@ export class DirectoryService {
         const seat = await tx.sdDeskMember.create({ data: { organizationId: org, deskId: m.deskId, userId, role: m.role, validFrom: new Date(`${todayIst()}T00:00:00Z`) } });
         await audit(tx, sys as never, 'desk.member.added', 'sd_desk_member', seat.id, { deskId: m.deskId, userId, role: m.role, by: 'directory group', group: m.group });
         if (m.role !== 'collaborator') await emit(tx, org, 'helpdesk.agent_seat.granted', { deskId: m.deskId, userId, by: 'directory' });
+      // DECISION NEEDED: leaving a mapped directory group ends the desk seat at once (even one an admin also gave by
+      // hand). Confirm, or only end seats the directory itself granted.
       } else if (!wanted && has) await endSeatIn(tx, sys, has, `No longer in the directory group ${m.group}`);
     }
   }

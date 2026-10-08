@@ -17,6 +17,9 @@ import { Requester, RequesterService } from './requester.service';
 // contact details become "Erased requester"; the tickets' facts stay for reports. A legal hold stops erasure and
 // retention. Every step is audited. The retention job blanks closed tickets' words and files after the company's period.
 
+// DECISION NEEDED: an employee's erasure only blanks their words and files here; their name stays because HR (P01)
+// owns the person record. Confirm that is enough, or route desk erasure through the HR erasure flow.
+
 export const REMOVED_HTML = '<p>[Removed]</p>';
 export const REMOVED_TEXT = '[Removed]';
 const ERASED = 'Erased requester';
