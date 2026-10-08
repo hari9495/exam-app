@@ -337,6 +337,30 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
       expect(company.status).toBe(401);
       expect(company.body).toEqual((await platformLogin(browser(), STAFF, 'not-the-password')).body);
     });
+
+    it('a company page (orgSlug) answers a staff email exactly like an unknown one: sign-in, code and reset link', async () => {
+      const company = { organizationSlug: org.kaveri.slug };
+      const nobody = `nobody-${runId}@yukthix-${runId}.test`;
+      const since = new Date();
+      const staff = await login(browser(), STAFF, STAFF_PW, company);
+      expect(staff.status).toBe(401);
+      expect(staff.body).toEqual((await login(browser(), nobody, STAFF_PW, company)).body);
+      const otpBody = async (who: string) => Object.keys((await call(browser(), 'post', '/auth/otp/start', { identifier: who, ...company })).body).sort();
+      expect(await otpBody(STAFF)).toEqual(await otpBody(nobody));
+      const resetBody = async (who: string) => (await call(browser(), 'post', '/auth/forgot-password', { email: who, ...company })).body;
+      expect(await resetBody(STAFF)).toEqual(await resetBody(nobody));
+      expect(await events({ userId: staffId, createdAt: { gte: since } })).toEqual([]);
+      expect(await prisma.passwordResetToken.count({ where: { userId: staffId } })).toBe(0);
+      await resetLocks(nobody);
+    });
+
+    it('the database itself refuses a staff account inside a company, so no company lookup can ever return one', async () => {
+      const create = (role: string) =>
+        tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { organizationId: org.kaveri.id, email: `in-company-${role}-${runId}@yukthix-${runId}.test`, passwordHash: 'x', role } }));
+      await expect(create('super_admin')).rejects.toThrow(/users_staff_never_in_a_company_check/);
+      const ok = await create('panel');
+      await tenantPrisma.forTenant(SUPER, (tx) => tx.user.delete({ where: { id: ok.id } }));
+    });
   });
 
   describe('lockout (YX-IAM-07): per account under its company\'s settings, per email across companies, per IP', () => {
