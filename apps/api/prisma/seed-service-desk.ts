@@ -39,6 +39,9 @@ export const DESK_PERMISSIONS = [
   { key: 'desk.pii.unmask', description: 'Show a masked value in a ticket (every view recorded)' },
   { key: 'desk.directory.manage', description: 'Set up directory sync for the Service Desk' },
   { key: 'desk.survey.manage', description: 'Set up NPS surveys and see their answers' },
+  { key: 'desk.catalog.manage', description: 'Set up the service catalogue, order guides and the question library' },
+  { key: 'desk.rule.manage', description: 'Set up automation rules for a desk' },
+  { key: 'desk.integration.manage', description: 'Set up webhooks that desk rules call (needs a fresh security check)' },
 ];
 
 const day = (iso: string) => new Date(`${iso}T00:00:00Z`);
