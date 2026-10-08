@@ -43,6 +43,7 @@
 .yx-auth__stack { display: flex; flex-direction: column; gap: var(--yx-space-4); min-width: 0; }
 .yx-auth__list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
 .yx-auth__item { display: flex; align-items: center; justify-content: space-between; gap: var(--yx-space-3); padding: var(--yx-space-3) 0; min-width: 0; }
+.yx-auth__item > .yx-button, .yx-auth__item > button { flex: none; white-space: nowrap; }
 .yx-auth__list > .yx-auth__item + .yx-auth__item { border-top: var(--yx-border-width) solid var(--yx-color-border); }
 .yx-auth__item-main { display: flex; flex-direction: column; align-items: flex-start; gap: var(--yx-space-half); min-width: 0; overflow-wrap: anywhere; }
 .yx-auth__nowrap { white-space: nowrap; }
