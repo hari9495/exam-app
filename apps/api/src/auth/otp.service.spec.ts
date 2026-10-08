@@ -56,7 +56,7 @@ describe('one-time codes (P12 §3, M04 Q2)', () => {
     // The email is rendered (MJML, compiled once per layout) before it is sent.
     const flush = () => new Promise((r) => setTimeout(r, 300));
     const prisma = { organization: { findUnique: jest.fn(async () => ({ name: 'Kaveri <Foods>' })) } };
-    const service = (redis: object) => new OtpService(crypto, email as never, sms, redis as never, prisma as never);
+    const service = (redis: object) => new OtpService(crypto, email as never, sms, redis as never, prisma as never, { forCompany: async () => null, recipient: async () => ({ company: 'Demo Org', firstName: null }) } as never);
 
     it('fails closed (503) when its store is down: no code is issued, checked or rate-limited', async () => {
       const down = new Proxy({}, { get: () => () => { throw new Error('ECONNREFUSED'); } });
@@ -85,7 +85,8 @@ describe('one-time codes (P12 §3, M04 Q2)', () => {
       expect(html).toContain('sign in to Kaveri &lt;Foods&gt;');
       expect(html).not.toContain('<Foods>');
       expect(text).toContain('012345');
-      expect(text).toContain('Enter this code to sign in to Kaveri <Foods>. It works once and expires in 5 minutes.');
+      expect(text).toContain('Enter this code to sign in to Kaveri <Foods>.');
+      expect(text).toContain('It works once and expires in 5 minutes.');
       expect(sms.sent).toEqual([
         expect.objectContaining({ organizationId: 'org-1', to: '+919876543210', channel: 'sms', code: '012345', purpose: 'verification code', minutes: 5, recipientUserId: 'u-1' }),
       ]);

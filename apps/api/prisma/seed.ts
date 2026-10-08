@@ -62,11 +62,13 @@ export const PERMISSIONS = [
   { key: 'platform.support.request', description: 'Ask a company for a support session and use it (YukthiX staff)' },
   { key: 'platform.audit.view', description: 'See the platform audit log (YukthiX staff)' },
   { key: 'org.support_access.approve', description: 'Approve, decline and end YukthiX support sessions' },
+  // P04 Q5: a company's branding and wording of the account emails.
+  { key: 'notification.template.manage', description: 'Brand and re-word the emails YukthiX sends your people' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
-  // DECISION NEEDED: least-privilege staff roles (support, billing, security; P14 §4 platform_staff_roles, P12 Q7).
-  // Until they are decided every YukthiX staff account holds all console keys; each route checks its own key.
+  // P14 Console 1 (founder, 8 Oct 2026): one all-keys staff role until staff are hired, then Support / Billing /
+  // Security (P14 §4 platform_staff_roles, P12 Q7). Each route checks its own key.
   super_admin: [
     'platform:manage_organizations',
     'org:manage_users',
@@ -114,6 +116,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'employee.profile.edit',
     // P02 Q8: the System Admin decides on YukthiX support sessions.
     'org.support_access.approve',
+    // P04 Q5: the System Admin brands and re-words the account emails.
+    'notification.template.manage',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],

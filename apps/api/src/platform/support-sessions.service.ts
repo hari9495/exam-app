@@ -2,7 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { Prisma } from '@prisma/client';
 import { AuditService, TenantContext, TenantPrismaService, isOrganizationActive } from '@exam-platform/shared';
 import { SessionsService } from '../auth/sessions.service';
-import { appUrl, button, details, text } from '../email/account-emails';
+import { action, appUrl, details, text } from '../email/account-emails';
 import { PLATFORM, platformRead, staffActor } from './platform.service';
 import { REQUEST_LAPSES_HOURS } from './support-session-access';
 import { SupportApproveDto, SupportRequestDto } from './dto';
@@ -94,11 +94,11 @@ export class SupportSessionsService {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('You already have an open request or session for this company.');
         throw e;
       });
-    this.sessions.notifyAdmins(organizationId, 'YukthiX support asks to see your company data', 'A support session needs your approval', [
+    this.sessions.notifyAdmins(organizationId, 'support_requested', [
       text(`${actor.label} from YukthiX support asks to look at ${org.name} for up to ${dto.hours} hours. Nothing is visible until a System Admin approves.`),
       details([['Reason', dto.reason.trim()], ...(dto.ticket ? ([['Ticket', dto.ticket]] as [string, string][]) : [])]),
       text('Pay, identity and bank details stay hidden. The session is read-only and everything done is listed for you. The request lapses in 24 hours if nobody answers.'),
-      button('Review the request', appUrl('/yx/settings/support-access')),
+      action(appUrl('/yx/settings/support-access')),
     ]);
     return view(row);
   }

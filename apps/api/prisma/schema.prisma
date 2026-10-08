@@ -2799,3 +2799,34 @@ model SupportSession {
 
   @@map("support_sessions")
 }
+
+// P04 Q5 / §4: a company's branding of the account emails YukthiX sends its people (forced RLS).
+model EmailBranding {
+  organizationId String   @id @map("organization_id") @db.Uuid
+  showLogo       Boolean  @default(true) @map("show_logo")
+  accentColor    String?  @map("accent_color") @db.VarChar(7)
+  senderName     String?  @map("sender_name") @db.VarChar(60)
+  replyTo        String?  @map("reply_to") @db.VarChar(254)
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("email_branding")
+}
+
+// P04 Q5: a company's wording for one account email type and language; the YukthiX wording is the starter (forced RLS).
+model EmailTemplateOverride {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  type           String   @db.VarChar(40)
+  language       String   @default("en") @db.VarChar(10)
+  subject        String   @db.VarChar(150)
+  heading        String   @db.VarChar(120)
+  intro          String   @default("") @db.VarChar(1000)
+  buttonLabel    String   @default("") @map("button_label") @db.VarChar(40)
+  footer         String   @default("") @db.VarChar(500)
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, type, language], map: "email_template_overrides_org_type_language_key")
+  @@map("email_template_overrides")
+}

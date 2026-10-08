@@ -9,6 +9,7 @@ import { DEFAULT_SECURITY_POLICY, PrismaService, SecurityPolicySettings, loadTen
 import { TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { EmailLookService } from '../email/email-look.service';
 import { SessionsService } from './sessions.service';
 import { LOGIN_PROTECTION_REDIS, LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
 import { CompanyScopeService } from './company-scope';
@@ -153,6 +154,7 @@ describe('AuthService', () => {
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AuditService, useValue: audit },
         { provide: EmailService, useValue: emailService },
+        { provide: EmailLookService, useValue: { forCompany: async () => null, recipient: async () => ({ company: 'Demo Org', firstName: null }) } },
         { provide: SessionsService, useValue: sessions },
         { provide: LoginProtectionService, useValue: loginProtection },
         { provide: PasswordPolicyService, useValue: passwordPolicy },
@@ -1078,8 +1080,8 @@ describe('AuthService', () => {
 
       await expect(service.login({ ...DTO, password: 'wrong' }, META)).rejects.toThrow('Invalid credentials');
       expect(loginProtection.reserve).toHaveBeenCalledWith('demo-org', 'admin@demo-org.test', META.ip, { deviceId: META.deviceId, lockExempt: true, lockout: DEFAULT_LOCKOUT });
-      expect(sessions.notifyAdmins).toHaveBeenCalledWith('org-1', 'Repeated failed sign-ins to a break-glass account', expect.any(String), expect.any(Array));
-      expect(JSON.stringify(sessions.notifyAdmins.mock.calls[0][3])).toContain('admin@demo-org.test');
+      expect(sessions.notifyAdmins).toHaveBeenCalledWith('org-1', 'break_glass_failures', expect.any(Array));
+      expect(JSON.stringify(sessions.notifyAdmins.mock.calls[0][2])).toContain('admin@demo-org.test');
       expect(sessions.notifyLocked).not.toHaveBeenCalled();
     });
 

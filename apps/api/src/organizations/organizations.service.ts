@@ -10,6 +10,7 @@ import { OrgSecretsCryptoService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { AiProvider, AnthropicProvider, OpenAiCompatibleProvider, OpenAiCompatibleEmbeddingProvider } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { companyWelcomeEmail } from '../email/account-emails';
 import { buildSmtpTransportOptions } from '../email/smtp-transport';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
@@ -237,7 +238,7 @@ export class OrganizationsService {
       }),
     );
 
-    this.dispatchWelcomeEmail(dto.adminEmail, rawToken).catch((error) =>
+    this.dispatchWelcomeEmail(dto.adminEmail, adminName, org.name, rawToken).catch((error) =>
       this.logger.error(`Failed to dispatch welcome email to ${dto.adminEmail}`, error as Error),
     );
 
@@ -250,13 +251,11 @@ export class OrganizationsService {
     return org;
   }
 
-  private async dispatchWelcomeEmail(email: string, rawToken: string): Promise<void> {
+  // YukthiX's own welcome to the first System Admin (founder, 8 Oct 2026): not company-editable.
+  private async dispatchWelcomeEmail(email: string, adminName: string | null, company: string, rawToken: string): Promise<void> {
     const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/reset-password/${rawToken}`;
-    await this.emailService.send({
-      to: email,
-      subject: 'Welcome — set up your account',
-      html: `<p>An organization has been created for you on the Examination Platform. Click the link below to set your password and get started. This link expires in 15 minutes.</p><p><a href="${link}">${link}</a></p>`,
-    });
+    const mail = await companyWelcomeEmail({ to: email, adminName, company, link, minutes: PASSWORD_RESET_EXPIRY_MINUTES });
+    await this.emailService.send({ to: email, ...mail });
   }
 
   async list(filters: { page?: string; pageSize?: string; search?: string } = {}): Promise<PaginatedResponse<OrganizationListItem>> {

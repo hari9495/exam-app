@@ -36,6 +36,7 @@ export const SUPPORT_READABLE = [
   '/support-access',
   '/security',
   '/notifications/sms',
+  '/notifications/email',
   '/organizations/branding',
   '/users/me',
   '/rbac/me',

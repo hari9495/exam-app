@@ -2,7 +2,8 @@ import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/commo
 import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
-import { noticeEmail, text } from '../email/account-emails';
+import { adminAlertEmail, text } from '../email/account-emails';
+import { EmailLookService } from '../email/email-look.service';
 import { assertPublicHttpsHost, publicHttpsFetch } from '../common/ssrf';
 import { SmsFetch, SmsProviderAdapter, getChannelProvider } from '../sms/providers';
 import { normaliseMobileNumber } from '../auth/otp.service';
@@ -87,6 +88,7 @@ export class SmsChannelService {
     private readonly crypto: OrgSecretsCryptoService,
     private readonly email: EmailService,
     @Inject(SMS_GATEWAY_NET) private readonly net: SmsGatewayNet,
+    private readonly looks: EmailLookService,
   ) {}
 
   addressHash(e164: string): string {
@@ -293,17 +295,18 @@ export class SmsChannelService {
         const first = await tx.$executeRaw`UPDATE sms_usage_monthly SET cap_alerted_at = now()
           WHERE organization_id = ${organizationId}::uuid AND month = ${month}::date AND cap_alerted_at IS NULL`;
         return first === 1
-          ? tx.user.findMany({ where: { organizationId, role: 'org_admin', status: 'active' }, select: { email: true, organization: { select: { name: true } } } })
+          ? tx.user.findMany({ where: { organizationId, role: 'org_admin', status: 'active' }, select: { email: true, name: true, organization: { select: { name: true } } } })
           : [];
       })
       .then(async (admins) => {
+        const look = admins.length ? await this.looks.forCompany(organizationId, 'sms_limit_reached') : null;
         for (const admin of admins) {
-          const mail = await noticeEmail({
+          const mail = await adminAlertEmail('sms_limit_reached', {
             to: admin.email,
             company: admin.organization?.name,
-            subject: 'Your organisation has reached its monthly SMS limit',
-            heading: 'Monthly SMS limit reached',
-            blocks: [
+            firstName: admin.name,
+            look,
+            facts: [
               text(`Your organisation has sent its limit of ${cap} text messages this month.`),
               text('Until next month, one-time codes go by email where the sign-in allows it. You can change the limit in Settings › Notifications › SMS.'),
             ],

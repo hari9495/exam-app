@@ -44,7 +44,8 @@ describe('YukthiX account emails', () => {
     expect(mail.html).toContain('YukthiX will never ask you for this code by phone, email or chat.');
     expect(mail.html).not.toMatch(/<a\s/i);
     expect(mail.text).toContain('532112');
-    expect(mail.text).toContain(`Enter this code to sign in to ${EVIL}. It works once and expires in 5 minutes.`);
+    expect(mail.text).toContain(`Enter this code to sign in to ${EVIL}.`);
+    expect(mail.text).toContain('It works once and expires in 5 minutes.');
     expect(mail.text).toContain("Didn't try to sign in? You can ignore this email; someone may have typed your address by mistake. Your account is safe.");
     expectSafe(mail);
   });

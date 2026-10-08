@@ -10,6 +10,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { AuditService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { EmailLookService } from '../email/email-look.service';
 import { QuotaService } from '../billing/quota.service';
 import { PasswordPolicyService } from '../auth/password-policy.service';
 
@@ -44,6 +45,7 @@ describe('UsersService', () => {
         { provide: AuditService, useValue: audit },
         { provide: JwtService, useValue: jwt },
         { provide: EmailService, useValue: emailService },
+        { provide: EmailLookService, useValue: { forCompany: async () => null, recipient: async () => ({ company: 'Demo Org', firstName: null }) } },
         { provide: BlobStorageService, useValue: blobStorage },
         { provide: QuotaService, useValue: quota },
         { provide: PasswordPolicyService, useValue: passwordPolicy },
@@ -1274,6 +1276,8 @@ describe('UsersService', () => {
       const result = await service.bulkCreate(ctx, { emails: ['exists@b.com', 'new@b.com'], role: 'recruiter' }, 'admin1');
       expect(result.created).toHaveLength(1);
       expect(result.skipped).toEqual([{ email: 'exists@b.com', reason: 'already exists' }]);
+      // The invitation is fire-and-forget: it is built (company look first), then sent.
+      await new Promise((r) => setImmediate(r));
       expect(emailService.send).toHaveBeenCalledTimes(1);
       expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'new@b.com', organizationId: 'org1' }));
       // Fired once for the whole batch, not once per created user.

@@ -4,6 +4,7 @@ import { createHash, randomInt, randomUUID, timingSafeEqual } from 'crypto';
 import parsePhoneNumberFromString from 'libphonenumber-js/max';
 import { OrgSecretsCryptoService, PrismaService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { EmailLookService } from '../email/email-look.service';
 import { codeEmail } from '../email/account-emails';
 import { LOGIN_PROTECTION_REDIS, ipBucket } from './login-protection.service';
 import { OTP_SMS_SENDER, OtpMobileChannel, OtpSmsSender } from './otp-sender';
@@ -74,6 +75,7 @@ export class OtpService {
     @Inject(OTP_SMS_SENDER) private readonly sms: OtpSmsSender,
     @Inject(LOGIN_PROTECTION_REDIS) private readonly redis: Redis,
     private readonly prisma: PrismaService,
+    private readonly looks: EmailLookService,
   ) {}
 
   // Fail closed: without its store no code can be limited or checked, so nothing proceeds.
@@ -196,10 +198,19 @@ export class OtpService {
     sending.catch((error) => this.logger.error(`Failed to send a one-time code by ${channel}`, error as Error));
   }
 
-  // The company is named when known; with no company (email-first, several companies) it says YukthiX.
+  // The company is named (and its email branding used) when known; with no company (email-first, several companies)
+  // it says YukthiX.
   private async emailCode(to: string, code: string, purpose: OtpPurpose, organizationId?: string | null, insteadOfText = false, nameCompany = true) {
-    const org = organizationId && nameCompany ? await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }) : null;
-    const mail = await codeEmail({ to, code, purpose, company: org?.name, minutes: OTP_TTL_SECONDS / 60, insteadOfText });
+    const named = organizationId && nameCompany ? organizationId : null;
+    const [org, person, look] = named
+      ? await Promise.all([
+          this.prisma.organization.findUnique({ where: { id: named }, select: { name: true } }),
+          this.looks.recipient(named, to),
+          this.looks.forCompany(named, purpose === 'sign_in' ? 'sign_in_code' : purpose === 'mfa' ? 'verification_code' : 'mobile_code'),
+        ])
+      : [null, null, null];
+    const mail = await codeEmail({ to, code, purpose, company: org?.name, firstName: person?.firstName, look, minutes: OTP_TTL_SECONDS / 60, insteadOfText });
     return this.email.send({ to, ...mail, organizationId: organizationId ?? undefined });
   }
+
 }

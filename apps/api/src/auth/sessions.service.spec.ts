@@ -54,7 +54,7 @@ describe('SessionsService', () => {
     tenantPrisma = { forTenant: jest.fn(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
     audit = { record: jest.fn() };
     email = { send: jest.fn().mockResolvedValue({}) };
-    service = new SessionsService(tenantPrisma as any, audit as any, email as any, {} as any);
+    service = new SessionsService(tenantPrisma as any, audit as any, email as any, {} as any, { forCompany: async () => null, recipient: async () => ({ company: 'Demo Org', firstName: null }) } as never);
   });
 
   describe('create', () => {

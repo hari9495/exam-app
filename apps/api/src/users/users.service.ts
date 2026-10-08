@@ -13,6 +13,8 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuditService } from '@exam-platform/shared';
 import { randomBytes, createHash } from 'crypto';
 import { EmailService } from '../email/email.service';
+import { EmailLookService } from '../email/email-look.service';
+import { inviteEmail, passwordResetEmail } from '../email/account-emails';
 import { QuotaService } from '../billing/quota.service';
 import { SuperAdminEmailDto } from './dto/super-admin-email.dto';
 import { BulkCreateUsersDto } from './dto/bulk-create-users.dto';
@@ -93,6 +95,7 @@ export class UsersService {
     private readonly blobStorage: BlobStorageService,
     private readonly quota: QuotaService,
     private readonly passwordPolicy: PasswordPolicyService,
+    private readonly looks: EmailLookService,
   ) {}
 
   async create(context: TenantContext, dto: CreateUserDto): Promise<SafeUser> {
@@ -608,7 +611,7 @@ export class UsersService {
       return { success: true, emailSent: false };
     }
     const { email, rawToken } = pending as { email: string; rawToken: string };
-    const result = await this.dispatchResetLink(email, rawToken, context.organizationId as string);
+    const result = await this.dispatchResetLink(email, rawToken, context.organizationId as string, 'password_reset');
     if (!result.success) {
       this.logger.error(`Failed to dispatch password reset email to ${email}`);
     }
@@ -650,7 +653,7 @@ export class UsersService {
           await tx.passwordResetToken.create({
             data: { userId: user.id, tokenHash, expiresAt: new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000) },
           });
-          this.dispatchResetLink(email, rawToken, context.organizationId as string).catch((error) =>
+          this.dispatchResetLink(email, rawToken, context.organizationId as string, 'invite').catch((error) =>
             this.logger.error(`Failed to dispatch invite email to ${email}`, error as Error),
           );
         }
@@ -669,14 +672,14 @@ export class UsersService {
     return { created, skipped };
   }
 
-  private dispatchResetLink(email: string, rawToken: string, organizationId: string) {
+  // The YukthiX account email (P04 Q5: in the company's branding and wording): an invitation for someone just added,
+  // a reset when an admin asks for one.
+  private async dispatchResetLink(email: string, rawToken: string, organizationId: string, type: 'invite' | 'password_reset') {
     const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/reset-password/${rawToken}`;
-    return this.emailService.send({
-      to: email,
-      subject: 'Reset your Examination Platform password',
-      html: `<p>A password reset was requested for your account. Click the link below to set a new password. This link expires in 15 minutes.</p><p><a href="${link}">${link}</a></p>`,
-      organizationId,
-    });
+    const [{ company, firstName }, look] = await Promise.all([this.looks.recipient(organizationId, email), this.looks.forCompany(organizationId, type)]);
+    const input = { to: email, link, company, firstName, look, minutes: PASSWORD_RESET_EXPIRY_MINUTES };
+    const mail = await (type === 'invite' ? inviteEmail(input) : passwordResetEmail(input));
+    return this.emailService.send({ to: email, ...mail, organizationId });
   }
 
   private async dispatchInviteEmail(email: string, rawToken: string): Promise<void> {

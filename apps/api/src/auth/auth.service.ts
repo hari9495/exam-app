@@ -41,7 +41,8 @@ import { PlatformLoginDto, SelectCompanyDto } from './dto/login.dto';
 import { CompanyCard, CompanyScopeService } from './company-scope';
 import { SocialIdentity, SocialProvider, isSocialProvider } from './social-sign-in';
 import { emailDomain } from './identity-providers';
-import { appUrl, button, details, passwordResetEmail, text } from '../email/account-emails';
+import { action, appUrl, details, passwordResetEmail, text } from '../email/account-emails';
+import { EmailLookService } from '../email/email-look.service';
 
 interface TokenPair {
   accessToken: string;
@@ -210,6 +211,7 @@ export class AuthService {
     private readonly otp: OtpService,
     private readonly companyScope: CompanyScopeService,
     @Inject(LOGIN_PROTECTION_REDIS) private readonly redis: Redis,
+    private readonly looks: EmailLookService,
   ) {}
 
   // Password sign-in (YX-IAM-06/07/10). With a company (orgSlug, web address or remembered company):
@@ -1145,11 +1147,11 @@ export class AuthService {
   // every admin of the company is told instead, since someone is guessing at the way in of last resort.
   private alertLocked(user: SessionUser, meta: ClientMeta, breakGlass: boolean, lockedForSeconds?: number): void {
     if (breakGlass && user.organizationId) {
-      this.sessions.notifyAdmins(user.organizationId, 'Repeated failed sign-ins to a break-glass account', 'Repeated failed sign-ins', [
+      this.sessions.notifyAdmins(user.organizationId, 'break_glass_failures', [
         text(`Someone has repeatedly failed to sign in to the break-glass account ${user.email}.`),
         details([['IP address', meta.ip ?? 'Unknown']]),
         text('Review Login activity to see where the attempts came from.'),
-        button('Open Login activity', appUrl('/yx/admin/login-activity')),
+        action(appUrl('/yx/admin/login-activity')),
       ]);
       return;
     }
@@ -1237,7 +1239,11 @@ export class AuthService {
   private async dispatchResetEmail(email: string, rawToken: string, organizationId: string, companyName?: string, yukthix = false): Promise<void> {
     const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/reset-password/${rawToken}`;
     if (yukthix) {
-      const mail = await passwordResetEmail({ to: email, link, company: companyName, minutes: PASSWORD_RESET_EXPIRY_MINUTES });
+      // The company's branding and wording when the email names it (P04 Q5).
+      const [look, { firstName }] = companyName
+        ? await Promise.all([this.looks.forCompany(organizationId, 'password_reset'), this.looks.recipient(organizationId, email)])
+        : [null, { firstName: null }];
+      const mail = await passwordResetEmail({ to: email, link, company: companyName, firstName, look, minutes: PASSWORD_RESET_EXPIRY_MINUTES });
       await this.emailService.send({ to: email, ...mail, organizationId });
       return;
     }
