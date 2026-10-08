@@ -191,13 +191,14 @@ describe('Service Desk batch 4: knowledge, ratings, reports, directory, privacy,
     await tenantPrisma
       .forTenant(SUPER, async (tx) => {
         const all = Object.values(users);
-        await tx.supportSession.deleteMany({ where: { organizationId: { in: [org.A.id, org.B.id] } } }).catch(() => undefined);
         await tx.refreshToken.deleteMany({ where: { userId: { in: all } } });
         await tx.session.deleteMany({ where: { userId: { in: all } } });
+        // Deleting the companies also removes the support sessions the staff asked for.
         await tx.organization.deleteMany({ where: { id: { in: [org.A.id, org.B.id] } } });
-        await tx.user.deleteMany({ where: { id: { in: [users.staff, users.staffOther] } } }).catch(() => undefined);
       })
       .catch((e) => console.warn('cleanup', e));
+    // The staff accounts last, in their own transaction (a failure there must not keep the companies).
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.user.deleteMany({ where: { id: { in: [users.staff, users.staffOther] } } })).catch((e) => console.warn('staff cleanup', e));
     await owner.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`;
       await tx.$executeRaw`DELETE FROM users WHERE id = ${ids.consoleUser}::uuid`;
@@ -385,12 +386,15 @@ describe('Service Desk batch 4: knowledge, ratings, reports, directory, privacy,
       expect((await api('adminB', 'get', '/desk/reports/dashboard').expect(200)).body).toMatchObject({ solved: 0, ratings: 0 });
       await api('lead', 'get', `/desk/reports/dashboard?deskId=${ids.careB}`).expect(404);
       await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.it, subject: `=HYPERLINK("http://evil") ${run}`, description: 'x' }).expect(201);
+      await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.it, subject: `Private matter ${run}`, description: 'x', private: true }).expect(201);
       const csv = (await api('lead', 'get', '/desk/reports/library/by_status?format=csv').expect(200)).text;
       expect(csv.split('\n')[0]).toContain('Status');
       const rep = (await api('lead', 'post', '/desk/reports/custom').send({ name: 'Open IT', columns: ['number', 'subject', 'status'], filters: { deskIds: [ids.it] } }).expect(201)).body.id;
       await api('lead', 'post', '/desk/reports/custom').send({ name: 'Bad', columns: ['body'], filters: {} }).expect(400);
       const out = (await api('lead', 'get', `/desk/reports/custom/${rep}/run?format=csv`).expect(200)).text;
       expect(out).toContain(`"'=HYPERLINK(""http://evil"") ${run}"`);
+      // On screen the agent sees the private ticket of their desk...
+      expect(out).toContain(`Private matter ${run}`);
       await api('agentB', 'get', `/desk/reports/custom/${rep}/run`).expect(403);
       // Each scheduled copy is built with its recipient's own rights: a recipient without report rights gets nothing.
       await api('lead', 'post', `/desk/reports/custom/${rep}/schedules`).send({ frequency: 'daily', recipients: [users.lead, users.divya] }).expect(201);
@@ -400,6 +404,8 @@ describe('Service Desk batch 4: knowledge, ratings, reports, directory, privacy,
       const copies = sent.slice(before).filter((m) => m.subject === 'Report: Open IT');
       expect(copies.map((m) => m.to)).toEqual([`lead@${STAFF_DOMAIN}`]);
       expect(copies[0].attachments?.[0].content.toString()).toContain("'=HYPERLINK");
+      // ...but a copy that leaves the app by email never holds private or sensitive tickets (review fix).
+      expect(copies[0].attachments?.[0].content.toString()).not.toContain('Private matter');
     });
 
     it('KPI snapshots are written once a day with their colour; the wall screen shows counts only', async () => {
@@ -453,6 +459,14 @@ describe('Service Desk batch 4: knowledge, ratings, reports, directory, privacy,
       await request(server()).get(`/api/v1/desk/scim/${org.B.id}/${src.id}/v2/Users`).set('Authorization', `Bearer ${src.scimToken}`).expect(401);
       // The secret never comes back from the list.
       expect(JSON.stringify((await api('adminA', 'get', '/desk/directory-sources').expect(200)).body)).not.toContain(src.scimToken);
+      // An employee of HR is linked by email but never renamed by the directory (review fix).
+      const meera = await system(async (tx) => {
+        const p = await tx.person.create({ data: { organizationId: org.A.id, givenName: 'Meera', familyName: 'Iyer', primaryEmail: `meera@${STAFF_DOMAIN}` } });
+        await tx.personRole.create({ data: { organizationId: org.A.id, personId: p.id, roleType: 'employee', sourceTable: 'employees', sourceId: randomUUID(), startOn: new Date('2026-01-01') } });
+        return p.id;
+      });
+      await scim('post', '/Users').send({ userName: `meera@${STAFF_DOMAIN}`, name: { givenName: 'Hacked', familyName: 'Name' }, externalId: 'okta-meera' }).expect(201);
+      expect(await system((tx) => tx.person.findFirstOrThrow({ where: { id: meera }, select: { givenName: true, familyName: true } }))).toEqual({ givenName: 'Meera', familyName: 'Iyer' });
       const created = (await scim('post', '/Users').send({ schemas: ['urn:ietf:params:scim:schemas:core:2.0:User'], userName: `divya@${STAFF_DOMAIN}`, name: { givenName: 'Divya', familyName: 'Raghunathan' }, externalId: 'okta-divya', active: true }).expect(201)).body;
       expect(created).toMatchObject({ userName: `divya@${STAFF_DOMAIN}`, active: true });
       expect((await scim('get', `/Users?filter=${encodeURIComponent(`userName eq "divya@${STAFF_DOMAIN}"`)}`).expect(200)).body.totalResults).toBe(1);
@@ -494,6 +508,18 @@ describe('Service Desk batch 4: knowledge, ratings, reports, directory, privacy,
       expect(msgs.every((m) => m.bodyText === '[Removed]')).toBe(true);
       // Replies stay unchangeable for everyone else.
       await expect(system((tx) => tx.sdTicketMessage.updateMany({ where: { ticketId: t.id, kind: 'reply' }, data: { bodyHtml: '<p>changed</p>', bodyText: 'changed' } }))).rejects.toThrow(/never edited/);
+    });
+
+    it('a deleted saved view goes to the bin and comes back (US-G-218)', async () => {
+      const v = (await api('lead', 'post', '/desk/views').send({ name: `My queue ${run}`, deskId: ids.it, filters: { assignee: 'me' } }).expect(201)).body.id;
+      await api('lead', 'delete', `/desk/views/${v}`).expect(200);
+      const row = (await api('lead', 'get', '/desk/recycle-bin').expect(200)).body.find((b: { kind: string; label: string }) => b.kind === 'view' && b.label === `My queue ${run}`);
+      expect(row).toBeTruthy();
+      // Someone else's deleted view is not theirs to put back.
+      expect((await api('agent', 'get', '/desk/recycle-bin').expect(200)).body.find((b: { id: string }) => b.id === row.id)).toBeUndefined();
+      await api('agent', 'post', `/desk/recycle-bin/${row.id}/restore`).expect(404);
+      await api('lead', 'post', `/desk/recycle-bin/${row.id}/restore`).expect(200);
+      expect((await api('lead', 'get', '/desk/views').expect(200)).body.map((x: { id: string }) => x.id)).toContain(v);
     });
 
     it('a deleted article goes to the bin and comes back', async () => {

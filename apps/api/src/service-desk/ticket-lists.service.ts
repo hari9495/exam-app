@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { stringify } from 'csv-stringify/sync';
+import { toBin } from './recycle-bin';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { Tx } from '../org-structure/org-structure.service';
 import { DeskActor, audit, canLead, has, visibleTickets } from './desk-access';
@@ -215,6 +216,7 @@ export class TicketListsService {
     return this.tx(a, async (tx) => {
       const v = await tx.sdView.findFirst({ where: { organizationId: a.ctx.organizationId, id } });
       if (!v || !(v.ownerUserId === a.userId || (v.shared && v.deskId && canLead(a, v.deskId, 'desk.ticket.bulk')))) throw new NotFoundException('No such view.');
+      await toBin(tx, a, 'view', v, v.name, v.deskId);
       await tx.sdView.delete({ where: { id: v.id } });
       await audit(tx, a, 'desk.view.deleted', 'sd_view', v.id, { name: v.name });
       return { deleted: true };

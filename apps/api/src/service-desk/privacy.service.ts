@@ -285,12 +285,6 @@ export class PrivacyService {
     });
   }
 
-  /** Puts a deleted row's copy in the bin (views and email rules are deleted for real; articles are only marked). */
-  static async toBin(tx: Tx, a: { ctx: DeskActor['ctx']; userId: string }, kind: 'view' | 'email_rule', row: { id: string } & Record<string, unknown>, label: string, deskId: string | null) {
-    const days = (await tx.sdPrivacySettings.findUnique({ where: { organizationId: a.ctx.organizationId } }))?.binDays ?? 30;
-    await tx.sdRecycleBin.create({ data: { organizationId: a.ctx.organizationId, kind, entityId: row.id, deskId, label: label.slice(0, 200), data: JSON.parse(JSON.stringify(row)) as Prisma.InputJsonValue, deletedBy: a.userId, purgeAfter: new Date(Date.now() + days * 86_400_000) } });
-  }
-
   /** Job: what stayed in the bin past its window is removed for good (audited). */
   async purgeBin(now = new Date()): Promise<number> {
     const due = await deskSystem(this.tenantPrisma, { organizationId: null, isSuperAdmin: true }, (tx) => tx.$queryRaw<{ id: string; organization_id: string }[]>`SELECT id, organization_id FROM sd_recycle_bin WHERE restored_at IS NULL AND purge_after <= ${now} LIMIT 200`);

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
+import { toBin } from './recycle-bin';
 import { Prisma } from '@prisma/client';
 import { Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
@@ -750,8 +751,10 @@ export class MailInService implements OnModuleInit, OnModuleDestroy {
     requireSetUp(a, deskId, 'desk.mailbox.manage');
     return this.tenantPrisma.forTenant(a.ctx, async (tx) => {
       await this.box(tx, a, deskId, mailboxId);
-      const res = await tx.sdEmailRule.deleteMany({ where: { organizationId: a.ctx.organizationId, mailboxId, id: ruleId } });
-      if (!res.count) throw new NotFoundException('No such rule.');
+      const rule = await tx.sdEmailRule.findFirst({ where: { organizationId: a.ctx.organizationId, mailboxId, id: ruleId } });
+      if (!rule) throw new NotFoundException('No such rule.');
+      await toBin(tx, a, 'email_rule', rule, rule.name, deskId);
+      await tx.sdEmailRule.delete({ where: { id: rule.id } });
       await audit(tx, a, 'desk.email_rule.deleted', 'sd_email_rule', ruleId, { mailboxId });
       return { deleted: true };
     });

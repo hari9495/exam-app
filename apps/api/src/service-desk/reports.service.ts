@@ -313,7 +313,7 @@ export class ReportsService {
             SELECT btrim(concat_ws(' ', p.given_name, p.family_name)) AS who, count(*) AS n, count(*) FILTER (WHERE t.system_state IN ('new', 'open', 'pending', 'on_hold')) AS open, avg(r.score) AS rating
             FROM sd_tickets t JOIN persons p ON p.organization_id = t.organization_id AND p.id = t.requester_person_id
             LEFT JOIN sd_ratings r ON r.organization_id = t.organization_id AND r.ticket_id = t.id
-            WHERE ${base} AND NOT t.sensitive GROUP BY p.id, p.given_name, p.family_name ORDER BY n DESC LIMIT 100`;
+            WHERE ${base} AND NOT t.sensitive AND NOT t.private GROUP BY p.id, p.given_name, p.family_name ORDER BY n DESC LIMIT 100`;
           return { columns: ['Requester', 'Tickets', 'Still open', 'Average rating'], rows: r.map((x) => [x.who, Number(x.n), Number(x.open), num(x.rating)]) };
         }
         case 'csat': {
@@ -434,7 +434,7 @@ export class ReportsService {
   }
 
   /** The rows of a custom report: only tickets this person may see (§5.7), never message text. */
-  async runCustom(a: DeskActor, id: string): Promise<{ title: string; columns: string[]; rows: (string | number | null)[][] }> {
+  async runCustom(a: DeskActor, id: string, forEmail = false): Promise<{ title: string; columns: string[]; rows: (string | number | null)[][] }> {
     if (!has(a, 'desk.report.view')) throw new ForbiddenException('You cannot see desk reports (desk.report.view).');
     return this.tenantPrisma.forTenant(a.ctx, async (tx) => {
       const org = a.ctx.organizationId;
@@ -450,6 +450,8 @@ export class ReportsService {
           ...(f.priorities?.length ? [{ priority: { in: f.priorities } }] : []),
           ...(f.categoryIds?.length ? [{ categoryId: { in: f.categoryIds } }] : []),
           ...(f.days ? [{ createdAt: { gte: new Date(Date.now() - f.days * 86_400_000) } }] : []),
+          // A copy that leaves the app by email never holds private or sensitive tickets (YX-SD-14, P04).
+          ...(forEmail ? [{ sensitive: false, private: false }] : []),
         ],
       };
       const tickets = await tx.sdTicket.findMany({ where, orderBy: { createdAt: 'desc' }, take: 5000 });
@@ -535,7 +537,7 @@ export class ReportsService {
         try {
           const actor = await this.access.actorFor(s.organizationId, userId);
           if (!actor || !has(actor, 'desk.report.view')) continue;
-          const rep = await this.runCustom(actor, s.reportId);
+          const rep = await this.runCustom(actor, s.reportId, true);
           const to = await this.tenantPrisma.forTenant(actor.ctx, (tx) => tx.user.findFirst({ where: { organizationId: s.organizationId, id: userId }, select: { email: true } }));
           if (!to) continue;
           await this.email.send({ to: to.email, organizationId: s.organizationId, subject: `Report: ${rep.title}`, html: `<p>Your ${s.frequency} report "${esc(rep.title)}" is attached (${rep.rows.length} rows). It holds only tickets you may see.</p>`, text: `Your ${s.frequency} report "${rep.title}" is attached (${rep.rows.length} rows).`, attachments: [{ filename: `${rep.title.replace(/[^\w -]+/g, '').slice(0, 60) || 'report'}.csv`, content: Buffer.from(toCsv(rep.columns, rep.rows)) }] });

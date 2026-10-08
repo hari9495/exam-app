@@ -158,7 +158,10 @@ export class DirectoryService {
     let person = await tx.person.findFirst({ where: { organizationId: org, status: 'active', primaryEmail: p.email }, select: { id: true } });
     const created = !person;
     if (!person) person = await tx.person.create({ data: { organizationId: org, givenName: p.givenName, familyName: p.familyName, primaryEmail: p.email, createdBy: by } });
-    else await tx.person.update({ where: { id: person.id }, data: { givenName: p.givenName, familyName: p.familyName } });
+    // An employee's name belongs to HR (P01): a directory or an import never renames them, it only links them.
+    else if (!(await tx.personRole.findFirst({ where: { organizationId: org, personId: person.id, roleType: 'employee', endOn: null }, select: { id: true } }))) {
+      await tx.person.update({ where: { id: person.id }, data: { givenName: p.givenName, familyName: p.familyName } });
+    }
     await tx.sdPeople.upsert({
       where: { organizationId_personId: { organizationId: org, personId: person.id } },
       update: { team: p.team, ...(p.locationId !== undefined ? { locationId: p.locationId } : {}), source: p.source },
