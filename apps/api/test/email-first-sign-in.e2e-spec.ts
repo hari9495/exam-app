@@ -337,22 +337,44 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
       expect(company.status).toBe(401);
       expect(company.body).toEqual((await platformLogin(browser(), STAFF, 'not-the-password')).body);
     });
+
+    it('a company page (orgSlug) answers a staff email exactly like an unknown one: sign-in, code and reset link', async () => {
+      const company = { organizationSlug: org.kaveri.slug };
+      const nobody = `nobody-${runId}@yukthix-${runId}.test`;
+      const since = new Date();
+      const staff = await login(browser(), STAFF, STAFF_PW, company);
+      expect(staff.status).toBe(401);
+      expect(staff.body).toEqual((await login(browser(), nobody, STAFF_PW, company)).body);
+      const otpBody = async (who: string) => Object.keys((await call(browser(), 'post', '/auth/otp/start', { identifier: who, ...company })).body).sort();
+      expect(await otpBody(STAFF)).toEqual(await otpBody(nobody));
+      const resetBody = async (who: string) => (await call(browser(), 'post', '/auth/forgot-password', { email: who, ...company })).body;
+      expect(await resetBody(STAFF)).toEqual(await resetBody(nobody));
+      expect(await events({ userId: staffId, createdAt: { gte: since } })).toEqual([]);
+      expect(await prisma.passwordResetToken.count({ where: { userId: staffId } })).toBe(0);
+      await resetLocks(nobody);
+    });
+
+    it('the database itself refuses a staff account inside a company, so no company lookup can ever return one', async () => {
+      const create = (role: string) =>
+        tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { organizationId: org.kaveri.id, email: `in-company-${role}-${runId}@yukthix-${runId}.test`, passwordHash: 'x', role } }));
+      await expect(create('super_admin')).rejects.toThrow(/users_staff_never_in_a_company_check/);
+      const ok = await create('panel');
+      await tenantPrisma.forTenant(SUPER, (tx) => tx.user.delete({ where: { id: ok.id } }));
+    });
   });
 
   describe('lockout (YX-IAM-07): per account under its company\'s settings, per email across companies, per IP', () => {
-    it('a company\'s stricter lockout locks its account; the other company\'s account still signs in', async () => {
+    it('a company\'s stricter lockout locks its account on its own page; the other company\'s account still signs in', async () => {
       await setPolicy(org.ashok.id, { maxFailedAttempts: 3, lockMinutes: 15 });
       for (let i = 0; i < 3; i++) {
-        expect((await login(browser(), PERSON, `Wrong-Password-${i}x`)).status).toBe(401);
+        expect((await login(browser(), PERSON, `Wrong-Password-${i}x`, { organizationSlug: org.ashok.slug })).status).toBe(401);
       }
-      // The email-wide counter and Kaveri's own (default 10) only reached the progressive delay; clear
-      // those to look at Ashok's lock alone.
-      await redis.del(...lockKeys('*', PERSON), ...lockKeys(org.kaveri.slug, PERSON));
-      // Ashok's account is locked: its right password does not open it, by email-first or by orgSlug.
-      expect((await login(browser(), PERSON, ASHOK_PW)).status).toBe(401);
       expect((await login(browser(), PERSON, ASHOK_PW, { organizationSlug: org.ashok.slug })).status).toBe(429);
       expect(await events({ userId: users[`ashok:${PERSON}`], reason: 'bad_password+lockout_started' })).toHaveLength(1);
-      // Kaveri's account is not.
+      // The email's own lock (W-016) only reached its short delay; clear it to look at Ashok's lock alone.
+      await redis.del(...lockKeys('*', PERSON));
+      // Email-first skips the locked account (the answer stays the wrong-password one) and still opens Kaveri's.
+      expect((await login(browser(), PERSON, ASHOK_PW)).status).toBe(401);
       await redis.del(...lockKeys('*', PERSON));
       expect((await login(browser(), PERSON, KAVERI_PW)).status).toBe(200);
       await setPolicy(org.ashok.id, { maxFailedAttempts: 10, lockMinutes: 15 });
@@ -363,6 +385,76 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
       const res = await login(browser(), PERSON, KAVERI_PW);
       expect(res.status).toBe(429);
       expect(res.body.retryAfterSeconds).toBeGreaterThan(0);
+    });
+  });
+
+  // W-016 (decided 8 Oct 2026): a locked person is told so on every path, and the answer is the same
+  // for an email with accounts and one without.
+  describe('the identifier lock (W-016): one lock answer on every path, accounts or not', () => {
+    const UNKNOWN = `nobody-${runId}@kaveri-${runId}.test`;
+    // Nine failures already counted for the typed email (the delays in between are not what is tested).
+    const nineFailures = async (who: string) => {
+      await resetLocks(who);
+      await redis.set(lockKeys('*', who)[0], '9', 'EX', 3600);
+    };
+    const lockAnswer = (res: request.Response) => ({ status: res.status, message: res.body.message, minutes: Math.round(res.body.retryAfterSeconds / 60) });
+    const LOCKED = { status: 429, message: 'Too many sign-in attempts. Please wait and try again.', minutes: 15 };
+    afterEach(() => resetLocks(UNKNOWN));
+
+    it('the 10th wrong password locks the email: the right password then gets 429 with no company named, known or unknown', async () => {
+      const answers = [];
+      for (const [who, right] of [[PERSON, KAVERI_PW], [UNKNOWN, KAVERI_PW]] as const) {
+        await nineFailures(who);
+        const tenth = await login(browser(), who, 'Wrong-Password-10');
+        expect(tenth.status).toBe(401);
+        answers.push([tenth.body, lockAnswer(await login(browser(), who, right))]);
+      }
+      expect(answers[0]).toEqual(answers[1]);
+      expect(answers[0][1]).toEqual(LOCKED);
+      // The holders of the accounts are told once the email locks.
+      expect(await events({ userId: users[`kaveri:${PERSON}`], reason: 'bad_password+lockout_started' })).toHaveLength(1);
+    });
+
+    it('a locked email gets the same 429 on a company page, known or unknown, right password or not', async () => {
+      for (const who of [PERSON, UNKNOWN]) {
+        await nineFailures(who);
+        await login(browser(), who, 'Wrong-Password-10');
+      }
+      const company = { organizationSlug: org.kaveri.slug };
+      const known = lockAnswer(await login(browser(), PERSON, KAVERI_PW, company));
+      expect(known).toEqual(LOCKED);
+      expect(lockAnswer(await login(browser(), UNKNOWN, KAVERI_PW, company))).toEqual(known);
+      // One-time codes are held the same way.
+      expect(lockAnswer(await call(browser(), 'post', '/auth/otp/start', { identifier: PERSON, organizationSlug: org.kaveri.slug }))).toEqual(known);
+      expect(lockAnswer(await call(browser(), 'post', '/auth/otp/start', { identifier: UNKNOWN, organizationSlug: org.kaveri.slug }))).toEqual(known);
+    });
+
+    it('failures on a company page count toward the email\'s lock, so email-first locks the same for known and unknown', async () => {
+      const answers = [];
+      for (const who of [PERSON, UNKNOWN]) {
+        await nineFailures(who);
+        expect((await login(browser(), who, 'Wrong-Password-10', { organizationSlug: org.kaveri.slug })).status).toBe(401);
+        answers.push(lockAnswer(await login(browser(), who, KAVERI_PW)));
+      }
+      expect(answers[0]).toEqual(LOCKED);
+      expect(answers[1]).toEqual(answers[0]);
+    });
+
+    it('email-first failures never touch a company\'s own counter, so a company page shows nothing about which emails have accounts', async () => {
+      for (const who of [PERSON, UNKNOWN]) {
+        await resetLocks(who);
+        for (let i = 0; i < 3; i++) await login(browser(), who, `Wrong-Password-${i}z`);
+        expect(await redis.exists(...lockKeys(org.kaveri.slug, who))).toBe(0);
+      }
+    });
+
+    it('a complete sign-in clears the lock and trusts the device: a stranger typing the email cannot lock its owner out there', async () => {
+      const owner = browser();
+      expect((await login(owner, PERSON, KAVERI_PW)).status).toBe(200);
+      await redis.set(lockKeys('*', PERSON)[0], '9', 'EX', 3600);
+      await login(browser(), PERSON, 'Wrong-Password-10'); // a stranger, another device: the email locks
+      expect((await login(browser(), PERSON, KAVERI_PW)).status).toBe(429);
+      expect((await login(owner, PERSON, KAVERI_PW)).status).toBe(200);
     });
   });
 

@@ -95,7 +95,12 @@ describe('Staff sessions, login events and lockout (P12 YX-IAM-06/07/10)', () =>
     }
   });
 
-  beforeEach(() => email.send.mockClear());
+  // Each test starts with no account counters (company and, W-016, the email's own across companies).
+  beforeEach(async () => {
+    email.send.mockClear();
+    const keys = await redis.keys('auth:lp:acct:*');
+    if (keys.length) await redis.del(...keys);
+  });
 
   afterAll(async () => {
     const ids = orgs.map((o) => o.id);
@@ -255,7 +260,8 @@ describe('Staff sessions, login events and lockout (P12 YX-IAM-06/07/10)', () =>
       const ip = freshIp();
       const key = accountKey(slugA, ADMIN_A);
       for (let i = 1; i <= 10; i++) {
-        await redis.del(`auth:lp:acct:block:${key}`); // skip the progressive delays, keep the count
+        // Skip the progressive delays (the company's and the email's own, W-016), keep the counts.
+        await redis.del(`auth:lp:acct:block:${key}`, `auth:lp:acct:block:${accountKey('*', ADMIN_A)}`);
         await login(slugA, ADMIN_A, { password: `wrong-${i}`, ip }).expect(401);
       }
       await flush();
@@ -273,7 +279,7 @@ describe('Staff sessions, login events and lockout (P12 YX-IAM-06/07/10)', () =>
         ['locked', 'account_locked'],
         ['failed', 'bad_password+lockout_started'],
       ]);
-      await redis.del(`auth:lp:acct:fail:${key}`, `auth:lp:acct:block:${key}`);
+      await redis.del(...[key, accountKey('*', ADMIN_A)].flatMap((k) => [`auth:lp:acct:fail:${k}`, `auth:lp:acct:block:${k}`]));
       await login(slugA, ADMIN_A).expect(200);
     });
 
@@ -289,7 +295,8 @@ describe('Staff sessions, login events and lockout (P12 YX-IAM-06/07/10)', () =>
           statuses.push(r.status);
           bodies.push({ ...r.body, retryAfterSeconds: r.body.retryAfterSeconds === undefined ? undefined : 'n' });
         }
-        await redis.del(`auth:lp:acct:fail:${accountKey(slugA, who)}`, `auth:lp:acct:block:${accountKey(slugA, who)}`);
+        const keys = [accountKey(slugA, who), accountKey('*', who)];
+        await redis.del(...keys.flatMap((k) => [`auth:lp:acct:fail:${k}`, `auth:lp:acct:block:${k}`]));
         return { statuses, bodies };
       };
       const known = await run(real);
