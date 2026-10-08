@@ -9,6 +9,7 @@ import { seedServiceDeskSla } from './seed-service-desk-sla';
 import { seedServiceDeskChannels } from './seed-service-desk-channels';
 import { seedServiceDeskKnowledge, seedYukthixSupport } from './seed-service-desk-knowledge';
 import { seedServiceDeskEsm } from './seed-service-desk-esm';
+import { seedServiceDeskEsm2 } from './seed-service-desk-esm2';
 
 const prisma = new PrismaClient();
 
@@ -325,6 +326,7 @@ async function main() {
       // Phase 3b-2 batch 1: the IT and HR catalogue, an order guide, the question library and a desk rule
       // (seed-service-desk-esm.ts); Arjun Kulkarni signs in as arjun@demo-org.test.
       await seedServiceDeskEsm(tx, demoOrg.id);
+      await seedServiceDeskEsm2(tx, demoOrg.id);
     }
   }, { timeout: 60000 });
 
