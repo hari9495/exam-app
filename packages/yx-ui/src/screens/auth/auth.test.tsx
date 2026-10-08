@@ -437,6 +437,19 @@ describe('MeSecurityScreen', () => {
     expect(await screen.findByRole('list', { name: 'Recovery codes' })).toBeInTheDocument();
   });
 
+  it('downloads the recovery codes as a text file made in the browser', async () => {
+    const parts: BlobPart[][] = [];
+    const created = vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => (parts.push([b as Blob]), 'blob:x'));
+    const clicked = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    render(<Me onNewRecoveryCodes={async () => RECOVERY_CODES} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Make new codes' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Download' }));
+    expect(clicked).toHaveBeenCalled();
+    expect(await (parts[0][0] as Blob).text()).toContain(RECOVERY_CODES[0]);
+    created.mockRestore();
+    clicked.mockRestore();
+  });
+
   it('verifies a mobile number by text', async () => {
     const onSendMobileCode = vi.fn().mockResolvedValue('+919845012345');
     const onVerifyMobile = vi.fn().mockResolvedValue(undefined);
