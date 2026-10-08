@@ -38,6 +38,7 @@ export const DESK_PERMISSIONS = [
   { key: 'desk.audit.view', description: 'See who read which ticket' },
   { key: 'desk.pii.unmask', description: 'Show a masked value in a ticket (every view recorded)' },
   { key: 'desk.directory.manage', description: 'Set up directory sync for the Service Desk' },
+  { key: 'desk.survey.manage', description: 'Set up NPS surveys and see their answers' },
 ];
 
 const day = (iso: string) => new Date(`${iso}T00:00:00Z`);

@@ -222,7 +222,8 @@ export class DesksService {
 
   /** Staff people of the company who can be given a seat. */
   async users(a: DeskActor, search?: string) {
-    if (!has(a, 'desk.member.manage')) throw new ForbiddenException('You cannot manage desk members.');
+    // Colleagues to give a seat to, or (batch 4) to send a scheduled report to: names and work emails only.
+    if (!has(a, 'desk.member.manage') && !has(a, 'desk.report.manage') && !has(a, 'desk.kb.publish')) throw new ForbiddenException('You cannot look up colleagues here.');
     return this.tx(a, (tx) =>
       tx.user.findMany({
         where: { organizationId: a.ctx.organizationId, status: 'active', ...(search ? { OR: [{ name: { contains: search, mode: 'insensitive' } }, { email: { contains: search, mode: 'insensitive' } }] } : {}) },
@@ -289,23 +290,7 @@ export class DesksService {
     return this.tx(a, async (tx) => {
       const m = await tx.sdDeskMember.findFirst({ where: { organizationId: org, deskId, id: memberId, validTo: null } });
       if (!m) throw new NotFoundException('No such active member.');
-      const today = todayIst();
-      const from = iso(m.validFrom)!;
-      // A seat added and removed on the same day never counts (D2): it closes to the day before it started.
-      const validTo = from > addDays(today, -1) ? addDays(from, -1) : addDays(today, -1);
-      await tx.sdDeskMember.update({ where: { id: m.id }, data: { validTo: day(validTo), endedBy: a.userId, endedAt: new Date() } });
-      if (m.role === 'agent' || m.role === 'lead') {
-        const open = await tx.sdTicket.findMany({ where: { organizationId: org, deskId, assigneeUserId: m.userId, systemState: { in: OPEN_STATES } }, select: { id: true } });
-        for (const t of open) {
-          await tx.sdTicket.update({ where: { id: t.id }, data: { assigneeUserId: null, version: { increment: 1 } } });
-          await tx.sdTicketEvent.create({ data: { organizationId: org, deskId, ticketId: t.id, kind: 'assigned', fromValue: m.userId, toValue: null, reason: 'Their seat on the desk ended', byUserId: a.userId } });
-        }
-        await tx.sdGroupMember.deleteMany({ where: { organizationId: org, deskId, userId: m.userId } });
-        await emit(tx, org, 'helpdesk.agent_seat.removed', { deskId, userId: m.userId });
-      }
-      // Records they were added to as a collaborator close with the seat.
-      await tx.sdTicketCollaborator.deleteMany({ where: { organizationId: org, deskId, userId: m.userId } });
-      await audit(tx, a, 'desk.member.ended', 'sd_desk_member', m.id, { deskId, userId: m.userId, role: m.role, validTo });
+      await endSeatIn(tx, a, m, null);
       return { ended: true };
     });
   }
@@ -653,4 +638,28 @@ export class DesksService {
       return s;
     });
   }
+}
+
+/**
+ * Ends a seat (also used by directory sync for a disabled user). A seat added and removed on the same day never counts
+ * (D2): it closes to the day before it started. Open tickets go back to the queue; collaborations close with it.
+ */
+export async function endSeatIn(tx: Tx, a: { ctx: DeskActor['ctx']; userId: string | null }, m: Prisma.SdDeskMemberGetPayload<object>, why: string | null) {
+  const org = m.organizationId;
+  const today = todayIst();
+  const from = iso(m.validFrom)!;
+  const validTo = from > addDays(today, -1) ? addDays(from, -1) : addDays(today, -1);
+  await tx.sdDeskMember.update({ where: { id: m.id }, data: { validTo: day(validTo), endedBy: a.userId, endedAt: new Date() } });
+  if (m.role === 'agent' || m.role === 'lead') {
+    const open = await tx.sdTicket.findMany({ where: { organizationId: org, deskId: m.deskId, assigneeUserId: m.userId, systemState: { in: OPEN_STATES } }, select: { id: true } });
+    for (const t of open) {
+      await tx.sdTicket.update({ where: { id: t.id }, data: { assigneeUserId: null, version: { increment: 1 } } });
+      await tx.sdTicketEvent.create({ data: { organizationId: org, deskId: m.deskId, ticketId: t.id, kind: 'assigned', fromValue: m.userId, toValue: null, reason: why ?? 'Their seat on the desk ended', byUserId: a.userId } });
+    }
+    await tx.sdGroupMember.deleteMany({ where: { organizationId: org, deskId: m.deskId, userId: m.userId } });
+    await emit(tx, org, 'helpdesk.agent_seat.removed', { deskId: m.deskId, userId: m.userId });
+  }
+  // Records they were added to as a collaborator close with the seat.
+  await tx.sdTicketCollaborator.deleteMany({ where: { organizationId: org, deskId: m.deskId, userId: m.userId } });
+  await audit(tx, { ctx: a.ctx, userId: a.userId as string }, 'desk.member.ended', 'sd_desk_member', m.id, { deskId: m.deskId, userId: m.userId, role: m.role, validTo, ...(why ? { why } : {}) });
 }

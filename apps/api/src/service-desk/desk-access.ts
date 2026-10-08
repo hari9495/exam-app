@@ -1,7 +1,8 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Request } from 'express';
-import { AuditService, PrismaService, TenantContext, TenantPrismaService, resolvePermissionGrants } from '@exam-platform/shared';
+import { AuditService, PrismaService, SessionAssurance, TenantContext, TenantPrismaService, loadTenantSecurityPolicy, resolvePermissionGrants } from '@exam-platform/shared';
+import { MfaRequiredException } from '../rbac/permissions.guard';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { accountScopeOf } from './customers.service';
@@ -32,6 +33,13 @@ export const DESK_KEYS = [
   'desk.mailbox.manage',
   'desk.portal.manage',
   'desk.customer.manage',
+  // Batch 4 (SD-1.24 … SD-1.30).
+  'desk.kb.view_internal',
+  'desk.kb.author',
+  'desk.kb.publish',
+  'desk.report.manage',
+  'desk.survey.manage',
+  'desk.directory.manage',
   'request.raise_on_behalf',
 ] as const;
 export type DeskKey = (typeof DESK_KEYS)[number];
@@ -57,6 +65,7 @@ interface RequestUser {
   permissionProfileId?: string | null;
   actingSuperAdmin?: boolean;
   impersonatorUserId?: string;
+  session?: SessionAssurance;
 }
 
 /** A seat active today (IST, the company calendar until P21). */
@@ -95,6 +104,9 @@ export class DeskAccessService {
     const seats = await this.tenantPrisma.forTenant(ctx, (tx) =>
       tx.sdDeskMember.findMany({ where: { organizationId: ctx.organizationId, userId: user.userId, ...activeOn(todayIst()) }, select: { deskId: true, role: true } }),
     );
+    // US-B-114: where the company asks two-step verification of everyone, a desk seat opens only in a session that used it
+    // (an agent still inside the enrolment grace reaches only their own requests).
+    if (seats.length && user.session?.assuranceLevel !== 'aal2' && (await loadTenantSecurityPolicy(this.tenantPrisma, ctx.organizationId)).mfaScope === 'all') throw new MfaRequiredException();
     const accounts = await this.tenantPrisma.forTenant(ctx, (tx) => accountScopeOf(tx, ctx.organizationId, user.userId!));
     return { ctx, userId: user.userId, keys, roles: new Map(seats.map((s) => [s.deskId, s.role as DeskRole])), accounts };
   }

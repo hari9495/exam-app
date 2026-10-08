@@ -21,13 +21,44 @@ import { CustomersService } from './customers.service';
 import { MailInService } from './mail-in.service';
 import { MailOutService, SD_DNS_RESOLVER, dnsResolverFactory } from './mail-out.service';
 import { PortalService } from './portal.service';
+import { PlatformModule } from '../platform/platform.module';
+import { OrganizationsModule } from '../organizations/organizations.module';
+import { DirectoryService } from './directory.service';
+import { DeskInsightsController } from './insights.controller';
+import { KbService } from './kb.service';
+import { PrivacyService } from './privacy.service';
+import { ConsoleDeskController, MyHelpController, PortalHelpController, PublicHelpController, RateLinkController, ScimController, SignUpController, WallController, YukthixSupportController } from './public-desk.controller';
+import { ReportsService } from './reports.service';
+import { SupportBridgeService } from './support-bridge.service';
+import { SurveysService } from './surveys.service';
 
-// M14 Service Desk, phase 3b-1: batch 1 (SD-1.01 … SD-1.08), batch 2 (SD-1.09 … SD-1.17) and batch 3 (SD-1.18 …
-// SD-1.23, SD-1.28: email in and out, portals and outside requesters, banners, customers). Later slices (email,
-// portal, KB, …) add their own services here; the seams are named where they plug in.
+// M14 Service Desk, phase 3b-1: batch 1 (SD-1.01 … SD-1.08), batch 2 (SD-1.09 … SD-1.17), batch 3 (SD-1.18 …
+// SD-1.23, SD-1.28: email in and out, portals and outside requesters, banners, customers) and batch 4 (SD-1.24 …
+// SD-1.27, SD-1.29 … SD-1.31: knowledge and the public help centre, CSAT / NPS, reports, the standalone product,
+// privacy, YukthiX's own support in the console).
 @Module({
-  imports: [AuditModule, StorageModule, NotificationsModule, CryptoModule, EmailModule, AuthModule],
-  controllers: [DeskSetupController, DeskTicketsController, DeskWorkController, MyTicketsController, DeskFilesController, CalendarFeedController, DeskChannelsController, InboundMailController, PortalController],
+  imports: [AuditModule, StorageModule, NotificationsModule, CryptoModule, EmailModule, AuthModule, PlatformModule, OrganizationsModule],
+  controllers: [
+    DeskSetupController,
+    DeskTicketsController,
+    DeskWorkController,
+    MyTicketsController,
+    DeskFilesController,
+    CalendarFeedController,
+    DeskChannelsController,
+    InboundMailController,
+    PortalController,
+    DeskInsightsController,
+    MyHelpController,
+    PortalHelpController,
+    PublicHelpController,
+    RateLinkController,
+    WallController,
+    SignUpController,
+    ScimController,
+    YukthixSupportController,
+    ConsoleDeskController,
+  ],
   providers: [
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },
     DeskAccessService,
@@ -46,6 +77,12 @@ import { PortalService } from './portal.service';
     MailInService,
     PortalService,
     CustomersService,
+    KbService,
+    SurveysService,
+    ReportsService,
+    DirectoryService,
+    PrivacyService,
+    SupportBridgeService,
   ],
 })
 export class ServiceDeskModule {}

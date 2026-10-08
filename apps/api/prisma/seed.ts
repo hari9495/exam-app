@@ -7,6 +7,7 @@ import { CONSULTANT, seedSignInDemo } from './seed-sign-in';
 import { DESK_PERMISSIONS, seedServiceDesk } from './seed-service-desk';
 import { seedServiceDeskSla } from './seed-service-desk-sla';
 import { seedServiceDeskChannels } from './seed-service-desk-channels';
+import { seedServiceDeskKnowledge, seedYukthixSupport } from './seed-service-desk-knowledge';
 
 const prisma = new PrismaClient();
 
@@ -64,6 +65,8 @@ export const PERMISSIONS = [
   { key: 'platform.channels.manage', description: 'Manage the YukthiX shared message accounts (YukthiX staff)' },
   { key: 'platform.support.request', description: 'Ask a company for a support session and use it (YukthiX staff)' },
   { key: 'platform.audit.view', description: 'See the platform audit log (YukthiX staff)' },
+  { key: 'platform.support_desk.work', description: 'Work the YukthiX Support desk in the console (YukthiX staff)' },
+  { key: 'org.yukthix_support.raise', description: 'Contact YukthiX support for the company and follow its tickets' },
   { key: 'org.support_access.approve', description: 'Approve, decline and end YukthiX support sessions' },
   // P04 Q5: a company's branding and wording of the account emails.
   { key: 'notification.template.manage', description: 'Brand and re-word the emails YukthiX sends your people' },
@@ -86,6 +89,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'platform.channels.manage',
     'platform.support.request',
     'platform.audit.view',
+    // M14 SD-1.31: the YukthiX Support desk in the console.
+    'platform.support_desk.work',
   ],
   // org_admin is a full org-scoped superuser: their own admin features PLUS the complete
   // recruiter/panel capability set (exams, question bank, candidates, results).
@@ -132,6 +137,14 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'desk.mailbox.manage',
     'desk.portal.manage',
     'desk.customer.manage',
+    // M14 batch 4: help articles, reports, NPS, the people list and directory sync; contacting YukthiX support.
+    'desk.kb.author',
+    'desk.kb.publish',
+    'desk.report.view',
+    'desk.report.manage',
+    'desk.survey.manage',
+    'desk.directory.manage',
+    'org.yukthix_support.raise',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -304,6 +317,10 @@ async function main() {
       await seedServiceDeskSla(tx, demoOrg.id);
       // Batch 3: support addresses, the Customer Care desk with its portal, customers and banners (seed-service-desk-channels.ts).
       await seedServiceDeskChannels(tx, demoOrg.id);
+      // Batch 4: help articles and the public help centre, a rated ticket, NPS, KPIs, a wall screen, and YukthiX's own
+      // support desk in the platform tenant (seed-service-desk-knowledge.ts).
+      await seedServiceDeskKnowledge(tx, demoOrg.id);
+      await seedYukthixSupport(tx, trialPlan.id);
     }
   }, { timeout: 60000 });
 

@@ -24,6 +24,13 @@ describe('notification catalog', () => {
       'helpdesk.reminder.due',
       'helpdesk.email.held',
       'helpdesk.plan.used_up',
+      'helpdesk.kb.outdated',
+      'helpdesk.kb.review_due',
+      'helpdesk.kb.updated',
+      'helpdesk.rating.low',
+      'helpdesk.nps.detractor',
+      'helpdesk.backlog.alert',
+      'helpdesk.privacy.request',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

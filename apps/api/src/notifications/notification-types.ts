@@ -23,6 +23,14 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'helpdesk.reminder.due', group: 'reminders', label: 'A desk reminder you set is due' },
   { type: 'helpdesk.email.held', group: 'reminders', label: 'An email to your desk is held for a check' },
   { type: 'helpdesk.plan.used_up', group: 'reminders', label: 'A customer has used up their support plan' },
+  // Batch 4 (SD-1.24 … SD-1.30).
+  { type: 'helpdesk.kb.outdated', group: 'reminders', label: 'An article you own was flagged out of date' },
+  { type: 'helpdesk.kb.review_due', group: 'reminders', label: 'An article you own is due for review' },
+  { type: 'helpdesk.kb.updated', group: 'reminders', label: 'An article you follow has a new version' },
+  { type: 'helpdesk.rating.low', group: 'reminders', label: 'A requester gave a low rating' },
+  { type: 'helpdesk.nps.detractor', group: 'reminders', label: 'A customer gave a low NPS score' },
+  { type: 'helpdesk.backlog.alert', group: 'reminders', label: 'A desk queue is above its alert line' },
+  { type: 'helpdesk.privacy.request', group: 'approvals', label: 'A privacy request about desk data is waiting' },
 ];
 
 export const NOTIFICATION_TYPE_BY_KEY = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));

@@ -244,7 +244,7 @@ export class PortalService {
 
   // ------------------------------------------------------------------------------------------ public portal
 
-  private async portalOf(orgSlug: string, portalSlug: string): Promise<{ org: { id: string; name: string; slug: string }; portal: Portal; deskIds: string[] }> {
+  async portalOf(orgSlug: string, portalSlug: string): Promise<{ org: { id: string; name: string; slug: string }; portal: Portal; deskIds: string[] }> {
     const org = await this.prisma.organization.findUnique({ where: { slug: orgSlug }, select: { id: true, name: true, slug: true, status: true } });
     if (!org || !isOrganizationActive(org.status)) throw new NotFoundException('No such portal.');
     const found = await this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: false }, async (tx) => {
@@ -257,6 +257,14 @@ export class PortalService {
   }
 
   /** GET /desk/portal/:org/:portal: the login screen and the raise form (no personal data). */
+  /** A reader of the portal who has not signed in: only public knowledge, through the same reader policy. */
+  asVisitor<T>(org: string, fn: (tx: Tx) => Promise<T>) {
+    return this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.kb_reader', 'public', true)`;
+      return fn(tx);
+    });
+  }
+
   async info(orgSlug: string, portalSlug: string) {
     const { org, portal, deskIds } = await this.portalOf(orgSlug, portalSlug);
     return this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: false }, async (tx) => {
@@ -348,8 +356,11 @@ export class PortalService {
     return { signedOut: true };
   }
 
-  /** Every read and write of an outside requester runs with app.portal_person_id: the database keeps them to their own records. */
-  private asPortal<T>(s: PortalSession, fn: (tx: Tx) => Promise<T>) {
+  /**
+   * Every read and write of an outside requester runs with app.portal_person_id: the database keeps them to their own
+   * records. Batch-4 portal routes (knowledge, ratings, privacy requests) use it too.
+   */
+  asPortal<T>(s: PortalSession, fn: (tx: Tx) => Promise<T>) {
     return this.tenantPrisma.forTenant({ organizationId: s.organizationId, isSuperAdmin: false }, async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.portal_person_id', ${s.personId}, true)`;
       return fn(tx);
@@ -399,6 +410,8 @@ export class PortalService {
       const people = await this.tickets.personNames(tx, org, [t.requesterPersonId, ...messages.map((m) => m.authorPersonId)]);
       const users = await this.tickets.userNames(tx, org, messages.map((m) => m.authorUserId));
       const due = await this.tickets.sla.requesterDue(tx, org, t.id);
+      // SD-1.26: ratings are internal (the portal session reads none), so this one score is read as the desk.
+      const rated = await deskSystem(this.tenantPrisma, { organizationId: org, isSuperAdmin: false }, (sys) => sys.sdRating.findFirst({ where: { organizationId: org, ticketId: t.id }, select: { score: true } }));
       return {
         id: t.id,
         number: t.number,
@@ -410,6 +423,8 @@ export class PortalService {
         raisedBy: people.get(t.requesterPersonId)?.name ?? '',
         mine: t.requesterPersonId === s.personId,
         canReply: !t.mergedIntoId,
+        rating: rated?.score ?? null,
+        canRate: !rated && ['solved', 'closed'].includes(t.systemState) && t.requesterPersonId === s.personId,
         resolveBy: due?.resolveBy ?? null,
         messages: messages.map((m) => ({
           id: m.id,

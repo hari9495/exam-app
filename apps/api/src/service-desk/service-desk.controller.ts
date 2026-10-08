@@ -92,6 +92,8 @@ import { PortalService } from './portal.service';
 const UPLOAD = FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1 } });
 const VIEW = 'desk.ticket.view';
 const SETUP_READ = ['desk.ticket.view', 'desk.settings.manage', 'desk.member.manage', 'desk.desk.create'] as const;
+// Batch 4: report and survey pages pick a desk from the same list (the service shows only the person's own desks).
+const DESK_LIST = [...SETUP_READ, 'desk.report.view', 'desk.survey.manage'] as const;
 
 @Controller('desk')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -102,7 +104,7 @@ export class DeskSetupController {
   ) {}
 
   @Get('desks')
-  @RequireAnyPermission(...SETUP_READ)
+  @RequireAnyPermission(...DESK_LIST)
   async list(@Req() req: Request, @CurrentTenant() t: TenantContext) {
     return this.desks.list(await this.access.actor(req, t));
   }
@@ -128,7 +130,7 @@ export class DeskSetupController {
   }
 
   @Get('users')
-  @RequirePermissions('desk.member.manage')
+  @RequireAnyPermission('desk.member.manage', 'desk.report.manage', 'desk.kb.publish')
   async users(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: SearchQueryDto) {
     return this.desks.users(await this.access.actor(req, t), q.search);
   }

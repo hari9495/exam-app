@@ -248,11 +248,10 @@ export class MeService {
   /** Daily job: yesterday's (and today's so far) meter row per company. Idempotent per company and day. */
   async meter(onDay = addDays(todayIst(), -1)): Promise<number> {
     // L6: the platform tenant (YukthiX's own support, SD-1.31) is never billed.
-    const skip = process.env.YX_PLATFORM_ORG_ID ?? '';
-    const orgs = await deskSystem(this.tenantPrisma, { organizationId: null, isSuperAdmin: true }, (tx) => tx.$queryRaw<{ organization_id: string }[]>`SELECT DISTINCT organization_id FROM sd_desk_members`);
+    const orgs = await deskSystem(this.tenantPrisma, { organizationId: null, isSuperAdmin: true }, (tx) => tx.$queryRaw<{ organization_id: string }[]>`
+      SELECT DISTINCT m.organization_id FROM sd_desk_members m JOIN organizations o ON o.id = m.organization_id WHERE NOT o.is_platform`);
     let written = 0;
     for (const { organization_id: org } of orgs) {
-      if (org === skip) continue;
       written += await deskSystem(this.tenantPrisma, { organizationId: org, isSuperAdmin: false }, async (tx) => {
         const ids = await MeService.paidAgentsOn(tx, org, onDay);
         const res = await tx.$executeRaw`

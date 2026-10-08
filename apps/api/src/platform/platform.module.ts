@@ -13,5 +13,7 @@ import { SupportSessionsService } from './support-sessions.service';
   imports: [AuditModule, AuthModule, OrganizationsModule, SmsChannelModule],
   providers: [PlatformService, SupportSessionsService, PlatformStaffGuard],
   controllers: [PlatformController, SupportAccessController],
+  // SD-1.31: "Request access" from a YukthiX Support ticket asks for a support session.
+  exports: [SupportSessionsService, PlatformStaffGuard],
 })
 export class PlatformModule {}

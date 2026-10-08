@@ -59,6 +59,11 @@ export class RequesterService {
     return person.id;
   }
 
+  /** The person behind this login, without making one (null when they have none yet). */
+  personIdOf(r: Requester): Promise<string | null> {
+    return this.tx(r, (tx) => this.personOf(tx, r, false));
+  }
+
   /** Records the person may follow: raised by them, for them, or watched by them. */
   private mine(org: string, ids: string[]): Prisma.SdTicketWhereInput {
     return { organizationId: org, OR: [{ requesterPersonId: { in: ids } }, { requestedForPersonId: { in: ids } }] };
@@ -196,11 +201,15 @@ export class RequesterService {
       const labels = new Map((await tx.sdStatus.findMany({ where: { organizationId: org, deskId: t.deskId } })).map((s) => [s.id, s.label]));
       const people = await this.tickets.personNames(tx, org, [t.requesterPersonId, t.requestedForPersonId, ...messages.map((m) => m.authorPersonId)]);
       const users = await this.tickets.userNames(tx, org, [t.assigneeUserId, ...messages.map((m) => m.authorUserId)]);
+      // SD-1.26: the person who raised it rates it once it is solved.
+      const rating = await tx.sdRating.findFirst({ where: { organizationId: org, ticketId: t.id }, select: { score: true } });
       return {
         id: t.id,
         number: t.number,
         subject: t.subject,
         desk: { name: desk.name, attachmentTypes: desk.attachmentTypes, attachmentMaxMb: desk.attachmentMaxMb },
+        rating: rating?.score ?? null,
+        canRate: !rating && ['solved', 'closed'].includes(t.systemState) && ids.includes(t.requesterPersonId),
         status: status?.label ?? '',
         systemState: t.systemState,
         private: t.private || t.sensitive,

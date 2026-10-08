@@ -1,3 +1,4 @@
+import { forAcknowledgement } from './kb-search';
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
@@ -285,9 +286,9 @@ export class MailOutService implements OnModuleInit, OnModuleDestroy {
     return p && o ? `${webOrigin()}/yx/portal/${o.slug}/${p.slug}?ticket=${ticketId}` : `${webOrigin()}/yx/desk/help/${ticketId}`;
   }
 
-  /** Suggested help articles for an acknowledgement (YX-HD-04). Seam until the knowledge base (SD-1.24): none yet. */
-  async suggestedArticles(_tx: Tx, _org: string, _deskId: string, _text: string): Promise<{ title: string; url: string }[]> {
-    return [];
+  /** Suggested help articles for an acknowledgement (YX-HD-04, US-G-019): public or the desk's requester articles. */
+  async suggestedArticles(tx: Tx, org: string, deskId: string, text: string): Promise<{ title: string; url: string }[]> {
+    return forAcknowledgement(tx, org, deskId, text);
   }
 
   /** The acknowledgement body: the mailbox's own words (with {{ticket.number}}) and up to three articles. */
