@@ -6,6 +6,8 @@ import { STEP_UP_REQUIRED } from '../auth/step-up.decorator';
 import { DeskChannelsController, InboundMailController, PortalController } from './channels.controller';
 import { DeskInsightsController } from './insights.controller';
 import { ConsoleDeskController, MyHelpController, PortalHelpController, PublicHelpController, RateLinkController, ScimController, SignUpController, WallController, YukthixSupportController } from './public-desk.controller';
+import { DeskCatalogController, DeskRulesController, MyCatalogController } from './esm.controller';
+import { WorkflowController } from '../workflow/workflow.controller';
 import { checkFile, safeName } from './attachments.service';
 import { EICAR_TEST_STRING, DevFakeScanner, scannerFromEnv } from './scanner';
 
@@ -21,7 +23,7 @@ const undeclared = (controller: { prototype: object }) => {
 };
 
 describe('every Service Desk endpoint declares a permission (YX-SEC-01)', () => {
-  it.each([DeskSetupController, DeskTicketsController, DeskWorkController, DeskChannelsController, DeskInsightsController, YukthixSupportController, ConsoleDeskController])('%p', (controller) => {
+  it.each([DeskSetupController, DeskTicketsController, DeskWorkController, DeskChannelsController, DeskInsightsController, YukthixSupportController, ConsoleDeskController, DeskCatalogController, DeskRulesController])('%p', (controller) => {
     expect(handlers(controller).length).toBeGreaterThan(3);
     expect(undeclared(controller)).toEqual([]);
   });
@@ -44,6 +46,21 @@ describe('every Service Desk endpoint declares a permission (YX-SEC-01)', () => 
     expect(undeclared(WallController)).toEqual(['wall']);
     expect(undeclared(SignUpController)).toEqual(['signUp']);
     expect(undeclared(ScimController).sort()).toEqual(['addGroup', 'config', 'create', 'deleteGroup', 'groups', 'patch', 'patchGroup', 'putGroup', 'remove', 'replace', 'user', 'users']);
+  });
+
+  it('3b-2: the catalogue, cart and requests of the requester, and P03 approvals, are implicit (own records only)', () => {
+    expect(undeclared(MyCatalogController).sort()).toEqual(['cancel', 'cancelItem', 'catalogue', 'checkout', 'guide', 'itemPage', 'pick', 'request', 'resolveGuide']);
+    // An approver is anyone a request names (P03): the engine checks the task is theirs.
+    expect(undeclared(WorkflowController).sort()).toEqual(['decide', 'delegate', 'delegations', 'history', 'inbox', 'request', 'revoke']);
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, DeskCatalogController.prototype.askApproval)).toEqual(['desk.ticket.work']);
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, DeskRulesController.prototype.create)).toEqual(['desk.rule.manage']);
+  });
+
+  it('webhooks for rules need the integrations key and a fresh second factor (SD-2.12)', () => {
+    for (const m of ['addWebhook', 'webhookActive'] as const) {
+      expect(Reflect.getMetadata(PERMISSIONS_KEY, DeskRulesController.prototype[m])).toEqual(['desk.integration.manage']);
+      expect(Reflect.getMetadata(STEP_UP_REQUIRED, DeskRulesController.prototype[m])).toBe(true);
+    }
   });
 
   it('directory credentials, privacy decisions and retention changes need step-up (SD-1.29, SD-1.30)', () => {

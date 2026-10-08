@@ -30,6 +30,8 @@ import { AgentCreateTicketDto, AssignDto, BulkActionDto, CollaboratorDto, Conver
 // Optimistic locking (YX-SD-07): a save on a stale version is refused with who changed it.
 
 export type Ticket = Prisma.SdTicketGetPayload<object>;
+/** Timeline kinds → the rule fields they change (the "updated" trigger can wait for some fields only). */
+const FIELD_OF: Record<string, string> = { status_changed: 'state', priority_changed: 'priority', category_changed: 'category', group_changed: 'group', tags_changed: 'tags', type_changed: 'type', subject_changed: 'subject', privacy_changed: 'private' };
 export const OPEN_STATES = ['new', 'open', 'pending', 'on_hold'];
 const day = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
@@ -318,7 +320,7 @@ export class TicketsService {
     return { id: c.id, sensitive: c.sensitive || Boolean(parent?.sensitive), groupId: c.defaultGroupId ?? parent?.defaultGroupId ?? null, defaultPriority: c.defaultPriority ?? parent?.defaultPriority ?? null };
   }
 
-  private async firstStatus(tx: Tx, org: string, deskId: string, typeId: string, state: string) {
+  async firstStatus(tx: Tx, org: string, deskId: string, typeId: string, state: string) {
     const s = await tx.sdStatus.findFirst({
       where: { organizationId: org, deskId, systemState: state, active: true, OR: [{ ticketTypeId: typeId }, { ticketTypeId: null }] },
       orderBy: [{ ticketTypeId: { sort: 'asc', nulls: 'last' } }, { sortOrder: 'asc' }],
@@ -696,6 +698,8 @@ export class TicketsService {
       if (data.reopenCount) await emit(tx, org, 'helpdesk.ticket.reopened', { ticketId: t.id, deskId: t.deskId });
     }
     if (data.priority) await emit(tx, org, 'helpdesk.ticket.priority_changed', { ticketId: t.id, deskId: t.deskId, from: t.priority, to: priority });
+    // P19 automation: one "updated" event per save, naming the fields that changed (ids only, YX-API-10).
+    await emit(tx, org, 'helpdesk.ticket.updated', { ticketId: t.id, deskId: t.deskId, fields: [...new Set(log.map(([kind]) => FIELD_OF[kind]).filter(Boolean))] });
     await audit(tx, a, 'desk.ticket.updated', 'sd_ticket', t.id, { number: t.number, changes: log.map(([kind, from, to]) => ({ kind, from, to })), reason });
     // A status, priority, category, type or group change can pause, resume, stop or re-target SLA timers (§8.3).
     await this.sla.sync(tx, t.id);

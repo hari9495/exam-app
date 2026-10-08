@@ -31,13 +31,19 @@ import { ConsoleDeskController, MyHelpController, PortalHelpController, PublicHe
 import { ReportsService } from './reports.service';
 import { SupportBridgeService } from './support-bridge.service';
 import { SurveysService } from './surveys.service';
+import { RulesEngineModule } from '../rules-engine/rules-engine.module';
+import { WorkflowModule } from '../workflow/workflow.module';
+import { CatalogService } from './catalog.service';
+import { DeskAutomation } from './desk-automation';
+import { DeskCatalogController, DeskRulesController, MyCatalogController } from './esm.controller';
 
 // M14 Service Desk, phase 3b-1: batch 1 (SD-1.01 … SD-1.08), batch 2 (SD-1.09 … SD-1.17), batch 3 (SD-1.18 …
 // SD-1.23, SD-1.28: email in and out, portals and outside requesters, banners, customers) and batch 4 (SD-1.24 …
 // SD-1.27, SD-1.29 … SD-1.31: knowledge and the public help centre, CSAT / NPS, reports, the standalone product,
-// privacy, YukthiX's own support in the console).
+// privacy, YukthiX's own support in the console). Phase 3b-2 batch 1 (SD-2.01 … SD-2.05, SD-2.12): the service
+// catalogue, cart and order guides on the shared P18 / P19 / P03 engines, and desk automation rules.
 @Module({
-  imports: [AuditModule, StorageModule, NotificationsModule, CryptoModule, EmailModule, AuthModule, PlatformModule, OrganizationsModule],
+  imports: [AuditModule, StorageModule, NotificationsModule, CryptoModule, EmailModule, AuthModule, PlatformModule, OrganizationsModule, RulesEngineModule, WorkflowModule],
   controllers: [
     DeskSetupController,
     DeskTicketsController,
@@ -58,6 +64,9 @@ import { SurveysService } from './surveys.service';
     ScimController,
     YukthixSupportController,
     ConsoleDeskController,
+    DeskCatalogController,
+    DeskRulesController,
+    MyCatalogController,
   ],
   providers: [
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },
@@ -83,6 +92,8 @@ import { SurveysService } from './surveys.service';
     DirectoryService,
     PrivacyService,
     SupportBridgeService,
+    CatalogService,
+    DeskAutomation,
   ],
 })
 export class ServiceDeskModule {}

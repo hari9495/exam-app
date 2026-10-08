@@ -6,6 +6,7 @@ import { MfaRequiredException } from '../rbac/permissions.guard';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { accountScopeOf } from './customers.service';
+import { chainOf } from '../rules-engine/automation.service';
 
 // Who may do what on which desk (M14 §6). Two things must both hold, checked on the server for every route:
 //   1. the permission key, held company-wide through the person's role, profile or role grant (P02 YX-SEC-01);
@@ -41,10 +42,14 @@ export const DESK_KEYS = [
   'desk.survey.manage',
   'desk.directory.manage',
   'request.raise_on_behalf',
+  // Phase 3b-2 batch 1 (SD-2.01 … SD-2.05, SD-2.12).
+  'desk.catalog.manage',
+  'desk.rule.manage',
+  'desk.integration.manage',
 ] as const;
 export type DeskKey = (typeof DESK_KEYS)[number];
 export type DeskRole = 'agent' | 'lead' | 'admin' | 'collaborator';
-export type SetupKey = 'desk.settings.manage' | 'desk.member.manage' | 'desk.sla.manage' | 'desk.mailbox.manage' | 'desk.portal.manage';
+export type SetupKey = 'desk.settings.manage' | 'desk.member.manage' | 'desk.sla.manage' | 'desk.mailbox.manage' | 'desk.portal.manage' | 'desk.catalog.manage' | 'desk.rule.manage';
 /** How the signed-in person sees one ticket. observer = a desk admin's read-only view of a standard ticket. */
 export type TicketAccess = 'agent' | 'observer' | 'collaborator';
 
@@ -139,6 +144,11 @@ export function requireSetUp(a: DeskActor, deskId: string, key: SetupKey): void 
   throw new ForbiddenException(`You need the desk admin role on this desk (${key}).`);
 }
 
+/** The desk must be one of the person's own company's (RLS hides others): 404 otherwise. */
+export async function requireDesk(tx: Tx, a: DeskActor, deskId: string): Promise<void> {
+  if (!(await tx.sdDesk.findFirst({ where: { organizationId: a.ctx.organizationId, id: deskId }, select: { id: true } }))) throw new NotFoundException('No such desk.');
+}
+
 export function requireWork(a: DeskActor, deskId: string): void {
   if (!canWork(a, deskId)) throw new ForbiddenException(SEAT_REQUIRED);
 }
@@ -201,9 +211,13 @@ export function audit(tx: Tx, a: { ctx: CompanyContext; userId: string }, action
   return AuditService.recordIn(tx, a.ctx, { actorUserId: a.userId, action, entityType, entityId, metadata });
 }
 
-/** A business event through the transactional outbox (YX-NTF-01). Sensitive records carry ids only (YX-API-10). */
+/**
+ * A business event through the transactional outbox (YX-NTF-01). Sensitive records carry ids only (YX-API-10). A change
+ * made by a rule's action carries the rule chain on, so automation can stop loops (P19 YX-RULE-11).
+ */
 export function emit(tx: Tx, organizationId: string, eventType: string, payload: Record<string, unknown>) {
-  return tx.eventOutbox.create({ data: { organizationId, eventType, payload: payload as Prisma.InputJsonValue } });
+  const chain = chainOf(tx);
+  return tx.eventOutbox.create({ data: { organizationId, eventType, payload: (chain ? { ...payload, _chain: chain } : payload) as Prisma.InputJsonValue } });
 }
 
 /**

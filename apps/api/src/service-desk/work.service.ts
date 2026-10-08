@@ -7,6 +7,7 @@ import { textToHtml } from './rich-text';
 import { DeskActor, SEAT_REQUIRED, activeOn, audit, canLead, canWork, deskSystem, emit, has, isAgentOn, isLead, requireSetUp, requireWork } from './desk-access';
 import { EscalateDto, LinkDto, MergeDto, ResolutionCodeDto, ResolveDto, SideConversationDto, SplitDto, StandaloneTaskDto, TaskDto, TemplateDto, UpdateTaskDto } from './dto';
 import { OPEN_STATES, Ticket, TicketsService } from './tickets.service';
+import { CatalogService, afterTaskChange } from './catalog.service';
 
 // SD-1.09 merge, link, parent / child, split, side conversations and trackers (US-B-092, US-G-005, US-G-220);
 // SD-1.10 tasks and checklists, templates, resolution codes, tier escalation, auto-close (US-G-006…008, YX-SD-10…12);
@@ -21,6 +22,7 @@ export class WorkService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly tickets: TicketsService,
     private readonly crypto: OrgSecretsCryptoService,
+    private readonly catalog: CatalogService,
   ) {}
 
   private tx<T>(a: DeskActor, fn: (tx: Tx) => Promise<T>) {
@@ -355,6 +357,13 @@ export class WorkService {
       if (!agent && Object.keys(dto).some((x) => !['version', 'state', 'note'].includes(x))) throw new ForbiddenException('You can only update the state of tasks given to you.');
       if (dto.assigneeUserId !== undefined) await this.checkAssignee(tx, a, k.deskId, dto.assigneeUserId, t);
       const done = dto.state === 'done' || dto.state === 'cancelled';
+      // US-G-054: only the task's assignee completes it; a task given to a team, only a member of that team (a lead
+      // may still cancel). Others can see it, not complete it.
+      if (done && dto.state !== k.state) {
+        const inGroup = !k.assigneeUserId && k.groupId && (await tx.sdGroupMember.findFirst({ where: { organizationId: org, groupId: k.groupId, userId: a.userId }, select: { userId: true } }));
+        const owner = k.assigneeUserId ? k.assigneeUserId === a.userId : k.groupId ? Boolean(inGroup) : agent;
+        if (!owner && !(dto.state === 'cancelled' && isLead(a, k.deskId))) throw new ForbiddenException(k.assigneeUserId ? 'Only the person this task is given to can complete it.' : 'Only a member of the team this task is given to can complete it.');
+      }
       const res = await tx.sdTask.updateMany({
         where: { organizationId: org, id: k.id, version: dto.version },
         data: {
@@ -372,6 +381,8 @@ export class WorkService {
         await this.tickets.sla.sync(tx, t.id);
       }
       if (dto.state === 'done' && k.state !== 'done') await emit(tx, org, 'helpdesk.task.completed', { taskId: k.id, ticketId: k.ticketId, deskId: k.deskId });
+      // US-B-126: the last fulfilment task of an ordered item delivers it (and may resolve the request).
+      if (done) await afterTaskChange(tx, this.catalog, a, k.requestItemId);
       if (dto.assigneeUserId && dto.assigneeUserId !== k.assigneeUserId) await emit(tx, org, 'helpdesk.task.assigned', { taskId: k.id, ticketId: k.ticketId, deskId: k.deskId, assigneeUserId: dto.assigneeUserId });
       await audit(tx, a, 'desk.task.updated', 'sd_task', k.id, { ticketId: k.ticketId, changes: dto });
       return { id: k.id };

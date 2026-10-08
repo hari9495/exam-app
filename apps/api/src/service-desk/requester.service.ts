@@ -147,7 +147,7 @@ export class RequesterService {
   }
 
   /** US-G-004 / P02: raising for someone else needs request.raise_on_behalf over that employee today. */
-  private async checkOnBehalf(tx: Tx, r: Requester, forPersonId: string, me: string) {
+  async checkOnBehalf(tx: Tx, r: Requester, forPersonId: string, me: string) {
     if (forPersonId === me) throw new BadRequestException('Leave "for someone else" empty when it is for you.');
     const viewer = await buildViewer(this.prisma, this.tenantPrisma, { ...r.user, userId: r.userId, organizationId: r.ctx.organizationId }, ['request.raise_on_behalf']);
     const target = await tx.employee.findFirst({ where: { organizationId: r.ctx.organizationId, personId: forPersonId }, select: { id: true } });
