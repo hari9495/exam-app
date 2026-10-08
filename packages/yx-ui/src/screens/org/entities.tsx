@@ -253,7 +253,7 @@ export function LegalEntitiesScreen(props: LegalEntitiesScreenProps) {
       what="the legal entities"
     >
       <section className="yx-auth__stack" aria-label="Legal entities">
-        <SectionHead title="Entities" description="Every screen still shows all the entities you may see." action={<ArchivedToggle checked={showArchived} onChange={setShowArchived} count={archived} />} />
+        <SectionHead title="Entities" description="Archived entities are hidden here; their people and history stay." action={<ArchivedToggle checked={showArchived} onChange={setShowArchived} count={archived} />} />
         <DataTable
           label="Legal entities"
           columns={columns}
