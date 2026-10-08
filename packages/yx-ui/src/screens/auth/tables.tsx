@@ -56,8 +56,8 @@ function UnlockDialog({ row, onUnlock }: { row: LoginEventRow; onUnlock: (row: L
 /** Sign-in attempts, newest first (YX-IAM-10). Server-paged; becomes cards on phones. */
 export function LoginEventsTable({ page, state, onRetry, onPageChange, showPerson, filtered, onClearFilters, label, onUnlock }: LoginEventsTableProps) {
   const columns: TableColumn<LoginEventRow>[] = [
-    { key: 'when', header: 'When', value: (r) => r.createdAt, render: (r) => when(r.createdAt), width: 190, hideable: false },
-    ...(showPerson ? [{ key: 'who', header: 'Email or number', value: (r: LoginEventRow) => r.identifier, width: 220 }] : []),
+    { key: 'when', header: 'When', value: (r) => r.createdAt, render: (r) => <span className="yx-auth__nowrap">{when(r.createdAt)}</span>, width: 200, hideable: false },
+    ...(showPerson ? [{ key: 'who', header: 'Email or number', value: (r: LoginEventRow) => r.identifier, render: (r: LoginEventRow) => <span className="yx-auth__nowrap">{r.identifier}</span>, width: 250 }] : []),
     {
       key: 'result',
       header: 'Result',
@@ -68,10 +68,10 @@ export function LoginEventsTable({ page, state, onRetry, onPageChange, showPerso
           {r.newDevice && <Badge tone="info">New device</Badge>}
         </span>
       ),
-      width: 190,
+      width: 200,
     },
     { key: 'method', header: 'Method', value: signInMethod, width: 260 },
-    { key: 'device', header: 'Device', value: (r) => deviceLabel(r.userAgent), optional: true, width: 170 },
+    { key: 'device', header: 'Device', value: (r) => deviceLabel(r.userAgent), render: (r) => <span className="yx-auth__nowrap">{deviceLabel(r.userAgent)}</span>, optional: true, width: 190 },
     { key: 'ip', header: 'IP address', value: (r) => ipLabel(r.ipAddress), optional: true, width: 150 },
   ];
   return (
@@ -88,7 +88,8 @@ export function LoginEventsTable({ page, state, onRetry, onPageChange, showPerso
         filtered={filtered}
         onClearFilters={onClearFilters}
         rowNoun={['sign-in attempt', 'sign-in attempts']}
-        rowButtons={onUnlock ? (r) => (showsLock(r) ? <UnlockDialog row={r} onUnlock={onUnlock} /> : null) : undefined}
+        // The Unlock column only when a row on this page can be unlocked: no empty column otherwise.
+        rowButtons={onUnlock && page?.data.some(showsLock) ? (r) => (showsLock(r) ? <UnlockDialog row={r} onUnlock={onUnlock} /> : null) : undefined}
         cardSummary
       />
       {page && page.total > page.pageSize && <Pagination page={page.page} pageSize={page.pageSize} total={page.total} onPageChange={onPageChange} />}

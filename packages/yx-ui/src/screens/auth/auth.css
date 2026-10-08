@@ -45,7 +45,8 @@
 .yx-auth__item { display: flex; align-items: center; justify-content: space-between; gap: var(--yx-space-3); padding: var(--yx-space-3) 0; min-width: 0; }
 .yx-auth__list > .yx-auth__item + .yx-auth__item { border-top: var(--yx-border-width) solid var(--yx-color-border); }
 .yx-auth__item-main { display: flex; flex-direction: column; align-items: flex-start; gap: var(--yx-space-half); min-width: 0; overflow-wrap: anywhere; }
-.yx-auth__badges { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); }
+.yx-auth__nowrap { white-space: nowrap; }
+.yx-auth__badges { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: var(--yx-space-2); }
 .yx-auth__filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 2fr); gap: var(--yx-space-3); align-items: end; }
 @media (max-width: 1100px) { .yx-auth__filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .yx-auth__filters { grid-template-columns: minmax(0, 1fr); } }

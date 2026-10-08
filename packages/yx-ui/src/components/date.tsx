@@ -142,14 +142,16 @@ export interface DateRangePickerProps {
   fromLabel?: string;
   toLabel?: string;
   helper?: ReactNode;
+  /** In a filter bar: the group label is for screen readers only, so From / To line up with the other filters. */
+  hideLabel?: boolean;
 }
 
 /** From / To pair on one row (§16). "To" cannot be before "From". */
-export function DateRangePicker({ label, value, onChange, min, max, required, fromLabel = 'From', toLabel = 'To', helper }: DateRangePickerProps) {
+export function DateRangePicker({ label, value, onChange, min, max, required, fromLabel = 'From', toLabel = 'To', helper, hideLabel }: DateRangePickerProps) {
   const orderError = value.from && value.to && dayStart(value.to) < dayStart(value.from) ? 'End date must be on or after the start date' : null;
   return (
     <fieldset className="yx-fieldset">
-      <legend className="yx-field__label">
+      <legend className={hideLabel ? 'yx-visually-hidden' : 'yx-field__label'}>
         <span>{label}</span>
         {required && <span className="yx-field__req">Required</span>}
       </legend>

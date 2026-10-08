@@ -108,7 +108,7 @@ export function LoginActivityScreen(props: LoginActivityScreenProps) {
               <FormField label="Method">
                 <Select value={filters.method} onChange={(v) => set({ method: v })} clearable placeholder="Any method" options={METHOD_FILTERS.map((m) => ({ value: m, label: methodLabel(m) }))} />
               </FormField>
-              <DateRangePicker label="Dates" value={filters.range} onChange={(range) => set({ range })} max={new Date()} />
+              <DateRangePicker label="Dates" hideLabel fromLabel="From date" toLabel="To date" value={filters.range} onChange={(range) => set({ range })} max={new Date()} />
             </div>
             <LoginEventsTable
               label="Sign-in attempts"
