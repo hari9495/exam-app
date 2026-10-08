@@ -1,18 +1,23 @@
 'use client';
 
+import { Suspense } from 'react';
+import { Spinner } from '@yukthix/ui';
+import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { DeskSetupScreen, type Banner, type Bounce, type Calendar, type CannedResponse, type ComplianceReport, type DeskDetail, type DeskSummary, type DeskTemplates, type InboundEmail, type InboundEmailDetail, type InboundVerdict, type Mailbox, type MailRule, type PortalView, type SeatCost, type SendingDomain, type SlaSetup, type TicketPage, type WebhookSecret } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useYxPermissions } from '../../../../../lib/yx-org';
 import { deskState, useDesk, useDeskWrite } from '../../../../../lib/yx-desk';
+import type { SetupChecklist } from '@yukthix/ui/desk';
 
 // Service desk › Desk set-up (APX-D §5.8, M14 SD-1.01/1.02): desks, seats (cost shown first), groups, categories, types,
 // statuses, priority matrix, saved replies, scenarios, numbering, files and business calendars; batch 2 (SD-1.10 …
 // SD-1.17): resolve and reopen rules, resolution codes, templates, response targets (SLA / OLA) with monthly
 // compliance, which half of a half-day holiday is open, and the paid agents of the month; batch 3 (SD-1.18 … SD-1.23):
 // email (mailboxes, rules, held mail, sending domains, bounce list), outside help pages and known-issue banners.
-export default function YxDeskSetupPage() {
+function YxDeskSetupPageInner() {
+  const initialTab = useSearchParams()?.get('tab') ?? undefined;
   const { accessToken } = useAuth();
   const token = accessToken ?? undefined;
   const perms = useYxPermissions();
@@ -44,10 +49,14 @@ export default function YxDeskSetupPage() {
   const banners = useDesk<Banner[]>(selected && canBanner ? `/desks/${selected}/banners` : null);
   const openTickets = useDesk<TicketPage>(selected && canBanner ? `/tickets?deskIds=${selected}&states=new,open,pending,on_hold&limit=100` : null);
   const write = useDeskWrite();
+  // Batch 4: the set-up checklist and the 3-step wizard (Service Desk admins).
+  const canStart = perms.has('desk.desk.create') || perms.has('desk.settings.manage');
+  const checklist = useDesk<SetupChecklist>(canStart ? '/setup/checklist' : null);
   const base = `/desks/${selected}`;
   const version = detail.data?.desk.version ?? 0;
   return (
     <DeskSetupScreen
+      initialTab={initialTab}
       state={deskState(desks)}
       onRetry={() => void desks.refetch()}
       desks={desks.data ?? []}
@@ -104,6 +113,22 @@ export default function YxDeskSetupPage() {
         await write(`/calendars/${calendar.id}`, 'PATCH', { version: calendar.version, halfDayOpenHalf: half });
       }}
       billing={billing.data ? { month: billing.data.month, paidAgents: billing.data.paidAgents, collaborators: billing.data.collaborators.length } : null}
+      start={
+        canStart
+          ? {
+              checklist: checklist.data ?? null,
+              onCreateDesk: async (input) => {
+                const d = await write<DeskSummary>('/desks', 'POST', input);
+                setSelected(d.id);
+                return d;
+              },
+              onCreatePolicy: async (deskId, input) => {
+                await write(`/desks/${encodeURIComponent(deskId)}/sla-policies`, 'POST', input);
+              },
+              onCreateMailbox: (deskId, address) => write<Partial<WebhookSecret>>(`/desks/${encodeURIComponent(deskId)}/mailboxes`, 'POST', { address, kind: 'hosted' }),
+            }
+          : undefined
+      }
       sla={
         canCalendars
           ? {
@@ -198,5 +223,14 @@ export default function YxDeskSetupPage() {
         },
       }}
     />
+  );
+}
+
+// useSearchParams needs a Suspense boundary (Next prerender).
+export default function YxDeskSetupPage() {
+  return (
+    <Suspense fallback={<Spinner label="Loading" size="md" />}>
+      <YxDeskSetupPageInner />
+    </Suspense>
   );
 }

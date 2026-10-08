@@ -38,6 +38,18 @@ export const YX_KEYS = [
   'desk.portal.manage',
   'desk.customer.manage',
   'desk.ticket.work',
+  // Batch 4: knowledge (read, write, publish) and article-request tasks from content gaps.
+  'desk.kb.view_internal',
+  'desk.kb.author',
+  'desk.kb.publish',
+  'desk.task.work',
+  // Batch 4: reports, wall screens and NPS surveys.
+  'desk.report.manage',
+  'desk.survey.manage',
+  // Batch 4: YukthiX support (Contact YukthiX).
+  'org.yukthix_support.raise',
+  // Batch 4: the standalone people list and directory sync.
+  'desk.directory.manage',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

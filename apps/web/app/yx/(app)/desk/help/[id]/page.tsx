@@ -31,6 +31,7 @@ export default function YxDeskMyTicketPage() {
       onAddWatcher={async (email) => {
         await write(`${path}/watchers`, 'POST', { email });
       }}
+      onRate={(score, comment) => write(`${path}/rating`, 'POST', { score, ...(comment ? { comment } : {}) })}
     />
   );
 }

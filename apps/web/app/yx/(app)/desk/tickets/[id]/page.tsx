@@ -5,8 +5,11 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   EscalateDialog,
   ResolveDialog,
+  TicketKbCard,
   TicketScreen,
   TicketWorkRail,
+  type ArticleOption,
+  type TicketArticleLink,
   type CannedResponse,
   type DeskDetail,
   type DeskSummary,
@@ -45,6 +48,9 @@ export default function YxDeskTicketPage() {
   const work = useDesk<TicketWork>(`${path}/work`, { refetchInterval: 30_000 });
   const desks = useDesk<DeskSummary[]>('/desks');
   const codes = useDesk<DeskTemplates>(deskId ? `/desks/${deskId}/templates` : null);
+  // Batch 4 (US-G-023, US-B-106): articles used on this ticket, and the spaces the agent may write in.
+  const kbLinks = useDesk<TicketArticleLink[]>(`${path}/kb-links`);
+  const kbSpaces = useDesk<{ id: string; name: string; canAuthor: boolean }[]>('/kb/spaces');
   const write = useDeskWrite();
   const upload = useDeskUpload();
   const openFile = useDeskFile();
@@ -122,10 +128,23 @@ export default function YxDeskTicketPage() {
           }
         }}
         onOpenTicket={open}
+        onFindArticle={(q) => apiFetch(`/desk${path}/kb?q=${encodeURIComponent(q)}`, {}, token) as Promise<ArticleOption[]>}
+        onArticleInserted={(articleId) => void write(`${path}/kb-links`, 'POST', { articleId, kind: 'linked' }).catch(() => undefined)}
         onResolveClick={() => setResolving(true)}
         onEscalateClick={() => setEscalating(true)}
         rail={
           t && d ? (
+            <>
+            <TicketKbCard
+              links={kbLinks.data ?? []}
+              solved={['solved', 'closed'].includes(t.systemState)}
+              canWork={Boolean(t.canWork)}
+              spaces={(kbSpaces.data ?? []).filter((s) => s.canAuthor)}
+              onSolvedBy={(articleId) => write(`${path}/kb-links`, 'POST', { articleId, kind: 'solved' })}
+              onFlag={(articleId, reason) => write(`/kb/articles/${encodeURIComponent(articleId)}/flag`, 'POST', { reason })}
+              onMakeArticle={(spaceId) => write<{ id: string }>(`${path}/kb-article`, 'POST', { spaceId })}
+              onOpenArticle={(articleId) => router.push(`/yx/desk/knowledge?article=${encodeURIComponent(articleId)}`)}
+            />
             <TicketWorkRail
               ticket={t}
               detail={d}
@@ -183,6 +202,7 @@ export default function YxDeskTicketPage() {
               }}
               onUnmask={async (valueId) => ((await write<{ value: string }>(`${path}/unmask/${encodeURIComponent(valueId)}`, 'POST')).value)}
             />
+            </>
           ) : null
         }
       />
