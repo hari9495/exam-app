@@ -18,10 +18,6 @@ function renderWithQueryClient(ui: React.ReactElement, client = new QueryClient(
 describe('AuthProvider', () => {
   const originalFetch = global.fetch;
 
-  // Every test below starts as a browser that signed in before (the refresh cookie is HttpOnly, so this
-  // flag is what tells the provider to try /auth/refresh at all).
-  beforeEach(() => window.localStorage.setItem(SESSION_HINT_KEY, '1'));
-
   afterEach(() => {
     global.fetch = originalFetch;
     window.sessionStorage.clear();
