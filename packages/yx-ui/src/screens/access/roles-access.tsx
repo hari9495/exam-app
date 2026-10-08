@@ -12,7 +12,7 @@ import { Breadcrumbs, Card, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { dayKey } from '../../lib/dates';
 import { dateLabel, errorText } from '../org/org-kit';
-import { codeOf, ConfidentialBadge, GrantStatusBadge, SCOPE_LABEL, SCOPE_TARGET } from './access-kit';
+import { codeOf, ConfidentialBadge, GrantStatusBadge, isSystemAdmin, SCOPE_LABEL, SCOPE_TARGET, SystemAdminBadge } from './access-kit';
 import type { AccessRole, AccessUser, EffectiveAccess, Grant, GrantInput, LoadState, RoleTemplate, ScopeChoices, ScopeType } from './types';
 
 // Settings › Roles & access (PLT-11; P02 §4.2–4.3, §4.6, §7): who holds which role over which people. A role
@@ -36,10 +36,12 @@ export interface RolesAccessScreenProps {
   onReject: (grantId: string, reason: string) => Promise<void>;
   onRevoke: (grantId: string, reason: string) => Promise<void>;
   onFromTemplate: (templateKey: string, name: string) => Promise<void>;
+  /** Makes the person a System Admin (true) or takes it away (false); the API asks for a second factor and refuses the last one. */
+  onSystemAdmin: (userId: string, makeAdmin: boolean, reason: string) => Promise<void>;
 }
 
 type View = 'people' | 'waiting' | 'roles';
-const userLabel = (u: AccessUser) => (u.name ? `${u.name} · ${u.email}` : u.email);
+const userLabel = (u: AccessUser) => `${u.name ? `${u.name} · ${u.email}` : u.email}${isSystemAdmin(u) ? ' · System Admin' : ''}`;
 const SCOPE_TYPES = Object.keys(SCOPE_LABEL) as ScopeType[];
 const scopeText = (g: Grant) => (g.scope.name ? `${SCOPE_LABEL[g.scope.type]}: ${g.scope.name}` : SCOPE_LABEL[g.scope.type]);
 const period = (g: Grant) => (g.validTo ? `${dateLabel(g.validFrom)} to ${dateLabel(g.validTo)}` : `From ${dateLabel(g.validFrom)}`);
@@ -178,6 +180,54 @@ function ReasonDialog({ ask, onClose, onRevoke, onReject }: { ask: Ask; onClose:
   );
 }
 
+function SystemAdminDialog({ user, onSystemAdmin, onClose }: { user: AccessUser; onSystemAdmin: RolesAccessScreenProps['onSystemAdmin']; onClose: () => void }) {
+  const [reason, setReason] = useState('');
+  const remove = isSystemAdmin(user);
+  const name = user.name ?? user.email;
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={remove ? `Remove ${name} as System Admin?` : `Make ${name} a System Admin?`}
+      consequence={
+        remove
+          ? 'They can no longer decide who has access. Any other roles they hold stay. They sign in again, and every System Admin gets an email.'
+          : 'They can decide who has access and give rights to others. They sign in again to see the new menus and must use two-step verification. Every System Admin gets an email.'
+      }
+      confirmLabel={remove ? 'Remove System Admin' : 'Make System Admin'}
+      destructive={remove}
+      confirmDisabled={!reason.trim()}
+      onConfirm={async () => {
+        await onSystemAdmin(user.id, !remove, reason.trim());
+        onClose();
+      }}
+    >
+      <FormField id="sa-reason" label="Reason" required helper="Kept on the record.">
+        <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
+function SystemAdminCard({ user, admins, onChange }: { user: AccessUser; admins: AccessUser[]; onChange: () => void }) {
+  const admin = isSystemAdmin(user);
+  return (
+    <Card
+      title={<span className="yx-ppl2__row">System Admin{admin && <SystemAdminBadge />}</span>}
+      actions={
+        <Button size="sm" variant={admin ? 'secondary' : 'primary'} onClick={onChange}>
+          {admin ? 'Remove System Admin' : 'Make System Admin'}
+        </Button>
+      }
+    >
+      <Text as="p">{admin ? `${user.name ?? user.email} decides who has access and can give rights to others.` : 'A System Admin decides who has access and can give rights to others.'}</Text>
+      <Text as="p" tone="secondary" size="sm">
+        {`System Admins now: ${admins.map((a) => a.name ?? a.email).join(', ') || 'none'}.`}
+      </Text>
+    </Card>
+  );
+}
+
 function Effective({ userId, loadEffective }: { userId: string; loadEffective: RolesAccessScreenProps['loadEffective'] }) {
   const [data, setData] = useState<EffectiveAccess | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -225,6 +275,9 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
   const [giving, setGiving] = useState(false);
   const [fromTemplate, setFromTemplate] = useState(false);
   const [ask, setAsk] = useState<Ask | null>(null);
+  const [adminAsk, setAdminAsk] = useState<AccessUser | null>(null);
+  const person = users.find((u) => u.id === userId) ?? null;
+  const admins = users.filter(isSystemAdmin);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const waiting = grants.filter((g) => g.status === 'pending');
@@ -276,6 +329,7 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
               <FormField id="ra-user" label="Person">
                 <Select aria-label="Person" value={userId} onChange={setUserId} searchable options={users.map((u) => ({ value: u.id, label: userLabel(u) }))} />
               </FormField>
+              {person && <SystemAdminCard user={person} admins={admins} onChange={() => setAdminAsk(person)} />}
               {userId && <Effective userId={userId} loadEffective={loadEffective} />}
               {userId && (
                 <DataTable
@@ -335,6 +389,7 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
       )}
       {giving && <GrantDialog users={users} roles={roles} scopes={props.scopes} today={props.today} userId={userId} onGrant={props.onGrant} onClose={() => setGiving(false)} />}
       {fromTemplate && <TemplateDialog templates={templates} onFromTemplate={props.onFromTemplate} onClose={() => setFromTemplate(false)} />}
+      {adminAsk && <SystemAdminDialog user={adminAsk} onSystemAdmin={props.onSystemAdmin} onClose={() => setAdminAsk(null)} />}
       {ask && <ReasonDialog ask={ask} onClose={() => setAsk(null)} onRevoke={props.onRevoke} onReject={props.onReject} />}
     </div>
   );

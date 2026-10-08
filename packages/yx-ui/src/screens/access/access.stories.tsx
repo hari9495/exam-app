@@ -31,6 +31,7 @@ const roles = (meId = 'u-admin') => (
     onReject={() => wait()}
     onRevoke={() => wait()}
     onFromTemplate={() => wait()}
+    onSystemAdmin={() => wait()}
   />
 );
 export const RolesAccess: S = { name: 'Roles & access · people, waiting, roles', render: () => roles() };

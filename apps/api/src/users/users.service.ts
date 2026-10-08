@@ -19,6 +19,7 @@ import { BulkCreateUsersDto } from './dto/bulk-create-users.dto';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 import { PasswordPolicyService } from '../auth/password-policy.service';
 import { securityChangeEmail } from '../email/account-emails';
+import { assertAnotherSystemAdmin, SYSTEM_ADMIN_ROLE } from './system-admins';
 
 /**
  * A User record with `passwordHash` (and any other sensitive fields) excluded.
@@ -325,6 +326,9 @@ export class UsersService {
           throw new BadRequestException('This role opens Confidential data (pay, identity or bank details). Grant it in Roles & access, where another admin approves it.');
         }
       }
+      if (target.role === SYSTEM_ADMIN_ROLE && dto.role !== undefined && dto.role !== SYSTEM_ADMIN_ROLE) {
+        await assertAnotherSystemAdmin(tx, context.organizationId as string, targetUserId);
+      }
       const updated = await tx.user.update({
         where: { id: targetUserId },
         data: {
@@ -389,6 +393,9 @@ export class UsersService {
       }
       if (target.role === 'super_admin') {
         throw new ForbiddenException('Cannot change a platform administrator');
+      }
+      if (status === 'deactivated' && target.role === SYSTEM_ADMIN_ROLE) {
+        await assertAnotherSystemAdmin(tx, context.organizationId as string, targetUserId);
       }
       const updated = await tx.user.update({ where: { id: targetUserId }, data: { status }, select: SAFE_USER_SELECT });
       if (status === 'deactivated') {

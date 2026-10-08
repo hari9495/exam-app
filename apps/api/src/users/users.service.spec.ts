@@ -1020,7 +1020,9 @@ describe('UsersService', () => {
         user: {
           findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'org_admin', organizationId: 'org1', permissionProfileId: null }),
           update: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter' }),
+          count: jest.fn().mockResolvedValue(1),
         },
+        $executeRaw: jest.fn().mockResolvedValue(1),
         ...sessionTx(),
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
@@ -1034,6 +1036,19 @@ describe('UsersService', () => {
         ctx,
         expect.objectContaining({ action: 'user.updated', metadata: { changes: { role: { from: 'org_admin', to: 'recruiter' } }, sessionsRevoked: 2 } }),
       );
+    });
+
+    // The company always keeps an active System Admin, whichever page changes the role.
+    it('refuses to demote or deactivate the last active System Admin', async () => {
+      const tx = {
+        user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'org_admin', organizationId: 'org1', permissionProfileId: null }), update: jest.fn(), count: jest.fn().mockResolvedValue(0) },
+        $executeRaw: jest.fn().mockResolvedValue(1),
+        ...sessionTx(),
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await expect(service.update(ctx, 't1', { role: 'recruiter' }, 'admin1')).rejects.toThrow(ConflictException);
+      await expect(service.setStatus(ctx, 't1', 'deactivated', 'admin1')).rejects.toThrow(/only System Admin/);
+      expect(tx.user.update).not.toHaveBeenCalled();
     });
 
     it('a name-only change, or the same role again, leaves sessions alone', async () => {

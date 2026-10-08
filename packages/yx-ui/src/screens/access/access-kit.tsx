@@ -26,6 +26,13 @@ export function GrantStatusBadge({ status }: { status: GrantStatus }) {
   return <Badge tone={STATUS[status].tone}>{STATUS[status].label}</Badge>;
 }
 
+/** users.role org_admin: decides who has access and gives rights to others. */
+export const isSystemAdmin = (u: { role: string }) => u.role === 'org_admin';
+
+export function SystemAdminBadge() {
+  return <Badge tone="info">System Admin</Badge>;
+}
+
 export function ConfidentialBadge() {
   return <Badge tone="warning">Confidential</Badge>;
 }

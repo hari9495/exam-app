@@ -77,6 +77,28 @@ describe('/yx/settings/access', () => {
     await ue.click(await screen.findByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(posted).toEqual(['/access/grants/g-2/approve']));
   });
+
+  it('makes a person a System Admin through the access API, with the reason', async () => {
+    const posted: unknown[] = [];
+    route({
+      'GET /users/me': { id: 'u-admin', email: 'admin@demo-org.test', name: 'Admin', role: 'org_admin' },
+      'GET /access/users': [{ id: 'u-lakshmi', name: 'Lakshmi Venkatesan', email: 'hr@demo-org.test', role: 'panel', status: 'active', employeeId: 'p-lakshmi' }],
+      'GET /access/roles': [],
+      'GET /access/role-templates': [],
+      'GET /access/grants': [],
+      'GET /org/legal-entities': [],
+      'GET /org/locations': [],
+      'GET /org/masters/departments': [],
+      'GET /access/users/u-lakshmi/effective': { userId: 'u-lakshmi', hasEmployeeRecord: true, keys: [] },
+      'POST /access/users/u-lakshmi/system-admin': (path: string, init: RequestInit) => (posted.push([path, JSON.parse(String(init.body))]), { id: 'u-lakshmi', role: 'org_admin' }),
+    });
+    wrap(<YxRolesAccessPage />);
+    await ue.click(await screen.findByRole('button', { name: 'Make System Admin' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'HR head');
+    await ue.click(within(dialog).getByRole('button', { name: 'Make System Admin' }));
+    await waitFor(() => expect(posted).toEqual([['/access/users/u-lakshmi/system-admin', { reason: 'HR head' }]]));
+  });
 });
 
 const PROFILE = {
