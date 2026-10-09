@@ -1,7 +1,7 @@
 // People › job history and changes (P06 §7, M01 §3.3): the shapes the API returns and accepts.
 export type { LoadState } from '../org/types';
 
-export const CHANGE_TYPES = ['join', 'promotion', 'transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction'] as const;
+export const CHANGE_TYPES = ['join', 'promotion', 'transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction', 'notice', 'notice_withdrawal', 'exit'] as const;
 export type ChangeType = (typeof CHANGE_TYPES)[number];
 export type ChangeStatus = 'pending' | 'scheduled' | 'effective' | 'rejected' | 'cancelled';
 export type EmploymentStatus = 'probation' | 'confirmed' | 'notice';

@@ -15,3 +15,23 @@ export const referenceNo = (prefix: string, code: string, year: number, n: numbe
 
 /** Where a verify code is checked (the public page of the web app). */
 export const verifyLink = (code: string) => `${(process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '')}/yx/verify/${code}`;
+
+/** What the public page shows for any issued document: company, kind, name, date, current or superseded. */
+export interface VerifyResult {
+  company: string;
+  kind: string;
+  name: string;
+  issuedOn: string;
+  status: 'current' | 'superseded';
+}
+const verifiers: ((code: string) => Promise<VerifyResult | null>)[] = [];
+/** Other document stores (lifecycle letters) answer the same public page (lifecycle 6b, D10). */
+export const registerVerifier = (fn: (code: string) => Promise<VerifyResult | null>) => void verifiers.push(fn);
+/** The first store that knows the code, or null. */
+export async function verifyElsewhere(code: string): Promise<VerifyResult | null> {
+  for (const fn of verifiers) {
+    const r = await fn(code);
+    if (r) return r;
+  }
+  return null;
+}

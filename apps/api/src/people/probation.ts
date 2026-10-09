@@ -13,14 +13,14 @@ export interface ProbationScope {
 }
 
 /** A setting's value for the company, entity, employment type and grade given (most specific first). */
-export async function settingFor(tx: Tx, c: CompanyContext, key: keyof typeof SETTINGS & string, scope: ProbationScope): Promise<string> {
+export async function settingFor(tx: Tx, c: CompanyContext, key: keyof typeof SETTINGS & string, scope: ProbationScope, asOf: string | null = null): Promise<string> {
   const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key } });
   const context: ScopeContext = { tenant: c.organizationId, legal_entity: scope.legalEntityId, employment_type: scope.employmentTypeId ?? undefined, grade: scope.gradeId ?? undefined };
   const resolved = resolveSetting(
     SETTINGS[key],
-    rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })),
+    rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: r.validFrom ? r.validFrom.toISOString().slice(0, 10) : null })),
     context,
-    null,
+    asOf,
   );
   return String(resolved.value);
 }

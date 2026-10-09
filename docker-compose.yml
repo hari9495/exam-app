@@ -37,6 +37,28 @@ services:
       # candidates as "sandbox_unavailable" — see apps/exam-runtime/src/attempts/attempt.service.ts.
       PISTON_RUN_TIMEOUT: 10000
       PISTON_COMPILE_TIMEOUT: 10000
+  # Lifecycle letters (P05 Q1, founder D4): Word -> PDF with LibreOffice inside Gotenberg. Start it with
+  # `docker compose --profile letters up -d gotenberg` and set GOTENBERG_URL=http://127.0.0.1:3010 on the API.
+  # No internet: the browser (Chromium) routes, webhooks and downloads from URLs are switched off, and in production
+  # it runs on an internal network with no egress (the API is its only caller). Its image carries the Noto fonts
+  # (Devanagari, Tamil, Telugu) the letters need.
+  gotenberg:
+    image: gotenberg/gotenberg:8.17.3
+    profiles: ["letters"]
+    command:
+      - gotenberg
+      - --chromium-disable-routes=true
+      - --webhook-disable=true
+      - --api-disable-download-from=true
+      - --api-timeout=30s
+      - --libreoffice-restart-after=50
+    ports:
+      - "127.0.0.1:3010:3000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   postgres-data:

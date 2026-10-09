@@ -438,12 +438,15 @@ export class PeopleService {
     return this.history.run(ctx, async (tx, c) => {
       const today = todayIst();
       let employeeIds: string[] | null = null;
+      // LIFE-3.01: the direct manager reviews (confirm / extend / end); HR acts through the confirm and extend buttons.
+      let direct = new Set<string>();
       if (!tenantWide(v, 'employee.profile.view')) {
         const team = await this.teamIn(tx, c, v);
         const scoped = hr(v)
           ? (await tx.$queryRaw<{ id: string }[]>`SELECT e.id::text FROM employees e WHERE e.organization_id = ${c.organizationId}::uuid AND ${await this.history.scopeFilter(tx, c, v, 'employee.profile.view', Prisma.sql`e.id`, Prisma.sql`${today}::date`)}`).map((r) => r.id)
           : [];
         employeeIds = [...new Set([...team.members.filter((m) => m.relation !== 'dotted').map((m) => m.id), ...scoped])];
+        direct = new Set(team.members.filter((m) => m.relation === 'direct').map((m) => m.id));
         if (!employeeIds.length) return { today, rows: [] };
       }
       const employments = await tx.employment.findMany({ where: { organizationId: c.organizationId, exitedOn: null, ...(employeeIds ? { employeeId: { in: employeeIds } } : {}) } });
@@ -475,6 +478,7 @@ export class PeopleService {
           pendingConfirmationId: state.pendingChange(e.id),
           stage: confirmedFrom ? 'confirmed' : state.pendingChange(e.id) ? 'awaiting_approval' : end < today ? 'overdue' : today >= reviewDueOn ? 'review_due' : p.extendedMonths ? 'extended' : 'running',
           maxTotalMonths: maxTotal,
+          canReview: direct.has(e.employeeId) && !confirmedFrom && !state.pendingChange(e.id),
         });
       }
       return { today, rows };
@@ -497,20 +501,32 @@ export class PeopleService {
       const state = await this.probationState(tx, c, [e.id]);
       if (state.confirmedFrom(e.id)) throw new ConflictException('The probation is already confirmed.');
       if (state.pendingChange(e.id)) throw new ConflictException('A confirmation is waiting for approval. Reject or cancel it first.');
-      const current = await tx.employeeAssignment.findFirst({
-        where: { organizationId: c.organizationId, employmentId: e.id, supersededAt: null, validFrom: { lte: asDate(todayIst()) }, OR: [{ validTo: null }, { validTo: { gte: asDate(todayIst()) } }] },
-      });
-      const maxTotal = Number(await settingFor(tx, c, 'probation.max_total_months', { legalEntityId: e.legalEntityId, employmentTypeId: current?.employmentTypeId }));
-      const newEnd = await endAfterMonths(tx, addDays(isoDate(p.plannedEndOn), 1), months);
-      const limit = await endAfterMonths(tx, isoDate(p.startOn), maxTotal);
-      if (newEnd > limit) throw new BadRequestException(`Probation may run at most ${maxTotal} months in total, until ${limit} (company rule).`);
-      await tx.probation.update({
-        where: { id: p.id },
-        data: { plannedEndOn: asDate(newEnd), extendedMonths: p.extendedMonths + months, reviewRemindedOn: null, escalatedOn: null },
-      });
-      await audit(tx, c, 'employee.probation.extended', 'employee', employeeId, { employmentId: e.id, from: isoDate(p.plannedEndOn), to: newEnd, months, reason: reason.trim() });
-      return { plannedEndOn: newEnd, extendedMonths: p.extendedMonths + months };
+      return this.extendIn(tx, c, e, p, months, reason);
     });
+  }
+
+  /** The extension itself, within the company maximum (also used by the manager's review, LIFE-3.01). */
+  async extendIn(tx: Tx, c: CompanyContext, e: Prisma.EmploymentGetPayload<object>, p: Prisma.ProbationGetPayload<object>, months: number, reason: string) {
+    const current = await tx.employeeAssignment.findFirst({
+      where: { organizationId: c.organizationId, employmentId: e.id, supersededAt: null, validFrom: { lte: asDate(todayIst()) }, OR: [{ validTo: null }, { validTo: { gte: asDate(todayIst()) } }] },
+    });
+    const maxTotal = Number(await settingFor(tx, c, 'probation.max_total_months', { legalEntityId: e.legalEntityId, employmentTypeId: current?.employmentTypeId }));
+    const newEnd = await endAfterMonths(tx, addDays(isoDate(p.plannedEndOn), 1), months);
+    const limit = await endAfterMonths(tx, isoDate(p.startOn), maxTotal);
+    if (newEnd > limit) throw new BadRequestException(`Probation may run at most ${maxTotal} months in total, until ${limit} (company rule).`);
+    await tx.probation.update({
+      where: { id: p.id },
+      data: { plannedEndOn: asDate(newEnd), extendedMonths: p.extendedMonths + months, reviewRemindedOn: null, escalatedOn: null },
+    });
+    await audit(tx, c, 'employee.probation.extended', 'employee', e.employeeId, { employmentId: e.id, from: isoDate(p.plannedEndOn), to: newEnd, months, reason: reason.trim() });
+    await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.probation.extended', payload: { employeeId: e.employeeId, employmentId: e.id, plannedEndOn: newEnd } } });
+    return { plannedEndOn: newEnd, extendedMonths: p.extendedMonths + months };
+  }
+
+  /** Is a confirmation already done or waiting (for the review form)? */
+  async confirmationState(tx: Tx, c: CompanyContext, employmentId: string) {
+    const s = await this.probationState(tx, c, [employmentId]);
+    return { confirmedFrom: s.confirmedFrom(employmentId), pendingChangeId: s.pendingChange(employmentId) };
   }
 
   /**

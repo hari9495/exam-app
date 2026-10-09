@@ -103,6 +103,8 @@ export interface ProbationRow {
   pendingConfirmationId: string | null;
   stage: ProbationStage;
   maxTotalMonths: number;
+  /** The viewer is the direct manager and the probation is still open (LIFE-3.01 review form). */
+  canReview?: boolean;
 }
 
 /** One row of a bulk change file after the dry run (M01 §3.3). */

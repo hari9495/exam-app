@@ -26,6 +26,9 @@ export const TYPE_LABEL: Record<ChangeType, string> = {
   employment_type_change: 'Employment type change',
   confirmation: 'Confirmation',
   correction: 'Correction',
+  notice: 'Notice period',
+  notice_withdrawal: 'Resignation withdrawn',
+  exit: 'Left',
 };
 
 const STATUS: Record<ChangeStatus, { label: string; tone: 'warning' | 'info' | 'success' | 'neutral' }> = {
@@ -122,6 +125,10 @@ const FIELDS: Record<Exclude<ChangeType, 'join'>, Field[]> = {
   employment_type_change: ['employmentTypeId'],
   confirmation: [],
   correction: ['locationId', 'departmentId', 'designationId', 'gradeId', 'skillClass', 'employmentTypeId', 'managerEmployeeId'],
+  // System changes from the exit flow: shown in history, never raised here.
+  notice: [],
+  notice_withdrawal: [],
+  exit: [],
 };
 const PAY_TYPES = new Set(['promotion', 'salary_revision', 'correction']);
 /** M01 Q5: dotted-line managers move with a manager change or a transfer. */
