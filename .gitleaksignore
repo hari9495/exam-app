@@ -1,0 +1,2 @@
+# Reviewed false positive (9 Oct 2026): the textbook demo TOTP secret (base32 "Hello!" + KAVERI) in yx-ui sample data, not a real key.
+d6ea28d461acbf37388c718a056dfbe19d6d2ddc:packages/yx-ui/src/screens/auth/data.ts:generic-api-key:42
