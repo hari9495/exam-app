@@ -1,6 +1,6 @@
 # M01 · Onboarding and exit · Build design (roadmap step 6, lifecycle)
 
-> **Status:** 📝 Draft for founder review, 9 Oct 2026. Docs only, no code yet.
+> **Status:** ✅ Decided, 9 Oct 2026: the founder accepted D1–D11 with the recommended defaults (§19). Batch 6a is being built on `feat/yukthix-lifecycle-6a` (on top of payroll 5a).
 > **Scope:** the build design for the lifecycle parts of [M01](M01-core-hr-and-lifecycle.md) (§3.4 probation, §3.5 onboarding, §3.6 assets, §3.7 offboarding) and the parts of [P05](P05-letters-documents-esign.md) they need (files, documents, letters, e-sign). It turns them into tables, permissions, APIs, jobs, screens, tests and small pull requests.
 > **Order:** five batches, **6a → 6e**. 6a–6d are the lifecycle a pilot company needs; 6e is the special cases.
 > **Out of this design:** the **full and final settlement (F&F) calculation**. It is a payroll off-cycle run ([M03-BUILD-DESIGN](M03-BUILD-DESIGN.md) §9.9, batch 5g). This design only defines the **hand-off** to payroll (§11).
@@ -724,7 +724,7 @@ The desk already has "joiner / leaver journeys" that raise one request per desk 
 
 ### 9.1 Files
 - Upload goes to the API (multipart, streamed, size-capped per type). The API sniffs the real type with `file-type`, checks the type's allow-list, computes SHA-256, stores the bytes under `org/{org}/{area}/{uuid}`, and queues a **ClamAV** scan. The file is `pending` and cannot be downloaded until `clean` (fail closed, YX-DOC-02). EICAR is the test.
-- Downloads: the API checks P02 for the owner and type, writes an audit row for Confidential / Special, then returns a **signed link valid for 5 minutes** with `Content-Disposition: attachment` (PDFs and images may open inline in the browser's own viewer, never as HTML).
+- Downloads: the API checks P02 for the owner and type, writes an audit row for Confidential / Special, then **streams the decrypted file itself** with `Content-Disposition: attachment`, `nosniff` and a sandbox CSP (files are encrypted at rest with the platform key, as payroll 5a does, so no storage link is ever handed out).
 - Storage backend: the existing blob interface; an S3-compatible adapter is added if §19 D9 = A. Keys never contain names.
 
 ### 9.2 Documents and verification
@@ -1101,7 +1101,23 @@ These are design inputs, not legal advice. Each line marked **verify** becomes a
 
 ## 19. Decisions for the founder
 
-Each question is short. The **bold** option is my recommendation.
+**All accepted by the founder on 9 Oct 2026, with the recommended (bold) option:**
+
+| # | Decision | Date |
+|---|---|---|
+| D1 | IT and Admin joining tasks are checklist tasks that open a Service Desk request and close when the desk delivers. | 9 Oct 2026 |
+| D2 | A joiner is not in the employee list before day one; only on the onboarding board and the manager's "Joining soon". | 9 Oct 2026 |
+| D3 | One shared asset list, simple now, extended by the Service Desk asset database later (3b-3). | 9 Oct 2026 |
+| D4 | Word → PDF with Gotenberg (LibreOffice inside), as a container with no internet access. | 9 Oct 2026 |
+| D5 | Relieving / experience letters carry the signature image and the QR check now; the company DSC follows M03 D4. | 9 Oct 2026 |
+| D6 | Background checks tracked by HR with recorded consent; the BGV partner comes in 6e. | 9 Oct 2026 |
+| D7 | Notice is counted in calendar days or months, as the company policy says. | 9 Oct 2026 |
+| D8 | The manager reads the reason written in the resignation; exit interview answers stay HR-only. | 9 Oct 2026 |
+| D9 | S3-compatible file storage is built now (MinIO on laptops). | 9 Oct 2026 |
+| D10 | **Updated 9 Oct 2026:** payroll 5a was built first and already has the document pieces: gap-free reference numbers, the file hash, verify codes and the public verify page, and the DSC signing adapter (with a dev fake). Lifecycle **reuses those** and adds only what is missing, in one shared place: the shared encrypted file store (payroll's `PayFileStore` became `src/documents/file-store.ts`, with the S3 adapter of D9), the upload pipeline and virus scan, person documents with versions and verification (6a); Word templates, the Gotenberg render, letter issue and OTP e-sign (6b) extend payroll's numbering, verify page and signing adapter rather than adding second copies. | 9 Oct 2026 |
+| D11 | HR can mark an exit "Settled outside YukthiX" until payroll's F&F (5g) exists. | 9 Oct 2026 |
+
+The questions as asked are kept below as the record. Each question is short. The **bold** option was the recommendation.
 
 ### D1 · IT and Admin joining tasks: where are they done?
 The new joiner needs a laptop, an email account, an access card. Who sees these tasks, and where?
@@ -1197,6 +1213,8 @@ Lifecycle (this design) and payroll (M03 batch 5a) both need the same document s
 
 **Recommended: A** if step 6 starts before step 5; otherwise B. Either way it is built **once**, in `apps/api/src/documents/`.
 
+**Outcome (9 Oct 2026):** B happened first (payroll 5a built numbers, hash, verify page and the signing adapter); lifecycle reuses them and adds only the missing shared pieces (see the table above).
+
 ### D11 · What happens to the exit case before payroll F&F exists?
 
 | Option | What it means |
@@ -1212,4 +1230,5 @@ Lifecycle (this design) and payroll (M03 batch 5a) both need the same document s
 
 | Date | Change |
 |---|---|
+| 9 Oct 2026 | Founder accepted D1–D11 (recommended defaults). D10 updated: payroll 5a already built pay documents (gap-free numbers, hash, verify code and page, signing adapter); lifecycle reuses them and adds only the missing shared pieces in `src/documents/`. Batch 6a build notes: files are streamed through the API after the permission check (they are encrypted at rest, so storage links are never handed out), instead of 5-minute storage links (§9.1); `document.*` and `lifecycle.onboarding.*` keys are scoped like employee records, joiners by their planned entity / location / department. |
 | 9 Oct 2026 | First draft: scope, reuse, data model per batch, permissions, journeys, onboarding, documents / letters / e-sign, exit, payroll hand-off, events, API, screens and gaps, security, 38 slices in batches 6a–6e, India law points, founder decisions D1–D11. |
