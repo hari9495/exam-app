@@ -5707,7 +5707,7 @@ model SdChatMessage {
 }
 
 // ---- Lifecycle batch 6a (M01-LIFECYCLE-BUILD-DESIGN §5.2): files, documents, journeys, joiners. Composite keys,
-// checks and RLS live in the migration SQL (20261026000000_lifecycle_6a).
+// checks and RLS live in the migration SQL (20261027000000_lifecycle_6a).
 
 model File {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
