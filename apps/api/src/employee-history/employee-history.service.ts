@@ -9,7 +9,10 @@ import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { ChangeEditDto, ChangeRequestDto, EmployeeCreateDto } from './dto';
 import { addRole, checkLoginLink, personForEmployee } from '../people/persons';
 import { startProbation } from '../people/probation';
+import { serviceDates as datesFor, Spell } from './service-dates';
 import { payScope, withPayScope } from '../payroll/pay-access';
+import { normalWeekAt, readerLanguage, SubjectType, translated } from '../global/global-data';
+import { ftePercent } from '../global/country-pack';
 import {
   affectedMonths,
   AssignmentValues,
@@ -110,6 +113,7 @@ function assignmentValues(r: AssignmentRow): AssignmentValues {
     designationId: r.designationId,
     gradeId: r.gradeId,
     skillClass: (r.skillClass ?? null) as AssignmentValues['skillClass'],
+    hoursPerWeek: r.hoursPerWeek === null ? null : r.hoursPerWeek.toFixed(1),
     employmentTypeId: r.employmentTypeId,
     managerEmployeeId: r.managerEmployeeId,
     costCentres: r.costCentres.map((x) => ({ costCentreId: x.costCentreId, percent: x.percent.toFixed(2) })).sort((a, b) => a.costCentreId.localeCompare(b.costCentreId)),
@@ -315,8 +319,11 @@ export class EmployeeHistoryService {
     };
   }
 
-  /** Names for the ids the screens show (masters, locations, managers, cost centres). */
-  async names(tx: Tx, c: CompanyContext, rows: AssignmentValues[]) {
+  /**
+   * Names for the ids the screens show (masters, locations, managers, cost centres). `translate`: in the reader's
+   * language where the company translated them (G1 §7); stored impacts keep the company's own words.
+   */
+  async names(tx: Tx, c: CompanyContext, rows: AssignmentValues[], translate = false) {
     const ids = (k: keyof AssignmentValues) => [...new Set(rows.map((r) => r[k]).filter((x): x is string => typeof x === 'string'))];
     const org = { organizationId: c.organizationId };
     const pick = { id: true, name: true, code: true } as const;
@@ -329,8 +336,27 @@ export class EmployeeHistoryService {
       tx.employee.findMany({ where: { ...org, id: { in: [...ids('managerEmployeeId'), ...rows.flatMap((r) => r.dottedLineManagerIds)] } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }),
       tx.costCentre.findMany({ where: { ...org, id: { in: rows.flatMap((r) => r.costCentres.map((x) => x.costCentreId)) } }, select: pick }),
     ]);
-    const by = <T extends { id: string }>(list: T[]) => new Map(list.map((x) => [x.id, x]));
-    return { locations: by(locations), departments: by(departments), designations: by(designations), grades: by(grades), types: by(types), managers: by(managers), ccs: by(ccs) };
+    const lang = translate ? await readerLanguage(tx, c) : null;
+    const by = async <T extends { id: string; name: string }>(list: T[], subject?: SubjectType) => {
+      const words = lang && subject ? await translated(tx, c, lang, subject, list.map((x) => x.id)) : new Map<string, string>();
+      return new Map(list.map((x) => [x.id, words.has(x.id) ? { ...x, name: words.get(x.id)! } : x]));
+    };
+    const byId = <T extends { id: string }>(list: T[]) => new Map(list.map((x) => [x.id, x]));
+    return {
+      locations: await by(locations, 'location'),
+      departments: await by(departments, 'department'),
+      designations: await by(designations, 'designation'),
+      grades: await by(grades, 'grade'),
+      types: await by(types, 'employment_type'),
+      managers: byId(managers),
+      ccs: await by(ccs),
+    };
+  }
+
+  /** G1 (gap pass C1): the normal week where the job is and the FTE it gives (null when no country pack covers it). */
+  private async fte(tx: Tx, c: CompanyContext, a: AssignmentValues, on: string) {
+    const week = await normalWeekAt(tx, c, a.locationId, on);
+    return { normalWeekHours: week, ftePercent: week ? ftePercent(a.hoursPerWeek, week) : null };
   }
 
   describe(a: AssignmentValues, n: Awaited<ReturnType<EmployeeHistoryService['names']>>) {
@@ -343,6 +369,7 @@ export class EmployeeHistoryService {
       designation: ref(n.designations, a.designationId),
       grade: ref(n.grades, a.gradeId),
       skillClass: a.skillClass ?? null,
+      hoursPerWeek: a.hoursPerWeek ?? null,
       employmentType: ref(n.types, a.employmentTypeId),
       manager: a.managerEmployeeId ? { id: a.managerEmployeeId, name: mgr ? displayName(mgr) : null } : null,
       costCentres: a.costCentres.map((x) => ({ ...ref(n.ccs, x.costCentreId)!, percent: x.percent })),
@@ -378,11 +405,56 @@ export class EmployeeHistoryService {
         employee: await this.header(tx, c, employeeId, e),
         asOf: on,
         recordedAt: recordedAt ?? null,
-        assignment: facts.assignment && row ? { validFrom: isoDate(row.validFrom), validTo: iso(row.validTo), changeId: row.changeId, ...this.describe(facts.assignment, await this.names(tx, c, [facts.assignment])) } : null,
+        assignment: facts.assignment && row ? { validFrom: isoDate(row.validFrom), validTo: iso(row.validTo), changeId: row.changeId, ...this.describe(facts.assignment, await this.names(tx, c, [facts.assignment], true)), ...(await this.fte(tx, c, facts.assignment, on)) } : null,
         status: st ? { status: st.status, validFrom: isoDate(st.validFrom), validTo: iso(st.validTo), changeId: st.changeId } : null,
         payAccess: covers(a.payPeriods, on),
         compensation: showPay && pay ? { currency: pay.currency, annualCtc: pay.annualCtc.toFixed(2), validFrom: isoDate(pay.validFrom), validTo: iso(pay.validTo), changeId: pay.changeId } : null,
       };
+    });
+  }
+
+  // ================= service dates (G1, gap pass C3) =================
+
+  private async spells(tx: Tx, c: CompanyContext, employeeId: string): Promise<Spell[]> {
+    const list = await tx.employment.findMany({ where: { organizationId: c.organizationId, employeeId }, orderBy: { joinedOn: 'asc' } });
+    // Lifecycle 6e saved the rehire policy's choices on the joiner it came from (read only here).
+    const joins = await tx.preboarding.findMany({ where: { organizationId: c.organizationId, employmentId: { in: list.map((e) => e.id) } }, select: { employmentId: true, rehireOptions: true } });
+    const choice = (id: string) => {
+      const o = joins.find((j) => j.employmentId === id)?.rehireOptions as Record<string, { value?: unknown }> | null | undefined;
+      return typeof o?.service?.value === 'string' ? o.service.value : null;
+    };
+    return list.map((e) => ({ id: e.id, joinedOn: isoDate(e.joinedOn), exitedOn: iso(e.exitedOn), rehireOf: e.rehireOf, continuousServiceFrom: iso(e.continuousServiceFrom), serviceChoice: choice(e.id) }));
+  }
+
+  private async serviceView(tx: Tx, c: CompanyContext, e: Employment, hr: boolean) {
+    const d = datesFor(await this.spells(tx, c, e.employeeId), e.id);
+    return { ...d, reason: hr ? e.continuousServiceReason : null };
+  }
+
+  /** Where the record is visible today (the person, their managers, HR in scope). The reason is HR's. */
+  serviceDates(ctx: TenantContext, v: Viewer, employeeId: string) {
+    return this.run(ctx, async (tx, c) => {
+      const a = await this.access(tx, c, v, employeeId);
+      if (!this.visibleOn(a, todayIst())) throw new NotFoundException('Employee not found');
+      return this.serviceView(tx, c, await this.employmentOf(tx, c, employeeId), a.hr);
+    });
+  }
+
+  /** HR sets (or clears, back to the rule) continuous service with a reason; never on their own record. */
+  setServiceDates(ctx: TenantContext, v: Viewer, employeeId: string, dto: { continuousServiceFrom: string | null; reason: string }) {
+    return this.run(ctx, async (tx, c) => {
+      const e = await this.employmentOf(tx, c, employeeId);
+      const today = todayIst();
+      if (!(await this.reachesFrom(tx, c, v, 'employee.change.manage', e, today))) throw new NotFoundException('Employee not found');
+      if ((await this.ownEmployeeId(tx, c, v)) === employeeId) throw new ForbiddenException('Someone else in HR changes your own service dates.');
+      const reason = dto.reason.trim();
+      if (reason.length < 3) throw new BadRequestException('Say why, in a few words.');
+      if (dto.continuousServiceFrom && dto.continuousServiceFrom > isoDate(e.joinedOn)) throw new BadRequestException(`Continuous service cannot start after this employer start (${isoDate(e.joinedOn)}).`);
+      const before = await this.serviceView(tx, c, e, true);
+      const next = await tx.employment.update({ where: { id: e.id }, data: { continuousServiceFrom: dto.continuousServiceFrom ? asDate(dto.continuousServiceFrom) : null, continuousServiceReason: dto.continuousServiceFrom ? reason.slice(0, 300) : null } });
+      const after = await this.serviceView(tx, c, next, true);
+      await audit(tx, c, 'employee.service_dates.changed', 'employee', employeeId, { employmentId: e.id, from: before.continuousServiceFrom, to: after.continuousServiceFrom, source: after.source, reason });
+      return after;
     });
   }
 
@@ -406,7 +478,7 @@ export class EmployeeHistoryService {
         const d = isoDate(ch.effectiveDate);
         return (a.hr && (a.full || covers(a.hrPeriods, d))) || ((ch.status === 'effective' || ch.status === 'scheduled') && this.visibleOn(a, d));
       });
-      const names = await this.names(tx, c, rows.assignment.map(assignmentValues));
+      const names = await this.names(tx, c, rows.assignment.map(assignmentValues), true);
       const byId = new Map(all.map((ch) => [ch.id, ch]));
       const common = (r: FactRow) => ({
         id: r.id,
@@ -458,7 +530,7 @@ export class EmployeeHistoryService {
       const sorted = [...starts].sort();
       if (pay && rows.compensation.length) await this.auditPayView(tx, c, a, employeeId, 'segments');
       const all = sorted.map((s) => this.factsOn(rows, s));
-      const names = await this.names(tx, c, all.flatMap((f) => (f.assignment ? [f.assignment] : [])));
+      const names = await this.names(tx, c, all.flatMap((f) => (f.assignment ? [f.assignment] : [])), true);
       return {
         employee: await this.header(tx, c, employeeId, e),
         payAccess: pay,
@@ -508,7 +580,7 @@ export class EmployeeHistoryService {
       const current = await tx.employeeAssignment.findMany({
         where: { organizationId: c.organizationId, employeeId: { in: people.map((p) => p.id) }, supersededAt: null, validFrom: { lte: asDate(today) }, OR: [{ validTo: null }, { validTo: { gte: asDate(today) } }] },
       });
-      const names = await this.names(tx, c, current.map((r) => assignmentValues({ ...r, costCentres: [], dottedLines: [] })));
+      const names = await this.names(tx, c, current.map((r) => assignmentValues({ ...r, costCentres: [], dottedLines: [] })), true);
       return people.map((p) => {
         const e = employments.find((x) => x.employeeId === p.id);
         const a = current.find((x) => x.employeeId === p.id);
@@ -668,6 +740,13 @@ export class EmployeeHistoryService {
         if (managerId === e.employeeId) throw new BadRequestException('Nobody reports to themselves (YX-ORG-09).');
         const m = await tx.employee.findFirst({ where: { id: managerId, organizationId: org }, select: { id: true } });
         if (!m) throw new BadRequestException('No such manager in this company (YX-ORG-09).');
+      }
+      // G1 (gap pass C1): contracted hours never exceed the normal week where the person works.
+      // ponytail: checked against the change's location or the latest one on file, not every dated segment it reshapes.
+      if (a.hoursPerWeek) {
+        const locationId = a.locationId ?? (await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId: e.id, supersededAt: null }, orderBy: { validFrom: 'desc' }, select: { locationId: true } }))?.locationId;
+        const week = locationId ? await normalWeekAt(tx, c, locationId, todayIst()) : null;
+        if (week && new Prisma.Decimal(a.hoursPerWeek).gt(week)) throw new BadRequestException(`A full-time week here is ${Number(week)} hours. Hours a week cannot be more (overtime is recorded as time, not in the contract).`);
       }
     }
     if (p.compensation?.currency && !isCurrency(p.compensation.currency)) throw new BadRequestException('Unknown currency');
@@ -847,6 +926,8 @@ export class EmployeeHistoryService {
     push('Designation', da?.designation?.name, db?.designation?.name);
     push('Grade', da?.grade?.name, db?.grade?.name);
     push('Employment type', da?.employmentType?.name, db?.employmentType?.name);
+    const hours = (d: typeof da) => (d ? (d.hoursPerWeek ? `${Number(d.hoursPerWeek)} hours a week` : 'Full-time') : null);
+    push('Hours a week', hours(da), hours(db));
     push('Manager (approvals route here)', da?.manager?.name, db?.manager?.name);
     const dotted = (d: typeof da) => d?.dottedLineManagers.map((x) => x.name ?? x.id).join(', ') || null;
     push('Dotted-line managers (visibility only)', dotted(da), dotted(db));

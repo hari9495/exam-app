@@ -2428,20 +2428,23 @@ model Employee {
 }
 
 model Employment {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId   String    @map("organization_id") @db.Uuid
-  employeeId       String    @map("employee_id") @db.Uuid
-  legalEntityId    String    @map("legal_entity_id") @db.Uuid
-  employeeCode     String    @map("employee_code") @db.Citext
-  codeScopeKey     String    @map("code_scope_key") @db.Uuid
-  joinedOn         DateTime  @map("joined_on") @db.Date
-  exitedOn         DateTime? @map("exited_on") @db.Date
-  rehireOf         String?   @map("rehire_of") @db.Uuid
-  contractEndOn    DateTime? @map("contract_end_on") @db.Date
-  contractReminded Int[]     @default([]) @map("contract_reminded")
-  createdBy        String?   @map("created_by") @db.Uuid
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId          String    @map("organization_id") @db.Uuid
+  employeeId              String    @map("employee_id") @db.Uuid
+  legalEntityId           String    @map("legal_entity_id") @db.Uuid
+  employeeCode            String    @map("employee_code") @db.Citext
+  codeScopeKey            String    @map("code_scope_key") @db.Uuid
+  joinedOn                DateTime  @map("joined_on") @db.Date
+  exitedOn                DateTime? @map("exited_on") @db.Date
+  rehireOf                String?   @map("rehire_of") @db.Uuid
+  contractEndOn           DateTime? @map("contract_end_on") @db.Date
+  contractReminded        Int[]     @default([]) @map("contract_reminded")
+  /// G1 (gap pass C3): set by HR with a reason; null = derived from the rehire choice or the joining day.
+  continuousServiceFrom   DateTime? @map("continuous_service_from") @db.Date
+  continuousServiceReason String?   @map("continuous_service_reason") @db.VarChar(300)
+  createdBy               String?   @map("created_by") @db.Uuid
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, id])
   @@map("employments")
@@ -2489,6 +2492,8 @@ model EmployeeAssignment {
   employmentTypeId     String    @map("employment_type_id") @db.Uuid
   /// 5c-D2: minimum-wage skill class (unskilled, semi_skilled, skilled, highly_skilled); null until HR sets it.
   skillClass           String?   @map("skill_class") @db.VarChar(16)
+  /// G1 (gap pass C1): contracted hours a week; null = full-time (the normal week of the location).
+  hoursPerWeek         Decimal?  @map("hours_per_week") @db.Decimal(4, 1)
   managerEmployeeId    String?   @map("manager_employee_id") @db.Uuid
   changeId             String    @map("change_id") @db.Uuid
   recordedAt           DateTime  @default(now()) @map("recorded_at") @db.Timestamptz(3)
@@ -7203,4 +7208,37 @@ model EmployeeCostRate {
 
   @@unique([organizationId, employeeId, periodStart], map: "employee_cost_rates_key")
   @@map("employee_cost_rates")
+}
+
+// ---- Batch G1 · global core (migration 20261102000000_global_g1): translations of company words, the "Add a
+// country" guide. Forced RLS; checks live in the migration.
+
+model ContentTranslation {
+  organizationId String   @map("organization_id") @db.Uuid
+  subjectType    String   @map("subject_type") @db.VarChar(24)
+  subjectId      String   @map("subject_id") @db.Uuid
+  language       String   @db.VarChar(5)
+  text           String   @db.VarChar(150)
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([organizationId, subjectType, subjectId, language])
+  @@map("content_translations")
+}
+
+model CountrySetup {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  country        String    @db.Char(2)
+  legalEntityId  String?   @map("legal_entity_id") @db.Uuid
+  status         String    @default("in_progress") @db.VarChar(12)
+  version        Int       @default(1)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  finishedBy     String?   @map("finished_by") @db.Uuid
+  finishedAt     DateTime? @map("finished_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("country_setups")
 }

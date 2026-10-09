@@ -25,6 +25,8 @@ export interface AssignmentValues {
   gradeId: string | null;
   /** 5c-D2: the minimum-wage skill class of the job, or null. */
   skillClass: SkillClass | null;
+  /** G1 (gap pass C1): contracted hours a week, decimal string with one place ("24.0"); null = full-time. */
+  hoursPerWeek: string | null;
   employmentTypeId: string;
   managerEmployeeId: string | null;
   costCentres: CostCentreShare[];
@@ -34,7 +36,7 @@ export interface AssignmentValues {
 export const SKILL_CLASSES = ['unskilled', 'semi_skilled', 'skilled', 'highly_skilled'] as const;
 export type SkillClass = (typeof SKILL_CLASSES)[number];
 export type AssignmentField = keyof AssignmentValues;
-export const ASSIGNMENT_FIELDS: readonly AssignmentField[] = ['locationId', 'departmentId', 'designationId', 'gradeId', 'skillClass', 'employmentTypeId', 'managerEmployeeId', 'costCentres', 'dottedLineManagerIds'];
+export const ASSIGNMENT_FIELDS: readonly AssignmentField[] = ['locationId', 'departmentId', 'designationId', 'gradeId', 'skillClass', 'hoursPerWeek', 'employmentTypeId', 'managerEmployeeId', 'costCentres', 'dottedLineManagerIds'];
 const REQUIRED_ASSIGNMENT: readonly AssignmentField[] = ['locationId', 'departmentId', 'designationId', 'employmentTypeId'];
 
 export interface StatusValues {
@@ -75,7 +77,8 @@ export const TYPE_RULES: Readonly<Record<ChangeType, TypeRule>> = {
   // M01 §3.2: the primary manager and the dotted lines change through the same change type.
   manager_change: { assignment: ['managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'] },
   salary_revision: { compensation: true, requires: ['compensation'] },
-  employment_type_change: { assignment: ['employmentTypeId'], requires: ['assignment'] },
+  // G1 (gap pass C1): "Employment type or hours": part-time and full-time moves change one or both.
+  employment_type_change: { assignment: ['employmentTypeId', 'hoursPerWeek'], requires: ['assignment'] },
   confirmation: { status: ['confirmed'], requires: ['status'] },
   // P06 §4.5: a correction may rewrite any fact from its date.
   correction: { assignment: 'all', status: EMPLOYMENT_STATUSES, compensation: true, requires: [] },
@@ -109,6 +112,8 @@ export function payloadProblem(type: ChangeType, p: ChangePayload): string | nul
       const total = cc.reduce((s, x) => s.add(new Prisma.Decimal(x.percent)), new Prisma.Decimal(0));
       if (!total.equals(100)) return 'Cost centre shares total 100 % (P01 Q8).';
     }
+    const h = p.assignment.hoursPerWeek;
+    if (h !== undefined && h !== null && !hoursOk(h)) return 'Hours a week are more than 0 and at most 80, in half hours.';
     const dotted = p.assignment.dottedLineManagerIds;
     if (dotted && new Set(dotted).size !== dotted.length) return 'A dotted-line manager is listed twice.';
     if (dotted && p.assignment.managerEmployeeId && dotted.includes(p.assignment.managerEmployeeId)) return 'The manager is not also a dotted-line manager.';
@@ -127,6 +132,9 @@ export function payloadProblem(type: ChangeType, p: ChangePayload): string | nul
 }
 
 export const label = (type: ChangeType) => type.replace(/_/g, ' ');
+
+/** Hours a week: above 0, at most 80, in half hours (the database checks the same). */
+export const hoursOk = (h: string) => /^\d{1,2}(\.\d{1,2})?$/.test(h) && Number(h) > 0 && Number(h) <= 80 && Number.isInteger(Number(h) * 2);
 
 // ---- the fold: changes in date order -> dated segments (P06 §4.3, §4.4) ----
 
@@ -152,6 +160,7 @@ export function applyFact(fact: Fact, base: unknown, p: ChangePayload): unknown 
     const next = { ...(base as AssignmentValues | null), ...stripUndefined(p.assignment) } as AssignmentValues;
     next.gradeId ??= null;
     next.skillClass ??= null;
+    next.hoursPerWeek = next.hoursPerWeek === null || next.hoursPerWeek === undefined ? null : new Prisma.Decimal(next.hoursPerWeek).toFixed(1);
     next.managerEmployeeId ??= null;
     // Stored form: shares sorted, two decimals, so equal splits compare equal.
     next.costCentres = (next.costCentres ?? []).map((x) => ({ costCentreId: x.costCentreId, percent: new Prisma.Decimal(x.percent).toFixed(2) })).sort((a, b) => a.costCentreId.localeCompare(b.costCentreId));
