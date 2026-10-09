@@ -291,3 +291,115 @@ export interface ReadyOffer {
   jobTitle: string;
   personType: 'new' | 'ex_employee' | 'internal';
 }
+
+// ---- Batch 6c: exits, clearance, exit interviews, assets (apps/api/src/lifecycle/exits.service.ts, offboarding.service.ts)
+
+export type ExitType = 'resignation' | 'termination' | 'probation_termination' | 'end_of_contract' | 'retirement' | 'death' | 'absconding';
+export type ExitStatus = 'submitted' | 'accepted' | 'rejected' | 'withdrawn' | 'cleared' | 'exited' | 'closed';
+export interface ExitCase {
+  id: string;
+  employeeId: string;
+  exitType: ExitType;
+  typeLabel: string;
+  initiatedBy: 'employee' | 'company';
+  reasonCode: string | null;
+  reasonText: string | null;
+  submittedOn: string;
+  requestedLwd: string | null;
+  noticePeriod: string;
+  noticeLabel: string;
+  standardLwd: string;
+  approvedLwd: string | null;
+  lastDay: string;
+  noticeArrangement: { kind: string; from: string; to: string; buyoutBy: string | null; buyoutDays: number | null; reason: string }[] | null;
+  status: ExitStatus;
+  pendingChange: { kind: string; lwd?: string; reason?: string } | null;
+  lettersHeld: boolean;
+  version: number;
+}
+export interface ExitRow extends ExitCase {
+  name: string;
+  employeeCode: string | null;
+  clearance: { open: number; total: number };
+  interview: 'sent' | 'submitted' | 'skipped' | null;
+  canManage: boolean;
+}
+export interface ClearanceItem {
+  id: string;
+  department: 'manager_handover' | 'it' | 'admin' | 'finance' | 'hr' | 'asset' | 'custom';
+  title: string;
+  owner: string;
+  status: 'open' | 'cleared' | 'waived';
+  note: string | null;
+  recoveryAmount: string | null;
+  recoveryReason: string | null;
+  signedOffAt: string | null;
+  version: number;
+}
+export interface MyClearanceItem extends ClearanceItem {
+  exitCaseId: string;
+  person: string;
+  lastDay: string;
+}
+export interface ExitHrFacts {
+  rehireEligible: boolean | null;
+  rehireReason: string | null;
+  regretted: boolean | null;
+  backfillRequested: boolean;
+  openCaseFlags: Record<string, string>;
+  holdReason: string | null;
+  holdReviewOn: string | null;
+}
+export interface ExitWorkspace extends ExitCase {
+  name: string;
+  employeeCode: string | null;
+  journeyId: string | null;
+  interview: 'sent' | 'submitted' | 'skipped' | null;
+  clearance: ClearanceItem[];
+  hr: ExitHrFacts | null;
+  can: { manage: boolean; confidential: boolean; interview: boolean };
+}
+export interface MyResignation {
+  today: string;
+  notice: { period: string; label: string; standardLwd: string; onProbation: boolean } | null;
+  reasons: string[];
+  current: (ExitCase & { interview: 'sent' | 'submitted' | 'skipped' | null }) | null;
+  last: { status: ExitStatus; submittedOn: string } | null;
+}
+export interface InterviewForm {
+  form: FormDef;
+  status: 'sent' | 'submitted' | 'skipped' | null;
+  lastDay: string | null;
+}
+export interface InterviewAnswers {
+  form: FormDef;
+  status: string;
+  submittedAt: string | null;
+  answers: Record<string, unknown> | null;
+  hrNotes: string | null;
+}
+export interface AssetRow {
+  id: string;
+  category: string;
+  name: string;
+  tag: string;
+  serial: string | null;
+  legalEntityId: string | null;
+  locationId: string | null;
+  purchasedOn: string | null;
+  cost: string | null;
+  status: 'in_stock' | 'assigned' | 'in_repair' | 'retired' | 'lost';
+  version: number;
+  canManage: boolean;
+  holder: { assignmentId: string; employeeId: string | null; name: string; issuedOn: string; acknowledged: boolean } | null;
+}
+export interface MyAsset {
+  assignmentId: string;
+  name: string;
+  category: string;
+  tag: string;
+  serial: string | null;
+  issuedOn: string;
+  condition: string;
+  acknowledgedAt: string | null;
+}

@@ -547,7 +547,7 @@ function TaskDialog({ ask, actions, onClose }: { ask: Ask; actions: TaskActions;
 }
 
 /** The few field types checklist forms use; the server checks the answers (P19 forms). */
-function TaskForm({ form, answers, onChange, errors }: { form: FormDef; answers: Record<string, unknown>; onChange: (a: Record<string, unknown>) => void; errors: Record<string, string> }) {
+export function TaskForm({ form, answers, onChange, errors }: { form: FormDef; answers: Record<string, unknown>; onChange: (a: Record<string, unknown>) => void; errors: Record<string, string> }) {
   const set = (k: string, v: unknown) => onChange({ ...answers, [k]: v });
   return (
     <>

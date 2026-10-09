@@ -50,6 +50,12 @@ const LETTERS: WorkspaceLink = { id: 'letters', label: 'Letters', href: '/yx/peo
 const READY: WorkspaceLink = { id: 'ready-to-onboard', label: 'Ready to onboard', href: '/yx/people/ready-to-onboard', group: 'People' };
 const LETTER_TEMPLATES: WorkspaceLink = { id: 'letter-templates', label: 'Letter templates', href: '/yx/settings/letters', group: 'Organisation' };
 const MY_LETTERS: WorkspaceLink = { id: 'my-letters', label: 'My letters', href: '/yx/me/letters', group: 'Me' };
+// Lifecycle 6c: exits, clearance, assets; Me › Resign, my assets, my exit interview.
+const EXITS: WorkspaceLink = { id: 'exits', label: 'Exits', href: '/yx/people/exits', group: 'People' };
+const CLEARANCE: WorkspaceLink = { id: 'clearance', label: 'Clearance', href: '/yx/people/clearance', group: 'People' };
+const ASSETS: WorkspaceLink = { id: 'assets', label: 'Assets', href: '/yx/people/assets', group: 'People' };
+const RESIGN: WorkspaceLink = { id: 'resign', label: 'Resign', href: '/yx/me/resignation', group: 'Me' };
+const MY_ASSETS: WorkspaceLink = { id: 'my-assets', label: 'My assets', href: '/yx/me/assets', group: 'Me' };
 const CHECKLISTS: WorkspaceLink = { id: 'checklists', label: 'Onboarding checklists', href: '/yx/settings/checklists', group: 'Organisation' };
 const PROFILE: WorkspaceLink = { id: 'profile', label: 'My profile', href: '/yx/people/profile', group: 'People' };
 const ID_CHANGES: WorkspaceLink = { id: 'profile-requests', label: 'Identity and bank changes', href: '/yx/people/profile-requests', group: 'People' };
@@ -127,6 +133,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   const team = usePeople<{ managerId: string | null; members: TeamMember[] }>('/team');
   // Checklist tasks reach IT, Admin and managers too (founder D1): the menu shows them to whoever has some.
   const myTasks = useLife<{ tasks: unknown[] }>('/lifecycle/my-tasks');
+  const myClearance = useLife<{ rows: unknown[] }>('/lifecycle/clearance/mine');
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
   // A sensitive role with no second step: a reminder during the grace period, a pause after it.
@@ -174,6 +181,9 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...(perms.has('lifecycle.onboarding.view') || perms.has('lifecycle.onboarding.manage') ? [ONBOARDING] : []),
     ...(perms.has('lifecycle.onboarding.manage') ? [READY] : []),
     ...(perms.has('letter.issue') ? [LETTERS] : []),
+    ...(perms.has('lifecycle.exit.view') || perms.has('lifecycle.exit.manage') || manager ? [EXITS] : []),
+    ...(myClearance.data?.rows.length || perms.has('lifecycle.exit.manage') ? [CLEARANCE] : []),
+    ...(perms.has('asset.view') ? [ASSETS] : []),
     ...(myTasks.data?.tasks.length || perms.has('lifecycle.onboarding.manage') ? [MY_TASKS] : []),
     ...(perms.has('document.manage') ? [DOC_QUEUE] : []),
     ...(idDesk ? [ID_CHANGES] : []),
@@ -186,7 +196,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   ];
   // P04 Q5: the company's email branding and wording, for those who hold the key (read-only in a support session).
   const emails = perms.has('notification.template.manage') || support ? [EMAILS] : [];
-  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee ? [PRIVACY, MY_LETTERS] : [])];
+  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee ? [PRIVACY, MY_LETTERS, MY_ASSETS, RESIGN] : [])];
   const supportEndsAt = support ? (decodeJwtPayload(accessToken)?.supportEndsAt as string | undefined) : undefined;
   const desk = support
     ? []

@@ -87,6 +87,11 @@ export const YX_KEYS = [
   'letter.template.manage',
   'letter.issue',
   'letter.signatory.manage',
+  'lifecycle.exit.view',
+  'lifecycle.exit.manage',
+  'lifecycle.exit.confidential.view',
+  'asset.view',
+  'asset.manage',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 
