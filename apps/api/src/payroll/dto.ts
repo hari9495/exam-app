@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsEmail, IsIn, IsISO8601, IsObject, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsDefined, IsEmail, IsIn, IsISO8601, IsObject, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -139,6 +139,7 @@ export class BackfillDto {
   @MaxLength(500)
   reason!: string;
 
+  @IsDefined()
   @ValidateNested()
   @Type(() => ConfirmationDto)
   confirmation!: ConfirmationDto;
@@ -246,6 +247,7 @@ export class IssueDocumentDto {
   @IsObject()
   fields!: Record<string, unknown>;
 
+  @IsDefined()
   @ValidateNested()
   @Type(() => ConfirmationDto)
   confirmation!: ConfirmationDto;
@@ -261,6 +263,7 @@ export class SupersedeDocumentDto {
   @MaxLength(500)
   reason!: string;
 
+  @IsDefined()
   @ValidateNested()
   @Type(() => ConfirmationDto)
   confirmation!: ConfirmationDto;
@@ -315,6 +318,7 @@ export class FileListDto {
 }
 
 export class ReleaseFileDto {
+  @IsDefined()
   @ValidateNested()
   @Type(() => ConfirmationDto)
   confirmation!: ConfirmationDto;

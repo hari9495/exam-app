@@ -12,7 +12,7 @@ import { seedServiceDeskEsm } from './seed-service-desk-esm';
 import { seedServiceDeskEsm2 } from './seed-service-desk-esm2';
 import { TIME_PERMISSIONS, seedTime } from './seed-time';
 import { seedTimeB2 } from './seed-time-b2';
-import { PAY_PERMISSIONS, seedAuditAnchor, seedPay } from './seed-pay';
+import { PAY_PERMISSIONS, seedAuditAnchor, seedPay, seedPay5b } from './seed-pay';
 
 const prisma = new PrismaClient();
 
@@ -356,6 +356,8 @@ async function main() {
       // Step 5 payroll batch 5a: pay periods, a reopen request waiting for its second approver, a sample payslip and
       // a bank file waiting for release (seed-pay.ts).
       await seedPay(tx, demoOrg.id, panelHash);
+      // Step 5 payroll batch 5b: the starter components and template, pay groups, statutory registrations.
+      await seedPay5b(tx, demoOrg.id);
     }
   }, { timeout: 420000 });
   // Payroll 5a: the demo company's audit chain checked once (the daily job's anchor), after the seed committed.
