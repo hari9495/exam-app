@@ -173,7 +173,7 @@ export function accountInput(d: Draft, account: SmsAccount | null): { input: Sms
 function SecretField({ id, label, name, set, value, onChange, helper }: { id: string; label: string; name: string; set: boolean; value: string; onChange: (v: string) => void; helper?: string }) {
   return (
     <FormField id={id} label={label} required={!set} helper={set ? 'Saved. It is never shown again; type a new value to replace it.' : helper}>
-      <PasswordField value={value} onChange={onChange} autoComplete="new-password" placeholder={set ? '••••••••' : undefined} aria-label={label} name={name} />
+      <PasswordField value={value} onChange={onChange} autoComplete="new-password" placeholder={set ? 'Saved and hidden' : undefined} aria-label={label} name={name} />
     </FormField>
   );
 }

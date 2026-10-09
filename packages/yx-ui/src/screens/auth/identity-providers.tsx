@@ -194,7 +194,7 @@ function IdentityProviderEditor({ provider, onClose, onSave }: EditorProps) {
               <TextField value={draft.oidcClientId} onChange={(oidcClientId) => set({ oidcClientId })} spellCheck={false} />
             </FormField>
             <FormField id="idp-client-secret" label="Client secret" required={!secretSaved} error={errorOf('idp-client-secret')} helper={secretSaved ? 'Saved. It is never shown again; type a new one to replace it.' : undefined}>
-              <PasswordField value={draft.oidcClientSecret} onChange={(oidcClientSecret) => set({ oidcClientSecret })} autoComplete="new-password" placeholder={secretSaved ? '••••••••' : undefined} />
+              <PasswordField value={draft.oidcClientSecret} onChange={(oidcClientSecret) => set({ oidcClientSecret })} autoComplete="new-password" placeholder={secretSaved ? 'Saved and hidden' : undefined} />
             </FormField>
           </FormSection>
         )}
