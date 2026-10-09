@@ -62,6 +62,13 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'payroll.loan.approve',
   'payroll.journal.export',
   'payroll.cost_rate.view',
+  // M03 batch 5d: bank files, payment results, publishing payslips, payslip queries, payment modes.
+  'payroll.bankfile.generate',
+  'payroll.bankfile.release',
+  'payroll.payment.record',
+  'payroll.payslip.publish',
+  'payroll.query.handle',
+  'payroll.payment_mode.approve',
 ];
 
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).

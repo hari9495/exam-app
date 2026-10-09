@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { rootProblems } from '../documents/cca-roots';
+import { bankFormatSample, bankLayoutProblems } from './bank-format';
 
 // P07 statutory evaluator and calculators (M03-BUILD-DESIGN §8.2, PAY-2.02). Pure functions over a rule set's typed
 // payload: no database, no clock, no country figures (they are all in the pack, statutory/packs/*.json). Money is
@@ -342,6 +343,7 @@ export function checkShape(rs: RuleSet, limits: { ptAnnualMax?: string } = {}): 
     });
   }
   if (rs.values.kind === 'trusted_roots') problems.push(...rootProblems(rs));
+  if (rs.values.kind === 'bank_format') problems.push(...bankLayoutProblems(rs.values));
   if (rs.validTo && rs.validTo < rs.validFrom) problems.push('The rule set ends before it starts');
   return problems;
 }
@@ -352,7 +354,7 @@ export interface GoldenCase {
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
 }
-const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, subsistence, maternity, injury, code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
 
 /** Runs one golden case; returns the fields that differ (empty when it passes). */
 export function runGolden(rs: RuleSet, g: GoldenCase): string[] {

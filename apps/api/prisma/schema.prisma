@@ -6384,3 +6384,112 @@ model EmployeeCostRate {
   @@unique([organizationId, employeeId, periodStart], map: "employee_cost_rates_key")
   @@map("employee_cost_rates")
 }
+
+// ---- M03 payroll batch 5d (migration 20261030000000_payroll_5d): bank files, payment results, payment modes, the cash
+// and cheque register, payslip queries and payslip PDF links. RLS and the pay guard live in the migration.
+
+model BankFile {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  legalEntityId      String   @map("legal_entity_id") @db.Uuid
+  runId              String   @map("run_id") @db.Uuid
+  exchangeFileId     String   @unique(map: "bank_files_exchange_file_key") @map("exchange_file_id") @db.Uuid
+  formatKey          String   @map("format_key") @db.VarChar(8)
+  formatVersion      String   @map("format_version") @db.VarChar(20)
+  debitAccountLast4  String   @map("debit_account_last4") @db.Char(4)
+  generationNo       Int      @map("generation_no")
+  regenerationReason String?  @map("regeneration_reason") @db.VarChar(500)
+  payslipIds         String[] @map("payslip_ids") @db.Uuid
+  total              Decimal  @db.Decimal(14, 2)
+  generatedBy        String   @map("generated_by") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("bank_files")
+}
+
+model PaymentRecord {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  payslipId      String   @map("payslip_id") @db.Uuid
+  bankFileId     String?  @map("bank_file_id") @db.Uuid
+  status         String   @db.VarChar(10)
+  mode           String   @default("bank") @db.VarChar(8)
+  bankReference  String?  @map("bank_reference") @db.VarChar(60)
+  reason         String?  @db.VarChar(300)
+  source         String   @db.VarChar(8)
+  recordedBy     String   @map("recorded_by") @db.Uuid
+  recordedAt     DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+
+  @@map("payment_records")
+}
+
+model EmployeePaymentMode {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  employmentId   String   @map("employment_id") @db.Uuid
+  mode           String   @db.VarChar(8)
+  validFrom      DateTime @map("valid_from") @db.Date
+  reason         String   @db.VarChar(300)
+  status         String   @default("pending") @db.VarChar(10)
+  wfRequestId    String?  @map("wf_request_id") @db.Uuid
+  requestedBy    String   @map("requested_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("employee_payment_modes")
+}
+
+model Disbursement {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  legalEntityId   String   @map("legal_entity_id") @db.Uuid
+  employeeId      String   @map("employee_id") @db.Uuid
+  runId           String   @map("run_id") @db.Uuid
+  payslipId       String   @map("payslip_id") @db.Uuid
+  mode            String   @db.VarChar(8)
+  chequeNo        String?  @map("cheque_no") @db.VarChar(20)
+  amount          Decimal  @db.Decimal(14, 2)
+  paidOn          DateTime @map("paid_on") @db.Date
+  acknowledgement String?  @db.VarChar(300)
+  recordedBy      String   @map("recorded_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, payslipId], map: "disbursements_payslip_key")
+  @@map("disbursements")
+}
+
+model PayslipQuery {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  payslipId      String   @map("payslip_id") @db.Uuid
+  lineCode       String?  @map("line_code") @db.VarChar(30)
+  text           String   @db.VarChar(1000)
+  status         String   @default("open") @db.VarChar(10)
+  assigneeUserId String?  @map("assignee_user_id") @db.Uuid
+  replies        Json     @default("[]")
+  raisedBy       String   @map("raised_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("payslip_queries")
+}
+
+model PayslipLink {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  payslipId      String    @map("payslip_id") @db.Uuid
+  tokenHash      String    @unique(map: "payslip_links_token_key") @map("token_hash") @db.Char(64)
+  userId         String    @map("user_id") @db.Uuid
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt         DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("payslip_links")
+}
