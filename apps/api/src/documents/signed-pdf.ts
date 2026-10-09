@@ -1,5 +1,6 @@
 import { createHash, webcrypto } from 'crypto';
 import { readFileSync } from 'fs';
+import { join } from 'path';
 import * as asn1js from 'asn1js';
 import * as pkijs from 'pkijs';
 
@@ -41,7 +42,7 @@ export function parsePemBundle(pem: string): pkijs.Certificate[] {
 
 /** The configured CCA roots (DSC_TRUSTED_ROOTS, default apps/api/config/dsc-trusted-roots.pem). */
 export function trustedRoots(): pkijs.Certificate[] {
-  const path = process.env.DSC_TRUSTED_ROOTS ?? `${process.cwd()}/config/dsc-trusted-roots.pem`;
+  const path = process.env.DSC_TRUSTED_ROOTS ?? join(__dirname, '..', '..', 'config', 'dsc-trusted-roots.pem');
   try {
     return parsePemBundle(readFileSync(path, 'utf8'));
   } catch {
