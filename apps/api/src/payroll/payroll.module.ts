@@ -19,6 +19,7 @@ import { PayoutService } from './payout.service';
 import { PayslipsService } from './payslips.service';
 import { TaxController } from './tax.controller';
 import { TaxService } from './tax.service';
+import { LedgerService } from './ledger.service';
 import { PayRunsService } from './runs.service';
 import { PayInputsService } from './inputs.service';
 import { PayImportsService } from './imports.service';
@@ -35,7 +36,7 @@ import { PayPeriodsService } from './periods.service';
 @Module({
   imports: [AuditModule, CryptoModule, StorageModule, WorkflowModule, NotificationsModule, EmailModule, AuthModule, EmployeeHistoryModule],
   controllers: [PayrollController, PublicPayController, Payroll5bController, Payroll5cController, Payroll5dController, TaxController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayRunsService, PayInputsService, PayoutService, PayslipsService, TaxService, PayrollJobs],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayRunsService, PayInputsService, PayoutService, PayslipsService, TaxService, LedgerService, PayrollJobs],
   exports: [PayPeriodsService, PayDocumentsService, ExchangeFilesService],
 })
 export class PayrollModule {}

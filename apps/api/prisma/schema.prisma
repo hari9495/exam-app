@@ -6751,3 +6751,19 @@ model TaxCertificate {
   @@unique([organizationId, employmentId, taxYear], map: "tax_certificates_key")
   @@map("tax_certificates")
 }
+
+/// GP-PAY-1 (10 Oct 2026): pay lines to ledger accounts; company default, then legal entity or cost centre overrides.
+model LedgerMapping {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  scopeType      String   @map("scope_type") @db.VarChar(12)
+  scopeId        String?  @map("scope_id") @db.Uuid
+  componentCode  String   @map("component_code") @db.VarChar(30)
+  side           String   @db.VarChar(8)
+  accountCode    String   @map("account_code") @db.VarChar(40)
+  accountName    String   @map("account_name") @db.VarChar(120)
+  updatedBy      String   @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("ledger_mappings")
+}

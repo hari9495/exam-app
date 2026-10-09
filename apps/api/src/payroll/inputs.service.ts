@@ -322,53 +322,6 @@ export class PayInputsService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ journal and cost rates (PAY-3.17)
 
-  async journal(ctx: TenantContext, user: ScopeUser, runId: string) {
-    const v = await this.viewer(user);
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const ids = await entitiesFor(tx, c, v, 'payroll.journal.export');
-      await payScope(tx, ids);
-      const j = await tx.journal.findFirst({ where: { organizationId: c.organizationId, runId, legalEntityId: { in: ids } } });
-      if (!j) throw new NotFoundException('No journal yet: it is made when the payroll is approved.');
-      return { runId, lines: j.lines, exports: j.exports };
-    });
-  }
-
-  /** CSV, Tally (XML vouchers) or Zoho Books (CSV journal) for the accountant; each export is recorded. */
-  async exportJournal(ctx: TenantContext, user: ScopeUser, runId: string, format: 'csv' | 'tally' | 'zoho') {
-    const v = await this.viewer(user);
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const ids = await entitiesFor(tx, c, v, 'payroll.journal.export');
-      await payScope(tx, ids);
-      const j = await tx.journal.findFirst({ where: { organizationId: c.organizationId, runId, legalEntityId: { in: ids } } });
-      if (!j) throw new NotFoundException('No journal yet: it is made when the payroll is approved.');
-      const run = await tx.payrollRun.findFirstOrThrow({ where: { organizationId: c.organizationId, id: runId } });
-      const month = dateOf(run.periodStart).slice(0, 7);
-      const lines = j.lines as { ledger: string; debit: string; credit: string }[];
-      const csvCell = (s: string) => (/^[=+\-@]/.test(s) ? `'${s}` : s).replace(/"/g, '""');
-      const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-      let file: string;
-      let name: string;
-      let type: string;
-      if (format === 'tally') {
-        const entries = lines.map((l) => `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${xml(l.ledger)}</LEDGERNAME><ISDEEMEDPOSITIVE>${D(l.debit).gt(0) ? 'Yes' : 'No'}</ISDEEMEDPOSITIVE><AMOUNT>${D(l.debit).gt(0) ? `-${l.debit}` : l.credit}</AMOUNT></ALLLEDGERENTRIES.LIST>`).join('');
-        file = `<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME></REQUESTDESC><REQUESTDATA><TALLYMESSAGE><VOUCHER VCHTYPE="Journal" ACTION="Create"><DATE>${monthRange(month).to.replace(/-/g, '')}</DATE><NARRATION>Payroll ${month}</NARRATION>${entries}</VOUCHER></TALLYMESSAGE></REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>`;
-        name = `payroll-journal-${month}-tally.xml`;
-        type = 'application/xml';
-      } else {
-        const head = format === 'zoho' ? 'Journal Date,Reference Number,Notes,Account,Debit,Credit' : 'Ledger,Debit,Credit';
-        const rows = lines.map((l) => (format === 'zoho' ? `${monthRange(month).to},PAYROLL-${month},"Payroll ${month}","${csvCell(l.ledger)}",${l.debit},${l.credit}` : `"${csvCell(l.ledger)}",${l.debit},${l.credit}`));
-        file = [head, ...rows].join('\r\n') + '\r\n';
-        name = `payroll-journal-${month}${format === 'zoho' ? '-zoho' : ''}.csv`;
-        type = 'text/csv';
-      }
-      const exports = [...(j.exports as unknown[]), { format, at: new Date().toISOString(), by: v.userId }];
-      await tx.journal.update({ where: { id: j.id }, data: { exports: exports as Prisma.InputJsonValue } });
-      await tx.payrollRun.update({ where: { id: runId }, data: { postedAt: run.postedAt ?? new Date() } });
-      await audit(tx, c, 'payroll.journal.exported', 'payroll_run', runId, { format });
-      return { file: Buffer.from(file, 'utf8'), name, contentType: type };
-    });
-  }
-
   async costRates(ctx: TenantContext, user: ScopeUser, month: string) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {

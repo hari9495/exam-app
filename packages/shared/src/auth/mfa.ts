@@ -73,6 +73,8 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'tax.workspace.view',
   'tax.proof.verify',
   'tax.regime.override',
+  // GP-PAY-1 ledger mapping.
+  'payroll.ledger.manage',
 ];
 
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).

@@ -10,6 +10,8 @@ import type { ScopeUser } from '../access/scope';
 import { AckDto, CostRateListDto, CourtOrderDto, HoldDto, JournalExportDto, LoanChangeDto, LoanRequestDto, LopInputsDto, OneTimeDto, OneTimeListDto, ReasonDto, RunCreateDto, RunDecisionDto, RunListDto, SpecialDaysDto, SubmitRunDto } from './dto-5c';
 import { PayInputsService } from './inputs.service';
 import { PayRunsService } from './runs.service';
+import { LedgerService } from './ledger.service';
+import { LedgerMappingDto } from './dto-ledger';
 
 // Payroll batch 5c (M03-BUILD-DESIGN §14.3). Every route declares its key (YX-SEC-01); the services check its legal
 // entities again and the database pay guard is the second layer. ⚡ = a fresh second sign-in step (P12).
@@ -20,6 +22,7 @@ import { PayRunsService } from './runs.service';
 //   payroll.hold.manage            holds and releases
 //   payroll.loan.manage            loans for others and schedule changes (a request for yourself needs no key)
 //   payroll.journal.export / payroll.cost_rate.view
+//   payroll.ledger.manage          ledger mapping (GP-PAY-1); the journal export and "mark posted" need every line mapped
 const RUN_VIEW = ['payroll.run.view', 'payroll.run.prepare', 'payroll.run.approve'] as const;
 
 @Controller('payroll')
@@ -28,6 +31,7 @@ export class Payroll5cController {
   constructor(
     private readonly runs: PayRunsService,
     private readonly inputs: PayInputsService,
+    private readonly ledger: LedgerService,
   ) {}
 
   private user(req: Request) {
@@ -226,16 +230,44 @@ export class Payroll5cController {
   @Get('runs/:id/journal')
   @RequirePermissions('payroll.journal.export')
   journal(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.inputs.journal(ctx, this.user(req), id);
+    return this.ledger.journal(ctx, this.user(req), id);
   }
 
   @Post('runs/:id/journal/export')
   @HttpCode(200)
   @RequirePermissions('payroll.journal.export')
   async exportJournal(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: JournalExportDto, @Res({ passthrough: true }) res: Response) {
-    const out = await this.inputs.exportJournal(ctx, this.user(req), id, dto.format);
+    const out = await this.ledger.exportJournal(ctx, this.user(req), id, dto.format);
     res.set({ 'Content-Type': out.contentType, 'Content-Disposition': `attachment; filename="${out.name}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     return new StreamableFile(out.file);
+  }
+
+  /** GP-PAY-1: "mark posted" once the journal is in the books (refused while anything is unmapped). */
+  @Post('runs/:id/journal/posted')
+  @HttpCode(200)
+  @RequirePermissions('payroll.journal.export')
+  posted(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.ledger.markPosted(ctx, this.user(req), id);
+  }
+
+  // GP-PAY-1 ledger mapping: company defaults, legal-entity and cost-centre overrides.
+  @Get('ledger-mappings')
+  @RequireAnyPermission('payroll.ledger.manage', 'payroll.journal.export')
+  mappings(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.ledger.mappings(ctx, this.user(req));
+  }
+
+  @Put('ledger-mappings')
+  @RequirePermissions('payroll.ledger.manage')
+  setMapping(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LedgerMappingDto) {
+    return this.ledger.setMapping(ctx, this.user(req), dto);
+  }
+
+  @Post('ledger-mappings/:id/remove')
+  @HttpCode(200)
+  @RequirePermissions('payroll.ledger.manage')
+  removeMapping(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.ledger.removeMapping(ctx, this.user(req), id);
   }
 
   @Get('cost-rates')

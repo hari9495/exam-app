@@ -53,6 +53,8 @@ export const PAY_KEYS = [
   'tax.workspace.view',
   'tax.proof.verify',
   'tax.regime.override',
+  // GP-PAY-1 ledger mapping.
+  'payroll.ledger.manage',
 ] as const;
 export type PayKey = (typeof PAY_KEYS)[number];
 
