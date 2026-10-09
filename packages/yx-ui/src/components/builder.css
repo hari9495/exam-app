@@ -140,7 +140,7 @@
   width: 100%;
   height: 100%;
   padding: var(--yx-space-2) var(--yx-space-3) var(--yx-space-3);
-  border: var(--yx-border-width) solid var(--yx-color-border-strong);
+  border: var(--yx-border-width) solid var(--yx-color-border-input);
   border-radius: var(--yx-radius-card);
   background: var(--yx-color-bg-surface);
   color: var(--yx-color-text);

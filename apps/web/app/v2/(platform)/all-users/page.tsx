@@ -36,7 +36,7 @@ function AllUsersInner() {
   const router = useRouter();
   const { switchIntoOrg } = useAuth();
   const searchParams = useSearchParams();
-  const { data, isLoading, isError } = useUserDirectory({ pageSize: DIRECTORY_PAGE_SIZE });
+  const { data, isLoading, isError, error } = useUserDirectory({ pageSize: DIRECTORY_PAGE_SIZE });
 
   // The Organizations tab's "View users" link (/v2/all-users?org=<name>) seeds the search.
   const [search, setSearch] = useState(searchParams.get('org') ?? '');
@@ -106,7 +106,7 @@ function AllUsersInner() {
       <DataTable
         columns={columns} data={rows} getRowId={(u) => u.id}
         search={search} onSearchChange={setSearch} searchPlaceholder="Search users…"
-        isLoading={isLoading} isError={isError} errorMessage="Failed to load users." emptyMessage={q ? 'No matching users.' : 'No users found.'}
+        isLoading={isLoading} isError={isError} error={error} errorMessage="Failed to load users." emptyMessage={q ? 'No matching users.' : 'No users found.'}
         columnLabels={{ email: 'Email', name: 'Name', role: 'Role', organizationName: 'Organization', status: 'Status' }}
       />
     </div>

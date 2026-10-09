@@ -8,6 +8,7 @@ import Redis from 'ioredis';
 import { JwtService } from '@nestjs/jwt';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
+import { emailArrives } from './fixtures/sms';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 
 // P12 Part 1a end to end, against the real database (forced RLS, app role) and real Redis:
@@ -234,11 +235,11 @@ describe('Staff sessions, login events and lockout (P12 YX-IAM-06/07/10)', () =>
       email.send.mockClear();
 
       await signIn(slugB, ADMIN_B, deviceOne);
-      await flush();
+      await new Promise((r) => setTimeout(r, 200));
       expect(email.send).not.toHaveBeenCalled();
 
       await signIn(slugB, ADMIN_B, deviceTwo);
-      await flush();
+      await emailArrives(email.send, (m) => m.to === ADMIN_B && /new sign-in/i.test(m.subject));
       expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: ADMIN_B, subject: expect.stringMatching(/new sign-in/i) }));
 
       const admin = await signIn(slugB, ADMIN_B, deviceTwo);
@@ -264,7 +265,7 @@ describe('Staff sessions, login events and lockout (P12 YX-IAM-06/07/10)', () =>
         await redis.del(`auth:lp:acct:block:${key}`, `auth:lp:acct:block:${accountKey('*', ADMIN_A)}`);
         await login(slugA, ADMIN_A, { password: `wrong-${i}`, ip }).expect(401);
       }
-      await flush();
+      await emailArrives(email.send, (m) => m.to === ADMIN_A && /locked/i.test(m.subject));
       expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: ADMIN_A, subject: expect.stringMatching(/locked/i) }));
       expect(await redis.ttl(`auth:lp:acct:block:${key}`)).toBeGreaterThan(14 * 60);
 

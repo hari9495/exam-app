@@ -95,8 +95,8 @@ export const ADMINS: PersonOption[] = [PEOPLE[1], PEOPLE[2]];
 export const ORG_EVENTS: Page<LoginEventRow> = {
   data: [
     ev('o-1', '2026-09-29T10:41:00+05:30', 'success', 'saml', { identifier: 'suresh.p@kaverifoods.in', userId: 'u-4', userAgent: EDGE_MAC, ipAddress: '103.21.58.51' }),
-    ev('o-2', '2026-09-29T10:12:00+05:30', 'locked', 'password', { identifier: 'ramesh.g@kaverifoods.in', userId: 'u-9', userAgent: FIREFOX_LINUX, ipAddress: '185.220.101.7', reason: 'account_locked' }),
-    ev('o-3', '2026-09-29T10:11:00+05:30', 'failed', 'password', { identifier: 'ramesh.g@kaverifoods.in', userId: 'u-9', userAgent: FIREFOX_LINUX, ipAddress: '185.220.101.7', reason: 'bad_password' }),
+    ev('o-2', '2026-09-29T10:12:00+05:30', 'locked', 'password', { identifier: 'ramesh.g@kaverifoods.in', userId: 'u-9', userAgent: FIREFOX_LINUX, ipAddress: '185.220.101.7', reason: 'account_locked', lockActive: true }),
+    ev('o-3', '2026-09-29T10:11:00+05:30', 'failed', 'password', { identifier: 'ramesh.g@kaverifoods.in', userId: 'u-9', userAgent: FIREFOX_LINUX, ipAddress: '185.220.101.7', reason: 'bad_password+lockout_started' }),
     ev('o-4', '2026-09-29T09:02:00+05:30', 'success', 'password'),
     ev('o-5', '2026-09-29T08:55:00+05:30', 'success', 'otp_sms', { identifier: '+919845098765', userId: 'u-6', userAgent: SAFARI_IOS, ipAddress: '49.207.40.2', newDevice: true }),
     ev('o-6', '2026-09-29T07:45:00+05:30', 'success', 'oidc', { userAgent: SAFARI_IOS, ipAddress: '49.207.12.8', newDevice: true }),

@@ -256,6 +256,11 @@ describe('MfaService', () => {
       expect(tx.recoveryCode.rows.filter((r) => r.userId === STAFF.id && r.id !== 'r')).toHaveLength(0);
     });
 
+    it('are offered security keys only (setup, My security): never an authenticator app', async () => {
+      expect((await service.status(STAFF, AAL1)).allowedFactors).toEqual(['passkey']);
+      expect((await service.status(USER, AAL1)).allowedFactors).toEqual(DEFAULT_SECURITY_POLICY.allowedFactors);
+    });
+
     it('a TOTP enrolled before the rule is not a usable factor for staff', async () => {
       tx.authenticator.rows.push({ id: 'old-totp', userId: STAFF.id, type: 'totp', revokedAt: null, createdAt: new Date() });
       expect(await service.hasFactor(STAFF)).toBe(false);
@@ -355,6 +360,91 @@ describe('MfaService', () => {
       await expect(service.passkeyRegistrationOptions(USER, stale, SID)).rejects.toThrow(ForbiddenException);
       const { result } = await enrolPasskey(FRESH);
       expect(result.recoveryCodes).toBeUndefined(); // not the first factor: codes unchanged
+    });
+
+    it('asks every new passkey to be discoverable and user-verifying, so it can be the whole sign-in', async () => {
+      const options = await service.passkeyRegistrationOptions(USER, AAL1, SID);
+      expect(options.authenticatorSelection).toEqual({ residentKey: 'required', requireResidentKey: true, userVerification: 'required' });
+    });
+
+    // Founder decision 7 Oct 2026: a passkey is a sign-in method in its own right (US-A-039).
+    describe('passwordless sign-in', () => {
+      const DEVICE = 'device-cookie-a';
+      async function signInWith(device: SoftAuthenticator, overrides: Parameters<SoftAuthenticator['assert']>[1] = {}, deviceId = DEVICE) {
+        const options = await service.passwordlessOptions(DEVICE);
+        const credential = device.assert(options, overrides);
+        const challenge = await service.takePasswordlessChallenge(credential, deviceId);
+        const passkey = await service.findPasskey(credential.id);
+        return Boolean(challenge && passkey && (await service.verifyPasswordless(passkey as never, credential as never, challenge)));
+      }
+
+      it('offers no allowCredentials (the browser lists its discoverable passkeys) and requires user verification', async () => {
+        await enrolPasskey();
+        const options = await service.passwordlessOptions(DEVICE);
+        expect(options.allowCredentials ?? []).toEqual([]);
+        expect(options).toMatchObject({ rpId: 'localhost', userVerification: 'required' });
+        expect([...redis.store.keys()]).toContain(`auth:passkey:chal:${sha256(options.challenge)}`);
+        expect(redis.store.get(`auth:passkey:chal:${sha256(options.challenge)}`)).toBe(sha256(DEVICE)); // device-bound, hashed
+      });
+
+      it('a genuine assertion from the right device names the account and moves the counter', async () => {
+        const { device } = await enrolPasskey();
+        expect(await signInWith(device)).toBe(true);
+        expect(Number(tx.authenticator.rows[0].signCount)).toBe(device.counter);
+      });
+
+      it('the challenge is single-use and only for the device it was issued to', async () => {
+        const { device } = await enrolPasskey();
+        const options = await service.passwordlessOptions(DEVICE);
+        const credential = device.assert(options);
+        expect(await service.takePasswordlessChallenge(credential, 'another-device')).toBeNull();
+        expect(await service.takePasswordlessChallenge(credential, DEVICE)).toBeNull(); // spent by the first try
+        const fresh = device.assert(await service.passwordlessOptions(DEVICE));
+        expect(await service.takePasswordlessChallenge(fresh, DEVICE)).toEqual(expect.any(String));
+        expect(await service.takePasswordlessChallenge(fresh, DEVICE)).toBeNull(); // replay
+      });
+
+      it('a challenge it never issued, or unreadable client data, is refused', async () => {
+        const { device } = await enrolPasskey();
+        expect(await service.takePasswordlessChallenge(device.assert({ challenge: 'A'.repeat(43) }), DEVICE)).toBeNull();
+        expect(await service.takePasswordlessChallenge({ response: { clientDataJSON: 'not-json' } }, DEVICE)).toBeNull();
+      });
+
+      it('refuses no user verification, a foreign origin or RP, a tampered signature, a replayed counter and a wrong or missing user handle', async () => {
+        const { device } = await enrolPasskey();
+        expect(await signInWith(device, { noUserVerification: true })).toBe(false);
+        expect(await signInWith(device, { origin: 'https://evil.example' })).toBe(false);
+        expect(await signInWith(device, { tamper: true })).toBe(false);
+        expect(await signInWith(device, { userHandle: null })).toBe(false);
+        expect(await signInWith(device, { userHandle: Buffer.from(randomUUID()).toString('base64url') })).toBe(false);
+        expect(await signInWith(device)).toBe(true);
+        expect(await signInWith(device, { keepCounter: true })).toBe(false);
+
+        const otherRp = new SoftAuthenticator('evil.example');
+        (otherRp as unknown as { credentialId: Buffer }).credentialId = Buffer.from(device.id, 'base64url');
+        otherRp.userHandle = device.userHandle;
+        otherRp.counter = device.counter;
+        expect(await signInWith(otherRp)).toBe(false);
+      });
+
+      it('an unknown or removed credential is not found', async () => {
+        const { device } = await enrolPasskey();
+        expect(await service.findPasskey(new SoftAuthenticator().id)).toBeNull();
+        tx.authenticator.rows[0].revokedAt = new Date();
+        expect(await service.findPasskey(device.id)).toBeNull();
+      });
+    });
+  });
+
+  describe('renaming a passkey', () => {
+    it("renames the person's own live passkey, audited; anything else is not found", async () => {
+      const options = await service.passkeyRegistrationOptions(USER, AAL1, SID);
+      await service.registerPasskey(USER, AAL1, SID, new SoftAuthenticator().register(options), 'Chrome on Windows');
+      const id = tx.authenticator.rows[0].id as string;
+      await service.renamePasskey(USER, id, 'Work laptop');
+      expect(tx.authenticator.rows[0].label).toBe('Work laptop');
+      expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'mfa.renamed', entityId: id }));
+      await expect(service.renamePasskey({ ...USER, id: randomUUID() }, id, 'Mine now')).rejects.toThrow('not found');
     });
   });
 

@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { MotionConfig } from 'framer-motion';
 import { Building2, CreditCard, ShieldCheck, Users } from 'lucide-react';
 import { useAuth } from '../../../lib/auth-context';
+import { STAFF_SIGN_IN } from '../../../lib/api-client';
 import { staffLandingPath } from '../../../lib/staff-landing';
 import { useCurrentUser } from '../../../lib/hooks/useCurrentUser';
 import { AppShell } from '../../../components/ui-v2';
@@ -25,15 +26,14 @@ export default function PlatformV2Layout({ children }: { children: React.ReactNo
 
   useEffect(() => {
     if (!isLoading && !accessToken) {
-      router.push('/login');
+      router.push(STAFF_SIGN_IN);
     } else if (!isLoading && accessToken && role && role !== 'super_admin') {
       router.push(staffLandingPath(role));
     }
   }, [isLoading, accessToken, role, router]);
 
   async function handleLogout() {
-    await logout();
-    router.push('/login');
+    router.push(await logout());
   }
 
   if (isLoading || !accessToken || (role !== null && role !== 'super_admin')) {

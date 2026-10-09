@@ -185,3 +185,6 @@
 .yx-growth-split { display: grid; grid-template-columns: minmax(0, 1fr) calc(var(--yx-space-16) * 5); gap: var(--yx-space-6); align-items: start; }
 .yx-growth-split__main, .yx-growth-split__side { display: flex; flex-direction: column; gap: var(--yx-space-4); min-width: 0; }
 @media (max-width: 1100px) { .yx-growth-split { grid-template-columns: minmax(0, 1fr); } }
+
+/* The goal opens on click: link colour at rest (7 Oct 2026). */
+.yx-goal-tree__title { color: var(--yx-color-link); }

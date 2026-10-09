@@ -5,9 +5,10 @@ import { FormField } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { TextField } from '../../components/inputs';
 import { Dialog } from '../../components/overlay';
-import { Segment } from '../../components/segment';
+import { MethodCards } from '../../components/choice';
+import { Check, Copy } from 'lucide-react';
 import { Spinner } from '../../components/foundations';
-import { AuthFrame, RecoveryCodes, SecondFactorPanel, day, useStep, type SecondFactorPanelProps } from './kit';
+import { AuthFrame, RecoveryCodes, SecondFactorPanel, day, setupMethodOptions, useStep, type SecondFactorPanelProps, type SetupMethod } from './kit';
 
 /* ---------- sign-in challenge ---------- */
 
@@ -15,10 +16,10 @@ export interface MfaChallengeScreenProps extends SecondFactorPanelProps {
   onStartAgain: () => void;
 }
 
-/** Second step of sign-in (YX-IAM-01/03): the password was right; nothing is issued until this succeeds. */
+/** "Confirm it's you" after the password (YX-IAM-01/03); nothing is issued until this succeeds. */
 export function MfaChallengeScreen({ onStartAgain, ...panel }: MfaChallengeScreenProps) {
   return (
-    <AuthFrame title="Confirm it's you" subtitle="Your account uses two-step verification." footer={<Button size="sm" onClick={onStartAgain}>Start again</Button>}>
+    <AuthFrame title="Confirm it's you" subtitle="One more step to sign in." footer={<Button size="sm" onClick={onStartAgain}>Start again</Button>}>
       <SecondFactorPanel {...panel} />
     </AuthFrame>
   );
@@ -33,7 +34,7 @@ export interface StepUpDialogProps {
   factors: string[] | null;
   getPasskey: SecondFactorPanelProps['getPasskey'];
   submit: SecondFactorPanelProps['submit'];
-  /** Where to set up a second step when the account has none. */
+  /** Where to set up a sign-in method when the account has none. */
   setupHref: string;
 }
 
@@ -47,12 +48,12 @@ export function StepUpDialog({ open, onCancel, factors, getPasskey, submit, setu
       open={open}
       onOpenChange={(o) => !o && onCancel()}
       title="Confirm it's you"
-      description="This change needs your second step again. It stays confirmed for 15 minutes."
+      description="This change needs you to confirm it's you again. It stays confirmed for 15 minutes."
     >
       {factors === null ? (
         <Spinner label="Loading your sign-in methods" />
       ) : factors.length === 0 ? (
-        <InlineAlert tone="warning" title="Set up two-step verification first">
+        <InlineAlert tone="warning" title="Secure your account first">
           This change needs a passkey or authenticator app. <Link href={setupHref}>Set one up in My security</Link>.
         </InlineAlert>
       ) : (
@@ -86,11 +87,13 @@ export interface MfaEnrolScreenProps {
   now?: Date;
 }
 
-/** P12 §6.1 steps 2–3: set up a passkey (suggested) or an authenticator app, then see the recovery codes once. */
+/**
+ * P12 §6.1 steps 2–3, "Secure your account": a card per sign-in method (passkey recommended);
+ * picking one goes straight into it. Then the recovery codes, once.
+ */
 export function MfaEnrolScreen({ allowedFactors, dueAt, onAddPasskey, onStartTotp, onConfirmTotp, onContinue, now = new Date() }: MfaEnrolScreenProps) {
-  const kinds = (['passkey', 'totp'] as const).filter((k) => allowedFactors.includes(k));
-  const [kind, setKind] = useState<'passkey' | 'totp'>(kinds[0] ?? 'passkey');
   const [totp, setTotp] = useState<TotpSetup | null>(null);
+  const [pending, setPending] = useState<SetupMethod | null>(null);
   const [code, setCode] = useState('');
   const [codes, setCodes] = useState<string[] | null>(null);
   const { busy, error, setError, run } = useStep();
@@ -101,10 +104,14 @@ export function MfaEnrolScreen({ allowedFactors, dueAt, onAddPasskey, onStartTot
     e.preventDefault();
     void run(async () => finish(await onConfirmTotp(code.trim())));
   };
+  const pick = (method: SetupMethod) => {
+    setPending(method);
+    void run(async () => (method === 'passkey' ? finish(await onAddPasskey()) : setTotp(await onStartTotp()))).finally(() => setPending(null));
+  };
 
   if (codes) {
     return (
-      <AuthFrame title="Two-step verification is on" subtitle="Last step: keep a way back in.">
+      <AuthFrame title="Your account is secure" subtitle="Last step: keep a way back in.">
         <RecoveryCodes codes={codes} onDone={onContinue} doneLabel="Continue" />
       </AuthFrame>
     );
@@ -112,44 +119,49 @@ export function MfaEnrolScreen({ allowedFactors, dueAt, onAddPasskey, onStartTot
 
   return (
     <AuthFrame
-      title="Set up two-step verification"
+      title="Secure your account"
       subtitle={overdue ? 'Your role needs it before you can continue.' : `Your role needs it. Set it up by ${day(dueAt)}.`}
       footer={overdue ? undefined : <Button size="sm" onClick={onContinue}>Remind me later</Button>}
     >
-      <div className="yx-auth__form">
-        {kinds.length > 1 && (
-          <Segment
-            label="Second step"
-            options={kinds.map((k) => ({ value: k, label: k === 'passkey' ? 'Passkey (recommended)' : 'Authenticator app' }))}
-            value={kind}
-            onChange={(k) => {
-              setKind(k);
-              setError(null);
-            }}
-          />
-        )}
-        {kind === 'passkey' ? (
-          <>
-            <Text as="p" tone="secondary">A passkey uses this device's fingerprint, face or screen lock. It is the quickest and can't be phished.</Text>
-            {error && <InlineAlert tone="danger">{error}</InlineAlert>}
-            <Button variant="primary" fullWidth loading={busy} onClick={() => void run(async () => finish(await onAddPasskey()))}>Add a passkey</Button>
-          </>
-        ) : !totp ? (
-          <>
-            <Text as="p" tone="secondary">Use an authenticator app on your phone. It shows a new 6-digit code every 30 seconds.</Text>
-            {error && <InlineAlert tone="danger">{error}</InlineAlert>}
-            <Button variant="primary" fullWidth loading={busy} onClick={() => void run(async () => setTotp(await onStartTotp()))}>Show the QR code</Button>
-          </>
-        ) : (
-          <TotpConfirm setup={totp} code={code} onCode={setCode} onSubmit={confirm} busy={busy} error={error} />
-        )}
-      </div>
+      {totp ? (
+        <TotpConfirm
+          setup={totp}
+          code={code}
+          onCode={setCode}
+          onSubmit={confirm}
+          busy={busy}
+          error={error}
+          cancelLabel="Choose another way"
+          onCancel={() => {
+            setTotp(null);
+            setCode('');
+            setError(null);
+          }}
+        />
+      ) : (
+        <div className="yx-auth__form">
+          <MethodCards aria-label="Ways to sign in" options={setupMethodOptions(allowedFactors)} onSelect={(m) => pick(m as SetupMethod)} busy={pending} />
+          {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+        </div>
+      )}
     </AuthFrame>
   );
 }
 
+/** The manual authenticator key, in groups of four, with a copy button. */
+function SecretKey({ secret }: { secret: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => void navigator.clipboard?.writeText(secret).then(() => setCopied(true));
+  return (
+    <div className="yx-auth__keyrow">
+      <span className="yx-mono yx-auth__key">{secret.match(/.{1,4}/g)?.join(' ')}</span>
+      <Button size="sm" icon={copied ? Check : Copy} onClick={copy}>{copied ? 'Copied' : 'Copy key'}</Button>
+    </div>
+  );
+}
+
 /** QR code, the manual key and the first code. Shared by enrolment and My security. */
-export function TotpConfirm({ setup, code, onCode, onSubmit, busy, error, onCancel }: {
+export function TotpConfirm({ setup, code, onCode, onSubmit, busy, error, onCancel, cancelLabel = 'Cancel' }: {
   setup: TotpSetup;
   code: string;
   onCode: (v: string) => void;
@@ -157,21 +169,21 @@ export function TotpConfirm({ setup, code, onCode, onSubmit, busy, error, onCanc
   busy: boolean;
   error: string | null;
   onCancel?: () => void;
+  cancelLabel?: string;
 }) {
   return (
     <form className="yx-auth__form" onSubmit={onSubmit} noValidate>
       <Text as="p">Scan this with your authenticator app, then enter the 6-digit code it shows.</Text>
       <img className="yx-auth__qr" src={setup.qrDataUrl} alt="QR code for your authenticator app" />
-      <Text as="p" tone="secondary" size="sm">
-        Can't scan it? Enter this key: <span className="yx-mono yx-auth__key">{setup.secret}</span>
-      </Text>
+      <Text as="p" tone="secondary" size="sm">Can't scan it? Enter this key in the app instead:</Text>
+      <SecretKey secret={setup.secret} />
       <FormField label="6-digit code" required>
         <TextField value={code} onChange={onCode} autoComplete="one-time-code" inputMode="numeric" maxLength={6} />
       </FormField>
       {error && <InlineAlert tone="danger">{error}</InlineAlert>}
       <div className="yx-auth__row">
         <Button type="submit" variant="primary" loading={busy} disabled={code.trim().length < 6}>Turn on</Button>
-        {onCancel && <Button onClick={onCancel}>Cancel</Button>}
+        {onCancel && <Button disabled={busy} onClick={onCancel}>{cancelLabel}</Button>}
       </div>
     </form>
   );

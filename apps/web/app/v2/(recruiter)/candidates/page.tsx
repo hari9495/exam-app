@@ -145,7 +145,7 @@ export default function V2CandidatesPage() {
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const notify = (type: 'success' | 'error', text: string) => { setNotice({ type, text }); setTimeout(() => setNotice(null), 4000); };
 
-  const { data: resp, isLoading, isError, refetch } = useCandidates({
+  const { data: resp, isLoading, isError, error, refetch } = useCandidates({
     page, pageSize: 20, search: search || undefined,
     status: statusFilter === 'all' ? undefined : statusFilter,
     globalStage: stageFilter === 'all' ? undefined : stageFilter,
@@ -303,7 +303,7 @@ export default function V2CandidatesPage() {
         columns={columns} data={rows} getRowId={(r) => r.id}
         search={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} searchPlaceholder="Search candidates…"
         page={resp?.page ?? 1} totalPages={resp?.totalPages ?? 1} onPageChange={setPage}
-        isLoading={isLoading} isError={isError} errorMessage="Failed to load candidates." emptyMessage="No candidates found."
+        isLoading={isLoading} isError={isError} error={error} errorMessage="Failed to load candidates." emptyMessage="No candidates found."
         columnLabels={COLUMN_LABELS} onExport={exportCsv}
         enableSelection
         renderBulkBar={(ids, clear) => (

@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { PrismaService, TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
+import { PrismaService, TenantPrismaService, TenantContext, AuditService, isGrantOnlyKey } from '@exam-platform/shared';
 import { assignablePermissions, isAssignableKey, AssignablePermission } from './assignable-permissions';
 import { EDITABLE_ROLES, isEditableRole } from './roles';
 
@@ -51,7 +51,7 @@ export class RolePermissionsService {
       const permissions = (override ?? defaultByRole.get(role) ?? []).slice().sort();
       return { role, permissions, customized: override !== undefined };
     });
-    return { assignablePermissions: await assignablePermissions(this.prisma), roles };
+    return { assignablePermissions: (await assignablePermissions(this.prisma)).filter((p) => !isGrantOnlyKey(p.key)), roles };
   }
 
   async setRolePermissions(context: TenantContext, actorUserId: string, role: string, permissions: string[]): Promise<RolePermissionMatrix> {
@@ -97,11 +97,14 @@ export class RolePermissionsService {
 
   // Same allowlist as permission profiles: reject a non-assignable key (platform/user-mgmt/billing)
   // or any key the Permission catalog doesn't recognize. An empty set is allowed (lock a role down).
+  // HR and pay keys are refused too: an override applies company-wide to everyone in the role, with no
+  // second admin, so they come only from roles granted in Roles & access (P02 §4.6, R1).
   private async validatePermissions(permissions: string[]): Promise<void> {
     const catalog = await assignablePermissions(this.prisma);
     const catalogKeys = new Set(catalog.map((p) => p.key));
     for (const key of permissions) {
       if (!isAssignableKey(key)) throw new BadRequestException(`Permission "${key}" is not assignable to a role`);
+      if (isGrantOnlyKey(key)) throw new BadRequestException(`Permission "${key}" opens employee or pay data: grant it in Roles & access, not on a base role.`);
       if (!catalogKeys.has(key)) throw new BadRequestException(`Unknown permission "${key}"`);
     }
   }

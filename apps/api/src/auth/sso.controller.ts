@@ -11,6 +11,7 @@ import type { ProviderWithDomains } from './sso.service';
 import { OidcService } from './oidc.service';
 import { SessionsService, resolveClientMeta } from './sessions.service';
 import { SsoService, oidcEmail, oidcMfaAsserted } from './sso.service';
+import { CredentialThrottle } from './credential-throttler.guard';
 
 // The result rides in the URL FRAGMENT: never sent to a server, never in a Referer header, not in
 // proxy / access logs (ASVS V3.1.1). The callback page also sends Referrer-Policy: no-referrer.
@@ -33,7 +34,7 @@ export class SsoController {
   // The answer depends on the company and the domain only, never on whether an account exists.
   @Post('identify')
   @HttpCode(200)
-  @Throttle(STRICT_AUTH_THROTTLE)
+  @CredentialThrottle()
   async identify(@Body() dto: IdentifyDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const parsed = parseOtpIdentifier(dto.identifier);
     if (!parsed) throw new BadRequestException('Enter an email address or a mobile number');
@@ -74,7 +75,7 @@ export class SsoController {
   // the state / nonce / PKCE verifier are created here, bound to this browser's device cookie.
   @Post('sso/start')
   @HttpCode(200)
-  @Throttle(STRICT_AUTH_THROTTLE)
+  @CredentialThrottle()
   async start(@Body() dto: SsoStartDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const slug = await this.scope.slugFor(req, dto.organizationSlug);
     const org = slug ? await this.sso.organizationBySlug(slug) : null;

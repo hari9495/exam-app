@@ -12,6 +12,8 @@ import { ApiUsageRetentionService } from '../api-usage/api-usage-retention.servi
 import { FaceRetentionService } from '../face-enrolment/face-retention.service';
 import { ProctoringRetentionService } from '../proctoring-retention/proctoring-retention.service';
 import { DripService } from '../drip/drip.service';
+import { EmployeeHistoryService } from '../employee-history/employee-history.service';
+import { PeopleService } from '../people/people.service';
 import { IdentityProvidersService } from '../auth/identity-providers.service';
 
 function msg(e: unknown): string {
@@ -39,6 +41,8 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     faceRetention: FaceRetentionService,
     proctoringRetention: ProctoringRetentionService,
     drip: DripService,
+    employeeHistory: EmployeeHistoryService,
+    people: PeopleService,
     identityProviders: IdentityProvidersService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
@@ -52,6 +56,9 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'face-retention': () => faceRetention.prune(),
       'proctoring-retention': () => proctoringRetention.prune(),
       'drip-steps': () => drip.sweep(),
+      'employee-changes': () => employeeHistory.applyDue(),
+      // M01 §3.4 / YX-LC-01: probation review reminders, escalation and opt-in auto-confirmation.
+      probations: () => people.probationSweep(),
       'domain-verification-recheck': () => identityProviders.recheckDomains(),
     };
     this.worker = new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), { connection: this.connection });

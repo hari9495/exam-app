@@ -8,6 +8,8 @@ export interface SendEmailInput {
   to: string;
   subject: string;
   html: string;
+  /** Optional plain-text part, sent alongside the HTML. */
+  text?: string;
   organizationId?: string;
   attachments?: { filename: string; content: Buffer }[];
   /** Per-send From override (e.g. a caller-selected OrgSenderAddress). Wins over every other From source. */
@@ -101,6 +103,7 @@ export class EmailService {
         to: input.to,
         subject: input.subject,
         html: input.html,
+        ...(input.text !== undefined ? { text: input.text } : {}),
         ...(input.attachments ? { attachments: input.attachments } : {}),
       });
       const previewUrl = nodemailer.getTestMessageUrl(info) || undefined;

@@ -172,7 +172,7 @@ describe('PermissionProfilesService', () => {
     it('validates permissions and audits permission_profile.updated', async () => {
       const tx = {
         permissionProfile: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'Old' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'Old', permissionsJson: '[]' }),
           update: jest.fn().mockResolvedValue({
             id: 'p1',
             organizationId: 'org-1',
@@ -183,6 +183,7 @@ describe('PermissionProfilesService', () => {
           }),
         },
         user: { count: jest.fn().mockResolvedValue(1) },
+        roleGrant: { count: jest.fn().mockResolvedValue(0) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
@@ -199,7 +200,7 @@ describe('PermissionProfilesService', () => {
     it('persists supplied field rules and leaves them untouched when omitted', async () => {
       const update = jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'Old', permissionsJson: '[]', createdAt: 1, updatedAt: 2 });
       const tx = {
-        permissionProfile: { findFirst: jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'Old' }), update },
+        permissionProfile: { findFirst: jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'Old', permissionsJson: '[]' }), update },
         user: { count: jest.fn().mockResolvedValue(0) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
@@ -215,7 +216,7 @@ describe('PermissionProfilesService', () => {
     it('clears field rules to null when passed an empty object', async () => {
       const update = jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'Old', permissionsJson: '[]', createdAt: 1, updatedAt: 2 });
       const tx = {
-        permissionProfile: { findFirst: jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'Old' }), update },
+        permissionProfile: { findFirst: jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'Old', permissionsJson: '[]' }), update },
         user: { count: jest.fn().mockResolvedValue(0) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
@@ -241,7 +242,7 @@ describe('PermissionProfilesService', () => {
     it('surfaces a duplicate name unique violation as 409', async () => {
       const tx = {
         permissionProfile: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'Old' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'Old', permissionsJson: '[]' }),
           update: jest.fn().mockRejectedValue(knownRequestError('P2002')),
         },
       };
@@ -256,6 +257,7 @@ describe('PermissionProfilesService', () => {
       const tx = {
         permissionProfile: { findFirst: jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1' }), delete: jest.fn() },
         user: { count: jest.fn().mockResolvedValue(0) },
+        roleGrant: { count: jest.fn().mockResolvedValue(0) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
@@ -270,6 +272,7 @@ describe('PermissionProfilesService', () => {
       const tx = {
         permissionProfile: { findFirst: jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1' }), delete: jest.fn() },
         user: { count: jest.fn().mockResolvedValue(4) },
+        roleGrant: { count: jest.fn().mockResolvedValue(0) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
@@ -283,6 +286,48 @@ describe('PermissionProfilesService', () => {
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       await expect(service.remove(context, 'user-1', 'missing')).rejects.toThrow(NotFoundException);
+    });
+
+    it('keeps a role that has ever been granted in Roles & access (P02 §3 grant history)', async () => {
+      const tx = {
+        permissionProfile: { findFirst: jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1' }), delete: jest.fn() },
+        user: { count: jest.fn().mockResolvedValue(0) },
+        roleGrant: { count: jest.fn().mockResolvedValue(1) },
+      };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      await expect(service.remove(context, 'user-1', 'p1')).rejects.toThrow(/granted in Roles & access/);
+      expect(tx.permissionProfile.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Confidential access on a role in use (P02 §4.6)', () => {
+    const txWith = (users: number, grants: number) => ({
+      permissionProfile: { findFirst: jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'HR', permissionsJson: '["employee.profile.view"]' }), update: jest.fn().mockResolvedValue({ id: 'p1', organizationId: 'org-1', name: 'HR', permissionsJson: '[]', createdAt: 1, updatedAt: 2 }) },
+      user: { count: jest.fn().mockResolvedValue(users) },
+      roleGrant: { count: jest.fn().mockResolvedValue(grants) },
+    });
+
+    it.each([
+      [1, 0],
+      [0, 1],
+    ])('refuses adding a Confidential key while %i user(s) / %i grant(s) hold the role', async (users, grants) => {
+      prisma.permission.findMany.mockResolvedValue([{ key: 'employee.profile.view' }, { key: 'employee.salary.view' }]);
+      const tx = txWith(users, grants);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      await expect(service.update(context, 'user-1', 'p1', { permissions: ['employee.profile.view', 'employee.salary.view'] })).rejects.toThrow(ConflictException);
+      expect(tx.permissionProfile.update).not.toHaveBeenCalled();
+    });
+
+    it('allows it on a role nobody holds, and allows removing Confidential keys from a held one', async () => {
+      prisma.permission.findMany.mockResolvedValue([{ key: 'employee.profile.view' }, { key: 'employee.salary.view' }]);
+      const unheld = txWith(0, 0);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(unheld));
+      await service.update(context, 'user-1', 'p1', { permissions: ['employee.profile.view', 'employee.salary.view'] });
+      expect(unheld.permissionProfile.update).toHaveBeenCalled();
+      const held = txWith(2, 0);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(held));
+      await service.update(context, 'user-1', 'p1', { permissions: [] });
+      expect(held.permissionProfile.update).toHaveBeenCalled();
     });
   });
 });

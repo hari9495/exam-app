@@ -973,7 +973,7 @@ function OutputHandle({ node, port, flow, onAdd, onConnect }: { node: FlowNode; 
       {port !== 'next' && <span className="yx-node__port-label">{PORT_LABEL[port]}</span>}
       <Menu>
         <MenuTrigger asChild>
-          <IconButton icon={Plus} label={`Add or connect next step${where} after ${node.title}`} variant="secondary" size="sm" noTooltip className="yx-node__add" />
+          <IconButton icon={Plus} label={`Add or connect next step${where} after ${node.title}`} variant="secondary" size="sm" className="yx-node__add" />
         </MenuTrigger>
         <MenuContent align="center">
           <MenuLabel>Add a step</MenuLabel>

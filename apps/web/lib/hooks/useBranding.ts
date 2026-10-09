@@ -4,26 +4,11 @@ import { BrandingResponse } from '../types';
 import { useAuth } from '../auth-context';
 
 /**
- * Public, slug-addressed branding. For pages that have no token yet (login,
- * forgot-password) or that only need theme colours.
- */
-export function useBranding(organizationSlug: string | null) {
-  return useQuery<BrandingResponse>({
-    queryKey: ['branding', organizationSlug],
-    queryFn: () => apiFetch(`/organizations/by-slug/${organizationSlug}/branding`),
-    enabled: Boolean(organizationSlug),
-  });
-}
-
-/**
  * Branding for the org the CURRENT TOKEN belongs to.
  *
- * The settings page must not use useBranding(): `organizationSlug` is only ever
- * populated from the login form's optional slug field, so it is empty for
- * anyone who signed in with just an email, and for a super_admin who reached
- * the org through "switch into" (switchIntoOrg never sets it). In those cases
- * the slug query stays `enabled: false` and never resolves, which read as a
- * permanent "Loading current branding..." and left every button disabled.
+ * Addressed by the token, not a slug: `organizationSlug` is empty for anyone
+ * who signed in with just an email, and for a super_admin who reached the org
+ * through "switch into" (switchIntoOrg never sets it).
  *
  * Requires org:manage_settings, so this is for settings screens only -- the
  * recruiter and panel layouts have to keep using the public slug endpoint.

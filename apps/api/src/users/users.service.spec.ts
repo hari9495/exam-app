@@ -642,9 +642,10 @@ describe('UsersService', () => {
     tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
       fn({
         user: {
-          findUniqueOrThrow: async () => ({ id: 'user-1', passwordHash: storedHash }),
+          findUniqueOrThrow: async () => ({ id: 'user-1', email: 'u1@b.com', organizationId: 'org-1', timeZone: null, passwordHash: storedHash }),
           update: userUpdate,
         },
+        organization: { findUnique: async () => ({ name: 'Kaveri Foods' }) },
         refreshToken: { updateMany: refreshTokenUpdateMany },
         session: { updateMany: sessionUpdateMany },
       }),
@@ -674,6 +675,9 @@ describe('UsersService', () => {
       { organizationId: 'org-1', isSuperAdmin: false },
       { actorUserId: 'user-1', action: 'password.changed', entityType: 'user', entityId: 'user-1' },
     );
+    // The owner is told (YX-IAM-10).
+    await new Promise((r) => setTimeout(r, 50));
+    expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'u1@b.com', subject: 'Your YukthiX password was changed' }));
   });
 
   it('listSuperAdmins returns a paginated page of only super_admin users via the bypass context', async () => {
@@ -1016,7 +1020,9 @@ describe('UsersService', () => {
         user: {
           findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'org_admin', organizationId: 'org1', permissionProfileId: null }),
           update: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter' }),
+          count: jest.fn().mockResolvedValue(1),
         },
+        $executeRaw: jest.fn().mockResolvedValue(1),
         ...sessionTx(),
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
@@ -1030,6 +1036,19 @@ describe('UsersService', () => {
         ctx,
         expect.objectContaining({ action: 'user.updated', metadata: { changes: { role: { from: 'org_admin', to: 'recruiter' } }, sessionsRevoked: 2 } }),
       );
+    });
+
+    // The company always keeps an active System Admin, whichever page changes the role.
+    it('refuses to demote or deactivate the last active System Admin', async () => {
+      const tx = {
+        user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'org_admin', organizationId: 'org1', permissionProfileId: null }), update: jest.fn(), count: jest.fn().mockResolvedValue(0) },
+        $executeRaw: jest.fn().mockResolvedValue(1),
+        ...sessionTx(),
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await expect(service.update(ctx, 't1', { role: 'recruiter' }, 'admin1')).rejects.toThrow(ConflictException);
+      await expect(service.setStatus(ctx, 't1', 'deactivated', 'admin1')).rejects.toThrow(/only System Admin/);
+      expect(tx.user.update).not.toHaveBeenCalled();
     });
 
     it('a name-only change, or the same role again, leaves sessions alone', async () => {
@@ -1098,7 +1117,7 @@ describe('UsersService', () => {
           update: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', name: 'Al', organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date(), permissionProfileId: 'profile1' }),
         },
         permissionProfile: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'profile1', organizationId: 'org1' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 'profile1', organizationId: 'org1', permissionsJson: '["candidate:view"]' }),
         },
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
@@ -1118,6 +1137,17 @@ describe('UsersService', () => {
         ctx,
         expect.objectContaining({ action: 'user.updated', metadata: expect.objectContaining({ changes: { permissionProfileId: { from: null, to: 'profile1' } } }) }),
       );
+    });
+
+    it('refuses a role opening Confidential data: that goes through Roles & access with a second admin (P02 §4.6)', async () => {
+      const tx = {
+        ...sessionTx(),
+        user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1', permissionProfileId: null }), update: jest.fn() },
+        permissionProfile: { findFirst: jest.fn().mockResolvedValue({ id: 'profile1', organizationId: 'org1', permissionsJson: '["employee.salary.view"]' }) },
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await expect(service.update(ctx, 't1', { permissionProfileId: 'profile1' }, 'admin1')).rejects.toThrow(/Roles & access/);
+      expect(tx.user.update).not.toHaveBeenCalled();
     });
 
     it('rejects a permission profile that belongs to another org', async () => {
@@ -1195,6 +1225,7 @@ describe('UsersService', () => {
       // SMTP_HOST in production and fakes success via an Ethereal test account -- see
       // the "set-password link never arrives" incident this test was added to catch).
       expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'a@b.com', organizationId: 'org1' }));
+      expect(emailService.send.mock.calls[0][0].html).toMatch(/\/yx\/reset-password\/[a-f0-9]{64}"/);
       expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.password_reset_requested' }));
     });
 

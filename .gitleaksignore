@@ -8,5 +8,7 @@
 5b607e04aec2788b08a766e37b2eda29634a9a76:packages/yx-ui/src/screens/settings/registry-g5-g6.ts:generic-api-key:970
 5b607e04aec2788b08a766e37b2eda29634a9a76:packages/yx-ui/src/screens/settings/registry-g5-g6.ts:generic-api-key:971
 5b607e04aec2788b08a766e37b2eda29634a9a76:packages/yx-ui/src/screens/settings/registry-g5-g6.ts:generic-api-key:972
+# Reviewed false positive (7 Oct 2026): sample new password in the reset-password page test.
+544702e8ec3366aea27b01de848e406fa13f326e:apps/web/app/yx/yx-pages.test.tsx:generic-api-key:353
 # Reviewed false positive (9 Oct 2026): the textbook demo TOTP secret (base32 "Hello!" + KAVERI) in yx-ui sample data, not a real key.
 d6ea28d461acbf37388c718a056dfbe19d6d2ddc:packages/yx-ui/src/screens/auth/data.ts:generic-api-key:42

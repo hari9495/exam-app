@@ -109,7 +109,7 @@ function OverflowMenu({ label, children }: { label: string; children: ReactNode 
     <Menu>
       <Tooltip content={label}>
         <MenuTrigger asChild>
-          <IconButton icon={MoreHorizontal} label={label} noTooltip />
+          <IconButton icon={MoreHorizontal} label={label} />
         </MenuTrigger>
       </Tooltip>
       <MenuContent align="end">{children}</MenuContent>
@@ -453,7 +453,9 @@ export function PanelLink({ href, active, icon, count, children, className, ...r
 /* ------------------------------------------------------------------ TopBar */
 
 export interface TopBarProps {
-  /** Opens the command palette. */
+  /** Before the search, e.g. the logo and company on pages without a command palette. */
+  start?: ReactNode;
+  /** Opens the command palette. The search button shows only with it. */
   onSearch?: () => void;
   searchText?: string;
   /** Shortcut hint; "⌘ K" on Mac. */
@@ -470,6 +472,7 @@ export interface TopBarProps {
 }
 
 export function TopBar({
+  start,
   onSearch,
   searchText = 'Search people, requests, actions',
   shortcut = 'Ctrl K',
@@ -483,14 +486,17 @@ export function TopBar({
   return (
     <header className="yx-topbar">
       {shell && <IconButton icon={MenuIcon} label="Open navigation" className="yx-topbar__menu" onClick={shell.openNav} />}
+      {start}
       {/* Below 600 px the search collapses to its icon (the label stays as the accessible name). */}
-      <button type="button" className="yx-topbar__search" onClick={onSearch} aria-haspopup="dialog" aria-label={searchText}>
-        <Icon icon={Search} />
-        <span className="yx-topbar__search-text" aria-hidden="true">{searchText}</span>
-        <span className="yx-topbar__kbd">
-          <Kbd>{shortcut}</Kbd>
-        </span>
-      </button>
+      {onSearch && (
+        <button type="button" className="yx-topbar__search" onClick={onSearch} aria-haspopup="dialog" aria-label={searchText}>
+          <Icon icon={Search} />
+          <span className="yx-topbar__search-text" aria-hidden="true">{searchText}</span>
+          <span className="yx-topbar__kbd">
+            <Kbd>{shortcut}</Kbd>
+          </span>
+        </button>
+      )}
       <div className="yx-topbar__end">
         {entity && <div className="yx-topbar__entity">{entity}</div>}
         {/* Ask AI sits in the bar with the other tools, never floating over the page (R8). */}
@@ -549,9 +555,11 @@ export function ProfileMenu({
 }: ProfileMenuProps) {
   return (
     <Menu defaultOpen={defaultOpen} modal={false}>
-      <MenuTrigger className="yx-topbar__profile" aria-label={`Account menu for ${name}`}>
-        <Avatar name={name} src={photoUrl} size={32} />
-      </MenuTrigger>
+      <Tooltip content="Your account">
+        <MenuTrigger className="yx-topbar__profile" aria-label={`Account menu for ${name}`}>
+          <Avatar name={name} src={photoUrl} size={32} />
+        </MenuTrigger>
+      </Tooltip>
       <MenuContent align="end">
         <div className="yx-profile-menu__who">
           <span className="yx-profile-menu__name">{name}</span>
@@ -866,7 +874,7 @@ export function Breadcrumbs({ items, max = 4 }: { items: Crumb[]; max?: number }
             <Menu>
               <Tooltip content={`Show ${hidden.length} more`}>
                 <MenuTrigger asChild>
-                  <IconButton icon={MoreHorizontal} label={`Show ${hidden.length} more pages`} size="sm" noTooltip />
+                  <IconButton icon={MoreHorizontal} label={`Show ${hidden.length} more pages`} size="sm" />
                 </MenuTrigger>
               </Tooltip>
               <MenuContent align="start">

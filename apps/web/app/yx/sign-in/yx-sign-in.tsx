@@ -51,6 +51,8 @@ export function YxSignIn({ callback = false }: { callback?: boolean }) {
       onForgetCompany={() => void s.forgetCompany()}
       providers={s.providers}
       options={s.options}
+      optionsFailed={s.optionsFailed}
+      onRetryOptions={s.retryOptions}
       companies={s.companies}
       codeChannel={s.codeChannel}
       redirectingTo={s.redirectingTo}
@@ -62,6 +64,7 @@ export function YxSignIn({ callback = false }: { callback?: boolean }) {
       onVerifyCode={() => void s.verifyCode()}
       onRestart={s.restart}
       onMobile={s.startMobile}
+      onPasskey={s.passkeyCapable ? () => void s.passkey() : undefined}
       onSocial={(provider) => void s.social(provider)}
       onSso={(providerId) => void s.sso(providerId)}
       onPickCompany={(id) => void s.pickCompany(id)}

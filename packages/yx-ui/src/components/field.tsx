@@ -65,7 +65,10 @@ export function FormField({ label, children, required = false, optional, helper,
   const autoId = useId();
   const fieldId = id ?? `yx-field-${autoId}`;
   const [internalError, setInternalError] = useState<string | null>(null);
-  const shownError = error ?? internalError;
+  // No error under a field while the person is typing in it (founder review 8 Oct 2026): it shows again when they
+  // leave the field or press Save. One rule for every field, whatever set the error.
+  const [typing, setTyping] = useState(false);
+  const shownError = typing ? null : error ?? internalError;
   const helperId = helper ? `${fieldId}-helper` : undefined;
   const errorId = shownError ? `${fieldId}-error` : undefined;
 
@@ -80,7 +83,20 @@ export function FormField({ label, children, required = false, optional, helper,
         setInternalError,
       }}
     >
-      <div className={cx('yx-field', className)} data-invalid={shownError ? true : undefined} data-disabled={disabled || undefined}>
+      <div
+        className={cx('yx-field', className)}
+        data-invalid={shownError ? true : undefined}
+        data-disabled={disabled || undefined}
+        // Bubble phase, never capture: React flushes a capture-phase state update before it runs the
+        // input's own onChange, so the controlled input re-rendered with its old value and the browser's
+        // first keystroke (or a pasted value) was wiped (validation 8 Oct 2026). In the bubble phase this
+        // update and the input's onChange are one batch.
+        onInput={(e) => {
+          const t = e.target as HTMLElement;
+          if (t instanceof HTMLTextAreaElement || (t instanceof HTMLInputElement && !['checkbox', 'radio'].includes(t.type))) setTyping(true);
+        }}
+        onBlur={() => setTyping(false)}
+      >
         <label htmlFor={fieldId} className="yx-field__label" data-hidden={hideLabel || undefined}>
           <span>{label}</span>
           {required && <span className="yx-field__req">Required</span>}
@@ -130,11 +146,31 @@ export interface FormErrorItem {
   message: string;
 }
 
+/**
+ * "Reward early, punish late": errors show only for fields that were invalid at the last Save
+ * (`reveal`), and each one disappears as soon as it becomes valid. A field that was fine at Save
+ * never shows an error while typing; the next `reveal` re-snapshots. `reset` on Cancel / saved.
+ */
+export function useSaveErrors(errors: FormErrorItem[], initiallyShown = false) {
+  const [flagged, setFlagged] = useState<Set<string> | null>(() => (initiallyShown ? new Set(errors.map((e) => e.fieldId)) : null));
+  const shownErrors = flagged ? errors.filter((e) => flagged.has(e.fieldId)) : [];
+  return {
+    errorOf: (id: string) => shownErrors.find((e) => e.fieldId === id)?.message,
+    shownErrors,
+    showErrors: shownErrors.length > 0,
+    reveal: () => setFlagged(new Set(errors.map((e) => e.fieldId))),
+    reset: () => setFlagged(null),
+  };
+}
+
 /** Top-of-form summary for long forms; each item links to its field (§16). Receives focus when it appears. */
 export function ErrorSummary({ errors, title = 'Fix these before saving' }: { errors: FormErrorItem[]; title?: string }) {
   const ref = useRef<HTMLDivElement>(null);
+  const prev = useRef(0);
+  // Focus only when the list grows (a Save that failed), never when fixing a field shrinks it mid-typing.
   useEffect(() => {
-    if (errors.length) ref.current?.focus();
+    if (errors.length > prev.current) ref.current?.focus();
+    prev.current = errors.length;
   }, [errors.length]);
   if (!errors.length) return null;
   return (
@@ -205,4 +241,9 @@ export function Form({ onSubmit, className, ...rest }: Omit<HTMLAttributes<HTMLF
       {...rest}
     />
   );
+}
+
+/** A control inside a field that is not that field (e.g. the calendar's month / year pickers): no label, id or error from it. */
+export function NoField({ children }: { children: ReactNode }) {
+  return <FieldContext.Provider value={null}>{children}</FieldContext.Provider>;
 }

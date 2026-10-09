@@ -3,6 +3,7 @@ import * as argon2 from 'argon2';
 import { createHash } from 'crypto';
 import { AuditService, TENANT_SECURITY_FLOOR, TenantPrismaService, loadTenantSecurityPolicy } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { appUrl, button, noticeEmail, text } from '../email/account-emails';
 
 // Have I Been Pwned "Pwned Passwords" k-anonymity range API: only the first 5 hex chars of the
 // password's SHA-1 leave this process; the match is done locally against the returned suffixes.
@@ -123,8 +124,12 @@ export class PasswordPolicyService {
       const breached = await this.isBreached(password);
       if (breached === null) return;
       const context = { organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' };
-      await this.tenantPrisma.forTenant(context, (tx) =>
-        tx.user.update({ where: { id: user.id }, data: { passwordRecheckPending: false, passwordChangeRequired: breached } }),
+      const updated = await this.tenantPrisma.forTenant(context, (tx) =>
+        tx.user.update({
+          where: { id: user.id },
+          data: { passwordRecheckPending: false, passwordChangeRequired: breached },
+          select: { organization: { select: { name: true } } },
+        }),
       );
       if (!breached) return;
       await this.audit.record(context, {
@@ -133,14 +138,18 @@ export class PasswordPolicyService {
         entityType: 'user',
         entityId: user.id,
       });
-      await this.email.send({
+      const mail = await noticeEmail({
         to: user.email,
-        subject: 'Please change your YukthiX password',
-        html:
-          '<p>The password on your YukthiX account appears in a known data breach, so it is easy for others to guess.</p>' +
-          '<p>You will be asked to choose a new one the next time you sign in. You can also change it now from <b>Me &rsaquo; Security</b>; choose a password you do not use anywhere else.</p>',
-        organizationId: user.organizationId ?? undefined,
+        company: updated?.organization?.name,
+        subject: 'Change your YukthiX password',
+        heading: 'Time for a new password',
+        blocks: [
+          text('The password on your YukthiX account appears in a known data breach, so others can guess it easily.'),
+          text("You'll be asked to choose a new one the next time you sign in. You can also change it now in My security. Pick a password you don't use anywhere else."),
+          button('Open My security', appUrl('/yx/me/security')),
+        ],
       });
+      await this.email.send({ to: user.email, ...mail, organizationId: user.organizationId ?? undefined });
     } catch (error) {
       this.logger.error(`Password re-check failed for user ${user.id}`, error as Error);
     }

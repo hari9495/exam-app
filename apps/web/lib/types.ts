@@ -1060,6 +1060,8 @@ export interface BrandingResponse {
   accentColor: string | null;
   textColor: string | null;
   loginWatermarkEnabled: boolean;
+  /** The organisation's web address; only on the signed-in GET /organizations/branding. */
+  slug?: string;
 }
 
 export interface IntegrationsResponse {

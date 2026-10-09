@@ -38,13 +38,17 @@ describe('SessionsService', () => {
   let audit: { record: jest.Mock };
   let email: { send: jest.Mock };
   let service: SessionsService;
+  // Security emails are rendered asynchronously (fire-and-forget): wait for n sends.
+  const sent = async (n = 1) => {
+    for (let i = 0; i < 200 && email.send.mock.calls.length < n; i++) await new Promise((r) => setTimeout(r, 10));
+  };
 
   beforeEach(() => {
     tx = {
       session: { findFirst: jest.fn(), create: jest.fn(), findMany: jest.fn(), updateMany: jest.fn(), count: jest.fn() },
       loginEvent: { create: jest.fn(), findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
       tenantSecurityPolicy: { findUnique: jest.fn().mockResolvedValue(null) },
-      user: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn().mockResolvedValue({ timeZone: null, organization: { name: 'Kaveri <b>Foods</b>' } }) },
     };
     invalidateTenantSecurityPolicy('org-1');
     tenantPrisma = { forTenant: jest.fn(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
@@ -149,12 +153,12 @@ describe('SessionsService', () => {
 
   it('alerts every active admin of a break-glass sign-in, with request data escaped (YX-IAM-04)', async () => {
     tx.user.findMany.mockResolvedValue([{ id: 'a1', email: 'a1@x.test' }, { id: 'a2', email: 'a2@x.test' }]);
-    service.notifyBreakGlass(USER, { ...META, userAgent: '<script>x</script>' });
-    await new Promise((r) => setImmediate(r));
-    await new Promise((r) => setImmediate(r));
+    service.notifyBreakGlass(USER, { ...META, ip: '<script>x</script>' });
+    await sent(2);
     expect(tx.user.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: 'org-1', role: 'org_admin', status: 'active' } }));
     expect(email.send.mock.calls.map((c) => c[0].to)).toEqual(['a1@x.test', 'a2@x.test']);
     expect(email.send.mock.calls[0][0].html).not.toContain('<script>');
+    expect(email.send.mock.calls[0][0].html).toContain('&lt;script&gt;');
   });
 
   it('findLive rejects non-uuid ids without touching the database', async () => {
@@ -202,17 +206,62 @@ describe('SessionsService', () => {
     expect(tx.loginEvent.findMany.mock.calls[0][0].where).toEqual({ organizationId: 'org-9', result: 'failed' });
   });
 
-  it("'unsuccessful' lists every result except success and an admin unlock", async () => {
+  it("'unsuccessful' lists failures, blocks and wrong second steps, not a sent code or an admin unlock", async () => {
     await service.listLoginEvents(ORG, { result: 'unsuccessful', method: 'oidc' });
-    expect(tx.loginEvent.findMany.mock.calls[0][0].where).toMatchObject({ result: { notIn: ['success', 'unlocked'] }, method: 'oidc' });
+    expect(tx.loginEvent.findMany.mock.calls[0][0].where).toMatchObject({ result: { in: ['failed', 'locked', 'mfa_failed'] }, method: 'oidc' });
+  });
+
+  it("method 'sso' means a company identity provider of either kind", async () => {
+    await service.listLoginEvents(ORG, { method: 'sso' });
+    expect(tx.loginEvent.findMany.mock.calls[0][0].where).toMatchObject({ method: { in: ['saml', 'oidc'] } });
+  });
+
+  it("with lockState, each person's newest lock row says whether the lock still stands (from the store); older rows never", async () => {
+    const ev = (id: string, userId: string, result: string, reason: string | null = null) => ({ id, userId, identifier: ` ${userId.toUpperCase()}@x.test `, result, method: 'password', reason, createdAt: new Date() });
+    tx.loginEvent.findMany.mockResolvedValue([
+      ev('a3', 'a', 'failed', 'bad_password+lockout_started'),
+      ev('a2', 'a', 'failed', 'bad_password'),
+      ev('a1', 'a', 'locked', 'account_locked'),
+      ev('b1', 'b', 'failed', 'bad_password+lockout_started'),
+      ev('c1', 'c', 'success'),
+    ]);
+    tx.loginEvent.count.mockResolvedValue(5);
+    tx.organization = { findUnique: jest.fn().mockResolvedValue({ slug: 'Kaveri' }) };
+    const check = jest.fn(async (scope: string, id: string) => (scope === 'kaveri' && id === 'a@x.test' ? { scope: 'account', retryAfterSeconds: 60 } : null));
+    service = new SessionsService(tenantPrisma as any, audit as any, email as any, { check } as any);
+    const { data } = await service.listLoginEvents(ORG, {}, { lockState: true });
+    expect(data.map((r: any) => [r.id, r.lockActive])).toEqual([['a3', true], ['a2', false], ['a1', false], ['b1', false], ['c1', false]]);
+    // The same scopes unlockAccount clears: the company, every company (W-016), the second step and step-up.
+    expect(check.mock.calls.filter(([, id]) => id === 'b@x.test' || id === 'b').map(([scope]) => scope)).toEqual(['kaveri', '*', 'mfa', 'stepup']);
+    // The own-history path never asks the store.
+    check.mockClear();
+    await service.listLoginEvents(ORG, {});
+    expect(check).not.toHaveBeenCalled();
   });
 
   it('escapes attacker-controlled request data in notification emails', async () => {
-    service.notifyNewDevice(USER, { ...META, userAgent: '<img src=x onerror=alert(1)>' });
-    await new Promise((r) => setImmediate(r));
-    const html = email.send.mock.calls[0][0].html as string;
+    service.notifyNewDevice(USER, { ...META, ip: '<img src=x onerror=alert(1)>' });
+    await sent();
+    const { html, text, subject } = email.send.mock.calls[0][0];
+    expect(subject).toBe('New sign-in to your YukthiX account');
     expect(html).not.toContain('<img');
     expect(html).toContain('&lt;img');
+    expect(html).not.toContain('<b>Foods</b>');
+    expect(html).toContain('Kaveri &lt;b&gt;Foods&lt;/b&gt;');
+    expect(html).toContain('/yx/me/security');
+    expect(text).toContain('IP address: <img src=x onerror=alert(1)>');
     expect(email.send.mock.calls[0][0]).toMatchObject({ to: 'u@x.test', organizationId: 'org-1' });
   });
+
+  it('tells the holder when sign-in unlocks, in their time zone', async () => {
+    tx.user.findUnique.mockResolvedValue({ timeZone: 'Asia/Kolkata', organization: { name: 'Kaveri Foods' } });
+    service.notifyLocked(USER, META, 15 * 60);
+    await sent();
+    const { subject, text } = email.send.mock.calls[0][0];
+    expect(subject).toBe('Sign-in to your YukthiX account was temporarily locked');
+    expect(text).toMatch(/Unlocks: .* IST/);
+    expect(text).toContain("If this wasn't you, change your password after you sign in.");
+    expect(text).toContain('Kaveri Foods');
+  });
+
 });

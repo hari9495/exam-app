@@ -5,6 +5,7 @@ import { StepUpDialog, type MfaProof } from '@yukthix/ui/auth';
 import { apiFetch, setStepUpHandler } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
 import { passkeyAssertion } from '../../lib/yx-security';
+import { yxProofError } from '../../lib/yx-auth-messages';
 
 // Step-up (P12 YX-IAM-02): when the API refuses a sensitive action with STEP_UP_REQUIRED, this
 // asks the person to confirm it is them (the YukthiX "Confirm it's you" dialog), then apiFetch sends
@@ -42,7 +43,9 @@ export function StepUpProvider() {
 
   const token = () => tokenRef.current ?? undefined;
   const submit = async (proof: MfaProof) => {
-    await apiFetch('/auth/mfa/step-up', { method: 'POST', body: JSON.stringify(proof) }, token());
+    await apiFetch('/auth/mfa/step-up', { method: 'POST', body: JSON.stringify(proof) }, token()).catch((err) => {
+      throw yxProofError(err, proof.factor);
+    });
     finish(true);
   };
 

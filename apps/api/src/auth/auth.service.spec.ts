@@ -1010,7 +1010,7 @@ describe('AuthService', () => {
 
       tenantPrisma.forTenant.mockResolvedValueOnce(activeUser());
       await expect(service.login({ ...DTO, password: 'wrong' }, META)).rejects.toThrow('Invalid credentials');
-      expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), META);
+      expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), META, undefined);
       expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ reason: 'bad_password+lockout_started' }));
 
       sessions.notifyLocked.mockClear();
@@ -1065,7 +1065,8 @@ describe('AuthService', () => {
 
       await expect(service.login({ ...DTO, password: 'wrong' }, META)).rejects.toThrow('Invalid credentials');
       expect(loginProtection.reserve).toHaveBeenCalledWith('demo-org', 'admin@demo-org.test', META.ip, { deviceId: META.deviceId, lockExempt: true, lockout: DEFAULT_LOCKOUT });
-      expect(sessions.notifyAdmins).toHaveBeenCalledWith('org-1', 'Repeated failed sign-ins to a break-glass account', expect.stringContaining('admin@demo-org.test'));
+      expect(sessions.notifyAdmins).toHaveBeenCalledWith('org-1', 'Repeated failed sign-ins to a break-glass account', expect.any(String), expect.any(Array));
+      expect(JSON.stringify(sessions.notifyAdmins.mock.calls[0][3])).toContain('admin@demo-org.test');
       expect(sessions.notifyLocked).not.toHaveBeenCalled();
     });
 
@@ -1590,7 +1591,7 @@ describe('AuthService', () => {
         expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed', method: 'otp_email', reason: 'otp_invalid' }));
         loginProtection.registerFailure.mockResolvedValue({ failures: 10, locked: true });
         await expect(verify('000000')).rejects.toThrow(UnauthorizedException);
-        expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), META);
+        expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'user-1' }), META, undefined);
         expect(sessions.create).not.toHaveBeenCalled();
       });
 
@@ -1795,8 +1796,8 @@ describe('AuthService', () => {
       it('when the email locks, each account holder is told; a full sign-in clears the lock and trusts the device', async () => {
         loginProtection.registerFailure.mockResolvedValue({ failures: 10, locked: true });
         await expect(login('not-the-password')).rejects.toThrow(UnauthorizedException);
-        expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'u-kaveri' }), META);
-        expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'u-ashok' }), META);
+        expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'u-kaveri' }), META, undefined);
+        expect(sessions.notifyLocked).toHaveBeenCalledWith(expect.objectContaining({ id: 'u-ashok' }), META, undefined);
         expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u-kaveri', reason: 'bad_password+lockout_started' }));
 
         await login('kaveri-password');
@@ -1951,6 +1952,21 @@ describe('AuthService', () => {
       expect(prisma.passwordResetToken.create).toHaveBeenCalledTimes(2);
       expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ to: EMAIL, subject: 'Reset your Kaveri Foods password', organizationId: 'org-kaveri' }));
       expect(emailService.send).toHaveBeenCalledWith(expect.objectContaining({ subject: 'Reset your Ashok Textiles password', organizationId: 'org-ashok' }));
+      // Asked on the YukthiX page: the link opens the YukthiX reset page, not the older app's.
+      expect(emailService.send.mock.calls[0][0].html).toMatch(/\/yx\/reset-password\/[a-f0-9]{64}"/);
+    });
+
+    it('every reset link goes to the YukthiX reset page, with or without a typed company code', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'demo-org', status: 'active' });
+      tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', email: 'admin@demo-org.test', organizationId: 'org-1' });
+      prisma.passwordResetToken.create.mockResolvedValue({});
+      await service.forgotPassword({ organizationSlug: 'demo-org', email: 'admin@demo-org.test' }, true);
+      await service.forgotPassword({ organizationSlug: 'demo-org', email: 'admin@demo-org.test' });
+      await new Promise((resolve) => setImmediate(resolve));
+      for (const [call] of emailService.send.mock.calls) {
+        expect(call.html).toMatch(/\/yx\/reset-password\/[0-9a-f]{64}/);
+        expect(call.html).not.toMatch(/(?<!\/yx)\/reset-password\//);
+      }
     });
 
     // W-005: YukthiX platform staff are never reachable through a company sign-in.

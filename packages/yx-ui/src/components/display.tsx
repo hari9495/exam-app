@@ -2,6 +2,7 @@ import type { HTMLAttributes, ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { initials } from '../lib/format';
+import { Tooltip } from './tooltip';
 import { Icon } from './foundations';
 
 export type BadgeTone = 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'ai';
@@ -35,9 +36,11 @@ export function Tag({ children, onRemove, removeLabel }: TagProps) {
     <span className="yx-tag">
       <span>{children}</span>
       {onRemove && (
-        <button type="button" className="yx-tag__remove" onClick={onRemove} aria-label={removeLabel ?? `Remove ${typeof children === 'string' ? children : ''}`.trim()}>
-          <Icon icon={X} />
-        </button>
+        <Tooltip content={removeLabel ?? `Remove ${typeof children === 'string' ? children : ''}`.trim()}>
+          <button type="button" className="yx-tag__remove" onClick={onRemove} aria-label={removeLabel ?? `Remove ${typeof children === 'string' ? children : ''}`.trim()}>
+            <Icon icon={X} />
+          </button>
+        </Tooltip>
       )}
     </span>
   );

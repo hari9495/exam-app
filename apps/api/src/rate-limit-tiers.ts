@@ -13,6 +13,13 @@ const isTest = process.env.NODE_ENV === 'test';
 export const DEFAULT_THROTTLE_LIMIT = isTest ? 10_000 : 100;
 
 export const STRICT_AUTH_THROTTLE = { default: { limit: isTest ? 10_000 : 5, ttl: seconds(60) } };
+// Sign-in endpoints (CredentialThrottlerGuard): per IP + account, and an IP-wide ceiling over all of
+// them. Both sit above the brute-force controls (login-protection.service: account lock at 10
+// failures, IP block at 30 in 15 min) so those always fire first; this only caps raw volume.
+export const CREDENTIAL_THROTTLE_LIMITS = { perAccount: 10, perIp: 120, ttl: seconds(60) };
+export const CREDENTIAL_THROTTLE = isTest ? { ...CREDENTIAL_THROTTLE_LIMITS, perAccount: 10_000, perIp: 10_000 } : CREDENTIAL_THROTTLE_LIMITS;
+// POST /auth/refresh: per session (RefreshThrottlerGuard), so a shared office IP or several tabs keep their own budget.
+export const REFRESH_THROTTLE = { default: { limit: isTest ? 10_000 : 30, ttl: seconds(60) } };
 export const STRICT_AI_GENERATE_THROTTLE = { default: { limit: isTest ? 10_000 : 10, ttl: seconds(60) } };
 export const MODERATE_UPLOAD_THROTTLE = { default: { limit: isTest ? 10_000 : 10, ttl: seconds(60) } };
 export const PUBLIC_API_THROTTLE = { default: { limit: isTest ? 10_000 : 60, ttl: seconds(60) } };

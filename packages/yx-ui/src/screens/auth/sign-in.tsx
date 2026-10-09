@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react';
-import { Smartphone } from 'lucide-react';
+import { Fingerprint, KeyRound, Smartphone } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Avatar } from '../../components/display';
 import { InlineAlert } from '../../components/feedback';
@@ -12,7 +12,7 @@ import type { SignInOptions, SsoProviderOption } from './types';
 
 /**
  * The YukthiX sign-in (founder request 7 Oct 2026): work email + Continue, then "or" and the other
- * ways in -- a mobile number, Microsoft, Google -- each shown only when it is on.
+ * ways in -- a passkey, a mobile number, Microsoft, Google -- each shown only when it is on.
  *  - email: identify -> the company's sign-in page, or password / emailed code;
  *  - mobile: number -> a code by SMS or WhatsApp;
  *  - Microsoft / Google: their sign-in page, back through the callback ('redirecting').
@@ -50,6 +50,9 @@ export interface SignInScreenProps {
   providers: SsoProviderOption[];
   /** The other ways in. Omitted: only the work email. */
   options?: SignInOptions;
+  /** The other ways in could not be loaded (after retrying): a quiet line with "Try again" instead of nothing. */
+  optionsFailed?: boolean;
+  onRetryOptions?: () => void;
   /** Step choose-company: the companies the sign-in opened. */
   companies?: CompanyOption[];
   /** Step mobile-code: how the code went. */
@@ -66,6 +69,8 @@ export interface SignInScreenProps {
   onVerifyCode: () => void;
   /** Back to step identify. */
   onRestart: () => void;
+  /** "Sign in with a passkey": pass it only where this browser supports passkeys. The work-email field also offers passkeys in its autofill (the host starts that request). */
+  onPasskey?: () => void;
   /** "Continue with mobile". */
   onMobile?: () => void;
   onSocial?: (provider: SocialProvider) => void;
@@ -85,6 +90,7 @@ export function SignInScreen(props: SignInScreenProps) {
   const { step, fields, onFieldChange: set, providers, options, busy, error, company } = props;
   const identifier = fields.identifier.trim();
   const mobile = fields.mobile.trim();
+  const passkeyOn = Boolean(options?.passkey && props.onPasskey);
   const mobileOn = Boolean(options && (options.sms || options.whatsapp) && props.onMobile);
   // A company's own Google / Microsoft provider replaces YukthiX's button (one button each).
   const googleOn = Boolean(options?.google && props.onSocial) && !providers.some((p) => p.type === 'oidc_google');
@@ -107,18 +113,27 @@ export function SignInScreen(props: SignInScreenProps) {
   );
   const alert = error && <InlineAlert tone="danger">{error}</InlineAlert>;
   const companyButtons = providers.map((p) => (
-    <Button key={p.id} fullWidth size="lg" disabled={busy} onClick={() => props.onSso(p.id)}>{providerButtonLabel(p)}</Button>
+    <Button key={p.id} fullWidth size="lg" icon={KeyRound} disabled={busy} onClick={() => props.onSso(p.id)}>{providerButtonLabel(p)}</Button>
   ));
-  const otherWays = (mobileOn || googleOn || microsoftOn || providers.length > 0) && (
+  const otherWays = (passkeyOn || mobileOn || googleOn || microsoftOn || providers.length > 0) && (
     <>
       <div className="yx-auth__divider" role="separator"><span>or</span></div>
       <div className="yx-auth__ways" role="group" aria-label="Other ways to sign in">
+        {passkeyOn && <Button fullWidth size="lg" icon={Fingerprint} disabled={busy} onClick={props.onPasskey}>Sign in with a passkey</Button>}
         {mobileOn && <Button fullWidth size="lg" icon={Smartphone} disabled={busy} onClick={props.onMobile}>Continue with mobile</Button>}
         {microsoftOn && <Button fullWidth size="lg" icon={MicrosoftMark} disabled={busy} onClick={() => props.onSocial!('microsoft')}>Continue with Microsoft</Button>}
         {googleOn && <Button fullWidth size="lg" icon={GoogleMark} disabled={busy} onClick={() => props.onSocial!('google')}>Continue with Google</Button>}
         {companyButtons}
       </div>
     </>
+  );
+  const optionsFailedLine = props.optionsFailed && props.onRetryOptions && (
+    <Text as="p" size="sm" tone="secondary" className="yx-auth__options-failed" role="status">
+      Couldn&apos;t load other sign-in methods ·{' '}
+      <Link asChild>
+        <button type="button" onClick={props.onRetryOptions}>Try again</button>
+      </Link>
+    </Text>
   );
 
   const title = step === 'choose-company' ? 'Choose your company' : 'Sign in';
@@ -167,11 +182,12 @@ export function SignInScreen(props: SignInScreenProps) {
           {step === 'identify' && (
             <>
               <FormField label="Work email" required>
-                <TextField type="email" value={fields.identifier} onChange={(v) => set('identifier', v)} autoComplete="username" spellCheck={false} autoCapitalize="none" />
+                <TextField type="email" value={fields.identifier} onChange={(v) => set('identifier', v)} autoComplete="username webauthn" spellCheck={false} autoCapitalize="none" />
               </FormField>
               {alert}
               <Button type="submit" variant="primary" fullWidth size="lg" loading={busy} disabled={!identifier.includes('@')}>Continue</Button>
               {otherWays}
+              {optionsFailedLine}
             </>
           )}
 
@@ -238,6 +254,41 @@ export function SignInScreen(props: SignInScreenProps) {
   );
 }
 
+export interface StaffSignInScreenProps {
+  email: string;
+  password: string;
+  onEmailChange: (value: string) => void;
+  onPasswordChange: (value: string) => void;
+  onSubmit: () => void;
+  busy?: boolean;
+  error?: string | null;
+}
+
+/**
+ * YukthiX platform staff only (P12 Q7): email and password, then a hardware security key. Its own
+ * page, never linked from the company sign-in; company accounts cannot sign in here.
+ */
+export function StaffSignInScreen({ email, password, onEmailChange, onPasswordChange, onSubmit, busy, error }: StaffSignInScreenProps) {
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    onSubmit();
+  };
+  return (
+    <AuthFrame title="YukthiX staff sign-in" subtitle="For YukthiX platform staff. Have your security key ready.">
+      <form className="yx-auth__form" onSubmit={submit} noValidate>
+        <FormField label="Staff email" required>
+          <TextField type="email" value={email} onChange={onEmailChange} autoComplete="username" spellCheck={false} autoCapitalize="none" />
+        </FormField>
+        <FormField label="Password" required>
+          <PasswordField value={password} onChange={onPasswordChange} autoComplete="current-password" />
+        </FormField>
+        {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+        <Button type="submit" variant="primary" fullWidth size="lg" loading={busy} disabled={!email.includes('@') || !password}>Continue</Button>
+      </form>
+    </AuthFrame>
+  );
+}
+
 export interface ForgotPasswordScreenProps {
   email: string;
   onEmailChange: (value: string) => void;
@@ -272,6 +323,63 @@ export function ForgotPasswordScreen({ email, onEmailChange, onSubmit, sent, bus
           <Link href={signInHref}>Back to sign in</Link>
         </form>
       )}
+    </AuthFrame>
+  );
+}
+
+export interface ResetPasswordScreenProps {
+  password: string;
+  confirm: string;
+  onPasswordChange: (value: string) => void;
+  onConfirmChange: (value: string) => void;
+  onSubmit: () => void;
+  /** The new password is set. */
+  done: boolean;
+  busy?: boolean;
+  /** The API's answer as one sentence (too short, breached, link expired). */
+  error?: string | null;
+  /** Company minimum; YukthiX never allows fewer than 12. */
+  minLength?: number;
+  signInHref: string;
+  forgotHref: string;
+}
+
+/** The page the reset email links to: a new password twice, then back to sign in. The API checks length and breach lists. */
+export function ResetPasswordScreen({ password, confirm, onPasswordChange, onConfirmChange, onSubmit, done, busy, error, minLength = 12, signInHref, forgotHref }: ResetPasswordScreenProps) {
+  const mismatch = confirm.length > 0 && confirm !== password;
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!mismatch) onSubmit();
+  };
+  if (done) {
+    return (
+      <AuthFrame title="Password changed">
+        <div className="yx-auth__form">
+          <Text as="p" role="status">Your new password works now. You were signed out on every device, so sign in again.</Text>
+          <Button asChild variant="primary" fullWidth>
+            <a href={signInHref}>Sign in</a>
+          </Button>
+        </div>
+      </AuthFrame>
+    );
+  }
+  return (
+    <AuthFrame title="Choose a new password" subtitle={`At least ${minLength} characters. Passwords found in known breaches are refused.`}>
+      <form className="yx-auth__form" onSubmit={submit} noValidate>
+        <FormField label="New password" required>
+          <PasswordField value={password} onChange={onPasswordChange} autoComplete="new-password" />
+        </FormField>
+        <FormField label="Type it again" required error={mismatch ? 'The two passwords are not the same' : undefined}>
+          <PasswordField value={confirm} onChange={onConfirmChange} autoComplete="new-password" />
+        </FormField>
+        {error && (
+          <InlineAlert tone="danger">
+            {error} {/expired|invalid/i.test(error) && <Link href={forgotHref}>Get a new link</Link>}
+          </InlineAlert>
+        )}
+        <Button type="submit" variant="primary" fullWidth loading={busy} disabled={!password || !confirm || mismatch}>Save new password</Button>
+        <Link href={signInHref}>Back to sign in</Link>
+      </form>
     </AuthFrame>
   );
 }

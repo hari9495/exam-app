@@ -204,7 +204,7 @@ describe('Password floor and tenant security policy (P12 YX-IAM-04/06/08/09)', (
         const after = await tenantPrisma.forTenant(SUPER, (tx) => tx.user.findUniqueOrThrow({ where: { id: flagged.id } }));
         expect(after).toMatchObject({ passwordRecheckPending: false, passwordChangeRequired: true });
         expect(await auditActions(orgA().id, 'password.breached_on_recheck')).toEqual([expect.objectContaining({ entityId: flagged.id })]);
-        expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: victim, subject: 'Please change your YukthiX password' }));
+        expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: victim, subject: 'Change your YukthiX password' }));
         // Every later sign-in with it is refused the same way, until it is changed.
         await login(orgA().slug, victim, { password: weakButLong }).expect(403);
         await request(server()).post('/api/v1/auth/reset-password').send({ token: forced.body.resetToken, newPassword: 'a-much-better-passphrase-77' }).expect(200);

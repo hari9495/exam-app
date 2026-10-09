@@ -45,6 +45,8 @@ export interface BrandingResponse {
   primaryColor: string | null;
   accentColor: string | null;
   textColor: string | null;
+  // The organisation's web address (only on the signed-in GET /organizations/branding).
+  slug?: string;
   // When true (and a logo is set), the login page renders the org logo as a tone-on-tone
   // watermark on the navy panel. Exposed on the public branding endpoint too -- it's just a
   // boolean, safe pre-login.
@@ -212,11 +214,16 @@ export class OrganizationsService {
     // render as a blank cell, which reads as a rendering bug rather than as
     // "no name recorded".
     const adminName = dto.adminName?.trim() || null;
-    const admin = await this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: true }, (tx) =>
-      tx.user.create({
+    const admin = await this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: true }, async (tx) => {
+      // P01 YX-ORG-01: a company always has a default legal entity (India home region, P21), named after it
+      // until the admin fills in the registered details.
+      await tx.legalEntity.create({
+        data: { organizationId: org.id, name: org.name.slice(0, 200), shortName: org.slug.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+/, '').slice(0, 30) || 'MAIN', isDefault: true },
+      });
+      return tx.user.create({
         data: { organizationId: org.id, email: dto.adminEmail, name: adminName, passwordHash, role: 'org_admin' },
-      }),
-    );
+      });
+    });
 
     const rawToken = randomBytes(32).toString('hex');
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');
@@ -244,7 +251,7 @@ export class OrganizationsService {
   }
 
   private async dispatchWelcomeEmail(email: string, rawToken: string): Promise<void> {
-    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password/${rawToken}`;
+    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/reset-password/${rawToken}`;
     await this.emailService.send({
       to: email,
       subject: 'Welcome — set up your account',
@@ -440,7 +447,9 @@ export class OrganizationsService {
   async getBranding(context: TenantContext): Promise<BrandingResponse> {
     const organizationId = this.requireOrganizationId(context);
     const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
-    return this.toBrandingResponse(org!);
+    // The slug too: settings pages build the SAML metadata URL from it, and the sign-in context has
+    // none for anyone who signed in with just an email.
+    return { ...(await this.toBrandingResponse(org!)), slug: org!.slug };
   }
 
   async updateBrandingColors(context: TenantContext, actorUserId: string, dto: UpdateBrandingColorsDto): Promise<BrandingResponse> {

@@ -40,9 +40,10 @@ describe('StepUpProvider', () => {
     render(<StepUpProvider />);
     const action = apiFetch('/security/policy', { method: 'PATCH', body: '{}' }, 'tok');
 
+    await userEvent.click(await screen.findByRole('button', { name: 'Authenticator app' })); // the method cards
     await userEvent.type(await screen.findByLabelText(/6-digit code from your authenticator app/), '000000');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('That verification did not work');
+    expect(await screen.findByRole('alert')).toHaveTextContent("That code didn't work. Check it and try again.");
 
     await userEvent.clear(screen.getByLabelText(/6-digit code from your authenticator app/));
     await userEvent.type(screen.getByLabelText(/6-digit code from your authenticator app/), '123456');
@@ -53,9 +54,19 @@ describe('StepUpProvider', () => {
     await waitFor(() => expect(screen.queryByText("Confirm it's you")).not.toBeInTheDocument());
   });
 
+  it('a used or wrong recovery code says only that it did not work and may be used', async () => {
+    render(<StepUpProvider />);
+    void apiFetch('/security/policy', { method: 'PATCH', body: '{}' }, 'tok').catch(() => undefined);
+    await userEvent.click(await screen.findByRole('button', { name: 'Recovery code' }));
+    await userEvent.type(await screen.findByLabelText(/Recovery code/), 'aaaa-bbbb-cccc-dddd');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("That recovery code didn't work. It may already be used — try another one.");
+  });
+
   it('dismissing the prompt fails the action with the server message, without a retry', async () => {
     render(<StepUpProvider />);
     const outcome = apiFetch('/organizations/integrations/api-key', { method: 'POST' }, 'tok').catch((error: unknown) => error);
+    await userEvent.click(await screen.findByRole('button', { name: 'Authenticator app' })); // the method cards
     await screen.findByLabelText(/6-digit code from your authenticator app/);
     await userEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(await outcome).toMatchObject({ status: 403, code: 'STEP_UP_REQUIRED' });

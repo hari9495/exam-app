@@ -8,6 +8,9 @@ export const NON_ASSIGNABLE_PERMISSION_KEYS = [
   'platform:manage_organizations',
   'org:manage_users',
   'org:manage_billing',
+  // P02 §4.2: who holds which role is the System Admin's (org_admin); a role handing it on would let a grant
+  // grant itself more.
+  'access.role.manage',
 ] as const;
 
 export function isAssignableKey(key: string): boolean {

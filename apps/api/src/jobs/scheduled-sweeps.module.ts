@@ -11,6 +11,8 @@ import { ApiUsageModule } from '../api-usage/api-usage.module';
 import { FaceEnrolmentModule } from '../face-enrolment/face-enrolment.module';
 import { ProctoringRetentionModule } from '../proctoring-retention/proctoring-retention.module';
 import { DripModule } from '../drip/drip.module';
+import { EmployeeHistoryModule } from '../employee-history/employee-history.module';
+import { PeopleModule } from '../people/people.module';
 import { AuthModule } from '../auth/auth.module';
 
 // Runs every recurring housekeeping sweep as a cron-driven BullMQ job scheduler (one dispatcher
@@ -28,6 +30,8 @@ import { AuthModule } from '../auth/auth.module';
     FaceEnrolmentModule,
     ProctoringRetentionModule,
     DripModule,
+    EmployeeHistoryModule,
+    PeopleModule,
     AuthModule,
   ],
   providers: [

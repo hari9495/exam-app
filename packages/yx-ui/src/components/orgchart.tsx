@@ -107,6 +107,8 @@ export interface OrgChartProps {
   onRequestHire?: (position: OrgPerson) => void;
   /** Open the desktop tree on `meId` (employees). HR opens on the top of the company. */
   openOnMe?: boolean;
+  /** Views offered (default all three); companies without positions leave out 'position'. */
+  views?: OrgView[];
 }
 
 const VIEWS: { id: OrgView; label: string }[] = [
@@ -134,6 +136,7 @@ export function OrgChart({
   meId,
   onRequestHire,
   openOnMe = true,
+  views = ['reporting', 'department', 'position'],
 }: OrgChartProps) {
   // Open on the signed-in person when there is one (founder review 1 Oct 2026).
   const startAt = defaultSelected ?? (openOnMe ? meId : undefined);
@@ -375,7 +378,7 @@ export function OrgChart({
 
   const viewSwitch = (
     <ButtonGroup aria-label="Chart view" className="yx-org__views">
-      {VIEWS.map((v) => (
+      {VIEWS.filter((v) => views.includes(v.id)).map((v) => (
         <Button key={v.id} size="sm" aria-pressed={view === v.id} onClick={() => setView(v.id)}>
           {v.label}
         </Button>

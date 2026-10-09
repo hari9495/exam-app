@@ -1,4 +1,6 @@
 import { humanizeHttpError, NetworkError } from './http-error-message';
+import { goTo } from './navigate';
+import { withNextHere } from './safe-next';
 
 // Exported for public, unauthenticated pages (e.g. the candidate apply/status pages) that hit
 // the backend with plain fetch instead of apiFetch -- there's no access token to attach.
@@ -37,6 +39,8 @@ const NO_REFRESH_PATHS = new Set([
   '/auth/mfa/verify',
   '/auth/mfa/passkey-options',
   '/auth/mfa/step-up',
+  // A wrong current password, not an expired session.
+  '/users/me/change-password',
 ]);
 
 // An error body can be read once; remember it for throwForResponse.
@@ -72,15 +76,63 @@ async function doFetch(path: string, options: RequestInit, accessToken?: string)
   }
 }
 
+const DETAIL_FIELDS = ['personIds', 'clashes', 'retryAfterSeconds'] as const;
+
 async function throwForResponse(response: Response): Promise<never> {
   const body = await errorBody(response);
-  const error = new Error(humanizeHttpError(response.status, body.message as string | undefined)) as Error & { status?: number; code?: string };
+  const error = new Error(humanizeHttpError(response.status, body.message as string | undefined)) as Error & { status?: number; code?: string; body?: Record<string, unknown> };
   error.status = response.status;
+  // Structured refusals screens act on (POSSIBLE_SAME_PERSON's personIds, EMPLOYEE_CODE_CLASHES' clashes).
+  // An allowlist: other fields (a password-reset token) never ride along on the error object.
+  const details = Object.fromEntries(DETAIL_FIELDS.filter((k) => k in body).map((k) => [k, body[k]]));
+  if (Object.keys(details).length) error.body = details;
   if (typeof body.code === 'string') error.code = body.code;
   if (body.code === PASSWORD_CHANGE_REQUIRED && typeof body.resetToken === 'string' && /^[0-9a-f]{64}$/.test(body.resetToken) && typeof window !== 'undefined') {
-    window.location.assign(`/reset-password/${body.resetToken}`);
+    window.location.assign(`/yx/reset-password/${body.resetToken}`);
   }
   throw error;
+}
+
+// Set when a YukthiX platform staff (super_admin) token is applied, so a dead staff session goes
+// back to the staff sign-in rather than the company one (founder decision 7 Oct 2026).
+export const STAFF_SESSION_KEY = 'staffSession';
+export const STAFF_SIGN_IN = '/staff/sign-in';
+
+/** Where this tab signs in again: the staff page for platform staff, else the YukthiX sign-in. */
+export function signInPath(): string {
+  if (typeof window === 'undefined') return '/yx/sign-in';
+  return window.location.pathname.startsWith('/staff') || window.sessionStorage.getItem(STAFF_SESSION_KEY) === '1' ? STAFF_SIGN_IN : '/yx/sign-in';
+}
+
+// One /auth/refresh shared by every request that hits a 401 at the same time: refresh tokens rotate
+// on every use, and the endpoint is strictly rate-limited.
+let refreshInFlight: Promise<string | null> | null = null;
+function refreshOnce(): Promise<string | null> {
+  if (!refreshInFlight) {
+    refreshInFlight = unauthorizedHandler!()
+      .catch(() => null)
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+}
+
+let sentToSignIn = false;
+/** The session is over (refresh refused, rate-limited or unreachable): stop and sign in again, once,
+ * then come back here (?next=, validated again by the sign-in). */
+function sendToSignIn() {
+  if (sentToSignIn || typeof window === 'undefined') return;
+  const target = signInPath();
+  if (window.location.pathname === target) return;
+  sentToSignIn = true;
+  goTo(withNextHere(target));
+}
+
+/** Test hook: forget a previous send-to-sign-in. */
+export function resetSessionState() {
+  sentToSignIn = false;
+  refreshInFlight = null;
 }
 
 export async function apiFetch(path: string, options: RequestInit = {}, accessToken?: string) {
@@ -88,22 +140,19 @@ export async function apiFetch(path: string, options: RequestInit = {}, accessTo
   let response = await doFetch(path, options, token);
   let code = await errorCode(response);
 
-  // 403 alongside 401: a role change made elsewhere leaves this tab holding a
-  // still-valid-but-stale access token, so a now-permitted request server-side
-  // denies with 403 (not 401) until that token is replaced. One retry through the
-  // same refresh handler picks up the current role instead of failing outright.
-  // Exclude the refresh endpoint itself: the registered unauthorized handler
-  // (AuthProvider's silentRefresh) calls this same endpoint, so retrying a
-  // failed refresh through the handler would recurse into itself forever.
-  // A 401 from the login endpoint means bad credentials, NOT an expired session — running the
-  // refresh handler there is pointless (no session yet) and, if refresh itself errors, masks the
-  // real "Invalid credentials" message. Exclude it alongside the refresh endpoint.
-  if ((response.status === 401 || (response.status === 403 && !code)) && unauthorizedHandler && !NO_REFRESH_PATHS.has(path)) {
-    const freshToken = await unauthorizedHandler();
-    if (freshToken) {
+  // Only a 401 means the access token expired. A 403 is the server's answer (no permission, or an
+  // MFA floor) and a refresh cannot change it; refreshing on 403 looped with every query that a
+  // permission profile is denied (and a role change reaches this tab through the scheduled refresh
+  // in AuthProvider instead). One refresh, one retry: if the refresh fails (401, 429, network) or
+  // hands back the token that was just refused, the session is over and the person signs in again.
+  if (response.status === 401 && unauthorizedHandler && !NO_REFRESH_PATHS.has(path)) {
+    const freshToken = await refreshOnce();
+    if (freshToken && freshToken !== token) {
       token = freshToken;
       response = await doFetch(path, options, token);
       code = await errorCode(response);
+    } else if (token) {
+      sendToSignIn();
     }
   }
 

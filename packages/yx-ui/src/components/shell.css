@@ -242,8 +242,10 @@
   border: 0; border-bottom: var(--yx-focus-width) solid transparent; background: none;
   color: var(--yx-color-text-secondary); font: inherit; font-size: var(--yx-text-body); white-space: nowrap; cursor: pointer;
 }
-.yx-tabs__trigger:hover { color: var(--yx-color-text); }
-.yx-tabs__trigger[data-state="active"] { color: var(--yx-color-text); font-weight: var(--yx-weight-medium); border-bottom-color: var(--yx-color-action-primary); }
+.yx-tabs__trigger { border-radius: var(--yx-radius-control) var(--yx-radius-control) 0 0; padding: 0 var(--yx-space-2); }
+/* Hover reads as "you can click this": a tint and a grey underline; the current tab keeps its blue bar (founder review 7 Oct 2026). */
+.yx-tabs__trigger:hover:not([data-state="active"]):not([data-disabled]) { color: var(--yx-color-text); background: var(--yx-color-bg-subtle); border-bottom-color: var(--yx-color-border-input); }
+.yx-tabs__trigger[data-state="active"] { color: var(--yx-color-action-primary); font-weight: var(--yx-weight-medium); border-bottom-color: var(--yx-color-action-primary); }
 .yx-tabs__trigger[data-disabled] { color: var(--yx-color-text-disabled); cursor: not-allowed; }
 .yx-tabs__trigger:focus-visible { outline-offset: calc(var(--yx-focus-width) * -1); }
 .yx-tabs__count {
@@ -383,7 +385,7 @@
 .yx-scope {
   display: inline-flex; align-items: center; gap: var(--yx-space-2); min-width: 0; max-width: calc(var(--yx-space-16) * 7);
   height: var(--yx-control-sm); padding: 0 var(--yx-space-2) 0 var(--yx-space-3);
-  border: var(--yx-border-width) solid var(--yx-color-border-strong); border-radius: var(--yx-radius-control);
+  border: var(--yx-border-width) solid var(--yx-color-border-input); border-radius: var(--yx-radius-control);
   background: var(--yx-color-bg-surface); color: var(--yx-color-text); font: inherit; font-size: var(--yx-text-sm); cursor: pointer;
 }
 .yx-scope:hover { background: var(--yx-color-bg-subtle); }
@@ -392,7 +394,8 @@
 .yx-scope__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .yx-scope__period { flex: none; color: var(--yx-color-text-secondary); }
 .yx-scope__lock { display: inline-flex; align-items: center; gap: var(--yx-space-1); flex: none; color: var(--yx-color-warning-text); font-weight: var(--yx-weight-medium); }
-.yx-scope[data-locked] { border-color: var(--yx-color-warning-border); }
+.yx-scope[data-locked] { border-color: var(--yx-color-warning-border); background: var(--yx-color-warning-bg); } /* filled: the amber edge alone is under 3:1 */
+.yx-scope[data-locked]:hover { border-color: var(--yx-color-warning-text); }
 .yx-scope__panel { display: flex; flex-direction: column; gap: var(--yx-space-2); width: min(calc(var(--yx-space-16) * 5), calc(100vw - var(--yx-space-8))); padding: var(--yx-space-4); }
 .yx-scope__field { font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); }
 .yx-scope__field:not(:first-child) { margin-top: var(--yx-space-2); }
@@ -403,3 +406,8 @@
 .yx-palette__empty > p { margin: 0; }
 .yx-palette__empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--yx-space-2); margin-top: var(--yx-space-3); }
 .yx-palette__clear { margin-left: auto; }
+
+/* Affordance pass (founder review 7 Oct 2026): every clickable part of the shell answers the pointer. */
+.yx-topbar__profile:hover { box-shadow: 0 0 0 var(--yx-focus-width) var(--yx-color-border-input); }
+.yx-mobile-tabs__item:hover:not([data-active]) { background: var(--yx-color-bg-subtle); color: var(--yx-color-text); }
+.yx-org-picker__item:hover:not([data-active]) { background: var(--yx-color-bg-subtle); }

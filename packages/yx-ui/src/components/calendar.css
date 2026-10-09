@@ -33,7 +33,7 @@
   padding: 0 var(--yx-space-1);
   border: 0;
   border-radius: var(--yx-radius-badge);
-  background: transparent;
+  background: var(--yx-color-bg-selected); /* a filled pill reads as clickable on weekday and weekend cells (7 Oct 2026) */
   color: var(--yx-color-text);
   font: inherit;
   font-size: var(--yx-text-xs);
@@ -41,7 +41,7 @@
   text-align: left;
   cursor: pointer;
 }
-.yx-cal__chip:hover { background: var(--yx-color-bg-subtle); }
+.yx-cal__chip:hover { box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-color-action-primary); }
 /* Not approved yet: a dashed outline instead of a text suffix that gets cut off. */
 .yx-cal__chip[data-pending] { outline: var(--yx-border-width) dashed var(--yx-color-border-strong); outline-offset: calc(var(--yx-border-width) * -1); }
 /* Pending: a hollow dot, as in the people × days legend. */
@@ -127,7 +127,7 @@
   align-items: flex-start;
   overflow: hidden;
   padding: var(--yx-space-1);
-  border: var(--yx-border-width) solid var(--yx-color-border-strong);
+  border: var(--yx-border-width) solid var(--yx-color-border-input);
   border-radius: var(--yx-radius-badge);
   background: var(--yx-color-bg-raised);
   color: var(--yx-color-text);
@@ -220,3 +220,7 @@ thead .yx-teamcal__person { font-size: var(--yx-text-xs); font-weight: var(--yx-
   .yx-cal__daylist { display: block; }
   .yx-cal__colhead { padding: var(--yx-space-1); text-align: center; }
 }
+
+.yx-cal__day[tabindex]:hover:not([aria-selected="true"]) { box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-color-border-input); }
+.yx-cal__tg-open { color: var(--yx-color-link); }
+.yx-cal__tg-event:hover { border-color: var(--yx-color-text-muted); }

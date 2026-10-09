@@ -1,5 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
+import { seedOrgStructure } from './seed-org-structure';
+import { seedEmployees } from './seed-employees';
+import { seedAccess } from './seed-access';
+import { CONSULTANT, seedSignInDemo } from './seed-sign-in';
 
 const prisma = new PrismaClient();
 
@@ -26,6 +30,30 @@ export const PERMISSIONS = [
   // list/detail GET routes accept EITHER the :manage or the :view key (RequireAnyPermission).
   { key: 'candidate:view', description: 'View candidates (read-only)' },
   { key: 'question_bank:view', description: 'View the question bank (read-only)' },
+  // YukthiX organisation structure (P01) and the P02 classes it touches.
+  { key: 'org.structure.view', description: 'View legal entities, locations, departments and other structure masters' },
+  { key: 'org.settings.manage', description: 'Change legal entities, locations, structure masters and company settings' },
+  { key: 'org.entity.statutory.manage', description: 'View and change legal entity PAN, TAN, GSTIN and CIN (Confidential)' },
+  { key: 'pay.range.view', description: 'View grade pay ranges (pay data)' },
+  { key: 'pay.range.manage', description: 'Change grade pay ranges (pay data)' },
+  // YukthiX employee core and job history (P01 §4.4, P06).
+  { key: 'employee.profile.view', description: 'View every employee record and job history' },
+  { key: 'employee.change.manage', description: 'Add employees and raise, edit or cancel job changes' },
+  { key: 'employee.change.approve', description: 'Approve or reject job changes raised by someone else' },
+  { key: 'employee.change.retro', description: 'Raise or approve past-dated job changes' },
+  { key: 'employee.change.retro_override', description: 'Go back before the company retro limit, with a reason' },
+  { key: 'employee.salary.view', description: 'View employee pay (CTC)' },
+  { key: 'employee.salary.manage', description: 'Change employee pay (CTC)' },
+  // P02 YX-SEC-27 / M01 §3.10: managers raise job changes for their team; HR approves.
+  { key: 'request.raise_on_behalf', description: 'Raise promotions, transfers and manager changes for people in your team' },
+  // P02 §4.2–4.5 (step 2d): who holds which role, and the Personal / Confidential / Special classes.
+  { key: 'access.role.manage', description: 'Grant and revoke roles with their scope (Roles & access)' },
+  { key: 'employee.personal.view', description: 'View personal details (date of birth, personal contact, address)' },
+  { key: 'employee.profile.edit', description: 'Edit personal details for someone else' },
+  { key: 'employee.identity.view', description: 'View identity and bank details (masked; full value with an audited reveal)' },
+  { key: 'employee.identity.manage', description: 'Raise identity, bank and legal-name changes for someone else' },
+  { key: 'employee.identity.approve', description: 'Approve identity, bank and legal-name changes raised by someone else' },
+  { key: 'employee.aadhaar.view', description: 'View Aadhaar in full (Special, every view recorded)' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -49,6 +77,19 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'approvals:configure',
     'pipelines:configure',
     'users:manage_groups',
+    // P02 Q1: the System Admin runs the structure but sees no Confidential or pay data unless granted.
+    'org.structure.view',
+    'org.settings.manage',
+    // P06: the System Admin runs job history (Internal facts) and is the YX-HIS-12 override; no pay (Q1).
+    'employee.profile.view',
+    'employee.change.manage',
+    'employee.change.approve',
+    'employee.change.retro',
+    'employee.change.retro_override',
+    // P02 §4.2 System Admin: hands out roles; Personal data (not Confidential) like the rest of the record.
+    'access.role.manage',
+    'employee.personal.view',
+    'employee.profile.edit',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -60,7 +101,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   // question bank, and the audit log — but holds ZERO write keys, so every mutation route (all gated
   // on a :manage key) denies it. Deliberately NOT in EDITABLE_ROLES: its grants stay fixed read-only,
   // so an org admin can't accidentally hand it write access.
-  auditor: ['org:view', 'results:view', 'audit:view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned'],
+  // Employee records are not part of the permanent base role: P02 YX-SEC-15 time-boxes auditor access, so it
+  // comes from an expiring role grant (the Auditor template in Roles & access).
+  auditor: ['org:view', 'results:view', 'audit:view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned', 'org.structure.view'],
 };
 
 async function main() {
@@ -125,15 +168,18 @@ async function main() {
 
       const demoOrg = await tx.organization.upsert({
         where: { slug: 'demo-org' },
-        update: {},
-        create: { name: 'Demo Org', slug: 'demo-org', planId: trialPlan.id },
+        // The demo company is Kaveri Foods everywhere (test script, screens, emails); slug kept for links and tests.
+        update: { name: 'Kaveri Foods' },
+        create: { name: 'Kaveri Foods', slug: 'demo-org', planId: trialPlan.id },
       });
 
       const orgAdminHash = await argon2.hash('DevAdmin123!');
       await tx.user.upsert({
         where: { organizationId_email: { organizationId: demoOrg.id, email: 'admin@demo-org.test' } },
-        update: {},
+        // Ramesh Iyer, Managing Director of Kaveri Foods: the name shows in the menu, emails and Login activity.
+        update: { name: 'Ramesh Iyer' },
         create: {
+          name: 'Ramesh Iyer',
           email: 'admin@demo-org.test',
           passwordHash: orgAdminHash,
           role: 'org_admin',
@@ -146,8 +192,9 @@ async function main() {
       const recruiterHash = await argon2.hash('Passw0rd!2026');
       await tx.user.upsert({
         where: { organizationId_email: { organizationId: demoOrg.id, email: 'recruiter@demo-org.test' } },
-        update: {},
+        update: { name: 'Neha Kulkarni' },
         create: {
+          name: 'Neha Kulkarni',
           email: 'recruiter@demo-org.test',
           passwordHash: recruiterHash,
           role: 'recruiter',
@@ -160,14 +207,26 @@ async function main() {
       const panelHash = await argon2.hash('Passw0rd!2026');
       await tx.user.upsert({
         where: { organizationId_email: { organizationId: demoOrg.id, email: 'panel@demo-org.test' } },
-        update: {},
+        // Divya Raghunathan (KF-0001) signs in as panel@: her name shows in the menu, emails and approvals.
+        update: { name: 'Divya Raghunathan' },
         create: {
+          name: 'Divya Raghunathan',
           email: 'panel@demo-org.test',
           passwordHash: panelHash,
           role: 'panel',
           organizationId: demoOrg.id,
         },
       });
+
+      await seedOrgStructure(tx, demoOrg.id, panelHash);
+      const userId = async (email: string) => (await tx.user.findUniqueOrThrow({ where: { organizationId_email: { organizationId: demoOrg.id, email } } })).id;
+      await seedEmployees(tx, demoOrg.id, {
+        admin: await userId('admin@demo-org.test'),
+        hr: await userId('hr@demo-org.test'),
+        payroll: await userId('payroll@demo-org.test'),
+        panel: await userId('panel@demo-org.test'),
+      });
+      await seedAccess(tx, demoOrg.id, { admin: await userId('admin@demo-org.test'), panel: await userId('panel@demo-org.test'), passwordHash: panelHash });
 
       // Local testing of every way in on the sign-in screen (README "Sign-in on your laptop"): codes by
       // email and SMS (the development SMS sink logs them), and Google / Microsoft through the mock
@@ -182,10 +241,11 @@ async function main() {
         where: { organizationId: demoOrg.id, email: 'recruiter@demo-org.test', mobileVerifiedAt: null },
         data: { mobileNumber: '+919845012345', mobileVerifiedAt: new Date() },
       });
+      await seedSignInDemo(tx, demoOrg.id, trialPlan.id, { admin: orgAdminHash, staff: panelHash });
     }
-  }, { timeout: 30000 });
+  }, { timeout: 60000 });
 
-  console.log('Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026 (org slug: demo-org)');
+  console.log(`Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
 }
 
 // Only run when invoked as a script (prisma db seed / ts-node). Guarded so importing this module for

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, HttpAdapterHost } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, seconds } from '@nestjs/throttler';
@@ -65,6 +65,10 @@ import { IntegrationsModule } from './integrations/integrations.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ApprovalsModule } from './approvals/approvals.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
+import { OrgStructureModule } from './org-structure/org-structure.module';
+import { EmployeeHistoryModule } from './employee-history/employee-history.module';
+import { AccessModule } from './access/access.module';
+import { PeopleModule } from './people/people.module';
 import { FieldPermissionsModule } from './field-permissions/field-permissions.module';
 import { RecycleBinModule } from './recycle-bin/recycle-bin.module';
 import { RemindersModule } from './reminders/reminders.module';
@@ -147,6 +151,10 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     NotificationsModule,
     ApprovalsModule,
     CustomFieldsModule,
+    OrgStructureModule,
+    EmployeeHistoryModule,
+    PeopleModule,
+    AccessModule,
     FieldPermissionsModule,
     RecycleBinModule,
     RemindersModule,
@@ -208,4 +216,15 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     SentryShutdownFlush,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  // Express 5 leaves req.body undefined when a request has no body; a DTO handler would then read a
+  // property of undefined and answer 500. An empty object lets validation answer 400 / the handler 401.
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(emptyBodyAsObject).forRoutes('{*splat}');
+  }
+}
+
+export function emptyBodyAsObject(req: { body?: unknown }, _res: unknown, next: () => void): void {
+  req.body ??= {};
+  next();
+}

@@ -3,7 +3,7 @@ import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { Checkbox, Switch } from '../../components/choice';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
-import { ErrorSummary, FormField, FormSection } from '../../components/field';
+import { ErrorSummary, FormField, FormSection, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { NumberField, TextArea } from '../../components/inputs';
 import { Segment } from '../../components/segment';
@@ -17,8 +17,8 @@ import type { EmailDomainRow, IdentityProviderRow, PersonOption, SecurityFloor, 
 export const SESSION_DEFAULTS = { idleMinutes: 30, absoluteMinutes: 720 };
 
 const FACTORS = [
-  { value: 'passkey', label: 'Passkey', description: 'Fingerprint, face or screen lock. The safest choice.' },
-  { value: 'totp', label: 'Authenticator app', description: 'A 6-digit code from an app on the phone.' },
+  { value: 'passkey', label: 'Passkey', description: 'Face, fingerprint or PIN. Signs in on its own, no password. The safest choice.' },
+  { value: 'totp', label: 'Authenticator app', description: 'A 6-digit code from an app on the phone, after the password.' },
   { value: 'otp', label: 'Code by SMS or WhatsApp (backup only)', description: 'Never for admins, payroll admins or YukthiX staff.' },
 ];
 const CODE_CHANNELS = [
@@ -139,7 +139,7 @@ export function SecuritySettingsScreen(props: SecuritySettingsScreenProps) {
   return (
     <div className="yx-auth__page">
       <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Settings' }, { label: 'People & Access' }, { label: 'Security' }]} />}
+        breadcrumbs={<Breadcrumbs items={[{ label: 'Security' }, { label: 'Security settings' }]} />}
         title="Security"
         description="Sign-in, second steps, single sign-on, sessions, network allow-lists and passwords."
         facts={props.updatedAt ? <span>Last changed {when(props.updatedAt)}</span> : undefined}
@@ -162,13 +162,13 @@ function SecurityForm({ policy, floor, providers, admins, providersHref, onSave,
   const [draft, setDraft] = useState(policy);
   // IP lists are edited as text so a half-typed line isn't lost; parsed on every change.
   const [ipText, setIpText] = useState({ desk: policy.ipAllowlistDesk.join('\n'), admin: policy.ipAllowlistAdmin.join('\n'), api: policy.ipAllowlistApi.join('\n') });
-  const [showErrors, setShowErrors] = useState(false);
   const [status, setStatus] = useState<{ kind: 'idle' | 'saving' | 'saved' } | { kind: 'failed'; message: string }>({ kind: 'idle' });
 
   const changes = useMemo(() => policyChanges(saved, draft), [saved, draft]);
   const dirty = Object.keys(changes).length > 0;
   const errors = policyErrors(draft, floor, providers);
-  const errorOf = (id: string) => (showErrors ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   const set = (patch: Partial<SecurityPolicy>) => {
     setDraft((d) => ({ ...d, ...patch }));
     if (status.kind !== 'saving') setStatus({ kind: 'idle' });
@@ -182,12 +182,12 @@ function SecurityForm({ policy, floor, providers, admins, providersHref, onSave,
   const activeProvider = providers.some((p) => p.status === 'active');
 
   const save = async () => {
-    if (errors.length) return setShowErrors(true);
+    if (errors.length) return saveErrors.reveal();
     setStatus({ kind: 'saving' });
     try {
       await onSave(changes);
       setSaved(draft);
-      setShowErrors(false);
+      saveErrors.reset();
       setStatus({ kind: 'saved' });
     } catch (err) {
       setStatus({ kind: 'failed', message: err instanceof Error && err.message ? err.message : 'We couldn’t save. Nothing has changed.' });
@@ -196,26 +196,26 @@ function SecurityForm({ policy, floor, providers, admins, providersHref, onSave,
   const discard = () => {
     setDraft(saved);
     setIpText({ desk: saved.ipAllowlistDesk.join('\n'), admin: saved.ipAllowlistAdmin.join('\n'), api: saved.ipAllowlistApi.join('\n') });
-    setShowErrors(false);
+    saveErrors.reset();
     setStatus({ kind: 'idle' });
   };
 
   return (
     <form className="yx-auth__settings" onSubmit={(e) => { e.preventDefault(); void save(); }} noValidate>
       <InlineAlert tone="info">YukthiX sets minimums: you can make these stricter, never looser. You confirm it's you before saving.</InlineAlert>
-      {showErrors && <ErrorSummary errors={errors} />}
+      <ErrorSummary errors={saveErrors.shownErrors} />
 
-      <FormSection title="Second sign-in step" description="Admins, payroll and finance approvers, proctors and evaluators always need it.">
-        <FormField label="Who needs a second step" helper="Minimum allowed: people in sensitive roles.">
+      <FormSection title="Passkey or second step" description="Admins, payroll and finance approvers, proctors and evaluators always need it.">
+        <FormField label="Who needs one" helper="Minimum allowed: people in sensitive roles.">
           <Segment
-            label="Who needs a second step"
+            label="Who needs one"
             options={[{ value: 'sensitive_roles', label: 'Sensitive roles' }, { value: 'all', label: 'Everyone' }]}
             value={draft.mfaScope}
             onChange={(mfaScope) => set({ mfaScope })}
           />
         </FormField>
         <fieldset className="yx-auth__fieldset">
-          <legend>Allowed second steps</legend>
+          <legend>Allowed sign-in methods</legend>
           {FACTORS.map((f) => (
             <Checkbox key={f.value} id={`sec-factor-${f.value}`} label={f.label} description={f.description} checked={draft.allowedFactors.includes(f.value)} onChange={(on) => toggle('allowedFactors', f.value, on)} />
           ))}

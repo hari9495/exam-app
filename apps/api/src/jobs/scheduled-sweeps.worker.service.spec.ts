@@ -28,6 +28,8 @@ describe('ScheduledSweepsWorkerService', () => {
       faceRetention: { prune: jest.fn().mockResolvedValue(0) },
       proctoringRetention: { prune: jest.fn().mockResolvedValue(0) },
       drip: { sweep: jest.fn().mockResolvedValue(undefined) },
+      employeeHistory: { applyDue: jest.fn().mockResolvedValue(0) },
+      people: { probationSweep: jest.fn().mockResolvedValue(0) },
       identityProviders: { recheckDomains: jest.fn().mockResolvedValue({ checked: 0, lapsed: 0 }) },
     };
     const service = new ScheduledSweepsWorkerService(
@@ -42,6 +44,8 @@ describe('ScheduledSweepsWorkerService', () => {
       services.faceRetention as never,
       services.proctoringRetention as never,
       services.drip as never,
+      services.employeeHistory as never,
+      services.people as never,
       services.identityProviders as never,
     );
     return { service, queue, connection, services };
@@ -75,6 +79,8 @@ describe('ScheduledSweepsWorkerService', () => {
       'face-retention': services.faceRetention.prune,
       'proctoring-retention': services.proctoringRetention.prune,
       'drip-steps': services.drip.sweep,
+      'employee-changes': services.employeeHistory.applyDue,
+      probations: services.people.probationSweep,
       'domain-verification-recheck': services.identityProviders.recheckDomains,
     };
     for (const { id } of SWEEP_SCHEDULE) {

@@ -71,3 +71,11 @@ export class NetworkError extends TypeError {
     this.name = 'NetworkError';
   }
 }
+
+// A screen whose data the person may not read (403): say so plainly instead of "Failed to load".
+export const NO_ACCESS_MESSAGE = "You don't have access to this page. Ask your admin.";
+
+/** The message for a failed load: the access sentence on a 403, else the screen's own fallback. */
+export function loadErrorMessage(error: unknown, fallback: string): string {
+  return (error as { status?: number } | null | undefined)?.status === 403 ? NO_ACCESS_MESSAGE : fallback;
+}

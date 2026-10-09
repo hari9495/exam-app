@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { ForgotPasswordScreen, SignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
+import { ForgotPasswordScreen, ResetPasswordScreen, SignInScreen, StaffSignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
 import { MfaChallengeScreen, MfaEnrolScreen, StepUpDialog } from './mfa';
 import { MeSecurityScreen, type MeSecurityScreenProps } from './me-security';
-import { LoginActivityScreen, NO_FILTERS, type LoginActivityScreenProps } from './login-activity';
+import { ANY_FAILURE, LoginActivityScreen, NO_FILTERS, type LoginActivityScreenProps } from './login-activity';
 import { SecuritySettingsScreen, policyChanges, policyErrors, type SecuritySettingsScreenProps } from './security-settings';
 import { deviceLabel, errorText } from './kit';
+import type { LoginEventRow } from './types';
 import { ADMINS, COMPANIES, FLOOR, IDPS, MFA_ENROLLED, MFA_NONE, MY_HISTORY, MY_SESSIONS, NOW, ORG_EVENTS, ORG_SESSIONS, PEOPLE, POLICY, PROVIDERS, RECOVERY_CODES, TOTP_SETUP } from './data';
+import { GROUP_2 } from '../settings/registry-g1-g2';
 
 function SignIn(over: Partial<SignInScreenProps> & { start?: Partial<SignInFields> }) {
   const { start, ...rest } = over;
@@ -244,6 +246,48 @@ describe('SecuritySettingsScreen email domains', () => {
   });
 });
 
+describe('SecuritySettingsScreen save errors', () => {
+  it('after a failed Save, typing in another field shows no new error', async () => {
+    render(<SecuritySettingsScreen state="ready" policy={POLICY} floor={FLOOR} providers={IDPS} admins={ADMINS} providersHref="#" onSave={vi.fn()} />);
+    const lock = screen.getByRole('textbox', { name: /Lock after/ });
+    await userEvent.clear(lock);
+    await userEvent.type(lock, '2');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Lock after must be between');
+
+    const pwd = screen.getByRole('textbox', { name: /Minimum password length/ });
+    await userEvent.clear(pwd);
+    await userEvent.type(pwd, '1');
+    expect(screen.queryByText(/Minimum password length must be between/)).toBeNull();
+    await userEvent.type(pwd, '4');
+
+    await userEvent.clear(lock);
+    await userEvent.type(lock, '5');
+    expect(screen.queryByText(/Lock after must be between/)).toBeNull();
+  });
+});
+
+describe('StaffSignInScreen', () => {
+  it('takes a staff email and password, with no company or other ways in', async () => {
+    const onSubmit = vi.fn();
+    function Harness() {
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      return <StaffSignInScreen email={email} password={password} onEmailChange={setEmail} onPasswordChange={setPassword} onSubmit={onSubmit} error="Wrong email or password. Try again." />;
+    }
+    render(<Harness />);
+    expect(screen.getByRole('heading', { level: 1, name: 'YukthiX staff sign-in' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Wrong email or password');
+    const go = screen.getByRole('button', { name: 'Continue' });
+    expect(go).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/Staff email/), 'ops@yukthix.test');
+    await userEvent.type(screen.getByLabelText(/^Password/), 'Staff-Passw0rd-26');
+    await userEvent.click(go);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Continue with/)).toBeNull();
+  });
+});
+
 describe('ForgotPasswordScreen', () => {
   it('asks for the work email only, and answers the same whether or not an account exists', async () => {
     const onSubmit = vi.fn();
@@ -265,14 +309,14 @@ describe('second step', () => {
   it('signs in with a passkey proof', async () => {
     const submit = vi.fn().mockResolvedValue(undefined);
     render(<MfaChallengeScreen factors={['passkey', 'totp']} getPasskey={async () => ({ id: 'cred' })} submit={submit} onStartAgain={vi.fn()} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Use my passkey' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Passkey' }));
     expect(submit).toHaveBeenCalledWith({ factor: 'passkey', credential: { id: 'cred' } });
   });
 
   it('sends an authenticator code and shows a refusal', async () => {
     const submit = vi.fn().mockRejectedValue(new Error('That code is not right.'));
     render(<MfaChallengeScreen factors={['passkey', 'totp']} getPasskey={vi.fn()} submit={submit} onStartAgain={vi.fn()} />);
-    await userEvent.click(screen.getByRole('radio', { name: 'Authenticator app' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Authenticator app' }));
     await userEvent.type(screen.getByLabelText(/6-digit code/), '123456');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     expect(submit).toHaveBeenCalledWith({ factor: 'totp', code: '123456' });
@@ -282,16 +326,16 @@ describe('second step', () => {
   it('explains a closed passkey prompt without blaming the person', async () => {
     const cancelled = Object.assign(new Error('The operation either timed out or was not allowed.'), { name: 'NotAllowedError' });
     render(<MfaChallengeScreen factors={['passkey']} getPasskey={() => Promise.reject(cancelled)} submit={vi.fn()} onStartAgain={vi.fn()} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Use my passkey' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Passkey' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('closed or timed out');
   });
 
   it('offers a texted code only where the API allows it', async () => {
     const sendCode = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(<MfaChallengeScreen factors={['totp']} getPasskey={vi.fn()} submit={vi.fn()} sendCode={sendCode} onStartAgain={vi.fn()} />);
-    expect(screen.queryByRole('radio', { name: 'Text message' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Text message' })).toBeNull();
     rerender(<MfaChallengeScreen factors={['totp', 'otp']} getPasskey={vi.fn()} submit={vi.fn()} sendCode={sendCode} onStartAgain={vi.fn()} />);
-    await userEvent.click(screen.getByRole('radio', { name: 'Text message' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Text message' }));
     await userEvent.click(screen.getByRole('button', { name: 'Text me a code' }));
     expect(sendCode).toHaveBeenCalledWith('sms');
     expect(await screen.findByText(/We sent a code by SMS/)).toBeInTheDocument();
@@ -300,7 +344,7 @@ describe('second step', () => {
   it('step-up never offers a texted code', () => {
     render(<StepUpDialog open onCancel={vi.fn()} factors={['totp', 'otp']} getPasskey={vi.fn()} submit={vi.fn()} setupHref="/yx/me/security" />);
     expect(screen.getByRole('dialog', { name: "Confirm it's you" })).toBeInTheDocument();
-    expect(screen.queryByRole('radio', { name: 'Text message' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Text message' })).toBeNull();
   });
 
   it('step-up without a factor points to set-up', () => {
@@ -315,7 +359,7 @@ describe('MfaEnrolScreen', () => {
   it('shows the recovery codes once and continues only after they are saved', async () => {
     const onContinue = vi.fn();
     render(<MfaEnrolScreen {...base} dueAt="2026-10-08T00:00:00+05:30" onAddPasskey={async () => ({ recoveryCodes: RECOVERY_CODES })} onContinue={onContinue} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Add a passkey' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Passkey/ }));
     const list = await screen.findByRole('list', { name: 'Recovery codes' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(10);
     const go = screen.getByRole('button', { name: 'Continue' });
@@ -328,10 +372,10 @@ describe('MfaEnrolScreen', () => {
   it('sets up an authenticator app from the QR code', async () => {
     const onConfirmTotp = vi.fn().mockResolvedValue({ recoveryCodes: RECOVERY_CODES });
     render(<MfaEnrolScreen {...base} onConfirmTotp={onConfirmTotp} dueAt="2026-10-08T00:00:00+05:30" onAddPasskey={vi.fn()} onContinue={vi.fn()} />);
-    await userEvent.click(screen.getByRole('radio', { name: 'Authenticator app' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Show the QR code' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Authenticator app' }));
     expect(await screen.findByRole('img', { name: /QR code/ })).toBeInTheDocument();
-    expect(screen.getByText(TOTP_SETUP.secret)).toBeInTheDocument();
+    expect(screen.getByText(TOTP_SETUP.secret.match(/.{1,4}/g)!.join(' '))).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy key' })).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText(/6-digit code/), '654321');
     await userEvent.click(screen.getByRole('button', { name: 'Turn on' }));
     expect(onConfirmTotp).toHaveBeenCalledWith('654321');
@@ -360,6 +404,7 @@ function Me(over: Partial<MeSecurityScreenProps>) {
       onStartTotp={vi.fn()}
       onConfirmTotp={vi.fn()}
       onRemoveFactor={vi.fn()}
+      onRenamePasskey={vi.fn()}
       onNewRecoveryCodes={vi.fn()}
       onSendMobileCode={vi.fn()}
       onVerifyMobile={vi.fn()}
@@ -373,9 +418,9 @@ function Me(over: Partial<MeSecurityScreenProps>) {
 }
 
 describe('MeSecurityScreen', () => {
-  it('lists second steps, sessions and history', () => {
+  it('lists sign-in methods, sessions and history', () => {
     render(<Me />);
-    expect(within(screen.getByRole('list', { name: 'Your second steps' })).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(screen.getByRole('list', { name: 'Your sign-in methods' })).getAllByRole('listitem')).toHaveLength(2);
     expect(screen.getByText('This browser')).toBeInTheDocument();
     expect(screen.getAllByText('New device').length).toBeGreaterThan(0);
   });
@@ -383,17 +428,17 @@ describe('MeSecurityScreen', () => {
   it('removes a factor after confirming', async () => {
     const onRemoveFactor = vi.fn().mockResolvedValue(undefined);
     render(<Me onRemoveFactor={onRemoveFactor} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Remove Office laptop' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Remove Passkey · Office laptop' }));
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
     expect(onRemoveFactor).toHaveBeenCalledWith(MFA_ENROLLED.factors[0]);
   });
 
   it("won't remove the only factor when the role needs one", () => {
     render(<Me mfa={{ ...MFA_ENROLLED, factors: MFA_ENROLLED.factors.slice(0, 1) }} />);
-    expect(screen.getByRole('button', { name: 'Remove Office laptop' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Remove Passkey · Office laptop' })).toBeDisabled();
   });
 
-  it('warns when the role needs a second step and none is set up', () => {
+  it('warns when the role needs a sign-in method and none is set up', () => {
     render(<Me mfa={MFA_NONE} />);
     expect(screen.getByText(/Set this up by 8 Oct 2026/)).toBeInTheDocument();
   });
@@ -410,8 +455,38 @@ describe('MeSecurityScreen', () => {
 
   it('shows new recovery codes once', async () => {
     render(<Me onNewRecoveryCodes={async () => RECOVERY_CODES} />);
-    await userEvent.click(screen.getByRole('button', { name: /New recovery codes/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Make new codes' }));
     expect(await screen.findByRole('list', { name: 'Recovery codes' })).toBeInTheDocument();
+  });
+
+  it('downloads the recovery codes as a text file made in the browser', async () => {
+    const parts: BlobPart[][] = [];
+    const created = vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => (parts.push([b as Blob]), 'blob:x'));
+    const clicked = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    render(<Me onNewRecoveryCodes={async () => RECOVERY_CODES} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Make new codes' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Download' }));
+    expect(clicked).toHaveBeenCalled();
+    expect(await (parts[0][0] as Blob).text()).toContain(RECOVERY_CODES[0]);
+    created.mockRestore();
+    clicked.mockRestore();
+  });
+
+  it('changes the password after checking the two new ones match', async () => {
+    const onChangePassword = vi.fn().mockResolvedValue(undefined);
+    render(<Me onChangePassword={onChangePassword} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    await userEvent.type(screen.getByLabelText(/^Current password/), 'Passw0rd!2026');
+    await userEvent.type(screen.getAllByLabelText(/^New password/)[0], 'Kaveri@Test2026');
+    await userEvent.type(screen.getAllByLabelText(/^New password/)[1], 'Kaveri@Test2027');
+    await userEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(await screen.findByText('The two new passwords are not the same.')).toBeInTheDocument();
+    expect(onChangePassword).not.toHaveBeenCalled();
+    await userEvent.clear(screen.getAllByLabelText(/^New password/)[1]);
+    await userEvent.type(screen.getAllByLabelText(/^New password/)[1], 'Kaveri@Test2026');
+    await userEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(onChangePassword).toHaveBeenCalledWith('Passw0rd!2026', 'Kaveri@Test2026');
+    expect(await screen.findByText(/Password changed/)).toBeInTheDocument();
   });
 
   it('verifies a mobile number by text', async () => {
@@ -430,7 +505,7 @@ describe('MeSecurityScreen', () => {
     const { rerender } = render(<Me state="error" onRetry={vi.fn()} />);
     expect(screen.getByText("We couldn't load your security settings.")).toBeInTheDocument();
     rerender(<Me state="loading" />);
-    expect(screen.queryByText('Two-step verification')).toBeNull();
+    expect(screen.queryByText('Sign-in methods')).toBeNull();
   });
 });
 
@@ -463,11 +538,36 @@ describe('LoginActivityScreen', () => {
     expect(screen.getAllByText('Code by SMS').length).toBeGreaterThan(0);
   });
 
-  it('flags a spike of failed attempts and filters to them', async () => {
+  it('flags a spike of failed attempts once, and filters to the same failures the count means', async () => {
     const onFiltersChange = vi.fn();
     render(<Activity failedLast24h={46} onFiltersChange={onFiltersChange} />);
+    expect(screen.getAllByText(/46 failed/)).toHaveLength(1);
     await userEvent.click(screen.getByRole('button', { name: 'Show failed attempts' }));
-    expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed' }));
+    expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ result: ANY_FAILURE }));
+    // The same set is a choice in the Result filter, so the chosen filter reads back.
+    await userEvent.click(screen.getByRole('combobox', { name: 'Result' }));
+    expect(await screen.findByRole('option', { name: 'Any failure' })).toBeInTheDocument();
+  });
+
+  it('below a spike the count is a header fact', () => {
+    render(<Activity failedLast24h={2} />);
+    expect(screen.getByText('2 failed attempts in the last 24 hours')).toBeInTheDocument();
+  });
+
+  it('the Method filter lists Single sign-on once, for both kinds of provider', async () => {
+    render(<Activity />);
+    await userEvent.click(screen.getByRole('combobox', { name: 'Method' }));
+    expect(await screen.findAllByRole('option', { name: 'Single sign-on' })).toHaveLength(1);
+  });
+
+  it('the Person filter asks the host to search (every user, not the first page) and keeps the matches it is given', async () => {
+    const onPeopleSearch = vi.fn();
+    render(<Activity onPeopleSearch={onPeopleSearch} people={[{ id: 'u-1', name: 'Divya Raghunathan', email: 'divya.r@kaverifoods.in' }]} />);
+    await userEvent.click(screen.getByRole('combobox', { name: 'Person' }));
+    await userEvent.type(await screen.findByPlaceholderText('Name or email'), 'zzz');
+    await waitFor(() => expect(onPeopleSearch).toHaveBeenCalledWith('zzz'));
+    // Not filtered locally: what the host returned is what is listed.
+    expect(screen.getByRole('option', { name: /Divya/ })).toBeInTheDocument();
   });
 
   it('signs a person out after confirming', async () => {
@@ -492,6 +592,29 @@ describe('LoginActivityScreen', () => {
     await userEvent.type(within(dialog).getByLabelText(/Reason/), ' - called him back on his desk phone');
     await userEvent.click(confirm);
     expect(onUnlock).toHaveBeenCalledWith(ORG_EVENTS.data[1], 'too short - called him back on his desk phone');
+  });
+
+  it('a passkey sign-in reads "Passkey", not "Two-step"; other full sign-ins still read "Two-step"', () => {
+    const passkey = { ...ORG_SESSIONS.data[2], id: 's-pk', method: 'passkey', user: { email: 'divya.r@kaverifoods.in', name: 'Divya Raghunathan', role: 'org_admin' } };
+    render(<Activity tab="sessions" sessions={{ ...ORG_SESSIONS, data: [passkey, ORG_SESSIONS.data[2]] }} />);
+    const [pk, sso] = screen.getAllByRole('row').slice(1);
+    expect(within(pk).getByText('Passkey')).toBeInTheDocument();
+    expect(within(pk).queryByText('Two-step')).toBeNull();
+    expect(within(sso).getByText('Two-step')).toBeInTheDocument();
+  });
+
+  it('offers Unlock only where the API says the lock still stands, never inferred from the page; the locking attempt is marked', () => {
+    const row = (id: string, result: LoginEventRow['result'], reason: string | null = null, lockActive = false) =>
+      ({ ...ORG_EVENTS.data[1], id, result, reason, lockActive }) as LoginEventRow;
+    // Filtered to failures: the sign-in that ended lock a3 is not on the page, and the API says so.
+    const rows = [row('a3', 'failed', 'bad_password+lockout_started'), row('b1', 'failed', 'bad_password+lockout_started', true), row('b0', 'failed', 'bad_password')];
+    render(<Activity onUnlock={vi.fn()} events={{ ...ORG_EVENTS, data: rows, total: 3 }} />);
+    expect(screen.getAllByRole('button', { name: /^Unlock / })).toHaveLength(1);
+    const [a3, b1, b0] = screen.getAllByRole('row').slice(1);
+    expect(within(b1).getByRole('button', { name: /^Unlock / })).toBeInTheDocument();
+    expect(within(a3).getByText('Locked the account')).toBeInTheDocument();
+    expect(within(b1).getByText('Locked the account')).toBeInTheDocument();
+    expect(within(b0).queryByText('Locked the account')).toBeNull();
   });
 
   it('offers no Unlock without the permission (no handler)', () => {
@@ -632,3 +755,164 @@ describe('helpers', () => {
   });
 });
 
+
+describe('ResetPasswordScreen', () => {
+  function Harness({ onSubmit = vi.fn(), error = null as string | null }) {
+    const [password, setPassword] = useState('');
+    const [confirm, setConfirm] = useState('');
+    return <ResetPasswordScreen password={password} confirm={confirm} onPasswordChange={setPassword} onConfirmChange={setConfirm} onSubmit={onSubmit} done={false} error={error} signInHref="/yx/sign-in" forgotHref="/yx/forgot-password" />;
+  }
+
+  it('sends only when both passwords match', async () => {
+    const onSubmit = vi.fn();
+    render(<Harness onSubmit={onSubmit} />);
+    await userEvent.type(screen.getByLabelText(/New password/), 'Kaveri-Recruit-Oct26');
+    await userEvent.type(screen.getByLabelText(/Type it again/), 'Kaveri-Recruit-Oct2');
+    // No message while typing; it shows once the person leaves the field.
+    expect(screen.queryByText('The two passwords are not the same')).toBeNull();
+    await userEvent.tab();
+    expect(screen.getByText('The two passwords are not the same')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save new password' })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/Type it again/), '6');
+    await userEvent.click(screen.getByRole('button', { name: 'Save new password' }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers a new link when this one has expired', () => {
+    render(<Harness error="This reset link is invalid or has expired" />);
+    expect(screen.getByRole('link', { name: 'Get a new link' })).toHaveAttribute('href', '/yx/forgot-password');
+  });
+});
+
+describe('LoginActivityScreen results and access', () => {
+  it('names a sent code in words, never the raw "code_sent"', () => {
+    const sent = { ...ORG_EVENTS.data[0], id: 'e-code', result: 'code_sent' as const, method: 'otp_email' };
+    render(<Activity events={{ ...ORG_EVENTS, data: [sent], total: 1 }} />);
+    expect(screen.getByText('Code sent')).toBeInTheDocument();
+    expect(screen.queryByText('code_sent')).toBeNull();
+  });
+
+  it('says "no access" without the permission, with no tabs or retry', () => {
+    render(<Activity noAccess events={null} eventsState="error" />);
+    expect(screen.getByText("You don't have access to login activity")).toBeInTheDocument();
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Retry/ })).toBeNull();
+  });
+});
+
+describe('My security sign-in methods', () => {
+  it('says which entry is a passkey, not only the device name', () => {
+    render(<Me />);
+    const list = screen.getByRole('list', { name: 'Your sign-in methods' });
+    const passkey = MFA_ENROLLED.factors.find((f) => f.type === 'passkey')!;
+    expect(within(list).getByText(`Passkey · ${passkey.label}`)).toBeInTheDocument();
+  });
+});
+
+// Founder decision 7 Oct 2026: a passkey is a sign-in method in its own right.
+describe('other ways that could not load', () => {
+  it('a quiet line with a link-style "Try again" instead of nothing', async () => {
+    const onRetryOptions = vi.fn();
+    const { rerender } = render(<SignIn optionsFailed onRetryOptions={onRetryOptions} />);
+    const line = screen.getByRole('status');
+    expect(line).toHaveTextContent("Couldn't load other sign-in methods · Try again");
+    const retry = within(line).getByRole('button', { name: 'Try again' });
+    expect(retry).toHaveClass('yx-link');
+    await userEvent.click(retry);
+    expect(onRetryOptions).toHaveBeenCalledOnce();
+    rerender(<SignIn options={ALL_WAYS} onMobile={vi.fn()} />);
+    expect(screen.queryByText(/Couldn't load other sign-in methods/)).toBeNull();
+  });
+
+  it('company settings name them "Allowed sign-in methods"', () => {
+    expect(JSON.stringify(GROUP_2)).toContain('"label":"Allowed sign-in methods"');
+    expect(JSON.stringify(GROUP_2)).not.toContain('Allowed second steps');
+  });
+});
+
+describe('passkey as a sign-in method', () => {
+  it('"Sign in with a passkey" heads the other ways when the company allows it and the browser can; the email field offers passkeys in autofill', async () => {
+    const onPasskey = vi.fn();
+    const { rerender } = render(<SignIn options={{ ...ALL_WAYS, passkey: true }} onPasskey={onPasskey} onMobile={vi.fn()} onSocial={vi.fn()} />);
+    expect(screen.getByLabelText(/Work email/)).toHaveAttribute('autocomplete', 'username webauthn');
+    const ways = within(screen.getByRole('group', { name: 'Other ways to sign in' })).getAllByRole('button');
+    expect(ways.map((b) => b.textContent)).toEqual(['Sign in with a passkey', 'Continue with mobile', 'Continue with Microsoft', 'Continue with Google']);
+    expect(ways[0]).toHaveAttribute('data-variant', 'secondary');
+    await userEvent.click(ways[0]);
+    expect(onPasskey).toHaveBeenCalledOnce();
+    // Company says no, or the browser can't (the host then passes no onPasskey): no button.
+    rerender(<SignIn options={{ ...ALL_WAYS, passkey: false }} onPasskey={onPasskey} />);
+    expect(screen.queryByRole('button', { name: 'Sign in with a passkey' })).toBeNull();
+    rerender(<SignIn options={{ ...ALL_WAYS, passkey: true }} />);
+    expect(screen.queryByRole('button', { name: 'Sign in with a passkey' })).toBeNull();
+  });
+
+  it('"Secure your account": a card per method, passkey recommended; a card goes straight into its method', async () => {
+    const onAddPasskey = vi.fn().mockResolvedValue({ recoveryCodes: RECOVERY_CODES });
+    const onStartTotp = vi.fn().mockResolvedValue(TOTP_SETUP);
+    render(<MfaEnrolScreen allowedFactors={['totp', 'passkey']} dueAt="2026-10-08T00:00:00+05:30" onAddPasskey={onAddPasskey} onStartTotp={onStartTotp} onConfirmTotp={vi.fn()} onContinue={vi.fn()} now={NOW} />);
+    expect(screen.getByRole('heading', { level: 1, name: 'Secure your account' })).toBeInTheDocument();
+    expect(screen.getByText('Your role needs it. Set it up by 8 Oct 2026.')).toBeInTheDocument();
+    const cards = within(screen.getByRole('list', { name: 'Ways to sign in' })).getAllByRole('button');
+    expect(cards.map((c) => c.querySelector('.yx-method-card__title')!.textContent)).toEqual(['PasskeyRecommended', 'Authenticator app']);
+    expect(cards[0]).toHaveAccessibleDescription('Sign in with your face, fingerprint or PIN. No password or code needed.');
+    expect(cards[1]).toHaveAccessibleDescription('Enter a 6-digit code from Google or Microsoft Authenticator after your password.');
+    expect(screen.queryByRole('radio')).toBeNull();
+
+    await userEvent.click(cards[1]);
+    expect(onStartTotp).toHaveBeenCalledOnce();
+    expect(await screen.findByRole('img', { name: /QR code/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Choose another way' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Passkey/ }));
+    expect(onAddPasskey).toHaveBeenCalledOnce();
+    expect(await screen.findByRole('heading', { name: 'Your account is secure' })).toBeInTheDocument();
+  });
+
+  it('"Confirm it\'s you" with several ways: cards, then back to them with "Choose another way"', async () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+    render(<MfaChallengeScreen factors={['passkey', 'totp']} getPasskey={vi.fn()} submit={submit} onStartAgain={vi.fn()} />);
+    const list = screen.getByRole('list', { name: "Ways to confirm it's you" });
+    expect(within(list).getAllByRole('button').map((b) => b.querySelector('.yx-method-card__title')!.textContent)).toEqual(['Passkey', 'Authenticator app', 'Recovery code']);
+    await userEvent.click(within(list).getByRole('button', { name: 'Recovery code' }));
+    expect(screen.getByLabelText(/Recovery code/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Choose another way' }));
+    expect(screen.getByRole('list', { name: "Ways to confirm it's you" })).toBeInTheDocument();
+  });
+
+  it('My security: renames a passkey, and offers only the methods not set up yet', async () => {
+    const onRenamePasskey = vi.fn().mockResolvedValue(undefined);
+    const onAddPasskey = vi.fn().mockResolvedValue({});
+    render(<Me onRenamePasskey={onRenamePasskey} onAddPasskey={onAddPasskey} />);
+    expect(screen.getByText('Added 12 Aug 2026 · last used 29 Sep 2026')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Rename Office laptop' }));
+    const dialog = screen.getByRole('dialog', { name: 'Rename passkey' });
+    const field = within(dialog).getByRole('textbox', { name: /Name/ });
+    expect(within(dialog).getByRole('button', { name: 'Save name' })).toBeDisabled(); // unchanged
+    await userEvent.clear(field);
+    await userEvent.type(field, 'Work laptop');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save name' }));
+    expect(onRenamePasskey).toHaveBeenCalledWith(MFA_ENROLLED.factors[0], 'Work laptop');
+
+    const add = screen.getByRole('list', { name: 'Sign-in methods you can add' });
+    expect(within(add).getAllByRole('button')).toHaveLength(1); // the authenticator app is already set up
+    await userEvent.click(within(add).getByRole('button', { name: /^Passkey/ }));
+    expect(onAddPasskey).toHaveBeenCalledOnce();
+  });
+
+  it('a session signed in with a passkey is not described as "and a second step"', () => {
+    render(<Me sessions={[{ ...MY_SESSIONS[0], method: 'passkey', assuranceLevel: 'aal2' }]} />);
+    expect(screen.getByText(/with passkey$/)).toBeInTheDocument();
+  });
+});
+
+describe('ipLabel', () => {
+  it('names this computer and the local network in plain words', async () => {
+    const { ipLabel } = await import('./kit');
+    expect(ipLabel('::1')).toBe('This computer');
+    expect(ipLabel('::ffff:127.0.0.1')).toBe('This computer');
+    expect(ipLabel('192.168.1.5')).toBe('Local network · 192.168.1.5');
+    expect(ipLabel('172.20.0.4')).toBe('Local network · 172.20.0.4');
+    expect(ipLabel('49.207.12.34')).toBe('49.207.12.34');
+    expect(ipLabel(null)).toBe('');
+  });
+});

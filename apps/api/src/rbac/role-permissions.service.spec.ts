@@ -87,6 +87,16 @@ describe('RolePermissionsService', () => {
       expect(tx.orgRolePermission.upsert).not.toHaveBeenCalled();
     });
 
+    it.each(['employee.salary.view', 'employee.aadhaar.view', 'employee.identity.view', 'employee.profile.view', 'pay.range.view', 'org.entity.statutory.manage'])(
+      'rejects %s: HR and pay keys come only from approved role grants (P02 §4.6, R1)',
+      async (key) => {
+        prisma.permission.findMany.mockResolvedValue([...CATALOG, { key, description: key }]);
+        await expect(service.setRolePermissions(ctx, 'user-1', 'panel', ['org:view', key])).rejects.toThrow(BadRequestException);
+        expect(tx.orgRolePermission.upsert).not.toHaveBeenCalled();
+        expect((await service.getMatrix(ctx)).assignablePermissions.map((p) => p.key)).not.toContain(key);
+      },
+    );
+
     it('rejects an unknown permission key', async () => {
       await expect(service.setRolePermissions(ctx, 'user-1', 'recruiter', ['made:up'])).rejects.toThrow(BadRequestException);
     });

@@ -14,6 +14,7 @@ import { Dialog, ConfirmDialog } from '../../components/overlay';
 import { Drawer } from '../../components/drawer';
 import { KanbanBoard, type KanbanColumn } from '../../components/kanban';
 import { MenuItem } from '../../components/menu';
+import { Segment } from '../../components/segment';
 import { DataTable } from '../../components/table';
 import { formatDate, formatINR } from '../../lib/format';
 import { monthGrid, isSameDay } from '../../lib/dates';
@@ -301,14 +302,7 @@ export function ComplianceCalendarScreen({ partner, items, today, view = 'calend
           <h1>Compliance calendar</h1>
           <p>Statuses and due dates from each client's status feed. No employee data is shown here; open an item to enter the client.</p>
         </section>
-        <div className="yx-ps-seg" role="group" aria-label="View">
-          <button type="button" aria-pressed={mode === 'calendar'} onClick={() => setMode('calendar')}>
-            Month
-          </button>
-          <button type="button" aria-pressed={mode === 'list'} onClick={() => setMode('list')}>
-            List
-          </button>
-        </div>
+        <Segment label="View" value={mode} onChange={setMode} options={[{ value: 'calendar', label: 'Month' }, { value: 'list', label: 'List' }]} />
       </div>
       <div className="yx-ps-row">
         <FormField label="Statute">

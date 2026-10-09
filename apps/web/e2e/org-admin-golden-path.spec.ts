@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { signIn } from './fixtures/sign-in';
 
-const ORG_SLUG = process.env.E2E_ORG_SLUG ?? 'demo-org';
 const RECRUITER_EMAIL = process.env.E2E_RECRUITER_EMAIL ?? 'recruiter@demo-org.test';
 const RECRUITER_PASSWORD = process.env.E2E_RECRUITER_PASSWORD ?? 'Passw0rd!2026';
 const ORG_ADMIN_EMAIL = process.env.E2E_ORG_ADMIN_EMAIL ?? 'admin@demo-org.test';
@@ -9,11 +9,7 @@ const ORG_ADMIN_PASSWORD = process.env.E2E_ORG_ADMIN_PASSWORD ?? 'DevAdmin123!';
 test('org admin adds a staff member, reviews the audit log, and exports/erases a candidate', async ({ page }) => {
   // Seed a fresh candidate as the recruiter so this test doesn't depend on data from other suites.
   const candidateEmail = `org-admin-e2e-${Date.now()}@example.com`;
-  await page.goto('/login');
-  await page.getByLabel('Organization slug').fill(ORG_SLUG);
-  await page.getByLabel('Email').fill(RECRUITER_EMAIL);
-  await page.getByLabel('Password').fill(RECRUITER_PASSWORD);
-  await page.getByRole('button', { name: 'Log in' }).click();
+  await signIn(page, RECRUITER_EMAIL, RECRUITER_PASSWORD);
   await expect(page).toHaveURL(/\/dashboard/);
   await page.getByRole('link', { name: 'Candidates' }).click();
   await page.getByLabel('Name').fill('Org Admin E2E Candidate');
@@ -22,11 +18,7 @@ test('org admin adds a staff member, reviews the audit log, and exports/erases a
   await expect(page.getByText(candidateEmail)).toBeVisible();
 
   // Switch to the org admin.
-  await page.goto('/login');
-  await page.getByLabel('Organization slug').fill(ORG_SLUG);
-  await page.getByLabel('Email').fill(ORG_ADMIN_EMAIL);
-  await page.getByLabel('Password').fill(ORG_ADMIN_PASSWORD);
-  await page.getByRole('button', { name: 'Log in' }).click();
+  await signIn(page, ORG_ADMIN_EMAIL, ORG_ADMIN_PASSWORD);
   await expect(page).toHaveURL(/\/users/);
 
   // Add a staff member.

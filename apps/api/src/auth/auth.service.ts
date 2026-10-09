@@ -32,13 +32,15 @@ import { ClientMeta, LoginMethod, SessionUser, SessionsService } from './session
 import { ANY_COMPANY, LOGIN_PROTECTION_REDIS, LockoutSettings, LoginAttempt, LoginBlock, LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
 import { PasswordPolicyService } from './password-policy.service';
 import { MfaService, MfaUser, PENDING_LOGIN_TTL_SECONDS, PendingLogin, isStaff } from './mfa.service';
-import { MfaLoginDto, MfaProofDto } from './dto/mfa.dto';
+import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
+import { MfaLoginDto, MfaProofDto, PasskeyAssertionDto } from './dto/mfa.dto';
 import { MfaOtpSendDto, OtpStartDto, OtpVerifyDto } from './dto/otp.dto';
 import { OTP_CHANNELS, OTP_RESEND_COOLDOWN_SECONDS, OTP_TTL_SECONDS, OtpChannel, OtpService, parseOtpIdentifier } from './otp.service';
 import { PlatformLoginDto, SelectCompanyDto } from './dto/login.dto';
 import { CompanyCard, CompanyScopeService } from './company-scope';
 import { SocialIdentity, SocialProvider, isSocialProvider } from './social-sign-in';
 import { emailDomain } from './identity-providers';
+import { appUrl, button, details, passwordResetEmail, text } from '../email/account-emails';
 
 interface TokenPair {
   accessToken: string;
@@ -104,6 +106,10 @@ const pickKey = (token: string) => `auth:pick:${sha256(token)}`;
 const socialCodeKey = (code: string) => `auth:social:code:${sha256(code)}`;
 export const SOCIAL_CODE_TTL_SECONDS = 60;
 const EXPIRED_MESSAGE = 'Your sign-in has expired. Please sign in again.';
+// Lockout scope of the IP counter for passkey sign-ins that reach no account.
+export const PASSKEY_SCOPE = 'passkey';
+// Every passkey refusal (unknown or wrong passkey, method off for the company, staff ...): one answer.
+export const PASSKEY_FAILED = "We couldn't sign you in with that passkey. Try another way, or ask your admin.";
 
 const ACCOUNT_SELECT = {
   id: true,
@@ -138,7 +144,7 @@ interface Candidate {
   // Lowercased company slug: the account's own lockout scope, as with an orgSlug.
   slug: string;
   listedBreakGlass: boolean;
-  blocked: { scope: string } | null;
+  blocked: LoginBlock | null;
 }
 // Kept in Redis (2 min) under sha256(token) while the person picks a company.
 interface CompanyPick {
@@ -430,6 +436,8 @@ export class AuthService {
     // Each company opts in per provider; SSO-only turns both off (YX-IAM-04).
     if (isSocialProvider(method)) return policy.ssoOnly || !(method === 'google' ? policy.googleSignIn : policy.microsoftSignIn) ? 'social_disabled' : null;
     if (method === 'password') return policy.ssoOnly && !policy.breakGlassUserIds.includes(account.id) ? 'sso_only' : null;
+    // A passwordless passkey: where the company allows passkeys, and never under SSO-only (YX-IAM-04).
+    if (method === 'passkey') return policy.ssoOnly ? 'sso_only' : !policy.allowedFactors.includes('passkey') ? 'passkey_disabled' : null;
     return policy.ssoOnly || !policy.otpSignInChannels.includes(method.slice('otp_'.length) as OtpChannel) ? 'otp_disabled' : null;
   }
 
@@ -576,7 +584,7 @@ export class AuthService {
         resetToken,
       });
     }
-    const reason = login.breakGlass ? 'break_glass' : mfaFactor ? `mfa_${mfaFactor}` : undefined;
+    const reason = login.breakGlass ? 'break_glass' : mfaFactor && mfaFactor !== login.method ? `mfa_${mfaFactor}` : undefined;
     const tokens: SignedIn = await this.startSession(user, login.method, meta, login.identifier, reason, mfaFactor, login.identityProviderId ?? null);
     if (isSocialProvider(login.method) && login.externalSubject && user.organizationId) {
       await this.linkExternalIdentity(user, login.method, login.externalSubject);
@@ -682,11 +690,80 @@ export class AuthService {
         method: dto.factor,
         reason: locked ? 'mfa_invalid+lockout_started' : 'mfa_invalid',
       });
-      if (locked) this.alertLocked(user, meta, pending.breakGlass);
+      if (locked) this.alertLocked(user, meta, pending.breakGlass, reserved.lockedForSeconds);
       throw new UnauthorizedException('That verification did not work. Try again.');
     }
     await this.loginProtection.registerSuccess('mfa', user.id, meta.ip, { deviceId: meta.deviceId, trustDevice: true });
     return this.finishSignIn(user, pending, meta, factor);
+  }
+
+  // ---- passwordless passkey sign-in (founder decision 7 Oct 2026; US-A-039, D-075) ----------
+
+  // A challenge for the browser's passkey prompt or the email field's autofill (this device only).
+  passkeySignInOptions(meta: ClientMeta) {
+    return this.mfa.passwordlessOptions(meta.deviceId);
+  }
+
+  // A user-verifying passkey is the whole sign-in at AAL2 (possession + biometric / PIN, phishing
+  // resistant): no password, no second step. The credential names one account; the rules are the
+  // password sign-in's: the IP and the account's lockout (its company's settings), company policy
+  // (passkeys allowed, never SSO-only), never YukthiX staff (W-005: /staff/sign-in), the company in
+  // the web address / remembered on this device. Every outcome is a login event (method 'passkey');
+  // every refusal answers the same 401.
+  async passkeySignIn(credential: PasskeyAssertionDto, scopeSlug: string | null, meta: ClientMeta): Promise<LoginOutcome> {
+    const attempt = { method: 'passkey' as const, meta };
+    const refuse = async (reason: string, account?: Account): Promise<never> => {
+      await this.sessions.recordLoginEvent({ ...attempt, organizationId: account?.organizationId ?? null, userId: account?.id ?? null, identifier: account?.email.toLowerCase() ?? null, result: 'failed', reason });
+      throw new UnauthorizedException(PASSKEY_FAILED);
+    };
+    const locked = async (block: { scope: string; retryAfterSeconds: number }, account?: Account): Promise<never> => {
+      await this.sessions.recordLoginEvent({ ...attempt, organizationId: account?.organizationId ?? null, userId: account?.id ?? null, identifier: account?.email.toLowerCase() ?? null, result: 'locked', reason: `${block.scope}_locked` });
+      throw new TooManyLoginAttemptsException(block.retryAfterSeconds);
+    };
+    // Failures that reach no account count against the IP only (30 in 15 min locks it).
+    const countIp = () => this.loginProtection.registerFailure(PASSKEY_SCOPE, '', meta.ip, { block: null, failures: 0, lockExempt: false, lockEvery: 1 });
+
+    const ipBlock = await this.loginProtection.check(PASSKEY_SCOPE, '', meta.ip);
+    if (ipBlock) return locked(ipBlock);
+    const challenge = await this.mfa.takePasswordlessChallenge(credential, meta.deviceId);
+    if (!challenge) {
+      await countIp();
+      return refuse('passkey_challenge_invalid');
+    }
+    const passkey = await this.mfa.findPasskey(credential.id);
+    const account = passkey && (await this.accountById(passkey.userId));
+    if (!passkey || !account) {
+      await countIp();
+      return refuse('unknown_credential');
+    }
+    // Staff sign in at /staff/sign-in only, and their counters are not touched from here.
+    if (!account.organizationId || isStaff(account)) {
+      await countIp();
+      return refuse('platform_staff', account);
+    }
+
+    const identifier = account.email.toLowerCase();
+    const [c] = await this.toCandidates([account], identifier, meta);
+    if (c.blocked) return locked(c.blocked, account);
+    // Counted before the assertion is checked (atomic), under the company's lockout, shared with
+    // its password sign-in.
+    const reserved = await this.loginProtection.reserve(c.slug, identifier, meta.ip, {
+      deviceId: meta.deviceId,
+      lockExempt: c.listedBreakGlass,
+      lockout: { maxFailedAttempts: c.policy.maxFailedAttempts, lockMinutes: c.policy.lockMinutes },
+    });
+    if (reserved.block) return locked(reserved.block, account);
+    if (!(await this.mfa.verifyPasswordless(passkey, credential as unknown as AuthenticationResponseJSON, challenge))) {
+      const { locked: lockStarted } = await this.loginProtection.registerFailure(c.slug, identifier, meta.ip, reserved);
+      if (lockStarted) this.alertLocked(account, meta, c.listedBreakGlass, reserved.lockedForSeconds);
+      return refuse(lockStarted ? 'passkey_invalid+lockout_started' : 'passkey_invalid', account);
+    }
+    // The key is proven: no guess was wrong, whatever the company rules say next.
+    await this.loginProtection.registerSuccess(c.slug, identifier, meta.ip);
+    const scope = scopeSlug?.trim().toLowerCase();
+    const reason = (await this.refusal(account, c.policy, 'passkey', identifier, meta.ip)) ?? (scope && scope !== c.slug ? 'other_company' : null);
+    if (reason) return refuse(reason, account);
+    return this.finishSignIn(account, { method: 'passkey', orgSlug: c.slug, identifier, breakGlass: false }, meta, 'passkey');
   }
 
   // ---- one-time-code sign-in (P12 §3 AAL1; M04 Q2) -----------------------------------------
@@ -796,7 +873,7 @@ export class AuthService {
       await this.countIdentifierFailure(parsed.value, meta);
       await this.sessions.recordLoginEvent({ ...event, userId: record?.userId || null, result: 'failed', reason: locked ? 'otp_invalid+lockout_started' : 'otp_invalid' });
       const holder = locked && record?.userId ? await this.mfa.loadUser(record.userId) : null;
-      if (holder) this.sessions.notifyLocked(holder, meta);
+      if (holder) this.sessions.notifyLocked(holder, meta, reserved.lockedForSeconds);
       throw new UnauthorizedException(OTP_INVALID_MESSAGE);
     }
 
@@ -856,6 +933,8 @@ export class AuthService {
       this.otp.deliver(channel, channel === 'email' ? account.email : account.mobileNumber!, code, 'sign_in', account.organizationId, {
         userId: account.id,
         fallbackEmail: channel !== 'email' && first.policy.otpSignInChannels.includes('email') ? account.email : null,
+        // Several companies share the address: the email names none of them (it says YukthiX).
+        nameCompany: allowed.length === 1,
       });
       for (const c of allowed) {
         await this.sessions.recordLoginEvent({ organizationId: c.account.organizationId, userId: c.account.id, identifier: parsed.value, result: 'code_sent', method, meta });
@@ -1036,7 +1115,7 @@ export class AuthService {
       return [];
     }
     if (!(await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId)).allowedFactors.includes('otp')) return [];
-    const grants = await resolvePermissionGrants(this.prisma, this.tenantPrisma, user, [...OTP_FALLBACK_BARRED_PERMISSIONS]);
+    const grants = await resolvePermissionGrants(this.prisma, this.tenantPrisma, { ...user, userId: user.id }, [...OTP_FALLBACK_BARRED_PERMISSIONS]);
     if (OTP_FALLBACK_BARRED_PERMISSIONS.some((key) => grants.has(key))) return [];
     const texted = OTP_CHANNELS.filter((channel) => channel !== 'email');
     const ready = await Promise.all(texted.map((channel) => this.otp.channelAvailable(channel, user.organizationId)));
@@ -1078,25 +1157,26 @@ export class AuthService {
       reason: locked ? `${reason}+lockout_started` : reason,
     });
     if (locked && user) {
-      this.alertLocked(user, attempt.meta, reserved.lockExempt);
+      this.alertLocked(user, attempt.meta, reserved.lockExempt, reserved.lockedForSeconds);
     }
     throw new UnauthorizedException(INVALID_CREDENTIALS);
   }
 
   // The lock threshold was reached: the holder is told; for a break-glass account (never locked)
   // every admin of the company is told instead, since someone is guessing at the way in of last resort.
-  private alertLocked(user: SessionUser, meta: ClientMeta, breakGlass: boolean): void {
+  private alertLocked(user: SessionUser, meta: ClientMeta, breakGlass: boolean, lockedForSeconds?: number): void {
     if (breakGlass && user.organizationId) {
-      this.sessions.notifyAdmins(
-        user.organizationId,
-        'Repeated failed sign-ins to a break-glass account',
-        `<p>Someone has repeatedly failed to sign in to the break-glass account <b>${escapeHtml(user.email)}</b>.</p>` +
-          `<p>IP address: ${escapeHtml(meta.ip ?? 'unknown')}</p><p>Review <b>Admin &rsaquo; Login activity</b>.</p>`,
-      );
+      this.sessions.notifyAdmins(user.organizationId, 'Repeated failed sign-ins to a break-glass account', 'Repeated failed sign-ins', [
+        text(`Someone has repeatedly failed to sign in to the break-glass account ${user.email}.`),
+        details([['IP address', meta.ip ?? 'Unknown']]),
+        text('Review Login activity to see where the attempts came from.'),
+        button('Open Login activity', appUrl('/yx/admin/login-activity')),
+      ]);
       return;
     }
-    this.sessions.notifyLocked(user, meta);
+    this.sessions.notifyLocked(user, meta, lockedForSeconds);
   }
+
 
   // Session + token pair + login history + new-device alert, for every successful sign-in path.
   private async startSession(
@@ -1130,14 +1210,15 @@ export class AuthService {
     return tokens;
   }
 
-  async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
+  // `yukthix`: asked from the YukthiX page (no company code typed), so the link opens the YukthiX reset page.
+  async forgotPassword(dto: ForgotPasswordDto, yukthix = false): Promise<void> {
     // Email-first: every company account with this email gets its own link, naming the company
     // (the answer is the same whether there are none, one or several).
     if (!dto.organizationSlug) {
       const accounts = await this.accountsFor({ kind: 'email', value: dto.email.trim().toLowerCase() });
       for (const account of accounts) {
         const rawToken = await this.createResetToken(account.id);
-        this.dispatchResetEmail(account.email, rawToken, account.organizationId!, account.organization?.name).catch((error) =>
+        this.dispatchResetEmail(account.email, rawToken, account.organizationId!, account.organization?.name, true).catch((error) =>
           this.logger.error(`Failed to dispatch password reset email to ${account.email}`, error as Error),
         );
       }
@@ -1160,7 +1241,7 @@ export class AuthService {
     // Fire-and-forget, matching the invitation-email pattern in InvitationsService:
     // email delivery is a notification side effect, not something the caller should
     // wait on (or that should make forgotPassword() throw on SMTP failure).
-    this.dispatchResetEmail(user.email, rawToken, org.id).catch((error) =>
+    this.dispatchResetEmail(user.email, rawToken, org.id, yukthix ? org.name : undefined, yukthix).catch((error) =>
       this.logger.error(`Failed to dispatch password reset email to ${user.email}`, error as Error),
     );
   }
@@ -1174,8 +1255,13 @@ export class AuthService {
     return rawToken;
   }
 
-  private async dispatchResetEmail(email: string, rawToken: string, organizationId: string, companyName?: string): Promise<void> {
-    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/reset-password/${rawToken}`;
+  private async dispatchResetEmail(email: string, rawToken: string, organizationId: string, companyName?: string, yukthix = false): Promise<void> {
+    const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/reset-password/${rawToken}`;
+    if (yukthix) {
+      const mail = await passwordResetEmail({ to: email, link, company: companyName, minutes: PASSWORD_RESET_EXPIRY_MINUTES });
+      await this.emailService.send({ to: email, ...mail, organizationId });
+      return;
+    }
     const which = companyName ? ` for your <b>${escapeHtml(companyName)}</b> account` : '';
     await this.emailService.send({
       to: email,

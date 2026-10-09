@@ -1,5 +1,5 @@
 // Reusable pieces for the People screens (M01, P02, P05, P06). Token-only CSS in people.css.
-import { useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ChevronDown, Eye, Lock } from 'lucide-react';
 import { DesktopFrame, type PanelSection } from '../_kit/frames';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
@@ -337,23 +337,5 @@ export function ListSkeleton({ rows = 6, label }: { rows?: number; label: string
   );
 }
 
-/** Pick exactly one (a time window, a view). Looks joined so it doesn't read as stackable filter chips (founder review 1 Oct 2026). */
-export function Segment<V extends string | number>({ label, options, value, onChange }: { label: string; options: { value: V; label: ReactNode }[]; value: V; onChange: (v: V) => void }) {
-  const move = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
-    const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
-    if (!step) return;
-    e.preventDefault();
-    const next = (i + step + options.length) % options.length;
-    onChange(options[next].value);
-    (e.currentTarget.parentElement?.children[next] as HTMLElement | undefined)?.focus();
-  };
-  return (
-    <div className="yx-ppl__segment" role="radiogroup" aria-label={label}>
-      {options.map((o, i) => (
-        <button key={String(o.value)} type="button" role="radio" aria-checked={o.value === value} tabIndex={o.value === value ? 0 : -1} onClick={() => onChange(o.value)} onKeyDown={(e) => move(e, i)}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
+/** Pick exactly one (a time window, a view): the shared joined Segment (R11), so every pick-one looks the same (founder review 7 Oct 2026). */
+export { Segment } from '../../components/segment';

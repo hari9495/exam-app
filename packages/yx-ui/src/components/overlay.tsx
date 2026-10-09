@@ -3,6 +3,7 @@ import * as RD from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { Button, IconButton } from './button';
 import { InlineAlert } from './feedback';
+import { PopoverPortalContext, hasOpenPopover } from './popover';
 import { FormField } from './field';
 import { TextField } from './inputs';
 import { Kbd } from './foundations';
@@ -50,15 +51,18 @@ export interface DialogProps extends OpenProps {
 export function Dialog({ open, defaultOpen = false, onOpenChange, trigger, title, description, children, footer, size = 'sm', destructive, preventClose }: DialogProps) {
   const [isOpen, setOpen] = useControllable(open, defaultOpen, onOpenChange);
   const returnTo = useRef<HTMLElement | null>(null);
+  const [panel, setPanel] = useState<HTMLDivElement | null>(null);
   const block = (e: Event) => {
     if (destructive || preventClose) e.preventDefault();
   };
   return (
-    <RD.Root open={isOpen} onOpenChange={(o) => (o || !preventClose) && setOpen(o)}>
+    <RD.Root open={isOpen} onOpenChange={(o) => (o || (!preventClose && !hasOpenPopover(panel))) && setOpen(o)}>
       {trigger && <RD.Trigger asChild>{trigger}</RD.Trigger>}
       <RD.Portal>
         <RD.Overlay className="yx-dialog__scrim" />
+        <PopoverPortalContext.Provider value={panel}>
         <RD.Content
+          ref={setPanel}
           className="yx-dialog"
           data-size={size}
           onEscapeKeyDown={block}
@@ -95,6 +99,7 @@ export function Dialog({ open, defaultOpen = false, onOpenChange, trigger, title
           {children && <div className="yx-dialog__body">{children}</div>}
           {footer && <footer className="yx-dialog__foot">{footer}</footer>}
         </RD.Content>
+        </PopoverPortalContext.Provider>
       </RD.Portal>
     </RD.Root>
   );

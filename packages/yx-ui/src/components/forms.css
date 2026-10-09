@@ -101,6 +101,20 @@
 .yx-choice__text { display: flex; flex-direction: column; min-width: 0; }
 .yx-choice__text label { cursor: pointer; }
 .yx-choice__desc { margin: 0; font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); color: var(--yx-color-text-muted); }
+/* MethodCards: pick one and go (sign-in methods, "Confirm it's you"). Each card is one bordered button (R2). */
+.yx-method-cards { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--yx-space-3); min-width: 0; }
+.yx-method-card { box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: var(--yx-space-4); padding: var(--yx-space-4); text-align: start; font: inherit; color: var(--yx-color-text); background: var(--yx-color-bg-surface); border: var(--yx-border-width) solid var(--yx-color-border-input); border-radius: var(--yx-radius-card); cursor: pointer; transition: border-color var(--yx-duration-menu) var(--yx-ease-out), background-color var(--yx-duration-menu) var(--yx-ease-out); }
+.yx-method-card:hover:not(:disabled) { border-color: var(--yx-color-action-primary); background: var(--yx-color-bg-selected); }
+.yx-method-card:hover:not(:disabled) .yx-method-card__title, .yx-method-card:focus-visible .yx-method-card__title { color: var(--yx-color-action-primary); }
+.yx-method-card:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); border-color: var(--yx-color-action-primary); }
+.yx-method-card:disabled { cursor: default; }
+.yx-method-card:disabled:not([aria-busy]) { color: var(--yx-color-text-disabled); }
+.yx-method-card__tile { flex: none; display: grid; place-items: center; width: var(--yx-space-10); height: var(--yx-space-10); border-radius: var(--yx-radius-control); background: var(--yx-color-icon-tile); color: var(--yx-color-action-primary); }
+.yx-method-card__text { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: var(--yx-space-half); overflow-wrap: anywhere; }
+.yx-method-card__title { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); font-size: var(--yx-text-md); line-height: var(--yx-leading-md); font-weight: var(--yx-weight-medium); }
+.yx-method-card__desc { font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); color: var(--yx-color-text-secondary); }
+.yx-method-card__go { flex: none; color: var(--yx-color-text-muted); }
+@media (max-width: 480px) { .yx-method-card { gap: var(--yx-space-3); padding: var(--yx-space-3); } }
 .yx-radio-group { display: flex; flex-direction: column; gap: var(--yx-space-3); }
 .yx-radio-group[data-orientation="horizontal"] { flex-direction: row; flex-wrap: wrap; gap: var(--yx-space-5); }
 
@@ -136,7 +150,7 @@
   padding: 0;
   border: 0;
   border-radius: var(--yx-radius-round);
-  background: var(--yx-color-border-strong);
+  background: var(--yx-color-border-input); /* off track: 3:1 against the card (WCAG 1.4.11) */
   cursor: pointer;
   transition: background-color var(--yx-duration-menu) var(--yx-ease-out);
 }
@@ -187,6 +201,9 @@
 .yx-radio[data-state="checked"]:disabled { border-color: var(--yx-color-text-disabled); }
 .yx-radio:disabled .yx-radio__dot { background: var(--yx-color-text-disabled); }
 .yx-choice:has(:disabled) .yx-choice__text label { color: var(--yx-color-text-disabled); cursor: not-allowed; }
+.yx-checkbox:is([data-state="checked"], [data-state="indeterminate"]):hover:not(:disabled) { background: var(--yx-color-action-primary-hover); border-color: var(--yx-color-action-primary-hover); }
+.yx-switch:hover:not(:disabled) { background: var(--yx-color-text-muted); }
+.yx-switch[data-state="checked"]:hover:not(:disabled) { background: var(--yx-color-action-primary-hover); }
 .yx-checkbox:hover:not(:disabled):not([data-state="checked"]):not([data-state="indeterminate"]),
 .yx-radio:hover:not(:disabled) { border-color: var(--yx-color-text-muted); }
 .yx-error-summary a { display: inline-flex; align-items: center; min-height: var(--yx-target-min); }
@@ -198,8 +215,8 @@
 }
 
 /* Segment: joined pick-one control (R11). Wraps to full-width rows on narrow screens rather than scrolling. */
-.yx-segment { display: inline-flex; flex-wrap: wrap; max-width: 100%; border: var(--yx-border-width) solid var(--yx-color-border-strong); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-surface); overflow: hidden; }
-.yx-segment > button { flex: 1 1 auto; min-height: max(var(--yx-control-md), var(--yx-target-min)); padding: 0 var(--yx-space-3); border: 0; background: transparent; font: inherit; font-size: var(--yx-text-sm); color: var(--yx-color-text); cursor: pointer; white-space: nowrap; }
-.yx-segment > button + button { border-inline-start: var(--yx-border-width) solid var(--yx-color-border-strong); }
-.yx-segment > button[aria-checked='true'] { background: var(--yx-color-action-primary); color: var(--yx-color-text-on-action); font-weight: var(--yx-weight-medium); }
-.yx-segment > button:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: calc(var(--yx-focus-width) * -1); }
+.yx-segment { align-self: flex-start; justify-self: start; display: inline-flex; flex-wrap: wrap; gap: var(--yx-space-half); max-width: 100%; padding: var(--yx-space-half); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-subtle); }
+.yx-segment > button { flex: 1 1 auto; min-height: max(var(--yx-control-md), var(--yx-target-min)); padding: 0 var(--yx-space-4); border: var(--yx-border-width) solid transparent; border-radius: var(--yx-radius-control); background: transparent; font: inherit; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); cursor: pointer; white-space: nowrap; }
+.yx-segment > button:hover { background: var(--yx-color-bg-selected); color: var(--yx-color-text); }
+.yx-segment > button[aria-checked='true'] { background: var(--yx-color-bg-surface); border-color: var(--yx-color-border-input); color: var(--yx-color-action-primary); font-weight: var(--yx-weight-medium); }
+.yx-segment > button:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); }

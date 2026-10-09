@@ -92,7 +92,7 @@ export function Widget({ title, size = 6, menu, actions, empty, bare, busy, lock
             {menu && (
               <Menu>
                 <MenuTrigger asChild>
-                  <IconButton icon={MoreHorizontal} label={`Options for ${title}`} size="sm" noTooltip />
+                  <IconButton icon={MoreHorizontal} label={`Options for ${title}`} size="sm" />
                 </MenuTrigger>
                 <MenuContent align="end">{menu}</MenuContent>
               </Menu>

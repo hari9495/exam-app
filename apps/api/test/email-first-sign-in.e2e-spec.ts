@@ -10,6 +10,7 @@ import { generate } from 'selfsigned';
 import { PrismaService, TenantPrismaService, invalidateTenantSecurityPolicy } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
+import { emailArrives } from './fixtures/sms';
 import { DNS_TXT_RESOLVER, IdentityProvidersService } from '../src/auth/identity-providers.service';
 import { markSteppedUp } from './fixtures/step-up';
 
@@ -327,6 +328,21 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
       }
     });
 
+    it('a typed company code still gets the YukthiX reset page link', async () => {
+      email.send.mockClear();
+      expect((await call(browser(), 'post', '/auth/forgot-password', { organizationSlug: org.cauvery.slug, email: STAFF })).status).toBe(200);
+      await emailArrives(email.send, (m) => m.to === STAFF);
+      const html = email.send.mock.calls.find(([m]) => m.to === STAFF)![0].html as string;
+      expect(html).toMatch(/\/yx\/reset-password\/[0-9a-f]{64}/);
+      expect(html).not.toMatch(/(?<!\/yx)\/reset-password\//);
+    });
+
+    it('YukthiX staff are offered a security key only when setting up their second step', async () => {
+      const res = await platformLogin(browser(), STAFF, STAFF_PW);
+      const status = await request(server()).get('/api/v1/auth/mfa').set('Authorization', `Bearer ${res.body.accessToken}`).set('X-Forwarded-For', freshIp()).expect(200);
+      expect(status.body.allowedFactors).toEqual(['passkey']);
+    });
+
     it('the platform staff sign-in still works, and never signs in a company account', async () => {
       const res = await platformLogin(browser(), STAFF.toUpperCase(), STAFF_PW);
       expect(res.status).toBe(200);
@@ -532,13 +548,16 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
     afterAll(async () => {
       for (const o of [org.kaveri, org.ashok]) await setPolicy(o.id, { otpSignInChannels: [] });
     });
-    const lastCode = (to: string) => [...email.send.mock.calls].reverse().find(([m]) => m.to === to && /code/.test(m.subject))?.[0].html.match(/<b>(\d{6})<\/b>/)?.[1];
+    const lastCode = (to: string) => [...email.send.mock.calls].reverse().find(([m]) => m.to === to && /code/.test(m.subject))?.[0].subject.match(/^(\d{6}) is your/)?.[1];
 
     it('one code to the address however many companies use it; once verified, the picker', async () => {
       const b = browser();
       const started = await call(b, 'post', '/auth/otp/start', { identifier: SHARED });
       expect(started.status).toBe(200);
+      await emailArrives(email.send, (m) => m.to === SHARED);
       expect(email.send.mock.calls.filter(([m]) => m.to === SHARED)).toHaveLength(1);
+      // Several companies use the address: the email names none of them.
+      expect(email.send.mock.calls.find(([m]) => m.to === SHARED)![0].text).toContain('Enter this code to sign in to YukthiX.');
       const verified = await call(b, 'post', '/auth/otp/verify', { identifier: SHARED, otpToken: started.body.otpToken, code: lastCode(SHARED) });
       expect(verified.body.selectionRequired).toBe(true);
       // Cauvery has codes off: it is not offered.
@@ -553,6 +572,7 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
       const res = await call(browser(), 'post', '/auth/otp/start', { identifier: ghost });
       expect(res.status).toBe(200);
       expect(Object.keys(res.body).sort()).toEqual(['expiresInSeconds', 'otpToken', 'resendAfterSeconds']);
+      await new Promise((r) => setTimeout(r, 200));
       expect(email.send).not.toHaveBeenCalled();
     });
   });
@@ -630,7 +650,7 @@ describe('email-first sign-in without a company code (P12 §3, YX-IAM-04/07/10)'
       const audit = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findFirst({ where: { organizationId: org.kaveri.id, action: 'identity_provider.domain_lapsed' } }));
       expect(audit?.actorUserId).toBeNull();
       expect(JSON.parse(audit!.metadataJson!)).toEqual({ domain: DOMAIN, failedChecks: 3 });
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await emailArrives(email.send, (m) => m.to === `admin-${runId}@kaveri-${runId}.test` && /lapsed/.test(m.subject));
       expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: `admin-${runId}@kaveri-${runId}.test`, subject: expect.stringContaining('lapsed') }));
       // A lapsed domain is not re-checked on its own: the admin restores it.
       await recheck();

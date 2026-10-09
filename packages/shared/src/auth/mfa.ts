@@ -13,6 +13,27 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'org:manage_billing',
   'approvals:configure',
   'candidate:data_rights',
+  // HR admin (organisation structure, P01) and payroll (Confidential entity identifiers, pay ranges; P02 §4.2).
+  'org.settings.manage',
+  'org.entity.statutory.manage',
+  'pay.range.view',
+  'pay.range.manage',
+  // HR admin and payroll over employee records and job history (P01 §4.4, P06; P02 §4.2).
+  'employee.profile.view',
+  'employee.change.manage',
+  'employee.change.approve',
+  'employee.change.retro',
+  'employee.change.retro_override',
+  'employee.salary.view',
+  'employee.salary.manage',
+  // Personal, Confidential and Special employee data and who holds which role (P02 §4.2–4.5, step 2d).
+  'employee.personal.view',
+  'employee.profile.edit',
+  'employee.identity.view',
+  'employee.identity.manage',
+  'employee.identity.approve',
+  'employee.aadhaar.view',
+  'access.role.manage',
 ];
 
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).
@@ -25,6 +46,13 @@ export const OTP_FALLBACK_BARRED_PERMISSIONS: readonly string[] = [
   'org:manage_users',
   'org:manage_settings',
   'org:manage_billing',
+  // Payroll Admin.
+  'org.entity.statutory.manage',
+  'pay.range.manage',
+  'employee.salary.manage',
+  // Approving bank / identity changes (payout fraud guard, P02 §4.5) and handing out roles (System Admin).
+  'employee.identity.approve',
+  'access.role.manage',
 ];
 
 export const MFA_ENROLMENT_GRACE_DAYS = 14;

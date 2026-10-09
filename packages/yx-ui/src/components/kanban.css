@@ -53,3 +53,6 @@ button.yx-kanban__name { min-height: var(--yx-space-6); }
 .yx-kanban__next { align-items: center; min-width: 0; }
 .yx-kanban__next[data-overdue] { color: var(--yx-color-danger-text); font-weight: var(--yx-weight-medium); }
 .yx-kanban__days { min-width: 0; }
+
+/* The name opens the candidate: link colour at rest, so it reads as clickable before you hover (7 Oct 2026). */
+button.yx-kanban__name { color: var(--yx-color-link); }

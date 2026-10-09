@@ -1,4 +1,7 @@
-import { apiFetch, apiFetchBlob, setStepUpHandler, setUnauthorizedHandler } from './api-client';
+import { goTo } from './navigate';
+import { apiFetch, apiFetchBlob, resetSessionState, setStepUpHandler, setUnauthorizedHandler, STAFF_SESSION_KEY } from './api-client';
+
+jest.mock('./navigate', () => ({ goTo: jest.fn() }));
 
 describe('apiFetch', () => {
   const originalFetch = global.fetch;
@@ -6,6 +9,8 @@ describe('apiFetch', () => {
   afterEach(() => {
     global.fetch = originalFetch;
     setUnauthorizedHandler(null);
+    resetSessionState();
+    jest.mocked(goTo).mockClear();
   });
 
   it('retries once with a fresh token after a 401, using the registered unauthorized handler', async () => {
@@ -24,20 +29,73 @@ describe('apiFetch', () => {
     expect(result).toEqual({ ok: true });
   });
 
-  it('retries once with a fresh token after a 403, since a stale token reads as permission-denied rather than unauthenticated', async () => {
-    const calls: (string | undefined)[] = [];
+  it('does not refresh on a 403: a permission refusal is an answer, not an expired token', async () => {
+    global.fetch = jest.fn(async () => new Response(JSON.stringify({ message: 'Forbidden' }), { status: 403 })) as unknown as typeof fetch;
+    const refresh = jest.fn(async () => 'fresh');
+    setUnauthorizedHandler(refresh);
+
+    await expect(apiFetch('/exams?pageSize=100', {}, 'tok')).rejects.toMatchObject({ status: 403 });
+    expect(refresh).not.toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refresh on a 429', async () => {
+    global.fetch = jest.fn(async () => new Response(JSON.stringify({ message: 'Too Many Requests' }), { status: 429 })) as unknown as typeof fetch;
+    const refresh = jest.fn(async () => 'fresh');
+    setUnauthorizedHandler(refresh);
+
+    await expect(apiFetch('/exams', {}, 'tok')).rejects.toMatchObject({ status: 429 });
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('shares one refresh between concurrent 401s (single-flight)', async () => {
     global.fetch = jest.fn(async (_url, options) => {
       const auth = (options?.headers as Record<string, string>)?.Authorization;
-      calls.push(auth);
-      const status = auth === 'Bearer stale-role' ? 403 : 200;
-      return new Response(JSON.stringify({ ok: true }), { status });
+      return new Response(JSON.stringify({ ok: true }), { status: auth === 'Bearer old' ? 401 : 200 });
     }) as unknown as typeof fetch;
+    let release!: (t: string) => void;
+    const refresh = jest.fn(() => new Promise<string>((r) => (release = r)));
+    setUnauthorizedHandler(refresh);
 
-    setUnauthorizedHandler(async () => 'fresh-role');
+    const all = Promise.all([apiFetch('/a', {}, 'old'), apiFetch('/b', {}, 'old'), apiFetch('/c', {}, 'old')]);
+    await new Promise((r) => setTimeout(r, 0));
+    release('new');
+    await expect(all).resolves.toEqual([{ ok: true }, { ok: true }, { ok: true }]);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
 
-    const result = await apiFetch('/users', {}, 'stale-role');
-    expect(calls).toEqual(['Bearer stale-role', 'Bearer fresh-role']);
-    expect(result).toEqual({ ok: true });
+  it.each([
+    ['refused (null)', async () => null],
+    ['rate-limited (same token back)', async () => 'old'],
+    ['thrown', async () => Promise.reject(new TypeError('Failed to fetch'))],
+  ])('a failed refresh (%s) is not retried: one refresh, no retry of the request, and the person is sent to sign in and back', async (_label, handler) => {
+    window.history.pushState({}, '', '/v2/panel/reports?week=41');
+    try {
+      global.fetch = jest.fn(async () => new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 })) as unknown as typeof fetch;
+      const refresh = jest.fn(handler as () => Promise<string | null>);
+      setUnauthorizedHandler(refresh);
+
+      await expect(apiFetch('/exams', {}, 'old')).rejects.toMatchObject({ status: 401 });
+      await expect(apiFetch('/exams', {}, 'old')).rejects.toMatchObject({ status: 401 });
+      expect(refresh).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(goTo).toHaveBeenCalledTimes(1);
+      expect(goTo).toHaveBeenCalledWith('/yx/sign-in?next=%2Fv2%2Fpanel%2Freports%3Fweek%3D41');
+    } finally {
+    }
+  });
+
+  it('sends a platform staff session to the staff sign-in page', async () => {
+    window.history.pushState({}, '', '/v2/organizations');
+    window.sessionStorage.setItem(STAFF_SESSION_KEY, '1');
+    try {
+      global.fetch = jest.fn(async () => new Response('{}', { status: 401 })) as unknown as typeof fetch;
+      setUnauthorizedHandler(async () => null);
+      await expect(apiFetch('/organizations', {}, 'old')).rejects.toMatchObject({ status: 401 });
+      expect(goTo).toHaveBeenCalledWith('/staff/sign-in?next=%2Fv2%2Forganizations');
+    } finally {
+      window.sessionStorage.removeItem(STAFF_SESSION_KEY);
+    }
   });
 
   it('throws with a hand-written server message untouched when a request fails', async () => {
@@ -46,6 +104,15 @@ describe('apiFetch', () => {
     ) as unknown as typeof fetch;
 
     await expect(apiFetch('/exams/missing')).rejects.toThrow('This exam was deleted by a recruiter');
+  });
+
+  it('carries allowlisted refusal details (POSSIBLE_SAME_PERSON personIds), never other body fields', async () => {
+    global.fetch = jest.fn(
+      async () => new Response(JSON.stringify({ code: 'POSSIBLE_SAME_PERSON', message: 'Check it is the same person', personIds: ['p1'], resetToken: 'a'.repeat(64) }), { status: 409 }),
+    ) as unknown as typeof fetch;
+    const error = (await apiFetch('/people/employees', { method: 'POST' }).catch((e) => e)) as { code?: string; body?: Record<string, unknown> };
+    expect(error.code).toBe('POSSIBLE_SAME_PERSON');
+    expect(error.body).toEqual({ personIds: ['p1'] });
   });
 
   it('replaces framework-default messages with a sentence for people', async () => {

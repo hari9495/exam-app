@@ -49,12 +49,14 @@ export default function YxMySecurityPage() {
       onStartTotp={() => startTotp(token)}
       onConfirmTotp={(code) => after(confirmTotp(code, token))}
       onRemoveFactor={(f) => after(apiFetch(`/auth/mfa/authenticators/${encodeURIComponent(f.id)}`, { method: 'DELETE' }, token))}
+      onRenamePasskey={(f, label) => after(apiFetch(`/auth/mfa/authenticators/${encodeURIComponent(f.id)}`, { method: 'PATCH', body: JSON.stringify({ label }) }, token))}
       onNewRecoveryCodes={async () => (await after(post('/auth/mfa/recovery-codes', token))).recoveryCodes}
       onSendMobileCode={async (mobileNumber) => (await post('/auth/otp/mobile', token, { mobileNumber })).mobileNumber}
       onVerifyMobile={(code) => after(post('/auth/otp/mobile/verify', token, { code }))}
       onRemoveMobile={() => after(apiFetch('/auth/otp/mobile', { method: 'DELETE' }, token))}
       onSignOutSession={(s) => after(apiFetch(`/auth/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' }, token))}
       onSignOutOthers={() => after(post('/auth/sessions/revoke-others', token))}
+      onChangePassword={(currentPassword, newPassword) => after(post('/users/me/change-password', token, { currentPassword, newPassword }))}
     />
   );
 }

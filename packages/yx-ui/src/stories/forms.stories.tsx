@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
-import { Search } from 'lucide-react';
+import { Fingerprint, KeyRound, Search, Smartphone } from 'lucide-react';
 import { Button } from '../components/button';
 import { ErrorSummary, FieldRow, Form, FormField, FormSection, StickySaveBar, useUnsavedChangesGuard, type FormErrorItem } from '../components/field';
 import { CurrencyField, MaskedField, NumberField, PasswordField, TextArea, TextField, TimeField } from '../components/inputs';
-import { Checkbox, RadioGroup, Switch } from '../components/choice';
+import { Checkbox, MethodCards, RadioGroup, Switch, type MethodCardOption } from '../components/choice';
 import { Combobox, MultiSelect, PersonPicker, Select } from '../components/select';
 import { DatePicker, DateRangePicker, type DateRange } from '../components/date';
 import { FileUpload } from '../components/upload';
@@ -129,6 +129,32 @@ export const Choices: StoryObj = {
     );
   },
 };
+
+const SIGN_IN_METHODS: MethodCardOption[] = [
+  { value: 'passkey', title: 'Passkey', description: 'Sign in with your face, fingerprint or PIN. No password or code needed.', icon: Fingerprint, badge: 'Recommended' },
+  { value: 'totp', title: 'Authenticator app', description: 'Enter a 6-digit code from your authenticator app after your password.', icon: Smartphone },
+  { value: 'recovery', title: 'Recovery code', description: 'Use one of the codes you saved when you set this up.', icon: KeyRound },
+];
+
+export const MethodCardList: StoryObj = {
+  name: 'Method cards',
+  render: function Render() {
+    const [picked, setPicked] = useState<string | null>(null);
+    return (
+      <Stack width={448}>
+        <Section title="Method cards · pick one and go" note="Each card is a button that starts that method. Not radios: there is no Continue after.">
+          <MethodCards aria-label="Ways to sign in" options={SIGN_IN_METHODS} onSelect={setPicked} />
+          <p role="status" style={{ margin: 0, fontSize: 13 }}>{picked ? `Started: ${picked}` : 'Nothing picked yet'}</p>
+        </Section>
+        <Section title="Busy · one card's action running" note="A spinner on that card; the others wait.">
+          <MethodCards aria-label="Ways to sign in, busy" options={SIGN_IN_METHODS.slice(0, 2)} onSelect={() => {}} busy="passkey" />
+        </Section>
+      </Stack>
+    );
+  },
+};
+
+export const MethodCardListPhone: StoryObj = { name: 'Method cards · phone', globals: { viewport: { value: 'phone' } }, render: MethodCardList.render };
 
 export const Selects: StoryObj = {
   render: function Render() {

@@ -20,7 +20,7 @@
 .yx-docview__section { display: flex; flex-direction: column; align-items: flex-start; gap: var(--yx-space-2); padding-top: var(--yx-space-4); border-top: var(--yx-border-width) solid var(--yx-color-border); }
 .yx-docview__versions, .yx-docview__signers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-1); width: 100%; }
 .yx-docview__signers { gap: var(--yx-space-2); }
-.yx-docview__version { display: flex; flex-direction: column; align-items: flex-start; width: 100%; min-height: var(--yx-target-min); padding: var(--yx-space-2); border: var(--yx-border-width) solid transparent; border-radius: var(--yx-radius-control); background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.yx-docview__version { display: flex; flex-direction: column; align-items: flex-start; width: 100%; min-height: var(--yx-target-min); padding: var(--yx-space-2); border: var(--yx-border-width) solid var(--yx-color-border-input); border-radius: var(--yx-radius-control); background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .yx-docview__version:hover { background: var(--yx-color-bg-subtle); }
 .yx-docview__version[aria-pressed="true"] { background: var(--yx-color-bg-selected); border-color: var(--yx-color-action-primary); }
 .yx-docview__version:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: 0; }

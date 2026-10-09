@@ -30,80 +30,80 @@ model Plan {
 }
 
 model Organization {
-  id                            String                @id @default(uuid()) @db.Uuid
-  name                          String                @db.VarChar(1000)
-  slug                          String                @unique @db.Citext
-  region                        String                @default("us") @db.VarChar(1000)
-  status                        String                @default("active") @db.VarChar(1000)
-  logoPath                      String?               @map("logo_path") @db.VarChar(1000)
-  primaryColor                  String?               @map("primary_color") @db.VarChar(1000)
-  accentColor                   String?               @map("accent_color") @db.VarChar(1000)
-  textColor                     String?               @map("text_color") @db.VarChar(1000)
-  loginWatermarkEnabled         Boolean               @default(false) @map("login_watermark_enabled")
-  smtpHost                      String?               @map("smtp_host") @db.VarChar(1000)
-  smtpPort                      Int?                  @map("smtp_port")
-  smtpUser                      String?               @map("smtp_user") @db.VarChar(1000)
-  smtpPasswordEncrypted         String?               @map("smtp_password_encrypted") @db.VarChar(1000)
-  emailFromAddress              String?               @map("email_from_address") @db.VarChar(1000)
-  aiApiKeyEncrypted             String?               @map("ai_api_key_encrypted") @db.VarChar(1000)
-  aiProvider                    String                @default("anthropic") @map("ai_provider") @db.VarChar(1000)
-  aiBaseUrl                     String?               @map("ai_base_url") @db.VarChar(1000)
-  aiModelFast                   String?               @map("ai_model_fast") @db.VarChar(1000)
-  aiModelStandard               String?               @map("ai_model_standard") @db.VarChar(1000)
+  id                            String                    @id @default(uuid()) @db.Uuid
+  name                          String                    @db.VarChar(1000)
+  slug                          String                    @unique @db.Citext
+  region                        String                    @default("us") @db.VarChar(1000)
+  status                        String                    @default("active") @db.VarChar(1000)
+  logoPath                      String?                   @map("logo_path") @db.VarChar(1000)
+  primaryColor                  String?                   @map("primary_color") @db.VarChar(1000)
+  accentColor                   String?                   @map("accent_color") @db.VarChar(1000)
+  textColor                     String?                   @map("text_color") @db.VarChar(1000)
+  loginWatermarkEnabled         Boolean                   @default(false) @map("login_watermark_enabled")
+  smtpHost                      String?                   @map("smtp_host") @db.VarChar(1000)
+  smtpPort                      Int?                      @map("smtp_port")
+  smtpUser                      String?                   @map("smtp_user") @db.VarChar(1000)
+  smtpPasswordEncrypted         String?                   @map("smtp_password_encrypted") @db.VarChar(1000)
+  emailFromAddress              String?                   @map("email_from_address") @db.VarChar(1000)
+  aiApiKeyEncrypted             String?                   @map("ai_api_key_encrypted") @db.VarChar(1000)
+  aiProvider                    String                    @default("anthropic") @map("ai_provider") @db.VarChar(1000)
+  aiBaseUrl                     String?                   @map("ai_base_url") @db.VarChar(1000)
+  aiModelFast                   String?                   @map("ai_model_fast") @db.VarChar(1000)
+  aiModelStandard               String?                   @map("ai_model_standard") @db.VarChar(1000)
   // Generic, bring-your-own embeddings provider (OpenAI-compatible /embeddings), decoupled from the
   // chat provider above. Null = semantic search inert for this org.
-  embeddingApiKeyEncrypted      String?               @map("embedding_api_key_encrypted") @db.VarChar(1000)
-  embeddingBaseUrl              String?               @map("embedding_base_url") @db.VarChar(1000)
-  embeddingModel                String?               @map("embedding_model") @db.VarChar(1000)
-  apiKeyHash                    String?               @map("api_key_hash") @db.VarChar(1000)
-  apiKeyPrefix                  String?               @map("api_key_prefix") @db.VarChar(1000)
-  apiKeyCreatedAt               DateTime?             @map("api_key_created_at") @db.Timestamptz(3)
-  webhookUrl                    String?               @map("webhook_url") @db.VarChar(1000)
-  webhookSecretEncrypted        String?               @map("webhook_secret_encrypted") @db.VarChar(1000)
-  autoArchiveSiblingsOnHire     Boolean               @default(true) @map("auto_archive_siblings_on_hire")
-  businessHoursJson             String?               @map("business_hours_json") @db.Text
-  holidaysJson                  String?               @map("holidays_json") @db.Text
-  fieldPermissionsJson          String?               @map("field_permissions_json") @db.Text
-  recordVisibilityEnabled       Boolean               @default(false) @map("record_visibility_enabled")
-  planId                        String                @map("plan_id") @db.Uuid
-  plan                          Plan                  @relation(fields: [planId], references: [id])
-  billingStatus                 String                @default("active") @map("billing_status") @db.VarChar(1000)
-  stripeCustomerId              String?               @map("stripe_customer_id") @db.VarChar(1000)
-  stripeSubscriptionId          String?               @map("stripe_subscription_id") @db.VarChar(1000)
-  createdAt                     DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
-  applyConsentText              String?               @map("apply_consent_text") @db.Text
-  applyConsentVersion           Int                   @default(1) @map("apply_consent_version")
-  careersEnabled                Boolean               @default(false) @map("careers_enabled")
-  careersHeadline               String?               @map("careers_headline") @db.VarChar(1000)
-  careersIntro                  String?               @map("careers_intro") @db.Text
-  careersBannerPath             String?               @map("careers_banner_path") @db.VarChar(1000)
+  embeddingApiKeyEncrypted      String?                   @map("embedding_api_key_encrypted") @db.VarChar(1000)
+  embeddingBaseUrl              String?                   @map("embedding_base_url") @db.VarChar(1000)
+  embeddingModel                String?                   @map("embedding_model") @db.VarChar(1000)
+  apiKeyHash                    String?                   @map("api_key_hash") @db.VarChar(1000)
+  apiKeyPrefix                  String?                   @map("api_key_prefix") @db.VarChar(1000)
+  apiKeyCreatedAt               DateTime?                 @map("api_key_created_at") @db.Timestamptz(3)
+  webhookUrl                    String?                   @map("webhook_url") @db.VarChar(1000)
+  webhookSecretEncrypted        String?                   @map("webhook_secret_encrypted") @db.VarChar(1000)
+  autoArchiveSiblingsOnHire     Boolean                   @default(true) @map("auto_archive_siblings_on_hire")
+  businessHoursJson             String?                   @map("business_hours_json") @db.Text
+  holidaysJson                  String?                   @map("holidays_json") @db.Text
+  fieldPermissionsJson          String?                   @map("field_permissions_json") @db.Text
+  recordVisibilityEnabled       Boolean                   @default(false) @map("record_visibility_enabled")
+  planId                        String                    @map("plan_id") @db.Uuid
+  plan                          Plan                      @relation(fields: [planId], references: [id])
+  billingStatus                 String                    @default("active") @map("billing_status") @db.VarChar(1000)
+  stripeCustomerId              String?                   @map("stripe_customer_id") @db.VarChar(1000)
+  stripeSubscriptionId          String?                   @map("stripe_subscription_id") @db.VarChar(1000)
+  createdAt                     DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  applyConsentText              String?                   @map("apply_consent_text") @db.Text
+  applyConsentVersion           Int                       @default(1) @map("apply_consent_version")
+  careersEnabled                Boolean                   @default(false) @map("careers_enabled")
+  careersHeadline               String?                   @map("careers_headline") @db.VarChar(1000)
+  careersIntro                  String?                   @map("careers_intro") @db.Text
+  careersBannerPath             String?                   @map("careers_banner_path") @db.VarChar(1000)
   // Opt-in public AI assistant on the careers site (default off — it is public AI spend).
-  careersAssistantEnabled       Boolean               @default(false) @map("careers_assistant_enabled")
-  smsEnabled                    Boolean               @default(false) @map("sms_enabled")
-  smsProvider                   String                @default("twilio") @map("sms_provider") @db.VarChar(1000)
-  smsConfigEncrypted            String?               @map("sms_config_encrypted") @db.Text
+  careersAssistantEnabled       Boolean                   @default(false) @map("careers_assistant_enabled")
+  smsEnabled                    Boolean                   @default(false) @map("sms_enabled")
+  smsProvider                   String                    @default("twilio") @map("sms_provider") @db.VarChar(1000)
+  smsConfigEncrypted            String?                   @map("sms_config_encrypted") @db.Text
   // External Easy Apply (Indeed/LinkedIn) ingestion creds, encrypted JSON keyed by provider:
   // { "<provider>": { "secret": "..." } }. A provider is enabled iff it has a stored secret;
   // the feature is inert until an org configures one. Same on/off shape as the SMS config blob.
-  easyApplyConfigEncrypted      String?               @map("easy_apply_config_encrypted") @db.Text
-  whatsappEnabled               Boolean               @default(false) @map("whatsapp_enabled")
-  whatsappProvider              String                @default("twilio") @map("whatsapp_provider") @db.VarChar(1000)
-  whatsappConfigEncrypted       String?               @map("whatsapp_config_encrypted") @db.Text
+  easyApplyConfigEncrypted      String?                   @map("easy_apply_config_encrypted") @db.Text
+  whatsappEnabled               Boolean                   @default(false) @map("whatsapp_enabled")
+  whatsappProvider              String                    @default("twilio") @map("whatsapp_provider") @db.VarChar(1000)
+  whatsappConfigEncrypted       String?                   @map("whatsapp_config_encrypted") @db.Text
   // HRIS/ATS export: on candidate hire, POST a structured employee record to the org's HRIS inbound
   // API / iPaaS endpoint. Bring-your-own endpoint + auth token; inert until enabled + a target URL
   // is set. hrisAuthHeaderEncrypted holds the full Authorization header value (e.g. "Bearer xxx").
   // Daily staff reminder sweep (pending grading, stale invites, expiring offers, upcoming
   // interviews, feedback owed) — opt-in per org; per-user email opt-out via userNotificationPreference.
-  remindersEnabled              Boolean               @default(false) @map("reminders_enabled")
+  remindersEnabled              Boolean                   @default(false) @map("reminders_enabled")
   // Weekly scheduled-report digest — opt-in per org. Recipients are a JSON array of staff user ids;
   // lastSentAt gates the 7-day cadence (and prevents a restart from re-sending the same week).
-  scheduledReportEnabled        Boolean               @default(false) @map("scheduled_report_enabled")
-  scheduledReportRecipientsJson String?               @map("scheduled_report_recipients_json") @db.Text
-  scheduledReportLastSentAt     DateTime?             @map("scheduled_report_last_sent_at") @db.Timestamptz(3)
-  hrisExportEnabled             Boolean               @default(false) @map("hris_export_enabled")
-  hrisProvider                  String                @default("generic") @map("hris_provider") @db.VarChar(1000)
-  hrisTargetUrl                 String?               @map("hris_target_url") @db.VarChar(1000)
-  hrisAuthHeaderEncrypted       String?               @map("hris_auth_header_encrypted") @db.Text
+  scheduledReportEnabled        Boolean                   @default(false) @map("scheduled_report_enabled")
+  scheduledReportRecipientsJson String?                   @map("scheduled_report_recipients_json") @db.Text
+  scheduledReportLastSentAt     DateTime?                 @map("scheduled_report_last_sent_at") @db.Timestamptz(3)
+  hrisExportEnabled             Boolean                   @default(false) @map("hris_export_enabled")
+  hrisProvider                  String                    @default("generic") @map("hris_provider") @db.VarChar(1000)
+  hrisTargetUrl                 String?                   @map("hris_target_url") @db.VarChar(1000)
+  hrisAuthHeaderEncrypted       String?                   @map("hris_auth_header_encrypted") @db.Text
   users                         User[]
   auditLogs                     AuditLog[]
   webhookDeliveries             WebhookDelivery[]
@@ -2102,27 +2102,27 @@ model VerifiedDomain {
 
 // A gateway account. organizationId null = the YukthiX shared account (readable by the platform only).
 model ChannelAccount {
-  id               String                 @id @default(uuid()) @db.Uuid
-  organizationId   String?                @map("organization_id") @db.Uuid
-  organization     Organization?          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id              String                 @id @default(uuid()) @db.Uuid
+  organizationId  String?                @map("organization_id") @db.Uuid
+  organization    Organization?          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   // 'sms'
-  channel          String                 @default("sms") @db.VarChar(16)
+  channel         String                 @default("sms") @db.VarChar(16)
   // 'http' | 'twilio' | 'dev'
-  provider         String                 @db.VarChar(16)
-  name             String                 @db.VarChar(100)
+  provider        String                 @db.VarChar(16)
+  name            String                 @db.VarChar(100)
   // AES-256-GCM (OrgSecretsCryptoService) JSON config incl. secrets; never returned by the API
-  configEncrypted  String                 @map("config_encrypted") @db.Text
-  sender           String?                @db.VarChar(20)
-  dltEntityId      String?                @map("dlt_entity_id") @db.VarChar(30)
+  configEncrypted String                 @map("config_encrypted") @db.Text
+  sender          String?                @db.VarChar(20)
+  dltEntityId     String?                @map("dlt_entity_id") @db.VarChar(30)
   // { otp: { dltTemplateId, body, variables, status } }
-  templates        Json                   @default("{}")
-  priority         Int                    @default(100)
+  templates       Json                   @default("{}")
+  priority        Int                    @default(100)
   // 'active' | 'disabled'
-  status           String                 @default("active") @db.VarChar(16)
-  createdByUserId  String?                @map("created_by_user_id") @db.Uuid
-  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
-  deliveries       NotificationDelivery[]
+  status          String                 @default("active") @db.VarChar(16)
+  createdByUserId String?                @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deliveries      NotificationDelivery[]
 
   @@index([organizationId, channel, priority])
   @@map("channel_accounts")
@@ -2206,4 +2206,529 @@ model SmsUsageMonthly {
 
   @@id([organizationId, month])
   @@map("sms_usage_monthly")
+}
+
+// ---------------------------------------------------------------------------------------------
+// P01 organisation structure (migration 20261007000000_org_structure). Links between these tables are
+// composite (organization_id, id) foreign keys in SQL, so a row can never point at another company's
+// row; they are deliberately not modelled as Prisma relations.
+
+model LegalEntity {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  name              String    @db.Citext
+  shortName         String    @map("short_name") @db.Citext
+  country           String    @default("IN") @db.Char(2)
+  currency          String    @default("INR") @db.Char(3)
+  fyStartMonth      Int       @default(4) @map("fy_start_month") @db.SmallInt
+  registeredAddress Json?     @map("registered_address")
+  dataRegion        String    @default("IN") @map("data_region") @db.VarChar(8)
+  // Confidential (P02 §4.4): returned only to org.entity.statutory.manage.
+  pan               String?   @db.VarChar(10)
+  tan               String?   @db.VarChar(10)
+  gstin             String?   @db.VarChar(15)
+  cin               String?   @db.VarChar(21)
+  isDefault         Boolean   @default(false) @map("is_default")
+  archivedAt        DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy         String?   @map("created_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("legal_entities")
+}
+
+model Location {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  name           String    @db.Citext
+  code           String    @db.Citext
+  address        Json
+  country        String    @db.Char(2)
+  state          String    @db.VarChar(6)
+  timezone       String    @db.VarChar(64)
+  minWageZone    String?   @map("min_wage_zone") @db.VarChar(40)
+  geoLat         Decimal?  @map("geo_lat") @db.Decimal(9, 6)
+  geoLng         Decimal?  @map("geo_lng") @db.Decimal(9, 6)
+  geoRadiusM     Int?      @map("geo_radius_m")
+  ipRanges       String[]  @default([]) @map("ip_ranges")
+  archivedAt     DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("locations")
+}
+
+model Department {
+  // Set by the service: the materialised path ends with the row's own id.
+  id                 String    @id @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  name               String    @db.Citext
+  code               String    @db.Citext
+  parentId           String?   @map("parent_id") @db.Uuid
+  path               String
+  isDivision         Boolean   @default(false) @map("is_division")
+  /// P01 §4.3: implicit "Dept head @ department subtree" grant (P02 YX-SEC-04).
+  headEmployeeId     String?   @map("head_employee_id") @db.Uuid
+  /// YX-SEC-04/06: the implicit view runs from this day (set whenever the head changes).
+  headSince          DateTime? @map("head_since") @db.Date
+  ownerLegalEntityId String?   @map("owner_legal_entity_id") @db.Uuid
+  appliesToEntities  String[]  @default([]) @map("applies_to_entities") @db.Uuid
+  archivedAt         DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy          String?   @map("created_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("departments")
+}
+
+model Designation {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  name               String    @db.Citext
+  code               String    @db.Citext
+  jobFamily          String?   @map("job_family") @db.VarChar(100)
+  ownerLegalEntityId String?   @map("owner_legal_entity_id") @db.Uuid
+  appliesToEntities  String[]  @default([]) @map("applies_to_entities") @db.Uuid
+  archivedAt         DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy          String?   @map("created_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("designations")
+}
+
+model Grade {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  name               String    @db.Citext
+  code               String    @db.Citext
+  rank               Int
+  ownerLegalEntityId String?   @map("owner_legal_entity_id") @db.Uuid
+  appliesToEntities  String[]  @default([]) @map("applies_to_entities") @db.Uuid
+  archivedAt         DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy          String?   @map("created_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("grades")
+}
+
+model EmploymentType {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  name               String    @db.Citext
+  code               String    @db.Citext
+  category           String    @db.VarChar(24)
+  ownerLegalEntityId String?   @map("owner_legal_entity_id") @db.Uuid
+  appliesToEntities  String[]  @default([]) @map("applies_to_entities") @db.Uuid
+  archivedAt         DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy          String?   @map("created_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("employment_types")
+}
+
+model CostCentre {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  name           String    @db.Citext
+  code           String    @db.Citext
+  parentId       String?   @map("parent_id") @db.Uuid
+  archivedAt     DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("cost_centres")
+}
+
+// Pay data (founder rule R1): read only with pay.range.view.
+model GradePayRange {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  gradeId        String    @map("grade_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  currency       String    @db.Char(3)
+  min            Decimal   @db.Decimal(14, 2)
+  mid            Decimal   @db.Decimal(14, 2)
+  max            Decimal   @db.Decimal(14, 2)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("grade_pay_ranges")
+}
+
+// P01 §4.6 scoped settings; keys are registered in apps/api/src/org-structure/settings-registry.ts.
+model Setting {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  scopeType      String    @map("scope_type") @db.VarChar(20)
+  scopeId        String    @map("scope_id") @db.Uuid
+  key            String    @db.VarChar(100)
+  value          Json
+  validFrom      DateTime? @map("valid_from") @db.Date
+  updatedBy      String?   @map("updated_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("settings")
+}
+
+// ---- P01 §4.4 employee core + P06 effective-dated history (migration 20261008000000_employee_history) ----
+// Dated fact tables (assignments, status periods, compensations) are written only through approved
+// employee changes (YX-HIS-01) and never updated except to supersede a row (YX-HIS-07): the database
+// enforces both (trigger + column grants). Overlap exclusions and partial indexes live in the migration.
+
+model Employee {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  /// P01 §4.5a: the person this record belongs to (one employee record per person).
+  personId       String   @map("person_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  givenName      String   @map("given_name") @db.VarChar(100)
+  familyName     String?  @map("family_name") @db.VarChar(100)
+  preferredName  String?  @map("preferred_name") @db.VarChar(100)
+  workEmail      String?  @map("work_email") @db.Citext
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("employees")
+}
+
+model Employment {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  employeeCode   String    @map("employee_code") @db.Citext
+  codeScopeKey   String    @map("code_scope_key") @db.Uuid
+  joinedOn       DateTime  @map("joined_on") @db.Date
+  exitedOn       DateTime? @map("exited_on") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("employments")
+}
+
+model EmployeeChange {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  employmentId   String    @map("employment_id") @db.Uuid
+  seq            BigInt    @default(autoincrement())
+  changeType     String    @map("change_type") @db.VarChar(32)
+  effectiveDate  DateTime  @map("effective_date") @db.Date
+  status         String    @db.VarChar(16)
+  payload        Json
+  impact         Json?
+  reason         String    @db.VarChar(1000)
+  overrideReason String?   @map("override_reason") @db.VarChar(1000)
+  /// M01 §3.3: set when the change was raised in a bulk batch (approved together).
+  batchId        String?   @map("batch_id") @db.Uuid
+  requestedBy    String?   @map("requested_by") @db.Uuid
+  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionNote   String?   @map("decision_note") @db.VarChar(1000)
+  appliedAt      DateTime? @map("applied_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("employee_changes")
+}
+
+model EmployeeAssignment {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  legalEntityId        String    @map("legal_entity_id") @db.Uuid
+  employeeId           String    @map("employee_id") @db.Uuid
+  employmentId         String    @map("employment_id") @db.Uuid
+  validFrom            DateTime  @map("valid_from") @db.Date
+  validTo              DateTime? @map("valid_to") @db.Date
+  locationId           String    @map("location_id") @db.Uuid
+  departmentId         String    @map("department_id") @db.Uuid
+  designationId        String    @map("designation_id") @db.Uuid
+  gradeId              String?   @map("grade_id") @db.Uuid
+  employmentTypeId     String    @map("employment_type_id") @db.Uuid
+  managerEmployeeId    String?   @map("manager_employee_id") @db.Uuid
+  changeId             String    @map("change_id") @db.Uuid
+  recordedAt           DateTime  @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  supersededAt         DateTime? @map("superseded_at") @db.Timestamptz(3)
+  supersededByChangeId String?   @map("superseded_by_change_id") @db.Uuid
+
+  @@map("employee_assignments")
+}
+
+model AssignmentCostCentre {
+  organizationId String  @map("organization_id") @db.Uuid
+  legalEntityId  String  @map("legal_entity_id") @db.Uuid
+  assignmentId   String  @map("assignment_id") @db.Uuid
+  costCentreId   String  @map("cost_centre_id") @db.Uuid
+  percent        Decimal @db.Decimal(5, 2)
+
+  @@id([assignmentId, costCentreId])
+  @@map("assignment_cost_centres")
+}
+
+/// P01 §4.4 / M01 Q5: dotted-line managers of an assignment (visibility and feedback only, YX-EMP-04).
+model AssignmentDottedLineManager {
+  organizationId    String @map("organization_id") @db.Uuid
+  employeeId        String @map("employee_id") @db.Uuid
+  assignmentId      String @map("assignment_id") @db.Uuid
+  managerEmployeeId String @map("manager_employee_id") @db.Uuid
+
+  @@id([assignmentId, managerEmployeeId])
+  @@map("assignment_dotted_line_managers")
+}
+
+model EmploymentStatusPeriod {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  employmentId         String    @map("employment_id") @db.Uuid
+  validFrom            DateTime  @map("valid_from") @db.Date
+  validTo              DateTime? @map("valid_to") @db.Date
+  status               String    @db.VarChar(16)
+  changeId             String    @map("change_id") @db.Uuid
+  recordedAt           DateTime  @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  supersededAt         DateTime? @map("superseded_at") @db.Timestamptz(3)
+  supersededByChangeId String?   @map("superseded_by_change_id") @db.Uuid
+
+  @@map("employment_status_periods")
+}
+
+model Compensation {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  employmentId         String    @map("employment_id") @db.Uuid
+  validFrom            DateTime  @map("valid_from") @db.Date
+  validTo              DateTime? @map("valid_to") @db.Date
+  currency             String    @db.Char(3)
+  annualCtc            Decimal   @map("annual_ctc") @db.Decimal(14, 2)
+  changeId             String    @map("change_id") @db.Uuid
+  recordedAt           DateTime  @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  supersededAt         DateTime? @map("superseded_at") @db.Timestamptz(3)
+  supersededByChangeId String?   @map("superseded_by_change_id") @db.Uuid
+
+  @@map("compensations")
+}
+
+// ---- People core (migration 20261009000000_people_core): P01 §4.5a persons, M01 §3.4 probations,
+// M01 §3.3 bulk change batches. Partial unique indexes and checks live in the migration.
+
+model Person {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  givenName      String   @map("given_name") @db.VarChar(100)
+  familyName     String?  @map("family_name") @db.VarChar(100)
+  preferredName  String?  @map("preferred_name") @db.VarChar(100)
+  primaryEmail   String?  @map("primary_email") @db.Citext
+  primaryPhone   String?  @map("primary_phone") @db.VarChar(16)
+  status         String   @default("active") @db.VarChar(8)
+  mergedInto     String?  @map("merged_into") @db.Uuid
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("persons")
+}
+
+model PersonRole {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  personId       String    @map("person_id") @db.Uuid
+  roleType       String    @map("role_type") @db.VarChar(24)
+  sourceTable    String    @map("source_table") @db.VarChar(40)
+  sourceId       String    @map("source_id") @db.Uuid
+  startOn        DateTime  @map("start_on") @db.Date
+  endOn          DateTime? @map("end_on") @db.Date
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("person_roles")
+}
+
+/// Append-only (the app role cannot update or delete it): YX-ORG-27.
+model PersonLinkLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  action         String   @db.VarChar(12)
+  personId       String   @map("person_id") @db.Uuid
+  otherPersonId  String?  @map("other_person_id") @db.Uuid
+  roleId         String?  @map("role_id") @db.Uuid
+  basis          String   @db.VarChar(40)
+  decidedBy      String?  @map("decided_by") @db.Uuid
+  reason         String?  @db.VarChar(1000)
+  before         Json?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("person_link_log")
+}
+
+model Probation {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  employmentId     String    @map("employment_id") @db.Uuid
+  startOn          DateTime  @map("start_on") @db.Date
+  originalEndOn    DateTime  @map("original_end_on") @db.Date
+  plannedEndOn     DateTime  @map("planned_end_on") @db.Date
+  extendedMonths   Int       @default(0) @map("extended_months")
+  reviewRemindedOn DateTime? @map("review_reminded_on") @db.Date
+  escalatedOn      DateTime? @map("escalated_on") @db.Date
+  createdBy        String?   @map("created_by") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employmentId])
+  @@map("probations")
+}
+
+model EmployeeChangeBatch {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  status         String    @default("pending") @db.VarChar(16)
+  source         String    @db.VarChar(16)
+  fileName       String?   @map("file_name") @db.VarChar(200)
+  reason         String    @db.VarChar(1000)
+  rowCount       Int       @map("row_count")
+  requestedBy    String?   @map("requested_by") @db.Uuid
+  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionNote   String?   @map("decision_note") @db.VarChar(1000)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("employee_change_batches")
+}
+
+// ---- Step 2d: access, visibility and privacy (P02 §4.2–4.5) ----
+
+/// P02 §3 role grant: user + role (permission profile) + scope + optional dates (YX-SEC-03). Never deleted.
+model RoleGrant {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String    @map("organization_id") @db.Uuid
+  userId              String    @map("user_id") @db.Uuid
+  permissionProfileId String    @map("permission_profile_id") @db.Uuid
+  scopeType           String    @map("scope_type") @db.VarChar(20)
+  legalEntityId       String?   @map("legal_entity_id") @db.Uuid
+  locationId          String?   @map("location_id") @db.Uuid
+  departmentId        String?   @map("department_id") @db.Uuid
+  validFrom           DateTime  @map("valid_from") @db.Date
+  validTo             DateTime? @map("valid_to") @db.Date
+  status              String    @db.VarChar(10)
+  reason              String    @db.VarChar(500)
+  grantedBy           String?   @map("granted_by") @db.Uuid
+  decidedBy           String?   @map("decided_by") @db.Uuid
+  decidedAt           DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionNote        String?   @map("decision_note") @db.VarChar(500)
+  revokedBy           String?   @map("revoked_by") @db.Uuid
+  revokedAt           DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("role_grants")
+}
+
+/// P02 §4.4 Personal class, kept apart from the employee row.
+model EmployeePersonalDetails {
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  dateOfBirth    DateTime? @map("date_of_birth") @db.Date
+  gender         String?   @db.VarChar(20)
+  personalEmail  String?   @map("personal_email") @db.Citext
+  personalPhone  String?   @map("personal_phone") @db.VarChar(16)
+  addressLine1   String?   @map("address_line1") @db.VarChar(200)
+  addressLine2   String?   @map("address_line2") @db.VarChar(200)
+  city           String?   @db.VarChar(100)
+  stateCode      String?   @map("state_code") @db.VarChar(6)
+  postalCode     String?   @map("postal_code") @db.VarChar(12)
+  country        String?   @db.Char(2)
+  hideBirthday   Boolean   @default(false) @map("hide_birthday")
+  updatedBy      String?   @map("updated_by") @db.Uuid
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([organizationId, employeeId])
+  @@map("employee_personal_details")
+}
+
+/// P01 §4.4 employee_identifiers: encrypted values, keyed hashes (YX-EMP-02), last four (P02 §4.4).
+model EmployeeIdentifiers {
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  legalName      String?  @map("legal_name") @db.VarChar(200)
+  panEnc         String?  @map("pan_enc")
+  panHash        String?  @map("pan_hash") @db.Char(64)
+  panLast4       String?  @map("pan_last4") @db.Char(4)
+  aadhaarEnc     String?  @map("aadhaar_enc")
+  aadhaarHash    String?  @map("aadhaar_hash") @db.Char(64)
+  aadhaarLast4   String?  @map("aadhaar_last4") @db.Char(4)
+  uanEnc         String?  @map("uan_enc")
+  uanHash        String?  @map("uan_hash") @db.Char(64)
+  uanLast4       String?  @map("uan_last4") @db.Char(4)
+  esicEnc        String?  @map("esic_enc")
+  esicHash       String?  @map("esic_hash") @db.Char(64)
+  esicLast4      String?  @map("esic_last4") @db.Char(4)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([organizationId, employeeId])
+  @@map("employee_identifiers")
+}
+
+/// M01 Q4: salary and reimbursement accounts as dated rows (closed, never edited).
+model EmployeeBankAccount {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  purpose        String    @db.VarChar(16)
+  holderName     String    @map("holder_name") @db.VarChar(200)
+  accountEnc     String    @map("account_enc")
+  accountHash    String    @map("account_hash") @db.Char(64)
+  accountLast4   String    @map("account_last4") @db.Char(4)
+  ifsc           String    @db.Char(11)
+  validFrom      DateTime  @default(now()) @map("valid_from") @db.Timestamptz(3)
+  validTo        DateTime? @map("valid_to") @db.Timestamptz(3)
+  usableFrom     DateTime  @map("usable_from") @db.Timestamptz(3)
+  requestId      String?   @map("request_id") @db.Uuid
+
+  @@map("employee_bank_accounts")
+}
+
+/// P02 §4.5: identity, bank and legal-name changes with old → new and a second person's approval.
+model EmployeeProfileRequest {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  employeeId      String    @map("employee_id") @db.Uuid
+  kind            String    @db.VarChar(24)
+  proposedEnc     String    @map("proposed_enc")
+  proposedDisplay Json      @map("proposed_display")
+  currentDisplay  Json?     @map("current_display")
+  reason          String    @db.VarChar(500)
+  overrideReason  String?   @map("override_reason") @db.VarChar(500)
+  status          String    @default("pending") @db.VarChar(10)
+  requestedBy     String    @map("requested_by") @db.Uuid
+  decidedBy       String?   @map("decided_by") @db.Uuid
+  decidedAt       DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionNote    String?   @map("decision_note") @db.VarChar(500)
+  /// YX-SEC-13: the contacts on file when the request was raised get the change notice.
+  notifyContacts  String[]  @default([]) @map("notify_contacts")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("employee_profile_requests")
 }

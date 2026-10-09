@@ -41,6 +41,8 @@ const PEOPLE = {
     { id: 'g-admin', label: 'Demo admin', claims: { email: 'admin@demo-org.test', email_verified: true, name: 'Demo Admin' } },
     { id: 'g-recruiter', label: 'Demo recruiter', claims: { email: 'recruiter@demo-org.test', email_verified: true, name: 'Demo Recruiter' } },
     { id: 'g-panel', label: 'Demo panel member', claims: { email: 'panel@demo-org.test', email_verified: true, name: 'Demo Panel' } },
+    { id: 'g-hr', label: 'Demo HR admin (Lakshmi)', claims: { email: 'hr@demo-org.test', email_verified: true, name: 'Lakshmi Venkatesan' } },
+    { id: 'g-consultant', label: 'Consultant in two companies (picker)', claims: { email: 'consultant@sharma-advisory.test', email_verified: true, name: 'Nikhil Sharma' } },
     { id: 'g-staff', label: 'YukthiX staff (refused)', claims: { email: 'super@platform.test', email_verified: true, name: 'Platform Staff' } },
     { id: 'g-unverified', label: 'Recruiter address, not verified (refused)', claims: { email: 'recruiter@demo-org.test', email_verified: false, name: 'Unverified' } },
     { id: 'g-nobody', label: 'No YukthiX account (refused)', claims: { email: 'nobody@elsewhere.test', email_verified: true, name: 'Nobody' } },
@@ -48,6 +50,8 @@ const PEOPLE = {
   microsoft: [
     { id: 'm-admin', label: 'Demo admin', claims: { tid: DEMO_TENANT, oid: '00000000-0000-4000-8000-0000000000a1', email: 'admin@demo-org.test', xms_edov: true, preferred_username: 'admin@demo-org.test', name: 'Demo Admin' } },
     { id: 'm-recruiter', label: 'Demo recruiter', claims: { tid: DEMO_TENANT, oid: '00000000-0000-4000-8000-0000000000a2', email: 'recruiter@demo-org.test', xms_edov: true, preferred_username: 'recruiter@demo-org.test', name: 'Demo Recruiter' } },
+    // The manual test script signs in as Lakshmi (HR) with Microsoft too (MT-1-18).
+    { id: 'm-hr', label: 'Demo HR admin (Lakshmi)', claims: { tid: DEMO_TENANT, oid: '00000000-0000-4000-8000-0000000000a4', email: 'hr@demo-org.test', xms_edov: true, preferred_username: 'hr@demo-org.test', name: 'Lakshmi Venkatesan' } },
     { id: 'm-staff', label: 'YukthiX staff (refused)', claims: { tid: DEMO_TENANT, oid: '00000000-0000-4000-8000-0000000000a3', email: 'super@platform.test', xms_edov: true, preferred_username: 'super@platform.test', name: 'Platform Staff' } },
     {
       id: 'm-takeover',

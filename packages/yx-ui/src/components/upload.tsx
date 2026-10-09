@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type DragEvent } from 'react';
 import { AlertCircle, CheckCircle2, FileText, RotateCcw, ShieldCheck, Upload, X } from 'lucide-react';
 import { formatBytes } from '../lib/format';
 import { Icon } from './foundations';
+import { IconButton } from './button';
 import { useFieldControl } from './field';
 
 export type UploadStatus = 'uploading' | 'scanning' | 'done' | 'error';
@@ -125,7 +126,11 @@ export function FileUpload({ upload, accept, maxSize = 10 * 1024 * 1024, multipl
           ref={inputRef}
           id={controlProps.id}
           type="file"
-          hidden
+          // Focusable (not display:none) so the field label and the error summary can reach it; the
+          // zone shows the focus ring. Out of the tab order: "Browse files" is the keyboard stop.
+          className="yx-visually-hidden"
+          tabIndex={-1}
+          aria-describedby={cxIds(hintId, controlProps['aria-describedby'])}
           multiple={multiple}
           accept={accept?.join(',')}
           disabled={disabled}
@@ -171,17 +176,7 @@ export function FileUpload({ upload, accept, maxSize = 10 * 1024 * 1024, multipl
                   <Icon icon={RotateCcw} /> Retry
                 </button>
               )}
-              <button
-                type="button"
-                className="yx-button"
-                data-variant="ghost"
-                data-size="sm"
-                data-icon-only
-                aria-label={`Remove ${it.file.name}`}
-                onClick={() => update((prev) => prev.filter((x) => x.id !== it.id))}
-              >
-                <Icon icon={X} />
-              </button>
+              <IconButton icon={X} size="sm" label={`Remove ${it.file.name}`} onClick={() => update((prev) => prev.filter((x) => x.id !== it.id))} />
             </li>
           ))}
         </ul>

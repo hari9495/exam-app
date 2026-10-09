@@ -5,7 +5,7 @@ describe('Home (landing page)', () => {
   it('shows the nav Login link pointing to /login', () => {
     render(<Home />);
     const navLogin = screen.getAllByRole('link', { name: 'Login' })[0];
-    expect(navLogin).toHaveAttribute('href', '/login');
+    expect(navLogin).toHaveAttribute('href', '/yx/sign-in');
   });
 
   it('shows the headline and Get Started CTAs linking to the lead-capture form', () => {

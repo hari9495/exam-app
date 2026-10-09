@@ -1,15 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { signIn } from './fixtures/sign-in';
 
-const ORG_SLUG = process.env.E2E_ORG_SLUG ?? 'demo-org';
 const RECRUITER_EMAIL = process.env.E2E_RECRUITER_EMAIL ?? 'recruiter@demo-org.test';
 const RECRUITER_PASSWORD = process.env.E2E_RECRUITER_PASSWORD ?? 'Passw0rd!2026';
 
 test('candidate redeems an invitation, takes an exam, and submits', async ({ page }) => {
-  await page.goto('/login');
-  await page.getByLabel('Organization slug').fill(ORG_SLUG);
-  await page.getByLabel('Email').fill(RECRUITER_EMAIL);
-  await page.getByLabel('Password').fill(RECRUITER_PASSWORD);
-  await page.getByRole('button', { name: 'Log in' }).click();
+  await signIn(page, RECRUITER_EMAIL, RECRUITER_PASSWORD);
   await expect(page).toHaveURL(/\/dashboard/);
 
   await page.getByRole('link', { name: 'Question Bank' }).click();
@@ -96,11 +92,7 @@ test('candidate sees the pause and block overlays when the backend reports pause
   // at the network layer instead of driving real MediaPipe detection) -- so the first
   // paused/blocked transition genuinely has to ride that interval out.
   test.setTimeout(60_000);
-  await page.goto('/login');
-  await page.getByLabel('Organization slug').fill(ORG_SLUG);
-  await page.getByLabel('Email').fill(RECRUITER_EMAIL);
-  await page.getByLabel('Password').fill(RECRUITER_PASSWORD);
-  await page.getByRole('button', { name: 'Log in' }).click();
+  await signIn(page, RECRUITER_EMAIL, RECRUITER_PASSWORD);
   await expect(page).toHaveURL(/\/dashboard/);
 
   await page.getByRole('link', { name: 'Question Bank' }).click();

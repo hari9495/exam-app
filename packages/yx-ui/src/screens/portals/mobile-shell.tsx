@@ -12,6 +12,7 @@ import { TimeField } from '../../components/inputs';
 import { ConfirmDialog } from '../../components/overlay';
 import { Icon } from '../../components/foundations';
 import { PageBanner } from '../../components/notify';
+import { Segment } from '../../components/segment';
 import { formatDate } from '../../lib/format';
 import { ALWAYS_DELIVERED, inQuietHours } from './portals-logic';
 import { OtpInput, PORTAL_LANGUAGES, StepDots } from './portals-kit';
@@ -194,14 +195,7 @@ export function MobileHomeScreen({
         </PageBanner>
       )}
       {manager && (
-        <div className="yx-ps-seg" role="group" aria-label="Show">
-          <button type="button" aria-pressed={seg === 'me'} onClick={() => setSeg('me')}>
-            Me
-          </button>
-          <button type="button" aria-pressed={seg === 'team'} onClick={() => setSeg('team')}>
-            Team
-          </button>
-        </div>
+        <Segment label="Show" className="yx-ps-seg" value={seg} onChange={setSeg} options={[{ value: 'me', label: 'Me' }, { value: 'team', label: 'Team' }]} />
       )}
       {loading ? (
         <div className="yx-ps-stack" aria-busy="true">

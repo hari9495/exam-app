@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
-import { SecurityShell } from '../auth/shell';
+import { WorkspaceShell, type WorkspaceLink } from '../auth/shell';
 import { SmsAccountEditor, SmsSettingsScreen, type SmsSettingsScreenProps } from './sms-settings';
 import { ACCOUNTS, DELIVERIES, OVERVIEW, OVERVIEW_AT_LIMIT, OVERVIEW_PLATFORM, OVERVIEW_SHARED_ONLY } from './data';
 
@@ -9,16 +9,16 @@ export default meta;
 type S = StoryObj;
 
 const wait = (ms = 600) => new Promise<void>((r) => setTimeout(r, ms));
-const LINKS = [
-  { id: 'me' as const, label: 'My security', href: '#me' },
-  { id: 'settings' as const, label: 'Security settings', href: '#settings' },
-  { id: 'sms' as const, label: 'Text messages', href: '#sms' },
+const LINKS: WorkspaceLink[] = [
+  { id: 'settings', label: 'Security settings', href: '#settings', group: 'Security' },
+  { id: 'sms', label: 'Text messages', href: '#sms', group: 'Security' },
+  { id: 'me', label: 'My security', href: '#me', group: 'Me' },
 ];
 
 function Screen(over: Partial<SmsSettingsScreenProps>) {
   const [overview, setOverview] = useState(over.overview === undefined ? OVERVIEW : over.overview);
   return (
-    <SecurityShell active="sms" links={LINKS} homeHref="#home" profileHref="#profile" name="Arjun Kulkarni" email="arjun.k@kaverifoods.in" onSignOut={() => {}}>
+    <WorkspaceShell active="sms" links={LINKS} company="Kaveri Foods Pvt Ltd" profileHref="#profile" name="Arjun Kulkarni" email="arjun.k@kaverifoods.in" onSignOut={() => {}}>
       <SmsSettingsScreen
         state="ready"
         deliveries={DELIVERIES}
@@ -41,7 +41,7 @@ function Screen(over: Partial<SmsSettingsScreenProps>) {
         {...over}
         overview={overview}
       />
-    </SecurityShell>
+    </WorkspaceShell>
   );
 }
 

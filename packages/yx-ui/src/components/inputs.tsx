@@ -104,6 +104,14 @@ function rangeError(n: number | null, min?: number, max?: number, fmt: (n: numbe
   return null;
 }
 
+/** The range message is set on blur; once the value is back in range by any route (typing, Discard, a reset) it goes. */
+function useClearRangeError(setInternalError: ((msg: string | null) => void) | undefined, value: number | null, min?: number, max?: number) {
+  const inRange = rangeError(value, min, max) === null;
+  useEffect(() => {
+    if (inRange) setInternalError?.(null);
+  }, [inRange, setInternalError]);
+}
+
 export interface NumberFieldProps extends NumericBase {
   /** Allow decimals (default: whole numbers). */
   decimals?: boolean;
@@ -115,6 +123,7 @@ export const NumberField = forwardRef<HTMLInputElement, NumberFieldProps>(functi
 ) {
   const { ctx } = useFieldControl();
   const { setFocused, text, setText } = useNumericText(value, String);
+  useClearRangeError(ctx?.setInternalError, value, min, max);
   return (
     <TextField
       ref={ref}
@@ -125,6 +134,8 @@ export const NumberField = forwardRef<HTMLInputElement, NumberFieldProps>(functi
         onFocus?.(e);
       }}
       onChange={(t) => {
+        // While typing, no range message: it is checked again when the person leaves the field.
+        ctx?.setInternalError(null);
         const clean = t.replace(decimals ? /[^\d.-]/g : /[^\d-]/g, '');
         setText(clean);
         const n = clean === '' || clean === '-' ? null : Number(clean);
@@ -153,6 +164,7 @@ export const CurrencyField = forwardRef<HTMLInputElement, CurrencyFieldProps>(fu
   const { ctx } = useFieldControl();
   const fmt = (n: number) => groupIndian(n, allowPaise && !Number.isInteger(n) ? 2 : undefined);
   const { setFocused, text, setText } = useNumericText(value, fmt);
+  useClearRangeError(ctx?.setInternalError, value, min, max);
   return (
     <TextField
       ref={ref}
@@ -166,6 +178,8 @@ export const CurrencyField = forwardRef<HTMLInputElement, CurrencyFieldProps>(fu
         onFocus?.(e);
       }}
       onChange={(t) => {
+        // While typing, no range message: it is checked again when the person leaves the field.
+        ctx?.setInternalError(null);
         let clean = t.replace(allowPaise ? /[^\d.]/g : /\D/g, '');
         if (allowPaise) {
           const [i, ...f] = clean.split('.');

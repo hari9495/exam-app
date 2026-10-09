@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { SessionAssurance, TenantContext, stepUpWindowSeconds } from '@exam-platform/shared';
@@ -15,7 +15,8 @@ import { LoginProtectionService, TooManyLoginAttemptsException } from './login-p
 import { resolveClientMeta } from './sessions.service';
 import { RequireStepUp } from './step-up.decorator';
 import { AuditService } from '@exam-platform/shared';
-import { ConfirmTotpDto, MfaLoginDto, MfaProofDto, MfaTokenDto, RegisterPasskeyDto, RequestMfaResetDto } from './dto/mfa.dto';
+import { ConfirmTotpDto, MfaLoginDto, MfaProofDto, MfaTokenDto, RegisterPasskeyDto, RenamePasskeyDto, RequestMfaResetDto } from './dto/mfa.dto';
+import { CredentialThrottle } from './credential-throttler.guard';
 
 interface RequestUser {
   userId: string;
@@ -41,14 +42,14 @@ export class MfaController {
 
   @Post('auth/mfa/passkey-options')
   @HttpCode(200)
-  @Throttle(STRICT_AUTH_THROTTLE)
+  @CredentialThrottle()
   loginPasskeyOptions(@Body() dto: MfaTokenDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return this.auth.mfaLoginPasskeyOptions(dto.mfaToken, resolveClientMeta(req, res));
   }
 
   @Post('auth/mfa/verify')
   @HttpCode(200)
-  @Throttle(STRICT_AUTH_THROTTLE)
+  @CredentialThrottle()
   async verifyLogin(@Body() dto: MfaLoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return signInResponse(await this.auth.completeMfaLogin(dto, resolveClientMeta(req, res)), res);
   }
@@ -111,6 +112,14 @@ export class MfaController {
   @RequireStepUp()
   async regenerateRecoveryCodes(@Req() req: Request) {
     return this.mfa.regenerateRecoveryCodes((await this.me(req)).user);
+  }
+
+  @Patch('auth/mfa/authenticators/:id')
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequireStepUp()
+  async renamePasskey(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RenamePasskeyDto) {
+    await this.mfa.renamePasskey((await this.me(req)).user, id, dto.label.trim());
   }
 
   @Delete('auth/mfa/authenticators/:id')

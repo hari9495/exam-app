@@ -159,10 +159,10 @@ describe('Continue with Google / Microsoft (P12 Q2)', () => {
 
     it("a known company: only what its policy allows; SSO-only turns them off; an unknown company looks like one with everything off", async () => {
       const opts = (slug: string) => request(server()).get('/api/v1/auth/sign-in-options').set('Host', `${slug}.${BASE}`).expect(200);
-      expect((await opts(orgs.a.slug)).body).toEqual({ google: true, microsoft: true, sms: false, whatsapp: false, emailCode: true });
-      const off = { google: false, microsoft: false, sms: false, whatsapp: false, emailCode: false };
+      expect((await opts(orgs.a.slug)).body).toEqual({ google: true, microsoft: true, sms: false, whatsapp: false, emailCode: true, passkey: true });
+      const off = { google: false, microsoft: false, sms: false, whatsapp: false, emailCode: false, passkey: true }; // passkeys: allowed by default, so an unknown company looks the same
       expect((await opts(orgs.off.slug)).body).toEqual(off);
-      expect((await opts(orgs.ssoOnly.slug)).body).toEqual(off);
+      expect((await opts(orgs.ssoOnly.slug)).body).toEqual({ ...off, passkey: false }); // SSO-only: no passkey sign-in either
       expect((await opts(`nobody-${runId}`)).body).toEqual(off);
     });
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { KeyRound, Mail, Lock, AlertCircle } from 'lucide-react';
-import { apiFetch } from '../../lib/api-client';
+import { apiFetch, STAFF_SIGN_IN } from '../../lib/api-client';
 import { Button, Input } from '../../components/ui';
 
 export default function SetupPage() {
@@ -20,7 +20,7 @@ export default function SetupPage() {
     apiFetch('/setup/status')
       .then((result: { needsSetup: boolean }) => {
         if (!result.needsSetup) {
-          router.push('/login');
+          router.push(STAFF_SIGN_IN);
         } else {
           setChecking(false);
         }
@@ -36,7 +36,7 @@ export default function SetupPage() {
     try {
       await apiFetch('/setup/complete', { method: 'POST', body: JSON.stringify({ token, email, password }) });
       setSuccess(true);
-      setTimeout(() => router.push('/login'), 2000);
+      setTimeout(() => router.push(STAFF_SIGN_IN), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Setup failed. Please try again.');
     } finally {
@@ -56,7 +56,7 @@ export default function SetupPage() {
           Create the first platform administrator account. Use the one-time token printed to the server log at startup.
         </p>
         {success ? (
-          <p className="text-sm text-gray-600">Setup complete. Redirecting to login&hellip;</p>
+          <p className="text-sm text-gray-600">Setup complete. Taking you to the staff sign-in&hellip;</p>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             <Input label="Setup Token" value={token} onChange={setToken} required icon={<KeyRound size={16} />} />

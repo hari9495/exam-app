@@ -134,7 +134,7 @@ export default function Home() {
           ))}
         </nav>
         <div className="flex items-center gap-3">
-          <Link href="/login" className={NAV_LOGIN_CLASSES}>
+          <Link href="/yx/sign-in" className={NAV_LOGIN_CLASSES}>
             Login
           </Link>
           <Link href="/get-started" className={NAV_CTA_CLASSES}>

@@ -12,6 +12,7 @@ import {
 } from '@tanstack/react-table';
 import { Search, ChevronsUpDown, ArrowUp, ArrowDown, SlidersHorizontal, Download, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { Dropdown } from './Dropdown';
+import { loadErrorMessage } from '../../lib/http-error-message';
 
 export const DT_FEATURES = tableFeatures({ rowSortingFeature, rowSelectionFeature, columnVisibilityFeature, sortedRowModel: createSortedRowModel() });
 
@@ -66,6 +67,8 @@ export interface DataTableProps<T extends RowData> {
   onPageChange?: (p: number) => void;
   isLoading?: boolean;
   isError?: boolean;
+  /** The query's error: a 403 shows the no-access sentence instead of errorMessage. */
+  error?: unknown;
   errorMessage?: string;
   emptyMessage?: string;
   columnLabels?: Record<string, string>;
@@ -85,7 +88,7 @@ export interface DataTableProps<T extends RowData> {
 
 export function DataTable<T extends RowData>({
   columns, data, getRowId, search = '', onSearchChange, searchPlaceholder = 'Search…', hideToolbar = false,
-  page, totalPages, onPageChange, isLoading, isError, errorMessage = 'Failed to load.',
+  page, totalPages, onPageChange, isLoading, isError, error, errorMessage = 'Failed to load.',
   emptyMessage = 'Nothing found.', columnLabels = {}, onExport, toolbarExtra, enableSelection = false,
   renderBulkBar, groupOf, groupSort, groupMeta,
 }: DataTableProps<T>) {
@@ -188,7 +191,7 @@ export function DataTable<T extends RowData>({
               {isLoading ? (
                 <tr><td colSpan={colCount} style={{ ...dt.td, textAlign: 'center', color: 'var(--muted)', padding: '32px 0' }}>Loading…</td></tr>
               ) : isError ? (
-                <tr><td colSpan={colCount} style={{ ...dt.td, textAlign: 'center', color: 'var(--danger)', padding: '32px 0' }}>{errorMessage}</td></tr>
+                <tr><td colSpan={colCount} style={{ ...dt.td, textAlign: 'center', color: loadErrorMessage(error, errorMessage) === errorMessage ? 'var(--danger)' : 'var(--muted)', padding: '32px 0' }}>{loadErrorMessage(error, errorMessage)}</td></tr>
               ) : modelRows.length === 0 ? (
                 <tr><td colSpan={colCount} style={{ ...dt.td, textAlign: 'center', color: 'var(--muted)', padding: '32px 0' }}>{emptyMessage}</td></tr>
               ) : grouping ? (

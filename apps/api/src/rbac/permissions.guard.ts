@@ -132,6 +132,7 @@ export class PermissionsGuard implements CanActivate {
       role: user.role,
       organizationId: user.organizationId ?? null,
       permissionProfileId: user.permissionProfileId,
+      userId: user.userId ?? null,
     }, allKeys);
 
     if (requiredAll?.length && !requiredAll.every((key) => grantedKeys.has(key))) {

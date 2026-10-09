@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { LoginActivityScreen, NO_FILTERS, type LoginActivityFilters, type LoginActivityScreenProps } from './login-activity';
 import { SecuritySettingsScreen, type SecuritySettingsScreenProps } from './security-settings';
-import { SecurityShell, type SecurityPage } from './shell';
+import { WorkspaceShell, type WorkspaceLink, type WorkspacePage } from './shell';
 import { ADMINS, FLOOR, IDPS, ORG_EVENTS, ORG_SESSIONS, PEOPLE, POLICY } from './data';
 
 const meta: Meta = { title: 'Screens/Security/Admin', parameters: { layout: 'fullscreen' } };
@@ -10,15 +10,15 @@ export default meta;
 type S = StoryObj;
 
 const wait = (ms = 600) => new Promise<void>((r) => setTimeout(r, ms));
-const LINKS = [
-  { id: 'me' as const, label: 'My security', href: '#me' },
-  { id: 'activity' as const, label: 'Login activity', href: '#activity' },
-  { id: 'settings' as const, label: 'Security settings', href: '#settings' },
+const LINKS: WorkspaceLink[] = [
+  { id: 'activity', label: 'Login activity', href: '#activity', group: 'Security' },
+  { id: 'settings', label: 'Security settings', href: '#settings', group: 'Security' },
+  { id: 'me', label: 'My security', href: '#me', group: 'Me' },
 ];
-const Shell = ({ active, children }: { active: SecurityPage; children: React.ReactNode }) => (
-  <SecurityShell active={active} links={LINKS} homeHref="#home" profileHref="#profile" name="Arjun Kulkarni" email="arjun.k@kaverifoods.in" onSignOut={() => {}}>
+const Shell = ({ active, children }: { active: WorkspacePage; children: React.ReactNode }) => (
+  <WorkspaceShell active={active} links={LINKS} company="Kaveri Foods Pvt Ltd" profileHref="#profile" name="Arjun Kulkarni" email="arjun.k@kaverifoods.in" onSignOut={() => {}}>
     {children}
-  </SecurityShell>
+  </WorkspaceShell>
 );
 
 function Activity(over: Partial<LoginActivityScreenProps>) {

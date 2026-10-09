@@ -7,7 +7,7 @@ import { DOMAIN_VERIFICATION_PREFIX, GOOGLE_ISSUER, assertIssuerUrl, entraIssuer
 import { SsoService } from './sso.service';
 import { OidcService } from './oidc.service';
 import { SessionsService } from './sessions.service';
-import { escapeHtml } from '../notifications/notification-email-render';
+import { appUrl, button, details, formatWhen, text } from '../email/account-emails';
 
 const SELECT = {
   id: true,
@@ -108,12 +108,12 @@ export class IdentityProvidersService {
   // Whoever controls a sign-in provider can sign in as anyone at its domains, so every change
   // reaches all of the company's administrators, not only the audit log (YX-IAM-04/10).
   private alertAdmins(organizationId: string, actorUserId: string, what: string): void {
-    this.sessions.notifyAdmins(
-      organizationId,
-      'Single sign-on settings changed in your YukthiX organisation',
-      `<p>${escapeHtml(what)}</p><p>Changed by user ${escapeHtml(actorUserId)} at ${escapeHtml(new Date().toISOString())}.</p>` +
-        '<p>If this was not expected, review <b>Settings &rsaquo; Single Sign-On</b> and the audit log at once.</p>',
-    );
+    this.sessions.notifyAdmins(organizationId, 'Single sign-on settings changed in your YukthiX organisation', 'Single sign-on settings changed', [
+      text(what),
+      details([['When', formatWhen(new Date())], ['Changed by', `User ID ${actorUserId}`]]),
+      text("If this wasn't expected, review the Single Sign-On settings and the audit log now."),
+      button('Open security settings', appUrl('/yx/settings/security')),
+    ]);
   }
 
   private orgOf(context: TenantContext): string {
@@ -429,13 +429,12 @@ export class IdentityProvidersService {
       entityId: row.organizationId,
       metadata: { domain: row.domain, failedChecks },
     });
-    this.sessions.notifyAdmins(
-      row.organizationId,
-      'A verified email domain lapsed in your YukthiX organisation',
-      `<p>The TXT record that proves your organisation owns <b>${escapeHtml(row.domain)}</b> was not found in ${failedChecks} checks in a row.</p>` +
-        `<p>People with an @${escapeHtml(row.domain)} email are no longer sent straight to your identity provider.</p>` +
-        '<p>If the domain is still yours, put the record back and use <b>Check record</b> in <b>Settings &rsaquo; Security</b>. If it is not, remove it from your identity providers.</p>',
-    );
+    this.sessions.notifyAdmins(row.organizationId, 'A verified email domain lapsed in your YukthiX organisation', 'A verified domain lapsed', [
+      text(`We couldn't find the TXT record that proves your organisation owns ${row.domain} in ${failedChecks} checks in a row.`),
+      text(`People with an @${row.domain} email are no longer sent straight to your identity provider.`),
+      text("If the domain is still yours, put the record back and use Check record in Security settings. If it isn't, remove it from your identity providers."),
+      button('Open security settings', appUrl('/yx/settings/security')),
+    ]);
     return 'lapsed';
   }
 

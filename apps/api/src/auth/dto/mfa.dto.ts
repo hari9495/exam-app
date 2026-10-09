@@ -109,3 +109,12 @@ export class RequestMfaResetDto {
   @IsUUID() userId!: string;
   @IsString() @MinLength(10) @MaxLength(500) reason!: string;
 }
+
+// "Sign in with a passkey" (passwordless): the assertion alone; the challenge is read from it.
+export class PasskeySignInDto {
+  @ValidateNested() @Type(() => PasskeyAssertionDto) @IsNotEmptyObject() credential!: PasskeyAssertionDto;
+}
+
+export class RenamePasskeyDto {
+  @IsString() @MinLength(1) @MaxLength(64) @Matches(/\S/) label!: string;
+}

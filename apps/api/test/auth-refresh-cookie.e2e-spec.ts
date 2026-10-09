@@ -79,4 +79,11 @@ describe('Auth refresh/logout accept the httpOnly cookie with no request body', 
   it('rejects refresh with 401 when neither body nor cookie provide a token', async () => {
     await request(app.getHttpServer()).post('/api/v1/auth/refresh').send({}).expect(401);
   });
+
+  // No body at all (not even {}): Express 5 leaves req.body undefined, which used to surface as a 500.
+  it('answers 401 / 200 / 400 when the request has no body at all', async () => {
+    await request(app.getHttpServer()).post('/api/v1/auth/refresh').expect(401);
+    await request(app.getHttpServer()).post('/api/v1/auth/logout').expect(200);
+    await request(app.getHttpServer()).post('/api/v1/auth/forgot-password').expect(400);
+  });
 });

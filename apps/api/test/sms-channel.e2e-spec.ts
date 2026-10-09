@@ -16,7 +16,8 @@ import { devSmsSink } from '../src/sms/providers';
 import { PUBLIC_GATEWAY_NET, SMS_GATEWAY_NET, SmsChannelService, SmsGatewayNet, smsMonth } from '../src/sms-channel/sms-channel.service';
 import { mountSmsCallbackBody } from '../src/sms-channel/sms-channel.controller';
 import { markSteppedUp } from './fixtures/step-up';
-import { trackOtpSends } from './fixtures/sms';
+import { trackEmailCodes, trackOtpSends } from './fixtures/sms';
+import { OtpService } from '../src/auth/otp.service';
 
 // P04 SMS channel end to end, against the real database (forced RLS, app role), real Redis and a local
 // mock HTTP gateway (no real provider): accounts with write-only secrets, failover, retries only where
@@ -113,10 +114,18 @@ describe('SMS channel (P04 §4.4/§4.5a; YX-NTF-07/10/11/12/13/14)', () => {
   const createAccount = async (who: 'adminA' | 'adminB', body: object) => (await api(who, 'post', '/accounts').send(body).expect(201)).body as { id: string };
 
   beforeAll(async () => {
+    // A laptop's .env may turn the development SMS helpers on (README "Sign-in on your laptop"); this
+    // suite proves what is printed and mailed without them.
+    process.env.DEV_SMS_LOG_TEXT = '';
+    process.env.DEV_SMS_TO_MAIL = '';
     await startGateway();
     const tracked = trackOtpSends(Test.createTestingModule({ imports: [AppModule] }).overrideProvider(EmailService).useValue(email).overrideProvider(SMS_GATEWAY_NET).useValue(testNet));
-    settle = tracked.settle;
     const moduleRef = await tracked.builder.compile();
+    const settleEmails = trackEmailCodes(moduleRef.get(OtpService));
+    settle = async () => {
+      await tracked.settle();
+      await settleEmails();
+    };
     app = moduleRef.createNestApplication({ bodyParser: false, logger: recorder });
     // Exactly as main.ts: callbacks keep their raw bytes for the HMAC check.
     mountSmsCallbackBody(app);
@@ -383,8 +392,9 @@ describe('SMS channel (P04 §4.4/§4.5a; YX-NTF-07/10/11/12/13/14)', () => {
 
     it('all gateways failing: the code goes to the account’s email instead', async () => {
       await signInBySms('2001:db8:5::1');
-      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: `field-${runId}@sms.test`, subject: 'Your YukthiX sign-in code' }));
-      expect(email.send.mock.calls[0][0].html).toMatch(/could not send your code by text message[\s\S]*<b>\d{6}<\/b>/);
+      await settle();
+      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: `field-${runId}@sms.test`, subject: expect.stringMatching(/^\d{6} is your YukthiX sign-in code$/) }));
+      expect(email.send.mock.calls[0][0].text).toMatch(/couldn't send this code by text message[\s\S]*\n\d{6}\n/);
       expect(await lastFieldDelivery()).toMatchObject({ status: 'fallback', error: expect.stringMatching(/^all_providers_failed/) });
     });
 
@@ -393,6 +403,7 @@ describe('SMS channel (P04 §4.4/§4.5a; YX-NTF-07/10/11/12/13/14)', () => {
       await createAccount('adminA', httpAccount('Pending DLT', 'ok', 10, { otpTemplate: { ...OTP_TEMPLATE, status: 'pending' } }));
       hits.length = 0;
       await signInBySms('2001:db8:5::2');
+      await settle();
       expect(hits).toEqual([]);
       expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: `field-${runId}@sms.test` }));
       expect(await lastFieldDelivery()).toMatchObject({ status: 'fallback', error: 'no_approved_template: Pending DLT: template is pending, not approved' });
@@ -413,13 +424,13 @@ describe('SMS channel (P04 §4.4/§4.5a; YX-NTF-07/10/11/12/13/14)', () => {
       email.send.mockClear();
       await signInBySms('2001:db8:5::3');
       expect(await lastFieldDelivery()).toMatchObject({ status: 'fallback', error: 'over_monthly_cap' });
-      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: `field-${runId}@sms.test`, subject: 'Your YukthiX sign-in code' }));
       await settle();
-      await new Promise((r) => setTimeout(r, 100));
+      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: `field-${runId}@sms.test`, subject: expect.stringMatching(/^\d{6} is your YukthiX sign-in code$/) }));
+      await new Promise((r) => setTimeout(r, 300));
       const alerts = () => email.send.mock.calls.filter(([m]) => m.subject === 'Your organisation has reached its monthly SMS limit').map(([m]) => m.to).sort();
       expect(alerts()).toEqual([`adminA-${runId}@sms.test`, `adminA2-${runId}@sms.test`]);
       expect((await send(org.A.id, mobile(3))).status).toBe('fallback');
-      await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 300));
       expect(alerts()).toHaveLength(2); // once a month
       await api('adminA', 'patch', '/policy').send({ monthlyCap: null }).expect(200);
     });

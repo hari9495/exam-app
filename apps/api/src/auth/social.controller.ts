@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, NotFoundException, Param, Post, Req, R
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { DEFAULT_SECURITY_POLICY, TenantPrismaService, loadTenantSecurityPolicy } from '@exam-platform/shared';
-import { STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
+import { PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
 import { AuthService } from './auth.service';
 import { signInResponse } from './auth.controller';
 import { CompanyScopeService } from './company-scope';
@@ -12,6 +12,7 @@ import { OtpService } from './otp.service';
 import { SessionsService, resolveClientMeta } from './sessions.service';
 import { isSocialProvider, mockIdpUrl, socialApp, socialIdentity } from './social-sign-in';
 import { SsoService } from './sso.service';
+import { CredentialThrottle } from './credential-throttler.guard';
 
 // The browser learns the result from the URL FRAGMENT only (never sent to a server, never in a
 // Referer or a log; ASVS V3.1.1): a single-use code, or that it did not work.
@@ -37,14 +38,16 @@ export class SocialController {
   // unknown slug answers like a company with the default policy (everything off), so nothing tells
   // whether it exists. With no company: what YukthiX has set up -- the same for every visitor.
   @Get('sign-in-options')
-  @Throttle(STRICT_AUTH_THROTTLE)
+  // Read-only and enumeration-safe (unknown companies answer like everything off), so the normal
+  // public tier: an office behind one IP opening the sign-in page must not lose its buttons.
+  @Throttle(PUBLIC_API_THROTTLE)
   async options(@Req() req: Request) {
     const google = socialApp('google') !== null;
     const microsoft = socialApp('microsoft') !== null;
     const slug = await this.scope.slugFor(req);
     if (!slug) {
       const [sms, whatsapp] = await Promise.all([this.otp.channelAvailable('sms'), this.otp.channelAvailable('whatsapp')]);
-      return { google, microsoft, sms, whatsapp, emailCode: true };
+      return { google, microsoft, sms, whatsapp, emailCode: true, passkey: true };
     }
     const org = await this.sso.organizationBySlug(slug.toLowerCase());
     const policy = org ? await loadTenantSecurityPolicy(this.tenantPrisma, org.id) : DEFAULT_SECURITY_POLICY;
@@ -56,6 +59,8 @@ export class SocialController {
       sms: await codeBy('sms'),
       whatsapp: await codeBy('whatsapp'),
       emailCode: await codeBy('email'),
+      // "Sign in with a passkey": where the company allows passkeys, never under SSO-only.
+      passkey: !policy.ssoOnly && policy.allowedFactors.includes('passkey'),
     };
   }
 
@@ -63,7 +68,7 @@ export class SocialController {
   // cookie (minted here if new); the browser goes to the provider.
   @Post('social/:provider/start')
   @HttpCode(200)
-  @Throttle(STRICT_AUTH_THROTTLE)
+  @CredentialThrottle()
   async start(@Param('provider') provider: string, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const app = isSocialProvider(provider) ? socialApp(provider) : null;
     if (!isSocialProvider(provider) || !app) throw new NotFoundException('This way of signing in is not available');
@@ -110,7 +115,7 @@ export class SocialController {
   // second factor owed, or the company picker.
   @Post('social/exchange')
   @HttpCode(200)
-  @Throttle(STRICT_AUTH_THROTTLE)
+  @CredentialThrottle()
   async exchange(@Body() dto: SsoExchangeDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     return signInResponse(await this.auth.socialSignIn(dto.code, resolveClientMeta(req, res)), res);
   }

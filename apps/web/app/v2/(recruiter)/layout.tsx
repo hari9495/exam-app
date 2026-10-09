@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { MotionConfig } from 'framer-motion';
 import { useAuth } from '../../../lib/auth-context';
+import { signInPath } from '../../../lib/api-client';
 import { staffLandingPath } from '../../../lib/staff-landing';
 import { buildStaffNav } from '../../../lib/staff-nav';
 import { useOrgBranding } from '../../../lib/hooks/useBranding';
@@ -30,7 +31,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     if (!isLoading && !accessToken) {
-      router.push('/login');
+      router.push(signInPath());
     } else if (!isLoading && accessToken && role && role !== 'recruiter' && role !== 'org_admin' && !actingSuperAdmin) {
       // Authenticated but wrong console (e.g. returning from impersonation while still mounted
       // here): route to the role's own console instead of bouncing to /login.
@@ -44,8 +45,7 @@ export default function RecruiterLayout({ children }: { children: React.ReactNod
   } as React.CSSProperties;
 
   async function handleLogout() {
-    await logout();
-    router.push('/login');
+    router.push(await logout());
   }
 
   if (isLoading || !accessToken || (role !== null && role !== 'recruiter' && role !== 'org_admin' && !actingSuperAdmin)) {

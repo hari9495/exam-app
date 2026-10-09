@@ -352,7 +352,7 @@ export function LayoutBuilderScreen({ preview = 'desk', role = 'hr', ruleOpen, h
                     </span>
                     <Menu>
                       <MenuTrigger asChild>
-                        <IconButton icon={MoveRight} label={`Options for ${f.label}`} size="sm" noTooltip />
+                        <IconButton icon={MoveRight} label={`Options for ${f.label}`} size="sm" />
                       </MenuTrigger>
                       <MenuContent align="end">
                         <MenuLabel>Move to</MenuLabel>

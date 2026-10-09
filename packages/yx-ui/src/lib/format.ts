@@ -1,4 +1,6 @@
-// Formats from DESIGN-SYSTEM.md §35. Pure functions, no dependencies.
+// Formats from DESIGN-SYSTEM.md §35. Pure functions; phone numbers via libphonenumber-js.
+
+import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -110,4 +112,14 @@ export function initials(name: string): string {
   const first = parts[0][0];
   const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
   return (first + last).toUpperCase();
+}
+
+/**
+ * A phone number for display, Indian numbers by default: "9845011122" or "+919845011122" ->
+ * "+91 98450 11122". Anything it cannot read (a masked number, free text) is shown as given.
+ */
+export function formatPhone(value: string | null | undefined): string {
+  if (!value) return '';
+  const n = parsePhoneNumberFromString(value, 'IN');
+  return n?.isValid() ? n.formatInternational() : value;
 }

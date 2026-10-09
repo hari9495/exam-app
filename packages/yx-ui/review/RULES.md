@@ -15,6 +15,7 @@ The founder's rules, learned screen by screen (Settings, People). Every reviewer
 - **R9 Row buttons in a column are the same width** (the table does this; don't break it).
 - **R10 Cards must not look crowded.** Two lines max per row where possible; badges short.
 - **R11 Pick-one vs toggle.** Single-choice options use the joined `Segment` control (or a dropdown on phones); independent on/off filters use toggle chips with a check and "Only …" wording. Never mix them as identical chips.
+- **R12 Clickable looks clickable.** Every control shows a hand cursor, changes on hover and shows a focus ring; text buttons, chips and tabs have a border, fill or underline indicator; selected differs by more than text colour; control edges are 3:1 (WCAG 1.4.11). `npm run test:affordance` enforces it (founder review 7 Oct 2026).
 
 ## Patterns the founder accepted (use them)
 

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LoginActivityScreen, NO_FILTERS, type LoginActivityFilters, type LoginEventRow, type Page, type SessionRow } from '@yukthix/ui/auth';
+import { LoginActivityScreen, ANY_FAILURE, NO_FILTERS, type LoginActivityFilters, type LoginEventRow, type Page, type PersonOption, type SessionRow } from '@yukthix/ui/auth';
 import { useAuth } from '../../../../../lib/auth-context';
 import { apiFetch } from '../../../../../lib/api-client';
 import type { PaginatedResponse, StaffUser } from '../../../../../lib/types';
@@ -21,7 +21,11 @@ export default function YxLoginActivityPage() {
   const [filters, setFilters] = useState<LoginActivityFilters>(NO_FILTERS);
   const [eventsPage, setEventsPage] = useState(1);
   const [sessionsPage, setSessionsPage] = useState(1);
-  const get = <T,>(key: unknown[], path: string, enabled = true) => ({ queryKey: ['yx', 'admin', ...key], queryFn: (): Promise<T> => apiFetch(path, {}, token), enabled: Boolean(token) && enabled });
+  // The Person filter searches the API (a company can have far more than one page of users); the chosen
+  // person stays listed while the search moves on.
+  const [peopleSearch, setPeopleSearch] = useState('');
+  const [chosen, setChosen] = useState<PersonOption | null>(null);
+  const get = <T,>(key: unknown[], path: string, enabled = true) => ({ queryKey: ['yx', 'admin', ...key], queryFn: (): Promise<T> => apiFetch(path, {}, token), enabled: Boolean(token) && enabled, retry: false });
 
   const eventsPath = `/security/login-events${qs({
     result: filters.result,
@@ -33,11 +37,15 @@ export default function YxLoginActivityPage() {
     pageSize: 25,
   })}`;
   const events = useQuery(get<Page<LoginEventRow>>(['events', eventsPath], eventsPath));
+  // A plain 403 is a missing permission (MFA_REQUIRED is the MFA floor; the layout says what to do).
+  const eventsError = events.error as { status?: number; code?: string } | null;
   // Rounded to the minute so the query key is stable between renders.
   const since = new Date(Math.floor((Date.now() - DAY_MS) / 60_000) * 60_000).toISOString();
-  const failed = useQuery(get<Page<LoginEventRow>>(['failed', since], `/security/login-events${qs({ result: 'unsuccessful', from: since, pageSize: 1 })}`));
+  const failed = useQuery(get<Page<LoginEventRow>>(['failed', since], `/security/login-events${qs({ result: ANY_FAILURE, from: since, pageSize: 1 })}`));
   const sessions = useQuery(get<Page<SessionRow>>(['sessions', sessionsPage], `/security/sessions${qs({ page: sessionsPage, pageSize: 25 })}`));
-  const users = useQuery(get<PaginatedResponse<StaffUser>>(['users'], '/users?pageSize=100'));
+  const users = useQuery(get<PaginatedResponse<StaffUser>>(['users', peopleSearch], `/users${qs({ pageSize: 25, search: peopleSearch || undefined })}`));
+  const matches = (users.data?.data ?? []).map((u) => ({ id: u.id, name: u.name || u.email, email: u.email }));
+  const people = chosen && !matches.some((p) => p.id === chosen.id) ? [chosen, ...matches] : matches;
 
   return (
     <LoginActivityScreen
@@ -49,10 +57,12 @@ export default function YxLoginActivityPage() {
       onFiltersChange={(f) => {
         setFilters(f);
         setEventsPage(1);
+        if (f.userId !== filters.userId) setChosen(people.find((p) => p.id === f.userId) ?? null);
       }}
+      onPeopleSearch={setPeopleSearch}
       onEventsPage={setEventsPage}
       failedLast24h={failed.data?.total ?? null}
-      people={(users.data?.data ?? []).map((u) => ({ id: u.id, name: u.name || u.email, email: u.email }))}
+      people={people}
       sessions={sessions.data ?? null}
       sessionsState={sessions.isError ? 'error' : sessions.data ? 'ready' : 'loading'}
       onSessionsPage={setSessionsPage}
@@ -71,6 +81,7 @@ export default function YxLoginActivityPage() {
           : undefined
       }
       onRetry={() => void queryClient.invalidateQueries({ queryKey: ['yx', 'admin'] })}
+      noAccess={eventsError?.status === 403 && eventsError.code !== 'MFA_REQUIRED'}
     />
   );
 }

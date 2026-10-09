@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Fingerprint, Plus, Smartphone, Trash2 } from 'lucide-react';
 import { Button, IconButton } from './button';
 import { FormField, ErrorSummary } from './field';
 import { CurrencyField, MaskedField, TextField, TimeField } from './inputs';
-import { Checkbox } from './choice';
+import { Checkbox, MethodCards } from './choice';
 import { MultiSelect, PersonPicker, Select } from './select';
 import { DatePicker } from './date';
 import { FileUpload, typesLabel } from './upload';
@@ -275,6 +275,21 @@ describe('FileUpload', () => {
     await act(async () => finish());
     expect(await screen.findByText(/Uploaded/)).toBeInTheDocument();
   });
+
+  it('the field label and the error summary can focus it (the zone shows the ring); Browse files is the tab stop', () => {
+    render(
+      <FormField label="Résumé" id="resume" error="Attach your resume">
+        <FileUpload upload={vi.fn()} />
+      </FormField>,
+    );
+    const input = screen.getByLabelText(/Résumé/) as HTMLInputElement;
+    expect(input).toHaveAttribute('type', 'file');
+    expect(input).toHaveAttribute('tabindex', '-1');
+    document.getElementById('resume')?.focus();
+    expect(input).toHaveFocus();
+    expect(input.closest('.yx-upload__zone')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Browse files' })).not.toHaveAttribute('tabindex');
+  });
 });
 
 describe('display', () => {
@@ -289,5 +304,49 @@ describe('display', () => {
     expect(screen.getByText('Paid')).toHaveAttribute('data-tone', 'success');
     expect(screen.getByRole('img', { name: 'Divya Raghunathan' })).toHaveTextContent('DR');
     expect(screen.getByRole('checkbox', { name: 'Send offer letter by email' })).toBeInTheDocument();
+  });
+});
+
+describe('MethodCards', () => {
+  const OPTIONS = [
+    { value: 'passkey', title: 'Passkey', description: 'Sign in with your face, fingerprint or PIN.', icon: Fingerprint, badge: 'Recommended' },
+    { value: 'totp', title: 'Authenticator app', description: 'Enter a 6-digit code from your app.', icon: Smartphone },
+  ];
+
+  it('is a labelled list of buttons, each named by its title and described by its line', () => {
+    render(<MethodCards aria-label="Ways to sign in" options={OPTIONS} onSelect={vi.fn()} />);
+    const list = screen.getByRole('list', { name: 'Ways to sign in' });
+    const [passkey, app] = within(list).getAllByRole('button');
+    expect(passkey).toHaveAccessibleName('Passkey Recommended');
+    expect(passkey).toHaveAccessibleDescription('Sign in with your face, fingerprint or PIN.');
+    expect(app).toHaveAccessibleName('Authenticator app');
+    expect(app).toHaveAttribute('type', 'button');
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(passkey.querySelector('svg')?.closest('[aria-hidden="true"]')).not.toBeNull(); // icon tile is decorative
+  });
+
+  it('goes straight into the method by click or keyboard (Tab, Enter, Space)', async () => {
+    const onSelect = vi.fn();
+    render(<MethodCards aria-label="Ways" options={OPTIONS} onSelect={onSelect} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Authenticator app' }));
+    expect(onSelect).toHaveBeenLastCalledWith('totp');
+    await userEvent.tab();
+    await userEvent.tab({ shift: true });
+    await userEvent.tab({ shift: true });
+    expect(screen.getByRole('button', { name: /^Passkey/ })).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    expect(onSelect).toHaveBeenLastCalledWith('passkey');
+    await userEvent.tab();
+    await userEvent.keyboard(' ');
+    expect(onSelect).toHaveBeenLastCalledWith('totp');
+  });
+
+  it('while one card is busy it shows so and holds every card', async () => {
+    const onSelect = vi.fn();
+    render(<MethodCards aria-label="Ways" options={OPTIONS} onSelect={onSelect} busy="passkey" />);
+    const passkey = screen.getByRole('button', { name: /^Passkey/ });
+    expect(passkey).toHaveAttribute('aria-busy', 'true');
+    expect(passkey).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Authenticator app' })).toBeDisabled();
   });
 });

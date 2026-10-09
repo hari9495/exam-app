@@ -2,9 +2,10 @@ import { forwardRef, useId, type ReactNode } from 'react';
 import * as RC from '@radix-ui/react-checkbox';
 import * as RR from '@radix-ui/react-radio-group';
 import * as RS from '@radix-ui/react-switch';
-import { Check, Minus } from 'lucide-react';
+import { Check, ChevronRight, Minus } from 'lucide-react';
 import { cx } from '../lib/cx';
-import { Icon } from './foundations';
+import { Icon, Spinner, type IconComponent } from './foundations';
+import { Badge } from './display';
 
 export interface CheckboxProps {
   checked?: boolean | 'indeterminate';
@@ -139,3 +140,66 @@ export const Switch = forwardRef<HTMLButtonElement, SwitchProps>(function Switch
     </div>
   );
 });
+
+export interface MethodCardOption {
+  value: string;
+  title: string;
+  /** One line: what using it is like. */
+  description: string;
+  icon: IconComponent;
+  /** Short badge after the title, e.g. "Recommended". */
+  badge?: string;
+  disabled?: boolean;
+}
+
+export interface MethodCardsProps {
+  options: MethodCardOption[];
+  /** Goes straight into that method (no separate Continue). */
+  onSelect: (value: string) => void;
+  /** Names the list for screen readers, e.g. "Ways to sign in". */
+  'aria-label': string;
+  /** The card whose action is running: shows a spinner there and holds the others. */
+  busy?: string | null;
+  className?: string;
+}
+
+/**
+ * Pick-one-and-go: a vertical list of large option cards, each a button that starts that method
+ * (sign-in methods, "Confirm it's you"). Not a radio group: there is nothing to confirm after.
+ */
+export function MethodCards({ options, onSelect, busy, className, ...rest }: MethodCardsProps) {
+  const gid = useId();
+  return (
+    <ul className={cx('yx-method-cards', className)} aria-label={rest['aria-label']}>
+      {options.map((o) => {
+        const id = `${gid}-${o.value}`;
+        const loading = busy === o.value;
+        return (
+          <li key={o.value}>
+            <button
+              type="button"
+              className="yx-method-card"
+              aria-labelledby={o.badge ? `${id}-title ${id}-badge` : `${id}-title`}
+              aria-describedby={`${id}-desc`}
+              aria-busy={loading || undefined}
+              disabled={o.disabled || Boolean(busy)}
+              onClick={() => onSelect(o.value)}
+            >
+              <span className="yx-method-card__tile" aria-hidden="true">
+                {loading ? <Spinner /> : <o.icon width={20} height={20} strokeWidth={1.75} />}
+              </span>
+              <span className="yx-method-card__text">
+                <span className="yx-method-card__title">
+                  <span id={`${id}-title`}>{o.title}</span>
+                  {o.badge && <Badge tone="info" id={`${id}-badge`}>{o.badge}</Badge>}
+                </span>
+                <span id={`${id}-desc`} className="yx-method-card__desc">{o.description}</span>
+              </span>
+              <ChevronRight className="yx-method-card__go" width={16} height={16} aria-hidden="true" />
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}

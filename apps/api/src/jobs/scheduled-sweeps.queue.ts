@@ -36,6 +36,11 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   // Hourly (not nightly): drip steps have per-step day delays but should go out promptly once due,
   // and each run is bounded (SWEEP_BATCH). Sends due nurture-campaign steps.
   { id: 'drip-steps', cron: '0 * * * *' },
+  // P06 YX-HIS-04/05: scheduled employee changes take effect at 00:00 in each employee's location time zone.
+  // Every 15 minutes covers half- and quarter-hour zones (IST is UTC+5:30); the run is idempotent.
+  { id: 'employee-changes', cron: '*/15 * * * *' },
+  // M01 §3.4 / YX-LC-01: probation reminders and escalation on the local date; each step is marked once.
+  { id: 'probations', cron: '7 * * * *' },
   // W-006: verified company email domains, re-checked against DNS (daily by default; DOMAIN_RECHECK_CRON).
   { id: 'domain-verification-recheck', cron: process.env.DOMAIN_RECHECK_CRON?.trim() || '30 5 * * *' },
 ];

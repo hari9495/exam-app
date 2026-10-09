@@ -102,7 +102,7 @@ function EditTemplateDialog({ template, pipelines, isNew = false, onClose, onSav
 export default function V2WhatsappTemplatesPage() {
   const { role } = useAuth();
   const canManage = role !== 'panel';
-  const { data: templates, isLoading, isError } = useWhatsappTemplates();
+  const { data: templates, isLoading, isError, error } = useWhatsappTemplates();
   const { data: whatsappConfig, isSuccess: whatsappConfigLoaded } = useWhatsappConfig();
   const { data: pipelines } = usePipelines();
   const stageNames = stageNameMap(pipelines);
@@ -181,7 +181,7 @@ export default function V2WhatsappTemplatesPage() {
       <DataTable
         columns={columns} data={rows} getRowId={(t) => t.id ?? `default-${t.triggerStageId ?? 'none'}`}
         search={search} onSearchChange={setSearch} searchPlaceholder="Search templates…"
-        isLoading={isLoading} isError={isError} errorMessage="Failed to load templates." emptyMessage={q ? 'No matches.' : 'No templates.'}
+        isLoading={isLoading} isError={isError} error={error} errorMessage="Failed to load templates." emptyMessage={q ? 'No matches.' : 'No templates.'}
         columnLabels={{ event: 'Trigger event', mode: 'Trigger mode', enabled: 'Enabled' }}
       />
       </div>

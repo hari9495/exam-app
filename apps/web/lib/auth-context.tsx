@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { apiFetch, setUnauthorizedHandler } from './api-client';
+import { apiFetch, setUnauthorizedHandler, signInPath, STAFF_SESSION_KEY } from './api-client';
 import { decodeJwtPayload } from './jwt';
 
 interface AuthContextValue {
@@ -12,8 +12,11 @@ interface AuthContextValue {
   actingSuperAdmin: boolean;
   actingOrgName: string | null;
   isLoading: boolean;
+  /** True after this tab signed out on purpose: the sign-in page then gets no ?next= (that page was the last person's). */
+  signedOut: boolean;
   login: (organizationSlug: string, accessToken: string) => void;
-  logout: () => Promise<void>;
+  /** Signs out; resolves to the sign-in page this person uses (the staff page for platform staff, else /yx/sign-in). */
+  logout: () => Promise<string>;
   switchIntoOrg: (orgId: string) => Promise<void>;
   switchOutOfOrg: () => Promise<void>;
   impersonating: boolean;
@@ -26,23 +29,31 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const SLUG_STORAGE_KEY = 'organizationSlug';
 
-// Stashed by the login page right before it navigates to the SP-initiated SSO redirect, so the
-// slug survives the round trip to the IdP and back. Deliberately a separate key from
-// SLUG_STORAGE_KEY: that key represents an *authenticated* session's slug (set on login, cleared
-// on logout, read on mount to restore UI before silentRefresh resolves) and is written even when
-// the SSO attempt fails or is abandoned, which would otherwise leave a stale slug marked as if a
-// real session existed.
-export const SSO_PENDING_SLUG_KEY = 'ssoPendingOrganizationSlug';
-
-// Set by the YukthiX sign-in page (/yx/sign-in) before the SSO redirect, so the callback finishes in
-// the YukthiX screens (second step, first-login enrolment) rather than the classic ones.
-export const YX_SSO_RETURN_KEY = 'yxSsoReturn';
-
 // A super_admin "switch into org" mints an access-only acting token; a token refresh (on mount,
 // on any 401, or a page reload) reissues the BASE super_admin token and would silently drop the
 // acting state, bouncing the user out of the org console. Persisting the acting org id lets
 // silentRefresh re-enter the org so the acting session survives refreshes.
 const ACTING_ORG_STORAGE_KEY = 'actingOrgId';
+// The refresh cookie is HttpOnly, so the browser cannot see whether a session exists. This flag (set with a
+// token, cleared when it goes) says "this browser signed in": without it, a fresh visit to the sign-in page
+// skips /auth/refresh instead of logging a 401 and spending a slot of the endpoint's strict rate limit.
+// localStorage, not sessionStorage: a new tab beside a signed-in one must still pick the session up.
+export const SESSION_HINT_KEY = 'yx-session';
+function hasSessionHint(): boolean {
+  try {
+    return window.localStorage.getItem(SESSION_HINT_KEY) === '1';
+  } catch {
+    return true; // storage blocked: behave as before and ask the API
+  }
+}
+function setSessionHint(on: boolean) {
+  try {
+    if (on) window.localStorage.setItem(SESSION_HINT_KEY, '1');
+    else window.localStorage.removeItem(SESSION_HINT_KEY);
+  } catch {
+    /* storage blocked */
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -53,12 +64,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [impersonatorEmail, setImpersonatorEmail] = useState<string | null>(null);
   const [organizationSlug, setOrganizationSlug] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [signedOut, setSignedOut] = useState(false);
   const accessTokenRef = useRef<string | null>(null);
   accessTokenRef.current = accessToken;
   // Guards against silentRefresh re-entering the acting org more than once (the switch-into call
   // itself goes through apiFetch, whose 401 handler is silentRefresh).
   const restoringActingRef = useRef(false);
-  // Several independent triggers can now ask for a refresh close together (401/403 retry, tab
+  // Several independent triggers can now ask for a refresh close together (401 retry, tab
   // refocus, the polling interval below) -- refresh tokens rotate on every use, so two concurrent
   // /auth/refresh calls would have the second one reuse an already-rotated token and trip the
   // reuse-detection path, revoking the whole session. Collapsing concurrent callers onto the same
@@ -77,12 +89,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function applyToken(token: string | null) {
     setAccessToken(token);
+    setSessionHint(token !== null);
     const payload = token ? decodeJwtPayload(token) : null;
     setRole(payload && typeof payload.role === 'string' ? payload.role : null);
     setActingSuperAdmin(Boolean(payload?.actingSuperAdmin));
     setActingOrgName(payload && typeof payload.actingOrgName === 'string' ? payload.actingOrgName : null);
     setImpersonating(Boolean(payload?.impersonatorUserId));
     setImpersonatorEmail(payload && typeof payload.impersonatorEmail === 'string' ? payload.impersonatorEmail : null);
+    // Platform staff sign in again on their own page (api-client signInPath).
+    if (typeof window !== 'undefined' && (payload?.role === 'super_admin' || payload?.actingSuperAdmin)) {
+      window.sessionStorage.setItem(STAFF_SESSION_KEY, '1');
+    }
     // A super_admin has no organizationSlug of their own (they log in without one), so acting
     // into an org left it stuck empty -- which silently disabled useSsoStatus()'s per-org check
     // (it no-ops without a slug) and showed staff actions like "Reset password" for every user
@@ -178,7 +195,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
       refreshChannelRef.current = channel;
     }
-    silentRefresh().finally(() => setIsLoading(false));
+    if (hasSessionHint()) silentRefresh().finally(() => setIsLoading(false));
+    else setIsLoading(false);
     return () => {
       setUnauthorizedHandler(null);
       refreshChannelRef.current?.close();
@@ -224,14 +242,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function login(slug: string, token: string) {
     setOrganizationSlug(slug);
+    setSignedOut(false);
     applyToken(token);
     if (typeof window !== 'undefined') {
       window.sessionStorage.setItem(SLUG_STORAGE_KEY, slug);
     }
   }
 
-  async function logout() {
+  async function logout(): Promise<string> {
+    const target = signInPath();
     await apiFetch('/auth/logout', { method: 'POST', body: JSON.stringify({}) }).catch(() => undefined);
+    setSignedOut(true);
     applyToken(null);
     // Sibling tabs must learn the family is dead, or their next scheduled refresh runs
     // straight into reuse detection against a family this tab just revoked.
@@ -240,8 +261,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (typeof window !== 'undefined') {
       window.sessionStorage.removeItem(SLUG_STORAGE_KEY);
       window.sessionStorage.removeItem(ACTING_ORG_STORAGE_KEY);
+      window.sessionStorage.removeItem(STAFF_SESSION_KEY);
     }
-    queryClient.removeQueries({ queryKey: ['currentUser'] });
+    // Every cached answer belonged to the person who left (their permissions, two-step status, records):
+    // the next person to sign in on this tab must not see or be routed by any of it.
+    queryClient.clear();
+    return target;
   }
 
   async function switchIntoOrg(orgId: string): Promise<void> {
@@ -300,6 +325,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         actingSuperAdmin,
         actingOrgName,
         isLoading,
+        signedOut,
         login,
         logout,
         switchIntoOrg,

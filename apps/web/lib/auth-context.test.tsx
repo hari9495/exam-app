@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider, useAuth } from './auth-context';
+import { AuthProvider, SESSION_HINT_KEY, useAuth } from './auth-context';
 import { useCurrentUser } from './hooks/useCurrentUser';
 import { fakeJwt } from './test-utils/fake-jwt';
 
@@ -21,6 +21,44 @@ describe('AuthProvider', () => {
   afterEach(() => {
     global.fetch = originalFetch;
     window.sessionStorage.clear();
+    window.localStorage.clear();
+  });
+
+  it('a browser that never signed in does not call /auth/refresh on mount (no 401 on the sign-in page)', async () => {
+    window.localStorage.clear();
+    global.fetch = jest.fn(async (url) => {
+      throw new Error(`Unexpected fetch to ${url}`);
+    }) as unknown as typeof fetch;
+    renderWithQueryClient(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByText(/no-token/)).toBeInTheDocument());
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('the hint is set when a token arrives and cleared when the session is over', async () => {
+    window.localStorage.clear();
+    global.fetch = jest.fn(async (url) => {
+      if (String(url).endsWith('/auth/logout')) return new Response('{}', { status: 200 });
+      throw new Error(`Unexpected fetch to ${url}`);
+    }) as unknown as typeof fetch;
+    let auth: ReturnType<typeof useAuth> | undefined;
+    function Consumer() {
+      auth = useAuth();
+      return null;
+    }
+    renderWithQueryClient(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(auth?.isLoading).toBe(false));
+    act(() => auth!.login('kaveri', fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'recruiter' })));
+    expect(window.localStorage.getItem(SESSION_HINT_KEY)).toBe('1');
+    await act(() => auth!.logout());
+    expect(window.localStorage.getItem(SESSION_HINT_KEY)).toBeNull();
   });
 
   it('silently refreshes on mount and exposes the resulting access token', async () => {
@@ -391,6 +429,64 @@ describe('AuthProvider', () => {
     });
 
     expect(client.getQueryData(['currentUser'])).toBeUndefined();
+  });
+
+  it('on logout forgets every cached answer (permissions, two-step status) and marks the tab signed out', async () => {
+    const tokenA = fakeJwt({ sub: 'userA', organizationId: 'org1', role: 'org_admin' });
+    global.fetch = jest.fn(async (url) => {
+      const u = String(url);
+      if (u.endsWith('/auth/refresh')) return new Response(JSON.stringify({ accessToken: tokenA }), { status: 200 });
+      if (u.endsWith('/auth/logout')) return new Response(JSON.stringify({}), { status: 200 });
+      throw new Error(`Unexpected fetch to ${u}`);
+    }) as unknown as typeof fetch;
+    let auth: ReturnType<typeof useAuth> | undefined;
+    function Consumer() {
+      auth = useAuth();
+      return <p>{auth.accessToken ? 'in' : 'out'}</p>;
+    }
+    const { client } = renderWithQueryClient(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('in')).toBeInTheDocument());
+    client.setQueryData(['landing-permissions'], ['org.settings.manage']);
+    client.setQueryData(['yx', 'mfa'], { required: true, factors: [] });
+    expect(auth!.signedOut).toBe(false);
+    await act(async () => {
+      await auth!.logout();
+    });
+    expect(client.getQueryData(['landing-permissions'])).toBeUndefined();
+    expect(client.getQueryData(['yx', 'mfa'])).toBeUndefined();
+    expect(auth!.signedOut).toBe(true);
+  });
+
+  it.each([
+    ['recruiter', '/yx/sign-in'],
+    ['super_admin', '/staff/sign-in'],
+  ])('logout sends a %s back to %s', async (role, expected) => {
+    window.sessionStorage.clear();
+    const token = fakeJwt({ sub: 'u1', role });
+    global.fetch = jest.fn(async (url) =>
+      String(url).endsWith('/auth/refresh') ? new Response(JSON.stringify({ accessToken: token }), { status: 200 }) : new Response('{}', { status: 200 }),
+    ) as unknown as typeof fetch;
+    let auth: ReturnType<typeof useAuth> | undefined;
+    function Consumer() {
+      auth = useAuth();
+      return <p>{auth.role ?? 'none'}</p>;
+    }
+    renderWithQueryClient(
+      <AuthProvider>
+        <Consumer />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByText(role)).toBeInTheDocument());
+    let to = '';
+    await act(async () => {
+      to = await auth!.logout();
+    });
+    expect(to).toBe(expected);
+    expect(window.sessionStorage.getItem('staffSession')).toBeNull();
   });
 
   it('decodes actingSuperAdmin, actingOrgName, and actingOrgSlug off the access token after switchIntoOrg', async () => {

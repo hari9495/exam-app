@@ -31,7 +31,7 @@ function QuietStat({ label, value }: { label: string; value: number }) {
 type GrantKind = 'invite' | 'promote';
 
 export default function V2PlatformAdminsPage() {
-  const { data, isLoading, isError } = useSuperAdmins({ pageSize: SUPER_ADMIN_PAGE_SIZE });
+  const { data, isLoading, isError, error: loadError } = useSuperAdmins({ pageSize: SUPER_ADMIN_PAGE_SIZE });
   const inviteSuperAdmin = useInviteSuperAdmin();
   const promoteSuperAdmin = usePromoteSuperAdmin();
 
@@ -111,7 +111,7 @@ export default function V2PlatformAdminsPage() {
       <DataTable
         columns={columns} data={rows} getRowId={(sa) => sa.id}
         search={search} onSearchChange={setSearch} searchPlaceholder="Search platform admins…"
-        isLoading={isLoading} isError={isError} errorMessage="Failed to load platform admins." emptyMessage={q ? 'No matching platform admins.' : 'No platform admins yet.'}
+        isLoading={isLoading} isError={isError} error={loadError} errorMessage="Failed to load platform admins." emptyMessage={q ? 'No matching platform admins.' : 'No platform admins yet.'}
         columnLabels={{ email: 'Email', createdAt: 'Created' }}
       />
       </div>

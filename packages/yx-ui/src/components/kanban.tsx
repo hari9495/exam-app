@@ -337,7 +337,7 @@ function CardItem({ card, col, columns, dragging, onOpen, onDragStart, onDragEnd
               )}
               <Menu defaultOpen={defaultMenuOpen}>
                 <MenuTrigger asChild>
-                  <IconButton icon={MoreHorizontal} label={`Move ${card.name}`} size="sm" noTooltip />
+                  <IconButton icon={MoreHorizontal} label={`Move ${card.name}`} size="sm" />
                 </MenuTrigger>
                 <MenuContent
                   align="end"

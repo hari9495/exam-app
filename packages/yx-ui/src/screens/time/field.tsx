@@ -279,7 +279,7 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
     <div className="yx-tim-keypad" role="group" aria-label="Number pad">
       {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'].map((k, i) =>
         k === '' ? <span key={i} /> : (
-          <button key={i} type="button" aria-label={k === 'del' ? 'Delete' : k} onClick={() => press(k)}>
+          <button key={i} type="button" aria-label={k === 'del' ? 'Delete' : k} title={k === 'del' ? 'Delete' : undefined} onClick={() => press(k)}>
             {k === 'del' ? <Delete aria-hidden="true" /> : k}
           </button>
         ),

@@ -135,3 +135,15 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
     dispatchEvent: () => false,
   })) as unknown as typeof window.matchMedia;
 }
+
+// Every test runs as a browser that has signed in before: AuthProvider only asks /auth/refresh when this
+// hint (set with a token, cleared when the session ends) is present. Tests of the signed-out case clear it.
+if (typeof window !== 'undefined') {
+  beforeEach(() => {
+    try {
+      window.localStorage.setItem('yx-session', '1');
+    } catch {
+      /* node environment */
+    }
+  });
+}
