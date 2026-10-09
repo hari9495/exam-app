@@ -18,6 +18,7 @@ const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
 const BATCH = 2000;
 const MONTHS_ONLINE = 13;
 const DEDUP_MINUTES = 30;
+const ARCHIVE_ROWS = 20_000;
 
 /** Restricted areas (YX-AUD-06): their audit is read only by that area's members (the key), never by audit.view alone. */
 const RESTRICTED: { prefix: string; key: string }[] = [
@@ -281,7 +282,7 @@ export class PayAuditService {
   /**
    * The archive job (YX-AUD-08): rows older than 13 months move to an encrypted archive file, up to the first row under a
    * legal hold; archives past the company's retention (at least 8 years) lose their file and a deletion record is kept.
-   * ponytail: one archive per chain per run, capped at 50,000 rows; runs daily, so a backlog drains over days.
+   * ponytail: one archive per chain per run, capped at ARCHIVE_ROWS rows; runs daily, so a backlog drains over days.
    */
   async archiveAll(now = new Date()): Promise<{ archived: number; deleted: number }> {
     const cutoff = new Date(now);
@@ -319,7 +320,7 @@ export class PayAuditService {
     const holds = org ? await this.tenantPrisma.forTenant(SUPER, (tx) => tx.auditLegalHold.findMany({ where: { organizationId: org, releasedAt: null }, select: { fromAt: true } })) : [];
     const firstHeld = holds.reduce<Date | null>((m, h) => (!m || h.fromAt < m ? h.fromAt : m), null);
     const until = firstHeld && firstHeld < cutoff ? firstHeld : cutoff;
-    const rows = await this.tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { chainKey }, orderBy: { chainSeq: 'asc' }, take: 50_000 }));
+    const rows = await this.tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { chainKey }, orderBy: { chainSeq: 'asc' }, take: ARCHIVE_ROWS }));
     // The oldest contiguous run written before `until`.
     const take: typeof rows = [];
     for (const r of rows) {
