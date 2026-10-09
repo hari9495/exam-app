@@ -79,7 +79,7 @@ describe('Payroll batch 5a', () => {
       .overrideProvider(BlobStorageService)
       .useValue(createFakeBlobStorage())
       .overrideProvider(DSC_ROOTS)
-      .useValue(parsePemBundle(pki.rootPem))
+      .useValue({ get: async () => parsePemBundle(pki.rootPem) })
       .overrideProvider(DSC_REVOCATION)
       .useValue(revocation)
       .compile();

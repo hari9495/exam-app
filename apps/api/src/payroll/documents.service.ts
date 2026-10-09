@@ -13,7 +13,7 @@ import { has, type ScopeUser } from '../access/scope';
 import { asDate, dateOf } from '../time/time-core';
 import { ConfirmationDto, IssueDocumentDto, NomineeDto, PortalEmailDto, PortalVerifyDto } from './dto';
 import { dscSigner } from '../documents/signing';
-import { DSC_REVOCATION, DSC_ROOTS, SignatureRefused, verifySignedPdf, type RevocationChecker } from '../documents/signed-pdf';
+import { DSC_REVOCATION, DSC_ROOTS, SignatureRefused, verifySignedPdf, type RevocationChecker, type TrustedRoots } from '../documents/signed-pdf';
 import { VERIFY_CODE, referenceNo, verifyCode, verifyLink } from '../documents/verify-code';
 import { Inject } from '@nestjs/common';
 import type { Certificate } from 'pkijs';
@@ -76,7 +76,7 @@ export class PayDocumentsService {
     private readonly files: PayFileStore,
     private readonly crypto: OrgSecretsCryptoService,
     private readonly otp: OtpService,
-    @Inject(DSC_ROOTS) private readonly roots: Certificate[],
+    @Inject(DSC_ROOTS) private readonly roots: TrustedRoots,
     @Inject(DSC_REVOCATION) private readonly revocation: RevocationChecker,
   ) {}
 
@@ -341,7 +341,7 @@ export class PayDocumentsService {
     });
     let signer;
     try {
-      signer = await verifySignedPdf(file, { sha256: d.unsignedSha256, bytes: d.unsignedBytes! }, this.roots, this.revocation);
+      signer = await verifySignedPdf(file, { sha256: d.unsignedSha256, bytes: d.unsignedBytes! }, await this.roots.get(), this.revocation);
     } catch (e) {
       if (!(e instanceof SignatureRefused)) throw e;
       await inCompany(this.tenantPrisma, ctx, (tx, c) => audit(tx, c, 'payroll.document.signature_refused', 'pay_document', d.id, { legalEntityId: d.legalEntityId, referenceNo: d.referenceNo, reason: e.message, uploadSha256: sha256(file) }));

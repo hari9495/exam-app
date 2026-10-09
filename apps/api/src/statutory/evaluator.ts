@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { rootProblems } from '../documents/cca-roots';
 
 // P07 statutory evaluator and calculators (M03-BUILD-DESIGN §8.2, PAY-2.02). Pure functions over a rule set's typed
 // payload: no database, no clock, no country figures (they are all in the pack, statutory/packs/*.json). Money is
@@ -141,6 +142,12 @@ export function minWage(rs: RuleSet, i: { table?: RuleSet | null; zone?: string 
   const useState = !!st && st.monthly.gt(floorMonthly);
   const daily = useState ? st!.monthly.div(Number(i.table!.values.dailyDivisor ?? v.monthDays)).toDecimalPlaces(2) : D(v.floorDaily as string);
   return { daily, monthly: useState ? st!.monthly : floorMonthly, floorApplied: !useState, daMissing: !!st?.daMissing, state: st, citation: useState ? st!.citation : cite(rs) };
+}
+
+/** Is a root (by its SHA-256 fingerprint) in a trusted-roots rule set (5b-D3)? */
+export function trustedRoot(rs: RuleSet, i: { sha256: string }) {
+  const v = need(rs, 'trusted_roots');
+  return { trusted: (v.roots as { sha256: string }[]).some((r) => r.sha256 === i.sha256), citation: cite(rs) };
 }
 
 /** The state table in force for a place and date (the employment's, when the company says which). */
@@ -307,6 +314,7 @@ export function checkShape(rs: RuleSet, limits: { ptAnnualMax?: string } = {}): 
       else if (r.totalMonthly !== undefined && !D(r.basicMonthly).add(r.vdaMonthly ?? 0).eq(D(r.totalMonthly))) problems.push(`${at}: basic and VDA do not add up to the printed total`);
     });
   }
+  if (rs.values.kind === 'trusted_roots') problems.push(...rootProblems(rs));
   if (rs.validTo && rs.validTo < rs.validFrom) problems.push('The rule set ends before it starts');
   return problems;
 }
@@ -317,7 +325,7 @@ export interface GoldenCase {
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
 }
-const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
 
 /** Runs one golden case; returns the fields that differ (empty when it passes). */
 export function runGolden(rs: RuleSet, g: GoldenCase): string[] {

@@ -2,7 +2,7 @@ import { join } from 'path';
 
 // Payslip languages (founder decision 5b-D2, 9 Oct 2026): English is the default; a layout may add Hindi, Tamil, Telugu or
 // Kannada, and the wage slip then shows each label in that script with the English beside it. Google Noto fonts (SIL Open
-// Font Licence, assets/fonts/OFL.txt), cut down to the glyphs these labels use by scripts/subset-payslip-fonts.py; the
+// Font Licence, assets/fonts/OFL.txt), cut down to the glyphs these labels use by scripts/subset-payslip-fonts.ts (fonttools); the
 // PDF embeds only the glyphs it prints. Changing a label below means running that script again (a test checks it).
 // The wording should be read once by a native speaker before go-live.
 

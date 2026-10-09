@@ -334,6 +334,9 @@ async function main() {
       const anand = await tx.user.findFirstOrThrow({ where: { email: 'super@platform.test', organizationId: null } });
       const minWages = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-min-wages.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
       await loadRuleSets(tx, minWages, anand.id, reviewer.id);
+      // 5b-D3: the India CCA roots (cca.gov.in) for USB-token signatures, by the same two-person flow.
+      const ccaRoots = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-cca-roots.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
+      await loadRuleSets(tx, ccaRoots, anand.id, reviewer.id);
       for (const slug of ['demo-org', 'ganga-textiles']) {
         const org = await tx.organization.findUnique({ where: { slug }, select: { id: true } });
         if (org) {
