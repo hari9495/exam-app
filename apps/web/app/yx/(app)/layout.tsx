@@ -35,6 +35,10 @@ const ORG: WorkspaceLink[] = [
   { id: 'structure', label: 'Structure', href: '/yx/settings/structure', group: 'Organisation' },
 ];
 const COMPANY_RULES: WorkspaceLink = { id: 'company-rules', label: 'Company rules', href: '/yx/settings/company-rules', group: 'Organisation' };
+// Batch G1: the "Add a country" guide, the company's words in Hindi / Tamil / Telugu, and the person's language.
+const COUNTRIES: WorkspaceLink = { id: 'countries', label: 'Countries', href: '/yx/settings/countries', group: 'Organisation' };
+const TRANSLATIONS: WorkspaceLink = { id: 'translations', label: 'Translations', href: '/yx/settings/translations', group: 'Organisation' };
+const MY_LANGUAGE: WorkspaceLink = { id: 'my-language', label: 'Language', href: '/yx/me/language', group: 'Me' };
 const DIRECTORY: WorkspaceLink = { id: 'directory', label: 'Directory', href: '/yx/people/directory', group: 'People' };
 const ORG_CHART: WorkspaceLink = { id: 'org-chart', label: 'Org chart', href: '/yx/people/org-chart', group: 'People' };
 const TEAM: WorkspaceLink = { id: 'team', label: 'My team', href: '/yx/people/team', group: 'People' };
@@ -182,7 +186,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   const hr = support || perms.has('employee.profile.view') || perms.has('employee.change.manage') || perms.has('employee.change.approve');
   // HR reads the structure it hires into (read-only pages; changes stay with org.settings.manage). A manager who
   // only reads it for pickers still gets no Organisation menu (founder review 8 Oct 2026).
-  const org = settingsAdmin || perms.has('pay.range.view') || support || (hr && perms.has('org.structure.view')) ? [...ORG, ...(settingsAdmin ? [COMPANY_RULES] : [])] : [];
+  const org = settingsAdmin || perms.has('pay.range.view') || support || (hr && perms.has('org.structure.view')) ? [...ORG, ...(settingsAdmin ? [COMPANY_RULES, COUNTRIES, TRANSLATIONS] : [])] : [];
   const employee = Boolean(team.data?.managerId);
   const manager = Boolean(team.data?.members.length);
   const bulk = perms.has('employee.change.manage') || perms.has('employee.change.approve');
@@ -217,7 +221,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   ];
   // P04 Q5: the company's email branding and wording, for those who hold the key (read-only in a support session).
   const emails = perms.has('notification.template.manage') || support ? [EMAILS] : [];
-  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee ? [PRIVACY, MY_LETTERS, MY_DOCUMENTS, MY_ASSETS, RESIGN] : [])];
+  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee ? [PRIVACY, MY_LANGUAGE, MY_LETTERS, MY_DOCUMENTS, MY_ASSETS, RESIGN] : [])];
   const supportEndsAt = support ? (decodeJwtPayload(accessToken)?.supportEndsAt as string | undefined) : undefined;
   const desk = support
     ? []

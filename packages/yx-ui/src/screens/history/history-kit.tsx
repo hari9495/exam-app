@@ -23,7 +23,7 @@ export const TYPE_LABEL: Record<ChangeType, string> = {
   redesignation: 'New designation',
   manager_change: 'Manager change',
   salary_revision: 'Salary revision',
-  employment_type_change: 'Employment type change',
+  employment_type_change: 'Employment type or hours',
   confirmation: 'Confirmation',
   correction: 'Correction',
   notice: 'Notice period',
@@ -131,6 +131,10 @@ const FIELDS: Record<Exclude<ChangeType, 'join'>, Field[]> = {
   exit: [],
 };
 const PAY_TYPES = new Set(['promotion', 'salary_revision', 'correction']);
+/** G1 (gap pass C1): contracted hours change with the employment type, or by a correction. */
+const HOURS_TYPES = new Set(['employment_type_change', 'correction']);
+/** Hours a week: above 0, at most 80, in half hours (the API checks the normal week too). */
+const hoursOk = (h: string) => /^\d{1,2}(\.5)?$/.test(h) && Number(h) > 0 && Number(h) <= 80;
 /** M01 Q5: dotted-line managers move with a manager change or a transfer. */
 const DOTTED_TYPES = new Set(['manager_change', 'transfer']);
 const FIELD_LABEL: Record<Field, string> = {
@@ -154,6 +158,9 @@ export interface ChangeDraft {
   payMode: 'amount' | 'percent';
   pay: string;
   confirm: boolean;
+  /** G1: hours a week: no change, back to full-time, or part-time hours. */
+  hours?: 'keep' | 'full' | 'set';
+  hoursValue?: string;
   reason: string;
   overrideReason: string;
 }
@@ -175,6 +182,12 @@ export function changeInput(d: ChangeDraft, o: Pick<ChangeOptions, 'canPay' | 'r
       else assignment[f] = v;
     }
     if (d.dotted !== null && DOTTED_TYPES.has(type)) assignment.dottedLineManagerIds = d.dotted;
+    if (HOURS_TYPES.has(type) && d.hours === 'full') assignment.hoursPerWeek = null;
+    if (HOURS_TYPES.has(type) && d.hours === 'set') {
+      const h = (d.hoursValue ?? '').trim();
+      if (!hoursOk(h)) errors.push({ fieldId: 'ch-hours', message: 'Enter the hours a week, e.g. 24 or 37.5 (at most 80)' });
+      else assignment.hoursPerWeek = h;
+    }
     if (Object.keys(assignment).length) payload.assignment = assignment;
     if (type === 'confirmation' || (type === 'correction' && d.confirm)) payload.status = 'confirmed';
     const pay = d.pay.trim();
@@ -184,7 +197,7 @@ export function changeInput(d: ChangeDraft, o: Pick<ChangeOptions, 'canPay' | 'r
       else payload.compensation = d.payMode === 'amount' ? { annualCtc: pay } : { increasePercent: pay };
     }
     if (type === 'salary_revision' && !payload.compensation && !errors.some((e) => e.fieldId === 'ch-pay')) errors.push({ fieldId: 'ch-pay', message: 'Enter the new pay' });
-    if (!payload.assignment && !payload.status && !payload.compensation && type !== 'salary_revision') errors.push({ fieldId: 'ch-values', message: 'Choose at least one new value' });
+    if (!payload.assignment && !payload.status && !payload.compensation && type !== 'salary_revision' && !errors.some((e) => e.fieldId === 'ch-hours')) errors.push({ fieldId: 'ch-values', message: 'Choose at least one new value' });
   }
   if (d.reason.trim().length < 3) errors.push({ fieldId: 'ch-reason', message: 'Say why, in a few words' });
   const date = d.effectiveDate ? dayKey(d.effectiveDate) : null;
@@ -210,7 +223,7 @@ export interface ChangeDrawerProps {
 
 /** Pick the kind of change, the date and the new values; preview the impact; send it for approval. */
 export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose }: ChangeDrawerProps) {
-  const [draft, setDraft] = useState<ChangeDraft>({ employeeId: employeeId ?? null, changeType: null, effectiveDate: null, values: {}, dotted: null, payMode: 'amount', pay: '', confirm: false, reason: '', overrideReason: '' });
+  const [draft, setDraft] = useState<ChangeDraft>({ employeeId: employeeId ?? null, changeType: null, effectiveDate: null, values: {}, dotted: null, payMode: 'amount', pay: '', confirm: false, hours: 'keep', hoursValue: '', reason: '', overrideReason: '' });
   const [impact, setImpact] = useState<Impact | null>(null);
   const [dirty, setDirty] = useState(false);
   const { busy, error, run } = useRun();
@@ -272,7 +285,7 @@ export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose
             </FormField>
           )}
           <FormField id="ch-type" label="Kind of change" required error={errorOf('ch-type')}>
-            <Select value={draft.changeType} onChange={(v) => set({ changeType: v, values: {}, dotted: null, pay: '', confirm: false })} options={types.map((t) => ({ value: t, label: TYPE_LABEL[t] }))} aria-label="Kind of change" />
+            <Select value={draft.changeType} onChange={(v) => set({ changeType: v, values: {}, dotted: null, pay: '', confirm: false, hours: 'keep', hoursValue: '' })} options={types.map((t) => ({ value: t, label: TYPE_LABEL[t] }))} aria-label="Kind of change" />
           </FormField>
           <FormField id="ch-date" label="Takes effect on" required helper="The day starts at midnight where the person works." error={errorOf('ch-date')}>
             <DatePicker value={draft.effectiveDate} onChange={(effectiveDate) => set({ effectiveDate })} aria-label="Takes effect on" />
@@ -297,6 +310,16 @@ export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose
             {DOTTED_TYPES.has(draft.changeType) && draft.dotted !== null && (
               <FormField id="ch-dotted" label="New dotted-line managers" optional helper="Leave empty to remove them all.">
                 <MultiSelect value={draft.dotted} onChange={(dotted) => set({ dotted })} options={choices.managerEmployeeId} searchable aria-label="New dotted-line managers" />
+              </FormField>
+            )}
+            {HOURS_TYPES.has(draft.changeType) && (
+              <FormField label="Hours a week" helper="Full-time follows the normal week where the person works. FTE is worked out from it.">
+                <Segment label="Hours a week" options={[{ value: 'keep' as const, label: 'No change' }, { value: 'full' as const, label: 'Full-time' }, { value: 'set' as const, label: 'Part-time' }]} value={draft.hours ?? 'keep'} onChange={(hours) => set({ hours })} />
+              </FormField>
+            )}
+            {HOURS_TYPES.has(draft.changeType) && draft.hours === 'set' && (
+              <FormField id="ch-hours" label="Part-time hours a week" required helper="For example 24 or 37.5." error={errorOf('ch-hours')}>
+                <TextField value={draft.hoursValue ?? ''} onChange={(hoursValue) => set({ hoursValue: hoursValue.trim() })} inputMode="decimal" maxLength={4} />
               </FormField>
             )}
             {draft.changeType === 'confirmation' && <Text as="p" tone="secondary">The probation ends and the person is confirmed from this date.</Text>}

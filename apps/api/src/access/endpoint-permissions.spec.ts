@@ -31,7 +31,7 @@ const IMPLICIT: Record<string, string[]> = {
     'cancelProfileChange', // the requester or the person
     'probations', // HR in scope, or the manager's team
   ],
-  EmployeeHistoryController: ['list', 'asOf', 'timeline'],
+  EmployeeHistoryController: ['list', 'asOf', 'timeline', 'serviceDates'],
   OrgStructureController: ['reference'], // public reference data (states, regions)
   AccessController: [],
   // Lifecycle 6a: the services decide per joiner, checklist, task and document (self, assignee, manager, HR in scope).
