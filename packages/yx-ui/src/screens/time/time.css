@@ -1,0 +1,38 @@
+/* Time screens: page-level helpers (M02). Token-only. */
+.yx-tim-h2 { margin: 0; font-size: var(--yx-text-xl); line-height: var(--yx-leading-xl); font-weight: var(--yx-weight-semibold); min-width: calc(var(--yx-space-16) * 3); text-align: center; }
+.yx-tim-monthnav { justify-content: flex-start; }
+.yx-tim-picker { min-width: calc(var(--yx-space-16) * 4); }
+.yx-tim-form { display: flex; flex-direction: column; gap: var(--yx-space-4); max-width: var(--yx-form-max); }
+.yx-tim-effect { border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); padding: var(--yx-space-4); display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-tim-effect__line { display: flex; flex-wrap: wrap; gap: var(--yx-space-2); align-items: center; font-variant-numeric: tabular-nums; }
+.yx-tim-effect__row { display: flex; justify-content: space-between; gap: var(--yx-space-4); font-size: var(--yx-text-sm); }
+.yx-tim-effect__row dd { margin: 0; font-weight: var(--yx-weight-medium); font-variant-numeric: tabular-nums; }
+.yx-tim-effect__row dt { color: var(--yx-color-text-secondary); }
+.yx-tim-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--yx-space-16) * 4)), 1fr)); gap: var(--yx-space-4); }
+.yx-tim-steps { margin: 0; padding-left: var(--yx-space-5); display: flex; flex-direction: column; gap: var(--yx-space-1); font-size: var(--yx-text-sm); }
+.yx-tim-check { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-2); font-size: var(--yx-text-sm); }
+.yx-tim-check li { display: flex; gap: var(--yx-space-2); align-items: center; justify-content: space-between; }
+.yx-tim-days { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; font-size: var(--yx-text-sm); }
+.yx-tim-days li { display: flex; justify-content: space-between; gap: var(--yx-space-3); padding: var(--yx-space-1) 0; border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-tim-days li:last-child { border-bottom: 0; }
+.yx-tim-bars { display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-tim-bars__row { display: grid; grid-template-columns: calc(var(--yx-space-16) * 2) minmax(0, 1fr) calc(var(--yx-space-16)); gap: var(--yx-space-2); align-items: center; font-size: var(--yx-text-sm); }
+.yx-tim-bars__track { height: var(--yx-space-3); background: var(--yx-color-bg-subtle); border-radius: var(--yx-radius-badge); overflow: hidden; }
+.yx-tim-bars__fill { display: block; height: 100%; background: var(--yx-chart-1); }
+.yx-tim-code { font-family: var(--yx-font-mono); font-size: var(--yx-text-sm); }
+/* Kiosk code readout ("KF-0177"). */
+.yx-tim-big.yx-tim-code { font-size: var(--yx-text-4xl); line-height: var(--yx-leading-4xl); letter-spacing: 0.15em; }
+.yx-tim-kiosk-banner { width: 100%; }
+.yx-tim-numcell { width: calc(var(--yx-space-12)); height: var(--yx-control-sm); border: 0; background: transparent; text-align: center; font: inherit; color: var(--yx-color-text); }
+/*
+ * Muster pinned columns: collapsed borders scroll away from sticky cells and let the day cells show through, so the
+ * pinned grid uses separate borders (right and bottom only), opaque cells and an edge line on the last pinned column.
+ */
+.yx-tim-muster[data-pinned-totals] table { border-collapse: separate; border-spacing: 0; }
+.yx-tim-muster[data-pinned-totals] th, .yx-tim-muster[data-pinned-totals] td { border-width: 0 var(--yx-border-width) var(--yx-border-width) 0; }
+.yx-tim-muster[data-pinned-totals] tr > :first-child { background: var(--yx-color-bg-surface); }
+.yx-tim-muster[data-pinned-totals] thead tr > :first-child,
+.yx-tim-muster[data-pinned-totals] tr > :nth-child(n + 2):nth-child(-n + 5),
+.yx-tim-muster[data-pinned-totals] .yx-tim-muster__total { background: var(--yx-color-bg-subtle); }
+.yx-tim-muster[data-pinned-totals] tr > :nth-child(5) { box-shadow: inset calc(var(--yx-border-width) * -2) 0 0 var(--yx-color-border-strong); }
+.yx-tim-numcell:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: -2px; }

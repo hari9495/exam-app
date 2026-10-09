@@ -86,6 +86,8 @@
   --yx-color-bg-raised: var(--yx-slate-0);
   --yx-color-bg-selected: var(--yx-azure-50);
   --yx-color-bg-inverse: var(--yx-slate-900);
+  --yx-color-icon-tile: var(--yx-color-bg-subtle);
+  --yx-color-icon-tile-lift: var(--yx-color-bg-subtle);
 
   --yx-color-border: var(--yx-slate-100);
   --yx-color-border-strong: var(--yx-slate-200);
@@ -158,6 +160,9 @@
   --yx-textarea-min: 88px;
   --yx-icon-sm: 16px;
   --yx-icon-md: 20px;
+  --yx-icon-lg: 24px;
+  --yx-icon-xl: 32px;
+  --yx-icon-2xl: 48px;
 
   --yx-z-sticky: 10;
   --yx-z-drawer: 40;
@@ -204,6 +209,8 @@
   --yx-color-bg-raised: var(--yx-slate-850);
   --yx-color-bg-selected: #1B2847;
   --yx-color-bg-inverse: var(--yx-slate-100);
+  --yx-color-icon-tile: var(--yx-color-bg-subtle); /* measured: a mid-grey tile (slate 700) lowers Fluent colour contrast, §8 */
+  --yx-color-icon-tile-lift: var(--yx-slate-100); /* for the few colour icons too dark on dark surfaces (darkTile) */
   --yx-color-border: var(--yx-slate-800);
   --yx-color-border-strong: var(--yx-slate-700);
   --yx-color-border-input: var(--yx-slate-600);
@@ -232,7 +239,7 @@
 }
 
 /* ---------- 3. Component tokens ---------- */
-:root {
+:root, [data-theme] { /* re-resolve component tokens inside a nested theme (light and dark side by side) */
   --yx-button-primary-bg: var(--yx-color-action-primary);
   --yx-button-primary-bg-hover: var(--yx-color-action-primary-hover);
   --yx-button-primary-fg: var(--yx-color-text-on-action);

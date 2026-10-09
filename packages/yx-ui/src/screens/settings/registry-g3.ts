@@ -1,0 +1,1262 @@
+// Settings map · Group 3 · Time & Leave (APX-D §3, pages 3.1–3.12).
+// Sources: M02 (leave & attendance), M04 Q3/Q4, P10 Q3, P08 Q2/Q4, M12, P23, P07 (legal floors).
+// Plain data only. Sample company: Kaveri Foods Pvt Ltd.
+import type { SettingsGroupDef, SettingsPageDef } from './settings-types';
+
+const INHERITED = 'Inherited from Kaveri Foods Pvt Ltd';
+
+/* ---------------- 3.1 Attendance modes ---------------- */
+const attendanceModes: SettingsPageDef = {
+  id: '3.1',
+  group: 3,
+  title: 'Attendance modes',
+  summary:
+    'Choose how each group’s day status is worked out: from punches, assumed present, or from approved timesheets. For punch groups, choose whether missing punches block payroll.',
+  owner: ['M02'],
+  contributes: ['P01'],
+  permission: 'attendance.settings.manage',
+  permissionHolder: 'HR admins and System admins',
+  scopes: ['Company', 'Legal entity', 'Location', 'Department', 'Employment type'],
+  sections: [
+    {
+      title: 'Mode',
+      description: 'Every employee resolves to one mode from the most specific scope that sets it.',
+      settings: [
+        {
+          key: 'attendance.mode',
+          label: 'Attendance mode',
+          kind: 'radio',
+          value: 'Punch',
+          options: ['Punch', 'Assumed present', 'Timesheet'],
+          helper:
+            'Punch: day status from punches and requests. Assumed present: present unless on approved leave; HR enters LOP. Timesheet: approved hours drive pay.',
+          dated: { validFrom: '2026-04-01' },
+          scope: 'Company',
+          overrides: [
+            { scope: 'Sales department', value: 'Assumed present', validFrom: '2026-07-01' },
+            { scope: 'Consultants', value: 'Timesheet', validFrom: '2026-06-01' },
+          ],
+          synonyms: ['no punching', 'biometric', 'present by default', 'timesheet based'],
+        },
+      ],
+    },
+    {
+      title: 'Payroll effect',
+      settings: [
+        {
+          key: 'attendance.missing_punch_effect',
+          label: 'Missing punches before payroll',
+          kind: 'radio',
+          value: 'Block payroll approval',
+          options: ['Block payroll approval', 'Warn only'],
+          helper: 'Applies to Punch mode only. Assumed-present groups never block payroll.',
+          dated: { validFrom: '2026-04-01' },
+          scope: INHERITED,
+          synonyms: ['exceptions block payroll', 'missing check-out', 'payroll readiness'],
+        },
+        {
+          key: 'attendance.status_basis',
+          label: 'Employment status sets the expected day first',
+          kind: 'law',
+          value: 'Always on',
+          law: 'YukthiX rule YX-AT-10: suspended, long leave, pre-boarding and exited days never raise attendance exceptions',
+        },
+      ],
+    },
+  ],
+  lastChange: {
+    by: 'Lakshmi Venkatesan',
+    role: 'HR Business Partner',
+    at: '2026-07-01T10:15',
+    what: 'Set Sales department to Assumed present from 1 Jul 2026',
+  },
+  related: [
+    { label: 'Muster grid', screenId: 'TIM-02' },
+    { label: 'Attendance exceptions', screenId: 'TIM-04' },
+    { label: 'Timesheets', screenId: 'TIM-15' },
+  ],
+  note: 'The mode and the block / warn choice are shown on the muster and on payroll readiness.',
+};
+
+/* ---------------- 3.2 Check-in & devices ---------------- */
+const checkIn: SettingsPageDef = {
+  id: '3.2',
+  group: 3,
+  title: 'Check-in & devices',
+  summary:
+    'Decide how people check in at each location or group, whether check-in is tied to one phone, how shared kiosks work and whether face check-in is offered.',
+  owner: ['M02'],
+  contributes: ['M04', 'P10'],
+  permission: 'attendance.settings.manage',
+  permissionHolder: 'HR admins and System admins',
+  scopes: ['Company', 'Legal entity', 'Location', 'Employee group'],
+  sections: [
+    {
+      title: 'Check-in methods',
+      settings: [
+        {
+          key: 'checkin.methods',
+          label: 'Allowed check-in methods',
+          kind: 'multiselect',
+          value: ['Mobile GPS with geofence', 'Web with IP / Wi-Fi restriction', 'Biometric device'],
+          options: ['Mobile GPS with geofence', 'Web with IP / Wi-Fi restriction', 'Biometric device', 'Shared kiosk', 'Offline check-in (sync later)'],
+          scope: 'Company',
+          overrides: [{ scope: 'Hosur plant', value: ['Biometric device', 'Shared kiosk'] }],
+          synonyms: ['punch in', 'mark attendance', 'biometric'],
+        },
+        {
+          key: 'checkin.location_mode',
+          label: 'Location rule',
+          kind: 'radio',
+          value: 'Restricted',
+          options: ['Restricted', 'Field'],
+          helper: 'Restricted: must be inside the geofence or allowed IP range. Field: location is recorded, not restricted.',
+          overrides: [{ scope: 'Sales department', value: 'Field' }],
+          synonyms: ['geofence', 'outside office', 'field staff'],
+        },
+        {
+          key: 'checkin.geofence',
+          label: 'Geofences and IP ranges',
+          kind: 'link',
+          linkScreenId: 'TIM-31',
+          linkLabel: 'Edit locations and geofences',
+          helper: 'Radius, multiple points and IP / Wi-Fi ranges are set per location.',
+          synonyms: ['geofence', 'radius', 'office wifi'],
+        },
+        {
+          key: 'checkin.offline_max_age',
+          label: 'Reject offline punches older than',
+          kind: 'number',
+          value: 48,
+          unit: 'hours',
+          min: 1,
+          max: 168,
+          starter: true,
+          helper: 'Older queued punches raise an exception instead of being dropped.',
+          synonyms: ['no network', 'offline punch'],
+        },
+      ],
+    },
+    {
+      title: 'Device binding',
+      settings: [
+        {
+          key: 'checkin.device_binding',
+          label: 'Bind check-in to one phone',
+          kind: 'toggle',
+          value: true,
+          starter: true,
+          helper: 'On by default for restricted staff. Changing the phone needs HR or manager approval.',
+          contributedBy: 'M04',
+          synonyms: ['buddy punching', 'one device', 'phone change'],
+        },
+        { key: 'checkin.device_binding_field_exempt', label: 'Exempt field staff from device binding', kind: 'toggle', value: true, starter: true, contributedBy: 'M04' },
+        {
+          key: 'checkin.devices',
+          label: 'Devices and kiosks',
+          kind: 'link',
+          linkScreenId: 'TIM-14',
+          linkLabel: 'Manage devices and kiosks',
+          helper: 'Kiosk registry, heartbeat, device-bind requests and remote sign-out.',
+          contributedBy: 'M04',
+        },
+      ],
+    },
+    {
+      title: 'Shared kiosk',
+      description: 'For workers without a smartphone. A registered tablet at the site.',
+      settings: [
+        {
+          key: 'checkin.kiosk_mode',
+          label: 'Kiosk sign-in',
+          kind: 'radio',
+          value: 'Employee code + PIN',
+          options: ['Employee code + PIN', 'ID-card QR', 'ID-card QR + PIN'],
+          scope: 'Overridden for Hosur plant',
+          contributedBy: 'M04',
+          synonyms: ['kiosk', 'tablet', 'no smartphone'],
+        },
+        { key: 'checkin.kiosk_logout', label: 'Kiosk signs out after', kind: 'number', value: 30, unit: 'seconds', min: 10, max: 120, starter: true, contributedBy: 'M04' },
+      ],
+    },
+    {
+      title: 'Face check-in',
+      description: 'Coming soon. People will be able to check in with a face match, only after they agree to it.',
+      settings: [
+        {
+          key: 'checkin.face_enabled',
+          label: 'Offer face check-in',
+          kind: 'toggle',
+          value: false,
+          helper: 'Each employee must consent before enrolment. People who don’t consent use other methods.',
+          contributedBy: 'P10',
+          availability: 'Wave 6',
+          synonyms: ['selfie', 'face recognition'],
+        },
+        {
+          key: 'checkin.face_consent_text',
+          label: 'Face check-in consent notice',
+          kind: 'textarea',
+          value:
+            'We use a face template only to confirm your check-in. It is stored encrypted in India and deleted when you leave or withdraw consent. You can use another check-in method instead.',
+          contributedBy: 'P10',
+          availability: 'Wave 6',
+          showWhen: { key: 'checkin.face_enabled', equals: true },
+          sensitive: true,
+        },
+      ],
+    },
+  ],
+  lastChange: {
+    by: 'Ravi Menon',
+    role: 'Plant HR, Hosur',
+    at: '2026-08-12T15:40',
+    what: 'Changed Hosur plant kiosk sign-in from ID-card QR to Employee code + PIN',
+  },
+  related: [
+    { label: 'Locations & geofence map', screenId: 'TIM-31' },
+    { label: 'Devices', screenId: 'TIM-14' },
+    { label: 'Kiosk', screenId: 'TIM-13' },
+  ],
+  note: 'Every punch records its device, whether or not binding is on.',
+};
+
+/* ---------------- 3.3 Shifts & patterns ---------------- */
+const shifts: SettingsPageDef = {
+  id: '3.3',
+  group: 3,
+  title: 'Shifts & patterns',
+  summary:
+    'Define shifts with their break rule, grace and thresholds, the overtime policy per shift, rotating patterns, minimum rest and how rosters are published.',
+  owner: ['M02'],
+  contributes: ['P07'],
+  permission: 'attendance.settings.manage',
+  permissionHolder: 'HR admins and Plant HR',
+  scopes: ['Company', 'Legal entity', 'Location'],
+  sections: [
+    {
+      title: 'Shifts',
+      settings: [
+        {
+          key: 'shift.list',
+          label: 'Shifts',
+          kind: 'list',
+          columns: ['Shift', 'Time', 'Break', 'Grace', 'Location'],
+          rows: [
+            ['General', '9:30 am – 6:30 pm', '60 min fixed', '10 min', 'Bengaluru, Chennai'],
+            ['Plant A', '6:00 am – 2:00 pm', '30 min above 5 h', '5 min', 'Hosur plant'],
+            ['Plant B', '2:00 pm – 10:00 pm', '30 min above 5 h', '5 min', 'Hosur plant'],
+            ['Plant C (night)', '10:00 pm – 6:00 am', '30 min above 5 h', '5 min', 'Hosur plant'],
+            ['Flexi', 'Core 11:00 am – 4:00 pm', 'Punch-based', '0 min', 'Bengaluru'],
+          ],
+          addLabel: 'Add shift',
+          synonyms: ['shift timing', 'night shift', 'flexi'],
+        },
+        { key: 'shift.editor', label: 'Shift details', kind: 'link', linkScreenId: 'TIM-06', linkLabel: 'Open shift editor', helper: 'Check-in window, split shifts, thresholds and allowances, with a preview.' },
+        {
+          key: 'shift.break_rule',
+          label: 'Default break rule',
+          kind: 'radio',
+          value: 'Fixed unpaid break above a threshold',
+          options: ['Fixed unpaid break above a threshold', 'Punch-based breaks', 'No break'],
+          starter: true,
+          synonyms: ['lunch break', 'break deduction'],
+        },
+        { key: 'shift.break_minutes', label: 'Fixed break', kind: 'number', value: 30, unit: 'minutes', min: 0, max: 120, starter: true },
+        {
+          key: 'shift.break_threshold',
+          label: 'Deduct the break when worked hours exceed',
+          kind: 'number',
+          value: 5,
+          unit: 'hours',
+          starter: true,
+          legal: { value: 5, kind: 'max', statute: 'Factories Act, 1948 s.55 (rest after 5 hours)' },
+        },
+        { key: 'shift.grace_late', label: 'Grace for late check-in', kind: 'number', value: 10, unit: 'minutes', min: 0, max: 60, starter: true, synonyms: ['grace time', 'late coming'] },
+        { key: 'shift.grace_early', label: 'Grace for early check-out', kind: 'number', value: 10, unit: 'minutes', min: 0, max: 60, starter: true },
+        { key: 'shift.full_day_hours', label: 'Full day from', kind: 'number', value: 8, unit: 'hours', starter: true, synonyms: ['half day threshold'] },
+        { key: 'shift.half_day_hours', label: 'Half day from', kind: 'number', value: 4, unit: 'hours', starter: true, atMost: 'shift.full_day_hours' },
+        {
+          key: 'shift.night_definition',
+          label: 'Shifts counted as night from',
+          kind: 'time',
+          value: '19:00',
+          helper: 'Used for night allowance and fairness. It may be wider than the legal night window, never narrower.',
+          synonyms: ['night allowance', 'women night shift'],
+        },
+        { key: 'shift.night_allowance', label: 'Night shift allowance per day', kind: 'money', value: 150, scope: 'Overridden for Hosur plant' },
+      ],
+    },
+    {
+      title: 'Working-hour limits',
+      description: 'Company limits can be stricter than the law, never looser.',
+      settings: [
+        { key: 'shift.max_daily_hours', label: 'Maximum daily working hours (without OT)', kind: 'number', value: 9, unit: 'hours', legal: { value: 9, kind: 'max', statute: 'Factories Act, 1948 s.54' }, synonyms: ['daily hours'] },
+        { key: 'shift.max_weekly_hours', label: 'Maximum weekly working hours (without OT)', kind: 'number', value: 48, unit: 'hours', legal: { value: 48, kind: 'max', statute: 'Factories Act, 1948 s.51' }, synonyms: ['weekly hours'] },
+        { key: 'shift.max_spread_over', label: 'Maximum spread-over in a day', kind: 'number', value: 10.5, unit: 'hours', legal: { value: 10.5, kind: 'max', statute: 'Factories Act, 1948 s.56' }, synonyms: ['spread over'] },
+        { key: 'shift.spread_over_ka', label: 'Spread-over limit, shops and offices · Karnataka', kind: 'law', value: '12 hours', law: 'Karnataka Shops and Commercial Establishments Act, 1961' },
+        { key: 'shift.daily_hours_tn', label: 'Daily hours limit, shops and offices · Tamil Nadu', kind: 'law', value: '8 hours a day, 48 a week', law: 'Tamil Nadu Shops and Establishments Act, 1947' },
+        {
+          key: 'shift.min_rest',
+          label: 'Minimum rest between shifts',
+          kind: 'number',
+          value: 11,
+          unit: 'hours',
+          min: 8,
+          max: 16,
+          starter: true,
+          helper: 'The roster flags a conflict when two shifts are closer than this.',
+          synonyms: ['rest gap', 'back to back shifts'],
+        },
+      ],
+    },
+    {
+      title: 'Overtime policy',
+      settings: [
+        { key: 'ot.minimum', label: 'Overtime counts after', kind: 'number', value: 30, unit: 'minutes', starter: true, helper: 'Leaving a few minutes late never creates overtime.', synonyms: ['OT', 'extra hours'] },
+        { key: 'ot.rounding', label: 'Round overtime down to', kind: 'select', value: '15 minutes', options: ['None', '5 minutes', '10 minutes', '15 minutes', '30 minutes', '60 minutes'], starter: true },
+        { key: 'ot.approval', label: 'Overtime approval', kind: 'radio', value: 'After the fact', options: ['After the fact', 'Pre-approval required', 'Pre-approval or after the fact'], starter: true },
+        {
+          key: 'ot.rate',
+          label: 'Overtime rate',
+          kind: 'percent',
+          value: 200,
+          helper: 'Percentage of the ordinary rate of wages.',
+          legal: { value: 200, statute: 'Factories Act, 1948 s.59 (twice the ordinary rate)' },
+          synonyms: ['double wages', 'OT rate'],
+        },
+        {
+          key: 'ot.quarterly_cap',
+          label: 'Overtime cap per quarter',
+          kind: 'number',
+          value: 50,
+          unit: 'hours',
+          helper: 'Excess is flagged and not paid as OT without an HR override with reason.',
+          legal: { value: 50, kind: 'max', statute: 'Factories Act, 1948 s.64 and Karnataka rules' },
+        },
+        { key: 'ot.comp_off', label: 'Allow comp-off instead of OT pay', kind: 'toggle', value: false, overrides: [{ scope: 'Bengaluru head office', value: true }], synonyms: ['comp off', 'compensatory off'] },
+      ],
+    },
+    {
+      title: 'Patterns and roster',
+      settings: [
+        {
+          key: 'shift.patterns',
+          label: 'Shift patterns',
+          kind: 'list',
+          columns: ['Pattern', 'Cycle', 'Assigned to', 'From'],
+          rows: [
+            ['Office week', 'Mon–Sat, 2nd and 4th Sat off', 'Bengaluru, Chennai', '1 Apr 2026'],
+            ['Plant 3-shift rotation', 'A → B → C, weekly', 'Hosur production', '1 Apr 2026'],
+            ['4 on / 2 off', '6-day cycle', 'Hosur maintenance', '1 Jun 2026'],
+            ['Quality lab', 'Plant A fixed, Sun off', 'Quality, Hosur', '1 Apr 2026'],
+          ],
+          addLabel: 'Add pattern',
+          synonyms: ['rotation', 'rotating roster', 'cycle'],
+        },
+        { key: 'roster.editor', label: 'Roster', kind: 'link', linkScreenId: 'TIM-05', linkLabel: 'Open roster', helper: 'Drag to assign, copy week, swap and publish.' },
+        { key: 'roster.publish_lead_days', label: 'Publish rosters at least', kind: 'number', value: 7, unit: 'days ahead', min: 0, max: 30, starter: true, synonyms: ['roster publishing'] },
+        { key: 'roster.notify_on_publish', label: 'Notify employees when a roster is published', kind: 'toggle', value: true, starter: true },
+        {
+          key: 'roster.women_night_guard',
+          label: 'Women on night shifts need written consent and a valid safeguards checklist',
+          kind: 'law',
+          value: 'Always on',
+          law: 'Occupational Safety, Health and Working Conditions Code, 2020 (Factories Act s.66 as transitional value)',
+        },
+      ],
+    },
+  ],
+  lastChange: {
+    by: 'Ravi Menon',
+    role: 'Plant HR, Hosur',
+    at: '2026-06-18T11:20',
+    what: 'Added pattern "4 on / 2 off" for Hosur maintenance from 1 Jun 2026',
+  },
+  related: [
+    { label: 'Shift editor', screenId: 'TIM-06' },
+    { label: 'Roster', screenId: 'TIM-05' },
+    { label: 'OT review', screenId: 'TIM-09' },
+    { label: 'Auto-roster', screenId: 'TIM-34' },
+  ],
+  note: 'Statutory hour and OT caps come from the rules browser for each location’s state.',
+};
+
+/* ---------------- 3.4 Weekly offs ---------------- */
+const weeklyOffs: SettingsPageDef = {
+  id: '3.4',
+  group: 3,
+  title: 'Weekly offs',
+  summary: 'Set where weekly offs come from and the default days per location. Weekly offs are rules, not stored days.',
+  owner: ['M02'],
+  permission: 'attendance.settings.manage',
+  permissionHolder: 'HR admins',
+  scopes: ['Company', 'Location', 'Employee'],
+  sections: [
+    {
+      title: 'Precedence',
+      settings: [
+        {
+          key: 'weekoff.precedence',
+          label: 'Which rule wins',
+          kind: 'radio',
+          value: 'Employee override > shift pattern / roster > location default',
+          options: ['Employee override > shift pattern / roster > location default', 'Shift pattern / roster > employee override > location default'],
+          optionLabels: {
+            'Employee override > shift pattern / roster > location default': 'A person’s own weekly off wins, then their shift pattern, then the location’s',
+            'Shift pattern / roster > employee override > location default': 'The shift pattern wins, then a person’s own weekly off, then the location’s',
+          },
+          starter: true,
+          synonyms: ['week off', 'weekly holiday'],
+        },
+        {
+          key: 'weekoff.min_rest_days',
+          label: 'At least one weekly off in every',
+          kind: 'number',
+          value: 7,
+          unit: 'days',
+          legal: { value: 7, kind: 'max', statute: 'Factories Act, 1948 s.52 (one day in seven)' },
+          synonyms: ['weekly rest', 'continuous working days'],
+        },
+      ],
+    },
+    {
+      title: 'Location defaults',
+      settings: [
+        { key: 'weekoff.default_days', label: 'Default weekly off', kind: 'multiselect', value: ['Sunday'], options: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], starter: true, scope: 'Company', overrides: [{ scope: 'Hosur plant', value: ['From shift pattern'] }], helper: 'At Hosur plant the shift pattern decides, because the plant closes on some Tuesdays for maintenance.' },
+        {
+          key: 'weekoff.alternate_saturdays',
+          label: 'Saturdays off',
+          kind: 'radio',
+          value: 'None',
+          options: ['None', 'All', '2nd and 4th', '1st and 3rd', 'Custom'],
+          overrides: [
+            { scope: 'Bengaluru head office', value: '2nd and 4th' },
+            { scope: 'Chennai office', value: 'All' },
+          ],
+          synonyms: ['alternate saturday', 'second saturday'],
+        },
+      ],
+    },
+    {
+      title: 'Custom rules',
+      settings: [
+        {
+          key: 'weekoff.custom_rules',
+          label: 'Custom weekly-off rules',
+          kind: 'list',
+          columns: ['Rule', 'Applies to', 'From'],
+          rows: [
+            ['Last Saturday of the month off', 'Finance', '1 Apr 2026'],
+            ['Friday off instead of Sunday', 'Sales, Chennai', '1 Jul 2026'],
+            ['1st Monday off after month-end close', 'Finance, Bengaluru', '1 Aug 2026'],
+          ],
+          addLabel: 'Add rule',
+          synonyms: ['nth weekday'],
+        },
+      ],
+    },
+  ],
+  lastChange: {
+    by: 'Lakshmi Venkatesan',
+    role: 'HR Business Partner',
+    at: '2026-06-24T16:05',
+    what: 'Set Chennai office to all Saturdays off',
+  },
+  related: [
+    { label: 'Shift patterns', screenId: 'TIM-06' },
+    { label: 'Roster', screenId: 'TIM-05' },
+  ],
+};
+
+/* ---------------- 3.5 Late & regularisation ---------------- */
+const lateReg: SettingsPageDef = {
+  id: '3.5',
+  group: 3,
+  title: 'Late & regularisation',
+  summary: 'Set the late-coming penalty, how many attendance fixes people can make, WFH and on-duty limits, and shift-swap consent.',
+  owner: ['M02'],
+  permission: 'attendance.settings.manage',
+  permissionHolder: 'HR admins',
+  scopes: ['Company', 'Legal entity', 'Location', 'Employee group'],
+  sections: [
+    {
+      title: 'Late penalty',
+      description: 'Employees get a warning before a penalty posts. Penalties show on the day card and muster before payroll.',
+      settings: [
+        { key: 'late.penalty_enabled', label: 'Late-coming penalty', kind: 'toggle', value: false, starter: true, synonyms: ['late coming', 'late marks', 'late deduction'] },
+        { key: 'late.free_per_month', label: 'Free late marks per month', kind: 'number', value: 3, unit: 'lates', min: 0, max: 10, starter: true, showWhen: { key: 'late.penalty_enabled', equals: true } },
+        { key: 'late.every_n', label: 'Deduct ½ day for every further', kind: 'number', value: 3, unit: 'lates', min: 1, max: 10, starter: true, showWhen: { key: 'late.penalty_enabled', equals: true } },
+        {
+          key: 'late.deduction_order',
+          label: 'Deduct from',
+          kind: 'select',
+          value: 'Casual leave, then earned leave, then LOP',
+          options: ['Casual leave, then earned leave, then LOP', 'Casual leave, then LOP', 'Earned leave, then LOP', 'LOP only'],
+          starter: true,
+          showWhen: { key: 'late.penalty_enabled', equals: true },
+        },
+      ],
+    },
+    {
+      title: 'Regularisation',
+      settings: [
+        {
+          key: 'reg.monthly_limit',
+          label: 'Self-service fixes per month',
+          kind: 'number',
+          value: 4,
+          unit: 'requests',
+          min: 0,
+          max: 31,
+          starter: true,
+          helper: 'Manager approves. Beyond this, HR approval is added.',
+          synonyms: ['regularise', 'missed punch', 'attendance correction'],
+        },
+        { key: 'reg.types', label: 'Fixes allowed', kind: 'multiselect', value: ['Missed check-in', 'Missed check-out', 'Wrong time', 'Full day'], options: ['Missed check-in', 'Missed check-out', 'Wrong time', 'Full day'], starter: true },
+        {
+          key: 'reg.lookback',
+          label: 'How far back',
+          kind: 'radio',
+          value: 'Current open payroll period',
+          options: ['Current open payroll period', 'Last 30 days', 'Last 60 days'],
+          starter: true,
+          helper: 'After attendance is locked, fixes go through late requests in Periods & locks.',
+        },
+      ],
+    },
+    {
+      title: 'WFH and on-duty',
+      settings: [
+        { key: 'wfh.monthly_limit', label: 'Work from home days per month', kind: 'number', value: 4, unit: 'days', min: 0, max: 31, overrides: [{ scope: 'Engineering department', value: 8 }], synonyms: ['wfh', 'remote work'] },
+        { key: 'onduty.monthly_limit', label: 'On-duty days per month', kind: 'number', value: 6, unit: 'days', min: 0, max: 31, synonyms: ['on duty', 'outdoor duty', 'client visit'] },
+        { key: 'wfh.beyond_limit', label: 'Beyond the limit', kind: 'radio', value: 'Route to HR', options: ['Route to HR', 'Block'], starter: true },
+      ],
+    },
+    {
+      title: 'Shift swaps',
+      settings: [
+        { key: 'swap.colleague_consent', label: 'Colleague must accept a swap', kind: 'toggle', value: true, starter: true, synonyms: ['shift swap', 'exchange shift'] },
+        { key: 'swap.manager_approval', label: 'Manager approves swaps', kind: 'toggle', value: true, starter: true },
+      ],
+    },
+  ],
+  lastChange: {
+    by: 'Karthik Subramanian',
+    role: 'Engineering Manager',
+    at: '2026-08-03T12:30',
+    what: 'Changed WFH days per month for Engineering from 6 to 8',
+  },
+  related: [
+    { label: 'Attendance request sheet', screenId: 'TIM-07' },
+    { label: 'Shift swap request', screenId: 'TIM-08' },
+    { label: 'Policies', screenId: 'PLT-31' },
+  ],
+};
+
+/* ---------------- 3.6 Leave types ---------------- */
+const leaveTypes: SettingsPageDef = {
+  id: '3.6',
+  group: 3,
+  title: 'Leave types',
+  summary:
+    'Each leave type sets who gets it, how it is credited and counted, the request rules and what happens at year end. Statutory types follow the law and can only be made more generous.',
+  owner: ['M02'],
+  contributes: ['P07', 'M01'],
+  permission: 'leave.settings.manage',
+  permissionHolder: 'HR admins',
+  scopes: ['Company', 'Legal entity'],
+  sections: [
+    {
+      title: 'Leave types',
+      settings: [
+        {
+          key: 'leave.types',
+          label: 'Leave types',
+          kind: 'list',
+          columns: ['Type', 'Paid', 'Crediting', 'Sandwich', 'Carry forward'],
+          rows: [
+            ['Earned leave (EL)', 'Paid', '1 day per 20 days worked', 'Sandwich', 'Up to 45 days'],
+            ['Casual leave (CL)', 'Paid', '8 days upfront', 'None', 'Lapses'],
+            ['Sick leave (SL)', 'Paid', '1 day monthly', 'None', 'Up to 24 days'],
+            ['Maternity leave', 'Paid (statutory)', '182 days per event', 'Always', 'Not applicable'],
+            ['Comp-off', 'Paid', 'From holiday or weekly-off work', 'None', 'Expires'],
+            ['Leave without pay (LWP)', 'Unpaid', 'No balance', 'None', 'Not applicable'],
+          ],
+          addLabel: 'Add leave type',
+          synonyms: ['privilege leave', 'PL', 'casual leave', 'sick leave'],
+        },
+        { key: 'leave.type_editor', label: 'Leave type details', kind: 'link', linkScreenId: 'TIM-27', linkLabel: 'Open leave type editor', helper: 'Basics, eligibility, crediting, counting, rules and year end, with a live example.' },
+      ],
+    },
+    {
+      title: 'Crediting and counting',
+      settings: [
+        {
+          key: 'leave.el.days_per_credit',
+          label: 'Days worked for one day of earned leave',
+          kind: 'number',
+          value: 20,
+          unit: 'days worked',
+          helper: 'Fewer days per credit is more generous.',
+          legal: { value: 20, kind: 'max', statute: 'Factories Act, 1948 s.79' },
+          synonyms: ['EL accrual', 'annual leave'],
+        },
+        {
+          key: 'leave.el.carry_forward_cap',
+          label: 'Earned leave carry-forward cap',
+          kind: 'number',
+          value: 45,
+          unit: 'days',
+          legal: { value: 30, statute: 'Factories Act, 1948 s.79(5)' },
+          dated: { validFrom: '2026-04-01' },
+          synonyms: ['carry forward', 'accumulation'],
+        },
+        {
+          key: 'leave.el.rounding',
+          label: 'Round accruals to',
+          kind: 'radio',
+          value: '0.5',
+          options: ['None', '0.25', '0.5', '1'],
+          starter: true,
+          helper: 'Halfway rounds up. The last accrual of the year trues up to the exact entitlement.',
+        },
+        {
+          key: 'leave.el.sandwich',
+          label: 'Sandwich rule',
+          kind: 'radio',
+          value: 'Sandwich',
+          options: ['None', 'Sandwich', 'Always'],
+          helper: 'Sandwich: a weekly off or holiday between two leave days is counted.',
+          synonyms: ['sandwich', 'holiday between leave'],
+        },
+        { key: 'leave.el.sandwich_applies', label: 'Sandwich applies to', kind: 'radio', value: 'Both', options: ['Weekly offs', 'Holidays', 'Both'] },
+        { key: 'leave.el.half_day_adjacency', label: 'Half-day next to a weekly off counts for sandwich', kind: 'toggle', value: false },
+      ],
+    },
+    {
+      title: 'Request rules',
+      description: 'Dates when no leave is allowed are set as blackout dates in Leave year.',
+      settings: [
+        { key: 'leave.notice_days', label: 'Minimum notice', kind: 'number', value: 7, unit: 'days', min: 0, max: 60, starter: true, synonyms: ['advance notice'] },
+        { key: 'leave.max_per_request', label: 'Most days in one request', kind: 'number', value: 15, unit: 'days', min: 1, max: 60 },
+        { key: 'leave.negative_limit', label: 'Negative balance allowed', kind: 'number', value: 5, unit: 'days', min: 0, max: 30, helper: 'Future accruals repay first.', synonyms: ['advance leave', 'negative balance'] },
+        { key: 'leave.negative_on_exit', label: 'Negative balance on exit', kind: 'radio', value: 'Deduct in F&F at encashment rate', options: ['Deduct in F&F at encashment rate', 'Convert to LWP'] },
+      ],
+    },
+    {
+      title: 'Year end',
+      settings: [
+        { key: 'leave.encash_triggers', label: 'Encashment allowed', kind: 'multiselect', value: ['On exit', 'At year end'], options: ['On exit', 'At year end', 'On request'], synonyms: ['leave encashment', 'encash'] },
+        {
+          key: 'leave.encash_formula',
+          label: 'Encashment rate per day',
+          kind: 'select',
+          value: '(Basic + DA) ÷ 26',
+          options: ['(Basic + DA) ÷ 26', '(Basic + DA) ÷ 30', '(Basic + DA) ÷ actual days', 'Gross ÷ 26', 'Gross ÷ 30'],
+          optionLabels: {
+            '(Basic + DA) ÷ 26': '(Basic + DA) ÷ 26 · e.g. ₹1,154 a day',
+            '(Basic + DA) ÷ 30': '(Basic + DA) ÷ 30 · e.g. ₹1,000 a day',
+            '(Basic + DA) ÷ actual days': '(Basic + DA) ÷ days in the month · e.g. ₹1,000 a day in September',
+            'Gross ÷ 26': 'Gross ÷ 26 · e.g. ₹1,923 a day',
+            'Gross ÷ 30': 'Gross ÷ 30 · e.g. ₹1,667 a day',
+          },
+          helper: 'Examples use ₹30,000 basic + DA and ₹50,000 gross a month.',
+          dated: { validFrom: '2026-04-01' },
+          contributedBy: 'M03',
+        },
+        { key: 'leave.encash_max_year_end', label: 'Maximum days encashed at year end', kind: 'number', value: 15, unit: 'days', min: 0, max: 60 },
+        { key: 'leave.year_end_wizard', label: 'Year-end processing', kind: 'link', linkScreenId: 'TIM-29', linkLabel: 'Open year-end wizard' },
+      ],
+    },
+    {
+      title: 'Statutory templates',
+      description: 'Values from the rules browser. You can add company benefits on top, never reduce them.',
+      settings: [
+        {
+          key: 'leave.maternity_days',
+          label: 'Maternity leave (first two children)',
+          kind: 'number',
+          value: 182,
+          unit: 'days',
+          helper: '26 weeks, at most 8 weeks before delivery.',
+          legal: { value: 182, statute: 'Maternity Benefit Act, 1961 s.5 (as amended 2017)' },
+          synonyms: ['maternity', 'pregnancy leave', '26 weeks'],
+        },
+        {
+          key: 'leave.maternity_adoption_days',
+          label: 'Maternity leave (3rd child, adopting or commissioning mother)',
+          kind: 'number',
+          value: 84,
+          unit: 'days',
+          legal: { value: 84, statute: 'Maternity Benefit Act, 1961 s.5(3), s.5(4)' },
+          synonyms: ['adoption leave'],
+        },
+        { key: 'leave.maternity_miscarriage', label: 'Leave after miscarriage or MTP', kind: 'law', value: '6 weeks', law: 'Maternity Benefit Act, 1961 s.9' },
+        { key: 'leave.maternity_tubectomy', label: 'Leave after tubectomy', kind: 'law', value: '2 weeks', law: 'Maternity Benefit Act, 1961 s.9A' },
+        { key: 'leave.maternity_eligibility', label: 'Maternity eligibility', kind: 'law', value: '80 days worked in the 12 months before delivery', law: 'Maternity Benefit Act, 1961 s.5(2)' },
+        {
+          key: 'leave.injury',
+          label: 'Injury leave pay (not ESI-covered)',
+          kind: 'radio',
+          value: 'Full pay',
+          options: ['Full pay', 'Statutory compensation only'],
+          starter: true,
+          helper: 'Posted only from a workplace accident case. Never below the employees’ compensation amount.',
+          synonyms: ['accident leave', 'injury on duty'],
+        },
+      ],
+    },
+    {
+      title: 'Company choices',
+      settings: [
+        {
+          key: 'leave.long_absence_accrual',
+          label: 'Accrual during sabbatical or long LWP',
+          kind: 'radio',
+          value: 'Pause',
+          options: ['Pause', 'Continue'],
+          starter: true,
+          helper: 'During maternity, accrual always continues. The law counts it as service.',
+          contributedBy: 'M01',
+          synonyms: ['sabbatical', 'long absence'],
+        },
+        {
+          key: 'leave.during_notice',
+          label: 'Leave during notice period',
+          kind: 'select',
+          value: 'Allowed',
+          options: ['Allowed', 'Converted to LOP', 'Extends the last working day', 'Blocked'],
+          starter: true,
+          contributedBy: 'M01',
+          synonyms: ['notice period leave', 'resignation'],
+        },
+        {
+          key: 'leave.attachment_after',
+          label: 'Medical certificate needed for sick leave over',
+          kind: 'number',
+          value: 2,
+          unit: 'days',
+          min: 0,
+          max: 10,
+          starter: true,
+          helper: 'Stored as a private document. Managers see only “certificate attached · verified”.',
+          synonyms: ['medical certificate', 'doctor note'],
+        },
+        { key: 'leave.creche_check', label: 'Show crèche compliance check (50 or more employees)', kind: 'toggle', value: true, helper: 'Hosur plant has 118 employees, so a crèche is required there.', synonyms: ['creche', 'childcare'] },
+        { key: 'leave.post_maternity_wfh', label: 'Offer work from home after maternity leave', kind: 'toggle', value: true, synonyms: ['return to work'] },
+        { key: 'leave.comp_off_expiry', label: 'Use comp-off within', kind: 'number', value: 60, unit: 'days', min: 7, max: 365, starter: true, synonyms: ['comp off', 'compensatory off expiry'] },
+        { key: 'leave.comp_off_approval', label: 'Manager approves comp-off credits', kind: 'toggle', value: true, starter: true },
+      ],
+    },
+  ],
+  lastChange: {
+    by: 'Lakshmi Venkatesan',
+    role: 'HR Business Partner',
+    at: '2026-09-15T14:45',
+    what: 'Changed earned leave carry-forward cap from 30 to 45 days from 1 Apr 2026',
+  },
+  related: [
+    { label: 'Leave type editor', screenId: 'TIM-27' },
+    { label: 'Year-end wizard', screenId: 'TIM-29' },
+    { label: 'Leave reports', screenId: 'TIM-30' },
+    { label: 'Policies', screenId: 'PLT-31' },
+  ],
+  note: 'Changes to leave balances need a second approver.',
+  typePicker: {
+    label: 'Showing rules for',
+    options: ['Earned leave', 'Casual leave', 'Sick leave', 'Comp-off'],
+    sections: ['Crediting and counting', 'Request rules', 'Year end'],
+    editorScreenId: 'TIM-27',
+    editorLabel: 'Open leave type editor',
+  },
+};
+
+/* ---------------- 3.7 Leave policies ---------------- */
+const leavePolicies: SettingsPageDef = {
+  id: '3.7',
+  group: 3,
+  title: 'Leave policies',
+  summary: 'Bundle leave types with entitlements and assign each bundle by entity, location, grade or employment type.',
+  owner: ['M02'],
+  permission: 'leave.settings.manage',
+  permissionHolder: 'HR admins',
+  scopes: ['Company', 'Legal entity', 'Location', 'Grade', 'Employment type'],
+  sections: [
+    {
+      title: 'Policies',
+      settings: [
+        {
+          key: 'leave.policies',
+          label: 'Leave policies',
+          kind: 'list',
+          columns: ['Policy', 'Leave types', 'Assigned to', 'Valid from'],
+          rows: [
+            ['Office staff · Karnataka', 'EL 18, CL 8, SL 12', 'Kaveri Foods Pvt Ltd, Bengaluru', '1 Apr 2026'],
+            ['Office staff · Tamil Nadu', 'EL 18, CL 12, SL 12', 'Kaveri Foods Pvt Ltd (Tamil Nadu), Chennai', '1 Apr 2026'],
+            ['Plant workers', 'EL (1 per 20 days), CL 7, SL 7', 'Hosur plant, grades W1–W2', '1 Apr 2026'],
+            ['Managers', 'EL 21, CL 8, SL 12, Sabbatical', 'Grades M1–M4', '1 Apr 2026'],
+            ['Trainees', 'CL 6, SL 6', 'Employment type Trainee', '1 Jul 2026'],
+          ],
+          addLabel: 'Add policy',
+          synonyms: ['leave entitlement', 'leave plan'],
+        },
+        { key: 'leave.policy_editor', label: 'Policies and assignment rules', kind: 'link', linkScreenId: 'TIM-28', linkLabel: 'Edit policies and assignment rules' },
+      ],
+    },
+    {
+      title: 'Assignment',
+      settings: [
+        {
+          key: 'leave.policy_assignment_order',
+          label: 'When several rules match',
+          kind: 'radio',
+          value: 'Most specific rule wins',
+          options: ['Most specific rule wins', 'Highest priority wins'],
+          dated: { validFrom: '2026-04-01' },
+          starter: true,
+        },
+        { key: 'leave.policy_employee_override', label: 'Allow per-employee override', kind: 'toggle', value: true, starter: true },
+        { key: 'leave.policy_prorate_joiners', label: 'Pro-rate entitlements for joiners', kind: 'toggle', value: true, starter: true, synonyms: ['new joiner leave', 'pro rata'] },
+        { key: 'leave.policy_rules', label: 'Conditions in assignment rules', kind: 'link', linkScreenId: 'PLT-32', linkLabel: 'Open rule builder' },
+      ],
+    },
+  ],
+  lastChange: {
+    by: 'Lakshmi Venkatesan',
+    role: 'HR Business Partner',
+    at: '2026-06-28T10:00',
+    what: 'Added policy "Trainees" for employment type Trainee from 1 Jul 2026',
+  },
+  related: [
+    { label: 'Leave policies & assignment rules', screenId: 'TIM-28' },
+    { label: 'Rule builder', screenId: 'PLT-32' },
+  ],
+  note: 'Assignment is dated: a mid-year change splits accruals at the change date.',
+};
+
+/* ---------------- 3.8 Holiday calendars ---------------- */
+const holidays: SettingsPageDef = {
+  id: '3.8',
+  group: 3,
+  title: 'Holiday calendars',
+  summary: 'Holiday calendars per location from state templates, optional holidays, and what happens when a holiday falls on a weekly off.',
+  owner: ['M02'],
+  contributes: ['P07', 'P21'],
+  permission: 'leave.settings.manage',
+  permissionHolder: 'HR admins',
+  scopes: ['Company', 'Location'],
+  sections: [
+    {
+      title: 'Calendars',
+      settings: [
+        {
+          key: 'holiday.calendars',
+          label: 'Holiday calendars 2026',
+          kind: 'list',
+          columns: ['Calendar', 'State', 'Locations', 'Holidays', 'Optional'],
+          rows: [
+            ['Karnataka offices 2026', 'Karnataka', 'Bengaluru head office', '12', '3 of 8'],
+            ['Tamil Nadu offices 2026', 'Tamil Nadu', 'Chennai office', '12', '2 of 6'],
+            ['Hosur plant 2026', 'Tamil Nadu', 'Hosur plant', '10', '1 of 4'],
+          ],
+          addLabel: 'Add calendar',
+          synonyms: ['holiday list', 'festival holidays', 'public holidays'],
+        },
+        { key: 'holiday.calendar_editor', label: 'Holidays and state templates', kind: 'link', linkScreenId: 'TIM-26', linkLabel: 'Edit holiday calendars', helper: 'Start from a state template and clone to next year.' },
+        { key: 'holiday.feed', label: 'Public-holiday feed', kind: 'link', linkScreenId: 'TIM-42', linkLabel: 'Set up holiday feed', contributedBy: 'P21' },
+      ],
+    },
+    {
+      title: 'Legal minimum holidays',
+      description: 'Each calendar above is checked against its state’s minimum: Karnataka 10 (Karnataka Industrial Employment (National and Festival Holidays) Act, 1963), Tamil Nadu 9 (Tamil Nadu Industrial Establishments (National and Festival Holidays) Act, 1958).',
+      settings: [
+        { key: 'holiday.national', label: 'National holidays', kind: 'law', value: '26 Jan, 15 Aug, 2 Oct, and 1 May in both states', law: 'State National and Festival Holidays Acts (Karnataka 1963, Tamil Nadu 1958)' },
+      ],
+    },
+    {
+      title: 'Rules',
+      settings: [
+        { key: 'holiday.optional_n', label: 'Optional holidays each person can choose', kind: 'number', value: 3, unit: 'days', min: 0, max: 10, scope: 'Karnataka offices 2026', atMost: 'holiday.optional_m', synonyms: ['restricted holiday', 'floating holiday'] },
+        { key: 'holiday.optional_m', label: 'Optional holidays offered', kind: 'number', value: 8, unit: 'days', min: 0, max: 20, scope: 'Karnataka offices 2026' },
+        { key: 'holiday.on_weekly_off', label: 'Holiday on a weekly off', kind: 'radio', value: 'None', options: ['None', 'Substitute day', 'Comp-off credit'], starter: true, overrides: [{ scope: 'Hosur plant', value: 'Comp-off credit' }], synonyms: ['holiday on sunday', 'substitute holiday'] },
+        {
+          key: 'holiday.optional_on_transfer',
+          label: 'Optional holidays when someone transfers',
+          kind: 'radio',
+          value: 'Prorate',
+          options: ['Prorate', 'Reset to the new calendar'],
+          starter: true,
+          synonyms: ['transfer', 'location change'],
+        },
+        { key: 'holiday.employee_override', label: 'Allow a per-employee calendar override', kind: 'toggle', value: true },
+      ],
+    },
+  ],
+  lastChange: {
+    by: 'Arjun Kulkarni',
+    role: 'System Admin',
+    at: '2026-09-02T09:50',
+    what: 'Set Hosur plant holiday on a weekly off to Comp-off credit',
+  },
+  related: [
+    { label: 'Holiday calendars', screenId: 'TIM-26' },
+    { label: 'Optional holidays', screenId: 'TIM-23' },
+    { label: 'Holiday feed', screenId: 'TIM-42' },
+  ],
+  note: 'The calendar follows the employee’s work location and switches on the transfer date.',
+};
+
+/* ---------------- 3.9 Leave year ---------------- */
+const leaveYear: SettingsPageDef = {
+  id: '3.9',
+  group: 3,
+  title: 'Leave year',
+  summary: 'Set when the leave year starts for each legal entity, and company-wide dates when leave is not allowed.',
+  owner: ['M02'],
+  permission: 'leave.settings.manage',
+  permissionHolder: 'HR admins',
+  scopes: ['Company', 'Legal entity'],
+  sections: [
+    {
+      title: 'Leave year',
+      settings: [
+        {
+          key: 'leave.year_start',
+          label: 'Leave year',
+          kind: 'radio',
+          value: 'Financial year (April)',
+          options: ['Calendar year (January)', 'Financial year (April)', 'Custom start month'],
+          dated: { validFrom: '2026-04-01' },
+          scope: 'Company',
+          helper: 'Changing this creates a short year with pro-rata entitlements and a carry-forward transition wizard.',
+          overrides: [{ scope: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', value: 'Calendar year (January)', validFrom: '2026-01-01' }],
+          synonyms: ['leave cycle', 'leave period'],
+        },
+        {
+          key: 'leave.year_custom_month',
+          label: 'Custom start month',
+          kind: 'select',
+          value: 'April',
+          options: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+          showWhen: { key: 'leave.year_start', equals: 'Custom start month' },
+        },
+      ],
+    },
+    {
+      title: 'Blackout dates',
+      settings: [
+        {
+          key: 'leave.blackouts',
+          label: 'Company blackout dates',
+          kind: 'list',
+          columns: ['Dates', 'Reason', 'Applies to'],
+          rows: [
+            ['28–31 Mar 2027', 'Annual stock audit', 'Finance, Operations'],
+            ['15–20 Oct 2026', 'Festive season dispatch peak', 'Hosur plant, Sales'],
+            ['1–5 Jan 2027', 'Year-start plant maintenance', 'Hosur plant'],
+          ],
+          addLabel: 'Add blackout',
+          synonyms: ['blackout', 'no leave period', 'leave freeze'],
+        },
+        { key: 'leave.blackout_hr_override', label: 'HR can approve leave in a blackout with a reason', kind: 'toggle', value: true },
+      ],
+    },
+  ],
+  lastChange: {
+    by: 'Lakshmi Venkatesan',
+    role: 'HR Business Partner',
+    at: '2026-09-10T17:10',
+    what: 'Added blackout 15–20 Oct 2026 for Hosur plant and Sales',
+  },
+  related: [{ label: 'Year-end and transition wizard', screenId: 'TIM-29' }],
+};
+
+/* ---------------- 3.10 Periods & locks ---------------- */
+const periods: SettingsPageDef = {
+  id: '3.10',
+  group: 3,
+  title: 'Periods & locks',
+  summary: 'Set the day attendance freezes for each legal entity and how late people can still ask to change a locked day.',
+  owner: ['P08'],
+  permission: 'attendance.settings.manage',
+  permissionHolder: 'HR admins and Payroll admins',
+  scopes: ['Company', 'Legal entity'],
+  sections: [
+    {
+      title: 'Freeze',
+      settings: [
+        {
+          key: 'lock.freeze_day',
+          label: 'Attendance freezes on day',
+          kind: 'number',
+          value: 26,
+          unit: 'of the month',
+          min: 1,
+          max: 31,
+          helper: 'If not set, attendance freezes when payroll processing starts.',
+          scope: 'Company',
+          overrides: [{ scope: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', value: 25 }],
+          synonyms: ['cut-off', 'attendance cutoff', 'freeze date'],
+        },
+        { key: 'lock.reminder_days', label: 'Remind managers and employees before the freeze', kind: 'number', value: 3, unit: 'days', min: 0, max: 10, starter: true },
+        { key: 'lock.periods', label: 'Periods', kind: 'link', linkScreenId: 'TIM-11', linkLabel: 'Open periods and locks' },
+      ],
+    },
+    {
+      title: 'Late requests',
+      settings: [
+        {
+          key: 'lock.max_lateness',
+          label: 'Accept late requests for up to',
+          kind: 'number',
+          value: 60,
+          unit: 'days',
+          min: 0,
+          max: 365,
+          helper: 'Needs an extra HR approval; the effect goes to the next payroll. After this, only HR corrections.',
+          synonyms: ['late regularisation', 'arrears', 'LOP reversal'],
+        },
+        { key: 'lock.exceptions_block', label: 'Open attendance exceptions', kind: 'link', linkScreenId: 'TIM-04', linkLabel: 'Review exceptions queue', helper: 'Whether exceptions block payroll is set in Attendance modes.' },
+      ],
+    },
+  ],
+  lastChange: {
+    by: 'Suresh Pillai',
+    role: 'Payroll Manager',
+    at: '2026-07-22T11:35',
+    what: 'Changed Tamil Nadu entity freeze day from 26 to 25',
+  },
+  related: [
+    { label: 'Periods', screenId: 'TIM-11' },
+    { label: 'Exceptions queue', screenId: 'TIM-04' },
+    { label: 'Device backfill', screenId: 'TIM-10' },
+  ],
+  note: 'Changes here need a second approver. Every change is recorded with before and after values.',
+};
+
+/* ---------------- 3.11 Projects & timesheets ---------------- */
+const projects: SettingsPageDef = {
+  id: '3.11',
+  group: 3,
+  title: 'Projects & timesheets',
+  summary:
+    'Codes people book time to, billable defaults, who approves timesheets, utilisation targets and budget alerts, and whether timesheets can be pre-filled from work tools.',
+  owner: ['M12'],
+  contributes: ['M02', 'P23'],
+  permission: 'projects.settings.manage',
+  permissionHolder: 'HR admins and the project office',
+  scopes: ['Company', 'Legal entity', 'Project'],
+  sections: [
+    {
+      title: 'Projects and codes',
+      settings: [
+        { key: 'prj.projects', label: 'Projects and tasks', kind: 'link', linkScreenId: 'PRJ-01', linkLabel: 'Open projects' },
+        {
+          key: 'prj.activity_codes',
+          label: 'Activity codes',
+          kind: 'list',
+          columns: ['Code', 'Name', 'Billable default', 'Notes required'],
+          rows: [
+            ['DEV', 'Development', 'Yes', 'No'],
+            ['MTG', 'Meeting', 'No', 'No'],
+            ['TST', 'Testing', 'Yes', 'No'],
+            ['TRV', 'Travel', 'No', 'Yes'],
+            ['SUP', 'Support', 'Yes', 'Yes'],
+          ],
+          addLabel: 'Add activity code',
+          starter: true,
+          synonyms: ['activity', 'task code'],
+        },
+        {
+          key: 'prj.internal_codes',
+          label: 'Internal codes',
+          kind: 'list',
+          columns: ['Code', 'Name', 'Always available'],
+          rows: [
+            ['BENCH', 'Bench', 'Yes'],
+            ['TRAIN', 'Training', 'Yes'],
+            ['ADMIN', 'Administration', 'Yes'],
+            ['PLANT-IMP', 'Hosur line improvement', 'Operations only'],
+          ],
+          addLabel: 'Add internal code',
+          starter: true,
+          synonyms: ['non-project time', 'bench'],
+        },
+        { key: 'prj.billable_default', label: 'New projects are billable', kind: 'toggle', value: true, starter: true },
+        { key: 'prj.booking_rule', label: 'Time on projects someone is not allocated to', kind: 'radio', value: 'Block', options: ['Block', 'Allow with project manager approval'], starter: true },
+        { key: 'prj.daily_max', label: 'Refuse more hours in a day than', kind: 'number', value: 14, unit: 'hours', min: 8, max: 20, starter: true, helper: 'A warning already shows above the shift’s expected hours; this is the hard stop.' },
+      ],
+    },
+    {
+      title: 'Approvals',
+      settings: [
+        {
+          key: 'prj.approver',
+          label: 'Timesheet approver',
+          kind: 'select',
+          value: 'Project manager',
+          options: ['Project manager', 'Reporting manager', 'Project manager, then client contact'],
+          starter: true,
+          helper: 'When project managers submit their own timesheet, their manager approves it.',
+          synonyms: ['timesheet approval'],
+        },
+        { key: 'prj.approval_sla', label: 'If not approved, the account manager steps in after', kind: 'number', value: 3, unit: 'working days', min: 1, max: 10, starter: true },
+        { key: 'prj.client_approval', label: 'Client approval in the portal (after the project manager)', kind: 'toggle', value: false, starter: true },
+      ],
+    },
+    {
+      title: 'Utilisation and budgets',
+      settings: [
+        { key: 'prj.utilisation_target', label: 'Utilisation target for billable roles', kind: 'percent', value: 75, starter: true, synonyms: ['utilization', 'billability'] },
+        { key: 'prj.burn_alert_1', label: 'First budget alert at', kind: 'percent', value: 80, starter: true, synonyms: ['burn alert', 'budget overrun'] },
+        { key: 'prj.burn_alert_2', label: 'Second budget alert at', kind: 'percent', value: 100, starter: true },
+      ],
+    },
+    {
+      title: 'Pre-fill from work tools',
+      description: 'Suggestions only fill a draft. The employee always submits.',
+      settings: [
+        { key: 'prj.prefill_enabled', label: 'Timesheet pre-fill', kind: 'toggle', value: true, contributedBy: 'P23', availability: 'Wave 5', synonyms: ['auto fill timesheet', 'prefill'] },
+        {
+          key: 'prj.prefill_connectors',
+          label: 'Work tools people may connect',
+          kind: 'multiselect',
+          value: ['Work calendar', 'Issue tracker'],
+          options: ['Work calendar', 'Issue tracker', 'Code host'],
+          helper: 'Read-only, metadata only. Code, diffs and message bodies are never read.',
+          contributedBy: 'P23',
+          availability: 'Wave 5',
+        },
+        { key: 'prj.mapping_rules', label: 'Mapping rules', kind: 'link', linkScreenId: 'PRJ-08', linkLabel: 'Edit mapping rules', helper: 'Match a source pattern to a project and task.', contributedBy: 'P23', availability: 'Wave 5' },
+      ],
+    },
+  ],
+  lastChange: {
+    by: 'Karthik Subramanian',
+    role: 'Engineering Manager',
+    at: '2026-09-22T15:25',
+    what: 'Turned on timesheet pre-fill with work calendar and issue tracker',
+  },
+  related: [
+    { label: 'Projects', screenId: 'PRJ-01' },
+    { label: 'Timesheet approvals', screenId: 'PRJ-02' },
+    { label: 'Capacity & utilisation', screenId: 'PRJ-03' },
+    { label: 'Timesheets', screenId: 'TIM-15' },
+  ],
+  note: 'Raw activity and unaccepted suggestions are visible only to the employee.',
+};
+
+/* ---------------- 3.12 Visitors ---------------- */
+const visitors: SettingsPageDef = {
+  id: '3.12',
+  group: 3,
+  title: 'Visitors',
+  summary: 'Visitor types, host approval, what is captured at the desk, the badge and how long visitor data is kept.',
+  owner: ['M02'],
+  permission: 'visitors.settings.manage',
+  permissionHolder: 'HR admins and Facility admins',
+  scopes: ['Company', 'Location'],
+  sections: [
+    {
+      title: 'Visitor types',
+      settings: [
+        {
+          key: 'vis.types',
+          label: 'Visitor types',
+          kind: 'list',
+          columns: ['Type', 'Escort', 'NDA', 'Safety induction'],
+          rows: [
+            ['Customer', 'No', 'Yes', 'No'],
+            ['Supplier', 'No', 'No', 'Yes (plant)'],
+            ['Interview candidate', 'No', 'No', 'No'],
+            ['Contractor', 'Yes', 'Yes', 'Yes'],
+            ['Food safety auditor', 'Yes', 'Yes', 'Yes'],
+          ],
+          addLabel: 'Add visitor type',
+          synonyms: ['guest', 'visitor category'],
+        },
+      ],
+    },
+    {
+      title: 'At the desk',
+      settings: [
+        {
+          key: 'vis.host_approval_timeout',
+          label: 'Host has to approve a walk-in within',
+          kind: 'number',
+          value: 10,
+          unit: 'minutes',
+          min: 2,
+          max: 60,
+          starter: true,
+          helper: 'After this, reception decides.',
+          synonyms: ['walk-in', 'host approval'],
+        },
+        { key: 'vis.id_capture', label: 'Capture ID proof', kind: 'toggle', value: true, scope: 'Overridden for Hosur plant' },
+        { key: 'vis.photo', label: 'Capture photo', kind: 'toggle', value: true, starter: true },
+        { key: 'vis.hours_from', label: 'Visitors allowed from', kind: 'time', value: '09:00' },
+        { key: 'vis.hours_to', label: 'Visitors allowed until', kind: 'time', value: '18:30', after: 'vis.hours_from' },
+        {
+          key: 'vis.notice',
+          label: 'Notice shown at check-in',
+          kind: 'textarea',
+          value:
+            'Welcome to Kaveri Foods. Please wear your badge at all times, follow the safety signs and hand in your badge when you leave. We keep your visit details for 90 days.',
+          synonyms: ['visitor notice', 'privacy notice'],
+        },
+        { key: 'vis.badge', label: 'Badge layout', kind: 'select', value: 'Photo badge with QR', options: ['Photo badge with QR', 'Name badge with QR', 'Printed pass only'] },
+        {
+          key: 'vis.watchlist_access',
+          label: 'Who can see the blocked-visitor list',
+          kind: 'multiselect',
+          value: ['HR admin', 'Facility admin'],
+          options: ['HR admin', 'Facility admin', 'Reception', 'Security'],
+          sensitive: true,
+          synonyms: ['blacklist', 'watch list'],
+        },
+        { key: 'vis.desk', label: 'Visitor desk', kind: 'link', linkScreenId: 'VIS-01', linkLabel: 'Open visitor desk' },
+      ],
+    },
+    {
+      title: 'Retention',
+      settings: [
+        { key: 'vis.retention_days', label: 'Keep visitor records for', kind: 'number', value: 90, unit: 'days', min: 30, max: 730, starter: true, synonyms: ['visitor data', 'delete visitor'] },
+        { key: 'vis.id_retention_days', label: 'Keep ID images for', kind: 'number', value: 30, unit: 'days', min: 1, max: 90, starter: true },
+        { key: 'vis.log', label: 'Visitor log', kind: 'link', linkScreenId: 'VIS-04', linkLabel: 'Open visitor log' },
+      ],
+    },
+  ],
+  lastChange: {
+    by: 'Ravi Menon',
+    role: 'Plant HR, Hosur',
+    at: '2026-09-08T13:15',
+    what: 'Turned on ID proof capture for Hosur plant',
+  },
+  related: [
+    { label: 'Visitor desk', screenId: 'VIS-01' },
+    { label: 'Pre-register a visitor', screenId: 'VIS-02' },
+    { label: 'Visitor log', screenId: 'VIS-04' },
+  ],
+  note: 'Visitor data is private. It is deleted automatically after the retention period.',
+};
+
+export const GROUP_3: SettingsGroupDef = {
+  id: 3,
+  title: 'Time & Leave',
+  summary: 'Attendance modes, check-in, shifts, weekly offs, leave types and policies, holidays, periods, timesheets and visitors.',
+  pages: [
+    attendanceModes,
+    checkIn,
+    shifts,
+    weeklyOffs,
+    lateReg,
+    leaveTypes,
+    leavePolicies,
+    holidays,
+    leaveYear,
+    periods,
+    projects,
+    visitors,
+  ],
+};

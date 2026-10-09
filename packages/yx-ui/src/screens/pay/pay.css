@@ -1,0 +1,273 @@
+/* Pay area (M03). Token-only. */
+
+.yx-pay-skeleton { display: flex; flex-direction: column; gap: var(--yx-space-3); padding: var(--yx-space-4) 0; }
+
+.yx-pay-amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.yx-pay-amt[data-strong] { font-weight: var(--yx-weight-semibold); }
+.yx-pay-amt[data-muted] { color: var(--yx-color-text-secondary); }
+
+/* Section heads */
+.yx-pay-section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--yx-space-3); flex-wrap: wrap; }
+.yx-pay-section-title { margin: 0; font-size: var(--yx-text-md); line-height: var(--yx-leading-md); font-weight: var(--yx-weight-semibold); color: var(--yx-color-text); }
+.yx-pay-section-actions { display: flex; gap: var(--yx-space-2); flex-wrap: wrap; }
+
+/* Layout helpers */
+/* Panels keep their own height, so a short panel (e.g. "Nothing is blocking this run") never stretches beside a tall one. */
+.yx-pay-grid { display: grid; gap: var(--yx-space-4); grid-template-columns: repeat(12, minmax(0, 1fr)); align-items: start; }
+.yx-pay-grid > [data-span="3"] { grid-column: span 3; }
+.yx-pay-grid > [data-span="4"] { grid-column: span 4; }
+.yx-pay-grid > [data-span="5"] { grid-column: span 5; }
+.yx-pay-grid > [data-span="6"] { grid-column: span 6; }
+.yx-pay-grid > [data-span="7"] { grid-column: span 7; }
+.yx-pay-grid > [data-span="8"] { grid-column: span 8; }
+.yx-pay-grid > [data-span="12"] { grid-column: span 12; }
+@media (max-width: 1023px) { .yx-pay-grid > [data-span] { grid-column: span 12; } }
+/* Inside a phone frame (a size container) the grid stacks whatever the window width. */
+@container (max-width: 720px) { .yx-pay-grid > [data-span] { grid-column: span 12; } .yx-pay-split { grid-template-columns: minmax(0, 1fr); } }
+.yx-pay-stack { display: flex; flex-direction: column; gap: var(--yx-space-4); min-width: 0; }
+.yx-pay-row { display: flex; flex-wrap: wrap; gap: var(--yx-space-3); align-items: center; }
+.yx-pay-split { display: grid; grid-template-columns: minmax(0, 1fr) calc(var(--yx-space-16) * 5); gap: var(--yx-space-6); align-items: start; }
+@media (max-width: 1023px) { .yx-pay-split { grid-template-columns: minmax(0, 1fr); } }
+.yx-pay-panel {
+  border: var(--yx-border-width) solid var(--yx-color-border);
+  border-radius: var(--yx-radius-card);
+  background: var(--yx-color-bg-surface);
+  padding: var(--yx-space-4);
+  display: flex; flex-direction: column; gap: var(--yx-space-3);
+  min-width: 0;
+}
+.yx-pay-panel[data-tone="ai"] { border-color: var(--yx-color-ai-border); }
+.yx-pay-muted { color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); margin: 0; }
+.yx-pay-note { color: var(--yx-color-text-secondary); font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); margin: 0; }
+.yx-pay-mono { font-family: var(--yx-font-mono); font-size: var(--yx-text-sm); }
+
+/* Facts */
+.yx-pay-facts { display: flex; flex-wrap: wrap; gap: var(--yx-space-4) var(--yx-space-8); margin: 0; }
+.yx-pay-facts > div { display: flex; flex-direction: column; gap: var(--yx-space-half); min-width: 0; }
+.yx-pay-facts dt { font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-secondary); }
+.yx-pay-facts dd { margin: 0; font-weight: var(--yx-weight-medium); font-variant-numeric: tabular-nums; }
+
+/* Money summary (net first) */
+.yx-pay-money {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--yx-space-4) var(--yx-space-8);
+  border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card);
+  background: var(--yx-color-bg-surface); padding: var(--yx-space-5);
+}
+.yx-pay-money__label { margin: 0; display: flex; gap: var(--yx-space-2); align-items: center; flex-wrap: wrap; color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
+.yx-pay-money__figure { margin: var(--yx-space-1) 0; font-size: var(--yx-text-4xl); line-height: var(--yx-leading-4xl); font-weight: var(--yx-weight-semibold); font-variant-numeric: tabular-nums; }
+.yx-pay-money__sub { margin: 0; color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
+.yx-pay-money__parts { margin: 0; display: flex; flex-direction: column; gap: var(--yx-space-2); min-width: calc(var(--yx-space-16) * 3); }
+.yx-pay-money__parts > div { display: flex; justify-content: space-between; gap: var(--yx-space-4); }
+.yx-pay-money__parts dt { color: var(--yx-color-text-secondary); }
+.yx-pay-money__parts dd { margin: 0; font-variant-numeric: tabular-nums; font-weight: var(--yx-weight-medium); }
+.yx-pay-money__actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--yx-space-2); }
+@media (max-width: 767px) {
+  .yx-pay-money { grid-template-columns: minmax(0, 1fr); padding: var(--yx-space-4); }
+  .yx-pay-money__figure { font-size: var(--yx-text-3xl); line-height: var(--yx-leading-3xl); }
+  .yx-pay-money__actions > * { flex: 1 1 100%; }
+}
+@container (max-width: 560px) {
+  .yx-pay-money { grid-template-columns: minmax(0, 1fr); padding: var(--yx-space-4); }
+  .yx-pay-money__figure { font-size: var(--yx-text-3xl); line-height: var(--yx-leading-3xl); }
+  .yx-pay-money__actions > * { flex: 1 1 100%; }
+}
+
+/* Days strip */
+.yx-pay-days { margin: 0; display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-pay-days__cells { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--yx-space-6), 1fr)); gap: var(--yx-space-half); }
+.yx-pay-days__cells li {
+  display: flex; align-items: center; justify-content: center;
+  min-height: var(--yx-space-6); font-size: var(--yx-text-xs); font-variant-numeric: tabular-nums;
+  border-radius: var(--yx-radius-badge); border: var(--yx-border-width) solid var(--yx-color-border);
+  background: var(--yx-color-bg-surface); color: var(--yx-color-text);
+}
+.yx-pay-days [data-kind="paid"] i, .yx-pay-days__cells li[data-kind="paid"] { background: var(--yx-color-success-bg); border-color: var(--yx-color-success-border); }
+.yx-pay-days [data-kind="leave"] i, .yx-pay-days__cells li[data-kind="leave"] { background: var(--yx-color-info-bg); border-color: var(--yx-color-info-border); }
+.yx-pay-days [data-kind="lop"] i, .yx-pay-days__cells li[data-kind="lop"] { background: var(--yx-color-danger-bg); border-color: var(--yx-color-danger-border); font-weight: var(--yx-weight-semibold); }
+.yx-pay-days [data-kind="holiday"] i, .yx-pay-days__cells li[data-kind="holiday"] { background: var(--yx-color-warning-bg); border-color: var(--yx-color-warning-border); }
+.yx-pay-days [data-kind="off"] i, .yx-pay-days__cells li[data-kind="off"] { background: var(--yx-color-bg-subtle); }
+.yx-pay-days [data-kind="future"] i, .yx-pay-days__cells li[data-kind="future"] { background: var(--yx-color-bg-page); color: var(--yx-color-text-muted); border-style: dashed; }
+.yx-pay-days__legend { display: flex; flex-wrap: wrap; gap: var(--yx-space-2) var(--yx-space-4); font-size: var(--yx-text-xs); color: var(--yx-color-text-secondary); }
+.yx-pay-days__legend span { display: inline-flex; align-items: center; gap: var(--yx-space-1); }
+.yx-pay-days__legend i { display: inline-block; width: var(--yx-space-3); height: var(--yx-space-3); border-radius: var(--yx-radius-badge); border: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-pay-days__lop { color: var(--yx-color-danger-text); font-weight: var(--yx-weight-medium); }
+
+/* Why this number */
+.yx-pay-why { display: flex; flex-direction: column; gap: var(--yx-space-4); }
+.yx-pay-why__group ul { list-style: none; margin: 0; padding: 0; border-top: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-pay-why__group li { border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-pay-why__title { margin: 0 0 var(--yx-space-2); display: flex; justify-content: space-between; font-size: var(--yx-text-sm); font-weight: var(--yx-weight-semibold); }
+.yx-pay-why__row {
+  all: unset; box-sizing: border-box; width: 100%; cursor: pointer;
+  display: flex; justify-content: space-between; align-items: center; gap: var(--yx-space-3);
+  min-height: var(--yx-target-min); padding: var(--yx-space-2) var(--yx-space-1);
+}
+.yx-pay-why__row:hover { background: var(--yx-color-bg-subtle); }
+.yx-pay-why__row:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: calc(var(--yx-focus-width) * -1); }
+.yx-pay-why__label { display: inline-flex; gap: var(--yx-space-2); align-items: center; flex-wrap: wrap; }
+.yx-pay-why__detail { padding: 0 var(--yx-space-3) var(--yx-space-3); display: flex; flex-direction: column; gap: var(--yx-space-1); font-size: var(--yx-text-sm); align-items: flex-start; }
+.yx-pay-why__detail p { margin: 0; }
+.yx-pay-why__detail code { font-family: var(--yx-font-mono); font-size: var(--yx-text-xs); background: var(--yx-color-bg-subtle); padding: 0 var(--yx-space-1); border-radius: var(--yx-radius-badge); }
+.yx-pay-why__k { color: var(--yx-color-text-secondary); font-size: var(--yx-text-xs); display: inline-block; min-width: calc(var(--yx-space-16) + var(--yx-space-6)); }
+/* Detail rows: label column + value column that wraps inside itself; label above value on phones. */
+.yx-pay-why__detail p { display: grid; grid-template-columns: calc(var(--yx-space-16) + var(--yx-space-6)) minmax(0, 1fr); column-gap: var(--yx-space-2); width: 100%; }
+@media (max-width: 479px) { .yx-pay-why__detail p { grid-template-columns: minmax(0, 1fr); } }
+.yx-pay-why__row::after { content: ''; width: var(--yx-space-2); height: var(--yx-space-2); border-right: var(--yx-border-width) solid currentColor; border-bottom: var(--yx-border-width) solid currentColor; transform: rotate(45deg); color: var(--yx-color-text-secondary); flex: none; order: 3; }
+.yx-pay-why__row > .yx-pay-amt { margin-left: auto; }
+.yx-pay-why__row[aria-expanded="true"]::after { transform: rotate(-135deg); }
+/* Component cards (PAY-13 template builder) only select a line and never expand: no chevron. */
+.yx-pay-cards .yx-pay-why__row::after { display: none; }
+/* The assistant fills the panel it is embedded in (PAY-40). */
+.yx-pay-panel .yx-assistant { width: 100%; }
+.yx-pay-why__net { margin: 0; display: flex; justify-content: space-between; gap: var(--yx-space-3); padding: var(--yx-space-3) var(--yx-space-1); border-top: var(--yx-border-width) solid var(--yx-color-border-strong); font-weight: var(--yx-weight-semibold); }
+
+/* Run stages */
+.yx-pay-stages { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--yx-space-2); }
+.yx-pay-stages li {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--yx-space-2); align-items: start;
+  padding: var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface);
+}
+.yx-pay-stages li[data-state="done"] { color: var(--yx-color-success-text); }
+.yx-pay-stages li[data-state="current"] { border-color: var(--yx-color-action-primary); box-shadow: inset 0 calc(var(--yx-focus-width) * -1) 0 var(--yx-color-action-primary); }
+.yx-pay-stages li[data-state="blocked"] { border-color: var(--yx-color-danger-border); background: var(--yx-color-danger-bg); color: var(--yx-color-danger-text); }
+.yx-pay-stages li[data-state="todo"] { color: var(--yx-color-text-muted); }
+.yx-pay-stages__name { font-weight: var(--yx-weight-medium); font-size: var(--yx-text-sm); color: var(--yx-color-text); }
+.yx-pay-stages__state { grid-column: 2; font-size: var(--yx-text-xs); }
+.yx-pay-stages__action { grid-column: 2; margin-top: var(--yx-space-2); }
+@media (max-width: 1023px) { .yx-pay-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Due strip */
+.yx-pay-due { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.yx-pay-due li { display: grid; grid-template-columns: calc(var(--yx-space-16) * 2) minmax(0, 1fr) auto auto; gap: var(--yx-space-3); align-items: center; padding: var(--yx-space-2) 0; border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-pay-due__statute { font-weight: var(--yx-weight-semibold); font-size: var(--yx-text-sm); }
+.yx-pay-due__date { font-variant-numeric: tabular-nums; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
+.yx-pay-due__pen { grid-column: 2 / -1; font-size: var(--yx-text-xs); color: var(--yx-color-danger-text); }
+.yx-pay-due__action { grid-column: 2 / -1; }
+/* Phones: statute + badge on line 1, description on line 2, date (and penalty, action) below. */
+@media (max-width: 599px) {
+  .yx-pay-due li { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'statute badge' 'what what' 'date date'; gap: var(--yx-space-1) var(--yx-space-2); align-items: start; }
+  .yx-pay-due__statute { grid-area: statute; }
+  .yx-pay-due li > .yx-badge { grid-area: badge; justify-self: end; }
+  .yx-pay-due__what { grid-area: what; font-size: var(--yx-text-sm); }
+  .yx-pay-due__date { grid-area: date; }
+  .yx-pay-due__pen, .yx-pay-due__action { grid-column: 1 / -1; }
+}
+
+/* Progress */
+.yx-pay-progress { display: flex; flex-direction: column; gap: var(--yx-space-2); padding: var(--yx-space-4); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
+.yx-pay-progress__head { display: flex; justify-content: space-between; gap: var(--yx-space-3); flex-wrap: wrap; font-size: var(--yx-text-sm); }
+.yx-pay-progress__track { display: flex; height: var(--yx-space-2); background: var(--yx-color-bg-subtle); border-radius: var(--yx-radius-round); overflow: hidden; }
+.yx-pay-progress__track span { display: block; height: 100%; background: var(--yx-color-action-primary); transition: width var(--yx-duration-menu) var(--yx-ease-out); }
+.yx-pay-progress__track .yx-pay-progress__failed { background: var(--yx-color-danger-text); }
+.yx-pay-progress__note { margin: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-2); font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
+.yx-pay-progress__note p { margin: 0; }
+.yx-pay-progress__fails { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-1); }
+.yx-pay-progress__fails li { display: flex; gap: var(--yx-space-2); align-items: center; flex-wrap: wrap; font-size: var(--yx-text-sm); color: var(--yx-color-danger-text); }
+.yx-pay-progress__fails li span { color: var(--yx-color-text); flex: 1; min-width: 0; }
+/* The text keeps a readable width; when the row is narrower the fix button drops to its own line. */
+.yx-pay-progress__fails li > span { flex: 1 1 calc(var(--yx-space-16) * 3); }
+.yx-pay-nowrap { white-space: nowrap; }
+
+/* Irreversible sheet */
+.yx-pay-irrev { display: flex; flex-direction: column; gap: var(--yx-space-4); }
+.yx-pay-impact { margin: var(--yx-space-2) 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--yx-space-3); }
+.yx-pay-impact > div { padding: var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); }
+.yx-pay-impact dt { font-size: var(--yx-text-xs); color: var(--yx-color-text-secondary); }
+.yx-pay-impact dd { margin: var(--yx-space-1) 0 0; font-size: var(--yx-text-lg); font-weight: var(--yx-weight-semibold); font-variant-numeric: tabular-nums; }
+.yx-pay-mc { display: flex; flex-direction: column; gap: var(--yx-space-1); align-items: flex-start; font-size: var(--yx-text-sm); }
+.yx-pay-mc p { margin: 0; }
+.yx-pay-mc .yx-pay-mc__note { color: var(--yx-color-text-secondary); }
+/* Why the confirm button is disabled, beside it in the footer (B7). */
+.yx-pay-irrev__why { margin-right: auto; align-self: center; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
+
+/* Compare bars */
+/* One shared grid (rows are subgrids), so every track has the same length whatever its value and note say. */
+.yx-pay-bars { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: calc(var(--yx-space-16) * 2) minmax(0, 1fr) max-content; column-gap: var(--yx-space-3); row-gap: var(--yx-space-2); }
+.yx-pay-bars li { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; font-size: var(--yx-text-sm); }
+.yx-pay-bars__track { height: var(--yx-space-3); background: var(--yx-color-bg-subtle); border-radius: var(--yx-radius-badge); overflow: hidden; }
+/* Non-emphasis bars are neutral (information, not a status); the emphasised one carries the chart colour. */
+.yx-pay-bars__track span { display: block; height: 100%; background: var(--yx-color-border-strong); }
+.yx-pay-bars li[data-emphasis] .yx-pay-bars__track span { background: var(--yx-chart-1); }
+.yx-pay-bars__value { font-variant-numeric: tabular-nums; font-weight: var(--yx-weight-medium); white-space: nowrap; }
+.yx-pay-bars__note { font-weight: var(--yx-weight-regular); color: var(--yx-color-text-secondary); }
+@media (max-width: 767px) { .yx-pay-bars li { grid-template-columns: minmax(0, 1fr) auto; } .yx-pay-bars__track { grid-column: 1 / -1; grid-row: 2; } }
+@container (max-width: 560px) { .yx-pay-bars li { grid-template-columns: minmax(0, 1fr) auto; } .yx-pay-bars__track { grid-column: 1 / -1; grid-row: 2; } }
+
+/* Range */
+.yx-pay-range { margin: 0; display: flex; flex-direction: column; gap: var(--yx-space-2); padding: var(--yx-space-3) 0; }
+.yx-pay-range__track { position: relative; height: var(--yx-space-2); border-radius: var(--yx-radius-round); background: var(--yx-color-bg-subtle); border: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-pay-range__mid { position: absolute; top: calc(var(--yx-space-1) * -1); width: 2px; height: var(--yx-space-4); background: var(--yx-color-border-strong); }
+.yx-pay-range__dot { position: absolute; top: 50%; width: var(--yx-space-4); height: var(--yx-space-4); margin: calc(var(--yx-space-2) * -1) 0 0 calc(var(--yx-space-2) * -1); border-radius: var(--yx-radius-round); background: var(--yx-color-action-primary); border: 2px solid var(--yx-color-bg-surface); }
+.yx-pay-range__scale { position: relative; display: flex; justify-content: space-between; gap: var(--yx-space-2); font-size: var(--yx-text-xs); color: var(--yx-color-text-secondary); font-variant-numeric: tabular-nums; }
+/* The midpoint label sits above its tick (absolute, centred), so Min / Max stay one row below the track. */
+.yx-pay-range__above { position: relative; margin: 0; height: calc(var(--yx-text-xs) * 1.6); font-size: var(--yx-text-xs); color: var(--yx-color-text-secondary); font-variant-numeric: tabular-nums; }
+.yx-pay-range__midlabel { position: absolute; bottom: 0; transform: translateX(-50%); white-space: nowrap; }
+/* Being outside the band is information, not a risk: the text stays neutral (status colours, RULES). */
+.yx-pay-range__value { margin: 0; font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); font-variant-numeric: tabular-nums; }
+/* Outside the range the dot sits as an end cap inside the bar, at the end it passed. */
+.yx-pay-range[data-outside="above"] .yx-pay-range__dot { margin-left: calc(var(--yx-space-4) * -1); }
+.yx-pay-range[data-outside="below"] .yx-pay-range__dot { margin-left: 0; }
+
+/* Simple data tables inside panels */
+.yx-pay-table { width: 100%; border-collapse: collapse; font-size: var(--yx-text-sm); }
+.yx-pay-table caption { text-align: left; font-weight: var(--yx-weight-semibold); padding-bottom: var(--yx-space-2); }
+.yx-pay-table th, .yx-pay-table td { text-align: left; padding: var(--yx-space-2); border-bottom: var(--yx-border-width) solid var(--yx-color-border); vertical-align: top; }
+.yx-pay-table thead th { font-size: var(--yx-text-xs); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-secondary); background: var(--yx-color-bg-subtle); }
+.yx-pay-table [data-num] { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.yx-pay-table tfoot th, .yx-pay-table tfoot td { font-weight: var(--yx-weight-semibold); border-bottom: 0; }
+.yx-pay-table tr[data-state="flag"] td, .yx-pay-table tr[data-state="flag"] th { background: var(--yx-color-warning-bg); }
+.yx-pay-table tr[data-state="error"] td, .yx-pay-table tr[data-state="error"] th { background: var(--yx-color-danger-bg); }
+.yx-pay-table tr[data-state="selected"] td, .yx-pay-table tr[data-state="selected"] th { background: var(--yx-color-bg-selected); }
+.yx-pay-scroll { overflow-x: auto; min-width: 0; }
+
+/* Checklist of findings (readiness) */
+.yx-pay-findings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.yx-pay-findings > li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--yx-space-3); align-items: start; padding: var(--yx-space-3) 0; border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-pay-findings > li[data-sev="block"] > svg { color: var(--yx-color-danger-text); }
+.yx-pay-findings > li[data-sev="warn"] > svg { color: var(--yx-color-warning-text); }
+.yx-pay-findings > li[data-sev="ok"] > svg { color: var(--yx-color-success-text); }
+.yx-pay-findings__title { margin: 0; font-weight: var(--yx-weight-medium); }
+.yx-pay-findings__desc { margin: var(--yx-space-half) 0 0; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
+.yx-pay-findings__acts { display: flex; gap: var(--yx-space-2); flex-wrap: wrap; justify-content: flex-end; }
+/* Phones: the title at body size, and the action buttons on their own row under the text instead of a narrow column beside it. */
+@media (max-width: 599px) {
+  .yx-pay-findings > li { grid-template-columns: auto minmax(0, 1fr); }
+  .yx-pay-findings__title { font-size: var(--yx-text-body); line-height: var(--yx-leading-body); }
+  .yx-pay-findings__acts { grid-column: 2; justify-content: flex-start; }
+}
+
+/* Card list (mobile / phone lists) */
+.yx-pay-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-pay-cards > li { border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); padding: var(--yx-space-3); display: flex; flex-direction: column; gap: var(--yx-space-1); }
+.yx-pay-cards__row { display: flex; justify-content: space-between; gap: var(--yx-space-2); align-items: center; }
+
+/* Formula editor */
+.yx-pay-formula { font-family: var(--yx-font-mono); font-size: var(--yx-text-sm); }
+.yx-pay-suggest { list-style: none; margin: 0; padding: var(--yx-space-1); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-raised); box-shadow: var(--yx-shadow-popover); }
+.yx-pay-suggest li { padding: var(--yx-space-1) var(--yx-space-2); font-family: var(--yx-font-mono); font-size: var(--yx-text-sm); border-radius: var(--yx-radius-badge); }
+.yx-pay-suggest li[aria-selected="true"] { background: var(--yx-color-bg-selected); }
+
+/* Payslip layout preview frame */
+.yx-pay-preview { border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); padding: var(--yx-space-4); overflow: auto; max-height: calc(var(--yx-space-16) * 12); }
+
+/* Chat / diff cards */
+.yx-pay-diff { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-pay-diff > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--yx-space-1) var(--yx-space-3); padding: var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
+.yx-pay-diff > li[data-unexplained] { border-color: var(--yx-color-warning-border); background: var(--yx-color-warning-bg); }
+.yx-pay-diff__cause { grid-column: 1 / -1; margin: 0; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
+.yx-pay-diff__acts { grid-column: 1 / -1; display: flex; gap: var(--yx-space-2); flex-wrap: wrap; }
+
+/* Quote comparison */
+.yx-pay-disclosure { border: var(--yx-border-width) solid var(--yx-color-info-border); background: var(--yx-color-info-bg); border-radius: var(--yx-radius-card); padding: var(--yx-space-4); font-size: var(--yx-text-sm); display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-pay-disclosure p, .yx-pay-disclosure ul { margin: 0; }
+
+/* Slider (what-if) */
+.yx-pay-slider { display: flex; flex-direction: column; gap: var(--yx-space-1); }
+.yx-pay-slider__head { display: flex; justify-content: space-between; font-size: var(--yx-text-sm); }
+.yx-pay-slider input[type="range"] { width: 100%; min-height: var(--yx-target-min); accent-color: var(--yx-color-action-primary); }
+.yx-pay-slider input[type="range"]:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: 2px; }
+
+/* Phone helpers */
+.yx-pay-phone-actions { display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-pay-phone-actions > * { width: 100%; }
+.yx-pay-cards > li[data-selected] { border-color: var(--yx-color-action-primary); background: var(--yx-color-bg-selected); }

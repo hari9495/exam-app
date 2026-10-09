@@ -52,3 +52,14 @@ p.yx-text { margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   .yx-spinner { animation-duration: 2s; }
 }
+
+/* Colour icons (§8): Fluent Color art at 20 / 24 / 32 / 48 px; optional neutral tile. */
+.yx-color-icon { flex: none; display: inline-grid; place-items: center; line-height: 0; }
+.yx-color-icon > img { width: var(--yx-color-icon-size); height: var(--yx-color-icon-size); }
+.yx-color-icon[data-size="20"] { --yx-color-icon-size: var(--yx-icon-md); }
+.yx-color-icon[data-size="24"] { --yx-color-icon-size: var(--yx-icon-lg); }
+.yx-color-icon[data-size="32"] { --yx-color-icon-size: var(--yx-icon-xl); }
+.yx-color-icon[data-size="48"] { --yx-color-icon-size: var(--yx-icon-2xl); }
+.yx-color-icon[data-tile] { padding: var(--yx-space-2); border-radius: var(--yx-radius-control); background: var(--yx-color-icon-tile); }
+[data-theme="dark"] .yx-color-icon[data-dark-tile] { padding: var(--yx-space-half); border-radius: var(--yx-radius-control); background: var(--yx-color-icon-tile-lift); }
+[data-theme="dark"] .yx-color-icon[data-dark-tile][data-tile] { padding: var(--yx-space-2); }

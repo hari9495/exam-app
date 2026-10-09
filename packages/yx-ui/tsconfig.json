@@ -13,5 +13,5 @@
     "resolveJsonModule": true,
     "declaration": true
   },
-  "include": ["src", ".storybook", "vitest.config.ts"]
+  "include": ["src", ".storybook", "vitest.config.ts", "tests", "playwright.config.ts"]
 }

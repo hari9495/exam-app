@@ -1,0 +1,291 @@
+/* Time area kit + layout helpers (M02). Token-only. */
+
+.yx-tim-stack { display: flex; flex-direction: column; gap: var(--yx-space-4); min-width: 0; }
+.yx-tim-row { display: flex; flex-wrap: wrap; gap: var(--yx-space-2); align-items: center; }
+.yx-tim-muted { color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); margin: 0; }
+.yx-tim-note { color: var(--yx-color-text-secondary); font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); margin: 0; }
+.yx-tim-h3 { margin: 0; font-size: var(--yx-text-md); line-height: var(--yx-leading-md); font-weight: var(--yx-weight-semibold); }
+.yx-tim-nowrap { white-space: nowrap; }
+/* Alert body stays small on phones too (mobile browsers enlarge long paragraphs otherwise). */
+.yx-tim-stack .yx-alert__text, .yx-tim-clock .yx-alert__text { font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* Day card header note: "· note" on one line; on a phone it drops to its own line without the dot. */
+.yx-tim-daynote::before { content: '· '; }
+@media (max-width: 480px) { .yx-tim-daynote { flex-basis: 100%; } .yx-tim-daynote::before { content: none; } }
+.yx-tim-sr { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.yx-tim-grid { display: grid; gap: var(--yx-space-4); grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.yx-tim-grid > [data-span="3"] { grid-column: span 3; }
+.yx-tim-grid > [data-span="4"] { grid-column: span 4; }
+.yx-tim-grid > [data-span="5"] { grid-column: span 5; }
+.yx-tim-grid > [data-span="6"] { grid-column: span 6; }
+.yx-tim-grid > [data-span="7"] { grid-column: span 7; }
+.yx-tim-grid > [data-span="8"] { grid-column: span 8; }
+.yx-tim-grid > [data-span="12"] { grid-column: span 12; }
+@media (max-width: 1023px) { .yx-tim-grid > [data-span] { grid-column: span 12; } }
+.yx-tim-panel {
+  border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card);
+  background: var(--yx-color-bg-surface); padding: var(--yx-space-4);
+  display: flex; flex-direction: column; gap: var(--yx-space-3); min-width: 0;
+}
+.yx-tim-panel[data-tone="warning"] { border-color: var(--yx-color-warning-border); }
+.yx-tim-panel[data-tone="ai"] { border-color: var(--yx-color-ai-border); }
+.yx-tim-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.yx-tim-list > li {
+  display: flex; flex-wrap: wrap; gap: var(--yx-space-2) var(--yx-space-3); align-items: center; justify-content: space-between;
+  padding: var(--yx-space-3) 0; border-bottom: var(--yx-border-width) solid var(--yx-color-border);
+}
+.yx-tim-list > li:last-child { border-bottom: 0; }
+/* A real basis (16rem), so on a narrow row the action buttons drop below the text instead of crushing it. */
+.yx-tim-list__main { display: flex; flex-direction: column; gap: var(--yx-space-half); min-width: 0; flex: 1 1 calc(var(--yx-space-16) * 4); }
+/* Phone table cards stack cell content in a column, where that basis would become a tall blank gap. */
+.yx-table td .yx-tim-list__main, .yx-table[data-layout="cards"] .yx-tim-list__main { flex: 0 1 auto; }
+
+/* KPIs */
+.yx-tim-kpis { display: flex; flex-wrap: wrap; gap: var(--yx-space-4) var(--yx-space-8); margin: 0; }
+.yx-tim-kpis__item { display: flex; flex-direction: column; gap: var(--yx-space-half); min-width: 0; }
+.yx-tim-kpis__item dt { font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-secondary); }
+.yx-tim-kpis__item dd { margin: 0; font-weight: var(--yx-weight-semibold); font-size: var(--yx-text-lg); line-height: var(--yx-leading-lg); font-variant-numeric: tabular-nums; }
+.yx-tim-kpis__item dd.yx-tim-kpis__note { font-weight: var(--yx-weight-regular); font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-secondary); }
+/* Phones: an even two-column grid, every item aligned the same way. */
+@media (max-width: 599px) { .yx-tim-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--yx-space-4); } }
+
+/* Punch list */
+/* The list follows its own width, so it also stacks inside the phone frame on a wide screen. */
+.yx-tim-punches { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; container-type: inline-size; }
+.yx-tim-punches__row {
+  display: grid; grid-template-columns: minmax(calc(var(--yx-space-16) * 2.75), max-content) auto minmax(0, 1fr) auto; gap: var(--yx-space-2) var(--yx-space-3);
+  align-items: center; padding: var(--yx-space-2) 0; border-bottom: var(--yx-border-width) solid var(--yx-color-border);
+}
+.yx-tim-punches__row:last-child { border-bottom: 0; }
+@container (max-width: 560px) { .yx-tim-punches__row { grid-template-columns: 1fr auto; } .yx-tim-punches__where { grid-column: 1 / -1; } .yx-tim-punches__verdict { grid-column: 1 / -1; } }
+.yx-tim-punches__time { display: flex; gap: var(--yx-space-2); align-items: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.yx-tim-punches__kind { color: var(--yx-color-text-secondary); white-space: nowrap; }
+.yx-tim-punches__pin {
+  display: inline-flex; align-items: center; justify-content: center; width: var(--yx-avatar-20); height: var(--yx-avatar-20);
+  border-radius: var(--yx-radius-round); background: var(--yx-color-bg-inverse); color: var(--yx-color-text-inverse); font-size: var(--yx-text-xs);
+}
+.yx-tim-punches__src, .yx-tim-punches__verdict { display: flex; gap: var(--yx-space-2); align-items: center; flex-wrap: wrap; }
+.yx-tim-punches__where { color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); min-width: 0; }
+
+/* Shift bar */
+.yx-tim-shiftbar { display: flex; flex-direction: column; gap: var(--yx-space-1); }
+.yx-tim-shiftbar__track { position: relative; height: var(--yx-space-6); background: var(--yx-color-bg-subtle); border-radius: var(--yx-radius-control); overflow: hidden; }
+.yx-tim-shiftbar__shift { position: absolute; top: 0; bottom: 0; border: var(--yx-border-width) dashed var(--yx-color-border-strong); border-radius: var(--yx-radius-control); }
+.yx-tim-shiftbar__block { position: absolute; top: var(--yx-space-1); bottom: var(--yx-space-1); background: var(--yx-color-success-text); border-radius: var(--yx-radius-badge); }
+.yx-tim-shiftbar__block[data-kind="break"] { background: var(--yx-color-warning-border); }
+.yx-tim-shiftbar__now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--yx-color-action-primary); }
+.yx-tim-shiftbar__ticks { position: relative; height: var(--yx-space-4); font-size: var(--yx-text-xs); color: var(--yx-color-text-secondary); }
+.yx-tim-shiftbar__ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+/* Labels at the very ends of the track stay inside the card. */
+.yx-tim-shiftbar__ticks span[data-edge="start"] { transform: none; }
+.yx-tim-shiftbar__ticks span[data-edge="end"] { transform: translateX(-100%); }
+.yx-tim-shiftbar__legend { display: flex; flex-wrap: wrap; gap: var(--yx-space-1) var(--yx-space-4); font-size: var(--yx-text-xs); color: var(--yx-color-text-secondary); }
+.yx-tim-shiftbar__legend span::before { content: ''; display: inline-block; width: var(--yx-space-3); height: var(--yx-space-2); margin-right: var(--yx-space-1); border-radius: var(--yx-radius-badge); background: var(--yx-color-success-text); }
+.yx-tim-shiftbar__legend span[data-kind="shift"]::before { background: transparent; border: var(--yx-border-width) dashed var(--yx-color-border-strong); }
+.yx-tim-shiftbar__legend span[data-kind="break"]::before { background: var(--yx-color-warning-border); }
+/* Overtime: worked time after the shift end. */
+.yx-tim-shiftbar__block[data-kind="overtime"], .yx-tim-shiftbar__legend span[data-kind="overtime"]::before { background: var(--yx-chart-4); }
+/* No check-out: hatched, open-ended span. */
+.yx-tim-shiftbar__block[data-kind="open"], .yx-tim-shiftbar__legend span[data-kind="open"]::before {
+  background: var(--yx-color-danger-bg);
+  border: var(--yx-border-width) dashed var(--yx-color-danger-text);
+}
+/* Phone: label every 6 hours only. */
+@media (max-width: 480px) { .yx-tim-shiftbar__ticks span[data-minor] { display: none; } }
+
+/* Map */
+.yx-tim-map { margin: 0; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); overflow: hidden; background: var(--yx-color-bg-surface); }
+.yx-tim-map > svg { display: block; width: 100%; }
+.yx-tim-map__bg { fill: var(--yx-color-bg-subtle); }
+.yx-tim-map__grid { stroke: var(--yx-color-border); stroke-width: 0.5; }
+.yx-tim-map__road { fill: none; stroke: var(--yx-color-bg-surface); stroke-width: 7; }
+.yx-tim-map__fence { fill: var(--yx-color-info-bg); stroke: var(--yx-color-info-text); stroke-width: 1.5; stroke-dasharray: 4 3; }
+/* Only the resize handle takes presses. */
+.yx-tim-map__fence, .yx-tim-map__label { pointer-events: none; }
+.yx-tim-map__handle { fill: var(--yx-color-bg-surface); stroke: var(--yx-color-info-text); stroke-width: 2; }
+.yx-tim-map__knob { cursor: ew-resize; touch-action: none; outline: none; }
+/* Invisible finger-sized target around the small drawn handle. */
+.yx-tim-map__hit { fill: transparent; pointer-events: all; }
+.yx-tim-map__knob:focus-visible .yx-tim-map__handle { stroke: var(--yx-color-focus-ring); stroke-width: 3; }
+/* The fence being edited: solid outline and a stronger fill; the others fade back. */
+[data-active] > .yx-tim-map__fence { stroke-dasharray: none; stroke-width: 2; fill-opacity: 1; }
+[data-muted] > .yx-tim-map__fence { opacity: 0.5; }
+[data-muted] > .yx-tim-map__label { opacity: 0.7; }
+.yx-tim-map__label { fill: var(--yx-color-text); font-size: var(--yx-text-xs); font-family: var(--yx-font-sans); }
+.yx-tim-map__trail { fill: none; stroke: var(--yx-chart-4); stroke-width: 2; stroke-dasharray: 3 2; }
+.yx-tim-map__pin circle { fill: var(--yx-color-success-text); stroke: var(--yx-color-bg-surface); stroke-width: 1.5; }
+.yx-tim-map__pin[data-kind="you"] circle { fill: var(--yx-color-action-primary); }
+.yx-tim-map__pin[data-kind="person"] circle { fill: var(--yx-chart-2); }
+/* Tones come after kinds so a flagged person still shows red or amber. */
+.yx-tim-map__pin[data-tone="bad"] circle { fill: var(--yx-color-danger-text); }
+.yx-tim-map__pin[data-tone="warn"] circle { fill: var(--yx-color-warning-text); }
+.yx-tim-map__pin[data-tone="field"] circle { fill: var(--yx-chart-4); }
+.yx-tim-map__pin .yx-tim-map__accuracy { fill: var(--yx-color-info-bg); stroke: var(--yx-color-action-primary); stroke-width: 1; opacity: 0.6; }
+.yx-tim-map__pinnum { fill: var(--yx-color-text-inverse); font-size: var(--yx-text-xs); font-family: var(--yx-font-sans); font-weight: 600; }
+.yx-tim-map__caption > span { flex: 1 1 auto; min-width: 0; }
+.yx-tim-map__caption > svg { flex: none; }
+.yx-tim-map__caption { display: flex; justify-content: flex-start; text-align: start; gap: var(--yx-space-1); align-items: center; padding: var(--yx-space-2) var(--yx-space-3); font-size: var(--yx-text-xs); color: var(--yx-color-text-secondary); border-top: var(--yx-border-width) solid var(--yx-color-border); }
+
+/* Camera */
+.yx-tim-camera { margin: 0; display: flex; flex-direction: column; align-items: center; gap: var(--yx-space-2); }
+.yx-tim-camera svg { width: calc(var(--yx-space-16) * 2); height: calc(var(--yx-space-16) * 2); }
+.yx-tim-camera__bg { fill: var(--yx-color-bg-inverse); }
+.yx-tim-camera__head, .yx-tim-camera__body { fill: var(--yx-color-text-muted); }
+.yx-tim-camera__guide { fill: none; stroke: var(--yx-color-text-inverse); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.yx-tim-camera[data-state="captured"] .yx-tim-camera__guide { stroke: var(--yx-color-success-border); stroke-dasharray: none; }
+.yx-tim-camera[data-state="denied"] .yx-tim-camera__head, .yx-tim-camera[data-state="later"] .yx-tim-camera__head { opacity: 0.4; }
+/* The caption wraps under its own frame, never wider than it. */
+.yx-tim-camera figcaption { max-width: calc(var(--yx-space-16) * 2); font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); text-align: center; }
+/* Shop photos carry a time and place stamp: give it the full figure width so values don't break mid-way. */
+.yx-tim-camera[data-subject="scene"] figcaption { max-width: none; width: 100%; }
+
+/* Clock card */
+.yx-tim-clock {
+  display: flex; flex-direction: column; gap: var(--yx-space-4); min-width: 0;
+  border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card);
+  background: var(--yx-color-bg-surface); padding: var(--yx-space-5);
+}
+.yx-tim-clock__top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--yx-space-4); }
+.yx-tim-clock__face { display: flex; flex-direction: column; gap: var(--yx-space-1); }
+.yx-tim-clock__time { margin: 0; font-size: var(--yx-text-4xl); line-height: var(--yx-leading-4xl); font-weight: var(--yx-weight-semibold); font-variant-numeric: tabular-nums; }
+.yx-tim-clock[data-variant="card"] .yx-tim-clock__time { font-size: var(--yx-text-3xl); line-height: var(--yx-leading-3xl); }
+.yx-tim-clock__sec { color: var(--yx-color-text-secondary); font-size: var(--yx-text-xl); font-weight: var(--yx-weight-regular); }
+.yx-tim-clock__ampm { margin-left: var(--yx-space-2); font-size: var(--yx-text-lg); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-secondary); }
+.yx-tim-clock__status { display: flex; flex-direction: column; gap: var(--yx-space-2); align-items: flex-start; }
+.yx-tim-clock__shift { margin: 0; display: flex; gap: var(--yx-space-2); align-items: center; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
+.yx-tim-clock__flags { display: flex; flex-wrap: wrap; gap: var(--yx-space-2); }
+.yx-tim-clock__reason { margin: 0 0 var(--yx-space-2); }
+.yx-tim-clock__actions { display: flex; flex-wrap: wrap; gap: var(--yx-space-3); align-items: center; }
+/* Phone: the hours label goes under a full-width bar. */
+@media (max-width: 480px) { .yx-tim-clock .yx-meter__track { flex-basis: 100%; } }
+.yx-tim-clock__note { display: flex; flex-direction: column; gap: var(--yx-space-2); font-size: var(--yx-text-sm); }
+.yx-tim-clock__note > label { display: flex; flex-direction: column; gap: var(--yx-space-1); }
+/* A day has a handful of punches: the list shows them all (no nested scroll box hiding the clock-out). */
+.yx-tim-clock__punches { display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-tim-clock__foot { margin: 0; font-size: var(--yx-text-sm); display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2) var(--yx-space-3); }
+.yx-tim-clock__foot:empty { display: none; }
+
+/* Attendance month */
+.yx-tim-month { overflow-x: auto; }
+.yx-tim-month__table { width: 100%; border-collapse: separate; border-spacing: var(--yx-space-1); table-layout: fixed; }
+.yx-tim-month__table th { font-size: var(--yx-text-xs); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-secondary); text-align: left; padding: 0 var(--yx-space-1); }
+.yx-tim-month__table td { padding: 0; vertical-align: top; }
+.yx-tim-month__day {
+  width: 100%; min-height: calc(var(--yx-space-16) + var(--yx-space-4)); min-width: var(--yx-target-min);
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--yx-space-half);
+  padding: var(--yx-space-2); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-control);
+  background: var(--yx-color-bg-surface); color: var(--yx-color-text); font: inherit; text-align: left; cursor: pointer;
+}
+.yx-tim-month[data-compact] .yx-tim-month__day { min-height: var(--yx-space-12); padding: var(--yx-space-1); align-items: center; }
+.yx-tim-month__day:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: 1px; }
+.yx-tim-month__day:hover:not(:disabled) { border-color: var(--yx-color-border-strong); }
+.yx-tim-month__day[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--yx-color-action-primary); }
+.yx-tim-month__day:disabled { cursor: default; color: var(--yx-color-text-disabled); background: var(--yx-color-bg-page); }
+.yx-tim-month__num { font-size: var(--yx-text-xs); color: var(--yx-color-text-secondary); }
+.yx-tim-month__code { font-weight: var(--yx-weight-semibold); font-size: var(--yx-text-sm); }
+/* Short notes ("+1 h 45 m OT") wrap to a second line rather than being cut. */
+.yx-tim-month__mark { font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-secondary); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 600px) { .yx-tim-month__mark { display: none; } }
+/* Weekday headers: full name, or one letter in the compact grid and on phones. */
+.yx-tim-month__wd1 { display: none; }
+/* Phone: the compact layout, so seven columns fit the screen with no sideways scroll. The full name stays for screen readers. */
+@media (max-width: 480px) {
+  .yx-tim-month__wd { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .yx-tim-month__wd1 { display: inline; }
+  .yx-tim-month__table th { padding: 0; text-align: center; }
+  .yx-tim-month__day { min-width: 0; min-height: var(--yx-space-12); padding: var(--yx-space-1); align-items: center; }
+  .yx-tim-month__code { font-size: var(--yx-text-xs); }
+}
+
+/* status colours: shared by month cells, legend chips, muster cells */
+[data-code="P"], [data-code="WFH"], [data-code="OD"] { background: var(--yx-color-success-bg); border-color: var(--yx-color-success-border); }
+[data-code="P"] .yx-tim-month__code { color: var(--yx-color-success-text); }
+[data-code="L"], [data-code="HD"] { background: var(--yx-color-warning-bg); border-color: var(--yx-color-warning-border); }
+/* A request waiting for approval is information, not risk: neutral. */
+[data-code="R"] { background: var(--yx-color-bg-surface); border-color: var(--yx-color-border-strong); }
+[data-code="A"], [data-code="MP"], [data-code="LOP"] { background: var(--yx-color-danger-bg); border-color: var(--yx-color-danger-border); }
+[data-code="A"] .yx-tim-month__code, [data-code="MP"] .yx-tim-month__code { color: var(--yx-color-danger-text); }
+[data-code="CL"], [data-code="EL"], [data-code="SL"] { background: var(--yx-color-info-bg); border-color: var(--yx-color-info-border); }
+[data-code="H"] { background: var(--yx-color-ai-bg); border-color: var(--yx-color-ai-border); }
+[data-code="WO"] { background: var(--yx-color-bg-subtle); border-color: var(--yx-color-border); }
+[data-code="WFH"], [data-code="OD"] { border-style: dashed; }
+[data-code="TODAY"] { border-color: var(--yx-color-action-primary); }
+
+.yx-tim-legend { display: flex; flex-direction: column; gap: var(--yx-space-4); }
+.yx-tim-legend__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--yx-space-2) var(--yx-space-4); font-size: var(--yx-text-sm); }
+.yx-tim-legend__list li { display: flex; gap: var(--yx-space-1); align-items: center; }
+.yx-tim-legend__chip {
+  display: inline-flex; align-items: center; justify-content: center; min-width: var(--yx-space-8); height: var(--yx-badge-height);
+  padding: 0 var(--yx-space-1); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-badge);
+  font-size: var(--yx-text-xs); font-weight: var(--yx-weight-semibold);
+}
+
+/* Muster / generic grid cells */
+.yx-tim-muster { overflow: auto; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
+.yx-tim-muster table { border-collapse: collapse; font-size: var(--yx-text-xs); min-width: 100%; }
+.yx-tim-muster th, .yx-tim-muster td { border: var(--yx-border-width) solid var(--yx-color-border); padding: 0; text-align: center; white-space: nowrap; }
+.yx-tim-muster thead th { position: sticky; top: 0; background: var(--yx-color-bg-subtle); padding: var(--yx-space-1); font-weight: var(--yx-weight-medium); z-index: 1; }
+.yx-tim-muster th[scope="row"] { position: sticky; left: 0; background: var(--yx-color-bg-surface); text-align: left; padding: var(--yx-space-1) var(--yx-space-2); font-weight: var(--yx-weight-medium); z-index: 1; }
+.yx-tim-muster td.yx-tim-muster__total { padding: var(--yx-space-1) var(--yx-space-2); font-variant-numeric: tabular-nums; background: var(--yx-color-bg-subtle); }
+/* Muster with the name and four totals pinned on the left while the days scroll (the grid opens on the latest days). */
+.yx-tim-muster[data-pinned-totals] { --yx-tim-name-w: calc(var(--yx-space-16) * 3); --yx-tim-total-w: var(--yx-space-16); }
+/* Tablet: only Payable and Unpaid stay pinned, so more days fit (Late and OT h are in the day card). */
+@media (max-width: 1023px) { .yx-tim-muster[data-pinned-totals] tr > :nth-child(4), .yx-tim-muster[data-pinned-totals] tr > :nth-child(5) { display: none; } }
+.yx-tim-muster[data-pinned-totals] tr > :first-child {
+  position: sticky; left: 0; z-index: 2; box-sizing: border-box;
+  width: var(--yx-tim-name-w); min-width: var(--yx-tim-name-w); max-width: var(--yx-tim-name-w); white-space: normal;
+}
+.yx-tim-muster[data-pinned-totals] tr > :nth-child(n + 2):nth-child(-n + 5) {
+  position: sticky; z-index: 2; box-sizing: border-box; background: var(--yx-color-bg-subtle);
+  width: var(--yx-tim-total-w); min-width: var(--yx-tim-total-w); max-width: var(--yx-tim-total-w);
+}
+.yx-tim-muster[data-pinned-totals] tr > :nth-child(2) { left: var(--yx-tim-name-w); }
+.yx-tim-muster[data-pinned-totals] tr > :nth-child(3) { left: calc(var(--yx-tim-name-w) + var(--yx-tim-total-w)); }
+.yx-tim-muster[data-pinned-totals] tr > :nth-child(4) { left: calc(var(--yx-tim-name-w) + var(--yx-tim-total-w) * 2); }
+.yx-tim-muster[data-pinned-totals] tr > :nth-child(5) { left: calc(var(--yx-tim-name-w) + var(--yx-tim-total-w) * 3); }
+/* The header corner sits above both the scrolling days and the pinned body cells. */
+.yx-tim-muster[data-pinned-totals] thead tr > :nth-child(-n + 5) { top: 0; z-index: 3; }
+.yx-tim-cell {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%;
+  min-width: calc(var(--yx-space-8) + var(--yx-space-2)); min-height: var(--yx-target-min);
+  border: 0; background: var(--yx-color-bg-surface); font: inherit; font-weight: var(--yx-weight-semibold); color: var(--yx-color-text); cursor: pointer; padding: 0;
+}
+.yx-tim-cell:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: -2px; }
+.yx-tim-cell__mark { font-size: var(--yx-text-xs); font-weight: var(--yx-weight-regular); color: var(--yx-color-text-secondary); }
+.yx-tim-cell[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--yx-color-action-primary); }
+
+/* Board columns (Today) */
+.yx-tim-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--yx-space-16) * 3)), 1fr)); gap: var(--yx-space-4); }
+.yx-tim-board__col { display: flex; flex-direction: column; gap: var(--yx-space-2); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); padding: var(--yx-space-3); }
+.yx-tim-board__head { display: flex; justify-content: space-between; align-items: center; font-weight: var(--yx-weight-semibold); }
+.yx-tim-person { display: flex; justify-content: space-between; gap: var(--yx-space-2); align-items: center; padding: var(--yx-space-2) 0; border-top: var(--yx-border-width) solid var(--yx-color-border); }
+
+/* Phone / kiosk helpers */
+.yx-tim-sheet-actions { display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-tim-big { font-size: var(--yx-text-3xl); line-height: var(--yx-leading-3xl); font-weight: var(--yx-weight-semibold); margin: 0; font-variant-numeric: tabular-nums; }
+.yx-tim-keypad { display: grid; grid-template-columns: repeat(3, calc(var(--yx-space-16) + var(--yx-space-8))); gap: var(--yx-space-3); }
+.yx-tim-keypad button {
+  height: calc(var(--yx-space-16) + var(--yx-space-2)); border: var(--yx-border-width) solid var(--yx-color-border-strong); border-radius: var(--yx-radius-control);
+  background: var(--yx-color-bg-surface); color: var(--yx-color-text); font: inherit; font-size: var(--yx-text-2xl); cursor: pointer;
+}
+.yx-tim-keypad button:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: 2px; }
+.yx-tim-pin { display: flex; gap: var(--yx-space-3); }
+.yx-tim-pin span { width: var(--yx-space-5); height: var(--yx-space-5); border-radius: var(--yx-radius-round); border: 2px solid var(--yx-color-border-strong); }
+.yx-tim-pin span[data-filled] { background: var(--yx-color-text); border-color: var(--yx-color-text); }
+.yx-tim-kiosk-card { width: 100%; max-width: calc(var(--yx-space-16) * 10); display: flex; flex-direction: column; gap: var(--yx-space-6); align-items: center; text-align: center; }
+.yx-tim-kiosk-card > * { max-width: 100%; }
+.yx-tim-kiosk-card > .yx-field { align-self: stretch; text-align: left; }
+.yx-tim-kiosk-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--yx-space-4); width: 100%; }
+
+/* Editor two-pane (shift editor, leave type editor) */
+.yx-tim-editor { display: grid; grid-template-columns: minmax(0, 1fr) calc(var(--yx-space-16) * 5); gap: var(--yx-space-6); align-items: start; }
+@media (max-width: 1023px) { .yx-tim-editor { grid-template-columns: minmax(0, 1fr); } }
+.yx-tim-sticky { position: sticky; top: var(--yx-space-4); }
+
+/* Coverage cells (auto-roster) */
+.yx-tim-cov { display: inline-flex; min-width: var(--yx-space-12); justify-content: center; padding: var(--yx-space-1); border-radius: var(--yx-radius-badge); font-variant-numeric: tabular-nums; font-weight: var(--yx-weight-medium); }
+.yx-tim-cov[data-state="ok"] { background: var(--yx-color-success-bg); color: var(--yx-color-success-text); }
+.yx-tim-cov[data-state="short"] { background: var(--yx-color-danger-bg); color: var(--yx-color-danger-text); }
+.yx-tim-cov[data-state="over"] { background: var(--yx-color-warning-bg); color: var(--yx-color-warning-text); }
+/* Home dashboard: the widget is the box, so no second border (founder review 30 Sep 2026). */
+.yx-tim-clock[data-variant="home"] { border: 0; padding: 0; background: none; gap: var(--yx-space-3); }
+.yx-tim-clock[data-variant="home"] .yx-tim-clock__time { font-size: var(--yx-text-3xl); line-height: var(--yx-leading-3xl); }

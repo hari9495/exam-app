@@ -1,2 +1,12 @@
+# Reviewed false positives (7 Oct 2026): sample data in the YukthiX UI prototype, not secrets.
+# setting / help-article keys, a random sample Idempotency-Key in API docs, and a deliberately fake
+# key in the AI-studio story that demonstrates secret detection.
+5b607e04aec2788b08a766e37b2eda29634a9a76:packages/yx-ui/src/screens/platform-b/studio.stories.tsx:generic-api-key:169
+5b607e04aec2788b08a766e37b2eda29634a9a76:packages/yx-ui/src/screens/portals/console-data.ts:generic-api-key:199
+5b607e04aec2788b08a766e37b2eda29634a9a76:packages/yx-ui/src/screens/portals/console-data.ts:generic-api-key:200
+5b607e04aec2788b08a766e37b2eda29634a9a76:packages/yx-ui/src/screens/portals/t9-public.tsx:generic-api-key:43
+5b607e04aec2788b08a766e37b2eda29634a9a76:packages/yx-ui/src/screens/settings/registry-g5-g6.ts:generic-api-key:970
+5b607e04aec2788b08a766e37b2eda29634a9a76:packages/yx-ui/src/screens/settings/registry-g5-g6.ts:generic-api-key:971
+5b607e04aec2788b08a766e37b2eda29634a9a76:packages/yx-ui/src/screens/settings/registry-g5-g6.ts:generic-api-key:972
 # Reviewed false positive (9 Oct 2026): the textbook demo TOTP secret (base32 "Hello!" + KAVERI) in yx-ui sample data, not a real key.
 d6ea28d461acbf37388c718a056dfbe19d6d2ddc:packages/yx-ui/src/screens/auth/data.ts:generic-api-key:42
