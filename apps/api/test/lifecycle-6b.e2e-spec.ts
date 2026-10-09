@@ -7,6 +7,8 @@ import { randomUUID } from 'crypto';
 import PizZip from 'pizzip';
 import { BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
+import type Redis from 'ioredis';
+import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { AutomationService } from '../src/rules-engine/automation.service';
@@ -85,6 +87,10 @@ describe('Lifecycle batch 6b', () => {
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
     automation = moduleRef.get(AutomationService);
+    // The per-IP hourly code limit (production behaviour) counts every run from this machine; start each run clean.
+    const redis = moduleRef.get<Redis>(LOGIN_PROTECTION_REDIS);
+    const ipKeys = await redis.keys('auth:otp:ip:*');
+    if (ipKeys.length) await redis.del(...ipKeys);
 
     planId = (await prisma.plan.create({ data: { name: `life6b-plan-${run}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
     for (const k of ['A', 'B'] as const) {

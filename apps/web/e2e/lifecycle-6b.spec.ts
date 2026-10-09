@@ -48,6 +48,7 @@ test('HR issues the appointment letter → the System Admin approves → issued 
   await sheet.getByRole('button', { name: 'Add joiner' }).click();
   await expect(hr.getByText(`${first} was added`)).toBeVisible({ timeout: 30_000 });
   await hr.getByRole('row', { name: new RegExp(first) }).getByRole('button', { name: 'Checklist' }).click();
+  await hr.waitForURL(/\/yx\/people\/onboarding\/[^/]+$/);
   const checklist = hr.url();
 
   // Issue the appointment letter from its task (it needs approval).
@@ -74,6 +75,7 @@ test('HR issues the appointment letter → the System Admin approves → issued 
   const checkHref = await row.getByRole('link', { name: 'Check page' }).getAttribute('href');
   const check = await (await browser.newContext()).newPage();
   await check.goto(checkHref!);
+  await check.getByRole('button', { name: 'Check' }).click();
   await expect(check.getByText(/Appointment letter/)).toBeVisible();
   await expect(check.getByText(/current|valid/i).first()).toBeVisible();
   await expect(async () => {

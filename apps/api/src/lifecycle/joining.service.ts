@@ -144,7 +144,7 @@ export class JoiningService {
       }
       await audit(tx, c, 'preboarding.joined', 'preboarding', id, { employeeId: hired.id, employmentId: hired.employmentId, identityAttested: true, changeRequests: raised });
       return { employeeId: hired.id, employmentId: hired.employmentId, employeeCode: hired.employeeCode, changeRequests: raised };
-    });
+    }, { timeout: 30_000 }); // one step makes the employee, their details and the approvals: give it room under load
   }
 
   /** YX-LC-12: did not join / reneged / offer withdrawn, in one audited action; nothing is deleted. */
