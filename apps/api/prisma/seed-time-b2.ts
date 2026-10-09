@@ -187,8 +187,9 @@ export async function seedTimeB2(tx: Tx, organizationId: string, passwordHash: s
   }
 
   // ---- the previous month locked for Kaveri Foods TN, with its frozen payroll feed (P08, §B6) ----
-  const periods = new PeriodsService(null as never, tenant, days);
-  const lock = await tx.periodLock.create({ data: { ...org, legalEntityId: tnEntity, periodStart: day(prev.from), periodEnd: day(prev.to), stage: 'locked', changedBy: hr } });
+  const periods = new PeriodsService(null as never, tenant, days, null as never);
+  const lock = await tx.payPeriod.create({ data: { ...org, legalEntityId: tnEntity, periodStart: day(prev.from), periodEnd: day(prev.to), stage: 'locked', changedBy: hr, lockedAt: new Date(), lockedBy: hr } });
+  await tx.periodLockEvent.create({ data: { ...org, payPeriodId: lock.id, fromStage: 'open', toStage: 'locked', byUser: hr } });
   const feed = await periods.feedRows(tx, c, tnEntity, prev.from.slice(0, 7));
-  await tx.payrollFeedRow.createMany({ data: feed.map((r) => ({ ...org, lockId: lock.id, legalEntityId: tnEntity, periodStart: day(prev.from), employeeId: r.employeeId, mode: r.mode, calendarDays: r.calendarDays, paidDays: r.paidDays, lopDays: r.lopDays, otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: r.compOffDays, timesheetMinutes: r.timesheetMinutes })) });
+  await tx.payrollFeedRow.createMany({ data: feed.map((r) => ({ ...org, payPeriodId: lock.id, legalEntityId: tnEntity, periodStart: day(prev.from), employeeId: r.employeeId, mode: r.mode, calendarDays: r.calendarDays, paidDays: r.paidDays, lopDays: r.lopDays, otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: r.compOffDays, timesheetMinutes: r.timesheetMinutes })) });
 }

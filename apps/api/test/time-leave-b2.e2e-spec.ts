@@ -147,7 +147,7 @@ describe('Time and leave batch 2', () => {
         await tx.refreshToken.deleteMany({ where: { userId: { in: all } } });
         await tx.session.deleteMany({ where: { userId: { in: all } } });
         // The lock guard refuses deletes on locked days: unlock first, then the company goes.
-        await tx.periodLock.updateMany({ where: { organizationId: { in: [org.A.id, org.B.id] } }, data: { stage: 'open' } });
+        await tx.payPeriod.updateMany({ where: { organizationId: { in: [org.A.id, org.B.id] } }, data: { stage: 'open' } });
         await tx.organization.deleteMany({ where: { id: { in: [org.A.id, org.B.id] } } });
       })
       .catch((e) => console.warn('cleanup', e));
@@ -156,7 +156,7 @@ describe('Time and leave batch 2', () => {
   });
 
   it('every new table has forced RLS; frozen feed rows never change', async () => {
-    const tables = ['shifts', 'shift_versions', 'shift_patterns', 'shift_pattern_assignments', 'roster_entries', 'shift_swap_requests', 'night_work_consents', 'night_work_opt_ins', 'night_work_safeguards', 'overtime_rules', 'overtime_requests', 'timesheet_projects', 'timesheets', 'timesheet_lines', 'period_locks', 'payroll_feed_rows', 'leave_eligibility_overrides'];
+    const tables = ['shifts', 'shift_versions', 'shift_patterns', 'shift_pattern_assignments', 'roster_entries', 'shift_swap_requests', 'night_work_consents', 'night_work_opt_ins', 'night_work_safeguards', 'overtime_rules', 'overtime_requests', 'timesheet_projects', 'timesheets', 'timesheet_lines', 'pay_periods', 'payroll_feed_rows', 'leave_eligibility_overrides'];
     const rows = await prisma.$queryRaw<{ relname: string; forced: boolean; policy: boolean }[]>`
       SELECT c.relname, c.relforcerowsecurity AS forced, EXISTS (SELECT 1 FROM pg_policies p WHERE p.tablename = c.relname AND p.policyname = 'tenant_isolation') AS policy
       FROM pg_class c WHERE c.relname = ANY(${tables}::text[]) AND c.relkind = 'r'`;
