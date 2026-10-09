@@ -11,7 +11,8 @@ import { OrgSecretsCryptoService } from '@exam-platform/shared';
 //   - routing: Farah answers in English and Hindi, Suresh in English and Tamil; Suresh takes at most 2 live chats;
 //   - two shifts today on the IT desk (Farah 09:00–17:00, Suresh 13:00–21:00, India time) and their presence;
 //   - 8 weeks of daily new-ticket counts on the IT desk (busier on Mondays) for the staff forecast;
-//   - a help widget "Website help" on the Customer Care help page for http://localhost:5173.
+//   - a help widget "Website help" on the Customer Care help page for http://localhost:5173;
+//   - a "Laptop hand-over" document to sign on IT requests.
 // Idempotent: skipped once the IT desk has its WhatsApp line.
 
 type Tx = Prisma.TransactionClient;
@@ -22,7 +23,13 @@ export async function seedServiceDeskEsm3(tx: Tx, organizationId: string) {
   const org = { organizationId };
   await tx.$executeRaw`SELECT set_config('app.sd_system', 'on', true)`;
   const it = await tx.sdDesk.findFirst({ where: { ...org, key: 'IT' } });
-  if (!it || (await tx.sdMsgChannel.findFirst({ where: { ...org, kind: 'whatsapp' } }))) return;
+  if (!it) return;
+  // A document to sign on IT requests (the one-time-code signing of 9 Oct 2026 is tried with it).
+  if (!(await tx.sdDocTemplate.findFirst({ where: { ...org, deskId: it.id, name: 'Laptop hand-over' } }))) {
+    const by = await tx.user.findFirstOrThrow({ where: { ...org, email: 'it-lead@demo-org.test' }, select: { id: true } });
+    await tx.sdDocTemplate.create({ data: { ...org, deskId: it.id, name: 'Laptop hand-over', body: 'I, {{for_name}}, received my laptop for {{ticket_number}} on {{today}} and will return it when I leave.', needsSignature: true, createdBy: by.id } });
+  }
+  if (await tx.sdMsgChannel.findFirst({ where: { ...org, kind: 'whatsapp' } })) return;
   const crypto = new OrgSecretsCryptoService();
   const admin = await tx.user.findFirstOrThrow({ where: { ...org, email: 'admin@demo-org.test' }, select: { id: true } });
   const farah = await tx.user.findFirstOrThrow({ where: { ...org, email: 'it-lead@demo-org.test' }, select: { id: true } });
