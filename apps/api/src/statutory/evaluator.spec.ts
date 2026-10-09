@@ -118,3 +118,13 @@ describe('state minimum-wage tables (5b-D1)', () => {
     expect(minWageTableFor(file.ruleSets, 'IN-KA', '2027-04-01')).toBeNull();
   });
 });
+
+describe('run rules (batch 5c pack)', () => {
+  it('subsistence, maternity and injury rule sets pass their checks and golden cases and are marked verify', () => {
+    const run = (JSON.parse(readFileSync(join(__dirname, 'packs', 'in-run.json'), 'utf8')) as { ruleSets: (RuleSet & { golden: GoldenCase[] })[] }).ruleSets;
+    for (const rs of run) {
+      expect({ v: rs.statute, problems: [...checkShape(rs), ...rs.golden.flatMap((g) => runGolden(rs, g))] }).toEqual({ v: rs.statute, problems: [] });
+      expect(rs.verify).toBe(true);
+    }
+  });
+});

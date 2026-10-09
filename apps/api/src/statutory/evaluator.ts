@@ -144,6 +144,29 @@ export function minWage(rs: RuleSet, i: { table?: RuleSet | null; zone?: string 
   return { daily, monthly: useState ? st!.monthly : floorMonthly, floorApplied: !useState, daMissing: !!st?.daMissing, state: st, citation: useState ? st!.citation : cite(rs) };
 }
 
+/** Subsistence allowance for days of suspension (PAY-3.13): a lower rate for the first days of the suspension, then higher. */
+export function subsistence(rs: RuleSet, i: { dailyWage: Prisma.Decimal.Value; days: number; daysBefore: number }) {
+  const v = need(rs, 'subsistence');
+  const first = Math.max(0, Math.min(i.days, Number(v.firstDays) - i.daysBefore));
+  const amount = money(D(i.dailyWage).mul(D(first).mul(D(v.firstRate as string)).add(D(i.days - first).mul(D(v.laterRate as string)))));
+  return { amount, firstDays: first, laterDays: i.days - first, citation: cite(rs) };
+}
+
+/** Maternity benefit paid by the employer (PAY-3.14): the average daily wage for each day, when ESI does not cover her. */
+export function maternity(rs: RuleSet, i: { averageDailyWage: Prisma.Decimal.Value; days: number; esiCovered: boolean }) {
+  const v = need(rs, 'maternity');
+  if (i.esiCovered) return { amount: ZERO, payer: 'esi', citation: cite(rs) };
+  return { amount: money(D(i.averageDailyWage).mul(i.days).mul(D(v.rate as string))), payer: 'employer', citation: cite(rs) };
+}
+
+/** Injury pay for temporary disablement (PAY-3.14): half-monthly payments of a share of monthly wages, unless ESI covers it. */
+export function injury(rs: RuleSet, i: { monthlyWage: Prisma.Decimal.Value; days: number; monthDays: number; esiCovered: boolean }) {
+  const v = need(rs, 'injury');
+  if (i.esiCovered) return { amount: ZERO, payer: 'esi', citation: cite(rs) };
+  const perDay = D(i.monthlyWage).mul(D(v.halfMonthlyRate as string)).mul(2).div(i.monthDays);
+  return { amount: money(perDay.mul(i.days)), payer: 'employer', citation: cite(rs) };
+}
+
 /** Is a root (by its SHA-256 fingerprint) in a trusted-roots rule set (5b-D3)? */
 export function trustedRoot(rs: RuleSet, i: { sha256: string }) {
   const v = need(rs, 'trusted_roots');
@@ -325,7 +348,7 @@ export interface GoldenCase {
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
 }
-const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, subsistence, maternity, injury, code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
 
 /** Runs one golden case; returns the fields that differ (empty when it passes). */
 export function runGolden(rs: RuleSet, g: GoldenCase): string[] {
