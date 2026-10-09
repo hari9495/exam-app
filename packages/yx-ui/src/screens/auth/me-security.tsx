@@ -41,6 +41,11 @@ export interface MeSecurityScreenProps {
   onChangePassword?: (currentPassword: string, newPassword: string) => Promise<void>;
   /** The company's minimum length (YukthiX floor 12). */
   passwordMinLength?: number;
+  /** 5d-D3: the password for emailed payslips (set by the person; only whether it is set is shown). Omit to hide the card. */
+  payslipPassword?: { set: boolean; setAt: string | null } | null;
+  /** Sets or changes it; the sign-in password is passed when the person has one (onChangePassword given). */
+  onSetPayslipPassword?: (password: string, currentPassword?: string) => Promise<void>;
+  onRemovePayslipPassword?: () => Promise<void>;
   onSignOutSession: (session: SessionRow) => Promise<void>;
   onSignOutOthers: () => Promise<void>;
   /** Fixed "today" for stories and tests. */
@@ -64,6 +69,9 @@ export function MeSecurityScreen(props: MeSecurityScreenProps) {
         <>
           <TwoStepCard {...props} mfa={mfa} />
           {props.onChangePassword && <PasswordCard onChangePassword={props.onChangePassword} minLength={props.passwordMinLength ?? 12} />}
+          {props.payslipPassword && props.onSetPayslipPassword && props.onRemovePayslipPassword && (
+            <PayslipPasswordCard status={props.payslipPassword} askSignIn={Boolean(props.onChangePassword)} onSet={props.onSetPayslipPassword} onRemove={props.onRemovePayslipPassword} />
+          )}
           <MobileCard {...props} mfa={mfa} />
           <SessionsCard sessions={sessions ?? []} onSignOutSession={props.onSignOutSession} onSignOutOthers={props.onSignOutOthers} />
           <Card title="Sign-in history" actions={
@@ -253,6 +261,79 @@ function PasswordCard({ onChangePassword, minLength }: { onChangePassword: (curr
           {error && <InlineAlert tone="danger">{error}</InlineAlert>}
           <div className="yx-auth__row">
             <Button type="submit" variant="primary" loading={busy} disabled={!current || !next || !again}>Change password</Button>
+            <Button onClick={reset}>Cancel</Button>
+          </div>
+        </form>
+      )}
+    </Card>
+  );
+}
+
+/** 5d-D3: the employee's own password for emailed payslips; without it, payslips stay in the app only. */
+function PayslipPasswordCard({ status, askSignIn, onSet, onRemove }: { status: { set: boolean; setAt: string | null }; askSignIn: boolean; onSet: (password: string, currentPassword?: string) => Promise<void>; onRemove: () => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [again, setAgain] = useState('');
+  const { busy, error, setError, run } = useStep();
+  const reset = () => {
+    setOpen(false);
+    setCurrent('');
+    setNext('');
+    setAgain('');
+    setError(null);
+  };
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (next.length < 8) return setError('Use at least 8 characters.');
+    if (next !== again) return setError('The two passwords are not the same.');
+    if (askSignIn && next === current) return setError('Use a payslip password that is different from your sign-in password.');
+    void run(async () => {
+      await onSet(next, askSignIn ? current : undefined);
+      reset();
+    });
+  };
+  return (
+    <Card title="Payslip password">
+      {!open ? (
+        <div className="yx-auth__item">
+          <div className="yx-auth__item-main">
+            <Text tone="secondary" size="sm">
+              {status.set && status.setAt
+                ? `Set on ${day(status.setAt)}. Payslips your company emails you open with it.`
+                : 'Not set. Your payslips are in the app only; your company emails them only to people who set this password.'}
+            </Text>
+          </div>
+          <div className="yx-auth__row">
+            <Button size="sm" onClick={() => setOpen(true)}>{status.set ? 'Change payslip password' : 'Set payslip password'}</Button>
+            {status.set && (
+              <ConfirmDialog
+                trigger={<Button size="sm" aria-label="Remove payslip password">Remove</Button>}
+                title="Remove your payslip password?"
+                consequence="Payslips will no longer be emailed to you. You can still see them in the app."
+                confirmLabel="Remove password"
+                destructive
+                onConfirm={onRemove}
+              />
+            )}
+          </div>
+        </div>
+      ) : (
+        <form className="yx-auth__form" onSubmit={submit} noValidate>
+          {askSignIn && (
+            <FormField label="Your sign-in password" required>
+              <PasswordField value={current} onChange={setCurrent} autoComplete="current-password" maxLength={1024} />
+            </FormField>
+          )}
+          <FormField label="Payslip password" required helper="At least 8 characters, and not your sign-in password.">
+            <PasswordField value={next} onChange={setNext} autoComplete="new-password" maxLength={64} />
+          </FormField>
+          <FormField label="Payslip password again" required>
+            <PasswordField value={again} onChange={setAgain} autoComplete="new-password" maxLength={64} />
+          </FormField>
+          {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+          <div className="yx-auth__row">
+            <Button type="submit" variant="primary" loading={busy} disabled={!next || !again || (askSignIn && !current)}>Save payslip password</Button>
             <Button onClick={reset}>Cancel</Button>
           </div>
         </form>

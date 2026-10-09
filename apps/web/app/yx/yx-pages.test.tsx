@@ -612,6 +612,17 @@ describe('/yx/me/security', () => {
     await waitFor(() => expect(api).toHaveBeenCalledWith('/auth/mfa/authenticators/f-1', { method: 'PATCH', body: JSON.stringify({ label: 'Work laptop' }) }, 'tok'));
   });
 
+  it('5d-D3: sets the payslip password with the sign-in password first', async () => {
+    route({ 'GET /auth/mfa': MFA, 'GET /auth/sessions': [], 'GET /auth/login-history': EMPTY_PAGE, 'GET /payroll/me/payslip-password': { set: false, setAt: null }, 'PUT /payroll/me/payslip-password': { set: true } });
+    wrap(<YxMySecurityPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Set payslip password' }));
+    await userEvent.type(screen.getByLabelText(/^Your sign-in password/), 'Passw0rd!2026');
+    await userEvent.type(screen.getByLabelText(/^Payslip password(?! again)/, { selector: 'input' }), 'Pay-slip-77');
+    await userEvent.type(screen.getByLabelText(/^Payslip password again/), 'Pay-slip-77');
+    await userEvent.click(screen.getByRole('button', { name: 'Save payslip password' }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith('/payroll/me/payslip-password', { method: 'PUT', body: JSON.stringify({ password: 'Pay-slip-77', currentPassword: 'Passw0rd!2026' }) }, 'tok'));
+  });
+
   it('asks the API for every unsuccessful attempt under "Failed"', async () => {
     route({ 'GET /auth/mfa': MFA, 'GET /auth/sessions': [], 'GET /auth/login-history': EMPTY_PAGE });
     wrap(<YxMySecurityPage />);

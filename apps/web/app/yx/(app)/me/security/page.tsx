@@ -21,6 +21,8 @@ export default function YxMySecurityPage() {
 
   const mfa = useQuery(load<MfaStatus>(['mfa'], '/auth/mfa'));
   const sessions = useQuery(load<SessionRow[]>(['sessions'], '/auth/sessions'));
+  // 5d-D3: the person's own password for emailed payslips (only whether it is set comes back).
+  const payslipPassword = useQuery(load<{ set: boolean; setAt: string | null }>(['payslip-password'], '/payroll/me/payslip-password'));
   const history = useQuery(load<Page<LoginEventRow>>(['history', filter, page], `/auth/login-history${qs({ result: RESULT[filter], page, pageSize: 25 })}`));
 
   // Every change reloads what it can affect.
@@ -54,6 +56,13 @@ export default function YxMySecurityPage() {
       onSendMobileCode={async (mobileNumber) => (await post('/auth/otp/mobile', token, { mobileNumber })).mobileNumber}
       onVerifyMobile={(code) => after(post('/auth/otp/mobile/verify', token, { code }))}
       onRemoveMobile={() => after(apiFetch('/auth/otp/mobile', { method: 'DELETE' }, token))}
+      payslipPassword={payslipPassword.data ?? null}
+      onSetPayslipPassword={async (password, currentPassword) => {
+        await after(apiFetch('/payroll/me/payslip-password', { method: 'PUT', body: JSON.stringify({ password, currentPassword }) }, token));
+      }}
+      onRemovePayslipPassword={async () => {
+        await after(apiFetch('/payroll/me/payslip-password', { method: 'DELETE' }, token));
+      }}
       onSignOutSession={(s) => after(apiFetch(`/auth/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' }, token))}
       onSignOutOthers={() => after(post('/auth/sessions/revoke-others', token))}
       onChangePassword={(currentPassword, newPassword) => after(post('/users/me/change-password', token, { currentPassword, newPassword }))}

@@ -6493,3 +6493,14 @@ model PayslipLink {
 
   @@map("payslip_links")
 }
+
+/// Founder decision 5d-D3: the employee's own password for emailed payslips (argon2 hash only); RLS: own row only.
+model PayslipPassword {
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  passwordHash   String   @map("password_hash")
+  setAt          DateTime @default(now()) @map("set_at") @db.Timestamptz(3)
+
+  @@id([organizationId, userId])
+  @@map("payslip_passwords")
+}

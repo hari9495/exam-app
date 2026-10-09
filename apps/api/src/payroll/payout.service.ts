@@ -140,7 +140,7 @@ export class PayoutService implements OnModuleInit {
       const group = await tx.payGroup.findFirstOrThrow({ where: { organizationId: org, id: run.payGroupId } });
       const key = (group.bankFormat ?? 'GENERIC').toUpperCase();
       const fmt = inForce(await this.rules.published(), 'IN.BANKFMT', [key], payDate);
-      // DECISION NEEDED: which bank the pilot customer uses (§19 D1: generic first, then the pilot's bank; its format is loaded as data once a real sample file is checked).
+      // Founder decision 5d-D1 (9 Oct 2026): only the generic format for now; the pilot's bank format is loaded as data (a bank-format rule set) once a real sample file is checked (M03 §19.4).
       if (!fmt) throw new ConflictException(`No published bank format "${key}" is in force on ${payDate}.`);
       const slips = await this.slips(tx, org, run, { held: false, paymentStatus: { in: REPAYABLE }, net: { gt: 0 } });
       const employments = await tx.employment.findMany({ where: { organizationId: org, id: { in: slips.map((s) => s.employmentId) } }, select: { id: true, employeeCode: true } });
@@ -409,7 +409,8 @@ export class PayoutService implements OnModuleInit {
       const a = await tx.employeeBankAccount.findFirst({ where: { organizationId: org, employeeId: s.employeeId, purpose: 'salary', validTo: null } });
       if (!a || !failedAt || a.validFrom < failedAt)
         throw new ConflictException('The employee has not changed their bank account since the payment failed. Their bank change is approved first (profile).');
-      // DECISION NEEDED: an automatic penny-drop provider (name match through a bank API); until then the checker records the reference of the test credit the company's bank made.
+      // Founder decision 5d-D2 (9 Oct 2026): for the pilot a second person records the penny-drop reference from the company's bank.
+      // Provider seam: an automatic penny-drop provider, chosen later, supplies and checks this reference here; none is wired.
       await tx.$queryRaw`SELECT bank_account_use_now(${org}::uuid, ${a.id}::uuid)`;
       await audit(tx, c, 'payroll.bank.expedited', 'payslip', s.id, { employeeId: s.employeeId, account: `•••• ${a.accountLast4}`, pennyDropReference: dto.pennyDropReference, reason: dto.reason });
       return { payslipId: s.id, account: `•••• ${a.accountLast4}`, usableNow: true };

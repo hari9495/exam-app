@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Put, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -8,9 +8,9 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
-import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
+import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { ConfirmDto, DisbursementDto, ExpediteBankDto, GenerateBankFileDto, PaymentModeDto, PaymentResultsDto, QueryListDto, QueryRaiseDto, QueryUpdateDto } from './dto-5d';
+import { ConfirmDto, DisbursementDto, ExpediteBankDto, GenerateBankFileDto, PaymentModeDto, PaymentResultsDto, PayslipPasswordDto, QueryListDto, QueryRaiseDto, QueryUpdateDto } from './dto-5d';
 import { PayoutService } from './payout.service';
 import { PayslipsService } from './payslips.service';
 
@@ -136,6 +136,23 @@ export class Payroll5dController {
     const out = await this.payslips.download(ctx, this.user(req), token.slice(0, 100));
     res.set({ 'Content-Type': out.contentType, 'Content-Disposition': `attachment; filename="${out.name}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     return new StreamableFile(out.file);
+  }
+
+  /** 5d-D3: the person's own password for emailed payslips (My security); only whether it is set is ever shown. */
+  @Get('me/payslip-password')
+  passwordStatus(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.payslips.passwordStatus(ctx, this.user(req));
+  }
+
+  @Put('me/payslip-password')
+  @Throttle(STRICT_AUTH_THROTTLE)
+  setPassword(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PayslipPasswordDto) {
+    return this.payslips.setPassword(ctx, this.user(req), dto.password, dto.currentPassword);
+  }
+
+  @Delete('me/payslip-password')
+  removePassword(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.payslips.removePassword(ctx, this.user(req));
   }
 
   @Post('me/payslips/:id/queries')

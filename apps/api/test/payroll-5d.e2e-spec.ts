@@ -37,7 +37,8 @@ describe('Payroll batch 5d', () => {
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const sendMock = jest.fn(async (_m: unknown) => ({ success: true }));
+  const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
   const scoped = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) =>
     inA(async (tx) => {
@@ -94,7 +95,7 @@ describe('Payroll batch 5d', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(EmailService)
-      .useValue({ send: jest.fn(async () => ({ success: true })) })
+      .useValue({ send: sendMock })
       .overrideProvider(BlobStorageService)
       .useValue(createFakeBlobStorage())
       .compile();
@@ -390,6 +391,35 @@ describe('Payroll batch 5d', () => {
     ).toMatchObject({ runStatus: 'paid' });
   });
 
+  it('5d-D3: the payslip password is the employee’s own (sign-in password first, never reused), kept as a hash only they can read', async () => {
+    expect((await api('emp1', 'get', '/payroll/me/payslip-password').expect(200)).body).toEqual({ set: false, setAt: null });
+    await api('emp1', 'put', '/payroll/me/payslip-password').send({ password: 'Pay-slip-77', currentPassword: 'wrong-one' }).expect(403);
+    await api('emp1', 'put', '/payroll/me/payslip-password').send({ password: 'Pay-slip-77' }).expect(403);
+    expect((await api('emp1', 'put', '/payroll/me/payslip-password').send({ password: PASSWORD, currentPassword: PASSWORD }).expect(400)).body.message).toMatch(/different from your sign-in password/);
+    await api('emp1', 'put', '/payroll/me/payslip-password').send({ password: 'short', currentPassword: PASSWORD }).expect(400);
+    await api('emp1', 'put', '/payroll/me/payslip-password').send({ password: 'Pay-slip-77', currentPassword: PASSWORD }).expect(200);
+    expect((await api('emp1', 'get', '/payroll/me/payslip-password').expect(200)).body.set).toBe(true);
+    const as = (who: Who) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false, userId: users[who] } as TenantContext, (tx) => tx.payslipPassword.findMany());
+    const own = await as('emp1');
+    expect(own).toHaveLength(1);
+    expect(own[0].passwordHash.startsWith('$argon2id$')).toBe(true);
+    expect(own[0].passwordHash).not.toContain('Pay-slip-77');
+    expect(await as('emp2')).toEqual([]);
+    // Security review: a session switch set by the app role opens nothing.
+    expect(
+      await tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false, userId: users.emp2 } as TenantContext, async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.payslip_password_lookup', 'on', true)`;
+        return tx.payslipPassword.count();
+      }),
+    ).toBe(0);
+    expect(await as('payAdmin')).toEqual([]);
+    // emp2 sets one and removes it again.
+    await api('emp2', 'put', '/payroll/me/payslip-password').send({ password: 'Other-pass-1', currentPassword: PASSWORD }).expect(200);
+    expect((await api('emp2', 'delete', '/payroll/me/payslip-password').expect(200)).body).toEqual({ set: false });
+    // The company turns payslip email on for the entity.
+    await inA((tx) => tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'legal_entity', scopeId: ids.entity, key: 'payroll.payslip_email', value: 'on' } }));
+  });
+
   it('publish: step-up and the phrase, once; then the employee sees their own payslip, its PDF through a single-use link', async () => {
     expect((await api('emp1', 'get', '/payroll/me/payslips').expect(200)).body).toEqual([]);
     const s1 = await slipOf(ids.emp1);
@@ -415,7 +445,9 @@ describe('Payroll batch 5d', () => {
           .send({ confirmation: { phrase: 'PUBLISH 3', impact: [] } })
           .expect(200)
       ).body,
-    ).toMatchObject({ publishedPeople: 3, emailed: null });
+    ).toMatchObject({ publishedPeople: 3, emailed: { sent: 0, waitingForDecision: 1, inAppOnly: 2 } });
+    // Never the date of birth, and no PDF goes by email until the 5d-D3 question is answered.
+    expect(sendMock.mock.calls.filter(([m]) => (m as { attachments?: unknown[] }).attachments?.length)).toEqual([]);
     await api('payAdmin', 'post', `/payroll/runs/${ids.run}/publish`)
       .send({ confirmation: { phrase: 'PUBLISH 3', impact: [] } })
       .expect(409);
