@@ -75,6 +75,14 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'tax.regime.override',
   // GP-PAY-1 ledger mapping.
   'payroll.ledger.manage',
+  // M03 batch 5f: statutory files, challans, returns, registers.
+  'statutory.filing.view',
+  'statutory.filing.generate',
+  'statutory.filing.download',
+  'statutory.filing.mark_filed',
+  'statutory.challan.manage',
+  'statutory.register.sign',
+  'statutory.advisory.review',
 ];
 
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).

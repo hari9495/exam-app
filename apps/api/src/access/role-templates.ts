@@ -33,6 +33,9 @@ const PAY_ADMIN_5C = ['payroll.run.view', 'payroll.run.prepare', 'payroll.input.
 const PAY_ADMIN_5D = ['payroll.bankfile.generate', 'payroll.payment.record', 'payroll.payslip.publish', 'payroll.query.handle'];
 // Batch 5e: tax workspaces, proof verification (never one's own), regime changes after the cut-off.
 const PAY_ADMIN_5E = ['tax.workspace.view', 'tax.proof.verify', 'tax.regime.override', 'payroll.ledger.manage'];
+// Batch 5f: payroll prepares statutory files, challans and returns; the compliance owner files, signs and reviews.
+const PAY_ADMIN_5F = ['statutory.filing.view', 'statutory.filing.generate', 'statutory.filing.download', 'statutory.challan.manage'];
+const COMPLIANCE_5F = ['statutory.filing.view', 'statutory.filing.generate', 'statutory.filing.download', 'statutory.filing.mark_filed', 'statutory.challan.manage', 'statutory.register.sign', 'statutory.advisory.review'];
 const PAY_APPROVER_5A = ['payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release'];
 
 const DESK_AGENT = ['desk.ticket.view', 'desk.ticket.work', 'desk.ticket.note', 'desk.ticket.export', 'desk.task.work', 'desk.kb.view_internal', 'desk.kb.author', 'desk.chat.work', 'desk.hr_summary.view', 'desk.ticket.move'];
@@ -60,7 +63,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'Pay, pay ranges, entity tax identifiers, and approving bank and identity changes.',
     cannot: 'HR settings.',
-    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E],
+    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F],
   },
   {
     key: 'payroll_approver',
@@ -92,7 +95,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'Statutory files, registers and pay documents of the entity, and its audit log.',
     cannot: 'Change pay.',
-    permissions: ['org.structure.view', 'payroll.period.view', 'payroll.file.view', 'payroll.document.view', 'audit.view', 'payroll.statutory.setup'],
+    permissions: ['org.structure.view', 'payroll.period.view', 'payroll.file.view', 'payroll.document.view', 'audit.view', 'payroll.statutory.setup', ...COMPLIANCE_5F],
   },
   {
     key: 'payroll_auditor',

@@ -21,7 +21,9 @@ const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_r
   // Batch 5e.
   'tax_workspaces', 'tax_declaration_lines', 'tds_projections', 'perquisites', 'tax_certificates',
   // GP-PAY-1 ledger mapping.
-  'ledger_mappings'];
+  'ledger_mappings',
+  // Batch 5f.
+  'statutory_filings', 'statutory_penalty_lines', 'tds_challans', 'tds_returns', 'statutory_registers', 'register_rows', 'inspection_packs', 'advisory_reviews'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt((SUPPORT_EXCLUDED.includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 

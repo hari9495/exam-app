@@ -1,0 +1,146 @@
+{
+  "ruleSets": [
+    {
+      "statute": "IN.DAMAGES",
+      "jurisdiction": "IN",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "EPF Scheme para 32A with EPF Act s.14B (damages on late contributions) and ESI (Central) Regulations reg. 31C with ESI Act s.85B: yearly rates by how long the payment was late. Interest is separate (IN.PENALTY).",
+      "values": {
+        "kind": "damages",
+        "bands": {
+          "pf": [
+            {
+              "upToMonths": 2,
+              "rate": "0.05"
+            },
+            {
+              "upToMonths": 4,
+              "rate": "0.10"
+            },
+            {
+              "upToMonths": 6,
+              "rate": "0.15"
+            },
+            {
+              "upToMonths": null,
+              "rate": "0.25"
+            }
+          ],
+          "esi": [
+            {
+              "upToMonths": 2,
+              "rate": "0.05"
+            },
+            {
+              "upToMonths": 4,
+              "rate": "0.10"
+            },
+            {
+              "upToMonths": 6,
+              "rate": "0.15"
+            },
+            {
+              "upToMonths": null,
+              "rate": "0.25"
+            }
+          ]
+        }
+      },
+      "golden": [
+        {
+          "name": "PF 10,000 paid 73 days late: 10% a year for 73 days",
+          "fn": "damages",
+          "input": {
+            "statute": "pf",
+            "amount": "10000",
+            "daysLate": 73
+          },
+          "expected": {
+            "rate": "0.10",
+            "amount": "200"
+          }
+        },
+        {
+          "name": "ESI 36,500 paid 30 days late: 5% a year",
+          "fn": "damages",
+          "input": {
+            "statute": "esi",
+            "amount": "36500",
+            "daysLate": 30
+          },
+          "expected": {
+            "rate": "0.05",
+            "amount": "150"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.REGISTERS",
+      "jurisdiction": "IN",
+      "version": "2025-v1",
+      "validFrom": "2025-11-21",
+      "validTo": null,
+      "lawVersion": "CODE",
+      "verify": true,
+      "source": "Code on Wages, 2019 s.50 and the registers the Code on Wages (Central) Rules ask employers to keep (wages, deductions and attendance); state rules may add columns. Form numbers and any state additions to be confirmed by the compliance owner.",
+      "values": {
+        "kind": "registers",
+        "types": [
+          {
+            "key": "wages",
+            "title": "Register of wages",
+            "columns": [
+              "Employee code",
+              "Name",
+              "Designation",
+              "Days paid",
+              "Gross wages",
+              "Deductions",
+              "Net wages paid",
+              "Date of payment"
+            ]
+          },
+          {
+            "key": "deductions",
+            "title": "Register of deductions and advances",
+            "columns": [
+              "Employee code",
+              "Name",
+              "Deduction",
+              "Amount"
+            ]
+          },
+          {
+            "key": "muster",
+            "title": "Muster roll",
+            "columns": [
+              "Employee code",
+              "Name",
+              "Days in month",
+              "Loss-of-pay days",
+              "Days paid"
+            ]
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "The wage register has the Code on Wages particulars",
+          "fn": "register_columns",
+          "input": {
+            "key": "wages"
+          },
+          "expected": {
+            "title": "Register of wages",
+            "columns": "Employee code|Name|Designation|Days paid|Gross wages|Deductions|Net wages paid|Date of payment"
+          }
+        }
+      ]
+    }
+  ]
+}

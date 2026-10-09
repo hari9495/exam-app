@@ -15,9 +15,10 @@ import { entitiesFor, payScope, payViewer, requireSelf } from './pay-access';
 // release is done by a second person (maker ≠ checker, also enforced by the database) after a fresh second step.
 
 const LINK_SECONDS = 60;
-const KINDS = ['bank', 'ecr', 'esi', 'pt', 'lwf', 'form138', 'form140', 'journal', 'register', 'wps'] as const;
+const KINDS = ['bank', 'ecr', 'esi', 'pt', 'lwf', 'form138', 'form24q', 'form140', 'journal', 'register', 'inspection', 'wps'] as const;
 export type FileKind = (typeof KINDS)[number];
-const KIND_LABEL: Record<FileKind, string> = { bank: 'Bank file', ecr: 'PF ECR', esi: 'ESI contributions', pt: 'Professional tax', lwf: 'Labour welfare fund', form138: 'Form 138 (TDS return)', form140: 'Form 140', journal: 'Accounting journal', register: 'Register', wps: 'WPS salary file' };
+const KIND_LABEL: Record<FileKind, string> = { bank: 'Bank file', ecr: 'PF ECR', esi: 'ESI contributions', pt: 'Professional tax', lwf: 'Labour welfare fund', form138: 'Form 138 (TDS return)', form24q: 'Form 24Q (TDS return)', form140: 'Form 140', inspection: 'Inspection pack', journal: 'Accounting journal', register: 'Register', wps: 'WPS salary file' };
+const STATUTORY_KINDS = new Set<FileKind>(['ecr', 'esi', 'pt', 'lwf', 'form138', 'form24q', 'form140', 'register', 'inspection']);
 const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');
 
 type File = Prisma.ExchangeFileGetPayload<object>;
@@ -88,15 +89,24 @@ export class ExchangeFilesService {
   }
 
   /** A single-use link (60 seconds) to download one file; asking for it is audited. */
+  /** Entities whose files the viewer may download: payroll files, and statutory files with statutory.filing.download (5f). */
+  private async downloadable(tx: Tx, c: CompanyContext, v: Awaited<ReturnType<typeof payViewer>>) {
+    return [...new Set([...(await entitiesFor(tx, c, v, 'payroll.file.view')), ...(await entitiesFor(tx, c, v, 'statutory.filing.download'))])];
+  }
+
   async link(ctx: TenantContext, user: ScopeUser, id: string) {
     const v = await payViewer(this.prisma, this.tenantPrisma, user);
     requireSelf(v);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      await payScope(tx, await entitiesFor(tx, c, v, 'payroll.file.view'));
+      await payScope(tx, await this.downloadable(tx, c, v));
       const f = await tx.exchangeFile.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!f) throw new NotFoundException('Not found');
       // A bank file carries full account numbers (§12.5): only the people who make or release it may download it.
       if (f.kind === 'bank' && !(await entitiesFor(tx, c, v, 'payroll.bankfile.generate')).concat(await entitiesFor(tx, c, v, 'payroll.bankfile.release')).includes(f.legalEntityId)) throw new ForbiddenException('Bank files are downloaded by the people who generate or release them.');
+      // Statutory files (UAN, ESI numbers, PANs) for those who hold the statutory download key; other files need payroll.file.view.
+      const statutory = STATUTORY_KINDS.has(f.kind as FileKind);
+      const allowed = statutory ? (await entitiesFor(tx, c, v, 'statutory.filing.download')).concat(await entitiesFor(tx, c, v, 'payroll.file.view')) : await entitiesFor(tx, c, v, 'payroll.file.view');
+      if (!allowed.includes(f.legalEntityId)) throw new NotFoundException('Not found');
       const token = randomBytes(32).toString('base64url');
       await tx.exchangeFileLink.create({ data: { organizationId: c.organizationId, legalEntityId: f.legalEntityId, fileId: f.id, tokenHash: tokenHash(token), userId: v.userId!, expiresAt: new Date(Date.now() + LINK_SECONDS * 1000) } });
       await audit(tx, c, 'payroll.file.link_issued', 'exchange_file', f.id, { legalEntityId: f.legalEntityId, kind: f.kind, sha256: f.sha256 });
@@ -112,7 +122,7 @@ export class ExchangeFilesService {
     const v = await payViewer(this.prisma, this.tenantPrisma, user);
     requireSelf(v);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      await payScope(tx, await entitiesFor(tx, c, v, 'payroll.file.view'));
+      await payScope(tx, await this.downloadable(tx, c, v));
       const l = await tx.exchangeFileLink.findFirst({ where: { organizationId: c.organizationId, tokenHash: tokenHash(token) } });
       if (!l || l.userId !== v.userId || l.usedAt || l.expiresAt < new Date()) throw new NotFoundException('This link has been used or has expired. Ask for a new one.');
       const used = await tx.exchangeFileLink.updateMany({ where: { id: l.id, usedAt: null }, data: { usedAt: new Date() } });

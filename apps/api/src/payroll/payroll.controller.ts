@@ -251,14 +251,14 @@ export class PayrollController {
 
   @Post('files/:id/link')
   @HttpCode(200)
-  @RequirePermissions('payroll.file.view')
+  @RequireAnyPermission('payroll.file.view', 'statutory.filing.download')
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   link(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.files.link(ctx, this.user(req), id);
   }
 
   @Get('file-downloads/:token')
-  @RequirePermissions('payroll.file.view')
+  @RequireAnyPermission('payroll.file.view', 'statutory.filing.download')
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   async download(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('token') token: string) {
     return file(res, await this.files.download(ctx, this.user(req), token.slice(0, 100)));

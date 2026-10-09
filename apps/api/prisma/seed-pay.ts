@@ -68,11 +68,19 @@ export const PAY_PERMISSIONS = [
   // Batch 5e (also in the payroll_5e migration).
   { key: 'tax.workspace.view', description: "See employees' tax workspaces, declarations and tax sheets for the legal entities in scope" },
   { key: 'tax.proof.verify', description: "Verify tax proofs line by line, record PAN status and perquisites (never one's own)" },
+  // Batch 5f (also in the payroll_5f migration).
+  { key: 'statutory.filing.view', description: 'See the statutory hub, filings, challans, returns and registers of the legal entities in scope' },
+  { key: 'statutory.filing.generate', description: 'Generate PF, ESI, PT and LWF files, supplementary filings and TDS returns' },
+  { key: 'statutory.filing.download', description: "Download statutory files (each download is recorded with the file's hash)" },
+  { key: 'statutory.filing.mark_filed', description: 'Record a filing as uploaded and filed, which locks the month (needs a fresh second sign-in step)' },
+  { key: 'statutory.challan.manage', description: 'Prepare TDS challans and record deposits' },
+  { key: 'statutory.register.sign', description: 'Freeze and sign statutory registers, and issue the year-end tax certificates in bulk (needs a fresh second sign-in step)' },
+  { key: 'statutory.advisory.review', description: 'Review labour-law advisories for the legal entities in scope' },
   { key: 'payroll.ledger.manage', description: 'Map pay lines to ledger accounts (company default, or per legal entity or cost centre)' },
   { key: 'tax.regime.override', description: "Change an employee's tax regime after the cut-off, with a reason" },
 ];
 export const PAYROLL_APPROVER = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', 'payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve'];
-export const PAYROLL_ADMIN_5A = ['employee.change.manage', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view', 'payroll.setup.manage', 'payroll.statutory.setup', 'payroll.component.manage', 'payroll.template.manage', 'payroll.import.run', 'payroll.run.view', 'payroll.run.prepare', 'payroll.input.manage', 'payroll.hold.manage', 'payroll.loan.manage', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.generate', 'payroll.payment.record', 'payroll.payslip.publish', 'payroll.query.handle', 'tax.workspace.view', 'tax.proof.verify', 'tax.regime.override', 'payroll.ledger.manage'];
+export const PAYROLL_ADMIN_5A = ['employee.change.manage', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view', 'payroll.setup.manage', 'payroll.statutory.setup', 'payroll.component.manage', 'payroll.template.manage', 'payroll.import.run', 'payroll.run.view', 'payroll.run.prepare', 'payroll.input.manage', 'payroll.hold.manage', 'payroll.loan.manage', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.generate', 'payroll.payment.record', 'payroll.payslip.publish', 'payroll.query.handle', 'tax.workspace.view', 'tax.proof.verify', 'tax.regime.override', 'payroll.ledger.manage', 'statutory.filing.view', 'statutory.filing.generate', 'statutory.filing.download', 'statutory.challan.manage'];
 export const FINANCE_APPROVER = ['org:view', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.release'];
 
 export async function seedPay(tx: Tx, organizationId: string, passwordHash: string) {

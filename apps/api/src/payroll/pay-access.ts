@@ -55,6 +55,14 @@ export const PAY_KEYS = [
   'tax.regime.override',
   // GP-PAY-1 ledger mapping.
   'payroll.ledger.manage',
+  // Batch 5f.
+  'statutory.filing.view',
+  'statutory.filing.generate',
+  'statutory.filing.download',
+  'statutory.filing.mark_filed',
+  'statutory.challan.manage',
+  'statutory.register.sign',
+  'statutory.advisory.review',
 ] as const;
 export type PayKey = (typeof PAY_KEYS)[number];
 
