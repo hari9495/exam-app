@@ -489,31 +489,6 @@ describe('MeSecurityScreen', () => {
     expect(await screen.findByText(/Password changed/)).toBeInTheDocument();
   });
 
-  it('5d-D3: sets the payslip password after the sign-in password, never the same one; removes it after a confirm', async () => {
-    const onSet = vi.fn().mockResolvedValue(undefined);
-    const onRemove = vi.fn().mockResolvedValue(undefined);
-    const { rerender } = render(<Me onChangePassword={vi.fn()} payslipPassword={{ set: false, setAt: null }} onSetPayslipPassword={onSet} onRemovePayslipPassword={onRemove} />);
-    expect(screen.getByText(/in the app only/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Set payslip password' }));
-    await userEvent.type(screen.getByLabelText(/^Your sign-in password/), 'Passw0rd!2026');
-    await userEvent.type(screen.getByLabelText(/^Payslip password(?! again)/, { selector: 'input' }), 'Passw0rd!2026');
-    await userEvent.type(screen.getByLabelText(/^Payslip password again/), 'Passw0rd!2026');
-    await userEvent.click(screen.getByRole('button', { name: 'Save payslip password' }));
-    expect(await screen.findByText(/Use a payslip password that is different/)).toBeInTheDocument();
-    expect(onSet).not.toHaveBeenCalled();
-    await userEvent.clear(screen.getByLabelText(/^Payslip password(?! again)/, { selector: 'input' }));
-    await userEvent.clear(screen.getByLabelText(/^Payslip password again/));
-    await userEvent.type(screen.getByLabelText(/^Payslip password(?! again)/, { selector: 'input' }), 'Pay-slip-77');
-    await userEvent.type(screen.getByLabelText(/^Payslip password again/), 'Pay-slip-77');
-    await userEvent.click(screen.getByRole('button', { name: 'Save payslip password' }));
-    expect(onSet).toHaveBeenCalledWith('Pay-slip-77', 'Passw0rd!2026');
-    rerender(<Me onChangePassword={vi.fn()} payslipPassword={{ set: true, setAt: '2026-10-09T10:00:00Z' }} onSetPayslipPassword={onSet} onRemovePayslipPassword={onRemove} />);
-    expect(screen.getByRole('button', { name: 'Change payslip password' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Remove payslip password' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Remove password' }));
-    expect(onRemove).toHaveBeenCalled();
-  });
-
   it('verifies a mobile number by text', async () => {
     const onSendMobileCode = vi.fn().mockResolvedValue('+919845012345');
     const onVerifyMobile = vi.fn().mockResolvedValue(undefined);

@@ -153,16 +153,3 @@ export class QueryListDto {
   status?: 'open' | 'answered' | 'closed';
 }
 
-/** 5d-D3: the employee's own password for emailed payslips. */
-export class PayslipPasswordDto {
-  @IsString()
-  @MinLength(8)
-  @MaxLength(64)
-  password!: string;
-
-  /** The sign-in password, asked first when the person has one. */
-  @IsOptional()
-  @IsString()
-  @MaxLength(1024)
-  currentPassword?: string;
-}

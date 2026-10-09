@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Put, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -10,7 +10,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { ConfirmDto, DisbursementDto, ExpediteBankDto, GenerateBankFileDto, PaymentModeDto, PaymentResultsDto, PayslipPasswordDto, QueryListDto, QueryRaiseDto, QueryUpdateDto } from './dto-5d';
+import { ConfirmDto, DisbursementDto, ExpediteBankDto, GenerateBankFileDto, PaymentModeDto, PaymentResultsDto, QueryListDto, QueryRaiseDto, QueryUpdateDto } from './dto-5d';
 import { PayoutService } from './payout.service';
 import { PayslipsService } from './payslips.service';
 
@@ -138,21 +138,12 @@ export class Payroll5dController {
     return new StreamableFile(out.file);
   }
 
-  /** 5d-D3: the person's own password for emailed payslips (My security); only whether it is set is ever shown. */
-  @Get('me/payslip-password')
-  passwordStatus(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.payslips.passwordStatus(ctx, this.user(req));
-  }
-
-  @Put('me/payslip-password')
+  /** 5e-D1: the link in the payslip email opens that payslip for the person it was sent to, once signed in. */
+  @Post('me/payslip-links/:token/open')
+  @HttpCode(200)
   @Throttle(STRICT_AUTH_THROTTLE)
-  setPassword(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PayslipPasswordDto) {
-    return this.payslips.setPassword(ctx, this.user(req), dto.password, dto.currentPassword);
-  }
-
-  @Delete('me/payslip-password')
-  removePassword(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.payslips.removePassword(ctx, this.user(req));
+  openLink(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('token') token: string) {
+    return this.payslips.openEmailLink(ctx, this.user(req), token.slice(0, 100));
   }
 
   @Post('me/payslips/:id/queries')

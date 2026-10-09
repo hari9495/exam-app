@@ -391,32 +391,7 @@ describe('Payroll batch 5d', () => {
     ).toMatchObject({ runStatus: 'paid' });
   });
 
-  it('5d-D3: the payslip password is the employee’s own (sign-in password first, never reused), kept as a hash only they can read', async () => {
-    expect((await api('emp1', 'get', '/payroll/me/payslip-password').expect(200)).body).toEqual({ set: false, setAt: null });
-    await api('emp1', 'put', '/payroll/me/payslip-password').send({ password: 'Pay-slip-77', currentPassword: 'wrong-one' }).expect(403);
-    await api('emp1', 'put', '/payroll/me/payslip-password').send({ password: 'Pay-slip-77' }).expect(403);
-    expect((await api('emp1', 'put', '/payroll/me/payslip-password').send({ password: PASSWORD, currentPassword: PASSWORD }).expect(400)).body.message).toMatch(/different from your sign-in password/);
-    await api('emp1', 'put', '/payroll/me/payslip-password').send({ password: 'short', currentPassword: PASSWORD }).expect(400);
-    await api('emp1', 'put', '/payroll/me/payslip-password').send({ password: 'Pay-slip-77', currentPassword: PASSWORD }).expect(200);
-    expect((await api('emp1', 'get', '/payroll/me/payslip-password').expect(200)).body.set).toBe(true);
-    const as = (who: Who) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false, userId: users[who] } as TenantContext, (tx) => tx.payslipPassword.findMany());
-    const own = await as('emp1');
-    expect(own).toHaveLength(1);
-    expect(own[0].passwordHash.startsWith('$argon2id$')).toBe(true);
-    expect(own[0].passwordHash).not.toContain('Pay-slip-77');
-    expect(await as('emp2')).toEqual([]);
-    // Security review: a session switch set by the app role opens nothing.
-    expect(
-      await tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false, userId: users.emp2 } as TenantContext, async (tx) => {
-        await tx.$executeRaw`SELECT set_config('app.payslip_password_lookup', 'on', true)`;
-        return tx.payslipPassword.count();
-      }),
-    ).toBe(0);
-    expect(await as('payAdmin')).toEqual([]);
-    // emp2 sets one and removes it again.
-    await api('emp2', 'put', '/payroll/me/payslip-password').send({ password: 'Other-pass-1', currentPassword: PASSWORD }).expect(200);
-    expect((await api('emp2', 'delete', '/payroll/me/payslip-password').expect(200)).body).toEqual({ set: false });
-    // The company turns payslip email on for the entity.
+  it('5e-D1: the company turns payslip email on (a link to the in-app payslip, never a PDF)', async () => {
     await inA((tx) => tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'legal_entity', scopeId: ids.entity, key: 'payroll.payslip_email', value: 'on' } }));
   });
 
@@ -445,9 +420,18 @@ describe('Payroll batch 5d', () => {
           .send({ confirmation: { phrase: 'PUBLISH 3', impact: [] } })
           .expect(200)
       ).body,
-    ).toMatchObject({ publishedPeople: 3, emailed: { sent: 0, waitingForDecision: 1, inAppOnly: 2 } });
-    // Never the date of birth, and no PDF goes by email until the 5d-D3 question is answered.
-    expect(sendMock.mock.calls.filter(([m]) => (m as { attachments?: unknown[] }).attachments?.length)).toEqual([]);
+    ).toMatchObject({ publishedPeople: 3, emailed: { sent: 3, noEmail: 0 } });
+    // 5e-D1: a link, never a PDF; no pay figures in the email; the link opens that payslip for that person only, once signed in.
+    const mails = sendMock.mock.calls.map(([m]) => m as { to: string; html: string; attachments?: unknown[] });
+    expect(mails.filter((m) => m.attachments?.length)).toEqual([]);
+    const mail1 = mails.find((m) => m.to === `emp1@pay5d-${run}.test` && m.html.includes('open='))!;
+    expect(mails.filter((m) => m.html.includes('open='))).toHaveLength(3);
+    expect(mail1.html).not.toMatch(/₹|Rs\.?\s?\d|\d{1,3}(,\d{2,3})+/);
+    const linkToken = /open=([A-Za-z0-9_-]+)/.exec(mail1.html)![1];
+    await api('emp2', 'post', `/payroll/me/payslip-links/${linkToken}/open`).expect(404);
+    expect((await api('emp1', 'post', `/payroll/me/payslip-links/${linkToken}/open`).expect(200)).body).toMatchObject({ month });
+    // A view link is not a PDF download link.
+    await api('emp1', 'get', `/payroll/payslip-downloads/${linkToken}`).expect(404);
     await api('payAdmin', 'post', `/payroll/runs/${ids.run}/publish`)
       .send({ confirmation: { phrase: 'PUBLISH 3', impact: [] } })
       .expect(409);

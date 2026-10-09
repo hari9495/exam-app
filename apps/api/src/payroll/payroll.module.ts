@@ -31,7 +31,7 @@ import { PayPeriodsService } from './periods.service';
 // batch 5d: pay-out and payslips (PAY-4.01 … PAY-4.06). Time imports it for the
 // reopen request (the step-4 unlock became it) and nothing here depends on time's services.
 @Module({
-  imports: [AuditModule, CryptoModule, StorageModule, WorkflowModule, NotificationsModule, AuthModule, EmployeeHistoryModule],
+  imports: [AuditModule, CryptoModule, StorageModule, WorkflowModule, NotificationsModule, EmailModule, AuthModule, EmployeeHistoryModule],
   controllers: [PayrollController, PublicPayController, Payroll5bController, Payroll5cController, Payroll5dController],
   providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayRunsService, PayInputsService, PayoutService, PayslipsService, PayrollJobs],
   exports: [PayPeriodsService, PayDocumentsService, ExchangeFilesService],
