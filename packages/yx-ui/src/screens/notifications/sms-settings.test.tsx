@@ -148,10 +148,16 @@ describe('accountInput', () => {
     httpConfig: JSON.stringify({ url: 'https://gw.example.in/send', bodyTemplate: 'k={secret.key}&m={message}' }),
     twilioSid: '',
     twilioFrom: '',
+    simulate: '' as const,
     secrets: { key: 'typed-now' },
     template: { dltTemplateId: '1107000000000000001', body: '{#var#} is your code. -KAVERI', variables: ['code' as const], status: 'approved' as const },
   };
   const problems = (over: object, account = null) => accountInput({ ...base, ...over }, account).errors.map((e) => e.message);
+
+  it("keeps a development account's chosen failure, and sends none when it works", () => {
+    expect(accountInput({ ...base, provider: 'dev', simulate: 'unavailable' }, null).input?.config).toEqual({ simulate: 'unavailable' });
+    expect(accountInput({ ...base, provider: 'dev' }, null).input?.config).toEqual({});
+  });
 
   it('builds the request from a valid draft', () => {
     expect(accountInput(base, null).input).toMatchObject({ provider: 'http', status: 'active', secrets: { key: 'typed-now' }, config: { url: 'https://gw.example.in/send' } });

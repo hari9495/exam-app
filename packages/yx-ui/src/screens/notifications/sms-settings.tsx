@@ -91,6 +91,8 @@ interface Draft {
   httpConfig: string;
   twilioSid: string;
   twilioFrom: string;
+  /** Development accounts only: fail on purpose, to try failover. */
+  simulate: '' | 'rejected' | 'unavailable' | 'unknown';
   secrets: Record<string, string>;
   template: SmsTemplate;
 }
@@ -109,6 +111,7 @@ function draftOf(account: SmsAccount | null): Draft {
     httpConfig: account?.provider === 'http' ? JSON.stringify(visible, null, 2) : '',
     twilioSid: String(account?.config.accountSid ?? ''),
     twilioFrom: String(account?.config.from ?? ''),
+    simulate: (account?.provider === 'dev' ? (account.config.simulate as Draft['simulate']) : undefined) ?? '',
     secrets: {},
     template: account?.otpTemplate ?? EMPTY_TEMPLATE,
   };
@@ -143,6 +146,8 @@ export function accountInput(d: Draft, account: SmsAccount | null): { input: Sms
     if (!d.twilioSid.trim()) errors.push({ fieldId: 'sms-twilio-sid', message: 'Enter the Account SID' });
     if (!d.twilioFrom.trim()) errors.push({ fieldId: 'sms-twilio-from', message: 'Enter the sending number' });
     if (!set.has('authToken') && !d.secrets.authToken) errors.push({ fieldId: 'sms-secret-authToken', message: 'Type the auth token' });
+  } else if (d.simulate) {
+    config = { simulate: d.simulate };
   }
 
   const t = d.template;
@@ -314,6 +319,24 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
               <TextField value={draft.twilioFrom} onChange={(twilioFrom) => set({ twilioFrom })} placeholder="+1 555 010 0000" />
             </FormField>
             <SecretField id="sms-secret-authToken" label="Auth token" name="authToken" set={secretsSet.has('authToken')} value={draft.secrets.authToken ?? ''} onChange={(v) => set({ secrets: { ...draft.secrets, authToken: v } })} />
+          </FormSection>
+        )}
+
+        {draft.provider === 'dev' && (
+          <FormSection title="Development" description="Never sends. To try failover, make this account fail on purpose.">
+            <FormField label="Result">
+              <Segment
+                label="Result"
+                options={[
+                  { value: '', label: 'Works' },
+                  { value: 'rejected', label: 'Refused' },
+                  { value: 'unavailable', label: 'Unavailable' },
+                  { value: 'unknown', label: 'Error' },
+                ]}
+                value={draft.simulate}
+                onChange={(simulate) => set({ simulate })}
+              />
+            </FormField>
           </FormSection>
         )}
 
