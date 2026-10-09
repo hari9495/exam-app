@@ -104,6 +104,8 @@ describe('PermissionsGuard', () => {
     expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
   });
 
+  // Founder decision 8 Oct 2026: a profile replaces the role for everyone EXCEPT a System Admin (org_admin), who keeps
+  // the admin keys and gains the profile's (covered in packages/shared permission-grants.spec).
   describe('assigned permission profile (REPLACES the role, not additive)', () => {
     it('allows access when the profile grants the required key, even though the role default lacks it', async () => {
       const reflector = { get: jest.fn().mockReturnValue(['candidate:manage']) } as unknown as Reflector;
@@ -133,7 +135,7 @@ describe('PermissionsGuard', () => {
       const guard = new PermissionsGuard(reflector, prisma as any, tenantPrisma as any);
 
       await expect(
-        guard.canActivate(mockContext({ role: 'org_admin', organizationId: 'org-1', permissionProfileId: 'profile-1' })),
+        guard.canActivate(mockContext({ role: 'recruiter', organizationId: 'org-1', permissionProfileId: 'profile-1' })),
       ).rejects.toThrow(ForbiddenException);
       expect(prisma.rolePermission.findMany).not.toHaveBeenCalled();
     });
@@ -148,7 +150,7 @@ describe('PermissionsGuard', () => {
 
       await expect(
         guard.canActivate(
-          mockContext({ role: 'org_admin', organizationId: 'org-1', permissionProfileId: 'deleted-profile' }),
+          mockContext({ role: 'recruiter', organizationId: 'org-1', permissionProfileId: 'deleted-profile' }),
         ),
       ).rejects.toThrow(ForbiddenException);
       expect(prisma.rolePermission.findMany).not.toHaveBeenCalled();
