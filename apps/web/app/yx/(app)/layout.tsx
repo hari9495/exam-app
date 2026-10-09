@@ -89,6 +89,16 @@ const REOPEN_REQUESTS: WorkspaceLink = { id: 'reopen-requests', label: 'Reopen r
 const PAY_DOCUMENTS: WorkspaceLink = { id: 'pay-documents', label: 'Pay documents', href: '/yx/payroll/documents', group: 'Payroll' };
 const PAY_FILES: WorkspaceLink = { id: 'pay-files', label: 'Payroll files', href: '/yx/payroll/files', group: 'Payroll' };
 const PAY_AUDIT: WorkspaceLink = { id: 'pay-audit', label: 'Audit log', href: '/yx/payroll/audit', group: 'Payroll' };
+// Batch 5b: set-up (payroll.setup.manage / payroll.statutory.setup), structures, compensation and imports.
+const PAY_SETUP: WorkspaceLink = { id: 'pay-setup', label: 'Payroll set-up', href: '/yx/payroll/setup', group: 'Payroll' };
+const PAY_GROUPS: WorkspaceLink = { id: 'pay-groups', label: 'Pay groups', href: '/yx/payroll/pay-groups', group: 'Payroll' };
+const PAY_COMPONENTS: WorkspaceLink = { id: 'pay-components', label: 'Component library', href: '/yx/payroll/components', group: 'Payroll' };
+const PAY_TEMPLATES: WorkspaceLink = { id: 'pay-templates', label: 'Salary templates', href: '/yx/payroll/templates', group: 'Payroll' };
+const PAY_COMPENSATION: WorkspaceLink = { id: 'pay-compensation', label: 'Compensation', href: '/yx/payroll/compensation', group: 'Payroll' };
+const PAY_LAYOUT: WorkspaceLink = { id: 'pay-layout', label: 'Payslip layout', href: '/yx/payroll/payslip-layout', group: 'Payroll' };
+const PAY_RULES: WorkspaceLink = { id: 'pay-rules', label: 'Statutory rules', href: '/yx/payroll/statutory-rules', group: 'Payroll' };
+const PAY_COVERAGE: WorkspaceLink = { id: 'pay-coverage', label: 'Statutory coverage', href: '/yx/payroll/coverage', group: 'Payroll' };
+const PAY_IMPORTS: WorkspaceLink = { id: 'pay-imports', label: 'Import old payroll', href: '/yx/payroll/imports', group: 'Payroll' };
 const MY_PAY_DOCUMENTS: WorkspaceLink = { id: 'my-pay-documents', label: 'My pay documents', href: '/yx/me/pay-documents', group: 'Me' };
 
 // Links follow the role; the API still checks every permission (audit:view, org:manage_users,
@@ -205,7 +215,13 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   const periodKeys = perms.has('payroll.period.view') || perms.has('payroll.period.reopen') || perms.has('payroll.period.reopen.approve');
   const payroll = support
     ? []
-    : [...(periodKeys ? [PAY_PERIODS, REOPEN_REQUESTS] : []), ...(perms.has('payroll.document.view') ? [PAY_DOCUMENTS] : []), ...(perms.has('payroll.file.view') ? [PAY_FILES] : []), ...(perms.has('audit.view') ? [PAY_AUDIT] : [])];
+    : [...(periodKeys ? [PAY_PERIODS, REOPEN_REQUESTS] : []), ...(perms.has('payroll.document.view') ? [PAY_DOCUMENTS] : []), ...(perms.has('payroll.file.view') ? [PAY_FILES] : []), ...(perms.has('audit.view') ? [PAY_AUDIT] : []),
+        ...(perms.has('payroll.setup.manage') || perms.has('payroll.statutory.setup') ? [PAY_SETUP] : []),
+        ...(perms.has('payroll.setup.manage') ? [PAY_GROUPS, PAY_LAYOUT, PAY_RULES, PAY_COVERAGE] : []),
+        ...(perms.has('payroll.component.manage') ? [PAY_COMPONENTS] : []),
+        ...(perms.has('payroll.template.manage') ? [PAY_TEMPLATES] : []),
+        ...(perms.has('employee.salary.manage') ? [PAY_COMPENSATION] : []),
+        ...(perms.has('payroll.import.run') ? [PAY_IMPORTS] : [])];
   const links = [...staff, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAY_DOCUMENTS] : []), ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';

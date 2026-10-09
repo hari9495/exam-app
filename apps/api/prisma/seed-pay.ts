@@ -50,7 +50,7 @@ export const PAY_PERMISSIONS = [
   { key: 'platform.statutory.manage', description: 'Draft and publish statutory rule sets (YukthiX staff; the publisher is never the drafter)' },
 ];
 export const PAYROLL_APPROVER = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', 'payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release'];
-export const PAYROLL_ADMIN_5A = ['payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view', 'payroll.setup.manage', 'payroll.statutory.setup', 'payroll.component.manage', 'payroll.template.manage', 'payroll.import.run'];
+export const PAYROLL_ADMIN_5A = ['employee.change.manage', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view', 'payroll.setup.manage', 'payroll.statutory.setup', 'payroll.component.manage', 'payroll.template.manage', 'payroll.import.run'];
 export const FINANCE_APPROVER = ['org:view', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release'];
 
 export async function seedPay(tx: Tx, organizationId: string, passwordHash: string) {
