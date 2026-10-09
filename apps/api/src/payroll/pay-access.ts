@@ -24,7 +24,14 @@ export const PAY_KEYS = [
   'audit.hold.manage',
   'attendance.lock',
   'employee.salary.view',
+  'employee.salary.manage',
   'employee.identity.view',
+  // Batch 5b.
+  'payroll.setup.manage',
+  'payroll.statutory.setup',
+  'payroll.component.manage',
+  'payroll.template.manage',
+  'payroll.import.run',
 ] as const;
 export type PayKey = (typeof PAY_KEYS)[number];
 

@@ -303,7 +303,8 @@ describe('YukthiX platform console (step 3)', () => {
       if (!demo) return; // the seeded demo company holds pay rows; nothing to compare without it
       const count = (supportSessionId: string | null) =>
         tenantPrisma.forTenant({ organizationId: demo.id, isSuperAdmin: false, supportSessionId }, async (tx) => ({
-          pay: await tx.compensation.count(),
+          // Pay rows also sit behind the pay guard (5a-D4): open it to every entity, as payroll staff would.
+          pay: await tx.$executeRaw`SELECT set_config('app.pay_entities', (SELECT '{' || string_agg(id::text, ',') || '}' FROM legal_entities), true)`.then(() => tx.compensation.count()),
           ids: await tx.employeeIdentifiers.count(),
           bank: await tx.employeeBankAccount.count(),
           people: await tx.employee.count(),

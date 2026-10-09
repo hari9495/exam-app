@@ -1,0 +1,457 @@
+{
+  "note": "State minimum-wage tables (founder decision 5b-D1, 9 Oct 2026). Figures copied from the official notifications named in each set, described in our own words; every set is marked verify until the compliance owner checks it. Loaded through the console flow: drafted by one YukthiX staff member, published by another (scripts/load-min-wages.ts, prisma/seed.ts). States the demo companies use but with no reachable official current source are listed in missing.",
+  "missing": [
+    {
+      "state": "IN-UP",
+      "why": "The UP Labour Department site (uplabour.gov.in, Minimum Wages and Related VDA) publishes VDA orders up to early 2025 only; no in-force 2026 basic rates or VDA for the textile or general employments were reachable. Load when the compliance owner has the current order."
+    },
+    {
+      "state": "IN-TN",
+      "employment": "food_processing",
+      "why": "The Hosur plant would follow the food-processing schedule (G.O.(2D) No.73, 10 Sep 2024); not loaded in this batch."
+    }
+  ],
+  "ruleSets": [
+    {
+      "statute": "IN.MW",
+      "jurisdiction": "IN-KA",
+      "version": "KA-SHOPS-2026-27",
+      "validFrom": "2026-04-01",
+      "validTo": "2027-03-31",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Karnataka, shops and commercial establishments: notification KAE 20 LMW 2017 of 30 Dec 2017 (gazette 29 Mar 2018), with the VDA for 1 Apr 2026 to 31 Mar 2027 (cost of living index 10328), as published by the Karnataka Labour Department (karmikaspandana.karnataka.gov.in).",
+      "values": {
+        "kind": "min_wage_table",
+        "employment": "shops_commercial",
+        "dailyDivisor": 26,
+        "notification": {
+          "number": "KAE 20 LMW 2017",
+          "date": "2017-12-30",
+          "gazette": "2018-03-29",
+          "period": "2026-04-01 to 2027-03-31",
+          "url": "https://karmikaspandana.karnataka.gov.in/uploads/media_to_upload1774351947.pdf",
+          "sha256": "72621837eede1fb0405a64e2d4e30df07b14cb813ff163e5f6ab996031e8d25e"
+        },
+        "zones": [
+          {
+            "code": "1",
+            "description": "Notified areas of Bruhat Bengaluru Mahanagara Palike"
+          },
+          {
+            "code": "2",
+            "description": "Notified areas of the other city corporations"
+          },
+          {
+            "code": "3",
+            "description": "District headquarters not in zones 1 and 2"
+          },
+          {
+            "code": "4",
+            "description": "Everywhere else in the state"
+          }
+        ],
+        "rates": [
+          {
+            "zone": "1",
+            "skill": "manager",
+            "description": "Manager, personnel officer, marketing manager, office supervisor and similar posts",
+            "basicMonthly": "16423.00",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "20972.20"
+          },
+          {
+            "zone": "2",
+            "skill": "manager",
+            "description": "Manager, personnel officer, marketing manager, office supervisor and similar posts",
+            "basicMonthly": "15688.00",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "20237.20"
+          },
+          {
+            "zone": "3",
+            "skill": "manager",
+            "description": "Manager, personnel officer, marketing manager, office supervisor and similar posts",
+            "basicMonthly": "14989.00",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "19538.20"
+          },
+          {
+            "zone": "4",
+            "skill": "manager",
+            "description": "Manager, personnel officer, marketing manager, office supervisor and similar posts",
+            "basicMonthly": "14323.00",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "18872.20"
+          },
+          {
+            "zone": "1",
+            "skill": "highly_skilled",
+            "description": "Highly skilled: pharmacist, chemist, technical supervisor, assistant manager, senior accountant and similar",
+            "basicMonthly": "15423.40",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "19972.60"
+          },
+          {
+            "zone": "2",
+            "skill": "highly_skilled",
+            "description": "Highly skilled: pharmacist, chemist, technical supervisor, assistant manager, senior accountant and similar",
+            "basicMonthly": "14688.95",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "19238.15"
+          },
+          {
+            "zone": "3",
+            "skill": "highly_skilled",
+            "description": "Highly skilled: pharmacist, chemist, technical supervisor, assistant manager, senior accountant and similar",
+            "basicMonthly": "13989.48",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "18538.68"
+          },
+          {
+            "zone": "4",
+            "skill": "highly_skilled",
+            "description": "Highly skilled: pharmacist, chemist, technical supervisor, assistant manager, senior accountant and similar",
+            "basicMonthly": "13323.31",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "17872.51"
+          },
+          {
+            "zone": "1",
+            "skill": "skilled",
+            "description": "Skilled: salespeople, technicians and mechanics, senior clerk, cashier, stenographer, receptionist, heavy-vehicle driver and similar",
+            "basicMonthly": "14021.27",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "18570.47"
+          },
+          {
+            "zone": "2",
+            "skill": "skilled",
+            "description": "Skilled: salespeople, technicians and mechanics, senior clerk, cashier, stenographer, receptionist, heavy-vehicle driver and similar",
+            "basicMonthly": "13353.59",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "17902.79"
+          },
+          {
+            "zone": "3",
+            "skill": "skilled",
+            "description": "Skilled: salespeople, technicians and mechanics, senior clerk, cashier, stenographer, receptionist, heavy-vehicle driver and similar",
+            "basicMonthly": "12717.71",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "17266.91"
+          },
+          {
+            "zone": "4",
+            "skill": "skilled",
+            "description": "Skilled: salespeople, technicians and mechanics, senior clerk, cashier, stenographer, receptionist, heavy-vehicle driver and similar",
+            "basicMonthly": "12112.10",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "16661.30"
+          },
+          {
+            "zone": "1",
+            "skill": "semi_skilled",
+            "description": "Semi-skilled: bill and booking clerks, godown keeper, junior clerk, computer and data-entry operator, typist, light-vehicle driver and similar",
+            "basicMonthly": "12746.61",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "17295.81"
+          },
+          {
+            "zone": "2",
+            "skill": "semi_skilled",
+            "description": "Semi-skilled: bill and booking clerks, godown keeper, junior clerk, computer and data-entry operator, typist, light-vehicle driver and similar",
+            "basicMonthly": "12139.63",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "16688.83"
+          },
+          {
+            "zone": "3",
+            "skill": "semi_skilled",
+            "description": "Semi-skilled: bill and booking clerks, godown keeper, junior clerk, computer and data-entry operator, typist, light-vehicle driver and similar",
+            "basicMonthly": "11561.55",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "16110.75"
+          },
+          {
+            "zone": "4",
+            "skill": "semi_skilled",
+            "description": "Semi-skilled: bill and booking clerks, godown keeper, junior clerk, computer and data-entry operator, typist, light-vehicle driver and similar",
+            "basicMonthly": "11011.00",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "15560.20"
+          },
+          {
+            "zone": "1",
+            "skill": "unskilled",
+            "description": "Unskilled: messenger, attender, watchman, office boy, peon, helper, sweeper, general workers and similar",
+            "basicMonthly": "11587.83",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "16137.03"
+          },
+          {
+            "zone": "2",
+            "skill": "unskilled",
+            "description": "Unskilled: messenger, attender, watchman, office boy, peon, helper, sweeper, general workers and similar",
+            "basicMonthly": "11036.03",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "15585.23"
+          },
+          {
+            "zone": "3",
+            "skill": "unskilled",
+            "description": "Unskilled: messenger, attender, watchman, office boy, peon, helper, sweeper, general workers and similar",
+            "basicMonthly": "10510.50",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "15059.70"
+          },
+          {
+            "zone": "4",
+            "skill": "unskilled",
+            "description": "Unskilled: messenger, attender, watchman, office boy, peon, helper, sweeper, general workers and similar",
+            "basicMonthly": "10010.00",
+            "vdaMonthly": "4549.20",
+            "totalMonthly": "14559.20"
+          }
+        ],
+        "notes": "A later uniform revision of Karnataka minimum wages (May 2026) is reported to be under legal challenge; the compliance owner confirms which notification applies."
+      },
+      "golden": [
+        {
+          "name": "Zone 1, highly skilled: 15,423.40 + VDA 4,549.20",
+          "fn": "min_wage_table",
+          "input": {
+            "zone": "1",
+            "skill": "highly_skilled"
+          },
+          "expected": {
+            "monthly": "19972.60"
+          }
+        },
+        {
+          "name": "Zone 4 with no skill known: the lowest class (unskilled)",
+          "fn": "min_wage_table",
+          "input": {
+            "zone": "4"
+          },
+          "expected": {
+            "monthly": "14559.20",
+            "skill": "unskilled"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.MW",
+      "jurisdiction": "IN-TN",
+      "version": "TN-SHOPS-GO65-2024",
+      "validFrom": "2024-08-20",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Tamil Nadu, shops and commercial establishments: G.O.(2D) No.65, Labour Welfare and Skill Development (J1) Department, 20 Aug 2024, confirming the preliminary notification (labour.tn.gov.in). Basic monthly rates; the DA is a separate yearly figure.",
+      "values": {
+        "kind": "min_wage_table",
+        "employment": "shops_commercial",
+        "dailyDivisor": 26,
+        "notification": {
+          "number": "G.O.(2D) No.65",
+          "date": "2024-08-20",
+          "url": "https://labour.tn.gov.in/pdf/GO/GO_65_J1_2024.pdf",
+          "sha256": "4cd015d21e9c5b1ff91789b33a7a50a4e6be419b7e2f8b5b32ec2f74fc040509"
+        },
+        "daRule": {
+          "index": "Average Chennai City consumer price index (2001=100) for the preceding January to December",
+          "basePoints": 161,
+          "perPointMonthly": "40.18",
+          "recalculatedOn": "04-01"
+        },
+        "zones": [
+          {
+            "code": "A",
+            "description": "Corporations and special-grade municipalities"
+          },
+          {
+            "code": "B",
+            "description": "Other municipalities"
+          },
+          {
+            "code": "C",
+            "description": "Townships, town panchayats and cantonments"
+          },
+          {
+            "code": "D",
+            "description": "Everywhere else"
+          }
+        ],
+        "rates": [
+          {
+            "zone": "A",
+            "skill": "class_1",
+            "description": "Manager, sales manager, field officer, development officer, office in-charge; pharmacist and chemist",
+            "basicMonthly": "7390.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "B",
+            "skill": "class_1",
+            "description": "Manager, sales manager, field officer, development officer, office in-charge; pharmacist and chemist",
+            "basicMonthly": "7328.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "C",
+            "skill": "class_1",
+            "description": "Manager, sales manager, field officer, development officer, office in-charge; pharmacist and chemist",
+            "basicMonthly": "7264.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "D",
+            "skill": "class_1",
+            "description": "Manager, sales manager, field officer, development officer, office in-charge; pharmacist and chemist",
+            "basicMonthly": "7214.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "A",
+            "skill": "class_2",
+            "description": "Assistant manager, accountant, supervisor, sales executive, purchaser, store keeper, agent, sales promotion staff",
+            "basicMonthly": "6880.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "B",
+            "skill": "class_2",
+            "description": "Assistant manager, accountant, supervisor, sales executive, purchaser, store keeper, agent, sales promotion staff",
+            "basicMonthly": "6815.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "C",
+            "skill": "class_2",
+            "description": "Assistant manager, accountant, supervisor, sales executive, purchaser, store keeper, agent, sales promotion staff",
+            "basicMonthly": "6753.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "D",
+            "skill": "class_2",
+            "description": "Assistant manager, accountant, supervisor, sales executive, purchaser, store keeper, agent, sales promotion staff",
+            "basicMonthly": "6691.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "A",
+            "skill": "class_3",
+            "description": "Cashier, clerk, typist, stenographer, salesman, sales representative, tradesman, bill writer",
+            "basicMonthly": "6829.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "B",
+            "skill": "class_3",
+            "description": "Cashier, clerk, typist, stenographer, salesman, sales representative, tradesman, bill writer",
+            "basicMonthly": "6753.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "C",
+            "skill": "class_3",
+            "description": "Cashier, clerk, typist, stenographer, salesman, sales representative, tradesman, bill writer",
+            "basicMonthly": "6680.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "D",
+            "skill": "class_3",
+            "description": "Cashier, clerk, typist, stenographer, salesman, sales representative, tradesman, bill writer",
+            "basicMonthly": "6619.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "A",
+            "skill": "class_4",
+            "description": "Bill collector, booking and bill clerk, godown keeper, assistant salesman, accounts assistant, receptionist, tally clerk, security guard, weighman, driver",
+            "basicMonthly": "6767.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "B",
+            "skill": "class_4",
+            "description": "Bill collector, booking and bill clerk, godown keeper, assistant salesman, accounts assistant, receptionist, tally clerk, security guard, weighman, driver",
+            "basicMonthly": "6691.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "C",
+            "skill": "class_4",
+            "description": "Bill collector, booking and bill clerk, godown keeper, assistant salesman, accounts assistant, receptionist, tally clerk, security guard, weighman, driver",
+            "basicMonthly": "6619.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "D",
+            "skill": "class_4",
+            "description": "Bill collector, booking and bill clerk, godown keeper, assistant salesman, accounts assistant, receptionist, tally clerk, security guard, weighman, driver",
+            "basicMonthly": "6553.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "A",
+            "skill": "class_5",
+            "description": "Peon, watchman, shop assistant, helper, packer, attender, delivery and office boys, lift operator, sweeper, gardener; general workers not listed elsewhere",
+            "basicMonthly": "6691.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "B",
+            "skill": "class_5",
+            "description": "Peon, watchman, shop assistant, helper, packer, attender, delivery and office boys, lift operator, sweeper, gardener; general workers not listed elsewhere",
+            "basicMonthly": "6619.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "C",
+            "skill": "class_5",
+            "description": "Peon, watchman, shop assistant, helper, packer, attender, delivery and office boys, lift operator, sweeper, gardener; general workers not listed elsewhere",
+            "basicMonthly": "6541.00",
+            "vdaMonthly": null
+          },
+          {
+            "zone": "D",
+            "skill": "class_5",
+            "description": "Peon, watchman, shop assistant, helper, packer, attender, delivery and office boys, lift operator, sweeper, gardener; general workers not listed elsewhere",
+            "basicMonthly": "6470.00",
+            "vdaMonthly": null
+          }
+        ],
+        "notes": "In force from its gazette publication (date to verify). DA is added on top from the average Chennai CPI (Rs 40.18 a month per point over 161, recalculated every 1 April); the current DA amount is not loaded, so checks compare the basic and say so. Special categories (saloons, photo studios and others) are not loaded."
+      },
+      "golden": [
+        {
+          "name": "Zone A, class 1 basic 7,390 (DA not loaded)",
+          "fn": "min_wage_table",
+          "input": {
+            "zone": "A",
+            "skill": "class_1"
+          },
+          "expected": {
+            "monthly": "7390",
+            "daMissing": true
+          }
+        },
+        {
+          "name": "Zone D, no skill known: the lowest class",
+          "fn": "min_wage_table",
+          "input": {
+            "zone": "D"
+          },
+          "expected": {
+            "monthly": "6470",
+            "skill": "class_5"
+          }
+        }
+      ]
+    }
+  ]
+}

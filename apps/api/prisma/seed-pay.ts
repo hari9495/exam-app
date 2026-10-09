@@ -8,6 +8,12 @@ import { PayFileStore } from '../src/payroll/pay-file-store';
 import { PLATFORM_CHAIN, ZERO_HASH, checkBatch, type ChainRow } from '../src/payroll/audit-chain';
 import { monthRange, todayIn } from '../src/time/time-core';
 import { addDays } from '../src/time/time-maths';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import { PAY_VARIABLES, checkFormula } from '../src/rules-engine/expressions';
+import type { RuleSet } from '../src/statutory/evaluator';
+import { STARTER_COMPONENTS, STARTER_TEMPLATE } from '../src/payroll/starter';
+import { breakup, breakupJson, type ComponentDef } from '../src/payroll/structure';
 
 // Payroll batch 5a demo for Kaveri Foods (M03-BUILD-DESIGN §17.1), in the story world of the YukthiX screens:
 //   - Meena Raghavan (payroll-approver@demo-org.test), Payroll Approver; Neha Joshi (finance@demo-org.test), Finance
@@ -35,9 +41,16 @@ export const PAY_PERMISSIONS = [
   { key: 'audit.view', description: 'Read the audit log and record timelines in scope; Confidential values are masked without the field permission' },
   { key: 'audit.export', description: 'Export the audit log (every export is itself recorded)' },
   { key: 'audit.hold.manage', description: 'Place and release legal holds on audit entries and pay documents' },
+  // Batch 5b (also in the payroll_5b migration).
+  { key: 'payroll.setup.manage', description: 'Set up payroll for the legal entities in scope: pay groups, membership, payslip layout, the statutory rules browser and the coverage monitor' },
+  { key: 'payroll.statutory.setup', description: 'Change statutory registrations, deductor details and legal options of the legal entities in scope (needs a fresh second sign-in step)' },
+  { key: 'payroll.component.manage', description: 'Manage the pay component library and its wage flags' },
+  { key: 'payroll.template.manage', description: 'Build salary templates and their versions' },
+  { key: 'payroll.import.run', description: 'Import opening balances, as-paid lines and previous-employer income for the legal entities in scope' },
+  { key: 'platform.statutory.manage', description: 'Draft and publish statutory rule sets (YukthiX staff; the publisher is never the drafter)' },
 ];
 export const PAYROLL_APPROVER = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', 'payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release'];
-export const PAYROLL_ADMIN_5A = ['payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view'];
+export const PAYROLL_ADMIN_5A = ['employee.change.manage', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view', 'payroll.setup.manage', 'payroll.statutory.setup', 'payroll.component.manage', 'payroll.template.manage', 'payroll.import.run'];
 export const FINANCE_APPROVER = ['org:view', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release'];
 
 export async function seedPay(tx: Tx, organizationId: string, passwordHash: string) {
@@ -55,7 +68,7 @@ export async function seedPay(tx: Tx, organizationId: string, passwordHash: stri
   const engine = new ApprovalsEngine(fake, { notifySystem: async () => undefined } as never, { deliver: async () => undefined } as never);
   new PayPeriodsService(null as never, fake, engine).onModuleInit();
   const files = new PayFileStore(new BlobStorageService(), new OrgSecretsCryptoService());
-  const documents = new PayDocumentsService(null as never, fake, files, new OrgSecretsCryptoService(), null as never, [], null as never);
+  const documents = new PayDocumentsService(null as never, fake, files, new OrgSecretsCryptoService(), null as never, { get: async () => [] }, null as never);
   const exchange = new ExchangeFilesService(null as never, fake, files);
 
   // ---- people ----
@@ -180,4 +193,50 @@ export async function seedAuditAnchor(tx: Tx, organizationId: string) {
   }
   await tx.auditAnchor.create({ data: { organizationId: organizationId === PLATFORM_CHAIN ? null : organizationId, chainKey: organizationId, lastSeq: cursor.seq, lastHash: cursor.hash, rowsChecked: BigInt(n), result: 'ok' } });
   return n;
+}
+
+// Payroll batch 5b demo (M03-BUILD-DESIGN §17.2), idempotent: the India starter library and template (version from the
+// financial year's start, with its sample run), a "Monthly staff" pay group per legal entity with everyone in it, and
+// Kaveri Foods Pvt Ltd's statutory registrations (PF and ESI on, Karnataka PT on, Tamil Nadu PT applied for).
+export async function seedPay5b(tx: Tx, organizationId: string) {
+  const org = { organizationId };
+  // 5b-D1: the minimum-wage zones of the offices (Karnataka zone 1 is BBMP Bengaluru; Tamil Nadu zone A is a corporation).
+  await tx.location.updateMany({ where: { ...org, name: 'Bengaluru head office', minWageZone: null }, data: { minWageZone: '1' } });
+  await tx.location.updateMany({ where: { ...org, name: 'Chennai office', minWageZone: null }, data: { minWageZone: 'A' } });
+  if (await tx.salaryTemplate.findFirst({ where: { ...org, name: STARTER_TEMPLATE.name } })) return;
+  const today = todayIn('Asia/Kolkata');
+  const fy = `${Number(today.slice(5, 7)) >= 4 ? today.slice(0, 4) : Number(today.slice(0, 4)) - 1}-04-01`;
+  const kfpl = await tx.legalEntity.findFirstOrThrow({ where: { ...org, shortName: 'KFPL' } });
+  const tn = await tx.legalEntity.findFirstOrThrow({ where: { ...org, shortName: 'KFPL-TN' } });
+  const suresh = (await tx.user.findFirstOrThrow({ where: { ...org, email: 'payroll@demo-org.test' } })).id;
+
+  await tx.payComponent.createMany({ data: STARTER_COMPONENTS.map(({ statutory, ...s }) => ({ ...org, ...s, taxable: s.taxable ?? true, statutory: statutory ?? null, createdBy: suresh })), skipDuplicates: true });
+  const rows = await tx.payComponent.findMany({ where: org });
+  const components = rows.map((r) => ({ id: r.id, code: r.code, name: r.name, kind: r.kind as ComponentDef['kind'], pfWage: r.pfWage, esiWage: r.esiWage, ptWage: r.ptWage, gratuityWage: r.gratuityWage, bonusWage: r.bonusWage, codeWagePart: r.codeWagePart, codeExclusion: r.codeExclusion, inCtc: r.inCtc, rounding: r.rounding as ComponentDef['rounding'], statutory: r.statutory }));
+  const names = new Set<string>([...PAY_VARIABLES, ...rows.map((r) => r.code)]);
+  const lines = STARTER_TEMPLATE.lines.map((l) => ({ code: l.code, ...checkFormula(l.formula, names) }));
+  const rules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in.json'), 'utf8')) as { ruleSets: RuleSet[] }).ruleSets;
+  const sample = { annualCtc: '726000', state: 'IN-KA', age: 30 };
+  const options = { balancingCode: STARTER_TEMPLATE.balancing, employerPfInCtc: true, employerEsiInCtc: true, gratuityInCtc: false };
+  const b = breakup({ lines, components, options, facts: { on: fy, month: 4, state: sample.state, age: sample.age, pf: true, pfOnActualWage: false, esi: 'by_wage', pwd: false }, rules, ctc: sample.annualCtc });
+  const t = await tx.salaryTemplate.create({ data: { ...org, name: STARTER_TEMPLATE.name, createdBy: suresh } });
+  const byCode = (code: string) => rows.find((r) => r.code === code)!.id;
+  const ver = await tx.salaryTemplateVersion.create({ data: { ...org, templateId: t.id, version: 1, validFrom: day(fy), balancingComponentId: byCode(STARTER_TEMPLATE.balancing), validatedAt: new Date(), sampleInput: sample, sampleResult: breakupJson(b) as unknown as Prisma.InputJsonValue, codeWageFlag: b.codeWageAddBack.gt(0), createdBy: suresh } });
+  await tx.salaryTemplateLine.createMany({ data: lines.map((l, i) => ({ ...org, versionId: ver.id, componentId: byCode(l.code), position: i, formulaText: STARTER_TEMPLATE.lines[i].formula, formulaAst: l.ast as unknown as Prisma.InputJsonValue, dependsOn: l.uses })) });
+
+  for (const e of [kfpl, tn]) {
+    const g = await tx.payGroup.create({ data: { ...org, legalEntityId: e.id, name: 'Monthly staff', cutOffDay: 25, payDay: 0, createdBy: suresh } });
+    const emps = await tx.employment.findMany({ where: { ...org, legalEntityId: e.id, exitedOn: null }, select: { id: true, joinedOn: true } });
+    await tx.payGroupMember.createMany({ data: emps.map((m) => ({ ...org, payGroupId: g.id, employmentId: m.id, validFrom: m.joinedOn, createdBy: suresh })), skipDuplicates: true });
+  }
+  const who = { responsiblePerson: 'Ravi Kaveri', responsibleDesignation: 'Director', updatedBy: suresh };
+  await tx.statutoryRegistration.createMany({
+    data: [
+      { ...org, ...who, legalEntityId: kfpl.id, statute: 'IN.PF', status: 'on', registrationNo: 'KNBNG0045123000', startOn: day('2015-04-01') },
+      { ...org, ...who, legalEntityId: kfpl.id, statute: 'IN.ESI', status: 'on', registrationNo: '53000123450001001', startOn: day('2015-04-01') },
+      { ...org, ...who, legalEntityId: kfpl.id, statute: 'IN.PT', state: 'IN-KA', status: 'on', registrationNo: 'PTEC 1234567', startOn: day('2015-04-01') },
+      { ...org, ...who, legalEntityId: tn.id, statute: 'IN.PT', state: 'IN-TN', status: 'applied_awaited', appliedOn: day(addDays(today, -20)) },
+    ],
+    skipDuplicates: true,
+  });
 }

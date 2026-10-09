@@ -16,3 +16,23 @@ export {
   type VerifyDocumentScreenProps,
   type PayPortalSignInProps,
 } from './documents';
+// Batch 5b (PAY-2.04 … 2.13): payroll set-up, pay groups, the payslip layout, statutory rules and coverage, imports,
+// the component library, salary templates and compensation.
+export * from './types-5b';
+export {
+  PaySetupScreen,
+  PayGroupsScreen,
+  PayslipLayoutLiveScreen,
+  StatutoryRulesScreen,
+  CoverageLiveScreen,
+  PayImportsScreen,
+  EntityPicker,
+  parseCsv,
+  statuteText,
+  type PaySetupScreenProps,
+  type PayGroupsScreenProps,
+  type PayslipLayoutLiveProps,
+  type StatutoryRulesScreenProps,
+  type PayImportsScreenProps,
+} from './setup';
+export { ComponentLibraryLiveScreen, TemplatesLiveScreen, CompensationLiveScreen, BreakupTable, type ComponentLibraryLiveProps, type TemplatesLiveProps, type CompensationLiveProps } from './structures';
