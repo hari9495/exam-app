@@ -267,7 +267,7 @@ export class DeskOrgService {
         const freeHrTaken = Boolean(await tx.sdDesk.findFirst({ where: { organizationId: org, billingClass: 'hrms_included' }, select: { id: true } }));
         const billingClass = src.kind === 'hr' && hrms && !freeHrTaken ? 'hrms_included' : 'service_desk';
         const desk = await tx.sdDesk.create({
-          data: { organizationId: org, key: dto.key, name: dto.name, kind: src.kind, billingClass, privacy: src.privacy, calendarId: src.calendarId, numberPrefix: `${dto.key}-`, attachmentTypes: src.attachmentTypes, attachmentMaxMb: src.attachmentMaxMb, vipRaisesPriority: src.vipRaisesPriority, resolutionRequired: src.resolutionRequired, reopenWindowDays: src.reopenWindowDays, requesterCanReopen: src.requesterCanReopen, autoCloseDays: src.autoCloseDays, createdBy: a.userId },
+          data: { organizationId: org, key: dto.key, name: dto.name, kind: src.kind, billingClass, privacy: src.privacy, calendarId: src.calendarId, numberPrefix: `${dto.key}-`, attachmentTypes: src.attachmentTypes, attachmentMaxMb: src.attachmentMaxMb, vipRaisesPriority: src.vipRaisesPriority, resolutionRequired: src.resolutionRequired, reopenWindowDays: src.reopenWindowDays, requesterCanReopen: src.requesterCanReopen, autoCloseDays: src.autoCloseDays, routingWaitMinutes: src.routingWaitMinutes, createdBy: a.userId },
         });
         const d = { organizationId: org, deskId: desk.id };
         await tx.sdCounter.create({ data: { ...d, nextNumber: 1001 } });

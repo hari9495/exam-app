@@ -60,6 +60,8 @@ export const YX_KEYS = [
   'desk.chat.work',
   'desk.hr_summary.view',
   'desk.ticket.move',
+  // 3b-2 batch 3: leads plan the team and its shifts.
+  'desk.ticket.assign',
   // Step 4 time and leave: HR views in scope, balances, set-up.
   'leave.settings.manage',
   'leave.view',

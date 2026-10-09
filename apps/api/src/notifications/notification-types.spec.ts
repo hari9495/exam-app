@@ -38,6 +38,7 @@ describe('notification catalog', () => {
       'helpdesk.request.stage',
       'helpdesk.rule.notify',
       'helpdesk.rule.failed',
+      'helpdesk.msg.link_ended',
       'time.roster.published',
       'lifecycle.joiner.added',
       'journey.task.assigned',

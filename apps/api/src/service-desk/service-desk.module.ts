@@ -45,6 +45,12 @@ import { DeskChatController, DeskOrgController, MyChatController } from './esm2.
 import { JourneysService } from './journeys.service';
 import { LifecyclesService } from './lifecycles.service';
 import { RecurringService } from './recurring.service';
+import { DeskEsm3Controller, InboundMsgController, MyMessagingController, ReplyLinkController, WidgetPublicController } from './esm3.controller';
+import { MailboxSyncService } from './mailbox-sync.service';
+import { MessagingService } from './messaging.service';
+import { MobileService } from './mobile.service';
+import { TeamService } from './team.service';
+import { WidgetService } from './widget.service';
 
 // M14 Service Desk, phase 3b-1: batch 1 (SD-1.01 … SD-1.08), batch 2 (SD-1.09 … SD-1.17), batch 3 (SD-1.18 …
 // SD-1.23, SD-1.28: email in and out, portals and outside requesters, banners, customers) and batch 4 (SD-1.24 …
@@ -53,6 +59,8 @@ import { RecurringService } from './recurring.service';
 // catalogue, cart and order guides on the shared P18 / P19 / P03 engines, and desk automation rules. Batch 2 (SD-2.06 …
 // SD-2.11, SD-2.13, SD-2.17 … SD-2.19): approval cards (workflow module), documents and e-sign, journeys, starter packs,
 // moves / shares / clone / branches / HR summary, lifecycles, recurring records and sequences, interactions, live chat.
+// Batch 3 (SD-2.20 … SD-2.27): the help widget and mobile SDK sign-in, WhatsApp / SMS / Teams / Slack on a desk, agent
+// mailbox sync, presence / capacity / routing, shifts and the staff forecast, the agent mobile app's API.
 @Module({
   imports: [AuditModule, StorageModule, NotificationsModule, CryptoModule, EmailModule, AuthModule, PlatformModule, OrganizationsModule, RulesEngineModule, WorkflowModule, JwtModule.register({})],
   controllers: [
@@ -81,6 +89,11 @@ import { RecurringService } from './recurring.service';
     DeskOrgController,
     DeskChatController,
     MyChatController,
+    DeskEsm3Controller,
+    MyMessagingController,
+    InboundMsgController,
+    WidgetPublicController,
+    ReplyLinkController,
   ],
   providers: [
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },
@@ -115,6 +128,11 @@ import { RecurringService } from './recurring.service';
     RecurringService,
     ChatService,
     ChatGateway,
+    MessagingService,
+    WidgetService,
+    TeamService,
+    MailboxSyncService,
+    MobileService,
   ],
   // Lifecycle 6a: HR checklist tasks raise their desk requests through the journeys service (founder D1).
   exports: [JourneysService],

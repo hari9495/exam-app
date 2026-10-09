@@ -42,7 +42,8 @@ export default function YxDeskMyTicketPage() {
             {docs.data?.length ? (
               <MyDocumentsCard
                 documents={docs.data}
-                onSign={(doc, typedName) => write(`/my/documents/${encodeURIComponent(doc.id)}/sign`, 'POST', { decision: 'sign', typedName, agree: true })}
+                onSendCode={(doc) => write<{ to: string; minutes: number }>(`/my/documents/${encodeURIComponent(doc.id)}/sign-code`, 'POST')}
+                onSign={(doc, typedName, code) => write(`/my/documents/${encodeURIComponent(doc.id)}/sign`, 'POST', { decision: 'sign', typedName, agree: true, code })}
                 onDecline={(doc, reason) => write(`/my/documents/${encodeURIComponent(doc.id)}/sign`, 'POST', { decision: 'decline', typedName: '', reason })}
               />
             ) : null}

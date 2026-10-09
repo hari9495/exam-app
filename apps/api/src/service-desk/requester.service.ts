@@ -136,6 +136,7 @@ export class RequesterService {
         requestedForPersonId: dto.requestedForPersonId,
         openedByUserId: r.userId,
         channel: 'portal',
+        language: dto.language,
         private: dto.private,
         side: 'requester',
         authorPersonId: personId,
@@ -263,7 +264,7 @@ export class RequesterService {
     t: Ticket,
     personId: string,
     html: string,
-    o: { channel: 'portal' | 'email'; attachmentIds?: string[]; emailMessageId?: string | null; inboundEmailId?: string | null; senderVerified?: boolean },
+    o: { channel: 'portal' | 'email' | 'whatsapp' | 'sms' | 'teams' | 'slack' | 'widget'; attachmentIds?: string[]; emailMessageId?: string | null; inboundEmailId?: string | null; senderVerified?: boolean },
   ): Promise<{ id: string | null; reopened: boolean; followUp: { id: string; number: string } | null }> {
     const org = who.ctx.organizationId;
     if (t.mergedIntoId) throw new ConflictException('This ticket was joined with another one. Reply there.');

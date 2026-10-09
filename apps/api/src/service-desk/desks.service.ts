@@ -6,6 +6,7 @@ import { Tx } from '../org-structure/org-structure.service';
 import { addDays, todayIst } from '../org-structure/org-validation';
 import { isValidZone } from './business-time';
 import { cleanHtml, htmlToText } from './rich-text';
+import { logPresence } from './team.service';
 import { PRIVATE_BY_DEFAULT, STARTER_HOURS, STARTER_PACKS, starterFor, starterPriority } from './starter';
 import { EMPTY_FORM } from '../rules-engine/forms';
 import { DeskActor, activeOn, audit, canSetUp, emit, has, isAgentOn, requireSetUp, requireWork } from './desk-access';
@@ -96,6 +97,7 @@ export class DesksService {
       reopenWindowDays: d.reopenWindowDays,
       requesterCanReopen: d.requesterCanReopen,
       autoCloseDays: d.autoCloseDays,
+      routingWaitMinutes: d.routingWaitMinutes,
       status: d.status,
       version: d.version,
     };
@@ -111,8 +113,8 @@ export class DesksService {
         const freeHrTaken = Boolean(await tx.sdDesk.findFirst({ where: { organizationId: org, billingClass: 'hrms_included' }, select: { id: true } }));
         const billingClass = dto.kind === 'hr' && hrms && !freeHrTaken ? 'hrms_included' : 'service_desk';
         const calendarId = await this.officeHours(tx, a);
-        // DECISION NEEDED: an existing HR desk keeps its privacy (the starter pack only marks its sensitive categories
-        // private); should the pack also make it restricted?
+        // Founder decision 9 Oct 2026: an existing HR desk becomes restricted through the starter pack only after its
+        // admin confirmed what changes (POST desks/:id/starter-pack with restrict).
         // SD-2.09: a new HR desk is restricted (M08: only its agents see its tickets, never a desk admin without a seat).
         const desk = await tx.sdDesk.create({ data: { organizationId: org, key: dto.key, name: dto.name, kind: dto.kind, billingClass, calendarId, privacy: STARTER_PACKS[dto.kind]?.restricted ? 'restricted' : 'standard', numberPrefix: `${dto.key}-`, createdBy: a.userId } });
         const d = { organizationId: org, deskId: desk.id };
@@ -612,9 +614,10 @@ export class DesksService {
     const org = a.ctx.organizationId;
     return this.tx(a, async (tx) => {
       if (!(await tx.person.findFirst({ where: { organizationId: org, id: personId }, select: { id: true } }))) throw new NotFoundException('No such person.');
-      await tx.sdRequesterFlag.upsert({ where: { organizationId_personId: { organizationId: org, personId } }, update: { vip: dto.vip, note: dto.note ?? null, updatedBy: a.userId }, create: { organizationId: org, personId, vip: dto.vip, note: dto.note ?? null, updatedBy: a.userId } });
-      await audit(tx, a, 'desk.requester.vip_changed', 'person', personId, { vip: dto.vip });
-      return { vip: dto.vip };
+      const language = dto.language !== undefined ? { language: dto.language } : {};
+      const row = await tx.sdRequesterFlag.upsert({ where: { organizationId_personId: { organizationId: org, personId } }, update: { vip: dto.vip, note: dto.note ?? null, updatedBy: a.userId, ...language }, create: { organizationId: org, personId, vip: dto.vip, note: dto.note ?? null, updatedBy: a.userId, ...language } });
+      await audit(tx, a, 'desk.requester.vip_changed', 'person', personId, { vip: dto.vip, ...language });
+      return { vip: dto.vip, language: row.language };
     });
   }
 
@@ -640,6 +643,7 @@ export class DesksService {
     const org = a.ctx.organizationId;
     return this.tx(a, async (tx) => {
       const s = await tx.sdAgentStatus.upsert({ where: { organizationId_userId: { organizationId: org, userId: a.userId } }, update: data, create: { organizationId: org, userId: a.userId, ...data } });
+      await logPresence(tx, org, a.userId, dto.status);
       await audit(tx, a, 'desk.agent.status_changed', 'user', a.userId, { status: s.status, awayUntil: s.awayUntil, shift });
       return s;
     });

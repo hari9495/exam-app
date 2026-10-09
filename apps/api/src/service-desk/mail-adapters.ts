@@ -149,6 +149,8 @@ export class GraphPoller implements MailboxPoller {
   constructor(
     private readonly config: GraphConfig,
     private readonly make: (c: GraphConfig) => GraphLike = graphClient,
+    /** SD-2.24: an agent's mailbox reads 'sentitems' too (their own replies in a matched thread). */
+    private readonly folder: 'inbox' | 'sentitems' = 'inbox',
   ) {}
 
   /** Cursor = receivedDateTime of the newest message taken (Graph has no UIDs for app-only polling of a folder). */
@@ -157,7 +159,7 @@ export class GraphPoller implements MailboxPoller {
     const user = encodeURIComponent(this.config.user);
     const since = cursor && !Number.isNaN(Date.parse(cursor)) ? new Date(cursor).toISOString() : new Date(Date.now() - 3_600_000).toISOString();
     const list = await g.getJson<{ value: { id: string; receivedDateTime: string }[] }>(
-      `/users/${user}/mailFolders/inbox/messages?$select=id,receivedDateTime&$orderby=receivedDateTime asc&$top=${BATCH}&$filter=receivedDateTime gt ${since}`,
+      `/users/${user}/mailFolders/${this.folder}/messages?$select=id,receivedDateTime&$orderby=receivedDateTime asc&$top=${BATCH}&$filter=receivedDateTime gt ${since}`,
     );
     const messages: PolledMessage[] = [];
     for (const m of list.value ?? []) messages.push({ id: m.id, raw: await g.getRaw(`/users/${user}/messages/${encodeURIComponent(m.id)}/$value`) });
@@ -197,13 +199,15 @@ export class GmailPoller implements MailboxPoller {
   constructor(
     private readonly config: GmailConfig,
     private readonly make: (c: GmailConfig) => GmailLike = gmailClient,
+    /** SD-2.24: an agent's mailbox reads sent mail too. */
+    private readonly where = 'in:inbox',
   ) {}
 
   /** Cursor = internalDate (ms) of the newest message taken; Gmail's "after:" works in whole seconds. */
   async poll(cursor: string | null): Promise<PollResult> {
     const g = this.make(this.config);
     const sinceMs = cursor && /^\d+$/.test(cursor) ? Number(cursor) : Date.now() - 3_600_000;
-    const ids = await g.list(`in:inbox after:${Math.floor(sinceMs / 1000)}`, BATCH);
+    const ids = await g.list(`${this.where} after:${Math.floor(sinceMs / 1000)}`, BATCH);
     const got: { id: string; raw: Buffer; at: number }[] = [];
     for (const { id } of ids) {
       const m = await g.raw(id);
