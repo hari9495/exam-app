@@ -15,7 +15,7 @@ import { ownOf, reachesPerson } from '../person-access';
 import { dscSigner } from '../signing';
 import { DSC_REVOCATION, DSC_ROOTS, SignatureRefused, verifySignedPdf, type RevocationChecker } from '../signed-pdf';
 import { VERIFY_CODE, referenceNo, registerVerifier, verifyCode, verifyLink } from '../verify-code';
-import { TemplateProblem, fillDocx, templateFields } from './docx';
+import { TemplateProblem, buildDocx, docxBlocks, fillDocx, templateFields } from './docx';
 import { FIELDS, STARTER_LETTERS, letterData, missingFields, sampleData, starterDocx, suggest } from './fields';
 import { PdfConverter, acceptanceCopy, converterFromEnv, previewMark, stampPdf } from './pdf';
 
@@ -137,7 +137,7 @@ export class LettersService implements OnModuleInit {
     return fields;
   }
 
-  private async createTemplate(ctx: TenantContext, user: ScopeUser, input: { letterType: string; name: string; legalEntityId: string | null; requiresApproval: boolean; personSigns: boolean; companyDsc: boolean; source: 'upload' | 'starter'; fileName: string; buf: Buffer }) {
+  private async createTemplate(ctx: TenantContext, user: ScopeUser, input: { letterType: string; name: string; legalEntityId: string | null; requiresApproval: boolean; personSigns: boolean; companyDsc: boolean; source: 'upload' | 'starter' | 'editor'; fileName: string; buf: Buffer }) {
     const v = await this.viewer(user);
     this.requireKey(v, 'letter.template.manage', input.legalEntityId);
     const fields = this.checkTemplate(input.buf);
@@ -159,6 +159,38 @@ export class LettersService implements OnModuleInit {
   uploadTemplate(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; name: string; legalEntityId?: string | null; requiresApproval: boolean; personSigns: boolean; companyDsc?: boolean }, file: { originalname: string; buffer: Buffer } | undefined) {
     if (!file) throw new BadRequestException('Choose a Word (.docx) file.');
     return this.createTemplate(ctx, user, { letterType: dto.letterType, name: dto.name, legalEntityId: dto.legalEntityId ?? null, requiresApproval: dto.requiresApproval, personSigns: dto.personSigns, companyDsc: Boolean(dto.companyDsc), source: 'upload', fileName: file.originalname, buf: file.buffer });
+  }
+
+  /** PPL-29 editor tab: a template written in YukthiX, saved as a new draft version (.docx, no new library). */
+  compose(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; name: string; legalEntityId?: string | null; requiresApproval: boolean; personSigns: boolean; paragraphs: { text: string; bold?: boolean; heading?: boolean }[] }) {
+    if (!dto.paragraphs.length || dto.paragraphs.length > 80) throw new BadRequestException('A letter has 1 to 80 paragraphs.');
+    const buf = buildDocx(dto.paragraphs.map((p) => ({ text: p.text.slice(0, 2000), bold: Boolean(p.bold), heading: Boolean(p.heading) })));
+    return this.createTemplate(ctx, user, { letterType: dto.letterType, name: dto.name, legalEntityId: dto.legalEntityId ?? null, requiresApproval: dto.requiresApproval, personSigns: dto.personSigns, companyDsc: false, source: 'editor', fileName: `${dto.letterType}.docx`, buf });
+  }
+
+  /** The paragraphs of a template made in YukthiX or a starter, for the editor. */
+  async paragraphs(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const t = await this.templateRow(tx, c.organizationId, id);
+      this.requireKey(v, 'letter.template.manage', t.legalEntityId);
+      if (t.source === 'upload') throw new ConflictException('An uploaded Word template is edited in Word: download it, change it, upload it again.');
+      return { letterType: t.letterType, name: t.name, legalEntityId: t.legalEntityId, requiresApproval: t.requiresApproval, personSigns: t.personSigns, paragraphs: docxBlocks(await this.fileBytes(tx, c.organizationId, t.fileId)) };
+    });
+  }
+
+  /** PPL-28 bulk wizard: one letter type to many people, each through the ordinary issue (checks and approvals). */
+  async bulk(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; personIds: string[] }) {
+    const out = { issued: 0, failed: [] as { personId: string; message: string }[] };
+    for (const personId of [...new Set(dto.personIds)]) {
+      try {
+        await this.issue(ctx, user, { letterType: dto.letterType, personId });
+        out.issued++;
+      } catch (e) {
+        out.failed.push({ personId, message: (e as Error).message });
+      }
+    }
+    return out;
   }
 
   useStarter(ctx: TenantContext, user: ScopeUser, letterType: string) {

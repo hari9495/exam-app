@@ -9,7 +9,7 @@ import { daysFrom, wagesDueBy } from './exit-rules';
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
-export type SettlementCause = 'accepted' | 'lwd_changed' | 'recovery' | 'asset_returned' | 'exited' | 'hold';
+export type SettlementCause = 'accepted' | 'lwd_changed' | 'recovery' | 'asset_returned' | 'exited' | 'hold' | 'payees';
 
 /** The days the person's calendar is closed around a date (their location's calendar, else the company's). */
 async function holidaysNear(tx: Tx, org: string, locationId: string | null, from: string): Promise<Set<string>> {
@@ -59,6 +59,8 @@ export async function freezeSettlementIn(tx: Tx, c: CompanyContext, exitCaseId: 
       noticeArrangement: (k.noticeArrangement ?? []) as Prisma.InputJsonValue,
       recoveries: recoveries as Prisma.InputJsonValue,
       holds: { letters: k.lettersHeld },
+      // Death in service (YX-LC-16): who is paid, and their shares (names and shares only; bank checks are P10).
+      payees: (await tx.exitPayee.findMany({ where: { organizationId: org, exitCaseId, removedAt: null }, orderBy: [{ sharePercent: 'desc' }, { name: 'asc' }] })).map((p) => ({ kind: p.kind, name: p.name, relation: p.relation, sharePercent: p.sharePercent.toFixed(2) })) as Prisma.InputJsonValue,
     },
   });
   await payScope(tx, []);

@@ -4,13 +4,20 @@ import type { FormDef } from '../rules-engine/forms';
 // last working day (D7: calendar days or months, as the company policy says), the starter exit-interview form and
 // the starter clearance list. The service does the database work.
 
-export const EXIT_TYPES = ['resignation', 'termination', 'probation_termination', 'end_of_contract', 'retirement', 'death', 'absconding'] as const;
+export const EXIT_TYPES = ['resignation', 'termination', 'probation_termination', 'end_of_contract', 'retirement', 'death', 'absconding', 'retrenchment', 'vrs'] as const;
 export type ExitType = (typeof EXIT_TYPES)[number];
-export const COMPANY_EXIT_TYPES = EXIT_TYPES.filter((t) => t !== 'resignation');
+export const COMPANY_EXIT_TYPES = EXIT_TYPES.filter((t) => t !== 'resignation' && t !== 'vrs');
 /** Starter company setting: these company exits need approval (P03 exit.company); the rest are recorded at once. */
-export const NEEDS_APPROVAL: readonly ExitType[] = ['termination', 'probation_termination'];
+export const NEEDS_APPROVAL: readonly ExitType[] = ['termination', 'probation_termination', 'retrenchment'];
 /** YX-LV-10: never while the person is on maternity leave. */
-export const MATERNITY_BLOCKED: readonly ExitType[] = ['termination', 'probation_termination'];
+export const MATERNITY_BLOCKED: readonly ExitType[] = ['termination', 'probation_termination', 'retrenchment'];
+/**
+ * YX-LC-27 (IR Code, P07 IN.IR; from 21 Nov 2025): retrenchment, lay-off and closure need the appropriate government's
+ * permission at this many workers or more. ponytail: a constant until P07 publishes IN.IR as dated rule data; then read it.
+ */
+export const IR_PERMISSION_THRESHOLD = 300;
+/** YX-LC-16 claim forms the company supports the family with (its attestations are tasks on the exit case). */
+export const DEATH_CLAIMS = ['EDLI claim (Form 5 IF): attest', 'Family or widow pension (Form 10D): attest', 'PF final settlement (Form 20): attest', 'ESI dependants benefit, where ESI applies', 'Gratuity: receive Form J from the nominee, reply with Form L'];
 
 export const RESIGNATION_REASONS = ['better_opportunity', 'higher_studies', 'relocation', 'family', 'health', 'career_change', 'manager', 'work_environment', 'compensation', 'other'] as const;
 
@@ -116,3 +123,6 @@ export function alumniUntil(lastDay: string, years: number): string {
   const d = day(lastDay);
   return new Date(Date.UTC(d.getUTCFullYear() + years, d.getUTCMonth(), d.getUTCDate())).toISOString().slice(0, 10);
 }
+
+/** An ISO day plus n days. */
+export const addDaysIso = (iso: string, n: number) => new Date(day(iso).getTime() + n * 86_400_000).toISOString().slice(0, 10);

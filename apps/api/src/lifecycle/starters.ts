@@ -3,7 +3,7 @@
 // The appointment-letter task is the law (OSH Code, YX-LC-26): its owner and day can change, it cannot be removed or
 // skipped. IT and Admin tasks become Service Desk requests once the company picks a catalogue item (founder D1).
 
-export type OwnerType = 'hr' | 'it' | 'admin' | 'finance' | 'payroll' | 'manager' | 'person' | 'user' | 'group';
+export type OwnerType = 'hr' | 'it' | 'admin' | 'finance' | 'payroll' | 'manager' | 'person' | 'user' | 'group' | 'buddy';
 export type TaskKind = 'tick' | 'form' | 'document' | 'letter' | 'desk_request';
 export interface StarterTask {
   key: string;
@@ -56,6 +56,8 @@ export const STARTERS: readonly Starter[] = [
       { key: 'accounts', title: 'Email and system accounts', ownerType: 'it', kind: 'desk_request', dueOffsetDays: -1 },
       { key: 'access_card', title: 'Access card and seat', ownerType: 'admin', kind: 'desk_request', dueOffsetDays: -1 },
       { key: 'welcome_call', title: 'Call the joiner before day one', ownerType: 'manager', kind: 'tick', dueOffsetDays: -3 },
+      // Lifecycle 6e (PPL-41): the buddy checks in after a month (HR holds it until a buddy is named).
+      { key: 'buddy_checkin', title: 'Buddy check-in after 30 days', ownerType: 'buddy', kind: 'tick', dueOffsetDays: 30, required: false },
       { key: 'first_week_plan', title: 'Plan the first week', ownerType: 'manager', kind: 'form', config: firstDayForm, dueOffsetDays: -1 },
       { key: 'uan', title: 'Generate or link the UAN', ownerType: 'payroll', kind: 'tick', dueOffsetDays: 3 },
       { key: 'form_11', title: 'Collect Form 11 (PF declaration)', ownerType: 'payroll', kind: 'tick', dueOffsetDays: 3 },

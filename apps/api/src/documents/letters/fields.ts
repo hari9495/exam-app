@@ -28,6 +28,7 @@ export const FIELDS: Readonly<Record<string, FieldDef>> = {
   manager_name: { label: "Manager's name", cls: 'internal', sample: 'Divya Raghunathan' },
   joining_date: { label: 'Joining day', cls: 'internal', sample: '19 October 2026' },
   last_working_day: { label: 'Last working day (when leaving)', cls: 'internal', sample: '30 October 2026' },
+  next_of_kin_name: { label: 'Next of kin (death in service)', cls: 'personal', sample: 'Meera Kumar' },
   probation_months: { label: 'Probation length in months', cls: 'internal', sample: '6' },
   probation: { label: 'On probation (yes / no)', cls: 'internal', flag: true, sample: true },
   legal_entity: { label: 'Legal entity (employer) name', cls: 'internal', sample: 'Kaveri Foods Pvt Ltd' },
@@ -76,6 +77,7 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
   const today = todayIst();
   const emp = await tx.employee.findFirst({ where: { organizationId: org, personId } });
   let lastDay: string | null = null;
+  let nextOfKin = '';
   let place: { legalEntityId: string; locationId: string | null; departmentId: string | null; designationId: string | null; employmentTypeId: string | null; managerEmployeeId: string | null; joiningOn: string; code: string | null; onProbation: boolean };
   if (emp) {
     const e = await tx.employment.findFirstOrThrow({ where: { organizationId: org, employeeId: emp.id }, orderBy: { joinedOn: 'desc' } });
@@ -83,6 +85,9 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
     const st = await tx.employmentStatusPeriod.findFirst({ where: { organizationId: org, employmentId: e.id, supersededAt: null }, orderBy: { validFrom: 'desc' } });
     const k = await tx.exitCase.findFirst({ where: { organizationId: org, employmentId: e.id, status: { in: ['accepted', 'cleared', 'exited', 'closed'] } }, orderBy: { createdAt: 'desc' }, select: { approvedLwd: true } });
     lastDay = (e.exitedOn ?? k?.approvedLwd)?.toISOString().slice(0, 10) ?? null;
+    // Death in service: letters go to the first payee recorded (nominee or legal heir).
+    const kase = await tx.exitCase.findFirst({ where: { organizationId: org, employmentId: e.id, exitType: 'death' }, select: { id: true } });
+    if (kase) nextOfKin = (await tx.exitPayee.findFirst({ where: { organizationId: org, exitCaseId: kase.id, removedAt: null }, orderBy: { sharePercent: 'desc' } }))?.name ?? '';
     place = { legalEntityId: e.legalEntityId, locationId: a?.locationId ?? null, departmentId: a?.departmentId ?? null, designationId: a?.designationId ?? null, employmentTypeId: a?.employmentTypeId ?? null, managerEmployeeId: a?.managerEmployeeId ?? null, joiningOn: e.joinedOn.toISOString().slice(0, 10), code: e.employeeCode, onProbation: st?.status === 'probation' };
   } else {
     const pb = await tx.preboarding.findFirst({ where: { organizationId: org, personId, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } });
@@ -112,6 +117,7 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
     manager_name: mgr ? name(mgr) : '',
     joining_date: longDate(place.joiningOn),
     last_working_day: lastDay ? longDate(lastDay) : '',
+    next_of_kin_name: nextOfKin,
     probation_months: months,
     probation: place.onProbation,
     legal_entity: entity?.name ?? '',
@@ -224,6 +230,54 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; requi
       { text: 'To whom it may concern', heading: true },
       { text: 'Date: {{today}}' },
       { text: '{{employee_name}} worked with {{legal_entity}} from {{joining_date}} to {{last_working_day}}. Their last designation was {{designation}} in the {{department}} department at {{location}}.' },
+      { text: 'For {{legal_entity}}' },
+      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
+    ],
+  },
+  // Lifecycle 6e: a campus batch's letter of intent, the absconding notices and the letter to the family.
+  {
+    letterType: 'letter_of_intent',
+    name: 'Letter of intent (campus)',
+    requiresApproval: false,
+    personSigns: true,
+    paragraphs: [
+      { text: '{{legal_entity}}', heading: true },
+      { text: 'Letter of intent', heading: true },
+      { text: 'Date: {{today}}' },
+      { text: 'Dear {{employee_name}},' },
+      { text: 'We intend to offer you the role of {{designation}} at {{location}}, joining on {{joining_date}}, once you complete your course. Your appointment letter follows before you join.' },
+      { text: 'Please accept this letter in YukthiX to confirm your interest.' },
+      { text: 'For {{legal_entity}}' },
+      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
+    ],
+  },
+  {
+    letterType: 'absconding_notice',
+    name: 'Notice to return to work',
+    requiresApproval: false,
+    personSigns: false,
+    paragraphs: [
+      { text: '{{legal_entity}}', heading: true },
+      { text: 'Notice: absence from work', heading: true },
+      { text: 'Date: {{today}}' },
+      { text: 'Dear {{employee_name}} ({{employee_code}}),' },
+      { text: 'You have been absent from work without leave or information. Please return to work or write to us with the reason within seven days of this notice.' },
+      { text: 'If we do not hear from you, the company may treat your employment as abandoned under its policy.' },
+      { text: 'For {{legal_entity}}' },
+      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
+    ],
+  },
+  {
+    letterType: 'condolence',
+    name: 'Letter to the family (death in service)',
+    requiresApproval: false,
+    personSigns: false,
+    paragraphs: [
+      { text: '{{legal_entity}}', heading: true },
+      { text: 'Date: {{today}}' },
+      { text: 'Dear {{next_of_kin_name}},' },
+      { text: 'We are deeply sorry for the loss of {{employee_name}}, who worked with us as {{designation}}.' },
+      { text: 'We will pay the dues to the nominees or legal heirs and help the family with the provident fund, pension, insurance and gratuity claims. Our HR team will contact you.' },
       { text: 'For {{legal_entity}}' },
       { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
     ],

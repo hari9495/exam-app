@@ -11,7 +11,7 @@ import { PermissionsGuard } from '../../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../../rate-limit-tiers';
 import type { ScopeUser } from '../../access/scope';
-import { IssueLetterDto, LetterFileQueryDto, LetterPreviewDto, SignLetterDto, SignatoryDto, StarterLetterDto, TemplateUploadDto } from './dto';
+import { BulkLetterDto, ComposeTemplateDto, IssueLetterDto, LetterFileQueryDto, LetterPreviewDto, SignLetterDto, SignatoryDto, StarterLetterDto, TemplateUploadDto } from './dto';
 import { LettersService } from './letters.service';
 
 // Letters (lifecycle 6b, LIFE-2.04 … 2.07; P05 §4.3 / §4.4). Keys (P02 YX-SEC-01), checked again per person and class:
@@ -47,6 +47,25 @@ export class LettersController {
   @UseInterceptors(PDF_UPLOAD)
   upload(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: TemplateUploadDto, @UploadedFile() file: Express.Multer.File) {
     return this.letters.uploadTemplate(ctx, this.user(req), dto, file);
+  }
+
+  @Post('templates/compose')
+  @RequirePermissions('letter.template.manage')
+  compose(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ComposeTemplateDto) {
+    return this.letters.compose(ctx, this.user(req), dto);
+  }
+
+  @Get('templates/:id/paragraphs')
+  @RequirePermissions('letter.template.manage')
+  paragraphs(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.letters.paragraphs(ctx, this.user(req), id);
+  }
+
+  @Post('bulk')
+  @HttpCode(200)
+  @RequirePermissions('letter.issue')
+  bulk(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: BulkLetterDto) {
+    return this.letters.bulk(ctx, this.user(req), dto);
   }
 
   @Post('templates/starter')

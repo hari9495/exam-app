@@ -510,6 +510,7 @@ export class EmployeeHistoryService {
         const a = current.find((x) => x.employeeId === p.id);
         return {
           id: p.id,
+          personId: p.personId,
           name: displayName(p),
           employeeCode: e?.employeeCode ?? null,
           legalEntityId: e?.legalEntityId ?? null,
@@ -1198,7 +1199,8 @@ export class EmployeeHistoryService {
   }
 
   /** The hire inside the caller's transaction (lifecycle 6b: a joiner joins in the same transaction as their record). */
-  async createEmployeeIn(tx: Tx, c: CompanyContext, v: Viewer, dto: EmployeeCreateDto) {
+  /** A new hire; with `rehireOf`, a new employment on that employee's existing record (lifecycle 6e, YX-LC-11 / 18). */
+  async createEmployeeIn(tx: Tx, c: CompanyContext, v: Viewer, dto: EmployeeCreateDto, rehireOf: string | null = null) {
     const payload = toPayload({ assignment: dto.assignment, status: dto.status });
     this.checkPayload('join', payload, v);
     const pay = dto.compensation ? toPayload({ compensation: dto.compensation }) : null;
@@ -1212,20 +1214,25 @@ export class EmployeeHistoryService {
       if (pay) await this.mustHireInto(tx, c, v, 'employee.salary.manage', entity.id, dto.assignment);
       // The login gives its holder the person's own view, pay included (P01 §4.5).
       if (dto.userId) await checkLoginLink(tx, c, dto.userId, dto.workEmail ?? null);
-      // P01 §4.5a: the person behind the record (YX-ORG-26/27).
-      const personId = await personForEmployee(tx, c, { givenName: dto.givenName, familyName: dto.familyName, preferredName: dto.preferredName, email: dto.workEmail, phone: dto.mobilePhone, personId: dto.personId });
-      const person = await tx.employee.create({
-        data: {
-          organizationId: c.organizationId,
-          personId,
-          userId: dto.userId ?? null,
-          givenName: dto.givenName.trim(),
-          familyName: dto.familyName?.trim() || null,
-          preferredName: dto.preferredName?.trim() || null,
-          workEmail: dto.workEmail ?? null,
-          createdBy: c.userId,
-        },
-      });
+      // A rehire keeps the same employee record (YX-ORG-26), never a second one.
+      const before = rehireOf ? await tx.employment.findFirst({ where: { organizationId: c.organizationId, id: rehireOf } }) : null;
+      if (rehireOf && (!before || !before.exitedOn)) throw new ConflictException('Only someone who has left can be rehired.');
+      const person = before
+        ? await tx.employee.update({ where: { id: before.employeeId }, data: { ...(dto.userId ? { userId: dto.userId } : {}), ...(dto.workEmail ? { workEmail: dto.workEmail } : {}) } })
+        : await tx.employee.create({
+            data: {
+              organizationId: c.organizationId,
+              // P01 §4.5a: the person behind the record (YX-ORG-26/27).
+              personId: await personForEmployee(tx, c, { givenName: dto.givenName, familyName: dto.familyName, preferredName: dto.preferredName, email: dto.workEmail, phone: dto.mobilePhone, personId: dto.personId }),
+              userId: dto.userId ?? null,
+              givenName: dto.givenName.trim(),
+              familyName: dto.familyName?.trim() || null,
+              preferredName: dto.preferredName?.trim() || null,
+              workEmail: dto.workEmail ?? null,
+              createdBy: c.userId,
+            },
+          });
+      const personId = person.personId;
       // YX-ORG-16: codes are unique per legal entity or across the company (setting), generated if blank.
       const scopeRows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key: 'employee_code.scope' } });
       const scope = resolveSetting(SETTINGS['employee_code.scope'], scopeRows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: c.organizationId }, null).value;
@@ -1233,7 +1240,7 @@ export class EmployeeHistoryService {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`employee-code:${c.organizationId}:${codeScopeKey}`}))`;
       const employeeCode = dto.employeeCode ?? (await this.nextCode(tx, c, codeScopeKey));
       const e = await tx.employment.create({
-        data: { organizationId: c.organizationId, employeeId: person.id, legalEntityId: entity.id, employeeCode, codeScopeKey, joinedOn: asDate(dto.joinedOn), createdBy: c.userId },
+        data: { organizationId: c.organizationId, employeeId: person.id, legalEntityId: entity.id, employeeCode, codeScopeKey, joinedOn: asDate(dto.joinedOn), rehireOf, createdBy: c.userId },
       });
       // YX-HIS-12: a joining date in the past needs employee.change.retro, before the retro limit the override and a reason.
       await this.checkReach(tx, c, v, e, dto.joinedOn, dto.overrideReason);

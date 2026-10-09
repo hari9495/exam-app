@@ -9,6 +9,7 @@ import { DocumentsService } from '../documents/documents.service';
 import { JourneysService as DeskJourneysService } from '../service-desk/journeys.service';
 import { joinerInScope, ownOf } from '../documents/person-access';
 import { PreboardingPortalService } from './portal.service';
+import { OnboardingExtrasService } from './onboarding-extras.service';
 
 // LIFE-2.03 / 2.08 / 2.09 HR's side of a joiner (M01 §3.5, D3; YX-LC-03 / 12 / 31; design §8.4):
 //   joining   "Mark joined" on or after the joining day, with HR's identity check (YX-LC-31): the employee record is made
@@ -32,6 +33,7 @@ export class JoiningService {
     private readonly documents: DocumentsService,
     private readonly portal: PreboardingPortalService,
     private readonly desk: DeskJourneysService,
+    private readonly extras: OnboardingExtrasService,
   ) {}
 
   private viewer(user: ScopeUser) {
@@ -106,9 +108,11 @@ export class JoiningService {
       if (gated) throw new ConflictException('A background check must be clear before joining. HR can change that check’s gate if the company decides so.');
       const p = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: pb.personId } });
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`preboarding:${id}`}))`;
+      // Lifecycle 6e (YX-LC-18): a rehire joins on the same record with the rehire policy's choices.
+      const rehire = pb.personType === 'rehire' ? await this.extras.rehireAtJoining(tx, c, pb) : null;
       const hired = await this.history.createEmployeeIn(tx, c, hv, {
         legalEntityId: pb.legalEntityId,
-        status: dto.status,
+        status: rehire?.skipProbation ? 'confirmed' : dto.status,
         reason: 'Joined after pre-boarding',
         givenName: p.givenName,
         familyName: p.familyName ?? undefined,
@@ -116,16 +120,19 @@ export class JoiningService {
         personId: p.id,
         userId: dto.userId ?? undefined,
         workEmail: dto.workEmail ?? undefined,
-        employeeCode: dto.employeeCode ?? undefined,
+        employeeCode: dto.employeeCode ?? rehire?.employeeCode ?? undefined,
         joinedOn: iso(pb.joiningOn),
         assignment: { locationId: pb.locationId, departmentId: pb.departmentId, designationId: pb.designationId, employmentTypeId: pb.employmentTypeId, managerEmployeeId: pb.managerEmployeeId ?? null },
-      } as Parameters<EmployeeHistoryService['createEmployeeIn']>[3]);
+      } as Parameters<EmployeeHistoryService['createEmployeeIn']>[3], rehire?.rehireOf ?? null);
+      if (rehire) await tx.preboarding.update({ where: { id }, data: { rehireOptions: rehire.snapshot } });
       // YX-LC-03: what the joiner gave moves into the record without re-typing.
       const a = this.portal.answersOf(pb);
       if (a.personal) {
         const d = { dateOfBirth: asDate(a.personal.dateOfBirth), gender: a.personal.gender, personalEmail: p.primaryEmail, personalPhone: p.primaryPhone, addressLine1: a.personal.addressLine1, addressLine2: a.personal.addressLine2 ?? null, city: a.personal.city, stateCode: a.personal.stateCode, postalCode: a.personal.postalCode, country: 'IN', updatedBy: c.userId ?? null };
         await tx.employeePersonalDetails.upsert({ where: { organizationId_employeeId: { organizationId: org, employeeId: hired.id } }, update: d, create: { organizationId: org, employeeId: hired.id, ...d } });
       }
+      // Lifecycle 6e (YX-LC-16): the nominees the joiner gave become the record's nominations (death in service uses them).
+      if (a.nominees?.nominees.length) await tx.employeeNomination.createMany({ data: a.nominees.nominees.map((n) => ({ organizationId: org, employeeId: hired.id, scheme: 'all', name: n.name, relation: n.relation, sharePercent: n.sharePercent, source: 'joiner' })) });
       const reason = 'Given by the joiner in pre-boarding';
       const raised: string[] = [];
       if (a.identity) {

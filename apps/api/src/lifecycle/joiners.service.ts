@@ -31,6 +31,8 @@ export interface JoinerInput {
   employmentTypeId?: string | null;
   managerEmployeeId?: string | null;
   templateId?: string | null;
+  /** Lifecycle 6e: a campus batch the joiner belongs to. */
+  batchId?: string | null;
 }
 
 const CSV_COLUMNS = ['given_name', 'family_name', 'email', 'phone', 'joining_on', 'legal_entity', 'location', 'department', 'designation', 'employment_type', 'manager_code'] as const;
@@ -66,12 +68,17 @@ export class JoinersService {
     await this.place(tx, org, dto);
     if (!(await joinerInScope(tx, c, v, 'lifecycle.onboarding.manage', { legalEntityId: dto.legalEntityId, locationId: dto.locationId, departmentId: dto.departmentId ?? null, managerEmployeeId: null }))) throw new ForbiddenException('You cannot add joiners to that place.');
     let personId: string;
-    try {
-      personId = await personForEmployee(tx, c, { givenName: dto.givenName, familyName: dto.familyName, email: dto.email, phone: dto.phone, personId: dto.personId });
-    } catch (e) {
-      if (e instanceof ConflictException && /already has an employee record/.test(e.message)) throw new ConflictException('This person was an employee before. Rehiring on the same record comes in a later release (batch 6e); for now ask your YukthiX contact.');
-      throw e;
-    }
+    // Lifecycle 6e (YX-LC-11): someone who worked here before is a rehire on the same record; someone working here now
+    // is never onboarded (their move is a job change).
+    let rehireOf: string | null = null;
+    const before = dto.personId ? await tx.employee.findFirst({ where: { organizationId: org, personId: dto.personId } }) : null;
+    if (before) {
+      if (await tx.employment.findFirst({ where: { organizationId: org, employeeId: before.id, exitedOn: null }, select: { id: true } })) throw new ConflictException('This person works here now. Their move is a job change, not onboarding.');
+      const last = await tx.employment.findFirstOrThrow({ where: { organizationId: org, employeeId: before.id }, orderBy: { exitedOn: 'desc' } });
+      if (dto.joiningOn <= last.exitedOn!.toISOString().slice(0, 10)) throw new BadRequestException('A rehire joins after the day they left.');
+      personId = before.personId;
+      rehireOf = last.id;
+    } else personId = await personForEmployee(tx, c, { givenName: dto.givenName, familyName: dto.familyName, email: dto.email, phone: dto.phone, personId: dto.personId });
     if (await tx.preboarding.findFirst({ where: { organizationId: org, personId, status: 'invited' }, select: { id: true } })) throw new ConflictException('This person is already a joiner.');
     const pb = await tx.preboarding.create({
       data: {
@@ -88,6 +95,9 @@ export class JoinersService {
         hrOwnerUserId: c.userId!,
         status: 'invited',
         offerId,
+        personType: rehireOf ? 'rehire' : 'new',
+        rehireOf,
+        batchId: dto.batchId ?? null,
         createdBy: c.userId ?? null,
       },
     });
@@ -259,6 +269,11 @@ export class JoinersService {
       progress: j?.progress ?? 0,
       openTasks: open,
       overdueTasks: overdue,
+      personType: r.personType,
+      batchId: r.batchId,
+      buddyEmployeeId: r.buddyEmployeeId,
+      managerEmployeeId: r.managerEmployeeId,
+      legalEntityId: r.legalEntityId,
       version: r.version,
     };
   }
@@ -294,14 +309,21 @@ export class JoinersService {
       if (!(await joinerInScope(tx, c, v, 'lifecycle.onboarding.manage', r))) throw new ForbiddenException('You cannot change this joiner.');
       if (r.status !== 'invited') throw new ConflictException('This joiner is no longer waiting to join.');
       if (!ISO.test(dto.joiningOn) || dto.joiningOn < todayIst()) throw new BadRequestException('The new joining day must be today or later.');
-      const n = await tx.preboarding.updateMany({ where: { organizationId: c.organizationId, id, version: dto.version }, data: { joiningOn: asDate(dto.joiningOn), version: { increment: 1 } } });
-      if (!n.count) throw new ConflictException('Someone else changed this joiner. Reload it.');
-      const j = await tx.journey.findFirst({ where: { organizationId: c.organizationId, subjectType: 'preboarding', subjectId: id, kind: 'onboarding' } });
-      const moved = j ? await this.journeys.reanchorIn(tx, c, j.id, dto.joiningOn) : 0;
-      await audit(tx, c, 'preboarding.joining_date.changed', 'preboarding', id, { from: iso(r.joiningOn), to: dto.joiningOn, reason: dto.reason.trim().slice(0, 300) });
-      await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'preboarding.joining_date.changed', payload: { preboardingId: id, from: iso(r.joiningOn), to: dto.joiningOn } } });
-      return { ok: true, moved };
+      if (r.version !== dto.version) throw new ConflictException('Someone else changed this joiner. Reload it.');
+      return { ok: true, moved: await this.moveIn(tx, c, r, dto.joiningOn, dto.reason) };
     });
+  }
+
+  /** YX-LC-13: a new joining day; every unfinished checklist task moves by the same days (also for a whole batch, 6e). */
+  async moveIn(tx: Tx, c: CompanyContext, r: Prisma.PreboardingGetPayload<object>, joiningOn: string, reason: string) {
+    const id = r.id;
+    const n = await tx.preboarding.updateMany({ where: { organizationId: c.organizationId, id, version: r.version, status: 'invited' }, data: { joiningOn: asDate(joiningOn), version: { increment: 1 } } });
+    if (!n.count) throw new ConflictException('Someone else changed this joiner. Reload it.');
+    const j = await tx.journey.findFirst({ where: { organizationId: c.organizationId, subjectType: 'preboarding', subjectId: id, kind: 'onboarding' } });
+    const moved = j ? await this.journeys.reanchorIn(tx, c, j.id, joiningOn) : 0;
+    await audit(tx, c, 'preboarding.joining_date.changed', 'preboarding', id, { from: iso(r.joiningOn), to: joiningOn, reason: reason.trim().slice(0, 300) });
+    await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'preboarding.joining_date.changed', payload: { preboardingId: id, from: iso(r.joiningOn), to: joiningOn } } });
+    return moved;
   }
 }
 

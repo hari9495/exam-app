@@ -3,7 +3,7 @@ import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, I
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
-const OWNERS = ['hr', 'it', 'admin', 'finance', 'payroll', 'manager', 'person', 'user', 'group'] as const;
+const OWNERS = ['hr', 'it', 'admin', 'finance', 'payroll', 'manager', 'person', 'user', 'group', 'buddy'] as const;
 const KINDS = ['tick', 'form', 'document', 'letter', 'desk_request'] as const;
 
 export class TemplateTaskDto {
@@ -151,6 +151,11 @@ export class JoinerDto {
   @IsOptional()
   @IsUUID()
   templateId?: string | null;
+
+  /** Lifecycle 6e: the campus batch. */
+  @IsOptional()
+  @IsUUID()
+  batchId?: string | null;
 }
 
 export class JoinerImportDto {

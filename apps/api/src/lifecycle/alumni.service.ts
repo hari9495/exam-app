@@ -21,6 +21,8 @@ interface Alumnus {
   personId: string;
   lastDay: string;
   until: string;
+  /** Lifecycle 6e (YX-LC-16): a nominee or legal heir reading the deceased's documents. */
+  payeeId?: string | null;
 }
 
 @Injectable()
@@ -60,7 +62,11 @@ export class AlumniPortalService {
       const a = await this.alumnus(tx, c, p);
       if (a) return a;
     }
-    return null;
+    // A payee of a death in service (the nominee login, T9-02 second half).
+    const payee = await tx.exitPayee.findFirst({ where: { organizationId: org, email, removedAt: null }, orderBy: { createdAt: 'desc' } });
+    const k = payee ? await tx.exitCase.findFirst({ where: { organizationId: org, id: payee.exitCaseId, exitType: 'death' } }) : null;
+    const a = k ? await this.alumnus(tx, c, k.personId) : null;
+    return a && payee ? { ...a, payeeId: payee.id } : null;
   }
 
   async code(slug: string, email: string, ip: string | null, challengeToken?: string) {
@@ -85,7 +91,7 @@ export class AlumniPortalService {
       if (!a) throw wrong();
       const token = randomBytes(32).toString('base64url');
       const expiresAt = new Date(Date.now() + SESSION_MINUTES * 60_000);
-      await tx.alumniSession.create({ data: { organizationId: o.id, personId: a.personId, tokenHash: tokenHash(token), expiresAt } });
+      await tx.alumniSession.create({ data: { organizationId: o.id, personId: a.personId, payeeId: a.payeeId ?? null, tokenHash: tokenHash(token), expiresAt } });
       await audit(tx, c, 'alumni.signed_in', 'person', a.personId, {});
       return { token, expiresAt: expiresAt.toISOString() };
     });
@@ -99,8 +105,10 @@ export class AlumniPortalService {
     return this.tenantPrisma.forTenant(c, async (tx) => {
       const s = await tx.alumniSession.findFirst({ where: { organizationId: o.id, tokenHash: tokenHash(token), endedAt: null, expiresAt: { gt: new Date() } } });
       const a = s ? await this.alumnus(tx, c, s.personId) : null;
-      if (!s || !a) throw new UnauthorizedException('Sign in again.');
-      return fn(tx, a, c);
+      // A nominee's access ends when HR removes them as a payee.
+      const payeeOk = !s?.payeeId || (await tx.exitPayee.findFirst({ where: { organizationId: o.id, id: s.payeeId, removedAt: null }, select: { id: true } }));
+      if (!s || !a || !payeeOk) throw new UnauthorizedException('Sign in again.');
+      return fn(tx, { ...a, payeeId: s.payeeId }, c);
     });
   }
 
@@ -115,7 +123,8 @@ export class AlumniPortalService {
     const o = await this.orgOf(slug);
     return this.inPortal(slug, token, async (tx, a) => {
       const p = await tx.person.findFirstOrThrow({ where: { organizationId: a.org, id: a.personId } });
-      return { company: o.name, name: p.preferredName || [p.givenName, p.familyName].filter(Boolean).join(' '), lastDay: a.lastDay, accessUntil: a.until, ...(await this.letters.lettersOf(tx, a.org, a.personId)) };
+      const payee = a.payeeId ? await tx.exitPayee.findFirst({ where: { organizationId: a.org, id: a.payeeId }, select: { name: true } }) : null;
+      return { company: o.name, name: p.preferredName || [p.givenName, p.familyName].filter(Boolean).join(' '), lastDay: a.lastDay, accessUntil: a.until, nominee: payee?.name ?? null, ...(await this.letters.lettersOf(tx, a.org, a.personId)) };
     });
   }
 

@@ -122,3 +122,13 @@ export function buildDocx(paragraphs: { text: string; bold?: boolean; heading?: 
   zip.file('word/document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1700" w:left="1440"/></w:sectPr></w:body></w:document>`);
   return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' }) as Buffer;
 }
+
+/**
+ * PPL-29 editor tab (lifecycle 6e): a template made in YukthiX (or a YukthiX starter) read back as the paragraphs the
+ * editor shows: text, bold, heading (centred). An uploaded Word file keeps its own formatting and is edited in Word.
+ */
+export function docxBlocks(buf: Buffer): { text: string; bold: boolean; heading: boolean }[] {
+  const xml = new PizZip(buf).file('word/document.xml')?.asText() ?? '';
+  const texts = docxParagraphs(buf);
+  return (xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []).map((p, i) => ({ text: texts[i] ?? '', bold: p.includes('<w:b/>'), heading: p.includes('<w:jc w:val="center"/>') }));
+}

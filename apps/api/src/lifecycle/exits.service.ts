@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
-import { ScopeUser, Viewer, buildViewer, covers, implicitPeriods } from '../access/scope';
+import { ScopeUser, Viewer, buildViewer, covers, implicitPeriods, tenantWide } from '../access/scope';
 import { ApprovalsEngine, type Notice, type StepSpec } from '../workflow/approvals-engine.service';
 import { AutomationService } from '../rules-engine/automation.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -16,7 +16,7 @@ import { ownOf, reachesPerson } from '../documents/person-access';
 import { LifecycleJourneysService } from './journeys.service';
 import { LastDayService } from './last-day.service';
 import { freezeSettlementIn } from './settlement';
-import { CLEARANCE_STARTER, EXIT_INTERVIEW_FORM_VERSION, MATERNITY_BLOCKED, NEEDS_APPROVAL, RESIGNATION_REASONS, type ExitType, noticeLabel, standardLwd } from './exit-rules';
+import { daysFrom, CLEARANCE_STARTER, DEATH_CLAIMS, EXIT_INTERVIEW_FORM_VERSION, IR_PERMISSION_THRESHOLD, MATERNITY_BLOCKED, NEEDS_APPROVAL, RESIGNATION_REASONS, type ExitType, noticeLabel, standardLwd } from './exit-rules';
 
 // Lifecycle batch 6c (design §10): probation reviews, resignations, notice changes and company-started exits.
 //   resignation   the employee gives it (Me › Resign); P03 exit.resignation: their manager, then HR; on acceptance the
@@ -37,7 +37,7 @@ const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const isoOrNull = (d: Date | null | undefined) => (d ? iso(d) : null);
 const LIVE = ['submitted', 'accepted', 'cleared'];
-const TYPE_LABEL: Record<ExitType, string> = { resignation: 'Resignation', termination: 'Termination', probation_termination: 'Probation not confirmed', end_of_contract: 'End of contract', retirement: 'Retirement', death: 'Death in service', absconding: 'Absconding' };
+const TYPE_LABEL: Record<ExitType, string> = { resignation: 'Resignation', termination: 'Termination', probation_termination: 'Probation not confirmed', end_of_contract: 'End of contract', retirement: 'Retirement', death: 'Death in service', absconding: 'Absconding', retrenchment: 'Retrenchment', vrs: 'Voluntary retirement' };
 
 /** M08 / M06 are not built yet: their checks say so, and HR sees "not checked" (§10.5). */
 const PRECHECKS = () => ({ posh: 'not_checked', disciplinary: 'not_checked', pip: 'not_checked' });
@@ -53,6 +53,10 @@ export interface CompanyExitDto {
   lwd: string;
   reasonCode?: string | null;
   reasonText: string;
+  /** Retrenchment (YX-LC-27): how the worker was chosen, notice or pay in lieu, the permission request if needed. */
+  selectionBasis?: string | null;
+  noticeMode?: 'notice' | 'pay_in_lieu' | null;
+  irPermissionId?: string | null;
 }
 export interface NoticeChangeDto {
   kind: 'early_release' | 'buyout' | 'lwd_change';
@@ -115,6 +119,7 @@ export class ExitsService implements OnModuleInit {
       label: 'Exit',
       requesterLink: (req) => `/yx/people/exits/${req.subjectId}`,
       onDecided: async (tx, req, outcome) => {
+        if (outcome === 'approved') await this.mustHavePermission(tx, req.organizationId, req.subjectId);
         if (outcome === 'approved') await this.acceptIn(tx, ctxOf(req.organizationId), req.subjectId);
         else await this.closeIn(tx, ctxOf(req.organizationId), req.subjectId, 'rejected');
       },
@@ -234,6 +239,7 @@ export class ExitsService implements OnModuleInit {
     return {
       id: k.id,
       employeeId: k.employeeId,
+      personId: k.personId,
       exitType: k.exitType,
       typeLabel: TYPE_LABEL[k.exitType as ExitType],
       initiatedBy: k.initiatedBy,
@@ -414,8 +420,17 @@ export class ExitsService implements OnModuleInit {
           AND r.from_on <= ${dto.lwd}::date AND r.to_on >= ${today}::date LIMIT 1`;
       if (m) throw new ConflictException({ statusCode: 409, code: 'MATERNITY_LEAVE', message: 'She is on maternity leave in this period. The law does not allow a termination during maternity leave (Maternity Benefit Act, section 12).' });
     }
+    let retrenchment: Prisma.InputJsonValue | undefined;
+    if (dto.exitType === 'retrenchment') {
+      if (!dto.selectionBasis?.trim() || !dto.noticeMode) throw new BadRequestException('Record how the worker was chosen and whether notice is given or paid in lieu.');
+      const years = Math.floor(daysFrom(iso(e.joinedOn), dto.lwd) / 365.25);
+      // What payroll pays from (no amounts here): 15 days' average pay per completed year, notice or wages in lieu,
+      // and the employer's re-skilling fund contribution of 15 days' wages (a statutory payable, not an F&F line).
+      retrenchment = { selectionBasis: dto.selectionBasis.trim().slice(0, 500), noticeMode: dto.noticeMode, completedYears: years, compensationDays: years >= 1 ? 15 * years : 0, reskillingFundDays: 15, workers: await this.workersIn(tx, org, e.legalEntityId) };
+      if (dto.irPermissionId && !(await tx.irPermissionRequest.findFirst({ where: { organizationId: org, id: dto.irPermissionId, legalEntityId: e.legalEntityId, kind: { in: ['retrenchment', 'closure'] } }, select: { id: true } }))) throw new BadRequestException('That permission request is not for this legal entity.');
+    }
     const k = await tx.exitCase.create({
-      data: { organizationId: org, employmentId: e.id, employeeId: emp.id, personId: emp.personId!, exitType: dto.exitType, initiatedBy: 'company', reasonCode: dto.reasonCode ?? null, reasonText: dto.reasonText.trim(), submittedOn: asDate(today), noticePeriod: '0d', standardLwd: asDate(dto.lwd), status: 'submitted', createdBy: c.userId ?? null },
+      data: { organizationId: org, employmentId: e.id, employeeId: emp.id, personId: emp.personId!, exitType: dto.exitType, initiatedBy: 'company', reasonCode: dto.reasonCode ?? null, reasonText: dto.reasonText.trim(), submittedOn: asDate(today), noticePeriod: '0d', standardLwd: asDate(dto.lwd), status: 'submitted', retrenchment, irPermissionId: dto.irPermissionId ?? null, createdBy: c.userId ?? null },
     });
     await this.openHrFacts(tx, org, k.id, dto.exitType === 'absconding' ? { rehireEligible: false, rehireReason: 'Absconded (HR may change this)' } : {});
     await audit(tx, c, 'exit.case.opened', 'exit_case', k.id, { exitType: dto.exitType, employeeId: emp.id, lwd: dto.lwd });
@@ -502,6 +517,14 @@ export class ExitsService implements OnModuleInit {
       if (o.ownerUserId || o.ownerGroupId) await tx.clearanceItem.create({ data: { organizationId: org, exitCaseId: id, department: item.department, title: item.title, ...o } });
     }
     await this.assetItemsIn(tx, org, id, k.personId, owner);
+    // Death in service (YX-LC-16): the family's claim forms are tasks on the case; the nominations become the payees.
+    if (k.exitType === 'death') {
+      if (owner) for (const title of DEATH_CLAIMS) await tx.clearanceItem.create({ data: { organizationId: org, exitCaseId: id, department: 'hr', title, ownerUserId: owner } });
+      const noms = await tx.employeeNomination.findMany({ where: { organizationId: org, employeeId: k.employeeId, scheme: { in: ['gratuity', 'all'] } } });
+      if (noms.length && !(await tx.exitPayee.findFirst({ where: { organizationId: org, exitCaseId: id }, select: { id: true } }))) {
+        await tx.exitPayee.createMany({ data: noms.map((n) => ({ organizationId: org, exitCaseId: id, kind: 'nominee', name: n.name, relation: n.relation, sharePercent: n.sharePercent })) });
+      }
+    }
     if (k.exitType !== 'death' && k.exitType !== 'absconding') await tx.exitInterview.create({ data: { organizationId: org, exitCaseId: id, formVersion: EXIT_INTERVIEW_FORM_VERSION } });
     // LIFE-4.05: the first payroll hand-off revision (wages due two working days after the last day).
     await freezeSettlementIn(tx, c, id, 'accepted');
@@ -526,6 +549,83 @@ export class ExitsService implements OnModuleInit {
     await this.history.rebuild(tx, c, e, from, ch.id);
     if (from <= todayIst()) await tx.employeeChange.update({ where: { id: ch.id }, data: { status: 'effective', appliedAt: new Date() } });
     await audit(tx, c, 'employee.change.effective', 'employee', e.employeeId, { changeId: ch.id, changeType: type, effectiveDate: from });
+  }
+
+  /** Workers on the rolls of the legal entity today (YX-LC-27; IR Code establishment count, from P01 for now). */
+  async workersIn(tx: Tx, org: string, legalEntityId: string) {
+    return tx.employment.count({ where: { organizationId: org, legalEntityId, exitedOn: null } });
+  }
+
+  /** YX-LC-27: at or above the threshold, a retrenchment is approved only with the government's permission granted. */
+  private async mustHavePermission(tx: Tx, org: string, id: string) {
+    const k = await tx.exitCase.findFirst({ where: { organizationId: org, id } });
+    if (!k || k.exitType !== 'retrenchment') return;
+    const workers = await this.workersIn(tx, org, (await tx.employment.findFirstOrThrow({ where: { organizationId: org, id: k.employmentId } })).legalEntityId);
+    if (workers < IR_PERMISSION_THRESHOLD) return;
+    const p = k.irPermissionId ? await tx.irPermissionRequest.findFirst({ where: { organizationId: org, id: k.irPermissionId } }) : null;
+    if (!p || (p.status !== 'granted' && p.status !== 'deemed')) {
+      throw new ConflictException({ statusCode: 409, code: 'IR_PERMISSION_NEEDED', message: `This establishment has ${workers} workers. A retrenchment needs the government's permission (IR Code); record the permission as granted first.` });
+    }
+  }
+
+  /** An exit the system opens by policy (retirement, contract end, absconding): recorded and accepted at once. */
+  async openSystemExitIn(tx: Tx, c: CompanyContext, employeeId: string, exitType: ExitType, lwd: string, reasonText: string) {
+    const emp = await tx.employee.findFirstOrThrow({ where: { organizationId: c.organizationId, id: employeeId } });
+    const k = await this.openCompanyCase(tx, c, emp, { employeeId, exitType, lwd, reasonText });
+    await this.acceptIn(tx, c, k.id);
+    return k.id;
+  }
+
+  /** A refused permission ends the retrenchments waiting on it (YX-LC-27). */
+  async refusePermissionIn(tx: Tx, c: CompanyContext, permissionId: string) {
+    for (const k of await tx.exitCase.findMany({ where: { organizationId: c.organizationId, irPermissionId: permissionId, status: 'submitted' } })) {
+      if (k.wfRequestId) await this.approvals.withdraw(tx, c, k.wfRequestId, c.userId ?? null, 'Government permission refused');
+      await this.closeIn(tx, c, k.id, 'rejected');
+    }
+  }
+
+  // ------------------------------------------------------------------------------------------ VRS (LIFE-5.07)
+
+  /** Open schemes I may apply to: my legal entity (or all), open today, my age and service at or above the minimum. */
+  async myVrs(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const own = await ownOf(tx, c, v);
+      const e = own.employeeId ? await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId: own.employeeId, exitedOn: null } }) : null;
+      if (!e) return { schemes: [] };
+      const today = todayIst();
+      const dob = (await tx.employeePersonalDetails.findFirst({ where: { organizationId: c.organizationId, employeeId: own.employeeId! }, select: { dateOfBirth: true } }))?.dateOfBirth;
+      const age = dob ? Math.floor(daysFrom(iso(dob), today) / 365.25) : null;
+      const service = Math.floor(daysFrom(iso(e.joinedOn), today) / 365.25);
+      const rows = await tx.vrsScheme.findMany({ where: { organizationId: c.organizationId, status: 'open', opensOn: { lte: asDate(today) }, closesOn: { gte: asDate(today) }, OR: [{ legalEntityId: null }, { legalEntityId: e.legalEntityId }] } });
+      return { schemes: rows.map((s) => ({ id: s.id, name: s.name, closesOn: iso(s.closesOn), minAge: s.minAge, minServiceYears: s.minServiceYears, eligible: age !== null && age >= s.minAge && service >= s.minServiceYears })) };
+    });
+  }
+
+  async applyVrs(ctx: TenantContext, user: ScopeUser, dto: { schemeId: string; requestedLwd: string; reasonText?: string | null }) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Only the employee applies for themselves.');
+    const open = (await this.myVrs(ctx, user)).schemes.find((s) => s.id === dto.schemeId);
+    if (!open) throw new NotFoundException('That scheme is not open to you.');
+    if (!open.eligible) throw new BadRequestException(`This scheme is for people aged ${open.minAge} or more with ${open.minServiceYears} years of service or more.`);
+    let notices: Notice[] = [];
+    await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const own = await ownOf(tx, c, v);
+      const e = await this.employmentOf(tx, org, own.employeeId!);
+      await this.history.lockEmployment(tx, c, e.id);
+      if (await tx.exitCase.findFirst({ where: { organizationId: org, employmentId: e.id, status: { in: LIVE } }, select: { id: true } })) throw new ConflictException('You already have an exit in progress.');
+      const today = todayIst();
+      if (dto.requestedLwd < today) throw new BadRequestException('The last day cannot be in the past.');
+      const k = await tx.exitCase.create({ data: { organizationId: org, employmentId: e.id, employeeId: e.employeeId, personId: own.personId!, exitType: 'vrs', initiatedBy: 'employee', reasonText: dto.reasonText?.trim() || null, submittedOn: asDate(today), requestedLwd: asDate(dto.requestedLwd), noticePeriod: '0d', standardLwd: asDate(dto.requestedLwd), status: 'submitted', vrsSchemeId: dto.schemeId, createdBy: c.userId ?? null } });
+      await this.openHrFacts(tx, org, k.id, {});
+      const emp = await tx.employee.findFirstOrThrow({ where: { organizationId: org, id: e.employeeId } });
+      notices = await this.submitCompany(tx, c, k, emp, [c.userId]);
+      await audit(tx, c, 'exit.case.opened', 'exit_case', k.id, { exitType: 'vrs', schemeId: dto.schemeId });
+      await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'exit.case.opened', payload: { exitCaseId: k.id, employeeId: e.employeeId, exitType: 'vrs' } } });
+    });
+    if (notices.length) await this.approvals.send(ctx, notices);
+    return this.mine(ctx, user);
   }
 
   private async closeIn(tx: Tx, c: CompanyContext, id: string, status: 'rejected') {
@@ -675,16 +775,37 @@ export class ExitsService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const rows = await tx.exitCase.findMany({ where: { organizationId: org, status: { notIn: ['withdrawn', 'rejected'] } }, orderBy: { createdAt: 'desc' }, take: 500 });
-      const out = [];
+      // Company-wide HR sees every case without a per-case scope check; anyone else is checked case by case.
+      const own = await ownOf(tx, c, v);
+      const wide = !v.actingForOther && (tenantWide(v, 'lifecycle.exit.view') || tenantWide(v, 'lifecycle.exit.manage'));
+      const wideManage = !v.actingForOther && tenantWide(v, 'lifecycle.exit.manage');
+      const shown: { k: Case; manage: boolean }[] = [];
       for (const k of rows) {
-        const a = await this.access(tx, c, v, k);
-        if (!a.view || a.self) continue;
-        const emp = await tx.employee.findFirstOrThrow({ where: { organizationId: org, id: k.employeeId } });
-        const items = await tx.clearanceItem.findMany({ where: { organizationId: org, exitCaseId: k.id }, select: { status: true } });
-        const iv = await tx.exitInterview.findFirst({ where: { organizationId: org, exitCaseId: k.id }, select: { status: true } });
-        const code = (await tx.employment.findFirst({ where: { organizationId: org, id: k.employmentId }, select: { employeeCode: true } }))?.employeeCode ?? null;
-        out.push({ ...this.caseView(k, { reasonVisible: true }), name: displayName(emp), employeeCode: code, clearance: { open: items.filter((i) => i.status === 'open').length, total: items.length }, interview: iv?.status ?? null, canManage: a.manage });
+        if (k.employeeId === own.employeeId) continue;
+        if (wide) shown.push({ k, manage: wideManage });
+        else {
+          const a = await this.access(tx, c, v, k);
+          if (a.view && !a.self) shown.push({ k, manage: a.manage });
+        }
       }
+      const ids = shown.map((x) => x.k.id);
+      const [emps, jobs, items, ivs] = await Promise.all([
+        tx.employee.findMany({ where: { organizationId: org, id: { in: shown.map((x) => x.k.employeeId) } } }),
+        tx.employment.findMany({ where: { organizationId: org, id: { in: shown.map((x) => x.k.employmentId) } }, select: { id: true, employeeCode: true } }),
+        tx.clearanceItem.groupBy({ by: ['exitCaseId', 'status'], where: { organizationId: org, exitCaseId: { in: ids } }, _count: { _all: true } }),
+        tx.exitInterview.findMany({ where: { organizationId: org, exitCaseId: { in: ids } }, select: { exitCaseId: true, status: true } }),
+      ]);
+      const out = shown.map(({ k, manage }) => {
+        const mine = items.filter((i) => i.exitCaseId === k.id);
+        return {
+          ...this.caseView(k, { reasonVisible: true }),
+          name: displayName(emps.find((e) => e.id === k.employeeId)!),
+          employeeCode: jobs.find((j) => j.id === k.employmentId)?.employeeCode ?? null,
+          clearance: { open: mine.filter((i) => i.status === 'open').reduce((n, i) => n + i._count._all, 0), total: mine.reduce((n, i) => n + i._count._all, 0) },
+          interview: ivs.find((i) => i.exitCaseId === k.id)?.status ?? null,
+          canManage: manage,
+        };
+      });
       return { today: todayIst(), rows: out };
     });
   }

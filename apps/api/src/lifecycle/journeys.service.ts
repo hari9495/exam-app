@@ -28,7 +28,7 @@ type Task = Prisma.JourneyTaskGetPayload<object>;
 type Journey = Prisma.JourneyGetPayload<object>;
 const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
-const OWNER_LABEL: Record<OwnerType, string> = { hr: 'HR', it: 'IT', admin: 'Admin', finance: 'Finance', payroll: 'Payroll', manager: 'Manager', person: 'The joiner', user: 'Named person', group: 'Team' };
+const OWNER_LABEL: Record<OwnerType, string> = { hr: 'HR', it: 'IT', admin: 'Admin', finance: 'Finance', payroll: 'Payroll', manager: 'Manager', person: 'The joiner', user: 'Named person', group: 'Team', buddy: 'Buddy' };
 
 export interface TemplateTaskInput {
   key: string;

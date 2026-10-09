@@ -8,6 +8,7 @@ import { LifecycleJourneysService } from './journeys.service';
 import { LettersService } from '../documents/letters/letters.service';
 import { PreboardingPortalService } from './portal.service';
 import { LastDayService } from './last-day.service';
+import { ExitExtrasService } from './exit-extras.service';
 
 const QUEUE = 'lifecycle-jobs';
 
@@ -26,6 +27,7 @@ export class LifecycleJobs implements OnModuleInit, OnModuleDestroy {
     private readonly letters: LettersService,
     private readonly portal: PreboardingPortalService,
     private readonly lastDay: LastDayService,
+    private readonly extras: ExitExtrasService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, { connection }), QUEUE);
   }
@@ -54,6 +56,9 @@ export class LifecycleJobs implements OnModuleInit, OnModuleDestroy {
       if (name === 'daily') {
         await this.documents.expirySweep();
         await this.portal.remind();
+        // Lifecycle 6e: absconding timelines (and their start from unauthorised absence), retirements and contract ends.
+        await this.extras.abscondingSweep();
+        await this.extras.policySweep();
       }
     } catch (e) {
       this.logger.warn(`${name}: ${(e as Error).message}`);

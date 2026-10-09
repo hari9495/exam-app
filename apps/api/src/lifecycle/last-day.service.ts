@@ -34,7 +34,8 @@ interface Leaver {
   lwd: string;
   lettersHeld: boolean;
 }
-type Step = { timing: Timing; label: string; run: (x: Leaver) => Promise<'done' | 'held'> };
+type Step = { timing: Timing; label: string; run: (x: Leaver) => Promise<'done' | 'held'>; when?: (exitType: string) => boolean };
+const NOT_DEATH = (t: string) => t !== 'death';
 const MAX_ATTEMPTS = 3;
 const KEYS = ['lifecycle.exit.view', 'lifecycle.exit.manage', 'payroll.period.view'] as const;
 
@@ -106,8 +107,10 @@ export class LastDayService implements OnModuleInit {
           return 'done' as const;
         }),
     },
-    'letters.relieving': { timing: 't0', label: 'Relieving letter', run: (x) => this.letter(x, 'relieving', true) },
-    'letters.experience': { timing: 't0', label: 'Experience letter', run: (x) => this.letter(x, 'experience', true) },
+    'letters.relieving': { timing: 't0', label: 'Relieving letter', run: (x) => this.letter(x, 'relieving', true), when: NOT_DEATH },
+    'letters.experience': { timing: 't0', label: 'Experience letter', run: (x) => this.letter(x, 'experience', true), when: NOT_DEATH },
+    // Death in service (YX-LC-16): the letter goes to the family (the first payee), never to the deceased.
+    'letters.condolence': { timing: 't0', label: 'Letter to the family', run: (x) => this.letter(x, 'condolence', false), when: (t) => t === 'death' },
     'letters.no_dues': { timing: 'cleared', label: 'No-dues certificate', run: (x) => this.letter(x, 'no_dues', false) },
   };
 
@@ -147,8 +150,9 @@ export class LastDayService implements OnModuleInit {
     return { org, caseId, personId: k.personId, employeeId: k.employeeId, userId: emp.userId, takeover: mgr?.userId && mgr.userId !== emp.userId ? mgr.userId : hr, lwd: (k.approvedLwd ?? k.standardLwd).toISOString().slice(0, 10), lettersHeld: k.lettersHeld };
   }
 
-  private schedule(tx: Tx, org: string, caseId: string, timing: Timing) {
-    return tx.exitDeprovisioning.createMany({ data: Object.entries(this.steps).filter(([, s]) => s.timing === timing).map(([handler]) => ({ organizationId: org, exitCaseId: caseId, handler, timing })), skipDuplicates: true });
+  private async schedule(tx: Tx, org: string, caseId: string, timing: Timing) {
+    const k = await tx.exitCase.findFirstOrThrow({ where: { organizationId: org, id: caseId }, select: { exitType: true } });
+    return tx.exitDeprovisioning.createMany({ data: Object.entries(this.steps).filter(([, s]) => s.timing === timing && (!s.when || s.when(k.exitType))).map(([handler]) => ({ organizationId: org, exitCaseId: caseId, handler, timing })), skipDuplicates: true });
   }
 
   /** Runs every pending (or failed, under its limit) step of these timings; each in its own transaction. */
@@ -295,7 +299,7 @@ export class LastDayService implements OnModuleInit {
       if (!hr && !pay) throw new NotFoundException('No such exit.');
       const rows = await settlementOf(tx, c.organizationId, id, e.legalEntityId);
       await audit(tx, c, 'exit.handoff.viewed', 'exit_case', id, {});
-      const view = (r: (typeof rows)[number]) => ({ revision: r.revision, cause: r.cause, lwd: r.lwd.toISOString().slice(0, 10), wagesDueBy: r.wagesDueBy.toISOString().slice(0, 10), noticePeriod: r.noticePeriod, noticeServedDays: r.noticeServedDays, noticeArrangement: r.noticeArrangement, recoveries: r.recoveries, holds: r.holds, frozenAt: r.frozenAt.toISOString() });
+      const view = (r: (typeof rows)[number]) => ({ revision: r.revision, cause: r.cause, lwd: r.lwd.toISOString().slice(0, 10), wagesDueBy: r.wagesDueBy.toISOString().slice(0, 10), noticePeriod: r.noticePeriod, noticeServedDays: r.noticeServedDays, noticeArrangement: r.noticeArrangement, recoveries: r.recoveries, holds: r.holds, payees: r.payees, frozenAt: r.frozenAt.toISOString() });
       return {
         current: rows[0] ? view(rows[0]) : null,
         earlier: rows.slice(1).map((r) => ({ revision: r.revision, cause: r.cause, frozenAt: r.frozenAt.toISOString() })),
@@ -310,6 +314,11 @@ export class LastDayService implements OnModuleInit {
     await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const { k } = await this.manageable(tx, c, user, id);
       if (k.status !== 'exited') throw new ConflictException('Only an exit whose last day is over can be settled.');
+      // YX-LC-16: nobody is paid for a death in service until the payees (nominees or legal heirs) make 100 %.
+      if (k.exitType === 'death') {
+        const shares = await tx.exitPayee.findMany({ where: { organizationId: c.organizationId, exitCaseId: id, removedAt: null }, select: { sharePercent: true } });
+        if (Math.abs(shares.reduce((s, p) => s + Number(p.sharePercent), 0) - 100) >= 0.005) throw new ConflictException({ statusCode: 409, code: 'PAYEES_NEEDED', message: 'Record the nominees, or the legal heirs with their succession certificate, before the dues are settled.' });
+      }
       if (dto.settledOn > todayIst()) throw new BadRequestException('The settlement day cannot be in the future.');
       await tx.exitCase.update({ where: { id }, data: { status: 'closed', settledOutsideOn: new Date(`${dto.settledOn}T00:00:00Z`), settledOutsideReason: dto.reason.trim(), settledBy: c.userId ?? null, version: { increment: 1 } } });
       await audit(tx, c, 'exit.settled_outside', 'exit_case', id, { settledOn: dto.settledOn });

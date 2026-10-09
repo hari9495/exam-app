@@ -1,5 +1,5 @@
-import { Transform } from 'class-transformer';
-import { IsBoolean, IsIn, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, ValidateNested } from 'class-validator';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const bool = () => Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value));
@@ -92,4 +92,55 @@ export class SignLetterDto {
   @IsOptional()
   @IsBoolean()
   disclosureAccepted?: boolean;
+}
+
+// ---- Lifecycle batch 6e: the editor tab (PPL-29) and the bulk wizard (PPL-28) ----
+
+export class ComposeParagraphDto {
+  @IsString()
+  @MaxLength(2000)
+  text!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  bold?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  heading?: boolean;
+}
+
+export class ComposeTemplateDto {
+  @Matches(LETTER_TYPE)
+  letterType!: string;
+
+  @IsString()
+  @Length(2, 100)
+  name!: string;
+
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string | null;
+
+  @IsBoolean()
+  requiresApproval!: boolean;
+
+  @IsBoolean()
+  personSigns!: boolean;
+
+  @IsArray()
+  @ArrayMaxSize(80)
+  @ValidateNested({ each: true })
+  @Type(() => ComposeParagraphDto)
+  paragraphs!: ComposeParagraphDto[];
+}
+
+export class BulkLetterDto {
+  @Matches(LETTER_TYPE)
+  letterType!: string;
+
+  @IsArray()
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  personIds!: string[];
 }
