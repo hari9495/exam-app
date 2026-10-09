@@ -12,6 +12,7 @@ import { seedServiceDeskEsm } from './seed-service-desk-esm';
 import { seedServiceDeskEsm2 } from './seed-service-desk-esm2';
 import { TIME_PERMISSIONS, seedTime } from './seed-time';
 import { seedTimeB2 } from './seed-time-b2';
+import { PAY_PERMISSIONS, seedAuditAnchor, seedPay } from './seed-pay';
 
 const prisma = new PrismaClient();
 
@@ -78,6 +79,8 @@ export const PERMISSIONS = [
   ...DESK_PERMISSIONS,
   // M02 step 4 leave and attendance (also in the time_leave migration).
   ...TIME_PERMISSIONS,
+  // M03 payroll batch 5a (also in the payroll_5a migration).
+  ...PAY_PERMISSIONS,
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -158,6 +161,11 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     // Batch 2: rosters and attendance locks (also in the time_leave_b2 migration).
     'roster.manage',
     'attendance.lock',
+    // M03 batch 5a (P08 Q3 / Q8): the full audit log, legal holds and the final approval of a reopen; no pay.
+    'audit.view',
+    'audit.export',
+    'audit.hold.manage',
+    'payroll.period.reopen.approve',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -171,7 +179,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   // so an org admin can't accidentally hand it write access.
   // Employee records are not part of the permanent base role: P02 YX-SEC-15 time-boxes auditor access, so it
   // comes from an expiring role grant (the Auditor template in Roles & access).
-  auditor: ['org:view', 'results:view', 'audit:view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned', 'org.structure.view'],
+  auditor: ['org:view', 'results:view', 'audit:view', 'audit.view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned', 'org.structure.view'],
 };
 
 async function main() {
@@ -344,10 +352,19 @@ async function main() {
       // Step 4 batch 2: the Hosur plant's 3-shift rotation with a night shift, OT for plant workers settled as comp-off,
       // a timesheet project, the women's night-work records, and a locked previous month with its frozen payroll feed.
       await seedTimeB2(tx, demoOrg.id, panelHash);
+      // Step 5 payroll batch 5a: pay periods, a reopen request waiting for its second approver, a sample payslip and
+      // a bank file waiting for release (seed-pay.ts).
+      await seedPay(tx, demoOrg.id, panelHash);
     }
   }, { timeout: 420000 });
+  // Payroll 5a: the demo company's audit chain checked once (the daily job's anchor), after the seed committed.
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`;
+    const demo = await tx.organization.findUnique({ where: { slug: 'demo-org' }, select: { id: true } });
+    if (demo) await seedAuditAnchor(tx, demo.id);
+  });
 
-  console.log(`Seed complete: super@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); Service Desk: it-agent@ / it-lead@ / it-collab@ / arjun@demo-org.test / Passw0rd!2026, customer portal /yx/portal/demo-org/care (asha@annapurna-stores.test, sign-in code from scripts/desk-portal-code.ts); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
+  console.log(`Seed complete: super@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026 (Payroll Admin), payroll-approver@demo-org.test / Passw0rd!2026 (Payroll Approver), finance@demo-org.test / Passw0rd!2026 (Finance Approver), hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); Service Desk: it-agent@ / it-lead@ / it-collab@ / arjun@demo-org.test / Passw0rd!2026, customer portal /yx/portal/demo-org/care (asha@annapurna-stores.test, sign-in code from scripts/desk-portal-code.ts); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
 }
 
 // Only run when invoked as a script (prisma db seed / ts-node). Guarded so importing this module for
