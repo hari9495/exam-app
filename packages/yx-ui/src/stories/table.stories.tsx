@@ -78,8 +78,8 @@ function EmployeesPage({ initialFilters = [] as FilterValue[], groupBy = null as
 
   return (
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-        <div style={{ flex: 1 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 16 }}>
+        <div style={{ flex: '1 1 12rem', minWidth: 0, overflowWrap: 'anywhere' }}>
           <h1 style={{ margin: 0, fontSize: 22, lineHeight: '28px', fontWeight: 600 }}>Employees</h1>
           <p style={{ margin: '2px 0 0', color: 'var(--yx-color-text-secondary)' }}>
             {shown.length} of {rows.length} shown
@@ -534,7 +534,7 @@ export const FilterBarAllTypes: StoryObj = {
             <FilterBar fields={EMP_FIELDS} value={f} onChange={setF} search={q} onSearchChange={setQ} />
           </Section>
           <Section title="Shared URL for this view">
-            <code className="yx-mono">?{filtersToQuery(f, q)}</code>
+            <code className="yx-mono" style={{ overflowWrap: 'anywhere' }}>?{filtersToQuery(f, q)}</code>
           </Section>
         </Stack>
       </div>

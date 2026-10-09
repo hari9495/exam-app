@@ -1,9 +1,12 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { CONFIDENTIAL_KEYS, GrantScope, PrismaService, TenantContext, TenantPrismaService, grantScopesFor, holdsConfidential, resolveScopedGrants } from '@exam-platform/shared';
+import { CONFIDENTIAL_KEYS, GrantScope, PrismaService, TenantContext, TenantPrismaService, grantScopesFor, holdsConfidential, resolveScopedGrants, revokeStaffSessions } from '@exam-platform/shared';
 import { audit, CompanyContext, inCompany, Tx } from '../org-structure/org-structure.service';
 import { asDate, isoDate, todayIst } from '../org-structure/org-validation';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EmailService } from '../email/email.service';
+import { appUrl, button, details, noticeEmail, text } from '../email/account-emails';
+import { assertAnotherSystemAdmin, SYSTEM_ADMIN_ROLE } from '../users/system-admins';
 import { PermissionProfilesService } from '../permission-profiles/permission-profiles.service';
 import { settingFor } from '../people/probation';
 import { GrantDto } from './dto';
@@ -46,6 +49,7 @@ export class AccessService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly profiles: PermissionProfilesService,
     private readonly notifications: NotificationsService,
+    private readonly email: EmailService,
   ) {}
 
   templates() {
@@ -250,6 +254,89 @@ export class AccessService {
       await audit(tx, c, 'access.grant.revoked', 'role_grant', id, { userId: row.userId, reason: reason.trim() });
       return (await this.views(tx, c, [updated]))[0];
     });
+  }
+
+  /**
+   * Makes a person a System Admin (users.role = org_admin) or takes it away (founder decision, 8 Oct 2026). The
+   * reason is audited; the last active System Admin is never removed; the person's sessions end so their new
+   * menus apply from their next sign-in; a new System Admin must set up two-step verification at that sign-in
+   * (org_admin holds MFA-sensitive permissions, and the enrolment grace ends now). The person and every other
+   * System Admin are emailed.
+   */
+  async setSystemAdmin(ctx: TenantContext, actorUserId: string, userId: string, makeAdmin: boolean, reason: string) {
+    const why = reason.trim();
+    const result = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const user = await tx.user.findFirst({ where: { id: userId, organizationId: c.organizationId } });
+      if (!user || user.role === 'super_admin') throw new NotFoundException('User not found');
+      const isAdmin = user.role === SYSTEM_ADMIN_ROLE;
+      if (makeAdmin === isAdmin) throw new ConflictException(isAdmin ? 'They are already a System Admin.' : 'They are not a System Admin.');
+      let role = SYSTEM_ADMIN_ROLE;
+      if (makeAdmin) {
+        if (user.status !== 'active') throw new BadRequestException('That user is not active.');
+        if (user.id === actorUserId) throw new ForbiddenException('Another System Admin has to make you one.');
+      } else {
+        await assertAnotherSystemAdmin(tx, c.organizationId, user.id);
+        // Back to the role they had before, as recorded when they were made System Admin.
+        const made = await tx.auditLog.findFirst({ where: { organizationId: c.organizationId, action: 'access.system_admin.granted', entityId: user.id }, orderBy: { createdAt: 'desc' }, select: { metadataJson: true } });
+        const previous = made?.metadataJson ? (JSON.parse(made.metadataJson) as { previousRole?: string }).previousRole : undefined;
+        role = previous && previous !== SYSTEM_ADMIN_ROLE && previous !== 'super_admin' ? previous : 'panel';
+      }
+      const now = new Date();
+      await tx.user.update({
+        where: { id: user.id },
+        data: { role, ...(makeAdmin && user.mfaEnrolmentDueAt > now ? { mfaEnrolmentDueAt: now } : {}) },
+      });
+      await tx.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: now } });
+      const sessionsRevoked = await revokeStaffSessions(tx, { userId: user.id }, 'privileges_changed');
+      await audit(tx, c, makeAdmin ? 'access.system_admin.granted' : 'access.system_admin.removed', 'user', user.id, { reason: why, previousRole: user.role, role, sessionsRevoked });
+      const admins = await tx.user.findMany({ where: { organizationId: c.organizationId, role: SYSTEM_ADMIN_ROLE, status: 'active', id: { not: user.id } }, select: { email: true } });
+      const [org, actor] = await Promise.all([
+        tx.organization.findUnique({ where: { id: c.organizationId }, select: { name: true } }),
+        tx.user.findFirst({ where: { id: actorUserId, organizationId: c.organizationId }, select: { name: true, email: true } }),
+      ]);
+      return {
+        user: { id: user.id, name: user.name, email: user.email, role, status: user.status, permissionProfileId: user.permissionProfileId },
+        others: admins.map((a) => a.email),
+        company: org?.name ?? null,
+        by: actor?.name || actor?.email || 'An admin',
+        organizationId: c.organizationId,
+      };
+    });
+    const who = result.user.name || result.user.email;
+    const rows: [string, string][] = [['Person', who], ['Changed by', result.by], ['Reason', why]];
+    const mails = [
+      {
+        to: result.user.email,
+        subject: makeAdmin ? 'You are now a System Admin in YukthiX' : 'You are no longer a System Admin in YukthiX',
+        heading: makeAdmin ? 'You are now a System Admin' : 'You are no longer a System Admin',
+        blocks: makeAdmin
+          ? [text('You can now decide who has access in YukthiX and give rights to others.'), details(rows), text('Sign in again to see your new menus. If you have not set up two-step verification yet, you will be asked to do it then.'), button('Open Roles & access', appUrl('/yx/settings/access'))]
+          : [text('You can no longer decide who has access in YukthiX. Any other roles you hold still apply.'), details(rows), text('Sign in again to continue.')],
+      },
+      ...result.others.map((to) => ({
+        to,
+        subject: makeAdmin ? `${who} is now a System Admin` : `${who} is no longer a System Admin`,
+        heading: makeAdmin ? 'A new System Admin' : 'A System Admin was removed',
+        blocks: [
+          text(makeAdmin ? `${who} can now decide who has access and give rights to others.` : `${who} can no longer decide who has access.`),
+          details(rows),
+          text('Did not expect this? Check Roles & access now.'),
+          button('Open Roles & access', appUrl('/yx/settings/access')),
+        ],
+      })),
+    ];
+    // Best effort: the change is saved and audited whether or not a mail goes out.
+    await Promise.all(
+      mails.map(async (m) => {
+        try {
+          const mail = await noticeEmail({ ...m, company: result.company });
+          await this.email.send({ to: m.to, ...mail, organizationId: result.organizationId });
+        } catch (e) {
+          this.logger.error(e);
+        }
+      }),
+    );
+    return result.user;
   }
 
   /**

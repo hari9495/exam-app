@@ -233,7 +233,8 @@ function TreeCell({ tree, name, onToggle, children }: { tree: { depth: number; c
   return (
     <span className="yx-table__tree">
       {Array.from({ length: tree.depth }, (_, i) => (
-        <span key={i} className="yx-table__tree-step" aria-hidden="true" />
+        // The step next to the row draws an elbow (└─) into it, so a child clearly hangs off its parent.
+        <span key={i} className={i === tree.depth - 1 ? 'yx-table__tree-step yx-table__tree-step--elbow' : 'yx-table__tree-step'} aria-hidden="true" />
       ))}
       {tree.children ? (
         <Tooltip content={tree.open ? 'Collapse' : 'Expand'}>
@@ -244,8 +245,8 @@ function TreeCell({ tree, name, onToggle, children }: { tree: { depth: number; c
       ) : (
         <span className="yx-table__tree-leaf" aria-hidden="true" />
       )}
-      <span className="yx-table__tree-main">{children}</span>
-      {tree.children > 0 && <span className="yx-table__group-count" aria-hidden="true">{tree.children}</span>}
+      <span className="yx-table__tree-main" data-parent={tree.children > 0 || undefined}>{children}</span>
+      {tree.children > 0 && <span className="yx-table__tree-count" aria-hidden="true">{tree.children} under it</span>}
     </span>
   );
 }

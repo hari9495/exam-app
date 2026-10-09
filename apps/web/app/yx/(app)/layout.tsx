@@ -22,6 +22,7 @@ import { DeskHelpButton } from './desk-help';
 const ME: WorkspaceLink = { id: 'me', label: 'My security', href: '/yx/me/security', group: 'Me' };
 const ACTIVITY: WorkspaceLink = { id: 'activity', label: 'Login activity', href: '/yx/admin/login-activity', group: 'Security' };
 const SETTINGS: WorkspaceLink = { id: 'settings', label: 'Security settings', href: '/yx/settings/security', group: 'Security' };
+const IDPS: WorkspaceLink = { id: 'identity-providers', label: 'Single sign-on providers', href: '/yx/settings/identity-providers', group: 'Security' };
 const SMS: WorkspaceLink = { id: 'sms', label: 'Text messages (SMS)', href: '/yx/settings/sms', group: 'Security' };
 const SUPPORT: WorkspaceLink = { id: 'support-access', label: 'Support access', href: '/yx/settings/support-access', group: 'Security' };
 // SD-1.31: the System Admin writes to YukthiX support (never on a support session).
@@ -40,7 +41,7 @@ const HISTORY: WorkspaceLink = { id: 'job-history', label: 'Job history', href: 
 const CHANGES: WorkspaceLink = { id: 'job-changes', label: 'Job changes', href: '/yx/people/changes', group: 'People' };
 const PROBATION: WorkspaceLink = { id: 'probation', label: 'Probation', href: '/yx/people/probation', group: 'People' };
 const BULK: WorkspaceLink = { id: 'bulk-changes', label: 'Bulk changes', href: '/yx/people/bulk-changes', group: 'People' };
-const PROFILE: WorkspaceLink = { id: 'profile', label: 'Profile', href: '/yx/people/profile', group: 'People' };
+const PROFILE: WorkspaceLink = { id: 'profile', label: 'My profile', href: '/yx/people/profile', group: 'People' };
 const ID_CHANGES: WorkspaceLink = { id: 'profile-requests', label: 'Identity and bank changes', href: '/yx/people/profile-requests', group: 'People' };
 const ACCESS: WorkspaceLink = { id: 'access', label: 'Roles & access', href: '/yx/settings/access', group: 'Access' };
 const ACCESS_SETTINGS: WorkspaceLink = { id: 'access-settings', label: 'Access and privacy', href: '/yx/settings/access-settings', group: 'Access' };
@@ -68,7 +69,8 @@ const DESK_LIVE_CHAT: WorkspaceLink = { id: 'desk-live-chat', label: 'Live chat'
 // org:manage_settings) and the pages show "no access" on a 403. Platform staff outside any company use the
 // platform console (/staff), where the YukthiX shared SMS account now lives.
 function linksFor(role: string | null, acting: boolean): WorkspaceLink[] {
-  if (acting || role === 'org_admin') return [ACTIVITY, SETTINGS, SMS, ME];
+  if (acting || role === 'org_admin') return [ACTIVITY, SETTINGS, IDPS, SMS, ME];
+  // The shared SMS account moved to the platform console (step 3).
   if (role === 'super_admin') return [ME];
   if (role === 'auditor') return [ACTIVITY, ME];
   return [ME];
@@ -114,8 +116,10 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   // YukthiX staff on a support session (P02 Q8) see the company's pages read-only; the API refuses every change.
   const support = actingSuperAdmin;
   const settingsAdmin = perms.has('org.settings.manage');
-  const org = settingsAdmin || perms.has('pay.range.view') || support ? [...ORG, ...(settingsAdmin ? [COMPANY_RULES] : [])] : [];
   const hr = support || perms.has('employee.profile.view') || perms.has('employee.change.manage') || perms.has('employee.change.approve');
+  // HR reads the structure it hires into (read-only pages; changes stay with org.settings.manage). A manager who
+  // only reads it for pickers still gets no Organisation menu (founder review 8 Oct 2026).
+  const org = settingsAdmin || perms.has('pay.range.view') || support || (hr && perms.has('org.structure.view')) ? [...ORG, ...(settingsAdmin ? [COMPANY_RULES] : [])] : [];
   const employee = Boolean(team.data?.managerId);
   const manager = Boolean(team.data?.members.length);
   const bulk = perms.has('employee.change.manage') || perms.has('employee.change.approve');
@@ -162,7 +166,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         ...(perms.has('desk.desk.create') ? [DESK_PRIVACY] : []),
       ];
   const links = [...staff, ...desk, ...(support ? [] : [APPROVALS]), ...security];
-  // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not Profile.
+  // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
   return (
     <WorkspaceShell
@@ -170,7 +174,8 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
       links={links}
       company={branding.data?.name || undefined}
       hiringHref={access.examAts && !support ? roleToLandingPath(role ?? undefined) : undefined}
-      profileHref="/profile"
+      // The account menu's "My profile" is the same page as the menu link, where the person has it.
+      profileHref={links.includes(PROFILE) ? PROFILE.href : '/profile'}
       name={me.data?.name || me.data?.email || 'Your account'}
       email={me.data?.email}
       onNavigate={(href) => router.push(href)}

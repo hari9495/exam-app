@@ -1,11 +1,29 @@
-import { forwardRef, useEffect, useState, type ReactNode } from 'react';
-import { DayPicker, type Matcher } from 'react-day-picker';
+import { forwardRef, useEffect, useState, type ChangeEvent, type ReactNode } from 'react';
+import { DayPicker, type DropdownProps, type Matcher } from 'react-day-picker';
 import { CalendarDays } from 'lucide-react';
 import { formatDate, parseDate } from '../lib/format';
 import { Icon } from './foundations';
-import { FieldRow, FormField, useFieldControl } from './field';
+import { FieldRow, FormField, NoField, useFieldControl } from './field';
+import { Select } from './select';
 import { TextField } from './inputs';
 import { Popover, PopoverAnchor, PopoverContent, closeOnEscape } from './popover';
+
+/** The calendar's month and year pickers as YukthiX selects, not the browser's plain lists (founder review 8 Oct 2026). */
+function CalendarDropdown({ options = [], value, onChange, 'aria-label': label }: DropdownProps) {
+  return (
+    <NoField>
+      <Select
+        size="sm"
+        aria-label={label}
+        value={value == null ? null : String(value)}
+        options={options.map((o) => ({ value: String(o.value), label: o.label, disabled: o.disabled }))}
+        onChange={(v) => v != null && onChange?.({ target: { value: v } } as ChangeEvent<HTMLSelectElement>)}
+        searchable={options.length > 12}
+        searchPlaceholder="Type a year"
+      />
+    </NoField>
+  );
+}
 
 export interface DatePickerProps {
   value: Date | null;
@@ -117,6 +135,7 @@ export const DatePicker = forwardRef<HTMLInputElement, DatePickerProps>(function
           disabled={blocked}
           weekStartsOn={1}
           captionLayout="dropdown"
+          components={{ Dropdown: CalendarDropdown }}
           startMonth={min ?? new Date(1940, 0)}
           endMonth={max ?? new Date(new Date().getFullYear() + 10, 11)}
           autoFocus
@@ -142,14 +161,16 @@ export interface DateRangePickerProps {
   fromLabel?: string;
   toLabel?: string;
   helper?: ReactNode;
+  /** In a filter bar: the group label is for screen readers only, so From / To line up with the other filters. */
+  hideLabel?: boolean;
 }
 
 /** From / To pair on one row (§16). "To" cannot be before "From". */
-export function DateRangePicker({ label, value, onChange, min, max, required, fromLabel = 'From', toLabel = 'To', helper }: DateRangePickerProps) {
+export function DateRangePicker({ label, value, onChange, min, max, required, fromLabel = 'From', toLabel = 'To', helper, hideLabel }: DateRangePickerProps) {
   const orderError = value.from && value.to && dayStart(value.to) < dayStart(value.from) ? 'End date must be on or after the start date' : null;
   return (
     <fieldset className="yx-fieldset">
-      <legend className="yx-field__label">
+      <legend className={hideLabel ? 'yx-visually-hidden' : 'yx-field__label'}>
         <span>{label}</span>
         {required && <span className="yx-field__req">Required</span>}
       </legend>

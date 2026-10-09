@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { formatBytes, formatDate, formatINR, formatTime, groupIndian, initials, parseDate, parseTime } from './format';
+import { formatBytes, formatDate, formatINR, formatPhone, formatTime, groupIndian, initials, parseDate, parseTime } from './format';
 import { ID_SPECS, maskAadhaar, verhoeffValid } from './validators';
 
 describe('format', () => {
+  it('shows Indian mobile numbers as +91 98450 11122', () => {
+    expect(formatPhone('+919845011122')).toBe('+91 98450 11122');
+    expect(formatPhone('9845011122')).toBe('+91 98450 11122');
+    expect(formatPhone('098450 11122')).toBe('+91 98450 11122');
+    expect(formatPhone('+91••••••22')).toBe('+91••••••22');
+    expect(formatPhone(null)).toBe('');
+  });
+
   it('groups Indian style', () => {
     expect(groupIndian(0)).toBe('0');
     expect(groupIndian(999)).toBe('999');

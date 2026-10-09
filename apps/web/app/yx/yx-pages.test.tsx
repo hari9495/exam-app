@@ -15,11 +15,12 @@ import YxResetPasswordPage from './reset-password/[token]/page';
 import YxMySecurityPage from './(app)/me/security/page';
 import YxLoginActivityPage from './(app)/admin/login-activity/page';
 import YxSecuritySettingsPage from './(app)/settings/security/page';
+import YxIdentityProvidersPage from './(app)/settings/identity-providers/page';
 import YxAppLayout from './(app)/layout';
 import YxSetupMfaPage from './setup-mfa/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useParams: () => ({ token: 'tok-123' }) }));
-jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
+jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), API_BASE: 'https://api.test/api/v1' }));
 jest.mock('../../lib/navigate', () => ({ goTo: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 jest.mock('../../lib/bot-challenge', () => ({ botChallengeToken: async () => null }));
@@ -631,6 +632,20 @@ describe('/yx/admin/login-activity', () => {
     expect(api.mock.calls.some(([p]) => /^\/security\/login-events\?result=unsuccessful&from=.+&pageSize=1$/.test(p))).toBe(true);
   });
 
+  it('the Person filter searches the API as the admin types, so every user is findable, not only the first page', async () => {
+    route({
+      'GET /security/login-events': { ...EMPTY_PAGE, total: 0 },
+      'GET /security/sessions': { ...EMPTY_PAGE, total: 0 },
+      'GET /users': { data: [{ id: 'u-7', email: 'zara.k@kaverifoods.in', name: 'Zara Khan', role: 'recruiter' }], total: 1, page: 1, pageSize: 25, totalPages: 1 },
+    });
+    wrap(<YxLoginActivityPage />);
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Person' }));
+    await userEvent.type(await screen.findByPlaceholderText('Name or email'), 'zara');
+    await waitFor(() => expect(api.mock.calls.some(([p]) => p === '/users?pageSize=25&search=zara')).toBe(true));
+    await userEvent.click(await screen.findByRole('option', { name: /Zara Khan/ }));
+    await waitFor(() => expect(api.mock.calls.some(([p]) => /^\/security\/login-events\?userId=u-7/.test(p))).toBe(true));
+  });
+
   it('says "no access" to someone without the permission, not "check your connection"', async () => {
     const forbidden = Object.assign(new Error('Forbidden'), { status: 403 });
     route({ 'GET /security/login-events': forbidden, 'GET /security/sessions': forbidden, 'GET /users': forbidden });
@@ -703,6 +718,79 @@ describe('/yx/settings/security', () => {
   });
 });
 
+describe('/yx/settings/identity-providers', () => {
+  const IDP = {
+    id: '6f1c2b8e-1111-4222-8333-944455556666', name: 'Kaveri Google', type: 'oidc_google', status: 'disabled', domains: ['kaverifoods.in'], jitEnabled: false,
+    samlEntityId: null, samlSsoUrl: null, samlCertificate: null, oidcIssuer: 'https://accounts.google.com', oidcClientId: 'client-1', entraTenantId: null, jitRole: null, mfaTrusted: false, clientSecretSet: true,
+  };
+
+  it('shows the SAML metadata URL with the company slug from the company record, not the sign-in (no more /saml/null/)', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'org_admin', organizationSlug: null, isLoading: false });
+    route({ 'GET /security/identity-providers': [IDP], 'GET /organizations/branding': { name: 'Kaveri Foods', slug: 'kaveri-foods' } });
+    wrap(<YxIdentityProvidersPage />);
+    expect(await screen.findByText('https://api.test/api/v1/auth/saml/kaveri-foods/metadata')).toBeInTheDocument();
+    expect(screen.getByText('https://api.test/api/v1/auth/oidc/callback')).toBeInTheDocument();
+    expect(screen.queryByText(/\/saml\/null\//)).toBeNull();
+  });
+
+  it('turns a provider on and removes one through the existing endpoints', async () => {
+    route({
+      'GET /security/identity-providers': [IDP],
+      'GET /organizations/branding': { name: 'Kaveri Foods', slug: 'kaveri-foods' },
+      [`PATCH /security/identity-providers/${IDP.id}`]: { ...IDP, status: 'active' },
+      [`DELETE /security/identity-providers/${IDP.id}`]: { success: true },
+    });
+    wrap(<YxIdentityProvidersPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Turn on Kaveri Google' }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith(`/security/identity-providers/${IDP.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'active' }) }, 'tok'));
+    await userEvent.click(screen.getByRole('button', { name: 'Remove Kaveri Google' }));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Remove provider' }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith(`/security/identity-providers/${IDP.id}`, { method: 'DELETE' }, 'tok'));
+  });
+
+  it('adds a provider with POST', async () => {
+    route({ 'GET /security/identity-providers': [], 'GET /organizations/branding': { name: 'Kaveri Foods', slug: 'kaveri-foods' }, 'POST /security/identity-providers': IDP });
+    wrap(<YxIdentityProvidersPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Add identity provider' }));
+    const drawer = await screen.findByRole('dialog');
+    await userEvent.type(within(drawer).getByLabelText(/Name on the sign-in page/), 'Kaveri Google');
+    await userEvent.type(within(drawer).getByLabelText(/Client ID/), 'client-1');
+    await userEvent.type(within(drawer).getByLabelText(/Client secret/), 's3cret');
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Add provider' }));
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith(
+        '/security/identity-providers',
+        { method: 'POST', body: JSON.stringify({ name: 'Kaveri Google', domains: [], jitEnabled: false, mfaTrusted: false, type: 'oidc_google', oidcClientId: 'client-1', oidcClientSecret: 's3cret' }) },
+        'tok',
+      ),
+    );
+  });
+
+  it('a missing permission shows no access', async () => {
+    route({ 'GET /security/identity-providers': Object.assign(new Error('Forbidden'), { status: 403 }), 'GET /organizations/branding': { name: 'Kaveri Foods', slug: 'kaveri-foods' } });
+    wrap(<YxIdentityProvidersPage />);
+    expect(await screen.findByText(/a System Admin/)).toBeInTheDocument();
+  });
+
+  it('Security settings links to this page, not the old /v2 one', async () => {
+    route({
+      'GET /security/policy': { policy: POLICY, floor: FLOOR, updatedAt: null },
+      'GET /security/identity-providers': [IDP],
+      'GET /security/identity-providers/domains': [],
+      'GET /users': { data: [], total: 0, page: 1, pageSize: 100, totalPages: 1 },
+    });
+    wrap(<YxSecuritySettingsPage />);
+    expect(await screen.findByRole('link', { name: 'Manage identity providers' })).toHaveAttribute('href', '/yx/settings/identity-providers');
+  });
+
+  it('is in the Security menu for company admins', async () => {
+    (usePathname as jest.Mock).mockReturnValue('/yx/settings/identity-providers');
+    route({ 'GET /auth/mfa': MFA });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    expect(screen.getByRole('link', { name: 'Single sign-on providers' })).toHaveAttribute('aria-current', 'page');
+  });
+});
+
 describe('/yx layout', () => {
   it('only shows the pages the role can open', async () => {
     (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'recruiter', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
@@ -741,13 +829,13 @@ describe('/yx layout', () => {
     expect(screen.getByText('page')).toBeInTheDocument();
   });
 
-  it('marks Identity and bank changes, not Profile, on /yx/people/profile-requests', async () => {
+  it('marks Identity and bank changes, not My profile, on /yx/people/profile-requests', async () => {
     (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
     (usePathname as jest.Mock).mockReturnValue('/yx/people/profile-requests');
     route({ 'GET /auth/mfa': MFA, 'GET /rbac/me/permissions': ['employee.profile.view', 'employee.identity.approve'] });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
     expect(await screen.findByRole('link', { name: 'Identity and bank changes' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Profile' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'My profile' })).not.toHaveAttribute('aria-current');
   });
 
   it('sends a signed-out visitor to the sign-in page', () => {

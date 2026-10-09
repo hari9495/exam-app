@@ -15,7 +15,7 @@ import { FormField } from '../../components/field';
 import { TextField, NumberField } from '../../components/inputs';
 import { ActivityFeed, type ActivityEntry } from '../../components/timeline';
 import { Icon, Text } from '../../components/foundations';
-import { formatDate, formatINR } from '../../lib/format';
+import { formatDate, formatINR, formatPhone } from '../../lib/format';
 import { canSeePay, daysBetween, fieldVisibility, isBic, isIban, splitNetPay, type PaySplit, type Persona, type Relation } from './people-logic';
 import { SPLITS, ARJUN, ARJUN_ASSETS, ARJUN_DOCS, ARJUN_HISTORY, ARJUN_ROLES, ARJUN_WORK_AUTH, IDENTITY, type JobChange } from './people-data';
 import { ClassBadge, FactRail, FieldList, PeopleFrame, SplitLayout, StatusBadge } from './people-kit';
@@ -156,7 +156,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
             <FactRail
               facts={[
                 { label: 'Work email', value: ARJUN.workEmail },
-                { label: 'Work phone', value: ARJUN.workPhone },
+                { label: 'Work phone', value: formatPhone(ARJUN.workPhone) },
                 { label: 'Secondary manager', value: ARJUN.dottedManager },
                 { label: 'Employment type', value: ARJUN.type },
                 { label: 'Legal entity', value: ARJUN.entity },
@@ -325,7 +325,7 @@ function OverviewTab({ persona, relation, onReveal }: { persona: Persona; relati
                   <span>
                     {e.name} · {e.relation}
                   </span>
-                  <span className="yx-mono">{e.phone}</span>
+                  <span>{formatPhone(e.phone)}</span>
                 </li>
               ))}
             </ul>

@@ -75,7 +75,15 @@ async function baseGrants(prisma: PrismaService, tenantPrisma: TenantPrismaServi
     const profile = await tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
       tx.permissionProfile.findUnique({ where: { id: profileId }, select: { permissionsJson: true } }),
     );
-    return profile ? (JSON.parse(profile.permissionsJson) as string[]) : [];
+    const fromProfile = profile ? (JSON.parse(profile.permissionsJson) as string[]) : [];
+    // A System Admin who also holds a profile (e.g. the HR head made System Admin, founder 8 Oct 2026) keeps the
+    // System Admin keys too: the profile adds to the role, it never takes the admin's own keys away.
+    if (subject.role !== 'org_admin') return fromProfile;
+    const admin = await prisma.rolePermission.findMany({
+      where: { role: 'org_admin', permission: { key: { in: keys } } },
+      select: { permission: { select: { key: true } } },
+    });
+    return [...new Set([...fromProfile, ...admin.map((g) => g.permission.key)])];
   }
 
   // Only editable roles ever have an override row (the role-permissions API refuses the rest), so

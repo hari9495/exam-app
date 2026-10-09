@@ -88,6 +88,7 @@
   text-align: center;
 }
 .yx-upload__zone p { margin: 0; }
+.yx-upload__zone:has(> input:focus) { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); }
 .yx-upload__zone .yx-link { border: 0; background: none; padding: 0; font: inherit; }
 .yx-upload__zone[data-over] { border-color: var(--yx-color-action-primary); background: var(--yx-color-bg-selected); }
 .yx-upload__zone[data-disabled] { background: var(--yx-color-bg-subtle); color: var(--yx-color-text-disabled); }

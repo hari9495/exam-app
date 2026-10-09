@@ -103,5 +103,12 @@
   "item": "Port the same dependency fixes (security patches, Jest 30, Tailwind 4) to #128 PostgreSQL so its CI passes",
   "status": "Done",
   "next": "Ported to #128; CI passing"
+ },
+ {
+  "id": "W-016",
+  "area": "Security review",
+  "item": "Sign-in without the company shown (email-first): a locked account answers 'Wrong email or password' even with the right password, while the company-scoped page answers 'Too many tries'. Decide how to tell a locked person without revealing which emails have accounts (e.g. lock the email identifier on the same threshold, then show the lock for both).",
+  "status": "Open",
+  "next": "Design + fix after Area 2 testing"
  }
 ]

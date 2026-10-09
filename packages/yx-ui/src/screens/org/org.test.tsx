@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { LegalEntitiesScreen, entityInput, statutoryErrors, type LegalEntitiesScreenProps } from './entities';
-import { LocationsScreen, locationInput, type LocationsScreenProps } from './locations';
+import { LocationsScreen, locationInput, timeZoneOptions, type LocationsScreenProps } from './locations';
 import { StructureScreen, masterInput, payRangeErrors, subtree, type StructureScreenProps } from './structure';
 import { addressDraft, ownershipLabel } from './org-kit';
 import { CompanySettingsScreen, companyValue, settingInput, type CompanySettingsScreenProps } from './settings';
@@ -103,6 +103,22 @@ describe('LegalEntitiesScreen (P01 §4.1)', () => {
     expect(onSaveRules).toHaveBeenCalledWith({ employeeCodeScope: 'tenant' });
   });
 
+  it('YX-ORG-16: when company-wide codes are refused, the clashing codes and people are listed under the field', async () => {
+    const refused = Object.assign(new Error('Some employee codes are used in more than one legal entity. Change them first (YX-ORG-16).'), {
+      status: 409,
+      body: { clashes: [{ code: 'KF-0042', employees: [{ id: 'e1', name: 'Ramesh Gowda', legalEntity: 'Kaveri Foods Pvt Ltd' }, { id: 'e2', name: 'Ramesh G', legalEntity: 'Kaveri Foods (TN) Ltd' }] }] },
+    });
+    render(<Entities onSaveRules={vi.fn().mockRejectedValue(refused)} />);
+    await userEvent.click(screen.getByRole('radio', { name: 'Across the company' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save rules' }));
+    expect(await screen.findByText('These codes are used in more than one legal entity. Change them first.')).toBeInTheDocument();
+    expect(screen.getByText('KF-0042')).toBeInTheDocument();
+    expect(screen.getByText(/Ramesh Gowda \(Kaveri Foods Pvt Ltd\), Ramesh G \(Kaveri Foods \(TN\) Ltd\)/)).toBeInTheDocument();
+    // Changing the choice clears the list.
+    await userEvent.click(screen.getByRole('radio', { name: 'Per legal entity' }));
+    expect(screen.queryByText('KF-0042')).toBeNull();
+  });
+
   it('read-only and no-access states', () => {
     const { unmount } = render(<Entities canManage={false} />);
     expect(screen.queryByRole('button', { name: 'Add legal entity' })).toBeNull();
@@ -144,6 +160,20 @@ describe('LocationsScreen (P01 §4.2)', () => {
         ipRanges: ['10.20.0.0/16'],
       }),
     );
+  });
+
+  it('time zone is chosen from the IANA list, India first, not typed', async () => {
+    const zones = timeZoneOptions('Mars/Olympus_Mons');
+    expect(zones[0].value).toBe('Asia/Kolkata');
+    expect(zones.some((z) => z.value === 'Europe/London')).toBe(true);
+    expect(zones.at(-1)?.value).toBe('Mars/Olympus_Mons');
+    render(<LocationsScreen {...props()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Add location' }));
+    expect(screen.queryByRole('textbox', { name: 'Time zone' })).toBeNull();
+    await userEvent.click(screen.getByRole('combobox', { name: 'Time zone' }));
+    await userEvent.type(await screen.findByPlaceholderText('Search time zones'), 'dubai');
+    await userEvent.click(await screen.findByRole('option', { name: 'Asia/Dubai' }));
+    expect(screen.getByRole('combobox', { name: 'Time zone' })).toHaveTextContent('Asia/Dubai');
   });
 
   it('YX-ORG-02: state and time zone are required; geofence and networks are checked', () => {
@@ -323,6 +353,28 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     unmount();
     render(<CompanySettingsScreen {...base} canManage={false} />);
     expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
+  });
+
+  it('a single choice of 2-4 options is the Segment control; longer lists stay a dropdown', async () => {
+    const { unmount } = render(<CompanySettingsScreen {...base} />);
+    const block = (label: string) => screen.getAllByText(label).map((el) => el.closest('.yx-org__rule')).find(Boolean) as HTMLElement;
+    const attendance = block('Attendance mode');
+    await userEvent.click(within(attendance).getByRole('button', { name: 'Change' }));
+    let dialog = await screen.findByRole('dialog');
+    // Three values: a joined pick-one. Five scopes: a dropdown.
+    expect(within(within(dialog).getByRole('radiogroup', { name: 'Attendance mode' })).getAllByRole('radio').map((r) => r.textContent)).toEqual(['Punch in and out', 'Present unless on leave', 'Timesheet']);
+    expect(within(dialog).getByRole('combobox', { name: 'Applies to' })).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('radio', { name: 'Timesheet' }));
+    expect(within(dialog).getByRole('radio', { name: 'Timesheet' })).toHaveAttribute('aria-checked', 'true');
+    unmount();
+    render(<CompanySettingsScreen {...base} />);
+    const confirm = block('Confirm automatically after the end date');
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Change' }));
+    dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByRole('radiogroup', { name: 'Confirm automatically after the end date' })).toBeNull();
+    expect(within(dialog).getByRole('combobox', { name: 'Confirm automatically after the end date' })).toBeInTheDocument();
+    // Two scopes: a Segment.
+    expect(within(dialog).getByRole('radiogroup', { name: 'Applies to' })).toBeInTheDocument();
   });
 
   it('the editor refuses to save without a value', async () => {

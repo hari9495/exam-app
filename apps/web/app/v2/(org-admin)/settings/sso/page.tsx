@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { useDeleteIdentityProvider, useIdentityProviders, useSaveIdentityProvider, IdentityProviderInput } from '../../../../../lib/hooks/useSso';
 import { useAuth } from '../../../../../lib/auth-context';
+import { useOrgBranding } from '../../../../../lib/hooks/useBranding';
 import { Button, TextField, dt } from '../../../../../components/ui-v2';
 import { STATUS } from '../../../../../components/ui-v2/viz';
 import type { IdentityProvider, IdentityProviderType } from '../../../../../lib/types';
@@ -70,7 +71,9 @@ const draftOf = (p?: IdentityProvider): Draft => ({
 });
 
 export default function V2SsoSettingsPage() {
-  const { organizationSlug } = useAuth();
+  // The sign-in context has no slug after email-first sign-in; the company's own record always does.
+  const { organizationSlug: signInSlug } = useAuth();
+  const organizationSlug = useOrgBranding().data?.slug ?? signInSlug ?? '…';
   const { data: providers = [] } = useIdentityProviders();
   const save = useSaveIdentityProvider();
   const remove = useDeleteIdentityProvider();

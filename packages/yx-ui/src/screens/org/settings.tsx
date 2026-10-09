@@ -3,9 +3,10 @@ import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { DatePicker } from '../../components/date';
 import { InlineAlert } from '../../components/feedback';
-import { FormField, FormSection, type FormErrorItem } from '../../components/field';
+import { FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { MenuItem } from '../../components/menu';
+import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
 import { DataTable, type TableColumn } from '../../components/table';
 import { dayKey } from '../../lib/dates';
@@ -41,6 +42,9 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'attendance.missing_punch_effect': { block_payroll_approval: 'Hold payroll approval', warning_only: 'Warn only' },
 };
 export const valueLabel = (key: string, value: unknown) => VALUE_LABEL[key]?.[String(value)] ?? String(value);
+
+/** A single choice of 2-4 short options is the joined Segment control, never a dropdown (DESIGN R11; validation 8 Oct 2026). */
+const isPickOne = (count: number) => count >= 2 && count <= 4;
 
 export interface SettingsSection {
   title: string;
@@ -93,7 +97,6 @@ function SettingEditor({ settingKey, def, choices, today, onClose, onSave }: { s
   const scopes = def.scopes.filter((s) => s === 'tenant' || (choices[s]?.length ?? 0) > 0);
   const [draft, setDraft] = useState<Draft>({ scopeType: scopes[0] ?? 'tenant', scopeId: null, value: null, validFrom: null });
   const [dirty, setDirty] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
   const { busy, error, run } = useRun();
   const set = (patch: Partial<Draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
@@ -101,17 +104,22 @@ function SettingEditor({ settingKey, def, choices, today, onClose, onSave }: { s
   };
   const { input, errors } = settingInput(settingKey, def, draft);
   const from = draft.validFrom ? dayKey(draft.validFrom) : null;
-  const errorOf = (id: string) => (showErrors ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   const save = () => {
-    if (!input) return setShowErrors(true);
+    if (!input) return saveErrors.reveal();
     void run('save', () => onSave(input)).then((ok) => ok && onClose());
   };
   return (
-    <EditorDrawer open onClose={onClose} dirty={dirty} title={def.label} subtitle={`Starter value: ${valueLabel(settingKey, def.default)}`} errors={errors} showErrors={showErrors} saving={busy === 'save'} failed={error} saveLabel="Save" onSave={save}>
+    <EditorDrawer open onClose={onClose} dirty={dirty} title={def.label} subtitle={`Starter value: ${valueLabel(settingKey, def.default)}`} errors={saveErrors.shownErrors} saving={busy === 'save'} failed={error} saveLabel="Save" onSave={save}>
       <FormSection title="Applies to">
         {scopes.length > 1 && (
           <FormField id="set-scope" label="Applies to" helper="The most specific value wins: a grade over an employment type, an entity over the company.">
-            <Select value={draft.scopeType} onChange={(v) => v && set({ scopeType: v, scopeId: null })} options={scopes.map((s) => ({ value: s, label: SCOPE_LABEL[s] }))} aria-label="Applies to" />
+            {isPickOne(scopes.length) ? (
+              <Segment label="Applies to" value={draft.scopeType} onChange={(scopeType) => set({ scopeType, scopeId: null })} options={scopes.map((s) => ({ value: s, label: SCOPE_LABEL[s] }))} />
+            ) : (
+              <Select value={draft.scopeType} onChange={(v) => v && set({ scopeType: v, scopeId: null })} options={scopes.map((s) => ({ value: s, label: SCOPE_LABEL[s] }))} aria-label="Applies to" />
+            )}
           </FormField>
         )}
         {draft.scopeType !== 'tenant' && (
@@ -122,7 +130,11 @@ function SettingEditor({ settingKey, def, choices, today, onClose, onSave }: { s
       </FormSection>
       <FormSection title="Value">
         <FormField id="set-value" label={def.label} required error={errorOf('set-value')}>
-          <Select value={draft.value} onChange={(value) => set({ value })} options={def.values.map((v) => ({ value: v, label: valueLabel(settingKey, v) }))} aria-label={def.label} />
+          {isPickOne(def.values.length) ? (
+            <Segment label={def.label} value={draft.value ?? ''} onChange={(value) => set({ value })} options={def.values.map((v) => ({ value: v, label: valueLabel(settingKey, v) }))} />
+          ) : (
+            <Select value={draft.value} onChange={(value) => set({ value })} options={def.values.map((v) => ({ value: v, label: valueLabel(settingKey, v) }))} aria-label={def.label} />
+          )}
         </FormField>
         {def.dated && (
           <FormField id="set-from" label="Applies from" required helper="Earlier days keep the value they had." error={errorOf('set-from')}>
@@ -153,11 +165,11 @@ function SettingBlock({ settingKey, def, rows, names, canEdit, blockedReason, to
     { key: 'scope', header: 'Applies to', value: names, render: (r) => <span className="yx-auth__item-main"><Text weight="medium">{names(r)}</Text>{r.scopeType !== 'tenant' && <Text tone="secondary" size="sm">{SCOPE_LABEL[r.scopeType]}</Text>}</span>, hideable: false },
     { key: 'value', header: 'Value', value: (r) => valueLabel(settingKey, r.value), width: 200 },
     ...(def.dated
-      ? [{ key: 'from', header: 'From', value: (r: SettingOverride) => r.validFrom ?? '', render: (r: SettingOverride) => (r.validFrom ? <span>{dateLabel(r.validFrom)} {r.validFrom > today && <Badge tone="info">Scheduled</Badge>}</span> : '—'), width: 170 }]
+      ? [{ key: 'from', header: 'From', value: (r: SettingOverride) => r.validFrom ?? '', render: (r: SettingOverride) => (r.validFrom ? <span className="yx-org__from">{dateLabel(r.validFrom)}{r.validFrom > today && <Badge tone="info">Scheduled</Badge>}</span> : '—'), width: 230 }]
       : []),
   ];
   return (
-    <div className="yx-auth__stack">
+    <div className="yx-auth__stack yx-org__rule">
       <SectionHead
         title={def.label}
         description={`${valueLabel(settingKey, value)} · ${source}${blockedReason ? `. ${blockedReason}` : ''}`}

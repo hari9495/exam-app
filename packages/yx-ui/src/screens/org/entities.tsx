@@ -3,7 +3,7 @@ import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { MenuItem } from '../../components/menu';
 import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
-import { FormField, FormSection, type FormErrorItem } from '../../components/field';
+import { FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
@@ -42,16 +42,16 @@ function EntityEditor({ entity, states, onClose, onSave }: { entity: LegalEntity
     address: addressDraft(entity?.registeredAddress),
   });
   const [dirty, setDirty] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
   const { busy, error, run } = useRun();
   const set = (patch: Partial<Draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
     setDirty(true);
   };
   const { input, errors } = entityInput(draft);
-  const errorOf = (id: string) => (showErrors ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   const save = () => {
-    if (!input) return setShowErrors(true);
+    if (!input) return saveErrors.reveal();
     void run('save', () => onSave(input)).then((ok) => ok && onClose());
   };
   return (
@@ -61,8 +61,7 @@ function EntityEditor({ entity, states, onClose, onSave }: { entity: LegalEntity
       dirty={dirty}
       title={entity ? `Edit ${entity.name}` : 'Add legal entity'}
       subtitle="India · data kept in India"
-      errors={errors}
-      showErrors={showErrors}
+      errors={saveErrors.shownErrors}
       saving={busy === 'save'}
       failed={error}
       saveLabel={entity ? 'Save changes' : 'Add legal entity'}
@@ -108,7 +107,6 @@ function StatutoryDrawer({ entity, onClose, onLoad, onSave }: { entity: LegalEnt
   const [ids, setIds] = useState<StatutoryIds | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
   const { busy, error, run } = useRun();
   useEffect(() => {
     onLoad().then(setIds, (e) => setLoadError(errorText(e)));
@@ -116,19 +114,20 @@ function StatutoryDrawer({ entity, onClose, onLoad, onSave }: { entity: LegalEnt
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const errors = ids ? statutoryErrors(ids) : [];
+  const saveErrors = useSaveErrors(errors);
   const save = () => {
     if (!ids) return;
-    if (errors.length) return setShowErrors(true);
+    if (errors.length) return saveErrors.reveal();
     void run('save', () => onSave(ids)).then((ok) => ok && onClose());
   };
   return (
-    <EditorDrawer open onClose={onClose} dirty={dirty} title={`Identifiers · ${entity.shortName}`} subtitle={entity.name} errors={errors} showErrors={showErrors} saving={busy === 'save'} failed={error} saveLabel="Save identifiers" onSave={save}>
+    <EditorDrawer open onClose={onClose} dirty={dirty} title={`Identifiers · ${entity.shortName}`} subtitle={entity.name} errors={saveErrors.shownErrors} saving={busy === 'save'} failed={error} saveLabel="Save identifiers" onSave={save}>
       <InlineAlert tone="info">Opening and changing these is recorded. You confirm it’s you before saving.</InlineAlert>
       {loadError && <InlineAlert tone="danger" title="Couldn’t open the identifiers">{loadError}</InlineAlert>}
       {!ids && !loadError && <Skeleton height={200} />}
       {ids &&
         ID_FIELDS.map((f) => (
-          <FormField key={f.key} id={`le-${f.key}`} label={f.label} helper={f.hint} error={showErrors ? errors.find((e) => e.fieldId === `le-${f.key}`)?.message : undefined}>
+          <FormField key={f.key} id={`le-${f.key}`} label={f.label} helper={f.hint} error={saveErrors.errorOf(`le-${f.key}`)}>
             <TextField
               value={ids[f.key] ?? ''}
               onChange={(v) => {
@@ -147,11 +146,30 @@ function StatutoryDrawer({ entity, onClose, onLoad, onSave }: { entity: LegalEnt
 
 /* ---------- company rules (YX-ORG-12, YX-ORG-16) ---------- */
 
-function RulesForm({ rules, canManage, onSave }: { rules: CompanyRules; canManage: boolean; onSave: (changes: { employeeCodeScope?: string; defaultOwnership?: string }) => Promise<void> }) {
+// `justSaved`: the form is redrawn with the saved rules, so "Saved." is remembered by the parent.
+/** YX-ORG-16: the API refuses company-wide codes while two people share one, and lists them (409 EMPLOYEE_CODE_CLASHES). */
+export interface EmployeeCodeClash {
+  code: string;
+  employees: { id: string; name: string; legalEntity: string }[];
+}
+const clashesOf = (e: unknown): EmployeeCodeClash[] | null => {
+  const list = (e as { body?: { clashes?: unknown } } | null)?.body?.clashes;
+  return Array.isArray(list) && list.length ? (list as EmployeeCodeClash[]) : null;
+};
+
+function RulesForm({ rules, canManage, onSave, justSaved = false }: { rules: CompanyRules; canManage: boolean; onSave: (changes: { employeeCodeScope?: string; defaultOwnership?: string }) => Promise<void>; justSaved?: boolean }) {
   const [codeScope, setCodeScope] = useState(rules.employeeCodeScope.value);
   const [ownership, setOwnership] = useState(rules.defaultOwnership.value);
   const [saved, setSaved] = useState(false);
+  const [clashes, setClashes] = useState<EmployeeCodeClash[] | null>(null);
   const { busy, error, run } = useRun();
+  const save = () =>
+    run('rules', () =>
+      onSave(changes).catch((e) => {
+        setClashes(clashesOf(e));
+        throw e;
+      }),
+    ).then(setSaved);
   const changes = {
     ...(codeScope !== rules.employeeCodeScope.value ? { employeeCodeScope: codeScope } : {}),
     ...(ownership !== rules.defaultOwnership.value ? { defaultOwnership: ownership } : {}),
@@ -159,17 +177,28 @@ function RulesForm({ rules, canManage, onSave }: { rules: CompanyRules; canManag
   const dirty = Object.keys(changes).length > 0;
   const source = (s: 'default' | 'company') => (s === 'default' ? 'YukthiX starter, not changed yet' : 'Set for your company');
   return (
-    <form className="yx-auth__settings" onSubmit={(e) => { e.preventDefault(); void run('rules', () => onSave(changes)).then(setSaved); }} noValidate>
+    <form className="yx-auth__settings" onSubmit={(e) => { e.preventDefault(); void save(); }} noValidate>
       <FormSection title="Company rules">
         <FormField label="Employee codes are unique" helper={`${source(rules.employeeCodeScope.source)}. Switching to company-wide is blocked while two people share a code.`}>
-          <Segment label="Employee codes are unique" options={[{ value: 'legal_entity' as const, label: 'Per legal entity' }, { value: 'tenant' as const, label: 'Across the company' }]} value={codeScope} onChange={(v) => { setCodeScope(v); setSaved(false); }} />
+          <Segment label="Employee codes are unique" options={[{ value: 'legal_entity' as const, label: 'Per legal entity' }, { value: 'tenant' as const, label: 'Across the company' }]} value={codeScope} onChange={(v) => { setCodeScope(v); setSaved(false); setClashes(null); }} />
         </FormField>
+        {clashes && (
+          <InlineAlert tone="danger" title="These codes are used in more than one legal entity. Change them first.">
+            <ul className="yx-auth__clashes">
+              {clashes.map((c) => (
+                <li key={c.code}>
+                  <strong>{c.code}</strong>: {c.employees.map((e) => `${e.name} (${e.legalEntity})`).join(', ')}
+                </li>
+              ))}
+            </ul>
+          </InlineAlert>
+        )}
         <FormField label="New departments, designations and grades are" helper={`${source(rules.defaultOwnership.source)}. A shared one can still be limited to some entities.`}>
           <Segment label="New masters are" options={[{ value: 'shared' as const, label: 'Shared' }, { value: 'entity_only' as const, label: 'Entity-only' }]} value={ownership} onChange={(v) => { setOwnership(v); setSaved(false); }} />
         </FormField>
       </FormSection>
-      {saved && !dirty && <InlineAlert tone="success">Saved.</InlineAlert>}
-      {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
+      {(saved || justSaved) && !dirty && <InlineAlert tone="success">Saved.</InlineAlert>}
+      {error && !clashes && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
       {canManage && (
         <div className="yx-auth__row yx-auth__save">
           <Button type="submit" variant="primary" loading={busy === 'rules'} disabled={!dirty}>Save rules</Button>
@@ -241,6 +270,7 @@ export function LegalEntitiesScreen(props: LegalEntitiesScreenProps) {
     { key: 'status', header: 'Status', value: (e) => (e.archivedAt ? 'Archived' : e.isDefault ? 'Default' : 'Active'), render: (e) => <StatusBadge archived={Boolean(e.archivedAt)} isDefault={e.isDefault} />, width: 110 },
   ];
 
+  const [rulesSaved, setRulesSaved] = useState(false);
   const add = <Button onClick={() => setEditing({ entity: null, key: Date.now() })}>Add legal entity</Button>;
   return (
     <OrgPage
@@ -253,7 +283,7 @@ export function LegalEntitiesScreen(props: LegalEntitiesScreenProps) {
       what="the legal entities"
     >
       <section className="yx-auth__stack" aria-label="Legal entities">
-        <SectionHead title="Entities" description="Every screen still shows all the entities you may see." action={<ArchivedToggle checked={showArchived} onChange={setShowArchived} count={archived} />} />
+        <SectionHead title="Entities" description="Archived entities are hidden here; their people and history stay." action={<ArchivedToggle checked={showArchived} onChange={setShowArchived} count={archived} />} />
         <DataTable
           label="Legal entities"
           columns={columns}
@@ -286,7 +316,7 @@ export function LegalEntitiesScreen(props: LegalEntitiesScreenProps) {
         />
       </section>
 
-      {props.rules && <RulesForm key={JSON.stringify(props.rules)} rules={props.rules} canManage={props.canManage} onSave={props.onSaveRules} />}
+      {props.rules && <RulesForm key={JSON.stringify(props.rules)} rules={props.rules} canManage={props.canManage} justSaved={rulesSaved} onSave={(c) => props.onSaveRules(c).then(() => setRulesSaved(true))} />}
 
       {editing && <EntityEditor key={editing.key} entity={editing.entity} states={props.states} onClose={() => setEditing(null)} onSave={(input) => props.onSave(editing.entity?.id ?? null, input)} />}
       {dialog}

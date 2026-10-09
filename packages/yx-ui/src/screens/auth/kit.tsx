@@ -40,6 +40,7 @@ const METHODS: Record<string, string> = {
   password: 'Password',
   saml: 'Single sign-on',
   oidc: 'Single sign-on',
+  sso: 'Single sign-on', // the Method filter: saml or oidc
   google: 'Google',
   microsoft: 'Microsoft',
   otp_email: 'Code by email',
@@ -231,7 +232,7 @@ export function SecondFactorPanel({ factors, getPasskey, submit, sendCode, recov
       <Button type="submit" variant="primary" fullWidth loading={busy} disabled={choice !== 'passkey' && !code.trim()}>
         {choice === 'passkey' ? 'Use my passkey' : 'Confirm'}
       </Button>
-      {several && <Button disabled={busy} onClick={back}>Choose another way</Button>}
+      {several && <Button fullWidth disabled={busy} onClick={back}>Choose another way</Button>}
     </form>
   );
 }
@@ -245,6 +246,12 @@ export function RecoveryCodes({ codes, onDone, doneLabel = 'Done' }: { codes: st
   const copy = () => {
     void navigator.clipboard?.writeText(codes.join('\n')).then(() => setCopied(true));
   };
+  // A plain text file made in the browser: the codes never go back to a server.
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([`YukthiX recovery codes\nEach code works once.\n\n${codes.join('\n')}\n`], { type: 'text/plain' }));
+    Object.assign(document.createElement('a'), { href: url, download: 'yukthix-recovery-codes.txt' }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
   return (
     <div className="yx-auth__codes">
       <InlineAlert tone="warning" title="Save these recovery codes now">
@@ -257,6 +264,7 @@ export function RecoveryCodes({ codes, onDone, doneLabel = 'Done' }: { codes: st
       </ol>
       <div className="yx-auth__row">
         <Button size="sm" onClick={copy}>{copied ? 'Copied' : 'Copy codes'}</Button>
+        <Button size="sm" onClick={download}>Download</Button>
         {copied && <span className="yx-visually-hidden" role="status">Codes copied</span>}
       </div>
       <Checkbox checked={saved} onChange={setSaved} label="I have saved my recovery codes" />

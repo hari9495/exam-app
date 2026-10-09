@@ -45,6 +45,23 @@ export class AccessController {
     return this.access.users(ctx);
   }
 
+  // System Admin = users.role org_admin: controls access and gives rights to others (founder decision, 8 Oct 2026).
+  @Post('users/:id/system-admin')
+  @RequirePermissions('access.role.manage', 'org:manage_users')
+  @RequireStepUp()
+  makeSystemAdmin(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: GrantReasonDto) {
+    ownSession(req);
+    return this.access.setSystemAdmin(ctx, userId, id, true, dto.reason);
+  }
+
+  @Post('users/:id/system-admin/remove')
+  @RequirePermissions('access.role.manage', 'org:manage_users')
+  @RequireStepUp()
+  removeSystemAdmin(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: GrantReasonDto) {
+    ownSession(req);
+    return this.access.setSystemAdmin(ctx, userId, id, false, dto.reason);
+  }
+
   @Get('users/:id/effective')
   @RequirePermissions('access.role.manage')
   effective(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {

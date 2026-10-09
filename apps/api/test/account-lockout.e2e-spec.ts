@@ -238,7 +238,9 @@ describe('account lockout settings and admin unlock (P12 YX-IAM-07)', () => {
       expect(Math.abs(fakeWait - realWait)).toBeLessThanOrEqual(1);
       expect(fakeWait).toBeGreaterThanOrEqual(3599);
 
-      // An unknown organisation gets the YukthiX default (3 failures: delay only, no lock).
+      // An unknown organisation gets the YukthiX default (3 failures: delay only, no lock). The email's
+      // own counter (W-016) is cleared first: the failures above already count there.
+      await clearCounters();
       const nowhere = `nowhere-${runId}`;
       await failTimes(nowhere, ghost, 3);
       expect((await login(nowhere, ghost, { password: WRONG }).expect(429)).body.retryAfterSeconds).toBeLessThanOrEqual(1);
@@ -285,6 +287,8 @@ describe('account lockout settings and admin unlock (P12 YX-IAM-07)', () => {
       email.send.mockClear();
       const res = await unlock(admin, users[RECRUITER_A]).expect(200);
       expect(res.body).toEqual({ wasLocked: true });
+      // The email's own lock (W-016) is cleared too, so sign-in without the company named works at once.
+      expect(await redis.exists(`auth:lp:acct:fail:${sha256(`*\u0000${RECRUITER_A}`)}`)).toBe(0);
       await login(orgA().slug, RECRUITER_A).expect(200);
 
       const audit = await tenantPrisma.forTenant(SUPER, (tx) =>
