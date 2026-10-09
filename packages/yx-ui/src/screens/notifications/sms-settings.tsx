@@ -234,6 +234,7 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
       onOpenChange={onOpenChange}
       size="lg"
       dirty={dirty}
+      notice={status.kind === 'failed' && <InlineAlert tone="danger" title="Not saved">{status.message}</InlineAlert>}
       title={account ? `Edit ${account.name}` : 'Add SMS account'}
       subtitle={account ? PROVIDERS[account.provider] : 'Your own gateway account, with your DLT registration'}
       footer={
@@ -390,8 +391,6 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
             </div>
           </FormSection>
         )}
-
-        {status.kind === 'failed' && <InlineAlert tone="danger" title="Not saved">{status.message}</InlineAlert>}
       </form>
     </Drawer>
   );

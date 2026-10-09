@@ -139,6 +139,7 @@ function IdentityProviderEditor({ provider, onClose, onSave }: EditorProps) {
       onOpenChange={(open) => !open && onClose()}
       size="lg"
       dirty={dirty}
+      notice={status.kind === 'failed' && <InlineAlert tone="danger" title="Not saved">{status.message}</InlineAlert>}
       title={provider ? `Edit ${provider.name}` : 'Add identity provider'}
       subtitle={provider ? IDP_TYPE_LABEL[provider.type] : 'New providers start switched off. Turn one on once its settings are in.'}
       footer={
@@ -214,7 +215,6 @@ function IdentityProviderEditor({ provider, onClose, onSave }: EditorProps) {
           />
         </FormSection>
 
-        {status.kind === 'failed' && <InlineAlert tone="danger" title="Not saved">{status.message}</InlineAlert>}
       </form>
     </Drawer>
   );
