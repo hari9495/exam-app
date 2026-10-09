@@ -10,6 +10,7 @@ import { seedServiceDeskChannels } from './seed-service-desk-channels';
 import { seedServiceDeskKnowledge, seedYukthixSupport } from './seed-service-desk-knowledge';
 import { seedServiceDeskEsm } from './seed-service-desk-esm';
 import { seedServiceDeskEsm2 } from './seed-service-desk-esm2';
+import { seedServiceDeskEsm3 } from './seed-service-desk-esm3';
 
 const prisma = new PrismaClient();
 
@@ -327,6 +328,7 @@ async function main() {
       // (seed-service-desk-esm.ts); Arjun Kulkarni signs in as arjun@demo-org.test.
       await seedServiceDeskEsm(tx, demoOrg.id);
       await seedServiceDeskEsm2(tx, demoOrg.id);
+      await seedServiceDeskEsm3(tx, demoOrg.id);
     }
   }, { timeout: 60000 });
 
