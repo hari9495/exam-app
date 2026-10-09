@@ -2940,6 +2940,8 @@ model SdDeskMember {
   role           String    @db.VarChar(12)
   tier           String?   @db.VarChar(2)
   skills         String[]  @default([])
+  /// SD-2.25: languages the agent answers in.
+  languages      String[]  @default([])
   validFrom      DateTime  @map("valid_from") @db.Date
   validTo        DateTime? @map("valid_to") @db.Date
   createdBy      String?   @map("created_by") @db.Uuid
@@ -3008,6 +3010,8 @@ model SdCategory {
   privateByDefault Boolean @default(false) @map("private_by_default")
   defaultGroupId  String?  @map("default_group_id") @db.Uuid
   defaultPriority Int?     @map("default_priority") @db.SmallInt
+  /// SD-2.25: skills an agent needs for tickets in this category.
+  skills          String[] @default([])
   active          Boolean  @default(true)
   sortOrder       Int      @default(0) @map("sort_order")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -3118,6 +3122,8 @@ model SdTicket {
   /// SD-2.11: the lifecycle version this ticket keeps.
   lifecycleId          String?                  @map("lifecycle_id") @db.Uuid
   lifecycleVersion     Int?                     @map("lifecycle_version")
+  /// SD-2.25: the language the requester wrote in (routing by language).
+  language             String?                  @db.VarChar(8)
   version              Int                      @default(1)
   search               Unsupported("tsvector")?
   createdBy            String?                  @map("created_by") @db.Uuid
@@ -4896,4 +4902,135 @@ model SdChatMessage {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("sd_chat_messages")
+}
+
+// ---- Service Desk phase 3b-2 (ESM) batch 3 (SD-2.20 … SD-2.27). Keys and RLS in the SQL. ----
+
+model SdMsgChannel {
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId         String   @map("organization_id") @db.Uuid
+  deskId                 String   @map("desk_id") @db.Uuid
+  kind                   String   @db.VarChar(8)
+  name                   String   @db.VarChar(100)
+  accountId              String?  @map("account_id") @db.Uuid
+  tokenHash              String   @map("token_hash") @db.Char(64)
+  signingSecretEncrypted String   @map("signing_secret_encrypted")
+  templates              Json     @default("{}")
+  state                  String   @default("active") @db.VarChar(8)
+  version                Int      @default(1)
+  createdBy              String?  @map("created_by") @db.Uuid
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("sd_msg_channels")
+}
+
+model SdMsgIdentity {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  kind             String    @db.VarChar(8)
+  userId           String    @map("user_id") @db.Uuid
+  personId         String    @map("person_id") @db.Uuid
+  addressHash      String    @map("address_hash") @db.Char(64)
+  addressMasked    String    @map("address_masked") @db.VarChar(40)
+  addressEncrypted String    @map("address_encrypted")
+  consentId        String    @map("consent_id") @db.Uuid
+  state            String    @default("active") @db.VarChar(8)
+  lastInboundAt    DateTime? @map("last_inbound_at") @db.Timestamptz(3)
+  linkedAt         DateTime  @default(now()) @map("linked_at") @db.Timestamptz(3)
+  stoppedAt        DateTime? @map("stopped_at") @db.Timestamptz(3)
+
+  @@map("sd_msg_identities")
+}
+
+model SdWidget {
+  id                      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId          String   @map("organization_id") @db.Uuid
+  portalId                String   @map("portal_id") @db.Uuid
+  key                     String   @unique @db.VarChar(40)
+  name                    String   @db.VarChar(100)
+  allowedOrigins          String[] @default([]) @map("allowed_origins")
+  identitySecretEncrypted String   @map("identity_secret_encrypted")
+  allowAnonymous          Boolean  @default(false) @map("allow_anonymous")
+  mobile                  Boolean  @default(false)
+  state                   String   @default("active") @db.VarChar(8)
+  version                 Int      @default(1)
+  createdBy               String?  @map("created_by") @db.Uuid
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("sd_widgets")
+}
+
+model SdAgentPresenceLog {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  status         String    @db.VarChar(10)
+  startedAt      DateTime  @default(now()) @map("started_at") @db.Timestamptz(3)
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
+
+  @@map("sd_agent_presence_log")
+}
+
+model SdAgentCapacity {
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  channel        String   @db.VarChar(10)
+  maxOpen        Int      @map("max_open") @db.SmallInt
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@id([organizationId, userId, channel])
+  @@map("sd_agent_capacity")
+}
+
+model SdShift {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  deskId         String   @map("desk_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  startsAt       DateTime @map("starts_at") @db.Timestamptz(3)
+  endsAt         DateTime @map("ends_at") @db.Timestamptz(3)
+  note           String?  @db.VarChar(200)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("sd_shifts")
+}
+
+model SdAgentMailbox {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  kind            String    @db.VarChar(8)
+  address         String    @db.VarChar(254)
+  configEncrypted String?   @map("config_encrypted")
+  cursor          String?   @db.VarChar(100)
+  status          String    @default("active") @db.VarChar(10)
+  lastSyncAt      DateTime? @map("last_sync_at") @db.Timestamptz(3)
+  lastError       String?   @map("last_error") @db.VarChar(300)
+  imported        Int       @default(0)
+  linkedAt        DateTime  @default(now()) @map("linked_at") @db.Timestamptz(3)
+  unlinkedAt      DateTime? @map("unlinked_at") @db.Timestamptz(3)
+
+  @@map("sd_agent_mailboxes")
+}
+
+model SdAgentDraft {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  deskId            String   @map("desk_id") @db.Uuid
+  ticketId          String   @map("ticket_id") @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  clientRef         String   @map("client_ref") @db.VarChar(64)
+  kind              String   @db.VarChar(5)
+  bodyHtml          String   @map("body_html")
+  baseTicketVersion Int      @map("base_ticket_version")
+  version           Int      @default(1)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, userId, clientRef])
+  @@map("sd_agent_drafts")
 }
