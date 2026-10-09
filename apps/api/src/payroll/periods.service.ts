@@ -49,6 +49,8 @@ export class PayPeriodsService implements OnModuleInit {
       label: 'Correction for the next payroll',
       risk: 'normal',
       autoActions: false,
+      // US-A-150: the payroll step is a different person from the HR step (maker ≠ checker).
+      distinctSteps: true,
       onDecided: (tx, req, outcome) => this.correctionDecided(tx, req, outcome),
       requesterLink: () => '/yx/time/attendance',
     });
@@ -338,10 +340,12 @@ export class PayPeriodsService implements OnModuleInit {
       if (daysBetween(dto.on, today) > max) throw new ForbiddenException(`That day is more than ${max} days ago, so only HR can record a correction now. Ask HR.`);
       const hr = await hrApprovers(tx, org, me, today, f.userId);
       const payroll = (await payHolders(tx, org, 'payroll.correction.approve', f.legalEntityId, today)).filter((u) => u !== c.userId);
+      // US-A-150: a correction into a processed month always has a payroll step, never HR standing in for it.
+      if (!payroll.length) throw new BadRequestException('No one in payroll can approve a late correction for your company yet. Ask HR.');
       const steps: StepSpec[] = [
         { name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24 },
         { name: 'HR', approvers: [{ kind: 'users', userIds: hr }], mode: 'any', remindAfterHours: 24 },
-        { name: 'Payroll', approvers: [{ kind: 'users', userIds: payroll.length ? payroll : hr }], mode: 'any', remindAfterHours: 24 },
+        { name: 'Payroll', approvers: [{ kind: 'users', userIds: payroll }], mode: 'any', remindAfterHours: 24 },
       ];
       return this.createCorrection(tx, c, { employeeId: me, name: f.name, personId: f.personId, entityId: f.legalEntityId, period: p, dto, source: 'late_request', steps, fallback: hr }, notices);
     });

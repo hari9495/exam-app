@@ -126,7 +126,7 @@ export class PayDocumentsService {
         if (!lines.length) doc.fontSize(10).text('None');
       }
       doc.moveDown();
-      if (code) doc.fontSize(9).fillColor('#444').text(`Check this ${KIND_LABEL[kind].toLowerCase()} at ${webOrigin()}/verify/${code} (code ${code}).`);
+      if (code) doc.fontSize(9).fillColor('#444').text(`Check this ${KIND_LABEL[kind].toLowerCase()} at ${webOrigin()}/yx/verify/${code} (code ${code}).`);
       doc.end();
     });
   }
@@ -166,6 +166,7 @@ export class PayDocumentsService {
       const old = await tx.payDocument.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!old) throw new NotFoundException('Not found');
       if (old.status !== 'issued') throw new ConflictException('Only an issued document can be corrected.');
+      if (!(old.kind in TEMPLATES)) throw new ConflictException('This kind of document is corrected where it is made (its statutory form), not here.');
       if (confirmation.phrase !== `CORRECT ${old.referenceNo}`) throw new BadRequestException(`Type CORRECT ${old.referenceNo} to confirm.`);
       const emp = await this.subject(tx, c.organizationId, old.employeeId);
       if (emp.userId === v.userId) throw new ForbiddenException('Someone else must correct your own pay documents.');

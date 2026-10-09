@@ -247,6 +247,26 @@ describe('Payroll batch 5a', () => {
       expect(refused.code).toBe('BANK_FILE_RELEASED');
     });
 
+    it('whoever approved the payroll check is never offered the final step (maker ≠ checker across steps)', async () => {
+      const prev = addDays(`${lockMonth}-01`, -1).slice(0, 7);
+      await stepUp('hrAdmin');
+      await api('hrAdmin', 'post', '/time/periods/lock').send({ legalEntityId: ids.entityA, month: prev }).expect(200);
+      const financeProfile = (await inA((tx) => tx.user.findUniqueOrThrow({ where: { id: users.finance } }))).permissionProfileId!;
+      await inA((tx) => tx.permissionProfile.update({ where: { id: financeProfile }, data: { permissionsJson: JSON.stringify(['org.structure.view', 'payroll.period.view', 'payroll.period.reopen', 'payroll.period.reopen.approve']) } }));
+      await stepUp('payAdmin');
+      const r = (await api('payAdmin', 'post', '/payroll/reopen-requests').send({ legalEntityId: ids.entityA, month: prev, reason: 'Checking the two-step rule' }).expect(201)).body;
+      const p2 = `REOPEN ${`P5A-${run}`.toUpperCase()} ${prev}`;
+      await stepUp('finance');
+      await api('finance', 'post', `/payroll/reopen-requests/${r.id}/decide`).send({ decision: 'approve', confirmation: { phrase: p2, impact } }).expect(200);
+      // Finance checked it, so the final step is someone else's (here the System Admin).
+      await api('finance', 'post', `/payroll/reopen-requests/${r.id}/decide`).send({ decision: 'approve', confirmation: { phrase: p2, impact } }).expect(404);
+      await stepUp('adminA');
+      await api('adminA', 'post', `/payroll/reopen-requests/${r.id}/decide`).send({ decision: 'approve', confirmation: { phrase: p2, impact } }).expect(200);
+      const [{ stage }] = await inA((tx) => tx.$queryRaw<{ stage: string }[]>`SELECT pay_period_stage(${org.A.id}::uuid, ${ids.entityA}::uuid, ${`${prev}-15`}::date) AS stage`);
+      expect(stage).toBe('open');
+      await inA((tx) => tx.permissionProfile.update({ where: { id: financeProfile }, data: { permissionsJson: JSON.stringify(ROLE_TEMPLATES.find((t) => t.key === 'finance_approver')!.permissions) } }));
+    });
+
     it('a single-use download link: works once, for its own person, and the download is audited with the hash', async () => {
       const link = (await api('payApprover', 'post', `/payroll/files/${ids.bankFile}/link`).expect(200)).body;
       await api('payAdmin', 'get', link.path).expect(404);
@@ -400,6 +420,33 @@ describe('Payroll batch 5a', () => {
       expect(csv.text).toContain('employee.salary.changed');
       expect(csv.text).not.toContain('780000');
       expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'audit.exported' } }))).toBe(1);
+    });
+
+    it('rows older than 13 months move to an archive (up to a legal hold) and the chain still verifies (YX-AUD-08)', async () => {
+      const payAudit = (globalThis as { payAudit?: PayAuditService }).payAudit!;
+      const c = (await prisma.organization.create({ data: { name: 'Pay5A Org C', slug: `pay5a-c-${run}`, planId } })).id;
+      const old = (months: number) => new Date(Date.now() - months * 31 * 86_400_000);
+      const inC = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: c, isSuperAdmin: false }, fn);
+      for (const m of [30, 29, 28]) await inC((tx) => tx.auditLog.create({ data: { organizationId: c, action: 'test.old', entityType: 'thing', entityId: String(m), createdAt: old(m) } }));
+      await inC((tx) => tx.auditLog.create({ data: { organizationId: c, action: 'test.new', entityType: 'thing', entityId: 'now' } }));
+      const holder = await inC((tx) => tx.user.create({ data: { organizationId: c, email: `hold@pay5a-${run}.test`, passwordHash: 'x', role: 'org_admin' } }));
+      await inC((tx) => tx.auditLegalHold.create({ data: { organizationId: c, caseRef: 'CASE-1', fromAt: old(28.5), toAt: old(27), reason: 'Labour court case on 2024 wages', setBy: holder.id } }));
+      const cutoff = new Date();
+      cutoff.setUTCMonth(cutoff.getUTCMonth() - 13);
+      // The hold starts between the 2nd and 3rd old rows: only the two before it move.
+      expect(await payAudit.archiveChain(c, cutoff)).toBe(2);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { chainKey: c } }))).toBe(2);
+      expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.auditArchive.count({ where: { chainKey: c } }))).toBe(1);
+      expect((await payAudit.verifyChain(c)).result).toBe('ok');
+      // A new row carries on from the chain after the archive.
+      await inC((tx) => tx.auditLog.create({ data: { organizationId: c, action: 'test.after', entityType: 'thing', entityId: 'after' } }));
+      expect((await payAudit.verifyChain(c)).result).toBe('ok');
+      // The database refuses to drop rows that are not archived, or that are recent.
+      await expect(inC((tx) => tx.$queryRaw`SELECT audit_archive_rows(${c}::uuid, 4::bigint)`)).rejects.toThrow(/No matching archive/);
+      await tenantPrisma.forTenant(SUPER, async (tx) => {
+        await tx.user.deleteMany({ where: { organizationId: c } });
+        await tx.organization.delete({ where: { id: c } });
+      });
     });
 
     it('the app role can neither change nor delete an audit row; the chain verifies; a tampered row is found and alerts', async () => {

@@ -395,6 +395,10 @@ CREATE TABLE "audit_archives" (
 REVOKE DELETE, TRUNCATE ON TABLE "audit_archives" FROM app_runtime;
 CREATE FUNCTION audit_archives_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  -- A removed company only clears its link (ON DELETE SET NULL); the chain key stays.
+  IF NEW."organization_id" IS NULL AND OLD."organization_id" IS NOT NULL AND (to_jsonb(NEW) - 'organization_id') = (to_jsonb(OLD) - 'organization_id') THEN
+    RETURN NEW;
+  END IF;
   IF OLD."deleted_at" IS NOT NULL OR NEW."deleted_at" IS NULL OR NEW."file_ref" IS NOT NULL
      OR (to_jsonb(NEW) - 'deleted_at' - 'file_ref') IS DISTINCT FROM (to_jsonb(OLD) - 'deleted_at' - 'file_ref') THEN
     RAISE EXCEPTION 'An audit archive only ever loses its file once, after the retention period';
@@ -410,6 +414,7 @@ CREATE TRIGGER audit_archives_guard BEFORE UPDATE ON "audit_archives" FOR EACH R
 CREATE FUNCTION audit_archive_rows(p_chain UUID, p_upto BIGINT) RETURNS BIGINT LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   n BIGINT;
+  was_super TEXT := coalesce(current_setting('app.is_super_admin', true), 'off');
 BEGIN
   PERFORM set_config('app.is_super_admin', 'on', true);
   IF NOT EXISTS (
@@ -429,7 +434,7 @@ BEGIN
   DELETE FROM audit_logs a WHERE a.chain_key = p_chain AND a.chain_seq <= p_upto;
   GET DIAGNOSTICS n = ROW_COUNT;
   PERFORM set_config('app.audit_archive', 'off', true);
-  PERFORM set_config('app.is_super_admin', 'off', true);
+  PERFORM set_config('app.is_super_admin', was_super, true);
   RETURN n;
 END $$;
 REVOKE ALL ON FUNCTION audit_archive_rows(UUID, BIGINT) FROM PUBLIC;
