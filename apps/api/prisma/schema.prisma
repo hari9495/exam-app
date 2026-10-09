@@ -5739,7 +5739,7 @@ model DocumentType {
   allowedMime          String[] @map("allowed_mime")
   maxMb                Int      @map("max_mb")
   expiryTracked        Boolean  @map("expiry_tracked")
-  reminderDays         Int[]    @map("reminder_days")
+  reminderDays         Int[]    @default([]) @map("reminder_days")
   uploadBy             String[] @map("upload_by")
   active               Boolean  @default(true)
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -5960,7 +5960,7 @@ model LetterTemplate {
   language         String    @default("en") @db.VarChar(5)
   source           String    @db.VarChar(8)
   fileId           String    @map("file_id") @db.Uuid
-  fields           String[]
+  fields           String[]  @default([])
   requiresApproval Boolean   @map("requires_approval")
   personSigns      Boolean   @map("person_signs")
   companyDsc       Boolean   @default(false) @map("company_dsc")
