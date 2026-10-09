@@ -126,7 +126,7 @@ export function MessagingAdmin(p: MessagingAdminProps) {
               )}
               {kind === 'sms' && (
                 <>
-                  <FormField label="Registered reply template (DLT)" helper="The text exactly as registered. The first {#var#} is the request number, a second one carries the start of the reply.">
+                  <FormField label="Registered reply template (DLT)" helper="The text exactly as registered, with two {#var#}: the request number, then the link to read the reply (e.g. “You have a reply on {#var#}. Read it: {#var#}”). The reply itself never goes by SMS.">
                     <TextArea value={smsBody} onChange={setSmsBody} rows={2} maxLength={500} />
                   </FormField>
                   <FormField label="DLT template id">
@@ -138,7 +138,7 @@ export function MessagingAdmin(p: MessagingAdminProps) {
                 <Button
                   variant="primary"
                   icon={Plus}
-                  disabled={!name.trim() || (kind === 'sms' && !smsBody.includes('{#var#}'))}
+                  disabled={!name.trim() || (kind === 'sms' && smsBody.split('{#var#}').length !== 3)}
                   loading={busy === 'add'}
                   onClick={() =>
                     void run('add', async () => {

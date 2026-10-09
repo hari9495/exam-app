@@ -41,7 +41,9 @@ export default function YxWidgetFrame() {
       if (data?.type !== 'yx-identify' || typeof data.token !== 'string') return;
       const r = await fetch(`${API_BASE}/desk/widget/${encodeURIComponent(key)}/session`, { method: 'POST', credentials: 'omit', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: data.token, parentOrigin: e.origin }) });
       if (!r.ok) {
-        setProblem('We could not sign you in. Reload the page and try again.');
+        // The help page takes only known customers (its sign-up is closed): say so plainly instead of "try again".
+        const body = (await r.json().catch(() => null)) as { code?: string; message?: string } | null;
+        setProblem(body?.code === 'WIDGET_SIGN_UP_CLOSED' && body.message ? body.message : 'We could not sign you in. Reload the page and try again.');
         return;
       }
       const s = (await r.json()) as { token: string; orgSlug: string; portalSlug: string };

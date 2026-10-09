@@ -36,9 +36,9 @@ describe('3b-2 batch 3 screens', () => {
     await ue.click(screen.getByRole('radio', { name: 'SMS' }));
     expect(screen.getByRole('button', { name: 'Add the line' })).toBeDisabled();
     await ue.type(screen.getByRole('textbox', { name: /Name/ }), 'IT by SMS');
-    await ue.type(screen.getByRole('textbox', { name: /Registered reply template/ }), 'New reply on {{#var#}: {{#var#}');
+    await ue.type(screen.getByRole('textbox', { name: /Registered reply template/ }), 'You have a reply on {{#var#}. Read it: {{#var#}');
     await ue.click(screen.getByRole('button', { name: 'Add the line' }));
-    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ kind: 'sms', name: 'IT by SMS', accountId: null, templates: { reply_notice: expect.objectContaining({ body: 'New reply on {#var#}: {#var#}' }) } }));
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ kind: 'sms', name: 'IT by SMS', accountId: null, templates: { reply_notice: expect.objectContaining({ body: 'You have a reply on {#var#}. Read it: {#var#}' }) } }));
     expect(screen.getByRole('textbox', { name: 'Signing secret' })).toHaveValue('s3cret-value');
   });
 
