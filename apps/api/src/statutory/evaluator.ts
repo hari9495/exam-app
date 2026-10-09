@@ -1,0 +1,286 @@
+import { Prisma } from '@prisma/client';
+
+// P07 statutory evaluator and calculators (M03-BUILD-DESIGN §8.2, PAY-2.02). Pure functions over a rule set's typed
+// payload: no database, no clock, no country figures (they are all in the pack, statutory/packs/*.json). Money is
+// Decimal; every result carries its citation {statute, jurisdiction, version, verify} (YX-STAT-05).
+
+const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
+const ZERO = D(0);
+
+export interface RuleSet {
+  statute: string;
+  jurisdiction: string;
+  version: string;
+  validFrom: string;
+  validTo?: string | null;
+  verify: boolean;
+  values: Record<string, unknown> & { kind: string };
+}
+export interface Citation {
+  statute: string;
+  jurisdiction: string;
+  version: string;
+  verify: boolean;
+}
+export const cite = (rs: RuleSet): Citation => ({ statute: rs.statute, jurisdiction: rs.jurisdiction, version: rs.version, verify: rs.verify });
+
+export class StatutoryError extends Error {}
+
+const round = (x: Prisma.Decimal, how: string, step = '1') => {
+  const s = D(step);
+  const q = x.div(s);
+  const r = how === 'up' ? q.ceil() : how === 'down' ? q.floor() : q.toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP);
+  return r.mul(s);
+};
+const money = (x: Prisma.Decimal) => x.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+const out = (x: Prisma.Decimal) => (x.isInteger() ? x.toFixed(0) : x.toFixed(2));
+
+/** The rule set in force on a date (latest valid_from on or before it, not ended). */
+export function inForce(sets: readonly RuleSet[], statute: string, jurisdictions: readonly string[], on: string): RuleSet | null {
+  for (const j of jurisdictions) {
+    const hit = sets.filter((s) => s.statute === statute && s.jurisdiction === j && s.validFrom <= on && (!s.validTo || s.validTo >= on)).sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0];
+    if (hit) return hit;
+  }
+  return null;
+}
+
+type V = Record<string, unknown>;
+const need = (rs: RuleSet, kind: string) => {
+  if (rs.values.kind !== kind) throw new StatutoryError(`${rs.statute} ${rs.jurisdiction} ${rs.version} is not a ${kind} rule set`);
+  return rs.values as V;
+};
+
+// ------------------------------------------------------------------------------------------ calculators
+
+/** PF: employee share; employer share split into EPS (capped, none from the stop age) and EPF; EDLI. */
+export function pf(rs: RuleSet, i: { pfWage: Prisma.Decimal.Value; onActualWage: boolean; age: number }) {
+  const v = need(rs, 'pf');
+  const wage = D(i.pfWage);
+  const base = i.onActualWage ? wage : Prisma.Decimal.min(wage, D(v.wageCeiling as string));
+  const how = String(v.rounding);
+  const employee = round(base.mul(D(v.employeeRate as string)), how);
+  const employer = round(base.mul(D(v.employerRate as string)), how);
+  const eps = i.age >= Number(v.epsStopAge) ? ZERO : Prisma.Decimal.min(round(Prisma.Decimal.min(wage, D(v.epsCeiling as string)).mul(D(v.epsRate as string)), how), employer);
+  const edli = round(Prisma.Decimal.min(wage, D(v.edliCeiling as string)).mul(D(v.edliRate as string)), how);
+  return { employee, eps, epf: employer.sub(eps), edli, citation: cite(rs) };
+}
+
+/** ESI: covered for the whole contribution period once covered at its start; amounts rounded up to the rupee. */
+export function esi(rs: RuleSet, i: { esiWage: Prisma.Decimal.Value; covered: boolean }) {
+  const v = need(rs, 'esi');
+  if (!i.covered) return { employee: ZERO, employer: ZERO, citation: cite(rs) };
+  const wage = D(i.esiWage);
+  return { employee: round(wage.mul(D(v.employeeRate as string)), 'up'), employer: round(wage.mul(D(v.employerRate as string)), 'up'), citation: cite(rs) };
+}
+
+/** Is a wage within the ESI ceiling (the PwD ceiling with consent)? Decided at the start of a contribution period. */
+export function esiCovered(rs: RuleSet, wage: Prisma.Decimal.Value, pwd = false) {
+  const v = need(rs, 'esi');
+  return D(wage).lte(D((pwd ? v.pwdWageCeiling : v.wageCeiling) as string));
+}
+
+interface Slab {
+  from: string;
+  to: string | null;
+  amount: string;
+  gender?: string;
+  months?: Record<string, string>;
+}
+/** PT for a month (monthly basis) or a deduction month of a half-year (half-yearly basis), by state slabs. */
+export function pt(rs: RuleSet, i: { ptWage: Prisma.Decimal.Value; month: number; gender?: string | null }) {
+  const v = need(rs, 'pt');
+  const months = v.deductMonths as number[] | undefined;
+  if (months && !months.includes(i.month)) return { amount: ZERO, citation: cite(rs) };
+  const wage = D(i.ptWage);
+  const slabs = (v.slabs as Slab[]).filter((s) => !s.gender || !i.gender || s.gender === i.gender).filter((s) => !s.gender || i.gender || s.gender === 'male');
+  const s = slabs.find((x) => wage.gte(D(x.from)) && (x.to === null || wage.lte(D(x.to))));
+  const amount = s ? D(s.months?.[String(i.month)] ?? s.amount) : ZERO;
+  return { amount, citation: cite(rs) };
+}
+
+/** LWF in its deduction months. */
+export function lwf(rs: RuleSet, i: { month: number }) {
+  const v = need(rs, 'lwf');
+  const due = (v.months as number[]).includes(i.month);
+  return { employee: due ? D(v.employee as string) : ZERO, employer: due ? D(v.employer as string) : ZERO, citation: cite(rs) };
+}
+
+/**
+ * Minimum wage: the state rate for the zone and skill, never below the national floor (YX-STAT-22).
+ * DECISION NEEDED: the state minimum-wage tables (every state, zone and skill, revised twice a year with the VDA) must be
+ * loaded from the official notifications by the compliance owner; the pack ships the national floor only, so today
+ * every check compares with the floor and says so.
+ */
+export function minWage(rs: RuleSet, i: { state: string; zone?: string | null; skill?: string | null }) {
+  const v = need(rs, 'min_wage');
+  const floor = D(v.floorDaily as string);
+  const st = (v.states as Record<string, Record<string, Record<string, string>>>)[i.state]?.[i.zone ?? '']?.[i.skill ?? ''];
+  const daily = st && D(st).gt(floor) ? D(st) : floor;
+  return { daily, monthly: daily.mul(Number(v.monthDays)), floorApplied: !st || D(st).lte(floor), citation: cite(rs) };
+}
+
+/** Code wage (YX-PAY-47): exclusions above the limit of total pay are added back. */
+export function codeWage(rs: RuleSet, i: { wageParts: Prisma.Decimal.Value; exclusions: Prisma.Decimal.Value }) {
+  const v = need(rs, 'code_wage');
+  const parts = D(i.wageParts);
+  const excl = D(i.exclusions);
+  const allowed = parts.add(excl).mul(D(v.exclusionLimit as string));
+  const addBack = Prisma.Decimal.max(ZERO, excl.sub(allowed));
+  return { codeWage: money(parts.add(addBack)), addBack: money(addBack), citation: cite(rs) };
+}
+
+export function deductionCap(rs: RuleSet, i: { wages: Prisma.Decimal.Value; coop: boolean }) {
+  const v = need(rs, 'deduction_cap');
+  return { cap: money(D(i.wages).mul(D((i.coop ? v.withCoopCap : v.cap) as string))), citation: cite(rs) };
+}
+
+/** Statutory bonus provision a month (eligibility and calculation ceilings; the rate the entity chose within the range). */
+export function bonus(rs: RuleSet, i: { bonusWage: Prisma.Decimal.Value; rate: Prisma.Decimal.Value; minWageMonthly: Prisma.Decimal.Value }) {
+  const v = need(rs, 'bonus');
+  const rate = D(i.rate);
+  if (rate.lt(D(v.minRate as string)) || rate.gt(D(v.maxRate as string))) throw new StatutoryError('The bonus rate is outside the range the law allows.');
+  const wage = D(i.bonusWage);
+  if (wage.gt(D(v.eligibilityWage as string))) return { eligible: false, monthly: ZERO, citation: cite(rs) };
+  const ceiling = Prisma.Decimal.max(D(v.calculationCeiling as string), D(i.minWageMonthly));
+  return { eligible: true, monthly: money(Prisma.Decimal.min(wage, ceiling).mul(rate)), citation: cite(rs) };
+}
+
+/** Gratuity provision a month: daysPerYear / monthDays of the monthly wage, spread over 12 months. */
+export function gratuity(rs: RuleSet, i: { gratuityWage: Prisma.Decimal.Value }) {
+  const v = need(rs, 'gratuity');
+  return { monthly: money(D(i.gratuityWage).mul(Number(v.daysPerYear)).div(Number(v.monthDays)).div(12)), citation: cite(rs) };
+}
+
+interface TdsRegime {
+  standardDeduction: string;
+  rebate: { incomeUpTo: string; max: string };
+  slabs: { upTo: string | null; rate: string }[];
+  surcharge: { above: string; rate: string }[];
+  seniorExemption?: string;
+  superSeniorExemption?: string;
+}
+/** Annual tax on taxable income for a regime and age: slabs, rebate with marginal relief, surcharge, cess. */
+export function tds(rs: RuleSet, i: { taxable: Prisma.Decimal.Value; regime: 'new' | 'old'; age: number }) {
+  const v = need(rs, 'tds');
+  const r = (v.regimes as Record<string, TdsRegime>)[i.regime];
+  if (!r) throw new StatutoryError(`No ${i.regime} regime in ${rs.version}`);
+  const income = D(i.taxable);
+  const slabs = r.slabs.map((s) => ({ ...s }));
+  // Older people's higher exemption (old regime): the first slab widens.
+  if (i.regime === 'old' && i.age >= 60) slabs[0].upTo = i.age >= 80 ? (r.superSeniorExemption ?? slabs[0].upTo) : (r.seniorExemption ?? slabs[0].upTo);
+  let slabTax = ZERO;
+  let lower = ZERO;
+  for (const s of slabs) {
+    const upper = s.upTo === null ? income : Prisma.Decimal.min(income, D(s.upTo));
+    if (upper.gt(lower)) slabTax = slabTax.add(upper.sub(lower).mul(D(s.rate)));
+    if (s.upTo !== null) lower = Prisma.Decimal.max(lower, D(s.upTo));
+    if (s.upTo !== null && income.lte(D(s.upTo))) break;
+  }
+  slabTax = round(slabTax, 'nearest');
+  let rebate = ZERO;
+  const limit = D(r.rebate.incomeUpTo);
+  if (income.lte(limit)) rebate = Prisma.Decimal.min(slabTax, D(r.rebate.max));
+  else if (i.regime === 'new' && slabTax.gt(income.sub(limit))) rebate = slabTax.sub(income.sub(limit)); // marginal relief
+  const afterRebate = slabTax.sub(rebate);
+  const sc = [...r.surcharge].reverse().find((x) => income.gt(D(x.above)));
+  const surcharge = sc ? round(afterRebate.mul(D(sc.rate)), 'nearest') : ZERO;
+  const tax = round(afterRebate.add(surcharge).mul(D(1).add(D(v.cess as string))), 'nearest');
+  return { slabTax, rebate, surcharge, tax, citation: cite(rs) };
+}
+
+export function penalty(rs: RuleSet, i: { item: string; amount: Prisma.Decimal.Value; days?: number; months?: number }) {
+  const v = need(rs, 'penalty');
+  const rate = (v.items as Record<string, string>)[i.item];
+  if (!rate) throw new StatutoryError(`Unknown penalty ${i.item}`);
+  const base = D(i.amount).mul(D(rate));
+  const amount = i.item.endsWith('_yearly') ? base.mul(i.days ?? 0).div(365) : i.item.endsWith('_monthly') ? base.mul(i.months ?? 0) : D(rate).mul(i.days ?? 0);
+  return { amount: money(amount), citation: cite(rs) };
+}
+
+/** When a monthly return or deposit is due (YYYY-MM-DD) for a wage month. */
+export function due(rs: RuleSet, i: { key: string; month: string }) {
+  const v = need(rs, 'calendar');
+  const item = (v.items as { key: string; dueDay: number; monthOffset: number; march?: { dueDay: number; monthOffset: number } }[]).find((x) => x.key === i.key);
+  if (!item) throw new StatutoryError(`No due date for ${i.key}`);
+  const rule = item.march && i.month.endsWith('-03') ? item.march : item;
+  const d = new Date(`${i.month}-01T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + rule.monthOffset);
+  d.setUTCDate(rule.dueDay);
+  return { due: d.toISOString().slice(0, 10), citation: cite(rs) };
+}
+
+/** Coverage: not covered, approaching, covered (sticky once covered where the law says so). */
+export function coverage(rs: RuleSet, i: { statute: string; headcount: number; wasCovered: boolean }) {
+  const v = need(rs, 'coverage');
+  const item = (v.items as { statute: string; threshold: number; approachAt: number; sticky: boolean }[]).find((x) => x.statute === i.statute);
+  if (!item) throw new StatutoryError(`No coverage rule for ${i.statute}`);
+  const status = i.headcount >= item.threshold || (item.sticky && i.wasCovered) ? 'covered' : i.headcount >= item.approachAt ? 'approaching' : 'not_covered';
+  return { status, threshold: item.threshold, sticky: item.sticky, citation: cite(rs) };
+}
+
+/** The constitutional ceiling on a state's professional tax (art. 276(2)). */
+export function ptLimit(rs: RuleSet) {
+  const v = need(rs, 'pt_limit');
+  return { annualMax: D(v.annualMax as string), citation: cite(rs) };
+}
+
+/** Default applicability of a statute for an employment category (YX-ORG-20). */
+export function empDefaults(rs: RuleSet, i: { category: string; statute: string }) {
+  const v = need(rs, 'emp_defaults');
+  const a = (v.categories as Record<string, Record<string, string>>)[i.category]?.[i.statute];
+  if (!a) throw new StatutoryError(`No default for ${i.category} and ${i.statute}`);
+  return { applicability: a as 'mandatory' | 'optional' | 'excluded' | 'by_wage', citation: cite(rs) };
+}
+
+// ------------------------------------------------------------------------------------------ publish checks and golden cases
+
+/** Shape checks before a rule set is published (§8.1): slabs contiguous and not overlapping, PT cap, rates in range. */
+export function checkShape(rs: RuleSet, limits: { ptAnnualMax?: string } = {}): string[] {
+  const v = rs.values as V;
+  const problems: string[] = [];
+  const rate = (x: unknown, name: string) => {
+    if (typeof x !== 'string' || !/^\d+(\.\d+)?$/.test(x) || D(x).gt(1)) problems.push(`${name} must be a rate between 0 and 1`);
+  };
+  if (rs.values.kind === 'pt') {
+    const slabs = (v.slabs as Slab[]) ?? [];
+    for (const g of [...new Set(slabs.map((s) => s.gender ?? ''))]) {
+      const list = slabs.filter((s) => (s.gender ?? '') === g);
+      list.forEach((s, i) => {
+        if (i === 0 && !D(s.from).eq(0)) problems.push('The first slab must start at 0');
+        if (i > 0) {
+          const prev = list[i - 1];
+          if (prev.to === null || D(s.from).lte(D(prev.to)) || D(s.from).sub(D(prev.to)).gt(1)) problems.push(`Slab ${i + 1} must start just after slab ${i}`);
+        }
+        if (s.to !== null && D(s.to).lt(D(s.from))) problems.push(`Slab ${i + 1} ends before it starts`);
+      });
+      if (list.length && list[list.length - 1].to !== null) problems.push('The last slab must be open-ended');
+    }
+    if (limits.ptAnnualMax && D(v.annualCap as string).gt(D(limits.ptAnnualMax))) problems.push(`Professional tax can never be more than ₹${limits.ptAnnualMax} a year`);
+  }
+  if (rs.values.kind === 'pf') ['employeeRate', 'employerRate', 'epsRate', 'edliRate', 'adminRate'].forEach((k) => rate(v[k], k));
+  if (rs.values.kind === 'esi') ['employeeRate', 'employerRate'].forEach((k) => rate(v[k], k));
+  if (rs.values.kind === 'tds') for (const r of Object.values(v.regimes as Record<string, TdsRegime>)) r.slabs.forEach((s, i) => rate(s.rate, `slab ${i + 1} rate`));
+  if (rs.validTo && rs.validTo < rs.validFrom) problems.push('The rule set ends before it starts');
+  return problems;
+}
+
+export interface GoldenCase {
+  name: string;
+  fn: string;
+  input: Record<string, unknown>;
+  expected: Record<string, unknown>;
+}
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+
+/** Runs one golden case; returns the fields that differ (empty when it passes). */
+export function runGolden(rs: RuleSet, g: GoldenCase): string[] {
+  const calc = CALCULATORS[g.fn];
+  if (!calc) return [`unknown calculator ${g.fn}`];
+  const got = calc(rs, g.input as never);
+  return Object.entries(g.expected).flatMap(([k, want]) => {
+    const v = got[k];
+    const have = v instanceof Prisma.Decimal ? out(v) : v;
+    const ok = v instanceof Prisma.Decimal ? D(String(want)).eq(v) : have === want;
+    return ok ? [] : [`${g.name}: ${k} is ${String(have)}, expected ${String(want)}`];
+  });
+}

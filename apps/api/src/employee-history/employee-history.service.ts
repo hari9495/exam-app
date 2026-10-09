@@ -9,6 +9,7 @@ import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { ChangeEditDto, ChangeRequestDto, EmployeeCreateDto } from './dto';
 import { addRole, checkLoginLink, personForEmployee } from '../people/persons';
 import { startProbation } from '../people/probation';
+import { payScope } from '../payroll/pay-access';
 import {
   affectedMonths,
   AssignmentValues,
@@ -280,6 +281,7 @@ export class EmployeeHistoryService {
 
   /** Rows of every fact for an employment; current only unless `recordedAt` asks what was believed then (Q1). */
   async rows(tx: Tx, c: CompanyContext, employmentId: string, opts: { recordedAt?: Date; includeSuperseded?: boolean } = {}) {
+    await this.payEngine(tx, c, employmentId);
     // The same filter fits all three dated tables (common columns, P06 §4.2).
     const when: { recordedAt?: { lte: Date }; supersededAt?: null; OR?: ({ supersededAt: null } | { supersededAt: { gt: Date } })[] } = opts.includeSuperseded
       ? {}
@@ -686,6 +688,7 @@ export class EmployeeHistoryService {
    * which writes its history through the same path.
    */
   async rebuild(tx: Tx, c: CompanyContext, e: Employment, from: string, byChangeId: string) {
+    await payScope(tx, [e.legalEntityId]);
     const org = c.organizationId;
     const [{ now }] = await tx.$queryRaw<{ now: Date }[]>`SELECT now()::timestamptz(3) AS now`;
     const changes: FoldChange[] = (
@@ -729,6 +732,16 @@ export class EmployeeHistoryService {
       for (const seg of segments) await insert(fact, seg);
     }
     await this.checkInvariants(tx, c, e);
+  }
+
+  /**
+   * Founder decision 5a-D4: compensations sit behind the database pay guard. The history engine works on every dated
+   * fact of an employment, pay included, so it opens the guard for that employment's legal entity in its own
+   * transaction; what reaches a viewer is still filtered by their pay grants (showPay, payPeriods).
+   */
+  private async payEngine(tx: Tx, c: CompanyContext, employmentId: string) {
+    const m = await tx.employment.findFirst({ where: { organizationId: c.organizationId, id: employmentId }, select: { legalEntityId: true } });
+    if (m) await payScope(tx, [m.legalEntityId]);
   }
 
   /** YX-HIS-03 continuity and YX-ORG-09 managers, proven on the stored rows with range aggregates. */

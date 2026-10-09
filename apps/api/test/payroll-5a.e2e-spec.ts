@@ -170,7 +170,7 @@ describe('Payroll batch 5a', () => {
     expect(rows.length).toBeGreaterThanOrEqual(13);
     for (const r of rows) expect(r).toMatchObject({ t: r.t, forced: true, tenant: true, support: true });
     // One person's pay, or entity pay files: the second guard, with no super-admin escape in it.
-    const guarded = ['exchange_file_links', 'exchange_files', 'pay_document_counters', 'pay_document_nominees', 'pay_documents'];
+    const guarded = ['exchange_file_links', 'exchange_files', 'pay_document_counters', 'pay_document_nominees', 'pay_documents', 'pay_import_batches'];
     expect(rows.filter((r) => r.guard).map((r) => r.t)).toEqual(guarded);
     const quals = await prisma.$queryRaw<{ q: string }[]>`SELECT pg_get_expr(p.polqual, p.polrelid) AS q FROM pg_policy p WHERE p.polname = 'pay_guard'`;
     for (const q of quals) expect(q.q).not.toMatch(/super_admin/);

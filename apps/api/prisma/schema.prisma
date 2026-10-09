@@ -4587,6 +4587,13 @@ model StatutoryRuleSet {
   source       String    @db.VarChar(500)
   verify       Boolean   @default(true)
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  status       String    @default("published") @db.VarChar(10)
+  lawVersion   String?   @map("law_version") @db.VarChar(10)
+  transitional Boolean   @default(false)
+  draftedBy    String?   @map("drafted_by") @db.Uuid
+  reviewedBy   String?   @map("reviewed_by") @db.Uuid
+  publishedAt  DateTime? @map("published_at") @db.Timestamptz(3)
+  withdrawnAt  DateTime? @map("withdrawn_at") @db.Timestamptz(3)
 
   @@map("statutory_rule_sets")
 }
@@ -5704,4 +5711,333 @@ model SdChatMessage {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("sd_chat_messages")
+}
+
+// ---- Payroll batch 5b (migration 20261027000000_payroll_5b): set-up, structures, compensation ----
+
+model StatutoryGoldenCase {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ruleSetId String   @map("rule_set_id") @db.Uuid
+  name      String   @db.VarChar(200)
+  fn        String   @db.VarChar(30)
+  input     Json
+  expected  Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("statutory_golden_cases")
+}
+
+model StatutoryLawCrosswalk {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subjectKey String  @map("subject_key") @db.VarChar(40)
+  lawVersion String  @map("law_version") @db.VarChar(10)
+  section    String  @db.VarChar(60)
+  form       String? @db.VarChar(80)
+  verify     Boolean @default(true)
+
+  @@map("statutory_law_crosswalk")
+}
+
+model StatutoryRegistration {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId         String    @map("organization_id") @db.Uuid
+  legalEntityId          String    @map("legal_entity_id") @db.Uuid
+  statute                String    @db.VarChar(10)
+  state                  String    @default("") @db.VarChar(6)
+  registrationNo         String?   @map("registration_no") @db.VarChar(40)
+  startOn                DateTime? @map("start_on") @db.Date
+  responsiblePerson      String?   @map("responsible_person") @db.VarChar(200)
+  responsibleDesignation String?   @map("responsible_designation") @db.VarChar(100)
+  address                Json?
+  status                 String    @default("off") @db.VarChar(16)
+  appliedOn              DateTime? @map("applied_on") @db.Date
+  version                Int       @default(1)
+  updatedBy              String?   @map("updated_by") @db.Uuid
+  updatedAt              DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("statutory_registrations")
+}
+
+model EntityStatutoryOption {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  optionKey      String    @map("option_key") @db.VarChar(40)
+  value          String    @db.VarChar(40)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("entity_statutory_options")
+}
+
+model PayGroup {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  name           String   @db.VarChar(100)
+  frequency      String   @default("monthly") @db.VarChar(12)
+  currency       String   @default("INR") @db.Char(3)
+  dayBasis       String   @default("calendar") @map("day_basis") @db.VarChar(8)
+  cutOffDay      Int      @default(25) @map("cut_off_day") @db.SmallInt
+  payDay         Int      @default(0) @map("pay_day") @db.SmallInt
+  membershipRule Json?    @map("membership_rule")
+  bankFormat     String?  @map("bank_format") @db.VarChar(30)
+  status         String   @default("active") @db.VarChar(10)
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("pay_groups")
+}
+
+model PayGroupMember {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  payGroupId     String    @map("pay_group_id") @db.Uuid
+  employmentId   String    @map("employment_id") @db.Uuid
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("pay_group_members")
+}
+
+model PayComponent {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  code           String    @db.Citext
+  name           String    @db.VarChar(80)
+  kind           String    @db.VarChar(14)
+  taxable        Boolean   @default(true)
+  pfWage         Boolean   @default(false) @map("pf_wage")
+  esiWage        Boolean   @default(false) @map("esi_wage")
+  ptWage         Boolean   @default(false) @map("pt_wage")
+  gratuityWage   Boolean   @default(false) @map("gratuity_wage")
+  bonusWage      Boolean   @default(false) @map("bonus_wage")
+  codeWagePart   Boolean   @default(false) @map("code_wage_part")
+  codeExclusion  Boolean   @default(false) @map("code_exclusion")
+  prorated       Boolean   @default(true)
+  onPayslip      Boolean   @default(true) @map("on_payslip")
+  inCtc          Boolean   @default(true) @map("in_ctc")
+  prorationText  String?   @map("proration_text") @db.VarChar(500)
+  prorationAst   Json?     @map("proration_ast")
+  rounding       String    @default("rupee") @db.VarChar(10)
+  taxSubject     String?   @map("tax_subject") @db.VarChar(40)
+  ledger         String?   @db.VarChar(60)
+  statutory      String?   @db.VarChar(30)
+  status         String    @default("active") @db.VarChar(10)
+  usedAt         DateTime? @map("used_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("pay_components")
+}
+
+model SalaryTemplate {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String?  @map("legal_entity_id") @db.Uuid
+  name           String   @db.VarChar(100)
+  status         String   @default("active") @db.VarChar(10)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("salary_templates")
+}
+
+model SalaryTemplateVersion {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String   @map("organization_id") @db.Uuid
+  templateId           String   @map("template_id") @db.Uuid
+  version              Int
+  validFrom            DateTime @map("valid_from") @db.Date
+  employerPfInCtc      Boolean  @default(true) @map("employer_pf_in_ctc")
+  employerEsiInCtc     Boolean  @default(true) @map("employer_esi_in_ctc")
+  gratuityInCtc        Boolean  @default(false) @map("gratuity_in_ctc")
+  balancingComponentId String   @map("balancing_component_id") @db.Uuid
+  validatedAt          DateTime @map("validated_at") @db.Timestamptz(3)
+  sampleInput          Json     @map("sample_input")
+  sampleResult         Json     @map("sample_result")
+  codeWageFlag         Boolean  @default(false) @map("code_wage_flag")
+  createdBy            String?  @map("created_by") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("salary_template_versions")
+}
+
+model SalaryTemplateLine {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  versionId      String   @map("version_id") @db.Uuid
+  componentId    String   @map("component_id") @db.Uuid
+  position       Int      @db.SmallInt
+  formulaText    String   @map("formula_text") @db.VarChar(500)
+  formulaAst     Json     @map("formula_ast")
+  dependsOn      String[] @default([]) @map("depends_on")
+
+  @@map("salary_template_lines")
+}
+
+model CompensationPackage {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  legalEntityId     String   @map("legal_entity_id") @db.Uuid
+  employeeId        String   @map("employee_id") @db.Uuid
+  employmentId      String   @map("employment_id") @db.Uuid
+  changeId          String   @map("change_id") @db.Uuid
+  templateVersionId String?  @map("template_version_id") @db.Uuid
+  entryMode         String   @map("entry_mode") @db.VarChar(5)
+  payBasis          String   @default("monthly") @map("pay_basis") @db.VarChar(7)
+  annualCtc         Decimal  @map("annual_ctc") @db.Decimal(14, 2)
+  rate              Decimal? @db.Decimal(14, 2)
+  otMultiplier      Decimal? @map("ot_multiplier") @db.Decimal(5, 2)
+  holidayMultiplier Decimal? @map("holiday_multiplier") @db.Decimal(5, 2)
+  monthlyGross      Decimal  @map("monthly_gross") @db.Decimal(14, 2)
+  minWageCheck      Json     @map("min_wage_check")
+  codeWageAddBack   Decimal  @default(0) @map("code_wage_add_back") @db.Decimal(14, 2)
+  letterDocumentId  String?  @map("letter_document_id") @db.Uuid
+  createdBy         String?  @map("created_by") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("compensation_packages")
+}
+
+model CompensationLine {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  legalEntityId  String  @map("legal_entity_id") @db.Uuid
+  employeeId     String  @map("employee_id") @db.Uuid
+  packageId      String  @map("package_id") @db.Uuid
+  componentId    String  @map("component_id") @db.Uuid
+  monthly        Decimal @db.Decimal(14, 2)
+  annual         Decimal @db.Decimal(14, 2)
+  override       Boolean @default(false)
+  citation       Json?
+
+  @@map("compensation_lines")
+}
+
+model EmployeeStatutory {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String    @map("organization_id") @db.Uuid
+  legalEntityId       String    @map("legal_entity_id") @db.Uuid
+  employeeId          String    @map("employee_id") @db.Uuid
+  employmentId        String    @map("employment_id") @db.Uuid
+  validFrom           DateTime  @map("valid_from") @db.Date
+  validTo             DateTime? @map("valid_to") @db.Date
+  pf                  String    @db.VarChar(8)
+  eps                 Boolean   @default(true)
+  pre2014Member       Boolean   @default(false) @map("pre2014_member")
+  higherPension       Boolean   @default(false) @map("higher_pension")
+  vpfPercent          Decimal   @default(0) @map("vpf_percent") @db.Decimal(5, 2)
+  pfOnActualWage      Boolean?  @map("pf_on_actual_wage")
+  internationalWorker Boolean   @default(false) @map("international_worker")
+  esi                 String    @db.VarChar(8)
+  pwdCeilingConsent   Boolean   @default(false) @map("pwd_ceiling_consent")
+  ptState             String?   @map("pt_state") @db.VarChar(6)
+  lwfState            String?   @map("lwf_state") @db.VarChar(6)
+  reason              String?   @db.VarChar(500)
+  createdBy           String?   @map("created_by") @db.Uuid
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("employee_statutory")
+}
+
+model EstablishmentCoverage {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  statute        String    @db.VarChar(10)
+  headcount      Int
+  threshold      Int
+  status         String    @db.VarChar(12)
+  crossedOn      DateTime? @map("crossed_on") @db.Date
+  ruleVersion    String    @map("rule_version") @db.VarChar(20)
+  evaluatedAt    DateTime  @default(now()) @map("evaluated_at") @db.Timestamptz(3)
+
+  @@map("establishment_coverage")
+}
+
+model PayImportBatch {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  kind           String    @db.VarChar(20)
+  rows           Int
+  errors         Json      @default("[]")
+  staged         Json
+  sha256         String    @db.Char(64)
+  status         String    @default("staged") @db.VarChar(10)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  committedBy    String?   @map("committed_by") @db.Uuid
+  committedAt    DateTime? @map("committed_at") @db.Timestamptz(3)
+
+  @@map("pay_import_batches")
+}
+
+model OpeningBalance {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  legalEntityId  String  @map("legal_entity_id") @db.Uuid
+  employeeId     String  @map("employee_id") @db.Uuid
+  employmentId   String  @map("employment_id") @db.Uuid
+  fy             String  @db.VarChar(7)
+  head           String  @db.VarChar(40)
+  amount         Decimal @db.Decimal(14, 2)
+  batchId        String  @map("batch_id") @db.Uuid
+
+  @@map("opening_balances")
+}
+
+model AsPaidLine {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  employmentId   String   @map("employment_id") @db.Uuid
+  periodStart    DateTime @map("period_start") @db.Date
+  componentCode  String   @map("component_code") @db.VarChar(30)
+  amount         Decimal  @db.Decimal(14, 2)
+  batchId        String   @map("batch_id") @db.Uuid
+
+  @@map("as_paid_lines")
+}
+
+model PreviousEmploymentIncome {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  legalEntityId  String  @map("legal_entity_id") @db.Uuid
+  employeeId     String  @map("employee_id") @db.Uuid
+  employmentId   String  @map("employment_id") @db.Uuid
+  fy             String  @db.VarChar(7)
+  employerTan    String  @map("employer_tan") @db.VarChar(10)
+  gross          Decimal @db.Decimal(14, 2)
+  exemptions     Decimal @default(0) @db.Decimal(14, 2)
+  tds            Decimal @default(0) @db.Decimal(14, 2)
+  batchId        String  @map("batch_id") @db.Uuid
+
+  @@map("previous_employment_income")
+}
+
+model PayslipLayout {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  payGroupId     String?   @map("pay_group_id") @db.Uuid
+  version        Int
+  blocks         Json
+  languages      String[]  @default(["en"])
+  status         String    @default("draft") @db.VarChar(10)
+  previewedAt    DateTime? @map("previewed_at") @db.Timestamptz(3)
+  activatedBy    String?   @map("activated_by") @db.Uuid
+  activatedAt    DateTime? @map("activated_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("payslip_layouts")
 }

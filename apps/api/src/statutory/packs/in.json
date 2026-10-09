@@ -1,0 +1,1407 @@
+{
+  "pack": "IN",
+  "note": "India pack (P07, M03-BUILD-DESIGN §8, PAY-2.03). The source of truth for the statutory rule sets the 20261027000000_payroll_5b migration loads (scripts/statutory-pack-sql.ts writes the SQL; a unit test checks they agree). Every figure carries its source; 'verify': true until the YukthiX compliance owner and the partner CA confirm it (YX-STAT-13). Amounts are text (Decimal), never JS numbers.",
+  "ruleSets": [
+    {
+      "statute": "IN.PF",
+      "jurisdiction": "IN",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Employees' Provident Funds and Miscellaneous Provisions Act, 1952 s.6; EPF Scheme 1952 para 26A / 29; EPS 1995 para 3; EDLI Scheme 1976; admin charges notification 2017. Code on Social Security 2020 from 21 Nov 2025 (transitional: the Act's schemes continue).",
+      "values": {
+        "kind": "pf",
+        "wageCeiling": "15000",
+        "employeeRate": "0.12",
+        "employerRate": "0.12",
+        "epsRate": "0.0833",
+        "epsCeiling": "15000",
+        "epsStopAge": 58,
+        "edliRate": "0.005",
+        "edliCeiling": "15000",
+        "adminRate": "0.005",
+        "adminMinimum": "500",
+        "rounding": "nearest"
+      },
+      "golden": [
+        {
+          "name": "Basic 20,000 on the ceiling: employee 1,800, EPS 1,250, EPF 550",
+          "fn": "pf",
+          "input": {
+            "pfWage": "20000",
+            "onActualWage": false,
+            "age": 30
+          },
+          "expected": {
+            "employee": "1800",
+            "eps": "1250",
+            "epf": "550",
+            "edli": "75"
+          }
+        },
+        {
+          "name": "M03 §16.2: basic 20,000 on actual wage: EPS 1,250 and EPF 1,150",
+          "fn": "pf",
+          "input": {
+            "pfWage": "20000",
+            "onActualWage": true,
+            "age": 30
+          },
+          "expected": {
+            "employee": "2400",
+            "eps": "1250",
+            "epf": "1150",
+            "edli": "75"
+          }
+        },
+        {
+          "name": "Below the ceiling: 12,000",
+          "fn": "pf",
+          "input": {
+            "pfWage": "12000",
+            "onActualWage": false,
+            "age": 40
+          },
+          "expected": {
+            "employee": "1440",
+            "eps": "1000",
+            "epf": "440",
+            "edli": "60"
+          }
+        },
+        {
+          "name": "Age 58: no EPS, the whole employer share goes to EPF",
+          "fn": "pf",
+          "input": {
+            "pfWage": "15000",
+            "onActualWage": false,
+            "age": 58
+          },
+          "expected": {
+            "employee": "1800",
+            "eps": "0",
+            "epf": "1800",
+            "edli": "75"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.ESI",
+      "jurisdiction": "IN",
+      "version": "2019-v1",
+      "validFrom": "2019-07-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Employees' State Insurance Act, 1948 s.39; ESI (Central) Rules 1950 r.51 (rates from 1 Jul 2019); wage ceiling notification 2016; PwD ceiling notification. Contribution periods Apr–Sep and Oct–Mar; amounts rounded up to the next rupee.",
+      "values": {
+        "kind": "esi",
+        "wageCeiling": "21000",
+        "pwdWageCeiling": "25000",
+        "employeeRate": "0.0075",
+        "employerRate": "0.0325",
+        "dailyWageExempt": "176",
+        "contributionPeriods": [
+          [
+            4,
+            9
+          ],
+          [
+            10,
+            3
+          ]
+        ],
+        "rounding": "up"
+      },
+      "golden": [
+        {
+          "name": "M03 §16.2: gross 15,050 gives employee ESI 113 (rounded up)",
+          "fn": "esi",
+          "input": {
+            "esiWage": "15050",
+            "covered": true
+          },
+          "expected": {
+            "employee": "113",
+            "employer": "490"
+          }
+        },
+        {
+          "name": "Just at the ceiling: 21,000",
+          "fn": "esi",
+          "input": {
+            "esiWage": "21000",
+            "covered": true
+          },
+          "expected": {
+            "employee": "158",
+            "employer": "683"
+          }
+        },
+        {
+          "name": "Not covered: nothing",
+          "fn": "esi",
+          "input": {
+            "esiWage": "21001",
+            "covered": false
+          },
+          "expected": {
+            "employee": "0",
+            "employer": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN",
+      "version": "1988-v1",
+      "validFrom": "1988-05-15",
+      "lawVersion": "OLD-ACT",
+      "verify": false,
+      "source": "Constitution of India art. 276(2) as amended in 1988: a state tax on professions, trades, callings and employments is at most ₹2,500 a year per person.",
+      "values": {
+        "kind": "pt_limit",
+        "annualMax": "2500"
+      },
+      "golden": [
+        {
+          "name": "The ceiling is ₹2,500 a year",
+          "fn": "pt_limit",
+          "input": {},
+          "expected": {
+            "annualMax": "2500"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-KA",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Karnataka Tax on Professions, Trades, Callings and Employments Act, 1976, Schedule entry 1 as amended from 1 Apr 2025 (₹200 a month, ₹300 in February). Annual cap ₹2,500 (Constitution art. 276(2)).",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "24999.99",
+            "amount": "0"
+          },
+          {
+            "from": "25000",
+            "to": null,
+            "amount": "200",
+            "months": {
+              "2": "300"
+            }
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "Below 25,000: nothing",
+          "fn": "pt",
+          "input": {
+            "ptWage": "24000",
+            "month": 5
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "25,000 in May: 200",
+          "fn": "pt",
+          "input": {
+            "ptWage": "25000",
+            "month": 5
+          },
+          "expected": {
+            "amount": "200"
+          }
+        },
+        {
+          "name": "February: 300 (2,500 a year)",
+          "fn": "pt",
+          "input": {
+            "ptWage": "60000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "300"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-TN",
+      "version": "2024-v1",
+      "validFrom": "2024-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Tamil Nadu Urban Local Bodies Act, 1998 s.198 and the professional tax rules (half-yearly income slabs, revised 2024). Deducted in September and March for the half-year.",
+      "values": {
+        "kind": "pt",
+        "basis": "half_yearly",
+        "deductMonths": [
+          9,
+          3
+        ],
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "21000",
+            "amount": "0"
+          },
+          {
+            "from": "21000.01",
+            "to": "30000",
+            "amount": "180"
+          },
+          {
+            "from": "30000.01",
+            "to": "45000",
+            "amount": "425"
+          },
+          {
+            "from": "45000.01",
+            "to": "60000",
+            "amount": "930"
+          },
+          {
+            "from": "60000.01",
+            "to": "75000",
+            "amount": "1025"
+          },
+          {
+            "from": "75000.01",
+            "to": null,
+            "amount": "1250"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "Half-year income 1,80,000 in September: 1,250",
+          "fn": "pt",
+          "input": {
+            "ptWage": "180000",
+            "month": 9
+          },
+          "expected": {
+            "amount": "1250"
+          }
+        },
+        {
+          "name": "Half-year income 40,000 in March: 425",
+          "fn": "pt",
+          "input": {
+            "ptWage": "40000",
+            "month": 3
+          },
+          "expected": {
+            "amount": "425"
+          }
+        },
+        {
+          "name": "Not a deduction month: nothing",
+          "fn": "pt",
+          "input": {
+            "ptWage": "180000",
+            "month": 6
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-MH",
+      "version": "2023-v1",
+      "validFrom": "2023-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Maharashtra State Tax on Professions, Trades, Callings and Employments Act, 1975, Schedule entry 1 (women up to ₹25,000 exempt; ₹300 in February).",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "7500",
+            "amount": "0",
+            "gender": "male"
+          },
+          {
+            "from": "7500.01",
+            "to": "10000",
+            "amount": "175",
+            "gender": "male"
+          },
+          {
+            "from": "10000.01",
+            "to": null,
+            "amount": "200",
+            "gender": "male",
+            "months": {
+              "2": "300"
+            }
+          },
+          {
+            "from": "0",
+            "to": "25000",
+            "amount": "0",
+            "gender": "female"
+          },
+          {
+            "from": "25000.01",
+            "to": null,
+            "amount": "200",
+            "gender": "female",
+            "months": {
+              "2": "300"
+            }
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "A man earning 9,000: 175",
+          "fn": "pt",
+          "input": {
+            "ptWage": "9000",
+            "month": 6,
+            "gender": "male"
+          },
+          "expected": {
+            "amount": "175"
+          }
+        },
+        {
+          "name": "A woman earning 20,000: nothing",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000",
+            "month": 6,
+            "gender": "female"
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "A woman earning 30,000 in February: 300",
+          "fn": "pt",
+          "input": {
+            "ptWage": "30000",
+            "month": 2,
+            "gender": "female"
+          },
+          "expected": {
+            "amount": "300"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-TS",
+      "version": "2014-v1",
+      "validFrom": "2014-06-02",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Telangana Tax on Professions, Trades, Callings and Employments Act, 1987 (as adapted), Schedule entry 1.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "15000",
+            "amount": "0"
+          },
+          {
+            "from": "15000.01",
+            "to": "20000",
+            "amount": "150"
+          },
+          {
+            "from": "20000.01",
+            "to": null,
+            "amount": "200"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "18,000: 150",
+          "fn": "pt",
+          "input": {
+            "ptWage": "18000",
+            "month": 6
+          },
+          "expected": {
+            "amount": "150"
+          }
+        },
+        {
+          "name": "45,000: 200",
+          "fn": "pt",
+          "input": {
+            "ptWage": "45000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "200"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-DL",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Delhi levies no professional tax on salaries (the control state of M03 §19 D2).",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Delhi: never",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-KA",
+      "version": "2024-v1",
+      "validFrom": "2024-01-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Karnataka Labour Welfare Fund Act, 1965 s.7A as amended 2024 (yearly; ₹50 employee, ₹100 employer; paid by 15 January for the calendar year).",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          12
+        ],
+        "employee": "50",
+        "employer": "100"
+      },
+      "golden": [
+        {
+          "name": "December: 50 and 100",
+          "fn": "lwf",
+          "input": {
+            "month": 12
+          },
+          "expected": {
+            "employee": "50",
+            "employer": "100"
+          }
+        },
+        {
+          "name": "Other months: nothing",
+          "fn": "lwf",
+          "input": {
+            "month": 6
+          },
+          "expected": {
+            "employee": "0",
+            "employer": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-TN",
+      "version": "2021-v1",
+      "validFrom": "2021-01-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Tamil Nadu Labour Welfare Fund Act, 1972 s.15 (yearly; ₹20 employee, ₹40 employer; paid by 31 January).",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          12
+        ],
+        "employee": "20",
+        "employer": "40"
+      },
+      "golden": [
+        {
+          "name": "December: 20 and 40",
+          "fn": "lwf",
+          "input": {
+            "month": 12
+          },
+          "expected": {
+            "employee": "20",
+            "employer": "40"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-MH",
+      "version": "2019-v1",
+      "validFrom": "2019-06-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Maharashtra Labour Welfare Fund Act, 1953 s.6BB (half-yearly, June and December; ₹25 employee, ₹75 employer).",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          6,
+          12
+        ],
+        "employee": "25",
+        "employer": "75"
+      },
+      "golden": [
+        {
+          "name": "June: 25 and 75",
+          "fn": "lwf",
+          "input": {
+            "month": 6
+          },
+          "expected": {
+            "employee": "25",
+            "employer": "75"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-TS",
+      "version": "2014-v1",
+      "validFrom": "2014-06-02",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Telangana Labour Welfare Fund Act, 1987 (as adapted) (yearly; ₹2 employee, ₹5 employer).",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          12
+        ],
+        "employee": "2",
+        "employer": "5"
+      },
+      "golden": [
+        {
+          "name": "December: 2 and 5",
+          "fn": "lwf",
+          "input": {
+            "month": 12
+          },
+          "expected": {
+            "employee": "2",
+            "employer": "5"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-DL",
+      "version": "2014-v1",
+      "validFrom": "2014-01-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Bombay Labour Welfare Fund Act, 1953 as extended to Delhi (half-yearly, June and December; ₹0.75 employee, ₹2.25 employer).",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          6,
+          12
+        ],
+        "employee": "0.75",
+        "employer": "2.25"
+      },
+      "golden": [
+        {
+          "name": "December: 0.75 and 2.25",
+          "fn": "lwf",
+          "input": {
+            "month": 12
+          },
+          "expected": {
+            "employee": "0.75",
+            "employer": "2.25"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.MW",
+      "jurisdiction": "IN",
+      "version": "2019-v1",
+      "validFrom": "2019-06-01",
+      "lawVersion": "CODE",
+      "verify": true,
+      "source": "National floor-level minimum wage (₹178 a day, MoLE 2019; the Code on Wages 2019 s.9 floor wage once notified). State rates per zone and skill are loaded per state from the official notifications (see DECISION NEEDED in statutory/calculators.ts).",
+      "values": {
+        "kind": "min_wage",
+        "floorDaily": "178",
+        "monthDays": 26,
+        "states": {}
+      },
+      "golden": [
+        {
+          "name": "Floor only: 178 a day, 4,628 for 26 days",
+          "fn": "min_wage",
+          "input": {
+            "state": "IN-KA",
+            "zone": "I",
+            "skill": "unskilled"
+          },
+          "expected": {
+            "daily": "178",
+            "monthly": "4628",
+            "floorApplied": true
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.WAGES-CODE",
+      "jurisdiction": "IN",
+      "version": "2025-v1",
+      "validFrom": "2025-11-21",
+      "lawVersion": "CODE",
+      "verify": false,
+      "source": "Code on Wages, 2019 s.2(y) proviso: when the excluded payments exceed one half of all remuneration, the excess counts as wages (in force 21 Nov 2025).",
+      "values": {
+        "kind": "code_wage",
+        "exclusionLimit": "0.5"
+      },
+      "golden": [
+        {
+          "name": "Exclusions 60% of 50,000: 5,000 added back",
+          "fn": "code_wage",
+          "input": {
+            "wageParts": "20000",
+            "exclusions": "30000"
+          },
+          "expected": {
+            "codeWage": "25000",
+            "addBack": "5000"
+          }
+        },
+        {
+          "name": "Exclusions at half: nothing added",
+          "fn": "code_wage",
+          "input": {
+            "wageParts": "25000",
+            "exclusions": "25000"
+          },
+          "expected": {
+            "codeWage": "25000",
+            "addBack": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.WAGES",
+      "jurisdiction": "IN",
+      "version": "2025-v1",
+      "validFrom": "2025-11-21",
+      "lawVersion": "CODE",
+      "verify": true,
+      "source": "Code on Wages, 2019 s.18(2) (total deductions at most 50% of wages); Payment of Wages Act, 1936 s.7(3) (75% where co-operative society dues are included) for earlier periods.",
+      "values": {
+        "kind": "deduction_cap",
+        "cap": "0.5",
+        "withCoopCap": "0.75"
+      },
+      "golden": [
+        {
+          "name": "Wages 40,000: deductions at most 20,000",
+          "fn": "deduction_cap",
+          "input": {
+            "wages": "40000",
+            "coop": false
+          },
+          "expected": {
+            "cap": "20000"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.BONUS",
+      "jurisdiction": "IN",
+      "version": "2015-v1",
+      "validFrom": "2015-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Payment of Bonus Act, 1965 s.2(13), s.10, s.11, s.12 as amended 2015 (eligibility ₹21,000 a month; calculated on ₹7,000 or the minimum wage if higher; 8.33% to 20%).",
+      "values": {
+        "kind": "bonus",
+        "eligibilityWage": "21000",
+        "calculationCeiling": "7000",
+        "minRate": "0.0833",
+        "maxRate": "0.2"
+      },
+      "golden": [
+        {
+          "name": "Wage 18,000 at 8.33%: monthly provision on 7,000 = 583.10",
+          "fn": "bonus",
+          "input": {
+            "bonusWage": "18000",
+            "rate": "0.0833",
+            "minWageMonthly": "4628"
+          },
+          "expected": {
+            "eligible": true,
+            "monthly": "583.10"
+          }
+        },
+        {
+          "name": "Wage 25,000: not eligible",
+          "fn": "bonus",
+          "input": {
+            "bonusWage": "25000",
+            "rate": "0.0833",
+            "minWageMonthly": "4628"
+          },
+          "expected": {
+            "eligible": false,
+            "monthly": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.GRATUITY",
+      "jurisdiction": "IN",
+      "version": "2018-v1",
+      "validFrom": "2018-03-29",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Payment of Gratuity Act, 1972 s.4 (15 days' wages per year, a month as 26 days, at most ₹20,00,000 from 29 Mar 2018, after 5 years).",
+      "values": {
+        "kind": "gratuity",
+        "daysPerYear": 15,
+        "monthDays": 26,
+        "cap": "2000000",
+        "minYears": 5,
+        "fixedTermMinYears": null
+      },
+      "golden": [
+        {
+          "name": "Wage 26,000: monthly provision 1,250",
+          "fn": "gratuity",
+          "input": {
+            "gratuityWage": "26000"
+          },
+          "expected": {
+            "monthly": "1250"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.SS-CODE",
+      "jurisdiction": "IN",
+      "version": "2025-v1",
+      "validFrom": "2025-11-21",
+      "lawVersion": "CODE",
+      "verify": true,
+      "source": "Code on Social Security, 2020 s.53 (gratuity after 5 years; fixed-term employees after 1 year; ceiling as notified, ₹20,00,000 until revised).",
+      "values": {
+        "kind": "gratuity",
+        "daysPerYear": 15,
+        "monthDays": 26,
+        "cap": "2000000",
+        "minYears": 5,
+        "fixedTermMinYears": 1
+      },
+      "golden": [
+        {
+          "name": "Wage 52,000: monthly provision 2,500",
+          "fn": "gratuity",
+          "input": {
+            "gratuityWage": "52000"
+          },
+          "expected": {
+            "monthly": "2500"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.TDS",
+      "jurisdiction": "IN",
+      "version": "FY2025-26",
+      "validFrom": "2025-04-01",
+      "validTo": "2026-03-31",
+      "lawVersion": "IT-1961",
+      "verify": true,
+      "source": "Income-tax Act, 1961 s.115BAC (new regime, Finance Act 2025), s.87A, s.16(ia), First Schedule; Health and Education Cess 4%; s.206AA (20% without PAN).",
+      "values": {
+        "kind": "tds",
+        "cess": "0.04",
+        "noPanRate": "0.2",
+        "regimes": {
+          "new": {
+            "standardDeduction": "75000",
+            "rebate": {
+              "incomeUpTo": "1200000",
+              "max": "60000"
+            },
+            "slabs": [
+              {
+                "upTo": "400000",
+                "rate": "0"
+              },
+              {
+                "upTo": "800000",
+                "rate": "0.05"
+              },
+              {
+                "upTo": "1200000",
+                "rate": "0.1"
+              },
+              {
+                "upTo": "1600000",
+                "rate": "0.15"
+              },
+              {
+                "upTo": "2000000",
+                "rate": "0.2"
+              },
+              {
+                "upTo": "2400000",
+                "rate": "0.25"
+              },
+              {
+                "upTo": null,
+                "rate": "0.3"
+              }
+            ],
+            "surcharge": [
+              {
+                "above": "5000000",
+                "rate": "0.1"
+              },
+              {
+                "above": "10000000",
+                "rate": "0.15"
+              },
+              {
+                "above": "20000000",
+                "rate": "0.25"
+              }
+            ]
+          },
+          "old": {
+            "standardDeduction": "50000",
+            "rebate": {
+              "incomeUpTo": "500000",
+              "max": "12500"
+            },
+            "slabs": [
+              {
+                "upTo": "250000",
+                "rate": "0"
+              },
+              {
+                "upTo": "500000",
+                "rate": "0.05"
+              },
+              {
+                "upTo": "1000000",
+                "rate": "0.2"
+              },
+              {
+                "upTo": null,
+                "rate": "0.3"
+              }
+            ],
+            "seniorExemption": "300000",
+            "superSeniorExemption": "500000",
+            "surcharge": [
+              {
+                "above": "5000000",
+                "rate": "0.1"
+              },
+              {
+                "above": "10000000",
+                "rate": "0.15"
+              },
+              {
+                "above": "20000000",
+                "rate": "0.25"
+              },
+              {
+                "above": "50000000",
+                "rate": "0.37"
+              }
+            ]
+          }
+        }
+      },
+      "golden": [
+        {
+          "name": "M03 §16.2: ₹8 L taxable at the 4–8 L slab = ₹20,000 before rebate",
+          "fn": "tds",
+          "input": {
+            "taxable": "800000",
+            "regime": "new",
+            "age": 30
+          },
+          "expected": {
+            "slabTax": "20000",
+            "rebate": "20000",
+            "tax": "0"
+          }
+        },
+        {
+          "name": "New regime, ₹15 L taxable: 1,05,000 + 4% cess",
+          "fn": "tds",
+          "input": {
+            "taxable": "1500000",
+            "regime": "new",
+            "age": 30
+          },
+          "expected": {
+            "slabTax": "105000",
+            "rebate": "0",
+            "tax": "109200"
+          }
+        },
+        {
+          "name": "Old regime, ₹6 L taxable: 32,500 + cess",
+          "fn": "tds",
+          "input": {
+            "taxable": "600000",
+            "regime": "old",
+            "age": 30
+          },
+          "expected": {
+            "slabTax": "32500",
+            "rebate": "0",
+            "tax": "33800"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.TDS",
+      "jurisdiction": "IN",
+      "version": "TY2026-27",
+      "validFrom": "2026-04-01",
+      "lawVersion": "IT-2025",
+      "verify": true,
+      "source": "Income-tax Act, 2025 (from 1 Apr 2026; tax year replaces previous year): the rates of the Finance Act for tax year 2026-27, same slabs as FY 2025-26 until the compliance owner confirms otherwise. Sections and forms per the law cross-walk (Form 130 / 138).",
+      "values": {
+        "kind": "tds",
+        "cess": "0.04",
+        "noPanRate": "0.2",
+        "regimes": {
+          "new": {
+            "standardDeduction": "75000",
+            "rebate": {
+              "incomeUpTo": "1200000",
+              "max": "60000"
+            },
+            "slabs": [
+              {
+                "upTo": "400000",
+                "rate": "0"
+              },
+              {
+                "upTo": "800000",
+                "rate": "0.05"
+              },
+              {
+                "upTo": "1200000",
+                "rate": "0.1"
+              },
+              {
+                "upTo": "1600000",
+                "rate": "0.15"
+              },
+              {
+                "upTo": "2000000",
+                "rate": "0.2"
+              },
+              {
+                "upTo": "2400000",
+                "rate": "0.25"
+              },
+              {
+                "upTo": null,
+                "rate": "0.3"
+              }
+            ],
+            "surcharge": [
+              {
+                "above": "5000000",
+                "rate": "0.1"
+              },
+              {
+                "above": "10000000",
+                "rate": "0.15"
+              },
+              {
+                "above": "20000000",
+                "rate": "0.25"
+              }
+            ]
+          },
+          "old": {
+            "standardDeduction": "50000",
+            "rebate": {
+              "incomeUpTo": "500000",
+              "max": "12500"
+            },
+            "slabs": [
+              {
+                "upTo": "250000",
+                "rate": "0"
+              },
+              {
+                "upTo": "500000",
+                "rate": "0.05"
+              },
+              {
+                "upTo": "1000000",
+                "rate": "0.2"
+              },
+              {
+                "upTo": null,
+                "rate": "0.3"
+              }
+            ],
+            "seniorExemption": "300000",
+            "superSeniorExemption": "500000",
+            "surcharge": [
+              {
+                "above": "5000000",
+                "rate": "0.1"
+              },
+              {
+                "above": "10000000",
+                "rate": "0.15"
+              },
+              {
+                "above": "20000000",
+                "rate": "0.25"
+              },
+              {
+                "above": "50000000",
+                "rate": "0.37"
+              }
+            ]
+          }
+        }
+      },
+      "golden": [
+        {
+          "name": "₹8 L taxable, new regime: rebate makes it nil",
+          "fn": "tds",
+          "input": {
+            "taxable": "800000",
+            "regime": "new",
+            "age": 30
+          },
+          "expected": {
+            "slabTax": "20000",
+            "rebate": "20000",
+            "tax": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PENALTY",
+      "jurisdiction": "IN",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "EPF Act s.7Q (12% a year) and s.14B damages; ESI Act s.39(5) (12% a year); Income-tax Act 1961 s.201(1A) (1% a month late deduction, 1.5% late payment) and s.234E (₹200 a day for late returns).",
+      "values": {
+        "kind": "penalty",
+        "items": {
+          "pf_interest_yearly": "0.12",
+          "esi_interest_yearly": "0.12",
+          "tds_late_deduction_monthly": "0.01",
+          "tds_late_payment_monthly": "0.015",
+          "tds_return_late_fee_daily": "200"
+        }
+      },
+      "golden": [
+        {
+          "name": "PF interest on 10,000 for 73 days: 240",
+          "fn": "penalty",
+          "input": {
+            "item": "pf_interest_yearly",
+            "amount": "10000",
+            "days": 73
+          },
+          "expected": {
+            "amount": "240"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.CALENDAR",
+      "jurisdiction": "IN",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "EPF Scheme para 38 (15th of the next month); ESI Regulations reg. 31 (15th); Income-tax Rules r.30 (7th of the next month, 30 April for March).",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          {
+            "key": "pf_ecr",
+            "label": "PF contributions (ECR)",
+            "dueDay": 15,
+            "monthOffset": 1
+          },
+          {
+            "key": "esi",
+            "label": "ESI contributions",
+            "dueDay": 15,
+            "monthOffset": 1
+          },
+          {
+            "key": "tds_deposit",
+            "label": "TDS deposit",
+            "dueDay": 7,
+            "monthOffset": 1,
+            "march": {
+              "dueDay": 30,
+              "monthOffset": 1
+            }
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "September PF is due 15 October",
+          "fn": "calendar",
+          "input": {
+            "key": "pf_ecr",
+            "month": "2026-09"
+          },
+          "expected": {
+            "due": "2026-10-15"
+          }
+        },
+        {
+          "name": "March TDS is due 30 April",
+          "fn": "calendar",
+          "input": {
+            "key": "tds_deposit",
+            "month": "2026-03"
+          },
+          "expected": {
+            "due": "2026-04-30"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.COVERAGE",
+      "jurisdiction": "IN",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "EPF Act s.1(3)(b) (20 or more persons; s.1(5): stays covered); ESI Act s.1(4) with state notifications (10 or more persons; s.1(6): stays covered).",
+      "values": {
+        "kind": "coverage",
+        "items": [
+          {
+            "statute": "IN.PF",
+            "threshold": 20,
+            "approachAt": 18,
+            "sticky": true
+          },
+          {
+            "statute": "IN.ESI",
+            "threshold": 10,
+            "approachAt": 8,
+            "sticky": true
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "19 people: PF approaching",
+          "fn": "coverage",
+          "input": {
+            "statute": "IN.PF",
+            "headcount": 19,
+            "wasCovered": false
+          },
+          "expected": {
+            "status": "approaching"
+          }
+        },
+        {
+          "name": "15 people after being covered: PF stays covered",
+          "fn": "coverage",
+          "input": {
+            "statute": "IN.PF",
+            "headcount": 15,
+            "wasCovered": true
+          },
+          "expected": {
+            "status": "covered"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.EMPTYPE",
+      "jurisdiction": "IN",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Default applicability by employment category (P07, YX-ORG-20): EPF Act s.2(f) (employees, including through contractors; apprentices under the Apprentices Act excluded); ESI Act s.2(9); state PT and LWF Acts. 'optional' is a choice the law leaves to the employer.",
+      "values": {
+        "kind": "emp_defaults",
+        "categories": {
+          "permanent": {
+            "IN.PF": "mandatory",
+            "IN.ESI": "by_wage",
+            "IN.PT": "mandatory",
+            "IN.LWF": "mandatory"
+          },
+          "probation": {
+            "IN.PF": "mandatory",
+            "IN.ESI": "by_wage",
+            "IN.PT": "mandatory",
+            "IN.LWF": "mandatory"
+          },
+          "fixed_term": {
+            "IN.PF": "mandatory",
+            "IN.ESI": "by_wage",
+            "IN.PT": "mandatory",
+            "IN.LWF": "mandatory"
+          },
+          "intern": {
+            "IN.PF": "optional",
+            "IN.ESI": "optional",
+            "IN.PT": "mandatory",
+            "IN.LWF": "optional"
+          },
+          "apprentice": {
+            "IN.PF": "excluded",
+            "IN.ESI": "excluded",
+            "IN.PT": "mandatory",
+            "IN.LWF": "excluded"
+          },
+          "consultant": {
+            "IN.PF": "excluded",
+            "IN.ESI": "excluded",
+            "IN.PT": "excluded",
+            "IN.LWF": "excluded"
+          },
+          "deployed_contractor": {
+            "IN.PF": "mandatory",
+            "IN.ESI": "by_wage",
+            "IN.PT": "mandatory",
+            "IN.LWF": "mandatory"
+          },
+          "retired_reemployed": {
+            "IN.PF": "optional",
+            "IN.ESI": "by_wage",
+            "IN.PT": "mandatory",
+            "IN.LWF": "mandatory"
+          }
+        }
+      },
+      "golden": [
+        {
+          "name": "An apprentice is outside PF",
+          "fn": "emp_defaults",
+          "input": {
+            "category": "apprentice",
+            "statute": "IN.PF"
+          },
+          "expected": {
+            "applicability": "excluded"
+          }
+        }
+      ]
+    }
+  ],
+  "crosswalk": [
+    {
+      "subjectKey": "salary_tds",
+      "lawVersion": "IT-1961",
+      "section": "s.192",
+      "form": "Form 16 / 24Q"
+    },
+    {
+      "subjectKey": "salary_tds",
+      "lawVersion": "IT-2025",
+      "section": "s.392",
+      "form": "Form 130 / Form 138"
+    },
+    {
+      "subjectKey": "standard_deduction",
+      "lawVersion": "IT-1961",
+      "section": "s.16(ia)",
+      "form": "Form 16 Part B"
+    },
+    {
+      "subjectKey": "standard_deduction",
+      "lawVersion": "IT-2025",
+      "section": "s.19",
+      "form": "Form 130 Part B"
+    },
+    {
+      "subjectKey": "rebate",
+      "lawVersion": "IT-1961",
+      "section": "s.87A",
+      "form": "Form 16 Part B"
+    },
+    {
+      "subjectKey": "rebate",
+      "lawVersion": "IT-2025",
+      "section": "s.156",
+      "form": "Form 130 Part B"
+    }
+  ]
+}
