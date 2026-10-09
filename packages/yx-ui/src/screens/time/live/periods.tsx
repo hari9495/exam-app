@@ -79,13 +79,17 @@ export function PeriodsScreen(p: PeriodsScreenProps) {
                     .map((m) => (
                       <tr key={m.month}>
                         <td>{monthText(m.month)}</td>
-                        <td>{m.stage === 'locked' ? <Badge tone="neutral">Locked</Badge> : <Badge tone="success">Open</Badge>}</td>
-                        <td className="yx-tim-note">{m.changedAt ? `${m.stage === 'locked' ? 'Locked' : 'Unlocked'} ${dateText(m.changedAt.slice(0, 10))}${m.changedBy ? ` by ${m.changedBy}` : ''}${m.reason ? `: ${m.reason}` : ''}` : ''}</td>
+                        <td>{m.stage === 'open' ? <Badge tone="success">Open</Badge> : <Badge tone="neutral">{m.stage === 'filed' ? 'Filed' : m.stage === 'frozen' ? 'Frozen' : 'Locked'}</Badge>}</td>
+                        <td className="yx-tim-note">{m.changedAt ? `${m.stage === 'open' ? 'Reopened' : 'Locked'} ${dateText(m.changedAt.slice(0, 10))}${m.changedBy ? ` by ${m.changedBy}` : ''}${m.reason ? `: ${m.reason}` : ''}` : ''}</td>
                         <td>
-                          {m.stage === 'locked' ? (
+                          {m.stage === 'locked' && m.reopenAsked ? (
+                            <span className="yx-tim-note">Reopen asked: waiting for two approvals</span>
+                          ) : m.stage === 'locked' ? (
                             <Button size="sm" onClick={() => setUnlocking({ entity: e, month: m.month })}>
-                              Unlock
+                              Ask to reopen
                             </Button>
+                          ) : m.stage !== 'open' ? (
+                            <span className="yx-tim-note">Filed: corrections only</span>
                           ) : m.lockable ? (
                             <Button size="sm" variant="primary" onClick={() => setLocking({ entity: e, month: m.month })}>
                               Lock
@@ -178,7 +182,7 @@ function UnlockDrawer({ target, onClose, onUnlock }: { target: { entity: { id: s
     <Drawer
       open
       onOpenChange={(o) => !o && onClose()}
-      title={`Unlock ${monthText(target.month)} for ${target.entity.name}?`}
+      title={`Ask to reopen ${monthText(target.month)} for ${target.entity.name}?`}
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
@@ -193,16 +197,16 @@ function UnlockDrawer({ target, onClose, onUnlock }: { target: { entity: { id: s
               });
             }}
           >
-            Unlock the month
+            Send for approval
           </Button>
         </>
       }
     >
       <div className="yx-tim-form">
         <ErrorSummary errors={saveErrors.shownErrors} />
-        {error && <InlineAlert tone="danger" title="Not unlocked">{error}</InlineAlert>}
-        <InlineAlert tone="warning" title="The frozen payroll figures are set aside">
-          They are kept for the record; locking again freezes new ones. The reason is kept in the audit log.
+        {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
+        <InlineAlert tone="info" title="Two approvals, then the month opens">
+          Now that payroll uses these months, reopening one needs two other people: a payroll check, then Finance or a System Admin. Once approved, the frozen payroll figures are set aside (kept for the record). A month whose bank file is released or whose payslips are issued can't be reopened.
         </InlineAlert>
         <FormField id="ul-why" label="Why" required error={saveErrors.errorOf('ul-why')}>
           <TextArea value={reason} onChange={setReason} rows={3} maxLength={500} />

@@ -83,6 +83,13 @@ const SHIFTS_SETUP: WorkspaceLink = { id: 'shifts-setup', label: 'Shifts set-up'
 const PERIODS: WorkspaceLink = { id: 'periods', label: 'Attendance periods', href: '/yx/time/periods', group: 'Time' };
 const REGISTERS: WorkspaceLink = { id: 'registers', label: 'Registers', href: '/yx/time/registers', group: 'Time' };
 const PAYROLL_FEED: WorkspaceLink = { id: 'payroll-feed', label: 'Payroll feed', href: '/yx/time/payroll-feed', group: 'Time' };
+// M03 payroll batch 5a: pay periods (payroll.period.*), reopen requests, pay documents, payroll files and the audit log.
+const PAY_PERIODS: WorkspaceLink = { id: 'pay-periods', label: 'Pay periods', href: '/yx/payroll/periods', group: 'Payroll' };
+const REOPEN_REQUESTS: WorkspaceLink = { id: 'reopen-requests', label: 'Reopen requests', href: '/yx/payroll/reopen-requests', group: 'Payroll' };
+const PAY_DOCUMENTS: WorkspaceLink = { id: 'pay-documents', label: 'Pay documents', href: '/yx/payroll/documents', group: 'Payroll' };
+const PAY_FILES: WorkspaceLink = { id: 'pay-files', label: 'Payroll files', href: '/yx/payroll/files', group: 'Payroll' };
+const PAY_AUDIT: WorkspaceLink = { id: 'pay-audit', label: 'Audit log', href: '/yx/payroll/audit', group: 'Payroll' };
+const MY_PAY_DOCUMENTS: WorkspaceLink = { id: 'my-pay-documents', label: 'My pay documents', href: '/yx/me/pay-documents', group: 'Me' };
 
 // Links follow the role; the API still checks every permission (audit:view, org:manage_users,
 // org:manage_settings) and the pages show "no access" on a 403. Platform staff outside any company use the
@@ -194,7 +201,12 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...(perms.has('attendance.lock') ? [PERIODS] : []),
     ...(perms.has('leave.settings.manage') ? [TIME_SETUP, SHIFTS_SETUP] : []),
   ];
-  const links = [...staff, ...time, ...desk, ...(support ? [] : [APPROVALS]), ...security];
+  // No payroll for YukthiX staff in a support session (P02 Q8): the API and the database refuse it too.
+  const periodKeys = perms.has('payroll.period.view') || perms.has('payroll.period.reopen') || perms.has('payroll.period.reopen.approve');
+  const payroll = support
+    ? []
+    : [...(periodKeys ? [PAY_PERIODS, REOPEN_REQUESTS] : []), ...(perms.has('payroll.document.view') ? [PAY_DOCUMENTS] : []), ...(perms.has('payroll.file.view') ? [PAY_FILES] : []), ...(perms.has('audit.view') ? [PAY_AUDIT] : [])];
+  const links = [...staff, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAY_DOCUMENTS] : []), ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
   return (

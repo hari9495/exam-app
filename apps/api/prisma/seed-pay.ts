@@ -37,10 +37,17 @@ export const PAY_PERMISSIONS = [
   { key: 'audit.hold.manage', description: 'Place and release legal holds on audit entries and pay documents' },
 ];
 export const PAYROLL_APPROVER = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', 'payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release'];
+export const PAYROLL_ADMIN_5A = ['payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view'];
 export const FINANCE_APPROVER = ['org:view', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release'];
 
 export async function seedPay(tx: Tx, organizationId: string, passwordHash: string) {
   const org = { organizationId };
+  // Suresh's Payroll Admin profile gains the batch-5a keys of its template (kept in step on every run).
+  const payrollAdmin = await tx.permissionProfile.findFirst({ where: { ...org, name: 'Payroll Admin' } });
+  if (payrollAdmin) {
+    const keys = new Set<string>([...(JSON.parse(payrollAdmin.permissionsJson) as string[]), ...PAYROLL_ADMIN_5A]);
+    await tx.permissionProfile.update({ where: { id: payrollAdmin.id }, data: { permissionsJson: JSON.stringify([...keys]) } });
+  }
   if (await tx.user.findFirst({ where: { ...org, email: 'payroll-approver@demo-org.test' } })) return;
   const c = { organizationId, isSuperAdmin: false, userId: null };
   const today = todayIn('Asia/Kolkata');

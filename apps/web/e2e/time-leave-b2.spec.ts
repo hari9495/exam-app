@@ -4,7 +4,7 @@ import { stepUp } from './fixtures/time-db';
 
 // Step 4 · Time and leave batch 2, main flow on the seeded Kaveri Foods demo (Hosur plant): Murugan, a plant worker,
 // claims the overtime of a recent day; his supervisor Kavya approves it in Approvals; the plant is a factory, so it is
-// paid at the legal 2× through the payroll feed, never comp-off (founder decision 9 Oct 2026). Then Lakshmi (HR) locks last month for Kaveri Foods (Tamil Nadu) (unlocking it first if the seed locked it),
+// paid at the legal 2× through the payroll feed, never comp-off (founder decision 9 Oct 2026). Then Lakshmi (HR) locks last month for Kaveri Foods (Tamil Nadu) (the seed may have locked it already),
 // and Murugan's fix for a half day in that month is refused.
 //
 // Needs the API and web against the seeded database (locally: API on 3601, web on 3600 with
@@ -60,18 +60,14 @@ test('Murugan claims overtime → Kavya approves → it is paid at 2× (Factorie
   const table = hr.getByRole('table', { name: 'Kaveri Foods Pvt Ltd (Tamil Nadu) periods' });
   const row = table.getByRole('row').filter({ hasText: monthName });
   await expect(row).toBeVisible();
-  if (await row.getByRole('button', { name: 'Unlock' }).isVisible()) {
-    await row.getByRole('button', { name: 'Unlock' }).click();
-    const un = hr.getByRole('dialog');
-    await un.getByRole('textbox', { name: /Why/ }).fill('Re-checking the plant roster before payroll');
-    await un.getByRole('button', { name: 'Unlock the month' }).click();
-    await expect(un).toHaveCount(0);
+  // Payroll 5a: a locked month is reopened only by a two-approval request (payroll-5a.spec.ts), so lock it if it is open.
+  if (await row.getByRole('button', { name: 'Lock' }).isVisible()) {
+    await row.getByRole('button', { name: 'Lock' }).click();
+    const lock = hr.getByRole('dialog');
+    await expect(lock.getByText('Ready to lock')).toBeVisible({ timeout: 60_000 });
+    await lock.getByRole('button', { name: 'Lock the month' }).click();
+    await expect(lock).toHaveCount(0, { timeout: 60_000 });
   }
-  await row.getByRole('button', { name: 'Lock' }).click();
-  const lock = hr.getByRole('dialog');
-  await expect(lock.getByText('Ready to lock')).toBeVisible({ timeout: 60_000 });
-  await lock.getByRole('button', { name: 'Lock the month' }).click();
-  await expect(lock).toHaveCount(0, { timeout: 60_000 });
   await expect(row.getByText('Locked', { exact: true })).toBeVisible();
 
   // 5. Murugan's fix for his half day in that month is refused in plain words.

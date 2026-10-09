@@ -81,6 +81,8 @@ export class PeriodsService {
       const entities = (await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true } })).filter((e) => this.coversEntity(v, e.id));
       const locks = await tx.payPeriod.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: entities.map((e) => e.id) }, periodStart: { gte: asDate(`${year}-01-01`), lte: asDate(`${year}-12-01`) } } });
       const users = new Map((await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: locks.map((l) => l.changedBy).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
+      // PAY-1.02: "unlock" asks to reopen; a month with a request waiting shows it.
+      const asked = new Set((await tx.periodReopenRequest.findMany({ where: { organizationId: c.organizationId, payPeriodId: { in: locks.map((l) => l.id) }, status: 'pending' }, select: { payPeriodId: true } })).map((r) => r.payPeriodId));
       const today = todayIst();
       return {
         year,
@@ -91,7 +93,7 @@ export class PeriodsService {
           months: Array.from({ length: 12 }, (_, i) => {
             const month = `${year}-${String(i + 1).padStart(2, '0')}`;
             const l = locks.find((x) => x.legalEntityId === e.id && dateOf(x.periodStart) === `${month}-01`);
-            return { month, stage: l?.stage ?? 'open', changedAt: l?.changedAt ?? null, changedBy: l?.changedBy ? (users.get(l.changedBy) ?? null) : null, reason: l?.reason ?? null, lockable: this.lockableFrom(month) <= today };
+            return { month, stage: l?.stage ?? 'open', reopenAsked: Boolean(l && asked.has(l.id)), changedAt: l?.changedAt ?? null, changedBy: l?.changedBy ? (users.get(l.changedBy) ?? null) : null, reason: l?.reason ?? null, lockable: this.lockableFrom(month) <= today };
           }),
         })),
       };
@@ -181,7 +183,7 @@ export class PeriodsService {
           data: rows.map((r) => ({ organizationId: org, payPeriodId: lock.id, legalEntityId: entityId, periodStart: asDate(from), employeeId: r.employeeId, mode: r.mode, calendarDays: r.calendarDays, paidDays: r.paidDays, lopDays: r.lopDays, otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: r.compOffDays, timesheetMinutes: r.timesheetMinutes })),
         });
       // YX-AUD-09: what was seen and confirmed.
-      await audit(tx, c, 'time.period.locked', 'period_lock', lock.id, { legalEntityId: entityId, month, people: rows.length, paidDays: rows.reduce((s, r) => s + r.paidDays, 0), lopDays: rows.reduce((s, r) => s + r.lopDays, 0) });
+      await audit(tx, c, 'time.period.locked', 'pay_period', lock.id, { legalEntityId: entityId, month, people: rows.length, paidDays: rows.reduce((s, r) => s + r.paidDays, 0), lopDays: rows.reduce((s, r) => s + r.lopDays, 0) });
       return { id: lock.id, stage: 'locked', frozen: rows.length };
     });
   }
