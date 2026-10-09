@@ -1243,6 +1243,17 @@ P02 makes pay Confidential. Identifiers are already field-encrypted. Open: wheth
 | b. Encrypt every amount column | Each amount sealed like identifiers. | Strongest at rest. | Every total, report and comparison must decrypt in the app; slow, complex, easy to get wrong; no SQL aggregates. |
 | c. Encrypt only the snapshot and explanation JSON | Amount columns plain, detailed inputs sealed. | Hides inputs like LOP reasons and tax declarations at rest. | Adds a decrypt step to "why this number" and reproduce; partial benefit. |
 
+### 19.1 Batch 5a build decisions (founder, accepted 9 Oct 2026)
+
+Raised while building batch 5a and accepted on 9 Oct 2026. Built on `feat/yukthix-payroll-5a`.
+
+| # | Decision | What is built |
+|---|---|---|
+| 5a-D1 | **USB-token signed PDFs are accepted only if all three hold:** (a) the PDF signature is cryptographically valid; (b) the signer certificate chains to an India CCA-licensed CA, is inside its validity period and is not revoked (OCSP, else CRL); (c) the signed byte range starts with exactly the document we issued (its stored SHA-256 and length). | Shared `apps/api/src/documents/signed-pdf.ts` using PKI.js (no hand-rolled cryptography). The CCA root list is configurable data (`apps/api/config/dsc-trusted-roots.pem`, or `DSC_TRUSTED_ROOTS`). Every refusal gives a plain reason and is audited. Letters (P05 Q2) and Form 130 / 131 / registers wait for the signature. |
+| 5a-D2 | **Frozen dates block attendance and leave changes in the database**, like locked and filed dates. | `yx_time_locked` refuses on `frozen`, `locked` and `filed`; employees use a late request, paid in the next payroll. A frozen month is locked as it is (no re-evaluation). |
+| 5a-D3 | **Former employees sign in with their personal email on record, else their old work email**, for now. | As built. The "HR confirms the personal email at exit" step belongs to the lifecycle (onboarding / exit) batch. |
+| 5a-D4 | **The pay guard extends to the compensation tables in batch 5b; the time payroll feed stays attendance data** (no pay guard). | Part of the 5b plan: the `pay_guard` policy (own employee or `app_pay_entities()`) is added to `compensations` and the 5b compensation tables, with the CI catalogue test. |
+
 ---
 
 ## 20. Go-live items this design adds
@@ -1267,3 +1278,4 @@ To add to [GO-LIVE-CHECKLIST.md](../GO-LIVE-CHECKLIST.md) (the coordinator edits
 | Date | Change |
 |---|---|
 | 9 Oct 2026 | First draft: payroll fit and run lifecycle, data model per batch, roles and keys, formula language, statutory engine, run engine, inputs, outputs, security, events, API, screens, test plan, 98 slices in 10 batches (5a–5j), stories to add, open decisions D1–D5. |
+| 9 Oct 2026 | §19.1: batch 5a build decisions 5a-D1 … 5a-D4 accepted (signed-PDF checks, frozen dates blocked, alumni email, pay guard on compensation in 5b). |
