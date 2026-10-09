@@ -137,6 +137,43 @@ export class JourneysService implements OnModuleInit {
     return made;
   }
 
+  // ------------------------------------------------------------------------------------------ lifecycle tasks
+
+  /**
+   * Lifecycle 6a (founder D1): one catalogue item for one person (a joiner before day one, or a leaver), raised by an
+   * HR checklist task and fulfilled by the desk at once (the hire or exit was already approved in HR). The request is
+   * due on the task's day, 9:00 India time, never sooner than an hour from now.
+   */
+  async raiseFor(ctx: CompanyContext, input: { personId: string; itemId: string; dueOn: string; subject: string; note: string; by: string | null; tag: 'joiner' | 'leaver' }): Promise<{ ticketId: string; number: string }> {
+    return this.tx(ctx, async (tx) => {
+      const org = ctx.organizationId;
+      const item = await tx.sdCatalogItem.findFirst({ where: { organizationId: org, id: input.itemId, state: 'published' } });
+      if (!item) throw new BadRequestException('That catalogue item is not published.');
+      const v = await tx.sdCatalogItemVersion.findFirstOrThrow({ where: { organizationId: org, itemId: item.id, version: item.currentVersion! } });
+      const type = (await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: item.deskId, kind: 'request', active: true }, orderBy: { sortOrder: 'asc' } })) ?? undefined;
+      const dueBy = new Date(Math.max(new Date(`${input.dueOn}T03:30:00Z`).getTime(), Date.now() + 3_600_000));
+      const t = await this.tickets.createIn(tx, { ctx, userId: input.by }, {
+        deskId: item.deskId,
+        typeId: type?.id,
+        categoryId: item.categoryId ?? undefined,
+        subject: input.subject.slice(0, 200),
+        bodyHtml: textToHtml(`${input.note}
+
+- ${item.name}`),
+        requesterPersonId: input.personId,
+        openedByUserId: input.by,
+        channel: 'api',
+        side: 'requester',
+        authorPersonId: null,
+        tags: [input.tag],
+      });
+      const ri = await tx.sdRequestItem.create({ data: { organizationId: org, deskId: item.deskId, ticketId: t.id, itemId: item.id, itemVersion: v.version, quantity: 1, answers: {}, forPersonId: input.personId } });
+      await this.catalog.startFulfilment(tx, { ctx }, t, ri, v, dueBy);
+      await audit(tx, { ctx, userId: input.by as string }, 'desk.lifecycle_request.raised', 'sd_ticket', t.id, { itemId: item.id, tag: input.tag });
+      return { ticketId: t.id, number: t.number };
+    });
+  }
+
   // ------------------------------------------------------------------------------------------ starting
 
   async startAll(ctx: CompanyContext, kind: 'join' | 'exit', employeeId: string, date: string, by: string | null) {
@@ -159,6 +196,8 @@ export class JourneysService implements OnModuleInit {
       const org = ctx.organizationId;
       const emp = await tx.employee.findFirst({ where: { organizationId: org, id: employeeId } });
       if (!emp?.personId) return null;
+      // Lifecycle 6a (founder D1): a person with an HR onboarding checklist gets their desk requests from it, not twice.
+      if (j.kind === 'join' && (await tx.journey.findFirst({ where: { organizationId: org, personId: emp.personId, kind: 'onboarding', status: { not: 'cancelled' } }, select: { id: true } }))) return null;
       const profile = await profileOf(tx, org, emp.personId);
       if (j.audience && !evaluate(j.audience as unknown as Group, profile, REQUESTER_FIELDS).pass) return null;
       // Once per person and date, even when the event and a person start it at the same moment.

@@ -76,6 +76,12 @@ export const YX_KEYS = [
   'payroll.file.view',
   'audit.view',
   'audit.export',
+  // M01 lifecycle batch 6a: joiners, checklists, documents.
+  'lifecycle.onboarding.view',
+  'lifecycle.onboarding.manage',
+  'lifecycle.journey.template.manage',
+  'document.view',
+  'document.manage',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

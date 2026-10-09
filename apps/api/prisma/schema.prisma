@@ -5702,3 +5702,189 @@ model SdChatMessage {
 
   @@map("sd_chat_messages")
 }
+
+// ---- Lifecycle batch 6a (M01-LIFECYCLE-BUILD-DESIGN §5.2): files, documents, journeys, joiners. Composite keys,
+// checks and RLS live in the migration SQL (20261026000000_lifecycle_6a).
+
+model File {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  area           String    @db.VarChar(20)
+  storageRef     String    @map("storage_ref") @db.VarChar(500)
+  fileName       String    @map("file_name") @db.VarChar(255)
+  mime           String    @db.VarChar(100)
+  size           Int
+  sha256         String    @db.Char(64)
+  scanStatus     String    @default("pending") @map("scan_status") @db.VarChar(10)
+  scanDetail     String?   @map("scan_detail") @db.VarChar(200)
+  scannedAt      DateTime? @map("scanned_at") @db.Timestamptz(3)
+  uploadedBy     String?   @map("uploaded_by") @db.Uuid
+  uploadedVia    String    @map("uploaded_via") @db.VarChar(12)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("files")
+}
+
+/// System types have organization_id NULL (read-only to companies); companies add their own.
+model DocumentType {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String?  @map("organization_id") @db.Uuid
+  key                  String   @db.VarChar(40)
+  name                 String   @db.VarChar(100)
+  sensitivity          String   @db.VarChar(12)
+  requiresVerification Boolean  @map("requires_verification")
+  allowedMime          String[] @map("allowed_mime")
+  maxMb                Int      @map("max_mb")
+  expiryTracked        Boolean  @map("expiry_tracked")
+  reminderDays         Int[]    @map("reminder_days")
+  uploadBy             String[] @map("upload_by")
+  active               Boolean  @default(true)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("document_types")
+}
+
+model Document {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  personId         String    @map("person_id") @db.Uuid
+  typeKey          String    @map("type_key") @db.VarChar(40)
+  status           String    @db.VarChar(12)
+  currentVersionId String?   @map("current_version_id") @db.Uuid
+  expiresOn        DateTime? @map("expires_on") @db.Date
+  requestedBy      String?   @map("requested_by") @db.Uuid
+  verifiedBy       String?   @map("verified_by") @db.Uuid
+  verifiedAt       DateTime? @map("verified_at") @db.Timestamptz(3)
+  rejectReason     String?   @map("reject_reason") @db.VarChar(500)
+  remindedOn       DateTime? @map("reminded_on") @db.Date
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  documentId     String   @map("document_id") @db.Uuid
+  fileId         String   @map("file_id") @db.Uuid
+  version        Int
+  uploadedBy     String?  @map("uploaded_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("document_versions")
+}
+
+model JourneyTemplate {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  kind           String   @db.VarChar(12)
+  name           String   @db.VarChar(100)
+  legalEntityId  String?  @map("legal_entity_id") @db.Uuid
+  locationId     String?  @map("location_id") @db.Uuid
+  departmentId   String?  @map("department_id") @db.Uuid
+  starterKey     String?  @map("starter_key") @db.VarChar(40)
+  active         Boolean  @default(true)
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("journey_templates")
+}
+
+model JourneyTemplateTask {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  templateId     String   @map("template_id") @db.Uuid
+  key            String   @db.VarChar(40)
+  title          String   @db.VarChar(150)
+  ownerType      String   @map("owner_type") @db.VarChar(10)
+  ownerUserId    String?  @map("owner_user_id") @db.Uuid
+  ownerGroupId   String?  @map("owner_group_id") @db.Uuid
+  kind           String   @db.VarChar(16)
+  config         Json     @default("{}")
+  dueOffsetDays  Int      @map("due_offset_days")
+  dependsOn      String[] @default([]) @map("depends_on")
+  required       Boolean  @default(true)
+  locked         Boolean  @default(false)
+  sortOrder      Int      @map("sort_order")
+
+  @@map("journey_template_tasks")
+}
+
+model Journey {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  kind            String   @db.VarChar(12)
+  personId        String   @map("person_id") @db.Uuid
+  subjectType     String   @map("subject_type") @db.VarChar(12)
+  subjectId       String   @map("subject_id") @db.Uuid
+  templateId      String   @map("template_id") @db.Uuid
+  templateVersion Int      @map("template_version")
+  anchorOn        DateTime @map("anchor_on") @db.Date
+  status          String   @db.VarChar(10)
+  progress        Int      @default(0)
+  ownerUserId     String?  @map("owner_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("journeys")
+}
+
+model JourneyTask {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  journeyId       String    @map("journey_id") @db.Uuid
+  key             String    @db.VarChar(40)
+  title           String    @db.VarChar(150)
+  kind            String    @db.VarChar(16)
+  config          Json      @default("{}")
+  ownerType       String    @map("owner_type") @db.VarChar(10)
+  assigneeUserId  String?   @map("assignee_user_id") @db.Uuid
+  assigneeGroupId String?   @map("assignee_group_id") @db.Uuid
+  dueOffsetDays   Int       @map("due_offset_days")
+  dueOn           DateTime  @map("due_on") @db.Date
+  dependsOn       String[]  @default([]) @map("depends_on")
+  required        Boolean   @default(true)
+  locked          Boolean   @default(false)
+  sortOrder       Int       @map("sort_order")
+  status          String    @db.VarChar(10)
+  linkType        String?   @map("link_type") @db.VarChar(16)
+  linkId          String?   @map("link_id") @db.Uuid
+  answers         Json?
+  completedBy     String?   @map("completed_by") @db.Uuid
+  completedAt     DateTime? @map("completed_at") @db.Timestamptz(3)
+  skipReason      String?   @map("skip_reason") @db.VarChar(300)
+  remindedOn      DateTime? @map("reminded_on") @db.Date
+  escalatedOn     DateTime? @map("escalated_on") @db.Date
+  version         Int       @default(1)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("journey_tasks")
+}
+
+/// A joiner before day one (D2: not an employee yet; the employee record is made on the joining day, batch 6b).
+model Preboarding {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  personId          String   @map("person_id") @db.Uuid
+  source            String   @db.VarChar(8)
+  joiningOn         DateTime @map("joining_on") @db.Date
+  legalEntityId     String   @map("legal_entity_id") @db.Uuid
+  locationId        String   @map("location_id") @db.Uuid
+  departmentId      String?  @map("department_id") @db.Uuid
+  designationId     String?  @map("designation_id") @db.Uuid
+  employmentTypeId  String?  @map("employment_type_id") @db.Uuid
+  managerEmployeeId String?  @map("manager_employee_id") @db.Uuid
+  hrOwnerUserId     String   @map("hr_owner_user_id") @db.Uuid
+  status            String   @db.VarChar(12)
+  employmentId      String?  @map("employment_id") @db.Uuid
+  version           Int      @default(1)
+  createdBy         String?  @map("created_by") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("preboardings")
+}

@@ -5,6 +5,8 @@ import { AccessController } from './access.controller';
 import { PeopleController } from '../people/people.controller';
 import { EmployeeHistoryController } from '../employee-history/employee-history.controller';
 import { OrgStructureController } from '../org-structure/org-structure.controller';
+import { LifecycleController } from '../lifecycle/lifecycle.controller';
+import { DocumentsController } from '../documents/documents.controller';
 
 // P02 YX-SEC-01: every HR endpoint declares its permission. The only exceptions are the routes open to the
 // implicit grants (YX-SEC-04: the person themselves, their managers, colleagues' Public fields) and public
@@ -29,10 +31,13 @@ const IMPLICIT: Record<string, string[]> = {
   EmployeeHistoryController: ['list', 'asOf', 'timeline'],
   OrgStructureController: ['reference'], // public reference data (states, regions)
   AccessController: [],
+  // Lifecycle 6a: the services decide per joiner, checklist, task and document (self, assignee, manager, HR in scope).
+  LifecycleController: ['joiningSoon', 'joiner', 'myTasks', 'journey', 'complete', 'skip'],
+  DocumentsController: ['types', 'mine', 'upload', 'file'],
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

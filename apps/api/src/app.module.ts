@@ -85,6 +85,8 @@ import { PlatformModule } from './platform/platform.module';
 import { EmailTemplatesModule } from './email-templates/email-templates.module';
 import { TimeModule } from './time/time.module';
 import { PayrollModule } from './payroll/payroll.module';
+import { DocumentsModule } from './documents/documents.module';
+import { LifecycleModule } from './lifecycle/lifecycle.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 import { SentryShutdownFlush } from './sentry-shutdown.provider';
@@ -176,6 +178,8 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     EmailTemplatesModule,
     TimeModule,
     PayrollModule,
+    DocumentsModule,
+    LifecycleModule,
   ],
   controllers: [HealthController],
   providers: [
