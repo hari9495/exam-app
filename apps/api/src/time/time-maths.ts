@@ -330,6 +330,8 @@ export interface DayInput {
   fix: { kind: 'missed_in' | 'missed_out' | 'wrong_time' | 'full_day'; inMinute: number | null; outMinute: number | null } | null;
   rule: DayRule;
   now: Date;
+  /** Timesheet mode (D1): the day's approved timesheet minutes, or null when no approved timesheet covers it. */
+  timesheetMinutes?: number | null;
 }
 
 export interface DayResult {
@@ -377,7 +379,12 @@ export function evaluateDay(i: DayInput): DayResult {
   if (i.mode !== 'punch') {
     const both = firstIn && lastOut;
     const shown = { firstIn, lastOut, workedMinutes: both ? Math.floor((lastOut!.getTime() - firstIn!.getTime()) / 60_000) : null };
-    return { ...none, ...shown, status: i.mode === 'assumed_present' ? 'present' : 'no_timesheet', leavePart };
+    if (i.mode === 'assumed_present') return { ...none, ...shown, status: 'present', leavePart };
+    // Timesheet mode: the approved hours set the day against the shift's thresholds (§B3, YX-AT-09).
+    const t = i.timesheetMinutes;
+    if (t === null || t === undefined) return { ...none, ...shown, status: 'no_timesheet', leavePart };
+    const status: DayStatus = t >= r.fullDayMinutes * halfFactor ? 'present' : t >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
+    return { ...none, ...shown, workedMinutes: t, status, leavePart };
   }
   const nowMin = minutesInto(i.on, i.zone, i.now);
   const dayOver = nowMin >= workEnd + 240;

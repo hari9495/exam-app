@@ -13,7 +13,7 @@ import { WeeklyOffRule } from './time-maths';
 // key must be held company-wide (a scoped holder is refused). Every change is audited; dated rows (policy versions,
 // assignments, location rules) never change once in force (P06 YX-HIS-07): a later row supersedes them.
 
-const SCOPE_MODEL: Record<string, 'employee' | 'designation' | 'grade' | 'employmentType' | 'department' | 'location' | 'legalEntity' | null> = {
+export const SCOPE_MODEL: Record<string, 'employee' | 'designation' | 'grade' | 'employmentType' | 'department' | 'location' | 'legalEntity' | null> = {
   employee: 'employee',
   designation: 'designation',
   grade: 'grade',
@@ -33,7 +33,7 @@ export class TimeSetupService {
   ) {}
 
   /** Set-up is company-wide configuration: the key must be held for the whole company, never acting for someone. */
-  private async run<T>(ctx: TenantContext, user: ScopeUser, write: boolean, fn: (tx: Tx, c: CompanyContext) => Promise<T>): Promise<T> {
+  async run<T>(ctx: TenantContext, user: ScopeUser, write: boolean, fn: (tx: Tx, c: CompanyContext) => Promise<T>): Promise<T> {
     const v = await buildViewer(this.prisma, this.tenantPrisma, user, ['leave.settings.manage']);
     if (!tenantWide(v, 'leave.settings.manage') && !user.actingSuperAdmin) throw new ForbiddenException('Leave set-up applies to the whole company: it needs leave.settings.manage for the whole company.');
     if (write && v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
@@ -99,7 +99,7 @@ export class TimeSetupService {
     return { validFrom: dateOf(r.validFrom), shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, halfDayMinutes: r.halfDayMinutes, fullDayMinutes: r.fullDayMinutes, breakMinutes: r.breakMinutes, breakAboveMinutes: r.breakAboveMinutes, weeklyOffs: r.weeklyOffs, checkIn: r.checkIn, alsoAllowed: r.alsoAllowed, starter: false };
   }
 
-  private async scopeNames(tx: Tx, org: string, scopes: { type: string; id: string }[]): Promise<Map<string, string>> {
+  async scopeNames(tx: Tx, org: string, scopes: { type: string; id: string }[]): Promise<Map<string, string>> {
     const out = new Map<string, string>();
     for (const s of scopes) {
       if (out.has(s.id) || s.type === 'tenant') continue;
@@ -266,7 +266,7 @@ export class TimeSetupService {
     });
   }
 
-  private parseOffs(input: unknown[]): WeeklyOffRule[] {
+  parseOffs(input: unknown[]): WeeklyOffRule[] {
     if (input.length > 7) throw new BadRequestException('Choose up to 7 weekly-off days.');
     const seen = new Set<number>();
     return input.map((x) => {

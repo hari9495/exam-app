@@ -27,6 +27,9 @@ export const TIME_PERMISSIONS = [
   { key: 'leave.approve', description: 'Approve leave and attendance requests at the HR step for the people in scope' },
   { key: 'leave.medical.view', description: 'View medical leave reasons and certificates (Special, every view recorded)' },
   { key: 'attendance.view', description: 'View punches, days and the muster of the people in scope' },
+  { key: 'roster.manage', description: 'Plan and publish rosters for the people in scope (managers plan their own team without it)' },
+  { key: 'attendance.lock', description: 'Lock and unlock attendance periods of the legal entities in scope (needs a fresh second sign-in step)' },
+  { key: 'leave.eligibility.override', description: 'Let one person through a leave eligibility check (maternity, paternity) with a reason, for the people in scope' },
 ];
 
 type H = [string, string, string, boolean?];

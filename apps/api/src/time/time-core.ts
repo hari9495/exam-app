@@ -4,11 +4,12 @@ import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { ScopeContext, SETTINGS, SettingDef, resolveSetting } from '../org-structure/settings-registry';
 import { Viewer, has, implicitSql, inScopeSql, tenantWide } from '../access/scope';
 import { DayRule, Floor, HolidayOn, WeeklyOffRule, eachDay, localDate } from './time-maths';
+import type { MaternityValues } from './time-rules';
 
 // Shared loaders for leave and attendance: the employee's dated facts, the location's calendar and rules, the
 // policy in force (scoped and dated, YX-ORG-18), statutory floors (P07) and who may see whom (P02).
 
-export const TIME_KEYS = ['leave.settings.manage', 'leave.view', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view', 'attendance.view'] as const;
+export const TIME_KEYS = ['leave.settings.manage', 'leave.view', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view', 'attendance.view', 'roster.manage', 'attendance.lock', 'leave.eligibility.override'] as const;
 export type TimeKey = (typeof TIME_KEYS)[number];
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -42,9 +43,12 @@ export interface LeaveRules {
   encashable: boolean;
   /** HR approves after the manager when a request is longer than this many days (0: always; null: never). */
   hrApprovalAboveDays: number | null;
+  /** Eligibility by the recorded gender (P02 Personal; null: everyone), e.g. maternity: female. HR may override (audited). */
+  eligibleGenders: string[] | null;
 }
 
-export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: 0, certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null };
+export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: 0, certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null };
+export const GENDER_VALUES = ['female', 'male', 'transgender', 'non_binary', 'prefer_not_to_say'];
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
 const halfStep = (n: unknown, lo: number, hi: number) => typeof n === 'number' && Number.isFinite(n) && n >= lo && n <= hi && Math.round(n * 2) === n * 2;
@@ -64,6 +68,8 @@ export function parseRules(input: unknown): LeaveRules {
   if (!Number.isInteger(r.noticeDays) || r.noticeDays < 0 || r.noticeDays > 90) throw new BadRequestException('Notice is 0 to 90 days.');
   if (!halfStep(r.negativeLimit, 0, 30)) throw new BadRequestException('The balance may go below zero by 0 to 30 days.');
   if (r.minDays !== null && r.maxDays !== null && r.minDays > r.maxDays) throw new BadRequestException('The least days per request is more than the most.');
+  if (r.eligibleGenders !== null && (!Array.isArray(r.eligibleGenders) || !r.eligibleGenders.length || r.eligibleGenders.some((g) => !GENDER_VALUES.includes(g)))) throw new BadRequestException('Choose who the leave is for, or leave it open to everyone.');
+  if (r.eligibleGenders) r.eligibleGenders = [...new Set(r.eligibleGenders)];
   return r;
 }
 
@@ -196,10 +202,10 @@ export async function statutoryOn(tx: Tx, state: string, on: string): Promise<{ 
   return { floors: v.floors ?? [], carry: v.carry ?? {}, source: rs?.source ?? null, verify: rs?.verify ?? false };
 }
 
-/** IN.LEAVE maternity weeks (P07), the most a maternity request may run. */
-export async function maternityDays(tx: Tx, on: string): Promise<number> {
+/** IN.LEAVE maternity values (P07, YX-LV-10): weeks per case, weeks before delivery, days worked for eligibility. */
+export async function maternityValues(tx: Tx, on: string): Promise<MaternityValues> {
   const rs = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.LEAVE', jurisdiction: 'IN', validFrom: { lte: asDate(on) } }, orderBy: { validFrom: 'desc' } });
-  return Number((rs?.values as { maternityWeeks?: number } | undefined)?.maternityWeeks ?? 26) * 7;
+  return { maternityWeeks: 26, maternityWeeksThirdChild: 12, beforeDeliveryWeeks: 8, eligibilityDaysWorked: 80, ...((rs?.values ?? {}) as Partial<MaternityValues>) };
 }
 
 // ------------------------------------------------------------------------------------------ calendars and shifts

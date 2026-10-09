@@ -115,6 +115,34 @@ describe('Me › Attendance', () => {
     await ue.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
     await waitFor(() => expect(onFix).toHaveBeenCalledWith({ on: '2026-10-06', kind: 'missed_out', outMinute: 1090, reason: 'Forgot to check out' }));
   });
+
+  it('night work: opt in to the protection, confirm a consent with a one-time code, withdraw it (founder decisions 9 Oct 2026)', async () => {
+    const night = { byRecord: false, optedIn: false, optedInSince: null, consents: [{ id: 'c1', location: 'Hosur plant', givenOn: '2026-10-01', withdrawnOn: null, reference: 'Form 14', confirmedAt: null }] };
+    const onNightOptIn = vi.fn(async () => ({}));
+    const onNightCode = vi.fn(async () => ({ sentTo: 'your work email', expiresInSeconds: 300, resendAfterSeconds: 60 }));
+    const onNightConfirm = vi.fn(async () => ({}));
+    const onNightWithdraw = vi.fn(async () => ({}));
+    render(<MyAttendanceScreen state="ready" data={ATT} month="2026-10" onMonth={vi.fn()} getLocation={vi.fn()} onPunch={vi.fn()} onFix={vi.fn()} onWithdrawFix={vi.fn()} night={night} onNightOptIn={onNightOptIn} onNightCode={onNightCode} onNightConfirm={onNightConfirm} onNightWithdraw={onNightWithdraw} />);
+    await ue.click(screen.getByRole('switch', { name: 'Night-work protection' }));
+    expect(onNightOptIn).toHaveBeenCalledWith(true);
+    expect(screen.getByText('Needs your confirmation')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Confirm with a code' }));
+    expect(onNightCode).toHaveBeenCalledWith('c1');
+    const confirm = await screen.findByRole('button', { name: 'Confirm my consent' });
+    expect(confirm).toBeDisabled();
+    await ue.type(screen.getByLabelText(/The 6-digit code sent to your work email/), '12a3456');
+    await ue.click(confirm);
+    await waitFor(() => expect(onNightConfirm).toHaveBeenCalledWith('c1', '123456'));
+    await ue.click(screen.getByRole('button', { name: 'Withdraw' }));
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Withdraw' }));
+    await waitFor(() => expect(onNightWithdraw).toHaveBeenCalledWith('c1'));
+  });
+
+  it('night work: covered by the record, so no switch to turn it off', () => {
+    render(<MyAttendanceScreen state="ready" data={ATT} month="2026-10" onMonth={vi.fn()} getLocation={vi.fn()} onPunch={vi.fn()} onFix={vi.fn()} onWithdrawFix={vi.fn()} night={{ byRecord: true, optedIn: false, optedInSince: null, consents: [] }} onNightOptIn={vi.fn()} />);
+    expect(screen.getByText(/The night-work protection applies to you/)).toBeInTheDocument();
+    expect(screen.queryByRole('switch')).toBeNull();
+  });
 });
 
 describe('Team and HR', () => {

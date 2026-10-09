@@ -1,5 +1,5 @@
-import { Transform } from 'class-transformer';
-import { IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { ArrayMaxSize, ArrayMinSize, ValidateNested, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const DATE = { strict: true } as const;
@@ -21,6 +21,15 @@ export class LeavePlanDto {
   @IsOptional()
   @IsIn(['full', 'first'])
   toHalf?: 'full' | 'first';
+
+  /** Maternity (YX-LV-10): the expected date of delivery (or of the event) and the case. */
+  @IsOptional()
+  @IsDateString(DATE)
+  expectedOn?: string;
+
+  @IsOptional()
+  @IsIn(['birth', 'third_child', 'adoption', 'miscarriage', 'tubectomy'])
+  maternityCase?: 'birth' | 'third_child' | 'adoption' | 'miscarriage' | 'tubectomy';
 }
 
 export class ApplyLeaveDto extends LeavePlanDto {
@@ -272,4 +281,424 @@ export class AttendanceRuleDto {
 export class YearEndDto {
   @IsDateString(DATE)
   yearEnd!: string;
+}
+
+// ------------------------------------------------------------------------------------------ batch 2: shifts and rosters
+
+const COLOURS = ['blue', 'green', 'teal', 'purple', 'orange', 'pink', 'grey', 'red'];
+
+export class ShiftTimesDto {
+  @IsDateString(DATE)
+  validFrom!: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  start!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  end!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(120)
+  graceMinutes!: number;
+
+  @IsInt()
+  @Min(30)
+  @Max(960)
+  halfDayMinutes!: number;
+
+  @IsInt()
+  @Min(30)
+  @Max(960)
+  fullDayMinutes!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(120)
+  breakMinutes!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(960)
+  breakAboveMinutes!: number;
+}
+
+export class ShiftDto extends ShiftTimesDto {
+  @trim()
+  @Matches(/^[A-Z][A-Z0-9]{0,5}$/, { message: 'A shift code is 1 to 6 capital letters or digits, starting with a letter (M, A, N, GEN).' })
+  code!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  name!: string;
+
+  @IsIn(COLOURS)
+  colour!: string;
+
+  @IsBoolean()
+  night!: boolean;
+}
+
+export class ShiftDetailsDto {
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  name!: string;
+
+  @IsIn(COLOURS)
+  colour!: string;
+
+  @IsBoolean()
+  night!: boolean;
+
+  @IsBoolean()
+  active!: boolean;
+}
+
+export class PatternDto {
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  name!: string;
+
+  @IsIn(['weekly', 'cycle'])
+  kind!: 'weekly' | 'cycle';
+
+  /** Shift ids or null (a weekly off); checked in the service. */
+  @IsArray()
+  cycle!: (string | null)[];
+}
+
+export class ActiveDto {
+  @IsBoolean()
+  active!: boolean;
+}
+
+export class PatternAssignDto {
+  @IsIn(['employee', 'department', 'location', 'legal_entity', 'tenant'])
+  scopeType!: string;
+
+  @IsOptional()
+  @IsUUID()
+  scopeId?: string;
+
+  @IsDateString(DATE)
+  validFrom!: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(55)
+  offsetDays!: number;
+}
+
+export class WeekQueryDto {
+  @IsDateString(DATE)
+  week!: string;
+}
+
+export class RosterCellDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @IsDateString(DATE)
+  on!: string;
+
+  /** A shift id, 'off', or 'pattern' (back to the pattern / location default). */
+  @Matches(/^(off|pattern|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/)
+  value!: string;
+}
+
+export class RosterCellsDto {
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => RosterCellDto)
+  cells!: RosterCellDto[];
+}
+
+export class RosterCopyDto {
+  @IsDateString(DATE)
+  fromWeek!: string;
+
+  @IsDateString(DATE)
+  toWeek!: string;
+}
+
+export class SwapDto {
+  @IsDateString(DATE)
+  on!: string;
+
+  @IsUUID()
+  colleagueEmployeeId!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  reason!: string;
+}
+
+export class ConsentDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @IsUUID()
+  locationId!: string;
+
+  @IsDateString(DATE)
+  givenOn!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  reference!: string;
+}
+
+export class WithdrawConsentDto {
+  @IsDateString(DATE)
+  on!: string;
+}
+
+/** Me › Attendance: opt in to (or out of) the night-work protection (founder decision 9 Oct 2026). */
+export class NightOptInDto {
+  @IsBoolean()
+  optIn!: boolean;
+}
+
+/** The one-time code that confirms a night-work consent. */
+export class NightConfirmDto {
+  @IsString()
+  @Matches(/^\d{6}$/)
+  code!: string;
+}
+
+export class SafeguardDto {
+  @IsUUID()
+  locationId!: string;
+
+  @Matches(/^[a-z_]{1,30}$/)
+  item!: string;
+
+  @IsDateString(DATE)
+  attestedOn!: string;
+
+  @IsDateString(DATE)
+  reviewDue!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(300)
+  note!: string;
+}
+
+// ------------------------------------------------------------------------------------------ batch 2: overtime
+
+export class OtRuleDto {
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  name!: string;
+
+  @IsIn(['employee', 'designation', 'grade', 'employment_type', 'department', 'location', 'legal_entity', 'tenant'])
+  scopeType!: string;
+
+  @IsOptional()
+  @IsUUID()
+  scopeId?: string;
+
+  @IsDateString(DATE)
+  validFrom!: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(240)
+  minMinutes!: number;
+
+  @IsIn([1, 5, 10, 15, 30, 60])
+  roundMinutes!: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(15)
+  @Max(720)
+  dailyCapMinutes?: number | null;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(4)
+  rateNormal!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(4)
+  rateWeeklyOff!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(1)
+  @Max(4)
+  rateHoliday!: number;
+
+  @IsBoolean()
+  needsApproval!: boolean;
+
+  @IsIn(['pay', 'comp_off'])
+  settle!: 'pay' | 'comp_off';
+
+  @IsInt()
+  @Min(60)
+  @Max(720)
+  compOffHalfMinutes!: number;
+
+  @IsInt()
+  @Min(60)
+  @Max(720)
+  compOffFullMinutes!: number;
+}
+
+export class OtClaimDto {
+  @IsDateString(DATE)
+  on!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  reason!: string;
+}
+
+export class OverrideDto {
+  @trim()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason!: string;
+}
+
+// ------------------------------------------------------------------------------------------ batch 2: timesheets
+
+export class ProjectDto {
+  @trim()
+  @Matches(/^[A-Z][A-Z0-9-]{0,11}$/, { message: 'A project code is 1 to 12 capital letters, digits or dashes, starting with a letter.' })
+  code!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  name!: string;
+
+  @IsOptional()
+  @IsUUID()
+  managerUserId?: string | null;
+
+  @IsBoolean()
+  billable!: boolean;
+
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(60, { each: true })
+  activities!: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+}
+
+export class TimesheetLineDto {
+  @IsUUID()
+  projectId!: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(60)
+  activity?: string | null;
+
+  @IsBoolean()
+  billable!: boolean;
+
+  @IsArray()
+  @ArrayMinSize(7)
+  @ArrayMaxSize(7)
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Max(1440, { each: true })
+  minutes!: number[];
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(200)
+  note?: string | null;
+}
+
+export class TimesheetDto {
+  @IsDateString(DATE)
+  week!: string;
+
+  @IsArray()
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => TimesheetLineDto)
+  lines!: TimesheetLineDto[];
+}
+
+// ------------------------------------------------------------------------------------------ batch 2: locks, registers, feed, eligibility
+
+export class PeriodDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/)
+  month!: string;
+}
+
+export class UnlockDto extends PeriodDto {
+  @trim()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason!: string;
+}
+
+export class YearQueryDto {
+  @Matches(/^\d{4}$/)
+  year!: string;
+}
+
+export class RegisterQueryDto {
+  @IsUUID()
+  locationId!: string;
+
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/)
+  month!: string;
+
+  @IsIn(['pdf', 'xlsx'])
+  format!: 'pdf' | 'xlsx';
+}
+
+export class EligibilityOverrideDto {
+  @IsUUID()
+  leaveTypeId!: string;
+
+  @IsDateString(DATE)
+  validUntil!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason!: string;
 }

@@ -13,7 +13,7 @@ import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../compone
 import { useRun } from '../../org/org-kit';
 import { LivePicker } from '../../desk/service-form';
 import { LivePage, LeaveStatusBadge, addDays, dateText, daysText, dayText, rangeText } from './kit';
-import type { LeaveInput, LeavePlan, LeaveRequestRow, LoadState, MyLeave, PersonOption } from './types';
+import type { LeaveInput, LeavePlan, MaternityCase, LeaveRequestRow, LoadState, MyLeave, PersonOption } from './types';
 
 // Me › Leave (TIM-17 / 18 / 19 / 23): balances from the ledger (YX-LV-01; unpaid types show "taken this year",
 // YX-LV-14), apply with a live summary from the server's own rules (days counted, sandwich, holidays, balance after,
@@ -196,6 +196,14 @@ function Holidays({ data, onChoose }: { data: MyLeave; onChoose: (id: string, ch
   );
 }
 
+const MATERNITY_CASES: { value: MaternityCase; label: string }[] = [
+  { value: 'birth', label: 'Birth' },
+  { value: 'third_child', label: 'Third child or later' },
+  { value: 'adoption', label: 'Adoption or surrogacy' },
+  { value: 'miscarriage', label: 'Miscarriage' },
+  { value: 'tubectomy', label: 'Tubectomy' },
+];
+
 function ApplyDrawer({ data, onClose, onPreview, onApply, onFindPeople }: { data: MyLeave; onClose: () => void; onPreview: MyLeaveScreenProps['onPreview']; onApply: MyLeaveScreenProps['onApply']; onFindPeople: MyLeaveScreenProps['onFindPeople'] }) {
   const types = data.balances;
   const [typeId, setTypeId] = useState<string | null>(types[0]?.leaveTypeId ?? null);
@@ -204,6 +212,11 @@ function ApplyDrawer({ data, onClose, onPreview, onApply, onFindPeople }: { data
   const [fromHalf, setFromHalf] = useState<'full' | 'second'>('full');
   const [toHalf, setToHalf] = useState<'full' | 'first'>('full');
   const [reason, setReason] = useState('');
+  // Maternity (YX-LV-10): the expected date and the case decide the weeks and the eligibility window.
+  const [expectedOn, setExpectedOn] = useState('');
+  const [mCase, setMCase] = useState<MaternityCase>('birth');
+  const chosen = types.find((t) => t.leaveTypeId === typeId);
+  const maternity = chosen?.kind === 'maternity';
   const [delegate, setDelegate] = useState<string | null>(null);
   const [certificate, setCertificate] = useState(false);
   const [plan, setPlan] = useState<LeavePlan | null>(null);
@@ -217,7 +230,7 @@ function ApplyDrawer({ data, onClose, onPreview, onApply, onFindPeople }: { data
     if (!typeId || !from || !end || end < from) return;
     let live = true;
     const h = setTimeout(() => {
-      void onPreview({ leaveTypeId: typeId, from, to: end, fromHalf, toHalf })
+      void onPreview({ leaveTypeId: typeId, from, to: end, fromHalf, toHalf, ...(maternity ? { expectedOn: expectedOn || undefined, maternityCase: mCase } : {}) })
         .then((x) => live && setPlan(x))
         .catch(() => live && setPlan(null));
     }, 300);
@@ -225,7 +238,7 @@ function ApplyDrawer({ data, onClose, onPreview, onApply, onFindPeople }: { data
       live = false;
       clearTimeout(h);
     };
-  }, [typeId, from, end, fromHalf, toHalf]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [typeId, from, end, fromHalf, toHalf, expectedOn, mCase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const errors = useMemo(() => {
     const e: { fieldId: string; message: string }[] = [];
@@ -242,11 +255,10 @@ function ApplyDrawer({ data, onClose, onPreview, onApply, onFindPeople }: { data
   const send = () => {
     if (errors.length) return saveErrors.reveal();
     void run('apply', async () => {
-      await onApply({ leaveTypeId: typeId!, from, to: end, fromHalf, toHalf, reason: reason.trim() || undefined, delegateUserId: delegate ?? undefined, certificate: certificate || undefined });
+      await onApply({ leaveTypeId: typeId!, from, to: end, fromHalf, toHalf, reason: reason.trim() || undefined, delegateUserId: delegate ?? undefined, certificate: certificate || undefined, ...(maternity ? { expectedOn: expectedOn || undefined, maternityCase: mCase } : {}) });
       onClose();
     });
   };
-  const chosen = types.find((t) => t.leaveTypeId === typeId);
   return (
     <Drawer
       open
@@ -269,6 +281,16 @@ function ApplyDrawer({ data, onClose, onPreview, onApply, onFindPeople }: { data
         <FormField id="lv-type" label="Leave" required error={errorOf('lv-type')}>
           <Select value={typeId} onChange={setTypeId} options={types.map((t) => ({ value: t.leaveTypeId, label: t.hasBalance ? `${t.name} (${t.available} available)` : t.name }))} />
         </FormField>
+        {maternity && (
+          <>
+            <FormField id="lv-expected" label="Expected date of delivery (or of the event)" required helper="Eligibility counts the days you worked in the 12 months before it.">
+              <TextField type="date" value={expectedOn} onChange={setExpectedOn} />
+            </FormField>
+            <FormField id="lv-case" label="Kind of maternity leave">
+              <Segment label="Kind of maternity leave" value={mCase} onChange={setMCase} options={MATERNITY_CASES} />
+            </FormField>
+          </>
+        )}
         <div className="yx-tim-row">
           <FormField id="lv-from" label="First day" required error={errorOf('lv-from')}>
             <TextField type="date" value={from} min={addDays(data.today, -60)} onChange={(v) => setFrom(v)} />

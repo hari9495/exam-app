@@ -72,6 +72,17 @@ const TEAM_LEAVE: WorkspaceLink = { id: 'team-leave', label: 'Team leave', href:
 const MUSTER: WorkspaceLink = { id: 'muster', label: 'Attendance muster', href: '/yx/time/muster', group: 'Time' };
 const BALANCES: WorkspaceLink = { id: 'leave-balances', label: 'Leave balances', href: '/yx/time/balances', group: 'Time' };
 const TIME_SETUP: WorkspaceLink = { id: 'time-setup', label: 'Leave set-up', href: '/yx/time/setup', group: 'Time' };
+// Batch 2: shifts and swaps, overtime and timesheets for everyone; the roster for managers and roster.manage; HR's
+// overtime review, registers and payroll feed (attendance.view), set-up and attendance periods (attendance.lock).
+const MY_SHIFTS: WorkspaceLink = { id: 'my-shifts', label: 'My shifts', href: '/yx/time/shifts', group: 'Time' };
+const MY_OVERTIME: WorkspaceLink = { id: 'my-overtime', label: 'My overtime', href: '/yx/time/overtime', group: 'Time' };
+const MY_TIMESHEET: WorkspaceLink = { id: 'my-timesheet', label: 'My timesheet', href: '/yx/time/timesheet', group: 'Time' };
+const ROSTER: WorkspaceLink = { id: 'roster', label: 'Roster', href: '/yx/time/roster', group: 'Time' };
+const OT_REVIEW: WorkspaceLink = { id: 'overtime-review', label: 'Overtime', href: '/yx/time/overtime-review', group: 'Time' };
+const SHIFTS_SETUP: WorkspaceLink = { id: 'shifts-setup', label: 'Shifts set-up', href: '/yx/time/shifts-setup', group: 'Time' };
+const PERIODS: WorkspaceLink = { id: 'periods', label: 'Attendance periods', href: '/yx/time/periods', group: 'Time' };
+const REGISTERS: WorkspaceLink = { id: 'registers', label: 'Registers', href: '/yx/time/registers', group: 'Time' };
+const PAYROLL_FEED: WorkspaceLink = { id: 'payroll-feed', label: 'Payroll feed', href: '/yx/time/payroll-feed', group: 'Time' };
 
 // Links follow the role; the API still checks every permission (audit:view, org:manage_users,
 // org:manage_settings) and the pages show "no access" on a 403. Platform staff outside any company use the
@@ -174,11 +185,14 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         ...(perms.has('desk.desk.create') ? [DESK_PRIVACY] : []),
       ];
   const time = [
-    ...(employee && !support ? [MY_LEAVE, MY_ATTENDANCE] : []),
+    ...(employee && !support ? [MY_LEAVE, MY_ATTENDANCE, MY_SHIFTS, MY_OVERTIME, MY_TIMESHEET] : []),
     ...(manager || perms.has('leave.view') ? [TEAM_LEAVE] : []),
-    ...(manager || perms.has('attendance.view') ? [MUSTER] : []),
+    ...(manager || perms.has('attendance.view') ? [MUSTER, OT_REVIEW] : []),
+    ...(manager || perms.has('roster.manage') ? [ROSTER] : []),
     ...(perms.has('leave.view') ? [BALANCES] : []),
-    ...(perms.has('leave.settings.manage') ? [TIME_SETUP] : []),
+    ...(perms.has('attendance.view') ? [REGISTERS, PAYROLL_FEED] : []),
+    ...(perms.has('attendance.lock') ? [PERIODS] : []),
+    ...(perms.has('leave.settings.manage') ? [TIME_SETUP, SHIFTS_SETUP] : []),
   ];
   const links = [...staff, ...time, ...desk, ...(support ? [] : [APPROVALS]), ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
