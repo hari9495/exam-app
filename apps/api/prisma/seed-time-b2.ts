@@ -144,6 +144,8 @@ export async function seedTimeB2(tx: Tx, organizationId: string, passwordHash: s
   const holidays = new Set((await tx.holiday.findMany({ where: { ...org, calendarId: (await tx.holidayCalendar.findFirstOrThrow({ where: { ...org, locationId: hosur.id } })).id } })).filter((h) => h.kind !== 'optional' && h.kind !== 'restricted').map((h) => h.holidayOn.toISOString().slice(0, 10)));
   const rows: Prisma.PunchCreateManyInput[] = [];
   const first = addDays(today, -100);
+  const prevMonth = addDays(`${today.slice(0, 7)}-01`, -1).slice(0, 7);
+  let halfDone = false;
   // Kavya too (the location's day shift), up to the week batch 1 already punched for her.
   for (const [key, emp] of [...Object.entries(workers), ['kavya', kavya] as const]) {
     await book.prime([emp], first, today);
@@ -154,6 +156,12 @@ export async function seedTimeB2(tx: Tx, organizationId: string, passwordHash: s
       if (!s || holidays.has(on)) continue;
       const end = s.shiftEnd > s.shiftStart ? s.shiftEnd : s.shiftEnd + 1440;
       const extra = key === 'murugan' && [1, 4].includes(new Date(`${on}T00:00:00Z`).getUTCDay()) ? 90 : 0;
+      // One early leave for Murugan last month (a half day he can try to fix once the month is locked).
+      if (key === 'murugan' && on.slice(0, 7) === prevMonth && !halfDone) {
+        halfDone = true;
+        rows.push({ ...org, employeeId: emp, punchedAt: instantAt(on, 'Asia/Kolkata', s.shiftStart - 7), workOn: day(on), kind: 'in', source: 'biometric', accepted: true, verdict: 'inside', locationId: hosur.id, device: 'Gate 1 biometric' }, { ...org, employeeId: emp, punchedAt: instantAt(on, 'Asia/Kolkata', s.shiftStart + 290), workOn: day(on), kind: 'out', source: 'biometric', accepted: true, verdict: 'inside', locationId: hosur.id, device: 'Gate 1 biometric' });
+        continue;
+      }
       const p = (minute: number, kind: 'in' | 'out') => ({ ...org, employeeId: emp, punchedAt: instantAt(on, 'Asia/Kolkata', minute), workOn: day(on), kind, source: 'biometric', accepted: true, verdict: 'inside', locationId: hosur.id, device: 'Gate 1 biometric' });
       rows.push(p(s.shiftStart - 7, 'in'), p(end + 4 + extra, 'out'));
     }

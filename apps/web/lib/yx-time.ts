@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { LoadState, Pin } from '@yukthix/ui/time';
-import { apiFetch } from './api-client';
+import { apiFetch, apiFetchBlob } from './api-client';
 import { useAuth } from './auth-context';
 
 // API glue for Time and leave (/time/*, M02 step 4 batch 1). The screens in @yukthix/ui/time stay presentational;
@@ -56,3 +56,31 @@ export function browserLocation(): Promise<{ pin: Pin | null; problem?: string }
 
 /** Today in India time (yyyy-mm-dd). */
 export const todayIndia = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+
+/** Downloads a file from the time API (registers) with the person's token, as the browser's own download. */
+export function useTimeDownload() {
+  const { accessToken } = useAuth();
+  return async (path: string, fallbackName: string) => {
+    const { blob, filename } = await apiFetchBlob(`/time${path}`, {}, accessToken ?? undefined);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename ?? fallbackName;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+}
+
+/** The Monday of a date's week (yyyy-mm-dd). */
+export const mondayOf = (iso: string) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+};
+
+/** The month before this one in India time (yyyy-mm). */
+export const lastMonth = () => {
+  const d = new Date(`${todayIndia().slice(0, 7)}-01T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() - 1);
+  return d.toISOString().slice(0, 7);
+};

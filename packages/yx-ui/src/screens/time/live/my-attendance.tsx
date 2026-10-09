@@ -47,7 +47,7 @@ export function MyAttendanceScreen(p: MyAttendanceScreenProps) {
   const [fixing, setFixing] = useState<string | null>(null);
   const d = p.data;
   return (
-    <LivePage title="My attendance" description={d ? `${MODE_TEXT[d.mode]} · ${d.shift.name} shift ${clock(d.shift.start)} to ${clock(d.shift.end)}` : undefined} state={p.state} onRetry={p.onRetry} what="your attendance">
+    <LivePage title="My attendance" description={d ? `${MODE_TEXT[d.mode]} · ${d.shift.off ? 'Weekly off today' : `${d.shift.name} shift ${clock(d.shift.start)} to ${clock(d.shift.end)}`}` : undefined} state={p.state} onRetry={p.onRetry} what="your attendance">
       {d && (
         <>
           <Today data={d} getLocation={p.getLocation} onPunch={p.onPunch} />

@@ -65,6 +65,9 @@ export const YX_KEYS = [
   'leave.view',
   'leave.balance.adjust',
   'attendance.view',
+  // Step 4 batch 2: rosters in scope and locking attendance months.
+  'roster.manage',
+  'attendance.lock',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

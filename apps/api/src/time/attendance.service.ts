@@ -76,7 +76,7 @@ export class AttendanceService implements OnModuleInit {
         zone: f.zone,
         mode: await settingOn(tx, c, 'attendance.mode', f, today),
         // Today's shift from the roster / pattern / location (Q1); null on a weekly off.
-        shift: day.shift ? { name: day.shift.name, start: day.shift.shiftStart, end: day.shift.shiftEnd, grace: day.shift.graceMinutes, checkIn: rule.checkIn } : null,
+        shift: day.shift ? { name: day.shift.name, start: day.shift.shiftStart, end: day.shift.shiftEnd, grace: day.shift.graceMinutes, checkIn: rule.checkIn, off: false } : { name: 'Weekly off', start: rule.shiftStart, end: rule.shiftEnd, grace: rule.graceMinutes, checkIn: rule.checkIn, off: true },
         fences: fences.filter((x) => x.lat !== null).map((x) => ({ name: x.name, lat: x.lat, lng: x.lng, radiusM: x.radiusM })),
         punches: punches.map((p) => this.punchView(p, names)),
         next: accepted.length && accepted[accepted.length - 1].kind === 'in' ? 'out' : 'in',

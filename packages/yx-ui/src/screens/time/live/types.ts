@@ -64,7 +64,10 @@ export interface LeaveInput {
   reason?: string;
   delegateUserId?: string;
   certificate?: boolean;
+  expectedOn?: string;
+  maternityCase?: MaternityCase;
 }
+export type MaternityCase = 'birth' | 'third_child' | 'adoption' | 'miscarriage' | 'tubectomy';
 
 export interface LeavePlan {
   type: { id: string; code: string; name: string; kind: string; rules: { certificateAfterDays: number | null; medical: boolean; halfDays: boolean } };
@@ -123,7 +126,8 @@ export interface MyAttendance {
   today: string;
   zone: string;
   mode: 'punch' | 'assumed_present' | 'timesheet';
-  shift: { name: string; start: number; end: number; grace: number; checkIn: 'restricted' | 'field' };
+  /** Today's shift from the roster, pattern or location (off: a weekly off today). */
+  shift: { name: string; start: number; end: number; grace: number; checkIn: 'restricted' | 'field'; off?: boolean };
   fences: { name: string; lat: number; lng: number; radiusM: number }[];
   punches: PunchRow[];
   next: 'in' | 'out';
@@ -252,4 +256,218 @@ export interface PersonOption {
   id: string;
   label: string;
   detail: string | null;
+}
+
+// ------------------------------------------------------------------------------------------ batch 2
+
+export type Scope = 'company' | 'granted' | 'team';
+export interface ShiftRef {
+  shiftId: string | null;
+  name: string;
+  start: number;
+  end: number;
+}
+export interface RosterConflictRow {
+  on: string;
+  kind: 'rest' | 'overlap' | 'leave' | 'holiday' | 'night';
+  message: string;
+}
+export interface RosterCell {
+  on: string;
+  employed: boolean;
+  locked?: boolean;
+  past?: boolean;
+  /** In force: a shift id, 'off', or null (the pattern / location default). */
+  published?: string | null;
+  /** The planner's unpublished change: a shift id, 'off' or 'pattern'. */
+  draft?: string | null;
+  source?: 'roster' | 'pattern' | 'location';
+  effective?: ShiftRef | null;
+  planned?: ShiftRef | null;
+  conflicts?: RosterConflictRow[];
+}
+export interface RosterWeek {
+  week: string;
+  to: string;
+  today: string;
+  scope: Scope;
+  shifts: { id: string; code: string; name: string; colour: string; night: boolean; start: number | null; end: number | null }[];
+  drafts: number;
+  people: { id: string; name: string; code: string | null; cells: RosterCell[] }[];
+}
+export interface MyShifts {
+  week: string;
+  days: { on: string; shift: ShiftRef | null; off: boolean; employed: boolean }[];
+  colleagues: { id: string; name: string }[];
+  swaps: { id: string; on: string; mine: boolean; with: string; status: 'pending' | 'approved' | 'rejected' | 'withdrawn'; reason: string | null }[];
+}
+
+export interface ShiftVersionRow {
+  validFrom: string;
+  start: number;
+  end: number;
+  graceMinutes: number;
+  halfDayMinutes: number;
+  fullDayMinutes: number;
+  breakMinutes: number;
+  breakAboveMinutes: number;
+}
+export interface ShiftRow {
+  id: string;
+  code: string;
+  name: string;
+  colour: string;
+  night: boolean;
+  active: boolean;
+  versions: ShiftVersionRow[];
+}
+export interface OtRuleRow {
+  id: string;
+  name: string;
+  scopeType: string;
+  scopeId: string;
+  scopeName: string;
+  validFrom: string;
+  minMinutes: number;
+  roundMinutes: number;
+  dailyCapMinutes: number | null;
+  rateNormal: number;
+  rateWeeklyOff: number;
+  rateHoliday: number;
+  needsApproval: boolean;
+  settle: 'pay' | 'comp_off';
+  compOffHalfMinutes: number;
+  compOffFullMinutes: number;
+  removable: boolean;
+}
+export type OtRuleInput = Omit<OtRuleRow, 'id' | 'scopeName' | 'removable' | 'scopeId'> & { scopeId?: string };
+export interface ProjectRow {
+  id: string;
+  code: string;
+  name: string;
+  managerUserId: string | null;
+  managerName: string | null;
+  billable: boolean;
+  activities: string[];
+  active: boolean;
+}
+export interface ShiftSetup {
+  today: string;
+  shifts: ShiftRow[];
+  patterns: { id: string; name: string; kind: 'weekly' | 'cycle'; cycle: (string | null)[]; active: boolean; assignments: { id: string; scopeType: string; scopeId: string; scopeName: string; validFrom: string; offsetDays: number; removable: boolean }[] }[];
+  otRules: OtRuleRow[];
+  projects: ProjectRow[];
+  night: {
+    locations: { locationId: string; name: string; window: { start: number; end: number }; items: { item: string; label: string; attestedOn: string | null; reviewDue: string | null; note: string | null; ok: boolean }[] }[];
+    consents: { id: string; employeeId: string; name: string; locationId: string; location: string; givenOn: string; withdrawnOn: string | null; reference: string }[];
+  };
+  hasCompOffType: boolean;
+  locations: { id: string; name: string; state: string }[];
+  departments: { id: string; name: string }[];
+  entities: { id: string; name: string }[];
+  people: { id: string; name: string; code: string | null }[];
+  users: { id: string; name: string }[];
+}
+export interface ShiftInput {
+  code: string;
+  name: string;
+  colour: string;
+  night: boolean;
+  validFrom: string;
+  start: number;
+  end: number;
+  graceMinutes: number;
+  halfDayMinutes: number;
+  fullDayMinutes: number;
+  breakMinutes: number;
+  breakAboveMinutes: number;
+}
+
+export type OtCategory = 'normal' | 'weekly_off' | 'holiday';
+export interface OtClaim {
+  id: string;
+  employeeId: string;
+  on: string;
+  category: OtCategory;
+  workedMinutes: number;
+  scheduledMinutes: number;
+  eligibleMinutes: number;
+  payableMinutes: number;
+  overCapMinutes: number;
+  rate: number;
+  settle: 'pay' | 'comp_off';
+  compOffDays: number;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn';
+  overridden: boolean;
+  overrideReason: string | null;
+  name?: string;
+  code?: string | null;
+  canOverride?: boolean;
+}
+export interface MyOvertime {
+  today: string;
+  claims: OtClaim[];
+  open: { on: string; category: OtCategory; workedMinutes: number; scheduledMinutes: number; eligibleMinutes: number; payableMinutes: number; overCapMinutes: number; settle: 'pay' | 'comp_off'; needsApproval: boolean }[];
+}
+export interface OtReview {
+  month: string;
+  scope: Scope;
+  claims: OtClaim[];
+}
+
+export interface MyTimesheet {
+  week: string;
+  mode: string;
+  sheet: { id: string; status: 'draft' | 'pending' | 'approved' | 'rejected'; totalMinutes: number } | null;
+  lines: { id: string; projectId: string; activity: string | null; billable: boolean; minutes: number[]; note: string | null }[];
+  projects: { id: string; code: string; name: string; billable: boolean; activities: string[]; active: boolean }[];
+  days: { on: string; holiday: string | null; leave: string | null; locked: boolean }[];
+  recent: { id: string; week: string; status: string; totalMinutes: number }[];
+}
+export interface TimesheetLineInput {
+  projectId: string;
+  activity: string | null;
+  billable: boolean;
+  minutes: number[];
+}
+
+export interface Periods {
+  year: string;
+  today: string;
+  entities: { id: string; name: string; months: { month: string; stage: 'open' | 'locked'; changedAt: string | null; changedBy: string | null; reason: string | null; lockable: boolean }[] }[];
+}
+export interface Preflight {
+  month: string;
+  lockableFrom: string;
+  people: number;
+  pending: { kind: string; count: number }[];
+  exceptions: number;
+}
+export interface FeedRow {
+  employeeId: string;
+  name: string;
+  code: string | null;
+  mode: string;
+  calendarDays: number;
+  paidDays: number;
+  lopDays: number;
+  otNormalMinutes: number;
+  otWeeklyOffMinutes: number;
+  otHolidayMinutes: number;
+  nightShifts: number;
+  compOffDays: number;
+  timesheetMinutes: number;
+  unevaluatedDays: number;
+}
+export interface PayrollFeed {
+  entity: { id: string; name: string };
+  month: string;
+  frozen: boolean;
+  lockedAt: string | null;
+  rows: FeedRow[];
+}
+export interface Registers {
+  month: string;
+  locations: { id: string; name: string; state: string; entityId: string; entity: string; people: number; locked: boolean; formats: { type: 'muster' | 'leave'; title: string; form: string; columns: string[] }[]; source: string | null; verify: boolean }[];
 }
