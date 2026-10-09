@@ -1221,11 +1221,11 @@
     "url": "http://localhost:3000/yx/settings/security",
     "account": "admin@demo-org.test (System Admin)",
     "steps": [
-      "In Network allow-lists type 203.0.113.0/24 under \"Admin pages\". Save.",
-      "Open Settings > Legal entities.",
-      "Clear the list and save again (use another admin session or ask the developer if you are locked out)."
+      "On Security settings › Network allow-lists, type a range that does NOT include your network (for example 203.0.113.0/24) in the admin pages box.",
+      "Click Save (confirm it's you if asked).",
+      "Clear the box again."
     ],
-    "expected": "Admin pages are refused from your network while the list does not include it. Clearing the list allows any network again.",
+    "expected": "Saving is refused with a red message: the list does not include your current address and saving it would lock you out. Nothing changes. After you clear the box there is nothing to save (the Save button goes away). An allow-list that includes your network saves normally.",
     "stories": [
       "US-A-016"
     ],
