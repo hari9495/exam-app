@@ -18,7 +18,8 @@ const HR_VIEW = ['org.structure.view', 'employee.profile.view'];
 // M02 leave and attendance (step 4): HR reads in scope; HR Admin also sets up, adjusts, approves and handles Special
 // medical data.
 const TIME_HR_VIEW = ['leave.view', 'attendance.view'];
-const TIME_HR_ADMIN = [...TIME_HR_VIEW, 'leave.settings.manage', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view'];
+// Batch 2: rosters in scope (HR Executive too), locking attendance months and maternity / paternity overrides (HR Admin).
+const TIME_HR_ADMIN = [...TIME_HR_VIEW, 'leave.settings.manage', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view', 'roster.manage', 'attendance.lock', 'leave.eligibility.override'];
 
 // M14 §6.1 Service Desk roles (phase 3b-1 keys). A desk key reaches only the desks where the person holds a seat
 // (sd_desk_members), so these are granted company-wide; replying and owning also need an agent or lead seat (§6.3).
@@ -39,7 +40,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'location',
     summary: 'Day-to-day HR work: records, job changes and personal details for the people in scope.',
     cannot: 'Pay, identity and bank details, approvals.',
-    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.personal.view', 'employee.profile.edit', ...TIME_HR_VIEW],
+    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.personal.view', 'employee.profile.edit', ...TIME_HR_VIEW, 'roster.manage'],
   },
   {
     key: 'payroll_admin',

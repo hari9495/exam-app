@@ -18,18 +18,19 @@ import {
   hasBalance,
   hrApprovers,
   holidaysFor,
-  maternityDays,
+  maternityValues,
   mustSee,
   myEmployeeId,
   num,
   policyOn,
-  rulesFor,
   settingOn,
   statutoryOn,
   todayIn,
   visibleSql,
 } from './time-core';
-import { CountedDay, accrualsDue, addDays, applyFloors, countLeaveDays, daysBetween, isWeeklyOff, leaveYearOf, yearEndSplit } from './time-maths';
+import { CountedDay, accrualsDue, addDays, applyFloors, countLeaveDays, daysBetween, leaveYearOf, yearEndSplit } from './time-maths';
+import { ScheduleBook, assertOpen, lockedDates } from './schedule';
+import { MaternityCase, daysWorked, eligibilityWindow, maternityChecks } from './time-rules';
 
 // M02 Part A leave on the shared engines: requests route through P03 (manager, then HR by the type's rule), the
 // ledger is the only balance (YX-LV-01), days are counted with the location's holidays and weekly offs (YX-LV-03),
@@ -176,19 +177,24 @@ export class LeaveService implements OnModuleInit {
     const balance = balances.find((b) => b.leaveTypeId === t.id) ?? null;
     if (!balance) blocks.push(`${t.name} is not part of your leave policy.`);
     const { map } = await holidaysFor(tx, org, f.locationId, dto.from, dto.to, f.employeeId);
-    const rule = await rulesFor(tx, org, f.locationId, dto.to);
-    const counted = countLeaveDays({ from: dto.from, to: dto.to, fromHalf, toHalf, holidays: map, weeklyOff: (d) => isWeeklyOff(d, rule(d).weeklyOffs), rules: rules });
+    // Weekly offs per date from the person's roster, pattern or location (Q1, YX-LV-03).
+    const book = await ScheduleBook.load(tx, org);
+    await book.prime([f.employeeId], dto.from, dto.to);
+    const offs = new Set<string>();
+    for (let d = dto.from; d <= dto.to; d = addDays(d, 1)) if ((await book.day(f, d)).weeklyOff) offs.add(d);
+    const counted = countLeaveDays({ from: dto.from, to: dto.to, fromHalf, toHalf, holidays: map, weeklyOff: (d) => offs.has(d), rules: rules });
     const total = counted.total;
     if (!rules.halfDays && (fromHalf !== 'full' || toHalf !== 'full')) blocks.push(`${t.name} is taken in whole days.`);
     if (total === 0) blocks.push('Those days are holidays or weekly offs. Nothing to apply for.');
     if (dto.from < f.joinedOn || (f.exitedOn && dto.to > f.exitedOn)) blocks.push('Some of those days are outside your employment.');
+    // P08: a locked month takes an HR correction (YX-LV-08).
+    const locked = [...(await lockedDates(tx, org, f.employeeId, dto.from, dto.to))].sort();
+    if (locked.length) blocks.push(`${new Date(`${locked[0]}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })} is locked for attendance and leave. Ask HR to record it.`);
+    blocks.push(...(await this.eligibility(tx, org, f, t, rules, dto, today)));
     if (dto.from < addDays(today, -60)) blocks.push('Leave more than 60 days back needs HR. Ask them to record it.');
     if (rules.noticeDays && daysBetween(today, dto.from) < rules.noticeDays) blocks.push(`${t.name} needs ${daysText(rules.noticeDays)} notice.`);
     if (rules.minDays !== null && total > 0 && total < rules.minDays) blocks.push(`${t.name} is at least ${daysText(rules.minDays)} at a time.`);
     if (rules.maxDays !== null && total > rules.maxDays) blocks.push(`${t.name} is at most ${daysText(rules.maxDays)} at a time.`);
-    // DECISION NEEDED: maternity / paternity eligibility (gender, 80 days worked in 12 months, YX-LV-10) needs Personal
-    // data and attendance history; batch 1 checks only the statutory length and leaves eligibility to the approvers.
-    if (t.kind === 'maternity' && total > (await maternityDays(tx, dto.from))) blocks.push(`Maternity leave is at most ${await maternityDays(tx, dto.from)} days (Maternity Benefit Act).`);
     // DECISION NEEDED: P05 documents are not built yet, so a certificate is not uploaded here: the employee confirms
     // they will give it to HR, HR marks it verified (Special data), and approvers see only its status (YX-LV-09).
     const certificateNeeded = rules.certificateAfterDays !== null && total > rules.certificateAfterDays;
@@ -222,6 +228,45 @@ export class LeaveService implements OnModuleInit {
             AND d.leave_on BETWEEN ${dto.from}::date AND ${dto.to}::date`
       : [{ n: 0 }];
     return { type: { id: t.id, code: t.code, name: t.name, kind: t.kind, rules }, days: counted.days, total, holidaysExcluded, sandwichDays, balance, balanceAfter, othersOff: n, certificateNeeded, blocks, warnings };
+  }
+
+  /**
+   * Founder decision 9 Oct 2026 (YX-LV-10): eligibility is checked by the system with a plain reason: the type's
+   * genders (Personal data, read here only to decide), and for maternity the P07 case limits, the start at most 8 weeks
+   * before delivery and 80 days worked in the 12 months before the expected date. An HR override in force lets the
+   * person through the eligibility checks (never the statutory length limits).
+   */
+  private async eligibility(tx: Tx, org: string, f: Facts, t: LeaveTypeRow, rules: LeaveRules, dto: LeavePlanDto, today: string): Promise<string[]> {
+    const out: string[] = [];
+    const override = await tx.leaveEligibilityOverride.findFirst({ where: { organizationId: org, employeeId: f.employeeId, leaveTypeId: t.id, validUntil: { gte: asDate(today) } }, orderBy: { createdAt: 'desc' } });
+    if (rules.eligibleGenders?.length && !override) {
+      const pd = await tx.employeePersonalDetails.findFirst({ where: { organizationId: org, employeeId: f.employeeId }, select: { gender: true } });
+      if (!pd?.gender || !rules.eligibleGenders.includes(pd.gender)) out.push(`${t.name} is not available to you under the leave policy${pd?.gender ? '' : ' (no gender is recorded on your profile)'}. Ask HR if this is wrong.`);
+    }
+    if (t.kind !== 'maternity') return out;
+    if (!dto.expectedOn || !dto.maternityCase) return [...out, 'Give the expected date of delivery (or of the event) and the kind of maternity leave.'];
+    const win = eligibilityWindow(dto.expectedOn);
+    const statuses = await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: f.employeeId, workOn: { gte: asDate(win.from), lte: asDate(win.to) } }, select: { status: true } });
+    const checks = maternityChecks({ values: await maternityValues(tx, dto.from), maternityCase: dto.maternityCase as MaternityCase, expectedOn: dto.expectedOn, from: dto.from, to: dto.to, worked: daysWorked(statuses.map((s) => s.status)) });
+    return [...out, ...checks.filter((m) => !(override && m.includes('days worked')))];
+  }
+
+  /** HR lets one person through an eligibility check for one leave type until a date, with a reason (audited). */
+  async overrideEligibility(ctx: TenantContext, user: ScopeUser, employeeId: string, dto: { leaveTypeId: string; validUntil: string; reason: string }) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const own = await this.ownId(tx, c, v);
+      const today = new Date().toISOString().slice(0, 10);
+      if (!(await grantCovers(tx, c, v, own, 'leave.eligibility.override', employeeId, today))) throw new NotFoundException('Not found');
+      if (employeeId === own) throw new ForbiddenException('You cannot override a check on your own leave. Ask another HR admin.');
+      if (dto.validUntil < today || daysBetween(today, dto.validUntil) > 400) throw new BadRequestException('The override ends today or later, within 400 days.');
+      const t = await tx.leaveType.findFirst({ where: { organizationId: c.organizationId, id: dto.leaveTypeId } });
+      if (!t) throw new BadRequestException('Choose a leave type of this company.');
+      const o = await tx.leaveEligibilityOverride.create({ data: { organizationId: c.organizationId, employeeId, leaveTypeId: t.id, validUntil: asDate(dto.validUntil), reason: dto.reason, createdBy: c.userId! } });
+      await audit(tx, c, 'leave.eligibility.overridden', 'leave_type', t.id, { employeeId, type: t.code, validUntil: dto.validUntil, reason: dto.reason, overrideId: o.id });
+      return { id: o.id };
+    });
   }
 
   private async meFacts(tx: Tx, c: CompanyContext, userId: string | null | undefined): Promise<{ f: Facts; today: string }> {
@@ -325,6 +370,8 @@ export class LeaveService implements OnModuleInit {
           certificate: p.certificateNeeded || dto.certificate ? 'pending' : 'none',
           delegateUserId: dto.delegateUserId ?? null,
           raisedBy: c.userId ?? null,
+          expectedOn: p.type.kind === 'maternity' && dto.expectedOn ? asDate(dto.expectedOn) : null,
+          maternityCase: p.type.kind === 'maternity' ? (dto.maternityCase ?? null) : null,
         },
       });
       await tx.leaveRequestDay.createMany({ data: p.days.map((d) => ({ organizationId: org, requestId: req.id, employeeId: f.employeeId, leaveOn: asDate(d.on), part: d.part, portion: d.portion, countedAs: d.countedAs })) });
@@ -345,6 +392,7 @@ export class LeaveService implements OnModuleInit {
         { label: 'Leave', value: p.type.name },
         { label: 'Dates', value: `${rangeText(dto.from, dto.to)}${dto.fromHalf === 'second' ? ' (from the second half)' : ''}${dto.toHalf === 'first' ? ' (until the first half)' : ''}` },
         { label: 'Days', value: String(p.total) },
+        ...(p.type.kind === 'maternity' && dto.expectedOn ? [{ label: 'Expected date', value: fmt(dto.expectedOn) }] : []),
         { label: 'Team', value: p.othersOff ? `${p.othersOff} ${p.othersOff === 1 ? 'other is' : 'others are'} off then` : 'No one else in the team is off then' },
         ...(p.balanceAfter !== null ? [{ label: 'Balance after', value: String(p.balanceAfter) }] : []),
         // YX-LV-09: approvers see the certificate's status only, never the file; a medical reason never.
@@ -453,8 +501,8 @@ export class LeaveService implements OnModuleInit {
       const r = await tx.leaveRequest.findFirst({ where: { organizationId: c.organizationId, id, employeeId: f.employeeId } });
       if (!r) throw new NotFoundException('No such leave request.');
       if (r.status !== 'approved') throw new ConflictException('Only approved leave can be cancelled. Withdraw a request that is still waiting.');
-      // P08 seam: periods are not locked yet; leave older than last month waits for the late-correction flow.
-      if (dateOf(r.toOn) < addDays(`${today.slice(0, 7)}-01`, -31)) throw new ConflictException('That leave is too far back to cancel here. Ask HR.');
+      // P08: leave in a locked month is corrected by HR, never cancelled here (YX-LV-08).
+      await assertOpen(tx, c.organizationId, f.employeeId, dateOf(r.fromOn), dateOf(r.toOn));
       const t = await tx.leaveType.findFirstOrThrow({ where: { organizationId: c.organizationId, id: r.leaveTypeId } });
       const from = dateOf(r.fromOn);
       const to = dateOf(r.toOn);

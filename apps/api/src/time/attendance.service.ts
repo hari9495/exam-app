@@ -7,7 +7,9 @@ import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.
 import { DayEngine } from './day-engine.service';
 import { PunchDto, RegulariseDto } from './dto';
 import { TIME_KEYS, asDate, dateOf, factsOn, hrApprovers, monthRange, mustSee, myEmployeeId, rulesFor, settingOn, todayIn, visibleSql, type Facts } from './time-core';
-import { addDays, checkInVerdict, minutesInto, workOnFor, type Fence } from './time-maths';
+import { addDays, checkInVerdict, minutesInto, type Fence } from './time-maths';
+import { ScheduleBook, assertOpen } from './schedule';
+import { workOnForPunch } from './time-rules';
 
 // M02 Part B basics: web punches with the geofence / allowed-network check (Q6, YX-AT-01, every refused attempt
 // logged, YX-AT-23), my days and the team / HR muster (YX-AT-14, read-only in batch 1), and regularisation through
@@ -59,6 +61,7 @@ export class AttendanceService implements OnModuleInit {
       const org = c.organizationId;
       const { f, today } = await this.meFacts(tx, c);
       const rule = (await rulesFor(tx, org, f.locationId, today))(today);
+      const day = await (await ScheduleBook.load(tx, org)).day(f, today);
       const fences = await this.fences(tx, org, [f.locationId, ...rule.alsoAllowed]);
       const names = new Map(fences.map((x) => [x.locationId, x.name]));
       const punches = await tx.punch.findMany({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(today) }, orderBy: { punchedAt: 'asc' } });
@@ -72,7 +75,8 @@ export class AttendanceService implements OnModuleInit {
         today,
         zone: f.zone,
         mode: await settingOn(tx, c, 'attendance.mode', f, today),
-        shift: { name: rule.shiftName, start: rule.shiftStart, end: rule.shiftEnd, grace: rule.graceMinutes, checkIn: rule.checkIn },
+        // Today's shift from the roster / pattern / location (Q1); null on a weekly off.
+        shift: day.shift ? { name: day.shift.name, start: day.shift.shiftStart, end: day.shift.shiftEnd, grace: day.shift.graceMinutes, checkIn: rule.checkIn } : null,
         fences: fences.filter((x) => x.lat !== null).map((x) => ({ name: x.name, lat: x.lat, lng: x.lng, radiusM: x.radiusM })),
         punches: punches.map((p) => this.punchView(p, names)),
         next: accepted.length && accepted[accepted.length - 1].kind === 'in' ? 'out' : 'in',
@@ -95,7 +99,12 @@ export class AttendanceService implements OnModuleInit {
       const now = new Date();
       const today = todayIn(f.zone, now);
       const rule = (await rulesFor(tx, org, f.locationId, today))(today);
-      const workOn = workOnFor(now, f.zone, rule);
+      // A night shift's morning punch belongs to the day the shift started (YX-AT-13).
+      const book = await ScheduleBook.load(tx, org);
+      await book.prime([f.employeeId], addDays(today, -1), today);
+      const shifts = new Map<string, Awaited<ReturnType<ScheduleBook['day']>>['shift']>();
+      for (const d of [addDays(today, -1), today]) shifts.set(d, (await book.day(f, d)).shift);
+      const workOn = workOnForPunch(now, f.zone, dto.kind, (d) => shifts.get(d) ?? null);
       const last = await tx.punch.findFirst({ where: { organizationId: org, employeeId: f.employeeId, accepted: true }, orderBy: { punchedAt: 'desc' } });
       if (last && last.kind === dto.kind && now.getTime() - last.punchedAt.getTime() < 60_000) return { accepted: true, duplicate: true, kind: dto.kind, at: last.punchedAt, verdict: last.verdict, message: dto.kind === 'in' ? 'Already checked in' : 'Already checked out', distanceM: last.distanceM };
       const v = checkInVerdict({ fences: await this.fences(tx, org, [f.locationId, ...rule.alsoAllowed]), pin: pinGiven ? { lat: dto.lat!, lng: dto.lng!, accuracyM: dto.accuracyM ?? 9999 } : null, ip, mode: rule.checkIn });
@@ -133,8 +142,8 @@ export class AttendanceService implements OnModuleInit {
       const { f: now, today } = await this.meFacts(tx, c);
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`punch:${org}:${now.employeeId}`}))`;
       if (dto.on > today) throw new BadRequestException('You can fix a day once it has started.');
-      // Q5 look-back: the current and the previous month (P08 locks arrive later).
-      if (dto.on < addDays(`${today.slice(0, 7)}-01`, -31)) throw new BadRequestException('That day is too far back to fix here. Ask HR.');
+      // Q5 look-back: any day of a period still open (P08); a locked month takes an HR correction (YX-LOCK-02).
+      await assertOpen(tx, org, now.employeeId, dto.on);
       const f = await factsOn(tx, org, now.employeeId, dto.on);
       if (!f || dto.on < f.joinedOn) throw new BadRequestException('You were not working here on that day.');
       const needIn = dto.kind === 'missed_in' || dto.kind === 'wrong_time';
@@ -279,7 +288,8 @@ export class AttendanceService implements OnModuleInit {
         WHERE a.organization_id = ${org}::uuid AND a.superseded_at IS NULL AND m.exited_on IS NULL
           AND daterange(a.valid_from, a.valid_to, '[]') && daterange(${addDays(today, -1)}::date, ${addDays(today, 1)}::date, '[]')`;
       let n = 0;
-      for (const e of ids) n += await this.days.evaluate(tx, c, e.id, addDays(today, -1), addDays(today, 1), now);
+      const book = await ScheduleBook.load(tx, org);
+      for (const e of ids) n += await this.days.evaluate(tx, c, e.id, addDays(today, -1), addDays(today, 1), now, book);
       return n;
     });
   }

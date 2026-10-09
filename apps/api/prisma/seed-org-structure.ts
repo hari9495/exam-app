@@ -15,7 +15,7 @@ const IST = 'Asia/Kolkata';
 // P02 §4.2 templates as permission profiles: Payroll Admin holds pay; HR Admin runs records without pay.
 const PAYROLL_ADMIN = ['org:view', 'org.structure.view', 'org.entity.statutory.manage', 'pay.range.view', 'pay.range.manage', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve'];
 // Step 2d (P02 §4.4–4.5): HR Admin also holds Personal data and raises identity / bank changes; Payroll approves them.
-const HR_ADMIN = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'leave.settings.manage', 'leave.view', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view', 'attendance.view'];
+const HR_ADMIN = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'leave.settings.manage', 'leave.view', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view', 'attendance.view', 'roster.manage', 'attendance.lock', 'leave.eligibility.override'];
 // The panel role's keys plus raising changes for one's team (P02 YX-SEC-27); the structure masters (names and
 // codes, no pay) to pick a new designation or location in those changes.
 const TEAM_MANAGER = ['org:view', 'results:view', 'interview:view_assigned', 'request.raise_on_behalf', 'org.structure.view'];

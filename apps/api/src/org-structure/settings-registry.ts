@@ -55,6 +55,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'leave.year_start_month': { label: 'Leave year starts in', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'], default: '1' },
   // M02 Q5: regularisations a month with manager approval; beyond that HR approves too.
   'attendance.regularise_monthly_limit': { label: 'Fixes a month with manager approval only', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '2', '3', '4', '5', '6', '8', '10'], default: '4' },
+  // M02 §B2 / YX-AT-07: the least rest between two shifts of one person; the roster flags anything shorter (starter, D17).
+  'attendance.min_rest_hours': { label: 'Least rest between shifts (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '8', '9', '10', '11', '12'], default: '11' },
   'attendance.missing_punch_effect': {
     label: 'Missing punches',
     scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'],

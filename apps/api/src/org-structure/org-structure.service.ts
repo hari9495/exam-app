@@ -44,6 +44,10 @@ export function mapDbError(e: unknown): unknown {
     }
     if (e.code === 'P2003') return new ConflictException('It is in use, so it can only be archived (YX-ORG-04).');
   }
+  // P08 backstop: the database refuses a change on a locked attendance month (yx_time_lock_guard).
+  if (e instanceof Error && e.message.includes('YX_PERIOD_LOCKED')) {
+    return new ConflictException({ statusCode: 409, code: 'PERIOD_LOCKED', message: "That month is locked for attendance and leave, so this can't change any more. Ask HR to record a correction." });
+  }
   if (e instanceof Error && /exclusion constraint|23P01/.test(e.message)) {
     return new ConflictException('The dates overlap another pay range for this grade, entity and currency.');
   }

@@ -11,6 +11,7 @@ import { seedServiceDeskKnowledge, seedYukthixSupport } from './seed-service-des
 import { seedServiceDeskEsm } from './seed-service-desk-esm';
 import { seedServiceDeskEsm2 } from './seed-service-desk-esm2';
 import { TIME_PERMISSIONS, seedTime } from './seed-time';
+import { seedTimeB2 } from './seed-time-b2';
 
 const prisma = new PrismaClient();
 
@@ -154,6 +155,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'leave.settings.manage',
     'leave.view',
     'attendance.view',
+    // Batch 2: rosters and attendance locks (also in the time_leave_b2 migration).
+    'roster.manage',
+    'attendance.lock',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -337,8 +341,11 @@ async function main() {
       // Step 4 time and leave batch 1: holiday calendars, leave types and policies with Karnataka / Tamil Nadu floors,
       // balances, pending requests through P03 and a week of punches (seed-time.ts).
       await seedTime(tx, demoOrg.id);
+      // Step 4 batch 2: the Hosur plant's 3-shift rotation with a night shift, OT for plant workers settled as comp-off,
+      // a timesheet project, the women's night-work records, and a locked previous month with its frozen payroll feed.
+      await seedTimeB2(tx, demoOrg.id, panelHash);
     }
-  }, { timeout: 180000 });
+  }, { timeout: 420000 });
 
   console.log(`Seed complete: super@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); Service Desk: it-agent@ / it-lead@ / it-collab@ / arjun@demo-org.test / Passw0rd!2026, customer portal /yx/portal/demo-org/care (asha@annapurna-stores.test, sign-in code from scripts/desk-portal-code.ts); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
 }
