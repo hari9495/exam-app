@@ -4,6 +4,8 @@ import { LetterTemplatesScreen, type Choice, type LetterTemplates, type Signator
 import type { LegalEntity } from '@yukthix/ui/org';
 import { loadState, useOrg, useYxPermissions } from '../../../../../lib/yx-org';
 import { useFileGet, useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
+import { useAuth } from '../../../../../lib/auth-context';
+import { apiFetch } from '../../../../../lib/api-client';
 
 // Settings › Letter templates (PPL-29; P05 Q1 / Q3, YX-DOC-15): YukthiX starters, Word uploads checked for safety and
 // placeholders, the sample preview before a template is used, and who signs for each legal entity.
@@ -15,6 +17,7 @@ export default function YxLetterTemplatesPage() {
   const users = useLife<Choice[]>(perms.has('letter.signatory.manage') ? '/letters/signatories/people' : null);
   const write = useLifeWrite();
   const get = useFileGet();
+  const { accessToken } = useAuth();
   return (
     <LetterTemplatesScreen
       state={loadState(data)}
@@ -45,6 +48,8 @@ export default function YxLetterTemplatesPage() {
         return write('POST', '/letters/signatories', form);
       }}
       onRemoveSignatory={(s) => write('POST', `/letters/signatories/${encodeURIComponent(s.id)}/remove`)}
+      onCompose={(x) => write('POST', '/letters/templates/compose', x)}
+      onParagraphs={(t) => apiFetch(`/letters/templates/${encodeURIComponent(t.id)}/paragraphs`, {}, accessToken ?? undefined) as never}
     />
   );
 }

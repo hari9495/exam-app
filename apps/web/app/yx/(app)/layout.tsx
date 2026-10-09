@@ -57,6 +57,11 @@ const ASSETS: WorkspaceLink = { id: 'assets', label: 'Assets', href: '/yx/people
 const RESIGN: WorkspaceLink = { id: 'resign', label: 'Resign', href: '/yx/me/resignation', group: 'Me' };
 const MY_ASSETS: WorkspaceLink = { id: 'my-assets', label: 'My assets', href: '/yx/me/assets', group: 'Me' };
 // Lifecycle 6d: my documents and the instant employment certificate.
+// Lifecycle 6e: campus batches, absconding, retirements and contract ends, retrenchment and VRS.
+const BATCHES: WorkspaceLink = { id: 'batches', label: 'Campus batches', href: '/yx/people/batches', group: 'People' };
+const ABSCONDING: WorkspaceLink = { id: 'absconding', label: 'Absconding', href: '/yx/people/absconding', group: 'People' };
+const UPCOMING_EXITS: WorkspaceLink = { id: 'upcoming-exits', label: 'Retirements and contracts', href: '/yx/people/upcoming-exits', group: 'People' };
+const RETRENCHMENT: WorkspaceLink = { id: 'retrenchment', label: 'Retrenchment and VRS', href: '/yx/people/retrenchment', group: 'People' };
 const MY_DOCUMENTS: WorkspaceLink = { id: 'my-documents', label: 'My documents', href: '/yx/me/documents', group: 'Me' };
 const CHECKLISTS: WorkspaceLink = { id: 'checklists', label: 'Onboarding checklists', href: '/yx/settings/checklists', group: 'Organisation' };
 const PROFILE: WorkspaceLink = { id: 'profile', label: 'My profile', href: '/yx/people/profile', group: 'People' };
@@ -186,6 +191,9 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...(perms.has('lifecycle.exit.view') || perms.has('lifecycle.exit.manage') || manager ? [EXITS] : []),
     ...(myClearance.data?.rows.length || perms.has('lifecycle.exit.manage') ? [CLEARANCE] : []),
     ...(perms.has('asset.view') ? [ASSETS] : []),
+    ...(perms.has('lifecycle.onboarding.manage') ? [BATCHES] : []),
+    ...(perms.has('lifecycle.exit.view') || perms.has('lifecycle.exit.manage') ? [UPCOMING_EXITS] : []),
+    ...(perms.has('lifecycle.exit.manage') ? [ABSCONDING, RETRENCHMENT] : []),
     ...(myTasks.data?.tasks.length || perms.has('lifecycle.onboarding.manage') ? [MY_TASKS] : []),
     ...(perms.has('document.manage') ? [DOC_QUEUE] : []),
     ...(idDesk ? [ID_CHANGES] : []),

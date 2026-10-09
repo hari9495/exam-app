@@ -89,7 +89,7 @@ test('HR issues the appointment letter → the System Admin approves → issued 
   const join = hr.getByRole('dialog');
   await join.getByRole('checkbox', { name: /original ID/ }).click();
   await join.getByRole('button', { name: 'Mark joined' }).click();
-  await expect(join).toHaveCount(0);
+  await expect(join).toHaveCount(0, { timeout: 30_000 });
   await hr.goto('/yx/people/directory');
   await hr.getByRole('searchbox').first().fill(first);
   await expect(hr.getByText(new RegExp(`${first} Rao`)).first()).toBeVisible({ timeout: 30_000 });

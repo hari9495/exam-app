@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { JoinerPanel, JourneyScreen, type Joiner, type JoinerForms, type Journey } from '@yukthix/ui/lifecycle';
+import { BuddyCard, JoinerPanel, JourneyScreen, RehireCard, type Joiner, type JoinerForms, type Journey, type RehireView } from '@yukthix/ui/lifecycle';
 import { loadState, todayIst, useYxPermissions } from '../../../../../../lib/yx-org';
 import { useJoinerPlaces, useLife, useLifeWrite, useTaskActions } from '../../../../../../lib/yx-lifecycle';
 
@@ -22,6 +22,8 @@ export default function YxJourneyPage() {
   const write = useLifeWrite();
   const base = j ? `/lifecycle/joiners/${encodeURIComponent(j.subjectId)}` : '';
   const pb = joiner.data;
+  // 6e: a rehire's options; the buddy.
+  const rehire = useLife<RehireView>(pb?.personType === 'rehire' ? `${base}/rehire` : null);
   return (
     <JourneyScreen
       state={loadState(journey)}
@@ -59,6 +61,10 @@ export default function YxJourneyPage() {
               : undefined
           }
         />
+      )}
+      {hrJoiner && pb && pb.status === 'invited' && rehire.data && <RehireCard data={rehire.data} onSave={(overrides, version) => write('PUT', `${base}/rehire`, { overrides, version })} />}
+      {hrJoiner && pb && pb.status === 'invited' && (
+        <BuddyCard people={places.managers} current={pb.buddyEmployeeId ?? null} managerEmployeeId={pb.managerEmployeeId ?? null} onSave={(employeeId) => write('PUT', `${base}/buddy`, { employeeId, version: pb.version })} />
       )}
     </JourneyScreen>
   );

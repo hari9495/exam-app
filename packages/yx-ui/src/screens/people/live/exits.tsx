@@ -16,7 +16,8 @@ import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { LivePage, dateText } from '../../time/live/kit';
 import { TaskForm } from './lifecycle';
-import type { AlumniMe, ExitStep, Handoff, Letter, MyDocuments, QueueDocument } from './types';
+import type { AlumniMe, ExitStep, Handoff, Letter, MyDocuments, MyVrsScheme, Payee, Payees, QueueDocument } from './types';
+import { PayeesCard, VrsCard } from './special';
 import type { AssetRow, Choice, ClearanceItem, ExitRow, ExitStatus, ExitType, ExitWorkspace, InterviewAnswers, InterviewForm, LoadState, MyAsset, MyClearanceItem, MyResignation } from './types';
 
 // Lifecycle batch 6c, wired (design §10, §14): Me › Resign (PPL-18), the exit interview (PPL-21), my assets (PPL-25
@@ -49,7 +50,8 @@ const REASONS: Record<string, string> = {
 };
 const DEPT: Record<ClearanceItem['department'], string> = { manager_handover: 'Handover', it: 'IT', admin: 'Admin', finance: 'Finance', hr: 'HR', asset: 'Asset', custom: 'Other' };
 const ITEM: Record<ClearanceItem['status'], { label: string; tone: BadgeTone }> = { open: { label: 'To do', tone: 'warning' }, cleared: { label: 'Cleared', tone: 'success' }, waived: { label: 'Waived', tone: 'neutral' } };
-const COMPANY_TYPES: { value: Exclude<ExitType, 'resignation'>; label: string }[] = [
+const COMPANY_TYPES: { value: Exclude<ExitType, 'resignation' | 'vrs'>; label: string }[] = [
+  { value: 'retrenchment', label: 'Retrenchment' },
   { value: 'termination', label: 'Termination' },
   { value: 'probation_termination', label: 'Probation not confirmed' },
   { value: 'end_of_contract', label: 'End of contract' },
@@ -93,6 +95,8 @@ export interface ResignationScreenProps {
   onResign: (input: { reasonCode: string; reasonText: string; requestedLwd: string | null }) => Promise<unknown>;
   onWithdraw: (reason: string) => Promise<unknown>;
   interviewHref: string;
+  /** 6e: voluntary retirement schemes open to me. */
+  vrs?: { schemes: MyVrsScheme[]; onApply: (s: MyVrsScheme, input: { requestedLwd: string; reasonText: string | null }) => Promise<unknown> };
 }
 
 export function ResignationScreen(p: ResignationScreenProps) {
@@ -101,6 +105,7 @@ export function ResignationScreen(p: ResignationScreenProps) {
   const k = d?.current ?? null;
   return (
     <LivePage title="Resign" description="Your notice comes from the company policy. Your manager, then HR, accept your resignation." state={p.state} onRetry={p.onRetry} what="your resignation">
+      {d && !k && p.vrs && <VrsCard schemes={p.vrs.schemes} today={d.today} onApply={p.vrs.onApply} />}
       {d && !k && <ResignForm data={d} onResign={p.onResign} />}
       {d && k && (
         <Card
@@ -320,7 +325,9 @@ export interface ExitCasesScreenProps {
   canStart: boolean;
   people: Choice[];
   today: string;
-  onStart: (input: { employeeId: string; exitType: Exclude<ExitType, 'resignation'>; lwd: string; reasonText: string }) => Promise<{ id: string }>;
+  onStart: (input: { employeeId: string; exitType: Exclude<ExitType, 'resignation' | 'vrs'>; lwd: string; reasonText: string; selectionBasis?: string; noticeMode?: 'notice' | 'pay_in_lieu'; irPermissionId?: string }) => Promise<{ id: string }>;
+  /** 6e: government permission requests a retrenchment can name. */
+  permissions?: Choice[];
   onOpen: (id: string) => void;
 }
 
@@ -368,7 +375,7 @@ export function ExitCasesScreen(p: ExitCasesScreenProps) {
           )}
         />
       )}
-      {starting && <StartExitDialog people={p.people} today={p.today} onClose={() => setStarting(false)} onStart={async (x) => {
+      {starting && <StartExitDialog people={p.people} permissions={p.permissions ?? []} today={p.today} onClose={() => setStarting(false)} onStart={async (x) => {
         const k = await p.onStart(x);
         p.onOpen(k.id);
         return k;
@@ -377,13 +384,16 @@ export function ExitCasesScreen(p: ExitCasesScreenProps) {
   );
 }
 
-function StartExitDialog({ people, today, onClose, onStart }: { people: Choice[]; today: string; onClose: () => void; onStart: ExitCasesScreenProps['onStart'] }) {
+function StartExitDialog({ people, permissions, today, onClose, onStart }: { people: Choice[]; permissions: Choice[]; today: string; onClose: () => void; onStart: ExitCasesScreenProps['onStart'] }) {
   const [who, setWho] = useState<string | null>(null);
-  const [type, setType] = useState<Exclude<ExitType, 'resignation'> | null>(null);
+  const [type, setType] = useState<Exclude<ExitType, 'resignation' | 'vrs'> | null>(null);
+  const [basis, setBasis] = useState('');
+  const [mode, setMode] = useState<'notice' | 'pay_in_lieu'>('notice');
+  const [permission, setPermission] = useState<string | null>(null);
   const [lwd, setLwd] = useState<Date | null>(null);
   const [reason, setReason] = useState('');
   const past = type === 'death' || type === 'absconding';
-  const ready = Boolean(who && type && lwd) && reason.trim().length >= 3;
+  const ready = Boolean(who && type && lwd) && reason.trim().length >= 3 && (type !== 'retrenchment' || basis.trim().length >= 3);
   return (
     <ConfirmDialog
       open
@@ -394,7 +404,7 @@ function StartExitDialog({ people, today, onClose, onStart }: { people: Choice[]
       confirmLabel="Start exit"
       confirmDisabled={!ready}
       onConfirm={async () => {
-        await onStart({ employeeId: who!, exitType: type!, lwd: dayKey(lwd!), reasonText: reason.trim() });
+        await onStart({ employeeId: who!, exitType: type!, lwd: dayKey(lwd!), reasonText: reason.trim(), ...(type === 'retrenchment' ? { selectionBasis: basis.trim(), noticeMode: mode, ...(permission ? { irPermissionId: permission } : {}) } : {}) });
         onClose();
       }}
     >
@@ -402,8 +412,21 @@ function StartExitDialog({ people, today, onClose, onStart }: { people: Choice[]
         <Select aria-label="Person" value={who} onChange={setWho} options={people} searchable />
       </FormField>
       <FormField id="se-type" label="Kind of exit" required>
-        <Select aria-label="Kind of exit" value={type} onChange={(x) => { setType(x as Exclude<ExitType, 'resignation'>); setLwd(null); }} options={COMPANY_TYPES} />
+        <Select aria-label="Kind of exit" value={type} onChange={(x) => { setType(x as Exclude<ExitType, 'resignation' | 'vrs'>); setLwd(null); }} options={COMPANY_TYPES} />
       </FormField>
+      {type === 'retrenchment' && (
+        <>
+          <FormField id="se-basis" label="How the worker was chosen" required helper="For example: last come, first go in the operator category.">
+            <TextField value={basis} onChange={setBasis} maxLength={500} />
+          </FormField>
+          <FormField id="se-mode" label="Notice">
+            <Segment label="Notice" value={mode} onChange={setMode} options={[{ value: 'notice', label: 'Written notice' }, { value: 'pay_in_lieu', label: 'Wages in lieu' }]} />
+          </FormField>
+          <FormField id="se-perm" label="Government permission" optional helper="Needed at 300 or more workers; the exit cannot be approved without it.">
+            <Select aria-label="Government permission" value={permission} onChange={setPermission} options={permissions} clearable />
+          </FormField>
+        </>
+      )}
       <FormField id="se-lwd" label={type === 'death' ? 'Date of death' : type === 'absconding' ? 'Last day present' : 'Last working day'} required>
         <DatePicker value={lwd} onChange={setLwd} {...(past ? { max: fromKey(today) } : { min: fromKey(today) })} aria-label="Last working day" />
       </FormField>
@@ -434,6 +457,10 @@ export interface ExitCaseScreenProps {
   onStepDone?: (s: ExitStep, note: string) => Promise<unknown>;
   handoff?: Handoff | null;
   onSettledOutside?: (input: { settledOn: string; reason: string }) => Promise<unknown>;
+  /** 6e death in service: the payees, and the succession certificates on the person's record. */
+  payees?: Payees | null;
+  payeeDocuments?: Choice[];
+  onPayees?: (payees: Payee[]) => Promise<unknown>;
 }
 type SignOffHandler = (item: ClearanceItem, input: { action: 'clear' | 'waive'; note: string | null; recoveryAmount: string | null; recoveryReason: string | null }) => Promise<unknown>;
 
@@ -514,6 +541,7 @@ export function ExitCaseScreen(p: ExitCaseScreenProps) {
             </Card>
           )}
           <ClearanceTable items={d.clearance} canSign={d.can.manage && ['accepted', 'cleared'].includes(d.status)} onSignOff={p.onSignOff} />
+          {d.exitType === 'death' && p.payees && p.onPayees && <PayeesCard data={p.payees} documents={p.payeeDocuments ?? []} onSave={p.onPayees} />}
           {p.steps && p.steps.length > 0 && <StepsCard steps={p.steps} onRetry={p.onRetryStep} onDone={p.onStepDone} />}
           {p.handoff && <HandoffCard h={p.handoff} today={p.today} onSettled={p.onSettledOutside} />}
         </>

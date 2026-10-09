@@ -1,6 +1,6 @@
 'use client';
 
-import { ResignationScreen, type MyResignation } from '@yukthix/ui/lifecycle';
+import { ResignationScreen, type MyResignation, type MyVrsScheme } from '@yukthix/ui/lifecycle';
 import { loadState } from '../../../../../lib/yx-org';
 import { useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
 
@@ -8,6 +8,7 @@ import { useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
 export default function YxResignationPage() {
   const data = useLife<MyResignation>('/lifecycle/me/resignation');
   const write = useLifeWrite();
+  const vrs = useLife<{ schemes: MyVrsScheme[] }>('/lifecycle/me/vrs');
   return (
     <ResignationScreen
       state={loadState(data)}
@@ -16,6 +17,7 @@ export default function YxResignationPage() {
       onResign={(x) => write('POST', '/lifecycle/me/resignation', { reasonCode: x.reasonCode, reasonText: x.reasonText, ...(x.requestedLwd ? { requestedLwd: x.requestedLwd } : {}) })}
       onWithdraw={(reason) => write('POST', '/lifecycle/me/resignation/withdraw', { reason })}
       interviewHref="/yx/me/exit-interview"
+      vrs={vrs.data?.schemes.length ? { schemes: vrs.data.schemes, onApply: (s, x) => write('POST', '/lifecycle/me/vrs', { schemeId: s.id, requestedLwd: x.requestedLwd, ...(x.reasonText ? { reasonText: x.reasonText } : {}) }) } : undefined}
     />
   );
 }

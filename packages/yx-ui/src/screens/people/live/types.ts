@@ -5,7 +5,7 @@ export type { LoadState } from '../../org/types';
 
 export type TaskStatus = 'waiting' | 'open' | 'done' | 'skipped' | 'cancelled';
 export type TaskKind = 'tick' | 'form' | 'document' | 'letter' | 'desk_request';
-export type OwnerType = 'hr' | 'it' | 'admin' | 'finance' | 'payroll' | 'manager' | 'person' | 'user' | 'group';
+export type OwnerType = 'hr' | 'it' | 'admin' | 'finance' | 'payroll' | 'manager' | 'person' | 'user' | 'group' | 'buddy';
 
 export interface FormFieldDef {
   key: string;
@@ -98,6 +98,11 @@ export interface Joiner {
   openTasks: number;
   overdueTasks: number;
   version: number;
+  /** 6e */
+  personType?: 'new' | 'rehire';
+  batchId?: string | null;
+  buddyEmployeeId?: string | null;
+  managerEmployeeId?: string | null;
 }
 
 export interface JoinerBoard {
@@ -256,7 +261,7 @@ export interface LetterTemplate {
   name: string;
   legalEntityId: string | null;
   language: string;
-  source: 'upload' | 'starter';
+  source: 'upload' | 'starter' | 'editor';
   fields: string[];
   requiresApproval: boolean;
   personSigns: boolean;
@@ -294,11 +299,12 @@ export interface ReadyOffer {
 
 // ---- Batch 6c: exits, clearance, exit interviews, assets (apps/api/src/lifecycle/exits.service.ts, offboarding.service.ts)
 
-export type ExitType = 'resignation' | 'termination' | 'probation_termination' | 'end_of_contract' | 'retirement' | 'death' | 'absconding';
+export type ExitType = 'resignation' | 'termination' | 'probation_termination' | 'end_of_contract' | 'retirement' | 'death' | 'absconding' | 'retrenchment' | 'vrs';
 export type ExitStatus = 'submitted' | 'accepted' | 'rejected' | 'withdrawn' | 'cleared' | 'exited' | 'closed';
 export interface ExitCase {
   id: string;
   employeeId: string;
+  personId?: string;
   exitType: ExitType;
   typeLabel: string;
   initiatedBy: 'employee' | 'company';
@@ -440,4 +446,112 @@ export interface AlumniMe {
 }
 export interface MyDocuments {
   documents: QueueDocument[];
+}
+
+// ---- Batch 6e: rehire, batches, buddy, payees, absconding, contracts, retrenchment, VRS, the letter editor
+
+export interface RehireOption {
+  key: string;
+  label: string;
+  choices: string[];
+  policy: string;
+  value: string;
+  overridden: boolean;
+  reason: string | null;
+  meaning: string;
+}
+export interface RehireView {
+  previous: { employeeCode: string; joinedOn: string; exitedOn: string; exitType: string | null; rehireEligible: boolean | null; breakMonths: number; sameEntityFy: boolean };
+  options: RehireOption[];
+  version: number;
+}
+export interface Batch {
+  id: string;
+  name: string;
+  legalEntityId: string;
+  joiningOn: string;
+  touchpoints: { title: string; on: string }[];
+  status: 'open' | 'closed';
+  version: number;
+  members: { id: string; personId: string; name: string; status: string; joiningOn: string }[];
+}
+export interface Payee {
+  id?: string;
+  kind: 'nominee' | 'legal_heir';
+  name: string;
+  relation: string;
+  sharePercent: string;
+  email: string | null;
+  documentId: string | null;
+}
+export interface Payees {
+  payees: Payee[];
+  total: string;
+  complete: boolean;
+}
+export interface AbscondingStep {
+  key: 'hold' | 'notice_1' | 'notice_2' | 'abandoned';
+  label: string;
+  day: number;
+  dueOn: string;
+  doneAt: string | null;
+  note: string | null;
+  dispatchRef: string | null;
+}
+export interface AbscondingRow {
+  id: string;
+  employeeId: string;
+  name: string;
+  lastPresentOn: string;
+  status: 'running' | 'stopped' | 'abandoned';
+  stoppedReason: string | null;
+  exitCaseId: string | null;
+  version: number;
+  steps: AbscondingStep[];
+}
+export interface UpcomingExit {
+  employeeId: string;
+  name: string;
+  kind: 'retirement' | 'contract_end';
+  on: string;
+}
+export interface IrPermission {
+  id: string;
+  legalEntityId: string;
+  kind: 'retrenchment' | 'layoff' | 'closure';
+  workersAffected: number;
+  reasons: string;
+  appliedOn: string;
+  authority: string;
+  status: 'applied' | 'granted' | 'deemed' | 'refused';
+  decidedOn: string | null;
+  version: number;
+}
+export interface VrsSchemeRow {
+  id: string;
+  name: string;
+  legalEntityId: string | null;
+  opensOn: string;
+  closesOn: string;
+  minAge: number;
+  minServiceYears: number;
+  status: string;
+}
+export interface IrOverview {
+  workers: Record<string, number>;
+  requests: IrPermission[];
+  schemes: VrsSchemeRow[];
+}
+export interface MyVrsScheme {
+  id: string;
+  name: string;
+  closesOn: string;
+  minAge: number;
+  minServiceYears: number;
+  eligible: boolean;
+}
+export interface EditorParagraph {
+  text: string;
+  bold: boolean;
+  heading: boolean;
 }

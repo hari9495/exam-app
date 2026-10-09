@@ -27,6 +27,7 @@ const OWNERS: { value: OwnerType; label: string }[] = [
   { value: 'payroll', label: 'Payroll' },
   { value: 'manager', label: 'Manager' },
   { value: 'group', label: 'A team' },
+  { value: 'buddy', label: 'The buddy' },
 ];
 const KIND_TEXT: Record<TemplateTask['kind'], string> = { tick: 'To do', form: 'Form', document: 'Document', letter: 'Letter', desk_request: 'Service Desk request' };
 const TEAM_OWNERS = new Set<OwnerType>(['hr', 'it', 'admin', 'finance', 'payroll', 'group']);

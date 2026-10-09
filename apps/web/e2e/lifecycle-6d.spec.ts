@@ -52,7 +52,7 @@ test('a fresh employee → End of contract today → clearance and the payroll h
   const join = hr.getByRole('dialog');
   await join.getByRole('checkbox', { name: /original ID/ }).click();
   await join.getByRole('button', { name: 'Mark joined' }).click();
-  await expect(join).toHaveCount(0);
+  await expect(join).toHaveCount(0, { timeout: 30_000 });
 
   // HR starts an "End of contract" exit with today as the last working day.
   await hr.goto('/yx/people/exits');

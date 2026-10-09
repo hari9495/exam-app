@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { ExitCaseScreen, type ExitStep, type ExitWorkspace, type Handoff, type InterviewAnswers } from '@yukthix/ui/lifecycle';
+import { ExitCaseScreen, type ExitStep, type ExitWorkspace, type Handoff, type InterviewAnswers, type Payees, type QueueDocument } from '@yukthix/ui/lifecycle';
 import { loadState, useYxPermissions } from '../../../../../../lib/yx-org';
 import { useLife, useLifeWrite } from '../../../../../../lib/yx-lifecycle';
 import { useAuth } from '../../../../../../lib/auth-context';
@@ -19,6 +19,10 @@ export default function YxExitPage() {
   const manage = perms.has('lifecycle.exit.manage');
   // 6d: the steps after the last day (HR) and the payroll hand-off (HR or payroll staff).
   const steps = useLife<ExitStep[]>(manage ? `/lifecycle/exits/${id(caseId)}/steps` : null);
+  // 6e death in service: the payees, and the succession certificates on the record for legal heirs.
+  const death = manage && data.data?.exitType === 'death';
+  const payees = useLife<Payees>(death ? `/lifecycle/exits/${id(caseId)}/payees` : null);
+  const docs = useLife<{ documents: QueueDocument[] }>(death && data.data?.personId ? `/documents/people/${id(data.data.personId)}` : null);
   const handoff = useLife<Handoff>(manage || perms.has('payroll.period.view') ? `/lifecycle/exits/${id(caseId)}/handoff` : null);
   const write = useLifeWrite();
   const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
@@ -42,6 +46,9 @@ export default function YxExitPage() {
       onStepDone={(s, note) => write('POST', `/lifecycle/exits/${id(caseId)}/steps/${id(s.handler)}/done`, { note })}
       handoff={handoff.data ?? null}
       onSettledOutside={(x) => write('POST', `/lifecycle/exits/${id(caseId)}/settled-outside`, x)}
+      payees={payees.data ?? null}
+      payeeDocuments={(docs.data?.documents ?? []).filter((d) => d.typeKey === 'succession_certificate').map((d) => ({ value: d.id, label: `${d.typeName}${d.file ? `: ${d.file.name}` : ''}` }))}
+      onPayees={(list) => write('PUT', `/lifecycle/exits/${id(caseId)}/payees`, { payees: list.map((p) => ({ kind: p.kind, name: p.name, relation: p.relation, sharePercent: p.sharePercent, ...(p.email ? { email: p.email } : {}), ...(p.documentId ? { documentId: p.documentId } : {}) })) })}
     />
   );
 }

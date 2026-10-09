@@ -17,7 +17,8 @@ import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { errorText, useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
-import type { Choice, JoinerForms, JoinerPlaces, Letter, LetterTemplate, LetterTemplates, LoadState, PortalAnswers, PortalMe, ReadyOffer, SectionKey, Signatory } from './types';
+import { BulkLetterDialog, LetterEditor } from './special';
+import type { Choice, EditorParagraph, JoinerForms, JoinerPlaces, Letter, LetterTemplate, LetterTemplates, LoadState, PortalAnswers, PortalMe, ReadyOffer, SectionKey, Signatory } from './types';
 
 // Lifecycle batch 6b, wired (design §8, §9, §14): HR's joiner panel (forms, BGV, Mark joined, cancel), the
 // pre-boarding portal (T9-01), letter templates and signatories (PPL-29), the letters register (PPL-28), my letters,
@@ -698,10 +699,14 @@ export interface LettersRegisterScreenProps {
   rows: Letter[] | null;
   onDownload: (l: Letter, which: 'letter' | 'acceptance') => Promise<unknown>;
   verifyUrl: (code: string) => string;
+  /** 6e bulk wizard (PPL-28). */
+  bulk?: { types: Choice[]; people: Choice[]; onIssue: (letterType: string, personIds: string[]) => Promise<{ issued: number; failed: { personId: string; message: string }[] }> };
 }
 
 export function LettersRegisterScreen(p: LettersRegisterScreenProps) {
   const { busy, error, run } = useRun();
+  const [bulk, setBulk] = useState(false);
+  const [bulkDone, setBulkDone] = useState<string | null>(null);
   const columns: TableColumn<Letter>[] = [
     { key: 'person', header: 'Person', type: 'person', value: (r) => r.person ?? '', person: (r) => ({ name: r.person ?? '' }), width: 200, hideable: false },
     { key: 'title', header: 'Letter', value: (r) => r.title.split(': ')[0], width: 200 },
@@ -710,7 +715,31 @@ export function LettersRegisterScreen(p: LettersRegisterScreenProps) {
     { key: 'accepted', header: 'Accepted', value: (r) => r.acceptedAt ?? '', render: (r) => (!r.personSigns ? <Text tone="secondary">Not needed</Text> : r.acceptedAt ? <Text>{dateText(r.acceptedAt.slice(0, 10))}</Text> : <Text tone="secondary">Not yet</Text>), width: 130, optional: true },
   ];
   return (
-    <LivePage title="Letters" description="Every letter as issued, with its reference and public check code. An issued letter never changes; a correction replaces it." state={p.state} onRetry={p.onRetry} what="letters" grantedBy="your HR admin">
+    <LivePage
+      title="Letters"
+      description="Every letter as issued, with its reference and public check code. An issued letter never changes; a correction replaces it."
+      state={p.state}
+      onRetry={p.onRetry}
+      what="letters"
+      grantedBy="your HR admin"
+      actions={p.bulk ? <Button onClick={() => setBulk(true)}>Issue to many</Button> : undefined}
+    >
+      {bulkDone && (
+        <InlineAlert tone="success" title="Bulk letters">
+          {bulkDone}
+        </InlineAlert>
+      )}
+      {bulk && p.bulk && (
+        <BulkLetterDialog
+          types={p.bulk.types}
+          people={p.bulk.people}
+          onClose={() => setBulk(false)}
+          onIssue={async (t, ids) => {
+            const r = await p.bulk!.onIssue(t, ids);
+            setBulkDone(`${r.issued} issued${r.failed.length ? `; ${r.failed.length} not: ${r.failed[0].message}` : ''}.`);
+          }}
+        />
+      )}
       {error && (
         <InlineAlert tone="danger" title="Not downloaded">
           {error}
@@ -763,9 +792,13 @@ export interface LetterTemplatesScreenProps {
   onStatus: (t: LetterTemplate, status: 'active' | 'retired') => Promise<unknown>;
   onAddSignatory: (input: { legalEntityId: string; userId: string; title: string; image: File | null }) => Promise<unknown>;
   onRemoveSignatory: (s: Signatory) => Promise<unknown>;
+  /** 6e editor tab: write a letter in YukthiX, or edit one made here or a starter (a new draft version). */
+  onCompose?: (input: { letterType: string; name: string; requiresApproval: boolean; personSigns: boolean; paragraphs: EditorParagraph[] }) => Promise<unknown>;
+  onParagraphs?: (t: LetterTemplate) => Promise<{ letterType: string; name: string; requiresApproval: boolean; personSigns: boolean; paragraphs: EditorParagraph[] }>;
 }
 
 export function LetterTemplatesScreen(p: LetterTemplatesScreenProps) {
+  const [editing, setEditing] = useState<'new' | { letterType: string; name: string; requiresApproval: boolean; personSigns: boolean; paragraphs: EditorParagraph[] } | null>(null);
   const d = p.data;
   const [uploading, setUploading] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -785,9 +818,12 @@ export function LetterTemplatesScreen(p: LetterTemplatesScreenProps) {
       what="letter templates"
       grantedBy="your System Admin"
       actions={
-        <Button icon={Upload} onClick={() => setUploading(true)}>
-          Upload a Word letter
-        </Button>
+        <>
+          {p.onCompose && <Button onClick={() => setEditing('new')}>Write a letter</Button>}
+          <Button icon={Upload} onClick={() => setUploading(true)}>
+            Upload a Word letter
+          </Button>
+        </>
       }
     >
       {error && (
@@ -825,6 +861,11 @@ export function LetterTemplatesScreen(p: LetterTemplatesScreenProps) {
               <Button size="sm" loading={busy === `p-${r.id}`} onClick={() => void run(`p-${r.id}`, () => p.onPreview(r))}>
                 Sample preview
               </Button>
+              {p.onParagraphs && r.source !== 'upload' && (
+                <Button size="sm" loading={busy === `e-${r.id}`} onClick={() => void run(`e-${r.id}`, async () => setEditing(await p.onParagraphs!(r)))}>
+                  Edit
+                </Button>
+              )}
               <Button size="sm" loading={busy === `w-${r.id}`} onClick={() => void run(`w-${r.id}`, () => p.onWord(r))}>
                 Word file
               </Button>
@@ -841,6 +882,7 @@ export function LetterTemplatesScreen(p: LetterTemplatesScreenProps) {
           )}
         />
       )}
+      {editing && p.onCompose && <LetterEditor initial={editing === 'new' ? null : editing} fields={(p.data?.fields ?? []).map((f) => f.key)} onClose={() => setEditing(null)} onSave={p.onCompose} />}
       <Card title="Who signs letters" actions={<Button onClick={() => setAdding(true)}>Add a signatory</Button>}>
         {p.signatories.length ? (
           <ul className="yx-lif-list">
