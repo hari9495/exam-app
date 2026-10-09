@@ -1,4 +1,4 @@
-import { DayRule, instantAt } from './time-maths';
+import { DayRule, evaluateDay, instantAt } from './time-maths';
 import { compOffDays, daysWorked, eligibilityWindow, maternityChecks, mondayOf, overlapsNight, overtimeFor, patternCell, payOfDay, quarterOf, resolveDay, restConflicts, scheduledMinutes, workOnForPunch, type ShiftTimes } from './time-rules';
 
 const Z = 'Asia/Kolkata';
@@ -166,5 +166,16 @@ describe('what a day pays (§B6)', () => {
   it('finds the Monday', () => {
     expect(mondayOf('2026-10-11')).toBe('2026-10-05');
     expect(mondayOf('2026-10-05')).toBe('2026-10-05');
+  });
+});
+
+describe('Timesheet mode (D1, YX-AT-09)', () => {
+  const base = { on: '2026-10-06', zone: Z, weeklyOff: false, holiday: null, leave: null, punches: [], fix: null, rule: rule(570, 1110), now: new Date('2026-10-08T00:00:00Z') };
+  it('the day follows the approved hours; no approved timesheet is the exception', () => {
+    expect(evaluateDay({ ...base, mode: 'timesheet', timesheetMinutes: 480 }).status).toBe('present');
+    expect(evaluateDay({ ...base, mode: 'timesheet', timesheetMinutes: 300 }).status).toBe('half_day');
+    expect(evaluateDay({ ...base, mode: 'timesheet', timesheetMinutes: 0 }).status).toBe('absent');
+    expect(evaluateDay({ ...base, mode: 'timesheet', timesheetMinutes: null }).status).toBe('no_timesheet');
+    expect(evaluateDay({ ...base, mode: 'timesheet', timesheetMinutes: 480, weeklyOff: true }).status).toBe('weekly_off');
   });
 });

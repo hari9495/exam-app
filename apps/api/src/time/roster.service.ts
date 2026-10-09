@@ -303,7 +303,8 @@ export class RosterService implements OnModuleInit {
       const book = await ScheduleBook.load(tx, org);
       const ids = people.map((p) => p.id);
       await book.prime(ids, addDays(week, -1), to);
-      const entries = ids.length ? await tx.rosterEntry.findMany({ where: { organizationId: org, employeeId: { in: ids }, workOn: { gte: asDate(week), lte: asDate(to) } } }) : [];
+      // From the day before the week: its draft decides the rest before the first day.
+      const entries = ids.length ? await tx.rosterEntry.findMany({ where: { organizationId: org, employeeId: { in: ids }, workOn: { gte: asDate(addDays(week, -1)), lte: asDate(to) } } }) : [];
       const today = todayIst();
       const rows = [];
       for (const p of people) {
@@ -362,7 +363,7 @@ export class RosterService implements OnModuleInit {
           const t = book.shiftOn(s.id, week) ?? book.shiftOn(s.id, to);
           return { id: s.id, code: s.code, name: s.name, colour: s.colour, night: s.night, start: t?.shiftStart ?? null, end: t?.shiftEnd ?? null };
         }),
-        drafts: entries.filter((e) => e.draft !== null).length,
+        drafts: entries.filter((e) => e.draft !== null && dateOf(e.workOn) >= week).length,
         people: rows,
       };
     });
