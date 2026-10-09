@@ -730,9 +730,9 @@ The same engine, templates and task screens run four more journeys. YukthiX ship
 
 ### 7.6 "Your first 30 days" (6f, gap pass O2)
 
-- For a person whose **onboarding journey is active** and whose joining day was at most 30 days ago, the menu shows **My first 30 days** first, so it is their home page after sign-in. It goes away when the journey is done or the 30 days pass.
+- For a person whose **onboarding journey is active** and whose joining day was at most 30 days ago, sign-in lands on **My first 30 days**, the home link points to it and the Me menu lists it first. It goes away when the journey is done or the 30 days pass.
 - The page shows the day ("Day 6 of 30"), the manager and the buddy (6e), and the person's own open steps under **Today** (due today or late), **This week** (next 7 days) and **This month** (the rest up to day 30), plus how many steps are done. Each step opens the same task actions as My checklist tasks.
-- API: `GET /lifecycle/me/first-30-days` returns the card or `null`.
+- API: `GET /lifecycle/me/first-30-days` returns `{ card }`, with `card: null` when there is none. The joining starter gains one optional step of the person's own ("How things work here", a read step on day 1).
 
 ---
 
