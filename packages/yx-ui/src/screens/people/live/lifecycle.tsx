@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent } from 'react';
+import { useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
 import { Upload, UserPlus } from 'lucide-react';
 import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/choice';
@@ -31,11 +31,12 @@ const STATUS: Record<JourneyTask['status'], { label: string; tone: BadgeTone }> 
   skipped: { label: 'Skipped', tone: 'neutral' },
   cancelled: { label: 'Cancelled', tone: 'neutral' },
 };
+const LETTER_KIND_HINT_TEXT = 'Closes when the letter is issued';
 const KIND_HINT: Record<JourneyTask['kind'], string> = {
   tick: '',
   form: 'Form',
   document: 'Closes when the document is in',
-  letter: 'Letter',
+  letter: LETTER_KIND_HINT_TEXT,
   desk_request: 'Service Desk request',
 };
 const fromKey = (iso: string) => new Date(`${iso}T00:00:00`);
@@ -351,6 +352,9 @@ export interface TaskActions {
   onSkip: (task: JourneyTask, reason: string) => Promise<unknown>;
   /** HR uploads the asked-for document for the person (document tasks). */
   onUpload?: (task: JourneyTask, file: File) => Promise<unknown>;
+  /** HR previews (a download) and issues the letter a letter task asks for (6b); the task then closes by itself. */
+  onPreviewLetter?: (task: JourneyTask) => Promise<unknown>;
+  onIssueLetter?: (task: JourneyTask) => Promise<unknown>;
 }
 
 type Ask = { kind: 'done' | 'form' | 'letter' | 'skip' | 'upload'; task: JourneyTask };
@@ -428,6 +432,11 @@ function TaskTable({ tasks, today, showPerson, actions, onOpen, canUpload }: { t
                 {r.kind === 'form' ? 'Fill in' : r.kind === 'letter' ? 'Record the letter' : 'Mark done'}
               </Button>
             )}
+            {canUpload && actions.onIssueLetter && r.kind === 'letter' && r.status === 'open' && (
+              <Button size="sm" variant="primary" onClick={() => setAsk({ kind: 'letter', task: r })}>
+                Issue letter
+              </Button>
+            )}
             {canUpload && actions.onUpload && r.kind === 'document' && r.status === 'open' && (
               <Button size="sm" onClick={() => setAsk({ kind: 'upload', task: r })}>
                 Upload
@@ -461,7 +470,8 @@ function TaskDialog({ ask, actions, onClose }: { ask: Ask; actions: TaskActions;
     try {
       if (ask.kind === 'skip') await actions.onSkip(t, text.trim());
       else if (ask.kind === 'upload') await actions.onUpload!(t, file!);
-      else await actions.onComplete(t, ask.kind === 'form' ? { answers } : ask.kind === 'letter' ? { note: text.trim() } : text.trim() ? { note: text.trim() } : {});
+      else if (ask.kind === 'letter') await actions.onIssueLetter!(t);
+      else await actions.onComplete(t, ask.kind === 'form' ? { answers } : text.trim() ? { note: text.trim() } : {});
     } catch (e) {
       const errs = (e as { body?: { errors?: Record<string, string> } }).body?.errors;
       if (errs) setFormErrors(errs);
@@ -469,7 +479,9 @@ function TaskDialog({ ask, actions, onClose }: { ask: Ask; actions: TaskActions;
     }
     onClose();
   };
-  const ready = ask.kind === 'skip' ? text.trim().length >= 3 : ask.kind === 'letter' ? text.trim().length >= 3 : ask.kind === 'upload' ? Boolean(file) : true;
+  const ready = ask.kind === 'skip' ? text.trim().length >= 3 : ask.kind === 'upload' ? Boolean(file) : true;
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -480,12 +492,12 @@ function TaskDialog({ ask, actions, onClose }: { ask: Ask; actions: TaskActions;
         ask.kind === 'skip'
           ? 'The task is marked skipped with your reason. It stays on the checklist.'
           : ask.kind === 'letter'
-            ? 'Until YukthiX issues letters itself, record where this letter was issued. The reference is kept on the checklist.'
+            ? 'The letter is made from your company’s active template with the joiner’s details. Letters that need approval go to the signatory first. Once issued it never changes, and this task closes by itself.'
             : ask.kind === 'upload'
               ? 'The file is checked for viruses before anyone can open it. HR verifies it in the documents queue.'
               : 'The task is marked done with your name and the time.'
       }
-      confirmLabel={ask.kind === 'skip' ? 'Skip task' : ask.kind === 'upload' ? 'Upload' : ask.kind === 'form' ? 'Submit' : 'Mark done'}
+      confirmLabel={ask.kind === 'skip' ? 'Skip task' : ask.kind === 'upload' ? 'Upload' : ask.kind === 'form' ? 'Submit' : ask.kind === 'letter' ? 'Issue letter' : 'Mark done'}
       confirmDisabled={!ready}
       onConfirm={confirm}
     >
@@ -494,10 +506,30 @@ function TaskDialog({ ask, actions, onClose }: { ask: Ask; actions: TaskActions;
           <TextArea value={text} onChange={setText} rows={2} maxLength={300} />
         </FormField>
       )}
-      {ask.kind === 'letter' && (
-        <FormField id="tk-letter" label="Letter reference or where it was issued" required>
-          <TextField value={text} onChange={setText} maxLength={300} />
-        </FormField>
+      {ask.kind === 'letter' && actions.onPreviewLetter && (
+        <>
+          {previewError && (
+            <InlineAlert tone="danger" title="No preview">
+              {previewError}
+            </InlineAlert>
+          )}
+          <Button
+            loading={previewing}
+            onClick={async () => {
+              setPreviewing(true);
+              setPreviewError(null);
+              try {
+                await actions.onPreviewLetter!(t);
+              } catch (e) {
+                setPreviewError(errorText(e));
+              } finally {
+                setPreviewing(false);
+              }
+            }}
+          >
+            Download a preview
+          </Button>
+        </>
       )}
       {ask.kind === 'done' && (
         <FormField id="tk-note" label="Note" optional>
@@ -555,6 +587,8 @@ export interface JourneyScreenProps extends TaskActions {
   /** HR moves the joining day (YX-LC-13). */
   onPostpone?: (joiningOn: string, reason: string) => Promise<unknown>;
   onBack: () => void;
+  /** Joiner details and actions (6b: forms, BGV, Mark joined), shown above the tasks. */
+  children?: ReactNode;
 }
 
 export function JourneyScreen(p: JourneyScreenProps) {
@@ -582,6 +616,7 @@ export function JourneyScreen(p: JourneyScreenProps) {
             <Meter value={j.progress} max={100} label="Required tasks done" warnAt={101} dangerAt={101} valueText={`${j.progress}% of required tasks done`} />
             {j.status !== 'active' && <Badge tone={j.status === 'done' ? 'success' : 'neutral'}>{j.status === 'done' ? 'Checklist complete' : 'Checklist cancelled'}</Badge>}
           </Card>
+          {p.children}
           <Segment label="Show" value={show} onChange={setShow} options={[{ value: 'open', label: 'To do' }, { value: 'all', label: 'All tasks' }]} />
           <TaskTable tasks={tasks} today={j.today} actions={p} canUpload={j.canManage} />
         </>

@@ -230,6 +230,15 @@ export class LettersService implements OnModuleInit {
     });
   }
 
+  /** Who can be named a signatory: the company's active users (names only). */
+  async signatoryCandidates(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    this.requireKey(v, 'letter.signatory.manage');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) =>
+      (await tx.user.findMany({ where: { organizationId: c.organizationId, status: 'active' }, select: { id: true, name: true, email: true }, orderBy: { name: 'asc' }, take: 500 })).map((u) => ({ value: u.id, label: u.name || u.email })),
+    );
+  }
+
   async addSignatory(ctx: TenantContext, user: ScopeUser, dto: { legalEntityId: string; userId: string; title: string }, image: { originalname: string; buffer: Buffer } | undefined) {
     const v = await this.viewer(user);
     this.requireKey(v, 'letter.signatory.manage', dto.legalEntityId);

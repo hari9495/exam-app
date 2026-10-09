@@ -15,3 +15,19 @@ export {
   type TaskActions,
 } from './lifecycle';
 export { JourneyTemplatesScreen, type JourneyTemplatesScreenProps } from './templates';
+export {
+  JoinerPanel,
+  PortalSignIn,
+  PortalScreen,
+  MyLettersScreen,
+  LettersRegisterScreen,
+  LetterTemplatesScreen,
+  ReadyToOnboardScreen,
+  type JoinerPanelProps,
+  type PortalSignInProps,
+  type PortalScreenProps,
+  type MyLettersScreenProps,
+  type LettersRegisterScreenProps,
+  type LetterTemplatesScreenProps,
+  type ReadyToOnboardScreenProps,
+} from './joining';

@@ -87,6 +87,12 @@ export class LettersController {
     return this.letters.signatories(ctx, this.user(req));
   }
 
+  @Get('signatories/people')
+  @RequirePermissions('letter.signatory.manage')
+  signatoryPeople(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.letters.signatoryCandidates(ctx, this.user(req));
+  }
+
   @Post('signatories')
   @RequireStepUp()
   @RequirePermissions('letter.signatory.manage')

@@ -19,8 +19,8 @@ const BOARD: JoinerBoard = {
   today: '2026-10-09',
   canAdd: true,
   joiners: [
-    { id: 'j1', personId: 'p1', name: 'Sneha Pillai', email: null, joiningOn: '2026-10-14', status: 'invited', source: 'direct', location: 'Hosur plant', department: 'Production', designation: 'Production Supervisor', manager: 'Divya Raghunathan', journeyId: 'jr1', progress: 25, openTasks: 9, overdueTasks: 1, version: 1 },
-    { id: 'j2', personId: 'p2', name: 'Asha Rao', email: null, joiningOn: '2026-11-20', status: 'invited', source: 'import', location: 'Hosur plant', department: null, designation: null, manager: null, journeyId: 'jr2', progress: 0, openTasks: 12, overdueTasks: 0, version: 1 },
+    { id: 'j1', personId: 'p1', name: 'Sneha Pillai', email: null, joiningOn: '2026-10-14', status: 'invited', source: 'direct', location: 'Hosur plant', department: 'Production', designation: 'Production Supervisor', manager: 'Divya Raghunathan', journeyId: 'jr1', departmentId: 'd1', designationId: 'g1', employmentTypeId: 't1', progress: 25, openTasks: 9, overdueTasks: 1, version: 1 },
+    { id: 'j2', personId: 'p2', name: 'Asha Rao', email: null, joiningOn: '2026-11-20', status: 'invited', source: 'import', location: 'Hosur plant', department: null, designation: null, manager: null, journeyId: 'jr2', departmentId: null, designationId: null, employmentTypeId: null, progress: 0, openTasks: 12, overdueTasks: 0, version: 1 },
   ],
 };
 const task = (o: Partial<JourneyTask>): JourneyTask => ({
@@ -65,7 +65,7 @@ const JOURNEY: Journey = {
   today: '2026-10-09',
   tasks: [
     task({}),
-    task({ id: 't2', key: 'appointment_letter', title: 'Issue the appointment letter', kind: 'letter', ownerType: 'hr', ownerLabel: 'HR', assignee: 'Lakshmi Venkatesan', locked: true, dueOn: '2026-10-19' }),
+    task({ id: 't2', key: 'appointment_letter', title: 'Issue the appointment letter', kind: 'letter', letterType: 'appointment', canComplete: false, ownerType: 'hr', ownerLabel: 'HR', assignee: 'Lakshmi Venkatesan', locked: true, dueOn: '2026-10-19' }),
     task({ id: 't3', key: 'esic', title: 'Register with ESIC where ESI applies', ownerType: 'payroll', ownerLabel: 'Payroll', required: false, canSkip: true }),
     task({ id: 't4', key: 'collect_pan', title: 'Collect the PAN card', kind: 'document', documentType: 'pan_card', canComplete: false, dueOn: '2026-10-08', overdue: true }),
     task({ id: 't5', key: 'laptop', title: 'Laptop or work device', kind: 'desk_request', status: 'done', canComplete: false, completedBy: 'Farah Khan', link: { type: 'sd_ticket', id: 'x' } }),
@@ -113,14 +113,17 @@ describe('Checklist (PPL-13)', () => {
   it('shows owners and due dates; the law’s task cannot be skipped; an optional one needs a reason to skip', async () => {
     const onSkip = vi.fn(async () => ({}));
     const onComplete = vi.fn(async () => ({}));
-    render(<JourneyScreen state="ready" data={JOURNEY} onComplete={onComplete} onSkip={onSkip} onUpload={vi.fn()} onPostpone={vi.fn()} onBack={vi.fn()} />);
+    const onIssueLetter = vi.fn(async () => ({}));
+    render(<JourneyScreen state="ready" data={JOURNEY} onComplete={onComplete} onSkip={onSkip} onUpload={vi.fn()} onIssueLetter={onIssueLetter} onPreviewLetter={vi.fn()} onPostpone={vi.fn()} onBack={vi.fn()} />);
     const law = screen.getByRole('row', { name: /Issue the appointment letter/ });
     expect(within(law).getByText(/Required by law/)).toBeInTheDocument();
     expect(within(law).queryByRole('button', { name: 'Skip' })).toBeNull();
-    await ue.click(within(law).getByRole('button', { name: 'Record the letter' }));
+    // 6b: the letter is issued from here and the task closes by itself; it is never ticked by hand.
+    expect(within(law).queryByRole('button', { name: 'Mark done' })).toBeNull();
+    await ue.click(within(law).getByRole('button', { name: 'Issue letter' }));
     let dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Mark done' })).toBeDisabled();
-    await ue.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Issue letter' }));
+    expect(onIssueLetter).toHaveBeenCalledWith(expect.objectContaining({ id: 't2' }));
     await ue.click(within(screen.getByRole('row', { name: /ESIC/ })).getByRole('button', { name: 'Skip' }));
     dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('button', { name: 'Skip task' })).toBeDisabled();

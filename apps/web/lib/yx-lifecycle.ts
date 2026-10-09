@@ -37,9 +37,10 @@ export function useDocumentDownload() {
   };
 }
 
-/** Complete, skip and (HR, on one person's checklist) upload actions on checklist tasks. */
-export function useTaskActions(personId?: string | null): TaskActions {
+/** Complete, skip and (HR, on one person's checklist) upload, preview and issue actions on checklist tasks. */
+export function useTaskActions(personId?: string | null, subject?: { type: string; id: string } | null): TaskActions {
   const write = useLifeWrite();
+  const pdf = usePdfPost();
   return {
     onComplete: (t: JourneyTask, payload) => write('POST', `/lifecycle/tasks/${encodeURIComponent(t.id)}/complete`, { version: t.version, ...payload }),
     onSkip: (t: JourneyTask, reason: string) => write('POST', `/lifecycle/tasks/${encodeURIComponent(t.id)}/skip`, { version: t.version, reason }),
@@ -50,6 +51,8 @@ export function useTaskActions(personId?: string | null): TaskActions {
             form.append('file', file);
             return write('POST', `/documents/people/${encodeURIComponent(personId)}/${encodeURIComponent(t.documentType ?? '')}`, form);
           },
+          onPreviewLetter: (t: JourneyTask) => pdf('/letters/preview', { letterType: t.letterType, personId }, 'preview.pdf'),
+          onIssueLetter: (t: JourneyTask) => write('POST', '/letters/issue', { letterType: t.letterType, personId, ...(subject ? { subjectType: subject.type, subjectId: subject.id } : {}) }),
         }
       : {}),
   };
@@ -71,5 +74,34 @@ export function useJoinerPlaces(enabled: boolean): JoinerPlaces {
     designations: live(designations.data).map((m) => ({ value: m.id, label: m.name })),
     employmentTypes: live(types.data).map((m) => ({ value: m.id, label: m.name })),
     managers: (people.data ?? []).map((p) => ({ value: p.id, label: [p.name, p.designation].filter(Boolean).join(', ') })),
+  };
+}
+
+/** Downloads one of a letter's PDFs (the issued letter, or the sealed acceptance copy). */
+export function useLetterDownload() {
+  const { accessToken } = useAuth();
+  return async (letterId: string, which: 'letter' | 'acceptance', fallbackName: string) => {
+    const { blob, filename } = await apiFetchBlob(`/letters/${encodeURIComponent(letterId)}/file?which=${which}`, {}, accessToken ?? undefined);
+    saveBlob(blob, filename ?? fallbackName);
+  };
+}
+
+/** A POST that answers with a PDF (letter previews), saved as the browser's own download. */
+export function usePdfPost() {
+  const { accessToken } = useAuth();
+  return async (path: string, body: unknown, name: string) => {
+    const { blob, filename } = await apiFetchBlob(path, { method: 'POST', body: JSON.stringify(body) }, accessToken ?? undefined);
+    saveBlob(blob, filename ?? name);
+  };
+}
+
+/** A GET that answers with a file (template previews and Word files), saved as a download; refreshes lifecycle data. */
+export function useFileGet() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return async (path: string, name: string) => {
+    const { blob, filename } = await apiFetchBlob(path, {}, accessToken ?? undefined);
+    saveBlob(blob, filename ?? name);
+    await queryClient.invalidateQueries({ queryKey: ['lifecycle'] });
   };
 }

@@ -39,6 +39,8 @@ export interface JourneyTask {
   form: FormDef | null;
   /** Document tasks: the document type asked for. */
   documentType: string | null;
+  /** Letter tasks: the letter type HR issues (6b: the task closes from the issued letter). */
+  letterType?: string | null;
   answers: Record<string, unknown> | null;
   link: { type: string; id: string } | null;
   completedAt: string | null;
@@ -89,6 +91,9 @@ export interface Joiner {
   designation: string | null;
   manager: string | null;
   journeyId: string | null;
+  departmentId: string | null;
+  designationId: string | null;
+  employmentTypeId: string | null;
   progress: number;
   openTasks: number;
   overdueTasks: number;
@@ -179,4 +184,110 @@ export interface JourneyTemplate {
 export interface JourneyTemplates {
   templates: JourneyTemplate[];
   starters: { key: string; kind: 'onboarding' | 'offboarding'; name: string; summary: string; tasks: number; copied: boolean }[];
+}
+
+// ------------------------------------------------------------------------------------------ batch 6b
+
+export type SectionKey = 'personal' | 'identity' | 'bank' | 'emergency' | 'nominees' | 'tax';
+
+export interface PortalAnswers {
+  personal: { dateOfBirth: string; gender: string; addressLine1: string; addressLine2?: string; city: string; stateCode: string; postalCode: string } | null;
+  identity: { legalName: string; pan: string; aadhaar: string | null; uan: string | null } | null;
+  bank: { holderName: string; account: string; ifsc: string } | null;
+  emergency: { name: string; relation: string; phone: string } | null;
+  nominees: { name: string; relation: string; sharePercent: number }[] | null;
+  tax: { regime: 'new' | 'old' } | null;
+}
+
+export interface Letter {
+  id: string;
+  title: string;
+  letterType: string;
+  personId: string;
+  person?: string;
+  referenceNo: string | null;
+  verifyCode: string | null;
+  status: 'pending_approval' | 'rejected' | 'rendering' | 'awaiting_signature' | 'issued' | 'superseded' | 'withdrawn';
+  renderError: string | null;
+  issuedAt: string | null;
+  personSigns: boolean;
+  acceptedAt: string | null;
+  signature: { status: 'open' | 'signed' | 'declined' | 'cancelled'; signedAt: string | null } | null;
+  supersededById: string | null;
+}
+
+export interface PortalMe {
+  company: string;
+  employer: string;
+  name: string;
+  joiningOn: string;
+  location: string;
+  designation: string | null;
+  manager: string | null;
+  completion: number;
+  sections: Record<SectionKey, 'done' | 'to_do'>;
+  answers: PortalAnswers;
+  steppedUp: boolean;
+  documents: { typeKey: string; name: string; status: string; rejectReason: string | null; personUploads: boolean }[];
+  bgv: { notice: string; items: string[]; consented: boolean; consentedAt: string | null } | null;
+  letters: Letter[];
+  esignAccepted: boolean;
+}
+
+export interface JoinerForms {
+  id: string;
+  status: 'invited' | 'joined' | 'cancelled';
+  outcome: string | null;
+  completion: number;
+  sections: Record<SectionKey, 'done' | 'to_do'>;
+  answers: PortalAnswers;
+  identityAttested: boolean;
+  bgv: {
+    requested: boolean;
+    consent: { givenAt: string; withdrawnAt: string | null } | null;
+    checks: { id: string; checkType: string; status: string; gate: string; note: string | null; resultDocumentId: string | null; version: number }[];
+  } | null;
+  version: number;
+}
+
+export interface LetterTemplate {
+  id: string;
+  letterType: string;
+  name: string;
+  legalEntityId: string | null;
+  language: string;
+  source: 'upload' | 'starter';
+  fields: string[];
+  requiresApproval: boolean;
+  personSigns: boolean;
+  companyDsc: boolean;
+  version: number;
+  status: 'draft' | 'active' | 'retired';
+  previewViewed: boolean;
+  createdAt: string;
+}
+
+export interface LetterTemplates {
+  templates: LetterTemplate[];
+  starters: { letterType: string; name: string; added: boolean }[];
+  fields: { key: string; label: string; personal: boolean; flag: boolean }[];
+}
+
+export interface Signatory {
+  id: string;
+  legalEntityId: string;
+  userId: string;
+  name: string;
+  title: string;
+  hasSignatureImage: boolean;
+}
+
+export interface ReadyOffer {
+  offerId: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  startDate: string;
+  jobTitle: string;
+  personType: 'new' | 'ex_employee' | 'internal';
 }

@@ -46,6 +46,10 @@ const BULK: WorkspaceLink = { id: 'bulk-changes', label: 'Bulk changes', href: '
 const ONBOARDING: WorkspaceLink = { id: 'onboarding', label: 'Onboarding', href: '/yx/people/onboarding', group: 'People' };
 const MY_TASKS: WorkspaceLink = { id: 'my-tasks', label: 'My checklist tasks', href: '/yx/people/my-tasks', group: 'People' };
 const DOC_QUEUE: WorkspaceLink = { id: 'documents-verify', label: 'Documents to verify', href: '/yx/people/documents', group: 'People' };
+const LETTERS: WorkspaceLink = { id: 'letters', label: 'Letters', href: '/yx/people/letters', group: 'People' };
+const READY: WorkspaceLink = { id: 'ready-to-onboard', label: 'Ready to onboard', href: '/yx/people/ready-to-onboard', group: 'People' };
+const LETTER_TEMPLATES: WorkspaceLink = { id: 'letter-templates', label: 'Letter templates', href: '/yx/settings/letters', group: 'Organisation' };
+const MY_LETTERS: WorkspaceLink = { id: 'my-letters', label: 'My letters', href: '/yx/me/letters', group: 'Me' };
 const CHECKLISTS: WorkspaceLink = { id: 'checklists', label: 'Onboarding checklists', href: '/yx/settings/checklists', group: 'Organisation' };
 const PROFILE: WorkspaceLink = { id: 'profile', label: 'My profile', href: '/yx/people/profile', group: 'People' };
 const ID_CHANGES: WorkspaceLink = { id: 'profile-requests', label: 'Identity and bank changes', href: '/yx/people/profile-requests', group: 'People' };
@@ -168,18 +172,21 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...(hr || manager ? [PROBATION] : []),
     ...(bulk ? [BULK] : []),
     ...(perms.has('lifecycle.onboarding.view') || perms.has('lifecycle.onboarding.manage') ? [ONBOARDING] : []),
+    ...(perms.has('lifecycle.onboarding.manage') ? [READY] : []),
+    ...(perms.has('letter.issue') ? [LETTERS] : []),
     ...(myTasks.data?.tasks.length || perms.has('lifecycle.onboarding.manage') ? [MY_TASKS] : []),
     ...(perms.has('document.manage') ? [DOC_QUEUE] : []),
     ...(idDesk ? [ID_CHANGES] : []),
     ...org,
     ...(perms.has('lifecycle.journey.template.manage') ? [CHECKLISTS] : []),
+    ...(perms.has('letter.template.manage') || perms.has('letter.signatory.manage') ? [LETTER_TEMPLATES] : []),
     ...(perms.has('access.role.manage') ? [ACCESS] : []),
     // Read by anyone who reads the structure; changed with org.settings.manage (+ access.role.manage for guarded keys).
     ...(settingsAdmin ? [ACCESS_SETTINGS] : []),
   ];
   // P04 Q5: the company's email branding and wording, for those who hold the key (read-only in a support session).
   const emails = perms.has('notification.template.manage') || support ? [EMAILS] : [];
-  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee ? [PRIVACY] : [])];
+  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee ? [PRIVACY, MY_LETTERS] : [])];
   const supportEndsAt = support ? (decodeJwtPayload(accessToken)?.supportEndsAt as string | undefined) : undefined;
   const desk = support
     ? []
