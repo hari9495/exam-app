@@ -16,6 +16,7 @@ import { withNextHere } from '../../../lib/safe-next';
 import { useOrgBranding } from '../../../lib/hooks/useBranding';
 import { useYxPermissions } from '../../../lib/yx-org';
 import { usePeople } from '../../../lib/yx-people';
+import { useLife } from '../../../lib/yx-lifecycle';
 import type { TeamMember } from '@yukthix/ui/workforce';
 import { DeskHelpButton } from './desk-help';
 
@@ -41,6 +42,11 @@ const HISTORY: WorkspaceLink = { id: 'job-history', label: 'Job history', href: 
 const CHANGES: WorkspaceLink = { id: 'job-changes', label: 'Job changes', href: '/yx/people/changes', group: 'People' };
 const PROBATION: WorkspaceLink = { id: 'probation', label: 'Probation', href: '/yx/people/probation', group: 'People' };
 const BULK: WorkspaceLink = { id: 'bulk-changes', label: 'Bulk changes', href: '/yx/people/bulk-changes', group: 'People' };
+// M01 lifecycle batch 6a: joiners and checklists, checklist tasks for their owners, documents to verify, templates.
+const ONBOARDING: WorkspaceLink = { id: 'onboarding', label: 'Onboarding', href: '/yx/people/onboarding', group: 'People' };
+const MY_TASKS: WorkspaceLink = { id: 'my-tasks', label: 'My checklist tasks', href: '/yx/people/my-tasks', group: 'People' };
+const DOC_QUEUE: WorkspaceLink = { id: 'documents-verify', label: 'Documents to verify', href: '/yx/people/documents', group: 'People' };
+const CHECKLISTS: WorkspaceLink = { id: 'checklists', label: 'Onboarding checklists', href: '/yx/settings/checklists', group: 'Organisation' };
 const PROFILE: WorkspaceLink = { id: 'profile', label: 'My profile', href: '/yx/people/profile', group: 'People' };
 const ID_CHANGES: WorkspaceLink = { id: 'profile-requests', label: 'Identity and bank changes', href: '/yx/people/profile-requests', group: 'People' };
 const ACCESS: WorkspaceLink = { id: 'access', label: 'Roles & access', href: '/yx/settings/access', group: 'Access' };
@@ -115,6 +121,8 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   const people = usePeople<unknown[]>('/employees');
   // My team and team probations appear for managers (P02 Q2, M01 §3.10).
   const team = usePeople<{ managerId: string | null; members: TeamMember[] }>('/team');
+  // Checklist tasks reach IT, Admin and managers too (founder D1): the menu shows them to whoever has some.
+  const myTasks = useLife<{ tasks: unknown[] }>('/lifecycle/my-tasks');
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
   // A sensitive role with no second step: a reminder during the grace period, a pause after it.
@@ -159,8 +167,12 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...(hr || perms.has('request.raise_on_behalf') ? [CHANGES] : []),
     ...(hr || manager ? [PROBATION] : []),
     ...(bulk ? [BULK] : []),
+    ...(perms.has('lifecycle.onboarding.view') || perms.has('lifecycle.onboarding.manage') ? [ONBOARDING] : []),
+    ...(myTasks.data?.tasks.length || perms.has('lifecycle.onboarding.manage') ? [MY_TASKS] : []),
+    ...(perms.has('document.manage') ? [DOC_QUEUE] : []),
     ...(idDesk ? [ID_CHANGES] : []),
     ...org,
+    ...(perms.has('lifecycle.journey.template.manage') ? [CHECKLISTS] : []),
     ...(perms.has('access.role.manage') ? [ACCESS] : []),
     // Read by anyone who reads the structure; changed with org.settings.manage (+ access.role.manage for guarded keys).
     ...(settingsAdmin ? [ACCESS_SETTINGS] : []),
