@@ -1,0 +1,23 @@
+/* Wired time screens (M02 batch 1). Token-only; reuses the time kit (yx-tim-*) for cards, rows and the muster grid. */
+
+.yx-tim-live .yx-tim-grid { overflow: auto; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
+.yx-tim-live .yx-tim-grid table { border-collapse: collapse; font-size: var(--yx-text-xs); min-width: 100%; }
+.yx-tim-live .yx-tim-grid th, .yx-tim-live .yx-tim-grid td { border: var(--yx-border-width) solid var(--yx-color-border); padding: var(--yx-space-1); text-align: center; white-space: nowrap; min-width: var(--yx-space-8); }
+.yx-tim-live .yx-tim-grid thead th { position: sticky; top: 0; background: var(--yx-color-bg-subtle); font-weight: var(--yx-weight-medium); z-index: 1; }
+.yx-tim-live .yx-tim-grid th[scope="row"] { position: sticky; left: 0; background: var(--yx-color-bg-surface); text-align: left; padding: var(--yx-space-1) var(--yx-space-2); font-weight: var(--yx-weight-medium); z-index: 1; }
+.yx-tim-live .yx-tim-grid td[data-off] { background: var(--yx-color-bg-subtle); color: var(--yx-color-text-secondary); }
+.yx-tim-live .yx-tim-grid td[data-tone="success"] { background: var(--yx-color-success-bg); color: var(--yx-color-success-text); }
+.yx-tim-live .yx-tim-grid td[data-tone="danger"] { background: var(--yx-color-danger-bg); color: var(--yx-color-danger-text); }
+.yx-tim-live .yx-tim-grid td[data-tone="warning"] { background: var(--yx-color-warning-bg); color: var(--yx-color-warning-text); }
+.yx-tim-live .yx-tim-grid td[data-tone="info"] { background: var(--yx-color-info-bg); color: var(--yx-color-info-text); }
+.yx-tim-live .yx-tim-grid td[data-pending] { background: var(--yx-color-bg-surface); border-style: dashed; color: var(--yx-color-info-text); }
+.yx-tim-live .yx-tim-grid button.yx-tim-cell { all: unset; box-sizing: border-box; display: block; width: 100%; min-height: var(--yx-space-6); cursor: pointer; border-radius: var(--yx-radius-control); }
+.yx-tim-live .yx-tim-grid button.yx-tim-cell:hover { outline: var(--yx-border-width) solid var(--yx-color-border-strong); }
+.yx-tim-live .yx-tim-grid button.yx-tim-cell:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: 1px; }
+.yx-tim-live .yx-tim-table { border-collapse: collapse; width: 100%; }
+.yx-tim-live .yx-tim-table th, .yx-tim-live .yx-tim-table td { padding: var(--yx-space-2); text-align: left; border-bottom: var(--yx-border-width) solid var(--yx-color-border); font-size: var(--yx-text-sm); vertical-align: middle; }
+.yx-tim-live .yx-tim-table th { color: var(--yx-color-text-secondary); font-weight: var(--yx-weight-medium); }
+.yx-tim-live .yx-tim-table td.yx-tim-num { font-variant-numeric: tabular-nums; }
+.yx-tim-live .yx-tim-clock-now { display: flex; flex-wrap: wrap; gap: var(--yx-space-4); align-items: center; justify-content: space-between; }
+.yx-tim-live .yx-tim-legend { display: flex; flex-wrap: wrap; gap: var(--yx-space-2); }
+.yx-tim-live .yx-tim-days-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--yx-space-16) * 3)), 1fr)); gap: var(--yx-space-4); }

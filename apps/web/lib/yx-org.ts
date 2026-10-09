@@ -60,6 +60,11 @@ export const YX_KEYS = [
   'desk.chat.work',
   'desk.hr_summary.view',
   'desk.ticket.move',
+  // Step 4 time and leave: HR views in scope, balances, set-up.
+  'leave.settings.manage',
+  'leave.view',
+  'leave.balance.adjust',
+  'attendance.view',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 
