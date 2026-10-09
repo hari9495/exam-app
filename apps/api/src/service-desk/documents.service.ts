@@ -1,9 +1,10 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import { createHash, randomUUID } from 'crypto';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { Tx } from '../org-structure/org-structure.service';
+import { OtpService } from '../auth/otp.service';
 import { FormDef } from '../rules-engine/forms';
 import { AttachmentsService } from './attachments.service';
 import { DeskActor, SEAT_REQUIRED, audit, emit, requireDesk, requireSetUp, requireWork } from './desk-access';
@@ -85,6 +86,7 @@ export class DocumentsService {
     private readonly files: AttachmentsService,
     private readonly org: DeskOrgService,
     private readonly requesters: RequesterService,
+    private readonly otp: OtpService,
   ) {}
 
   private tx<T>(a: { ctx: DeskActor['ctx'] }, fn: (tx: Tx) => Promise<T>) {
@@ -243,12 +245,49 @@ export class DocumentsService {
     });
   }
 
-  // DECISION NEEDED: P05 asks click-to-accept with a one-time code for employee acceptance; this signs with the typed
-  // name inside a signed-in (MFA-aware) session and records the sign-in strength. Add the OTP step, or keep this?
-  /** Sign (or decline) in the app. Evidence: typed name, time, IP, device, sign-in strength, hash of the document. */
-  async sign(r: Requester, docId: string, dto: { decision: 'sign' | 'decline'; typedName: string; reason?: string }, meta: { ip: string | null; userAgent: string | null; assurance: string | null }) {
+  private signKey(org: string, docId: string, userId: string) {
+    return `sd:sign-otp:${org}:${docId}:${userId}`;
+  }
+
+  /** The signer and the document, or 404 (also for anyone who is not the signer). */
+  private async signable(tx: Tx, r: Requester, docId: string) {
+    const d = await tx.sdRequestDocument.findFirst({ where: { organizationId: r.ctx.organizationId, id: docId } });
+    if (!d) throw new NotFoundException('No such document.');
+    const { t, ids } = await this.requesters.ownTicket(tx, r, d.ticketId);
+    if (!d.signerPersonId || !ids.includes(d.signerPersonId)) throw new NotFoundException('No such document.');
+    return { d, t };
+  }
+
+  /**
+   * Founder decision 9 Oct 2026 (P05 click-to-accept with a one-time code): before a signature is taken, a 6-digit code
+   * goes to the signer's own sign-in email (5 minutes, 5 tries, P12 send limits). The code is bound to this document
+   * and this person; it proves the signer at the moment of signing, beside the signed-in session.
+   */
+  async signCode(r: Requester, docId: string, ip: string | null) {
     if (r.acting) throw new ForbiddenException('Not available while acting for someone else');
     const org = r.ctx.organizationId;
+    const email = await this.tx(r, async (tx) => {
+      const { d } = await this.signable(tx, r, docId);
+      if (d.status !== 'pending') throw new ConflictException('This document is no longer waiting for a signature.');
+      return (await tx.user.findFirstOrThrow({ where: { organizationId: org, id: r.userId }, select: { email: true } })).email;
+    });
+    await this.otp.reserveSend(`sd-sign:${org}:${r.userId}`, ip);
+    const code = await this.otp.issue(this.signKey(org, docId, r.userId), { docId, userId: r.userId });
+    this.otp.deliver('email', email, code, 'mfa', org, { userId: r.userId });
+    await this.tx(r, (tx) => audit(tx, { ctx: r.ctx, userId: r.userId }, 'desk.document.sign_code_sent', 'sd_request_document', docId, { channel: 'email' }));
+    const [name, domain] = email.split('@');
+    return { sent: true, to: `${name.slice(0, 2)}${'•'.repeat(Math.max(1, name.length - 2))}@${domain}`, minutes: 5 };
+  }
+
+  /** Sign (or decline) in the app. Evidence: typed name, the one-time code, time, IP, device, sign-in strength, hash. */
+  async sign(r: Requester, docId: string, dto: { decision: 'sign' | 'decline'; typedName: string; reason?: string; code?: string }, meta: { ip: string | null; userAgent: string | null; assurance: string | null }) {
+    if (r.acting) throw new ForbiddenException('Not available while acting for someone else');
+    const org = r.ctx.organizationId;
+    if (dto.decision === 'sign') {
+      // The code first (counted, constant time, single use): a wrong or old code stops here, before anything is read.
+      const ok = dto.code && (await this.otp.check(this.signKey(org, docId, r.userId), dto.code));
+      if (!ok || ok.docId !== docId || ok.userId !== r.userId) throw new UnauthorizedException({ statusCode: 401, code: 'SIGN_CODE_WRONG', message: 'That code is not right or has expired. Ask for a new code.' });
+    }
     const out = await this.tx(r, async (tx) => {
       const d = await tx.sdRequestDocument.findFirst({ where: { organizationId: org, id: docId } });
       if (!d) throw new NotFoundException('No such document.');
@@ -270,12 +309,12 @@ export class DocumentsService {
       const original = await this.files.get(d.blobKey);
       if (sha(original) !== d.sha256) throw new ConflictException('This document does not match what was made. Ask the desk to make it again.');
       const at = new Date();
-      const evidence = { method: 'in_app_typed_name', typedName: typed, signedByUserId: r.userId, signerPersonId: d.signerPersonId, at: at.toISOString(), ip: meta.ip, userAgent: meta.userAgent?.slice(0, 300) ?? null, signInStrength: meta.assurance, documentSha256: d.sha256 };
+      const evidence = { method: 'in_app_typed_name_and_code', codeSentTo: 'sign-in email', typedName: typed, signedByUserId: r.userId, signerPersonId: d.signerPersonId, at: at.toISOString(), ip: meta.ip, userAgent: meta.userAgent?.slice(0, 300) ?? null, signInStrength: meta.assurance, documentSha256: d.sha256 };
       // YX-DOC-12: the signed copy carries a completion page listing the signer and the evidence.
       const signed = await pdf(d.title, d.bodyText, (doc) => {
         doc.addPage().fontSize(14).text('Completion certificate');
         doc.moveDown().fontSize(10);
-        for (const [k, v] of [['Signed by', name], ['Typed name', typed], ['Signed at (UTC)', at.toISOString()], ['From', meta.ip ?? 'unknown'], ['Device', (meta.userAgent ?? 'unknown').slice(0, 200)], ['Sign-in strength', meta.assurance ?? 'unknown'], ['Document fingerprint (SHA-256)', d.sha256], ['Method', 'Signed in YukthiX by typing the name and confirming']]) doc.text(`${k}: ${v}`);
+        for (const [k, v] of [['Signed by', name], ['Typed name', typed], ['Signed at (UTC)', at.toISOString()], ['From', meta.ip ?? 'unknown'], ['Device', (meta.userAgent ?? 'unknown').slice(0, 200)], ['Sign-in strength', meta.assurance ?? 'unknown'], ['Document fingerprint (SHA-256)', d.sha256], ['Method', 'Signed in YukthiX by typing the name and a one-time code sent to the signer']]) doc.text(`${k}: ${v}`);
       });
       const signedHash = sha(signed);
       const signedKey = await this.files.put(`desk/${org}/${t.id}/doc-${d.id}-signed.pdf`, signed, 'application/pdf');

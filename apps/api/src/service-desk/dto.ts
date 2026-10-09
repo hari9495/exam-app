@@ -400,8 +400,8 @@ export class SearchQueryDto {
 }
 
 export class AgentStatusDto {
-  @IsIn(['available', 'away'])
-  status!: 'available' | 'away';
+  @IsIn(['available', 'away', 'busy', 'offline'])
+  status!: 'available' | 'away' | 'busy' | 'offline';
 
   @IsOptional()
   @ValidateIf((_, v) => v !== null)

@@ -325,6 +325,21 @@ export class PortalService {
     });
   }
 
+  /**
+   * SD-2.20: a help-widget user the company's own server vouched for (a signed token). They become (or are) an outside
+   * contact and get a portal session; colleagues never do (they sign in to YukthiX), and a turned-off contact stays out.
+   */
+  async vouchedSession(org: string, portalId: string, email: string, name: string, ip: string | null, widgetId: string) {
+    return this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, async (tx) => {
+      const person = await tx.person.findFirst({ where: { organizationId: org, status: 'active', primaryEmail: email }, select: { id: true } });
+      if (person && (await isInternal(tx, org, person.id))) throw new UnauthorizedException('This person signs in to YukthiX itself.');
+      const contacts = person ? await tx.sdCustomerContact.findMany({ where: { organizationId: org, personId: person.id }, select: { status: true } }) : [];
+      if (contacts.length && contacts.every((c) => c.status !== 'active')) throw new UnauthorizedException('This contact cannot sign in.');
+      const personId = (await ensureContact(tx, org, email, name, null)).personId;
+      return this.startSession(tx, org, portalId, personId, ip, `widget:${widgetId}`);
+    });
+  }
+
   private async startSession(tx: Tx, org: string, portalId: string, personId: string, ip: string | null, how: string) {
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + SESSION_HOURS * 3_600_000);
