@@ -199,6 +199,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     const ty = taxYearOf(month);
     const all = (await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true } })).map((e) => e.id);
     const elsewhere = await withPayScope(tx, all, () => tx.payslip.findMany({ where: { organizationId: org, employeeId: { in: ids }, status: 'approved', legalEntityId: { not: run.legalEntityId }, periodStart: { gte: new Date(`${ty.slice(0, 4)}-04-01T00:00:00Z`), lt: run.periodStart } }, distinct: ['employeeId'], select: { employeeId: true } }));
+    // 5e-D3: a treaty (DTAA) claim is handled by payroll by hand (no relief is worked out).
+    const treaty = await withPayScope(tx, all, () => tx.taxWorkspace.findMany({ where: { organizationId: org, employeeId: { in: ids }, taxYear: ty, dtaaCountry: { not: null } }, select: { employeeId: true, dtaaCountry: true } }));
+    for (const x of treaty) found.push({ employeeId: x.employeeId, checkKey: 'tax_dtaa', severity: 'warn', message: `${nameOf(x.employeeId)}: claims treaty (DTAA) relief with ${x.dtaaCountry}; TDS is worked out without it. Check it by hand.` });
     for (const x of elsewhere) found.push({ employeeId: x.employeeId, checkKey: 'tax_continuity', severity: 'info', message: `${nameOf(x.employeeId)}: pay from another entity of the company this tax year is counted for tax.` });
     const lop = await withPayScope(tx, [run.legalEntityId], () => tx.lopInput.findMany({ where: { organizationId: org, periodStart: run.periodStart, employeeId: { in: ids } } }));
     const days = Number(monthRange(month).to.slice(8));

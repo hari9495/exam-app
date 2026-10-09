@@ -373,7 +373,7 @@ export class PayDocumentsService {
       const d = await tx.payDocument.findFirst({ where: { verifyCode: code }, select: { organizationId: true, employeeId: true, kind: true, issuedAt: true, status: true } });
       if (!d || d.status === 'awaiting_signature') throw new NotFoundException('No document has this code.');
       const [org, emp] = await Promise.all([tx.organization.findUnique({ where: { id: d.organizationId }, select: { name: true } }), tx.employee.findFirst({ where: { organizationId: d.organizationId, id: d.employeeId }, select: { givenName: true, familyName: true, preferredName: true } })]);
-      return { company: org?.name ?? '', kind: KIND_LABEL[d.kind], name: emp ? [emp.preferredName ?? emp.givenName, emp.familyName].filter(Boolean).join(' ') : '', issuedOn: d.issuedAt.toISOString().slice(0, 10), status: d.status === 'issued' ? 'current' : 'superseded' };
+      return { company: org?.name ?? '', kind: KIND_LABEL[d.kind], name: emp ? [emp.preferredName ?? emp.givenName, emp.familyName].filter(Boolean).join(' ') : '', issuedOn: new Date(d.issuedAt.getTime() + 330 * 60_000).toISOString().slice(0, 10) /* the Indian date it was issued */, status: d.status === 'issued' ? 'current' : 'superseded' };
     });
   }
 

@@ -86,6 +86,13 @@ describe('income tax projection (PAY-5.02 … 5.07)', () => {
     expect(Number(projectTax(base({ ...low, resident: false }), TAX, { ...april, gross: '60000' }).tax.total)).toBeGreaterThan(0);
   });
 
+  it('5e-D3: a treaty (DTAA) claim changes nothing in the tax and is flagged for payroll', () => {
+    const plain = projectTax(base(), TAX, april);
+    const treaty = projectTax(base({ treatyCountry: 'US' }), TAX, april);
+    expect(treaty.tax.total).toBe(plain.tax.total);
+    expect(treaty.notes.join(' ')).toMatch(/Treaty \(DTAA\) claim with US: no treaty relief/);
+  });
+
   it('the law version picks the forms: 24Q and Form 16 to March 2026, Form 138 and Form 130 after', () => {
     expect([taxYearOf('2026-03'), lawVersionFor(taxYearOf('2026-03')), taxForms(lawVersionFor('2025-26'))]).toEqual(['2025-26', 'IT-1961', { certificate: 'form16', quarterlyReturn: '24Q' }]);
     expect([taxYearOf('2026-04'), lawVersionFor('2026-27'), taxForms('IT-2025')]).toEqual(['2026-27', 'IT-2025', { certificate: 'form130', quarterlyReturn: 'Form 138' }]);

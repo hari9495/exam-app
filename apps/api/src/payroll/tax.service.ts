@@ -143,6 +143,7 @@ export async function buildTaxInputs(
         pt: null,
       },
       deductions: decl.filter((l) => l.subjectKey !== 'hra').map((l) => ({ key: l.subjectKey, amount: counted(l).toFixed(2) })),
+      treatyCountry: ws?.dtaaCountry ?? null,
       rent: hra && hra.rentFrom && hra.rentTo && counted(hra).gt(0) ? { monthly: counted(hra).toFixed(2), from: hra.rentFrom, to: hra.rentTo, metro: !!hra.metro } : null,
     };
   });
@@ -210,6 +211,8 @@ export class TaxService {
       residentialStatus: ws.residentialStatus,
       trcValidTo: ws.trcValidTo ? dateOf(ws.trcValidTo) : null,
       dtaaCountry: ws.dtaaCountry,
+      // 5e-D3: no treaty relief is worked out; payroll handles a treaty claim by hand.
+      treatyHandledByHand: Boolean(ws.dtaaCountry),
       panStatus: ws.panStatus,
       otherIncome: ws.otherIncome,
       ...(dates && today

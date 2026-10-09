@@ -219,6 +219,14 @@ describe('Payroll batch 5e (income tax)', () => {
           .expect(200)
       ).body.otherIncome,
     ).toEqual([{ kind: 'interest', amount: '12000' }]);
+    // 5e-D3: a treaty claim is kept and flagged for payroll to handle by hand (a run check too).
+    expect(
+      (
+        await api('emp2', 'patch', '/tax/me/workspace')
+          .send({ dtaaCountry: 'SG', trcValidTo: `${Number(ty.slice(0, 4)) + 1}-03-31` })
+          .expect(200)
+      ).body,
+    ).toMatchObject({ dtaaCountry: 'SG', treatyHandledByHand: true });
     expect((await api('payAdminB', 'get', '/tax/workspaces').expect(200)).body).toEqual([]);
   });
 
@@ -275,6 +283,7 @@ describe('Payroll batch 5e (income tax)', () => {
   it('the payslip’s TDS is the tax sheet’s figure; the regime comparison runs the same function', async () => {
     ids.run = (await api('payAdmin', 'post', '/payroll/runs').send({ payGroupId: ids.group, month }).expect(201)).body.id;
     const ready = (await api('payAdmin', 'get', `/payroll/runs/${ids.run}/readiness`).expect(200)).body;
+    expect(ready.checks).toEqual(expect.arrayContaining([expect.objectContaining({ checkKey: 'tax_dtaa', employeeId: ids.emp2, severity: 'warn' })]));
     for (const b of ready.checks.filter((c: { checkKey: string }) => c.checkKey === 'bank_missing'))
       await api('payAdmin', 'post', `/payroll/runs/${ids.run}/validations/${b.id}/waive`).send({ reason: 'Bank details come next week' }).expect(200);
     await api('payAdmin', 'post', `/payroll/runs/${ids.run}/calculate`).expect(202);

@@ -51,6 +51,8 @@ export interface TaxInputs {
   future: { gross: string; basic: string; hra: string; pt?: string | null };
   deductions: { key: string; amount: string }[];
   rent: { monthly: string; from: string; to: string; metro: boolean } | null;
+  /** 5e-D3: a treaty (DTAA) claim; no treaty relief is worked out, payroll handles it by hand. */
+  treatyCountry?: string | null;
 }
 export interface ThisMonth {
   month: string;
@@ -126,6 +128,7 @@ export function projectTax(t: TaxInputs, rules: RuleSet[], m: ThisMonth): TaxPro
     notes.push(t.pan === 'missing' ? 'No PAN on file: tax is the higher of the slab tax and the no-PAN rate.' : 'Your PAN is inoperative: tax is the higher of the slab tax and the no-PAN rate.');
   }
   if (!t.resident) notes.push('Non-resident: no rebate.');
+  if (t.treatyCountry) notes.push(`Treaty (DTAA) claim with ${t.treatyCountry}: no treaty relief is applied here; payroll handles it by hand.`);
   if (t.past.otherEntities.length) notes.push('Pay from another entity of the company this year is counted.');
   if (t.proofStage === 'verified') notes.push('After the proof cut-off only verified proofs count; any extra tax is spread over the months left.');
   const deducted = D(t.past.tds).add(t.previous.tds);
