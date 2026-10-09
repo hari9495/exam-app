@@ -112,7 +112,7 @@ const EXPIRED_MESSAGE = 'Your sign-in has expired. Please sign in again.';
 // Lockout scope of the IP counter for passkey sign-ins that reach no account.
 export const PASSKEY_SCOPE = 'passkey';
 // Every passkey refusal (unknown or wrong passkey, method off for the company, staff ...): one answer.
-export const PASSKEY_FAILED = "We couldn't sign you in with that passkey. Try another way, or ask your admin.";
+export const PASSKEY_FAILED = "We couldn't sign you in with that passkey. If you see more than one, pick the one you made for this site, or sign in with your email.";
 
 const ACCOUNT_SELECT = {
   id: true,
