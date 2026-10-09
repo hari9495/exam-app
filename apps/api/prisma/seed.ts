@@ -343,6 +343,9 @@ async function main() {
       // Batch 5d: the generic NEFT / RTGS bank file format (decision §19 D1: generic first, then the pilot's bank).
       const bankFormats = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-bank-formats.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
       await loadRuleSets(tx, bankFormats, anand.id, reviewer.id);
+      // Batch 5e: income-tax deductions and exemptions (verify), by the same flow.
+      const taxRules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-tax.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
+      await loadRuleSets(tx, taxRules, anand.id, reviewer.id);
       for (const slug of ['demo-org', 'ganga-textiles']) {
         const org = await tx.organization.findUnique({ where: { slug }, select: { id: true } });
         if (org) {
