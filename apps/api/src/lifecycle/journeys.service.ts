@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
-import { ScopeUser, Viewer, buildViewer, covers, grantPeriods, started } from '../access/scope';
+import { ScopeUser, Viewer, buildViewer, covers, grantPeriods, started, tenantWide } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AutomationService } from '../rules-engine/automation.service';
 import { FormDef, checkAnswers, parseForm } from '../rules-engine/forms';
@@ -113,22 +113,34 @@ export class LifecycleJourneysService implements OnModuleInit {
     });
   }
 
-  /** Published catalogue items a desk_request task can raise (founder D1). */
-  async catalogItems(ctx: TenantContext) {
+  /** What the template editor offers: teams (user groups) and the published catalogue items a desk task can raise (D1). */
+  async templateOptions(ctx: TenantContext) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const items = await tx.sdCatalogItem.findMany({ where: { organizationId: c.organizationId, state: 'published' }, select: { id: true, name: true, deskId: true }, orderBy: { name: 'asc' } });
-      const desks = await tx.sdDesk.findMany({ where: { organizationId: c.organizationId, id: { in: items.map((i) => i.deskId) } }, select: { id: true, name: true } });
-      return items.map((i) => ({ id: i.id, name: i.name, desk: desks.find((d) => d.id === i.deskId)?.name ?? '' }));
+      const org = c.organizationId;
+      const teams = await tx.userGroup.findMany({ where: { organizationId: org }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
+      const items = await tx.sdCatalogItem.findMany({ where: { organizationId: org, state: 'published' }, select: { id: true, name: true, deskId: true }, orderBy: { name: 'asc' } });
+      const desks = await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: items.map((i) => i.deskId) } }, select: { id: true, name: true } });
+      return { teams: teams.map((t) => ({ value: t.id, label: t.name })), catalogItems: items.map((i) => ({ value: i.id, label: i.name, desk: desks.find((d) => d.id === i.deskId)?.name ?? '' })) };
     });
   }
 
-  async copyStarter(ctx: TenantContext, starterKey: string) {
-    const s = STARTERS.find((x) => x.key === starterKey);
-    if (!s) throw new NotFoundException('No such starter.');
-    return this.saveTemplate(ctx, null, { kind: s.kind, name: s.name.replace(' (starter)', ''), starterKey: s.key, active: true, tasks: s.tasks.map((t) => ({ ...t, config: t.config ?? {} })) });
+  /** A legal-entity grant edits only that entity's checklists; company-wide ones need the company-wide grant. */
+  private async mayEditTemplate(user: ScopeUser, legalEntityId: string | null | undefined) {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, ['lifecycle.journey.template.manage']);
+    if (tenantWide(v, 'lifecycle.journey.template.manage')) return;
+    if (legalEntityId && (v.scopes.get('lifecycle.journey.template.manage') ?? []).some((s) => s.type === 'legal_entity' && s.id === legalEntityId)) return;
+    throw new ForbiddenException(legalEntityId ? 'You cannot change checklists of that legal entity.' : 'Only a company-wide checklist admin can change company-wide checklists.');
   }
 
-  async saveTemplate(ctx: TenantContext, id: string | null, dto: { kind: 'onboarding' | 'offboarding'; name: string; legalEntityId?: string | null; locationId?: string | null; departmentId?: string | null; starterKey?: string; active: boolean; version?: number; tasks: TemplateTaskInput[] }) {
+  async copyStarter(ctx: TenantContext, user: ScopeUser, starterKey: string) {
+    await this.mayEditTemplate(user, null);
+    const s = STARTERS.find((x) => x.key === starterKey);
+    if (!s) throw new NotFoundException('No such starter.');
+    return this.saveTemplate(ctx, user, null, { kind: s.kind, name: s.name.replace(' (starter)', ''), starterKey: s.key, active: true, tasks: s.tasks.map((t) => ({ ...t, config: t.config ?? {} })) });
+  }
+
+  async saveTemplate(ctx: TenantContext, user: ScopeUser, id: string | null, dto: { kind: 'onboarding' | 'offboarding'; name: string; legalEntityId?: string | null; locationId?: string | null; departmentId?: string | null; starterKey?: string; active: boolean; version?: number; tasks: TemplateTaskInput[] }) {
+    await this.mayEditTemplate(user, dto.legalEntityId);
     const problem = checkTemplateTasks(dto.tasks.map((t) => ({ key: t.key, dependsOn: t.dependsOn ?? [], dueOffsetDays: t.dueOffsetDays })));
     if (problem) throw new BadRequestException(problem);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -137,6 +149,7 @@ export class LifecycleJourneysService implements OnModuleInit {
       if (id) {
         const cur = await tx.journeyTemplate.findFirst({ where: { organizationId: org, id } });
         if (!cur) throw new NotFoundException('No such checklist.');
+        if (cur.legalEntityId !== (dto.legalEntityId ?? null)) await this.mayEditTemplate(user, cur.legalEntityId);
         if (cur.kind !== dto.kind) throw new BadRequestException('A checklist cannot change between onboarding and offboarding.');
         const n = await tx.journeyTemplate.updateMany({ where: { organizationId: org, id, version: dto.version ?? -1 }, data: { name: dto.name, legalEntityId: dto.legalEntityId ?? null, locationId: dto.locationId ?? null, departmentId: dto.departmentId ?? null, active: dto.active, version: { increment: 1 } } });
         if (!n.count) throw new ConflictException('Someone else changed this checklist. Reload it.');
@@ -340,6 +353,7 @@ export class LifecycleJourneysService implements OnModuleInit {
       required: t.required,
       locked: t.locked,
       form: t.kind === 'form' ? ((t.config as { form?: FormDef }).form ?? null) : null,
+      documentType: t.kind === 'document' ? ((t.config as { typeKey?: string }).typeKey ?? null) : null,
       answers: t.answers ?? null,
       link: t.linkType ? { type: t.linkType, id: t.linkId } : null,
       completedAt: t.completedAt?.toISOString() ?? null,

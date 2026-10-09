@@ -38,28 +38,28 @@ export class LifecycleController {
     return this.journeys.templates(ctx);
   }
 
-  @Get('journey-templates/catalog-items')
+  @Get('journey-templates/options')
   @RequirePermissions('lifecycle.journey.template.manage')
-  catalogItems(@CurrentTenant() ctx: TenantContext) {
-    return this.journeys.catalogItems(ctx);
+  templateOptions(@CurrentTenant() ctx: TenantContext) {
+    return this.journeys.templateOptions(ctx);
   }
 
   @Post('journey-templates')
   @RequirePermissions('lifecycle.journey.template.manage')
-  createTemplate(@CurrentTenant() ctx: TenantContext, @Body() dto: TemplateDto) {
-    return this.journeys.saveTemplate(ctx, null, dto);
+  createTemplate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: TemplateDto) {
+    return this.journeys.saveTemplate(ctx, this.user(req), null, dto);
   }
 
   @Post('journey-templates/from-starter')
   @RequirePermissions('lifecycle.journey.template.manage')
-  fromStarter(@CurrentTenant() ctx: TenantContext, @Body() dto: StarterDto) {
-    return this.journeys.copyStarter(ctx, dto.starterKey);
+  fromStarter(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: StarterDto) {
+    return this.journeys.copyStarter(ctx, this.user(req), dto.starterKey);
   }
 
   @Put('journey-templates/:id')
   @RequirePermissions('lifecycle.journey.template.manage')
-  updateTemplate(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TemplateDto) {
-    return this.journeys.saveTemplate(ctx, id, dto);
+  updateTemplate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TemplateDto) {
+    return this.journeys.saveTemplate(ctx, this.user(req), id, dto);
   }
 
   // ------------------------------------------------------------------------------------------ joiners (LIFE-1.07)

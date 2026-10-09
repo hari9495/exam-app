@@ -44,8 +44,9 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   if (key === 'roster.manage') return GRANT_SCOPE_TYPES;
   if (key.startsWith('leave.') || key.startsWith('attendance.')) return GRANT_SCOPE_TYPES;
   // M01 lifecycle 6a: joiners (by planned place) and person documents are scoped like employee records; checklist
-  // templates are company configuration (tenant only, the default below).
+  // templates are company configuration, granted company-wide or per legal entity like org.settings.manage.
   if (key === 'lifecycle.onboarding.view' || key === 'lifecycle.onboarding.manage' || key.startsWith('document.')) return GRANT_SCOPE_TYPES;
+  if (key === 'lifecycle.journey.template.manage') return ['tenant', 'legal_entity'];
   // M03 batch 5a: payroll and its audit work per legal entity (the pay guard reads the granted entities); legal holds are company-wide.
   if (key.startsWith('payroll.') || key === 'audit.view' || key === 'audit.export') return ['tenant', 'legal_entity'];
   if (key.startsWith('org.') || key.startsWith('pay.range.')) return ['tenant', 'legal_entity'];
