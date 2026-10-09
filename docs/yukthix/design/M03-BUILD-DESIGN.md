@@ -1264,6 +1264,23 @@ Raised while building batch 5b and accepted on 9 Oct 2026. Built on `feat/yukthi
 | 5b-D2 | **Payslip languages:** Google Noto fonts (SIL OFL), cut to the glyphs used; Hindi, Tamil, Telugu and Kannada payslips; English stays the default. | A layout is English plus at most one regional language; labels print in that script with the English beside them. Fonts in `apps/api/assets/fonts` with `OFL.txt`, cut by `scripts/subset-payslip-fonts.ts` (fonttools); a test fails if a label loses a glyph. The wording is to be read once by a native speaker before go-live. |
 | 5b-D3 | **CCA roots** come from the official CCA source (cca.gov.in) with SHA-256 fingerprints, through the two-person publish flow. | Rule set `IN.CCA-ROOTS` (CCA India 2022 and CCA India 2022 SPL, fetched from the CCA's Root Certificate page) replaces the PEM config file of 5a-D1. A root whose bytes do not match its fingerprint is refused at publish and never trusted. `scripts/load-cca-roots.ts` reads the CCA's DER, PEM or base64 files. |
 
+### 19.3 Batch 5c build decisions (founder, accepted 9 Oct 2026)
+
+Raised while building batch 5c and accepted on 9 Oct 2026. Built on `feat/yukthix-payroll-5c`.
+
+| # | Decision | What is built |
+|---|---|---|
+| 5c-D1 | **Uttar Pradesh minimum wages and the Tamil Nadu dearness allowance wait for the official orders** from the compliance owner. They are open data items, not code. | Nothing to build: the tables load through `scripts/load-min-wages.ts` (two staff) when the orders arrive. Until then UP falls back to the national floor and Tamil Nadu is checked on its basic rate, with a warning on the breakup. Listed in the go-live checklist (item 14). |
+| 5c-D2 | **Skill class on the job:** unskilled, semi-skilled, skilled, highly skilled, effective-dated like the other job fields and visible to HR; the minimum-wage check uses it and falls back to the lowest class with a warning when it is empty. | `employee_assignments.skill_class` (checked values), set by a promotion, redesignation or correction through the P06 change history (approved by someone else). Shown on the person's job record and in the change drawer. The salary breakup and the payroll run use it; a missing or unlisted class uses the zone's lowest class, with a warning on the breakup and a run check (`skill_missing`). |
+| 5c-D3 | **Subsistence, maternity and injury figures stay marked "verify"** for the compliance owner and the partner CA. | They stay in `packs/in-run.json` marked verify; every payslip line from them carries the verify flag. Added to the go-live checklist (item 13). |
+
+### 19.4 Open data items
+
+| Item | Owner | Until it is loaded |
+|---|---|---|
+| Uttar Pradesh minimum wages (current schedules and VDA) | Compliance owner | The national floor wage is used for UP places. |
+| Tamil Nadu dearness allowance for the year (shops and commercial establishments) | Compliance owner | The check compares the basic rate and says the DA is missing. |
+
 ---
 
 ## 20. Go-live items this design adds
@@ -1290,3 +1307,4 @@ To add to [GO-LIVE-CHECKLIST.md](../GO-LIVE-CHECKLIST.md) (the coordinator edits
 | 9 Oct 2026 | First draft: payroll fit and run lifecycle, data model per batch, roles and keys, formula language, statutory engine, run engine, inputs, outputs, security, events, API, screens, test plan, 98 slices in 10 batches (5a–5j), stories to add, open decisions D1–D5. |
 | 9 Oct 2026 | §19.1: batch 5a build decisions 5a-D1 … 5a-D4 accepted (signed-PDF checks, frozen dates blocked, alumni email, pay guard on compensation in 5b). |
 | 9 Oct 2026 | §19.2: batch 5b build decisions 5b-D1 … 5b-D3 accepted (state minimum-wage tables, payslip languages, CCA roots as published data). |
+| 9 Oct 2026 | §19.3–19.4: batch 5c build decisions 5c-D1 … 5c-D3 accepted (UP minimum wages and TN DA as open data items, skill class on the job, run rules stay verify); open data items listed. |
