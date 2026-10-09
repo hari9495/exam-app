@@ -70,9 +70,9 @@ describe('Service Desk 3b-2 batch 2', () => {
   /** The 6-digit code in the newest email to this address (the one-time code is sent without waiting). */
   const codeSentTo = async (to: string) => {
     for (let i = 0; i < 40; i++) {
-      const calls = (app.get(EmailService).send as jest.Mock).mock.calls as [{ to?: string; text?: string; html?: string }][];
-      const hit = [...calls].reverse().find(([m]) => m.to === to && /\d{6}/.test(`${m.text ?? ''}`));
-      if (hit) return /(\d{6})/.exec(hit[0].text ?? '')![1];
+      const calls = (app.get(EmailService).send as jest.Mock).mock.calls as [{ to?: string; subject?: string }][];
+      const hit = [...calls].reverse().find(([m]) => m.to === to && /^\d{6} is your/.test(m.subject ?? ''));
+      if (hit) return hit[0].subject!.slice(0, 6);
       await new Promise((r) => setTimeout(r, 50));
     }
     throw new Error(`no code sent to ${to}`);
@@ -549,7 +549,7 @@ describe('Service Desk 3b-2 batch 2', () => {
       // The queue allows one chat per agent.
       const s2 = (await api('other', 'post', '/desk/my/chat').send({ queueId: ids.queue, answers: { device: 'phone' } }).expect(201)).body;
       ids.chat2 = s2.id;
-      expect((await api('agent', 'post', `/desk/chat/sessions/${s2.id}/accept`).expect(409)).body.message).toMatch(/most this queue allows/);
+      expect((await api('agent', 'post', `/desk/chat/sessions/${s2.id}/accept`).expect(409)).body.message).toMatch(/the most you take at once/);
       // Unresolved → a ticket with the transcript, owned by the agent.
       const out = (await api('agent', 'post', `/desk/chat/sessions/${s.id}/end`).send({ resolved: false }).expect(200)).body;
       const t = await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: out.ticket.id } }));
