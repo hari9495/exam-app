@@ -1,10 +1,12 @@
 import { Transform, Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { LIFE_EVENT_KINDS, type JourneyKind } from './starters';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
+
 const OWNERS = ['hr', 'it', 'admin', 'finance', 'payroll', 'manager', 'person', 'user', 'group', 'buddy'] as const;
-const KINDS = ['tick', 'form', 'document', 'letter', 'desk_request'] as const;
+const KINDS = ['tick', 'form', 'document', 'letter', 'desk_request', 'read', 'watch', 'survey'] as const;
 
 export class TemplateTaskDto {
   @Matches(/^[a-z][a-z0-9_]{0,39}$/)
@@ -54,8 +56,8 @@ export class TemplateTaskDto {
 }
 
 export class TemplateDto {
-  @IsIn(['onboarding', 'offboarding'])
-  kind!: 'onboarding' | 'offboarding';
+  @IsIn(['onboarding', 'offboarding', ...LIFE_EVENT_KINDS])
+  kind!: JourneyKind;
 
   @trim()
   @IsString()

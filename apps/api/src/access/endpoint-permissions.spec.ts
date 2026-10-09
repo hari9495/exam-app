@@ -35,7 +35,7 @@ const IMPLICIT: Record<string, string[]> = {
   OrgStructureController: ['reference'], // public reference data (states, regions)
   AccessController: [],
   // Lifecycle 6a: the services decide per joiner, checklist, task and document (self, assignee, manager, HR in scope).
-  LifecycleController: ['joiningSoon', 'joiner', 'myTasks', 'journey', 'complete', 'skip'],
+  LifecycleController: ['joiningSoon', 'joiner', 'myTasks', 'firstThirtyDays', 'journey', 'complete', 'skip'],
   DocumentsController: ['types', 'mine', 'upload', 'file'],
   // Batch 6b: my letters and my acceptance; the file route decides per letter (self, or HR in scope).
   LettersController: ['mine', 'file', 'signCode', 'sign', 'certificate'], // 6d: my own instant certificate
