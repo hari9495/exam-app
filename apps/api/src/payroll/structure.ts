@@ -76,7 +76,7 @@ export interface Breakup {
   codeWageAddBack: Prisma.Decimal;
   esiCovered: boolean;
   rounds: number;
-  minWage: { monthly: Prisma.Decimal; checked: Prisma.Decimal; below: boolean; floorApplied: boolean; daMissing: boolean; zone: string | null; skill: string | null; citation: Citation } | null;
+  minWage: { monthly: Prisma.Decimal; checked: Prisma.Decimal; below: boolean; floorApplied: boolean; daMissing: boolean; zone: string | null; skill: string | null; skillFallback: boolean; citation: Citation } | null;
   verify: boolean;
 }
 
@@ -233,7 +233,7 @@ export function breakup(a: { lines: Line[]; components: ComponentDef[]; options:
     const m = minWage(mwRs, mwFacts);
     used.push(mwRs);
     if (mwTable && !m.floorApplied) used.push(mwTable);
-    minW = { monthly: m.monthly, checked: gross, below: gross.lt(m.monthly), floorApplied: m.floorApplied, daMissing: m.daMissing, zone: m.state?.zone ?? null, skill: m.state?.skill ?? null, citation: m.citation };
+    minW = { monthly: m.monthly, checked: gross, below: gross.lt(m.monthly), floorApplied: m.floorApplied, daMissing: m.daMissing, zone: m.state?.zone ?? null, skill: m.state?.skill ?? null, skillFallback: !!m.state?.skillFallback, citation: m.citation };
   }
   return { lines, monthlyGross: gross, monthlyCtc: monthlyCtc.toDecimalPlaces(2), annualCtc: monthlyCtc.mul(12).toDecimalPlaces(2), codeWageAddBack: r.addBack, esiCovered: r.covered, rounds: r.round, minWage: minW, verify: used.some((x) => x.verify) };
 }
@@ -247,6 +247,6 @@ export const breakupJson = (b: Breakup) => ({
   codeWageAddBack: b.codeWageAddBack.toFixed(2),
   esiCovered: b.esiCovered,
   rounds: b.rounds,
-  minWage: b.minWage ? { monthly: b.minWage.monthly.toFixed(2), checked: b.minWage.checked.toFixed(2), below: b.minWage.below, floorApplied: b.minWage.floorApplied, daMissing: b.minWage.daMissing, zone: b.minWage.zone, skill: b.minWage.skill, citation: b.minWage.citation } : null,
+  minWage: b.minWage ? { monthly: b.minWage.monthly.toFixed(2), checked: b.minWage.checked.toFixed(2), below: b.minWage.below, floorApplied: b.minWage.floorApplied, daMissing: b.minWage.daMissing, zone: b.minWage.zone, skill: b.minWage.skill, skillFallback: b.minWage.skillFallback, citation: b.minWage.citation } : null,
   verify: b.verify,
 });

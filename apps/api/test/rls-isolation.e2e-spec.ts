@@ -13,7 +13,9 @@ const SUPPORT_EXCLUDED = ['compensations', 'grade_pay_ranges', 'employee_identif
 // Payroll batch 5a: every payroll table too (payroll-5a.e2e-spec.ts checks them, and the pay guard, from the catalogue).
 const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_reopen_requests', 'pay_corrections', 'device_backfills', 'held_punches', 'payroll_feed_rows', 'exchange_files', 'exchange_file_links', 'pay_documents', 'pay_document_counters', 'pay_document_nominees', 'pay_portal_sessions',
   // Batch 5b.
-  'statutory_registrations', 'entity_statutory_options', 'pay_groups', 'pay_group_members', 'pay_components', 'salary_templates', 'salary_template_versions', 'salary_template_lines', 'compensation_packages', 'compensation_lines', 'employee_statutory', 'establishment_coverage', 'pay_import_batches', 'opening_balances', 'as_paid_lines', 'previous_employment_income', 'payslip_layouts'];
+  'statutory_registrations', 'entity_statutory_options', 'pay_groups', 'pay_group_members', 'pay_components', 'salary_templates', 'salary_template_versions', 'salary_template_lines', 'compensation_packages', 'compensation_lines', 'employee_statutory', 'establishment_coverage', 'pay_import_batches', 'opening_balances', 'as_paid_lines', 'previous_employment_income', 'payslip_layouts',
+  // Batch 5c.
+  'payroll_runs', 'run_employees', 'run_validations', 'payslips', 'payslip_lines', 'payslip_snapshots', 'lop_inputs', 'one_time_pays', 'special_days', 'variance_flags', 'payroll_withholds', 'pay_carry_forwards', 'court_orders', 'loans', 'loan_repayments', 'loan_schedule_changes', 'journals', 'employee_cost_rates'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt((SUPPORT_EXCLUDED.includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 

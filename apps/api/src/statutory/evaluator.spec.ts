@@ -108,6 +108,14 @@ describe('state minimum-wage tables (5b-D1)', () => {
     expect(checkShape(ka).join()).toMatch(/do not add up/);
   });
 
+  it('5c-D2: the skill class on the job picks its rate; a missing or unknown class falls back to the lowest, flagged', () => {
+    const [ka, tn] = file.ruleSets;
+    expect(minWage(floor, { table: ka, zone: '1', skill: 'skilled' })).toMatchObject({ state: { skill: 'skilled', skillFallback: false } });
+    expect(minWage(floor, { table: ka, zone: '1', skill: 'skilled' }).monthly.toFixed(2)).toBe('18570.47');
+    expect(minWage(floor, { table: ka, zone: '1', skill: null })).toMatchObject({ state: { skill: 'unskilled', skillFallback: true } });
+    expect(minWage(floor, { table: tn, zone: 'A', skill: 'skilled' })).toMatchObject({ state: { skill: 'class_5', skillFallback: true } });
+  });
+
   it('the check uses the state rate for the place, else the national floor; a table without its DA says so', () => {
     const [ka, tn] = file.ruleSets;
     expect(minWage(floor, { table: ka, zone: '1' })).toMatchObject({ floorApplied: false, daMissing: false });
@@ -116,5 +124,15 @@ describe('state minimum-wage tables (5b-D1)', () => {
     expect(minWage(floor).floorApplied).toBe(true);
     expect(minWageTableFor(file.ruleSets, 'IN-KA', '2026-10-09')?.version).toBe('KA-SHOPS-2026-27');
     expect(minWageTableFor(file.ruleSets, 'IN-KA', '2027-04-01')).toBeNull();
+  });
+});
+
+describe('run rules (batch 5c pack)', () => {
+  it('subsistence, maternity and injury rule sets pass their checks and golden cases and are marked verify', () => {
+    const run = (JSON.parse(readFileSync(join(__dirname, 'packs', 'in-run.json'), 'utf8')) as { ruleSets: (RuleSet & { golden: GoldenCase[] })[] }).ruleSets;
+    for (const rs of run) {
+      expect({ v: rs.statute, problems: [...checkShape(rs), ...rs.golden.flatMap((g) => runGolden(rs, g))] }).toEqual({ v: rs.statute, problems: [] });
+      expect(rs.verify).toBe(true);
+    }
   });
 });

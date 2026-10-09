@@ -266,13 +266,14 @@ describe('Payroll batch 5b', () => {
     const b404 = await api('payAdminB', 'post', '/payroll/compensations/preview').send(body);
     expect([b404.status, b404.body.message]).toEqual([404, 'Not found']);
     const p = (await api('payAdmin', 'post', '/payroll/compensations/preview').send(body).expect(200)).body;
-    expect(p).toMatchObject({ monthlyCtc: '60500.00', warnings: [] });
+    // 5c-D2: no skill class on the job yet, so the state table's lowest class is used, with a warning.
+    expect(p).toMatchObject({ monthlyCtc: '60500.00', warnings: [expect.stringMatching(/No skill class/)] });
     expect(p.lines.find((l: { code: string }) => l.code === 'pf_employee')).toMatchObject({ monthly: '1800.00', citation: { statute: 'IN.PF' } });
 
     // Another entity's template is refused.
     expect((await api('payAdmin', 'post', '/payroll/compensations/preview').send({ ...body, templateVersionId: ids.versionA2 }).expect(400)).body.message).toMatch(/legal entity/);
     // YX-PAY-22: below the floor wage is a plain warning on the breakup.
-    expect((await api('payAdmin', 'post', '/payroll/compensations/preview').send({ ...body, annualCtc: '48000' }).expect(200)).body.warnings).toEqual([expect.stringMatching(/minimum or floor wage/)]);
+    expect((await api('payAdmin', 'post', '/payroll/compensations/preview').send({ ...body, annualCtc: '48000' }).expect(200)).body.warnings).toEqual([expect.stringMatching(/minimum or floor wage/), expect.stringMatching(/No skill class/)]);
     // YX-HIS-12 retro tiers: a past date needs the retro key (payroll admins do not hold it).
     if (thisMonth < today) expect((await api('payAdmin', 'post', `/payroll/employees/${ids.empEmp}/compensation-changes`).send({ ...body, effectiveDate: thisMonth, reason: 'Back-dated' }).expect(403)).body.message).toMatch(/retro/);
     // Their own pay is someone else's to change.

@@ -124,11 +124,15 @@ export interface MinWageRate {
  */
 export function minWageTable(rs: RuleSet, i: { zone?: string | null; skill?: string | null }) {
   const v = need(rs, 'min_wage_table');
-  const rates = (v.rates as MinWageRate[]).filter((r) => (!i.zone || r.zone === i.zone) && (!i.skill || r.skill === i.skill));
-  if (!rates.length) throw new StatutoryError(`No ${rs.jurisdiction} rate for zone ${i.zone ?? 'any'} and skill ${i.skill ?? 'any'}`);
+  const inZone = (v.rates as MinWageRate[]).filter((r) => !i.zone || r.zone === i.zone);
+  const exact = inZone.filter((r) => !i.skill || r.skill === i.skill);
+  // 5c-D2: a skill class the table does not list (or none on record) falls back to the zone's lowest class, and says so.
+  const skillFallback = !i.skill || !exact.length;
+  const rates = exact.length ? exact : inZone;
+  if (!rates.length) throw new StatutoryError(`No ${rs.jurisdiction} rate for zone ${i.zone ?? 'any'}`);
   const total = (r: MinWageRate) => D(r.basicMonthly).add(r.vdaMonthly ?? 0);
   const low = rates.reduce((a, b) => (total(b).lt(total(a)) ? b : a));
-  return { monthly: total(low), basic: D(low.basicMonthly), vda: low.vdaMonthly === null ? null : D(low.vdaMonthly), daMissing: low.vdaMonthly === null, zone: low.zone, skill: low.skill, citation: cite(rs) };
+  return { monthly: total(low), basic: D(low.basicMonthly), vda: low.vdaMonthly === null ? null : D(low.vdaMonthly), daMissing: low.vdaMonthly === null, zone: low.zone, skill: low.skill, skillFallback, citation: cite(rs) };
 }
 
 /**
@@ -142,6 +146,29 @@ export function minWage(rs: RuleSet, i: { table?: RuleSet | null; zone?: string 
   const useState = !!st && st.monthly.gt(floorMonthly);
   const daily = useState ? st!.monthly.div(Number(i.table!.values.dailyDivisor ?? v.monthDays)).toDecimalPlaces(2) : D(v.floorDaily as string);
   return { daily, monthly: useState ? st!.monthly : floorMonthly, floorApplied: !useState, daMissing: !!st?.daMissing, state: st, citation: useState ? st!.citation : cite(rs) };
+}
+
+/** Subsistence allowance for days of suspension (PAY-3.13): a lower rate for the first days of the suspension, then higher. */
+export function subsistence(rs: RuleSet, i: { dailyWage: Prisma.Decimal.Value; days: number; daysBefore: number }) {
+  const v = need(rs, 'subsistence');
+  const first = Math.max(0, Math.min(i.days, Number(v.firstDays) - i.daysBefore));
+  const amount = money(D(i.dailyWage).mul(D(first).mul(D(v.firstRate as string)).add(D(i.days - first).mul(D(v.laterRate as string)))));
+  return { amount, firstDays: first, laterDays: i.days - first, citation: cite(rs) };
+}
+
+/** Maternity benefit paid by the employer (PAY-3.14): the average daily wage for each day, when ESI does not cover her. */
+export function maternity(rs: RuleSet, i: { averageDailyWage: Prisma.Decimal.Value; days: number; esiCovered: boolean }) {
+  const v = need(rs, 'maternity');
+  if (i.esiCovered) return { amount: ZERO, payer: 'esi', citation: cite(rs) };
+  return { amount: money(D(i.averageDailyWage).mul(i.days).mul(D(v.rate as string))), payer: 'employer', citation: cite(rs) };
+}
+
+/** Injury pay for temporary disablement (PAY-3.14): half-monthly payments of a share of monthly wages, unless ESI covers it. */
+export function injury(rs: RuleSet, i: { monthlyWage: Prisma.Decimal.Value; days: number; monthDays: number; esiCovered: boolean }) {
+  const v = need(rs, 'injury');
+  if (i.esiCovered) return { amount: ZERO, payer: 'esi', citation: cite(rs) };
+  const perDay = D(i.monthlyWage).mul(D(v.halfMonthlyRate as string)).mul(2).div(i.monthDays);
+  return { amount: money(perDay.mul(i.days)), payer: 'employer', citation: cite(rs) };
 }
 
 /** Is a root (by its SHA-256 fingerprint) in a trusted-roots rule set (5b-D3)? */
@@ -325,7 +352,7 @@ export interface GoldenCase {
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
 }
-const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, subsistence, maternity, injury, code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
 
 /** Runs one golden case; returns the fields that differ (empty when it passes). */
 export function runGolden(rs: RuleSet, g: GoldenCase): string[] {

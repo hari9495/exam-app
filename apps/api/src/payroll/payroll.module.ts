@@ -12,6 +12,9 @@ import { ExchangeFilesService } from './exchange-files.service';
 import { PayFileStore } from './pay-file-store';
 import { PayrollController, PublicPayController } from './payroll.controller';
 import { Payroll5bController } from './payroll-5b.controller';
+import { Payroll5cController } from './payroll-5c.controller';
+import { PayRunsService } from './runs.service';
+import { PayInputsService } from './inputs.service';
 import { PayImportsService } from './imports.service';
 import { PaySetupService } from './setup.service';
 import { PayStructuresService } from './structures.service';
@@ -24,8 +27,8 @@ import { PayPeriodsService } from './periods.service';
 // reopen request (the step-4 unlock became it) and nothing here depends on time's services.
 @Module({
   imports: [AuditModule, CryptoModule, StorageModule, WorkflowModule, NotificationsModule, AuthModule, EmployeeHistoryModule],
-  controllers: [PayrollController, PublicPayController, Payroll5bController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayrollJobs],
+  controllers: [PayrollController, PublicPayController, Payroll5bController, Payroll5cController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayRunsService, PayInputsService, PayrollJobs],
   exports: [PayPeriodsService, PayDocumentsService, ExchangeFilesService],
 })
 export class PayrollModule {}

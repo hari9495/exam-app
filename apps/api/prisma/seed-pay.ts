@@ -48,10 +48,20 @@ export const PAY_PERMISSIONS = [
   { key: 'payroll.template.manage', description: 'Build salary templates and their versions' },
   { key: 'payroll.import.run', description: 'Import opening balances, as-paid lines and previous-employer income for the legal entities in scope' },
   { key: 'platform.statutory.manage', description: 'Draft and publish statutory rule sets (YukthiX staff; the publisher is never the drafter)' },
+  // Batch 5c (also in the payroll_5c migration).
+  { key: 'payroll.run.view', description: 'See payroll runs, payslips and their workings for the legal entities in scope' },
+  { key: 'payroll.run.prepare', description: 'Create, calculate, review, submit and void payroll runs for the legal entities in scope' },
+  { key: 'payroll.run.approve', description: 'Approve payroll runs prepared by others; approving locks the month (needs a fresh second sign-in step)' },
+  { key: 'payroll.input.manage', description: 'Enter loss-of-pay days, one-time pay, special days and court orders for the legal entities in scope' },
+  { key: 'payroll.hold.manage', description: 'Hold and release net pay' },
+  { key: 'payroll.loan.manage', description: 'Manage loans and salary advances and change their schedules' },
+  { key: 'payroll.loan.approve', description: 'Approve loan and salary-advance requests of others' },
+  { key: 'payroll.journal.export', description: 'See and export payroll journals' },
+  { key: 'payroll.cost_rate.view', description: 'See employee cost rates (Restricted)' },
 ];
-export const PAYROLL_APPROVER = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', 'payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release'];
-export const PAYROLL_ADMIN_5A = ['employee.change.manage', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view', 'payroll.setup.manage', 'payroll.statutory.setup', 'payroll.component.manage', 'payroll.template.manage', 'payroll.import.run'];
-export const FINANCE_APPROVER = ['org:view', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release'];
+export const PAYROLL_APPROVER = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', 'payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve'];
+export const PAYROLL_ADMIN_5A = ['employee.change.manage', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view', 'payroll.setup.manage', 'payroll.statutory.setup', 'payroll.component.manage', 'payroll.template.manage', 'payroll.import.run', 'payroll.run.view', 'payroll.run.prepare', 'payroll.input.manage', 'payroll.hold.manage', 'payroll.loan.manage', 'payroll.journal.export', 'payroll.cost_rate.view'];
+export const FINANCE_APPROVER = ['org:view', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view'];
 
 export async function seedPay(tx: Tx, organizationId: string, passwordHash: string) {
   const org = { organizationId };
