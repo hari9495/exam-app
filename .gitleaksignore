@@ -12,3 +12,5 @@
 544702e8ec3366aea27b01de848e406fa13f326e:apps/web/app/yx/yx-pages.test.tsx:generic-api-key:353
 # Reviewed false positive (9 Oct 2026): the textbook demo TOTP secret (base32 "Hello!" + KAVERI) in yx-ui sample data, not a real key.
 d6ea28d461acbf37388c718a056dfbe19d6d2ddc:packages/yx-ui/src/screens/auth/data.ts:generic-api-key:42
+# Reviewed false positive (9 Oct 2026): the fixed HMAC test secret of the batch-3 webhook signature unit tests.
+85da18b09ce51fc591741ba96fe3d4e43c744687:apps/api/src/service-desk/esm3.spec.ts:generic-api-key:16
