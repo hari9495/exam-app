@@ -13,15 +13,20 @@ import { JoinersService } from './joiners.service';
 import { JoiningService } from './joining.service';
 import { LifecycleJourneysService } from './journeys.service';
 import { LifecycleController } from './lifecycle.controller';
+import { ExitsController } from './exits.controller';
+import { ExitsService } from './exits.service';
+import { OffboardingService } from './offboarding.service';
+import { WorkflowModule } from '../workflow/workflow.module';
 import { LifecycleJobs } from './lifecycle-jobs';
 import { PreboardingPortalController } from './portal.controller';
 import { PreboardingPortalService } from './portal.service';
 
-// M01 lifecycle: checklists and joiners (6a); the pre-boarding portal, joining, BGV and the ATS hand-off (6b).
+// M01 lifecycle: checklists and joiners (6a); the pre-boarding portal, joining, BGV and the ATS hand-off (6b); probation
+// reviews, resignations, company exits, clearance, exit interviews and assets (6c).
 @Module({
-  imports: [NotificationsModule, RulesEngineModule, ServiceDeskModule, DocumentsModule, AuthModule, CryptoModule, EmailModule, EmployeeHistoryModule, PeopleModule],
-  controllers: [LifecycleController, PreboardingPortalController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs],
+  imports: [WorkflowModule, NotificationsModule, RulesEngineModule, ServiceDeskModule, DocumentsModule, AuthModule, CryptoModule, EmailModule, EmployeeHistoryModule, PeopleModule],
+  controllers: [LifecycleController, PreboardingPortalController, ExitsController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService],
   exports: [LifecycleJourneysService],
 })
 export class LifecycleModule {}

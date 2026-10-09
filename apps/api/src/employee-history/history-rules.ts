@@ -4,7 +4,9 @@ import { addDays } from '../org-structure/org-validation';
 // P06 effective-dated history: the change types, which facts each may touch, and the fold that turns an
 // ordered list of changes into dated rows. Pure functions; the service does the database work.
 
-export const CHANGE_TYPES = ['join', 'promotion', 'transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction'] as const;
+export const CHANGE_TYPES = ['join', 'promotion', 'transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction', 'notice', 'notice_withdrawal'] as const;
+/** System changes made by the exit flow (lifecycle 6c), never requested by hand. */
+export const SYSTEM_CHANGE_TYPES: readonly ChangeType[] = ['notice', 'notice_withdrawal'];
 export type ChangeType = (typeof CHANGE_TYPES)[number];
 
 export const EMPLOYMENT_STATUSES = ['probation', 'confirmed', 'notice'] as const;
@@ -73,6 +75,9 @@ export const TYPE_RULES: Readonly<Record<ChangeType, TypeRule>> = {
   confirmation: { status: ['confirmed'], requires: ['status'] },
   // P06 §4.5: a correction may rewrite any fact from its date.
   correction: { assignment: 'all', status: EMPLOYMENT_STATUSES, compensation: true, requires: [] },
+  // M01 §10.2: an accepted resignation puts the employment on notice; a withdrawal ends it (back to the status before).
+  notice: { status: ['notice'], requires: ['status'] },
+  notice_withdrawal: { status: ['probation', 'confirmed'], requires: ['status'] },
 };
 
 /** The problem with a payload for its type, or null. */

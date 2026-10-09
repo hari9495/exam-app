@@ -49,6 +49,11 @@ describe('notification catalog', () => {
       'letter.ready',
       'letter.signed',
       'preboarding.completed',
+      'exit.case.update',
+      'exit.clearance.assigned',
+      'exit.interview.sent',
+      'asset.assigned',
+      'probation.review.done',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

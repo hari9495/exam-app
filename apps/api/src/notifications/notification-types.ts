@@ -52,6 +52,12 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'letter.ready', group: 'assignments', label: 'A letter for you is ready' },
   { type: 'letter.signed', group: 'reminders', label: 'A joiner or employee accepted a letter' },
   { type: 'preboarding.completed', group: 'reminders', label: 'A joiner finished their pre-boarding forms' },
+  // Batch 6c: exits, clearance, exit interviews, assets, probation reviews.
+  { type: 'exit.case.update', group: 'reminders', label: 'A resignation or exit you are part of moved on (received, accepted, withdrawn, new last day)' },
+  { type: 'exit.clearance.assigned', group: 'assignments', label: 'A clearance item for a leaver was given to you or your team' },
+  { type: 'exit.interview.sent', group: 'reminders', label: 'Your exit interview is ready' },
+  { type: 'asset.assigned', group: 'assignments', label: 'A company asset was issued to you' },
+  { type: 'probation.review.done', group: 'reminders', label: 'A manager reviewed a probation' },
 ];
 
 export const NOTIFICATION_TYPE_BY_KEY = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));

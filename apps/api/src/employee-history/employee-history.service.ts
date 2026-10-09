@@ -920,6 +920,8 @@ export class EmployeeHistoryService {
     await audit(tx, c, 'employee.change.approved', 'employee', ch.employeeId, { changeId: ch.id, changeType: ch.changeType, effectiveDate: isoDate(ch.effectiveDate) });
     // YX-HIS-05: the employee.change.effective event (P04 notifications, P09 metrics, P02 grants).
     if (effectiveNow) await audit(tx, c, 'employee.change.effective', 'employee', ch.employeeId, { changeId: ch.id, changeType: ch.changeType, effectiveDate: isoDate(ch.effectiveDate) });
+    // Lifecycle 6c (§12.1): a probation ends with an approved confirmation.
+    if (ch.changeType === 'confirmation') await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.probation.confirmed', payload: { employeeId: ch.employeeId, employmentId: ch.employmentId, effectiveDate: isoDate(ch.effectiveDate) } } });
     // P06 §4.5: the downstream signal for payroll arrears / recoveries.
     if (impact.retro) await audit(tx, c, 'employee.change.retro_applied', 'employee', ch.employeeId, { changeId: ch.id, ...(impact.retro as object) });
   }

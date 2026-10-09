@@ -46,6 +46,10 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'letter.template.manage',
   'letter.issue',
   'letter.signatory.manage',
+  // Batch 6c: exit cases, HR-only exit facts and confidential exit-interview answers.
+  'lifecycle.exit.view',
+  'lifecycle.exit.manage',
+  'lifecycle.exit.confidential.view',
   'payroll.period.view',
   'payroll.period.reopen',
   'payroll.period.reopen.approve',

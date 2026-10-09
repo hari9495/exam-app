@@ -49,6 +49,9 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   if (key === 'lifecycle.journey.template.manage' || key === 'letter.template.manage' || key === 'letter.signatory.manage') return ['tenant', 'legal_entity'];
   // Batch 6b: background checks and letters are about people, scoped like their records.
   if (key === 'lifecycle.bgv.manage' || key === 'letter.issue') return GRANT_SCOPE_TYPES;
+  // Batch 6c: exit cases are about people, scoped like their records; the asset list is kept per entity or location.
+  if (key.startsWith('lifecycle.exit.')) return GRANT_SCOPE_TYPES;
+  if (key === 'asset.view' || key === 'asset.manage') return ['tenant', 'legal_entity', 'location'];
   // M03 batch 5a: payroll and its audit work per legal entity (the pay guard reads the granted entities); legal holds are company-wide.
   if (key.startsWith('payroll.') || key === 'audit.view' || key === 'audit.export') return ['tenant', 'legal_entity'];
   if (key.startsWith('org.') || key.startsWith('pay.range.')) return ['tenant', 'legal_entity'];

@@ -22,6 +22,11 @@ export const LIFE_PERMISSIONS = [
   { key: 'letter.template.manage', description: 'Upload, check and switch on Word letter templates' },
   { key: 'letter.issue', description: 'Issue letters to the people in scope (letter types that need approval go to the signatory first)' },
   { key: 'letter.signatory.manage', description: 'Name who signs letters for each legal entity and their signature image (needs a fresh second sign-in step)' },
+  { key: 'lifecycle.exit.view', description: 'See the exit cases of the people in scope (never the HR-only facts)' },
+  { key: 'lifecycle.exit.manage', description: 'Start company exits, accept resignations on the HR step, change last working days, set holds and clearance' },
+  { key: 'lifecycle.exit.confidential.view', description: 'Read HR-only exit facts (open-case flags, rehire, hold reasons) and confidential exit interview answers' },
+  { key: 'asset.view', description: 'See the company asset list and who holds what' },
+  { key: 'asset.manage', description: 'Add assets, issue them to people and take them back' },
 ];
 
 const istToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -102,4 +107,21 @@ export async function seedLifecycleLetters(tx: Tx, organizationId: string): Prom
   for (const e of await tx.legalEntity.findMany({ where: org, select: { id: true } })) {
     await tx.signatory.create({ data: { ...org, legalEntityId: e.id, userId: hr.id, title: 'Head of HR', createdBy: hr.id } });
   }
+}
+
+/** Lifecycle 6c demo: the shared asset list (D3) with Divya's laptop issued to her, a phone and a card in stock. */
+export async function seedLifecycleAssets(tx: Tx, organizationId: string): Promise<void> {
+  const org = { organizationId };
+  if (await tx.asset.findFirst({ where: org, select: { id: true } })) return;
+  const hr = await tx.user.findFirst({ where: { ...org, email: 'hr@demo-org.test' } });
+  const divyaUser = await tx.user.findFirst({ where: { ...org, email: 'panel@demo-org.test' } });
+  const divya = divyaUser ? await tx.employee.findFirst({ where: { ...org, userId: divyaUser.id } }) : null;
+  const entity = await tx.legalEntity.findFirst({ where: { ...org, isDefault: true } });
+  const place = { legalEntityId: entity?.id ?? null, locationId: null };
+  const add = (category: string, name: string, tag: string, cost: string, status = 'in_stock') =>
+    tx.asset.create({ data: { ...org, ...place, category, name, tag, cost: new Prisma.Decimal(cost), purchasedOn: asDate('2026-04-01'), status, createdBy: hr?.id ?? null } });
+  const laptop = await add('Laptop', 'Dell Latitude 5440', 'KF-LT-0001', '68500.00', divya ? 'assigned' : 'in_stock');
+  await add('Phone', 'Samsung Galaxy A35', 'KF-PH-0001', '15000.00');
+  await add('Access card', 'Hosur plant access card', 'KF-AC-0001', '300.00');
+  if (divya) await tx.assetAssignment.create({ data: { ...org, assetId: laptop.id, personId: divya.personId, issuedOn: asDate('2026-04-06'), issueCondition: 'New, with charger and bag', issuedBy: hr?.id ?? null } });
 }

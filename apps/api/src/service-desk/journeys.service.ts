@@ -17,8 +17,8 @@ import { TicketsService } from './tickets.service';
 // its own teams and OLAs, batch 1) and an optional audience (department, location, legal entity, cost centre). When M01
 // says someone joins (outbox event employee.joined), every active joiner journey whose audience holds starts: one request
 // per desk, one item per line, fulfilment straight away (the hire was already approved in HR) with every task due before
-// the first day (or after its OLA if that day is near). A leaver journey starts from employee.exit_scheduled (M01's exit
-// flow, when it lands) or by hand from HR (request.raise_on_behalf over that person). Each journey starts once per
+// the first day (or after its OLA if that day is near). A leaver journey starts from exit.case.accepted (M01's exit
+// flow) or by hand from HR (request.raise_on_behalf over that person). Each journey starts once per
 // person and date.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,11 +37,10 @@ export class JourneysService implements OnModuleInit {
     private readonly tickets: TicketsService,
   ) {}
 
-  // DECISION NEEDED: M01 has no exit flow yet (employee.exit_scheduled is the agreed event name), and a changed joining
-  // date does not move task due dates yet (US-B-127 third line): both need M01 events that do not exist today.
+  // Lifecycle 6c: a leaver journey starts when the exit is accepted (APX-B exit.case.accepted, design §7.4).
   onModuleInit() {
     this.automation.subscribe(async (ev) => {
-      if (ev.type !== 'employee.joined' && ev.type !== 'employee.exit_scheduled') return;
+      if (ev.type !== 'employee.joined' && ev.type !== 'exit.case.accepted') return;
       const employeeId = typeof ev.payload.employeeId === 'string' && UUID.test(ev.payload.employeeId) ? ev.payload.employeeId : null;
       const date = String(ev.type === 'employee.joined' ? ev.payload.joinedOn : ev.payload.lastDay);
       if (!employeeId || !ISO.test(date)) return;
@@ -205,7 +204,9 @@ export class JourneysService implements OnModuleInit {
       const emp = await tx.employee.findFirst({ where: { organizationId: org, id: employeeId } });
       if (!emp?.personId) return null;
       // Lifecycle 6a (founder D1): a person with an HR onboarding checklist gets their desk requests from it, not twice.
-      if (j.kind === 'join' && (await tx.journey.findFirst({ where: { organizationId: org, personId: emp.personId, kind: 'onboarding', status: { not: 'cancelled' } }, select: { id: true } }))) return null;
+      // Lifecycle 6c: the same for a leaver with an HR offboarding checklist.
+      const lifecycleKind = j.kind === 'join' ? 'onboarding' : 'offboarding';
+      if (await tx.journey.findFirst({ where: { organizationId: org, personId: emp.personId, kind: lifecycleKind, status: { not: 'cancelled' } }, select: { id: true } })) return null;
       const profile = await profileOf(tx, org, emp.personId);
       if (j.audience && !evaluate(j.audience as unknown as Group, profile, REQUESTER_FIELDS).pass) return null;
       // Once per person and date, even when the event and a person start it at the same moment.
