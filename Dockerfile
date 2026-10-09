@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 RUN apk add --no-cache python3 make g++
 WORKDIR /repo
 COPY package.json package-lock.json ./
@@ -35,7 +35,7 @@ RUN npm run build --workspace=apps/api
 RUN npm run build --workspace=apps/exam-runtime
 RUN npm run build --workspace=apps/web
 
-FROM node:20-alpine AS api
+FROM node:24-alpine AS api
 WORKDIR /repo
 ENV NODE_ENV=production
 COPY --from=build /repo/node_modules ./node_modules
@@ -49,7 +49,7 @@ EXPOSE 3001 3505
 # them to error stacks and @sentry/node reports original TypeScript file/line positions.
 CMD ["node", "--enable-source-maps", "apps/api/dist/main.js"]
 
-FROM node:20-alpine AS exam-runtime
+FROM node:24-alpine AS exam-runtime
 WORKDIR /repo
 ENV NODE_ENV=production
 COPY --from=build /repo/node_modules ./node_modules
@@ -61,7 +61,7 @@ EXPOSE 3002 3003
 # --enable-source-maps: see the api stage — maps ship in dist, Sentry reports original TS positions.
 CMD ["node", "--enable-source-maps", "apps/exam-runtime/dist/main.js"]
 
-FROM node:20-alpine AS web
+FROM node:24-alpine AS web
 WORKDIR /repo
 ENV NODE_ENV=production
 ENV PORT=3000
