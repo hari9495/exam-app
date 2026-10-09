@@ -226,8 +226,8 @@ describe('Lifecycle batch 6a', () => {
     await api('mgr', 'post', `/lifecycle/tasks/${uan.id}/complete`).send({ version: uan.version }).expect(403);
     const letter = await task(ids.journey, 'appointment_letter');
     await api('hr', 'post', `/lifecycle/tasks/${letter.id}/skip`).send({ version: letter.version, reason: 'Not needed' }).expect(400);
-    await api('hr', 'post', `/lifecycle/tasks/${letter.id}/complete`).send({ version: letter.version }).expect(400);
-    await api('hr', 'post', `/lifecycle/tasks/${letter.id}/complete`).send({ version: letter.version, note: 'LF/HR/2026/0007' }).expect(200);
+    // Batch 6b: the letter task closes only from the issued letter, never by hand (lifecycle-6b.e2e-spec.ts).
+    expect((await api('hr', 'post', `/lifecycle/tasks/${letter.id}/complete`).send({ version: letter.version, note: 'LF/HR/2026/0007' }).expect(409)).body.message).toMatch(/letter is issued/);
     await api('hr', 'post', `/lifecycle/tasks/${uan.id}/skip`).send({ version: uan.version, reason: 'later' }).expect(400);
     const esic = await task(ids.journey, 'esic');
     await api('hr', 'post', `/lifecycle/tasks/${esic.id}/skip`).send({ version: esic.version, reason: 'ESI does not apply at this wage' }).expect(200);

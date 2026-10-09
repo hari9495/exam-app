@@ -1173,11 +1173,16 @@ export class EmployeeHistoryService {
    * salary revision from the joining date, which someone else approves.
    */
   createEmployee(ctx: TenantContext, v: Viewer, dto: EmployeeCreateDto) {
+    return this.run(ctx, (tx, c) => this.createEmployeeIn(tx, c, v, dto));
+  }
+
+  /** The hire inside the caller's transaction (lifecycle 6b: a joiner joins in the same transaction as their record). */
+  async createEmployeeIn(tx: Tx, c: CompanyContext, v: Viewer, dto: EmployeeCreateDto) {
     const payload = toPayload({ assignment: dto.assignment, status: dto.status });
     this.checkPayload('join', payload, v);
     const pay = dto.compensation ? toPayload({ compensation: dto.compensation }) : null;
     if (pay) this.checkPayload('salary_revision', pay, v);
-    return this.run(ctx, async (tx, c) => {
+    {
       const entity = await tx.legalEntity.findFirst({ where: { id: dto.legalEntityId, organizationId: c.organizationId } });
       if (!entity) throw new BadRequestException('No such legal entity in this company.');
       if (entity.archivedAt) throw new BadRequestException('That legal entity is archived.');
@@ -1257,7 +1262,7 @@ export class EmployeeHistoryService {
         : null;
       if (payChange) await audit(tx, c, 'employee.change.requested', 'employee', person.id, { changeId: payChange.id, changeType: 'salary_revision', effectiveDate: dto.joinedOn, touchesPay: true });
       return { id: person.id, employmentId: e.id, employeeCode, changeId: join.id, payChangeId: payChange?.id ?? null };
-    });
+    }
   }
 
   /** A new hire is inside `key`'s scope when a grant names the company, their entity, location or a department above theirs. */

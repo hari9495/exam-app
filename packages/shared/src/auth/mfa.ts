@@ -41,6 +41,11 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'lifecycle.journey.template.manage',
   'document.view',
   'document.manage',
+  // Batch 6b: background checks (Special data) and letters.
+  'lifecycle.bgv.manage',
+  'letter.template.manage',
+  'letter.issue',
+  'letter.signatory.manage',
   'payroll.period.view',
   'payroll.period.reopen',
   'payroll.period.reopen.approve',

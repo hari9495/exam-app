@@ -19,8 +19,8 @@ const HR_VIEW = ['org.structure.view', 'employee.profile.view'];
 // medical data.
 const TIME_HR_VIEW = ['leave.view', 'attendance.view'];
 // M01 lifecycle batch 6a: joiners and their checklists in scope, person documents (each type still needs its class key).
-const LIFE_HR_ADMIN = ['lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'lifecycle.journey.template.manage', 'document.view', 'document.manage'];
-const LIFE_HR_EXEC = ['lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'document.view', 'document.manage'];
+const LIFE_HR_ADMIN = ['lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'lifecycle.journey.template.manage', 'document.view', 'document.manage', 'lifecycle.bgv.manage', 'letter.template.manage', 'letter.issue'];
+const LIFE_HR_EXEC = ['lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'document.view', 'document.manage', 'letter.issue'];
 // Batch 2: rosters in scope (HR Executive too), locking attendance months and maternity / paternity overrides (HR Admin).
 const TIME_HR_ADMIN = [...TIME_HR_VIEW, 'leave.settings.manage', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view', 'roster.manage', 'attendance.lock', 'leave.eligibility.override'];
 

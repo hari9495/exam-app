@@ -9,6 +9,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { personForEmployee } from '../people/persons';
 import { joinerInScope, ownOf } from '../documents/person-access';
 import { LifecycleJourneysService } from './journeys.service';
+import { PreboardingPortalService } from './portal.service';
 
 // LIFE-1.07 joiners before day one (M01 §3.5, Q1, D3; founder D2): HR adds a joiner by hand or imports many, the
 // P01 person is found or made (an email or phone that already belongs to someone is never linked silently), and the
@@ -46,6 +47,7 @@ export class JoinersService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly journeys: LifecycleJourneysService,
     private readonly notifications: NotificationsService,
+    private readonly portal: PreboardingPortalService,
   ) {}
 
   private async place(tx: Tx, org: string, d: Pick<JoinerInput, 'legalEntityId' | 'locationId' | 'departmentId' | 'designationId' | 'employmentTypeId' | 'managerEmployeeId'>) {
@@ -57,7 +59,7 @@ export class JoinersService {
     if (d.managerEmployeeId && !(await tx.employment.findFirst({ where: { organizationId: org, employeeId: d.managerEmployeeId, exitedOn: null }, select: { id: true } }))) throw new BadRequestException('The manager must be a current employee.');
   }
 
-  private async addIn(tx: Tx, c: CompanyContext, v: Viewer, dto: JoinerInput, source: 'direct' | 'import') {
+  private async addIn(tx: Tx, c: CompanyContext, v: Viewer, dto: JoinerInput, source: 'direct' | 'import' | 'offer', offerId: string | null = null) {
     const org = c.organizationId;
     if (!ISO.test(dto.joiningOn)) throw new BadRequestException('Give the joining day as a date.');
     if (dto.joiningOn < todayIst()) throw new BadRequestException('The joining day cannot be in the past. Add people who already joined as employees.');
@@ -85,6 +87,7 @@ export class JoinersService {
         managerEmployeeId: dto.managerEmployeeId ?? null,
         hrOwnerUserId: c.userId!,
         status: 'invited',
+        offerId,
         createdBy: c.userId ?? null,
       },
     });
@@ -114,9 +117,31 @@ export class JoinersService {
   }
 
   private async afterAdd(ctx: CompanyContext, user: ScopeUser, added: { pb: Prisma.PreboardingGetPayload<object>; journeyId: string }[]) {
-    for (const a of added) await this.journeys.afterStart(ctx, a.journeyId, user.userId ?? null);
+    for (const a of added) {
+      await this.journeys.afterStart(ctx, a.journeyId, user.userId ?? null);
+      // LIFE-2.01: the joiner is invited to the pre-boarding portal (when HR gave a personal email).
+      await this.portal.invite(ctx.organizationId, a.pb.id).catch(() => undefined);
+    }
     const managers = await this.tenantPrisma.forTenant(ctx, (tx) => tx.employee.findMany({ where: { organizationId: ctx.organizationId, id: { in: added.map((a) => a.pb.managerEmployeeId).filter((x): x is string => Boolean(x)) }, userId: { not: null } }, select: { userId: true } }));
     if (managers.length) void this.notifications.notify(ctx, user.userId!, managers.map((m) => m.userId!), 'lifecycle.joiner.added', { entityType: 'preboarding', entityId: added[0].pb.id, contextText: 'Someone is joining your team', linkPath: '/yx/people/team' }).catch(() => undefined);
+  }
+
+  /** LIFE-2.09: an accepted ATS offer becomes a joiner (M10 Q2 manual mode); internal moves are transfers, never onboarding. */
+  async fromOffer(ctx: TenantContext, user: ScopeUser, offerId: string, dto: JoinerInput) {
+    const v = await this.journeys.viewer(user);
+    const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const o = await tx.offer.findFirst({ where: { organizationId: c.organizationId, id: offerId, status: 'accepted' } });
+      if (!o) throw new NotFoundException('No accepted offer with this id.');
+      if (await tx.preboarding.findFirst({ where: { organizationId: c.organizationId, offerId, status: { not: 'cancelled' } }, select: { id: true } })) throw new ConflictException('This offer already has a joiner.');
+      const cand = await tx.candidate.findFirstOrThrow({ where: { organizationId: c.organizationId, id: o.candidateId }, select: { email: true } });
+      const emp = await tx.employee.findFirst({ where: { organizationId: c.organizationId, workEmail: cand.email }, select: { id: true } });
+      if (emp && (await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId: emp.id, exitedOn: null }, select: { id: true } }))) {
+        throw new ConflictException('This is a current employee. Their move is a transfer or promotion on their record (People › Job changes), not onboarding (YX-LC-11).');
+      }
+      return this.addIn(tx, c, v, { ...dto, email: dto.email ?? cand.email }, 'offer', offerId);
+    });
+    await this.afterAdd(ctx as CompanyContext, user, [res]);
+    return { id: res.pb.id, journeyId: res.journeyId };
   }
 
   /** CSV import (Q1): a preview with every row's problems, then commit adds only the rows without problems. */

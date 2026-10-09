@@ -5,6 +5,8 @@ import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
 import { DocumentsService } from '../documents/documents.service';
 import { FilesService } from '../documents/files.service';
 import { LifecycleJourneysService } from './journeys.service';
+import { LettersService } from '../documents/letters/letters.service';
+import { PreboardingPortalService } from './portal.service';
 
 const QUEUE = 'lifecycle-jobs';
 
@@ -20,6 +22,8 @@ export class LifecycleJobs implements OnModuleInit, OnModuleDestroy {
     private readonly journeys: LifecycleJourneysService,
     private readonly documents: DocumentsService,
     private readonly files: FilesService,
+    private readonly letters: LettersService,
+    private readonly portal: PreboardingPortalService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, { connection }), QUEUE);
   }
@@ -41,8 +45,12 @@ export class LifecycleJobs implements OnModuleInit, OnModuleDestroy {
         await this.files.sweep();
         await this.journeys.raisePending();
         await this.journeys.sweep();
+        await this.letters.retryRendering();
       }
-      if (name === 'daily') await this.documents.expirySweep();
+      if (name === 'daily') {
+        await this.documents.expirySweep();
+        await this.portal.remind();
+      }
     } catch (e) {
       this.logger.warn(`${name}: ${(e as Error).message}`);
     }

@@ -82,6 +82,11 @@ export const YX_KEYS = [
   'lifecycle.journey.template.manage',
   'document.view',
   'document.manage',
+  // Batch 6b: background checks, letters, signatories.
+  'lifecycle.bgv.manage',
+  'letter.template.manage',
+  'letter.issue',
+  'letter.signatory.manage',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

@@ -202,32 +202,63 @@ export class DocumentsService {
     if (expiresOn !== undefined && (!ISO.test(expiresOn) || expiresOn <= todayIst())) throw new BadRequestException('The expiry date must be a future date.');
     const v = await this.viewer(user);
     const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const org = c.organizationId;
-      const t = await this.type(tx, org, typeKey);
+      const t = await this.type(tx, c.organizationId, typeKey);
       const own = await ownOf(tx, c, v);
       const self = own.personId === personId;
       if (self ? !t.uploadBy.includes('person') : !(t.uploadBy.includes('hr') && (await reachesDocument(tx, c, v, 'document.manage', t.sensitivity, personId, own)))) {
         throw new ForbiddenException(self ? 'HR uploads this document for you.' : 'You cannot upload this document for this person.');
       }
-      if (t.expiryTracked && !expiresOn) throw new BadRequestException(`Give the expiry date of the ${t.name}.`);
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`doc:${org}:${personId}:${t.key}`}))`;
-      const stored = await this.files.storeIn(tx, c, { area: 'documents', name: file.originalname, data: file.buffer, allowedMime: t.allowedMime, maxMb: t.maxMb, via: self ? 'self' : 'staff' });
-      let d = await tx.document.findFirst({ where: { organizationId: org, personId, typeKey: t.key } });
-      if (!d) d = await tx.document.create({ data: { organizationId: org, personId, typeKey: t.key, status: 'requested' } });
-      const n = (await tx.documentVersion.count({ where: { organizationId: org, documentId: d.id } })) + 1;
-      const ver = await tx.documentVersion.create({ data: { organizationId: org, documentId: d.id, fileId: stored.id, version: n, uploadedBy: c.userId ?? null } });
-      // HR's own upload of a type without verification is final; anything needing verification waits in the queue.
-      const status = t.requiresVerification ? 'uploaded' : 'verified';
-      d = await tx.document.update({
-        where: { id: d.id },
-        data: { currentVersionId: ver.id, status, expiresOn: expiresOn ? asDate(expiresOn) : null, rejectReason: null, verifiedBy: status === 'verified' ? (c.userId ?? null) : null, verifiedAt: status === 'verified' ? new Date() : null, remindedOn: null, version: { increment: 1 } },
-      });
-      await audit(tx, c, 'document.uploaded', 'document', d.id, { typeKey: t.key, version: n, self, fileId: stored.id });
-      await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'document.uploaded', payload: { documentId: d.id, personId, typeKey: t.key } } });
-      return { d, t, fileId: stored.id, org };
+      return this.storeVersion(tx, c, personId, t, file, expiresOn, self ? 'self' : 'staff');
     });
     const clean = await this.files.scan(out.org, out.fileId);
     return { ...this.view(out.d, out.t), scanStatus: clean ? 'clean' : 'pending' };
+  }
+
+  /** A joiner's own upload from the pre-boarding portal (the portal session already proved who they are). */
+  async uploadAsPreboarder(tx: Tx, c: CompanyContext, personId: string, typeKey: string, file: { originalname: string; buffer: Buffer } | undefined) {
+    if (!file) throw new BadRequestException('Choose a file.');
+    const t = await this.type(tx, c.organizationId, typeKey);
+    if (!t.uploadBy.includes('person') || t.expiryTracked) throw new ForbiddenException('HR collects this document from you.');
+    return this.storeVersion(tx, c, personId, t, file, undefined, 'preboarder');
+  }
+
+  /** A background-check report (Special class), stored by HR for the person (lifecycle BGV, 6b). */
+  async storeReport(tx: Tx, c: CompanyContext, personId: string, file: { originalname: string; buffer: Buffer }) {
+    return this.storeVersion(tx, c, personId, await this.type(tx, c.organizationId, 'bgv_report'), file, undefined, 'staff');
+  }
+
+  async scanUpload(org: string, fileId: string) {
+    return this.files.scan(org, fileId);
+  }
+
+  private async storeVersion(tx: Tx, c: CompanyContext, personId: string, t: DocType, file: { originalname: string; buffer: Buffer }, expiresOn: string | undefined, via: 'self' | 'staff' | 'preboarder') {
+    const org = c.organizationId;
+    if (t.expiryTracked && !expiresOn) throw new BadRequestException(`Give the expiry date of the ${t.name}.`);
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`doc:${org}:${personId}:${t.key}`}))`;
+    const stored = await this.files.storeIn(tx, c, { area: 'documents', name: file.originalname, data: file.buffer, allowedMime: t.allowedMime, maxMb: t.maxMb, via });
+    let d = await tx.document.findFirst({ where: { organizationId: org, personId, typeKey: t.key } });
+    if (!d) d = await tx.document.create({ data: { organizationId: org, personId, typeKey: t.key, status: 'requested' } });
+    const n = (await tx.documentVersion.count({ where: { organizationId: org, documentId: d.id } })) + 1;
+    const ver = await tx.documentVersion.create({ data: { organizationId: org, documentId: d.id, fileId: stored.id, version: n, uploadedBy: c.userId ?? null } });
+    // A type without verification is final on upload; anything needing verification waits in the queue.
+    const status = t.requiresVerification ? 'uploaded' : 'verified';
+    d = await tx.document.update({
+      where: { id: d.id },
+      data: { currentVersionId: ver.id, status, expiresOn: expiresOn ? asDate(expiresOn) : null, rejectReason: null, verifiedBy: status === 'verified' ? (c.userId ?? null) : null, verifiedAt: status === 'verified' ? new Date() : null, remindedOn: null, version: { increment: 1 } },
+    });
+    await audit(tx, c, 'document.uploaded', 'document', d.id, { typeKey: t.key, version: n, via, fileId: stored.id });
+    await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'document.uploaded', payload: { documentId: d.id, personId, typeKey: t.key } } });
+    return { d, t, fileId: stored.id, org };
+  }
+
+  /** Statuses of a person's documents of the given types (the portal's checklist). */
+  async statusesFor(tx: Tx, org: string, personId: string, typeKeys: string[]) {
+    const types = (await this.types(tx, org)).filter((t) => typeKeys.includes(t.key));
+    const docs = await tx.document.findMany({ where: { organizationId: org, personId, typeKey: { in: typeKeys } } });
+    return types.map((t) => {
+      const d = docs.find((x) => x.typeKey === t.key);
+      return { typeKey: t.key, name: t.name, status: d?.status ?? 'requested', rejectReason: d?.rejectReason ?? null, personUploads: t.uploadBy.includes('person') && !t.expiryTracked };
+    });
   }
 
   async verify(ctx: TenantContext, user: ScopeUser, id: string, dto: { decision: 'verify' | 'reject'; reason?: string; version: number }) {

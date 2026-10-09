@@ -5884,10 +5884,169 @@ model Preboarding {
   hrOwnerUserId     String   @map("hr_owner_user_id") @db.Uuid
   status            String   @db.VarChar(12)
   employmentId      String?  @map("employment_id") @db.Uuid
+  /// 6b: the accepted ATS offer it came from; the pre-boarder's own answers (sealed JSON) and section progress.
+  offerId           String?  @map("offer_id") @db.Uuid
+  answersEnc        String?  @map("answers_enc")
+  sections          Json     @default("{}")
+  completion        Int      @default(0)
+  outcome           String?  @db.VarChar(16)
+  outcomeReason     String?  @map("outcome_reason") @db.VarChar(500)
+  identityAttestedBy String? @map("identity_attested_by") @db.Uuid
+  identityAttestedAt DateTime? @map("identity_attested_at") @db.Timestamptz(3)
+  remindedOn        DateTime? @map("reminded_on") @db.Date
+  joinedAt          DateTime? @map("joined_at") @db.Timestamptz(3)
   version           Int      @default(1)
   createdBy         String?  @map("created_by") @db.Uuid
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("preboardings")
+}
+
+// ---- Lifecycle batch 6b (M01-LIFECYCLE-BUILD-DESIGN §5.3): the pre-boarding portal, BGV consent, letters and e-sign.
+// Composite keys, checks, immutability and RLS live in the migration SQL (20261028000000_lifecycle_6b).
+
+model PreboardingPortalSession {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  preboardingId  String    @map("preboarding_id") @db.Uuid
+  tokenHash      String    @unique @map("token_hash") @db.Char(64)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  steppedUpAt    DateTime? @map("stepped_up_at") @db.Timestamptz(3)
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("preboarding_portal_sessions")
+}
+
+model ConsentRecord {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  personId       String    @map("person_id") @db.Uuid
+  purpose        String    @db.VarChar(20)
+  noticeVersion  String    @map("notice_version") @db.VarChar(20)
+  itemsShown     Json      @map("items_shown")
+  givenAt        DateTime  @default(now()) @map("given_at") @db.Timestamptz(3)
+  evidence       Json
+  withdrawnAt    DateTime? @map("withdrawn_at") @db.Timestamptz(3)
+
+  @@map("consent_records")
+}
+
+model BgvCheck {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  preboardingId    String   @map("preboarding_id") @db.Uuid
+  consentId        String   @map("consent_id") @db.Uuid
+  checkType        String   @map("check_type") @db.VarChar(20)
+  status           String   @db.VarChar(12)
+  gate             String   @default("none") @db.VarChar(20)
+  resultDocumentId String?  @map("result_document_id") @db.Uuid
+  note             String?  @db.VarChar(1000)
+  createdBy        String?  @map("created_by") @db.Uuid
+  version          Int      @default(1)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("bgv_checks")
+}
+
+model LetterTemplate {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  letterType        String    @map("letter_type") @db.VarChar(40)
+  name              String    @db.VarChar(100)
+  legalEntityId     String?   @map("legal_entity_id") @db.Uuid
+  language          String    @default("en") @db.VarChar(5)
+  source            String    @db.VarChar(8)
+  fileId            String    @map("file_id") @db.Uuid
+  fields            String[]
+  requiresApproval  Boolean   @map("requires_approval")
+  personSigns       Boolean   @map("person_signs")
+  companyDsc        Boolean   @default(false) @map("company_dsc")
+  version           Int       @default(1)
+  status            String    @db.VarChar(10)
+  previewViewedBy   String?   @map("preview_viewed_by") @db.Uuid
+  previewViewedAt   DateTime? @map("preview_viewed_at") @db.Timestamptz(3)
+  createdBy         String?   @map("created_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("letter_templates")
+}
+
+model LetterCounter {
+  organizationId String @map("organization_id") @db.Uuid
+  legalEntityId  String @map("legal_entity_id") @db.Uuid
+  letterType     String @map("letter_type") @db.VarChar(40)
+  year           Int
+  next           Int
+
+  @@id([organizationId, legalEntityId, letterType, year])
+  @@map("letter_counters")
+}
+
+model LetterIssue {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  templateId      String    @map("template_id") @db.Uuid
+  templateVersion Int       @map("template_version")
+  letterType      String    @map("letter_type") @db.VarChar(40)
+  title           String    @db.VarChar(150)
+  personId        String    @map("person_id") @db.Uuid
+  legalEntityId   String    @map("legal_entity_id") @db.Uuid
+  subjectType     String?   @map("subject_type") @db.VarChar(12)
+  subjectId       String?   @map("subject_id") @db.Uuid
+  referenceNo     String?   @map("reference_no") @db.VarChar(60)
+  dataEnc         String    @map("data_enc")
+  fileId          String?   @map("file_id") @db.Uuid
+  unsignedSha256  String?   @map("unsigned_sha256") @db.Char(64)
+  unsignedBytes   Int?      @map("unsigned_bytes")
+  sha256          String?   @db.Char(64)
+  signatureRef    String?   @map("signature_ref") @db.VarChar(200)
+  verifyCode      String?   @unique @map("verify_code") @db.VarChar(16)
+  status          String    @db.VarChar(20)
+  wfRequestId     String?   @map("wf_request_id") @db.Uuid
+  supersedesId    String?   @map("supersedes_id") @db.Uuid
+  supersededById  String?   @map("superseded_by_id") @db.Uuid
+  signatoryId     String?   @map("signatory_id") @db.Uuid
+  personSigns     Boolean   @map("person_signs")
+  acceptedAt      DateTime? @map("accepted_at") @db.Timestamptz(3)
+  acceptanceFileId String?  @map("acceptance_file_id") @db.Uuid
+  renderError     String?   @map("render_error") @db.VarChar(300)
+  requestedBy     String?   @map("requested_by") @db.Uuid
+  issuedBy        String?   @map("issued_by") @db.Uuid
+  issuedAt        DateTime? @map("issued_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("letter_issues")
+}
+
+model SignatureRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  letterIssueId  String    @map("letter_issue_id") @db.Uuid
+  personId       String    @map("person_id") @db.Uuid
+  method         String    @default("click_otp") @db.VarChar(12)
+  status         String    @db.VarChar(10)
+  evidence       Json?
+  declineReason  String?   @map("decline_reason") @db.VarChar(500)
+  signedAt       DateTime? @map("signed_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("signature_requests")
+}
+
+model Signatory {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  legalEntityId   String   @map("legal_entity_id") @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  title           String   @db.VarChar(100)
+  signatureFileId String?  @map("signature_file_id") @db.Uuid
+  active          Boolean  @default(true)
+  createdBy       String?  @map("created_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("signatories")
 }

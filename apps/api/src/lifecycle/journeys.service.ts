@@ -73,6 +73,10 @@ export class LifecycleJourneysService implements OnModuleInit {
     this.automation.subscribe(async (ev) => {
       const ctx = { organizationId: ev.organizationId, isSuperAdmin: false };
       if (ev.type === 'helpdesk.request.fulfilled' && typeof ev.payload.ticketId === 'string') await this.closeLinked(ctx, 'sd_ticket', ev.payload.ticketId);
+      // YX-LC-26: the letter task closes from the issued letter itself (batch 6b), never from a typed reference.
+      if (ev.type === 'document.issued' && typeof ev.payload.personId === 'string' && typeof ev.payload.letterType === 'string' && typeof ev.payload.letterIssueId === 'string') {
+        await this.closeLetterTasks(ctx, ev.payload.personId, ev.payload.letterType, ev.payload.letterIssueId);
+      }
       if ((ev.type === 'document.uploaded' || ev.type === 'document.verified') && typeof ev.payload.personId === 'string' && typeof ev.payload.typeKey === 'string') {
         await this.closeDocumentTasks(ctx, ev.payload.personId, ev.payload.typeKey);
       }
@@ -336,7 +340,7 @@ export class LifecycleJourneysService implements OnModuleInit {
 
   private taskView(t: Task, n: { user: (id: string | null) => string | null; group: (id: string | null) => string | null }, can: boolean, today: string) {
     const due = iso(t.dueOn);
-    const manualKinds = ['tick', 'form', 'letter'];
+    const manualKinds = ['tick', 'form'];
     const deskWithoutItem = t.kind === 'desk_request' && !(t.config as { itemId?: string }).itemId;
     return {
       id: t.id,
@@ -354,6 +358,7 @@ export class LifecycleJourneysService implements OnModuleInit {
       locked: t.locked,
       form: t.kind === 'form' ? ((t.config as { form?: FormDef }).form ?? null) : null,
       documentType: t.kind === 'document' ? ((t.config as { typeKey?: string }).typeKey ?? null) : null,
+      letterType: t.kind === 'letter' ? ((t.config as { letterType?: string }).letterType ?? null) : null,
       answers: t.answers ?? null,
       link: t.linkType ? { type: t.linkType, id: t.linkId } : null,
       completedAt: t.completedAt?.toISOString() ?? null,
@@ -458,12 +463,8 @@ export class LifecycleJourneysService implements OnModuleInit {
         const res = checkAnswers((t.config as unknown as { form: FormDef }).form, dto.answers ?? {});
         if (Object.keys(res.errors).length) throw new BadRequestException({ statusCode: 400, code: 'FORM_INVALID', message: 'Some answers need fixing.', errors: res.errors });
         answers = res.values as Prisma.InputJsonValue;
-      } else if (t.kind === 'letter') {
-        // Until the letters engine (batch 6b): HR records where the letter was issued, never a silent tick.
-        if (!dto.note?.trim()) throw new BadRequestException('Give the letter’s reference number or where it was issued.');
-        answers = { note: dto.note.trim().slice(0, 300) };
-      } else if (t.kind === 'document' || (t.kind === 'desk_request' && (t.config as { itemId?: string }).itemId)) {
-        throw new ConflictException(t.kind === 'document' ? 'This task closes itself when the document is in.' : 'This task closes itself when the desk fulfils the request.');
+      } else if (t.kind === 'letter' || t.kind === 'document' || (t.kind === 'desk_request' && (t.config as { itemId?: string }).itemId)) {
+        throw new ConflictException(t.kind === 'letter' ? 'This task closes itself when the letter is issued (YX-LC-26).' : t.kind === 'document' ? 'This task closes itself when the document is in.' : 'This task closes itself when the desk fulfils the request.');
       } else if (dto.note?.trim()) answers = { note: dto.note.trim().slice(0, 300) };
       await this.finishIn(tx, c, t, { status: 'done', completedBy: c.userId ?? null, completedAt: new Date(), ...(answers === undefined ? {} : { answers }) }, dto.version);
       await audit(tx, c, 'journey.task.done', 'journey', j.id, { taskKey: t.key });
@@ -511,6 +512,17 @@ export class LifecycleJourneysService implements OnModuleInit {
       const c = ctx as CompanyContext;
       for (const t of await tx.journeyTask.findMany({ where: { organizationId: ctx.organizationId, linkType, linkId, status: 'open' } })) {
         if (await this.finishIn(tx, c, t, { status: 'done', completedAt: new Date() }, null)) await audit(tx, c, 'journey.task.done', 'journey', t.journeyId, { taskKey: t.key, by: linkType });
+      }
+    });
+  }
+
+  private async closeLetterTasks(ctx: TenantContext & { organizationId: string }, personId: string, letterType: string, letterIssueId: string) {
+    await this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const c = ctx as CompanyContext;
+      const journeys = await tx.journey.findMany({ where: { organizationId: c.organizationId, personId, status: 'active' }, select: { id: true } });
+      const tasks = await tx.journeyTask.findMany({ where: { organizationId: c.organizationId, journeyId: { in: journeys.map((j) => j.id) }, kind: 'letter', status: { in: ['open', 'waiting'] } } });
+      for (const t of tasks.filter((x) => (x.config as { letterType?: string }).letterType === letterType)) {
+        if (await this.finishIn(tx, c, t, { status: 'done', completedAt: new Date(), linkType: 'letter_issue', linkId: letterIssueId }, null)) await audit(tx, c, 'journey.task.done', 'journey', t.journeyId, { taskKey: t.key, by: 'letter' });
       }
     });
   }

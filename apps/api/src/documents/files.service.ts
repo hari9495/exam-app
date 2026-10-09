@@ -14,7 +14,7 @@ import { FileStore, sha256 } from './file-store';
 
 export type FileRow = { id: string; organizationId: string; storageRef: string; fileName: string; mime: string; size: number; sha256: string; scanStatus: string };
 const ALIASES: Record<string, string> = { jpeg: 'jpg' };
-const EXT_OF: Record<string, string> = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png' };
+const EXT_OF: Record<string, string> = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx' };
 
 /** The file's real type must be allowed and match its name's extension (a renamed HTML or EXE is refused). */
 export async function checkUpload(name: string, data: Buffer, allowedMime: readonly string[], maxMb: number): Promise<{ ok: true; mime: string } | { ok: false; reason: string }> {

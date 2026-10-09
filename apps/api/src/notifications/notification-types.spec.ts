@@ -39,6 +39,16 @@ describe('notification catalog', () => {
       'helpdesk.rule.notify',
       'helpdesk.rule.failed',
       'time.roster.published',
+      'lifecycle.joiner.added',
+      'journey.task.assigned',
+      'journey.task.due',
+      'journey.task.overdue',
+      'document.requested',
+      'document.rejected',
+      'document.expiring',
+      'letter.ready',
+      'letter.signed',
+      'preboarding.completed',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

@@ -1,4 +1,7 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { RequireStepUp } from '../auth/step-up.decorator';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
@@ -8,7 +11,8 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { CompleteTaskDto, JoinerDto, JoinerImportDto, PostponeDto, ReassignTaskDto, SkipTaskDto, StarterDto, TemplateDto } from './dto';
+import { BgvCheckDto, BgvUpdateDto, CancelJoinerDto, CompleteTaskDto, JoinDto, JoinerDto, JoinerImportDto, PlanDto, PostponeDto, ReassignTaskDto, SkipTaskDto, StarterDto, TemplateDto } from './dto';
+import { JoiningService } from './joining.service';
 import { JoinersService } from './joiners.service';
 import { LifecycleJourneysService } from './journeys.service';
 
@@ -16,6 +20,8 @@ import { LifecycleJourneysService } from './journeys.service';
 //   lifecycle.onboarding.view             the onboarding board and joiners in scope (planned entity / location / dept)
 //   lifecycle.onboarding.manage           add, import and postpone joiners; hand tasks to someone else
 //   lifecycle.journey.template.manage     onboarding and offboarding checklists
+//   lifecycle.bgv.manage                  background-check consent requests and checks (Special data)
+//   + employee.change.manage              mark a joiner joined (the ordinary hire path checks it again)
 //   no key (implicit)                     my tasks; a checklist I have a task on (or HR in scope); joiners joining my
 //                                         team; doing my own tasks (the service decides per task)
 @Controller('lifecycle')
@@ -24,6 +30,7 @@ export class LifecycleController {
   constructor(
     private readonly journeys: LifecycleJourneysService,
     private readonly joiners: JoinersService,
+    private readonly joining: JoiningService,
   ) {}
 
   private user(req: Request) {
@@ -130,5 +137,67 @@ export class LifecycleController {
   @RequirePermissions('lifecycle.onboarding.manage')
   reassign(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReassignTaskDto) {
     return this.journeys.reassign(ctx, this.user(req), id, dto);
+  }
+
+  // ------------------------------------------------------------------------------------------ batch 6b: joining, BGV, offers
+
+  @Get('joiners/:id/forms')
+  @RequireAnyPermission('lifecycle.onboarding.view', 'lifecycle.onboarding.manage')
+  forms(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.joining.forms(ctx, this.user(req), id);
+  }
+
+  @Put('joiners/:id/plan')
+  @RequirePermissions('lifecycle.onboarding.manage')
+  plan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PlanDto) {
+    return this.joining.updatePlan(ctx, this.user(req), id, dto);
+  }
+
+  @Post('joiners/:id/join')
+  @HttpCode(200)
+  @RequirePermissions('lifecycle.onboarding.manage', 'employee.change.manage')
+  join(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: JoinDto) {
+    return this.joining.markJoined(ctx, this.user(req), id, dto);
+  }
+
+  @Post('joiners/:id/cancel')
+  @HttpCode(200)
+  @RequireStepUp()
+  @RequirePermissions('lifecycle.onboarding.manage')
+  cancel(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelJoinerDto) {
+    return this.joining.cancel(ctx, this.user(req), id, dto);
+  }
+
+  @Post('joiners/:id/bgv/ask')
+  @HttpCode(200)
+  @RequirePermissions('lifecycle.bgv.manage')
+  askBgv(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.joining.askBgvConsent(ctx, this.user(req), id);
+  }
+
+  @Post('joiners/:id/bgv/checks')
+  @RequirePermissions('lifecycle.bgv.manage')
+  addCheck(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BgvCheckDto) {
+    return this.joining.addCheck(ctx, this.user(req), id, dto);
+  }
+
+  @Post('bgv/checks/:checkId')
+  @HttpCode(200)
+  @RequirePermissions('lifecycle.bgv.manage')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
+  updateCheck(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('checkId', ParseUUIDPipe) checkId: string, @Body() dto: BgvUpdateDto, @UploadedFile() file: Express.Multer.File | undefined) {
+    return this.joining.updateCheck(ctx, this.user(req), checkId, dto, file);
+  }
+
+  @Get('ready-to-onboard')
+  @RequirePermissions('lifecycle.onboarding.manage')
+  ready(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.joining.readyToOnboard(ctx, this.user(req));
+  }
+
+  @Post('ready-to-onboard/:offerId')
+  @RequirePermissions('lifecycle.onboarding.manage')
+  fromOffer(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('offerId', ParseUUIDPipe) offerId: string, @Body() dto: JoinerDto) {
+    return this.joiners.fromOffer(ctx, this.user(req), offerId, dto);
   }
 }

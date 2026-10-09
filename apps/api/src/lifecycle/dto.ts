@@ -211,3 +211,91 @@ export class ReassignTaskDto {
   @IsUUID()
   userId!: string;
 }
+
+export class PlanDto {
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  designationId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  employmentTypeId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  managerEmployeeId?: string | null;
+
+  @IsInt()
+  version!: number;
+}
+
+export class JoinDto {
+  @IsBoolean()
+  identityAttested!: boolean;
+
+  @IsIn(['probation', 'confirmed'])
+  status!: 'probation' | 'confirmed';
+
+  @IsOptional()
+  @IsUUID()
+  userId?: string | null;
+
+  @IsOptional()
+  @trim()
+  @IsEmail()
+  @MaxLength(254)
+  workEmail?: string | null;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @Length(1, 30)
+  employeeCode?: string | null;
+
+  @IsInt()
+  version!: number;
+}
+
+export class CancelJoinerDto {
+  @IsIn(['did_not_join', 'reneged', 'withdrawn'])
+  outcome!: 'did_not_join' | 'reneged' | 'withdrawn';
+
+  @trim()
+  @IsString()
+  @Length(3, 500)
+  reason!: string;
+
+  @IsInt()
+  version!: number;
+}
+
+export class BgvCheckDto {
+  @IsIn(['identity', 'address', 'education', 'employment', 'criminal', 'reference', 'credit'])
+  checkType!: string;
+
+  @IsIn(['none', 'before_joining', 'before_confirmation'])
+  gate!: string;
+}
+
+export class BgvUpdateDto {
+  @IsIn(['in_progress', 'clear', 'discrepancy', 'unable'])
+  status!: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+
+  @IsOptional()
+  @IsIn(['none', 'before_joining', 'before_confirmation'])
+  gate?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? Number(value) : value))
+  @IsInt()
+  version!: number;
+}

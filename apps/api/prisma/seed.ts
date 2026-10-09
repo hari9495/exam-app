@@ -13,7 +13,7 @@ import { seedServiceDeskEsm2 } from './seed-service-desk-esm2';
 import { TIME_PERMISSIONS, seedTime } from './seed-time';
 import { seedTimeB2 } from './seed-time-b2';
 import { PAY_PERMISSIONS, seedAuditAnchor, seedPay } from './seed-pay';
-import { LIFE_PERMISSIONS, seedLifecycle } from './seed-lifecycle';
+import { LIFE_PERMISSIONS, seedLifecycle, seedLifecycleLetters } from './seed-lifecycle';
 
 const prisma = new PrismaClient();
 
@@ -174,6 +174,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'lifecycle.onboarding.manage',
     'lifecycle.journey.template.manage',
     'document.view',
+    // Batch 6b: letter templates and who signs them (issuing stays with HR).
+    'letter.template.manage',
+    'letter.signatory.manage',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -365,6 +368,7 @@ async function main() {
       await seedPay(tx, demoOrg.id, panelHash);
       // M01 lifecycle batch 6a: checklists from the starters and a joiner in Divya's team (seed-lifecycle.ts).
       await seedLifecycle(tx, demoOrg.id);
+      await seedLifecycleLetters(tx, demoOrg.id);
     }
   }, { timeout: 420000 });
   // Payroll 5a: the demo company's audit chain checked once (the daily job's anchor), after the seed committed.

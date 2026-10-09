@@ -1,4 +1,9 @@
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
+import { BlobStorageService, OrgSecretsCryptoService } from '@exam-platform/shared';
+import { FileStore, sha256 } from '../src/documents/file-store';
+import { buildDocx, templateFields } from '../src/documents/letters/docx';
+import { STARTER_LETTERS } from '../src/documents/letters/fields';
 import { STARTERS } from '../src/lifecycle/starters';
 import { dueOn, openable, type TaskStatus } from '../src/lifecycle/journey-rules';
 
@@ -13,6 +18,10 @@ export const LIFE_PERMISSIONS = [
   { key: 'lifecycle.journey.template.manage', description: 'Set up onboarding and offboarding checklist templates' },
   { key: 'document.view', description: 'See the documents of the people in scope (each document type still needs its data class)' },
   { key: 'document.manage', description: 'Ask people for documents, upload for them, and verify or reject documents in scope' },
+  { key: 'lifecycle.bgv.manage', description: 'See and record background checks and the consent behind them for joiners in scope (Special data)' },
+  { key: 'letter.template.manage', description: 'Upload, check and switch on Word letter templates' },
+  { key: 'letter.issue', description: 'Issue letters to the people in scope (letter types that need approval go to the signatory first)' },
+  { key: 'letter.signatory.manage', description: 'Name who signs letters for each legal entity and their signature image (needs a fresh second sign-in step)' },
 ];
 
 const istToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -71,5 +80,26 @@ export async function seedLifecycle(tx: Tx, organizationId: string): Promise<voi
     await tx.journeyTask.create({
       data: { ...org, journeyId: j.id, key: x.key, title: x.title, kind: x.kind, config: x.config as Prisma.InputJsonValue, ownerType: x.ownerType, assigneeUserId: assignee, assigneeGroupId: x.ownerGroupId, dueOffsetDays: x.dueOffsetDays, dueOn: asDate(dueOn(joining, x.dueOffsetDays)), dependsOn: x.dependsOn, required: x.required, locked: x.locked, sortOrder: x.sortOrder, status: status.get(x.key) ?? 'open' },
     });
+  }
+}
+
+/**
+ * Lifecycle 6b demo: the three YukthiX starter letters switched on for the whole company (their sample preview counted
+ * as seen), and Lakshmi (HR) as the signatory of every legal entity, so HR can issue Sneha's appointment letter at once.
+ */
+export async function seedLifecycleLetters(tx: Tx, organizationId: string): Promise<void> {
+  const org = { organizationId };
+  if (await tx.letterTemplate.findFirst({ where: org })) return;
+  const hr = await tx.user.findFirstOrThrow({ where: { ...org, email: 'hr@demo-org.test' } });
+  const store = new FileStore(new BlobStorageService(), new OrgSecretsCryptoService());
+  for (const l of STARTER_LETTERS) {
+    const buf = buildDocx(l.paragraphs);
+    const id = randomUUID();
+    const ref = await store.put(`org/${organizationId}/letter-templates/${id}`, buf);
+    await tx.file.create({ data: { id, ...org, area: 'letter-templates', storageRef: ref, fileName: `${l.letterType}.docx`, mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: buf.length, sha256: sha256(buf), scanStatus: 'clean', scanDetail: 'YukthiX starter', scannedAt: new Date(), uploadedBy: hr.id, uploadedVia: 'system' } });
+    await tx.letterTemplate.create({ data: { ...org, letterType: l.letterType, name: l.name, source: 'starter', fileId: id, fields: templateFields(buf), requiresApproval: l.requiresApproval, personSigns: l.personSigns, version: 1, status: 'active', previewViewedBy: hr.id, previewViewedAt: new Date(), createdBy: hr.id } });
+  }
+  for (const e of await tx.legalEntity.findMany({ where: org, select: { id: true } })) {
+    await tx.signatory.create({ data: { ...org, legalEntityId: e.id, userId: hr.id, title: 'Head of HR', createdBy: hr.id } });
   }
 }

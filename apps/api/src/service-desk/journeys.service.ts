@@ -174,6 +174,14 @@ export class JourneysService implements OnModuleInit {
     });
   }
 
+  /** Lifecycle 6b: stop a cancelled joiner's desk requests (system work on the desks they reach). */
+  async stopFor(ctx: CompanyContext, ticketIds: string[], reason: string) {
+    if (!ticketIds.length) return;
+    await this.tx(ctx, async (tx) => {
+      for (const id of ticketIds) await this.catalog.stopForLifecycle(tx, { ctx }, id, reason);
+    });
+  }
+
   // ------------------------------------------------------------------------------------------ starting
 
   async startAll(ctx: CompanyContext, kind: 'join' | 'exit', employeeId: string, date: string, by: string | null) {
