@@ -45,6 +45,7 @@ COPY --from=build /repo/apps/api/dist ./apps/api/dist
 COPY --from=build /repo/apps/api/package.json ./apps/api/package.json
 COPY --from=build /repo/apps/api/prisma ./apps/api/prisma
 COPY --from=build /repo/apps/api/config ./apps/api/config
+COPY --from=build /repo/apps/api/assets ./apps/api/assets
 EXPOSE 3001 3505
 # --enable-source-maps: the dist ships its .js.map files (tsconfig sourceMap=true), so Node applies
 # them to error stacks and @sentry/node reports original TypeScript file/line positions.

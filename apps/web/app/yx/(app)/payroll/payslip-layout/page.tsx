@@ -24,7 +24,7 @@ export default function YxPayslipLayoutPage() {
       entityId={entityId}
       onEntity={setEntityId}
       data={data.data ?? null}
-      onSave={(blocks) => write(`/entities/${e}/payslip-layout`, { blocks, languages: ['en'] }, 'PUT')}
+      onSave={(blocks, languages) => write(`/entities/${e}/payslip-layout`, { blocks, languages }, 'PUT')}
       onPreview={async () => {
         const { blob } = await apiFetchBlob(`/payroll/entities/${e}/payslip-layout/preview`, { method: 'POST' }, accessToken ?? undefined);
         window.open(URL.createObjectURL(blob), '_blank', 'noopener');

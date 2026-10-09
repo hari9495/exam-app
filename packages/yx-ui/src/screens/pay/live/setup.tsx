@@ -578,6 +578,12 @@ const BLOCK_TEXT: Record<string, string> = {
   ytd: 'Year to date',
   employerContributions: 'Employer contributions',
 };
+const LANGUAGES = [
+  { value: 'hi', label: 'Hindi (हिन्दी)' },
+  { value: 'ta', label: 'Tamil (தமிழ்)' },
+  { value: 'te', label: 'Telugu (తెలుగు)' },
+  { value: 'kn', label: 'Kannada (ಕನ್ನಡ)' },
+];
 const OPTIONAL_BLOCKS = ['department', 'bankAccount', 'pan', 'uan', 'leaveBalance', 'ytd', 'employerContributions'];
 
 export interface PayslipLayoutLiveProps {
@@ -587,7 +593,7 @@ export interface PayslipLayoutLiveProps {
   entityId: string | null;
   onEntity: (id: string | null) => void;
   data: PayslipLayouts | null;
-  onSave: (blocks: LayoutBlock[]) => Promise<unknown>;
+  onSave: (blocks: LayoutBlock[], languages: string[]) => Promise<unknown>;
   onPreview: () => Promise<unknown>;
   onActivate: () => Promise<unknown>;
 }
@@ -598,8 +604,10 @@ export function PayslipLayoutLiveScreen(p: PayslipLayoutLiveProps) {
   const active = p.data?.layouts.find((l) => l.status === 'active') ?? null;
   const draft = latest?.status === 'draft' ? latest : null;
   const [blocks, setBlocks] = useState<LayoutBlock[]>([]);
+  const [second, setSecond] = useState<string | null>(null);
   useEffect(() => {
     if (!p.data) return;
+    setSecond((draft ?? active)?.languages.find((l) => l !== 'en') ?? null);
     const base = (draft ?? active)?.blocks ?? [];
     const keys = [...p.data.mandatory, ...OPTIONAL_BLOCKS];
     setBlocks(
@@ -629,13 +637,13 @@ export function PayslipLayoutLiveScreen(p: PayslipLayoutLiveProps) {
         <>
           <p className="yx-tim-note">
             {active ? `In use: version ${active.version}${active.activatedAt ? `, since ${dateText(active.activatedAt.slice(0, 10))}` : ''}.` : 'No layout in use yet.'}{' '}
-            {draft ? `Draft: version ${draft.version}${draft.previewedAt ? ' (previewed)' : ' (not previewed yet)'}.` : ''} Payslips are in English for now.
+            {draft ? `Draft: version ${draft.version}${draft.previewedAt ? ' (previewed)' : ' (not previewed yet)'}.` : ''}
           </p>
           <Card className="yx-pay-card"
             title="Blocks"
             actions={
               <div className="yx-tim-row">
-                <Button size="sm" loading={busy === 'save'} onClick={() => void run('save', () => p.onSave(blocks))}>
+                <Button size="sm" loading={busy === 'save'} onClick={() => void run('save', () => p.onSave(blocks, second ? ['en', second] : ['en']))}>
                   Save draft
                 </Button>
                 <Button size="sm" disabled={!draft} loading={busy === 'preview'} onClick={() => void run('preview', p.onPreview)}>
@@ -654,6 +662,9 @@ export function PayslipLayoutLiveScreen(p: PayslipLayoutLiveProps) {
               </div>
             }
           >
+            <FormField id="pl-lang" label="Second language" helper="English is always on the payslip. A second language shows each label in that script too.">
+              <Select value={second} onChange={setSecond} clearable placeholder="English only" options={LANGUAGES} />
+            </FormField>
             <p className="yx-tim-note">Always shown (wage-slip particulars under the Code on Wages)</p>
             <ul aria-label="Always shown" className="yx-pay-fixed">
               {blocks.filter((b) => mandatory.has(b.key)).map((b) => (

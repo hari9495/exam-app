@@ -200,6 +200,15 @@ describe('Payslip layout (PAY-15)', () => {
     expect(screen.getByRole('checkbox', { name: /Department/ })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Use this layout' })).toBeDisabled();
   });
+
+  it('saves a second language with English always kept (5b-D2)', async () => {
+    const onSave = vi.fn(async () => ({}));
+    render(<PayslipLayoutLiveScreen state="ready" entities={ENTITIES} entityId="e1" onEntity={() => undefined} data={{ mandatory: ['netPay'], layouts: [] }} onSave={onSave} onPreview={vi.fn()} onActivate={vi.fn()} />);
+    await ue.click(screen.getByRole('combobox', { name: 'Second language' }));
+    await ue.click(await screen.findByRole('option', { name: /Tamil/ }));
+    await ue.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.any(Array), ['en', 'ta']));
+  });
 });
 
 describe('Imports (PAY-2.12)', () => {

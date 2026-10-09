@@ -354,11 +354,15 @@ describe('Payroll batch 5b', () => {
     expect(mandatory).toContain('netPay');
     const blocks = mandatory.map((key) => ({ key, shown: true }));
     expect((await api('payAdmin', 'put', path).send({ blocks: blocks.map((b) => (b.key === 'netPay' ? { ...b, shown: false } : b)), languages: ['en'] }).expect(400)).body.message).toMatch(/netPay/);
-    await api('payAdmin', 'put', path).send({ blocks, languages: ['en', 'ta'] }).expect(400);
+    // 5b-D2: English always, plus at most one regional language.
+    await api('payAdmin', 'put', path).send({ blocks, languages: ['ta'] }).expect(400);
+    await api('payAdmin', 'put', path).send({ blocks, languages: ['en', 'ta', 'hi'] }).expect(400);
     await api('payAdmin', 'put', path).send({ blocks, languages: ['en'] }).expect(200);
+    await api('payAdmin', 'put', path).send({ blocks, languages: ['en', 'ta'] }).expect(200);
     await api('payAdmin', 'post', `${path}/activate`).expect(409);
-    const pdf = await api('payAdmin', 'post', `${path}/preview`).expect(200);
+    const pdf = await api('payAdmin', 'post', `${path}/preview`).buffer(true).parse((res, cb) => { const c: Buffer[] = []; res.on('data', (x: Buffer) => c.push(x)); res.on('end', () => cb(null, Buffer.concat(c))); }).expect(200);
     expect(pdf.headers['content-type']).toBe('application/pdf');
+    expect(Buffer.from(pdf.body as Buffer).toString('latin1')).toMatch(/NotoSansTamil/);
     await api('payAdmin', 'post', `${path}/activate`).expect(200);
     await api('payAdmin', 'put', path).send({ blocks, languages: ['en'] }).expect(200);
     const v2 = (await api('payAdmin', 'get', path).expect(200)).body.layouts;

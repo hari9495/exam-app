@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { localOf, writeLabel, type LocalLanguage } from '../documents/payslip-languages';
 import { Prisma } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
@@ -280,9 +281,13 @@ export class PaySetupService {
 
   // ------------------------------------------------------------------------------------------ payslip layout (PAY-2.13)
 
-  private async mandatoryBlocks(on: string) {
+  private async mandatoryLabels(on: string) {
     const rs = inForce(await this.rules.published(), 'IN.WAGESLIP', ['IN'], on);
-    return ((rs?.values.mandatory as { key: string; label: string }[] | undefined) ?? []).map((m) => m.key);
+    return (rs?.values.mandatory as { key: string; label: string }[] | undefined) ?? [];
+  }
+
+  private async mandatoryBlocks(on: string) {
+    return (await this.mandatoryLabels(on)).map((m) => m.key);
   }
 
   layouts(ctx: TenantContext, user: ScopeUser, entityId: string) {
@@ -300,9 +305,8 @@ export class PaySetupService {
       const mandatory = await this.mandatoryBlocks(todayIst());
       const hidden = mandatory.filter((k) => !dto.blocks.some((b) => b.key === k && b.shown));
       if (hidden.length) throw new BadRequestException(`The wage slip must show: ${hidden.join(', ')} (Code on Wages).`);
-      // DECISION NEEDED: payslips in Hindi, Tamil, Telugu and Kannada need embedded fonts for those scripts (licence and
-      // size); until chosen, a layout is English only.
-      if (dto.languages.some((l) => l !== 'en')) throw new BadRequestException('Payslips are in English for now; other languages come later.');
+      // Founder decision 5b-D2 (9 Oct 2026): English always, plus at most one of Hindi, Tamil, Telugu or Kannada.
+      if (!dto.languages.includes('en') || new Set(dto.languages).size !== dto.languages.length || dto.languages.length > 2) throw new BadRequestException('A payslip is in English, with at most one more language.');
       const latest = await tx.payslipLayout.findFirst({ where: { organizationId: c.organizationId, legalEntityId: entityId, payGroupId: null }, orderBy: { version: 'desc' } });
       const data = { blocks: dto.blocks as unknown as Prisma.InputJsonValue, languages: dto.languages, previewedAt: null };
       const row = latest?.status === 'draft'
@@ -321,7 +325,8 @@ export class PaySetupService {
       if (!d) throw new NotFoundException('There is no draft layout to preview.');
       const entity = await tx.legalEntity.findFirstOrThrow({ where: { id: entityId }, select: { name: true } });
       await tx.payslipLayout.update({ where: { id: d.id }, data: { previewedAt: new Date() } });
-      return { file: await renderSample(entity.name, d.blocks as { key: string; shown: boolean }[]), name: `payslip-layout-v${d.version}-preview.pdf` };
+      const labels = Object.fromEntries((await this.mandatoryLabels(todayIst())).map((m) => [m.key, m.label]));
+      return { file: await renderSample(entity.name, d.blocks as { key: string; shown: boolean }[], labels, localOf(d.languages)), name: `payslip-layout-v${d.version}-preview.pdf` };
     });
   }
 
@@ -388,15 +393,20 @@ export class PaySetupService {
 }
 
 /** A sample payslip with the layout's shown blocks (figures are illustrative and say so). */
-function renderSample(entityName: string, blocks: { key: string; shown: boolean }[]): Promise<Buffer> {
+function renderSample(entityName: string, blocks: { key: string; shown: boolean }[], labels: Record<string, string>, local: LocalLanguage | null): Promise<Buffer> {
   const sample: Record<string, string> = { employerName: entityName, employeeName: 'Sample Employee', employeeCode: 'EMP-0001', designation: 'Engineer', period: 'Sample month', paidDays: '30', earnings: 'Basic 24,200 · HRA 12,100 · Special 22,600', deductions: 'PF 1,800 · PT 200', grossPay: '60,500', netPay: '58,500' };
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 48, info: { Title: 'Payslip layout preview' } });
     const out: Buffer[] = [];
     doc.on('data', (b: Buffer) => out.push(b)).on('end', () => resolve(Buffer.concat(out))).on('error', reject);
     doc.fontSize(9).fillColor('#a33').text('PREVIEW — sample figures, not a payslip', { align: 'right' }).fillColor('#000');
-    doc.moveDown().fontSize(14).text(entityName).fontSize(11).text('Payslip').moveDown();
-    for (const b of blocks.filter((x) => x.shown)) doc.fontSize(10).text(`${b.key}: ${sample[b.key] ?? '—'}`);
+    doc.moveDown().fontSize(14).text(entityName).fontSize(11);
+    writeLabel(doc, local, 'payslip', 'Payslip', '');
+    doc.moveDown();
+    for (const b of blocks.filter((x) => x.shown)) {
+      doc.fontSize(10);
+      writeLabel(doc, local, b.key, labels[b.key] ?? b.key, sample[b.key] ?? '—');
+    }
     doc.end();
   });
 }

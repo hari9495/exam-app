@@ -1,4 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { join } from 'path';
+import { FONT_DIR, FONT_FILE, LABELS, localOf, writeLabel, type LocalLanguage } from '../documents/payslip-languages';
 import { Prisma } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import { createHash, randomBytes } from 'crypto';
@@ -110,23 +112,26 @@ export class PayDocumentsService {
     return fields;
   }
 
-  private render(kind: string, title: string, referenceNo: string, code: string | null, fields: Record<string, unknown>, required: Field[], t: Template, issuedAt: Date): Promise<Buffer> {
+  private render(kind: string, title: string, referenceNo: string, code: string | null, fields: Record<string, unknown>, required: Field[], t: Template, issuedAt: Date, local: LocalLanguage | null = null): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ size: 'A4', margin: 40, info: { Title: title, Author: String(fields.employerName ?? 'YukthiX'), CreationDate: issuedAt } });
       const chunks: Buffer[] = [];
       doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
+      if (local) doc.fontSize(15).font(join(FONT_DIR, FONT_FILE[local])).text(LABELS[local].payslip).font('Helvetica');
       doc.fontSize(15).text(title);
       doc.fontSize(9).fillColor('#444').text(`Reference ${referenceNo}`).fillColor('#000').moveDown();
       for (const f of required) {
         const v = fields[f.key];
         if (t.lines.includes(f.key) || Array.isArray(v)) continue;
-        doc.fontSize(10).text(`${f.label}: ${MONEY.test(String(v)) && /pay|amount|ctc/i.test(f.key) ? money(String(v)) : String(v ?? '')}`);
+        doc.fontSize(10);
+        writeLabel(doc, local, f.key, f.label, MONEY.test(String(v)) && /pay|amount|ctc/i.test(f.key) ? money(String(v)) : String(v ?? ''));
       }
       for (const k of t.lines) {
         const lines = (fields[k] as { label: string; amount: string }[] | undefined) ?? [];
-        doc.moveDown(0.5).fontSize(11).text(k === 'earnings' ? 'Earnings' : 'Deductions');
+        doc.moveDown(0.5).fontSize(11);
+        writeLabel(doc, local, k, k === 'earnings' ? 'Earnings' : 'Deductions', '');
         for (const l of lines) doc.fontSize(10).text(`${l.label}  ${money(l.amount)}`);
         if (!lines.length) doc.fontSize(10).text('None');
       }
@@ -201,7 +206,9 @@ export class PayDocumentsService {
     const ref = await this.nextReference(tx, org, a.legalEntityId, entity.shortName, a.kind, Number(today.slice(0, 4)));
     const code = verifyCode();
     const title = `${KIND_LABEL[a.kind]}${a.month ? ` · ${new Date(`${a.month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}` : ''}${a.supersedes ? ' (revised)' : ''}`;
-    const unsigned = await this.render(a.kind, title, ref, code, fields, required, t, issuedAt);
+    // 5b-D2: a payslip carries the second language of its entity's payslip layout in use.
+    const layout = a.kind === 'payslip' ? await tx.payslipLayout.findFirst({ where: { organizationId: org, legalEntityId: a.legalEntityId, payGroupId: null, status: 'active' }, select: { languages: true } }) : null;
+    const unsigned = await this.render(a.kind, title, ref, code, fields, required, t, issuedAt, localOf(layout?.languages));
     let pdf = unsigned;
     let signature: 'none' | 'awaiting' | 'signed' = 'none';
     let signatureRef: string | null = null;
