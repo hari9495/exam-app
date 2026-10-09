@@ -2,7 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import fc from 'fast-check';
 import { Prisma } from '@prisma/client';
-import { checkShape, esi, inForce, pf, pt, runGolden, tds, type GoldenCase, type RuleSet } from './evaluator';
+import { checkShape, esi, inForce, minWage, minWageTableFor, pf, pt, runGolden, tds, type GoldenCase, type RuleSet } from './evaluator';
 
 // PAY-2.02 / 2.03: every golden case of the India pack passes; the migration that loads the pack carries every rule set
 // of the JSON (no drift); shape checks; property tests over the statutory maths (§16.3).
@@ -86,5 +86,35 @@ describe('statutory maths, properties (§16.3)', () => {
       }),
       { numRuns: 300 },
     );
+  });
+});
+
+describe('state minimum-wage tables (5b-D1)', () => {
+  const file = JSON.parse(readFileSync(join(__dirname, 'packs', 'in-min-wages.json'), 'utf8')) as { ruleSets: (RuleSet & { golden: GoldenCase[]; source: string })[]; missing: { state: string }[] };
+  const floor = one('IN.MW');
+
+  it('every table passes its checks (printed totals add up) and golden cases, names its notification, and is marked verify', () => {
+    for (const rs of file.ruleSets) {
+      expect({ v: rs.version, problems: [...checkShape(rs), ...rs.golden.flatMap((g) => runGolden(rs, g))] }).toEqual({ v: rs.version, problems: [] });
+      expect(rs.verify).toBe(true);
+      expect(String((rs.values.notification as { url: string }).url)).toMatch(/^https:\/\/[a-z.]+\.gov\.in\//);
+    }
+    expect(file.missing.map((m) => m.state)).toContain('IN-UP');
+  });
+
+  it('a mistyped amount is caught: basic and VDA must add up to the printed total', () => {
+    const ka = structuredClone(file.ruleSets[0]);
+    (ka.values.rates as { totalMonthly: string }[])[0].totalMonthly = '19972.06';
+    expect(checkShape(ka).join()).toMatch(/do not add up/);
+  });
+
+  it('the check uses the state rate for the place, else the national floor; a table without its DA says so', () => {
+    const [ka, tn] = file.ruleSets;
+    expect(minWage(floor, { table: ka, zone: '1' })).toMatchObject({ floorApplied: false, daMissing: false });
+    expect(minWage(floor, { table: ka, zone: '1' }).monthly.toFixed(2)).toBe('16137.03');
+    expect(minWage(floor, { table: tn, zone: 'A' })).toMatchObject({ floorApplied: false, daMissing: true });
+    expect(minWage(floor).floorApplied).toBe(true);
+    expect(minWageTableFor(file.ruleSets, 'IN-KA', '2026-10-09')?.version).toBe('KA-SHOPS-2026-27');
+    expect(minWageTableFor(file.ruleSets, 'IN-KA', '2027-04-01')).toBeNull();
   });
 });

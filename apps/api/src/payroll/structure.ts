@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { RuleError } from '../rules-engine/conditions';
 import { Node, StatutoryFn, dependencyOrder, evaluate } from '../rules-engine/expressions';
-import { Citation, RuleSet, bonus, codeWage, esi, esiCovered, gratuity, inForce, lwf, minWage, pf, pt } from '../statutory/evaluator';
+import { Citation, RuleSet, bonus, codeWage, esi, esiCovered, gratuity, inForce, lwf, minWage, minWageTableFor, pf, pt } from '../statutory/evaluator';
 
 // Salary structures (M03-BUILD-DESIGN §7, PAY-2.07 / 2.08 / 2.09): a template's lines worked out for one person and
 // month, CTC-first (the balancing component takes what is left of the CTC after every other line and the employer costs
@@ -48,6 +48,11 @@ export interface Facts {
   esi: 'yes' | 'no' | 'by_wage';
   pwd: boolean;
   bonusRate?: string | null;
+  /** Minimum-wage zone of the place of work and the person's skill class, when known (state tables, 5b-D1). */
+  zone?: string | null;
+  skill?: string | null;
+  /** The scheduled employment whose state table applies (else the state's only table in force). */
+  mwEmployment?: string | null;
 }
 export interface Options {
   balancingCode: string;
@@ -71,7 +76,7 @@ export interface Breakup {
   codeWageAddBack: Prisma.Decimal;
   esiCovered: boolean;
   rounds: number;
-  minWage: { monthly: Prisma.Decimal; checked: Prisma.Decimal; below: boolean; floorApplied: boolean; citation: Citation } | null;
+  minWage: { monthly: Prisma.Decimal; checked: Prisma.Decimal; below: boolean; floorApplied: boolean; daMissing: boolean; zone: string | null; skill: string | null; citation: Citation } | null;
   verify: boolean;
 }
 
@@ -94,7 +99,6 @@ export function breakup(a: { lines: Line[]; components: ComponentDef[]; options:
   const order = lineOrder(a.lines, comps);
   const byCode = new Map(a.lines.map((l) => [l.code, l]));
   const rule = (statute: string, jur: string[] = ['IN']) => inForce(a.rules, statute, jur, a.facts.on);
-  const stateJur = [a.facts.state, 'IN'];
   const pfRs = rule('IN.PF');
   const esiRs = rule('IN.ESI');
   const ptRs = rule('IN.PT', [a.facts.state]);
@@ -102,7 +106,9 @@ export function breakup(a: { lines: Line[]; components: ComponentDef[]; options:
   const codeRs = rule('IN.WAGES-CODE');
   const gratRs = rule('IN.SS-CODE') ?? rule('IN.GRATUITY');
   const bonusRs = rule('IN.BONUS');
-  const mwRs = rule('IN.MW', stateJur);
+  const mwRs = rule('IN.MW');
+  const mwTable = minWageTableFor(a.rules, a.facts.state, a.facts.on, a.facts.mwEmployment);
+  const mwFacts = { table: mwTable, zone: a.facts.zone, skill: a.facts.skill };
   const used: RuleSet[] = [];
 
   /** What counts inside the CTC: earnings marked so, and the employer costs the template puts inside it. */
@@ -171,7 +177,7 @@ export function breakup(a: { lines: Line[]; components: ComponentDef[]; options:
           return r.monthly;
         }
         // bonus_provision
-        const mw = mwRs ? minWage(mwRs, { state: a.facts.state }).monthly : ZERO;
+        const mw = mwRs ? minWage(mwRs, mwFacts).monthly : ZERO;
         const r = bonus(need(bonusRs, 'bonus'), { bonusWage: sum('bonusWage').add(addBack), rate: a.facts.bonusRate ?? String(bonusRs!.values.minRate), minWageMonthly: mw });
         cites.set(fn, r.citation);
         return r.monthly;
@@ -224,9 +230,10 @@ export function breakup(a: { lines: Line[]; components: ComponentDef[]; options:
   const monthlyCtc = r.monthlyCtc ?? lines.filter((l) => inCtc(l.code)).reduce((s, l) => s.add(l.monthly), ZERO);
   let minW: Breakup['minWage'] = null;
   if (mwRs) {
-    const m = minWage(mwRs, { state: a.facts.state });
+    const m = minWage(mwRs, mwFacts);
     used.push(mwRs);
-    minW = { monthly: m.monthly, checked: gross, below: gross.lt(m.monthly), floorApplied: m.floorApplied, citation: m.citation };
+    if (mwTable && !m.floorApplied) used.push(mwTable);
+    minW = { monthly: m.monthly, checked: gross, below: gross.lt(m.monthly), floorApplied: m.floorApplied, daMissing: m.daMissing, zone: m.state?.zone ?? null, skill: m.state?.skill ?? null, citation: m.citation };
   }
   return { lines, monthlyGross: gross, monthlyCtc: monthlyCtc.toDecimalPlaces(2), annualCtc: monthlyCtc.mul(12).toDecimalPlaces(2), codeWageAddBack: r.addBack, esiCovered: r.covered, rounds: r.round, minWage: minW, verify: used.some((x) => x.verify) };
 }
@@ -240,6 +247,6 @@ export const breakupJson = (b: Breakup) => ({
   codeWageAddBack: b.codeWageAddBack.toFixed(2),
   esiCovered: b.esiCovered,
   rounds: b.rounds,
-  minWage: b.minWage ? { monthly: b.minWage.monthly.toFixed(2), checked: b.minWage.checked.toFixed(2), below: b.minWage.below, floorApplied: b.minWage.floorApplied, citation: b.minWage.citation } : null,
+  minWage: b.minWage ? { monthly: b.minWage.monthly.toFixed(2), checked: b.minWage.checked.toFixed(2), below: b.minWage.below, floorApplied: b.minWage.floorApplied, daMissing: b.minWage.daMissing, zone: b.minWage.zone, skill: b.minWage.skill, citation: b.minWage.citation } : null,
   verify: b.verify,
 });

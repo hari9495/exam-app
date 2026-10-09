@@ -105,18 +105,47 @@ export function lwf(rs: RuleSet, i: { month: number }) {
   return { employee: due ? D(v.employee as string) : ZERO, employer: due ? D(v.employer as string) : ZERO, citation: cite(rs) };
 }
 
+/** One row of a state minimum-wage table (amounts per month, as the notification prints them). */
+export interface MinWageRate {
+  zone: string;
+  skill: string;
+  description: string;
+  basicMonthly: string;
+  /** The VDA / DA for the period, or null when the notification leaves it to a separate order not loaded yet. */
+  vdaMonthly: string | null;
+  totalMonthly?: string;
+}
+
 /**
- * Minimum wage: the state rate for the zone and skill, never below the national floor (YX-STAT-22).
- * DECISION NEEDED: the state minimum-wage tables (every state, zone and skill, revised twice a year with the VDA) must be
- * loaded from the official notifications by the compliance owner; the pack ships the national floor only, so today
- * every check compares with the floor and says so.
+ * A state's table for one scheduled employment (founder decision 5b-D1, 9 Oct 2026): rates by zone and skill, its
+ * notification, in force between the rule set's dates. Without a known skill the lowest class of the zone applies (every
+ * worker gets at least that); without a zone, the lowest in the state.
  */
-export function minWage(rs: RuleSet, i: { state: string; zone?: string | null; skill?: string | null }) {
+export function minWageTable(rs: RuleSet, i: { zone?: string | null; skill?: string | null }) {
+  const v = need(rs, 'min_wage_table');
+  const rates = (v.rates as MinWageRate[]).filter((r) => (!i.zone || r.zone === i.zone) && (!i.skill || r.skill === i.skill));
+  if (!rates.length) throw new StatutoryError(`No ${rs.jurisdiction} rate for zone ${i.zone ?? 'any'} and skill ${i.skill ?? 'any'}`);
+  const total = (r: MinWageRate) => D(r.basicMonthly).add(r.vdaMonthly ?? 0);
+  const low = rates.reduce((a, b) => (total(b).lt(total(a)) ? b : a));
+  return { monthly: total(low), basic: D(low.basicMonthly), vda: low.vdaMonthly === null ? null : D(low.vdaMonthly), daMissing: low.vdaMonthly === null, zone: low.zone, skill: low.skill, citation: cite(rs) };
+}
+
+/**
+ * Minimum wage (YX-STAT-22): the state table's rate when one is in force for the place, never below the national floor.
+ * A table whose DA is not loaded is compared on its basic and says so (daMissing).
+ */
+export function minWage(rs: RuleSet, i: { table?: RuleSet | null; zone?: string | null; skill?: string | null } = {}) {
   const v = need(rs, 'min_wage');
-  const floor = D(v.floorDaily as string);
-  const st = (v.states as Record<string, Record<string, Record<string, string>>>)[i.state]?.[i.zone ?? '']?.[i.skill ?? ''];
-  const daily = st && D(st).gt(floor) ? D(st) : floor;
-  return { daily, monthly: daily.mul(Number(v.monthDays)), floorApplied: !st || D(st).lte(floor), citation: cite(rs) };
+  const floorMonthly = D(v.floorDaily as string).mul(Number(v.monthDays));
+  const st = i.table ? minWageTable(i.table, i) : null;
+  const useState = !!st && st.monthly.gt(floorMonthly);
+  const daily = useState ? st!.monthly.div(Number(i.table!.values.dailyDivisor ?? v.monthDays)).toDecimalPlaces(2) : D(v.floorDaily as string);
+  return { daily, monthly: useState ? st!.monthly : floorMonthly, floorApplied: !useState, daMissing: !!st?.daMissing, state: st, citation: useState ? st!.citation : cite(rs) };
+}
+
+/** The state table in force for a place and date (the employment's, when the company says which). */
+export function minWageTableFor(sets: readonly RuleSet[], state: string, on: string, employment?: string | null): RuleSet | null {
+  return sets.filter((s) => s.statute === 'IN.MW' && s.jurisdiction === state && s.values.kind === 'min_wage_table' && (!employment || s.values.employment === employment) && s.validFrom <= on && (!s.validTo || s.validTo >= on)).sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0] ?? null;
 }
 
 /** Code wage (YX-PAY-47): exclusions above the limit of total pay are added back. */
@@ -260,6 +289,24 @@ export function checkShape(rs: RuleSet, limits: { ptAnnualMax?: string } = {}): 
   if (rs.values.kind === 'pf') ['employeeRate', 'employerRate', 'epsRate', 'edliRate', 'adminRate'].forEach((k) => rate(v[k], k));
   if (rs.values.kind === 'esi') ['employeeRate', 'employerRate'].forEach((k) => rate(v[k], k));
   if (rs.values.kind === 'tds') for (const r of Object.values(v.regimes as Record<string, TdsRegime>)) r.slabs.forEach((s, i) => rate(s.rate, `slab ${i + 1} rate`));
+  if (rs.values.kind === 'min_wage_table') {
+    const n = v.notification as Record<string, string> | undefined;
+    if (!n?.number || !n?.date || !n?.url) problems.push('A minimum-wage table names its notification (number, date, official link)');
+    if (typeof v.employment !== 'string' || !v.employment) problems.push('A minimum-wage table names its scheduled employment');
+    const zones = new Set(((v.zones as { code: string }[]) ?? []).map((z) => z.code));
+    const rates = (v.rates as MinWageRate[]) ?? [];
+    if (!rates.length) problems.push('A minimum-wage table has at least one rate');
+    const seen = new Set<string>();
+    const money = (x: unknown) => typeof x === 'string' && /^\d{1,9}(\.\d{1,2})?$/.test(x);
+    rates.forEach((r, i) => {
+      const at = `Rate ${i + 1} (zone ${r.zone}, ${r.skill})`;
+      if (!zones.has(r.zone)) problems.push(`${at}: zone not in the table's zone list`);
+      if (seen.has(`${r.zone}|${r.skill}`)) problems.push(`${at}: listed twice`);
+      seen.add(`${r.zone}|${r.skill}`);
+      if (!money(r.basicMonthly) || (r.vdaMonthly !== null && !money(r.vdaMonthly))) problems.push(`${at}: amounts are rupees with up to 2 decimals`);
+      else if (r.totalMonthly !== undefined && !D(r.basicMonthly).add(r.vdaMonthly ?? 0).eq(D(r.totalMonthly))) problems.push(`${at}: basic and VDA do not add up to the printed total`);
+    });
+  }
   if (rs.validTo && rs.validTo < rs.validFrom) problems.push('The rule set ends before it starts');
   return problems;
 }
@@ -270,7 +317,7 @@ export interface GoldenCase {
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
 }
-const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
 
 /** Runs one golden case; returns the fields that differ (empty when it passes). */
 export function runGolden(rs: RuleSet, g: GoldenCase): string[] {

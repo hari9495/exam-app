@@ -200,6 +200,9 @@ export async function seedAuditAnchor(tx: Tx, organizationId: string) {
 // Kaveri Foods Pvt Ltd's statutory registrations (PF and ESI on, Karnataka PT on, Tamil Nadu PT applied for).
 export async function seedPay5b(tx: Tx, organizationId: string) {
   const org = { organizationId };
+  // 5b-D1: the minimum-wage zones of the offices (Karnataka zone 1 is BBMP Bengaluru; Tamil Nadu zone A is a corporation).
+  await tx.location.updateMany({ where: { ...org, name: 'Bengaluru head office', minWageZone: null }, data: { minWageZone: '1' } });
+  await tx.location.updateMany({ where: { ...org, name: 'Chennai office', minWageZone: null }, data: { minWageZone: 'A' } });
   if (await tx.salaryTemplate.findFirst({ where: { ...org, name: STARTER_TEMPLATE.name } })) return;
   const today = todayIn('Asia/Kolkata');
   const fy = `${Number(today.slice(5, 7)) >= 4 ? today.slice(0, 4) : Number(today.slice(0, 4)) - 1}-04-01`;

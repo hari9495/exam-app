@@ -33,6 +33,12 @@ const YEARS = (dob: Date, on: string) => {
 type ComponentRow = Prisma.PayComponentGetPayload<object>;
 const def = (c: ComponentRow): ComponentDef => ({ id: c.id, code: c.code, name: c.name, kind: c.kind as ComponentDef['kind'], pfWage: c.pfWage, esiWage: c.esiWage, ptWage: c.ptWage, gratuityWage: c.gratuityWage, bonusWage: c.bonusWage, codeWagePart: c.codeWagePart, codeExclusion: c.codeExclusion, inCtc: c.inCtc, rounding: c.rounding as ComponentDef['rounding'], statutory: c.statutory });
 
+/** The minimum-wage notes shown with a breakup (YX-PAY-22, 5b-D1). */
+const mwWarnings = (b: ReturnType<typeof breakup>) => [
+  ...(b.minWage?.below ? ['The pay is below the minimum or floor wage for this place (YX-PAY-22).'] : []),
+  ...(b.minWage?.daMissing ? ['The state’s dearness allowance for this period is not loaded, so the minimum wage was compared on its basic rate only.'] : []),
+];
+
 /** Plain-English refusal for a formula, structure or statutory problem. */
 function plain<T>(fn: () => T): T {
   try {
@@ -243,7 +249,7 @@ export class PayStructuresService {
   private async facts(tx: Tx, org: string, e: { id: string; employeeId: string; legalEntityId: string }, on: string, rules: RuleSet[]): Promise<Facts> {
     const a = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId: e.id, supersededAt: null, validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }] } });
     if (!a) throw new ConflictException('The employee has no job details on that date.');
-    const loc = await tx.location.findFirstOrThrow({ where: { organizationId: org, id: a.locationId }, select: { state: true } });
+    const loc = await tx.location.findFirstOrThrow({ where: { organizationId: org, id: a.locationId }, select: { state: true, minWageZone: true } });
     const p = await tx.employeePersonalDetails.findFirst({ where: { organizationId: org, employeeId: e.employeeId }, select: { dateOfBirth: true, gender: true } });
     const prof = await this.profileOn(tx, org, e.id, on);
     const d = prof ? null : await this.defaults(tx, org, a.employmentTypeId, on, rules);
@@ -259,6 +265,8 @@ export class PayStructuresService {
       pfOnActualWage: prof?.pfOnActualWage ?? option?.value === 'yes',
       esi: prof ? (prof.esi as Facts['esi']) : d!['IN.ESI'] === 'excluded' ? 'no' : 'by_wage',
       pwd: prof?.pwdCeilingConsent ?? false,
+      // The state minimum-wage zone of the place of work (5b-D1); the skill class is not on the record yet, so the lowest class applies.
+      zone: loc.minWageZone,
     };
   }
 
@@ -297,7 +305,7 @@ export class PayStructuresService {
         const e = await this.employmentOn(tx, c.organizationId, dto.employeeId, dto.effectiveDate);
         if (!(await this.history.reachesFrom(tx, c, v, 'employee.salary.manage', e, dto.effectiveDate))) throw new NotFoundException('Not found');
         const { b } = await this.work(tx, c.organizationId, e, dto);
-        return { ...breakupJson(b), warnings: b.minWage?.below ? ['The pay is below the minimum or floor wage for this place (YX-PAY-22).'] : [] };
+        return { ...breakupJson(b), warnings: mwWarnings(b) };
       }),
     );
   }
@@ -320,7 +328,7 @@ export class PayStructuresService {
         await tx.compensationLine.createMany({ data: b.lines.map((l) => ({ organizationId: c.organizationId, legalEntityId: e.legalEntityId, employeeId: e.employeeId, packageId: pkg.id, componentId: components.find((x) => x.code === l.code)!.id, monthly: l.monthly, annual: l.annual, citation: l.citation ? (l.citation as unknown as Prisma.InputJsonValue) : Prisma.DbNull })) });
         // No amounts in the audit log (Confidential).
         await audit(tx, c, 'employee.change.requested', 'employee', e.employeeId, { changeId: ch.id, changeType: 'salary_revision', effectiveDate: dto.effectiveDate, touchesPay: true, packageId: pkg.id, belowMinimumWage: !!b.minWage?.below });
-        return { changeId: ch.id, status: ch.status, packageId: pkg.id, ...breakupJson(b), warnings: b.minWage?.below ? ['The pay is below the minimum or floor wage for this place (YX-PAY-22).'] : [] };
+        return { changeId: ch.id, status: ch.status, packageId: pkg.id, ...breakupJson(b), warnings: mwWarnings(b) };
       }),
     );
   }
