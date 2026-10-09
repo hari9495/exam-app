@@ -54,7 +54,7 @@ export interface DeskSetupScreenProps {
   calendars: Calendar[];
   canCalendars: boolean;
   onCreateDesk: (input: { name: string; key: string; kind: DeskKind }) => Promise<void>;
-  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays'>> & { nextNumber?: number }) => Promise<void>;
+  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays' | 'routingWaitMinutes'>> & { nextNumber?: number }) => Promise<void>;
   onSearchUsers: (q: string) => Promise<{ id: string; name: string | null; email: string }[]>;
   onSeatCost: (userId: string, role: DeskRole) => Promise<SeatCost>;
   onAddMember: (input: { userId: string; role: DeskRole; tier?: string }) => Promise<void>;
@@ -755,6 +755,7 @@ function SettingsTab(props: TabProps) {
   const [reopenDays, setReopenDays] = useState<number | null>(x.reopenWindowDays ?? 7);
   const [canReopen, setCanReopen] = useState(x.requesterCanReopen ?? true);
   const [closeDays, setCloseDays] = useState<number | null>(x.autoCloseDays === undefined ? 3 : x.autoCloseDays);
+  const [waitMinutes, setWaitMinutes] = useState<number | null>(x.routingWaitMinutes ?? 2);
   const { busy, error, run } = useRun();
   const can = props.detail.canSetUp;
   return (
@@ -792,6 +793,9 @@ function SettingsTab(props: TabProps) {
       <FormField label="Close resolved tickets after (days without a reply)" helper="Empty: never close by itself.">
         <NumberField value={closeDays} onChange={setCloseDays} min={1} max={90} disabled={!can} />
       </FormField>
+      <FormField label="Wait for the best-matched agent (minutes)" helper="When nobody free has the skills and language a ticket needs, it waits this long before going to anyone free. 0: at once.">
+        <NumberField value={waitMinutes} onChange={setWaitMinutes} min={0} max={60} disabled={!can} />
+      </FormField>
       {can && (
         <div className="yx-ops-row">
           <Button
@@ -812,6 +816,7 @@ function SettingsTab(props: TabProps) {
                   requesterCanReopen: canReopen,
                   reopenWindowDays: reopenDays ?? 7,
                   autoCloseDays: closeDays,
+                  routingWaitMinutes: waitMinutes ?? 2,
                   ...(next ? { nextNumber: next } : {}),
                 }),
               )

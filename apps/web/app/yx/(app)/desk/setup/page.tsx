@@ -11,6 +11,7 @@ import { useYxPermissions } from '../../../../../lib/yx-org';
 import { useCurrentUser } from '../../../../../lib/hooks/useCurrentUser';
 import { deskState, useDesk, useDeskWrite } from '../../../../../lib/yx-desk';
 import { ChatQueuesAdmin, DeskOrgAdmin, LifecycleAdmin, SchedulesAdmin, type BranchView, type ChatQueue, type DocTemplate, type JourneySetup, type LifecycleSetup, type RecurringView, type SequenceDef } from '@yukthix/ui/desk';
+import { MessagingAdmin, type LineSecret, type MsgLine, type MsgSetup, type WidgetView } from '@yukthix/ui/desk';
 import { CatalogAdmin, RulesAdmin, type CatalogItemAdmin, type CatalogSchema, type DeskRule, type DeskRuleSchema, type DryRunResult, type PickOption, type RuleRun, type RuleWebhook, type SetupChecklist } from '@yukthix/ui/desk';
 
 // Service desk › Desk set-up (APX-D §5.8, M14 SD-1.01/1.02): desks, seats (cost shown first), groups, categories, types,
@@ -77,6 +78,9 @@ function YxDeskSetupPageInner() {
   const locations = useDesk<{ id: string; label: string }[]>(canOrg ? '/my/pick/locations?q=' : null);
   const docTemplates = useDesk<{ fields: { key: string; label: string }[]; templates: DocTemplate[] }>(selected && canCatalog ? `/doc-templates?deskId=${selected}` : null);
   const journeys = useDesk<JourneySetup>(canCatalog ? '/journeys' : null);
+  // 3b-2 batch 3: messaging lines (WhatsApp, SMS, Teams, Slack) and help widgets.
+  const msgLines = useDesk<MsgSetup>(selected && canChat ? `/desks/${selected}/msg-channels` : null);
+  const widgets = useDesk<WidgetView[]>(canChat && canPortal ? '/widgets' : null);
   const groups = (detail.data?.groups ?? []).map((g) => ({ id: g.id, name: g.name }));
   const zone = me.data?.timeZone || 'Asia/Kolkata';
   const findPeople = (q: string) => apiFetch(`/workflow/people?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>;
@@ -290,6 +294,34 @@ function YxDeskSetupPageInner() {
                     },
                   ]
                 : []),
+              ...(canChat
+                ? [
+                    {
+                      value: 'messaging',
+                      label: 'Messaging',
+                      node: (
+                        <MessagingAdmin
+                          deskId={selected}
+                          setup={msgLines.data}
+                          onAdd={(input) => write<LineSecret>(`${base}/msg-channels`, 'POST', input)}
+                          onSave={(l: MsgLine, input) => write(`/msg-channels/${encodeURIComponent(l.id)}`, 'PATCH', { version: l.version, ...input })}
+                          onRotate={(l: MsgLine) => write<LineSecret>(`/msg-channels/${encodeURIComponent(l.id)}/rotate`, 'POST')}
+                          widgets={
+                            canPortal
+                              ? {
+                                  list: widgets.data ?? [],
+                                  portals: (portals.data ?? []).map((x) => ({ id: x.id, name: x.name })),
+                                  onAdd: (input) => write<{ secret: string } & WidgetView>('/widgets', 'POST', input),
+                                  onSave: (w, input) => write(`/widgets/${encodeURIComponent(w.id)}`, 'PATCH', { version: w.version, ...input }),
+                                  onRotate: (w) => write<{ secret: string }>(`/widgets/${encodeURIComponent(w.id)}/rotate`, 'POST'),
+                                }
+                              : null
+                          }
+                        />
+                      ),
+                    },
+                  ]
+                : []),
               ...(canOrg
                 ? [
                     {
@@ -312,7 +344,7 @@ function YxDeskSetupPageInner() {
                             const d = await write<{ id: string }>(`${base}/clone`, 'POST', input);
                             setSelected(d.id);
                           }}
-                          onStarterPack={() => write<{ items: number; sla: boolean }>(`${base}/starter-pack`, 'POST')}
+                          onStarterPack={(restrict) => write<{ items: number; sla: boolean; restricted?: boolean }>(`${base}/starter-pack`, 'POST', restrict === undefined ? {} : { restrict })}
                           onAddBranch={(input) => write(`${base}/branches`, 'POST', input)}
                           onSaveTemplate={(tpl, input) => (tpl ? write(`/doc-templates/${encodeURIComponent(tpl.id)}`, 'PATCH', { version: tpl.version, ...input }) : write('/doc-templates', 'POST', { deskId: selected, ...input }))}
                           journeys={canCatalog ? { setup: journeys.data, onSave: (input) => write('/journeys', 'POST', input) } : null}

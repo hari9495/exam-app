@@ -12,6 +12,7 @@ import { SurveysService } from './surveys.service';
 import { WorkService } from './work.service';
 import { RecurringService } from './recurring.service';
 import { ChatService } from './chat.service';
+import { TicketsService } from './tickets.service';
 
 // The Service Desk's repeating jobs on BullMQ (M14 §8.5): auto-close every 15 minutes (YX-SD-10), reminders and snoozes
 // every minute (US-G-009) and the daily sd_agents meter at 00:30 India time (§6.3). Batch 4: article publish / expiry /
@@ -40,6 +41,7 @@ export class DeskJobsService implements OnModuleInit, OnModuleDestroy {
     private readonly bridge: SupportBridgeService,
     private readonly recurring: RecurringService,
     private readonly chat: ChatService,
+    private readonly tickets: TicketsService,
   ) {
     this.queue = logBullErrors(new Queue(DESK_JOBS_QUEUE, { connection }), DESK_JOBS_QUEUE);
   }
@@ -65,8 +67,9 @@ export class DeskJobsService implements OnModuleInit, OnModuleDestroy {
 
   private readonly jobs: Record<string, () => Promise<number>[]> = {
     autoclose: () => [this.work.autoClose()],
-    // Batch 2: chats nobody took in time become tickets; timed sequence messages.
-    reminders: () => [this.me.fireReminders(), this.chat.expire(), this.recurring.sequenceTick()],
+    // Batch 2: chats nobody took in time become tickets; timed sequence messages. Batch 3: tickets waiting for their
+    // best-matched agent (founder decision 9 Oct 2026).
+    reminders: () => [this.me.fireReminders(), this.chat.expire(), this.recurring.sequenceTick(), this.tickets.routingSweep()],
     meter: () => [this.me.meter()],
     five: () => [this.kb.schedule(), this.surveys.askRatings(), this.recurring.tick()],
     quarter: () => [this.reports.backlogAlerts()],

@@ -197,6 +197,11 @@ export class SignDocumentDto {
   @ValidateIf((o: SignDocumentDto) => o.decision === 'sign')
   @Equals(true, { message: 'Confirm that you have read the document and sign it.' })
   agree?: boolean;
+
+  /** Founder decision 9 Oct 2026 (P05): the one-time code sent for this signature (sign only). */
+  @ValidateIf((o: SignDocumentDto) => o.decision === 'sign')
+  @Matches(/^\d{6}$/, { message: 'Type the 6-digit code we sent you.' })
+  code?: string;
 }
 
 // ---------------------------------------------------------------------------------------------- SD-2.08
@@ -543,4 +548,16 @@ export class PromptQueryDto {
   @Text(1, 200)
   @Matches(/^\/[A-Za-z0-9/_-]*$/, { message: 'A page path starts with /' })
   path!: string;
+}
+
+// ---------------------------------------------------------------------------------------------- SD-2.09 (9 Oct 2026)
+
+export class StarterPackDto {
+  /**
+   * Founder decision 9 Oct 2026: on an existing HR desk the pack makes the desk restricted only after the admin saw what
+   * changes and said yes (true); false adds the pack and keeps the desk as it is.
+   */
+  @IsOptional()
+  @IsBoolean()
+  restrict?: boolean;
 }

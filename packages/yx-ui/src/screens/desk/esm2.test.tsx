@@ -41,15 +41,20 @@ describe('3b-2 batch 2 screens', () => {
     expect(onSend).toHaveBeenCalledWith('Yes');
   });
 
-  it('signing needs the name and the confirmation', async () => {
+  it('signing needs the name, the confirmation and the one-time code (founder decision 9 Oct 2026)', async () => {
     const onSign = vi.fn(async () => undefined);
-    render(<MyDocumentsCard documents={[{ id: 'd', title: 'Hand-over', status: 'pending', sha256: 'x', signedAt: null, createdAt: '', needsMe: true, text: 'I received it.' }]} onSign={onSign} onDecline={vi.fn()} />);
+    const onSendCode = vi.fn(async () => ({ to: 'ar****@kaveri.test', minutes: 5 }));
+    render(<MyDocumentsCard documents={[{ id: 'd', title: 'Hand-over', status: 'pending', sha256: 'x', signedAt: null, createdAt: '', needsMe: true, text: 'I received it.' }]} onSendCode={onSendCode} onSign={onSign} onDecline={vi.fn()} />);
     await ue.click(screen.getByRole('button', { name: 'Read and sign' }));
-    expect(screen.getByRole('button', { name: 'Sign' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Send me a code' })).toBeDisabled();
     await ue.type(screen.getByRole('textbox', { name: /Type your full name/ }), 'Arjun Kulkarni');
     await ue.click(screen.getByRole('checkbox', { name: /I have read this document/ }));
+    await ue.click(screen.getByRole('button', { name: 'Send me a code' }));
+    expect(screen.getByText(/We sent a 6-digit code to ar\*\*\*\*@kaveri.test/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign' })).toBeDisabled();
+    await ue.type(screen.getByRole('textbox', { name: /6-digit code/ }), '12a3456');
     await ue.click(screen.getByRole('button', { name: 'Sign' }));
-    expect(onSign).toHaveBeenCalledWith(expect.objectContaining({ id: 'd' }), 'Arjun Kulkarni');
+    expect(onSign).toHaveBeenCalledWith(expect.objectContaining({ id: 'd' }), 'Arjun Kulkarni', '123456');
   });
 
   it('the lifecycle designer ticks allowed moves in the grid', async () => {

@@ -20,6 +20,8 @@ export interface AgentAvailability {
  */
 export function isAvailable(a: AgentAvailability | null | undefined, now: Date): boolean {
   if (!a) return true;
+  // SD-2.25: busy and offline agents get no pushed work (away ends by itself at "away until").
+  if (a.status === 'busy' || a.status === 'offline') return false;
   if (a.status === 'away' && (a.awayUntil === null || a.awayUntil > now)) return false;
   if (a.shiftStartMinute === null || a.shiftEndMinute === null || !a.shiftTimeZone) return true;
   const local = DateTime.fromJSDate(now, { zone: a.shiftTimeZone });
@@ -60,4 +62,57 @@ export function onLeaveNow(part: 'full' | 'first' | 'second', zone: string, now:
   const local = DateTime.fromJSDate(now, { zone });
   const morning = local.hour < 13;
   return part === 'first' ? morning : !morning;
+}
+
+// ------------------------------------------------------------------------------------------ SD-2.25 push routing
+
+export interface RouteCandidate extends Candidate {
+  skills: readonly string[];
+  languages: readonly string[];
+  /** The agent's own limit for this kind of work (sd_agent_capacity), when set. */
+  capacity: number | null;
+}
+
+export interface Route {
+  userId: string | null;
+  /** Why, in plain words, for the ticket's timeline (US-G-239). */
+  reason: string;
+  /** The pick came from a fallback pool (nobody free has both the skills and the language). */
+  fallback?: boolean;
+}
+
+/** "skills network and language hi", or null when the ticket needs neither. */
+export function needWords(need: { skills: readonly string[]; language: string | null }): string | null {
+  const words: string[] = [];
+  if (need.skills.length) words.push(`skills ${need.skills.join(', ')}`);
+  if (need.language) words.push(`language ${need.language}`);
+  return words.length ? words.join(' and ') : null;
+}
+
+/**
+ * Founder decision 9 Oct 2026 (US-G-239 "after a set wait"): the caller holds a fallback back for the desk's wait
+ * (default 2 minutes) and the desk sweep falls back after it; see TicketsService.route / routingSweep.
+ * US-G-075 / US-G-239: the best available agent for a new ticket. Agents at their own capacity (or the group's cap) get
+ * nothing. Among the rest, those with every skill the category needs and the requester's language come first; when
+ * nobody has both, those with the skills, then those with the language, then anyone free (the reason says so).
+ * Inside the chosen pool the group's method picks (round robin or fewest open).
+ */
+export function routeAgent(method: AssignmentMethod, candidates: readonly RouteCandidate[], need: { skills: readonly string[]; language: string | null }, lastAssignedUserId: string | null, maxOpen: number | null): Route {
+  if (method === 'manual') return { userId: null, reason: 'The team assigns by hand' };
+  const room = candidates.filter((c) => c.capacity === null || c.open < c.capacity);
+  if (!room.length) return { userId: null, reason: candidates.length ? 'Everyone free is at capacity: waiting in the team queue' : 'Nobody in the team is available: waiting in the team queue' };
+  const skilled = (c: RouteCandidate) => need.skills.every((s) => c.skills.includes(s));
+  const speaks = (c: RouteCandidate) => !need.language || c.languages.includes(need.language);
+  const words = needWords(need);
+  const tiers: [RouteCandidate[], string][] = [
+    [room.filter((c) => skilled(c) && speaks(c)), words ? `Routed by ${words}` : 'Routed to a free agent'],
+    [room.filter(skilled), `Routed by skills (nobody free speaks ${need.language})`],
+    [room.filter(speaks), `Routed by language (nobody free has ${need.skills.join(', ')})`],
+    [room, 'Routed to a free agent (nobody free matches the skills or language)'],
+  ];
+  for (const [i, [pool, reason]] of tiers.entries()) {
+    const userId = pool.length ? chooseAgent(method, pool, lastAssignedUserId, maxOpen) : null;
+    if (userId) return { userId, reason: `${reason}; ${method === 'load' ? 'fewest open tickets' : 'next in turn'}`, ...(i > 0 ? { fallback: true } : {}) };
+  }
+  return { userId: null, reason: 'Everyone free is at the team limit: waiting in the team queue' };
 }

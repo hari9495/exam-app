@@ -43,3 +43,6 @@ export { resolveForm, answersToSend, formProblems, toServerGroup, fromServerGrou
 export * from './esm2-types';
 export { ChatWindow, RequesterChatScreen, AgentChatScreen, ChatPromptBanner, type ChatLive, type RequesterChatProps, type AgentChatProps } from './chat';
 export { TicketEsmRail, HrSummaryCard, MyDocumentsCard, ActionLinkScreen, ChannelLinksCard, LifecycleAdmin, SchedulesAdmin, ChatQueuesAdmin, DeskOrgAdmin, type TicketEsmRailProps, type LifecycleAdminProps, type SchedulesAdminProps, type DeskOrgAdminProps } from './esm2';
+// Phase 3b-2 batch 3 (SD-2.20 … SD-2.27).
+export * from './esm3-types';
+export { MessagingAdmin, MyChannelsCard, TeamScreen, KIND_LABEL as MSG_KIND_LABEL, PRESENCE_LABEL, type MessagingAdminProps, type MyChannelsCardProps, type TeamScreenProps } from './esm3';
