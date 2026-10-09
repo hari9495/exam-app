@@ -269,6 +269,9 @@ export function JoinerPanel(p: JoinerPanelProps) {
 
 export interface PortalSignInProps {
   company: string;
+  /** The alumni login reuses this (lifecycle 6d). */
+  title?: string;
+  intro?: string;
   onCode: (email: string) => Promise<unknown>;
   onVerify: (email: string, code: string) => Promise<unknown>;
 }
@@ -280,8 +283,8 @@ export function PortalSignIn(p: PortalSignInProps) {
   const { busy, error, run } = useRun();
   return (
     <div className="yx-auth__page">
-      <Card title={`Joining ${p.company}`}>
-        <Text as="p">Sign in with the personal email you gave HR. We send you a one-time code.</Text>
+      <Card title={p.title ?? `Joining ${p.company}`}>
+        <Text as="p">{p.intro ?? 'Sign in with the personal email you gave HR. We send you a one-time code.'}</Text>
         {error && (
           <InlineAlert tone="danger" title="Not signed in">
             {error}

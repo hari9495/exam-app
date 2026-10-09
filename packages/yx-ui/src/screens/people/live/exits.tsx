@@ -16,6 +16,7 @@ import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { LivePage, dateText } from '../../time/live/kit';
 import { TaskForm } from './lifecycle';
+import type { AlumniMe, ExitStep, Handoff, Letter, MyDocuments, QueueDocument } from './types';
 import type { AssetRow, Choice, ClearanceItem, ExitRow, ExitStatus, ExitType, ExitWorkspace, InterviewAnswers, InterviewForm, LoadState, MyAsset, MyClearanceItem, MyResignation } from './types';
 
 // Lifecycle batch 6c, wired (design §10, §14): Me › Resign (PPL-18), the exit interview (PPL-21), my assets (PPL-25
@@ -427,6 +428,12 @@ export interface ExitCaseScreenProps {
   onInterview: () => Promise<InterviewAnswers>;
   onInterviewNotes: (notes: string) => Promise<unknown>;
   checklistHref: (journeyId: string) => string;
+  /** 6d: the steps after the last day (HR) and the payroll hand-off (HR or payroll). */
+  steps?: ExitStep[] | null;
+  onRetryStep?: (s: ExitStep) => Promise<unknown>;
+  onStepDone?: (s: ExitStep, note: string) => Promise<unknown>;
+  handoff?: Handoff | null;
+  onSettledOutside?: (input: { settledOn: string; reason: string }) => Promise<unknown>;
 }
 type SignOffHandler = (item: ClearanceItem, input: { action: 'clear' | 'waive'; note: string | null; recoveryAmount: string | null; recoveryReason: string | null }) => Promise<unknown>;
 
@@ -507,6 +514,8 @@ export function ExitCaseScreen(p: ExitCaseScreenProps) {
             </Card>
           )}
           <ClearanceTable items={d.clearance} canSign={d.can.manage && ['accepted', 'cleared'].includes(d.status)} onSignOff={p.onSignOff} />
+          {p.steps && p.steps.length > 0 && <StepsCard steps={p.steps} onRetry={p.onRetryStep} onDone={p.onStepDone} />}
+          {p.handoff && <HandoffCard h={p.handoff} today={p.today} onSettled={p.onSettledOutside} />}
         </>
       )}
       {d && ask === 'notice' && <NoticeDialog d={d} today={p.today} onClose={() => setAsk(null)} onNotice={p.onNotice} />}
@@ -936,3 +945,319 @@ function ReturnDialog({ asset, today, onClose, onReturn }: { asset: AssetRow; to
   );
 }
 
+
+// ------------------------------------------------------------------------------------------ 6d: after the last day
+
+const STEP: Record<ExitStep['status'], { label: string; tone: BadgeTone }> = { pending: { label: 'Waiting', tone: 'neutral' }, held: { label: 'On hold', tone: 'warning' }, done: { label: 'Done', tone: 'success' }, failed: { label: 'Failed', tone: 'danger' }, manual: { label: 'Done by hand', tone: 'success' } };
+const WHEN: Record<ExitStep['timing'], string> = { at_lwd: 'On the last day', t0: 'After the last day', cleared: 'When cleared' };
+
+function StepsCard({ steps, onRetry, onDone }: { steps: ExitStep[]; onRetry?: (s: ExitStep) => Promise<unknown>; onDone?: (s: ExitStep, note: string) => Promise<unknown> }) {
+  const [manual, setManual] = useState<ExitStep | null>(null);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const columns: TableColumn<ExitStep>[] = [
+    { key: 'label', header: 'Step', value: (r) => r.label, render: (r) => <span className="yx-auth__item-main"><Text>{r.label}</Text><Text tone="secondary" size="sm">{WHEN[r.timing]}</Text></span>, width: 280, hideable: false },
+    { key: 'status', header: 'Status', value: (r) => r.status, render: (r) => <Badge tone={STEP[r.status].tone}>{STEP[r.status].label}</Badge>, width: 130 },
+    { key: 'error', header: 'Why', value: (r) => r.lastError ?? '', width: 280, optional: true },
+  ];
+  const retry = async (r: ExitStep) => {
+    if (!onRetry) return;
+    setBusy(r.handler);
+    try {
+      await onRetry(r);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Card title="After the last day">
+      <DataTable
+        label="Exit steps"
+        columns={columns}
+        rows={steps}
+        getRowId={(r) => r.handler}
+        rowNoun={['step', 'steps']}
+        cardSummary
+        rowButtons={(r) =>
+          r.status === 'failed' || r.status === 'pending' ? (
+            <>
+              {onRetry && (
+                <Button size="sm" loading={busy === r.handler} onClick={() => void retry(r)}>
+                  Retry
+                </Button>
+              )}
+              {onDone && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setNote('');
+                    setManual(r);
+                  }}
+                >
+                  Done by hand
+                </Button>
+              )}
+            </>
+          ) : null
+        }
+      />
+      {manual && onDone && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setManual(null)}
+          title={`${manual.label}: done by hand?`}
+          consequence="Say what you did. It is kept on the record."
+          confirmLabel="Mark done"
+          confirmDisabled={note.trim().length < 3}
+          onConfirm={async () => {
+            await onDone(manual, note.trim());
+            setManual(null);
+          }}
+        >
+          <FormField id="st-note" label="What was done" required>
+            <TextArea value={note} onChange={setNote} rows={2} maxLength={500} />
+          </FormField>
+        </ConfirmDialog>
+      )}
+    </Card>
+  );
+}
+
+function HandoffCard({ h, today, onSettled }: { h: Handoff; today: string; onSettled?: (input: { settledOn: string; reason: string }) => Promise<unknown> }) {
+  const [settling, setSettling] = useState(false);
+  const [on, setOn] = useState<Date | null>(fromKey(today));
+  const [reason, setReason] = useState('');
+  const c = h.current;
+  return (
+    <Card
+      title="Payroll hand-off"
+      actions={
+        h.canSettle && !h.settledOutside && onSettled ? (
+          <Button size="sm" onClick={() => setSettling(true)}>
+            Settled outside YukthiX
+          </Button>
+        ) : undefined
+      }
+    >
+      <Text as="p" tone="secondary" size="sm">
+        Payroll calculates the final settlement from this record. Nothing here is an amount to pay.
+      </Text>
+      {c && (
+        <Facts
+          rows={[
+            ['Final dues by', dateText(c.wagesDueBy)],
+            ['Last working day', dateText(c.lwd)],
+            ['Notice served', c.noticeServedDays === null ? null : `${c.noticeServedDays} days`],
+            ['Letters on hold', c.holds.letters ? 'Yes' : 'No'],
+            ['Revision', `${c.revision} (${c.cause.replace(/_/g, ' ')})`],
+          ]}
+        />
+      )}
+      {c && c.recoveries.length > 0 ? (
+        <ul className="yx-lif-list">
+          {c.recoveries.map((x, i) => (
+            <li key={i}>
+              <Badge tone={x.status === 'open' ? 'warning' : 'neutral'}>{x.status === 'open' ? 'Possible recovery' : 'Recovery'}</Badge> <Text>{`${x.title}${x.amount ? `: ${rupees(x.amount)}` : ''}${x.reason ? ` (${x.reason})` : ''}`}</Text>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <Text as="p">No recoveries.</Text>
+      )}
+      {h.settledOutside && <InlineAlert tone="success" title="Settled outside YukthiX">{`On ${dateText(h.settledOutside.on)}. ${h.settledOutside.reason}`}</InlineAlert>}
+      {settling && onSettled && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setSettling(false)}
+          title="Settled outside YukthiX?"
+          consequence="The exit closes. Use this until payroll's final settlement is in YukthiX."
+          confirmLabel="Close the exit"
+          confirmDisabled={!on || reason.trim().length < 3}
+          onConfirm={async () => {
+            await onSettled({ settledOn: dayKey(on!), reason: reason.trim() });
+            setSettling(false);
+          }}
+        >
+          <FormField id="so-on" label="Settled on" required>
+            <DatePicker value={on} onChange={setOn} max={fromKey(today)} aria-label="Settled on" />
+          </FormField>
+          <FormField id="so-reason" label="How" required helper="For example: paid by bank transfer.">
+            <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
+          </FormField>
+        </ConfirmDialog>
+      )}
+    </Card>
+  );
+}
+
+// ------------------------------------------------------------------------------------------ alumni (T9-02)
+
+export interface AlumniScreenProps {
+  data: AlumniMe;
+  onDownload: (l: Letter) => Promise<unknown>;
+  onSignOut: () => void;
+}
+
+export function AlumniScreen({ data, onDownload, onSignOut }: AlumniScreenProps) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const download = async (l: Letter) => {
+    setBusy(l.id);
+    try {
+      await onDownload(l);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <div className="yx-auth__page">
+      <Card
+        title={`${data.company}: your documents`}
+        actions={
+          <Button size="sm" onClick={onSignOut}>
+            Sign out
+          </Button>
+        }
+      >
+        <Text as="p">{`Hello ${data.name}. You can read your letters here until ${dateText(data.accessUntil)}.`}</Text>
+        {data.letters.length ? (
+          <ul className="yx-lif-list">
+            {data.letters.map((l) => (
+              <li key={l.id}>
+                <Text>{l.title.split(': ')[0]}</Text>
+                <Text tone="secondary" size="sm">
+                  {l.referenceNo ?? ''}
+                </Text>
+                <Button size="sm" loading={busy === l.id} onClick={() => void download(l)}>
+                  Download
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <EmptyState compact title="No letters yet." description="Your relieving and experience letters appear here when HR issues them." />
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------------------------------ Me › My documents (PPL-30, PPL-31)
+
+export interface MyDocumentsScreenProps {
+  state: LoadState;
+  onRetry?: () => void;
+  data: MyDocuments | null;
+  onDownload: (d: QueueDocument) => Promise<unknown>;
+  onUpload: (d: QueueDocument, file: File) => Promise<unknown>;
+  onCertificate: () => Promise<unknown>;
+  lettersHref: string;
+}
+
+const DOC: Record<QueueDocument['status'], { label: string; tone: BadgeTone }> = {
+  requested: { label: 'HR asked for it', tone: 'warning' },
+  uploaded: { label: 'Being checked', tone: 'info' },
+  verified: { label: 'Verified', tone: 'success' },
+  rejected: { label: 'Not accepted', tone: 'danger' },
+  expired: { label: 'Expired', tone: 'warning' },
+};
+
+export function MyDocumentsScreen(p: MyDocumentsScreenProps) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [upload, setUpload] = useState<QueueDocument | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const act = async (key: string, fn: () => Promise<unknown>) => {
+    setBusy(key);
+    setError(null);
+    try {
+      await fn();
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+  const columns: TableColumn<QueueDocument>[] = [
+    { key: 'type', header: 'Document', value: (r) => r.typeName, width: 240, hideable: false },
+    { key: 'status', header: 'Status', value: (r) => r.status, render: (r) => <span className="yx-auth__item-main"><Badge tone={DOC[r.status].tone}>{DOC[r.status].label}</Badge>{r.rejectReason && <Text tone="secondary" size="sm">{r.rejectReason}</Text>}</span>, width: 220 },
+    { key: 'expires', header: 'Expires', value: (r) => r.expiresOn ?? '', render: (r) => (r.expiresOn ? dateText(r.expiresOn) : ''), width: 130, optional: true },
+  ];
+  return (
+    <LivePage
+      title="My documents"
+      description="Documents the company holds about you. Upload what HR asks for; only people allowed to see each kind can open it."
+      state={p.state}
+      onRetry={p.onRetry}
+      what="your documents"
+      actions={
+        <Button loading={busy === 'cert'} onClick={async () => setDone(await act('cert', p.onCertificate))}>
+          Get an employment certificate
+        </Button>
+      }
+    >
+      {done && (
+        <InlineAlert tone="success" title="Your certificate is ready">
+          It is in <a href={p.lettersHref}>My letters</a>, with a code anyone can check.
+        </InlineAlert>
+      )}
+      {error && (
+        <InlineAlert tone="danger" title="That didn't work">
+          {error}
+        </InlineAlert>
+      )}
+      {p.data && (
+        <DataTable
+          label="My documents"
+          columns={columns}
+          rows={p.data.documents}
+          getRowId={(r) => r.id}
+          rowNoun={['document', 'documents']}
+          cardSummary
+          empty={<EmptyState compact title="No documents yet." />}
+          rowButtons={(r) => (
+            <>
+              {r.file && r.file.scanStatus === 'clean' && (
+                <Button size="sm" loading={busy === r.id} onClick={() => void act(r.id, () => p.onDownload(r))}>
+                  Download
+                </Button>
+              )}
+              {(r.status === 'requested' || r.status === 'rejected' || r.status === 'expired') && (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => {
+                    setFile(null);
+                    setUpload(r);
+                  }}
+                >
+                  Upload
+                </Button>
+              )}
+            </>
+          )}
+        />
+      )}
+      {upload && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setUpload(null)}
+          title={`Upload ${upload.typeName}`}
+          consequence="A PDF or a photo, up to 10 MB. HR checks it."
+          confirmLabel="Upload"
+          confirmDisabled={!file}
+          onConfirm={async () => {
+            await p.onUpload(upload, file!);
+            setUpload(null);
+          }}
+        >
+          <FormField id="md-file" label="File" required>
+            <input id="md-file" className="yx-input" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          </FormField>
+        </ConfirmDialog>
+      )}
+    </LivePage>
+  );
+}

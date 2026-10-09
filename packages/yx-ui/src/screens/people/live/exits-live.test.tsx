@@ -1,9 +1,9 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { AssetsScreen, ClearanceScreen, ExitCaseScreen, ResignationScreen } from './exits';
+import { AlumniScreen, AssetsScreen, ClearanceScreen, ExitCaseScreen, MyDocumentsScreen, ResignationScreen } from './exits';
 import { ProbationScreen } from '../../workforce/probation';
-import type { AssetRow, ExitWorkspace, MyClearanceItem, MyResignation } from './types';
+import type { AssetRow, ExitWorkspace, Handoff, MyClearanceItem, MyResignation } from './types';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 
@@ -91,5 +91,42 @@ describe('Probation review (PPL-17, LIFE-3.01)', () => {
     await ue.type(within(dialog).getByRole('textbox', { name: /Comments/ }), 'More time on the line');
     await ue.click(within(dialog).getByRole('button', { name: 'Extend probation' }));
     expect(onReview).toHaveBeenCalledWith('e', { outcome: 'extend', months: 3, comments: 'More time on the line', rating: null });
+  });
+});
+
+describe('After the last day (6d)', () => {
+  const ws: ExitWorkspace = {
+    id: 'k', employeeId: 'e', exitType: 'end_of_contract', typeLabel: 'End of contract', initiatedBy: 'company', reasonCode: null, reasonText: 'Ends', submittedOn: '2026-10-01', requestedLwd: null, noticePeriod: '0d', noticeLabel: 'No notice', standardLwd: '2026-10-30', approvedLwd: '2026-10-30', lastDay: '2026-10-30', noticeArrangement: null, status: 'exited', pendingChange: null, lettersHeld: false, version: 4,
+    name: 'Ravi', employeeCode: 'E1', journeyId: null, interview: null, hr: null, can: { manage: true, confidential: false, interview: false }, clearance: [],
+  };
+  const handoff: Handoff = { current: { revision: 2, cause: 'exited', lwd: '2026-10-30', wagesDueBy: '2026-11-03', noticePeriod: '0d', noticeServedDays: 0, recoveries: [{ source: 'asset', title: 'Return ThinkPad', amount: '50000.00', reason: 'Not returned yet', status: 'open' }], holds: { letters: false }, frozenAt: '2026-10-31T00:00:00Z' }, earlier: [], settledOutside: null, canSettle: true };
+  const props = { state: 'ready' as const, today: '2026-11-02', onBack: vi.fn(), onNotice: vi.fn(), onHrFacts: vi.fn(), onSignOff: vi.fn(), onInterview: vi.fn(), onInterviewNotes: vi.fn(), checklistHref: () => '#' };
+  it('a failed step can be retried; the hand-off shows the due date and closes as settled outside', async () => {
+    const onRetryStep = vi.fn(async () => ({}));
+    const onSettledOutside = vi.fn(async () => ({}));
+    render(<ExitCaseScreen {...props} data={ws} steps={[{ handler: 'letters.experience', label: 'Experience letter', timing: 't0', status: 'failed', attempts: 3, lastError: 'There is no active experience template yet.', doneAt: null }]} onRetryStep={onRetryStep} onStepDone={vi.fn()} handoff={handoff} onSettledOutside={onSettledOutside} />);
+    await ue.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetryStep).toHaveBeenCalled();
+    expect(screen.getByText('3 Nov 2026')).toBeInTheDocument();
+    expect(screen.getByText(/Possible recovery/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Settled outside YukthiX' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Close the exit' })).toBeDisabled();
+    await ue.type(within(dialog).getByRole('textbox', { name: /How/ }), 'Bank transfer');
+    await ue.click(within(dialog).getByRole('button', { name: 'Close the exit' }));
+    expect(onSettledOutside).toHaveBeenCalledWith({ settledOn: '2026-11-02', reason: 'Bank transfer' });
+  });
+
+  it('alumni see their letters; my documents asks for a file before uploading', async () => {
+    const onDownload = vi.fn(async () => ({}));
+    const letter = { id: 'l', title: 'Relieving letter: Ravi', letterType: 'relieving', personId: 'p', referenceNo: 'KF/REL/2026/000001', verifyCode: null, status: 'issued' as const, renderError: null, issuedAt: null, personSigns: false, acceptedAt: null, signature: null, supersededById: null };
+    const { unmount } = render(<AlumniScreen data={{ company: 'Kaveri Foods', name: 'Ravi', lastDay: '2026-10-30', accessUntil: '2033-10-30', letters: [letter] }} onDownload={onDownload} onSignOut={vi.fn()} />);
+    expect(screen.getByText(/until 30 Oct 2033/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Download' }));
+    expect(onDownload).toHaveBeenCalledWith(letter);
+    unmount();
+    render(<MyDocumentsScreen state="ready" data={{ documents: [{ id: 'd', personId: 'p', typeKey: 'pan_card', typeName: 'PAN card', sensitivity: 'confidential', status: 'requested', expiresOn: null, rejectReason: null, file: null, version: 1 }] }} onDownload={vi.fn()} onUpload={vi.fn()} onCertificate={vi.fn()} lettersHref="#" />);
+    await ue.click(screen.getByRole('button', { name: 'Upload' }));
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Upload' })).toBeDisabled();
   });
 });

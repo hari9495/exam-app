@@ -56,6 +56,8 @@ const CLEARANCE: WorkspaceLink = { id: 'clearance', label: 'Clearance', href: '/
 const ASSETS: WorkspaceLink = { id: 'assets', label: 'Assets', href: '/yx/people/assets', group: 'People' };
 const RESIGN: WorkspaceLink = { id: 'resign', label: 'Resign', href: '/yx/me/resignation', group: 'Me' };
 const MY_ASSETS: WorkspaceLink = { id: 'my-assets', label: 'My assets', href: '/yx/me/assets', group: 'Me' };
+// Lifecycle 6d: my documents and the instant employment certificate.
+const MY_DOCUMENTS: WorkspaceLink = { id: 'my-documents', label: 'My documents', href: '/yx/me/documents', group: 'Me' };
 const CHECKLISTS: WorkspaceLink = { id: 'checklists', label: 'Onboarding checklists', href: '/yx/settings/checklists', group: 'Organisation' };
 const PROFILE: WorkspaceLink = { id: 'profile', label: 'My profile', href: '/yx/people/profile', group: 'People' };
 const ID_CHANGES: WorkspaceLink = { id: 'profile-requests', label: 'Identity and bank changes', href: '/yx/people/profile-requests', group: 'People' };
@@ -196,7 +198,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   ];
   // P04 Q5: the company's email branding and wording, for those who hold the key (read-only in a support session).
   const emails = perms.has('notification.template.manage') || support ? [EMAILS] : [];
-  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee ? [PRIVACY, MY_LETTERS, MY_ASSETS, RESIGN] : [])];
+  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee ? [PRIVACY, MY_LETTERS, MY_DOCUMENTS, MY_ASSETS, RESIGN] : [])];
   const supportEndsAt = support ? (decodeJwtPayload(accessToken)?.supportEndsAt as string | undefined) : undefined;
   const desk = support
     ? []

@@ -403,3 +403,41 @@ export interface MyAsset {
   condition: string;
   acknowledgedAt: string | null;
 }
+
+// ---- Batch 6d: exit steps, the payroll hand-off, the alumni vault
+
+export interface ExitStep {
+  handler: string;
+  label: string;
+  timing: 'at_lwd' | 't0' | 'cleared';
+  status: 'pending' | 'held' | 'done' | 'failed' | 'manual';
+  attempts: number;
+  lastError: string | null;
+  doneAt: string | null;
+}
+export interface Handoff {
+  current: {
+    revision: number;
+    cause: string;
+    lwd: string;
+    wagesDueBy: string;
+    noticePeriod: string;
+    noticeServedDays: number | null;
+    recoveries: { source: string; title: string; amount: string | null; reason: string | null; status: 'recorded' | 'open' }[];
+    holds: { letters?: boolean };
+    frozenAt: string;
+  } | null;
+  earlier: { revision: number; cause: string; frozenAt: string }[];
+  settledOutside: { on: string; reason: string } | null;
+  canSettle: boolean;
+}
+export interface AlumniMe {
+  company: string;
+  name: string;
+  lastDay: string;
+  accessUntil: string;
+  letters: Letter[];
+}
+export interface MyDocuments {
+  documents: QueueDocument[];
+}
