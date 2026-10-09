@@ -1292,7 +1292,17 @@ Raised while building batch 5d and accepted on 9 Oct 2026. Built on `feat/yukthi
 | 5d-D2 | **Penny drop: for the pilot, a second person records the test-payment reference** from the company's bank. An automatic provider is chosen later. | The urgent bank fix after a failed payment needs a checker (not the employee), a fresh second sign-in and the penny-drop reference; it is audited. The provider seam is the single place that accepts a verified reference; no provider is wired. |
 | 5d-D3 | **Emailed payslip password: one the employee sets in My security**, stored as a hash with the platform's password hashing; not the date of birth. Emailing stays off by default; an employee without the password gets only the in-app payslip. | My security has a "Payslip password" card: set, change or remove it (the sign-in password is asked first when the person has one); only an argon2 hash is kept. The date-of-birth default is removed. See the build note below. |
 
-**Build note on 5d-D3 (DECISION NEEDED).** A password-protected PDF can only be locked with the password itself (or key material derived from it with the PDF format's own hash); an argon2 hash cannot lock it. With only the hash stored, the server cannot produce the protected PDF when payslips are published. Until the founder chooses, emailing sends no PDF to anyone (people with the password set are counted as waiting); everyone gets the in-app payslip. Options: (a) also keep the password sealed with the company's encryption key, used only to lock emailed PDFs; (b) email a link to the in-app payslip instead of a PDF; (c) drop payslip email.
+**Build note on 5d-D3 (answered by 5e-D1, §19.6).** A password-protected PDF can only be locked with the password itself (or key material derived from it with the PDF format's own hash); an argon2 hash cannot lock it. With only the hash stored, the server cannot produce the protected PDF when payslips are published. Until the founder chooses, emailing sends no PDF to anyone (people with the password set are counted as waiting); everyone gets the in-app payslip. Options: (a) also keep the password sealed with the company's encryption key, used only to lock emailed PDFs; (b) email a link to the in-app payslip instead of a PDF; (c) drop payslip email.
+
+### 19.6 Batch 5e build decisions (founder, accepted 9 Oct 2026)
+
+Raised while building batch 5e and accepted on 9 Oct 2026.
+
+| # | Decision | What is built |
+|---|---|---|
+| 5e-D1 | **Payslip email (follow-up to 5d-D3): no PDF by email.** The email carries a link to the in-app payslip: sign-in required, an expiring single-purpose link, no pay figures in the email body. | When the company turns payslip email on, publishing emails each employee a link that opens only that payslip, only for that person once signed in, and expires. The payslip-password card, table and "waiting" count are removed by a forward migration (5d-D3's password is no longer needed). |
+| 5e-D2 | **PAN status: recorded by payroll by hand, with a reason**, as built. A checking provider comes later. | `POST /tax/workspaces/{id}/pan-status` (`tax.proof.verify`, never one's own), audited; an inoperative or missing PAN is taxed at the higher rate, never blocked. |
+| 5e-D3 | **DTAA: no treaty relief now.** Keep the stored data and flag such cases for payroll to handle by hand. | The treaty country and residency-certificate date stay on the workspace; a person with a treaty claim gets a run check and a note on the tax sheet that payroll handles it by hand. |
 
 ---
 
@@ -1322,3 +1332,4 @@ To add to [GO-LIVE-CHECKLIST.md](../GO-LIVE-CHECKLIST.md) (the coordinator edits
 | 9 Oct 2026 | §19.2: batch 5b build decisions 5b-D1 … 5b-D3 accepted (state minimum-wage tables, payslip languages, CCA roots as published data). |
 | 9 Oct 2026 | §19.3–19.4: batch 5c build decisions 5c-D1 … 5c-D3 accepted (UP minimum wages and TN DA as open data items, skill class on the job, run rules stay verify); open data items listed. |
 | 9 Oct 2026 | §19.4–19.5: batch 5d build decisions 5d-D1 … 5d-D3 accepted (generic bank format only and the pilot's bank as an open data item, penny drop by a second person, an employee-set payslip password); the hash-versus-PDF-lock question recorded as open. |
+| 9 Oct 2026 | §19.6: batch 5e build decisions 5e-D1 … 5e-D3 accepted (payslip email as a link to the in-app payslip, PAN status by hand, no DTAA relief with cases flagged). |
