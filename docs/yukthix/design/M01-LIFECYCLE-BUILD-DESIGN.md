@@ -2,7 +2,7 @@
 
 > **Status:** ✅ Decided, 9 Oct 2026: the founder accepted D1–D11 with the recommended defaults (§19). Batch 6a is being built on `feat/yukthix-lifecycle-6a` (on top of payroll 5a).
 > **Scope:** the build design for the lifecycle parts of [M01](M01-core-hr-and-lifecycle.md) (§3.4 probation, §3.5 onboarding, §3.6 assets, §3.7 offboarding) and the parts of [P05](P05-letters-documents-esign.md) they need (files, documents, letters, e-sign). It turns them into tables, permissions, APIs, jobs, screens, tests and small pull requests.
-> **Order:** five batches, **6a → 6e**. 6a–6d are the lifecycle a pilot company needs; 6e is the special cases.
+> **Order:** five batches, **6a → 6e**. 6a–6d are the lifecycle a pilot company needs; 6e is the special cases. **6f** (added 10 Oct 2026 from the [global gap pass](GLOBAL-HCM-GAP-PASS.md) O1 / O2): life-event journeys and the new hire's first 30 days.
 > **Out of this design:** the **full and final settlement (F&F) calculation**. It is a payroll off-cycle run ([M03-BUILD-DESIGN](M03-BUILD-DESIGN.md) §9.9, batch 5g). This design only defines the **hand-off** to payroll (§11).
 > **Backlog:** slices in §16 name their stories. Lifecycle stories are `US-D-037…081` (D.json, epic EP-D-03). Document stories are `US-C-028…030` and `US-C-085…088` (C.json). Others: `US-A-097`, `US-A-185/186`, `US-B-127`, `US-E-243/244/245`.
 > **Clean-room:** all features are described in our own words from our own design docs and public law. No competitor text, screens or field names are copied. Frappe / ERPNext code is not read or copied.
@@ -612,6 +612,26 @@ New keys in `settings-registry.ts`, matching the prototype's settings screens ("
 | `letter.ref_format` | tenant, entity | `{ENTITY}/HR/{YYYY}/{NNNN}` |
 | `alumni.access_years` | tenant | 7 (P05 Q6; the prototype shows "3", fixed in LIFE-4.04) |
 
+### 5.7 Batch 6f · Life-event journeys and content steps (migration `20261101000000_lifecycle_6f`)
+
+No new tables. The journey tables of 6a take four more journey kinds, two more subjects and three more task kinds (checks widened by drop-and-add in the new migration; RLS on these tables is unchanged):
+
+| Column | Added values |
+|---|---|
+| `journey_templates.kind`, `journeys.kind` | `new_manager`, `transfer`, `parental_leave`, `return_to_work` |
+| `journeys.subject_type` | `employee_change` (the transfer), `leave_request` (the parental leave) |
+| `journey_template_tasks.kind`, `journey_tasks.kind` | `read`, `watch`, `survey` |
+
+Task config and answers (checked by the API when a template is saved, like the 6a kinds):
+
+| Kind | `config` | Completes when | `answers` |
+|---|---|---|---|
+| `read` (read and acknowledge) | `text` (up to 4,000 characters) and / or `url` (https only) | The assignee says "I have read this" | none (the completion is the acknowledgement) |
+| `watch` | `url` (https only), `minutes` (1–180, shown as "about N minutes") | The assignee says "I have watched this" | none |
+| `survey` (quick survey) | `questions`: 1–5 statements, up to 200 characters each | The assignee rates each 1–5, with an optional comment | `{ ratings: number[], comment?: string }` |
+
+`journeys_subject_key` (one journey per subject and kind) already makes every start idempotent. Nothing in the core employee or job tables changes (they belong to batch G1).
+
 ---
 
 ## 6. Permissions
@@ -688,6 +708,31 @@ The desk already has "joiner / leaver journeys" that raise one request per desk 
 - the request links back to the task; fulfilment completes the task.
 - The SD-only journey set-up screen stays for companies that use the **standalone Service Desk without HR** (no M01). In an HRMS company, desk journeys whose items are also in a lifecycle template are not started twice (the desk listener skips a person who has an active lifecycle journey). See §19 D1.
 - The desk listener's placeholder event `employee.exit_scheduled` is replaced by the agreed APX-B event `exit.case.accepted` (LIFE-3.05).
+
+### 7.5 Life-event journeys (6f, gap pass O1)
+
+The same engine, templates and task screens run four more journeys. YukthiX ships one **starter** for each; a company copy starts **Not in use** and HR turns it on in Settings › Checklists. Until a company has an active template of that kind, nothing starts.
+
+| Journey | Starts when | Anchor (day 0) | Subject | Owners resolved as |
+|---|---|---|---|---|
+| New manager | A person gets their **first** direct report: the earliest current assignment that names them as manager | That assignment's start | the manager's employment | person = the new manager; manager = their own manager |
+| Transfer | A `transfer` change is approved (scheduled or effective) | The change's effective date | the change | person = the employee; manager = the manager on the anchor day |
+| Parental leave | A `maternity` or `paternity` leave request is approved | The first day of leave | the leave request | person = the employee; manager = their manager |
+| Return to work | The same approval (planned ahead) | The day after the last day of leave | the leave request | as above |
+
+- **How they start.** An hourly lifecycle job looks for these facts; the time and core modules are not changed. It only starts journeys whose anchor is within the last 7 days or later, and not for facts dated before the company created the template. A backdated change older than that starts nothing. Polling keeps 6f out of those modules; it can switch to events once they emit them.
+- **Place and owner.** The template is picked as in §7.1 from the person's current entity, location and department. The journey owner (who gets HR-owned tasks without a team, and escalations) is the person who set up the template.
+- **Cancel.** Leave rejected or cancelled, or a transfer change cancelled, closes its active journeys as `cancelled`.
+- **Content steps.** `read`, `watch` and `survey` are done by their assignee (normally the person) on My checklist tasks. They work in joining and leaving checklists too.
+- **Survey answers** are seen by HR who manage the journey and by the person who answered. Others who can see the journey (the manager, IT) see only that it was answered. Full surveys stay in M09 Engage (gap pass §4.3).
+- **HR view.** People › Life events lists active life-event journeys in the viewer's scope (`lifecycle.onboarding.view`), each opening the usual journey page.
+- **Not built:** relocation (there is no relocation change yet; the global gap pass C4); moving a parental-leave journey when the leave dates change (leave dates are not edited: a new request replaces the old one, which cancels its journeys).
+
+### 7.6 "Your first 30 days" (6f, gap pass O2)
+
+- For a person whose **onboarding journey is active** and whose joining day was at most 30 days ago, the menu shows **My first 30 days** first, so it is their home page after sign-in. It goes away when the journey is done or the 30 days pass.
+- The page shows the day ("Day 6 of 30"), the manager and the buddy (6e), and the person's own open steps under **Today** (due today or late), **This week** (next 7 days) and **This month** (the rest up to day 30), plus how many steps are done. Each step opens the same task actions as My checklist tasks.
+- API: `GET /lifecycle/me/first-30-days` returns the card or `null`.
 
 ---
 
@@ -1042,6 +1087,17 @@ Each slice is one pull request with its migration, API, tests and (where listed)
 | Exit settlement inputs are frozen and revised for payroll | The hand-off record and event | LIFE-4.05 |
 | BGV consent is itemised, recorded and can be withdrawn | DPDP evidence (US-D-050 covers tracking only) | LIFE-2.03 |
 
+### 16.7 Batch 6f · Life-event journeys and the first 30 days (4 slices)
+
+| ID | Slice | Tests | Gap pass |
+|---|---|---|---|
+| LIFE-6.01 | Content steps `read`, `watch`, `survey`: config checks, completion, survey answer privacy; editor and task screens | unit: config checks; e2e: the manager sees "answered", not the ratings | O1 |
+| LIFE-6.02 | Four life-event starters (off until turned on) and the hourly start / cancel job | e2e: first-time manager, transfer, parental leave and return to work start once; leave cancelled closes both; an inactive template starts nothing | O1 |
+| LIFE-6.03 | People › Life events list for HR | e2e: scope like joiners | O1 |
+| LIFE-6.04 | My first 30 days page and menu entry | e2e and Playwright: a new joiner sees Today / This week / This month and acknowledges a read step | O2 |
+
+**Totals with 6f:** 42 slices.
+
 ---
 
 ## 17. Tests (summary)
@@ -1230,5 +1286,6 @@ Lifecycle (this design) and payroll (M03 batch 5a) both need the same document s
 
 | Date | Change |
 |---|---|
+| 10 Oct 2026 | Batch 6f from the global gap pass (founder accepted 10 Oct 2026, decision 10 = A): §5.7 data, §7.5 life-event journeys (new manager, transfer, parental leave, return to work; each off until turned on), §7.6 "Your first 30 days", §16.7 slices LIFE-6.01…6.04. No core employee or job changes (batch G1 owns them). |
 | 9 Oct 2026 | Founder accepted D1–D11 (recommended defaults). D10 updated: payroll 5a already built pay documents (gap-free numbers, hash, verify code and page, signing adapter); lifecycle reuses them and adds only the missing shared pieces in `src/documents/`. Batch 6a build notes: files are streamed through the API after the permission check (they are encrypted at rest, so storage links are never handed out), instead of 5-minute storage links (§9.1); `document.*` and `lifecycle.onboarding.*` keys are scoped like employee records, joiners by their planned entity / location / department. |
 | 9 Oct 2026 | First draft: scope, reuse, data model per batch, permissions, journeys, onboarding, documents / letters / e-sign, exit, payroll hand-off, events, API, screens and gaps, security, 38 slices in batches 6a–6e, India law points, founder decisions D1–D11. |
