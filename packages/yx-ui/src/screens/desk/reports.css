@@ -1,0 +1,23 @@
+/* Service Desk reports (SD-1.27) and the wall screen. Tokens only. */
+.yx-rep-period { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--yx-space-3) var(--yx-space-4); margin-block: var(--yx-space-4); }
+.yx-rep-period > * { min-width: min(100%, calc(var(--yx-space-16) * 3)); }
+.yx-rep-scroll { overflow-x: auto; max-width: 100%; }
+.yx-rep-trend { display: block; max-width: 100%; height: auto; overflow: visible; }
+.yx-rep-trend path { fill: none; stroke: var(--yx-chart-1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.yx-rep-trend .yx-rep-trend__forecast { stroke: var(--yx-color-text-secondary); stroke-dasharray: 4 3; }
+
+/* The wall screen: full screen, dark, large numbers readable across a room. */
+.yx-wall { min-height: 100vh; box-sizing: border-box; padding: var(--yx-space-8); background: var(--yx-color-bg-page); color: var(--yx-color-text); }
+.yx-wall__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--yx-space-4); margin-bottom: var(--yx-space-6); }
+.yx-wall__head h1, .yx-wall__message h1 { margin: 0; font-size: clamp(1.75rem, 3vw, 3rem); }
+.yx-wall__head p, .yx-wall__message p { margin: 0; font-size: clamp(1rem, 1.5vw, 1.5rem); color: var(--yx-color-text-secondary); }
+.yx-wall__message { display: grid; gap: var(--yx-space-3); place-content: center; min-height: 60vh; text-align: center; font-size: clamp(1rem, 1.5vw, 1.5rem); }
+.yx-wall__desks { display: grid; gap: var(--yx-space-6); grid-template-columns: repeat(auto-fit, minmax(min(100%, 32rem), 1fr)); }
+.yx-wall__desk { padding: var(--yx-space-6); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
+.yx-wall__desk h2 { margin: 0 0 var(--yx-space-4); font-size: clamp(1.5rem, 2.5vw, 2.5rem); }
+.yx-wall__counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--yx-space-4); margin: 0; }
+.yx-wall__count { margin: 0; }
+.yx-wall__count dt { font-size: clamp(0.875rem, 1.2vw, 1.25rem); color: var(--yx-color-text-secondary); }
+.yx-wall__count dd { margin: 0; font-size: clamp(2.5rem, 5vw, 5rem); font-weight: var(--yx-weight-semibold); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.yx-wall__count[data-warn] dd { color: var(--yx-color-danger-text); }
+@media (max-width: 640px) { .yx-wall { padding: var(--yx-space-4); } .yx-wall__counts { grid-template-columns: repeat(2, 1fr); } }

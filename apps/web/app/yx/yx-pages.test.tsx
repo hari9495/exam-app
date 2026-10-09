@@ -797,7 +797,7 @@ describe('/yx layout', () => {
     route({ 'GET /auth/mfa': MFA });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
     const nav = screen.getByRole('navigation', { name: 'Menu' });
-    expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['My security']);
+    expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['Help centre', 'Service catalogue', 'Chat with us', 'Approvals', 'My security']);
   });
 
   it('offers the hiring app only to people with exam/ATS permissions', async () => {

@@ -478,7 +478,8 @@ export class OrgStructureService {
         const d = dto as CostCentreDto;
         await this.activeEntity(tx, c, d.legalEntityId);
         if (d.parentId) await this.costCentreParent(tx, c, d.legalEntityId, d.parentId);
-        data = { ...base, legalEntityId: d.legalEntityId, parentId: d.parentId ?? null };
+        await this.activeLogin(tx, c, d.ownerUserId);
+        data = { ...base, legalEntityId: d.legalEntityId, parentId: d.parentId ?? null, ownerUserId: d.ownerUserId ?? null };
         codeScope = { legalEntityId: d.legalEntityId };
       } else {
         const own = await this.ownership(tx, c, dto as DepartmentDto);
@@ -562,6 +563,11 @@ export class OrgStructureService {
   }
 
   /** A cost centre's parent: same entity, active, no cycle. */
+  /** A cost-centre owner is an active login of the company. */
+  private async activeLogin(tx: Tx, c: CompanyContext, userId: string | null | undefined) {
+    if (userId && !(await tx.user.findFirst({ where: { organizationId: c.organizationId, id: userId, status: 'active' }, select: { id: true } }))) throw new BadRequestException('Choose an active colleague as the owner.');
+  }
+
   private async costCentreParent(tx: Tx, c: CompanyContext, legalEntityId: string, parentId: string, id?: string) {
     const parent = await tx.costCentre.findFirst({ where: { id: parentId, organizationId: c.organizationId } });
     if (!parent || parent.legalEntityId !== legalEntityId) throw new BadRequestException('Choose a parent cost centre of the same legal entity.');
@@ -590,6 +596,10 @@ export class OrgStructureService {
         const parentId = d.parentId === undefined ? row.parentId : d.parentId;
         if (parentId && parentId !== row.parentId) await this.costCentreParent(tx, c, row.legalEntityId!, parentId, id);
         data.parentId = parentId ?? null;
+        if (d.ownerUserId !== undefined) {
+          await this.activeLogin(tx, c, d.ownerUserId);
+          data.ownerUserId = d.ownerUserId;
+        }
       } else {
         const own = await this.ownership(tx, c, dto as DepartmentDto, row);
         data = { ...data, ...own, ...this.kindFields(kind, dto) };

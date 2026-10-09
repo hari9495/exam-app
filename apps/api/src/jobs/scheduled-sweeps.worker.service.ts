@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
-import { REDIS_CONNECTION } from './redis-connection';
+import { REDIS_CONNECTION, logBullErrors } from './redis-connection';
 import { SCHEDULED_SWEEPS_QUEUE, SCHEDULED_SWEEPS_QUEUE_NAME, SWEEP_SCHEDULE } from './scheduled-sweeps.queue';
 import { RemindersService } from '../reminders/reminders.service';
 import { ScheduledReportsService } from '../scheduled-reports/scheduled-reports.service';
@@ -61,7 +61,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       probations: () => people.probationSweep(),
       'domain-verification-recheck': () => identityProviders.recheckDomains(),
     };
-    this.worker = new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), { connection: this.connection });
+    this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), { connection: this.connection }), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));
   }
 

@@ -1,3 +1,4 @@
+import { logBullErrors } from '../jobs/redis-connection';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
@@ -7,5 +8,5 @@ export const CANDIDATE_EMAIL_BATCHES_QUEUE = 'CANDIDATE_EMAIL_BATCHES_QUEUE';
 export const CANDIDATE_EMAIL_BATCHES_QUEUE_NAME = 'candidate-email-batches';
 
 export function createCandidateEmailBatchesQueue(connection: Redis): Queue {
-  return new Queue(CANDIDATE_EMAIL_BATCHES_QUEUE_NAME, { connection });
+  return logBullErrors(new Queue(CANDIDATE_EMAIL_BATCHES_QUEUE_NAME, { connection }), CANDIDATE_EMAIL_BATCHES_QUEUE_NAME);
 }

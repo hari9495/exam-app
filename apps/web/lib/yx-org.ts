@@ -25,6 +25,41 @@ export const YX_KEYS = [
   'org.support_access.approve',
   // P04 Q5: Settings › Notifications › Email.
   'notification.template.manage',
+  // M14 Service Desk (3b-1): tickets for desk members, set-up for desk and Service Desk admins.
+  'desk.ticket.view',
+  'desk.desk.create',
+  'desk.settings.manage',
+  'desk.member.manage',
+  'desk.sla.manage',
+  // Batch 2: monthly SLA compliance for leads.
+  'desk.report.view',
+  // Batch 3: email in and out, outside help pages, customers, known-issue banners.
+  'desk.mailbox.manage',
+  'desk.portal.manage',
+  'desk.customer.manage',
+  'desk.ticket.work',
+  // Batch 4: knowledge (read, write, publish) and article-request tasks from content gaps.
+  'desk.kb.view_internal',
+  'desk.kb.author',
+  'desk.kb.publish',
+  'desk.task.work',
+  // Batch 4: reports, wall screens and NPS surveys.
+  'desk.report.manage',
+  'desk.survey.manage',
+  // Batch 4: YukthiX support (Contact YukthiX).
+  'org.yukthix_support.raise',
+  // Batch 4: the standalone people list and directory sync.
+  'desk.directory.manage',
+  // 3b-2 batch 1: the catalogue, desk rules and webhooks.
+  'desk.catalog.manage',
+  'desk.rule.manage',
+  'desk.integration.manage',
+  // 3b-2 batch 2.
+  'desk.lifecycle.manage',
+  'desk.channel.manage',
+  'desk.chat.work',
+  'desk.hr_summary.view',
+  'desk.ticket.move',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

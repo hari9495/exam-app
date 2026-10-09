@@ -4,6 +4,12 @@ import { seedOrgStructure } from './seed-org-structure';
 import { seedEmployees } from './seed-employees';
 import { seedAccess } from './seed-access';
 import { CONSULTANT, seedSignInDemo } from './seed-sign-in';
+import { DESK_PERMISSIONS, seedServiceDesk } from './seed-service-desk';
+import { seedServiceDeskSla } from './seed-service-desk-sla';
+import { seedServiceDeskChannels } from './seed-service-desk-channels';
+import { seedServiceDeskKnowledge, seedYukthixSupport } from './seed-service-desk-knowledge';
+import { seedServiceDeskEsm } from './seed-service-desk-esm';
+import { seedServiceDeskEsm2 } from './seed-service-desk-esm2';
 
 const prisma = new PrismaClient();
 
@@ -61,9 +67,13 @@ export const PERMISSIONS = [
   { key: 'platform.channels.manage', description: 'Manage the YukthiX shared message accounts (YukthiX staff)' },
   { key: 'platform.support.request', description: 'Ask a company for a support session and use it (YukthiX staff)' },
   { key: 'platform.audit.view', description: 'See the platform audit log (YukthiX staff)' },
+  { key: 'platform.support_desk.work', description: 'Work the YukthiX Support desk in the console (YukthiX staff)' },
+  { key: 'org.yukthix_support.raise', description: 'Contact YukthiX support for the company and follow its tickets' },
   { key: 'org.support_access.approve', description: 'Approve, decline and end YukthiX support sessions' },
   // P04 Q5: a company's branding and wording of the account emails.
   { key: 'notification.template.manage', description: 'Brand and re-word the emails YukthiX sends your people' },
+  // M14 §6.2 Service Desk phase 3b-1 (also in the service_desk_core migration).
+  ...DESK_PERMISSIONS,
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -81,6 +91,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'platform.channels.manage',
     'platform.support.request',
     'platform.audit.view',
+    // M14 SD-1.31: the YukthiX Support desk in the console.
+    'platform.support_desk.work',
   ],
   // org_admin is a full org-scoped superuser: their own admin features PLUS the complete
   // recruiter/panel capability set (exams, question bank, candidates, results).
@@ -118,6 +130,23 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'org.support_access.approve',
     // P04 Q5: the System Admin brands and re-words the account emails.
     'notification.template.manage',
+    // M14 §6.1: the System Admin sets up desks; seeing tickets always needs a seat on the desk.
+    'desk.desk.create',
+    'desk.settings.manage',
+    'desk.member.manage',
+    'desk.sla.manage',
+    // M14 batch 3: mailboxes, portals and customers.
+    'desk.mailbox.manage',
+    'desk.portal.manage',
+    'desk.customer.manage',
+    // M14 batch 4: help articles, reports, NPS, the people list and directory sync; contacting YukthiX support.
+    'desk.kb.author',
+    'desk.kb.publish',
+    'desk.report.view',
+    'desk.report.manage',
+    'desk.survey.manage',
+    'desk.directory.manage',
+    'org.yukthix_support.raise',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -284,10 +313,24 @@ async function main() {
           });
         }
       }
+      // M14 Service Desk phase 3b-1: an IT desk and the free HR desk with a few tickets (seed-service-desk.ts).
+      await seedServiceDesk(tx, demoOrg.id, { admin: await userId('admin@demo-org.test'), hr: await userId('hr@demo-org.test'), panel: await userId('panel@demo-org.test'), passwordHash: panelHash });
+      // Batch 2: SLA and OLA policies, resolution codes, a template and a ticket close to its breach (seed-service-desk-sla.ts).
+      await seedServiceDeskSla(tx, demoOrg.id);
+      // Batch 3: support addresses, the Customer Care desk with its portal, customers and banners (seed-service-desk-channels.ts).
+      await seedServiceDeskChannels(tx, demoOrg.id);
+      // Batch 4: help articles and the public help centre, a rated ticket, NPS, KPIs, a wall screen, and YukthiX's own
+      // support desk in the platform tenant (seed-service-desk-knowledge.ts).
+      await seedServiceDeskKnowledge(tx, demoOrg.id);
+      await seedYukthixSupport(tx, trialPlan.id);
+      // Phase 3b-2 batch 1: the IT and HR catalogue, an order guide, the question library and a desk rule
+      // (seed-service-desk-esm.ts); Arjun Kulkarni signs in as arjun@demo-org.test.
+      await seedServiceDeskEsm(tx, demoOrg.id);
+      await seedServiceDeskEsm2(tx, demoOrg.id);
     }
   }, { timeout: 60000 });
 
-  console.log(`Seed complete: super@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
+  console.log(`Seed complete: super@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); Service Desk: it-agent@ / it-lead@ / it-collab@ / arjun@demo-org.test / Passw0rd!2026, customer portal /yx/portal/demo-org/care (asha@annapurna-stores.test, sign-in code from scripts/desk-portal-code.ts); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
 }
 
 // Only run when invoked as a script (prisma db seed / ts-node). Guarded so importing this module for

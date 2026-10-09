@@ -243,6 +243,11 @@ export class CostCentreDto extends MasterBaseDto {
   @Nullable()
   @IsUUID()
   parentId?: string | null;
+
+  /** P03 "cost centre owner": the login who approves spend on this cost centre (US-B-125). */
+  @Nullable()
+  @IsUUID()
+  ownerUserId?: string | null;
 }
 
 export type AnyMasterDto = DepartmentDto | DesignationDto | GradeDto | EmploymentTypeDto | CostCentreDto;

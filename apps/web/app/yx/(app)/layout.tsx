@@ -17,6 +17,7 @@ import { useOrgBranding } from '../../../lib/hooks/useBranding';
 import { useYxPermissions } from '../../../lib/yx-org';
 import { usePeople } from '../../../lib/yx-people';
 import type { TeamMember } from '@yukthix/ui/workforce';
+import { DeskHelpButton } from './desk-help';
 
 const ME: WorkspaceLink = { id: 'me', label: 'My security', href: '/yx/me/security', group: 'Me' };
 const ACTIVITY: WorkspaceLink = { id: 'activity', label: 'Login activity', href: '/yx/admin/login-activity', group: 'Security' };
@@ -24,6 +25,8 @@ const SETTINGS: WorkspaceLink = { id: 'settings', label: 'Security settings', hr
 const IDPS: WorkspaceLink = { id: 'identity-providers', label: 'Single sign-on providers', href: '/yx/settings/identity-providers', group: 'Security' };
 const SMS: WorkspaceLink = { id: 'sms', label: 'Text messages (SMS)', href: '/yx/settings/sms', group: 'Security' };
 const SUPPORT: WorkspaceLink = { id: 'support-access', label: 'Support access', href: '/yx/settings/support-access', group: 'Security' };
+// SD-1.31: the System Admin writes to YukthiX support (never on a support session).
+const CONTACT_YX: WorkspaceLink = { id: 'yukthix-support', label: 'Contact YukthiX', href: '/yx/support', group: 'Security' };
 const EMAILS: WorkspaceLink = { id: 'emails', label: 'Emails', href: '/yx/settings/emails', group: 'Security' };
 const ORG: WorkspaceLink[] = [
   { id: 'entities', label: 'Legal entities', href: '/yx/settings/legal-entities', group: 'Organisation' },
@@ -43,6 +46,24 @@ const ID_CHANGES: WorkspaceLink = { id: 'profile-requests', label: 'Identity and
 const ACCESS: WorkspaceLink = { id: 'access', label: 'Roles & access', href: '/yx/settings/access', group: 'Access' };
 const ACCESS_SETTINGS: WorkspaceLink = { id: 'access-settings', label: 'Access and privacy', href: '/yx/settings/access-settings', group: 'Access' };
 const PRIVACY: WorkspaceLink = { id: 'privacy', label: 'Who accessed my data', href: '/yx/me/privacy', group: 'Me' };
+// M14 Service Desk (3b-1): everyone raises tickets; desk members work them; desk admins set desks up.
+const DESK_HELP: WorkspaceLink = { id: 'desk-help', label: 'Help centre', href: '/yx/desk/help', group: 'Service desk' };
+const DESK_TICKETS: WorkspaceLink = { id: 'desk-tickets', label: 'Tickets', href: '/yx/desk/tickets', group: 'Service desk' };
+const DESK_SETUP: WorkspaceLink = { id: 'desk-setup', label: 'Desk set-up', href: '/yx/desk/setup', group: 'Service desk' };
+const DESK_CALENDAR: WorkspaceLink = { id: 'desk-calendar', label: 'My calendar', href: '/yx/desk/calendar', group: 'Service desk' };
+const DESK_PEOPLE: WorkspaceLink = { id: 'desk-people', label: 'People to check', href: '/yx/desk/people', group: 'Service desk' };
+const DESK_CUSTOMERS: WorkspaceLink = { id: 'desk-customers', label: 'Customers', href: '/yx/desk/customers', group: 'Service desk' };
+const DESK_PEOPLE_LIST: WorkspaceLink = { id: 'desk-people-list', label: 'People list', href: '/yx/desk/people-list', group: 'Service desk' };
+const DESK_PRIVACY: WorkspaceLink = { id: 'desk-privacy', label: 'Privacy requests', href: '/yx/desk/privacy', group: 'Service desk' };
+const DESK_KNOWN_ISSUES: WorkspaceLink = { id: 'desk-known-issues', label: 'Known issues', href: '/yx/desk/known-issues', group: 'Service desk' };
+const DESK_KNOWLEDGE: WorkspaceLink = { id: 'desk-knowledge', label: 'Knowledge', href: '/yx/desk/knowledge', group: 'Service desk' };
+const DESK_REPORTS: WorkspaceLink = { id: 'desk-reports', label: 'Reports', href: '/yx/desk/reports', group: 'Service desk' };
+// 3b-2 batch 1: everyone orders from the catalogue and answers the approvals waiting for them (P03, implicit).
+const DESK_CATALOG: WorkspaceLink = { id: 'desk-catalog', label: 'Service catalogue', href: '/yx/desk/catalog', group: 'Service desk' };
+const APPROVALS: WorkspaceLink = { id: 'approvals', label: 'Approvals', href: '/yx/approvals', group: 'Me' };
+// 3b-2 batch 2: everyone chats with a desk; agents with the chat key take chats and log calls.
+const DESK_CHAT: WorkspaceLink = { id: 'desk-chat', label: 'Chat with us', href: '/yx/desk/chat', group: 'Service desk' };
+const DESK_LIVE_CHAT: WorkspaceLink = { id: 'desk-live-chat', label: 'Live chat', href: '/yx/desk/live-chat', group: 'Service desk' };
 
 // Links follow the role; the API still checks every permission (audit:view, org:manage_users,
 // org:manage_settings) and the pages show "no access" on a 403. Platform staff outside any company use the
@@ -120,9 +141,31 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   ];
   // P04 Q5: the company's email branding and wording, for those who hold the key (read-only in a support session).
   const emails = perms.has('notification.template.manage') || support ? [EMAILS] : [];
-  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(employee ? [PRIVACY] : [])];
+  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee ? [PRIVACY] : [])];
   const supportEndsAt = support ? (decodeJwtPayload(accessToken)?.supportEndsAt as string | undefined) : undefined;
-  const links = [...staff, ...security];
+  const desk = support
+    ? []
+    : [
+        DESK_HELP,
+        DESK_CATALOG,
+        DESK_CHAT,
+        ...(perms.has('desk.ticket.view') ? [DESK_TICKETS, DESK_CALENDAR] : []),
+        ...(perms.has('desk.chat.work') ? [DESK_LIVE_CHAT] : []),
+        ...(perms.has('desk.desk.create') || perms.has('desk.settings.manage') || perms.has('desk.member.manage') || perms.has('desk.mailbox.manage') || perms.has('desk.portal.manage') || perms.has('desk.catalog.manage') || perms.has('desk.rule.manage') || perms.has('desk.lifecycle.manage') || perms.has('desk.channel.manage') ? [DESK_SETUP] : []),
+        // Batch 3: customer admins, and agents (the API lets only Customer support desk agents read).
+        ...(perms.has('desk.customer.manage') || perms.has('desk.ticket.view') ? [DESK_CUSTOMERS] : []),
+        // Batch 4: knowledge, for those who read, write or publish articles.
+        ...(perms.has('desk.kb.view_internal') || perms.has('desk.kb.author') || perms.has('desk.kb.publish') ? [DESK_KNOWLEDGE] : []),
+        // Batch 4: reports, wall screens, NPS surveys.
+        ...(perms.has('desk.report.view') || perms.has('desk.survey.manage') ? [DESK_REPORTS] : []),
+        // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
+        ...(perms.has('employee.change.manage') ? [DESK_PEOPLE] : []),
+        // Batch 4: standalone people list, privacy requests, and the agents' own Known issues page (8 Oct 2026).
+        ...(perms.has('desk.ticket.view') ? [DESK_KNOWN_ISSUES] : []),
+        ...(perms.has('desk.directory.manage') ? [DESK_PEOPLE_LIST] : []),
+        ...(perms.has('desk.desk.create') ? [DESK_PRIVACY] : []),
+      ];
+  const links = [...staff, ...desk, ...(support ? [] : [APPROVALS]), ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
   return (
@@ -169,6 +212,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
           </InlineAlert>
         )}
         {children}
+        {!support && <DeskHelpButton />}
       </div>
     </WorkspaceShell>
   );

@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { Job, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { TenantPrismaService, OrgSecretsCryptoService, IntegrationEventType } from '@exam-platform/shared';
-import { REDIS_CONNECTION } from './redis-connection';
+import { REDIS_CONNECTION, logBullErrors } from './redis-connection';
 import { INTEGRATION_DELIVERIES_QUEUE_NAME } from './integration-deliveries.queue';
 import { assertAllowedWebhookUrl, assertPublicWebhookTarget, IntegrationType } from '../integrations/webhook-url-allowlist';
 import { buildEventSummary } from '../integrations/formatting/event-summary';
@@ -31,7 +31,7 @@ export class IntegrationDeliveryWorkerService implements OnModuleDestroy {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly cryptoService: OrgSecretsCryptoService,
   ) {
-    this.worker = new Worker(INTEGRATION_DELIVERIES_QUEUE_NAME, (job) => this.handle(job), { connection: this.connection });
+    this.worker = logBullErrors(new Worker(INTEGRATION_DELIVERIES_QUEUE_NAME, (job) => this.handle(job), { connection: this.connection }), INTEGRATION_DELIVERIES_QUEUE_NAME);
     // BullMQ fires 'failed' after every failed attempt, including ones that will still retry --
     // only mark the row permanently failed once attemptsMade has reached the job's configured
     // attempts ceiling (job.opts.attempts), mirroring webhook-delivery.worker.service.ts.

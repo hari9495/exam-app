@@ -1236,6 +1236,8 @@ export class EmployeeHistoryService {
       const effectiveNow = dto.joinedOn <= localToday(await this.timezoneOn(tx, c, e.id, dto.joinedOn));
       if (effectiveNow) await tx.employeeChange.update({ where: { id: join.id }, data: { status: 'effective', appliedAt: new Date() } });
       await audit(tx, c, 'employee.created', 'employee', person.id, { employmentId: e.id, legalEntityId: entity.id, employeeCode, joinedOn: dto.joinedOn, changeId: join.id, withPay: false });
+      // M01 business event (outbox, ids only): the Service Desk starts the joiner journey from it (SD-2.08).
+      await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.joined', payload: { employeeId: person.id, employmentId: e.id, joinedOn: dto.joinedOn } } });
       if (effectiveNow) await audit(tx, c, 'employee.change.effective', 'employee', person.id, { changeId: join.id, changeType: 'join', effectiveDate: dto.joinedOn });
       const payChange = pay
         ? await tx.employeeChange.create({

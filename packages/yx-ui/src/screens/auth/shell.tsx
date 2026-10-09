@@ -1,14 +1,14 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { Activity, BookUser, Briefcase, Building2, CalendarClock, ClipboardCheck, Eye, FileStack, Fingerprint, GitFork, History, IdCard, KeyRound, LifeBuoy, ListChecks, LockKeyhole, Mail, MapPin, MessageSquare, Network, Settings, ShieldCheck, UserRound, Users } from 'lucide-react';
+import { Activity, BookOpen, BookUser, Briefcase, Building2, CalendarClock, CalendarDays, ChartColumn, CheckCheck, CircleHelp, ClipboardCheck, Contact, Eye, FileStack, Fingerprint, GitFork, Headphones, Headset, History, IdCard, KeyRound, LifeBuoy, ListChecks, LockKeyhole, Mail, MapPin, Megaphone, MessageSquare, MessagesSquare, Network, Settings, ShieldAlert, ShieldCheck, ShoppingBag, SlidersHorizontal, Ticket, UserRound, UserSearch, Users } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import { ColorIcon, type ColorIconName } from '../../components/color-icon';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 
-export type WorkspacePage = 'me' | 'activity' | 'settings' | 'sms' | 'identity-providers' | 'entities' | 'locations' | 'structure' | 'directory' | 'org-chart' | 'team' | 'job-history' | 'job-changes' | 'probation' | 'bulk-changes' | 'profile' | 'profile-requests' | 'access' | 'privacy' | 'company-rules' | 'access-settings' | 'support-access' | 'emails';
+export type WorkspacePage = 'me' | 'activity' | 'settings' | 'sms' | 'identity-providers' | 'entities' | 'locations' | 'structure' | 'directory' | 'org-chart' | 'team' | 'job-history' | 'job-changes' | 'probation' | 'bulk-changes' | 'profile' | 'profile-requests' | 'access' | 'privacy' | 'company-rules' | 'access-settings' | 'support-access' | 'yukthix-support' | 'emails' | 'desk-help' | 'desk-tickets' | 'desk-setup' | 'desk-calendar' | 'desk-people' | 'desk-customers' | 'desk-reports' | 'desk-knowledge' | 'desk-people-list' | 'desk-privacy' | 'desk-known-issues' | 'desk-catalog' | 'desk-chat' | 'desk-live-chat' | 'approvals';
 /** Sidebar groups, in this order. */
-export type WorkspaceGroup = 'People' | 'Organisation' | 'Access' | 'Security' | 'Me';
-const GROUPS: WorkspaceGroup[] = ['People', 'Organisation', 'Access', 'Security', 'Me'];
+export type WorkspaceGroup = 'People' | 'Service desk' | 'Organisation' | 'Access' | 'Security' | 'Me';
+const GROUPS: WorkspaceGroup[] = ['People', 'Service desk', 'Organisation', 'Access', 'Security', 'Me'];
 
 export interface WorkspaceLink {
   id: WorkspacePage;
@@ -35,10 +35,10 @@ export interface WorkspaceShellProps {
   children: ReactNode;
 }
 
-const ICONS: Record<WorkspacePage, IconComponent> = { me: ShieldCheck, activity: Activity, settings: Settings, sms: MessageSquare, 'identity-providers': Fingerprint, entities: Building2, locations: MapPin, structure: Network, directory: BookUser, 'org-chart': GitFork, team: Users, 'job-history': History, 'job-changes': CalendarClock, probation: ClipboardCheck, 'bulk-changes': FileStack, profile: UserRound, 'profile-requests': IdCard, access: KeyRound, privacy: Eye, 'company-rules': ListChecks, 'access-settings': LockKeyhole, 'support-access': LifeBuoy, emails: Mail };
-const GROUP_ICONS: Record<WorkspaceGroup, IconComponent> = { People: Users, Organisation: Building2, Access: KeyRound, Security: ShieldCheck, Me: UserRound };
+const ICONS: Record<WorkspacePage, IconComponent> = { me: ShieldCheck, activity: Activity, settings: Settings, sms: MessageSquare, 'identity-providers': Fingerprint, entities: Building2, locations: MapPin, structure: Network, directory: BookUser, 'org-chart': GitFork, team: Users, 'job-history': History, 'job-changes': CalendarClock, probation: ClipboardCheck, 'bulk-changes': FileStack, profile: UserRound, 'profile-requests': IdCard, access: KeyRound, privacy: Eye, 'company-rules': ListChecks, 'access-settings': LockKeyhole, 'support-access': LifeBuoy, 'yukthix-support': Headset, emails: Mail, 'desk-help': CircleHelp, 'desk-tickets': Ticket, 'desk-setup': SlidersHorizontal, 'desk-calendar': CalendarDays, 'desk-people': UserSearch, 'desk-customers': Briefcase, 'desk-reports': ChartColumn, 'desk-knowledge': BookOpen, 'desk-people-list': Contact, 'desk-privacy': ShieldAlert, 'desk-known-issues': Megaphone, 'desk-catalog': ShoppingBag, 'desk-chat': MessagesSquare, 'desk-live-chat': Headphones, approvals: CheckCheck };
+const GROUP_ICONS: Record<WorkspaceGroup, IconComponent> = { People: Users, 'Service desk': Headset, Organisation: Building2, Access: KeyRound, Security: ShieldCheck, Me: UserRound };
 // The rail draws colour icons (§8); the panel's page links stay Lucide outline.
-const GROUP_ART: Record<WorkspaceGroup, ColorIconName> = { People: 'area.people', Organisation: 'orgUnit', Access: 'area.access', Security: 'area.security', Me: 'area.me' };
+const GROUP_ART: Record<WorkspaceGroup, ColorIconName> = { People: 'area.people', 'Service desk': 'area.serviceDesk', Organisation: 'orgUnit', Access: 'area.access', Security: 'area.security', Me: 'area.me' };
 
 /** localStorage key of an explicit light / dark choice; absent = follow the OS. */
 export const THEME_STORAGE_KEY = 'yx-theme';
@@ -86,7 +86,7 @@ export function WorkspaceShell({ active, links, company, hiringHref, profileHref
     onNavigate(href);
   };
   const rail: RailItem[] = [
-    ...groups.map((g) => ({ id: g, label: g, short: g === 'Organisation' ? 'Org' : undefined, icon: GROUP_ICONS[g], art: <ColorIcon name={GROUP_ART[g]} size={20} />, href: links.find((l) => l.group === g)!.href })),
+    ...groups.map((g) => ({ id: g, label: g, short: g === 'Organisation' ? 'Org' : g === 'Service desk' ? 'Desk' : undefined, icon: GROUP_ICONS[g], art: <ColorIcon name={GROUP_ART[g]} size={20} />, href: links.find((l) => l.group === g)!.href })),
     ...(hiringHref ? [{ id: 'hiring', label: 'Hiring', icon: Briefcase, art: <ColorIcon name="area.hiring" size={20} />, href: hiringHref }] : []),
   ];
   const home = links[0]?.href ?? profileHref;

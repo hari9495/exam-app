@@ -12,7 +12,9 @@ export const EXAM_ATS_KEYS = ['exam:manage', 'results:view', 'candidate:manage',
 const DIRECTORY_KEY = 'employee.profile.view';
 /** Any of these is YukthiX HR work: the person lands in YukthiX, not the exam console. */
 const YX_SETTINGS_KEYS = ['org.settings.manage', 'org.structure.view', 'access.role.manage'] as const;
-const LANDING_KEYS = [...EXAM_ATS_KEYS, DIRECTORY_KEY, ...YX_SETTINGS_KEYS];
+/** A Service Desk agent lands on their ticket queue (M14). */
+const DESK_KEY = 'desk.ticket.view';
+const LANDING_KEYS = [...EXAM_ATS_KEYS, DIRECTORY_KEY, DESK_KEY, ...YX_SETTINGS_KEYS];
 
 /**
  * Pure: where a signed-in person lands. Anyone with an employee record or any YukthiX HR permission lands in
@@ -23,6 +25,7 @@ const LANDING_KEYS = [...EXAM_ATS_KEYS, DIRECTORY_KEY, ...YX_SETTINGS_KEYS];
 export function landingFor(role: string | undefined, granted: readonly string[], isEmployee = false): string {
   if (role === 'super_admin') return roleToLandingPath(role);
   if (granted.includes(DIRECTORY_KEY)) return '/yx/people/directory';
+  if (granted.includes(DESK_KEY)) return '/yx/desk/tickets';
   if (isEmployee) return '/yx/people/profile';
   if (YX_SETTINGS_KEYS.some((k) => granted.includes(k))) return '/yx/settings/legal-entities';
   if (EXAM_ATS_KEYS.some((k) => granted.includes(k))) return roleToLandingPath(role);

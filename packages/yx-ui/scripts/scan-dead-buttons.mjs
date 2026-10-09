@@ -14,6 +14,8 @@ for (const f of files) {
     if (/\bonClick=|\basChild\b|type="submit"|\bdisabled\b|\{\.\.\./.test(attrs)) continue;
     // Dialog and menu triggers act through their wrapper.
     if (/trigger=\{\s*$/i.test(src.slice(Math.max(0, m.index - 40), m.index))) continue;
+    // …or as the child of a Radix-style <MenuTrigger asChild> / <DialogTrigger asChild>.
+    if (/Trigger asChild>\s*$/.test(src.slice(Math.max(0, m.index - 60), m.index))) continue;
     const line = src.slice(0, m.index).split('\n').length;
     const label = m[3] ? '' : src.slice(re.lastIndex, src.indexOf('</', re.lastIndex)).replace(/\s+/g, ' ').trim().slice(0, 60);
     out.push({ file: f.replace(/\\/g, '/'), line, label });

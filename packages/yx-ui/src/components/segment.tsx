@@ -10,7 +10,8 @@ export interface SegmentProps<V extends string | number> {
   /** Accessible name of the group, e.g. "Sign in with". */
   label: string;
   options: SegmentOption<V>[];
-  value: V;
+  /** Null (or a value not in the list) while nothing is chosen yet; the first option then takes the tab stop. */
+  value: V | null;
   onChange: (value: V) => void;
   className?: string;
 }
@@ -28,6 +29,7 @@ export function Segment<V extends string | number>({ label, options, value, onCh
     onChange(options[next].value);
     (e.currentTarget.parentElement?.children[next] as HTMLElement | undefined)?.focus();
   };
+  const chosen = options.some((o) => o.value === value);
   return (
     <div className={cx('yx-segment', className)} role="radiogroup" aria-label={label}>
       {options.map((o, i) => (
@@ -36,7 +38,7 @@ export function Segment<V extends string | number>({ label, options, value, onCh
           type="button"
           role="radio"
           aria-checked={o.value === value}
-          tabIndex={o.value === value ? 0 : -1}
+          tabIndex={o.value === value || (!chosen && i === 0) ? 0 : -1}
           onClick={() => onChange(o.value)}
           onKeyDown={(e) => move(e, i)}
         >

@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .next/
+.next-e2e/
 .env
 .env.local
 .env*.local
@@ -17,3 +18,4 @@ load/tokens.json
 # Claude Code local session/config + skills lockfile (per-machine tooling state, not product)
 .claude/
 skills-lock.json
+.desk-files/

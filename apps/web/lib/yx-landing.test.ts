@@ -3,6 +3,8 @@ import { landingFor } from './yx-landing';
 describe('landingFor (where a YukthiX sign-in lands)', () => {
   it('sends HR without exam/ATS permissions to the directory', () => {
     expect(landingFor('panel', ['employee.profile.view'])).toBe('/yx/people/directory');
+    // M14: a Service Desk agent lands on their ticket queue, even when they also have an employee record.
+    expect(landingFor('panel', ['desk.ticket.view', 'results:view'], true)).toBe('/yx/desk/tickets');
   });
 
   it('sends someone with neither to My security', () => {
