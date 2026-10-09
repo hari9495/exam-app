@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, ConflictException, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
@@ -8,13 +8,16 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
-import { MODERATE_UPLOAD_THROTTLE, PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
+import { MODERATE_UPLOAD_THROTTLE, PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { ChatService } from './chat.service';
-import { DeskAccessService, RequestUser, assertOwnSession, requireSetUp } from './desk-access';
+import { DeskAccessService, RequestUser, assertOwnSession, audit, requireSetUp } from './desk-access';
+import { STARTER_PACKS } from './starter';
+import { todayIst } from '../org-structure/org-validation';
 import { DeskOrgService } from './desk-org.service';
 import { installPack } from './desks.service';
 import { DocumentsService } from './documents.service';
 import {
+  StarterPackDto,
   BranchDto,
   ChatQueueDto,
   CloneDeskDto,
@@ -126,13 +129,39 @@ export class DeskOrgController {
   @Post('desks/:id/starter-pack')
   @HttpCode(200)
   @RequirePermissions('desk.catalog.manage')
-  async starterPack(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+  async starterPack(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: StarterPackDto) {
     assertOwnSession(req);
     const a = await this.access.actor(req, t);
     requireSetUp(a, id, 'desk.catalog.manage');
     return this.tenantPrisma.forTenant(a.ctx, async (tx) => {
-      const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: a.ctx.organizationId, id } });
-      return (await installPack(tx, a, desk)) ?? { items: 0, sla: false };
+      const org = a.ctx.organizationId;
+      const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id } });
+      // Founder decision 9 Oct 2026: the HR pack on an existing standard desk asks first, showing what changes.
+      const restrictable = Boolean(STARTER_PACKS[desk.kind]?.restricted) && desk.privacy === 'standard';
+      if (restrictable && dto.restrict === undefined) {
+        const today = new Date(`${todayIst()}T00:00:00Z`);
+        const seats = await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId: id, validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] }, select: { userId: true, role: true } });
+        const agents = new Set(seats.filter((s) => s.role === 'agent' || s.role === 'lead').map((s) => s.userId));
+        const adminsOnly = new Set(seats.filter((s) => s.role === 'admin' && !agents.has(s.userId)).map((s) => s.userId)).size;
+        const tickets = await tx.sdTicket.count({ where: { organizationId: org, deskId: id, sensitive: false, private: false } });
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'CONFIRM_RESTRICT',
+          message: 'The HR starter pack makes this desk restricted. Check what changes, then confirm.',
+          changes: [
+            `Only the ${agents.size} agent${agents.size === 1 ? '' : 's'} of this desk will see its tickets (${tickets} ticket${tickets === 1 ? '' : 's'} today).`,
+            adminsOnly ? `${adminsOnly} desk admin${adminsOnly === 1 ? '' : 's'} without an agent seat will no longer see the tickets (they keep the set-up).` : 'No desk admin loses sight of tickets.',
+            'Company admins and YukthiX staff never see tickets of a restricted desk.',
+            'Pay, medical and personal categories become private, and missing catalogue items and response targets are added.',
+          ],
+        });
+      }
+      const pack = (await installPack(tx, a, desk)) ?? { items: 0, sla: false };
+      if (restrictable && dto.restrict) {
+        await tx.sdDesk.update({ where: { id }, data: { privacy: 'restricted', version: { increment: 1 }, updatedAt: new Date() } });
+        await audit(tx, a, 'desk.desk.restricted', 'sd_desk', id, { by: 'starter_pack', confirmed: true });
+      }
+      return { ...pack, restricted: restrictable ? Boolean(dto.restrict) : desk.privacy === 'restricted' };
     });
   }
 
@@ -533,7 +562,15 @@ export class MyChatController {
     return this.documents.mine(this.requesters.who(req, t), id);
   }
 
-  /** Sign or decline in the app; the evidence is this request's time, address, device and sign-in strength. */
+  /** Founder decision 9 Oct 2026: a one-time code to the signer's sign-in email before the signature is taken. */
+  @Post('documents/:id/sign-code')
+  @HttpCode(200)
+  @Throttle(STRICT_AUTH_THROTTLE)
+  signCode(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.documents.signCode(this.requesters.who(req, t), id, clientIpOf(req));
+  }
+
+  /** Sign or decline in the app; the evidence is the code, this request's time, address, device and sign-in strength. */
   @Post('documents/:id/sign')
   @HttpCode(200)
   @Throttle(MODERATE_UPLOAD_THROTTLE)

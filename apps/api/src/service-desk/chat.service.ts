@@ -11,7 +11,7 @@ import { maskPii } from './pii';
 import { profileOf } from './people-facts';
 import { Requester, RequesterService } from './requester.service';
 import { textToHtml } from './rich-text';
-import { OPEN_STATES, TicketsService } from './tickets.service';
+import { OPEN_STATES, TicketsService, asDeskJob } from './tickets.service';
 
 // SD-2.17 … SD-2.19 (US-B-132, US-B-135, US-G-056, US-G-059): live chat on our own socket.io server (D1) and the
 // light interaction record for chats, calls and walk-ups.
@@ -300,6 +300,12 @@ export class ChatService {
     });
   }
 
+  /** SD-2.25: the fewer of the queue's limit and the agent's own chat capacity (US-G-075). */
+  private async chatCap(tx: Tx, org: string, userId: string, queueMax: number) {
+    const c = await asDeskJob(tx, () => tx.sdAgentCapacity.findFirst({ where: { organizationId: org, userId, channel: 'chat' }, select: { maxOpen: true } }));
+    return c ? Math.min(queueMax, c.maxOpen) : queueMax;
+  }
+
   async accept(a: DeskActor, id: string) {
     const s = await this.tx(a, async (tx) => {
       const org = a.ctx.organizationId;
@@ -309,7 +315,7 @@ export class ChatService {
       const q = await tx.sdChatQueue.findFirstOrThrow({ where: { organizationId: org, id: cur.queueId } });
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`sd-chat-agent:${org}:${a.userId}`}))`;
       const busy = await tx.sdChatSession.count({ where: { organizationId: org, agentUserId: a.userId, state: 'active' } });
-      if (busy >= q.maxPerAgent) throw new ConflictException(`You already have ${busy} chats, the most this queue allows. Finish one first.`);
+      if (busy >= (await this.chatCap(tx, org, a.userId, q.maxPerAgent))) throw new ConflictException(`You already have ${busy} chats, the most you take at once. Finish one first.`);
       const after = await tx.sdChatSession.update({ where: { id }, data: { state: 'active', agentUserId: a.userId, acceptedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
       const name = (await this.tickets.userNames(tx, org, [a.userId])).get(a.userId) ?? 'An agent';
       await tx.sdChatMessage.create({ data: { organizationId: org, deskId: cur.deskId, sessionId: id, author: 'system', body: `${name} joined the chat.` } });
@@ -348,7 +354,7 @@ export class ChatService {
         if (!(await this.tickets.seatHeld(tx, org, cur.deskId, dto.agentUserId!))) throw new BadRequestException('Choose an agent of this desk.');
         const q = await tx.sdChatQueue.findFirstOrThrow({ where: { organizationId: org, id: cur.queueId } });
         const busy = await tx.sdChatSession.count({ where: { organizationId: org, agentUserId: dto.agentUserId, state: 'active' } });
-        if (busy >= q.maxPerAgent) throw new ConflictException('That agent has no room for another chat.');
+        if (busy >= (await this.chatCap(tx, org, dto.agentUserId!, q.maxPerAgent))) throw new ConflictException('That agent has no room for another chat.');
         const name = (await this.tickets.userNames(tx, org, [dto.agentUserId!])).get(dto.agentUserId!) ?? 'Another agent';
         data = { state: 'active', agentUserId: dto.agentUserId, acceptedAt: new Date() };
         line = `${name} is taking over the chat.`;

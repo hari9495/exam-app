@@ -3,7 +3,7 @@
 import { Suspense, useState } from 'react';
 import { Spinner } from '@yukthix/ui';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ChatPromptBanner, HelpCentreScreen, type KbArticleView, type KbHome, type KbSuggestion, type MyTicketRow, type PublicBanner, type RaiseDesk } from '@yukthix/ui/desk';
+import { ChatPromptBanner, HelpCentreScreen, MyChannelsCard, type DevOutboxItem, type MyChannels, type KbArticleView, type KbHome, type KbSuggestion, type MyTicketRow, type PublicBanner, type RaiseDesk } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
 import { useCurrentUser } from '../../../../../lib/hooks/useCurrentUser';
@@ -29,6 +29,10 @@ function YxDeskHelpPageInner() {
   // SD-2.19: a proactive chat offer for this page, shown after its delay when an agent is online.
   const prompt = useDesk<{ queueId: string; desk: string; text: string; afterSeconds: number } | null>('/my/chat/prompt?path=/yx/desk/help');
   const [dismissed, setDismissed] = useState(false);
+  // SD-2.21 … SD-2.23: link my phone for WhatsApp / SMS help; in demo mode, a pretend phone and what reached it.
+  const channels = useDesk<MyChannels>('/my/messaging');
+  const outbox = useDesk<DevOutboxItem[]>(channels.data?.devTransport ? '/my/messaging/dev-outbox' : null, { refetchInterval: 3000 });
+
   return (
     <>
     {!dismissed && <div className="yx-auth__page"><ChatPromptBanner prompt={prompt.data ?? null} onChat={() => router.push(`/yx/desk/chat?queue=${encodeURIComponent(prompt.data!.queueId)}`)} onDismiss={() => setDismissed(true)} /></div>}
@@ -63,6 +67,16 @@ function YxDeskHelpPageInner() {
         onSolved: (id) => write(`/my/kb/articles/${encodeURIComponent(id)}/feedback`, 'POST', { solved: true }),
       }}
     />
+    {channels.data?.lines.length ? (
+      <div className="yx-auth__page">
+        <MyChannelsCard
+          channels={channels.data}
+          onJoinCode={(kind) => write<{ code: string; text: string; expiresInMinutes: number }>('/my/messaging/join', 'POST', { kind })}
+          onUnlink={(kind) => write(`/my/messaging/${kind}`, 'DELETE')}
+          dev={channels.data.devTransport ? { outbox: outbox.data ?? [], onSend: (kind, text, phone) => write('/my/messaging/dev-send', 'POST', { kind, text, ...(phone ? { phone } : {}) }) } : null}
+        />
+      </div>
+    ) : null}
     </>
   );
 }

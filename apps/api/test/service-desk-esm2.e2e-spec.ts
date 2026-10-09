@@ -67,6 +67,16 @@ describe('Service Desk 3b-2 batch 2', () => {
       });
       s.on('connect_error', (e) => reject(e));
     });
+  /** The 6-digit code in the newest email to this address (the one-time code is sent without waiting). */
+  const codeSentTo = async (to: string) => {
+    for (let i = 0; i < 40; i++) {
+      const calls = (app.get(EmailService).send as jest.Mock).mock.calls as [{ to?: string; subject?: string }][];
+      const hit = [...calls].reverse().find(([m]) => m.to === to && /^\d{6} is your/.test(m.subject ?? ''));
+      if (hit) return hit[0].subject!.slice(0, 6);
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    throw new Error(`no code sent to ${to}`);
+  };
   const ask = (s: Socket, event: string, body: unknown) => s.timeout(5000).emitWithAck(event, body) as Promise<Record<string, unknown>>;
   const next = (s: Socket, event: string) => new Promise<Record<string, unknown>>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(`no ${event}`)), 5000);
@@ -189,7 +199,7 @@ describe('Service Desk 3b-2 batch 2', () => {
     expect(items.find((i) => i.name === 'Exit settlement')?.journeyOnly).toBe(true);
     expect((await system((tx) => tx.sdSlaPolicy.count({ where: { deskId: ids.hr } })))).toBe(1);
     // Installing again adds nothing; journey-only items never show in the catalogue.
-    expect((await api('adminA', 'post', `/desk/desks/${ids.hr}/starter-pack`).expect(200)).body).toEqual({ items: 0, sla: false });
+    expect((await api('adminA', 'post', `/desk/desks/${ids.hr}/starter-pack`).expect(200)).body).toEqual({ items: 0, sla: false, restricted: true });
     const catalogue = (await api('emp', 'get', '/desk/my/catalog').expect(200)).body.items.map((i: { name: string }) => i.name);
     expect(catalogue).toContain('Employment letter');
     expect(catalogue).not.toContain('Exit settlement');
@@ -315,14 +325,21 @@ describe('Service Desk 3b-2 batch 2', () => {
       const mine = (await api('emp', 'get', `/desk/my/requests/${t.id}/documents`).expect(200)).body;
       expect(mine[0]).toMatchObject({ needsMe: true, status: 'pending' });
       expect(mine[0].text).toContain(`I, emp ${run}, received my laptop`);
-      await api('other', 'post', `/desk/my/documents/${doc.id}/sign`).send({ decision: 'sign', typedName: `other ${run}`, agree: true }).expect(404);
-      await api('emp', 'post', `/desk/my/documents/${doc.id}/sign`).send({ decision: 'sign', typedName: 'Someone Else', agree: true }).expect(400);
-      await api('emp', 'post', `/desk/my/documents/${doc.id}/sign`).send({ decision: 'sign', typedName: `emp ${run}` }).expect(400);
-      const signed = (await api('emp', 'post', `/desk/my/documents/${doc.id}/sign`).set('User-Agent', 'e2e-browser').send({ decision: 'sign', typedName: `EMP  ${run}`, agree: true }).expect(200)).body;
+      // Founder decision 9 Oct 2026: a one-time code to the signer's sign-in email comes first.
+      await api('other', 'post', `/desk/my/documents/${doc.id}/sign-code`).expect(404);
+      await api('other', 'post', `/desk/my/documents/${doc.id}/sign`).send({ decision: 'sign', typedName: `other ${run}`, agree: true, code: '123456' }).expect(404);
+      await api('emp', 'post', `/desk/my/documents/${doc.id}/sign`).send({ decision: 'sign', typedName: `emp ${run}`, agree: true }).expect(400);
+      expect((await api('emp', 'post', `/desk/my/documents/${doc.id}/sign-code`).expect(200)).body).toMatchObject({ sent: true, minutes: 5 });
+      const code = await codeSentTo(`emp@esm2-${run}.test`);
+      // A wrong name never uses up the code; a wrong code is refused.
+      await api('emp', 'post', `/desk/my/documents/${doc.id}/sign`).send({ decision: 'sign', typedName: 'Someone Else', agree: true, code }).expect(400);
+      await api('emp', 'post', `/desk/my/documents/${doc.id}/sign`).send({ decision: 'sign', typedName: `emp ${run}`, code }).expect(400);
+      expect((await api('emp', 'post', `/desk/my/documents/${doc.id}/sign`).send({ decision: 'sign', typedName: `emp ${run}`, agree: true, code: code === '000000' ? '111111' : '000000' }).expect(401)).body.code).toBe('SIGN_CODE_WRONG');
+      const signed = (await api('emp', 'post', `/desk/my/documents/${doc.id}/sign`).set('User-Agent', 'e2e-browser').send({ decision: 'sign', typedName: `EMP  ${run}`, agree: true, code }).expect(200)).body;
       expect(signed.status).toBe('signed');
-      await api('emp', 'post', `/desk/my/documents/${doc.id}/sign`).send({ decision: 'sign', typedName: `emp ${run}`, agree: true }).expect(409);
+      await api('emp', 'post', `/desk/my/documents/${doc.id}/sign`).send({ decision: 'sign', typedName: `emp ${run}`, agree: true, code }).expect(409);
       const row = await system((tx) => tx.sdRequestDocument.findFirstOrThrow({ where: { id: doc.id } }));
-      expect(row.evidence).toMatchObject({ method: 'in_app_typed_name', userAgent: 'e2e-browser', documentSha256: row.sha256, signedByUserId: users.emp });
+      expect(row.evidence).toMatchObject({ method: 'in_app_typed_name_and_code', userAgent: 'e2e-browser', documentSha256: row.sha256, signedByUserId: users.emp });
       // The text of a made document never changes (database guard).
       await expect(system((tx) => tx.sdRequestDocument.update({ where: { id: doc.id }, data: { bodyText: 'changed' } }))).rejects.toThrow(/never changes/);
       const v2 = (await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: t.id } }))).version;
@@ -532,7 +549,7 @@ describe('Service Desk 3b-2 batch 2', () => {
       // The queue allows one chat per agent.
       const s2 = (await api('other', 'post', '/desk/my/chat').send({ queueId: ids.queue, answers: { device: 'phone' } }).expect(201)).body;
       ids.chat2 = s2.id;
-      expect((await api('agent', 'post', `/desk/chat/sessions/${s2.id}/accept`).expect(409)).body.message).toMatch(/most this queue allows/);
+      expect((await api('agent', 'post', `/desk/chat/sessions/${s2.id}/accept`).expect(409)).body.message).toMatch(/the most you take at once/);
       // Unresolved → a ticket with the transcript, owned by the agent.
       const out = (await api('agent', 'post', `/desk/chat/sessions/${s.id}/end`).send({ resolved: false }).expect(200)).body;
       const t = await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: out.ticket.id } }));

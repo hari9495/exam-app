@@ -50,6 +50,8 @@ export class MailOutService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MailOutService.name);
   private readonly queue: Queue;
   private worker: Worker | null = null;
+  /** SD-2.21 … SD-2.23: other channels the reply also goes back on (WhatsApp, SMS, Teams, Slack); each is idempotent. */
+  readonly replyHooks: ((organizationId: string, ticketId: string, messageId: string) => Promise<void>)[] = [];
 
   constructor(
     @Inject(REDIS_CONNECTION) private readonly connection: Redis,
@@ -84,6 +86,7 @@ export class MailOutService implements OnModuleInit, OnModuleDestroy {
     const m = await deskSystem(this.tenantPrisma, ctx, (tx) => tx.sdTicketMessage.findFirst({ where: { organizationId, id: messageId, ticketId, kind: 'reply', side: 'agent' } }));
     // Not committed yet (or rolled back): try again shortly; after three tries it is dropped.
     if (!m) throw new Error('reply not found');
+    for (const hook of this.replyHooks) await hook(organizationId, ticketId, messageId).catch((e: Error) => this.logger.warn(`Desk reply not sent on its channel: ${e.message}`));
     if (m.emailMessageId) return;
     await this.sendForTicket(ctx, ticketId, 'reply', { messageId, html: m.bodyHtml });
   }

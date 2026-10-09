@@ -5,7 +5,7 @@ import { Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { approvedLeaveOfUsers } from '../time/time-core';
 import { NotificationsService } from '../notifications/notifications.service';
-import { chooseAgent, isAvailable, onLeaveNow } from './assignment';
+import { Route, isAvailable, needWords, onLeaveNow, routeAgent } from './assignment';
 import { cleanHtml, htmlToText } from './rich-text';
 import { PiiFound, maskPii, maskPiiHtml, unmaskHealth } from './pii';
 import { SlaService } from './sla.service';
@@ -21,6 +21,7 @@ import {
   audit,
   canLead,
   canWork,
+  deskSystem,
   emit,
   has,
   requireWork,
@@ -36,6 +37,8 @@ export type Ticket = Prisma.SdTicketGetPayload<object>;
 /** Timeline kinds → the rule fields they change (the "updated" trigger can wait for some fields only). */
 const FIELD_OF: Record<string, string> = { status_changed: 'state', priority_changed: 'priority', category_changed: 'category', group_changed: 'group', tags_changed: 'tags', type_changed: 'type', subject_changed: 'subject', privacy_changed: 'private' };
 export const OPEN_STATES = ['new', 'open', 'pending', 'on_hold'];
+/** Channels counted against an agent's "messaging" capacity (SD-2.25). */
+const MESSAGING: string[] = ['whatsapp', 'sms', 'teams', 'slack'];
 const day = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
 export interface Changes {
@@ -67,7 +70,12 @@ export interface CreateInput {
   requesterPersonId: string;
   requestedForPersonId?: string;
   openedByUserId: string | null;
-  channel: 'portal' | 'agent' | 'api' | 'email' | 'chat' | 'phone' | 'walk_up';
+  channel: 'portal' | 'agent' | 'api' | 'email' | 'chat' | 'phone' | 'walk_up' | 'whatsapp' | 'sms' | 'teams' | 'slack' | 'widget';
+  /**
+   * SD-2.25: the language the requester wrote in (routing by language): the raise form sends it; WhatsApp, SMS and
+   * chat-app tickets use the contact's saved language or the one detected in the first message (language.ts).
+   */
+  language?: string | null;
   private?: boolean;
   tags?: string[];
   /** Who wrote the first message: the requester (portal) or an agent raising it for them. */
@@ -160,8 +168,11 @@ export class TicketsService {
     const branch = (await tx.sdDeskBranch.count({ where: { organizationId: org, deskId: desk.id } }))
       ? await tx.sdDeskBranch.findFirst({ where: { organizationId: org, deskId: desk.id, locationId: String((await profileOf(tx, org, forWhom))['requester.location'] ?? '00000000-0000-0000-0000-000000000000') } })
       : null;
-    const groupId = branch?.groupId ?? cat?.groupId ?? null;
-    const assigneeUserId = groupId ? await this.pickAssignee(tx, org, desk.id, groupId) : null;
+    // SD-2.25: a WhatsApp / SMS / Teams / Slack message has no category: it goes to the desk's first team for routing.
+    const groupId = branch?.groupId ?? cat?.groupId ?? (MESSAGING.includes(input.channel) ? ((await tx.sdGroup.findFirst({ where: { organizationId: org, deskId: desk.id, active: true }, orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id ?? null) : null);
+    const language = input.language && /^[a-z]{2,3}$/.test(input.language) ? input.language : null;
+    const routed = groupId ? await this.route(tx, org, desk.id, groupId, { skills: cat?.skills ?? [], language }, new Date(), MESSAGING.includes(input.channel) ? 'messaging' : 'ticket', desk.routingWaitMinutes) : null;
+    const assigneeUserId = routed?.userId ?? null;
     const { bodyHtml, bodyText, found } = this.cleanMasked(input.bodyHtml);
     if (!bodyText) throw new BadRequestException('Describe the issue.');
     const subject = maskPii(input.subject);
@@ -200,6 +211,8 @@ export class TicketsService {
         branchId: branch?.id ?? null,
         lifecycleId: pin?.lifecycleId ?? null,
         lifecycleVersion: pin?.version ?? null,
+        language,
+        routingWaitUntil: routed?.waitUntil ?? null,
         vip,
         tags: [...new Set([...(input.tags ?? []), ...(usedUp ? ['plan-used-up'] : [])])].slice(0, 20),
         custom: input.custom ?? {},
@@ -230,7 +243,8 @@ export class TicketsService {
     await this.keepPii(tx, t, null, subject.found);
     await this.keepPii(tx, t, first.id, found);
     await this.event(tx, t, 'created', null, t.number, { by: a.userId, requesterVisible: true });
-    if (assigneeUserId) await this.event(tx, t, 'assigned', null, assigneeUserId, { by: null, reason: 'Assigned automatically' });
+    if (assigneeUserId) await this.event(tx, t, 'assigned', null, assigneeUserId, { by: null, reason: routed?.reason ?? 'Assigned automatically' });
+    else if (routed && groupId) await this.event(tx, t, 'routing', null, null, { by: null, reason: routed.reason });
     if (input.requestedForPersonId) await this.addWatcherIn(tx, a, t, input.requestedForPersonId, false);
     await emit(tx, org, 'helpdesk.ticket.created', { ticketId: t.id, deskId: desk.id, number: t.number, channel: input.channel });
     if (assigneeUserId) await emit(tx, org, 'helpdesk.ticket.assigned', { ticketId: t.id, deskId: desk.id, assigneeUserId });
@@ -330,7 +344,7 @@ export class TicketsService {
     const c = await tx.sdCategory.findFirst({ where: { organizationId: org, deskId, id, ...(activeOnly ? { active: true } : {}) } });
     if (!c) throw new BadRequestException('Choose a category of this desk.');
     const parent = c.parentId ? await tx.sdCategory.findFirst({ where: { organizationId: org, id: c.parentId } }) : null;
-    return { id: c.id, sensitive: c.sensitive || Boolean(parent?.sensitive), privateByDefault: c.privateByDefault || Boolean(parent?.privateByDefault), groupId: c.defaultGroupId ?? parent?.defaultGroupId ?? null, defaultPriority: c.defaultPriority ?? parent?.defaultPriority ?? null };
+    return { id: c.id, sensitive: c.sensitive || Boolean(parent?.sensitive), privateByDefault: c.privateByDefault || Boolean(parent?.privateByDefault), groupId: c.defaultGroupId ?? parent?.defaultGroupId ?? null, defaultPriority: c.defaultPriority ?? parent?.defaultPriority ?? null, skills: c.skills.length ? c.skills : (parent?.skills ?? []) };
   }
 
   async firstStatus(tx: Tx, org: string, deskId: string, typeId: string, state: string) {
@@ -353,24 +367,94 @@ export class TicketsService {
    * their shift and are not on approved leave. The group row is locked so two tickets never race for the same turn.
    */
   async pickAssignee(tx: Tx, org: string, deskId: string, groupId: string, now = new Date()): Promise<string | null> {
+    return (await this.route(tx, org, deskId, groupId, { skills: [], language: null }, now)).userId;
+  }
+
+  /**
+   * SD-1.06 + SD-2.25 push routing (US-G-075, US-G-239): the group's members with an agent seat today who are online
+   * (not away, busy or offline), inside their weekly shift and their roster shift when they have one today, not on
+   * leave, and under their own capacity; then skills of the category and the requester's language first, with the
+   * reason kept for the timeline.
+   */
+  async route(tx: Tx, org: string, deskId: string, groupId: string, need: { skills: readonly string[]; language: string | null }, now = new Date(), work: 'ticket' | 'messaging' = 'ticket', waitMinutes = 0): Promise<Route & { waitUntil?: Date }> {
     const [group] = await tx.$queryRaw<{ assignment_method: string; max_open_per_agent: number | null; last_assigned_user_id: string | null; active: boolean }[]>`
       SELECT assignment_method, max_open_per_agent, last_assigned_user_id, active FROM sd_groups
       WHERE organization_id = ${org}::uuid AND desk_id = ${deskId}::uuid AND id = ${groupId}::uuid FOR UPDATE`;
-    if (!group?.active || group.assignment_method === 'manual') return null;
+    if (!group?.active || group.assignment_method === 'manual') return { userId: null, reason: 'The team assigns by hand' };
     const members = (await tx.sdGroupMember.findMany({ where: { organizationId: org, groupId }, select: { userId: true } })).map((m) => m.userId);
-    if (!members.length) return null;
-    const seated = (await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId, userId: { in: members }, role: { in: ['agent', 'lead'] }, ...activeOn(todayIst()) }, select: { userId: true } })).map((m) => m.userId);
+    if (!members.length) return { userId: null, reason: 'The team has no members' };
+    const seats = await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId, userId: { in: members }, role: { in: ['agent', 'lead'] }, ...activeOn(todayIst()) }, select: { userId: true, skills: true, languages: true } });
+    const seated = seats.map((m) => m.userId);
     const statuses = new Map((await tx.sdAgentStatus.findMany({ where: { organizationId: org, userId: { in: seated } } })).map((s) => [s.userId, s]));
     const onLeave = await this.onApprovedLeave(tx, org, seated, now);
-    const free = seated.filter((u) => isAvailable(statuses.get(u), now) && !onLeave.has(u));
-    if (!free.length) return null;
+    // Rosters and personal limits are the team's own rows (RLS: the person and their leads); routing reads them as the
+    // desk's job inside the caller's transaction, then puts the caller's own view back.
+    const { shifts, caps } = await asDeskJob(tx, async () => ({
+      shifts: await tx.sdShift.findMany({ where: { organizationId: org, userId: { in: seated }, startsAt: { lt: new Date(now.getTime() + 16 * 3_600_000) }, endsAt: { gt: new Date(now.getTime() - 16 * 3_600_000) } }, select: { userId: true, startsAt: true, endsAt: true } }),
+      caps: await tx.sdAgentCapacity.findMany({ where: { organizationId: org, userId: { in: seated }, channel: work }, select: { userId: true, maxOpen: true } }),
+    }));
+    // An agent with a roster shift around now takes work only inside one.
+    const rostered = (u: string) => {
+      const mine = shifts.filter((s) => s.userId === u);
+      return !mine.length || mine.some((s) => s.startsAt <= now && now < s.endsAt);
+    };
+    const free = seated.filter((u) => isAvailable(statuses.get(u), now) && !onLeave.has(u) && rostered(u));
+    if (!free.length) return { userId: null, reason: 'Nobody in the team is available: waiting in the team queue' };
     // ponytail: counted under the caller's own visibility (§5.7), so a requester's raise does not count sensitive tickets
     // they cannot see; load balancing is then slightly off for them. A counts-only SQL function fixes it if it matters.
-    const counts = await tx.sdTicket.groupBy({ by: ['assigneeUserId'], where: { organizationId: org, assigneeUserId: { in: free }, systemState: { in: OPEN_STATES } }, _count: { _all: true } });
+    // SD-2.25: WhatsApp, SMS, Teams and Slack work has its own capacity (US-G-075: per channel).
+    const counts = await tx.sdTicket.groupBy({ by: ['assigneeUserId'], where: { organizationId: org, assigneeUserId: { in: free }, systemState: { in: OPEN_STATES }, ...(work === 'messaging' ? { channel: { in: MESSAGING } } : {}) }, _count: { _all: true } });
     const open = new Map(counts.map((c) => [c.assigneeUserId!, c._count._all]));
-    const chosen = chooseAgent(group.assignment_method as 'round_robin' | 'load', free.map((userId) => ({ userId, open: open.get(userId) ?? 0 })), group.last_assigned_user_id, group.max_open_per_agent);
-    if (chosen) await tx.sdGroup.update({ where: { id: groupId }, data: { lastAssignedUserId: chosen } });
-    return chosen;
+    const cap = new Map(caps.map((c) => [c.userId, c.maxOpen]));
+    const seat = new Map(seats.map((m) => [m.userId, m]));
+    const r = routeAgent(
+      group.assignment_method as 'round_robin' | 'load',
+      free.map((userId) => ({ userId, open: open.get(userId) ?? 0, skills: seat.get(userId)?.skills ?? [], languages: seat.get(userId)?.languages ?? [], capacity: cap.get(userId) ?? null })),
+      need,
+      group.last_assigned_user_id,
+      group.max_open_per_agent,
+    );
+    // Founder decision 9 Oct 2026: nobody free has both the skills and the language, so the ticket waits for the
+    // best-matched agent for the desk's wait before falling back (routingSweep).
+    if (r.fallback && waitMinutes > 0) {
+      return { userId: null, reason: `Waiting up to ${waitMinutes} minute${waitMinutes === 1 ? '' : 's'} for an agent with ${needWords(need)} before routing to anyone free`, waitUntil: new Date(now.getTime() + waitMinutes * 60_000) };
+    }
+    if (r.userId) await tx.sdGroup.update({ where: { id: groupId }, data: { lastAssignedUserId: r.userId } });
+    return r;
+  }
+
+  /**
+   * Founder decision 9 Oct 2026: tickets waiting for their best-matched agent. Each minute (the desk jobs): the
+   * best-matched agent who became free gets it; once the wait is over, routing falls back and the reason says so.
+   * ponytail: a one-minute sweep, so a 2-minute wait ends within 2–3 minutes; a delayed job per ticket if it must be exact.
+   */
+  async routingSweep(now = new Date()): Promise<number> {
+    const due = await deskSystem(this.tenantPrisma, { organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.sdTicket.findMany({ where: { routingWaitUntil: { not: null } }, select: { id: true, organizationId: true }, orderBy: { routingWaitUntil: 'asc' }, take: 200 }),
+    );
+    let n = 0;
+    for (const d of due) {
+      n += await deskSystem(this.tenantPrisma, { organizationId: d.organizationId, isSuperAdmin: false }, async (tx) => {
+        const org = d.organizationId;
+        const t = await tx.sdTicket.findFirst({ where: { organizationId: org, id: d.id, routingWaitUntil: { not: null } } });
+        if (!t) return 0;
+        const clear = () => tx.sdTicket.update({ where: { id: t.id }, data: { routingWaitUntil: null } });
+        // Someone took it meanwhile, it moved team or closed: nothing more to route.
+        if (t.assigneeUserId || !t.groupId || !OPEN_STATES.includes(t.systemState)) return clear().then(() => 0);
+        const desk = await tx.sdDesk.findFirst({ where: { organizationId: org, id: t.deskId }, select: { routingWaitMinutes: true } });
+        const cat = t.categoryId ? await tx.sdCategory.findFirst({ where: { organizationId: org, id: t.categoryId }, select: { skills: true } }) : null;
+        const need = { skills: cat?.skills ?? [], language: t.language };
+        const over = t.routingWaitUntil! <= now;
+        const r = await this.route(tx, org, t.deskId, t.groupId, need, now, MESSAGING.includes(t.channel) ? 'messaging' : 'ticket', over ? 0 : 1);
+        if (!r.userId) return over ? clear().then(() => this.event(tx, t, 'routing', null, null, { by: null, reason: `No agent with ${needWords(need)} was free within ${desk?.routingWaitMinutes ?? 0} minutes. ${r.reason}` })).then(() => 0) : 0;
+        await tx.sdTicket.update({ where: { id: t.id }, data: { assigneeUserId: r.userId, routingWaitUntil: null, version: { increment: 1 } } });
+        await this.event(tx, t, 'assigned', null, r.userId, { by: null, reason: r.fallback ? `No agent with ${needWords(need)} was free within ${desk?.routingWaitMinutes ?? 0} minutes. ${r.reason}` : r.reason });
+        await emit(tx, org, 'helpdesk.ticket.assigned', { ticketId: t.id, deskId: t.deskId, assigneeUserId: r.userId });
+        await this.sla.sync(tx, t.id, now);
+        return 1;
+      });
+    }
+    return n;
   }
 
   /**
@@ -1165,4 +1249,18 @@ export async function lifecyclePin(tx: Tx, org: string, deskId: string, typeId: 
   if (!lc?.currentVersion) return null;
   const v = await tx.sdLifecycleVersion.findFirstOrThrow({ where: { organizationId: org, lifecycleId: lc.id, version: lc.currentVersion } });
   return { lifecycleId: lc.id, version: v.version, startStatusId: v.startStatusId, statusIds: v.statusIds };
+}
+
+/**
+ * Runs fn with the desk's job view (app.sd_system on) inside the caller's transaction, then puts the caller's own view
+ * back, so a requester's raise can read the team's rosters and limits without seeing anything else.
+ */
+export async function asDeskJob<T>(tx: Tx, fn: () => Promise<T>): Promise<T> {
+  const [{ before }] = await tx.$queryRaw<{ before: string | null }[]>`SELECT current_setting('app.sd_system', true) AS before`;
+  await tx.$executeRaw`SELECT set_config('app.sd_system', 'on', true)`;
+  try {
+    return await fn();
+  } finally {
+    await tx.$executeRaw`SELECT set_config('app.sd_system', ${before ?? ''}, true)`;
+  }
 }

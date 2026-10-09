@@ -150,7 +150,7 @@ describe('every batch-2 desk route declares its key (YX-SEC-01)', () => {
     expect(routes(c).filter((m) => !keyed(c, m).length)).toEqual([]);
   });
   it('the requester routes are implicit (own chats and documents only)', () => {
-    expect(routes(MyChatController).filter((m) => !keyed(MyChatController, m).length).sort()).toEqual(['end', 'file', 'fileLink', 'list', 'myDocuments', 'one', 'prompt', 'queues', 'rate', 'sign', 'start']);
+    expect(routes(MyChatController).filter((m) => !keyed(MyChatController, m).length).sort()).toEqual(['end', 'file', 'fileLink', 'list', 'myDocuments', 'one', 'prompt', 'queues', 'rate', 'sign', 'signCode', 'start']);
     expect(keyed(DeskOrgController, 'move')).toEqual(['desk.ticket.move']);
     expect(keyed(DeskOrgController, 'hrSummary')).toEqual(['desk.hr_summary.view']);
     expect(keyed(DeskOrgController, 'lifecyclePublish')).toEqual(['desk.lifecycle.manage']);

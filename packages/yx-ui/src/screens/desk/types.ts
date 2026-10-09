@@ -23,6 +23,8 @@ export interface DeskSummary {
   reopenWindowDays?: number;
   requesterCanReopen?: boolean;
   autoCloseDays?: number | null;
+  /** Minutes a new ticket waits for its best-matched agent before routing falls back (default 2). */
+  routingWaitMinutes?: number;
   status: 'active' | 'archived';
   version: number;
   myRole?: DeskRole | null;

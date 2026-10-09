@@ -77,7 +77,7 @@ async function doFetch(path: string, options: RequestInit, accessToken?: string)
 }
 
 // errors: per-field problems from a form the API checks (Settings › Notifications › Email).
-const DETAIL_FIELDS = ['personIds', 'clashes', 'errors', 'retryAfterSeconds'] as const;
+const DETAIL_FIELDS = ['personIds', 'clashes', 'errors', 'retryAfterSeconds', 'changes', 'problems', 'newMessages'] as const;
 
 async function throwForResponse(response: Response): Promise<never> {
   const body = await errorBody(response);

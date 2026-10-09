@@ -133,6 +133,13 @@ export class UpdateDeskDto {
   @Min(1)
   @Max(90)
   autoCloseDays?: number | null;
+
+  /** Minutes a new ticket waits for its best-matched agent before routing falls back (0: at once). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(60)
+  routingWaitMinutes?: number;
 }
 
 export class AddMemberDto {
@@ -220,6 +227,13 @@ export class CategoryDto {
   @Min(0)
   @Max(10000)
   sortOrder?: number;
+
+  /** SD-2.25: skills an agent needs for tickets in this category (routing tries them first). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @Matches(/^[a-z0-9][a-z0-9 _-]{0,39}$/, { each: true, message: 'A skill is a short lower-case word, for example network.' })
+  skills?: string[];
 }
 
 export class TicketTypeDto {
@@ -389,6 +403,12 @@ export class VipDto {
   @IsOptional()
   @Text(0, 200)
   note?: string;
+
+  /** The contact's saved language (WhatsApp / SMS / chat tickets use it before guessing); null clears it. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @Matches(/^[a-z]{2,3}$/, { message: 'Use a language code such as en, hi or ta.' })
+  language?: string | null;
 }
 
 export class SearchQueryDto {
@@ -400,8 +420,8 @@ export class SearchQueryDto {
 }
 
 export class AgentStatusDto {
-  @IsIn(['available', 'away'])
-  status!: 'available' | 'away';
+  @IsIn(['available', 'away', 'busy', 'offline'])
+  status!: 'available' | 'away' | 'busy' | 'offline';
 
   @IsOptional()
   @ValidateIf((_, v) => v !== null)
@@ -569,6 +589,11 @@ export class RaiseTicketDto {
   @IsOptional()
   @Matches(/^[\w\-./ ]{1,100}$/, { message: 'Screen name is not valid' })
   screen?: string;
+
+  /** SD-2.25: the language the person writes in (ISO 639, e.g. hi, ta); routing prefers agents who speak it. */
+  @IsOptional()
+  @Matches(/^[a-z]{2,3}$/, { message: 'Use a language code such as en, hi or ta.' })
+  language?: string;
 }
 
 export class AgentCreateTicketDto {
