@@ -30,7 +30,7 @@ describe('Payroll batch 5b', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'payAdmin' | 'payApprover' | 'hrAdmin' | 'emp' | 'payAdminB' | 'staff' | 'staff2';
+  type Who = 'adminA' | 'adminB' | 'payAdmin' | 'payApprover' | 'hrAdmin' | 'emp' | 'payAdminB' | 'payScoped' | 'staff' | 'staff2';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -87,6 +87,7 @@ describe('Payroll batch 5b', () => {
       ['hrAdmin', 'A', 'panel', template('hr_admin')],
       ['emp', 'A', 'panel', null],
       ['payAdminB', 'B', 'panel', template('payroll_admin')],
+      ['payScoped', 'A', 'panel', null],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -111,6 +112,13 @@ describe('Payroll batch 5b', () => {
           .send({ legalEntityId: ids.entityA, status: 'confirmed', reason: 'Joined', givenName: who, familyName: run, employeeCode: code, joinedOn: hired, userId: users[who], workEmail: `${who}@pay5b-${run}.test`, assignment: { locationId: ids.locA, departmentId: ids.deptA, designationId: ids.desigA, employmentTypeId: ids.permA, managerEmployeeId: null } })
           .expect(201)
       ).body.id as string;
+    // A payroll admin of entity A only (a scoped role grant), and a second entity A2 in the same company.
+    await inA(async (tx) => {
+      const o = { organizationId: org.A.id };
+      const profile = await tx.permissionProfile.create({ data: { ...o, name: `scoped-${run}`, permissionsJson: JSON.stringify(template('payroll_admin')) } });
+      await tx.roleGrant.create({ data: { ...o, userId: users.payScoped, permissionProfileId: profile.id, scopeType: 'legal_entity', legalEntityId: ids.entityA, validFrom: new Date('2020-01-01T00:00:00Z'), status: 'active', reason: 'Payroll for entity A' } });
+      ids.entityA2 = (await tx.legalEntity.create({ data: { ...o, name: 'Pay5B Mills A2', shortName: `P5BA2-${run}` } })).id;
+    });
     ids.empEmp = await hire('emp', 'P5B-001');
     ids.payAdminEmp = await hire('payAdmin', 'P5B-002');
   }, 240_000);
@@ -168,7 +176,9 @@ describe('Payroll batch 5b', () => {
   // ------------------------------------------------------------------------------------------ entity set-up (PAY-2.04)
 
   it('registrations: step-up, entity scope, completeness (the TAN and every PT state), numbers kept out of the audit log', async () => {
-    expect((await api('payAdmin', 'get', '/payroll/setup/entities').expect(200)).body.map((e: { id: string }) => e.id)).toEqual([ids.entityA]);
+    expect((await api('payAdmin', 'get', '/payroll/setup/entities').expect(200)).body.map((e: { id: string }) => e.id)).toEqual([ids.entityA, ids.entityA2]);
+    expect((await api('payScoped', 'get', '/payroll/setup/entities').expect(200)).body.map((e: { id: string }) => e.id)).toEqual([ids.entityA]);
+    await api('payScoped', 'get', `/payroll/entities/${ids.entityA2}/statutory-registrations`).expect(404);
     expect((await api('payAdminB', 'get', '/payroll/setup/entities').expect(200)).body.map((e: { id: string }) => e.id)).toEqual([ids.entityB]);
     await api('hrAdmin', 'get', '/payroll/setup/entities').expect(403);
     await api('payAdmin', 'get', `/payroll/statutory/rules?entityId=${ids.entityA}`).expect(200);
@@ -241,6 +251,11 @@ describe('Payroll batch 5b', () => {
     const list = (await api('payAdmin', 'get', '/payroll/templates').expect(200)).body as { name: string; versions: { id: string }[] }[];
     ids.version = list.find((x) => x.name.startsWith('Standard monthly'))!.versions[0].id;
     expect((await api('payAdminB', 'get', '/payroll/templates').expect(200)).body).toEqual([]);
+    // The library is the company's: a payroll admin of one entity cannot change it.
+    await api('payScoped', 'post', '/payroll/components').send({ code: 'canteen', name: 'Canteen', kind: 'deduction' }).expect(403);
+    await api('payScoped', 'post', '/payroll/templates').send({ name: `Whole company ${run}` }).expect(403);
+    const a2 = (await api('payAdmin', 'post', '/payroll/templates').send({ name: `A2 ${run}`, legalEntityId: ids.entityA2 }).expect(201)).body;
+    ids.versionA2 = (await api('payAdmin', 'post', `/payroll/templates/${a2.id}/versions`).send(version([{ code: 'basic', formula: 'round(monthly_ctc * 0.5)' }, { code: 'special', formula: '0' }])).expect(201)).body.id;
   });
 
   // ------------------------------------------------------------------------------------------ compensation (PAY-2.09)
@@ -254,6 +269,8 @@ describe('Payroll batch 5b', () => {
     expect(p).toMatchObject({ monthlyCtc: '60500.00', warnings: [] });
     expect(p.lines.find((l: { code: string }) => l.code === 'pf_employee')).toMatchObject({ monthly: '1800.00', citation: { statute: 'IN.PF' } });
 
+    // Another entity's template is refused.
+    expect((await api('payAdmin', 'post', '/payroll/compensations/preview').send({ ...body, templateVersionId: ids.versionA2 }).expect(400)).body.message).toMatch(/legal entity/);
     // YX-PAY-22: below the floor wage is a plain warning on the breakup.
     expect((await api('payAdmin', 'post', '/payroll/compensations/preview').send({ ...body, annualCtc: '48000' }).expect(200)).body.warnings).toEqual([expect.stringMatching(/minimum or floor wage/)]);
     // YX-HIS-12 retro tiers: a past date needs the retro key (payroll admins do not hold it).
@@ -266,6 +283,8 @@ describe('Payroll batch 5b', () => {
     expect(ch).toMatchObject({ status: 'pending', annualCtc: '726000.00' });
     // The pay guard: without the entity in this transaction's pay scope the package is invisible, even inside company A.
     expect(await inA((tx) => tx.compensationPackage.count())).toBe(0);
+    // Its values change only in Payroll (the breakup goes with them).
+    expect((await api('payAdmin', 'put', `/people/changes/${ch.changeId}`).send({ payload: { compensation: { annualCtc: '900000.00' } } }).expect(409)).body.message).toMatch(/Payroll/);
 
     await stepUp('payAdmin');
     await api('payAdmin', 'post', `/people/changes/${ch.changeId}/approve`).send({}).expect(403);

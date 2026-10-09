@@ -63,6 +63,12 @@ export class PayStructuresService {
     if (!has(v, key)) throw new ForbiddenException(`This needs ${key}.`);
   }
 
+  /** The component library is the company's: changing it needs the key company-wide (a scoped grant would change other entities' pay). */
+  private needCompanyWide(v: Viewer) {
+    this.need(v, 'payroll.component.manage');
+    if (!tenantWide(v, 'payroll.component.manage')) throw new ForbiddenException('The component library is company-wide: changing it needs payroll.component.manage for the whole company.');
+  }
+
   // ------------------------------------------------------------------------------------------ components (PAY-2.07)
 
   private componentView(c: ComponentRow) {
@@ -82,7 +88,7 @@ export class PayStructuresService {
 
   createComponent(ctx: TenantContext, user: ScopeUser, dto: ComponentDto) {
     return this.run(ctx, user, async (tx, c, v) => {
-      this.need(v, 'payroll.component.manage');
+      this.needCompanyWide(v);
       const row = await tx.payComponent.create({ data: { organizationId: c.organizationId, code: dto.code, ...this.flags(dto), createdBy: c.userId } });
       await audit(tx, c, 'payroll.component.created', 'pay_component', row.id, { code: row.code });
       return this.componentView(row);
@@ -92,7 +98,7 @@ export class PayStructuresService {
   /** Edits a component. A statutory one changes only its label and payslip display (database guard too). */
   updateComponent(ctx: TenantContext, user: ScopeUser, id: string, dto: ComponentDto) {
     return this.run(ctx, user, async (tx, c, v) => {
-      this.need(v, 'payroll.component.manage');
+      this.needCompanyWide(v);
       const old = await tx.payComponent.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!old) throw new NotFoundException('Not found');
       if (old.code !== dto.code && old.usedAt) throw new ConflictException('The code of a component in use never changes.');
@@ -107,7 +113,7 @@ export class PayStructuresService {
   /** Installs the India starter library and template once (existing codes are kept as they are). */
   installStarter(ctx: TenantContext, user: ScopeUser) {
     return this.run(ctx, user, async (tx, c, v) => {
-      this.need(v, 'payroll.component.manage');
+      this.needCompanyWide(v);
       this.need(v, 'payroll.template.manage');
       if (!tenantWide(v, 'payroll.template.manage')) throw new ForbiddenException('The starter template is company-wide: it needs payroll.template.manage for the whole company.');
       const added = await tx.payComponent.createMany({
@@ -275,6 +281,8 @@ export class PayStructuresService {
     if ((dto.payBasis ?? 'monthly') !== 'monthly' && !dto.rate) throw new BadRequestException('An hourly or daily basis needs its rate.');
     const rules = await this.rules.published();
     const v = await this.loadVersion(tx, org, dto.templateVersionId);
+    const t = await tx.salaryTemplate.findFirstOrThrow({ where: { organizationId: org, id: v.ver.templateId }, select: { legalEntityId: true, status: true } });
+    if ((t.legalEntityId && t.legalEntityId !== e.legalEntityId) || t.status !== 'active') throw new BadRequestException('That template is not for this person’s legal entity.');
     if (iso(v.ver.validFrom)! > dto.effectiveDate) throw new BadRequestException('That template version starts after the effective date.');
     const facts = await this.facts(tx, org, e, dto.effectiveDate, rules);
     const b = plain(() => breakup({ lines: v.lines, components: v.components, options: v.options, facts, rules, ...(dto.entryMode === 'ctc' ? { ctc: dto.annualCtc } : { fixed: dto.fixed }) }));
@@ -321,10 +329,10 @@ export class PayStructuresService {
   compensation(ctx: TenantContext, user: ScopeUser, employeeId: string, asOn = todayIst()) {
     return this.history.viewer(user).then((v) =>
       this.history.run(ctx, async (tx, c) => {
+        requireSelf(v);
         const own = await this.history.ownEmployeeId(tx, c, v);
         const e = await this.employmentOn(tx, c.organizationId, employeeId, asOn);
         if (own !== employeeId) {
-          requireSelf(v);
           if (!(await this.history.reachesFrom(tx, c, v, 'employee.salary.view', e, asOn))) throw new NotFoundException('Not found');
           await payScope(tx, [e.legalEntityId]);
         }
