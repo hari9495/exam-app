@@ -24,22 +24,22 @@
   "id": "W-004",
   "area": "Branches",
   "item": "Merge order to main: #128 PostgreSQL → #129 login → #130 workspace → #131 step 2",
-  "status": "Open",
-  "next": "Founder approval per PR"
+  "status": "Done",
+  "next": "Merged to main 9 Oct 2026 (admin merge, founder approved): #128, #129, #130, #131"
  },
  {
   "id": "W-005",
   "area": "Security review",
   "item": "Email-first sign-in: platform staff (super admin) accounts appear as a 'YukthiX' choice in the company picker when email and password match. Staff should sign in only through the locked-down console path with hardware keys (P12)",
-  "status": "Open",
-  "next": "Decide and fix before merge of #129"
+  "status": "Done",
+  "next": "Fixed on feat/yukthix-login (9 Oct 2026), merged to main with #129"
  },
  {
   "id": "W-006",
   "area": "Security review",
   "item": "Verified email domains are never re-checked; a lapsed domain keeps routing to SSO until removed. Add a periodic DNS re-check",
-  "status": "Open",
-  "next": "Fix in login branch"
+  "status": "Done",
+  "next": "Fixed on feat/yukthix-login (9 Oct 2026), merged to main with #129"
  },
  {
   "id": "W-007",
@@ -108,7 +108,7 @@
   "id": "W-016",
   "area": "Security review",
   "item": "Sign-in without the company shown (email-first): a locked account answers 'Wrong email or password' even with the right password, while the company-scoped page answers 'Too many tries'. Decide how to tell a locked person without revealing which emails have accounts (e.g. lock the email identifier on the same threshold, then show the lock for both).",
-  "status": "Open",
-  "next": "Design + fix after Area 2 testing"
+  "status": "Done",
+  "next": "Fixed on feat/yukthix-login (9 Oct 2026), merged to main with #129"
  }
 ]
