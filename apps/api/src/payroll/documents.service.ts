@@ -10,7 +10,11 @@ import { OtpService } from '../auth/otp.service';
 import { has, type ScopeUser } from '../access/scope';
 import { asDate, dateOf } from '../time/time-core';
 import { ConfirmationDto, IssueDocumentDto, NomineeDto, PortalEmailDto, PortalVerifyDto } from './dto';
-import { dscSigner } from './dsc';
+import { dscSigner } from '../documents/signing';
+import { DSC_REVOCATION, DSC_ROOTS, SignatureRefused, verifySignedPdf, type RevocationChecker } from '../documents/signed-pdf';
+import { VERIFY_CODE, referenceNo, verifyCode, verifyLink } from '../documents/verify-code';
+import { Inject } from '@nestjs/common';
+import type { Certificate } from 'pkijs';
 import { PayAuditService } from './audit.service';
 import { PayFileStore, sha256 } from './pay-file-store';
 import { entitiesFor, payScope, payViewer, requireEntity, requireSelf } from './pay-access';
@@ -23,13 +27,12 @@ import { entitiesFor, payScope, payViewer, requireEntity, requireSelf } from './
 
 const KIND_LABEL: Record<string, string> = { payslip: 'Payslip', revision_letter: 'Salary revision letter', payment_advice: 'Payment advice', form130: 'Form 130', form131: 'Form 131', register: 'Statutory register', inspection_pack: 'Inspection pack', correction_statement: 'Correction statement' };
 const KIND_CODE: Record<string, string> = { payslip: 'PS', revision_letter: 'RL', payment_advice: 'PA', form130: 'F130', form131: 'F131', register: 'REG', inspection_pack: 'INS', correction_statement: 'CS' };
-/** Kinds the company DSC signs (P05 Q2). */
-const DSC_KINDS = new Set(['form130', 'form131', 'register']);
-// DECISION NEEDED: former employees sign in with their personal email on record, else their old work email (which
-// usually stops working at exit); should HR confirm a personal email at exit (M01 F&F checklist) before portal access?
+/** Kinds the company DSC signs (P05 Q2: Form 130 / 131, registers and letters). */
+const DSC_KINDS = new Set(['form130', 'form131', 'register', 'revision_letter']);
+// Founder decision D3 (9 Oct 2026): former employees sign in with their personal email on record, else their old work
+// email. The step where HR confirms the personal email at exit is built by the lifecycle (onboarding / exit) batch.
 const ALUMNI_YEARS = 7;
 const PORTAL_MINUTES = 30;
-const VERIFY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 interface Field {
   key: string;
@@ -56,8 +59,6 @@ export function money(s: string): string {
   return `Rs. ${head ? `${head.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},` : ''}${i.slice(-3)}.${f}`;
 }
 
-const verifyCode = () => Array.from(randomBytes(10), (b) => VERIFY_ALPHABET[b % VERIFY_ALPHABET.length]).join('');
-const webOrigin = () => (process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '');
 const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');
 
 type Doc = Prisma.PayDocumentGetPayload<object>;
@@ -73,6 +74,8 @@ export class PayDocumentsService {
     private readonly files: PayFileStore,
     private readonly crypto: OrgSecretsCryptoService,
     private readonly otp: OtpService,
+    @Inject(DSC_ROOTS) private readonly roots: Certificate[],
+    @Inject(DSC_REVOCATION) private readonly revocation: RevocationChecker,
   ) {}
 
   /** The mandatory fields of a kind on a date: the template's own and, for a payslip, the law's (P07, locked). */
@@ -128,7 +131,7 @@ export class PayDocumentsService {
         if (!lines.length) doc.fontSize(10).text('None');
       }
       doc.moveDown();
-      if (code) doc.fontSize(9).fillColor('#444').text(`Check this ${KIND_LABEL[kind].toLowerCase()} at ${webOrigin()}/yx/verify/${code} (code ${code}).`);
+      if (code) doc.fontSize(9).fillColor('#444').text(`Check this ${KIND_LABEL[kind].toLowerCase()} at ${verifyLink(code)} (code ${code}).`);
       doc.end();
     });
   }
@@ -138,7 +141,7 @@ export class PayDocumentsService {
     const [{ n }] = await tx.$queryRaw<{ n: number }[]>`
       INSERT INTO pay_document_counters (organization_id, legal_entity_id, kind, year, last_no) VALUES (${org}::uuid, ${entityId}::uuid, ${kind}, ${year}, 1)
       ON CONFLICT (organization_id, legal_entity_id, kind, year) DO UPDATE SET last_no = pay_document_counters.last_no + 1 RETURNING last_no AS n`;
-    return `${shortName}/${KIND_CODE[kind]}/${year}/${String(n).padStart(6, '0')}`;
+    return referenceNo(shortName, KIND_CODE[kind], year, n);
   }
 
   /**
@@ -195,14 +198,15 @@ export class PayDocumentsService {
     const fields = this.check(a.fields, required, t);
     const entity = await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: a.legalEntityId }, select: { shortName: true, name: true } });
     const issuedAt = new Date();
-    const referenceNo = await this.nextReference(tx, org, a.legalEntityId, entity.shortName, a.kind, Number(today.slice(0, 4)));
+    const ref = await this.nextReference(tx, org, a.legalEntityId, entity.shortName, a.kind, Number(today.slice(0, 4)));
     const code = verifyCode();
     const title = `${KIND_LABEL[a.kind]}${a.month ? ` · ${new Date(`${a.month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}` : ''}${a.supersedes ? ' (revised)' : ''}`;
-    let pdf = await this.render(a.kind, title, referenceNo, code, fields, required, t, issuedAt);
+    const unsigned = await this.render(a.kind, title, ref, code, fields, required, t, issuedAt);
+    let pdf = unsigned;
     let signature: 'none' | 'awaiting' | 'signed' = 'none';
     let signatureRef: string | null = null;
     if (DSC_KINDS.has(a.kind)) {
-      const signed = await this.signer.sign(pdf, { organizationId: org, legalEntityId: a.legalEntityId, referenceNo });
+      const signed = await this.signer.sign(pdf, { organizationId: org, legalEntityId: a.legalEntityId, referenceNo: ref });
       if (signed) [pdf, signature, signatureRef] = [signed.pdf, 'signed', signed.ref];
       else signature = 'awaiting';
     }
@@ -220,9 +224,12 @@ export class PayDocumentsService {
         periodStart: a.month ? asDate(`${a.month}-01`) : null,
         templateKey: t.key,
         templateVersion: t.version,
-        referenceNo,
+        referenceNo: ref,
         fileRef,
         sha256: sha256(pdf),
+        // D1: what a signed upload must start with, byte for byte.
+        unsignedSha256: sha256(unsigned),
+        unsignedBytes: unsigned.length,
         verifyCode: code,
         status: signature === 'awaiting' ? 'awaiting_signature' : 'issued',
         supersedesId: a.supersedes?.id ?? null,
@@ -239,7 +246,7 @@ export class PayDocumentsService {
       legalEntityId: a.legalEntityId,
       employeeId: a.employeeId,
       kind: a.kind,
-      referenceNo,
+      referenceNo: ref,
       sha256: d.sha256,
       templateVersion: t.version,
       supersedes: a.supersedes?.referenceNo ?? null,
@@ -308,16 +315,47 @@ export class PayDocumentsService {
     return file;
   }
 
-  /** The signing helper uploads the signed PDF (§19 D4). Refused until the signature check is decided. */
-  async attachSignature() {
-    throw new ConflictException({ statusCode: 409, code: 'DSC_HELPER_NOT_READY', message: 'Signed files from the signing helper are not accepted yet.' });
+  /**
+   * The signing helper uploads the PDF the company's USB token signed (§19 D4). Founder decision D1 (9 Oct 2026): it is
+   * accepted only when the signature is valid, the signer chains to a CCA root, is in date and not revoked, and the
+   * signed bytes are the document we issued (signed-pdf.ts). The check runs outside the database transaction (it may
+   * ask the CA's OCSP responder); acceptance and refusal are both audited.
+   */
+  async attachSignature(ctx: TenantContext, user: ScopeUser, id: string, file: Buffer | undefined) {
+    const v = await payViewer(this.prisma, this.tenantPrisma, user);
+    requireSelf(v);
+    if (!file?.length) throw new BadRequestException('Attach the signed PDF.');
+    const d = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await payScope(tx, await entitiesFor(tx, c, v, 'payroll.document.issue'));
+      const doc = await tx.payDocument.findFirst({ where: { organizationId: c.organizationId, id } });
+      if (!doc) throw new NotFoundException('Not found');
+      if (doc.status !== 'awaiting_signature' || !doc.unsignedBytes) throw new ConflictException('This document is not waiting for a signature.');
+      return doc;
+    });
+    let signer;
+    try {
+      signer = await verifySignedPdf(file, { sha256: d.unsignedSha256, bytes: d.unsignedBytes! }, this.roots, this.revocation);
+    } catch (e) {
+      if (!(e instanceof SignatureRefused)) throw e;
+      await inCompany(this.tenantPrisma, ctx, (tx, c) => audit(tx, c, 'payroll.document.signature_refused', 'pay_document', d.id, { legalEntityId: d.legalEntityId, referenceNo: d.referenceNo, reason: e.message, uploadSha256: sha256(file) }));
+      throw new BadRequestException({ statusCode: 400, code: 'SIGNATURE_REFUSED', message: e.message });
+    }
+    const fileRef = await this.files.put(`pay-documents/${d.organizationId}/${d.legalEntityId}/${randomBytes(12).toString('hex')}.pdf`, file);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await payScope(tx, [d.legalEntityId]);
+      const done = await tx.payDocument.updateMany({ where: { organizationId: c.organizationId, id: d.id, status: 'awaiting_signature' }, data: { status: 'issued', signature: 'signed', fileRef, sha256: sha256(file), signatureRef: `${signer.issuer} #${signer.serial}`.slice(0, 200), signedAt: new Date() } });
+      if (!done.count) throw new ConflictException('This document was signed meanwhile.');
+      await audit(tx, c, 'payroll.document.signed', 'pay_document', d.id, { legalEntityId: d.legalEntityId, referenceNo: d.referenceNo, signer: signer.subject, issuer: signer.issuer, serial: signer.serial, sha256: sha256(file), unsignedSha256: d.unsignedSha256 });
+      if (d.fileRef) await this.files.drop(d.fileRef).catch(() => undefined);
+      return { id: d.id, status: 'issued', signer: signer.subject, issuer: signer.issuer };
+    });
   }
 
   // ------------------------------------------------------------------------------------------ public verify (YX-DOC-11)
 
   /** The public page shows only the company, the kind, the person's name, the date and whether it is current. */
   async verify(code: string) {
-    if (!/^[A-Z2-9]{10}$/.test(code)) throw new NotFoundException('No document has this code.');
+    if (!VERIFY_CODE.test(code)) throw new NotFoundException('No document has this code.');
     return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.pay_verify_code', ${code}, true)`;
       const d = await tx.payDocument.findFirst({ where: { verifyCode: code }, select: { organizationId: true, employeeId: true, kind: true, issuedAt: true, status: true } });

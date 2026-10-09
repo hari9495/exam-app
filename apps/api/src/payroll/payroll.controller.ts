@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Headers, HttpCode, Ip, Param, ParseUUIDPipe, Post, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Ip, Param, ParseUUIDPipe, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { TenantContext } from '@exam-platform/shared';
@@ -210,11 +211,15 @@ export class PayrollController {
     return this.documents.supersede(ctx, this.user(req), id, dto.fields, dto.reason, dto.confirmation);
   }
 
+  /** The signing helper's upload of the USB-token signed PDF (D1): checked before it is accepted. */
   @Post('documents/:id/signature')
+  @HttpCode(200)
   @RequirePermissions('payroll.document.issue')
   @RequireStepUp()
-  signature() {
-    return this.documents.attachSignature();
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
+  signature(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file?: { buffer: Buffer }) {
+    return this.documents.attachSignature(ctx, this.user(req), id, file?.buffer);
   }
 
   @Post('documents/nominees')

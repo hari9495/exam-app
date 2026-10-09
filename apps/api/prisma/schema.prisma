@@ -5278,6 +5278,9 @@ model PayDocument {
   referenceNo     String    @map("reference_no") @db.VarChar(60)
   fileRef         String?   @map("file_ref") @db.VarChar(500)
   sha256          String    @db.Char(64)
+  /// D1: the issued (unsigned) file, so a signed upload can be checked against it.
+  unsignedSha256  String    @map("unsigned_sha256") @db.Char(64)
+  unsignedBytes   Int?      @map("unsigned_bytes")
   verifyCode      String?   @unique @map("verify_code") @db.VarChar(16)
   status          String    @db.VarChar(20)
   supersedesId    String?   @map("supersedes_id") @db.Uuid

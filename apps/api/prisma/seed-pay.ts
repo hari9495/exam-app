@@ -55,7 +55,7 @@ export async function seedPay(tx: Tx, organizationId: string, passwordHash: stri
   const engine = new ApprovalsEngine(fake, { notifySystem: async () => undefined } as never, { deliver: async () => undefined } as never);
   new PayPeriodsService(null as never, fake, engine).onModuleInit();
   const files = new PayFileStore(new BlobStorageService(), new OrgSecretsCryptoService());
-  const documents = new PayDocumentsService(null as never, fake, files, new OrgSecretsCryptoService(), null as never);
+  const documents = new PayDocumentsService(null as never, fake, files, new OrgSecretsCryptoService(), null as never, [], null as never);
   const exchange = new ExchangeFilesService(null as never, fake, files);
 
   // ---- people ----

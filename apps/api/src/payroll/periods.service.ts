@@ -17,9 +17,8 @@ import { PayKey, entitiesFor, payHolders, payViewer, requireEntity, requireSelf,
 // the step-4 "unlock" became this request now that payroll exists), and the corrections that land in the next payroll.
 
 export const REOPEN = 'payroll.period_reopen';
-// DECISION NEEDED: the frozen stage (set when a run starts calculating, batch 5c) — should the database already refuse
-// direct attendance and leave writes on frozen dates (today only locked and filed do), leaving employees the late-request
-// path only, as P08 YX-LOCK-02 suggests? Until pay groups arrive (5b) a period is the legal entity's month.
+// Founder decision D2 (9 Oct 2026): frozen dates refuse attendance and leave changes in the database like locked and
+// filed dates (yx_time_locked); employees then use a late request, paid in the next payroll.
 export const CORRECTION = 'payroll.correction';
 const PERIOD_KEYS: PayKey[] = ['payroll.period.view', 'payroll.period.reopen', 'payroll.period.reopen.approve'];
 const monthText = (month: string) => new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });

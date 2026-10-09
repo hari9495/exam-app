@@ -14,6 +14,8 @@ import { PayAuditService } from '../src/payroll/audit.service';
 import { addDays } from '../src/time/time-maths';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
+import { revocationStub, signPdf, testPki, type TestPki } from './fixtures/dsc';
+import { DSC_REVOCATION, DSC_ROOTS, parsePemBundle } from '../src/documents/signed-pdf';
 
 // Payroll batch 5a end to end against the real database (forced RLS, the app role) and Redis: pay periods and the
 // two-approval reopen (maker ≠ checker, step-up, typed confirmation, refused once a bank file is released), the lock
@@ -64,8 +66,24 @@ describe('Payroll batch 5a', () => {
     confirmation: { phrase: 'ISSUE PS', impact: [{ label: 'Person', value: 'Emp One' }] },
   });
 
+  let pki: TestPki;
+  const revocation = { status: jest.fn(revocationStub('good').status) };
+
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(EmailService).useValue(email).overrideProvider(BlobStorageService).useValue(createFakeBlobStorage()).compile();
+    // D1: letters wait for the company's USB-token signature; a stand-in CCA root and a revocation stub for the checks.
+    process.env.DSC_SIGNER = 'usb-helper';
+    pki = await testPki();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(EmailService)
+      .useValue(email)
+      .overrideProvider(BlobStorageService)
+      .useValue(createFakeBlobStorage())
+      .overrideProvider(DSC_ROOTS)
+      .useValue(parsePemBundle(pki.rootPem))
+      .overrideProvider(DSC_REVOCATION)
+      .useValue(revocation)
+      .compile();
+    delete process.env.DSC_SIGNER;
     app = moduleRef.createNestApplication();
     app.use(cookieParser());
     app.setGlobalPrefix('api/v1');
@@ -116,7 +134,7 @@ describe('Payroll batch 5a', () => {
     const hire = async (who: Who, code: string, k: 'A' | 'B' = 'A') =>
       (
         await api(k === 'A' ? 'adminA' : 'adminB', 'post', '/people/employees')
-          .send({ legalEntityId: ids[`entity${k}`], status: 'confirmed', reason: 'Joined', givenName: who, familyName: run, employeeCode: code, joinedOn: `${addDays(`${lockMonth}-01`, -40).slice(0, 7)}-01`, userId: users[who], workEmail: `${who}@pay5a-${run}.test`, assignment: { locationId: ids[`loc${k}`], departmentId: ids[`dept${k}`], designationId: ids[`desig${k}`], employmentTypeId: ids[`perm${k}`], managerEmployeeId: null } })
+          .send({ legalEntityId: ids[`entity${k}`], status: 'confirmed', reason: 'Joined', givenName: who, familyName: run, employeeCode: code, joinedOn: `${addDays(`${lockMonth}-01`, -100).slice(0, 7)}-01`, userId: users[who], workEmail: `${who}@pay5a-${run}.test`, assignment: { locationId: ids[`loc${k}`], departmentId: ids[`dept${k}`], designationId: ids[`desig${k}`], employmentTypeId: ids[`perm${k}`], managerEmployeeId: null } })
           .expect(201)
       ).body.id as string;
     ids.empEmp = await hire('emp', 'P5-001');
@@ -330,6 +348,17 @@ describe('Payroll batch 5a', () => {
       await api('hrAdmin', 'post', '/payroll/documents').send(payslip()).expect(403);
     });
 
+    it('D2: frozen dates refuse attendance and leave changes in the database, like locked ones; a late request is the way in', async () => {
+      const frozen = addDays(`${lockMonth}-01`, -70).slice(0, 7);
+      const r = { from: `${frozen}-01`, to: addDays(addDays(`${frozen}-28`, 5).slice(0, 7) + '-01', -1) };
+      await inA((tx) => tx.payPeriod.create({ data: { organizationId: org.A.id, legalEntityId: ids.entityA, periodStart: new Date(`${r.from}T00:00:00Z`), periodEnd: new Date(`${r.to}T00:00:00Z`), stage: 'frozen' } }));
+      // The company allows late corrections up to 180 days back (the default is 60).
+      await inA((tx) => tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'tenant', scopeId: org.A.id, key: 'payroll.late_request_max_days', value: '180' } }));
+      await expect(inA((tx) => tx.punch.create({ data: { organizationId: org.A.id, employeeId: ids.empEmp, punchedAt: new Date(`${frozen}-10T05:00:00Z`), workOn: new Date(`${frozen}-10T00:00:00Z`), kind: 'in', accepted: true, verdict: 'no_fence' } }))).rejects.toThrow(/YX_PERIOD_LOCKED/);
+      expect((await api('emp', 'post', '/time/me/regularise').send({ on: `${frozen}-10`, kind: 'full_day', reason: 'Was at the supplier' }).expect(409)).body.code).toBe('PERIOD_LOCKED');
+      expect((await api('emp', 'post', '/payroll/me/late-corrections').send({ on: `${frozen}-10`, kind: 'attendance', shouldBe: 'present', reason: 'The gate reader missed me' }).expect(201)).body).toMatchObject({ status: 'pending', stage: 'frozen' });
+    });
+
     it('the pay guard: the employee reads their own; HR without pay rights, a support session and platform staff read nothing, even in SQL', async () => {
       const count = (extra: Partial<TenantContext>, entities?: string) =>
         tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false, ...extra }, async (tx) => {
@@ -375,6 +404,32 @@ describe('Payroll batch 5a', () => {
       await api('payAdmin', 'post', `/payroll/documents/${ids.doc}/supersede`).send({ fields: payslip().fields, reason: 'Professional tax was taken twice', confirmation: { phrase: `CORRECT ${doc.referenceNo}`, impact } }).expect(409);
     });
 
+    it('D1: a letter waits for the USB-token signature; only a valid, unrevoked, CCA-chained signature over the issued file is accepted', async () => {
+      await stepUp('payAdmin');
+      const letter = { employeeId: ids.empEmp, kind: 'revision_letter', fields: { employeeName: 'Emp One', effectiveFrom: today, newAnnualCtc: '780000.00', signatory: 'Suresh Pillai' }, confirmation: { phrase: 'ISSUE RL', impact } };
+      const d = (await api('payAdmin', 'post', '/payroll/documents').send(letter).expect(201)).body;
+      expect(d).toMatchObject({ status: 'awaiting_signature', signature: 'awaiting' });
+      // Not on the verify page and not the employee's yet.
+      await request(server()).get(`/api/v1/public/pay/verify/${d.verifyCode}`).expect(404);
+      const unsigned = (await api('payAdmin', 'get', `/payroll/documents/${d.id}/file`).buffer(true).parse(binary).expect(200)).body as Buffer;
+      const upload = (file: Buffer) => api('payAdmin', 'post', `/payroll/documents/${d.id}/signature`).attach('file', file, 'signed.pdf');
+      // (a) changed after signing, (c) another document, (b) revoked: each refused with its reason, and recorded.
+      expect((await upload(await signPdf(unsigned, pki, { tamper: true })).expect(400)).body).toMatchObject({ code: 'SIGNATURE_REFUSED', message: expect.stringMatching(/changed after signing/) });
+      expect((await upload(await signPdf(Buffer.from('%PDF-1.7 another document %%EOF'), pki)).expect(400)).body.message).toMatch(/not the document that was issued/);
+      revocation.status.mockImplementationOnce(async () => 'revoked');
+      expect((await upload(await signPdf(unsigned, pki)).expect(400)).body.message).toMatch(/revoked/);
+      const stranger = await testPki();
+      expect((await upload(await signPdf(unsigned, stranger)).expect(400)).body.message).toMatch(/licensed certifying authority/);
+      expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'payroll.document.signature_refused', entityId: d.id } }))).toBe(4);
+      const ok = (await upload(await signPdf(unsigned, pki)).expect(200)).body;
+      expect(ok).toMatchObject({ status: 'issued', signer: 'Kaveri Foods Pvt Ltd', issuer: 'Test Licensed CA 2026' });
+      await upload(await signPdf(unsigned, pki)).expect(409);
+      expect((await request(server()).get(`/api/v1/public/pay/verify/${d.verifyCode}`).expect(200)).body.status).toBe('current');
+      const served = (await api('emp', 'get', `/payroll/documents/${d.id}/file`).buffer(true).parse(binary).expect(200)).body as Buffer;
+      expect(served.subarray(0, unsigned.length).equals(unsigned)).toBe(true);
+      expect(served.length).toBeGreaterThan(unsigned.length);
+    });
+
     it('a former employee signs in with a one-time code and sees only their own documents (YX-DOC-16)', async () => {
       await inA((tx) => tx.employment.updateMany({ where: { organizationId: org.A.id, employeeId: ids.leaverEmp }, data: { exitedOn: new Date(`${addDays(today, -3)}T00:00:00Z`) } }));
       email.send.mockClear();
@@ -397,6 +452,18 @@ describe('Payroll batch 5a', () => {
       await request(server()).get(`/api/v1/public/pay/${org.B.slug}/portal/documents`).set('X-Pay-Portal', s.token).expect(401);
       await request(server()).post(`/api/v1/public/pay/${org.A.slug}/portal/sign-out`).set('X-Pay-Portal', s.token).expect(200);
       await request(server()).get(`/api/v1/public/pay/${org.A.slug}/portal/documents`).set('X-Pay-Portal', s.token).expect(401);
+      // D3: the personal email on record works too (the old work email is the fallback).
+      await inA((tx) => tx.employeePersonalDetails.upsert({ where: { organizationId_employeeId: { organizationId: org.A.id, employeeId: ids.leaverEmp } }, update: { personalEmail: `leaver.home@pay5a-${run}.test` }, create: { organizationId: org.A.id, employeeId: ids.leaverEmp, personalEmail: `leaver.home@pay5a-${run}.test` } }));
+      email.send.mockClear();
+      await request(server()).post(`/api/v1/public/pay/${org.A.slug}/portal/code`).send({ email: `leaver.home@pay5a-${run}.test` }).expect(200);
+      let home = '';
+      for (let i = 0; i < 50 && !home; i++) {
+        const m = email.send.mock.calls.find(([x]) => x.to === `leaver.home@pay5a-${run}.test`);
+        if (m) home = m[0].subject.slice(0, 6);
+        else await new Promise((r) => setTimeout(r, 100));
+      }
+      const s2 = (await request(server()).post(`/api/v1/public/pay/${org.A.slug}/portal/verify`).send({ email: `leaver.home@pay5a-${run}.test`, code: home }).expect(200)).body;
+      expect((await request(server()).get(`/api/v1/public/pay/${org.A.slug}/portal/documents`).set('X-Pay-Portal', s2.token).expect(200)).body).toHaveLength(1);
     });
   });
 
