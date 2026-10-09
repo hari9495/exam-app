@@ -573,7 +573,18 @@ export class TaxService {
   // ------------------------------------------------------------------------------------------ year-end certificate (PAY-5.08)
 
   /** Part B from the year's approved payslips and the last projection; Form 16 for years to March 2026, Form 130 after. */
-  async prepareCertificate(ctx: TenantContext, user: ScopeUser, employeeId: string, taxYear: string) {
+  /** Part B of a person's year in one entity from the approved payslips and the last projection. */
+  private async partBOf(tx: Tx, org: string, employeeId: string, legalEntityId: string, taxYear: string) {
+    const y = Number(taxYear.slice(0, 4));
+    const p = await this.latestProjection(tx, org, [employeeId], taxYear);
+    if (!p) throw new ConflictException('There is no approved payslip with tax for this person in that tax year.');
+    const r = p.result as unknown as TaxProjection;
+    const slips = await tx.payslip.findMany({ where: { organizationId: org, employeeId, legalEntityId, status: 'approved', periodStart: { gte: asDate(`${y}-04-01`), lte: asDate(`${y + 1}-03-01`) } }, select: { id: true, gross: true } });
+    const tds = await tx.payslipLine.aggregate({ where: { organizationId: org, payslipId: { in: slips.map((s) => s.id) }, componentCode: 'tds' }, _sum: { amount: true } });
+    return { taxYear, lawVersion: lawVersionFor(taxYear), regime: r.regime, grossSalary: slips.reduce((t, s) => t.add(s.gross), ZERO).toFixed(2), income: r.income, exemptions: r.exemptions, deductions: r.deductions, taxable: r.taxable, tax: r.tax, taxDeducted: (tds._sum.amount ?? ZERO).toFixed(2), perquisites: r.income.perquisites };
+  }
+
+  async prepareCertificate(ctx: TenantContext, user: ScopeUser, employeeId: string, taxYear: string, key: PayKey = 'payroll.document.issue') {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -583,31 +594,11 @@ export class TaxService {
         orderBy: { joinedOn: 'desc' },
       });
       if (!e) throw new NotFoundException('Not found');
-      await requireEntity(tx, c, v, 'payroll.document.issue', e.legalEntityId);
+      await requireEntity(tx, c, v, key, e.legalEntityId);
       if ((await this.mine(tx)).includes(employeeId)) throw new ForbiddenException('Someone else issues your own tax certificate.');
       await payScope(tx, [e.legalEntityId]);
-      const p = await this.latestProjection(tx, org, [employeeId], taxYear);
-      if (!p) throw new ConflictException('There is no approved payslip with tax for this person in that tax year.');
-      const r = p.result as unknown as TaxProjection;
-      const slips = await tx.payslip.findMany({
-        where: { organizationId: org, employeeId, legalEntityId: e.legalEntityId, status: 'approved', periodStart: { gte: asDate(`${y}-04-01`), lte: asDate(`${y + 1}-03-01`) } },
-        select: { id: true, gross: true },
-      });
-      const tds = await tx.payslipLine.aggregate({ where: { organizationId: org, payslipId: { in: slips.map((s) => s.id) }, componentCode: 'tds' }, _sum: { amount: true } });
       const law = lawVersionFor(taxYear);
-      const partB = {
-        taxYear,
-        lawVersion: law,
-        regime: r.regime,
-        grossSalary: slips.reduce((t, s) => t.add(s.gross), ZERO).toFixed(2),
-        income: r.income,
-        exemptions: r.exemptions,
-        deductions: r.deductions,
-        taxable: r.taxable,
-        tax: r.tax,
-        taxDeducted: (tds._sum.amount ?? ZERO).toFixed(2),
-        perquisites: r.income.perquisites,
-      };
+      const partB = await this.partBOf(tx, org, employeeId, e.legalEntityId, taxYear);
       const existing = await tx.taxCertificate.findFirst({ where: { organizationId: org, employmentId: e.id, taxYear } });
       if (existing?.payDocumentId) throw new ConflictException('This certificate is issued. A correction supersedes the pay document.');
       const row = existing
@@ -630,8 +621,8 @@ export class TaxService {
     });
   }
 
-  private async certificateFor(tx: Tx, c: CompanyContext, v: Viewer, id: string) {
-    const ids = await entitiesFor(tx, c, v, 'payroll.document.issue');
+  private async certificateFor(tx: Tx, c: CompanyContext, v: Viewer, id: string, key: PayKey = 'payroll.document.issue') {
+    const ids = await entitiesFor(tx, c, v, key);
     await payScope(tx, ids);
     const t = await tx.taxCertificate.findFirst({ where: { organizationId: c.organizationId, id } });
     if (!t || !ids.includes(t.legalEntityId)) throw new NotFoundException('Not found');
@@ -640,11 +631,11 @@ export class TaxService {
   }
 
   /** Part A as downloaded from TRACES (a PDF); kept encrypted with its hash. */
-  async attachPartA(ctx: TenantContext, user: ScopeUser, id: string, file: Buffer | undefined) {
+  async attachPartA(ctx: TenantContext, user: ScopeUser, id: string, file: Buffer | undefined, key: PayKey = 'payroll.document.issue') {
     const v = await this.viewer(user);
     if (!file?.length || file.subarray(0, 5).toString('latin1') !== '%PDF-') throw new BadRequestException('Part A is the PDF downloaded from TRACES.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const t = await this.certificateFor(tx, c, v, id);
+      const t = await this.certificateFor(tx, c, v, id, key);
       if (t.payDocumentId) throw new ConflictException('This certificate is issued.');
       const ref = await this.files.put(`tax-certificates/${c.organizationId}/${t.legalEntityId}/${randomBytes(12).toString('hex')}.pdf`, file);
       await tx.taxCertificate.update({ where: { id: t.id }, data: { partARef: ref, partASha256: sha256(file) } });
@@ -654,15 +645,22 @@ export class TaxService {
   }
 
   /** Issues Part B as a pay document (DSC where the company signs, verify code); the employee and alumni then see it. */
-  async issueCertificate(ctx: TenantContext, user: ScopeUser, id: string, confirmation: ConfirmationDto) {
+  /**
+   * Issues Part B as a pay document; with `revise` (after an accepted correction return, YX-TAX-20) Part B is worked out
+   * again and the new document supersedes the issued one, which stays as superseded.
+   */
+  async issueCertificate(ctx: TenantContext, user: ScopeUser, id: string, confirmation: ConfirmationDto, key: PayKey = 'payroll.document.issue', revise?: string) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
-      const t = await this.certificateFor(tx, c, v, id);
-      if (t.payDocumentId) throw new ConflictException('This certificate is already issued.');
+      let t = await this.certificateFor(tx, c, v, id, key);
+      if (t.payDocumentId && !revise) throw new ConflictException('This certificate is already issued.');
+      if (!t.payDocumentId && revise) throw new ConflictException('This certificate is not issued yet.');
       if (!t.partARef) throw new ConflictException('Attach Part A from TRACES first.');
       const phrase = `ISSUE ${t.form.toUpperCase()} ${t.taxYear}`;
       if (confirmation.phrase !== phrase) throw new BadRequestException(`Type ${phrase} to confirm.`);
+      const old = t.payDocumentId ? await tx.payDocument.findFirstOrThrow({ where: { organizationId: org, id: t.payDocumentId } }) : null;
+      if (revise) t = await tx.taxCertificate.update({ where: { id: t.id }, data: { partB: (await this.partBOf(tx, org, t.employeeId, t.legalEntityId, t.taxYear)) as unknown as Prisma.InputJsonValue } });
       const b = t.partB as unknown as {
         regime: string;
         income: TaxProjection['income'];
@@ -705,12 +703,13 @@ export class TaxService {
           earnings,
           deductions,
         },
-        supersedes: null,
+        supersedes: old,
         by: v.userId!,
         confirmation,
+        reason: revise,
       });
       await tx.taxCertificate.update({ where: { id: t.id }, data: { payDocumentId: doc.id } });
-      await audit(tx, c, 'tax.certificate.issued', 'tax_certificate', t.id, { payDocumentId: doc.id, form: t.form, taxYear: t.taxYear });
+      await audit(tx, c, revise ? 'tax.certificate.revised' : 'tax.certificate.issued', 'tax_certificate', t.id, { payDocumentId: doc.id, form: t.form, taxYear: t.taxYear, supersedes: old?.id ?? null, reason: revise ?? null });
       return { id: t.id, payDocumentId: doc.id, referenceNo: doc.referenceNo, status: doc.status, signature: doc.signature };
     });
   }
