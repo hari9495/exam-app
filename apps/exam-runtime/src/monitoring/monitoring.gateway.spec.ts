@@ -145,9 +145,9 @@ describe('MonitoringGateway', () => {
       });
     });
 
-    it('carries the actingSuperAdmin claim onto the socket for a super-admin acting in an org', async () => {
+    it('refuses YukthiX staff inside a company: support sessions never watch candidates (P02 Q8, YX-SEC-23)', async () => {
       const token = jwt.sign(
-        { sub: USER, organizationId: 'org-1', role: 'super_admin', actingSuperAdmin: true, sid: SID },
+        { sub: USER, organizationId: 'org-1', role: 'super_admin', actingSuperAdmin: true, supportSessionId: 'ss-1', sid: SID },
         { secret: process.env.JWT_ACCESS_SECRET },
       );
       const socket = makeSocket({ handshake: { auth: { token } } });
@@ -156,14 +156,8 @@ describe('MonitoringGateway', () => {
       await gateway.authenticate(socket);
       gateway.handleConnection(socket);
 
-      expect(socket.data.user).toEqual({
-        userId: USER,
-        organizationId: 'org-1',
-        role: 'super_admin',
-        permissionProfileId: null,
-        actingSuperAdmin: true,
-        session: ASSURANCE,
-      });
+      expect(socket.data.user).toBeUndefined();
+      expect(socket.disconnect).toHaveBeenCalledWith(true);
     });
   });
 
@@ -220,24 +214,6 @@ describe('MonitoringGateway', () => {
       });
       expect(socket.emit).toHaveBeenCalledWith('error', { message: 'Missing required permission: exam:manage' });
       expect(socket.join).not.toHaveBeenCalled();
-    });
-
-    it('bypasses the exam:manage lookup entirely for a super-admin acting in an org', async () => {
-      const socket = makeSocket({
-        data: { user: { session: ASSURANCE, userId: 'user-1', organizationId: 'org-1', role: 'super_admin', actingSuperAdmin: true } },
-      });
-      const roster = [{ candidateId: 'cand-1' }];
-      monitoring.getRosterSnapshot.mockResolvedValue(roster);
-      leaderboardService.computeRecruiterView.mockResolvedValue([]);
-
-      await gateway.handleJoinExam(socket, { examId: 'exam-1' });
-
-      // A plain super_admin role has no seeded RolePermission row (it bypasses via the
-      // actingSuperAdmin claim, same as apps/api's PermissionsGuard) -- the lookup must
-      // never run, or this would fail exactly like it did in production.
-      expect(prisma.rolePermission.findMany).not.toHaveBeenCalled();
-      expect(socket.join).toHaveBeenCalledWith('exam:exam-1');
-      expect(socket.emit).toHaveBeenCalledWith('roster:snapshot', roster);
     });
 
     // Live proctoring is a sensitive-role action (P12 §3 proctor, YX-IAM-01).

@@ -32,6 +32,7 @@ import { ClientMeta, LoginMethod, SessionUser, SessionsService } from './session
 import { ANY_COMPANY, LOGIN_PROTECTION_REDIS, LockoutSettings, LoginAttempt, LoginBlock, LoginProtectionService, TooManyLoginAttemptsException } from './login-protection.service';
 import { PasswordPolicyService } from './password-policy.service';
 import { MfaService, MfaUser, PENDING_LOGIN_TTL_SECONDS, PendingLogin, isStaff } from './mfa.service';
+import { liveSupportSession } from '../platform/support-session-access';
 import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
 import { MfaLoginDto, MfaProofDto, PasskeyAssertionDto } from './dto/mfa.dto';
 import { MfaOtpSendDto, OtpStartDto, OtpVerifyDto } from './dto/otp.dto';
@@ -40,7 +41,9 @@ import { PlatformLoginDto, SelectCompanyDto } from './dto/login.dto';
 import { CompanyCard, CompanyScopeService } from './company-scope';
 import { SocialIdentity, SocialProvider, isSocialProvider } from './social-sign-in';
 import { emailDomain } from './identity-providers';
-import { appUrl, button, details, passwordResetEmail, text } from '../email/account-emails';
+import { action, appUrl, details, passwordResetEmail, text } from '../email/account-emails';
+import { EmailLookService } from '../email/email-look.service';
+import { PASSWORD_RESET_EXPIRY_MINUTES, issuePasswordToken } from './password-tokens';
 
 interface TokenPair {
   accessToken: string;
@@ -109,7 +112,7 @@ const EXPIRED_MESSAGE = 'Your sign-in has expired. Please sign in again.';
 // Lockout scope of the IP counter for passkey sign-ins that reach no account.
 export const PASSKEY_SCOPE = 'passkey';
 // Every passkey refusal (unknown or wrong passkey, method off for the company, staff ...): one answer.
-export const PASSKEY_FAILED = "We couldn't sign you in with that passkey. Try another way, or ask your admin.";
+export const PASSKEY_FAILED = "We couldn't sign you in with that passkey. If you see more than one, pick the one you made for this site, or sign in with your email.";
 
 const ACCOUNT_SELECT = {
   id: true,
@@ -165,7 +168,6 @@ export interface SocialProof extends SocialIdentity {
 }
 type ParsedIdentifier = { kind: 'email' | 'mobile'; value: string };
 
-const PASSWORD_RESET_EXPIRY_MINUTES = 15;
 export const PASSWORD_CHANGE_REQUIRED_CODE = 'PASSWORD_CHANGE_REQUIRED';
 const INVALID_CREDENTIALS = 'Invalid credentials';
 
@@ -209,6 +211,7 @@ export class AuthService {
     private readonly otp: OtpService,
     private readonly companyScope: CompanyScopeService,
     @Inject(LOGIN_PROTECTION_REDIS) private readonly redis: Redis,
+    private readonly looks: EmailLookService,
   ) {}
 
   // Password sign-in (YX-IAM-06/07/10). With a company (orgSlug, web address or remembered company):
@@ -1166,11 +1169,11 @@ export class AuthService {
   // every admin of the company is told instead, since someone is guessing at the way in of last resort.
   private alertLocked(user: SessionUser, meta: ClientMeta, breakGlass: boolean, lockedForSeconds?: number): void {
     if (breakGlass && user.organizationId) {
-      this.sessions.notifyAdmins(user.organizationId, 'Repeated failed sign-ins to a break-glass account', 'Repeated failed sign-ins', [
+      this.sessions.notifyAdmins(user.organizationId, 'break_glass_failures', [
         text(`Someone has repeatedly failed to sign in to the break-glass account ${user.email}.`),
         details([['IP address', meta.ip ?? 'Unknown']]),
         text('Review Login activity to see where the attempts came from.'),
-        button('Open Login activity', appUrl('/yx/admin/login-activity')),
+        action(appUrl('/yx/admin/login-activity')),
       ]);
       return;
     }
@@ -1246,19 +1249,19 @@ export class AuthService {
     );
   }
 
-  // A single-use reset token (stored as sha256 only), valid PASSWORD_RESET_EXPIRY_MINUTES.
-  private async createResetToken(userId: string): Promise<string> {
-    const rawToken = randomBytes(32).toString('hex');
-    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-    const expiresAt = new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000);
-    await this.prisma.passwordResetToken.create({ data: { userId, tokenHash, expiresAt } });
-    return rawToken;
+  // A single-use reset token (stored as sha256 only), valid PASSWORD_RESET_EXPIRY_MINUTES; older links stop working.
+  private createResetToken(userId: string): Promise<string> {
+    return issuePasswordToken(this.prisma, userId, 'reset');
   }
 
   private async dispatchResetEmail(email: string, rawToken: string, organizationId: string, companyName?: string, yukthix = false): Promise<void> {
     const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/reset-password/${rawToken}`;
     if (yukthix) {
-      const mail = await passwordResetEmail({ to: email, link, company: companyName, minutes: PASSWORD_RESET_EXPIRY_MINUTES });
+      // The company's branding and wording when the email names it (P04 Q5).
+      const [look, { firstName }] = companyName
+        ? await Promise.all([this.looks.forCompany(organizationId, 'password_reset'), this.looks.recipient(organizationId, email)])
+        : [null, { firstName: null }];
+      const mail = await passwordResetEmail({ to: email, link, company: companyName, firstName, look, minutes: PASSWORD_RESET_EXPIRY_MINUTES });
       await this.emailService.send({ to: email, ...mail, organizationId });
       return;
     }
@@ -1541,36 +1544,49 @@ export class AuthService {
 
   // The acting token rides on the super admin's own session (`sid`): revoking that session
   // kills it too.
+  // P02 Q8 / YX-SEC-20: YukthiX staff open a company only inside a support session the company approved, for its
+  // window only (the token never outlives it, and JwtStrategy re-checks the session on every request).
   async switchIntoOrg(actorUserId: string, targetOrgId: string, sessionId: string): Promise<string> {
     const org = await this.prisma.organization.findUnique({ where: { id: targetOrgId } });
     if (!org) {
       throw new NotFoundException(`Organization ${targetOrgId} not found`);
     }
+    const support = await liveSupportSession(this.tenantPrisma, { organizationId: targetOrgId, staffUserId: actorUserId });
+    if (!support) {
+      throw new ForbiddenException({ statusCode: 403, code: 'SUPPORT_SESSION_REQUIRED', message: 'Ask the company for a support session first. A System Admin of the company must approve it.' });
+    }
 
     await this.audit.record(
       { organizationId: targetOrgId, isSuperAdmin: true },
-      { actorUserId, action: 'super_admin.org_switch_in', entityType: 'organization', entityId: targetOrgId },
+      { actorUserId, action: 'super_admin.org_switch_in', entityType: 'support_session', entityId: support.id, metadata: { organizationId: targetOrgId } },
     );
 
-    return this.signAccessToken({
-      sub: actorUserId,
-      organizationId: targetOrgId,
-      role: 'super_admin',
-      permissionProfileId: null,
-      actingSuperAdmin: true,
-      actingOrgName: org.name,
-      actingOrgSlug: org.slug,
-      sid: sessionId,
-    });
+    return this.signAccessToken(
+      {
+        sub: actorUserId,
+        organizationId: targetOrgId,
+        role: 'super_admin',
+        permissionProfileId: null,
+        actingSuperAdmin: true,
+        actingOrgName: org.name,
+        actingOrgSlug: org.slug,
+        supportSessionId: support.id,
+        supportEndsAt: support.endsAt!.toISOString(),
+        sid: sessionId,
+      },
+      Math.floor((support.endsAt!.getTime() - Date.now()) / 1000),
+    );
   }
 
-  async recordSwitchOut(actorUserId: string, exitedOrgId: string | null): Promise<void> {
+  async recordSwitchOut(actorUserId: string, exitedOrgId: string | null, supportSessionId?: string | null): Promise<void> {
     if (!exitedOrgId) {
       return;
     }
     await this.audit.record(
       { organizationId: exitedOrgId, isSuperAdmin: true },
-      { actorUserId, action: 'super_admin.org_switch_out', entityType: 'organization', entityId: exitedOrgId },
+      supportSessionId
+        ? { actorUserId, action: 'super_admin.org_switch_out', entityType: 'support_session', entityId: supportSessionId, metadata: { organizationId: exitedOrgId } }
+        : { actorUserId, action: 'super_admin.org_switch_out', entityType: 'organization', entityId: exitedOrgId },
     );
   }
 
@@ -1653,13 +1669,16 @@ export class AuthService {
     actingSuperAdmin?: boolean;
     actingOrgName?: string;
     actingOrgSlug?: string;
+    supportSessionId?: string;
+    supportEndsAt?: string;
     impersonatorUserId?: string;
     impersonatorEmail?: string;
     sid: string;
-  }): string {
+  }, maxSeconds?: number): string {
+    const ttl = Number(process.env.ACCESS_TOKEN_TTL_SECONDS ?? 900);
     return this.jwt.sign(payload, {
       secret: process.env.JWT_ACCESS_SECRET,
-      expiresIn: `${process.env.ACCESS_TOKEN_TTL_SECONDS ?? 900}s` as `${number}s`,
+      expiresIn: `${Math.max(1, Math.min(ttl, maxSeconds ?? ttl))}s` as `${number}s`,
     });
   }
 

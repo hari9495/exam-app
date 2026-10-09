@@ -14,6 +14,10 @@ export interface SendEmailInput {
   attachments?: { filename: string; content: Buffer }[];
   /** Per-send From override (e.g. a caller-selected OrgSenderAddress). Wins over every other From source. */
   fromAddress?: string;
+  /** From display name ("Kaveri Foods via YukthiX", P04 §4 Branding). The address never changes with it. */
+  fromName?: string;
+  /** A company's validated reply-to address. */
+  replyTo?: string;
 }
 
 export interface SendEmailResult {
@@ -99,7 +103,9 @@ export class EmailService {
       }
 
       const info = await transporter.sendMail({
-        from: fromAddress,
+        // nodemailer quotes and encodes the name, so it can never add a header or a second address.
+        from: input.fromName ? { name: input.fromName, address: /<([^<>]+)>/.exec(fromAddress)?.[1] ?? fromAddress } : fromAddress,
+        ...(input.replyTo ? { replyTo: input.replyTo } : {}),
         to: input.to,
         subject: input.subject,
         html: input.html,

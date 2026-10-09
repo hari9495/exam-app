@@ -14,14 +14,17 @@ import {
   sessionLimitsFor,
 } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { EmailLookService } from '../email/email-look.service';
 import {
   Block,
+  CompanyLook,
+  EmailType,
   RenderedEmail,
   SignInFacts,
   accountLockedEmail,
-  noticeEmail,
+  action,
+  adminAlertEmail,
   appUrl,
-  button,
   describeDevice,
   details,
   newSignInEmail,
@@ -153,6 +156,7 @@ export class SessionsService {
     private readonly audit: AuditService,
     private readonly email: EmailService,
     private readonly loginProtection: LoginProtectionService,
+    private readonly looks: EmailLookService,
   ) {}
 
   // Opens a session for a user who has just proven their identity. `newDevice` is true when the
@@ -468,42 +472,45 @@ export class SessionsService {
   // ---- notifications to the account holder (fire-and-forget) -----------------------------
 
   notifyNewDevice(user: SessionUser, meta: ClientMeta): void {
-    this.send(user, (r) => newSignInEmail({ to: user.email, company: r.company, facts: this.facts(meta, r.timeZone) }));
+    this.send(user, 'new_sign_in', (r) => newSignInEmail({ to: user.email, ...r, facts: this.facts(meta, r.timeZone) }));
   }
 
   // A known device, but a country this account has never signed in from (ASVS V2.2 / YX-IAM-07).
   notifyNewCountry(user: SessionUser, meta: ClientMeta): void {
-    this.send(user, (r) => newSignInEmail({ to: user.email, company: r.company, facts: this.facts(meta, r.timeZone), newCountry: true }));
+    this.send(user, 'new_country_sign_in', (r) => newSignInEmail({ to: user.email, ...r, facts: this.facts(meta, r.timeZone), newCountry: true }));
   }
 
   // `lockedForSeconds`: how long this lock lasts, when the caller knows it.
   notifyLocked(user: SessionUser, meta: ClientMeta, lockedForSeconds?: number | null): void {
-    this.send(user, (r) => accountLockedEmail({ to: user.email, company: r.company, facts: this.facts(meta, r.timeZone), lockedForSeconds }));
+    this.send(user, 'account_locked', (r) => accountLockedEmail({ to: user.email, ...r, facts: this.facts(meta, r.timeZone), lockedForSeconds }));
   }
 
   // SSO-only break-glass sign-in (YX-IAM-04): every admin of the company is told.
   notifyBreakGlass(user: SessionUser, meta: ClientMeta): void {
     if (!user.organizationId) return;
-    this.notifyAdmins(user.organizationId, 'Break-glass sign-in to your YukthiX organisation', 'Break-glass account used', [
+    this.notifyAdmins(user.organizationId, 'break_glass_used', [
       text(`The break-glass account ${user.email} just signed in with a password while SSO-only is on.`),
       details([['IP address', ipInWords(meta.ip)], ['Device', describeDevice(meta.userAgent) ?? 'Unknown device']]),
       text("If this wasn't expected, review Login activity and sign out that session."),
-      button('Open Login activity', appUrl('/yx/admin/login-activity')),
+      action(appUrl('/yx/admin/login-activity')),
     ]);
   }
 
-  // Every active administrator of the company hears about it. Block text is plain (escaped when rendered).
-  notifyAdmins(organizationId: string, subject: string, heading: string, blocks: Block[]): void {
-    this.tenantPrisma
-      .forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+  // Every active administrator of the company hears about it, in the company's wording (subject, heading and button
+  // label from the email type; the facts here are locked). Block text is plain (escaped when rendered).
+  notifyAdmins(organizationId: string, type: EmailType, facts: Block[]): void {
+    Promise.all([
+      this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
         tx.user.findMany({
           where: { organizationId, role: 'org_admin', status: 'active' },
-          select: { id: true, email: true, organization: { select: { name: true } } },
+          select: { id: true, email: true, name: true, organization: { select: { name: true } } },
         }),
-      )
-      .then(async (admins) => {
+      ),
+      this.looks.forCompany(organizationId, type),
+    ])
+      .then(async ([admins, look]) => {
         for (const admin of admins) {
-          const mail = await noticeEmail({ to: admin.email, company: admin.organization?.name, subject, heading, blocks });
+          const mail = await adminAlertEmail(type, { to: admin.email, company: admin.organization?.name, firstName: admin.name, look, facts });
           this.deliver({ ...admin, organizationId, role: 'org_admin' }, mail);
         }
       })
@@ -514,20 +521,27 @@ export class SessionsService {
   // `what` is a complete sentence.
   notifySecurityChange(user: SessionUser, subject: string, what: string): void {
     const when = new Date();
-    this.send(user, (r) => securityChangeEmail({ to: user.email, company: r.company, subject, what, when, timeZone: r.timeZone }));
+    this.send(user, 'security_change', (r) => securityChangeEmail({ to: user.email, ...r, subject, what, when }));
   }
 
   private facts(meta: ClientMeta, timeZone: string | null): SignInFacts {
     return { when: new Date(), timeZone, userAgent: meta.userAgent, country: meta.country, ip: meta.ip ? ipInWords(meta.ip) : null };
   }
 
-  // The recipient's company name and time zone, then the email. Fire-and-forget; never throws.
-  private send(user: SessionUser, build: (r: { company: string | null; timeZone: string | null }) => Promise<RenderedEmail>): void {
-    this.tenantPrisma
-      .forTenant({ organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' }, (tx) =>
-        tx.user.findUnique({ where: { id: user.id }, select: { timeZone: true, organization: { select: { name: true } } } }),
-      )
-      .then((row) => build({ company: row?.organization?.name ?? null, timeZone: row?.timeZone ?? null }))
+  // The recipient's company, name, time zone and the company's look for this email, then the email.
+  // Fire-and-forget; never throws.
+  private send(
+    user: SessionUser,
+    type: EmailType,
+    build: (r: { company: string | null; firstName: string | null; timeZone: string | null; look: CompanyLook | null }) => Promise<RenderedEmail>,
+  ): void {
+    Promise.all([
+      this.tenantPrisma.forTenant({ organizationId: user.organizationId, isSuperAdmin: user.role === 'super_admin' }, (tx) =>
+        tx.user.findUnique({ where: { id: user.id }, select: { name: true, timeZone: true, organization: { select: { name: true } } } }),
+      ),
+      this.looks.forCompany(user.organizationId, type),
+    ])
+      .then(([row, look]) => build({ company: row?.organization?.name ?? null, firstName: row?.name ?? null, timeZone: row?.timeZone ?? null, look }))
       .then((mail) => this.deliver(user, mail))
       .catch((error) => this.logger.error(`Failed to send security notification to user ${user.id}`, error as Error));
   }

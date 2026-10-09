@@ -10,6 +10,8 @@ import { OrgSecretsCryptoService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { AiProvider, AnthropicProvider, OpenAiCompatibleProvider, OpenAiCompatibleEmbeddingProvider } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
+import { companyWelcomeEmail } from '../email/account-emails';
+import { ACCOUNT_SETUP_EXPIRY_HOURS, issuePasswordToken } from '../auth/password-tokens';
 import { buildSmtpTransportOptions } from '../email/smtp-transport';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
@@ -171,10 +173,6 @@ const ALLOWED_LOGO_MIME_TYPES: Record<string, string> = {
 };
 const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024;
 
-// Mirrors AuthService's PASSWORD_RESET_EXPIRY_MINUTES (apps/api/src/auth/auth.service.ts) --
-// same policy, reused verbatim rather than shared cross-module, matching this codebase's
-// existing pattern of each service owning its own small local constants.
-const PASSWORD_RESET_EXPIRY_MINUTES = 15;
 
 @Injectable()
 export class OrganizationsService {
@@ -189,7 +187,9 @@ export class OrganizationsService {
     private readonly blobStorage: BlobStorageService,
   ) {}
 
-  async create(context: TenantContext, actorUserId: string, dto: CreateOrganizationDto): Promise<Organization> {
+  // `region` is optional for the YukthiX console: legal entities carry their own data region (P21), so the column
+  // keeps its default there.
+  async create(context: TenantContext, actorUserId: string, dto: Omit<CreateOrganizationDto, 'region'> & { region?: string }): Promise<Organization> {
     const existing = await this.prisma.organization.findUnique({ where: { slug: dto.slug } });
     if (existing) {
       throw new ConflictException(`Organization slug "${dto.slug}" is already taken`);
@@ -201,7 +201,7 @@ export class OrganizationsService {
     }
 
     const org = await this.prisma.organization.create({
-      data: { name: dto.name, slug: dto.slug, region: dto.region, planId: trialPlan.id },
+      data: { name: dto.name, slug: dto.slug, ...(dto.region ? { region: dto.region } : {}), planId: trialPlan.id },
     });
 
     // The new org has no pre-existing tenant session to scope to, so admin creation
@@ -225,19 +225,9 @@ export class OrganizationsService {
       });
     });
 
-    const rawToken = randomBytes(32).toString('hex');
-    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
-    await this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: true }, (tx) =>
-      tx.passwordResetToken.create({
-        data: {
-          userId: admin.id,
-          tokenHash,
-          expiresAt: new Date(Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000),
-        },
-      }),
-    );
+    const rawToken = await this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: true }, (tx) => issuePasswordToken(tx, admin.id, 'setup'));
 
-    this.dispatchWelcomeEmail(dto.adminEmail, rawToken).catch((error) =>
+    this.dispatchWelcomeEmail(dto.adminEmail, adminName, org.name, rawToken).catch((error) =>
       this.logger.error(`Failed to dispatch welcome email to ${dto.adminEmail}`, error as Error),
     );
 
@@ -250,13 +240,11 @@ export class OrganizationsService {
     return org;
   }
 
-  private async dispatchWelcomeEmail(email: string, rawToken: string): Promise<void> {
+  // YukthiX's own welcome to the first System Admin (founder, 8 Oct 2026): not company-editable.
+  private async dispatchWelcomeEmail(email: string, adminName: string | null, company: string, rawToken: string): Promise<void> {
     const link = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/reset-password/${rawToken}`;
-    await this.emailService.send({
-      to: email,
-      subject: 'Welcome — set up your account',
-      html: `<p>An organization has been created for you on the Examination Platform. Click the link below to set your password and get started. This link expires in 15 minutes.</p><p><a href="${link}">${link}</a></p>`,
-    });
+    const mail = await companyWelcomeEmail({ to: email, adminName, company, link, hours: ACCOUNT_SETUP_EXPIRY_HOURS });
+    await this.emailService.send({ to: email, ...mail });
   }
 
   async list(filters: { page?: string; pageSize?: string; search?: string } = {}): Promise<PaginatedResponse<OrganizationListItem>> {

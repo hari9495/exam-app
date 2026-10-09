@@ -530,16 +530,18 @@ describe('SMS channel (P04 §4.4/§4.5a; YX-NTF-07/10/11/12/13/14)', () => {
       }
     });
 
-    it('the platform manages the shared account; companies never see it, only that one exists', async () => {
-      const created = await api('platform', 'post', '/accounts').send({ name: `Shared ${runId}`, provider: 'dev', config: {}, otpTemplate: { ...OTP_TEMPLATE, dltTemplateId: null } }).expect(201);
-      expect((await api('platform', 'get', '').expect(200)).body).toMatchObject({ scope: 'platform', policy: null });
+    it('the platform manages the shared account (in the platform console); companies never see it, only that one exists', async () => {
+      const platformApi = (method: 'get' | 'post' | 'delete', path: string) => request(server())[method](`/api/v1/platform/channels/sms${path}`).set('Authorization', `Bearer ${token.platform}`);
+      await api('platform', 'get', '').expect(403); // moved out of company settings (step 3)
+      const created = await platformApi('post', '/accounts').send({ name: `Shared ${runId}`, provider: 'dev', config: {}, otpTemplate: { ...OTP_TEMPLATE, dltTemplateId: null } }).expect(201);
+      expect((await platformApi('get', '').expect(200)).body).toMatchObject({ scope: 'platform', policy: null });
       const company = (await api('adminB', 'get', '').expect(200)).body;
       expect(company).toMatchObject({ scope: 'company', sharedAccountAvailable: true, policy: { useSharedAccount: true, monthlyCap: null } });
       expect(JSON.stringify(company)).not.toContain(created.body.id);
       await api('adminB', 'patch', `/accounts/${created.body.id}`).send({ name: 'taken' }).expect(404);
       const rows = await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.channelAccount.findMany({ where: { id: created.body.id } }));
       expect(rows).toEqual([]);
-      await api('platform', 'delete', `/accounts/${created.body.id}`).expect(204);
+      await platformApi('delete', `/accounts/${created.body.id}`).expect(204);
     });
   });
 

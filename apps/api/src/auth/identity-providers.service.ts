@@ -7,7 +7,7 @@ import { DOMAIN_VERIFICATION_PREFIX, GOOGLE_ISSUER, assertIssuerUrl, entraIssuer
 import { SsoService } from './sso.service';
 import { OidcService } from './oidc.service';
 import { SessionsService } from './sessions.service';
-import { appUrl, button, details, formatWhen, text } from '../email/account-emails';
+import { action, appUrl, details, formatWhen, text } from '../email/account-emails';
 
 const SELECT = {
   id: true,
@@ -108,11 +108,11 @@ export class IdentityProvidersService {
   // Whoever controls a sign-in provider can sign in as anyone at its domains, so every change
   // reaches all of the company's administrators, not only the audit log (YX-IAM-04/10).
   private alertAdmins(organizationId: string, actorUserId: string, what: string): void {
-    this.sessions.notifyAdmins(organizationId, 'Single sign-on settings changed in your YukthiX organisation', 'Single sign-on settings changed', [
+    this.sessions.notifyAdmins(organizationId, 'sso_changed', [
       text(what),
       details([['When', formatWhen(new Date())], ['Changed by', `User ID ${actorUserId}`]]),
       text("If this wasn't expected, review the Single Sign-On settings and the audit log now."),
-      button('Open security settings', appUrl('/yx/settings/security')),
+      action(appUrl('/yx/settings/security')),
     ]);
   }
 
@@ -429,11 +429,11 @@ export class IdentityProvidersService {
       entityId: row.organizationId,
       metadata: { domain: row.domain, failedChecks },
     });
-    this.sessions.notifyAdmins(row.organizationId, 'A verified email domain lapsed in your YukthiX organisation', 'A verified domain lapsed', [
+    this.sessions.notifyAdmins(row.organizationId, 'domain_lapsed', [
       text(`We couldn't find the TXT record that proves your organisation owns ${row.domain} in ${failedChecks} checks in a row.`),
       text(`People with an @${row.domain} email are no longer sent straight to your identity provider.`),
       text("If the domain is still yours, put the record back and use Check record in Security settings. If it isn't, remove it from your identity providers."),
-      button('Open security settings', appUrl('/yx/settings/security')),
+      action(appUrl('/yx/settings/security')),
     ]);
     return 'lapsed';
   }

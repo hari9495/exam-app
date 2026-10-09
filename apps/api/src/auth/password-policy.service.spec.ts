@@ -30,7 +30,7 @@ describe('PasswordPolicyService', () => {
     tenantPrisma = { forTenant: jest.fn(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
     audit = { record: jest.fn() };
     email = { send: jest.fn().mockResolvedValue({}) };
-    service = new PasswordPolicyService(tenantPrisma as any, audit as any, email as any);
+    service = new PasswordPolicyService(tenantPrisma as any, audit as any, email as any, { forCompany: async () => null, recipient: async () => ({ company: 'Demo Org', firstName: null }) } as never);
     invalidateTenantSecurityPolicy('org-1');
   });
   afterEach(() => fetchMock.mockRestore());

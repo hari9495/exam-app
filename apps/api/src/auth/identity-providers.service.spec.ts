@@ -126,8 +126,8 @@ describe('IdentityProvidersService', () => {
       expect(view.clientSecretSet).toBe(true);
       expect(JSON.stringify(audit.record.mock.calls)).not.toContain('s3cret');
       // Every administrator hears about a new sign-in provider; never the secret.
-      expect(sessions.notifyAdmins).toHaveBeenCalledWith(ORG, expect.stringMatching(/Single sign-on/), expect.any(String), expect.any(Array));
-      expect(JSON.stringify(sessions.notifyAdmins.mock.calls[0][3])).toContain('Google');
+      expect(sessions.notifyAdmins).toHaveBeenCalledWith(ORG, 'sso_changed', expect.any(Array));
+      expect(JSON.stringify(sessions.notifyAdmins.mock.calls[0][2])).toContain('Google');
       expect(JSON.stringify(sessions.notifyAdmins.mock.calls)).not.toContain('s3cret');
     });
 
@@ -395,8 +395,8 @@ describe('IdentityProvidersService', () => {
         entityId: ORG,
         metadata: { domain: 'kaverifoods.in', failedChecks: 3 },
       });
-      expect(sessions.notifyAdmins).toHaveBeenCalledWith(ORG, expect.stringContaining('lapsed'), expect.any(String), expect.any(Array));
-      expect(JSON.stringify(sessions.notifyAdmins.mock.calls.at(-1)[3])).toContain('kaverifoods.in');
+      expect(sessions.notifyAdmins).toHaveBeenCalledWith(ORG, 'domain_lapsed', expect.any(Array));
+      expect(JSON.stringify(sessions.notifyAdmins.mock.calls.at(-1)[2])).toContain('kaverifoods.in');
     });
 
     it('a transient DNS error changes nothing; a found record clears earlier misses', async () => {

@@ -28,7 +28,6 @@ interface StaffSocketUser {
   organizationId: string | null;
   role: string;
   permissionProfileId: string | null;
-  actingSuperAdmin?: boolean;
   session: SessionAssurance;
 }
 
@@ -98,6 +97,11 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
         sid?: string;
         exp?: number;
       };
+      // YukthiX staff inside a company (a support session, P02 Q8) only look, never act, and never watch candidates:
+      // YukthiX proctors work through proctor-service grants (P02 YX-SEC-23), not support sessions.
+      if (payload.actingSuperAdmin) {
+        return;
+      }
       const session = await touchStaffSession(this.tenantPrisma, payload.sid, payload.impersonatorUserId ?? payload.sub);
       if (!session) {
         return;
@@ -111,7 +115,6 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
         organizationId: payload.organizationId,
         role: payload.role,
         permissionProfileId: payload.permissionProfileId ?? null,
-        actingSuperAdmin: payload.actingSuperAdmin,
         session,
       };
       (client.data as { auth?: StaffSocketAuth }).auth = {
@@ -138,7 +141,7 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
       return;
     }
 
-    const hasPermission = user.actingSuperAdmin || (await this.hasExamManagePermission(user));
+    const hasPermission = await this.hasExamManagePermission(user);
     if (!hasPermission) {
       client.emit('error', { message: 'Missing required permission: exam:manage' });
       return;
@@ -236,7 +239,7 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
     user.session = session;
     const watching = [...socket.rooms].some((room) => room.startsWith(EXAM_ROOM_PREFIX));
     if (!watching) return true;
-    return Boolean(user.actingSuperAdmin || (await this.hasExamManagePermission(user))) && mfaSatisfied(session);
+    return (await this.hasExamManagePermission(user)) && mfaSatisfied(session);
   }
 
   private async tickRoster(): Promise<void> {

@@ -54,7 +54,7 @@ describe('SessionsService', () => {
     tenantPrisma = { forTenant: jest.fn(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
     audit = { record: jest.fn() };
     email = { send: jest.fn().mockResolvedValue({}) };
-    service = new SessionsService(tenantPrisma as any, audit as any, email as any, {} as any);
+    service = new SessionsService(tenantPrisma as any, audit as any, email as any, {} as any, { forCompany: async () => null, recipient: async () => ({ company: 'Demo Org', firstName: null }) } as never);
   });
 
   describe('create', () => {
@@ -228,7 +228,7 @@ describe('SessionsService', () => {
     tx.loginEvent.count.mockResolvedValue(5);
     tx.organization = { findUnique: jest.fn().mockResolvedValue({ slug: 'Kaveri' }) };
     const check = jest.fn(async (scope: string, id: string) => (scope === 'kaveri' && id === 'a@x.test' ? { scope: 'account', retryAfterSeconds: 60 } : null));
-    service = new SessionsService(tenantPrisma as any, audit as any, email as any, { check } as any);
+    service = new SessionsService(tenantPrisma as any, audit as any, email as any, { check } as any, { forCompany: async () => null, recipient: async () => ({ company: 'Demo Org', firstName: null }) } as never);
     const { data } = await service.listLoginEvents(ORG, {}, { lockState: true });
     expect(data.map((r: any) => [r.id, r.lockActive])).toEqual([['a3', true], ['a2', false], ['a1', false], ['b1', false], ['c1', false]]);
     // The same scopes unlockAccount clears: the company, every company (W-016), the second step and step-up.

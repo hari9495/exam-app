@@ -1,3 +1,4 @@
+import { EmailLookService } from '../src/email/email-look.service';
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
@@ -556,7 +557,7 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
     it('without its Redis store no code is issued (503), and nothing is sent', async () => {
       const down = new Redis('redis://127.0.0.1:1', { maxRetriesPerRequest: 0, lazyConnect: true, retryStrategy: () => null });
       down.on('error', () => undefined);
-      const otp = new OtpService(app.get(OrgSecretsCryptoService), email as never, app.get(OTP_SMS_SENDER), down, app.get(PrismaService));
+      const otp = new OtpService(app.get(OrgSecretsCryptoService), email as never, app.get(OTP_SMS_SENDER), down, app.get(PrismaService), app.get(EmailLookService));
       await expect(otp.reserveSend('x', null)).rejects.toThrow('temporarily unavailable');
       await expect(otp.issue('k', {})).rejects.toThrow('temporarily unavailable');
       await settle();

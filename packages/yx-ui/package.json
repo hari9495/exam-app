@@ -16,6 +16,7 @@
     "./history": "./src/screens/history/index.ts",
     "./workforce": "./src/screens/workforce/index.ts",
     "./access": "./src/screens/access/index.ts",
+    "./console": "./src/screens/console/index.ts",
     "./screens/*": "./src/screens/*.tsx",
     "./styles.css": "./src/styles/index.css"
   },

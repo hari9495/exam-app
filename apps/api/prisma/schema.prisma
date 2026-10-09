@@ -104,6 +104,11 @@ model Organization {
   hrisProvider                  String                    @default("generic") @map("hris_provider") @db.VarChar(1000)
   hrisTargetUrl                 String?                   @map("hris_target_url") @db.VarChar(1000)
   hrisAuthHeaderEncrypted       String?                   @map("hris_auth_header_encrypted") @db.Text
+  /// P14 §3 lifecycle (trial / active / suspended / closed); a trigger keeps `status` (the sign-in switch) in step.
+  lifecycle                     String                    @default("active") @db.VarChar(16)
+  trialEndsAt                   DateTime?                 @map("trial_ends_at") @db.Timestamptz(3)
+  trialExtendedAt               DateTime?                 @map("trial_extended_at") @db.Timestamptz(3)
+  lifecycleChangedAt            DateTime                  @default(now()) @map("lifecycle_changed_at") @db.Timestamptz(3)
   users                         User[]
   auditLogs                     AuditLog[]
   webhookDeliveries             WebhookDelivery[]
@@ -2731,4 +2736,97 @@ model EmployeeProfileRequest {
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("employee_profile_requests")
+}
+
+/// P14 §4 catalogue: one plan per product (YX-BILL-01), so the product is the plan. Platform table (no RLS).
+model Product {
+  code      String   @id @db.VarChar(32)
+  name      String   @db.VarChar(100)
+  unit      String   @db.VarChar(40)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("products")
+}
+
+/// Dated prices per product and currency (YX-BILL-13/14); the one in force is the latest valid_from on or before today.
+model ProductPrice {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productCode    String   @map("product_code") @db.VarChar(32)
+  currency       String   @db.Char(3)
+  unitPrice      Decimal  @map("unit_price") @db.Decimal(12, 2)
+  minimumMonthly Decimal  @map("minimum_monthly") @db.Decimal(12, 2)
+  validFrom      DateTime @map("valid_from") @db.Date
+  reason         String   @db.VarChar(500)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([productCode, currency, validFrom])
+  @@map("product_prices")
+}
+
+/// The products a company uses.
+model OrganizationProduct {
+  organizationId String   @map("organization_id") @db.Uuid
+  productCode    String   @map("product_code") @db.VarChar(32)
+  addedAt        DateTime @default(now()) @map("added_at") @db.Timestamptz(3)
+  addedBy        String?  @map("added_by") @db.Uuid
+
+  @@id([organizationId, productCode])
+  @@map("organization_products")
+}
+
+/// P02 Q8 / YX-SEC-20: time-boxed, company-approved, read-only support access by YukthiX staff.
+model SupportSession {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  requestedBy      String    @map("requested_by") @db.Uuid
+  requestedByName  String    @map("requested_by_name") @db.VarChar(200)
+  requestedByEmail String    @map("requested_by_email") @db.VarChar(320)
+  reason           String    @db.VarChar(500)
+  ticket           String?   @db.VarChar(40)
+  hours            Int       @db.SmallInt
+  status           String    @default("requested") @db.VarChar(12)
+  decidedBy        String?   @map("decided_by") @db.Uuid
+  decidedByName    String?   @map("decided_by_name") @db.VarChar(200)
+  decidedAt        DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionNote     String?   @map("decision_note") @db.VarChar(500)
+  startsAt         DateTime? @map("starts_at") @db.Timestamptz(3)
+  endsAt           DateTime? @map("ends_at") @db.Timestamptz(3)
+  endedBy          String?   @map("ended_by") @db.Uuid
+  endedByName      String?   @map("ended_by_name") @db.VarChar(200)
+  endedAt          DateTime? @map("ended_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("support_sessions")
+}
+
+// P04 Q5 / §4: a company's branding of the account emails YukthiX sends its people (forced RLS).
+model EmailBranding {
+  organizationId String   @id @map("organization_id") @db.Uuid
+  showLogo       Boolean  @default(true) @map("show_logo")
+  accentColor    String?  @map("accent_color") @db.VarChar(7)
+  senderName     String?  @map("sender_name") @db.VarChar(60)
+  replyTo        String?  @map("reply_to") @db.VarChar(254)
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("email_branding")
+}
+
+// P04 Q5: a company's wording for one account email type and language; the YukthiX wording is the starter (forced RLS).
+model EmailTemplateOverride {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  type           String   @db.VarChar(40)
+  language       String   @default("en") @db.VarChar(10)
+  subject        String   @db.VarChar(150)
+  heading        String   @db.VarChar(120)
+  intro          String   @default("") @db.VarChar(1000)
+  buttonLabel    String   @default("") @map("button_label") @db.VarChar(40)
+  footer         String   @default("") @db.VarChar(500)
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, type, language], map: "email_template_overrides_org_type_language_key")
+  @@map("email_template_overrides")
 }

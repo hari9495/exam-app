@@ -6,9 +6,7 @@ import { MfaChallengeScreen, StaffSignInScreen, type MfaProof } from '@yukthix/u
 import { apiFetch } from '../../../lib/api-client';
 import { useAuth } from '../../../lib/auth-context';
 import { botChallengeToken } from '../../../lib/bot-challenge';
-import { decodeJwtPayload } from '../../../lib/jwt';
 import { takeNext } from '../../../lib/safe-next';
-import { roleToLandingPath } from '../../../lib/staff-routing';
 import { passkeyAssertion } from '../../../lib/yx-security';
 import { message, type MfaChallenge } from '../../../lib/hooks/useYxSignIn';
 import { yxProofError } from '../../../lib/yx-auth-messages';
@@ -18,10 +16,12 @@ interface SignedIn {
   mfa?: { required: boolean };
 }
 
+const CONSOLE = '/staff/companies';
+
 const post = (path: string, body: object) => apiFetch(path, { method: 'POST', body: JSON.stringify(body) });
 
 // YukthiX platform staff (P12 Q7): POST /auth/platform/login, then their security key (the API offers
-// staff nothing else), then the platform console. Company accounts are refused by the API here.
+// staff nothing else), then the platform console (/staff/companies). Company accounts are refused by the API here.
 export default function StaffSignInPage() {
   const router = useRouter();
   const { login } = useAuth();
@@ -31,12 +31,12 @@ export default function StaffSignInPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Into the platform console (step 3), after a first security key if there is none yet.
   function finish(result: SignedIn) {
     login('', result.accessToken);
-    const role = decodeJwtPayload(result.accessToken)?.role as string | undefined;
-    const next = takeNext();
-    if (result.mfa?.required) return router.push(next ? `/yx/setup-mfa?next=${encodeURIComponent(next)}` : '/yx/setup-mfa');
-    router.push(next ?? roleToLandingPath(role));
+    const next = takeNext() ?? CONSOLE;
+    if (result.mfa?.required) return router.push(`/yx/setup-mfa?next=${encodeURIComponent(next)}`);
+    router.push(next);
   }
 
   async function signIn() {

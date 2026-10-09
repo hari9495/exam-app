@@ -3,7 +3,8 @@ import * as argon2 from 'argon2';
 import { createHash } from 'crypto';
 import { AuditService, TENANT_SECURITY_FLOOR, TenantPrismaService, loadTenantSecurityPolicy } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
-import { appUrl, button, noticeEmail, text } from '../email/account-emails';
+import { passwordBreachedEmail } from '../email/account-emails';
+import { EmailLookService } from '../email/email-look.service';
 
 // Have I Been Pwned "Pwned Passwords" k-anonymity range API: only the first 5 hex chars of the
 // password's SHA-1 leave this process; the match is done locally against the returned suffixes.
@@ -38,6 +39,7 @@ export class PasswordPolicyService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
     private readonly email: EmailService,
+    private readonly looks: EmailLookService,
   ) {}
 
   async minLengthFor(organizationId: string | null): Promise<number> {
@@ -128,7 +130,7 @@ export class PasswordPolicyService {
         tx.user.update({
           where: { id: user.id },
           data: { passwordRecheckPending: false, passwordChangeRequired: breached },
-          select: { organization: { select: { name: true } } },
+          select: { name: true, organization: { select: { name: true } } },
         }),
       );
       if (!breached) return;
@@ -138,17 +140,8 @@ export class PasswordPolicyService {
         entityType: 'user',
         entityId: user.id,
       });
-      const mail = await noticeEmail({
-        to: user.email,
-        company: updated?.organization?.name,
-        subject: 'Change your YukthiX password',
-        heading: 'Time for a new password',
-        blocks: [
-          text('The password on your YukthiX account appears in a known data breach, so others can guess it easily.'),
-          text("You'll be asked to choose a new one the next time you sign in. You can also change it now in My security. Pick a password you don't use anywhere else."),
-          button('Open My security', appUrl('/yx/me/security')),
-        ],
-      });
+      const look = await this.looks.forCompany(user.organizationId, 'password_breached');
+      const mail = await passwordBreachedEmail({ to: user.email, company: updated?.organization?.name, firstName: updated?.name, look });
       await this.email.send({ to: user.email, ...mail, organizationId: user.organizationId ?? undefined });
     } catch (error) {
       this.logger.error(`Password re-check failed for user ${user.id}`, error as Error);

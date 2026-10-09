@@ -54,10 +54,34 @@ export const PERMISSIONS = [
   { key: 'employee.identity.manage', description: 'Raise identity, bank and legal-name changes for someone else' },
   { key: 'employee.identity.approve', description: 'Approve identity, bank and legal-name changes raised by someone else' },
   { key: 'employee.aadhaar.view', description: 'View Aadhaar in full (Special, every view recorded)' },
+  // Step 3, the YukthiX platform console (P14 §7) and support sessions (P02 Q8). Platform keys are staff only.
+  { key: 'platform.companies.view', description: 'See companies, their lifecycle and products (YukthiX staff)' },
+  { key: 'platform.companies.manage', description: 'Create companies and change their lifecycle (YukthiX staff)' },
+  { key: 'platform.plans.manage', description: 'Set product prices (YukthiX staff)' },
+  { key: 'platform.channels.manage', description: 'Manage the YukthiX shared message accounts (YukthiX staff)' },
+  { key: 'platform.support.request', description: 'Ask a company for a support session and use it (YukthiX staff)' },
+  { key: 'platform.audit.view', description: 'See the platform audit log (YukthiX staff)' },
+  { key: 'org.support_access.approve', description: 'Approve, decline and end YukthiX support sessions' },
+  // P04 Q5: a company's branding and wording of the account emails.
+  { key: 'notification.template.manage', description: 'Brand and re-word the emails YukthiX sends your people' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
-  super_admin: ['platform:manage_organizations', 'org:manage_users', 'org:manage_settings', 'org:view', 'audit:view'],
+  // P14 Console 1 (founder, 8 Oct 2026): one all-keys staff role until staff are hired, then Support / Billing /
+  // Security (P14 §4 platform_staff_roles, P12 Q7). Each route checks its own key.
+  super_admin: [
+    'platform:manage_organizations',
+    'org:manage_users',
+    'org:manage_settings',
+    'org:view',
+    'audit:view',
+    'platform.companies.view',
+    'platform.companies.manage',
+    'platform.plans.manage',
+    'platform.channels.manage',
+    'platform.support.request',
+    'platform.audit.view',
+  ],
   // org_admin is a full org-scoped superuser: their own admin features PLUS the complete
   // recruiter/panel capability set (exams, question bank, candidates, results).
   org_admin: [
@@ -90,6 +114,10 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'access.role.manage',
     'employee.personal.view',
     'employee.profile.edit',
+    // P02 Q8: the System Admin decides on YukthiX support sessions.
+    'org.support_access.approve',
+    // P04 Q5: the System Admin brands and re-words the account emails.
+    'notification.template.manage',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -242,10 +270,24 @@ async function main() {
         data: { mobileNumber: '+919845012345', mobileVerifiedAt: new Date() },
       });
       await seedSignInDemo(tx, demoOrg.id, trialPlan.id, { admin: orgAdminHash, staff: panelHash });
+
+      // Step 3, the platform console (P14): the demo staff member has a name, and the demo companies use YukthiX HR.
+      // Staff sign in at /staff/sign-in and add a security key on first sign-in (P12 Q7).
+      await tx.user.updateMany({ where: { email: 'super@platform.test', organizationId: null }, data: { name: 'Anand Iyer' } });
+      for (const slug of ['demo-org', 'ganga-textiles']) {
+        const org = await tx.organization.findUnique({ where: { slug }, select: { id: true } });
+        if (org) {
+          await tx.organizationProduct.upsert({
+            where: { organizationId_productCode: { organizationId: org.id, productCode: 'hrms' } },
+            update: {},
+            create: { organizationId: org.id, productCode: 'hrms' },
+          });
+        }
+      }
     }
   }, { timeout: 60000 });
 
-  console.log(`Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
+  console.log(`Seed complete: super@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
 }
 
 // Only run when invoked as a script (prisma db seed / ts-node). Guarded so importing this module for

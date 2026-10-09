@@ -61,6 +61,20 @@ describe('AuditService', () => {
     });
   });
 
+  it('uses an actor snapshot the caller already read, without looking the actor up (staff acting on one company)', async () => {
+    const create = jest.fn();
+    const findUnique = jest.fn();
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(mockTx({ auditLog: { create }, user: { findUnique } })));
+
+    await service.record(
+      { organizationId: 'org-1', isSuperAdmin: false },
+      { actorUserId: 'sa-1', action: 'platform.company.lifecycle', entityType: 'organization', entityId: 'org-1', actor: { email: 'anand@yukthix.test', name: 'Anand', role: 'super_admin' } },
+    );
+
+    expect(findUnique).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ actorEmail: 'anand@yukthix.test', actorName: 'Anand', actorRole: 'super_admin' }) });
+  });
+
   it('still records the entry when the actor identity cannot be looked up', async () => {
     const create = jest.fn();
     const findUnique = jest.fn().mockRejectedValue(new Error('rls hid the row'));

@@ -80,6 +80,8 @@ import { AgenciesModule } from './agencies/agencies.module';
 import { AgencyPortalModule } from './agency-portal/agency-portal.module';
 import { AgencySubmissionsModule } from './agency-submissions/agency-submissions.module';
 import { CalendarSyncModule } from './calendar-sync/calendar-sync.module';
+import { PlatformModule } from './platform/platform.module';
+import { EmailTemplatesModule } from './email-templates/email-templates.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 import { SentryShutdownFlush } from './sentry-shutdown.provider';
@@ -166,6 +168,8 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     AgencyPortalModule,
     AgencySubmissionsModule,
     CalendarSyncModule,
+    PlatformModule,
+    EmailTemplatesModule,
   ],
   controllers: [HealthController],
   providers: [
