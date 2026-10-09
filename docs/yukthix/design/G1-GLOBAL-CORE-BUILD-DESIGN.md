@@ -63,7 +63,7 @@ HR (employee.change.manage) may set continuous service with a reason (3+ charact
 
 ## 5. Person fields per country (G3)
 
-Data only in G1. `GET /global/countries/:code` returns the pack with `personFields`; `GET /global/person-fields?employeeId=` returns the list for the country the person works in (their location's country). Screens start using it in a later batch.
+Data only in G1. `GET /global/countries/:code` returns the pack with `personFields`. A per-person list (the person's work country) and the screens that use it come in a later batch.
 
 ## 6. Leave pay steps (T1)
 
@@ -78,7 +78,7 @@ Only a paid type may have steps. Editing a type keeps its steps unless the reque
 
 ## 7. Languages and translations (G1)
 
-- Setting **`language`** (company, legal entity or person; values `en`, `hi`, `ta`, `te`; starter `en`). The company value is the **company default**: the language its own words are typed in. A person picks their own language on **Me › Language** (any signed-in employee; it saves a person-scope value, audited).
+- Setting **`people.language`** (company, legal entity or person; values `en`, `hi`, `ta`, `te`; starter `en`). The company value is the **company default**: the language its own words are typed in. A person picks their own language on **Me › Language** (any signed-in employee; it saves a person-scope value, audited).
 - Table **`content_translations`**: one row per company, subject type, subject id and language, with the text (1–150 characters). Subject types: `leave_type`, `designation`, `department`, `grade`, `employment_type`, `location`, `journey_template`, `journey_task`. Forced RLS; no foreign key (one table serves eight subjects), the API checks the subject belongs to the company.
 - **Shown:** the reader's language when a translation exists, else the company's words. Used now on the job record (designation, department, grade, employment type, location) and on My leave (leave type names). Journeys use it after 6f.
 - **Settings › Organisation › Translations** (org.settings.manage): pick what to translate, one box per language other than the company default. An empty box removes the translation.
@@ -102,7 +102,6 @@ India is configured through the guide: the demo company's India entity has a fin
 | Route | Permission |
 |---|---|
 | `GET /countries`, `GET /countries/:code` | org.structure.view or org.settings.manage |
-| `GET /person-fields?employeeId=` | employee.profile.view, or the person themselves |
 | `GET/POST /country-setups`, `PUT /country-setups/:id`, `POST /country-setups/:id/finish` | org.settings.manage |
 | `GET /translations?subjectType=`, `PUT /translations` | org.settings.manage |
 | `GET/PUT /me/language` | signed in, own session (not while acting for someone) |
@@ -114,8 +113,8 @@ India is configured through the guide: the demo company's India entity has a fin
 |---|---|---|
 | G1.01 | Country pack `IN.PACK` (migration), pack parser and person-field catalogue, `GET /global/countries`, `/countries/:code` | unit: the parser refuses a field outside the catalogue, a bad rule, a bad normal week; e2e: India pack listed and read |
 | G1.02 | Hours a week on the job: column, change types, setting `work.normal_week_hours`, FTE in the record, hire form and change drawer field | unit: payload rules (hours only on join, employment type or hours, correction), fold, FTE maths; e2e (employee-history suite): part-time join shows 50 %, a dated hours change, hours above the normal week refused; yx-ui: change input |
-| G1.03 | Service dates: column, derivation, read and HR edit with reason | unit: fresh / continuous / break counted chains, override; e2e: rehire with break counted, HR override audited, a date after employer start refused, a manager cannot edit |
-| G1.04 | Person fields API per person | e2e: India list for an Indian location; religion not allowed |
+| G1.03 | Service dates: column, derivation, read and HR edit with reason | unit: fresh / continuous / break counted chains, override; e2e: HR override audited, a date after employer start refused, a manager cannot edit, clearing goes back to the rule |
+| G1.04 | Person fields in the country pack API | e2e: India pack: PAN required, Aadhaar optional, religion not allowed |
 | G1.05 | Leave pay steps in leave type rules and the calculator | unit: steps, window counting, unpaid tail, invalid shapes (unpaid type with steps, more than 5 steps); e2e: steps saved and kept when a type is edited without them |
 | G1.06 | `language` setting, Me › Language, `content_translations`, translations screen, translated names on the job record and My leave | unit: fallback order; e2e: Tamil reader sees the Tamil leave name, English reader the company's words; HR saves and clears a translation; a subject from another company refused; RLS |
 | G1.07 | `country_setups`, guide API and screen, India through the guide, seed | e2e: the whole guide for a new India entity, checklist items open and closing, one guide per entity, RLS isolation; Playwright: the guide, translations and the record |
@@ -140,3 +139,4 @@ India is configured through the guide: the demo company's India entity has a fin
 | Date | Change |
 |---|---|
 | 10 Oct 2026 | First version: slices G1.01–G1.07 from the gap pass §7.1. |
+| 10 Oct 2026 | As built: the language setting is `people.language` (setting keys need a dot); person fields are read from the country pack API (no per-person route yet); the rehire chain is covered by unit tests. |
