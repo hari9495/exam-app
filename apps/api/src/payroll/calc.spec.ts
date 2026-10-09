@@ -71,6 +71,13 @@ describe('calculatePayslip', () => {
     expect(amount(r, 'ot')).toBe('1600.00');
   });
 
+  it('overtime on a monthly salary: twice the ordinary rate of basic and allowances per standard hour', () => {
+    const seg = { ...snapshot().segments[0], otMultiplier: '2' };
+    const r = calculatePayslip(snapshot({ segments: [seg], attendance: { lopDays: '0', source: 'feed', otMinutes: { normal: 120, weeklyOff: 0, holiday: 0 }, timesheetMinutes: 0 } }), RULES);
+    // 58,900 ÷ (31 × 8) = 237.50 an hour; 2 hours × 2 = 950.
+    expect(amount(r, 'ot')).toBe('950.00');
+  });
+
   it('properties: net = gross − deductions (never below zero), and the same snapshot always gives the same result hash', () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 31 }), fc.integer({ min: 10000, max: 300000 }), fc.integer({ min: 0, max: 60000 }), (lop, basic, emi) => {

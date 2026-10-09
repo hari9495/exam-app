@@ -158,7 +158,9 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
     }
   });
   const last = s.segments[s.segments.length - 1];
-  const ordinaryMonthly = last ? last.lines.filter((l) => comps.get(l.code)?.pfWage).reduce((t, l) => t.add(l.monthly), ZERO) : ZERO;
+  // The ordinary rate of wages for overtime: basic and allowances of the package (not bonus, overtime or arrears, which
+  // are never in the package), per day of the month and standard hour.
+  const ordinaryMonthly = last ? last.lines.filter((l) => comps.get(l.code)?.kind === 'earning' && !comps.get(l.code)?.statutory).reduce((t, l) => t.add(l.monthly), ZERO) : ZERO;
   if (last && (s.attendance.otMinutes.normal || s.attendance.otMinutes.weeklyOff || s.attendance.otMinutes.holiday) && last.otMultiplier) {
     const hourly = last.payBasis === 'hourly' ? D(last.rate ?? 0) : ordinaryMonthly.div(D(monthDays).mul(s.options.standardDailyHours));
     for (const [k, mins, mult] of [['normal', s.attendance.otMinutes.normal, last.otMultiplier], ['weekly off', s.attendance.otMinutes.weeklyOff, last.otMultiplier], ['holiday', s.attendance.otMinutes.holiday, last.holidayMultiplier ?? last.otMultiplier]] as const) {
@@ -182,7 +184,7 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   if (cw && addBack.gt(0)) add({ code: 'code_wage_add_back', name: 'Code wage add-back', kind: 'info', segmentNo: 0, amount: addBack, explanation: `Allowances excluded from wages pass the limit; ${rupees(addBack)} is added back to the wage for PF, ESI, gratuity and bonus.`, rule: cw.citation });
 
   // Benefits paid instead of salary for special days (PAY-3.13 / 3.14).
-  const dailyWage = ordinaryMonthly.add(last ? last.lines.filter((l) => comps.get(l.code)?.kind === 'earning' && !comps.get(l.code)?.pfWage && !comps.get(l.code)?.statutory).reduce((t, l) => t.add(l.monthly), ZERO) : ZERO).div(monthDays);
+  const dailyWage = ordinaryMonthly.div(monthDays);
   for (const x of s.special) {
     if (x.kind === 'suspension') {
       const r = subsistence(need(rule('IN.SUBSISTENCE'), 'subsistence allowance'), { dailyWage, days: Number(x.days), daysBefore: x.daysBefore });
