@@ -284,7 +284,14 @@ export class DocumentsService {
     if (r.acting) throw new ForbiddenException('Not available while acting for someone else');
     const org = r.ctx.organizationId;
     if (dto.decision === 'sign') {
-      // The code first (counted, constant time, single use): a wrong or old code stops here, before anything is read.
+      // Plain mistakes first (not the signer, already signed, the name as typed), so they never use up the code.
+      await this.tx(r, async (tx) => {
+        const { d } = await this.signable(tx, r, docId);
+        if (d.status !== 'pending') throw new ConflictException('This document is no longer waiting for a signature.');
+        const name = (await this.tickets.personNames(tx, org, [d.signerPersonId])).get(d.signerPersonId!)?.name ?? '';
+        if (dto.typedName.trim().replace(/\s+/g, ' ').toLocaleLowerCase('en') !== name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('en')) throw new BadRequestException(`Type your name as it appears on the document: ${name}.`);
+      });
+      // Then the code (counted, constant time, single use, bound to this document and person).
       const ok = dto.code && (await this.otp.check(this.signKey(org, docId, r.userId), dto.code));
       if (!ok || ok.docId !== docId || ok.userId !== r.userId) throw new UnauthorizedException({ statusCode: 401, code: 'SIGN_CODE_WRONG', message: 'That code is not right or has expired. Ask for a new code.' });
     }

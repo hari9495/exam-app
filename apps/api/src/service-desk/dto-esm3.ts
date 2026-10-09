@@ -189,13 +189,6 @@ export class AgentRoutingDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(10)
-  @IsString({ each: true })
-  @MaxLength(40, { each: true })
-  skills?: string[];
-
-  @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(10)
   @Matches(/^[a-z]{2,3}$/, { each: true, message: 'Use language codes such as en, hi or ta.' })
   languages?: string[];
 }

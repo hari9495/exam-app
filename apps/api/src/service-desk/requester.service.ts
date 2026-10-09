@@ -136,6 +136,7 @@ export class RequesterService {
         requestedForPersonId: dto.requestedForPersonId,
         openedByUserId: r.userId,
         channel: 'portal',
+        language: dto.language,
         private: dto.private,
         side: 'requester',
         authorPersonId: personId,

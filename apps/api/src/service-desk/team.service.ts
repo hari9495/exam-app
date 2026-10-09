@@ -108,14 +108,17 @@ export class TeamService {
     });
   }
 
-  /** A lead sets an agent's capacity per kind of work, skills and languages (on their seat of this desk). */
-  async setRouting(a: DeskActor, deskId: string, userId: string, dto: { capacity?: Partial<Record<(typeof CHANNELS)[number], number | null>>; skills?: string[]; languages?: string[] }) {
+  /**
+   * A lead sets an agent's capacity per kind of work and languages (on their seat of this desk). Skills are part of the
+   * dated seat (the database never rewrites them): they change by ending the seat and adding a new one.
+   */
+  async setRouting(a: DeskActor, deskId: string, userId: string, dto: { capacity?: Partial<Record<(typeof CHANNELS)[number], number | null>>; languages?: string[] }) {
     this.requireLead(a, deskId);
     const org = a.ctx.organizationId;
     return this.tx(a, async (tx) => {
       const seat = await tx.sdDeskMember.findFirst({ where: { organizationId: org, deskId, userId, role: { in: ['agent', 'lead'] }, ...activeOn(todayIst()) } });
       if (!seat) throw new NotFoundException('That person is not an agent of this desk.');
-      if (dto.skills || dto.languages) await tx.sdDeskMember.update({ where: { id: seat.id }, data: { ...(dto.skills ? { skills: tidy(dto.skills, 40) } : {}), ...(dto.languages ? { languages: tidy(dto.languages, 3).filter((l) => /^[a-z]{2,3}$/.test(l)) } : {}) } });
+      if (dto.languages) await tx.sdDeskMember.update({ where: { id: seat.id }, data: { languages: tidy(dto.languages, 3).filter((l) => /^[a-z]{2,3}$/.test(l)) } });
       for (const [channel, max] of Object.entries(dto.capacity ?? {})) {
         if (!(CHANNELS as readonly string[]).includes(channel)) continue;
         if (max === null) await tx.sdAgentCapacity.deleteMany({ where: { organizationId: org, userId, channel } });
@@ -133,7 +136,10 @@ export class TeamService {
     const org = a.ctx.organizationId;
     // Everyone on the desk sees the roster (RLS: their own shifts; leads: their team's).
     return this.tx(a, async (tx) => {
-      const rows = await tx.sdShift.findMany({ where: { organizationId: org, deskId, startsAt: { lt: day(to) }, endsAt: { gt: day(from) } }, orderBy: [{ startsAt: 'asc' }] });
+      // Whole days in India time, both ends included.
+      const start = DateTime.fromISO(from, { zone: 'Asia/Kolkata' }).toJSDate();
+      const end = DateTime.fromISO(to, { zone: 'Asia/Kolkata' }).plus({ days: 1 }).toJSDate();
+      const rows = await tx.sdShift.findMany({ where: { organizationId: org, deskId, startsAt: { lt: end }, endsAt: { gt: start } }, orderBy: [{ startsAt: 'asc' }] });
       const names = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: [...new Set(rows.map((r) => r.userId))] } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name ?? u.email]));
       return rows.map((r) => ({ id: r.id, userId: r.userId, name: names.get(r.userId) ?? 'Agent', startsAt: r.startsAt, endsAt: r.endsAt, note: r.note }));
     });
@@ -256,7 +262,7 @@ export class TeamService {
     // Counts only (no ticket words), read as the desk's job after the rights check above.
     return deskSystem(this.tenantPrisma, a.ctx, async (tx) => {
       await requireDesk(tx, a, deskId);
-      const seats = await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId, role: { in: ['agent', 'lead'] }, validFrom: { lt: end }, OR: [{ validTo: null }, { validTo: { gte: start } }] }, select: { userId: true } });
+      const seats = await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId, role: { in: ['agent', 'lead'] }, validFrom: { lte: day(to) }, OR: [{ validTo: null }, { validTo: { gte: day(from) } }] }, select: { userId: true } });
       const ids = [...new Set(seats.map((s) => s.userId))];
       const [users, spans, msgs, solved, time] = await Promise.all([
         tx.user.findMany({ where: { organizationId: org, id: { in: ids } }, select: { id: true, name: true, email: true } }),

@@ -475,11 +475,13 @@ export class MessagingService implements OnModuleInit {
   /** "JOIN <code>" from a phone: the code names the company and person; the message is the opt-in. */
   private async join(kind: MsgKind, line: Channel | null, m: InboundMessage, code: string): Promise<boolean> {
     const key = `sd:msg:join:${kind}:${code}`;
-    const raw = await this.redis.getdel(key);
+    const raw = await this.redis.get(key);
     if (!raw) return false;
     const { org, userId } = JSON.parse(raw) as { org: string; userId: string };
-    // A code from one company never links a phone on another company's own line.
+    // A code from one company never links a phone on another company's own line (and that try does not use it up).
     if (line && line.organizationId !== org) return false;
+    // Used once: only the first message that removes it links.
+    if (!(await this.redis.del(key))) return false;
     const ctx: CompanyContext & { userId: string } = { organizationId: org, isSuperAdmin: false, userId };
     const ch = line ?? (await this.tenantPrisma.forTenant(ctx, (tx) => tx.sdMsgChannel.findFirst({ where: { organizationId: org, kind, accountId: null, state: 'active' } })));
     if (!ch) return false;

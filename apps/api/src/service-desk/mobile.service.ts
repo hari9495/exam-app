@@ -132,7 +132,7 @@ export class MobileService {
       const t = await tx.sdTicket.findFirst({ where: { organizationId: org, id: draft.ticketId } });
       if (!t || !(await ticketAccess(tx, a, t))) throw new NotFoundException('No such ticket.');
       if (draft.kind === 'reply' && !canWork(a, t.deskId)) throw new ForbiddenException('Only an agent of this desk replies.');
-      const newer = await tx.sdTicketMessage.findMany({ where: { organizationId: org, ticketId: t.id, createdAt: { gt: draft.createdAt }, NOT: { authorUserId: a.userId }, kind: { in: ['reply', 'note'] } }, orderBy: { createdAt: 'asc' }, take: 5, select: { kind: true, side: true, bodyText: true, createdAt: true } });
+      const newer = await tx.sdTicketMessage.findMany({ where: { organizationId: org, ticketId: t.id, createdAt: { gt: draft.createdAt }, OR: [{ authorUserId: null }, { authorUserId: { not: a.userId } }], kind: { in: ['reply', 'note'] } }, orderBy: { createdAt: 'asc' }, take: 5, select: { kind: true, side: true, bodyText: true, createdAt: true } });
       if (!dto.force && (t.version !== draft.baseTicketVersion || newer.length)) {
         throw new ConflictException({
           statusCode: 409,

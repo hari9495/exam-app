@@ -220,6 +220,13 @@ export class CategoryDto {
   @Min(0)
   @Max(10000)
   sortOrder?: number;
+
+  /** SD-2.25: skills an agent needs for tickets in this category (routing tries them first). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @Matches(/^[a-z0-9][a-z0-9 _-]{0,39}$/, { each: true, message: 'A skill is a short lower-case word, for example network.' })
+  skills?: string[];
 }
 
 export class TicketTypeDto {
@@ -569,6 +576,11 @@ export class RaiseTicketDto {
   @IsOptional()
   @Matches(/^[\w\-./ ]{1,100}$/, { message: 'Screen name is not valid' })
   screen?: string;
+
+  /** SD-2.25: the language the person writes in (ISO 639, e.g. hi, ta); routing prefers agents who speak it. */
+  @IsOptional()
+  @Matches(/^[a-z]{2,3}$/, { message: 'Use a language code such as en, hi or ta.' })
+  language?: string;
 }
 
 export class AgentCreateTicketDto {
