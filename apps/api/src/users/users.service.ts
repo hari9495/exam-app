@@ -21,6 +21,8 @@ import { SuperAdminEmailDto } from './dto/super-admin-email.dto';
 import { BulkCreateUsersDto } from './dto/bulk-create-users.dto';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
 import { PasswordPolicyService } from '../auth/password-policy.service';
+import { securityChangeEmail } from '../email/account-emails';
+import { assertAnotherSystemAdmin, SYSTEM_ADMIN_ROLE } from './system-admins';
 
 /**
  * A User record with `passwordHash` (and any other sensitive fields) excluded.
@@ -324,6 +326,9 @@ export class UsersService {
           throw new BadRequestException('This role opens Confidential data (pay, identity or bank details). Grant it in Roles & access, where another admin approves it.');
         }
       }
+      if (target.role === SYSTEM_ADMIN_ROLE && dto.role !== undefined && dto.role !== SYSTEM_ADMIN_ROLE) {
+        await assertAnotherSystemAdmin(tx, context.organizationId as string, targetUserId);
+      }
       const updated = await tx.user.update({
         where: { id: targetUserId },
         data: {
@@ -389,6 +394,9 @@ export class UsersService {
       if (target.role === 'super_admin') {
         throw new ForbiddenException('Cannot change a platform administrator');
       }
+      if (status === 'deactivated' && target.role === SYSTEM_ADMIN_ROLE) {
+        await assertAnotherSystemAdmin(tx, context.organizationId as string, targetUserId);
+      }
       const updated = await tx.user.update({ where: { id: targetUserId }, data: { status }, select: SAFE_USER_SELECT });
       if (status === 'deactivated') {
         await tx.refreshToken.updateMany({ where: { userId: targetUserId, revokedAt: null }, data: { revokedAt: new Date() } });
@@ -415,7 +423,7 @@ export class UsersService {
     );
 
     if (!(await argon2.verify(user.passwordHash, dto.currentPassword))) {
-      throw new UnauthorizedException('Current password is incorrect');
+      throw new UnauthorizedException('Your current password is wrong. Try again.');
     }
 
     const { passwordHash, passwordRecheckPending } = await this.passwordPolicy.hashNewPassword(dto.newPassword, user.organizationId);
@@ -460,6 +468,21 @@ export class UsersService {
       entityType: 'user',
       entityId: userId,
     });
+
+    // YX-IAM-10: the owner hears about every security change, so a stolen session can't change it quietly.
+    const org = user.organizationId
+      ? await this.tenantPrisma.forTenant(context, (tx) => tx.organization.findUnique({ where: { id: user.organizationId! }, select: { name: true } }))
+      : null;
+    securityChangeEmail({
+      to: user.email,
+      company: org?.name,
+      subject: 'Your YukthiX password was changed',
+      what: 'The password for your account was just changed. You stay signed in on the device that changed it; every other device was signed out.',
+      when: new Date(),
+      timeZone: user.timeZone,
+    })
+      .then((mail) => this.emailService.send({ to: user.email, ...mail, organizationId: user.organizationId ?? undefined }))
+      .catch((error) => this.logger.error(`Failed to send password-changed notice to user ${userId}`, error as Error));
   }
 
   async listSuperAdmins(

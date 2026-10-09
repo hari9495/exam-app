@@ -46,6 +46,25 @@ describe('resolveScopedGrants (P02 YX-SEC-03)', () => {
   });
 });
 
+describe('a profile on top of a role (founder 8 Oct 2026)', () => {
+  const build = (profileKeys: string[], adminKeys: string[]) => {
+    const prisma = { rolePermission: { findMany: jest.fn().mockResolvedValue(adminKeys.map((key) => ({ permission: { key } }))) } };
+    const tx = { permissionProfile: { findUnique: jest.fn().mockResolvedValue({ permissionsJson: JSON.stringify(profileKeys) }) }, $queryRaw: jest.fn().mockResolvedValue([]) };
+    const tenantPrisma = { forTenant: jest.fn(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
+    return { prisma: prisma as never, tenantPrisma: tenantPrisma as never };
+  };
+  it('a System Admin with the HR Admin profile keeps the System Admin keys and gains the HR keys', async () => {
+    const { prisma, tenantPrisma } = build(['employee.profile.view'], ['audit:view', 'access.role.manage']);
+    const keys = await resolvePermissionGrants(prisma, tenantPrisma, { role: 'org_admin', organizationId: 'o1', userId: 'u1', permissionProfileId: 'p1' }, []);
+    expect([...keys].sort()).toEqual(['access.role.manage', 'audit:view', 'employee.profile.view']);
+  });
+  it('anyone else with a profile gets the profile keys only (the role does not add to it)', async () => {
+    const { prisma, tenantPrisma } = build(['employee.profile.view'], ['interview:view_assigned']);
+    const keys = await resolvePermissionGrants(prisma, tenantPrisma, { role: 'panel', organizationId: 'o1', userId: 'u1', permissionProfileId: 'p1' }, []);
+    expect([...keys]).toEqual(['employee.profile.view']);
+  });
+});
+
 describe('grant scopes per key (P02 §4.3)', () => {
   it('people keys and structure reads narrow to any scope; organisation changes and pay ranges to an entity; others company-wide', () => {
     expect(grantScopesFor('employee.salary.view')).toContain('all_reports');

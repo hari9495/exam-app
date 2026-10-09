@@ -275,6 +275,21 @@ describe('FileUpload', () => {
     await act(async () => finish());
     expect(await screen.findByText(/Uploaded/)).toBeInTheDocument();
   });
+
+  it('the field label and the error summary can focus it (the zone shows the ring); Browse files is the tab stop', () => {
+    render(
+      <FormField label="Résumé" id="resume" error="Attach your resume">
+        <FileUpload upload={vi.fn()} />
+      </FormField>,
+    );
+    const input = screen.getByLabelText(/Résumé/) as HTMLInputElement;
+    expect(input).toHaveAttribute('type', 'file');
+    expect(input).toHaveAttribute('tabindex', '-1');
+    document.getElementById('resume')?.focus();
+    expect(input).toHaveFocus();
+    expect(input.closest('.yx-upload__zone')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Browse files' })).not.toHaveAttribute('tabindex');
+  });
 });
 
 describe('display', () => {

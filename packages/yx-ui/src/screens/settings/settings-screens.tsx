@@ -7,7 +7,7 @@ import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { ConfirmDialog } from '../../components/overlay';
 import { ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
-import { ErrorSummary, FormField, StickySaveBar, useUnsavedChangesGuard } from '../../components/field';
+import { ErrorSummary, FormField, StickySaveBar, useUnsavedChangesGuard, useSaveErrors } from '../../components/field';
 import { Breadcrumbs, Card, PageHeader } from '../../components/shell';
 import { Select } from '../../components/select';
 import { formatDate } from '../../lib/format';
@@ -331,7 +331,6 @@ function SettingsForm({
   const overrideScopes = [...new Set(defsAll.flatMap((d) => d.overrides?.map((o) => o.scope) ?? []))];
   const [picked, setPicked] = useState(page.typePicker?.options[0] ?? '');
   const [rows, setRows] = useState<Record<string, string[][]>>({});
-  const [showErrors, setShowErrors] = useState(Boolean(defaultShowErrors));
   const [status, setStatus] = useState<SaveStatus>({ kind: 'idle' });
   const [confirmSensitive, setConfirmSensitive] = useState(false);
   const [scope, setScope] = useState(defaultScope ?? page.scopes?.[0] ?? 'Company');
@@ -351,6 +350,7 @@ function SettingsForm({
   useUnsavedChangesGuard(dirty && !readOnly);
   const errors = validateDraft(page, draft);
   const errorList = Object.entries(errors).map(([k, message]) => ({ fieldId: `setting-${k}`, message }));
+  const saveErrors = useSaveErrors(errorList, defaultShowErrors);
   const defs = allSettings(page);
   const sensitiveChanged = defs.some((d) => d.sensitive && changed.includes(d.key));
   const approval = needsSecondApprover(page);
@@ -383,8 +383,8 @@ function SettingsForm({
     return () => io.disconnect();
   }, [showBar]);
   const save = () => {
-    setShowErrors(true);
-    if (errorList.length) return;
+    if (errorList.length) return saveErrors.reveal();
+    saveErrors.reset();
     if (sensitiveChanged) setConfirmSensitive(true);
     else if (approval) setConfirmImpact(true);
     else void doSave();
@@ -392,7 +392,7 @@ function SettingsForm({
   const discard = () => {
     setDraft(base);
     setRows({});
-    setShowErrors(false);
+    saveErrors.reset();
     setStatus({ kind: 'idle' });
   };
 
@@ -415,7 +415,7 @@ function SettingsForm({
         setDraft((x) => ({ ...x, [dk]: v }));
         if (status.kind !== 'saving') setStatus({ kind: 'idle' });
       }}
-      error={showErrors ? errors[d.key] : null}
+      error={saveErrors.errorOf(`setting-${d.key}`) ?? null}
       readOnly={readOnly}
       highlighted={highlightKey === d.key}
       onResetScope={() => setDraft((x) => ({ ...x, [d.key]: d.value ?? null }))}
@@ -457,7 +457,7 @@ function SettingsForm({
           Values without an override show "Inherited from Kaveri Foods Pvt Ltd". Use Reset on a field to go back to the inherited value.
         </InlineAlert>
       )}
-      {showErrors && <ErrorSummary errors={errorList} />}
+      <ErrorSummary errors={saveErrors.shownErrors} />
       {status.kind === 'saved' && (
         <InlineAlert tone="success" title={status.approval ? 'Changes sent for approval' : 'Changes saved'}>
           {status.approval

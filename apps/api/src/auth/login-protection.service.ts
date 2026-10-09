@@ -35,6 +35,19 @@ export const TRUSTED_DEVICE_DAYS = 30;
 
 export const LOGIN_PROTECTION_REDIS = 'LOGIN_PROTECTION_REDIS';
 
+// The identifier lock (W-016, decided 8 Oct 2026, P12 §11): scope for an email / mobile number
+// across every company. Every company sign-in that checks a secret (password or one-time code,
+// with or without a company named) counts its failures here, under YukthiX's lockout (10 failures
+// lock for 15 min, doubling), for ANY typed identifier -- account or not -- and every company path
+// answers the same 429 with retryAfterSeconds while it is locked. A company's own counter (its slug
+// + identifier) is counted only by sign-ins that name the company, so it too depends on what was
+// typed, never on whether an account exists. Email-first sign-in therefore no longer counts the
+// company counters of the accounts it finds: that made the lock depend on which emails have
+// accounts (a locked person saw "Wrong email or password" there, and a company page said "Too many
+// tries" only for real accounts). Trade-off: a company stricter than YukthiX's default enforces its
+// numbers on its own page; with no company named, YukthiX's numbers apply.
+export const ANY_COMPANY = '*';
+
 // The company's lockout settings. Unknown accounts are counted under the same settings as known
 // ones (the organisation's when the slug names one, else the default), so no answer differs.
 export type LockoutSettings = Pick<SecurityPolicySettings, 'maxFailedAttempts' | 'lockMinutes'>;

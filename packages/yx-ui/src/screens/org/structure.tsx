@@ -5,7 +5,7 @@ import { Checkbox } from '../../components/choice';
 import { DatePicker } from '../../components/date';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
-import { ErrorSummary, FieldRow, FormField, FormSection, type FormErrorItem } from '../../components/field';
+import { ErrorSummary, FieldRow, FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { NumberField, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
@@ -106,16 +106,16 @@ function MasterEditor({ kind, record, rows, entities, defaultOwnership, onClose,
     legalEntityId: record?.legalEntityId ?? live.find((e) => e.isDefault)?.id ?? null,
   });
   const [dirty, setDirty] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
   const { busy, error, run } = useRun();
   const set = (patch: Partial<Draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
     setDirty(true);
   };
   const { input, errors } = masterInput(kind, draft);
-  const errorOf = (id: string) => (showErrors ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   const save = () => {
-    if (!input) return setShowErrors(true);
+    if (!input) return saveErrors.reveal();
     void run('save', () => onSave(input)).then((ok) => ok && onClose());
   };
   // Parents: active, not itself or below it; for departments, shared or owned by the same entity (YX-ORG-15);
@@ -132,8 +132,7 @@ function MasterEditor({ kind, record, rows, entities, defaultOwnership, onClose,
       onClose={onClose}
       dirty={dirty}
       title={record ? `Edit ${record.name}` : `Add ${meta.one}`}
-      errors={errors}
-      showErrors={showErrors}
+      errors={saveErrors.shownErrors}
       saving={busy === 'save'}
       failed={error}
       saveLabel={record ? 'Save changes' : `Add ${meta.one}`}
@@ -225,7 +224,6 @@ function PayRangesDrawer({ grade, entities, pay, onClose }: { grade: MasterRecor
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState<PayRange | 'new' | null>(null);
   const [form, setForm] = useState({ legalEntityId: null as string | null, currency: 'INR', min: null as number | null, mid: null as number | null, max: null as number | null, validFrom: null as Date | null });
-  const [showErrors, setShowErrors] = useState(false);
   const [dialog, ask] = useConfirm();
   const { busy, error, run } = useRun();
   const load = () => pay.onLoad(grade.id).then(setRanges, (e) => setLoadError(errorText(e)));
@@ -238,14 +236,15 @@ function PayRangesDrawer({ grade, entities, pay, onClose }: { grade: MasterRecor
   const usable = entities.filter((e) => !e.archivedAt && (grade.ownerLegalEntityId ? e.id === grade.ownerLegalEntityId : !grade.appliesToEntities?.length || grade.appliesToEntities.includes(e.id)));
   const future = (r: PayRange) => r.validFrom > pay.today;
   const errors = editing === 'new' ? payRangeErrors(form) : payRangeErrors({ ...form, legalEntityId: 'x', validFrom: new Date() });
+  const saveErrors = useSaveErrors(errors);
   const save = () => {
-    if (errors.length) return setShowErrors(true);
+    if (errors.length) return saveErrors.reveal();
     const amounts = { min: form.min!, mid: form.mid!, max: form.max! };
     const action = editing === 'new' ? () => pay.onCreate(grade.id, { legalEntityId: form.legalEntityId!, currency: form.currency, ...amounts, validFrom: dayKey(form.validFrom!) }) : () => pay.onUpdate((editing as PayRange).id, amounts);
     void run('save', async () => {
       await action();
       setEditing(null);
-      setShowErrors(false);
+      saveErrors.reset();
       await load();
     });
   };
@@ -323,22 +322,22 @@ function PayRangesDrawer({ grade, entities, pay, onClose }: { grade: MasterRecor
               title={editing === 'new' ? 'New range' : `Change the range from ${dateLabel(editing.validFrom)}`}
               description={editing === 'new' ? 'A new range ends the current one the day before it starts. Ranges already in force stay as they were.' : undefined}
             >
-              {showErrors && errors.length > 0 && <ErrorSummary errors={errors} />}
+              <ErrorSummary errors={saveErrors.shownErrors} />
               {editing === 'new' && (
                 <FieldRow>
-                  <FormField id="pr-entity" label="Legal entity" required error={showErrors ? errors.find((e) => e.fieldId === 'pr-entity')?.message : undefined}>
+                  <FormField id="pr-entity" label="Legal entity" required error={saveErrors.errorOf('pr-entity')}>
                     <Select value={form.legalEntityId} onChange={(legalEntityId) => setForm({ ...form, legalEntityId })} options={usable.map((e) => ({ value: e.id, label: e.name }))} aria-label="Legal entity" />
                   </FormField>
                   <FormField id="pr-currency" label="Currency" required>
                     <TextField value={form.currency} onChange={(c) => setForm({ ...form, currency: c.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3) })} />
                   </FormField>
-                  <FormField id="pr-from" label="Starts" required error={showErrors ? errors.find((e) => e.fieldId === 'pr-from')?.message : undefined}>
+                  <FormField id="pr-from" label="Starts" required error={saveErrors.errorOf('pr-from')}>
                     <DatePicker value={form.validFrom} onChange={(validFrom) => setForm({ ...form, validFrom })} aria-label="Starts" />
                   </FormField>
                 </FieldRow>
               )}
               <FieldRow>
-                <FormField id="pr-min" label="Minimum" required error={showErrors ? errors.find((e) => e.fieldId === 'pr-min')?.message : undefined}>
+                <FormField id="pr-min" label="Minimum" required error={saveErrors.errorOf('pr-min')}>
                   <NumberField value={form.min} onChange={(min) => setForm({ ...form, min })} min={0} />
                 </FormField>
                 <FormField id="pr-mid" label="Midpoint" required>
@@ -352,7 +351,7 @@ function PayRangesDrawer({ grade, entities, pay, onClose }: { grade: MasterRecor
             {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
             <div className="yx-auth__row">
               <Button type="submit" variant="primary" loading={busy === 'save'}>{editing === 'new' ? 'Add range' : 'Save range'}</Button>
-              <Button onClick={() => { setEditing(null); setShowErrors(false); }} disabled={busy === 'save'}>Cancel</Button>
+              <Button onClick={() => { setEditing(null); saveErrors.reset(); }} disabled={busy === 'save'}>Cancel</Button>
             </div>
           </form>
         )}

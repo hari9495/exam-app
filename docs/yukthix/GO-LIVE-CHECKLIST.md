@@ -16,6 +16,7 @@ Things deliberately left for launch. Development runs locally until then (test k
 | 9 | After first deploy | Everyone signs in once more (old tokens had no session); admins review email domains on existing SSO providers | From the login PR (#129) |
 | 10 | Security programme | Pen test before the payroll pilot; incident plan and CERT-In 6-hour process; log retention ≥ 1 year | P12 §8 |
 | 11 | Company sign-in addresses | Set YX_BASE_DOMAIN, wildcard DNS + wildcard TLS certificate, and have SSO companies verify their email domains (details below) | Needed once the domain (item 1) exists; until then sign-in is email-first |
+| 12 | Real visitor IP behind the proxy | Set `TRUST_PROXY=true` only when the API sits behind exactly ONE trusted proxy hop (e.g. nginx); with Cloudflare + a load balancer, change the trust setting to the real hop count or Cloudflare's published IP ranges, then check Login activity shows real addresses, not the proxy's | Wrong setting = every visitor shares the proxy's IP (lockouts and rate limits hit everyone) or IPs can be forged |
 
 
 ## Sign-in without a company code (founder decision 7 Oct 2026)

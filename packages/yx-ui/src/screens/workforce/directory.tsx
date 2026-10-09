@@ -9,6 +9,7 @@ import { TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
 import { Breadcrumbs, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
+import { formatPhone } from '../../lib/format';
 import { dateLabel, errorText } from '../org/org-kit';
 import { HireDrawer, type HireDrawerProps } from '../history/hire';
 import { refName } from './workforce-kit';
@@ -58,7 +59,7 @@ function PersonPanel({ id, loadPerson }: { id: string; loadPerson: (id: string) 
         {person.primaryPhone && (
           <div>
             <dt>Mobile</dt>
-            <dd>{person.primaryPhone}</dd>
+            <dd>{formatPhone(person.primaryPhone)}</dd>
           </div>
         )}
         {person.primaryEmail && (

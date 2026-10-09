@@ -3,7 +3,7 @@ import { ArrowLeft, Building2 } from 'lucide-react';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField, FormSection, type FormErrorItem } from '../../components/field';
+import { FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
 import { MenuItem } from '../../components/menu';
@@ -32,15 +32,15 @@ export function supportInput(d: { reason: string; ticket: string; hours: number 
 
 function SupportRequestDrawer({ company, onClose, onSend }: { company: string; onClose: () => void; onSend: (input: SupportRequestInput) => Promise<void> }) {
   const [draft, setDraft] = useState({ reason: '', ticket: '', hours: 24 });
-  const [dirty, setDirty] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const { busy, error, run } = useRun();
   const set = (patch: Partial<typeof draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
     setDirty(true);
   };
   const { input, errors } = supportInput(draft);
-  const errorOf = (id: string) => (showErrors ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   return (
     <EditorDrawer
       open
@@ -48,13 +48,12 @@ function SupportRequestDrawer({ company, onClose, onSend }: { company: string; o
       dirty={dirty}
       title="Ask for support access"
       subtitle={company}
-      errors={errors}
-      showErrors={showErrors}
+      errors={saveErrors.shownErrors}
       saving={busy === 'send'}
       failed={error}
       saveLabel="Send request to the company"
       onSave={() => {
-        if (!input) return setShowErrors(true);
+        if (!input) return saveErrors.reveal();
         void run('send', () => onSend(input)).then((ok) => ok && onClose());
       }}
     >

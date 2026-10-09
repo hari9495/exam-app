@@ -39,6 +39,8 @@ const NO_REFRESH_PATHS = new Set([
   '/auth/mfa/verify',
   '/auth/mfa/passkey-options',
   '/auth/mfa/step-up',
+  // A wrong current password, not an expired session.
+  '/users/me/change-password',
 ]);
 
 // An error body can be read once; remember it for throwForResponse.
@@ -75,7 +77,7 @@ async function doFetch(path: string, options: RequestInit, accessToken?: string)
 }
 
 // errors: per-field problems from a form the API checks (Settings › Notifications › Email).
-const DETAIL_FIELDS = ['personIds', 'clashes', 'errors'] as const;
+const DETAIL_FIELDS = ['personIds', 'clashes', 'errors', 'retryAfterSeconds'] as const;
 
 async function throwForResponse(response: Response): Promise<never> {
   const body = await errorBody(response);

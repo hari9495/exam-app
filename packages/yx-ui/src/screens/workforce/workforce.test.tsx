@@ -47,7 +47,7 @@ describe('Directory (P02 Q4, YX-SEC-17)', () => {
     const drawer = await screen.findByRole('dialog');
     expect(within(drawer).getByText('KF-0142')).toBeInTheDocument();
     expect(await within(drawer).findByText('Candidate')).toBeInTheDocument();
-    expect(within(drawer).getByText('+919845012345')).toBeInTheDocument();
+    expect(within(drawer).getByText('+91 98450 12345')).toBeInTheDocument();
     expect(loadPerson).toHaveBeenCalledWith('p-arjun');
     await userEvent.click(within(drawer).getByRole('button', { name: 'Job history' }));
     expect(onOpenHistory).toHaveBeenCalledWith('p-arjun');

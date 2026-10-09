@@ -34,6 +34,26 @@ const SLUG_STORAGE_KEY = 'organizationSlug';
 // acting state, bouncing the user out of the org console. Persisting the acting org id lets
 // silentRefresh re-enter the org so the acting session survives refreshes.
 const ACTING_ORG_STORAGE_KEY = 'actingOrgId';
+// The refresh cookie is HttpOnly, so the browser cannot see whether a session exists. This flag (set with a
+// token, cleared when it goes) says "this browser signed in": without it, a fresh visit to the sign-in page
+// skips /auth/refresh instead of logging a 401 and spending a slot of the endpoint's strict rate limit.
+// localStorage, not sessionStorage: a new tab beside a signed-in one must still pick the session up.
+export const SESSION_HINT_KEY = 'yx-session';
+function hasSessionHint(): boolean {
+  try {
+    return window.localStorage.getItem(SESSION_HINT_KEY) === '1';
+  } catch {
+    return true; // storage blocked: behave as before and ask the API
+  }
+}
+function setSessionHint(on: boolean) {
+  try {
+    if (on) window.localStorage.setItem(SESSION_HINT_KEY, '1');
+    else window.localStorage.removeItem(SESSION_HINT_KEY);
+  } catch {
+    /* storage blocked */
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -69,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function applyToken(token: string | null) {
     setAccessToken(token);
+    setSessionHint(token !== null);
     const payload = token ? decodeJwtPayload(token) : null;
     setRole(payload && typeof payload.role === 'string' ? payload.role : null);
     setActingSuperAdmin(Boolean(payload?.actingSuperAdmin));
@@ -174,7 +195,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
       refreshChannelRef.current = channel;
     }
-    silentRefresh().finally(() => setIsLoading(false));
+    if (hasSessionHint()) silentRefresh().finally(() => setIsLoading(false));
+    else setIsLoading(false);
     return () => {
       setUnauthorizedHandler(null);
       refreshChannelRef.current?.close();

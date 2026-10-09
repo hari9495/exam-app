@@ -1,4 +1,4 @@
-import { forwardRef, useMemo, useState, type ForwardedRef, type ReactNode, type Ref } from 'react';
+import { forwardRef, useEffect, useMemo, useRef, useState, type ForwardedRef, type ReactNode, type Ref } from 'react';
 import { Command, useCommandState } from 'cmdk';
 import { Check, ChevronDown, Search } from 'lucide-react';
 import { cx } from '../lib/cx';
@@ -30,6 +30,7 @@ interface ListProps<V extends string> {
   multi?: boolean;
   /** Item highlighted when the list opens: the current choice (§14, keyboard users start where they are). */
   initial?: V;
+  onSearchChange?: (query: string) => void;
 }
 
 /** Empty result as a plain status message; the (empty) listbox is hidden so it isn't announced as a list with no options. */
@@ -43,12 +44,22 @@ function EmptyNote({ text }: { text: string }) {
   );
 }
 
-function OptionList<V extends string>({ options, isSelected, onPick, searchable, searchPlaceholder, emptyText, renderOption, multi, initial }: ListProps<V>) {
+function OptionList<V extends string>({ options, isSelected, onPick, searchable, searchPlaceholder, emptyText, renderOption, multi, initial, onSearchChange }: ListProps<V>) {
+  // Server-backed search: the host filters, so the list shows what it was given; typing is debounced like FilterBar.
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(timer.current), []);
   return (
-    <Command className="yx-listbox" loop defaultValue={initial}>
+    <Command className="yx-listbox" loop defaultValue={initial} shouldFilter={!onSearchChange}>
       <div className="yx-listbox__search" data-hidden={!searchable || undefined}>
         <Icon icon={Search} />
-        <Command.Input placeholder={searchPlaceholder} aria-label={searchPlaceholder} />
+        <Command.Input
+          placeholder={searchPlaceholder}
+          aria-label={searchPlaceholder}
+          onValueChange={onSearchChange && ((q) => {
+            clearTimeout(timer.current);
+            timer.current = setTimeout(() => onSearchChange(q), 200);
+          })}
+        />
       </div>
       <EmptyNote text={emptyText} />
       <Command.List aria-multiselectable={multi || undefined}>
@@ -101,6 +112,8 @@ interface CommonProps<V extends string> {
   'aria-label'?: string;
   /** Start with the list open (docs and screenshot tests). */
   defaultOpen?: boolean;
+  /** The host searches (an API call) and passes the matches as `options`; the list is not filtered here. */
+  onSearchChange?: (query: string) => void;
 }
 
 export interface SelectProps<V extends string = string> extends CommonProps<V> {
@@ -129,6 +142,7 @@ function SelectInner<V extends string>(
     className,
     'aria-label': ariaLabel,
     defaultOpen = false,
+    onSearchChange,
   }: SelectProps<V>,
   ref: ForwardedRef<HTMLButtonElement>,
 ) {
@@ -169,11 +183,12 @@ function SelectInner<V extends string>(
             onChange(v === CLEAR ? null : v);
             setOpen(false);
           }}
-          searchable={showSearch}
+          searchable={showSearch || Boolean(onSearchChange)}
           searchPlaceholder={searchPlaceholder}
           emptyText={emptyText}
           renderOption={renderOption}
           initial={value ?? undefined}
+          onSearchChange={onSearchChange}
         />
       </PopoverContent>
     </Popover>

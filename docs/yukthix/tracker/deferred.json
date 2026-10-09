@@ -319,7 +319,9 @@
   "step": "1",
   "source": "login-no-code",
   "date": "2026-10-06",
-  "item": "A domain is never re-checked after it is verified; a lapsed domain keeps routing until it is taken off the company's providers."
+  "item": "A domain is never re-checked after it is verified; a lapsed domain keeps routing until it is taken off the company's providers.",
+  "status": "Done",
+  "note": "Closed 9 Oct 2026 (VALIDATION-2026-10-08-area1): built: DOMAIN_RECHECK_CRON re-checks verified domains daily, a domain lapses after 3 misses and admins are emailed; test/email-first-sign-in.e2e-spec.ts (US-A-035)."
  },
  {
   "id": "D-047",
@@ -347,7 +349,9 @@
   "step": "1",
   "source": "login-no-code",
   "date": "2026-10-06",
-  "item": "Platform staff (super admin) accounts are now one of the email-first candidates. If a staff account shares an email and password with a company account, the picker shows a \"YukthiX\" choice."
+  "item": "Platform staff (super admin) accounts are now one of the email-first candidates. If a staff account shares an email and password with a company account, the picker shows a \"YukthiX\" choice.",
+  "status": "Done",
+  "note": "Closed 9 Oct 2026 (VALIDATION-2026-10-08-area1): no longer true since W-005: staff accounts are never email-first candidates and never appear in the picker; auth.service.ts, test/email-first-sign-in.e2e-spec.ts (US-A-034)."
  },
  {
   "id": "D-051",
@@ -522,7 +526,9 @@
   "step": "1",
   "source": "login:1c-mfa",
   "date": "2026-10-06",
-  "item": "Passkey-only (usernameless) sign-in, where a passkey alone gives AAL2, is not built. Passkeys work as the second factor."
+  "item": "Passkey-only (usernameless) sign-in, where a passkey alone gives AAL2, is not built. Passkeys work as the second factor.",
+  "status": "Done",
+  "note": "Closed 9 Oct 2026 (VALIDATION-2026-10-08-area1): built: \"Sign in with a passkey\" signs in at AAL2 with no password; POST /auth/passkey/verify, test/passkey-sign-in.e2e-spec.ts (US-A-039)."
  },
  {
   "id": "D-076",

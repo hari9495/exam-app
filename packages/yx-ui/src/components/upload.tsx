@@ -126,7 +126,11 @@ export function FileUpload({ upload, accept, maxSize = 10 * 1024 * 1024, multipl
           ref={inputRef}
           id={controlProps.id}
           type="file"
-          hidden
+          // Focusable (not display:none) so the field label and the error summary can reach it; the
+          // zone shows the focus ring. Out of the tab order: "Browse files" is the keyboard stop.
+          className="yx-visually-hidden"
+          tabIndex={-1}
+          aria-describedby={cxIds(hintId, controlProps['aria-describedby'])}
           multiple={multiple}
           accept={accept?.join(',')}
           disabled={disabled}

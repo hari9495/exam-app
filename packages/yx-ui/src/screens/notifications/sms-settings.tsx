@@ -4,7 +4,7 @@ import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
-import { ErrorSummary, FormField, FormSection } from '../../components/field';
+import { ErrorSummary, FormField, FormSection, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { NumberField, PasswordField, TextArea, TextField } from '../../components/inputs';
 import { ConfirmDialog } from '../../components/overlay';
@@ -12,6 +12,7 @@ import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
 import { Breadcrumbs, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
+import { formatPhone } from '../../lib/format';
 import type { SmsAccount, SmsAccountInput, SmsDeliveryRow, SmsDeliveryStatus, SmsOverview, SmsProvider, SmsTemplate, SmsTemplateVariable, SmsTestResult } from './types';
 
 /* ---------- words ---------- */
@@ -189,7 +190,6 @@ interface EditorProps {
 
 export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider, examplesHref, onSave, onDelete }: EditorProps) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(account));
-  const [showErrors, setShowErrors] = useState(false);
   const [status, setStatus] = useState<{ kind: 'idle' | 'saving' } | { kind: 'failed'; message: string }>({ kind: 'idle' });
   const [dirty, setDirty] = useState(false);
   const set = (patch: Partial<Draft>) => {
@@ -206,11 +206,12 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
   };
   const secretsSet = new Set(account?.secretsSet ?? []);
   const { input, errors } = accountInput(draft, account);
-  const errorOf = (id: string) => (showErrors ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   const providers = (['http', 'twilio', ...(allowDevProvider || account?.provider === 'dev' ? ['dev'] : [])] as SmsProvider[]).map((p) => ({ value: p, label: p === 'http' ? 'Any gateway' : p === 'twilio' ? 'Twilio' : 'Development' }));
 
   const save = async () => {
-    if (!input) return setShowErrors(true);
+    if (!input) return saveErrors.reveal();
     setStatus({ kind: 'saving' });
     try {
       await onSave(input);
@@ -254,7 +255,7 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
     >
       <form className="yx-ntf__editor" onSubmit={(e) => { e.preventDefault(); void save(); }} noValidate>
         <InlineAlert tone="info">Secrets are saved encrypted and never shown again. You confirm it’s you before saving.</InlineAlert>
-        {showErrors && errors.length > 0 && <ErrorSummary errors={errors} />}
+        <ErrorSummary errors={saveErrors.shownErrors} />
 
         <FormSection title="Account">
           <FormField id="sms-name" label="Name" required error={errorOf('sms-name')}>
@@ -405,7 +406,7 @@ export function SmsSettingsScreen(props: SmsSettingsScreenProps) {
   return (
     <div className="yx-auth__page">
       <PageHeader
-        breadcrumbs={<Breadcrumbs items={platform ? [{ label: 'Console' }, { label: 'Shared SMS account' }] : [{ label: 'Settings' }, { label: 'Notifications' }, { label: 'SMS' }]} />}
+        breadcrumbs={<Breadcrumbs items={platform ? [{ label: 'Console' }, { label: 'Shared SMS account' }] : [{ label: 'Security' }, { label: 'Text messages (SMS)' }]} />}
         title={platform ? 'YukthiX shared SMS account' : 'Text messages (SMS)'}
         description={platform ? 'The account companies use unless they add their own.' : 'One-time codes by text: which account sends them, your monthly limit and what was sent.'}
       />
@@ -534,7 +535,7 @@ function SmsSettings(props: SmsSettingsScreenProps & { overview: SmsOverview }) 
   ];
   const deliveryColumns: TableColumn<SmsDeliveryRow>[] = [
     { key: 'when', header: 'When', value: (r) => r.createdAt, render: (r) => when(r.createdAt), width: 190, hideable: false },
-    { key: 'to', header: 'To', value: (r) => r.to, width: 150 },
+    { key: 'to', header: 'To', value: (r) => formatPhone(r.to), width: 150 },
     {
       key: 'status',
       header: 'Result',
@@ -557,7 +558,7 @@ function SmsSettings(props: SmsSettingsScreenProps & { overview: SmsOverview }) 
     if (!t || t.kind === 'sending') return [];
     if (t.kind === 'failed') return [<InlineAlert key={a.id} tone="danger" title={`Test from ${a.name} not sent`}>{t.message}</InlineAlert>];
     const { result } = t;
-    if (result.status === 'sent') return [<InlineAlert key={a.id} tone="success" title={`Test sent from ${a.name} to ${result.to ?? 'your number'}`}>Check your phone. The delivery log below shows the gateway’s report when it arrives.</InlineAlert>];
+    if (result.status === 'sent') return [<InlineAlert key={a.id} tone="success" title={`Test sent from ${a.name} to ${result.to ? formatPhone(result.to) : 'your number'}`}>Check your phone. The delivery log below shows the gateway’s report when it arrives.</InlineAlert>];
     return [<InlineAlert key={a.id} tone="warning" title={`Test from ${a.name} not sent`}>{deliveryDetail({ status: 'fallback', error: result.error }) ?? 'The gateway did not confirm the message.'}</InlineAlert>];
   });
 

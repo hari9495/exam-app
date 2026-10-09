@@ -394,7 +394,8 @@
 .yx-scope__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .yx-scope__period { flex: none; color: var(--yx-color-text-secondary); }
 .yx-scope__lock { display: inline-flex; align-items: center; gap: var(--yx-space-1); flex: none; color: var(--yx-color-warning-text); font-weight: var(--yx-weight-medium); }
-.yx-scope[data-locked] { border-color: var(--yx-color-warning-border); }
+.yx-scope[data-locked] { border-color: var(--yx-color-warning-border); background: var(--yx-color-warning-bg); } /* filled: the amber edge alone is under 3:1 */
+.yx-scope[data-locked]:hover { border-color: var(--yx-color-warning-text); }
 .yx-scope__panel { display: flex; flex-direction: column; gap: var(--yx-space-2); width: min(calc(var(--yx-space-16) * 5), calc(100vw - var(--yx-space-8))); padding: var(--yx-space-4); }
 .yx-scope__field { font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); }
 .yx-scope__field:not(:first-child) { margin-top: var(--yx-space-2); }

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
 import { EmptyState } from '../../components/feedback';
-import { FormField, FormSection, type FormErrorItem } from '../../components/field';
+import { FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
@@ -31,21 +31,21 @@ export function companyInput(d: NewCompany): { input: NewCompany | null; errors:
 function NewCompanyDrawer({ products, onClose, onCreate }: { products: Product[]; onClose: () => void; onCreate: (input: NewCompany) => Promise<void> }) {
   const [draft, setDraft] = useState<NewCompany>({ name: '', slug: '', adminName: '', adminEmail: '', products: [] });
   const [slugTouched, setSlugTouched] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const { busy, error, run } = useRun();
   const set = (patch: Partial<NewCompany>) => {
     setDraft((d) => ({ ...d, ...patch }));
     setDirty(true);
   };
   const { input, errors } = companyInput(draft);
-  const errorOf = (id: string) => (showErrors ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   const save = () => {
-    if (!input) return setShowErrors(true);
+    if (!input) return saveErrors.reveal();
     void run('save', () => onCreate(input)).then((ok) => ok && onClose());
   };
   return (
-    <EditorDrawer open onClose={onClose} dirty={dirty} title="New company" subtitle="Starts a 30-day trial" errors={errors} showErrors={showErrors} saving={busy === 'save'} failed={error} saveLabel="Create company" onSave={save}>
+    <EditorDrawer open onClose={onClose} dirty={dirty} title="New company" subtitle="Starts a 30-day trial" errors={saveErrors.shownErrors} saving={busy === 'save'} failed={error} saveLabel="Create company" onSave={save}>
       <FormSection title="Company">
         <FormField id="co-name" label="Company name" required error={errorOf('co-name')}>
           <TextField value={draft.name} onChange={(name) => set({ name, ...(slugTouched ? {} : { slug: slugFrom(name) }) })} maxLength={200} />

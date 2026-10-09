@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
-import { FormField, FormSection, type FormErrorItem } from '../../components/field';
+import { FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { MenuItem } from '../../components/menu';
@@ -42,15 +42,15 @@ export function priceInput(d: { currency: 'INR' | 'USD'; unitPrice: number | nul
 
 function PriceDrawer({ product, today, onClose, onSave }: { product: Product; today: string; onClose: () => void; onSave: (input: NewPrice) => Promise<void> }) {
   const [draft, setDraft] = useState({ currency: 'INR' as 'INR' | 'USD', unitPrice: null as number | null, minimumMonthly: null as number | null, validFrom: isoAfter(today, NOTICE_DAYS), reason: '' });
-  const [dirty, setDirty] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const { busy, error, run } = useRun();
   const set = (patch: Partial<typeof draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
     setDirty(true);
   };
   const { input, errors } = priceInput(draft, product, today);
-  const errorOf = (id: string) => (showErrors ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   return (
     <EditorDrawer
       open
@@ -58,13 +58,12 @@ function PriceDrawer({ product, today, onClose, onSave }: { product: Product; to
       dirty={dirty}
       title={`New price for ${product.name}`}
       subtitle={`Per ${product.unit} per month, before GST`}
-      errors={errors}
-      showErrors={showErrors}
+      errors={saveErrors.shownErrors}
       saving={busy === 'save'}
       failed={error}
       saveLabel="Plan this price"
       onSave={() => {
-        if (!input) return setShowErrors(true);
+        if (!input) return saveErrors.reveal();
         void run('save', () => onSave(input)).then((ok) => ok && onClose());
       }}
     >
