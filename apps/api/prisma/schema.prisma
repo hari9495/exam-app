@@ -2912,6 +2912,8 @@ model SdDesk {
   reopenWindowDays   Int      @default(7) @map("reopen_window_days") @db.SmallInt
   requesterCanReopen Boolean  @default(true) @map("requester_can_reopen")
   autoCloseDays      Int?     @default(3) @map("auto_close_days") @db.SmallInt
+  /// Founder decision 9 Oct 2026: minutes a new ticket waits for its best-matched agent before routing falls back.
+  routingWaitMinutes Int      @default(2) @map("routing_wait_minutes") @db.SmallInt
   /// SD-2.10: desks this desk may move tickets to.
   forwardTo          String[] @default([]) @map("forward_to") @db.Uuid
   status             String   @default("active") @db.VarChar(10)
@@ -3065,6 +3067,8 @@ model SdRequesterFlag {
   personId       String   @map("person_id") @db.Uuid
   vip            Boolean  @default(false)
   note           String?  @db.VarChar(200)
+  /// The contact's saved language (ISO 639-1/3), used for WhatsApp / SMS / chat tickets before detection.
+  language       String?  @db.VarChar(8)
   updatedBy      String?  @map("updated_by") @db.Uuid
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -3124,6 +3128,8 @@ model SdTicket {
   lifecycleVersion     Int?                     @map("lifecycle_version")
   /// SD-2.25: the language the requester wrote in (routing by language).
   language             String?                  @db.VarChar(8)
+  /// Founder decision 9 Oct 2026: waiting for the best-matched agent until then (the desk sweep falls back after).
+  routingWaitUntil     DateTime?                @map("routing_wait_until") @db.Timestamptz(3)
   version              Int                      @default(1)
   search               Unsupported("tsvector")?
   createdBy            String?                  @map("created_by") @db.Uuid
