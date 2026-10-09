@@ -1280,6 +1280,19 @@ Raised while building batch 5c and accepted on 9 Oct 2026. Built on `feat/yukthi
 |---|---|---|
 | Uttar Pradesh minimum wages (current schedules and VDA) | Compliance owner | The national floor wage is used for UP places. |
 | Tamil Nadu dearness allowance for the year (shops and commercial establishments) | Compliance owner | The check compares the basic rate and says the DA is missing. |
+| The pilot customer's bank file format (5d-D1) | Compliance owner with the pilot customer | Bank files use the generic NEFT / RTGS format; the bank's own layout is loaded as a bank-format rule set (two staff) once a real sample file is checked. |
+
+### 19.5 Batch 5d build decisions (founder, accepted 9 Oct 2026)
+
+Raised while building batch 5d and accepted on 9 Oct 2026. Built on `feat/yukthix-payroll-5d`.
+
+| # | Decision | What is built |
+|---|---|---|
+| 5d-D1 | **Bank formats: only the generic NEFT / RTGS format for now.** The pilot customer's bank format is loaded as data once a real sample file is checked. | Bank formats are published rule sets (`IN.BANKFMT`, two staff); the generic XLSX layout is the only one. The pilot's bank is an open data item (§19.4) and go-live checklist item 15. |
+| 5d-D2 | **Penny drop: for the pilot, a second person records the test-payment reference** from the company's bank. An automatic provider is chosen later. | The urgent bank fix after a failed payment needs a checker (not the employee), a fresh second sign-in and the penny-drop reference; it is audited. The provider seam is the single place that accepts a verified reference; no provider is wired. |
+| 5d-D3 | **Emailed payslip password: one the employee sets in My security**, stored as a hash with the platform's password hashing; not the date of birth. Emailing stays off by default; an employee without the password gets only the in-app payslip. | My security has a "Payslip password" card: set, change or remove it (the sign-in password is asked first when the person has one); only an argon2 hash is kept. The date-of-birth default is removed. See the build note below. |
+
+**Build note on 5d-D3 (DECISION NEEDED).** A password-protected PDF can only be locked with the password itself (or key material derived from it with the PDF format's own hash); an argon2 hash cannot lock it. With only the hash stored, the server cannot produce the protected PDF when payslips are published. Until the founder chooses, emailing sends no PDF to anyone (people with the password set are counted as waiting); everyone gets the in-app payslip. Options: (a) also keep the password sealed with the company's encryption key, used only to lock emailed PDFs; (b) email a link to the in-app payslip instead of a PDF; (c) drop payslip email.
 
 ---
 
@@ -1308,3 +1321,4 @@ To add to [GO-LIVE-CHECKLIST.md](../GO-LIVE-CHECKLIST.md) (the coordinator edits
 | 9 Oct 2026 | §19.1: batch 5a build decisions 5a-D1 … 5a-D4 accepted (signed-PDF checks, frozen dates blocked, alumni email, pay guard on compensation in 5b). |
 | 9 Oct 2026 | §19.2: batch 5b build decisions 5b-D1 … 5b-D3 accepted (state minimum-wage tables, payslip languages, CCA roots as published data). |
 | 9 Oct 2026 | §19.3–19.4: batch 5c build decisions 5c-D1 … 5c-D3 accepted (UP minimum wages and TN DA as open data items, skill class on the job, run rules stay verify); open data items listed. |
+| 9 Oct 2026 | §19.4–19.5: batch 5d build decisions 5d-D1 … 5d-D3 accepted (generic bank format only and the pilot's bank as an open data item, penny drop by a second person, an employee-set payslip password); the hash-versus-PDF-lock question recorded as open. |
