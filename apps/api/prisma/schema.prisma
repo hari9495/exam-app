@@ -6187,6 +6187,7 @@ model LopInput {
   enteredBy      String   @map("entered_by") @db.Uuid
   enteredAt      DateTime @default(now()) @map("entered_at") @db.Timestamptz(3)
 
+  @@unique([organizationId, employmentId, periodStart], map: "lop_inputs_key")
   @@map("lop_inputs")
 }
 
@@ -6225,6 +6226,7 @@ model SpecialDays {
   enteredBy      String   @map("entered_by") @db.Uuid
   enteredAt      DateTime @default(now()) @map("entered_at") @db.Timestamptz(3)
 
+  @@unique([organizationId, employmentId, periodStart, kind], map: "special_days_key")
   @@map("special_days")
 }
 
@@ -6361,6 +6363,7 @@ model Journal {
   exports        Json     @default("[]")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
+  @@unique([organizationId, runId], map: "journals_run_key")
   @@map("journals")
 }
 
@@ -6376,5 +6379,6 @@ model EmployeeCostRate {
   sourcePayslipId String   @map("source_payslip_id") @db.Uuid
   provisional     Boolean  @default(false)
 
+  @@unique([organizationId, employeeId, periodStart], map: "employee_cost_rates_key")
   @@map("employee_cost_rates")
 }

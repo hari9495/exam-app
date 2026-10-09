@@ -116,7 +116,7 @@ export class PeriodsService {
   }
 
   /** What stops a lock (P08 pre-flight): requests still waiting, and open exceptions where the group blocks (YX-LOCK-08). */
-  private async preflightIn(tx: Tx, c: CompanyContext, entityId: string, month: string) {
+  async preflightIn(tx: Tx, c: CompanyContext, entityId: string, month: string) {
     const org = c.organizationId;
     const { from, to } = monthRange(month);
     const people = (await this.employeesOf(tx, org, entityId, from, to)).map((p) => p.id);

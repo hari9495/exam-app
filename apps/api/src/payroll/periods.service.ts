@@ -300,7 +300,10 @@ export class PayPeriodsService implements OnModuleInit {
     // Re-checked at the moment of reopening: something may have left the system while the request waited.
     await this.assertNothingLeft(tx, org, p);
     if (p.stage !== 'locked') throw new ConflictException('This month is no longer locked.');
-    await tx.payPeriod.update({ where: { id: p.id }, data: { stage: 'open', changedBy: null, changedAt: new Date(), reason: r.reason, lockedAt: null, lockedBy: null, version: { increment: 1 } } });
+    await tx.payPeriod.update({ where: { id: p.id }, data: { stage: 'open', changedBy: null, changedAt: new Date(), reason: r.reason, lockedAt: null, lockedBy: null, lockedByRunId: null, version: { increment: 1 } } });
+    // PAY-3.10: an approved payroll of the month becomes 'reopened'; recalculating it makes new payslip versions and its
+    // approval marks the earlier payslips revised (they are kept).
+    await withPayScope(tx, [p.legalEntityId], () => tx.payrollRun.updateMany({ where: { organizationId: org, legalEntityId: p.legalEntityId, periodStart: p.periodStart, status: 'approved' }, data: { status: 'reopened' } }));
     await tx.periodLockEvent.create({ data: { organizationId: org, payPeriodId: p.id, fromStage: 'locked', toStage: 'open', byUser: null, reason: r.reason, reopenRequestId: r.id } });
     const superseded = await tx.payrollFeedRow.updateMany({ where: { organizationId: org, payPeriodId: p.id, supersededAt: null }, data: { supersededAt: new Date() } });
     await audit(tx, c, 'payroll.period.reopened', 'pay_period', p.id, { requestId: r.id, legalEntityId: p.legalEntityId, month: dateOf(p.periodStart).slice(0, 7), feedRowsSetAside: superseded.count });

@@ -52,6 +52,16 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'payroll.component.manage',
   'payroll.template.manage',
   'payroll.import.run',
+  // M03 batch 5c: runs, inputs, holds, loans, journals, cost rates.
+  'payroll.run.view',
+  'payroll.run.prepare',
+  'payroll.run.approve',
+  'payroll.input.manage',
+  'payroll.hold.manage',
+  'payroll.loan.manage',
+  'payroll.loan.approve',
+  'payroll.journal.export',
+  'payroll.cost_rate.view',
 ];
 
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).
