@@ -1,0 +1,122 @@
+{
+  "note": "Rules the payroll run needs beyond the 5b pack (batch 5c). Loaded by two staff through the console flow (scripts/load-rule-pack.ts, the seed). Every set marked verify until the compliance owner and the partner CA confirm it.",
+  "ruleSets": [
+    {
+      "statute": "IN.SUBSISTENCE",
+      "jurisdiction": "IN",
+      "version": "1982-v1",
+      "validFrom": "1982-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Industrial Employment (Standing Orders) Act, 1946 s.10A(1): subsistence allowance during suspension pending enquiry, half of the wages for the first ninety days and three-fourths thereafter (higher amounts under state rules or standing orders prevail).",
+      "values": {
+        "kind": "subsistence",
+        "firstDays": 90,
+        "firstRate": "0.5",
+        "laterRate": "0.75"
+      },
+      "golden": [
+        {
+          "name": "10 days at 1,000 a day within the first 90",
+          "fn": "subsistence",
+          "input": {
+            "dailyWage": "1000",
+            "days": 10,
+            "daysBefore": 0
+          },
+          "expected": {
+            "amount": "5000"
+          }
+        },
+        {
+          "name": "Crossing day 90: 5 days at half, 5 at three-fourths",
+          "fn": "subsistence",
+          "input": {
+            "dailyWage": "1000",
+            "days": 10,
+            "daysBefore": 85
+          },
+          "expected": {
+            "amount": "6250",
+            "firstDays": 5
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.MATERNITY",
+      "jurisdiction": "IN",
+      "version": "2017-v1",
+      "validFrom": "2017-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Maternity Benefit Act, 1961 s.5(1) and (3) (as amended in 2017): the average daily wage for each day of actual absence, up to 26 weeks; not payable by the employer where the ESI Act covers the woman (s.2(1), ESI Act s.50).",
+      "values": {
+        "kind": "maternity",
+        "rate": "1",
+        "maxWeeks": 26
+      },
+      "golden": [
+        {
+          "name": "20 days at an average of 800 a day",
+          "fn": "maternity",
+          "input": {
+            "averageDailyWage": "800",
+            "days": 20,
+            "esiCovered": false
+          },
+          "expected": {
+            "amount": "16000",
+            "payer": "employer"
+          }
+        },
+        {
+          "name": "ESI covers her: nothing from the employer",
+          "fn": "maternity",
+          "input": {
+            "averageDailyWage": "800",
+            "days": 20,
+            "esiCovered": true
+          },
+          "expected": {
+            "amount": "0",
+            "payer": "esi"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.EC",
+      "jurisdiction": "IN",
+      "version": "1923-v1",
+      "validFrom": "2009-12-18",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Employees' Compensation Act, 1923 s.4(1)(d) and 4(2): temporary disablement is paid half-monthly at 25% of monthly wages (waiting period of 3 days unless the disablement lasts 28 days or more); ESI-covered injuries are paid by the ESIC (ESI Act s.53).",
+      "values": {
+        "kind": "injury",
+        "halfMonthlyRate": "0.25",
+        "waitingDays": 3,
+        "waiverIfOverDays": 28
+      },
+      "golden": [
+        {
+          "name": "Half a month (15 days) on 30,000 a month: 7,500",
+          "fn": "injury",
+          "input": {
+            "monthlyWage": "30000",
+            "days": 15,
+            "monthDays": 30,
+            "esiCovered": false
+          },
+          "expected": {
+            "amount": "7500"
+          }
+        }
+      ]
+    }
+  ]
+}

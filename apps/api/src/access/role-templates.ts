@@ -28,6 +28,10 @@ const TIME_HR_ADMIN = [...TIME_HR_VIEW, 'leave.settings.manage', 'leave.balance.
 // (sd_desk_members), so these are granted company-wide; replying and owning also need an agent or lead seat (§6.3).
 // M03 batch 5a (§6.1–6.2): pay periods and reopen, corrections, pay documents, exchange files and the audit log.
 const PAY_ADMIN_5A = ['payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view'];
+// M03 batch 5b (§6.2): set-up, statutory registrations, components, templates and imports.
+const PAY_ADMIN_5B = ['payroll.setup.manage', 'payroll.statutory.setup', 'payroll.component.manage', 'payroll.template.manage', 'payroll.import.run'];
+// M03 batch 5c (§6.1–6.2): runs, inputs, holds, loans, journals; approving a run is for approvers, never the preparer.
+const PAY_ADMIN_5C = ['payroll.run.view', 'payroll.run.prepare', 'payroll.input.manage', 'payroll.hold.manage', 'payroll.loan.manage', 'payroll.journal.export', 'payroll.cost_rate.view'];
 const PAY_APPROVER_5A = ['payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release'];
 
 const DESK_AGENT = ['desk.ticket.view', 'desk.ticket.work', 'desk.ticket.note', 'desk.ticket.export', 'desk.task.work', 'desk.kb.view_internal', 'desk.kb.author', 'desk.chat.work', 'desk.hr_summary.view', 'desk.ticket.move'];
@@ -55,7 +59,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'Pay, pay ranges, entity tax identifiers, and approving bank and identity changes.',
     cannot: 'HR settings.',
-    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A],
+    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C],
   },
   {
     key: 'payroll_approver',
@@ -63,7 +67,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'Checks and approves pay changes, bank account changes and payroll files prepared by others; the first check of a request to reopen a locked month.',
     cannot: 'Prepare pay changes.',
-    permissions: [...HR_VIEW, 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', ...PAY_APPROVER_5A],
+    permissions: [...HR_VIEW, 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', ...PAY_APPROVER_5A, 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve'],
   },
   {
     key: 'finance',
@@ -79,7 +83,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'The final approval to reopen a locked pay month; releases payroll files prepared by others.',
     cannot: 'Prepare pay, or see individual tax workspaces.',
-    permissions: ['org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release'],
+    permissions: ['org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view'],
   },
   {
     key: 'compliance_owner',
@@ -87,7 +91,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'Statutory files, registers and pay documents of the entity, and its audit log.',
     cannot: 'Change pay.',
-    permissions: ['org.structure.view', 'payroll.period.view', 'payroll.file.view', 'payroll.document.view', 'audit.view'],
+    permissions: ['org.structure.view', 'payroll.period.view', 'payroll.file.view', 'payroll.document.view', 'audit.view', 'payroll.statutory.setup'],
   },
   {
     key: 'payroll_auditor',
@@ -95,7 +99,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'Reads pay periods, pay documents, payroll files and the audit log, and exports it. Grant it with an end date (YX-SEC-15).',
     cannot: 'Any change.',
-    permissions: ['org.structure.view', 'payroll.period.view', 'payroll.document.view', 'payroll.file.view', 'audit.view', 'audit.export'],
+    permissions: ['org.structure.view', 'payroll.period.view', 'payroll.document.view', 'payroll.file.view', 'audit.view', 'audit.export', 'payroll.run.view'],
   },
   {
     key: 'team_salary',

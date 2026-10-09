@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { seedOrgStructure } from './seed-org-structure';
@@ -12,8 +14,9 @@ import { seedServiceDeskEsm } from './seed-service-desk-esm';
 import { seedServiceDeskEsm2 } from './seed-service-desk-esm2';
 import { TIME_PERMISSIONS, seedTime } from './seed-time';
 import { seedTimeB2 } from './seed-time-b2';
-import { PAY_PERMISSIONS, seedAuditAnchor, seedPay } from './seed-pay';
+import { PAY_PERMISSIONS, seedAuditAnchor, seedPay, seedPay5b } from './seed-pay';
 import { LIFE_PERMISSIONS, seedLifecycle, seedLifecycleAssets, seedLifecycleLetters } from './seed-lifecycle';
+import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file';
 
 const prisma = new PrismaClient();
 
@@ -101,6 +104,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'platform.channels.manage',
     'platform.support.request',
     'platform.audit.view',
+    'platform.statutory.manage',
     // M14 SD-1.31: the YukthiX Support desk in the console.
     'platform.support_desk.work',
   ],
@@ -338,6 +342,20 @@ async function main() {
       // Step 3, the platform console (P14): the demo staff member has a name, and the demo companies use YukthiX HR.
       // Staff sign in at /staff/sign-in and add a security key on first sign-in (P12 Q7).
       await tx.user.updateMany({ where: { email: 'super@platform.test', organizationId: null }, data: { name: 'Anand Iyer' } });
+      // 5b-D1: a second staff member (the rule reviewer), and the state minimum-wage tables drafted by Anand and published
+      // by Kavitha through the console's two-person flow (src/statutory/load-rule-file.ts).
+      const reviewer =
+        (await tx.user.findFirst({ where: { email: 'rules@platform.test', organizationId: null } })) ??
+        (await tx.user.create({ data: { email: 'rules@platform.test', name: 'Kavitha Menon', passwordHash: superAdminHash, role: 'super_admin', organizationId: null } }));
+      const anand = await tx.user.findFirstOrThrow({ where: { email: 'super@platform.test', organizationId: null } });
+      const minWages = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-min-wages.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
+      await loadRuleSets(tx, minWages, anand.id, reviewer.id);
+      // 5b-D3: the India CCA roots (cca.gov.in) for USB-token signatures, by the same two-person flow.
+      const ccaRoots = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-cca-roots.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
+      await loadRuleSets(tx, ccaRoots, anand.id, reviewer.id);
+      // Batch 5c: subsistence, maternity and injury rules for the payroll run, by the same flow.
+      const runRules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-run.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
+      await loadRuleSets(tx, runRules, anand.id, reviewer.id);
       for (const slug of ['demo-org', 'ganga-textiles']) {
         const org = await tx.organization.findUnique({ where: { slug }, select: { id: true } });
         if (org) {
@@ -375,6 +393,8 @@ async function main() {
       await seedLifecycle(tx, demoOrg.id);
       await seedLifecycleLetters(tx, demoOrg.id);
       await seedLifecycleAssets(tx, demoOrg.id);
+      // Step 5 payroll batch 5b: the starter components and template, pay groups, statutory registrations.
+      await seedPay5b(tx, demoOrg.id);
     }
   }, { timeout: 420000 });
   // Payroll 5a: the demo company's audit chain checked once (the daily job's anchor), after the seed committed.
@@ -384,7 +404,7 @@ async function main() {
     if (demo) await seedAuditAnchor(tx, demo.id);
   });
 
-  console.log(`Seed complete: super@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026 (Payroll Admin), payroll-approver@demo-org.test / Passw0rd!2026 (Payroll Approver), finance@demo-org.test / Passw0rd!2026 (Finance Approver), hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); Service Desk: it-agent@ / it-lead@ / it-collab@ / arjun@demo-org.test / Passw0rd!2026, customer portal /yx/portal/demo-org/care (asha@annapurna-stores.test, sign-in code from scripts/desk-portal-code.ts); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
+  console.log(`Seed complete: super@platform.test / DevSuper123! and rules@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026 (Payroll Admin), payroll-approver@demo-org.test / Passw0rd!2026 (Payroll Approver), finance@demo-org.test / Passw0rd!2026 (Finance Approver), hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); Service Desk: it-agent@ / it-lead@ / it-collab@ / arjun@demo-org.test / Passw0rd!2026, customer portal /yx/portal/demo-org/care (asha@annapurna-stores.test, sign-in code from scripts/desk-portal-code.ts); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
 }
 
 // Only run when invoked as a script (prisma db seed / ts-node). Guarded so importing this module for

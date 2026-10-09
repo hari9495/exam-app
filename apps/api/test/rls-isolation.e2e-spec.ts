@@ -11,10 +11,15 @@ import { randomUUID } from 'crypto';
 // Pay, identity and bank tables also carry the RESTRICTIVE support_session_excluded policy (step 3, P02 Q8).
 const SUPPORT_EXCLUDED = ['compensations', 'grade_pay_ranges', 'employee_identifiers', 'employee_bank_accounts', 'employee_profile_requests'];
 // Payroll batch 5a: every payroll table too (payroll-5a.e2e-spec.ts checks them, and the pay guard, from the catalogue).
-const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_reopen_requests', 'pay_corrections', 'device_backfills', 'held_punches', 'payroll_feed_rows', 'exchange_files', 'exchange_file_links', 'pay_documents', 'pay_document_counters', 'pay_document_nominees', 'pay_portal_sessions'];
+const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_reopen_requests', 'pay_corrections', 'device_backfills', 'held_punches', 'payroll_feed_rows', 'exchange_files', 'exchange_file_links', 'pay_documents', 'pay_document_counters', 'pay_document_nominees', 'pay_portal_sessions',
+  // Batch 5b.
+  'statutory_registrations', 'entity_statutory_options', 'pay_groups', 'pay_group_members', 'pay_components', 'salary_templates', 'salary_template_versions', 'salary_template_lines', 'compensation_packages', 'compensation_lines', 'employee_statutory', 'establishment_coverage', 'pay_import_batches', 'opening_balances', 'as_paid_lines', 'previous_employment_income', 'payslip_layouts',
+  // Batch 5c.
+  'payroll_runs', 'run_employees', 'run_validations', 'payslips', 'payslip_lines', 'payslip_snapshots', 'lop_inputs', 'one_time_pays', 'special_days', 'variance_flags', 'payroll_withholds', 'pay_carry_forwards', 'court_orders', 'loans', 'loan_repayments', 'loan_schedule_changes', 'journals', 'employee_cost_rates'];
 // Lifecycle batch 6a: people's files and documents, and joiners' planned jobs.
 const LIFECYCLE_SUPPORT_EXCLUDED = ['files', 'documents', 'document_versions', 'preboardings', 'preboarding_portal_sessions', 'consent_records', 'bgv_checks', 'letter_issues', 'signature_requests', 'exit_cases', 'exit_case_hr', 'clearance_items', 'exit_interviews', 'exit_interview_answers', 'probation_reviews', 'exit_deprovisioning', 'exit_settlement_inputs', 'alumni_sessions', 'employee_nominations', 'exit_payees', 'absconding_timelines'];
-const policiesOf = (table: string) => BigInt(SUPPORT_EXCLUDED.includes(table) ? 2 : 1);
+// Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
+const policiesOf = (table: string) => BigInt((SUPPORT_EXCLUDED.includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 
 describe('PostgreSQL row-level security (app role)', () => {
   let prisma: PrismaService;
@@ -477,6 +482,8 @@ describe('PostgreSQL row-level security (app role)', () => {
       const assignment = await tx.employeeAssignment.create({
         data: { organizationId: orgB, legalEntityId: entity.id, employeeId: employee.id, employmentId: employment.id, validFrom: day('2026-04-01'), locationId: location.id, departmentId: department.id, designationId: designation.id, employmentTypeId: type.id, changeId: join.id },
       });
+      // Pay rows sit behind the pay guard: the fixture opens it for B's entity, as payroll does.
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${entity.id}}`}, true)`;
       await tx.compensation.create({ data: { organizationId: orgB, employmentId: employment.id, validFrom: day('2026-04-01'), currency: 'INR', annualCtc: 500000, changeId: join.id } });
       await tx.employmentStatusPeriod.create({ data: { organizationId: orgB, employmentId: employment.id, validFrom: day('2026-04-01'), status: 'confirmed', changeId: join.id } });
       return { entity: entity.id, location: location.id, department: department.id, designation: designation.id, type: type.id, person: person.id, employee: employee.id, employment: employment.id, join: join.id, pending: pending.id, assignment: assignment.id };

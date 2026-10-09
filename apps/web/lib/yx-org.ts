@@ -92,6 +92,12 @@ export const YX_KEYS = [
   'lifecycle.exit.confidential.view',
   'asset.view',
   'asset.manage',
+  // Batch 5b: payroll set-up, statutory registrations, components, templates, imports.
+  'payroll.setup.manage',
+  'payroll.statutory.setup',
+  'payroll.component.manage',
+  'payroll.template.manage',
+  'payroll.import.run',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

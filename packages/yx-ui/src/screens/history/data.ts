@@ -16,6 +16,7 @@ const facts = {
   department: { id: 'd-qa', name: 'Quality', code: 'QA' },
   designation: { id: 'des-qa', name: 'Quality Analyst', code: 'QA-ANALYST' },
   grade: { id: 'g-g2', name: 'G2 · Executive', code: 'G2' },
+  skillClass: 'skilled',
   employmentType: { id: 'et-perm', name: 'Permanent', code: 'PERM' },
   manager: { id: 'p-divya', name: 'Divya Raghunathan' },
   costCentres: [{ id: 'cc-eng', name: 'Engineering Bengaluru', code: 'CC-BLR-ENG', percent: '100.00' }],

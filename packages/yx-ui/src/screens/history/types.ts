@@ -37,6 +37,8 @@ export interface AssignmentFacts {
   department: Ref | null;
   designation: Ref | null;
   grade: Ref | null;
+  /** 5c-D2: unskilled, semi_skilled, skilled or highly_skilled; null when not set. */
+  skillClass?: string | null;
   employmentType: Ref | null;
   manager: { id: string; name: string | null } | null;
   costCentres: (Ref & { percent: string })[];
@@ -89,6 +91,7 @@ export interface ChangePayload {
     departmentId?: string;
     designationId?: string;
     gradeId?: string | null;
+    skillClass?: string | null;
     employmentTypeId?: string;
     managerEmployeeId?: string | null;
     costCentres?: CostCentreShare[];

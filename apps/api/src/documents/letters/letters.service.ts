@@ -1,6 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import type { Certificate } from 'pkijs';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../../org-structure/org-structure.service';
 import { todayIst } from '../../org-structure/org-validation';
@@ -13,7 +12,7 @@ import { FilesService } from '../files.service';
 import { FileStore, sha256 } from '../file-store';
 import { ownOf, reachesPerson } from '../person-access';
 import { dscSigner } from '../signing';
-import { DSC_REVOCATION, DSC_ROOTS, SignatureRefused, verifySignedPdf, type RevocationChecker } from '../signed-pdf';
+import { DSC_REVOCATION, DSC_ROOTS, SignatureRefused, verifySignedPdf, type RevocationChecker, type TrustedRoots } from '../signed-pdf';
 import { VERIFY_CODE, referenceNo, registerVerifier, verifyCode, verifyLink } from '../verify-code';
 import { TemplateProblem, buildDocx, docxBlocks, fillDocx, templateFields } from './docx';
 import { FIELDS, STARTER_LETTERS, letterData, missingFields, sampleData, starterDocx, suggest } from './fields';
@@ -64,7 +63,7 @@ export class LettersService implements OnModuleInit {
     private readonly notifications: NotificationsService,
     private readonly automation: AutomationService,
     private readonly otp: OtpService,
-    @Inject(DSC_ROOTS) private readonly roots: Certificate[],
+    @Inject(DSC_ROOTS) private readonly roots: TrustedRoots,
     @Inject(DSC_REVOCATION) private readonly revocation: RevocationChecker,
   ) {}
 
@@ -517,7 +516,7 @@ export class LettersService implements OnModuleInit {
     });
     let signer;
     try {
-      signer = await verifySignedPdf(file, { sha256: l.unsignedSha256!, bytes: l.unsignedBytes! }, this.roots, this.revocation);
+      signer = await verifySignedPdf(file, { sha256: l.unsignedSha256!, bytes: l.unsignedBytes! }, await this.roots.get(), this.revocation);
     } catch (e) {
       if (!(e instanceof SignatureRefused)) throw e;
       await inCompany(this.tenantPrisma, ctx, (tx, c) => audit(tx, c, 'letter.signature_refused', 'letter_issue', l.id, { reason: e.message, uploadSha256: sha256(file) }));

@@ -113,16 +113,18 @@ export function ImpactPanel({ impact }: { impact: Impact }) {
 /* ---------- raising a change (PPL-04) ---------- */
 
 const RAISABLE: Exclude<ChangeType, 'join'>[] = ['promotion', 'transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction'];
-type Field = 'locationId' | 'departmentId' | 'designationId' | 'gradeId' | 'employmentTypeId' | 'managerEmployeeId' | 'costCentreId';
+type Field = 'locationId' | 'departmentId' | 'designationId' | 'gradeId' | 'skillClass' | 'employmentTypeId' | 'managerEmployeeId' | 'costCentreId';
+/** 5c-D2: the minimum-wage skill class of the job (payroll checks pay against the state table for it). */
+export const SKILL_CLASS_LABEL: Record<string, string> = { unskilled: 'Unskilled', semi_skilled: 'Semi-skilled', skilled: 'Skilled', highly_skilled: 'Highly skilled' };
 const FIELDS: Record<Exclude<ChangeType, 'join'>, Field[]> = {
-  promotion: ['designationId', 'gradeId'],
+  promotion: ['designationId', 'gradeId', 'skillClass'],
   transfer: ['locationId', 'departmentId', 'managerEmployeeId', 'costCentreId'],
-  redesignation: ['designationId'],
+  redesignation: ['designationId', 'skillClass'],
   manager_change: ['managerEmployeeId'],
   salary_revision: [],
   employment_type_change: ['employmentTypeId'],
   confirmation: [],
-  correction: ['locationId', 'departmentId', 'designationId', 'gradeId', 'employmentTypeId', 'managerEmployeeId'],
+  correction: ['locationId', 'departmentId', 'designationId', 'gradeId', 'skillClass', 'employmentTypeId', 'managerEmployeeId'],
   // System changes from the exit flow: shown in history, never raised here.
   notice: [],
   notice_withdrawal: [],
@@ -136,6 +138,7 @@ const FIELD_LABEL: Record<Field, string> = {
   departmentId: 'Department',
   designationId: 'Designation',
   gradeId: 'Grade',
+  skillClass: 'Skill class',
   employmentTypeId: 'Employment type',
   managerEmployeeId: 'Manager',
   costCentreId: 'Cost centre',
@@ -227,6 +230,7 @@ export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose
       departmentId: forEntity(options.departments, entity),
       designationId: forEntity(options.designations, entity),
       gradeId: forEntity(options.grades, entity),
+      skillClass: Object.entries(SKILL_CLASS_LABEL).map(([value, label]) => ({ value, label })),
       employmentTypeId: forEntity(options.employmentTypes, entity),
       costCentreId: forEntity(options.costCentres, entity),
       managerEmployeeId: (options.managers ?? options.people).filter((p) => p.id !== draft.employeeId).map((p) => ({ value: p.id, label: `${p.name}${p.employeeCode ? ` · ${p.employeeCode}` : ''}` })),
@@ -281,7 +285,7 @@ export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose
           <FormSection title="New values">
             {errorOf('ch-values') && <InlineAlert tone="danger">{errorOf('ch-values')}</InlineAlert>}
             {FIELDS[draft.changeType].map((f) => (
-              <FormField key={f} id={`ch-${f}`} label={FIELD_LABEL[f]} optional={draft.changeType === 'correction' || draft.changeType === 'transfer' || f === 'gradeId'}>
+              <FormField key={f} id={`ch-${f}`} label={FIELD_LABEL[f]} optional={draft.changeType === 'correction' || draft.changeType === 'transfer' || f === 'gradeId' || f === 'skillClass'}>
                 <Select value={draft.values[f] ?? null} onChange={(v) => set({ values: { ...draft.values, [f]: v } })} options={choices[f]} searchable clearable placeholder="No change" aria-label={FIELD_LABEL[f]} />
               </FormField>
             ))}

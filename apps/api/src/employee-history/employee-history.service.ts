@@ -9,6 +9,7 @@ import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { ChangeEditDto, ChangeRequestDto, EmployeeCreateDto } from './dto';
 import { addRole, checkLoginLink, personForEmployee } from '../people/persons';
 import { startProbation } from '../people/probation';
+import { payScope, withPayScope } from '../payroll/pay-access';
 import {
   affectedMonths,
   AssignmentValues,
@@ -108,6 +109,7 @@ function assignmentValues(r: AssignmentRow): AssignmentValues {
     departmentId: r.departmentId,
     designationId: r.designationId,
     gradeId: r.gradeId,
+    skillClass: (r.skillClass ?? null) as AssignmentValues['skillClass'],
     employmentTypeId: r.employmentTypeId,
     managerEmployeeId: r.managerEmployeeId,
     costCentres: r.costCentres.map((x) => ({ costCentreId: x.costCentreId, percent: x.percent.toFixed(2) })).sort((a, b) => a.costCentreId.localeCompare(b.costCentreId)),
@@ -281,6 +283,7 @@ export class EmployeeHistoryService {
 
   /** Rows of every fact for an employment; current only unless `recordedAt` asks what was believed then (Q1). */
   async rows(tx: Tx, c: CompanyContext, employmentId: string, opts: { recordedAt?: Date; includeSuperseded?: boolean } = {}) {
+    await this.payEngine(tx, c, employmentId);
     // The same filter fits all three dated tables (common columns, P06 §4.2).
     const when: { recordedAt?: { lte: Date }; supersededAt?: null; OR?: ({ supersededAt: null } | { supersededAt: { gt: Date } })[] } = opts.includeSuperseded
       ? {}
@@ -339,6 +342,7 @@ export class EmployeeHistoryService {
       department: ref(n.departments, a.departmentId),
       designation: ref(n.designations, a.designationId),
       grade: ref(n.grades, a.gradeId),
+      skillClass: a.skillClass ?? null,
       employmentType: ref(n.types, a.employmentTypeId),
       manager: a.managerEmployeeId ? { id: a.managerEmployeeId, name: mgr ? displayName(mgr) : null } : null,
       costCentres: a.costCentres.map((x) => ({ ...ref(n.ccs, x.costCentreId)!, percent: x.percent })),
@@ -688,6 +692,7 @@ export class EmployeeHistoryService {
    * which writes its history through the same path.
    */
   async rebuild(tx: Tx, c: CompanyContext, e: Employment, from: string, byChangeId: string) {
+    await payScope(tx, [e.legalEntityId]);
     const org = c.organizationId;
     const [{ now }] = await tx.$queryRaw<{ now: Date }[]>`SELECT now()::timestamptz(3) AS now`;
     const changes: FoldChange[] = (
@@ -749,6 +754,16 @@ export class EmployeeHistoryService {
     await tx.employeeChange.update({ where: { id: ch.id }, data: { status: 'effective', appliedAt: new Date() } });
     await audit(tx, c, 'employee.change.effective', 'employee', e.employeeId, { changeId: ch.id, changeType: 'exit', effectiveDate: lastDay });
     return true;
+  }
+
+  /**
+   * Founder decision 5a-D4: compensations sit behind the database pay guard. The history engine works on every dated
+   * fact of an employment, pay included, so it opens the guard for that employment's legal entity in its own
+   * transaction; what reaches a viewer is still filtered by their pay grants (showPay, payPeriods).
+   */
+  private async payEngine(tx: Tx, c: CompanyContext, employmentId: string) {
+    const m = await tx.employment.findFirst({ where: { organizationId: c.organizationId, id: employmentId }, select: { legalEntityId: true } });
+    if (m) await payScope(tx, [m.legalEntityId]);
   }
 
   /** YX-HIS-03 continuity and YX-ORG-09 managers, proven on the stored rows with range aggregates. */
@@ -1102,6 +1117,10 @@ export class EmployeeHistoryService {
       if (!(await this.reachesFrom(tx, c, v, 'employee.change.manage', e, from))) throw new NotFoundException('Employee not found');
       const payload = dto.payload ? toPayload(dto.payload) : (fresh.payload as ChangePayload);
       const routing = date !== oldDate || (dto.payload !== undefined && JSON.stringify(payload) !== JSON.stringify(fresh.payload));
+      // PAY-2.09: a pay change made in Payroll carries its worked-out breakup; its date or values change only there.
+      if (routing && (await withPayScope(tx, [e.legalEntityId], () => tx.compensationPackage.count({ where: { organizationId: c.organizationId, changeId: id } })))) {
+        throw new ConflictException('This pay change has its salary breakup from Payroll. Cancel it and make a new one in Payroll › Compensation.');
+      }
       // YX-SEC-11: an approved change keeps the reasons its approver saw; changing them sends it back for approval.
       if (fresh.status === 'scheduled' && !routing && ((dto.reason && dto.reason.trim() !== fresh.reason) || (dto.overrideReason && dto.overrideReason.trim() !== fresh.overrideReason))) {
         throw new ConflictException('This change is approved: its reasons stay as approved. Change its date or values to send it back for approval.');

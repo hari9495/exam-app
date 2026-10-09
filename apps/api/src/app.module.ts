@@ -87,6 +87,7 @@ import { TimeModule } from './time/time.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { DocumentsModule } from './documents/documents.module';
 import { LifecycleModule } from './lifecycle/lifecycle.module';
+import { StatutoryModule } from './statutory/statutory.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
 import { FailOpenThrottlerGuard } from './fail-open-throttler.guard';
 import { SentryShutdownFlush } from './sentry-shutdown.provider';
@@ -180,6 +181,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     PayrollModule,
     DocumentsModule,
     LifecycleModule,
+    StatutoryModule,
   ],
   controllers: [HealthController],
   providers: [

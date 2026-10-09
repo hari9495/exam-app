@@ -40,9 +40,9 @@ const redeemedSocialCodes = new Set<string>();
 const PROVIDER_NAME: Record<SocialProvider, string> = { google: 'Google', microsoft: 'Microsoft' };
 // The same words whatever the reason (no account, address not verified, method off ...): nothing to enumerate.
 export const SOCIAL_FAILED = "We couldn't sign you in with that account. Try another way, or ask your admin.";
-/** Under the API's 5-minute passkey challenge (mfa.service CHALLENGE_TTL_SECONDS). */
-const AUTOFILL_RENEW_MS = 4 * 60 * 1000;
-export const PASSKEY_FAILED = "We couldn't sign you in with that passkey. Try another way, or ask your admin.";
+// Same words for every refusal (nothing to enumerate). Several YukthiX sites on one computer share the browser's passkey
+// list, so say which one to pick.
+export const PASSKEY_FAILED = "We couldn't sign you in with that passkey. If you see more than one, pick the one you made for this site, or sign in with your email.";
 // The person closed the passkey prompt, or another ceremony replaced it: not an error to show.
 const isCancelled = (err: unknown) => err instanceof Error && (err.name === 'NotAllowedError' || err.name === 'AbortError');
 
@@ -190,8 +190,8 @@ export function useYxSignIn() {
   useEffect(() => {
     if (step !== 'identify' || !options?.passkey) return;
     let live = true;
-    // The server's challenge lasts 5 minutes but the autofill waits for ever: re-arm it before the challenge lapses.
-    const renew = setTimeout(() => setAutofillRound((n) => n + 1), AUTOFILL_RENEW_MS);
+    // No timed re-arm: on Windows each new request re-opened the Windows Hello picker (founder report 9 Oct 2026).
+    // A pick after the 5-minute challenge lapses is refused like any failure; the button always starts a fresh one.
     void browserSupportsWebAuthnAutofill().then(async (ok) => {
       if (!ok || !live) return;
       let credential: unknown;
@@ -204,7 +204,6 @@ export function useYxSignIn() {
     });
     return () => {
       live = false;
-      clearTimeout(renew);
       WebAuthnAbortService.cancelCeremony();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

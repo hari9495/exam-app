@@ -24,7 +24,24 @@ export const PAY_KEYS = [
   'audit.hold.manage',
   'attendance.lock',
   'employee.salary.view',
+  'employee.salary.manage',
   'employee.identity.view',
+  // Batch 5b.
+  'payroll.setup.manage',
+  'payroll.statutory.setup',
+  'payroll.component.manage',
+  'payroll.template.manage',
+  'payroll.import.run',
+  // Batch 5c.
+  'payroll.run.view',
+  'payroll.run.prepare',
+  'payroll.run.approve',
+  'payroll.input.manage',
+  'payroll.hold.manage',
+  'payroll.loan.manage',
+  'payroll.loan.approve',
+  'payroll.journal.export',
+  'payroll.cost_rate.view',
 ] as const;
 export type PayKey = (typeof PAY_KEYS)[number];
 
@@ -56,13 +73,14 @@ export async function payScope(tx: Tx, entityIds: readonly string[]) {
   await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${entityIds.join(',')}}`}, true)`;
 }
 
-/** Runs `fn` with the pay guard opened to `entityIds` for a server-side check, then closes it again. */
+/** Runs `fn` with the pay guard opened to `entityIds` for a server-side check, then puts the previous scope back. */
 export async function withPayScope<T>(tx: Tx, entityIds: readonly string[], fn: () => Promise<T>): Promise<T> {
+  const [{ prev }] = await tx.$queryRaw<{ prev: string | null }[]>`SELECT current_setting('app.pay_entities', true) AS prev`;
   await payScope(tx, entityIds);
   try {
     return await fn();
   } finally {
-    await payScope(tx, []);
+    await tx.$executeRaw`SELECT set_config('app.pay_entities', ${prev || '{}'}, true)`;
   }
 }
 

@@ -12,12 +12,12 @@ export function usePay<T>(path: string | null) {
   return useQuery<T>({ queryKey: ['payroll', path], queryFn: () => apiFetch(`/payroll${path}`, {}, accessToken ?? undefined), enabled: Boolean(accessToken && path), retry: false });
 }
 
-/** Calls the payroll API and refreshes every payroll query (and the approvals inbox). */
+/** Calls the payroll API (POST unless told otherwise) and refreshes every payroll query (and the approvals inbox). */
 export function usePayWrite() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
-  return async <T = unknown>(path: string, body?: unknown): Promise<T> => {
-    const result = await apiFetch(`/payroll${path}`, { method: 'POST', ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
+  return async <T = unknown>(path: string, body?: unknown, method: 'POST' | 'PUT' | 'PATCH' = 'POST'): Promise<T> => {
+    const result = await apiFetch(`/payroll${path}`, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
     await queryClient.invalidateQueries({ queryKey: ['payroll'] });
     await queryClient.invalidateQueries({ queryKey: ['workflow'] });
     return result as T;

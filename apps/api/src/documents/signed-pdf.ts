@@ -1,13 +1,11 @@
 import { createHash, webcrypto } from 'crypto';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import * as asn1js from 'asn1js';
 import * as pkijs from 'pkijs';
 
 // Founder decision D1 (9 Oct 2026, M03-BUILD-DESIGN §19): a PDF signed by the company's USB token (through the signing
 // helper) is accepted only when all three hold:
 //   (a) the PDF signature (a CMS / PKCS#7 detached signature over its /ByteRange) is cryptographically valid;
-//   (b) the signer's certificate chains to a root of the India CCA (configurable data: DSC_TRUSTED_ROOTS, a PEM bundle),
+//   (b) the signer's certificate chains to a root of the India CCA (published rule-store data, decision 5b-D3),
 //       every certificate is inside its validity period now, and none is revoked (OCSP, else the CRL);
 //   (c) the signed bytes start with exactly the document we issued (its stored SHA-256 and length), and the signature
 //       covers the whole file except its own hole, so nothing was added or changed.
@@ -40,14 +38,9 @@ export function parsePemBundle(pem: string): pkijs.Certificate[] {
   return blocks.map((b) => pkijs.Certificate.fromBER(toAB(Buffer.from(b.replace(/-----[A-Z ]+-----|\s/g, ''), 'base64'))));
 }
 
-/** The configured CCA roots (DSC_TRUSTED_ROOTS, default apps/api/config/dsc-trusted-roots.pem). */
-export function trustedRoots(): pkijs.Certificate[] {
-  const path = process.env.DSC_TRUSTED_ROOTS ?? join(__dirname, '..', '..', 'config', 'dsc-trusted-roots.pem');
-  try {
-    return parsePemBundle(readFileSync(path, 'utf8'));
-  } catch {
-    return [];
-  }
+/** The CCA roots a signature must chain to (5b-D3: published in the rule store, cca-roots.provider.ts). */
+export interface TrustedRoots {
+  get(): Promise<pkijs.Certificate[]>;
 }
 
 /** /ByteRange and /Contents of the last signature in the file (the helper appends one incremental update). */

@@ -88,6 +88,18 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // YX-AUD-08: audit is kept at least 8 years (the list never offers less), the last 13 months online.
   'audit.retention_years': { label: 'Keep the audit log for (years)', scopes: ['tenant'], dated: false, values: ['8', '9', '10', '12', '15', '20'], default: '8', guard: 'access.role.manage' },
   // YX-DOC-13: issued pay documents are kept this long, then the file is deleted (a legal hold keeps it).
+  // M03 §7.6 / YX-HIS-13 (PAY-2.05): how a change in the middle of a pay period is paid, per change type. Statutory
+  // items always follow the legal basis whatever is chosen here.
+  // M03 batch 5c (PAY-3.08, 3.12, §9.4): variance threshold, protected net, net rounding, standard hours, one-time review.
+  'payroll.variance_threshold_pct': { label: 'Ask to confirm a net pay change above (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '10', '15', '20', '25'], default: '10' },
+  'payroll.protected_net_percent': { label: 'Recoveries leave at least this share of gross pay (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '10', '20', '25', '30', '40', '50'], default: '0' },
+  'payroll.net_rounding': { label: 'Round net pay', scopes: ['tenant', 'legal_entity'], dated: false, values: ['none', 'rupee'], default: 'rupee' },
+  'payroll.standard_daily_hours': { label: 'Standard hours a day (for hourly rates and cost rates)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['8', '8.5', '9'], default: '8' },
+  'payroll.one_time_review_above': { label: 'One-time pay above this amount needs approval', scopes: ['tenant', 'legal_entity'], dated: false, values: ['none', '10000', '25000', '50000', '100000'], default: '50000' },
+  'payroll.mid_period.join': { label: 'Joining in the middle of a month is paid', scopes: ['tenant', 'legal_entity'], dated: false, values: ['segments', 'cutoff', 'next_month_arrears'], default: 'segments' },
+  'payroll.mid_period.exit': { label: 'Leaving in the middle of a month is paid', scopes: ['tenant', 'legal_entity'], dated: false, values: ['segments', 'cutoff'], default: 'segments' },
+  'payroll.mid_period.revision': { label: 'A pay change in the middle of a month is paid', scopes: ['tenant', 'legal_entity'], dated: false, values: ['segments', 'cutoff', 'next_month_arrears'], default: 'segments' },
+  'payroll.mid_period.cutoff_day': { label: 'Whole-month cut-off day (changes after it are paid next month)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['10', '15', '20', '25'], default: '15' },
   'payroll.document_retention_years': { label: 'Keep issued pay documents for (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['8', '10', '12', '15'], default: '8', guard: 'access.role.manage' },
   'attendance.factories_act': {
     label: 'Factories Act (overtime is paid at the legal rate)',
