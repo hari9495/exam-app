@@ -26,7 +26,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    // The theme script below sets data-theme on <html> before React loads, so that one attribute is
+    // expected to differ from the server HTML (the usual next-themes pattern); children are still checked.
+    <html lang="en" suppressHydrationWarning>
       <body>
         {/* Light or dark before first paint (the OS setting unless chosen in the account menu): no flash. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
