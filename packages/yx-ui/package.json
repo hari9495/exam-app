@@ -18,6 +18,8 @@
     "./access": "./src/screens/access/index.ts",
     "./console": "./src/screens/console/index.ts",
     "./desk": "./src/screens/desk/index.ts",
+    "./time": "./src/screens/time/live/index.ts",
+    "./pay": "./src/screens/pay/live/index.ts",
     "./screens/*": "./src/screens/*.tsx",
     "./styles.css": "./src/styles/index.css"
   },

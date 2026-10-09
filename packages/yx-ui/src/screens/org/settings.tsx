@@ -40,6 +40,7 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'privacy.who_accessed': { on: 'Shown', off: 'Hidden' },
   'attendance.mode': { punch: 'Punch in and out', assumed_present: 'Present unless on leave', timesheet: 'Timesheet' },
   'attendance.missing_punch_effect': { block_payroll_approval: 'Hold payroll approval', warning_only: 'Warn only' },
+  'attendance.factories_act': { covered: 'Covered: overtime is paid', not_covered: 'Not covered' },
 };
 export const valueLabel = (key: string, value: unknown) => VALUE_LABEL[key]?.[String(value)] ?? String(value);
 
@@ -57,7 +58,7 @@ export const SETTING_SECTIONS: Record<'organisation' | 'access', SettingsSection
   organisation: [
     { title: 'Job changes', description: 'How far back HR may date a change without a System Admin.', keys: ['employee_change.retro_limit'] },
     { title: 'Probation', description: 'Set for the company, then per entity, employment type or grade where they differ.', keys: ['probation.default_months', 'probation.max_total_months', 'probation.review_lead_days', 'probation.auto_confirm_after_days'] },
-    { title: 'Attendance', description: 'Dated: a new value starts on the day you choose and earlier days keep the old one.', keys: ['attendance.mode', 'attendance.missing_punch_effect'] },
+    { title: 'Attendance', description: 'Dated: a new value starts on the day you choose and earlier days keep the old one.', keys: ['attendance.mode', 'attendance.missing_punch_effect', 'attendance.factories_act'] },
   ],
   access: [
     { title: 'Manager access', description: 'Managers always see their own reports. The company can narrow it.', keys: ['access.manager.view_scope'] },

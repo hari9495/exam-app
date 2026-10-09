@@ -39,6 +39,7 @@ describe('notification catalog', () => {
       'helpdesk.rule.notify',
       'helpdesk.rule.failed',
       'helpdesk.msg.link_ended',
+      'time.roster.published',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

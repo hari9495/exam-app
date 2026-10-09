@@ -190,7 +190,7 @@ describe('Sign in with a passkey (passwordless, AAL2)', () => {
       const ipFails = `auth:lp:ip:fail:${ipBucket(ip)}`;
       const { res } = await passkeySignIn(stranger, { ip });
       expect(res.status).toBe(401);
-      expect(res.body.message).toBe("We couldn't sign you in with that passkey. Try another way, or ask your admin.");
+      expect(res.body.message).toBe("We couldn't sign you in with that passkey. If you see more than one, pick the one you made for this site, or sign in with your email.");
       expect(cookieOf(res, 'refresh_token')).toBeUndefined();
       expect(Number(await redis.get(ipFails))).toBe(1);
       const [event] = await tenantPrisma.forTenant(SUPER, (tx) => tx.loginEvent.findMany({ where: { method: 'passkey', reason: 'unknown_credential', ipAddress: ip } }));

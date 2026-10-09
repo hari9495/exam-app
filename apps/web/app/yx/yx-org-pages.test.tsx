@@ -53,13 +53,24 @@ beforeEach(() => {
 });
 
 describe('/yx layout: organisation pages follow the grants, not the role', () => {
+  it('payroll set-up pages follow the batch-5b keys (M03 §14.2)', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
+    route({ 'GET /auth/mfa': { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' }, [`GET ${PERMS_PATH}`]: ['payroll.setup.manage', 'payroll.template.manage', 'employee.salary.manage'] });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    const nav = await screen.findByRole('navigation', { name: 'Menu' });
+    await waitFor(() => expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(expect.arrayContaining(['Payroll set-up', 'Pay groups', 'Payslip layout', 'Statutory rules', 'Statutory coverage', 'Salary templates', 'Compensation'])));
+    const names = within(nav).getAllByRole('link').map((a) => a.textContent);
+    expect(names).not.toContain('Component library');
+    expect(names).not.toContain('Import old payroll');
+  });
+
   it('a Payroll Admin profile on a non-admin role sees the organisation pages', async () => {
     (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
     route({ 'GET /auth/mfa': { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' }, [`GET ${PERMS_PATH}`]: ['org.structure.view', 'pay.range.view'] });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
     const nav = await screen.findByRole('navigation', { name: 'Menu' });
     await waitFor(() => expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['Help centre', 'Service catalogue', 'Chat with us', 'Legal entities', 'Locations', 'Structure', 'Approvals', 'My security']));
-    expect(api).toHaveBeenCalledWith(`${PERMS_PATH}?keys=org.structure.view,org.settings.manage,org.entity.statutory.manage,pay.range.view,pay.range.manage,employee.profile.view,employee.change.manage,employee.change.approve,employee.salary.manage,request.raise_on_behalf,access.role.manage,employee.identity.manage,employee.identity.approve,org.support_access.approve,notification.template.manage,desk.ticket.view,desk.desk.create,desk.settings.manage,desk.member.manage,desk.sla.manage,desk.report.view,desk.mailbox.manage,desk.portal.manage,desk.customer.manage,desk.ticket.work,desk.kb.view_internal,desk.kb.author,desk.kb.publish,desk.task.work,desk.report.manage,desk.survey.manage,org.yukthix_support.raise,desk.directory.manage,desk.catalog.manage,desk.rule.manage,desk.integration.manage,desk.lifecycle.manage,desk.channel.manage,desk.chat.work,desk.hr_summary.view,desk.ticket.move,desk.ticket.assign`, {}, 'tok');
+    expect(api).toHaveBeenCalledWith(`${PERMS_PATH}?keys=org.structure.view,org.settings.manage,org.entity.statutory.manage,pay.range.view,pay.range.manage,employee.profile.view,employee.change.manage,employee.change.approve,employee.salary.manage,request.raise_on_behalf,access.role.manage,employee.identity.manage,employee.identity.approve,org.support_access.approve,notification.template.manage,desk.ticket.view,desk.desk.create,desk.settings.manage,desk.member.manage,desk.sla.manage,desk.report.view,desk.mailbox.manage,desk.portal.manage,desk.customer.manage,desk.ticket.work,desk.kb.view_internal,desk.kb.author,desk.kb.publish,desk.task.work,desk.report.manage,desk.survey.manage,org.yukthix_support.raise,desk.directory.manage,desk.catalog.manage,desk.rule.manage,desk.integration.manage,desk.lifecycle.manage,desk.channel.manage,desk.chat.work,desk.hr_summary.view,desk.ticket.move,desk.ticket.assign,leave.settings.manage,leave.view,leave.balance.adjust,attendance.view,roster.manage,attendance.lock,payroll.period.view,payroll.period.reopen,payroll.period.reopen.approve,payroll.document.view,payroll.file.view,audit.view,audit.export,payroll.setup.manage,payroll.statutory.setup,payroll.component.manage,payroll.template.manage,payroll.import.run`, {}, 'tok');
   });
 
   it('pay-range access alone shows the structure pages but not the settings it cannot read', async () => {

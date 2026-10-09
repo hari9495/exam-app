@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { seedOrgStructure } from './seed-org-structure';
@@ -11,6 +13,10 @@ import { seedServiceDeskKnowledge, seedYukthixSupport } from './seed-service-des
 import { seedServiceDeskEsm } from './seed-service-desk-esm';
 import { seedServiceDeskEsm2 } from './seed-service-desk-esm2';
 import { seedServiceDeskEsm3 } from './seed-service-desk-esm3';
+import { TIME_PERMISSIONS, seedTime } from './seed-time';
+import { seedTimeB2 } from './seed-time-b2';
+import { PAY_PERMISSIONS, seedAuditAnchor, seedPay, seedPay5b } from './seed-pay';
+import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file';
 
 const prisma = new PrismaClient();
 
@@ -75,6 +81,10 @@ export const PERMISSIONS = [
   { key: 'notification.template.manage', description: 'Brand and re-word the emails YukthiX sends your people' },
   // M14 §6.2 Service Desk phase 3b-1 (also in the service_desk_core migration).
   ...DESK_PERMISSIONS,
+  // M02 step 4 leave and attendance (also in the time_leave migration).
+  ...TIME_PERMISSIONS,
+  // M03 payroll batch 5a (also in the payroll_5a migration).
+  ...PAY_PERMISSIONS,
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -92,6 +102,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'platform.channels.manage',
     'platform.support.request',
     'platform.audit.view',
+    'platform.statutory.manage',
     // M14 SD-1.31: the YukthiX Support desk in the console.
     'platform.support_desk.work',
   ],
@@ -148,6 +159,18 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'desk.survey.manage',
     'desk.directory.manage',
     'org.yukthix_support.raise',
+    // M02: the System Admin sets up leave and attendance and reads them; medical data and approvals stay with HR.
+    'leave.settings.manage',
+    'leave.view',
+    'attendance.view',
+    // Batch 2: rosters and attendance locks (also in the time_leave_b2 migration).
+    'roster.manage',
+    'attendance.lock',
+    // M03 batch 5a (P08 Q3 / Q8): the full audit log, legal holds and the final approval of a reopen; no pay.
+    'audit.view',
+    'audit.export',
+    'audit.hold.manage',
+    'payroll.period.reopen.approve',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -161,7 +184,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   // so an org admin can't accidentally hand it write access.
   // Employee records are not part of the permanent base role: P02 YX-SEC-15 time-boxes auditor access, so it
   // comes from an expiring role grant (the Auditor template in Roles & access).
-  auditor: ['org:view', 'results:view', 'audit:view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned', 'org.structure.view'],
+  auditor: ['org:view', 'results:view', 'audit:view', 'audit.view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned', 'org.structure.view'],
 };
 
 async function main() {
@@ -304,6 +327,17 @@ async function main() {
       // Step 3, the platform console (P14): the demo staff member has a name, and the demo companies use YukthiX HR.
       // Staff sign in at /staff/sign-in and add a security key on first sign-in (P12 Q7).
       await tx.user.updateMany({ where: { email: 'super@platform.test', organizationId: null }, data: { name: 'Anand Iyer' } });
+      // 5b-D1: a second staff member (the rule reviewer), and the state minimum-wage tables drafted by Anand and published
+      // by Kavitha through the console's two-person flow (src/statutory/load-rule-file.ts).
+      const reviewer =
+        (await tx.user.findFirst({ where: { email: 'rules@platform.test', organizationId: null } })) ??
+        (await tx.user.create({ data: { email: 'rules@platform.test', name: 'Kavitha Menon', passwordHash: superAdminHash, role: 'super_admin', organizationId: null } }));
+      const anand = await tx.user.findFirstOrThrow({ where: { email: 'super@platform.test', organizationId: null } });
+      const minWages = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-min-wages.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
+      await loadRuleSets(tx, minWages, anand.id, reviewer.id);
+      // 5b-D3: the India CCA roots (cca.gov.in) for USB-token signatures, by the same two-person flow.
+      const ccaRoots = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-cca-roots.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
+      await loadRuleSets(tx, ccaRoots, anand.id, reviewer.id);
       for (const slug of ['demo-org', 'ganga-textiles']) {
         const org = await tx.organization.findUnique({ where: { slug }, select: { id: true } });
         if (org) {
@@ -329,10 +363,27 @@ async function main() {
       await seedServiceDeskEsm(tx, demoOrg.id);
       await seedServiceDeskEsm2(tx, demoOrg.id);
       await seedServiceDeskEsm3(tx, demoOrg.id);
+      // Step 4 time and leave batch 1: holiday calendars, leave types and policies with Karnataka / Tamil Nadu floors,
+      // balances, pending requests through P03 and a week of punches (seed-time.ts).
+      await seedTime(tx, demoOrg.id);
+      // Step 4 batch 2: the Hosur plant's 3-shift rotation with a night shift, OT for plant workers settled as comp-off,
+      // a timesheet project, the women's night-work records, and a locked previous month with its frozen payroll feed.
+      await seedTimeB2(tx, demoOrg.id, panelHash);
+      // Step 5 payroll batch 5a: pay periods, a reopen request waiting for its second approver, a sample payslip and
+      // a bank file waiting for release (seed-pay.ts).
+      await seedPay(tx, demoOrg.id, panelHash);
+      // Step 5 payroll batch 5b: the starter components and template, pay groups, statutory registrations.
+      await seedPay5b(tx, demoOrg.id);
     }
-  }, { timeout: 60000 });
+  }, { timeout: 420000 });
+  // Payroll 5a: the demo company's audit chain checked once (the daily job's anchor), after the seed committed.
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`;
+    const demo = await tx.organization.findUnique({ where: { slug: 'demo-org' }, select: { id: true } });
+    if (demo) await seedAuditAnchor(tx, demo.id);
+  });
 
-  console.log(`Seed complete: super@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026, hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); Service Desk: it-agent@ / it-lead@ / it-collab@ / arjun@demo-org.test / Passw0rd!2026, customer portal /yx/portal/demo-org/care (asha@annapurna-stores.test, sign-in code from scripts/desk-portal-code.ts); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
+  console.log(`Seed complete: super@platform.test / DevSuper123! and rules@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026 (Payroll Admin), payroll-approver@demo-org.test / Passw0rd!2026 (Payroll Approver), finance@demo-org.test / Passw0rd!2026 (Finance Approver), hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); Service Desk: it-agent@ / it-lead@ / it-collab@ / arjun@demo-org.test / Passw0rd!2026, customer portal /yx/portal/demo-org/care (asha@annapurna-stores.test, sign-in code from scripts/desk-portal-code.ts); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
 }
 
 // Only run when invoked as a script (prisma db seed / ts-node). Guarded so importing this module for

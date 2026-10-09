@@ -1,0 +1,55 @@
+{
+  "ruleSets": [
+    {
+      "statute": "IN.CCA-ROOTS",
+      "jurisdiction": "IN",
+      "version": "CCA-ROOTS-2026-10",
+      "validFrom": "2026-10-09",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Information Technology Act, 2000 s.18 and the CCA’s Root Certifying Authority of India: root certificates as published on cca.gov.in (Root Certificate page), each with its SHA-256 fingerprint.",
+      "values": {
+        "kind": "trusted_roots",
+        "roots": [
+          {
+            "name": "CCA India 2022",
+            "sha256": "9a3fd3176798e842ddcb12c262f11cfacca70a8b84c6ea6fda30842a95a94cd8",
+            "notAfter": "2042-02-02",
+            "pem": "-----BEGIN CERTIFICATE-----\nMIIFNDCCAxygAwIBAgIQdiQz69smdlqFYM0KqC/hFzANBgkqhkiG9w0BAQsFADA6\nMQswCQYDVQQGEwJJTjESMBAGA1UEChMJSW5kaWEgUEtJMRcwFQYDVQQDEw5DQ0Eg\nSW5kaWEgMjAyMjAeFw0yMjAyMDIxMjA0MzdaFw00MjAyMDIxMjA0MzdaMDoxCzAJ\nBgNVBAYTAklOMRIwEAYDVQQKEwlJbmRpYSBQS0kxFzAVBgNVBAMTDkNDQSBJbmRp\nYSAyMDIyMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAv3EBudWC8HY0\noSwtJZCqpjQTGpEewl3EdDqUORV0qoFp78mdR/vuATXI83G7nF9RLvmNjgQgKr/b\nMx6gPO4Y57bMjAsgwEzleFclZka/sqc68iN5rS3huhrCX6MEINLyDOQ71MRA7GJC\naNL6E3j1438eTu011mlikeZYBdkhvfpAVjCw90w8wcWDmqx66Y561T/RiXyz2uEh\nBBZAD43gV58eXStOeOTwAzEZYMrmp232GfmQKabYRfdIRus1avyuGea2nICEsRHE\n8M2tdzwpGP7oIy2qHBFJJ+3AwmwQA4DjmDkJtCD+58awohQavRNhqjsGD+ZifG3V\nR4i6WrKv8OWqZzcZj3g3Elr5+fRMlz1GSqkWPBw1Ev8KWTHazSUKF7OMxm3XzyXx\nQnw7fZF9GOVtx3adpfRPqYGgtbOP34EVkz4wsHvNMrvUrYcKymdOrnkTjlX26fIH\nUJpKGYkLk9q0jhMNKs4Rn8lj4pJ7YF33/ND4bjpV0ex1EAQz0iZvT37OnxNiuAZ/\n+4Djf075UuNX2ecWnadOrN1r8NAParZIwUoSUnWhU8TqAWWRqzFURHUZuOMQcA0g\neg4c9zqtBoUPgtQksbIAEsEXmDuRpwSIFjEkK11f5Eemfmfdg37KyIjQ67TRTmBA\n+kT9Q5JIm/e7m1ILg/HKckgLUOCnAMsCAwEAAaM2MDQwDwYDVR0TAQH/BAUwAwEB\n/zARBgNVHQ4ECgQITjtINlziX30wDgYDVR0PAQH/BAQDAgEGMA0GCSqGSIb3DQEB\nCwUAA4ICAQCdbE8d1c1DysKtrtYlApYIXTlY3N2XHNQ6gKoaVWsKa1TJ/ovrT+FV\n3bmQLet3aSoEG6pTe/vLZSg8WiF7cn7WuF4XlQS3yA2Uu8/cg/S4owqhQJp6K/Xg\n6UoSBad9Kog1H8deOfV8Nmb8a89zB4Yf8/AepId+Lr/3I6O7iub+PUT2QBXnksa+\ncf0yf+49GhyMCILZvctNSQd4Vxr9EgRvBARTrAgNQ9sEOJ6myOz4iTFR7T2pIFP8\nCp15e8jEVI1q4IuHu3XlwJNk9f5k3gbwrzoy9P5rP8voQU3u9wh62JZa9U63b+u/\nUr1tsKb5Lx0YUedtHvpIiIRurEPxumW0twjrx8TrAcXRrViSL7dsXAoYC0dXo154\nEE8jBAzgIIur7tJizxgXDEn4i2pu8Yd615YML9ii5BooEJ2j6fQ0nzyPRmx1Egw2\nFjlgzzceai4TUOcaCKab86yyu5MZIp+BiPR840nw5MggbRgYH2nFRBA70toVm4VF\nlbZs3reGmaICm4ST6R395OxYS1iYBm5kXm9tLb4pkIhUxrkgyuiwE+DsWceBjHAY\naXnCgUGKtiG9tfBMUw3fChoPb9L1yKdNof3zXDdTloMqEpO4BFrmjco8kt1v0LUQ\nPhNZmQP4nqd4Hqx2384nPmWDXbQ+eePyxRteYGY0hJeDLVpyeYG8VQ==\n-----END CERTIFICATE-----",
+            "source": "https://cca.gov.in/cca/sites/default/files/files/CCAIndia2022.cer"
+          },
+          {
+            "name": "CCA India 2022 SPL",
+            "sha256": "b724689b79b2ef9421ef8f5cc733eb093851b170ee715177005a09f226d8c91a",
+            "notAfter": "2042-09-20",
+            "pem": "-----BEGIN CERTIFICATE-----\nMIIFPDCCAySgAwIBAgIQYoKBxu6+xz94CH5f9Y9J9DANBgkqhkiG9w0BAQsFADA+\nMQswCQYDVQQGEwJJTjESMBAGA1UEChMJSW5kaWEgUEtJMRswGQYDVQQDExJDQ0Eg\nSW5kaWEgMjAyMiBTUEwwHhcNMjIwOTIwMDkxODE5WhcNNDIwOTIwMDkxODE5WjA+\nMQswCQYDVQQGEwJJTjESMBAGA1UEChMJSW5kaWEgUEtJMRswGQYDVQQDExJDQ0Eg\nSW5kaWEgMjAyMiBTUEwwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQDM\nA++VJxEXN+coznBAEf0dz+8DBj9SpEQGoehjxoDnD+WYEBAXnap2lh5yE7/wlpHU\nQ7hJ54JsqLBZQGkM0pk35bkvvcf2wAGSdK0KRilNeFDmVdduqAUJUlmNeL0ufIuf\nsSBEusOWKK6VvQHxiZ0qoyoeqV+CpnDm8I2IE0WBSbaotXtGWSyBLNDCEH3lRA9G\nQDOZ5Utc8soR2YVwbQSicGoyAC1PiPah7LY6nZCbBjc63r22dE+Cm1TGeqEb0ZUd\nhHl051WqEGXXmtQNfytdNP+VdKU1nrYEcQ5BeGMaWA5bHkO2ERldI5F55pX06hUx\nwjL39H6JVX5/0I+bBiPsZiCpea2gKozNBg+MBWLqyBUzFRVhLfdCPB6tm9EKHgrl\nP6rsWrjgZ5FcREmerCYs7HIYeemiI0UO4X8rqpobT3rL7mWALB2plyFaBdiUWW1r\n87eZQDEeYWavOhNITYNc31FG3Kn8DANF3IhNeYmUDzG7/M1XyGycqBmXG7tVVXez\nO1GbgfM0SYlkVFRDOD6u9Tf0lR1MfjrJpMB+JdIJlimMM5G6LGia7+3Nlll8SJ0D\nhW49FdKlLB92iXuOok4iwPzyFKg8Eax/9iN9TxMadYxbpKkePL9DpL/ymRvpGDkP\naurqUP77smtB8Jlf7bx8SB9DWVjVqsgvemN+DZfNawIDAQABozYwNDAPBgNVHRMB\nAf8EBTADAQH/MBEGA1UdDgQKBAhIEoydvDOh6jAOBgNVHQ8BAf8EBAMCAQYwDQYJ\nKoZIhvcNAQELBQADggIBADYv91JbnwU+Ih5gNzZSJY0yJkYk4tbBBsCZDivmZknC\nTbM8B9j/hEZcfXZCTbP6GCGkrxVx8aDl7E1s5DGmdO7x5R+dxrLD2B4+ORhDetlM\nYd22mopVnzqY5UdaQ8u16JNEp/m75UqT5NvcgtE+/s1Hr+3lhWKKvN7u9PxDSIoM\nT/I0/sje9fWwjeX29nzqHTw7hYTLCIeQv8c9+wGBFAAFArUq0MaI6jxIav10DKeH\nptycUHwMNyzP9hh7G4nHo+lEIT0/jWIrjv53+aVFLdAvBKQ2jyAKd/OhuQFCue3z\nMVMoTQ7Zl9HZk72CkBecaZhHnEzqjpOzueCweK0h27IvwED7scudpOPnY7ml6fEF\ndpHXZXcVz8TZbqirkHTLepfAOUBcyuadAKkOR+m5uU1UKkESexaY2yVEdWcVAeCM\n6p6FXlFeRMEebMbppkPeSFUPMRA9mhsUTOk5sbnGN2TVkSfUpcUMoQgz2bSqvGyR\n7sAZ9Un457swjwEEEnzijdMvd9YDj1wRq+tsq38zq5IaE50VMMXeBoVz2/2Bn8Mr\np8kN7XIkrCui8wjclnG9BB1SbwjXPhE+7zE6GKh+oIRZua2RkamTpjwe+2oSihGV\nFeD7pSMh/Pgyxg1lxSVDKvbBdxNrBpot2OQN35+DkAU2exJMtUYAvzdPVx9d2elo\n-----END CERTIFICATE-----",
+            "source": "https://cca.gov.in/cca/sites/default/files/files/CCAIndia2022SPL.cer"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "CCA India 2022 is trusted",
+          "fn": "trusted_roots",
+          "input": {
+            "sha256": "9a3fd3176798e842ddcb12c262f11cfacca70a8b84c6ea6fda30842a95a94cd8"
+          },
+          "expected": {
+            "trusted": true
+          }
+        },
+        {
+          "name": "CCA India 2022 SPL is trusted",
+          "fn": "trusted_roots",
+          "input": {
+            "sha256": "b724689b79b2ef9421ef8f5cc733eb093851b170ee715177005a09f226d8c91a"
+          },
+          "expected": {
+            "trusted": true
+          }
+        }
+      ]
+    }
+  ]
+}

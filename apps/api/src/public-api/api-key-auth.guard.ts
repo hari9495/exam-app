@@ -1,6 +1,13 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, SetMetadata, UnauthorizedException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { NETWORK_NOT_ALLOWED_MESSAGE, TenantPrismaService, ipAllowedForSurface, loadTenantSecurityPolicy } from '@exam-platform/shared';
+
+/**
+ * P11 YX-API-12 (US-E-226): a route that writes payroll or statutory data names the scope the company API key must
+ * carry ('payroll-write'); a key without it is refused. P03 approvals, maker ≠ checker and period locks still apply.
+ */
+export const API_SCOPE = 'yx:api-scope';
+export const RequireApiScope = (scope: 'payroll-write') => SetMetadata(API_SCOPE, scope);
 
 @Injectable()
 export class ApiKeyAuthGuard implements CanActivate {
@@ -31,6 +38,10 @@ export class ApiKeyAuthGuard implements CanActivate {
     // refusal reveals nothing to a caller without a valid key.
     if (!ipAllowedForSurface(await loadTenantSecurityPolicy(this.tenantPrisma, organization.id), 'api', request.ip)) {
       throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
+    }
+    const scope: string | undefined = typeof context.getHandler === 'function' ? Reflect.getMetadata(API_SCOPE, context.getHandler()) : undefined;
+    if (scope && !(organization.apiKeyScopes ?? []).includes(scope)) {
+      throw new ForbiddenException(`This API key may not do this: it needs the ${scope} scope.`);
     }
     request.apiKeyOrg = { organizationId: organization.id };
     return true;

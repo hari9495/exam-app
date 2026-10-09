@@ -41,6 +41,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'helpdesk.rule.failed', group: 'reminders', label: 'A desk rule failed or stopped at its limit' },
   // Service Desk 3b-2 batch 3 (founder decision 9 Oct 2026).
   { type: 'helpdesk.msg.link_ended', group: 'reminders', label: 'A phone linked to your desk was linked in another company' },
+  // M02 step 4 batch 2 (YX-AT-07).
+  { type: 'time.roster.published', group: 'assignments', label: 'Your shifts for the coming days were published or changed' },
 ];
 
 export const NOTIFICATION_TYPE_BY_KEY = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));

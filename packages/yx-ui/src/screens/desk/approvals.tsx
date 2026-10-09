@@ -93,6 +93,14 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
                           </div>
                         ))}
                       </dl>
+                      {t.decideAt ? (
+                        <div className="yx-ops-row">
+                          <Button asChild variant="primary">
+                            <a href={t.decideAt}>Open to decide</a>
+                          </Button>
+                          <span className="yx-ops-muted">Decided on its own page, with a fresh sign-in check.</span>
+                        </div>
+                      ) : (
                       <div className="yx-ops-row">
                         <Button variant="approve" disabled={busy === t.taskId} onClick={() => void run(t.taskId, () => props.onDecide(t, 'approve', ''))}>
                           Approve
@@ -101,6 +109,7 @@ export function ApprovalsScreen(props: ApprovalsScreenProps) {
                           Do not approve
                         </Button>
                       </div>
+                      )}
                     </Card>
                   </li>
                 ))}

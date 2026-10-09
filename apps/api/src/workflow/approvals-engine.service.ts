@@ -58,6 +58,20 @@ export interface RequestType {
    * keeps cards neutral and the request is decided only after signing in. Omitted = neutral.
    */
   cardPreview?(tx: Tx, req: Prisma.WfRequestGetPayload<object>): Promise<'full' | 'neutral'>;
+  /**
+   * Irreversible requests (P08 YX-AUD-09, e.g. reopening a locked pay period) are decided only on the module's own screen,
+   * which asks for a fresh second sign-in step and stores what the approver confirmed. The shared inbox links there.
+   */
+  decideOnlyVia?: string;
+  /** Maker ≠ checker across steps: whoever approved one step never approves a later one of the same request. */
+  distinctSteps?: boolean;
+}
+
+/** decide() options: the module screen that may decide a decideOnlyVia request. */
+export interface DecideOptions {
+  via?: string;
+  /** What the approver saw and confirmed (YX-AUD-09), kept in the decision's audit row. */
+  evidence?: Record<string, unknown>;
 }
 
 export interface SubmitInput {
@@ -324,6 +338,16 @@ export class ApprovalsEngine {
     if (next < 0) return this.finish(tx, ctx, req, 'approved', notices);
     steps[next].state = 'open';
     const s = steps[next];
+    if (this.type(req.requestType).distinctSteps && next > 0) {
+      // Whoever approved an earlier step does not get a task in this one (kept when no one else is left, so the
+      // refusal in decide() says why instead of the request stalling silently).
+      const earlier = new Set((await tx.wfAction.findMany({ where: { organizationId: org, requestId: req.id, action: { in: ['approved', 'self_approved'] } }, select: { actorUserId: true } })).map((a) => a.actorUserId));
+      const others = s.approverIds.filter((id) => !earlier.has(id));
+      if (others.length) {
+        s.approverIds = others;
+        s.need = needOf(s, others.length);
+      }
+    }
     for (const approver of s.approverIds) {
       const delegate = await this.delegateOf(tx, org, approver, req.requestType);
       const holder = delegate && delegate !== req.requesterUserId && delegate !== req.raisedByUserId && !s.approverIds.includes(delegate) ? delegate : approver;
@@ -386,7 +410,7 @@ export class ApprovalsEngine {
    * An approver's decision. Only the task's holder decides; a reject needs a reason (YX-WF-08). channel is the SD-2.06
    * seam (Teams / Slack / push arrive later with their own signed links).
    */
-  async decide(ctx: CompanyContext, userId: string, taskId: string, decision: 'approve' | 'reject', reason: string | null, channel: 'web' | 'mobile' | 'teams' | 'slack' | 'push' = 'web') {
+  async decide(ctx: CompanyContext, userId: string, taskId: string, decision: 'approve' | 'reject', reason: string | null, channel: 'web' | 'mobile' | 'teams' | 'slack' | 'push' = 'web', opts: DecideOptions = {}) {
     const notices: Notice[] = [];
     const res = await this.tenantPrisma.forTenant(ctx, async (tx) => {
       const org = ctx.organizationId;
@@ -402,10 +426,16 @@ export class ApprovalsEngine {
       const s = steps[fresh.step];
       const own = userId === req.requesterUserId;
       if ((own && s.selfApproval !== 'allowed') || (userId === req.raisedByUserId && !own)) throw new ForbiddenException('You cannot approve a request you raised.');
+      const type = this.type(req.requestType);
+      if (type.decideOnlyVia && opts.via !== type.key) throw new ConflictException({ statusCode: 409, code: 'DECIDE_ON_ITS_PAGE', message: `Decide this on its own page: ${type.label}.`, link: type.decideOnlyVia });
+      if (type.distinctSteps && decision === 'approve' && fresh.step > 0) {
+        const before = await tx.wfAction.count({ where: { organizationId: org, requestId: req.id, actorUserId: userId, action: { in: ['approved', 'self_approved'] }, step: { lt: fresh.step } } });
+        if (before) throw new ForbiddenException('You approved an earlier step of this request, so someone else must approve this one.');
+      }
       await tx.wfTask.update({ where: { id: fresh.id }, data: { status: decision === 'approve' ? 'approved' : 'rejected', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
       const action = decision === 'reject' ? 'rejected' : own ? 'self_approved' : 'approved';
       await this.log(tx, org, req.id, fresh.id, fresh.step, userId, fresh.onBehalfOfUserId, action, reason?.trim() || null, channel);
-      await AuditService.recordIn(tx, ctx, { actorUserId: userId, action: `workflow.request.${action}`, entityType: 'wf_request', entityId: req.id, metadata: { step: fresh.step, onBehalfOf: fresh.onBehalfOfUserId, channel, selfApproval: own } });
+      await AuditService.recordIn(tx, ctx, { actorUserId: userId, action: `workflow.request.${action}`, entityType: 'wf_request', entityId: req.id, metadata: { step: fresh.step, onBehalfOf: fresh.onBehalfOfUserId, channel, selfApproval: own, ...(opts.evidence ? { confirmed: opts.evidence } : {}) } });
       const tasks = await tx.wfTask.findMany({ where: { organizationId: org, requestId: req.id, step: fresh.step }, select: { status: true, assigneeUserId: true, onBehalfOfUserId: true } });
       // A person counts once even if they hold two tasks (their own and one on behalf of someone).
       const v = verdict(s, s.approverIds.length, tasks.filter((t) => t.status === 'approved').length, tasks.filter((t) => t.status === 'rejected').length);
@@ -541,6 +571,13 @@ export class ApprovalsEngine {
     return this.delegateIn(tx, ctx, userId, { delegateUserId: to, startsOn, endsOn }, 'leave', null);
   }
 
+  /** M02 seam: cancelled leave takes back the delegation its approval made (never a manual one). */
+  async revokeLeaveDelegations(tx: Tx, ctx: CompanyContext, userId: string, startsOn: string, endsOn: string) {
+    const n = await tx.wfDelegation.updateMany({ where: { organizationId: ctx.organizationId, userId, source: 'leave', revokedAt: null, startsOn: new Date(`${startsOn}T00:00:00Z`), endsOn: new Date(`${endsOn}T00:00:00Z`) }, data: { revokedAt: new Date() } });
+    if (n.count) await AuditService.recordIn(tx, ctx, { actorUserId: null, action: 'workflow.delegation.revoked', entityType: 'wf_delegation', entityId: userId, metadata: { source: 'leave', startsOn, endsOn, count: n.count } });
+    return n.count;
+  }
+
   async revokeDelegation(ctx: CompanyContext, userId: string, id: string) {
     return this.tenantPrisma.forTenant(ctx, async (tx) => {
       const n = await tx.wfDelegation.updateMany({ where: { organizationId: ctx.organizationId, id, userId, revokedAt: null }, data: { revokedAt: new Date() } });
@@ -598,6 +635,8 @@ export class ApprovalsEngine {
             step: { index: t.step + 1, of: steps.length, name: steps[t.step].name, need: steps[t.step].need, approvers: steps[t.step].approverIds.length },
             dueAt: t.dueAt,
             submittedAt: r.submittedAt,
+            // Irreversible requests are decided on their own page (decideOnlyVia): the inbox links there.
+            decideAt: this.types.get(r.requestType)?.decideOnlyVia ?? null,
           };
         });
     });

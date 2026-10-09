@@ -65,6 +65,42 @@ const APPROVALS: WorkspaceLink = { id: 'approvals', label: 'Approvals', href: '/
 const DESK_CHAT: WorkspaceLink = { id: 'desk-chat', label: 'Chat with us', href: '/yx/desk/chat', group: 'Service desk' };
 const DESK_LIVE_CHAT: WorkspaceLink = { id: 'desk-live-chat', label: 'Live chat', href: '/yx/desk/live-chat', group: 'Service desk' };
 const DESK_TEAM: WorkspaceLink = { id: 'desk-team', label: 'Team and shifts', href: '/yx/desk/team', group: 'Service desk' };
+// Step 4 time and leave (M02): everyone with an employee record has their own leave and attendance; managers see
+// their team, HR its people in scope; set-up for the leave set-up key.
+const MY_LEAVE: WorkspaceLink = { id: 'my-leave', label: 'My leave', href: '/yx/time/leave', group: 'Time' };
+const MY_ATTENDANCE: WorkspaceLink = { id: 'my-attendance', label: 'My attendance', href: '/yx/time/attendance', group: 'Time' };
+const TEAM_LEAVE: WorkspaceLink = { id: 'team-leave', label: 'Team leave', href: '/yx/time/team', group: 'Time' };
+const MUSTER: WorkspaceLink = { id: 'muster', label: 'Attendance muster', href: '/yx/time/muster', group: 'Time' };
+const BALANCES: WorkspaceLink = { id: 'leave-balances', label: 'Leave balances', href: '/yx/time/balances', group: 'Time' };
+const TIME_SETUP: WorkspaceLink = { id: 'time-setup', label: 'Leave set-up', href: '/yx/time/setup', group: 'Time' };
+// Batch 2: shifts and swaps, overtime and timesheets for everyone; the roster for managers and roster.manage; HR's
+// overtime review, registers and payroll feed (attendance.view), set-up and attendance periods (attendance.lock).
+const MY_SHIFTS: WorkspaceLink = { id: 'my-shifts', label: 'My shifts', href: '/yx/time/shifts', group: 'Time' };
+const MY_OVERTIME: WorkspaceLink = { id: 'my-overtime', label: 'My overtime', href: '/yx/time/overtime', group: 'Time' };
+const MY_TIMESHEET: WorkspaceLink = { id: 'my-timesheet', label: 'My timesheet', href: '/yx/time/timesheet', group: 'Time' };
+const ROSTER: WorkspaceLink = { id: 'roster', label: 'Roster', href: '/yx/time/roster', group: 'Time' };
+const OT_REVIEW: WorkspaceLink = { id: 'overtime-review', label: 'Overtime', href: '/yx/time/overtime-review', group: 'Time' };
+const SHIFTS_SETUP: WorkspaceLink = { id: 'shifts-setup', label: 'Shifts set-up', href: '/yx/time/shifts-setup', group: 'Time' };
+const PERIODS: WorkspaceLink = { id: 'periods', label: 'Attendance periods', href: '/yx/time/periods', group: 'Time' };
+const REGISTERS: WorkspaceLink = { id: 'registers', label: 'Registers', href: '/yx/time/registers', group: 'Time' };
+const PAYROLL_FEED: WorkspaceLink = { id: 'payroll-feed', label: 'Payroll feed', href: '/yx/time/payroll-feed', group: 'Time' };
+// M03 payroll batch 5a: pay periods (payroll.period.*), reopen requests, pay documents, payroll files and the audit log.
+const PAY_PERIODS: WorkspaceLink = { id: 'pay-periods', label: 'Pay periods', href: '/yx/payroll/periods', group: 'Payroll' };
+const REOPEN_REQUESTS: WorkspaceLink = { id: 'reopen-requests', label: 'Reopen requests', href: '/yx/payroll/reopen-requests', group: 'Payroll' };
+const PAY_DOCUMENTS: WorkspaceLink = { id: 'pay-documents', label: 'Pay documents', href: '/yx/payroll/documents', group: 'Payroll' };
+const PAY_FILES: WorkspaceLink = { id: 'pay-files', label: 'Payroll files', href: '/yx/payroll/files', group: 'Payroll' };
+const PAY_AUDIT: WorkspaceLink = { id: 'pay-audit', label: 'Audit log', href: '/yx/payroll/audit', group: 'Payroll' };
+// Batch 5b: set-up (payroll.setup.manage / payroll.statutory.setup), structures, compensation and imports.
+const PAY_SETUP: WorkspaceLink = { id: 'pay-setup', label: 'Payroll set-up', href: '/yx/payroll/setup', group: 'Payroll' };
+const PAY_GROUPS: WorkspaceLink = { id: 'pay-groups', label: 'Pay groups', href: '/yx/payroll/pay-groups', group: 'Payroll' };
+const PAY_COMPONENTS: WorkspaceLink = { id: 'pay-components', label: 'Component library', href: '/yx/payroll/components', group: 'Payroll' };
+const PAY_TEMPLATES: WorkspaceLink = { id: 'pay-templates', label: 'Salary templates', href: '/yx/payroll/templates', group: 'Payroll' };
+const PAY_COMPENSATION: WorkspaceLink = { id: 'pay-compensation', label: 'Compensation', href: '/yx/payroll/compensation', group: 'Payroll' };
+const PAY_LAYOUT: WorkspaceLink = { id: 'pay-layout', label: 'Payslip layout', href: '/yx/payroll/payslip-layout', group: 'Payroll' };
+const PAY_RULES: WorkspaceLink = { id: 'pay-rules', label: 'Statutory rules', href: '/yx/payroll/statutory-rules', group: 'Payroll' };
+const PAY_COVERAGE: WorkspaceLink = { id: 'pay-coverage', label: 'Statutory coverage', href: '/yx/payroll/coverage', group: 'Payroll' };
+const PAY_IMPORTS: WorkspaceLink = { id: 'pay-imports', label: 'Import old payroll', href: '/yx/payroll/imports', group: 'Payroll' };
+const MY_PAY_DOCUMENTS: WorkspaceLink = { id: 'my-pay-documents', label: 'My pay documents', href: '/yx/me/pay-documents', group: 'Me' };
 
 // Links follow the role; the API still checks every permission (audit:view, org:manage_users,
 // org:manage_settings) and the pages show "no access" on a 403. Platform staff outside any company use the
@@ -168,7 +204,28 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         ...(perms.has('desk.directory.manage') ? [DESK_PEOPLE_LIST] : []),
         ...(perms.has('desk.desk.create') ? [DESK_PRIVACY] : []),
       ];
-  const links = [...staff, ...desk, ...(support ? [] : [APPROVALS]), ...security];
+  const time = [
+    ...(employee && !support ? [MY_LEAVE, MY_ATTENDANCE, MY_SHIFTS, MY_OVERTIME, MY_TIMESHEET] : []),
+    ...(manager || perms.has('leave.view') ? [TEAM_LEAVE] : []),
+    ...(manager || perms.has('attendance.view') ? [MUSTER, OT_REVIEW] : []),
+    ...(manager || perms.has('roster.manage') ? [ROSTER] : []),
+    ...(perms.has('leave.view') ? [BALANCES] : []),
+    ...(perms.has('attendance.view') ? [REGISTERS, PAYROLL_FEED] : []),
+    ...(perms.has('attendance.lock') ? [PERIODS] : []),
+    ...(perms.has('leave.settings.manage') ? [TIME_SETUP, SHIFTS_SETUP] : []),
+  ];
+  // No payroll for YukthiX staff in a support session (P02 Q8): the API and the database refuse it too.
+  const periodKeys = perms.has('payroll.period.view') || perms.has('payroll.period.reopen') || perms.has('payroll.period.reopen.approve');
+  const payroll = support
+    ? []
+    : [...(periodKeys ? [PAY_PERIODS, REOPEN_REQUESTS] : []), ...(perms.has('payroll.document.view') ? [PAY_DOCUMENTS] : []), ...(perms.has('payroll.file.view') ? [PAY_FILES] : []), ...(perms.has('audit.view') ? [PAY_AUDIT] : []),
+        ...(perms.has('payroll.setup.manage') || perms.has('payroll.statutory.setup') ? [PAY_SETUP] : []),
+        ...(perms.has('payroll.setup.manage') ? [PAY_GROUPS, PAY_LAYOUT, PAY_RULES, PAY_COVERAGE] : []),
+        ...(perms.has('payroll.component.manage') ? [PAY_COMPONENTS] : []),
+        ...(perms.has('payroll.template.manage') ? [PAY_TEMPLATES] : []),
+        ...(perms.has('employee.salary.manage') ? [PAY_COMPENSATION] : []),
+        ...(perms.has('payroll.import.run') ? [PAY_IMPORTS] : [])];
+  const links = [...staff, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAY_DOCUMENTS] : []), ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
   return (

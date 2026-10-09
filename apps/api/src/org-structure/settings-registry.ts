@@ -51,6 +51,34 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
     values: ['punch', 'assumed_present', 'timesheet'],
     default: 'punch',
   },
+  // M02 L1: the leave year starts in this month (1 = calendar year, 4 = financial year), per company or legal entity.
+  'leave.year_start_month': { label: 'Leave year starts in', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'], default: '1' },
+  // M02 Q5: regularisations a month with manager approval; beyond that HR approves too.
+  'attendance.regularise_monthly_limit': { label: 'Fixes a month with manager approval only', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '2', '3', '4', '5', '6', '8', '10'], default: '4' },
+  // M02 §B2 / YX-AT-07: the least rest between two shifts of one person; the roster flags anything shorter. Founder
+  // decision 9 Oct 2026: 11 hours by default, company-configurable.
+  'attendance.min_rest_hours': { label: 'Least rest between shifts (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '8', '9', '10', '11', '12'], default: '11' },
+  // Founder decision 9 Oct 2026: where the Factories Act / OSH Code covers the place (a factory), approved overtime of the
+  // employment categories P07 IN.FACTORIES counts as workers is always paid at the legal rate, never comp-off. Dated.
+  // P08 Q4 / YX-LOCK-02: how late an employee may still ask to correct a day of a frozen or locked month (then only HR).
+  'payroll.late_request_max_days': { label: 'Late corrections may be asked for up to (days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['30', '45', '60', '90', '120', '180'], default: '60' },
+  // YX-AUD-08: audit is kept at least 8 years (the list never offers less), the last 13 months online.
+  'audit.retention_years': { label: 'Keep the audit log for (years)', scopes: ['tenant'], dated: false, values: ['8', '9', '10', '12', '15', '20'], default: '8', guard: 'access.role.manage' },
+  // YX-DOC-13: issued pay documents are kept this long, then the file is deleted (a legal hold keeps it).
+  // M03 §7.6 / YX-HIS-13 (PAY-2.05): how a change in the middle of a pay period is paid, per change type. Statutory
+  // items always follow the legal basis whatever is chosen here.
+  'payroll.mid_period.join': { label: 'Joining in the middle of a month is paid', scopes: ['tenant', 'legal_entity'], dated: false, values: ['segments', 'cutoff', 'next_month_arrears'], default: 'segments' },
+  'payroll.mid_period.exit': { label: 'Leaving in the middle of a month is paid', scopes: ['tenant', 'legal_entity'], dated: false, values: ['segments', 'cutoff'], default: 'segments' },
+  'payroll.mid_period.revision': { label: 'A pay change in the middle of a month is paid', scopes: ['tenant', 'legal_entity'], dated: false, values: ['segments', 'cutoff', 'next_month_arrears'], default: 'segments' },
+  'payroll.mid_period.cutoff_day': { label: 'Whole-month cut-off day (changes after it are paid next month)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['10', '15', '20', '25'], default: '15' },
+  'payroll.document_retention_years': { label: 'Keep issued pay documents for (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['8', '10', '12', '15'], default: '8', guard: 'access.role.manage' },
+  'attendance.factories_act': {
+    label: 'Factories Act (overtime is paid at the legal rate)',
+    scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'],
+    dated: true,
+    values: ['covered', 'not_covered'],
+    default: 'not_covered',
+  },
   'attendance.missing_punch_effect': {
     label: 'Missing punches',
     scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'],

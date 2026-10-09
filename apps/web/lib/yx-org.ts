@@ -62,6 +62,28 @@ export const YX_KEYS = [
   'desk.ticket.move',
   // 3b-2 batch 3: leads plan the team and its shifts.
   'desk.ticket.assign',
+  // Step 4 time and leave: HR views in scope, balances, set-up.
+  'leave.settings.manage',
+  'leave.view',
+  'leave.balance.adjust',
+  'attendance.view',
+  // Step 4 batch 2: rosters in scope and locking attendance months.
+  'roster.manage',
+  'attendance.lock',
+  // M03 payroll batch 5a: pay periods and reopen, pay documents, payroll files, the audit log.
+  'payroll.period.view',
+  'payroll.period.reopen',
+  'payroll.period.reopen.approve',
+  'payroll.document.view',
+  'payroll.file.view',
+  'audit.view',
+  'audit.export',
+  // Batch 5b: payroll set-up, statutory registrations, components, templates, imports.
+  'payroll.setup.manage',
+  'payroll.statutory.setup',
+  'payroll.component.manage',
+  'payroll.template.manage',
+  'payroll.import.run',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

@@ -28,6 +28,8 @@ export async function seedAccess(tx: Tx, organizationId: string, actors: { admin
   const role =
     (await tx.permissionProfile.findFirst({ where: { ...org, name: 'Plant HR Executive' } })) ??
     (await tx.permissionProfile.create({ data: { ...org, name: 'Plant HR Executive', permissionsJson: JSON.stringify(template.permissions) } }));
+  // The demo role follows its template as modules add keys (step 4: leave and attendance views for the plant).
+  await tx.permissionProfile.update({ where: { id: role.id }, data: { permissionsJson: JSON.stringify(template.permissions) } });
   const plantHr = await tx.user.upsert({
     where: { organizationId_email: { organizationId, email: 'plant-hr@demo-org.test' } },
     update: {},

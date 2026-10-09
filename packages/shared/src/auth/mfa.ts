@@ -34,6 +34,24 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'employee.identity.approve',
   'employee.aadhaar.view',
   'access.role.manage',
+  // M03 batch 5a: payroll periods, documents and files, the audit log (P12 Q1: MFA mandatory for payroll roles).
+  'payroll.period.view',
+  'payroll.period.reopen',
+  'payroll.period.reopen.approve',
+  'payroll.correction.approve',
+  'payroll.document.view',
+  'payroll.document.issue',
+  'payroll.file.view',
+  'payroll.file.release',
+  'audit.view',
+  'audit.export',
+  'audit.hold.manage',
+  // M03 batch 5b: payroll set-up, statutory registrations, components, templates and imports.
+  'payroll.setup.manage',
+  'payroll.statutory.setup',
+  'payroll.component.manage',
+  'payroll.template.manage',
+  'payroll.import.run',
 ];
 
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).

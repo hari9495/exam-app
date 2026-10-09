@@ -4,7 +4,7 @@ import { CREATABLE_ROLES, EDITABLE_ROLES } from './roles';
 // The auditor role is a compliance read-only role. These tests are the guardrail that keeps it
 // read-only: they fail if anyone later grants it a write key or makes its grants editable.
 describe('auditor role (compliance read-only)', () => {
-  const READ_ONLY_KEYS = ['org:view', 'results:view', 'audit:view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned', 'org.structure.view', 'employee.profile.view'];
+  const READ_ONLY_KEYS = ['org:view', 'results:view', 'audit:view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned', 'org.structure.view', 'employee.profile.view', 'audit.view'];
 
   it('is seeded with only read keys', () => {
     const keys = ROLE_PERMISSIONS.auditor;
