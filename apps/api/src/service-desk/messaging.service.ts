@@ -1,22 +1,26 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, OnModuleInit, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, GoneException, Inject, Injectable, Logger, NotFoundException, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import Redis from 'ioredis';
 import { createHash, randomBytes, randomInt } from 'crypto';
-import { OrgSecretsCryptoService, TenantPrismaService } from '@exam-platform/shared';
+import { NON_STEP_UP_MFA_METHODS, OrgSecretsCryptoService, TenantPrismaService } from '@exam-platform/shared';
 import { REDIS_CONNECTION } from '../jobs/redis-connection';
+import { escapeHtml } from '../notifications/notification-email-render';
+import { NotificationsService } from '../notifications/notifications.service';
+import { todayIst } from '../org-structure/org-validation';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { AutomationService } from '../rules-engine/automation.service';
 import { publicHttpsFetch } from '../common/ssrf';
 import { getChannelProvider } from '../sms/providers';
 import { PUBLIC_GATEWAY_NET } from '../sms-channel/sms-channel.service';
 import { ApprovalCards } from '../workflow/approval-channels';
-import { DeskAccessService, DeskActor, audit, canWork, deskSystem, requireDesk, requireSetUp } from './desk-access';
+import { DeskAccessService, DeskActor, activeOn, audit, canWork, deskSystem, requireDesk, requireSetUp } from './desk-access';
 import { forAcknowledgement } from './kb-search';
+import { detectLanguage } from './language';
 import { MailOutService } from './mail-out.service';
 import { AGENT_HELP, Headers, InboundMessage, MsgKind, Outgoing, REQUESTER_HELP, Scheme, Template, agentCommand, fresh, keyword, maskPhone, outgoing, parseInbound, signYukthix, verifySignature } from './messaging';
 import { Requester, RequesterService } from './requester.service';
 import { textToHtml } from './rich-text';
-import { OPEN_STATES, TicketsService } from './tickets.service';
+import { OPEN_STATES, TicketsService, asDeskJob } from './tickets.service';
 
 // SD-2.21 … SD-2.23 (US-B-133, US-B-134, US-G-057, US-G-058, US-E-282; §9.4, §14.4, P04): WhatsApp, two-way SMS, and
 // the Teams / Slack app on a desk. One line per channel kind per company lands on one desk.
@@ -42,6 +46,11 @@ const SEEN_SECONDS = 7 * 86_400;
 const ORG_PER_MINUTE = 600;
 const SENDER_PER_MINUTE = 20;
 const THREAD_DAYS = 7;
+/** Founder decision 9 Oct 2026: agent actions from Teams / Slack need a YukthiX second factor this recent. */
+export const CHAT_MFA_HOURS = 12;
+/** Founder decision 9 Oct 2026: an SMS reply is a link to read it, working once and for this long. */
+const READ_LINK_HOURS = Number(process.env.DESK_REPLY_LINK_HOURS ?? 24);
+const READ_LINK_RE = /^[A-Za-z0-9_-]{22}$/;
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
 type Channel = Prisma.SdMsgChannelGetPayload<object>;
@@ -129,6 +138,7 @@ export class MessagingService implements OnModuleInit {
     private readonly mailOut: MailOutService,
     private readonly automation: AutomationService,
     private readonly cards: ApprovalCards,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -441,6 +451,13 @@ export class MessagingService implements OnModuleInit {
       if (cmd) {
         const a = await this.access.actorFor(org, userId);
         if (a && [...a.roles.values()].some((r) => r === 'agent' || r === 'lead')) {
+          // Founder decision 9 Oct 2026: claim, reply and note act on a ticket, so they need a recent YukthiX second
+          // factor (the chat app's own sign-in is not ours). Reading (list, view, help) stays as it is.
+          if ((cmd.kind === 'claim' || cmd.kind === 'reply' || cmd.kind === 'note') && !(await this.recentMfa(org, userId))) {
+            await deskSystem(this.tenantPrisma, ctx, (tx) => audit(tx, { ctx, userId }, 'desk.msg.agent_command_refused', 'sd_msg_channel', ch.id, { kind, command: cmd.kind, reason: 'no_recent_mfa' }));
+            await this.send(ch, to, { mode: 'text', text: `Nothing was done. To ${cmd.kind} from ${KIND_LABEL[kind]}, confirm it is you in YukthiX first (needed every ${CHAT_MFA_HOURS} hours): ${webOrigin()}/yx/desk/confirm-chat` }, `cmd:${m.id}`, 'desk_notice', userId);
+            return true;
+          }
           const answer = await this.agentDo(a, cmd).catch((e: Error) => (e instanceof NotFoundException || e instanceof ForbiddenException || e instanceof ConflictException || e instanceof BadRequestException ? e.message : 'That did not work. Try again in YukthiX.'));
           await this.send(ch, to, { mode: 'text', text: answer }, `cmd:${m.id}`, 'desk_notice', userId);
           return true;
@@ -459,7 +476,8 @@ export class MessagingService implements OnModuleInit {
         await audit(tx, { ctx, userId: ctx.userId }, 'desk.msg.received', 'sd_ticket', open.id, { kind, created: false });
         return { ticket: open, created: false, followUp: res.followUp };
       }
-      const t = await this.tickets.createIn(tx, r, { deskId: ch.deskId, subject: subjectOf(body), bodyHtml: textToHtml(body), requesterPersonId: personId, openedByUserId: userId, channel: kind, side: 'requester', authorPersonId: personId });
+      const language = await this.languageOf(tx, org!, ch.deskId, personId, body);
+      const t = await this.tickets.createIn(tx, r, { deskId: ch.deskId, subject: subjectOf(body), bodyHtml: textToHtml(body), requesterPersonId: personId, openedByUserId: userId, channel: kind, side: 'requester', authorPersonId: personId, language });
       const articles = t.sensitive || t.private ? [] : await forAcknowledgement(tx, org!, ch.deskId, `${t.subject} ${body}`);
       await audit(tx, { ctx, userId: ctx.userId }, 'desk.msg.received', 'sd_ticket', t.id, { kind, created: true });
       return { ticket: t, created: true, followUp: null, articles };
@@ -472,9 +490,33 @@ export class MessagingService implements OnModuleInit {
     return true;
   }
 
-  // DECISION NEEDED: on the shared number one phone belongs to one person in one company; a newer JOIN (even in
-  // another company) moves the phone there and stops the old link. Alternative: ask "which company?" on every message.
-  /** "JOIN <code>" from a phone: the code names the company and person; the message is the opt-in. */
+  /**
+   * Founder decision 9 Oct 2026: the language of a WhatsApp / SMS / chat ticket is the contact's saved one, otherwise
+   * the one its first message is written in when the desk's agents answer in it and the guess is clear (language.ts).
+   */
+  private languageOf(tx: Tx, org: string, deskId: string, personId: string, text: string): Promise<string | null> {
+    return asDeskJob(tx, async () => {
+      const saved = (await tx.sdRequesterFlag.findUnique({ where: { organizationId_personId: { organizationId: org, personId } }, select: { language: true } }))?.language;
+      if (saved) return saved;
+      const seats = await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId, role: { in: ['agent', 'lead'] }, ...activeOn(todayIst()) }, select: { languages: true } });
+      return detectLanguage(text, [...new Set(seats.flatMap((x) => x.languages))]);
+    });
+  }
+
+  /** The person proved a YukthiX second factor (not an emailed code or their identity provider) in the last 12 hours. */
+  private async recentMfa(org: string, userId: string): Promise<boolean> {
+    const since = new Date(Date.now() - CHAT_MFA_HOURS * 3_600_000);
+    const s = await this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false, userId }, (tx) =>
+      tx.session.findFirst({ where: { organizationId: org, userId, assuranceLevel: 'aal2', mfaVerifiedAt: { gte: since }, mfaMethod: { notIn: [...NON_STEP_UP_MFA_METHODS] } }, select: { id: true } }),
+    );
+    return Boolean(s);
+  }
+
+  /**
+   * "JOIN <code>" from a phone: the code names the company and person; the message is the opt-in. Founder decision
+   * 9 Oct 2026: one phone belongs to one person in one company, so the newest JOIN wins (in any company) and the
+   * company that lost the link is told (bell and email to that desk's admins; the number masked, no message words).
+   */
   private async join(kind: MsgKind, line: Channel | null, m: InboundMessage, code: string): Promise<boolean> {
     const key = `sd:msg:join:${kind}:${code}`;
     const raw = await this.redis.get(key);
@@ -492,9 +534,12 @@ export class MessagingService implements OnModuleInit {
     if (!user) return false;
     const r: Requester = { ctx, userId, acting: false, user: { role: user.role, permissionProfileId: user.permissionProfileId, organizationId: org, userId } };
     // The newest link of a number wins, in any company (one person per phone); a person keeps one phone per channel.
-    await deskSystem(this.tenantPrisma, { organizationId: null, isSuperAdmin: true }, async (tx) => {
-      for (const old of await tx.sdMsgIdentity.findMany({ where: { kind, state: 'active', OR: [{ addressHash: hash }, { organizationId: org, userId }] } })) await this.stopIn(tx, old, 'me_settings');
+    const moved = await deskSystem(this.tenantPrisma, { organizationId: null, isSuperAdmin: true }, async (tx) => {
+      const olds = await tx.sdMsgIdentity.findMany({ where: { kind, state: 'active', OR: [{ addressHash: hash }, { organizationId: org, userId }] } });
+      for (const old of olds) await this.stopIn(tx, old, 'me_settings');
+      return olds.filter((o) => o.organizationId !== org);
     });
+    for (const old of moved) await this.tellLinkEnded(old);
     await deskSystem(this.tenantPrisma, ctx, async (tx) => {
       const personId = (await this.requesters.personOf(tx, r, true))!;
       const consent = await tx.channelConsent.create({
@@ -505,6 +550,25 @@ export class MessagingService implements OnModuleInit {
     });
     await this.send(ch, m.from, { mode: 'text', text: 'Your phone is linked. Write your question here any time. Send STOP to stop.' }, `join:${m.id}`, 'desk_notice', userId);
     return true;
+  }
+
+  /** The company whose link a newer JOIN elsewhere ended: its line's desk admins get a bell and an email. */
+  private async tellLinkEnded(old: Prisma.SdMsgIdentityGetPayload<object>) {
+    const org = old.organizationId;
+    const ctx = { organizationId: org, isSuperAdmin: false };
+    try {
+      const admins = await deskSystem(this.tenantPrisma, ctx, async (tx) => {
+        await audit(tx, { ctx, userId: null as unknown as string }, 'desk.msg_identity.moved', 'sd_msg_identity', old.id, { kind: old.kind, masked: old.addressMasked });
+        const line = await tx.sdMsgChannel.findFirst({ where: { organizationId: org, kind: old.kind }, select: { deskId: true } });
+        if (!line) return [];
+        return (await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId: line.deskId, role: 'admin', ...activeOn(todayIst()) }, select: { userId: true } })).map((x) => x.userId);
+      });
+      const label = KIND_LABEL[old.kind as MsgKind];
+      const text = `A phone linked to your ${label} help (${old.addressMasked}) was linked again somewhere else, so its link here ended.`;
+      await this.notifications.notifySystem(ctx, admins, 'helpdesk.msg.link_ended', { entityType: 'sd_msg_identity', entityId: old.id, contextText: text.slice(0, 200), linkPath: '/yx/desk/setup' }, { subject: `A ${label} link to your desk ended`, html: `<p>${escapeHtml(text)} The person can link it again with a new code from YukthiX.</p>` });
+    } catch (e) {
+      this.logger.warn(`Link-ended notice not sent: ${(e as Error).message}`);
+    }
   }
 
   /** "START" from a phone that sent STOP before: the same person's link comes back with a fresh opt-in. */
@@ -530,8 +594,6 @@ export class MessagingService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ agents in Teams / Slack
 
-  // DECISION NEEDED: an agent's command in Teams / Slack acts with their desk seats but without a fresh second factor
-  // in YukthiX (the chat app's own sign-in stands in, as for email commands). Require a recent YukthiX MFA instead?
   private async agentDo(a: DeskActor, cmd: NonNullable<ReturnType<typeof agentCommand>>): Promise<string> {
     if (cmd.kind === 'agent_help') return AGENT_HELP;
     const org = a.ctx.organizationId;
@@ -652,8 +714,52 @@ export class MessagingService implements OnModuleInit {
     if (!found) return;
     const { t, m, ch } = found;
     const tpl = ((ch.templates ?? {}) as Record<string, Template>).reply_notice ?? null;
-    const out = outgoing(ch.kind as MsgKind, { number: t.number, agentName: found.agentName, replyText: m.bodyText, neutral: found.neutral, lastInbound: found.lastInbound, template: tpl });
+    // Founder decision 9 Oct 2026: SMS never carries (or cuts) the words: a single-use, short-lived link to read them;
+    // a private or sensitive ticket's link opens YukthiX (sign-in) instead.
+    const link = ch.kind !== 'sms' ? null : found.neutral ? `${webOrigin()}/yx/desk/help/${t.id}` : await this.readLink(org, t.id, m.id, found.userId);
+    const out = outgoing(ch.kind as MsgKind, { number: t.number, agentName: found.agentName, replyText: m.bodyText, neutral: found.neutral, lastInbound: found.lastInbound, template: tpl, link });
     await this.send(ch, found.to, out, `reply:${m.id}`, 'desk_reply', found.userId);
+  }
+
+  /** A link that shows one reply once (the random part is the key; only its hash is kept, for READ_LINK_HOURS). */
+  private async readLink(org: string, ticketId: string, messageId: string, userId: string): Promise<string> {
+    const token = randomBytes(16).toString('base64url');
+    await this.redis.set(`sd:msg:read:${sha256(token)}`, JSON.stringify({ org, ticketId, messageId, userId }), 'EX', Math.max(60, Math.round(READ_LINK_HOURS * 3600)));
+    return `${webOrigin()}/yx/m/${token}`;
+  }
+
+  private readonly linkGone = () => new GoneException({ statusCode: 410, code: 'LINK_GONE', message: 'This link was used or has expired. Sign in to YukthiX to read your request.' });
+
+  /** GET /desk/reply-link/:token: what the page shows before the person asks to read (link previews consume nothing). */
+  async readLinkInfo(token: string) {
+    if (!READ_LINK_RE.test(token)) throw new NotFoundException('This link is not valid.');
+    const raw = await this.redis.get(`sd:msg:read:${sha256(token)}`);
+    if (!raw) throw this.linkGone();
+    const c = JSON.parse(raw) as { org: string; ticketId: string };
+    const t = await deskSystem(this.tenantPrisma, { organizationId: c.org, isSuperAdmin: false }, (tx) => tx.sdTicket.findFirst({ where: { organizationId: c.org, id: c.ticketId }, select: { number: true } }));
+    if (!t) throw new NotFoundException('This link is not valid.');
+    return { number: t.number };
+  }
+
+  /** POST /desk/reply-link/:token: the reply's words, once. Reading uses the link up, whatever happens next. */
+  async readLinkOpen(token: string) {
+    if (!READ_LINK_RE.test(token)) throw new NotFoundException('This link is not valid.');
+    const raw = await this.redis.getdel(`sd:msg:read:${sha256(token)}`);
+    if (!raw) throw this.linkGone();
+    const c = JSON.parse(raw) as { org: string; ticketId: string; messageId: string; userId: string };
+    const ctx = { organizationId: c.org, isSuperAdmin: false };
+    return deskSystem(this.tenantPrisma, ctx, async (tx) => {
+      const t = await tx.sdTicket.findFirst({ where: { organizationId: c.org, id: c.ticketId } });
+      const m = t && (await tx.sdTicketMessage.findFirst({ where: { organizationId: c.org, ticketId: t.id, id: c.messageId, kind: 'reply', side: 'agent' } }));
+      const user = await tx.user.findFirst({ where: { organizationId: c.org, id: c.userId, status: 'active' }, select: { id: true } });
+      if (!t || !m || !user) throw new NotFoundException('This link is not valid.');
+      await audit(tx, { ctx, userId: c.userId }, 'desk.msg.reply_link_opened', 'sd_ticket', t.id, { messageId: m.id });
+      const signIn = `${webOrigin()}/yx/desk/help/${t.id}`;
+      // The ticket may have become private since: then only where to read it.
+      if (await wordsStayIn(tx, t)) return { number: t.number, agentName: null, text: null, signIn };
+      const agentName = m.authorUserId ? ((await this.tickets.userNames(tx, c.org, [m.authorUserId])).get(m.authorUserId) ?? 'The desk') : 'The desk';
+      return { number: t.number, agentName, text: m.bodyText, signIn };
+    });
   }
 
   /** A push to the owner's linked phone when a target is near or missed. The ticket number only. */
@@ -751,9 +857,8 @@ const SHARED_SECRETS: Record<MsgKind, { scheme: Scheme; secret: string }> = {
   teams: { scheme: 'yukthix', secret: 'YX_TEAMS_DEV_SECRET_NEVER_SET' },
 };
 
-// DECISION NEEDED: P04 contradicts itself on WhatsApp: its Q2 answer says "shared YukthiX number by default", its
-// decision log (24 Sep 2026) says "each company's own number, no shared number". Built as the brief asks: the shared
-// YukthiX number by default, a company's own number optional (one line per kind per company, on one desk).
+// Founder decision 9 Oct 2026 (P04 Q2): YukthiX's shared number is the default; a company's own number is optional (one
+// line per kind per company, on one desk). The 24 Sep decision-log line "each company's own number" is superseded.
 const sharedNumber = (kind: MsgKind) => (kind === 'whatsapp' ? (process.env.YX_WHATSAPP_DISPLAY_NUMBER ?? (devTransport() ? '+91 80000 00000 (demo)' : null)) : kind === 'sms' ? (process.env.YX_SMS_DISPLAY_NUMBER ?? (devTransport() ? '+91 80000 00001 (demo)' : null)) : null);
 const apiOrigin = () => (process.env.API_ORIGIN ?? 'http://localhost:3001').replace(/\/$/, '');
 const webOrigin = () => (process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '');
@@ -774,6 +879,7 @@ function cleanTemplates(kind: MsgKind, t: Record<string, Template> | undefined):
     } else if (kind === 'sms') {
       const body = String(v.body ?? '').slice(0, 500);
       if (!/\{#var#\}/.test(body)) throw new BadRequestException('An SMS template needs {#var#} for the request number.');
+      if (name === 'reply_notice' && (body.match(/\{#var#\}/g) ?? []).length !== 2) throw new BadRequestException('An SMS reply template has two {#var#}: the request number, then the link to read the reply.');
       if (v.dltTemplateId != null && !/^\d{1,30}$/.test(String(v.dltTemplateId))) throw new BadRequestException('The DLT template id is digits only.');
       out[name] = { body, dltTemplateId: v.dltTemplateId ? String(v.dltTemplateId) : null, status };
     }

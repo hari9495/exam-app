@@ -3,10 +3,11 @@ import { createHmac } from 'crypto';
 import { PATH_METADATA } from '@nestjs/common/constants';
 import { PERMISSIONS_ANY_KEY, PERMISSIONS_KEY } from '../rbac/permissions.decorator';
 import { STEP_UP_REQUIRED } from '../auth/step-up.decorator';
-import { routeAgent, RouteCandidate, isAvailable } from './assignment';
+import { needWords, routeAgent, RouteCandidate, isAvailable } from './assignment';
 import { forecast, perHour, presenceMinutes } from './forecast';
 import { agentCommand, e164, fresh, inWindow, keyword, outgoing, parseInbound, signYukthix, verifySignature } from './messaging';
-import { DeskEsm3Controller, InboundMsgController, MyMessagingController, WidgetPublicController } from './esm3.controller';
+import { DeskEsm3Controller, InboundMsgController, MyMessagingController, ReplyLinkController, WidgetPublicController } from './esm3.controller';
+import { detectLanguage } from './language';
 import { cleanOrigin } from './widget.service';
 
 // Unit tests for the pure parts of 3b-2 batch 3: webhook signatures and replay windows, inbound parsing, the words people
@@ -114,14 +115,29 @@ describe('what may go out (YX-NTF-04, YX-NTF-07)', () => {
     expect(inWindow(null, NOW)).toBe(false);
   });
 
-  it('SMS: always the registered template, the reply cut to 30 characters, a sensitive ticket says nothing of it', () => {
-    const tpl = { dltTemplateId: '1107000000000000001', body: 'New reply on {#var#}: {#var#} Reply here or open YukthiX.', status: 'approved' };
-    const o = outgoing('sms', { ...base, template: tpl }, NOW);
-    expect(o).toMatchObject({ mode: 'template', text: 'New reply on IT-1001: Your salary slip is attached Reply here or open YukthiX.' });
-    const s = outgoing('sms', { ...base, neutral: true, template: tpl }, NOW);
-    expect(JSON.stringify(s)).not.toMatch(/salary/);
-    expect(outgoing('sms', { ...base, replyText: 'x'.repeat(80), template: tpl }, NOW)).toMatchObject({ text: expect.stringContaining(`${'x'.repeat(29)}…`) });
-    expect(outgoing('sms', base, NOW)).toEqual({ mode: 'none', reason: 'no_approved_template' });
+  it('SMS (founder decision 9 Oct 2026): the registered template with the number and a link, never the words, never cut', () => {
+    const tpl = { dltTemplateId: '1107000000000000001', body: 'You have a reply on {#var#}. Read it: {#var#} -KAVERI', status: 'approved' };
+    const link = 'https://app.yukthix.test/yx/m/AbCdEfGhIjKlMnOpQrStUv';
+    const o = outgoing('sms', { ...base, replyText: 'x'.repeat(800), template: tpl, link }, NOW);
+    expect(o).toEqual({ mode: 'template', template: tpl, params: ['IT-1001', link], text: `You have a reply on IT-1001. Read it: ${link} -KAVERI` });
+    expect(JSON.stringify(outgoing('sms', { ...base, template: tpl, link }, NOW))).not.toMatch(/salary/);
+    // No link (nothing to read with) or no approved template: nothing goes.
+    expect(outgoing('sms', { ...base, template: tpl }, NOW)).toEqual({ mode: 'none', reason: 'no_approved_template' });
+    expect(outgoing('sms', { ...base, link }, NOW)).toEqual({ mode: 'none', reason: 'no_approved_template' });
+  });
+});
+
+describe('language of a messaging ticket (founder decision 9 Oct 2026)', () => {
+  it('a clear guess the desk supports; short, unsure or unsupported text: none', () => {
+    expect(detectLanguage('मेरा लैपटॉप चालू नहीं हो रहा है, कृपया मदद करें', ['en', 'hi'])).toBe('hi');
+    expect(detectLanguage('My laptop will not start, please help me today', ['en', 'hi'])).toBe('en');
+    expect(detectLanguage('என் மடிக்கணினி இயங்கவில்லை தயவுசெய்து உதவுங்கள்', ['en', 'ta'])).toBe('ta');
+    // The desk has nobody for it, the text is too short, or the desk has no languages at all.
+    expect(detectLanguage('என் மடிக்கணினி இயங்கவில்லை தயவுசெய்து உதவுங்கள்', ['en', 'hi'])).toBeNull();
+    expect(detectLanguage('Wi-Fi drops', ['en'])).toBeNull();
+    expect(detectLanguage('My laptop will not start, please help me today', [])).toBeNull();
+    // Romanised Hindi reads as no known language: no guess rather than a wrong one.
+    expect(detectLanguage('mera laptop kaam nahi kar raha hai bhai', ['en', 'hi'])).toBeNull();
   });
 });
 
@@ -137,6 +153,15 @@ describe('push routing (US-G-075, US-G-239)', () => {
     expect(routeAgent('load', [c('a', { skills: ['network'] }), c('c', { languages: ['hi'] })], { skills: ['network'], language: 'hi' }, null, null).userId).toBe('a');
     expect(routeAgent('load', [c('c', { languages: ['hi'] })], { skills: ['network'], language: 'hi' }, null, null).userId).toBe('c');
     expect(routeAgent('load', [c('d')], { skills: ['network'], language: 'hi' }, null, null)).toMatchObject({ userId: 'd', reason: expect.stringMatching(/nobody free matches/) });
+  });
+
+  it('marks a fallback pick, so the caller can wait for the best-matched agent first (founder decision 9 Oct 2026)', () => {
+    const need = { skills: ['network'], language: 'hi' };
+    expect(routeAgent('load', [c('b', { skills: ['network'], languages: ['hi'] })], need, null, null).fallback).toBeUndefined();
+    expect(routeAgent('load', [c('a', { skills: ['network'] })], need, null, null)).toMatchObject({ userId: 'a', fallback: true });
+    expect(routeAgent('load', [c('d')], { skills: [], language: null }, null, null).fallback).toBeUndefined();
+    expect(needWords(need)).toBe('skills network and language hi');
+    expect(needWords({ skills: [], language: null })).toBeNull();
   });
 
   it('an agent at their own capacity gets nothing; all at capacity waits in the queue', () => {
@@ -207,13 +232,14 @@ describe('every batch-3 staff route declares its key (YX-SEC-01)', () => {
     expect(keyed(DeskEsm3Controller, 'forecast')).toEqual(['desk.report.view']);
   });
 
-  it('new secrets need a fresh second factor', () => {
-    for (const m of ['rotateChannel', 'rotateWidget'] as const) expect(Reflect.getMetadata(STEP_UP_REQUIRED, DeskEsm3Controller.prototype[m])).toBe(true);
+  it('new secrets, and confirming chat-app actions, need a fresh second factor', () => {
+    for (const m of ['rotateChannel', 'rotateWidget', 'chatConfirm'] as const) expect(Reflect.getMetadata(STEP_UP_REQUIRED, DeskEsm3Controller.prototype[m])).toBe(true);
   });
 
   it('only the person’s own channels, the signed webhooks and the widget sign-in are keyless', () => {
     expect(routes(MyMessagingController).sort()).toEqual(['devOutbox', 'devSend', 'join', 'mine', 'unlink']);
     expect(routes(InboundMsgController).sort()).toEqual(['company', 'shared', 'verify']);
     expect(routes(WidgetPublicController).sort()).toEqual(['config', 'session']);
+    expect(routes(ReplyLinkController).sort()).toEqual(['info', 'open']);
   });
 });

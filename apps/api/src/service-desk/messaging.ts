@@ -192,23 +192,22 @@ export type Outgoing =
   | { mode: 'template'; template: Template; params: string[]; text: string }
   | { mode: 'none'; reason: 'no_approved_template' | 'not_linked' };
 
-// DECISION NEEDED: India's DLT allows 30 characters per {#var#}, so an SMS reply carries only the start of the agent's
-// words (then "…", and "open YukthiX"). Alternative: send a notice only, never words, by SMS.
-/** DLT limit per {#var#} value (APX-A §4.3): longer values are cut with "…". */
-export const DLT_VAR_MAX = 30;
 const cut = (v: string, n: number) => (v.length > n ? `${v.slice(0, n - 1)}…` : v);
 
-/** Fills an SMS template's {#var#} in order: the ticket number, then (when the template has a second) the reply. */
+/**
+ * Fills an SMS template's {#var#} in order: the ticket number, then the link to read the reply. Founder decision
+ * 9 Oct 2026: an SMS never carries a reply's words, so nothing is ever cut (the link is a DLT-whitelisted URL variable).
+ */
 export function fillDlt(body: string, values: string[]): string {
   let i = 0;
-  return body.replace(/\{#var#\}/g, () => cut(values[i++] ?? '', DLT_VAR_MAX));
+  return body.replace(/\{#var#\}/g, () => values[i++] ?? '');
 }
 
 /**
  * What one outside message says. A sensitive or private ticket, and anything outside the WhatsApp window or on SMS,
  * says only that there is a reply and where to read it; only an open, ordinary ticket's reply text goes out as words.
  */
-export function outgoing(kind: MsgKind, o: { number: string; agentName: string; replyText: string; neutral: boolean; lastInbound: Date | null; template: Template | null }, now = Date.now()): Outgoing {
+export function outgoing(kind: MsgKind, o: { number: string; agentName: string; replyText: string; neutral: boolean; lastInbound: Date | null; template: Template | null; link?: string | null }, now = Date.now()): Outgoing {
   const notice = `There is a new reply on your request ${o.number}. Open YukthiX to read it.`;
   const words = o.neutral ? notice : `${o.agentName} replied on ${o.number}:\n${cut(o.replyText.trim(), 1500)}`;
   if (kind === 'teams' || kind === 'slack') return { mode: 'text', text: words };
@@ -218,9 +217,10 @@ export function outgoing(kind: MsgKind, o: { number: string; agentName: string; 
     if (!approved?.name) return { mode: 'none', reason: 'no_approved_template' };
     return { mode: 'template', template: approved, params: [o.number], text: notice };
   }
-  // SMS: always a registered template (India DLT); a second {#var#} carries the start of an ordinary reply.
-  if (!approved?.body || !/\{#var#\}/.test(approved.body)) return { mode: 'none', reason: 'no_approved_template' };
-  const values = [o.number, o.neutral ? 'Open YukthiX to read it' : o.replyText.replace(/\s+/g, ' ').trim()];
+  // SMS: always a registered template (India DLT), "You have a reply on {#var#}. Read it: {#var#}": the number and a
+  // single-use link to read it (private tickets: the sign-in page). The words never go by SMS.
+  if (!approved?.body || !/\{#var#\}/.test(approved.body) || !o.link) return { mode: 'none', reason: 'no_approved_template' };
+  const values = [o.number, o.link];
   return { mode: 'template', template: approved, params: values, text: fillDlt(approved.body, values) };
 }
 

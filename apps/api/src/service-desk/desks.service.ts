@@ -97,6 +97,7 @@ export class DesksService {
       reopenWindowDays: d.reopenWindowDays,
       requesterCanReopen: d.requesterCanReopen,
       autoCloseDays: d.autoCloseDays,
+      routingWaitMinutes: d.routingWaitMinutes,
       status: d.status,
       version: d.version,
     };
@@ -613,9 +614,10 @@ export class DesksService {
     const org = a.ctx.organizationId;
     return this.tx(a, async (tx) => {
       if (!(await tx.person.findFirst({ where: { organizationId: org, id: personId }, select: { id: true } }))) throw new NotFoundException('No such person.');
-      await tx.sdRequesterFlag.upsert({ where: { organizationId_personId: { organizationId: org, personId } }, update: { vip: dto.vip, note: dto.note ?? null, updatedBy: a.userId }, create: { organizationId: org, personId, vip: dto.vip, note: dto.note ?? null, updatedBy: a.userId } });
-      await audit(tx, a, 'desk.requester.vip_changed', 'person', personId, { vip: dto.vip });
-      return { vip: dto.vip };
+      const language = dto.language !== undefined ? { language: dto.language } : {};
+      const row = await tx.sdRequesterFlag.upsert({ where: { organizationId_personId: { organizationId: org, personId } }, update: { vip: dto.vip, note: dto.note ?? null, updatedBy: a.userId, ...language }, create: { organizationId: org, personId, vip: dto.vip, note: dto.note ?? null, updatedBy: a.userId, ...language } });
+      await audit(tx, a, 'desk.requester.vip_changed', 'person', personId, { vip: dto.vip, ...language });
+      return { vip: dto.vip, language: row.language };
     });
   }
 

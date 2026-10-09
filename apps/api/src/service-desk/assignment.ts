@@ -77,11 +77,21 @@ export interface Route {
   userId: string | null;
   /** Why, in plain words, for the ticket's timeline (US-G-239). */
   reason: string;
+  /** The pick came from a fallback pool (nobody free has both the skills and the language). */
+  fallback?: boolean;
+}
+
+/** "skills network and language hi", or null when the ticket needs neither. */
+export function needWords(need: { skills: readonly string[]; language: string | null }): string | null {
+  const words: string[] = [];
+  if (need.skills.length) words.push(`skills ${need.skills.join(', ')}`);
+  if (need.language) words.push(`language ${need.language}`);
+  return words.length ? words.join(' and ') : null;
 }
 
 /**
- * DECISION NEEDED: US-G-239 says routing falls back "after a set wait"; built: the fallback happens at once (with the
- * reason on the timeline). A timed fallback needs a re-route job per waiting ticket.
+ * Founder decision 9 Oct 2026 (US-G-239 "after a set wait"): the caller holds a fallback back for the desk's wait
+ * (default 2 minutes) and the desk sweep falls back after it; see TicketsService.route / routingSweep.
  * US-G-075 / US-G-239: the best available agent for a new ticket. Agents at their own capacity (or the group's cap) get
  * nothing. Among the rest, those with every skill the category needs and the requester's language come first; when
  * nobody has both, those with the skills, then those with the language, then anyone free (the reason says so).
@@ -93,18 +103,16 @@ export function routeAgent(method: AssignmentMethod, candidates: readonly RouteC
   if (!room.length) return { userId: null, reason: candidates.length ? 'Everyone free is at capacity: waiting in the team queue' : 'Nobody in the team is available: waiting in the team queue' };
   const skilled = (c: RouteCandidate) => need.skills.every((s) => c.skills.includes(s));
   const speaks = (c: RouteCandidate) => !need.language || c.languages.includes(need.language);
-  const words: string[] = [];
-  if (need.skills.length) words.push(`skills ${need.skills.join(', ')}`);
-  if (need.language) words.push(`language ${need.language}`);
+  const words = needWords(need);
   const tiers: [RouteCandidate[], string][] = [
-    [room.filter((c) => skilled(c) && speaks(c)), words.length ? `Routed by ${words.join(' and ')}` : 'Routed to a free agent'],
+    [room.filter((c) => skilled(c) && speaks(c)), words ? `Routed by ${words}` : 'Routed to a free agent'],
     [room.filter(skilled), `Routed by skills (nobody free speaks ${need.language})`],
     [room.filter(speaks), `Routed by language (nobody free has ${need.skills.join(', ')})`],
     [room, 'Routed to a free agent (nobody free matches the skills or language)'],
   ];
-  for (const [pool, reason] of tiers) {
+  for (const [i, [pool, reason]] of tiers.entries()) {
     const userId = pool.length ? chooseAgent(method, pool, lastAssignedUserId, maxOpen) : null;
-    if (userId) return { userId, reason: `${reason}; ${method === 'load' ? 'fewest open tickets' : 'next in turn'}` };
+    if (userId) return { userId, reason: `${reason}; ${method === 'load' ? 'fewest open tickets' : 'next in turn'}`, ...(i > 0 ? { fallback: true } : {}) };
   }
   return { userId: null, reason: 'Everyone free is at the team limit: waiting in the team queue' };
 }

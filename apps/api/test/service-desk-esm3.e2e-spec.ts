@@ -8,7 +8,8 @@ import { JwtService } from '@nestjs/jwt';
 import request from 'supertest';
 import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
-import { randomUUID } from 'crypto';
+import { generateKeyPairSync, randomUUID } from 'crypto';
+import { dkimSign } from 'mailauth';
 import { BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
@@ -18,6 +19,8 @@ import { mountInboundMsgBody } from '../src/service-desk/esm3.controller';
 import { signYukthix } from '../src/service-desk/messaging';
 import { FakeMsgTransport, MessagingService } from '../src/service-desk/messaging.service';
 import { DevMailboxPoller, MailboxSyncService } from '../src/service-desk/mailbox-sync.service';
+import { SD_DNS_RESOLVER } from '../src/service-desk/mail-out.service';
+import { TicketsService } from '../src/service-desk/tickets.service';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 
 // M14 Service Desk phase 3b-2 batch 3 end to end, against the real database (forced RLS, owner-only rows), Redis and
@@ -33,6 +36,27 @@ describe('Service Desk 3b-2 batch 3', () => {
   let cards: FakeChannelTransport;
   let messaging: MessagingService;
   let mailSync: MailboxSyncService;
+  let tickets: TicketsService;
+  const emailSend = jest.fn(async (_m: { to: string; subject: string; html: string }) => ({ success: true }));
+  // Founder decision 9 Oct 2026 (mailbox sync): a fake DNS zone so mail can really be DKIM-signed and checked.
+  const dkimKey = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const zone: Record<string, string[]> = {};
+  const resolver = async (name: string, type: string) => {
+    const r = zone[`${type}:${name.toLowerCase()}`];
+    if (!r) throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' });
+    return r.map((x) => [x]);
+  };
+  const signedDomain = (d: string) => {
+    zone[`TXT:k1._domainkey.${d}`] = [`v=DKIM1; k=rsa; p=${dkimKey.publicKey.export({ type: 'spki', format: 'der' }).toString('base64')}`];
+    zone[`TXT:_dmarc.${d}`] = ['v=DMARC1; p=reject'];
+  };
+  /** Polled mail as a provider stores it (a Received header with the sending IP), DKIM-signed when asked. */
+  const email = async (o: { id: string; from: string; inReplyTo: string | null; body: string; sign: boolean }) => {
+    const msg = `Received: from mx.sender.test (mx.sender.test [203.0.113.5]) by mx.mail.test; ${new Date().toUTCString()}\r\nMessage-ID: <${o.id}@mail.test>\r\nFrom: ${o.from}\r\nTo: agent@esm3-${run}.test\r\nSubject: Re: VPN\r\n${o.inReplyTo ? `In-Reply-To: ${o.inReplyTo}\r\n` : ''}Content-Type: text/plain\r\n\r\n${o.body}\r\n`;
+    if (!o.sign) return Buffer.from(msg);
+    const signed = await dkimSign(msg, { signatureData: [{ signingDomain: o.from.split('@')[1], selector: 'k1', privateKey: dkimKey.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() }] } as never);
+    return Buffer.from(signed.signatures + msg);
+  };
   const PASSWORD = 'Corr3ct-Horse-Battery';
   const run = randomUUID().slice(0, 8);
   const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
@@ -76,7 +100,9 @@ describe('Service Desk 3b-2 batch 3', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(EmailService)
-      .useValue({ send: jest.fn(async () => ({ success: true })) })
+      .useValue({ send: emailSend })
+      .overrideProvider(SD_DNS_RESOLVER)
+      .useValue(resolver)
       .overrideProvider(BlobStorageService)
       .useValue(createFakeBlobStorage())
       .compile();
@@ -92,6 +118,7 @@ describe('Service Desk 3b-2 batch 3', () => {
     fake = messaging.transport as FakeMsgTransport;
     cards = moduleRef.get(ApprovalCards).transport as FakeChannelTransport;
     mailSync = moduleRef.get(MailboxSyncService);
+    tickets = moduleRef.get(TicketsService);
 
     const planId = (await prisma.plan.create({ data: { name: `esm3-plan-${run}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
     ids.plan = planId;
@@ -127,7 +154,7 @@ describe('Service Desk 3b-2 batch 3', () => {
     // The desk's lines (the webhook address and secret are shown once).
     for (const [k, desk, who, templates] of [
       ['whatsapp', ids.it, 'adminA', { reply_notice: { name: 'desk_reply_notice', language: 'en', status: 'approved' } }],
-      ['sms', ids.it, 'adminA', { reply_notice: { dltTemplateId: '1107000000000000101', body: 'New reply on {#var#}: {#var#} -KAVERI', status: 'approved' } }],
+      ['sms', ids.it, 'adminA', { reply_notice: { dltTemplateId: '1107000000000000101', body: 'You have a reply on {#var#}. Read it: {#var#} -KAVERI', status: 'approved' } }],
       ['teams', ids.it, 'adminA', {}],
       ['whatsappB', ids.itB, 'adminB', {}],
       ['teamsB', ids.itB, 'adminB', {}],
@@ -202,6 +229,8 @@ describe('Service Desk 3b-2 batch 3', () => {
       expect(consent).toMatchObject({ source: 'whatsapp_join', scope: 'all_service', addressMasked: expect.stringMatching(/^\+91•+\d{2}$/) });
       const mine = (await api('emp', 'get', '/desk/my/messaging').expect(200)).body;
       expect(mine.lines.find((l: { kind: string }) => l.kind === 'whatsapp').linked.masked).toMatch(/•/);
+      // Founder decision 9 Oct 2026 (P04 Q2): a line without the company's own account uses YukthiX's shared number.
+      expect(mine.lines.find((l: { kind: string }) => l.kind === 'whatsapp').sendTo).toBe(process.env.YX_WHATSAPP_DISPLAY_NUMBER ?? '+91 80000 00000 (demo)');
       // The phone row is the person's own: an agent of the desk does not read it (RLS), even with the right ids.
       const seen = await tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false, userId: users.agent }, (tx) => tx.sdMsgIdentity.count({ where: { userId: users.emp } }));
       expect(seen).toBe(0);
@@ -271,14 +300,32 @@ describe('Service Desk 3b-2 batch 3', () => {
 
   // ------------------------------------------------------------------------------------------ SMS
 
-  it('two-way SMS: the reply goes back as the registered template with the start of the words (DLT 30 characters)', async () => {
+  it('two-way SMS (founder decision 9 Oct 2026): the template says there is a reply, with a single-use link to read it whole', async () => {
     const { code } = (await api('other', 'post', '/desk/my/messaging/join').send({ kind: 'sms' }).expect(200)).body;
     await hook('sms', msg(phone(5), `JOIN ${code}`)).expect(200);
     await hook('sms', msg(phone(5), 'Printer on 3rd floor is out of toner')).expect(200);
     const t = await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { deskId: ids.it, channel: 'sms' } }));
-    await api('agent', 'post', `/desk/tickets/${t.id}/messages`).send({ kind: 'reply', bodyHtml: '<p>A new cartridge is on its way to your floor this afternoon.</p>' }).expect(201);
+    ids.smsTicket = t.id;
+    const long = `A new cartridge is on its way to your floor this afternoon. ${'Please keep the old one aside for recycling. '.repeat(6)}`.trim();
+    await api('agent', 'post', `/desk/tickets/${t.id}/messages`).send({ kind: 'reply', bodyHtml: `<p>${long}</p>` }).expect(201);
     const s = await until(() => sentTo(phone(5)).find((x) => x.template === '1107000000000000101'), 'the SMS template');
-    expect(s.text).toBe(`New reply on ${t.number}: A new cartridge is on its way… -KAVERI`);
+    const web = (process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '');
+    const prefix = `You have a reply on ${t.number}. Read it: ${web}/yx/m/`;
+    expect(s.text.startsWith(prefix) && s.text.endsWith(' -KAVERI')).toBe(true);
+    const key = s.text.slice(prefix.length, -' -KAVERI'.length);
+    expect(key).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(s.text).not.toMatch(/cartridge/);
+    const link = `/api/v1/desk/reply-link/${key}`;
+    // Opening the page (a phone's preview) uses nothing up; reading shows the whole reply once.
+    expect((await request(app.getHttpServer()).get(link).expect(200)).body).toEqual({ number: t.number });
+    expect((await request(app.getHttpServer()).get(link).expect(200)).body).toEqual({ number: t.number });
+    const read = (await request(app.getHttpServer()).post(link).expect(200)).body;
+    expect(read).toMatchObject({ number: t.number, text: long, agentName: `agent ${run}` });
+    await request(app.getHttpServer()).post(link).expect(410);
+    await request(app.getHttpServer()).get(link).expect(410);
+    await request(app.getHttpServer()).post('/api/v1/desk/reply-link/not-a-real-token').expect(404);
+    // A template without the link's {#var#} is refused.
+    await api('adminA', 'patch', `/desk/msg-channels/${lines.sms.id}`).send({ version: 1, templates: { reply_notice: { body: 'New reply on {#var#} -KAVERI', status: 'approved' } } }).expect(400);
   });
 
   // ------------------------------------------------------------------------------------------ Teams
@@ -289,6 +336,26 @@ describe('Service Desk 3b-2 batch 3', () => {
       await api('agent', 'post', '/workflow/channel-links').send({ provider: 'teams', externalRef: `aad-agent-${run}` }).expect(201);
       await hook('teams', msg(`aad-emp-${run}`, 'Need access to the Sales drive')).expect(200);
       const t = await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { deskId: ids.it, channel: 'teams' } }));
+      // Founder decision 9 Oct 2026: no YukthiX second factor in the last 12 hours, so nothing is done and the bot says
+      // where to confirm (a 13-hour-old one does not count either; reading still works).
+      await hook('teams', msg(`aad-agent-${run}`, `claim ${t.number}`)).expect(200);
+      expect(sentTo(`aad-agent-${run}`).at(-1)?.text).toMatch(/^Nothing was done\. To claim from Microsoft Teams, confirm it is you in YukthiX first .*\/yx\/desk\/confirm-chat$/);
+      expect((await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: t.id } }))).assigneeUserId).toBeNull();
+      const stepUp = (at: Date, method = 'totp') => system((tx) => tx.session.updateMany({ where: { userId: users.agent }, data: { assuranceLevel: 'aal2', mfaMethod: method, mfaVerifiedAt: at } }));
+      await stepUp(new Date(Date.now() - 13 * 3_600_000));
+      await hook('teams', msg(`aad-agent-${run}`, `reply ${t.number} too early`)).expect(200);
+      expect(sentTo(`aad-agent-${run}`).at(-1)?.text).toMatch(/^Nothing was done/);
+      // An emailed code is not a YukthiX second factor for this.
+      await stepUp(new Date(), 'otp');
+      await hook('teams', msg(`aad-agent-${run}`, `note ${t.number} still too early`)).expect(200);
+      expect(sentTo(`aad-agent-${run}`).at(-1)?.text).toMatch(/^Nothing was done/);
+      expect(await system((tx) => tx.sdTicketMessage.count({ where: { ticketId: t.id, bodyText: { contains: 'too early' } } }))).toBe(0);
+      expect(await system((tx) => tx.auditLog.count({ where: { action: 'desk.msg.agent_command_refused' } }))).toBe(3);
+      await hook('teams', msg(`aad-agent-${run}`, `view ${t.number}`)).expect(200);
+      expect(sentTo(`aad-agent-${run}`).at(-1)?.text).toContain('Need access to the Sales drive');
+      // The confirm page's call needs the step-up itself.
+      expect((await api('agent', 'post', '/desk/me/chat-confirm').expect(403)).body.code).toBe('STEP_UP_REQUIRED');
+      await stepUp(new Date(Date.now() - 60_000));
       await hook('teams', msg(`aad-agent-${run}`, `claim ${t.number}`)).expect(200);
       expect(sentTo(`aad-agent-${run}`).at(-1)?.text).toBe(`${t.number} is yours now.`);
       await hook('teams', msg(`aad-agent-${run}`, `reply ${t.number} Done, please sign in again`)).expect(200);
@@ -328,9 +395,24 @@ describe('Service Desk 3b-2 batch 3', () => {
       expect(r1).toMatchObject({ assigneeUserId: users.netAg, language: 'hi' });
       const ev = await system((tx) => tx.sdTicketEvent.findFirstOrThrow({ where: { ticketId: t1.id, kind: 'assigned' } }));
       expect(ev.reason).toBe('Routed by skills network and language hi; fewest open tickets');
-      // netAg is at capacity (1 open): the next one goes to the other agent, and says why.
+      // netAg is at capacity (1 open). Founder decision 9 Oct 2026: the ticket waits for the best-matched agent for the
+      // desk's wait (default 2 minutes), then the sweep routes it to anyone free, and the timeline says so.
       const t2 = (await raise('Wi-Fi drops on floor 3')).body;
-      expect((await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: t2.id } }))).assigneeUserId).toBe(users.plainAg);
+      const w = await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: t2.id } }));
+      expect(w.assigneeUserId).toBeNull();
+      expect(w.routingWaitUntil!.getTime()).toBeGreaterThan(Date.now() + 60_000);
+      expect((await system((tx) => tx.sdTicketEvent.findFirstOrThrow({ where: { ticketId: t2.id, kind: 'routing' } }))).reason).toBe('Waiting up to 2 minutes for an agent with skills network and language hi before routing to anyone free');
+      // Still inside the wait: nothing changes.
+      await tickets.routingSweep(new Date(Date.now() + 30_000));
+      expect((await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: t2.id } }))).assigneeUserId).toBeNull();
+      await tickets.routingSweep(new Date(Date.now() + 3 * 60_000));
+      const r2 = await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: t2.id } }));
+      expect(r2).toMatchObject({ assigneeUserId: users.plainAg, routingWaitUntil: null });
+      expect((await system((tx) => tx.sdTicketEvent.findFirstOrThrow({ where: { ticketId: t2.id, kind: 'assigned' } }))).reason).toBe('No agent with skills network and language hi was free within 2 minutes. Routed to a free agent (nobody free matches the skills or language); fewest open tickets');
+      // The wait is a desk setting (0: fall back at once).
+      const desk = (await api('adminA', 'get', `/desk/desks/${ids.it}`).expect(200)).body.desk;
+      expect(desk.routingWaitMinutes).toBe(2);
+      await api('adminA', 'patch', `/desk/desks/${ids.it}`).send({ version: desk.version, routingWaitMinutes: 61 }).expect(400);
       // Busy agents get no pushed work; nobody free: the ticket waits and the timeline says so.
       await api('plainAg', 'put', '/desk/me/presence').send({ status: 'busy' }).expect(200);
       const t3 = (await raise('Wi-Fi drops on floor 4')).body;
@@ -410,6 +492,12 @@ describe('Service Desk 3b-2 batch 3', () => {
         if (origin) r.set('Origin', origin);
         return r.send({ token: tokenValue, ...(parentOrigin ? { parentOrigin } : {}) });
       };
+      // Founder decision 9 Oct 2026: the help page's sign-up is closed (the default), so an unknown visitor is told so
+      // and no contact is made; once the page takes sign-ups (or they are a contact) they get in.
+      const closed = (await session(sign({}), web, 'https://shop.example.com').expect(403)).body;
+      expect(closed).toMatchObject({ code: 'WIDGET_SIGN_UP_CLOSED', message: expect.stringMatching(/only for existing customers/) });
+      expect(await system((tx) => tx.person.count({ where: { primaryEmail: `asha-${run}@customer.test` } }))).toBe(0);
+      await system((tx) => tx.sdPortal.update({ where: { id: portal.id }, data: { signUp: 'open' } }));
       const good = sign({});
       const s = (await session(good, web, 'https://shop.example.com').expect(200)).body;
       expect(s).toMatchObject({ orgSlug: org.A.slug, portalSlug: 'help' });
@@ -441,8 +529,10 @@ describe('Service Desk 3b-2 batch 3', () => {
     await system((tx) => tx.sdTicketMessage.update({ where: { id: reply.id }, data: { emailMessageId: `<sd.${run}@desk.test>` } }));
     const box = (await api('agent', 'post', '/desk/me/mailbox').send({ kind: 'dev' }).expect(201)).body;
     expect(box.address).toBe(`agent@esm3-${run}.test`);
-    const mail = (id: string, inReplyTo: string | null, body: string) => Buffer.from(`Message-ID: <${id}@mail.test>\r\nFrom: emp@esm3-${run}.test\r\nTo: agent@esm3-${run}.test\r\nSubject: Re: VPN\r\n${inReplyTo ? `In-Reply-To: ${inReplyTo}\r\n` : ''}Content-Type: text/plain\r\n\r\n${body}\r\n`);
-    DevMailboxPoller.inbox.set(box.id, [mail(`a-${run}`, `<sd.${run}@desk.test>`, 'Works now, thanks'), mail(`b-${run}`, null, 'Lunch on Friday?')]);
+    signedDomain(`esm3-${run}.test`);
+    signedDomain(`outsider-${run}.test`);
+    const mail = (id: string, inReplyTo: string | null, body: string, from = `emp@esm3-${run}.test`, sign = true) => email({ id, from, inReplyTo, body, sign });
+    DevMailboxPoller.inbox.set(box.id, [await mail(`a-${run}`, `<sd.${run}@desk.test>`, 'Works now, thanks'), await mail(`b-${run}`, null, 'Lunch on Friday?')]);
     expect(await mailSync.syncOne(org.A.id, box.id)).toBe(1);
     const notes = await system((tx) => tx.sdTicketMessage.findMany({ where: { ticketId: t.id, kind: 'note', channel: 'email' } }));
     expect(notes).toHaveLength(1);
@@ -450,12 +540,22 @@ describe('Service Desk 3b-2 batch 3', () => {
     expect(await system((tx) => tx.sdTicketMessage.count({ where: { organizationId: org.A.id, bodyText: { contains: 'Lunch on Friday' } } }))).toBe(0);
     // A second agent's mailbox with the same thread: still one note.
     const box2 = (await api('lead', 'post', '/desk/me/mailbox').send({ kind: 'dev' }).expect(201)).body;
-    DevMailboxPoller.inbox.set(box2.id, [mail(`a-${run}`, `<sd.${run}@desk.test>`, 'Works now, thanks')]);
+    DevMailboxPoller.inbox.set(box2.id, [await mail(`a-${run}`, `<sd.${run}@desk.test>`, 'Works now, thanks')]);
     expect(await mailSync.syncOne(org.A.id, box2.id)).toBe(0);
+    // Founder decision 9 Oct 2026, the spoof case: an email that quotes the ticket's Message-ID under the requester's
+    // name but fails their DMARC (unsigned), and a properly signed outsider quoting it, are ignored and logged.
+    DevMailboxPoller.inbox.get(box.id)!.push(
+      await mail(`spoof-${run}`, `<sd.${run}@desk.test>`, `Please change my bank account ${run}`, `emp@esm3-${run}.test`, false),
+      await mail(`out-${run}`, `<sd.${run}@desk.test>`, `Outsider note ${run}`, `someone@outsider-${run}.test`),
+    );
+    expect(await mailSync.syncOne(org.A.id, box.id)).toBe(0);
+    expect(await system((tx) => tx.sdTicketMessage.count({ where: { organizationId: org.A.id, OR: [{ bodyText: { contains: 'bank account' } }, { bodyText: { contains: 'Outsider note' } }] } }))).toBe(0);
+    const ignored = await system((tx) => tx.auditLog.findMany({ where: { action: 'desk.agent_mailbox.ignored', entityId: t.id }, orderBy: { createdAt: 'asc' } }));
+    expect(ignored.map((x) => (JSON.parse(x.metadataJson ?? '{}') as { reason: string }).reason)).toEqual(['sender_not_proven', 'not_a_participant']);
     // Only the owner sees the mailbox row; unlinking wipes the grant and stops at once.
     expect(await tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false, userId: users.lead }, (tx) => tx.sdAgentMailbox.count({ where: { id: box.id } }))).toBe(0);
     await api('agent', 'delete', '/desk/me/mailbox').expect(200);
-    DevMailboxPoller.inbox.set(box.id, [mail(`c-${run}`, `<sd.${run}@desk.test>`, 'One more thing')]);
+    DevMailboxPoller.inbox.set(box.id, [await mail(`c-${run}`, `<sd.${run}@desk.test>`, 'One more thing')]);
     expect(await mailSync.syncOne(org.A.id, box.id)).toBe(0);
     expect(await system((tx) => tx.sdAgentMailbox.findFirstOrThrow({ where: { id: box.id } }))).toMatchObject({ status: 'unlinked', configEncrypted: null });
     // Someone without an agent seat cannot link one.
@@ -518,6 +618,40 @@ describe('Service Desk 3b-2 batch 3', () => {
     const log = await system((tx) => tx.notificationDelivery.findMany({ where: { organizationId: org.A.id, channel: 'teams' } }));
     expect(log.length).toBeGreaterThan(0);
     expect(log.every((d) => d.addressMasked === 'Microsoft Teams account')).toBe(true);
+  });
+
+  // ------------------------------------------------------------------------------------------ founder decisions 9 Oct 2026
+
+  it('a messaging ticket takes the contact’s saved language, else a clear guess the desk’s agents speak, else none', async () => {
+    // netAg answers in Hindi and English (the routing test); Tamil is nobody's.
+    const ticketFor = async (text: string) => {
+      await hook('sms', msg(phone(5), `NEW ${text}`)).expect(200);
+      return system((tx) => tx.sdTicket.findFirstOrThrow({ where: { deskId: ids.it, channel: 'sms' }, orderBy: { createdAt: 'desc' } }));
+    };
+    expect((await ticketFor('मेरा प्रिंटर काम नहीं कर रहा है, कृपया जल्दी मदद करें')).language).toBe('hi');
+    expect((await ticketFor('என் அச்சுப்பொறி இயங்கவில்லை தயவுசெய்து உதவுங்கள்')).language).toBeNull();
+    expect((await ticketFor('Toner again')).language).toBeNull();
+    const person = await system((tx) => tx.personRole.findFirstOrThrow({ where: { roleType: 'login', sourceTable: 'users', sourceId: users.other } }));
+    expect((await api('adminA', 'put', `/desk/requesters/${person.personId}/vip`).send({ vip: false, language: 'ta' }).expect(200)).body.language).toBe('ta');
+    expect((await ticketFor('My printer is broken again, please help')).language).toBe('ta');
+  });
+
+  it('a phone linked again in another company: the newest JOIN wins and the first company’s desk admins are told, without words', async () => {
+    await api('adminA', 'post', `/desk/desks/${ids.it}/members`).send({ userId: users.adminA, role: 'admin' }).expect(201);
+    emailSend.mockClear();
+    const { code } = (await api('empB', 'post', '/desk/my/messaging/join').send({ kind: 'whatsapp' }).expect(200)).body;
+    expect((await hook('whatsappB', msg(phone(3), `JOIN ${code}`)).expect(200)).body.taken).toBe(1);
+    expect(await system((tx) => tx.sdMsgIdentity.count({ where: { userId: users.emp, kind: 'whatsapp', state: 'active' } }))).toBe(0);
+    expect(await system((tx) => tx.sdMsgIdentity.count({ where: { userId: users.empB, kind: 'whatsapp', state: 'active' } }), org.B.id)).toBe(1);
+    const bell = await system((tx) => tx.userNotification.findFirstOrThrow({ where: { recipientUserId: users.adminA, type: 'helpdesk.msg.link_ended' } }));
+    expect(bell.contextText).toMatch(/^A phone linked to your WhatsApp help \(\+91•+\d{2}\) was linked again somewhere else/);
+    expect(bell.contextText).not.toContain(org.B.slug);
+    await until(() => emailSend.mock.calls.find((c) => c[0].to === `adminA@esm3-${run}.test`), 'the link-ended email');
+    const mail = emailSend.mock.calls.find((c) => c[0].to === `adminA@esm3-${run}.test`)![0];
+    expect(mail.subject).toBe('A WhatsApp link to your desk ended');
+    expect(mail.html).not.toContain(code);
+    // Company B hears nothing about it.
+    expect(await system((tx) => tx.userNotification.count({ where: { type: 'helpdesk.msg.link_ended' } }), org.B.id)).toBe(0);
   });
 
   // ------------------------------------------------------------------------------------------ founder decision (b)

@@ -30,7 +30,7 @@ import {
 } from './dto-esm3';
 import { MailboxSyncService } from './mailbox-sync.service';
 import { MSG_KINDS, MsgKind, sameSecret } from './messaging';
-import { INBOUND_MSG_PATH, MessagingService } from './messaging.service';
+import { CHAT_MFA_HOURS, INBOUND_MSG_PATH, MessagingService } from './messaging.service';
 import { MobileService } from './mobile.service';
 import { RequesterService } from './requester.service';
 import { TeamService } from './team.service';
@@ -217,6 +217,19 @@ export class DeskEsm3Controller {
     return this.mailboxes.unlink(await this.access.actor(req, t));
   }
 
+  /**
+   * Founder decision 9 Oct 2026: claim, reply and note from Teams / Slack need a YukthiX second factor in the last 12
+   * hours. The bot's "confirm it is you" link lands here: the step-up (logged by the guard as step_up.used) is the proof.
+   */
+  @Post('me/chat-confirm')
+  @HttpCode(200)
+  @RequirePermissions('desk.ticket.work')
+  @RequireStepUp()
+  chatConfirm(@Req() req: Request) {
+    assertOwnSession(req);
+    return { confirmed: true, validForHours: CHAT_MFA_HOURS };
+  }
+
   // ---------------------------------------------------------------- agent mobile app (SD-2.27)
 
   @Get('mobile/home')
@@ -357,5 +370,28 @@ export class WidgetPublicController {
     // A sandboxed page sends "null": that is a browser, never a mobile SDK, so it is refused like any other site.
     const origin = typeof req.headers.origin === 'string' ? req.headers.origin : null;
     return this.widgets.session(key, dto, origin, clientIpOf(req));
+  }
+}
+
+/**
+ * Founder decision 9 Oct 2026: an SMS says only "You have a reply on <number>" with this link. No session: the random
+ * key in the link is the only key, it works once and expires (DESK_REPLY_LINK_HOURS). Opening the page (GET) uses
+ * nothing up (phones preview links); the person presses "Read the reply" (POST).
+ */
+@Controller('desk/reply-link')
+export class ReplyLinkController {
+  constructor(private readonly messaging: MessagingService) {}
+
+  @Get(':token')
+  @Throttle(PUBLIC_API_THROTTLE)
+  info(@Param('token') token: string) {
+    return this.messaging.readLinkInfo(token);
+  }
+
+  @Post(':token')
+  @HttpCode(200)
+  @Throttle(PUBLIC_API_THROTTLE)
+  open(@Param('token') token: string) {
+    return this.messaging.readLinkOpen(token);
   }
 }

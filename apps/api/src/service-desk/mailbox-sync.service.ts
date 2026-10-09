@@ -4,10 +4,11 @@ import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { OrgSecretsCryptoService, TenantPrismaService } from '@exam-platform/shared';
 import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
+import { Tx } from '../org-structure/org-structure.service';
 import { DeskAccessService, DeskActor, audit, canWork, deskSystem, emit } from './desk-access';
 import { GmailPoller, GraphPoller, MailboxPoller, PollResult } from './mail-adapters';
-import { readReplyToken } from './mail-auth';
-import { MailOutService } from './mail-out.service';
+import { DnsResolver, checkSender, readReplyToken, senderVerdict } from './mail-auth';
+import { MailOutService, SD_DNS_RESOLVER } from './mail-out.service';
 import { parseEmail } from './mail-parse';
 import { textToHtml } from './rich-text';
 import { TicketsService } from './tickets.service';
@@ -17,6 +18,9 @@ import { TicketsService } from './tickets.service';
 // References against our stored Message-IDs, incoming and outgoing) or carries the ticket's signed reply address. It
 // lands as an internal note on the ticket (it takes the ticket's privacy: sensitive and private flags are copied by the
 // database), once per ticket, and only on tickets the agent works on. Nothing else in the mailbox is read into YukthiX.
+// Founder decision 9 Oct 2026: only when the sender is the linked agent or a participant of the ticket (requester,
+// requested-for, followers, owner, collaborators) AND the mail passes our own SPF / DKIM / DMARC check (mailauth, the
+// §14.3 verdict). Anything else (a spoofed From, an outsider quoting a Message-ID) is ignored and logged.
 // The adapters are the desk mailbox ones (mail-adapters.ts) with the sent folder added. The grant is the agent's own;
 // unlinking stops the sync at once and wipes the stored grant. Delegated sign-in with Microsoft / Google (instead of
 // typed app credentials) is a go-live line.
@@ -27,8 +31,7 @@ const MAX_TEXT = 20_000;
 type Mailbox = Prisma.SdAgentMailboxGetPayload<object>;
 
 // DECISION NEEDED: US-E-283 also asks "send-as with my own grant"; not built: replies still go from the desk mailbox
-// (one address, DKIM-signed). Also: an outsider who quotes a ticket's Message-ID in a mail to an agent adds an internal
-// note (labelled with the real sender); keep, or import only mail from the requester, watchers and colleagues?
+// (one address, DKIM-signed).
 /** Development only: messages handed to a "dev" mailbox (tests and the local demo). */
 export class DevMailboxPoller implements MailboxPoller {
   static readonly inbox = new Map<string, Buffer[]>();
@@ -53,6 +56,7 @@ export class MailboxSyncService implements OnModuleInit, OnModuleDestroy {
     private readonly access: DeskAccessService,
     private readonly tickets: TicketsService,
     private readonly mailOut: MailOutService,
+    @Inject(SD_DNS_RESOLVER) private readonly resolver: DnsResolver,
   ) {
     this.queue = logBullErrors(new Queue(AGENT_MAIL_QUEUE, { connection }), AGENT_MAIL_QUEUE);
   }
@@ -159,24 +163,50 @@ export class MailboxSyncService implements OnModuleInit, OnModuleDestroy {
     return added;
   }
 
+  /** The addresses of the ticket's people: requester, requested-for, followers, owner and collaborators. */
+  private async participants(tx: Tx, t: Prisma.SdTicketGetPayload<object>): Promise<Set<string>> {
+    const org = t.organizationId;
+    const watchers = await tx.sdTicketWatcher.findMany({ where: { organizationId: org, ticketId: t.id }, select: { personId: true } });
+    const collaborators = await tx.sdTicketCollaborator.findMany({ where: { organizationId: org, ticketId: t.id }, select: { userId: true } });
+    const personIds = [t.requesterPersonId, t.requestedForPersonId, ...watchers.map((w) => w.personId)].filter((x): x is string => Boolean(x));
+    const userIds = [t.assigneeUserId, ...collaborators.map((c) => c.userId)].filter((x): x is string => Boolean(x));
+    const persons = await tx.person.findMany({ where: { organizationId: org, id: { in: personIds } }, select: { primaryEmail: true } });
+    const users = await tx.user.findMany({ where: { organizationId: org, id: { in: userIds } }, select: { email: true } });
+    return new Set([...persons.map((x) => x.primaryEmail), ...users.map((x) => x.email)].filter((x): x is string => Boolean(x)).map((x) => x.toLowerCase()));
+  }
+
   /** One email: a note on the matched ticket, or nothing. */
   private async take(a: DeskActor, m: Mailbox, raw: Buffer): Promise<number> {
     const org = m.organizationId;
     const p = await parseEmail(raw);
     const ids = [p.inReplyTo, ...p.references, p.messageId].filter((x): x is string => Boolean(x)).slice(0, 50);
+    const token = readReplyToken(this.mailOut.tokenSecret(), org, [...p.to, ...p.cc]);
+    if (!ids.length && !token) return 0;
+    const from = (p.from?.address ?? '').toLowerCase();
+    // Who really sent it: our own check, never the provider's (polled mail: the IP is in the top Received header).
+    const proven = from
+      ? await checkSender(raw, { ip: '', mailFrom: from, trustReceived: true }, from, this.resolver)
+          .then((f) => senderVerdict(f, { ownDomains: [], trustedForwarders: [] }))
+          .then((v) => v.action === 'accept' && v.verified)
+          .catch(() => false)
+      : false;
     const run = deskSystem(this.tenantPrisma, a.ctx, async (tx) => {
       // Mail that is already in YukthiX (sent by the desk, or received by a desk mailbox) is not taken twice.
       if (p.messageId && (await tx.sdTicketMessage.findFirst({ where: { organizationId: org, emailMessageId: p.messageId, kind: { not: 'note' } }, select: { id: true } }))) return 0;
       let ticketId: string | null = null;
       if (ids.length) ticketId = (await tx.sdTicketMessage.findFirst({ where: { organizationId: org, emailMessageId: { in: ids }, kind: { not: 'note' } }, orderBy: { createdAt: 'desc' }, select: { ticketId: true } }))?.ticketId ?? null;
-      if (!ticketId) {
-        const n = readReplyToken(this.mailOut.tokenSecret(), org, [...p.to, ...p.cc]);
-        if (n) ticketId = (await tx.sdTicket.findFirst({ where: { organizationId: org, number: n }, select: { id: true } }))?.id ?? null;
-      }
+      if (!ticketId && token) ticketId = (await tx.sdTicket.findFirst({ where: { organizationId: org, number: token }, select: { id: true } }))?.id ?? null;
       if (!ticketId) return 0;
       const t = await tx.sdTicket.findFirstOrThrow({ where: { organizationId: org, id: ticketId } });
       // Only onto tickets this agent works on today (never by role alone).
       if (!canWork(a, t.deskId) || t.mergedIntoId) return 0;
+      const participant = from && (from === m.address.toLowerCase() || (await this.participants(tx, t)).has(from));
+      if (!participant || !proven) {
+        // Logged once per email (the mailbox cursor moves on); the words are never kept.
+        this.logger.warn(`Agent mailbox ${m.id}: an email quoting ${t.number} was ignored (${!participant ? 'sender is not on the ticket' : 'sender not proven'})`);
+        await audit(tx, { ctx: a.ctx, userId: m.userId }, 'desk.agent_mailbox.ignored', 'sd_ticket', t.id, { mailboxId: m.id, reason: !participant ? 'not_a_participant' : 'sender_not_proven', fromDomain: from.split('@')[1] ?? null });
+        return 0;
+      }
       const head = `Email in ${m.address}: from ${p.from?.address ?? 'unknown'} to ${[...p.to, ...p.cc].slice(0, 5).join(', ') || 'unknown'}${p.subject ? `, "${p.subject.slice(0, 150)}"` : ''}`;
       // The same email from another agent's mailbox (or an earlier run) is already on the ticket.
       if (await tx.sdTicketMessage.findFirst({ where: { organizationId: org, ticketId: t.id, kind: 'note', emailMessageId: p.messageId }, select: { id: true } })) return 0;

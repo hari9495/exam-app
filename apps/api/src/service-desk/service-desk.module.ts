@@ -45,7 +45,7 @@ import { DeskChatController, DeskOrgController, MyChatController } from './esm2.
 import { JourneysService } from './journeys.service';
 import { LifecyclesService } from './lifecycles.service';
 import { RecurringService } from './recurring.service';
-import { DeskEsm3Controller, InboundMsgController, MyMessagingController, WidgetPublicController } from './esm3.controller';
+import { DeskEsm3Controller, InboundMsgController, MyMessagingController, ReplyLinkController, WidgetPublicController } from './esm3.controller';
 import { MailboxSyncService } from './mailbox-sync.service';
 import { MessagingService } from './messaging.service';
 import { MobileService } from './mobile.service';
@@ -93,6 +93,7 @@ import { WidgetService } from './widget.service';
     MyMessagingController,
     InboundMsgController,
     WidgetPublicController,
+    ReplyLinkController,
   ],
   providers: [
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },

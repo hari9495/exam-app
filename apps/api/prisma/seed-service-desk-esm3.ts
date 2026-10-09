@@ -42,7 +42,7 @@ export async function seedServiceDeskEsm3(tx: Tx, organizationId: string) {
     tx.sdMsgChannel.create({ data: { ...org, deskId: it.id, kind, name, tokenHash: sha256(randomBytes(32).toString('base64url')), signingSecretEncrypted: crypto.encrypt(randomBytes(32).toString('base64url')), templates: templates as Prisma.InputJsonValue, createdBy: admin.id } });
   await line('whatsapp', 'IT help on WhatsApp', { reply_notice: { name: 'desk_reply_notice', language: 'en', status: 'approved' } });
   await line('sms', 'IT help by SMS', {
-    reply_notice: { dltTemplateId: '1107000000000000101', body: 'New reply on your request {#var#}: {#var#} Reply to this SMS or open YukthiX. -KAVERI', status: 'approved' },
+    reply_notice: { dltTemplateId: '1107000000000000101', body: 'You have a reply on {#var#}. Read it: {#var#} -KAVERI', status: 'approved' },
     notice: { dltTemplateId: '1107000000000000102', body: 'Kaveri IT help: {#var#} -KAVERI', status: 'approved' },
   });
   await line('teams', 'IT help in Teams', {});

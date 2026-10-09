@@ -4,7 +4,7 @@ import { OrgSecretsCryptoService, TenantPrismaService } from '@exam-platform/sha
 import { Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { NotificationsService } from '../notifications/notifications.service';
-import { Route, isAvailable, onLeaveNow, routeAgent } from './assignment';
+import { Route, isAvailable, needWords, onLeaveNow, routeAgent } from './assignment';
 import { cleanHtml, htmlToText } from './rich-text';
 import { PiiFound, maskPii, maskPiiHtml, unmaskHealth } from './pii';
 import { SlaService } from './sla.service';
@@ -20,6 +20,7 @@ import {
   audit,
   canLead,
   canWork,
+  deskSystem,
   emit,
   has,
   requireWork,
@@ -70,8 +71,8 @@ export interface CreateInput {
   openedByUserId: string | null;
   channel: 'portal' | 'agent' | 'api' | 'email' | 'chat' | 'phone' | 'walk_up' | 'whatsapp' | 'sms' | 'teams' | 'slack' | 'widget';
   /**
-   * SD-2.25: the language the requester wrote in (routing by language). DECISION NEEDED: only the raise form sends it
-   * today; WhatsApp, SMS and chat-app messages carry none (detect the language from the text, or ask the person once?).
+   * SD-2.25: the language the requester wrote in (routing by language): the raise form sends it; WhatsApp, SMS and
+   * chat-app tickets use the contact's saved language or the one detected in the first message (language.ts).
    */
   language?: string | null;
   private?: boolean;
@@ -169,7 +170,7 @@ export class TicketsService {
     // SD-2.25: a WhatsApp / SMS / Teams / Slack message has no category: it goes to the desk's first team for routing.
     const groupId = branch?.groupId ?? cat?.groupId ?? (MESSAGING.includes(input.channel) ? ((await tx.sdGroup.findFirst({ where: { organizationId: org, deskId: desk.id, active: true }, orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id ?? null) : null);
     const language = input.language && /^[a-z]{2,3}$/.test(input.language) ? input.language : null;
-    const routed = groupId ? await this.route(tx, org, desk.id, groupId, { skills: cat?.skills ?? [], language }, new Date(), MESSAGING.includes(input.channel) ? 'messaging' : 'ticket') : null;
+    const routed = groupId ? await this.route(tx, org, desk.id, groupId, { skills: cat?.skills ?? [], language }, new Date(), MESSAGING.includes(input.channel) ? 'messaging' : 'ticket', desk.routingWaitMinutes) : null;
     const assigneeUserId = routed?.userId ?? null;
     const { bodyHtml, bodyText, found } = this.cleanMasked(input.bodyHtml);
     if (!bodyText) throw new BadRequestException('Describe the issue.');
@@ -210,6 +211,7 @@ export class TicketsService {
         lifecycleId: pin?.lifecycleId ?? null,
         lifecycleVersion: pin?.version ?? null,
         language,
+        routingWaitUntil: routed?.waitUntil ?? null,
         vip,
         tags: [...new Set([...(input.tags ?? []), ...(usedUp ? ['plan-used-up'] : [])])].slice(0, 20),
         custom: input.custom ?? {},
@@ -373,7 +375,7 @@ export class TicketsService {
    * leave, and under their own capacity; then skills of the category and the requester's language first, with the
    * reason kept for the timeline.
    */
-  async route(tx: Tx, org: string, deskId: string, groupId: string, need: { skills: readonly string[]; language: string | null }, now = new Date(), work: 'ticket' | 'messaging' = 'ticket'): Promise<Route> {
+  async route(tx: Tx, org: string, deskId: string, groupId: string, need: { skills: readonly string[]; language: string | null }, now = new Date(), work: 'ticket' | 'messaging' = 'ticket', waitMinutes = 0): Promise<Route & { waitUntil?: Date }> {
     const [group] = await tx.$queryRaw<{ assignment_method: string; max_open_per_agent: number | null; last_assigned_user_id: string | null; active: boolean }[]>`
       SELECT assignment_method, max_open_per_agent, last_assigned_user_id, active FROM sd_groups
       WHERE organization_id = ${org}::uuid AND desk_id = ${deskId}::uuid AND id = ${groupId}::uuid FOR UPDATE`;
@@ -411,8 +413,47 @@ export class TicketsService {
       group.last_assigned_user_id,
       group.max_open_per_agent,
     );
+    // Founder decision 9 Oct 2026: nobody free has both the skills and the language, so the ticket waits for the
+    // best-matched agent for the desk's wait before falling back (routingSweep).
+    if (r.fallback && waitMinutes > 0) {
+      return { userId: null, reason: `Waiting up to ${waitMinutes} minute${waitMinutes === 1 ? '' : 's'} for an agent with ${needWords(need)} before routing to anyone free`, waitUntil: new Date(now.getTime() + waitMinutes * 60_000) };
+    }
     if (r.userId) await tx.sdGroup.update({ where: { id: groupId }, data: { lastAssignedUserId: r.userId } });
     return r;
+  }
+
+  /**
+   * Founder decision 9 Oct 2026: tickets waiting for their best-matched agent. Each minute (the desk jobs): the
+   * best-matched agent who became free gets it; once the wait is over, routing falls back and the reason says so.
+   * ponytail: a one-minute sweep, so a 2-minute wait ends within 2–3 minutes; a delayed job per ticket if it must be exact.
+   */
+  async routingSweep(now = new Date()): Promise<number> {
+    const due = await deskSystem(this.tenantPrisma, { organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.sdTicket.findMany({ where: { routingWaitUntil: { not: null } }, select: { id: true, organizationId: true }, orderBy: { routingWaitUntil: 'asc' }, take: 200 }),
+    );
+    let n = 0;
+    for (const d of due) {
+      n += await deskSystem(this.tenantPrisma, { organizationId: d.organizationId, isSuperAdmin: false }, async (tx) => {
+        const org = d.organizationId;
+        const t = await tx.sdTicket.findFirst({ where: { organizationId: org, id: d.id, routingWaitUntil: { not: null } } });
+        if (!t) return 0;
+        const clear = () => tx.sdTicket.update({ where: { id: t.id }, data: { routingWaitUntil: null } });
+        // Someone took it meanwhile, it moved team or closed: nothing more to route.
+        if (t.assigneeUserId || !t.groupId || !OPEN_STATES.includes(t.systemState)) return clear().then(() => 0);
+        const desk = await tx.sdDesk.findFirst({ where: { organizationId: org, id: t.deskId }, select: { routingWaitMinutes: true } });
+        const cat = t.categoryId ? await tx.sdCategory.findFirst({ where: { organizationId: org, id: t.categoryId }, select: { skills: true } }) : null;
+        const need = { skills: cat?.skills ?? [], language: t.language };
+        const over = t.routingWaitUntil! <= now;
+        const r = await this.route(tx, org, t.deskId, t.groupId, need, now, MESSAGING.includes(t.channel) ? 'messaging' : 'ticket', over ? 0 : 1);
+        if (!r.userId) return over ? clear().then(() => this.event(tx, t, 'routing', null, null, { by: null, reason: `No agent with ${needWords(need)} was free within ${desk?.routingWaitMinutes ?? 0} minutes. ${r.reason}` })).then(() => 0) : 0;
+        await tx.sdTicket.update({ where: { id: t.id }, data: { assigneeUserId: r.userId, routingWaitUntil: null, version: { increment: 1 } } });
+        await this.event(tx, t, 'assigned', null, r.userId, { by: null, reason: r.fallback ? `No agent with ${needWords(need)} was free within ${desk?.routingWaitMinutes ?? 0} minutes. ${r.reason}` : r.reason });
+        await emit(tx, org, 'helpdesk.ticket.assigned', { ticketId: t.id, deskId: t.deskId, assigneeUserId: r.userId });
+        await this.sla.sync(tx, t.id, now);
+        return 1;
+      });
+    }
+    return n;
   }
 
   /**

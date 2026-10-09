@@ -133,6 +133,13 @@ export class UpdateDeskDto {
   @Min(1)
   @Max(90)
   autoCloseDays?: number | null;
+
+  /** Minutes a new ticket waits for its best-matched agent before routing falls back (0: at once). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(60)
+  routingWaitMinutes?: number;
 }
 
 export class AddMemberDto {
@@ -396,6 +403,12 @@ export class VipDto {
   @IsOptional()
   @Text(0, 200)
   note?: string;
+
+  /** The contact's saved language (WhatsApp / SMS / chat tickets use it before guessing); null clears it. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @Matches(/^[a-z]{2,3}$/, { message: 'Use a language code such as en, hi or ta.' })
+  language?: string | null;
 }
 
 export class SearchQueryDto {
