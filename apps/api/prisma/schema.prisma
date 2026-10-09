@@ -30,87 +30,92 @@ model Plan {
 }
 
 model Organization {
-  id                            String            @id @default(uuid()) @db.Uuid
-  name                          String            @db.VarChar(1000)
-  slug                          String            @unique @db.Citext
-  region                        String            @default("us") @db.VarChar(1000)
-  status                        String            @default("active") @db.VarChar(1000)
-  logoPath                      String?           @map("logo_path") @db.VarChar(1000)
-  primaryColor                  String?           @map("primary_color") @db.VarChar(1000)
-  accentColor                   String?           @map("accent_color") @db.VarChar(1000)
-  textColor                     String?           @map("text_color") @db.VarChar(1000)
-  loginWatermarkEnabled         Boolean           @default(false) @map("login_watermark_enabled")
-  smtpHost                      String?           @map("smtp_host") @db.VarChar(1000)
-  smtpPort                      Int?              @map("smtp_port")
-  smtpUser                      String?           @map("smtp_user") @db.VarChar(1000)
-  smtpPasswordEncrypted         String?           @map("smtp_password_encrypted") @db.VarChar(1000)
-  emailFromAddress              String?           @map("email_from_address") @db.VarChar(1000)
-  aiApiKeyEncrypted             String?           @map("ai_api_key_encrypted") @db.VarChar(1000)
-  aiProvider                    String            @default("anthropic") @map("ai_provider") @db.VarChar(1000)
-  aiBaseUrl                     String?           @map("ai_base_url") @db.VarChar(1000)
-  aiModelFast                   String?           @map("ai_model_fast") @db.VarChar(1000)
-  aiModelStandard               String?           @map("ai_model_standard") @db.VarChar(1000)
+  id                            String                @id @default(uuid()) @db.Uuid
+  name                          String                @db.VarChar(1000)
+  slug                          String                @unique @db.Citext
+  region                        String                @default("us") @db.VarChar(1000)
+  status                        String                @default("active") @db.VarChar(1000)
+  logoPath                      String?               @map("logo_path") @db.VarChar(1000)
+  primaryColor                  String?               @map("primary_color") @db.VarChar(1000)
+  accentColor                   String?               @map("accent_color") @db.VarChar(1000)
+  textColor                     String?               @map("text_color") @db.VarChar(1000)
+  loginWatermarkEnabled         Boolean               @default(false) @map("login_watermark_enabled")
+  smtpHost                      String?               @map("smtp_host") @db.VarChar(1000)
+  smtpPort                      Int?                  @map("smtp_port")
+  smtpUser                      String?               @map("smtp_user") @db.VarChar(1000)
+  smtpPasswordEncrypted         String?               @map("smtp_password_encrypted") @db.VarChar(1000)
+  emailFromAddress              String?               @map("email_from_address") @db.VarChar(1000)
+  aiApiKeyEncrypted             String?               @map("ai_api_key_encrypted") @db.VarChar(1000)
+  aiProvider                    String                @default("anthropic") @map("ai_provider") @db.VarChar(1000)
+  aiBaseUrl                     String?               @map("ai_base_url") @db.VarChar(1000)
+  aiModelFast                   String?               @map("ai_model_fast") @db.VarChar(1000)
+  aiModelStandard               String?               @map("ai_model_standard") @db.VarChar(1000)
   // Generic, bring-your-own embeddings provider (OpenAI-compatible /embeddings), decoupled from the
   // chat provider above. Null = semantic search inert for this org.
-  embeddingApiKeyEncrypted      String?           @map("embedding_api_key_encrypted") @db.VarChar(1000)
-  embeddingBaseUrl              String?           @map("embedding_base_url") @db.VarChar(1000)
-  embeddingModel                String?           @map("embedding_model") @db.VarChar(1000)
-  apiKeyHash                    String?           @map("api_key_hash") @db.VarChar(1000)
-  apiKeyPrefix                  String?           @map("api_key_prefix") @db.VarChar(1000)
-  apiKeyCreatedAt               DateTime?         @map("api_key_created_at") @db.Timestamptz(3)
-  webhookUrl                    String?           @map("webhook_url") @db.VarChar(1000)
-  webhookSecretEncrypted        String?           @map("webhook_secret_encrypted") @db.VarChar(1000)
-  samlEnabled                   Boolean           @default(false) @map("saml_enabled")
-  samlIdpEntityId               String?           @map("saml_idp_entity_id") @db.VarChar(1000)
-  samlIdpSsoUrl                 String?           @map("saml_idp_sso_url") @db.VarChar(1000)
-  samlIdpCertificate            String?           @map("saml_idp_certificate") @db.Text
-  autoArchiveSiblingsOnHire     Boolean           @default(true) @map("auto_archive_siblings_on_hire")
-  businessHoursJson             String?           @map("business_hours_json") @db.Text
-  holidaysJson                  String?           @map("holidays_json") @db.Text
-  fieldPermissionsJson          String?           @map("field_permissions_json") @db.Text
-  recordVisibilityEnabled       Boolean           @default(false) @map("record_visibility_enabled")
-  planId                        String            @map("plan_id") @db.Uuid
-  plan                          Plan              @relation(fields: [planId], references: [id])
-  billingStatus                 String            @default("active") @map("billing_status") @db.VarChar(1000)
-  stripeCustomerId              String?           @map("stripe_customer_id") @db.VarChar(1000)
-  stripeSubscriptionId          String?           @map("stripe_subscription_id") @db.VarChar(1000)
-  createdAt                     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  applyConsentText              String?           @map("apply_consent_text") @db.Text
-  applyConsentVersion           Int               @default(1) @map("apply_consent_version")
-  careersEnabled                Boolean           @default(false) @map("careers_enabled")
-  careersHeadline               String?           @map("careers_headline") @db.VarChar(1000)
-  careersIntro                  String?           @map("careers_intro") @db.Text
-  careersBannerPath             String?           @map("careers_banner_path") @db.VarChar(1000)
+  embeddingApiKeyEncrypted      String?               @map("embedding_api_key_encrypted") @db.VarChar(1000)
+  embeddingBaseUrl              String?               @map("embedding_base_url") @db.VarChar(1000)
+  embeddingModel                String?               @map("embedding_model") @db.VarChar(1000)
+  apiKeyHash                    String?               @map("api_key_hash") @db.VarChar(1000)
+  apiKeyPrefix                  String?               @map("api_key_prefix") @db.VarChar(1000)
+  apiKeyCreatedAt               DateTime?             @map("api_key_created_at") @db.Timestamptz(3)
+  webhookUrl                    String?               @map("webhook_url") @db.VarChar(1000)
+  webhookSecretEncrypted        String?               @map("webhook_secret_encrypted") @db.VarChar(1000)
+  autoArchiveSiblingsOnHire     Boolean               @default(true) @map("auto_archive_siblings_on_hire")
+  businessHoursJson             String?               @map("business_hours_json") @db.Text
+  holidaysJson                  String?               @map("holidays_json") @db.Text
+  fieldPermissionsJson          String?               @map("field_permissions_json") @db.Text
+  recordVisibilityEnabled       Boolean               @default(false) @map("record_visibility_enabled")
+  planId                        String                @map("plan_id") @db.Uuid
+  plan                          Plan                  @relation(fields: [planId], references: [id])
+  billingStatus                 String                @default("active") @map("billing_status") @db.VarChar(1000)
+  stripeCustomerId              String?               @map("stripe_customer_id") @db.VarChar(1000)
+  stripeSubscriptionId          String?               @map("stripe_subscription_id") @db.VarChar(1000)
+  createdAt                     DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  applyConsentText              String?               @map("apply_consent_text") @db.Text
+  applyConsentVersion           Int                   @default(1) @map("apply_consent_version")
+  careersEnabled                Boolean               @default(false) @map("careers_enabled")
+  careersHeadline               String?               @map("careers_headline") @db.VarChar(1000)
+  careersIntro                  String?               @map("careers_intro") @db.Text
+  careersBannerPath             String?               @map("careers_banner_path") @db.VarChar(1000)
   // Opt-in public AI assistant on the careers site (default off — it is public AI spend).
-  careersAssistantEnabled       Boolean           @default(false) @map("careers_assistant_enabled")
-  smsEnabled                    Boolean           @default(false) @map("sms_enabled")
-  smsProvider                   String            @default("twilio") @map("sms_provider") @db.VarChar(1000)
-  smsConfigEncrypted            String?           @map("sms_config_encrypted") @db.Text
+  careersAssistantEnabled       Boolean               @default(false) @map("careers_assistant_enabled")
+  smsEnabled                    Boolean               @default(false) @map("sms_enabled")
+  smsProvider                   String                @default("twilio") @map("sms_provider") @db.VarChar(1000)
+  smsConfigEncrypted            String?               @map("sms_config_encrypted") @db.Text
   // External Easy Apply (Indeed/LinkedIn) ingestion creds, encrypted JSON keyed by provider:
   // { "<provider>": { "secret": "..." } }. A provider is enabled iff it has a stored secret;
   // the feature is inert until an org configures one. Same on/off shape as the SMS config blob.
-  easyApplyConfigEncrypted      String?           @map("easy_apply_config_encrypted") @db.Text
-  whatsappEnabled               Boolean           @default(false) @map("whatsapp_enabled")
-  whatsappProvider              String            @default("twilio") @map("whatsapp_provider") @db.VarChar(1000)
-  whatsappConfigEncrypted       String?           @map("whatsapp_config_encrypted") @db.Text
+  easyApplyConfigEncrypted      String?               @map("easy_apply_config_encrypted") @db.Text
+  whatsappEnabled               Boolean               @default(false) @map("whatsapp_enabled")
+  whatsappProvider              String                @default("twilio") @map("whatsapp_provider") @db.VarChar(1000)
+  whatsappConfigEncrypted       String?               @map("whatsapp_config_encrypted") @db.Text
   // HRIS/ATS export: on candidate hire, POST a structured employee record to the org's HRIS inbound
   // API / iPaaS endpoint. Bring-your-own endpoint + auth token; inert until enabled + a target URL
   // is set. hrisAuthHeaderEncrypted holds the full Authorization header value (e.g. "Bearer xxx").
   // Daily staff reminder sweep (pending grading, stale invites, expiring offers, upcoming
   // interviews, feedback owed) — opt-in per org; per-user email opt-out via userNotificationPreference.
-  remindersEnabled              Boolean           @default(false) @map("reminders_enabled")
+  remindersEnabled              Boolean               @default(false) @map("reminders_enabled")
   // Weekly scheduled-report digest — opt-in per org. Recipients are a JSON array of staff user ids;
   // lastSentAt gates the 7-day cadence (and prevents a restart from re-sending the same week).
-  scheduledReportEnabled        Boolean           @default(false) @map("scheduled_report_enabled")
-  scheduledReportRecipientsJson String?           @map("scheduled_report_recipients_json") @db.Text
-  scheduledReportLastSentAt     DateTime?         @map("scheduled_report_last_sent_at") @db.Timestamptz(3)
-  hrisExportEnabled             Boolean           @default(false) @map("hris_export_enabled")
-  hrisProvider                  String            @default("generic") @map("hris_provider") @db.VarChar(1000)
-  hrisTargetUrl                 String?           @map("hris_target_url") @db.VarChar(1000)
-  hrisAuthHeaderEncrypted       String?           @map("hris_auth_header_encrypted") @db.Text
+  scheduledReportEnabled        Boolean               @default(false) @map("scheduled_report_enabled")
+  scheduledReportRecipientsJson String?               @map("scheduled_report_recipients_json") @db.Text
+  scheduledReportLastSentAt     DateTime?             @map("scheduled_report_last_sent_at") @db.Timestamptz(3)
+  hrisExportEnabled             Boolean               @default(false) @map("hris_export_enabled")
+  hrisProvider                  String                @default("generic") @map("hris_provider") @db.VarChar(1000)
+  hrisTargetUrl                 String?               @map("hris_target_url") @db.VarChar(1000)
+  hrisAuthHeaderEncrypted       String?               @map("hris_auth_header_encrypted") @db.Text
   users                         User[]
   auditLogs                     AuditLog[]
   webhookDeliveries             WebhookDelivery[]
+  securityPolicy                TenantSecurityPolicy?
+  identityProviders             IdentityProvider[]
+  verifiedDomains               VerifiedDomain[]
+  externalIdentities            ExternalIdentity[]
+  channelAccounts               ChannelAccount[]
+  notificationDeliveries        NotificationDelivery[]
+  channelConsents               ChannelConsent[]
+  notificationPolicy            TenantNotificationPolicy?
+  smsUsage                      SmsUsageMonthly[]
 
   @@map("organizations")
 }
@@ -195,44 +200,67 @@ model WebhookDelivery {
 }
 
 model SsoLoginCode {
-  id        String   @id @default(uuid()) @db.Uuid
-  codeHash  String   @unique @map("code_hash") @db.VarChar(1000)
-  userId    String   @map("user_id") @db.Uuid
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id                 String   @id @default(uuid()) @db.Uuid
+  codeHash           String   @unique @map("code_hash") @db.VarChar(1000)
+  userId             String   @map("user_id") @db.Uuid
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  expiresAt          DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  // 'saml' | 'oidc'; mfaAsserted: the IdP said it did MFA (the session then starts at AAL2)
+  method             String   @default("saml") @db.VarChar(16)
+  mfaAsserted        Boolean  @default(false) @map("mfa_asserted")
+  // The provider that vouched, and sha256 of the device cookie of the browser that started the
+  // sign-in: only that browser may redeem the code (login CSRF).
+  identityProviderId String?  @map("identity_provider_id") @db.Uuid
+  deviceIdHash       String?  @map("device_id_hash") @db.VarChar(64)
 
   @@map("sso_login_codes")
 }
 
 model User {
-  id                  String               @id @default(uuid()) @db.Uuid
-  organizationId      String?              @map("organization_id") @db.Uuid
-  organization        Organization?        @relation(fields: [organizationId], references: [id])
-  email               String               @db.Citext
-  name                String?              @db.VarChar(1000)
-  timeZone            String?              @map("time_zone") @db.VarChar(1000)
-  emailSignature      String?              @map("email_signature") @db.Text
+  id                     String               @id @default(uuid()) @db.Uuid
+  organizationId         String?              @map("organization_id") @db.Uuid
+  organization           Organization?        @relation(fields: [organizationId], references: [id])
+  email                  String               @db.Citext
+  name                   String?              @db.VarChar(1000)
+  timeZone               String?              @map("time_zone") @db.VarChar(1000)
+  emailSignature         String?              @map("email_signature") @db.Text
   // Notification email cadence: 'immediate' (default = one email per event, today's behavior),
   // 'daily' (batched into one daily digest by the digest sweep), or 'off' (no notification emails at
   // all; the in-app bell is unaffected). lastDigestSentAt anchors the once-per-day digest sweep.
-  notificationDigest  String               @default("immediate") @map("notification_digest") @db.VarChar(1000)
-  lastDigestSentAt    DateTime?            @map("last_digest_sent_at") @db.Timestamptz(3)
-  passwordHash        String               @map("password_hash") @db.VarChar(1000)
-  role                String               @db.VarChar(1000)
-  status              String               @default("active") @db.VarChar(1000)
+  notificationDigest     String               @default("immediate") @map("notification_digest") @db.VarChar(1000)
+  lastDigestSentAt       DateTime?            @map("last_digest_sent_at") @db.Timestamptz(3)
+  passwordHash           String               @map("password_hash") @db.VarChar(1000)
+  role                   String               @db.VarChar(1000)
+  status                 String               @default("active") @db.VarChar(1000)
   // Blob path, not a URL. The container is private, so every read has to be
   // SAS-signed on the way out -- see UsersService.toProfileResponse.
-  avatarPath          String?              @map("avatar_path") @db.VarChar(1000)
-  lastLoginAt         DateTime?            @map("last_login_at") @db.Timestamptz(3)
-  managerId           String?              @map("manager_id") @db.Uuid
-  permissionProfileId String?              @map("permission_profile_id") @db.Uuid
-  permissionProfile   PermissionProfile?   @relation(fields: [permissionProfileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
-  refreshTokens       RefreshToken[]
-  passwordResetTokens PasswordResetToken[]
-  ssoLoginCodes       SsoLoginCode[]
-  auditLogs           AuditLog[]
+  avatarPath             String?              @map("avatar_path") @db.VarChar(1000)
+  lastLoginAt            DateTime?            @map("last_login_at") @db.Timestamptz(3)
+  // Set when the breached-password check could not run as this password was chosen (HIBP
+  // unreachable, fail-open); the next successful sign-in re-checks it (YX-IAM-08).
+  passwordRecheckPending Boolean              @default(false) @map("password_recheck_pending")
+  // The re-check found the password in a breach corpus: the next sign-in must change it.
+  passwordChangeRequired Boolean              @default(false) @map("password_change_required")
+  // MFA must be enrolled by then wherever it is required (P12 §8: 14-day grace for existing
+  // accounts); an approved MFA reset sets it to now().
+  mfaEnrolmentDueAt      DateTime             @default(dbgenerated("(now() + '14 days'::interval)")) @map("mfa_enrolment_due_at") @db.Timestamptz(3)
+  // E.164; signs in by one-time code (and receives SMS / WhatsApp codes) only once verified.
+  mobileNumber           String?              @map("mobile_number") @db.VarChar(16)
+  mobileVerifiedAt       DateTime?            @map("mobile_verified_at") @db.Timestamptz(3)
+  managerId              String?              @map("manager_id") @db.Uuid
+  permissionProfileId    String?              @map("permission_profile_id") @db.Uuid
+  permissionProfile      PermissionProfile?   @relation(fields: [permissionProfileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt              DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  refreshTokens          RefreshToken[]
+  sessions               Session[]
+  passwordResetTokens    PasswordResetToken[]
+  ssoLoginCodes          SsoLoginCode[]
+  auditLogs              AuditLog[]
+  authenticators         Authenticator[]
+  recoveryCodes          RecoveryCode[]
+  mfaResetRequests       MfaResetRequest[]
+  externalIdentities     ExternalIdentity[]
 
   @@unique([organizationId, email])
   @@map("users")
@@ -269,6 +297,185 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+// Server-side staff session (P12 §4, YX-IAM-06). The refresh-token family IS the session:
+// refresh_tokens.family_id = sessions.id, and every access token carries it as `sid`, so
+// revoking this row kills its access and refresh tokens at once. Rows are never deleted by
+// the app; revoked_at/revoked_reason record why a session ended.
+model Session {
+  id                 String            @id @default(uuid()) @db.Uuid
+  organizationId     String?           @map("organization_id") @db.Uuid
+  userId             String            @map("user_id") @db.Uuid
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 'password' | 'saml'
+  method             String            @db.VarChar(32)
+  // 'aal1' | 'aal2' (P12 §3)
+  assuranceLevel     String            @default("aal1") @map("assurance_level") @db.VarChar(16)
+  // sha256 of the opaque device cookie; never the raw value.
+  deviceIdHash       String?           @map("device_id_hash") @db.VarChar(64)
+  userAgent          String?           @map("user_agent") @db.VarChar(512)
+  ipAddress          String?           @map("ip_address") @db.VarChar(64)
+  // ISO country from the edge proxy's geo header (GEO_COUNTRY_HEADER); null when not configured.
+  geo                String?           @db.VarChar(128)
+  idleTimeoutSeconds Int               @map("idle_timeout_seconds")
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSeenAt         DateTime          @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  idleExpiresAt      DateTime          @map("idle_expires_at") @db.Timestamptz(3)
+  absoluteExpiresAt  DateTime          @map("absolute_expires_at") @db.Timestamptz(3)
+  revokedAt          DateTime?         @map("revoked_at") @db.Timestamptz(3)
+  revokedReason      String?           @map("revoked_reason") @db.VarChar(64)
+  // Last AAL2 proof on this session (second factor at sign-in, enrolment, step-up) and its factor.
+  mfaVerifiedAt      DateTime?         @map("mfa_verified_at") @db.Timestamptz(3)
+  mfaMethod          String?           @map("mfa_method") @db.VarChar(32)
+  // The identity provider that signed this session in (SSO only): disabling it ends the session.
+  identityProviderId String?           @map("identity_provider_id") @db.Uuid
+  identityProvider   IdentityProvider? @relation(fields: [identityProviderId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([organizationId, lastSeenAt])
+  @@map("sessions")
+}
+
+// A second factor (P12 §4, YX-IAM-03): a WebAuthn passkey or a TOTP app. Revoked, never deleted.
+model Authenticator {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String?   @map("organization_id") @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 'passkey' | 'totp'
+  type            String    @db.VarChar(16)
+  label           String    @db.VarChar(64)
+  // passkey: base64url credential id, COSE public key, signature counter, transports
+  credentialId    String?   @unique @map("credential_id") @db.VarChar(1024)
+  publicKey       Bytes?    @map("public_key")
+  signCount       BigInt    @default(0) @map("sign_count")
+  transports      String[]  @default([]) @db.VarChar(32)
+  // totp: AES-256-GCM encrypted base32 secret; last accepted time step (replay protection)
+  secretEncrypted String?   @map("secret_encrypted") @db.Text
+  totpLastStep    BigInt?   @map("totp_last_step")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt      DateTime? @map("last_used_at") @db.Timestamptz(3)
+  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  @@index([userId])
+  @@map("authenticators")
+}
+
+// A Google / Microsoft account an account has fully signed in with (migration 20261007300000).
+// subject: Google `sub`, Microsoft `<tid>:<oid>`. Matched before any email address.
+model ExternalIdentity {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String       @map("user_id") @db.Uuid
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 'google' | 'microsoft'
+  provider       String       @db.VarChar(16)
+  subject        String       @db.VarChar(255)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt     DateTime     @default(now()) @map("last_used_at") @db.Timestamptz(3)
+
+  @@unique([userId, provider])
+  @@index([provider, subject])
+  @@map("external_identities")
+}
+
+// Single-use recovery codes (YX-IAM-11): sha256 only, shown to the user once.
+model RecoveryCode {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String?   @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash       String    @map("code_hash") @db.Char(64)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  usedAt         DateTime? @map("used_at") @db.Timestamptz(3)
+
+  @@unique([userId, codeHash])
+  @@map("recovery_codes")
+}
+
+// Admin-initiated MFA reset (YX-IAM-11). For a sensitive-role user a second admin must approve.
+model MfaResetRequest {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  targetUserId      String    @map("target_user_id") @db.Uuid
+  targetUser        User      @relation(fields: [targetUserId], references: [id], onDelete: Cascade)
+  requestedByUserId String    @map("requested_by_user_id") @db.Uuid
+  approvedByUserId  String?   @map("approved_by_user_id") @db.Uuid
+  // 'pending' | 'completed' | 'expired'
+  status            String    @default("pending") @db.VarChar(16)
+  reason            String    @db.VarChar(500)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz(3)
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(3)
+
+  @@index([organizationId, status])
+  @@map("mfa_reset_requests")
+}
+
+// A company's security settings (P12 §4, Q8). One row per organisation; no row = YukthiX defaults.
+// Every value may only be stricter than the YukthiX floor: enforced by the API (TENANT_SECURITY_FLOOR)
+// and again by CHECK constraints in the migration.
+model TenantSecurityPolicy {
+  organizationId         String       @id @map("organization_id") @db.Uuid
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // 'sensitive_roles' (floor) | 'all'
+  mfaScope               String       @default("sensitive_roles") @map("mfa_scope") @db.VarChar(16)
+  // subset of passkey / totp / otp; always includes passkey or totp (OTP is fallback only)
+  allowedFactors         String[]     @default(["passkey", "totp"]) @map("allowed_factors") @db.VarChar(16)
+  // null = platform default (30 min idle, 12 h absolute)
+  sessionIdleMinutes     Int?         @map("session_idle_minutes")
+  sessionAbsoluteMinutes Int?         @map("session_absolute_minutes")
+  // null = no limit; otherwise the oldest live sessions beyond it are signed out at sign-in
+  maxConcurrentSessions  Int?         @map("max_concurrent_sessions")
+  passwordMinLength      Int          @default(12) @map("password_min_length")
+  // IPs / CIDRs; empty = no restriction for that surface
+  ipAllowlistDesk        String[]     @default([]) @map("ip_allowlist_desk")
+  ipAllowlistAdmin       String[]     @default([]) @map("ip_allowlist_admin")
+  ipAllowlistApi         String[]     @default([]) @map("ip_allowlist_api")
+  ssoOnly                Boolean      @default(false) @map("sso_only")
+  breakGlassUserIds      String[]     @default([]) @map("break_glass_user_ids") @db.Uuid
+  // OTP sign-in channels the company allows: subset of email / sms / whatsapp; empty = off
+  otpSignInChannels      String[]     @default([]) @map("otp_sign_in_channels") @db.VarChar(16)
+  // Account lockout (YX-IAM-07): lock on the Nth consecutive failure (3-10), first lock for M
+  // minutes (15-1440), doubling per further lock up to 24 h
+  maxFailedAttempts      Int          @default(10) @map("max_failed_attempts")
+  lockMinutes            Int          @default(15) @map("lock_minutes")
+  // "Continue with Google / Microsoft" (YukthiX's platform OIDC apps); off unless the company turns it on
+  googleSignIn           Boolean      @default(false) @map("google_sign_in")
+  microsoftSignIn        Boolean      @default(false) @map("microsoft_sign_in")
+  updatedAt              DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedByUserId        String?      @map("updated_by_user_id") @db.Uuid
+
+  @@map("tenant_security_policies")
+}
+
+// Every staff sign-in attempt (P12 §4, YX-IAM-10). Append-only for the app role (P08 pattern:
+// UPDATE/DELETE revoked in the migration). No FK to users/organizations on purpose: the record
+// must outlive the user it describes, and attempts for unknown users have no user at all.
+model LoginEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @map("organization_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  // The identifier that was typed (lower-cased email), kept even when no user matched.
+  identifier     String?  @db.VarChar(320)
+  // 'success' | 'failed' | 'locked' | 'mfa_failed' | 'code_sent' | 'unlocked'
+  result         String   @db.VarChar(16)
+  // 'password' | 'saml' | 'otp_email' | 'otp_sms' | 'otp_whatsapp' (second-factor failures: the factor)
+  method         String   @db.VarChar(32)
+  reason         String?  @db.VarChar(64)
+  sessionId      String?  @map("session_id") @db.Uuid
+  ipAddress      String?  @map("ip_address") @db.VarChar(64)
+  userAgent      String?  @map("user_agent") @db.VarChar(512)
+  deviceIdHash   String?  @map("device_id_hash") @db.VarChar(64)
+  geo            String?  @db.VarChar(128)
+  newDevice      Boolean  @default(false) @map("new_device")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, createdAt])
+  @@index([userId, createdAt])
+  @@map("login_events")
 }
 
 model PasswordResetToken {
@@ -1827,4 +2034,176 @@ model AgencySubmission {
   @@index([organizationId, status])
   @@index([agencyId])
   @@map("agency_submissions")
+}
+
+// A company's sign-in identity providers (P12 §4, YX-IAM-04/05): SAML, Google / Entra / generic
+// OIDC. Several per company, routed by email domain. Shapes and the JIT floor are database checks.
+model IdentityProvider {
+  id                        String                   @id @default(uuid()) @db.Uuid
+  organizationId            String                   @map("organization_id") @db.Uuid
+  organization              Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // 'saml' | 'oidc_google' | 'oidc_entra' | 'oidc_generic'
+  type                      String                   @db.VarChar(16)
+  name                      String                   @db.VarChar(100)
+  // 'active' | 'disabled'
+  status                    String                   @default("disabled") @db.VarChar(16)
+  samlEntityId              String?                  @map("saml_entity_id") @db.VarChar(1000)
+  samlSsoUrl                String?                  @map("saml_sso_url") @db.VarChar(1000)
+  samlCertificate           String?                  @map("saml_certificate") @db.Text
+  oidcIssuer                String?                  @map("oidc_issuer") @db.VarChar(1000)
+  oidcClientId              String?                  @map("oidc_client_id") @db.VarChar(1000)
+  // AES-256-GCM (OrgSecretsCryptoService); never returned by the API
+  oidcClientSecretEncrypted String?                  @map("oidc_client_secret_encrypted") @db.Text
+  entraTenantId             String?                  @map("entra_tenant_id") @db.Uuid
+  jitEnabled                Boolean                  @default(false) @map("jit_enabled")
+  jitRole                   String?                  @map("jit_role") @db.VarChar(32)
+  // The IdP's own MFA claim (amr / acr / AuthnContextClassRef) counts only when an admin trusts it.
+  mfaTrusted                Boolean                  @default(false) @map("mfa_trusted")
+  createdAt                 DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  domains                   IdentityProviderDomain[]
+  sessions                  Session[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId])
+  @@map("identity_providers")
+}
+
+model IdentityProviderDomain {
+  organizationId     String           @map("organization_id") @db.Uuid
+  domain             String           @db.VarChar(253)
+  identityProviderId String           @map("identity_provider_id") @db.Uuid
+  identityProvider   IdentityProvider @relation(fields: [identityProviderId, organizationId], references: [id, organizationId], onDelete: Cascade, map: "identity_provider_domains_provider_fkey")
+
+  @@id([organizationId, domain])
+  @@index([identityProviderId])
+  @@map("identity_provider_domains")
+}
+
+// An email domain the company has proven it owns (DNS TXT, migration 20261007100000_verified_domains).
+// Only verified domains route an email-first sign-in straight to the company's identity provider.
+model VerifiedDomain {
+  organizationId String       @map("organization_id") @db.Uuid
+  domain         String       @db.VarChar(253)
+  verifiedAt     DateTime     @default(now()) @map("verified_at") @db.Timestamptz(3)
+  // Scheduled re-check (W-006, migration 20261007200000_verified_domain_recheck): consecutive real
+  // misses; lapsedAt set = no longer routes until the company checks the record again.
+  lastCheckedAt  DateTime?    @map("last_checked_at") @db.Timestamptz(3)
+  failedChecks   Int          @default(0) @map("failed_checks")
+  lapsedAt       DateTime?    @map("lapsed_at") @db.Timestamptz(3)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, domain])
+  @@index([domain])
+  @@map("verified_domains")
+}
+
+// ---- P04 notification engine: SMS channel (migration 20261006700000_sms_channel) ----------------
+
+// A gateway account. organizationId null = the YukthiX shared account (readable by the platform only).
+model ChannelAccount {
+  id               String                 @id @default(uuid()) @db.Uuid
+  organizationId   String?                @map("organization_id") @db.Uuid
+  organization     Organization?          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // 'sms'
+  channel          String                 @default("sms") @db.VarChar(16)
+  // 'http' | 'twilio' | 'dev'
+  provider         String                 @db.VarChar(16)
+  name             String                 @db.VarChar(100)
+  // AES-256-GCM (OrgSecretsCryptoService) JSON config incl. secrets; never returned by the API
+  configEncrypted  String                 @map("config_encrypted") @db.Text
+  sender           String?                @db.VarChar(20)
+  dltEntityId      String?                @map("dlt_entity_id") @db.VarChar(30)
+  // { otp: { dltTemplateId, body, variables, status } }
+  templates        Json                   @default("{}")
+  priority         Int                    @default(100)
+  // 'active' | 'disabled'
+  status           String                 @default("active") @db.VarChar(16)
+  createdByUserId  String?                @map("created_by_user_id") @db.Uuid
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deliveries       NotificationDelivery[]
+
+  @@index([organizationId, channel, priority])
+  @@map("channel_accounts")
+}
+
+model NotificationDelivery {
+  id               String          @id @default(uuid()) @db.Uuid
+  organizationId   String?         @map("organization_id") @db.Uuid
+  organization     Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  notificationId   String?         @map("notification_id") @db.Uuid
+  // 'sms' | 'email'
+  channel          String          @db.VarChar(16)
+  // 'otp' | 'test'
+  kind             String          @db.VarChar(16)
+  idempotencyKey   String          @unique @map("idempotency_key") @db.VarChar(128)
+  addressMasked    String          @map("address_masked") @db.VarChar(40)
+  addressHash      String          @map("address_hash") @db.VarChar(64)
+  // 'pending' | 'sent' | 'delivered' | 'failed' | 'fallback' | 'unknown' | 'opted_out'
+  status           String          @default("pending") @db.VarChar(16)
+  channelAccountId String?         @map("channel_account_id") @db.Uuid
+  channelAccount   ChannelAccount? @relation(fields: [channelAccountId], references: [id], onDelete: SetNull)
+  provider         String?         @db.VarChar(16)
+  providerMsgId    String?         @map("provider_msg_id") @db.VarChar(200)
+  attempts         Int             @default(0)
+  error            String?         @db.VarChar(500)
+  costUnits        Int             @default(0) @map("cost_units")
+  sentAt           DateTime?       @map("sent_at") @db.Timestamptz(3)
+  deliveredAt      DateTime?       @map("delivered_at") @db.Timestamptz(3)
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([channelAccountId, providerMsgId])
+  @@map("notification_deliveries")
+}
+
+// Append-only opt-in record (APX-A §5): the app may only stamp withdrawnAt once.
+model ChannelConsent {
+  id               String        @id @default(uuid()) @db.Uuid
+  organizationId   String?       @map("organization_id") @db.Uuid
+  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipientType    String        @map("recipient_type") @db.VarChar(32)
+  recipientId      String?       @map("recipient_id") @db.Uuid
+  // 'sms' | 'whatsapp'
+  channel          String        @db.VarChar(16)
+  addressHash      String        @map("address_hash") @db.VarChar(64)
+  addressMasked    String?       @map("address_masked") @db.VarChar(40)
+  // 'all_service' | 'authentication_only'
+  scope            String        @default("all_service") @db.VarChar(32)
+  source           String        @db.VarChar(32)
+  textVersion      String        @map("text_version") @db.VarChar(32)
+  language         String        @default("en") @db.VarChar(8)
+  capturedAt       DateTime      @default(now()) @map("captured_at") @db.Timestamptz(3)
+  capturedBy       String?       @map("captured_by") @db.Uuid
+  evidence         Json?
+  withdrawnAt      DateTime?     @map("withdrawn_at") @db.Timestamptz(3)
+  withdrawalSource String?       @map("withdrawal_source") @db.VarChar(32)
+
+  @@index([organizationId, channel, addressHash])
+  @@map("channel_consents")
+}
+
+model TenantNotificationPolicy {
+  organizationId   String       @id @map("organization_id") @db.Uuid
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  smsSharedAccount Boolean      @default(true) @map("sms_shared_account")
+  // null = no cap
+  smsMonthlyCap    Int?         @map("sms_monthly_cap")
+  updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedByUserId  String?      @map("updated_by_user_id") @db.Uuid
+
+  @@map("tenant_notification_policies")
+}
+
+model SmsUsageMonthly {
+  organizationId String       @map("organization_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  month          DateTime     @db.Date
+  sentCount      Int          @default(0) @map("sent_count")
+  capAlertedAt   DateTime?    @map("cap_alerted_at") @db.Timestamptz(3)
+
+  @@id([organizationId, month])
+  @@map("sms_usage_monthly")
 }

@@ -1,13 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
-import { SsoSettingsResponse } from '../types';
+import { IdentityProvider } from '../types';
 import { useAuth } from '../auth-context';
 
-// Lightweight, permission-free "is SSO on for my org" check -- unlike useSsoSettings below
+// Lightweight, permission-free "is SSO on for my org" check -- unlike useIdentityProviders below
 // (which needs org:manage_settings and is only ever rendered where that's guaranteed), this
 // is safe to call from any staff role's UI: it hits the same public-by-design endpoint the
-// login page itself uses (GET /auth/saml/:slug/status), just with the caller's own slug from
-// their session instead of the slug typed into the login form.
+// login page uses (GET /auth/saml/:slug/status: any active SAML or OIDC provider), just with the
+// caller's own slug from their session instead of the slug typed into the login form.
 export function useSsoStatus() {
   const { organizationSlug } = useAuth();
   return useQuery<{ enabled: boolean }>({
@@ -17,28 +17,46 @@ export function useSsoStatus() {
   });
 }
 
-export function useSsoSettings() {
+const KEY = ['identity-providers'];
+
+export function useIdentityProviders() {
   const { accessToken } = useAuth();
-  return useQuery<SsoSettingsResponse>({
-    queryKey: ['sso-settings'],
-    queryFn: () => apiFetch('/organizations/sso', {}, accessToken ?? undefined),
+  return useQuery<IdentityProvider[]>({
+    queryKey: KEY,
+    queryFn: () => apiFetch('/security/identity-providers', {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
   });
 }
 
-interface UpdateSsoSettingsInput {
-  samlEnabled?: boolean;
-  samlIdpEntityId?: string;
-  samlIdpSsoUrl?: string;
-  samlIdpCertificate?: string;
-}
+// Create (no id) or update (id) a provider. Only the fields sent change; the client secret is
+// sent only when typed. Changing a provider is a step-up action (the API asks for it).
+export type IdentityProviderInput = Partial<Omit<IdentityProvider, 'id' | 'clientSecretSet'>> & { oidcClientSecret?: string };
 
-export function useUpdateSsoSettings() {
+export function useSaveIdentityProvider() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: UpdateSsoSettingsInput): Promise<SsoSettingsResponse> =>
-      apiFetch('/organizations/sso', { method: 'PATCH', body: JSON.stringify(input) }, accessToken ?? undefined),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sso-settings'] }),
+    mutationFn: ({ id, ...input }: IdentityProviderInput & { id?: string }): Promise<IdentityProvider> =>
+      apiFetch(
+        id ? `/security/identity-providers/${id}` : '/security/identity-providers',
+        { method: id ? 'PATCH' : 'POST', body: JSON.stringify(input) },
+        accessToken ?? undefined,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: KEY });
+      queryClient.invalidateQueries({ queryKey: ['sso-status'] });
+    },
+  });
+}
+
+export function useDeleteIdentityProvider() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch(`/security/identity-providers/${id}`, { method: 'DELETE' }, accessToken ?? undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: KEY });
+      queryClient.invalidateQueries({ queryKey: ['sso-status'] });
+    },
   });
 }

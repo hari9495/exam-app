@@ -3,7 +3,7 @@
 // v2 Staff Users — format-only re-skin of the old (org-admin)/users page (which was a thin wrapper
 // over StaffUsersTable + NewUserModal). Same hooks (useUsers/useCurrentUser/useUpdateUser/
 // useDeactivateUser/useReactivateUser/useResetUserPassword/useCreateUser/useBulkCreateUsers/
-// useSsoStatus/useSsoSettings) and identical logic (client-side search/filter/sort over a 200-row
+// useSsoStatus) and identical logic (client-side search/filter/sort over a 200-row
 // page, role + status header filters, Edit/Deactivate/Reactivate/Reset password, Login as +
 // impersonate). Old table/ListView → shared DataTable; old Modal forms → v2 Dialog; toast → notice.
 import { useMemo, useState, type FormEvent } from 'react';
@@ -14,7 +14,7 @@ import { useUsers, useUpdateUser, useDeactivateUser, useReactivateUser, useReset
 import { usePermissionProfiles } from '../../../../lib/hooks/usePermissionProfiles';
 import { useTeammates } from '../../../../lib/hooks/useUserDirectory';
 import { useCurrentUser } from '../../../../lib/hooks/useCurrentUser';
-import { useSsoStatus, useSsoSettings } from '../../../../lib/hooks/useSso';
+import { useSsoStatus } from '../../../../lib/hooks/useSso';
 import { useAuth } from '../../../../lib/auth-context';
 import type { StaffUser } from '../../../../lib/types';
 import { DataTable, DT_FEATURES, dt, SortHead, Pill, Cb, Dropdown, DropdownItem, Dialog, TextField, Combobox, Button } from '../../../../components/ui-v2';
@@ -80,8 +80,8 @@ type Notify = (type: 'success' | 'error', text: string) => void;
 function NewUserDialog({ onClose, notify }: { onClose: () => void; notify: Notify }) {
   const createUser = useCreateUser();
   const bulkCreateUsers = useBulkCreateUsers();
-  const { data: ssoSettings } = useSsoSettings();
-  const ssoEnabled = ssoSettings?.samlEnabled === true;
+  const { data: ssoStatus } = useSsoStatus();
+  const ssoEnabled = ssoStatus?.enabled === true;
 
   const [tab, setTab] = useState('single');
   const [error, setError] = useState<string | null>(null);

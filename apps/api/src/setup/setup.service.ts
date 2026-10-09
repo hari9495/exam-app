@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import * as argon2 from 'argon2';
 import { randomBytes, createHash } from 'crypto';
 import { PrismaService, TenantPrismaService, AuditService } from '@exam-platform/shared';
 import { CompleteSetupDto } from './dto/complete-setup.dto';
+import { PasswordPolicyService } from '../auth/password-policy.service';
 
 // A generous window compared to the 15-minute PASSWORD_RESET_EXPIRY_MINUTES used elsewhere --
 // this token is for a one-time operator/deploy action, not an end-user flow, and the operator
@@ -18,6 +18,7 @@ export class SetupService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditService,
+    private readonly passwordPolicy: PasswordPolicyService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -52,6 +53,13 @@ export class SetupService implements OnModuleInit {
   async completeSetup(dto: CompleteSetupDto): Promise<void> {
     const tokenHash = createHash('sha256').update(dto.token).digest('hex');
     const context = { organizationId: null, isSuperAdmin: true };
+    // Cheap gate before the expensive part: once setup is done (the normal state) this public
+    // endpoint must not spend argon2 work or a breach lookup on anyone. Re-checked in the tx below.
+    if (!(await this.needsSetup())) {
+      throw new BadRequestException('Setup has already been completed');
+    }
+    // The platform's first super admin gets the same password floor as everyone (YX-IAM-08).
+    const { passwordHash, passwordRecheckPending } = await this.passwordPolicy.hashNewPassword(dto.password, null);
 
     const admin = await this.tenantPrisma.forTenant(context, async (tx) => {
       // Re-check at write time, not just trusting the boot-time snapshot -- closes the race
@@ -66,9 +74,8 @@ export class SetupService implements OnModuleInit {
         throw new BadRequestException('This setup token is invalid or has expired');
       }
 
-      const passwordHash = await argon2.hash(dto.password);
       const created = await tx.user.create({
-        data: { organizationId: null, email: dto.email, passwordHash, role: 'super_admin' },
+        data: { organizationId: null, email: dto.email, passwordHash, passwordRecheckPending, role: 'super_admin', mfaEnrolmentDueAt: new Date() },
       });
 
       await tx.setupToken.deleteMany({});

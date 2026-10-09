@@ -12,6 +12,7 @@ import { ApiUsageRetentionService } from '../api-usage/api-usage-retention.servi
 import { FaceRetentionService } from '../face-enrolment/face-retention.service';
 import { ProctoringRetentionService } from '../proctoring-retention/proctoring-retention.service';
 import { DripService } from '../drip/drip.service';
+import { IdentityProvidersService } from '../auth/identity-providers.service';
 
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -38,6 +39,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     faceRetention: FaceRetentionService,
     proctoringRetention: ProctoringRetentionService,
     drip: DripService,
+    identityProviders: IdentityProvidersService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -50,6 +52,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'face-retention': () => faceRetention.prune(),
       'proctoring-retention': () => proctoringRetention.prune(),
       'drip-steps': () => drip.sweep(),
+      'domain-verification-recheck': () => identityProviders.recheckDomains(),
     };
     this.worker = new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), { connection: this.connection });
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

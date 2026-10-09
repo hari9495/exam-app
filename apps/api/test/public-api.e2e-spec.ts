@@ -7,6 +7,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import { markSteppedUp } from './fixtures/step-up';
 
 describe('Public API + Webhooks HTTP flow', () => {
   let app: INestApplication;
@@ -128,7 +129,9 @@ describe('Public API + Webhooks HTTP flow', () => {
     invitationId = inviteResponse.body.created[0].id;
 
     // Generate the public API key as org-admin (org:manage_settings) -- the same
-    // endpoint and role exercised by apps/web's Integrations page.
+    // endpoint and role exercised by apps/web's Integrations page. Creating an API key is a
+    // step-up action (P12 §3); proven in mfa.e2e-spec.ts.
+    await markSteppedUp(tenantPrisma, orgAdminAccessToken);
     const apiKeyResponse = await request(app.getHttpServer())
       .post('/api/v1/organizations/integrations/api-key')
       .set('Authorization', `Bearer ${orgAdminAccessToken}`)

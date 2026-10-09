@@ -1,0 +1,222 @@
+/* §28 Calendar and team calendar */
+.yx-cal, .yx-teamcal {
+  --yx-cal-hour: var(--yx-space-12);
+  --yx-cal-axis: var(--yx-space-16);
+  display: flex;
+  flex-direction: column;
+  gap: var(--yx-space-3);
+  min-width: 0;
+  color: var(--yx-color-text);
+  font-size: var(--yx-text-body);
+  line-height: var(--yx-leading-body);
+}
+.yx-cal__bar, .yx-teamcal__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-3); }
+.yx-cal__nav { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); }
+.yx-cal__title { margin: 0 0 0 var(--yx-space-2); font-size: var(--yx-text-xl); line-height: var(--yx-leading-xl); font-weight: var(--yx-weight-semibold); letter-spacing: -0.01em; }
+.yx-teamcal .yx-cal__title { margin: 0; }
+
+/* type markers: colour + the type word is always shown as text too (§3) */
+.yx-cal__marker { flex: none; display: inline-block; width: var(--yx-space-2); height: var(--yx-space-2); border-radius: var(--yx-radius-round); background: var(--yx-chart-8); }
+/* Leave is information, not risk: a neutral dot (amber is kept for real risk). */
+.yx-cal__marker[data-type="leave"] { background: var(--yx-color-text-muted); }
+.yx-cal__marker[data-type="holiday"] { background: var(--yx-chart-5); }
+.yx-cal__marker[data-type="interview"] { background: var(--yx-chart-1); }
+.yx-cal__marker[data-type="exam"] { background: var(--yx-chart-4); }
+.yx-cal__marker[data-type="meeting"] { background: var(--yx-chart-8); }
+
+.yx-cal__chip {
+  display: flex;
+  align-items: center;
+  gap: var(--yx-space-1);
+  width: 100%;
+  min-height: var(--yx-target-min);
+  padding: 0 var(--yx-space-1);
+  border: 0;
+  border-radius: var(--yx-radius-badge);
+  background: transparent;
+  color: var(--yx-color-text);
+  font: inherit;
+  font-size: var(--yx-text-xs);
+  line-height: var(--yx-leading-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.yx-cal__chip:hover { background: var(--yx-color-bg-subtle); }
+/* Not approved yet: a dashed outline instead of a text suffix that gets cut off. */
+.yx-cal__chip[data-pending] { outline: var(--yx-border-width) dashed var(--yx-color-border-strong); outline-offset: calc(var(--yx-border-width) * -1); }
+/* Pending: a hollow dot, as in the people × days legend. */
+.yx-cal__chip[data-pending] .yx-cal__marker { background: transparent; box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-color-text-muted); }
+.yx-cal__chip:focus-visible, .yx-cal__more:focus-visible, .yx-cal__tg-event:focus-visible, .yx-cal__tg-open:focus-visible, .yx-teamcal__chip:focus-visible {
+  outline: var(--yx-focus-width) solid var(--yx-color-focus-ring);
+  outline-offset: var(--yx-space-half);
+}
+.yx-cal__chip-text { display: flex; gap: var(--yx-space-1); min-width: 0; overflow: hidden; white-space: nowrap; }
+.yx-cal__chip-type { color: var(--yx-color-text-muted); }
+.yx-cal__chip-time { color: var(--yx-color-text-secondary); font-variant-numeric: tabular-nums; }
+.yx-cal__chip-title { overflow: hidden; text-overflow: ellipsis; }
+.yx-cal__list .yx-cal__chip { font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); min-height: var(--yx-control-sm); }
+
+/* Month grid */
+.yx-cal__month { border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); overflow: hidden; }
+.yx-cal__week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.yx-cal__week + .yx-cal__week { border-top: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-cal__colhead { padding: var(--yx-space-2); font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-muted); }
+.yx-cal__day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--yx-space-half);
+  min-width: 0;
+  min-height: calc(var(--yx-space-16) + var(--yx-space-12));
+  padding: var(--yx-space-1);
+  cursor: pointer;
+}
+.yx-cal__day + .yx-cal__day { border-left: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-cal__day[data-weekend], .yx-cal__day[data-holiday] { background: var(--yx-color-bg-subtle); }
+.yx-cal__day[data-outside] .yx-cal__daynum { color: var(--yx-color-text-muted); }
+.yx-cal__day[aria-selected="true"] { box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-color-focus-ring); }
+.yx-cal__day:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: calc(var(--yx-focus-width) * -1); }
+.yx-cal__daynum { display: flex; align-items: center; gap: var(--yx-space-1); padding: 0 var(--yx-space-1); font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); font-weight: var(--yx-weight-medium); font-variant-numeric: tabular-nums; }
+.yx-cal__day[data-today] .yx-cal__daynum { color: var(--yx-color-action-primary); font-weight: var(--yx-weight-semibold); }
+.yx-cal__today-tag { font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); font-weight: var(--yx-weight-medium); color: var(--yx-color-info-text); background: var(--yx-color-info-bg); border-radius: var(--yx-radius-badge); padding: 0 var(--yx-space-1); margin-left: var(--yx-space-1); }
+.yx-cal__holiday { display: block; padding: 0 var(--yx-space-1); font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-success-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.yx-cal__events { display: flex; flex-direction: column; gap: var(--yx-space-half); min-width: 0; }
+.yx-cal__more {
+  align-self: flex-start;
+  min-height: var(--yx-target-min);
+  padding: 0 var(--yx-space-1);
+  border: 0;
+  border-radius: var(--yx-radius-badge);
+  background: transparent;
+  color: var(--yx-color-link);
+  font: inherit;
+  font-size: var(--yx-text-xs);
+  font-weight: var(--yx-weight-medium);
+  cursor: pointer;
+}
+.yx-cal__more:hover { background: var(--yx-color-bg-selected); }
+.yx-cal__more-pop { width: calc(var(--yx-space-16) * 5); padding: var(--yx-space-3); }
+.yx-cal__more-pop .yx-cal__chip-text, .yx-cal__daylist .yx-cal__chip-text { white-space: normal; flex-wrap: wrap; }
+.yx-cal__more-title { margin: 0 0 var(--yx-space-2); font-weight: var(--yx-weight-semibold); }
+.yx-cal__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-half); }
+.yx-cal__dots { display: none; flex-wrap: wrap; gap: var(--yx-space-half); padding: 0 var(--yx-space-1); }
+.yx-cal__daylist { display: none; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); padding: var(--yx-space-3); }
+.yx-cal__empty { margin: 0; color: var(--yx-color-text-muted); }
+
+/* Week and day time grid */
+.yx-cal__tg { border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); overflow-x: auto; }
+.yx-cal__tg-row { display: grid; grid-template-columns: var(--yx-cal-axis) repeat(var(--yx-cal-days), minmax(calc(var(--yx-space-16) + var(--yx-space-8)), 1fr)); }
+.yx-cal__tg-row + .yx-cal__tg-row { border-top: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-cal__tg-dayhead { display: flex; align-items: center; gap: var(--yx-space-1); padding: var(--yx-space-2); font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); border-left: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-cal__tg-open { display: inline-flex; align-items: baseline; gap: var(--yx-space-1); min-height: var(--yx-target-min); padding: 0 var(--yx-space-1); border: 0; border-radius: var(--yx-radius-badge); background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.yx-cal__tg-open:hover { background: var(--yx-color-bg-subtle); }
+.yx-cal__tg-date { font-size: var(--yx-text-lg); font-weight: var(--yx-weight-semibold); font-variant-numeric: tabular-nums; }
+.yx-cal__tg-dayhead[data-today] .yx-cal__tg-date { color: var(--yx-color-action-primary); }
+.yx-cal__tg-axislabel { padding: var(--yx-space-2); font-size: var(--yx-text-xs); color: var(--yx-color-text-muted); }
+.yx-cal__tg-alldaycell { display: flex; flex-direction: column; gap: var(--yx-space-half); padding: var(--yx-space-1); min-width: 0; border-left: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-cal__tg-alldaycell[data-holiday] { background: var(--yx-color-bg-subtle); }
+.yx-cal__tg-axis { display: flex; flex-direction: column; }
+.yx-cal__tg-hour { height: var(--yx-cal-hour); padding: 0 var(--yx-space-2); font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-muted); text-align: right; font-variant-numeric: tabular-nums; box-sizing: border-box; }
+.yx-cal__tg-col { position: relative; display: flex; flex-direction: column; border-left: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-cal__tg-col[data-weekend], .yx-cal__tg-col[data-holiday] { background: var(--yx-color-bg-subtle); }
+.yx-cal__tg-slot { height: var(--yx-cal-hour); border-bottom: var(--yx-border-width) solid var(--yx-color-border); box-sizing: border-box; }
+.yx-cal__tg-event {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  overflow: hidden;
+  padding: var(--yx-space-1);
+  border: var(--yx-border-width) solid var(--yx-color-border-strong);
+  border-radius: var(--yx-radius-badge);
+  background: var(--yx-color-bg-raised);
+  color: var(--yx-color-text);
+  font: inherit;
+  font-size: var(--yx-text-xs);
+  line-height: var(--yx-leading-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.yx-cal__tg-event:hover { background: var(--yx-color-bg-subtle); }
+.yx-cal__tg-event-time { display: flex; align-items: center; gap: var(--yx-space-1); color: var(--yx-color-text-secondary); white-space: nowrap; }
+.yx-cal__tg-event .yx-cal__chip-title { font-weight: var(--yx-weight-medium); white-space: nowrap; max-width: 100%; }
+.yx-cal__now { position: absolute; left: 0; right: 0; height: 0; border-top: var(--yx-focus-width) solid var(--yx-color-action-primary); z-index: 1; pointer-events: none; }
+.yx-cal__now::before { content: ""; position: absolute; left: calc(var(--yx-space-1) * -1); top: calc(var(--yx-space-1) * -1 - var(--yx-border-width)); width: var(--yx-space-2); height: var(--yx-space-2); border-radius: var(--yx-radius-round); background: var(--yx-color-action-primary); }
+
+/* Agenda */
+.yx-cal__agenda { list-style: none; margin: 0; padding: 0; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
+.yx-cal__agenda-day { padding: var(--yx-space-3); }
+.yx-cal__agenda-day + .yx-cal__agenda-day { border-top: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-cal__agenda-day[data-holiday] { background: var(--yx-color-bg-subtle); }
+.yx-cal__agenda-date { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); margin: 0 0 var(--yx-space-2); font-size: var(--yx-text-md); line-height: var(--yx-leading-md); font-weight: var(--yx-weight-semibold); }
+.yx-cal__agenda-date .yx-cal__holiday { padding: 0; font-size: var(--yx-text-sm); font-weight: var(--yx-weight-regular); }
+.yx-cal__agenda-row { display: grid; grid-template-columns: calc(var(--yx-space-16) * 2) minmax(0, 1fr); align-items: center; gap: var(--yx-space-2); }
+.yx-cal__agenda-time { color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); font-variant-numeric: tabular-nums; }
+
+/* Team calendar */
+.yx-teamcal__summary { margin: var(--yx-space-1) 0 0; font-weight: var(--yx-weight-medium); }
+.yx-teamcal__names { font-weight: var(--yx-weight-regular); color: var(--yx-color-text-secondary); }
+.yx-teamcal__scroll { overflow-x: auto; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
+.yx-teamcal__table { border-collapse: separate; border-spacing: 0; width: 100%; font-variant-numeric: tabular-nums; }
+.yx-teamcal__caption { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.yx-teamcal__table th, .yx-teamcal__table td { border-bottom: var(--yx-border-width) solid var(--yx-color-border); padding: var(--yx-space-1); text-align: center; vertical-align: middle; }
+.yx-teamcal__table tbody tr:last-child > * { border-bottom: 0; }
+.yx-teamcal__person {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: calc(var(--yx-space-16) * 2 + var(--yx-space-8));
+  text-align: left !important;
+  background: var(--yx-color-bg-surface);
+  border-right: var(--yx-border-width) solid var(--yx-color-border);
+  font-weight: var(--yx-weight-regular);
+}
+thead .yx-teamcal__person { font-size: var(--yx-text-xs); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-muted); }
+.yx-teamcal__name { display: block; font-weight: var(--yx-weight-medium); white-space: nowrap; }
+.yx-teamcal__team { display: block; font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-muted); }
+.yx-teamcal__day { min-width: var(--yx-space-10); font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-muted); }
+.yx-teamcal__wd, .yx-teamcal__dn, .yx-teamcal__flag { display: block; }
+.yx-teamcal__dn { font-size: var(--yx-text-sm); color: var(--yx-color-text); }
+.yx-teamcal__flag { font-weight: var(--yx-weight-regular); color: var(--yx-color-success-text); }
+.yx-teamcal__day[data-today] { box-shadow: inset 0 calc(var(--yx-focus-width) * -1) 0 var(--yx-color-action-primary); }
+.yx-teamcal__day[data-today] .yx-teamcal__flag, .yx-teamcal__day[data-today] .yx-teamcal__dn { color: var(--yx-color-action-primary); }
+.yx-teamcal__day[data-weekend], .yx-teamcal__cell[data-weekend], .yx-teamcal__day[data-holiday], .yx-teamcal__cell[data-holiday] { background: var(--yx-color-bg-subtle); }
+.yx-teamcal__cell[data-today] { background: var(--yx-color-bg-selected); }
+.yx-teamcal__cell { height: var(--yx-row-height); }
+.yx-teamcal__chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--yx-target-min);
+  height: var(--yx-badge-height);
+  padding: 0 var(--yx-space-1);
+  border-radius: var(--yx-radius-badge);
+  border: var(--yx-border-width) solid var(--yx-color-warning-border);
+  background: var(--yx-color-warning-bg);
+  color: var(--yx-color-warning-text);
+  font-size: var(--yx-text-xs);
+  font-weight: var(--yx-weight-medium);
+  cursor: default;
+}
+/* Approved leave is information, not risk: one neutral tone for every code (the code says which leave), and the legend
+   sample matches it. Page-level [data-code] colours (attendance day codes) never reach these chips. Pending is dashed. */
+.yx-teamcal__chip, .yx-teamcal__chip[data-code] { border-color: var(--yx-color-border-strong); background: var(--yx-color-bg-subtle); color: var(--yx-color-text); border-style: solid; }
+.yx-teamcal__chip[data-pending] { gap: var(--yx-space-half); border-style: dashed; background: var(--yx-color-bg-surface); }
+.yx-teamcal__pending { flex: none; }
+.yx-teamcal__flag--off { color: var(--yx-color-text-muted); }
+.yx-teamcal__off { font-size: var(--yx-text-xs); color: var(--yx-color-text-muted); }
+.yx-teamcal__legend { display: flex; flex-wrap: wrap; gap: var(--yx-space-2) var(--yx-space-4); margin: 0; padding: 0; list-style: none; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
+.yx-teamcal__legend li { display: inline-flex; align-items: center; gap: var(--yx-space-1); }
+.yx-teamcal__legend .yx-teamcal__chip { min-width: 0; }
+.yx-teamcal__swatch { width: var(--yx-space-4); height: var(--yx-space-4); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-badge); background: var(--yx-color-bg-subtle); }
+.yx-teamcal__holidays { margin: 0; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
+
+/* Mobile (§37): dots in the month grid, events listed under it */
+@media (max-width: 767px) {
+  .yx-cal__title { margin: 0; font-size: var(--yx-text-lg); flex-basis: 100%; }
+  .yx-cal__day { min-height: var(--yx-target-min); align-items: center; padding: var(--yx-space-1) 0; }
+  .yx-cal__events, .yx-cal__day .yx-cal__holiday, .yx-cal__day .yx-cal__today-tag { display: none; }
+  .yx-cal__dots { display: flex; justify-content: center; }
+  .yx-cal__daylist { display: block; }
+  .yx-cal__colhead { padding: var(--yx-space-1); text-align: center; }
+}

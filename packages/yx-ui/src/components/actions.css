@@ -1,0 +1,159 @@
+/* §15 Buttons */
+.yx-button {
+  position: relative;
+  box-sizing: border-box; /* link buttons (asChild <a>) size like <button>, so the table's equal-width pass settles */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--yx-space-2);
+  height: var(--yx-control-md);
+  min-width: var(--yx-target-min);
+  padding: 0 var(--yx-space-4);
+  border: var(--yx-border-width) solid var(--yx-button-secondary-border);
+  border-radius: var(--yx-radius-control);
+  background: var(--yx-button-secondary-bg);
+  color: var(--yx-color-text);
+  font: inherit;
+  font-size: var(--yx-text-body);
+  font-weight: var(--yx-weight-medium);
+  line-height: var(--yx-leading-body);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--yx-duration-menu) var(--yx-ease-out), border-color var(--yx-duration-menu) var(--yx-ease-out);
+}
+.yx-button:hover { background: var(--yx-button-secondary-bg-hover); }
+.yx-button:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); }
+.yx-button[data-size="sm"] { height: var(--yx-control-sm); padding: 0 var(--yx-space-3); font-size: var(--yx-text-sm); }
+.yx-button[data-size="lg"] { height: var(--yx-control-lg); padding: 0 var(--yx-space-5); }
+/* Border and padding count inside the 100%, so a full-width button never sticks out of its card or phone frame. */
+.yx-button[data-full] { width: 100%; box-sizing: border-box; }
+
+.yx-button[data-variant="primary"] {
+  background: var(--yx-button-primary-bg);
+  border-color: var(--yx-button-primary-bg);
+  color: var(--yx-button-primary-fg);
+}
+.yx-button[data-variant="primary"]:hover { background: var(--yx-button-primary-bg-hover); border-color: var(--yx-button-primary-bg-hover); }
+.yx-button[data-variant="primary"]:active { background: var(--yx-color-action-primary-pressed); }
+
+/* Borderless only for icon-only buttons (§15, founder review 29 Sep 2026) */
+.yx-button[data-variant="ghost"][data-icon-only] { background: transparent; border-color: transparent; color: var(--yx-color-text-secondary); }
+.yx-button[data-variant="ghost"][data-icon-only]:hover { background: var(--yx-color-bg-subtle); color: var(--yx-color-text); }
+
+.yx-button[data-variant="danger"] { background: var(--yx-button-danger-bg); border-color: var(--yx-button-danger-bg); color: var(--yx-color-text-on-action); }
+.yx-button[data-variant="danger"]:hover { filter: brightness(0.92); }
+
+.yx-button:disabled,
+.yx-button:disabled:hover {
+  cursor: not-allowed;
+  background: var(--yx-color-bg-subtle);
+  border-color: var(--yx-color-border);
+  color: var(--yx-color-text-disabled);
+  filter: none;
+}
+
+.yx-button[data-icon-only] { width: var(--yx-control-md); padding: 0; }
+.yx-button[data-icon-only][data-size="sm"] { width: var(--yx-control-sm); }
+.yx-button[data-icon-only][data-size="lg"] { width: var(--yx-control-lg); }
+
+.yx-button[data-loading] { cursor: progress; }
+.yx-button__overlay { position: absolute; inset: 0; display: grid; place-items: center; }
+.yx-button__label[data-hidden] { color: transparent; } /* keeps width and the accessible name */
+
+.yx-button-group { display: inline-flex; }
+.yx-button-group > .yx-button:not(:first-child) { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: calc(var(--yx-border-width) * -1); }
+.yx-button-group > .yx-button:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.yx-button-group > .yx-button[aria-pressed="true"] { background: var(--yx-color-bg-selected); color: var(--yx-color-text); position: relative; z-index: 1; }
+
+.yx-split-button { display: inline-flex; }
+.yx-split-button > .yx-button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.yx-split-button > .yx-button:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: calc(var(--yx-border-width) * -1); }
+.yx-split-button[data-variant="primary"] > .yx-button:last-child,
+.yx-split-button[data-variant="danger"] > .yx-button:last-child { border-left-color: var(--yx-color-bg-surface); margin-left: 0; }
+
+/* Link */
+.yx-link { color: var(--yx-color-link); text-decoration: underline; text-decoration-thickness: var(--yx-border-width); text-underline-offset: var(--yx-space-half); cursor: pointer; }
+/* Always underlined: colour alone can't mark a link inside text (WCAG 1.4.1). Thicker on hover/focus. */
+.yx-link:hover, .yx-link:focus-visible { text-decoration-thickness: var(--yx-focus-width); }
+.yx-link[data-tone="muted"] { color: var(--yx-color-text-secondary); }
+
+/* §33 Tooltip */
+.yx-tooltip {
+  z-index: var(--yx-z-tooltip);
+  max-width: var(--yx-tooltip-max);
+  padding: var(--yx-space-1) var(--yx-space-2);
+  border-radius: var(--yx-radius-badge);
+  background: var(--yx-color-bg-inverse);
+  color: var(--yx-color-text-inverse);
+  font-family: var(--yx-font-sans);
+  font-size: var(--yx-text-xs);
+  line-height: var(--yx-leading-xs);
+  box-shadow: var(--yx-shadow-popover);
+}
+
+/* §33 Menu */
+.yx-menu {
+  z-index: var(--yx-z-popover);
+  min-width: var(--yx-menu-min);
+  padding: var(--yx-space-1);
+  background: var(--yx-color-bg-raised);
+  border: var(--yx-border-width) solid var(--yx-color-border);
+  border-radius: var(--yx-radius-card);
+  box-shadow: var(--yx-shadow-popover);
+  font-family: var(--yx-font-sans);
+  font-size: var(--yx-text-body);
+  line-height: var(--yx-leading-body);
+  color: var(--yx-color-text);
+  animation: yx-fade-in var(--yx-duration-menu) var(--yx-ease-out);
+}
+.yx-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--yx-space-2);
+  min-height: var(--yx-control-sm);
+  padding: 0 var(--yx-space-2);
+  border-radius: var(--yx-radius-badge);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+.yx-menu__item[data-highlighted] { background: var(--yx-color-bg-subtle); }
+.yx-menu__item[data-disabled] { color: var(--yx-color-text-disabled); cursor: not-allowed; }
+.yx-menu__item[data-destructive] { color: var(--yx-color-danger-text); }
+.yx-menu__item[data-destructive][data-highlighted] { background: var(--yx-color-danger-bg); }
+.yx-menu__text { flex: 1; }
+.yx-menu__shortcut { color: var(--yx-color-text-muted); font-size: var(--yx-text-xs); }
+.yx-menu__check { width: var(--yx-icon-sm); display: inline-flex; }
+.yx-menu__label { padding: var(--yx-space-1) var(--yx-space-2); font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-muted); }
+.yx-menu__separator { height: var(--yx-border-width); margin: var(--yx-space-1) calc(var(--yx-space-1) * -1); background: var(--yx-color-border); }
+
+@keyframes yx-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* pressed (§15) */
+.yx-button:active:not(:disabled) { background: var(--yx-color-border); }
+.yx-button[data-variant="primary"]:active:not(:disabled) { background: var(--yx-color-action-primary-pressed); border-color: var(--yx-color-action-primary-pressed); }
+.yx-button[data-variant="danger"]:active:not(:disabled) { filter: brightness(0.85); background: var(--yx-button-danger-bg); }
+.yx-button[data-variant="ghost"][data-icon-only]:disabled { background: transparent; border-color: transparent; color: var(--yx-color-text-disabled); }
+
+/* Tinted row actions (founder review 30 Sep 2026): green = Approve, blue = Review / View. Yellow stays for warnings only. */
+.yx-button[data-variant="approve"] { background: var(--yx-color-success-bg); border-color: var(--yx-color-success-border); color: var(--yx-color-success-text); }
+.yx-button[data-variant="approve"]:hover { border-color: var(--yx-color-success-text); }
+.yx-button[data-variant="review"] { background: var(--yx-color-info-bg); border-color: var(--yx-color-info-border); color: var(--yx-color-info-text); }
+.yx-button[data-variant="review"]:hover { border-color: var(--yx-color-info-text); }
+/* Solid green where Approve is the main action: dialog, sheet and drawer footers, and full-width phone buttons. */
+.yx-dialog__foot .yx-button[data-variant="approve"], .yx-sheet__foot .yx-button[data-variant="approve"], .yx-drawer__foot .yx-button[data-variant="approve"], .yx-button[data-variant="approve"][data-full] { background: var(--yx-color-success-text); border-color: var(--yx-color-success-text); color: var(--yx-color-text-on-action); }
+/* A disabled Approve looks muted like any disabled button, never like a live green one. */
+.yx-button[data-variant="approve"]:disabled, .yx-button[data-variant="review"]:disabled,
+.yx-dialog__foot .yx-button[data-variant="approve"]:disabled, .yx-sheet__foot .yx-button[data-variant="approve"]:disabled, .yx-drawer__foot .yx-button[data-variant="approve"]:disabled, .yx-button[data-variant="approve"][data-full]:disabled {
+  background: var(--yx-color-bg-subtle); border-color: var(--yx-color-border); color: var(--yx-color-text-disabled);
+}
+.yx-button[data-variant="approve"]:active:not(:disabled), .yx-button[data-variant="review"]:active:not(:disabled) { filter: brightness(0.95); }
+/* Row buttons line up: one width in tables, home lists, notifications and cards. */
+/* Icon-only buttons (the "…" menu) keep their own square size; widening them made them spill out of the column. */
+.yx-table__actions-inner > .yx-button:not([data-icon-only]), .yx-actions__buttons > .yx-button:not([data-icon-only]), .yx-plt-notif__actions > .yx-button:not([data-icon-only]), .yx-notif__actions > .yx-button:not([data-icon-only]) {
+  min-width: calc(var(--yx-space-16) * 1.5 + var(--yx-space-2));
+}
+/* In a table, every text row button matches the widest one (the table sets --yx-row-btn-w). */
+.yx-table__actions-inner > .yx-button:not([data-icon-only]) { min-width: var(--yx-row-btn-w, calc(var(--yx-space-16) * 1.5 + var(--yx-space-2))); }

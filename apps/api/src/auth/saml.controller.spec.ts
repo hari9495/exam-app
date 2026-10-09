@@ -1,7 +1,9 @@
 import { Test } from '@nestjs/testing';
 import { SamlController } from './saml.controller';
-import { PrismaService } from '@exam-platform/shared';
+import { AuditService, PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { SamlStrategy } from './saml.strategy';
+import { SsoService } from './sso.service';
+import { SessionsService } from './sessions.service';
 import { randomBytes, createHash } from 'crypto';
 // Imported the same way saml.controller.ts imports it, to prove that import
 // style actually preserves `passport.authenticate` (see the comment on that
@@ -17,14 +19,22 @@ describe('SamlController', () => {
   let controller: SamlController;
   let prisma: { organization: { findUnique: jest.Mock }; ssoLoginCode: { create: jest.Mock } };
   let samlStrategy: { generateMetadata: jest.Mock };
+  let tenantPrisma: { forTenant: jest.Mock };
+  let sessions: { recordLoginEvent: jest.Mock };
 
   beforeEach(async () => {
     prisma = { organization: { findUnique: jest.fn() }, ssoLoginCode: { create: jest.fn() } };
     samlStrategy = { generateMetadata: jest.fn() };
+    tenantPrisma = { forTenant: jest.fn().mockResolvedValue([]) };
+    sessions = { recordLoginEvent: jest.fn() };
     const moduleRef = await Test.createTestingModule({
       controllers: [SamlController],
       providers: [
+        SsoService,
         { provide: PrismaService, useValue: prisma },
+        { provide: TenantPrismaService, useValue: tenantPrisma },
+        { provide: AuditService, useValue: {} },
+        { provide: SessionsService, useValue: sessions },
         { provide: SamlStrategy, useValue: samlStrategy },
       ],
     }).compile();
@@ -32,13 +42,20 @@ describe('SamlController', () => {
   });
 
   describe('status', () => {
-    it('returns enabled:true when the org has SSO configured', async () => {
-      prisma.organization.findUnique.mockResolvedValue({ samlEnabled: true });
+    it('returns enabled:true when the org has an active identity provider', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'acme', status: 'active' });
+      tenantPrisma.forTenant.mockResolvedValue([{ id: 'idp-1', type: 'oidc_google' }]);
 
       const result = await controller.status('acme');
 
       expect(result).toEqual({ enabled: true });
-      expect(prisma.organization.findUnique).toHaveBeenCalledWith({ where: { slug: 'acme' }, select: { samlEnabled: true } });
+      expect(prisma.organization.findUnique).toHaveBeenCalledWith({ where: { slug: 'acme' }, select: { id: true, slug: true, status: true } });
+    });
+
+    it('returns enabled:false when no provider is active', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'acme', status: 'active' });
+
+      await expect(controller.status('acme')).resolves.toEqual({ enabled: false });
     });
 
     it('returns enabled:false when the org does not exist', async () => {
@@ -56,14 +73,40 @@ describe('SamlController', () => {
       prisma.ssoLoginCode.create.mockResolvedValue({ id: 'code-row-1' });
       const res = { redirect: jest.fn() };
 
-      await controller.handleAuthCallback(null, { id: 'user-1', email: 'alice@acme.test', role: 'recruiter', organizationId: 'org-1' }, undefined, res as any);
+      await controller.handleAuthCallback(null, { id: 'user-1', email: 'alice@acme.test', role: 'recruiter', organizationId: 'org-1', mfaAsserted: false, identityProviderId: 'idp-1', deviceIdHash: 'device-hash' }, undefined, res as any);
 
       const expectedRawCode = Buffer.from('a'.repeat(32)).toString('hex');
       const expectedHash = createHash('sha256').update(expectedRawCode).digest('hex');
       expect(prisma.ssoLoginCode.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ userId: 'user-1', codeHash: expectedHash }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ userId: 'user-1', codeHash: expectedHash, method: 'saml', mfaAsserted: false, identityProviderId: 'idp-1', deviceIdHash: 'device-hash' }),
+        }),
       );
-      expect(res.redirect).toHaveBeenCalledWith(expect.stringContaining(`code=${expectedRawCode}`));
+      // In the fragment, never the query string: not sent to servers, logs or Referer (ASVS V3.1.1).
+      expect(res.redirect).toHaveBeenCalledWith(expect.stringContaining(`/sso/callback#code=${expectedRawCode}`));
+    });
+
+    it('carries IdP-asserted MFA on the code, so the exchange can open an AAL2 session', async () => {
+      (randomBytes as jest.Mock).mockReturnValue(Buffer.from('b'.repeat(32)));
+      const res = { redirect: jest.fn() };
+
+      await controller.handleAuthCallback(null, { id: 'user-1', email: 'alice@acme.test', role: 'recruiter', organizationId: 'org-1', mfaAsserted: true, identityProviderId: 'idp-1', deviceIdHash: 'device-hash' }, undefined, res as any);
+
+      expect(prisma.ssoLoginCode.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ mfaAsserted: true }) }));
+    });
+
+    it('records a failed SAML response as a login event without minting a device cookie (YX-IAM-10)', async () => {
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', slug: 'acme', status: 'active' });
+      const res = { redirect: jest.fn(), cookie: jest.fn() };
+      const req = { params: { organizationSlug: 'acme' }, ip: '203.0.113.9', cookies: {}, get: () => 'UA' };
+
+      await controller.handleAuthCallback(null, false, { message: 'domain_not_allowed' }, res as any, req as any);
+
+      expect(sessions.recordLoginEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: 'org-1', result: 'failed', method: 'saml', reason: 'saml_domain_not_allowed' }),
+      );
+      expect(res.cookie).not.toHaveBeenCalled();
+      expect(res.redirect).toHaveBeenCalledWith(expect.stringContaining('ssoError=not_provisioned'));
     });
 
     it('redirects with ssoError=not_provisioned when no user matched', async () => {
@@ -100,7 +143,7 @@ describe('SamlController', () => {
       const res = { redirect: jest.fn() };
 
       await expect(
-        controller.handleAuthCallback(null, { id: 'user-1', email: 'alice@acme.test', role: 'recruiter', organizationId: 'org-1' }, undefined, res as any),
+        controller.handleAuthCallback(null, { id: 'user-1', email: 'alice@acme.test', role: 'recruiter', organizationId: 'org-1', mfaAsserted: false, identityProviderId: 'idp-1', deviceIdHash: 'device-hash' }, undefined, res as any),
       ).resolves.toBeUndefined();
 
       expect(res.redirect).toHaveBeenCalledWith(expect.stringContaining('ssoError=invalid_response'));

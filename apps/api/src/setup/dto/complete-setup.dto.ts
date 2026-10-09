@@ -1,4 +1,5 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
+import { TENANT_SECURITY_FLOOR } from '@exam-platform/shared';
 
 export class CompleteSetupDto {
   @IsString()
@@ -8,6 +9,7 @@ export class CompleteSetupDto {
   email!: string;
 
   @IsString()
-  @MinLength(8)
+  @MinLength(TENANT_SECURITY_FLOOR.passwordMinLength)
+  @MaxLength(TENANT_SECURITY_FLOOR.passwordMaxLength)
   password!: string;
 }

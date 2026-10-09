@@ -18,14 +18,23 @@ import type { PassportSamlConfig } from '@node-saml/passport-saml';
 // `export =`, still gives the merged namespace type used for `passport
 // .Strategy` below).
 import passport = require('passport');
-import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
+import { createHash } from 'crypto';
+import { PrismaService } from '@exam-platform/shared';
 import { SamlCacheProvider } from './saml-cache.provider';
+import { ProviderWithDomains, SsoService, samlMfaAsserted } from './sso.service';
+import { DEVICE_COOKIE } from './sessions.service';
 
 export interface SsoUser {
   id: string;
   email: string;
   role: string;
   organizationId: string | null;
+  // The IdP asserted MFA (AuthnContextClassRef / authnmethodsreferences) and an admin trusts this
+  // IdP for MFA: the session starts at AAL2.
+  mfaAsserted: boolean;
+  identityProviderId: string;
+  // sha256 of the device cookie of the browser that started this sign-in (null: none was sent).
+  deviceIdHash: string | null;
 }
 
 // The installed @node-saml/passport-saml types its verify callback's `user`
@@ -47,11 +56,31 @@ export type SsoDoneCallback = (err: Error | null, user?: SsoUser | false, info?:
 // the duplicate-package mismatch entirely and is satisfied by both.
 export interface SamlRequestLike {
   params: { organizationSlug?: string | string[] };
+  query?: { RelayState?: unknown };
+  body?: { RelayState?: unknown };
+  cookies?: Record<string, unknown>;
+  // Set while node-saml consumes the AuthnRequest ID this response answers (SamlCacheProvider).
+  samlDeviceIdHash?: string | null;
+}
+
+// sha256 of this request's device cookie, when it carries a well-formed one.
+function deviceIdHashOf(req: SamlRequestLike): string | null {
+  const id = req.cookies?.[DEVICE_COOKIE];
+  return typeof id === 'string' && /^[A-Za-z0-9_-]{43}$/.test(id) ? createHash('sha256').update(id).digest('hex') : null;
 }
 
 function getSlugParam(req: SamlRequestLike): string {
   const value = req.params.organizationSlug;
   return Array.isArray(value) ? value[0] : (value ?? '');
+}
+
+// Which of the company's SAML providers this request is for (several per company, YX-IAM-04).
+// POST /auth/sso/start sends the provider id as RelayState; the IdP echoes it to the ACS. It only
+// selects among this company's own providers -- the response must still carry that provider's
+// signature and issuer. Without it (the pre-1e login link) the company's only SAML provider.
+function getProviderParam(req: SamlRequestLike): string | undefined {
+  const value = req.query?.RelayState ?? req.body?.RelayState;
+  return typeof value === 'string' && value ? value : undefined;
 }
 
 // @nestjs/passport's PassportStrategy() mixin wraps a strategy's constructor by
@@ -73,7 +102,7 @@ function getSlugParam(req: SamlRequestLike): string {
 export class SamlStrategy implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly tenantPrisma: TenantPrismaService,
+    private readonly sso: SsoService,
     private readonly cacheProvider: SamlCacheProvider,
   ) {}
 
@@ -93,7 +122,7 @@ export class SamlStrategy implements OnModuleInit {
       {
         passReqToCallback: true,
         getSamlOptions: (req, done) => {
-          this.resolveOrgSamlConfig(getSlugParam(req))
+          this.resolveOrgSamlConfig(getSlugParam(req), getProviderParam(req), req as unknown as SamlRequestLike)
             .then((config) => done(null, config))
             .catch((error) => done(error as Error));
         },
@@ -163,18 +192,28 @@ export class SamlStrategy implements OnModuleInit {
     };
   }
 
-  async resolveOrgSamlConfig(organizationSlug: string): Promise<Partial<PassportSamlConfig>> {
-    const org = await this.prisma.organization.findUnique({ where: { slug: organizationSlug } });
-    if (!org) {
-      throw new NotFoundException(`Organization "${organizationSlug}" not found`);
-    }
-    if (!org.samlEnabled || !org.samlIdpEntityId || !org.samlIdpSsoUrl || !org.samlIdpCertificate) {
+  // The company's active SAML provider for this request, or null.
+  async resolveProvider(organizationSlug: string, providerId: string | undefined): Promise<ProviderWithDomains | null> {
+    const org = await this.sso.organizationBySlug(organizationSlug);
+    if (!org) return null;
+    const saml = (await this.sso.activeProviders(org.id)).filter((p) => p.type === 'saml');
+    return (providerId ? saml.find((p) => p.id === providerId) : saml.length === 1 ? saml[0] : undefined) ?? null;
+  }
+
+  // `req`: the request being served. At /login the new AuthnRequest ID is stored with this
+  // browser's device cookie; at the ACS the device stored with the answered ID is put on `req`.
+  async resolveOrgSamlConfig(organizationSlug: string, providerId?: string, req?: SamlRequestLike): Promise<Partial<PassportSamlConfig>> {
+    const provider = await this.resolveProvider(organizationSlug, providerId);
+    if (!provider) {
       throw new BadRequestException(`SAML SSO is not configured for "${organizationSlug}"`);
     }
+    const cacheProvider = this.cacheProvider.forRequest(provider.id, req ? deviceIdHashOf(req) : null, (deviceIdHash) => {
+      if (req) req.samlDeviceIdHash = deviceIdHash;
+    });
 
     return {
-      entryPoint: org.samlIdpSsoUrl,
-      idpCert: org.samlIdpCertificate,
+      entryPoint: provider.samlSsoUrl!,
+      idpCert: provider.samlCertificate!,
       ...this.spUrls(organizationSlug),
       // NOTE: `idpIssuer` here is NOT what enforces the entity-ID check on
       // login. Confirmed by reading the installed @node-saml/node-saml@5.1.0
@@ -191,11 +230,11 @@ export class SamlStrategy implements OnModuleInit {
       // here anyway so it's correct if SLO support is ever added, and so this
       // config isn't silently missing a field the type otherwise supports --
       // but on its own it validates nothing for the flows this app uses.
-      idpIssuer: org.samlIdpEntityId,
+      idpIssuer: provider.samlEntityId!,
       // SP-side request signing is out of scope (see the plan's Global
       // Constraints), so no privateKey/publicCert here.
       validateInResponseTo: ValidateInResponseTo.always,
-      cacheProvider: this.cacheProvider,
+      cacheProvider,
       // Entra ID's default "Signing Option" is "Sign SAML assertion" -- the
       // outer <Response> is left unsigned. node-saml defaults to requiring a
       // response-level signature (wantAuthnResponseSigned: true) and rejects
@@ -228,9 +267,8 @@ export class SamlStrategy implements OnModuleInit {
   }
 
   async validate(req: SamlRequestLike, profile: Profile | null, done: SsoDoneCallback): Promise<void> {
-    const organizationSlug = getSlugParam(req);
-    const org = await this.prisma.organization.findUnique({ where: { slug: organizationSlug } });
-    if (!org || !profile) {
+    const provider = await this.resolveProvider(getSlugParam(req), getProviderParam(req));
+    if (!provider || !profile) {
       done(null, false, { message: 'not_provisioned' });
       return;
     }
@@ -238,25 +276,27 @@ export class SamlStrategy implements OnModuleInit {
     // The installed node-saml library does not check the assertion's
     // <Issuer> against anything on the normal sign-on path (see the comment
     // in resolveOrgSamlConfig() above) -- it just hands it back as
-    // `profile.issuer`. This is the actual entity-ID check the org-admin's
-    // configured samlIdpEntityId exists to enforce: reject any assertion
+    // `profile.issuer`. This is the actual entity-ID check the provider's
+    // configured samlEntityId exists to enforce: reject any assertion
     // whose issuer doesn't match, so a cert that validates a signature from
-    // some other issuer entirely can't be used to impersonate this org's IdP.
-    if (profile.issuer !== org.samlIdpEntityId) {
+    // some other issuer entirely can't be used to impersonate this provider.
+    if (profile.issuer !== provider.samlEntityId) {
       done(null, false, { message: 'issuer_mismatch' });
       return;
     }
 
-    const user = await this.tenantPrisma.forTenant({ organizationId: org.id, isSuperAdmin: false }, (tx) =>
-      tx.user.findFirst({ where: { email: profile.nameID, organizationId: org.id } }),
-    );
-
-    if (!user) {
-      done(null, false, { message: 'not_provisioned' });
+    const email = profile.nameID?.includes('@') ? profile.nameID : typeof profile.email === 'string' ? profile.email : '';
+    const displayName = typeof profile['http://schemas.microsoft.com/identity/claims/displayname'] === 'string'
+      ? (profile['http://schemas.microsoft.com/identity/claims/displayname'] as string)
+      : undefined;
+    const resolved = await this.sso.resolveUser(provider, email, displayName);
+    if ('reason' in resolved) {
+      done(null, false, { message: resolved.reason });
       return;
     }
-
-    const ssoUser: SsoUser = { id: user.id, email: user.email, role: user.role, organizationId: user.organizationId };
-    done(null, ssoUser);
+    const assertion = typeof profile.getAssertion === 'function' ? profile.getAssertion() : null;
+    // The IdP's MFA claim counts only for a provider an admin has trusted for MFA (YX-IAM-01/04).
+    const mfaAsserted = provider.mfaTrusted && samlMfaAsserted(assertion, (profile.attributes as Record<string, unknown> | undefined) ?? {});
+    done(null, { ...resolved.user, mfaAsserted, identityProviderId: provider.id, deviceIdHash: req.samlDeviceIdHash ?? null });
   }
 }

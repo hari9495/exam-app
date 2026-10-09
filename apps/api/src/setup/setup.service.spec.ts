@@ -3,12 +3,14 @@ import { BadRequestException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { SetupService } from './setup.service';
 import { PrismaService, TenantPrismaService, AuditService } from '@exam-platform/shared';
+import { PasswordPolicyService } from '../auth/password-policy.service';
 
 describe('SetupService', () => {
   let service: SetupService;
   let prisma: { setupToken: { deleteMany: jest.Mock; create: jest.Mock; findUnique: jest.Mock } };
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
+  let passwordPolicy: { hashNewPassword: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -16,12 +18,14 @@ describe('SetupService', () => {
     };
     tenantPrisma = { forTenant: jest.fn() };
     audit = { record: jest.fn() };
+    passwordPolicy = { hashNewPassword: jest.fn(async () => ({ passwordHash: 'argon2-hash', passwordRecheckPending: false })) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         SetupService,
         { provide: PrismaService, useValue: prisma },
         { provide: TenantPrismaService, useValue: tenantPrisma },
         { provide: AuditService, useValue: audit },
+        { provide: PasswordPolicyService, useValue: passwordPolicy },
       ],
     }).compile();
     service = moduleRef.get(SetupService);
@@ -77,8 +81,10 @@ describe('SetupService', () => {
     );
 
     await expect(
-      service.completeSetup({ token: 'raw-token', email: 'ops@example.com', password: 'password1' }),
+      service.completeSetup({ token: 'raw-token', email: 'ops@example.com', password: 'long-enough-passphrase' }),
     ).rejects.toThrow(BadRequestException);
+    // Once set up, the public endpoint spends no hashing or breach-lookup work on anyone.
+    expect(passwordPolicy.hashNewPassword).not.toHaveBeenCalled();
   });
 
   it('completeSetup rejects an invalid token', async () => {
@@ -90,7 +96,7 @@ describe('SetupService', () => {
     );
 
     await expect(
-      service.completeSetup({ token: 'wrong-token', email: 'ops@example.com', password: 'password1' }),
+      service.completeSetup({ token: 'wrong-token', email: 'ops@example.com', password: 'long-enough-passphrase' }),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -103,7 +109,7 @@ describe('SetupService', () => {
     );
 
     await expect(
-      service.completeSetup({ token: 'raw-token', email: 'ops@example.com', password: 'password1' }),
+      service.completeSetup({ token: 'raw-token', email: 'ops@example.com', password: 'long-enough-passphrase' }),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -117,15 +123,33 @@ describe('SetupService', () => {
       }),
     );
 
-    await service.completeSetup({ token: 'raw-token', email: 'ops@example.com', password: 'password1' });
+    await service.completeSetup({ token: 'raw-token', email: 'ops@example.com', password: 'long-enough-passphrase' });
 
     expect(userCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ organizationId: null, email: 'ops@example.com', role: 'super_admin' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({ organizationId: null, email: 'ops@example.com', role: 'super_admin', passwordHash: 'argon2-hash' }),
+      }),
     );
+    // The platform's first account gets the same password floor as everyone (YX-IAM-08).
+    expect(passwordPolicy.hashNewPassword).toHaveBeenCalledWith('long-enough-passphrase', null);
     expect(tokenDeleteMany).toHaveBeenCalledWith({});
     expect(audit.record).toHaveBeenCalledWith(
       { organizationId: null, isSuperAdmin: true },
       { actorUserId: 'new-admin-id', action: 'user.setup_wizard_completed', entityType: 'user', entityId: 'new-admin-id' },
     );
+  });
+
+  it('completeSetup creates nothing when the password fails the floor (YX-IAM-08)', async () => {
+    const userCreate = jest.fn();
+    passwordPolicy.hashNewPassword.mockRejectedValue(new BadRequestException('breached'));
+    tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+      fn({
+        user: { count: async () => 0, create: userCreate },
+        setupToken: { findUnique: async () => ({ expiresAt: new Date(Date.now() + 100000) }), deleteMany: jest.fn() },
+      }),
+    );
+
+    await expect(service.completeSetup({ token: 'raw-token', email: 'ops@example.com', password: 'password1234' })).rejects.toThrow(BadRequestException);
+    expect(userCreate).not.toHaveBeenCalled();
   });
 });

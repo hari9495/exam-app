@@ -37,6 +37,7 @@ function createMockSocket() {
     }),
     emit: jest.fn(),
     disconnect: jest.fn(),
+    connect: jest.fn(),
     trigger: (event: string, ...args: unknown[]) => handlers[event]?.(...args),
   };
 }
@@ -78,6 +79,29 @@ describe('useExamMonitoring', () => {
 
     act(() => socket.trigger('connect'));
     expect(socket.emit).toHaveBeenCalledWith('join-exam', { examId: 'exam-1' });
+  });
+
+  // The server drops a socket whose access token expired or whose session ended (YX-IAM-06).
+  it('after a server-side disconnect, reconnects only once a newer access token exists', async () => {
+    const socket = createMockSocket();
+    (io as jest.Mock).mockReturnValue(socket);
+    const { rerender } = renderHook(() => useExamMonitoring('exam-1'));
+    await waitFor(() => expect(io).toHaveBeenCalled());
+    act(() => socket.trigger('connect'));
+
+    // Same token (e.g. the session was revoked and no refresh succeeded): stay out.
+    act(() => socket.trigger('disconnect', 'io server disconnect'));
+    expect(socket.connect).not.toHaveBeenCalled();
+
+    // A routine refresh produced a new token: come back with it.
+    mockAccessToken('newer-token');
+    rerender();
+    act(() => socket.trigger('disconnect', 'io server disconnect'));
+    expect(socket.connect).toHaveBeenCalledTimes(1);
+
+    // A transport drop is socket.io's own reconnection to handle.
+    act(() => socket.trigger('disconnect', 'transport close'));
+    expect(socket.connect).toHaveBeenCalledTimes(1);
   });
 
   it('applies the roster snapshot and reports connectionStatus as connected', async () => {

@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
 import './globals.css';
+// YukthiX design system: tokens and .yx-* components (the /yx pages and the step-up prompt).
+import '@yukthix/ui/styles.css';
 import { AuthProvider } from '../lib/auth-context';
 import { QueryProvider } from '../lib/query-provider';
 import { ToastProvider } from '../components/ui';
 import { SuperAdminActingBanner } from '../components/SuperAdminActingBanner';
 import { ImpersonationBanner } from '../components/ImpersonationBanner';
+import { StepUpProvider } from '../components/auth/StepUpProvider';
 
 // Without this the browser tab fell back to showing the raw hostname, and with
 // no icon file it showed the generic globe. `template` lets an individual page
@@ -29,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <AuthProvider>
               <SuperAdminActingBanner />
               <ImpersonationBanner />
+              <StepUpProvider />
               {children}
             </AuthProvider>
           </ToastProvider>

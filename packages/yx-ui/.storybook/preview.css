@@ -1,0 +1,2 @@
+/* Full-page screens (shell, portal, kiosk) own the whole viewport: no preview padding, so there is one scroll bar, not two. */
+.yx-root:has(> .yx-shell, > .yx-portal, > .yx-kiosk, > .yx-auth) { padding: 0 !important; min-height: 0 !important; }

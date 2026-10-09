@@ -36,4 +36,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   // Hourly (not nightly): drip steps have per-step day delays but should go out promptly once due,
   // and each run is bounded (SWEEP_BATCH). Sends due nurture-campaign steps.
   { id: 'drip-steps', cron: '0 * * * *' },
+  // W-006: verified company email domains, re-checked against DNS (daily by default; DOMAIN_RECHECK_CRON).
+  { id: 'domain-verification-recheck', cron: process.env.DOMAIN_RECHECK_CRON?.trim() || '30 5 * * *' },
 ];

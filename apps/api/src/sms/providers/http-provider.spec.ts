@@ -211,7 +211,7 @@ describe('httpProvider.send', () => {
       args,
       fetchImpl as never,
     );
-    expect(result).toEqual({ ok: false, status: 500 });
+    expect(result).toMatchObject({ ok: false, status: 500, failure: 'unknown' });
   });
 
   it('returns ok:false when fetch throws, never lets the error escape', async () => {
@@ -221,7 +221,7 @@ describe('httpProvider.send', () => {
       args,
       fetchImpl as never,
     );
-    expect(result).toEqual({ ok: false });
+    expect(result).toMatchObject({ ok: false, failure: 'unknown' });
   });
 
   it('calls fetch with redirect:manual so a 3xx to an internal address is never followed', async () => {
@@ -244,7 +244,7 @@ describe('httpProvider.send', () => {
 
     const result = await httpProvider.send(config, { to: '127.0.0.1', body: 'hi' }, fetchImpl as never);
 
-    expect(result).toEqual({ ok: false });
+    expect(result).toMatchObject({ ok: false, failure: 'rejected' });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 

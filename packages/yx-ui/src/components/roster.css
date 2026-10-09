@@ -1,0 +1,156 @@
+/* §28 Shift roster (M02 §B2) */
+.yx-roster {
+  --yx-roster-person: calc(var(--yx-space-16) * 2 + var(--yx-space-8));
+  --yx-roster-day: var(--yx-space-16); /* 7 days + name + hours fit at tablet width (871) */
+  display: flex;
+  flex-direction: column;
+  gap: var(--yx-space-3);
+  min-width: 0;
+  color: var(--yx-color-text);
+  font-size: var(--yx-text-body);
+  line-height: var(--yx-leading-body);
+}
+.yx-roster__bar, .yx-roster__tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-3); }
+.yx-roster__head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); }
+.yx-roster__title { margin: 0; font-size: var(--yx-text-xl); line-height: var(--yx-leading-xl); font-weight: var(--yx-weight-semibold); letter-spacing: -0.01em; }
+.yx-roster__changes { font-size: var(--yx-text-sm); color: var(--yx-color-warning-text); font-weight: var(--yx-weight-medium); }
+.yx-roster__palette { display: flex; flex-wrap: wrap; gap: var(--yx-space-2); }
+.yx-roster__pal { cursor: grab; }
+.yx-roster__pal[data-color="1"], .yx-roster__block[data-color="1"] { --yx-roster-color: var(--yx-chart-1); }
+.yx-roster__pal[data-color="2"], .yx-roster__block[data-color="2"] { --yx-roster-color: var(--yx-chart-2); }
+.yx-roster__pal[data-color="3"], .yx-roster__block[data-color="3"] { --yx-roster-color: var(--yx-chart-3); }
+.yx-roster__pal[data-color="4"], .yx-roster__block[data-color="4"] { --yx-roster-color: var(--yx-chart-4); }
+.yx-roster__pal[data-color="5"], .yx-roster__block[data-color="5"] { --yx-roster-color: var(--yx-chart-5); }
+.yx-roster__pal[data-color="6"], .yx-roster__block[data-color="6"] { --yx-roster-color: var(--yx-chart-6); }
+.yx-roster__pal[data-color="7"], .yx-roster__block[data-color="7"] { --yx-roster-color: var(--yx-chart-7); }
+.yx-roster__pal[data-color="8"], .yx-roster__block[data-color="8"] { --yx-roster-color: var(--yx-chart-8); }
+.yx-roster__pal[data-color] { box-shadow: inset var(--yx-space-1) 0 0 var(--yx-roster-color); }
+.yx-roster__code { font-weight: var(--yx-weight-semibold); font-family: var(--yx-font-mono); }
+.yx-roster__menu-time { color: var(--yx-color-text-muted); }
+.yx-roster__sr { position: absolute; top: 0; left: 0; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.yx-roster__scroll { overflow-x: auto; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
+.yx-roster__grid { display: flex; flex-direction: column; min-width: max-content; font-variant-numeric: tabular-nums; }
+.yx-roster__row {
+  display: grid;
+  grid-template-columns: var(--yx-roster-person) repeat(var(--yx-roster-days), minmax(var(--yx-roster-day), 1fr)) var(--yx-space-12);
+  border-bottom: var(--yx-border-width) solid var(--yx-color-border);
+}
+.yx-roster__row:last-child { border-bottom: 0; }
+.yx-roster__row--head { font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-muted); }
+.yx-roster__row--head > * { padding: var(--yx-space-2); }
+.yx-roster__person {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--yx-space-2);
+  background: var(--yx-color-bg-surface);
+  border-right: var(--yx-border-width) solid var(--yx-color-border);
+  min-width: 0;
+}
+.yx-roster__name { font-weight: var(--yx-weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.yx-roster__role { font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.yx-roster__day { text-align: center; border-left: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-roster__dn { color: var(--yx-color-text); font-size: var(--yx-text-sm); }
+.yx-roster__day[data-weekend], .yx-roster__cell[data-weekend] { background: var(--yx-color-bg-subtle); }
+.yx-roster__total { display: flex; align-items: center; justify-content: flex-end; padding: var(--yx-space-2); border-left: var(--yx-border-width) solid var(--yx-color-border); font-size: var(--yx-text-sm); }
+.yx-roster__total { position: sticky; right: 0; z-index: 1; background: var(--yx-color-bg-surface); } /* Hours stay in view when the grid scrolls */
+.yx-roster__total[data-over] { color: var(--yx-color-warning-text); font-weight: var(--yx-weight-semibold); }
+
+.yx-roster__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: var(--yx-space-half);
+  min-height: calc(var(--yx-row-height) + var(--yx-space-4));
+  padding: var(--yx-space-1);
+  border-left: var(--yx-border-width) solid var(--yx-color-border);
+  cursor: cell;
+  user-select: none;
+}
+.yx-roster[data-readonly] .yx-roster__cell { cursor: default; }
+.yx-roster__cell[aria-selected="true"] { background: var(--yx-color-bg-selected); box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-color-focus-ring); }
+.yx-roster__cell:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: calc(var(--yx-focus-width) * -1); }
+.yx-roster__block {
+  display: flex;
+  align-items: baseline;
+  gap: var(--yx-space-1);
+  padding: var(--yx-space-half) var(--yx-space-1);
+  border-radius: var(--yx-radius-badge);
+  background: var(--yx-color-bg-raised);
+  border: var(--yx-border-width) solid var(--yx-color-border-strong);
+  box-shadow: inset var(--yx-space-1) 0 0 var(--yx-roster-color, var(--yx-chart-8));
+  padding-left: calc(var(--yx-space-1) * 2);
+  font-size: var(--yx-text-sm);
+  line-height: var(--yx-leading-sm);
+}
+.yx-roster__block[data-off] { box-shadow: none; background: transparent; border-style: dashed; color: var(--yx-color-text-muted); }
+.yx-roster__time { font-size: var(--yx-text-xs); color: var(--yx-color-text-secondary); white-space: nowrap; }
+/* Leave on a day that also has a shift: a small neutral badge under the block. */
+.yx-roster__leave { display: flex; white-space: nowrap; }
+.yx-roster__cday { display: none; }
+.yx-roster__conflict-actions { display: flex; flex-wrap: wrap; gap: var(--yx-space-2); }
+.yx-roster__warn {
+  align-self: flex-start;
+  padding: 0 var(--yx-space-1);
+  border-radius: var(--yx-radius-badge);
+  border: var(--yx-border-width) solid var(--yx-color-warning-border);
+  background: var(--yx-color-warning-bg);
+  color: var(--yx-color-warning-text);
+  font-size: var(--yx-text-xs);
+  line-height: var(--yx-leading-xs);
+  font-weight: var(--yx-weight-medium);
+  white-space: nowrap;
+}
+.yx-roster__conflicts { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-roster__conflict { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-2); }
+.yx-roster__publish { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-3); }
+.yx-roster__blocked { font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
+.yx-roster__hint { margin: 0; font-size: var(--yx-text-sm); color: var(--yx-color-text-muted); }
+
+/* Today's column (RosterGrid `today`). */
+.yx-roster__day[data-today] { background: var(--yx-color-bg-selected); color: var(--yx-color-text); }
+.yx-roster__today { display: block; font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); font-weight: var(--yx-weight-semibold); color: var(--yx-color-action-primary); }
+/* Narrow screens keep only the shift code in a cell, so the Hours column fits. Warnings wrap inside their cell instead of
+   widening the grid, so the editable grid is as narrow as the read-only one and Sun and Hours stay in view. */
+@media (max-width: 1023px) {
+  /* Tablet: the start time sits under the code ("M" over "6 am"), as at 1440 and 390. */
+  .yx-roster__block { flex-direction: column; align-items: flex-start; gap: 0; }
+  .yx-roster__leave-pre { display: none; }
+  .yx-roster { --yx-roster-day: var(--yx-space-12); }
+  .yx-roster__grid { min-width: 0; }
+  .yx-roster__cell { min-width: 0; }
+  .yx-roster__warn { white-space: normal; overflow-wrap: anywhere; }
+  /* Leave badges are only the code here, so they always fit on one line. */
+  .yx-roster__warn[data-kind="leave"], .yx-roster__block[data-leave] { white-space: nowrap; }
+}
+@media (max-width: 767px) {
+  .yx-roster { --yx-roster-person: calc(var(--yx-space-16) + var(--yx-space-10)); }
+  .yx-roster__time, .yx-roster__role { display: none; }
+  .yx-roster__hint { display: none; }
+}
+/* Phone: one card per person (full name, role, hours) with the 7 days as chips over two lines; no sideways scroll. */
+@media (max-width: 599px) {
+  .yx-roster__scroll { overflow: visible; border: 0; background: none; }
+  .yx-roster__grid { min-width: 0; gap: var(--yx-space-3); }
+  .yx-roster__row--head { display: none; }
+  .yx-roster__row {
+    grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--yx-space-1);
+    padding: var(--yx-space-2); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface);
+  }
+  .yx-roster__row:last-child { border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
+  .yx-roster__person { grid-row: 1; grid-column: 1 / 4; position: static; border-right: 0; padding: var(--yx-space-1); }
+  .yx-roster__name, .yx-roster__role { white-space: normal; overflow: visible; }
+  .yx-roster__role { display: block; }
+  .yx-roster__total { grid-row: 1; grid-column: 4; position: static; border-left: 0; background: none; }
+  .yx-roster__cell { border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-control); min-height: 0; }
+  .yx-roster__cday { display: block; font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-muted); }
+  /* Each day chip says when the shift starts ("M 6 am"), as the desktop block does. */
+  .yx-roster__time { display: inline; }
+  .yx-roster__block { flex-direction: row; align-items: baseline; gap: var(--yx-space-1); }
+  .yx-roster__leave-pre { display: inline; }
+}

@@ -11,6 +11,7 @@ import { AuditService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { QuotaService } from '../billing/quota.service';
+import { PasswordPolicyService } from '../auth/password-policy.service';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -20,6 +21,7 @@ describe('UsersService', () => {
   let emailService: { send: jest.Mock };
   let blobStorage: { upload: jest.Mock; signIfOurs: jest.Mock };
   let quota: { checkSoftLimit: jest.Mock };
+  let passwordPolicy: { hashNewPassword: jest.Mock };
 
   beforeEach(async () => {
     tenantPrisma = { forTenant: jest.fn() };
@@ -31,6 +33,9 @@ describe('UsersService', () => {
       // Stands in for the real SAS signing: returns the path with a token appended.
       signIfOurs: jest.fn(async (value: unknown) => (value == null ? null : `${value as string}?sig=abc`)),
     };
+    passwordPolicy = {
+      hashNewPassword: jest.fn(async (password: string) => ({ passwordHash: await argon2.hash(password), passwordRecheckPending: false })),
+    };
     quota = { checkSoftLimit: jest.fn().mockResolvedValue({ warn: false, threshold: null, used: 0, limit: 0 }) };
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -41,6 +46,7 @@ describe('UsersService', () => {
         { provide: EmailService, useValue: emailService },
         { provide: BlobStorageService, useValue: blobStorage },
         { provide: QuotaService, useValue: quota },
+        { provide: PasswordPolicyService, useValue: passwordPolicy },
       ],
     }).compile();
     service = moduleRef.get(UsersService);
@@ -155,7 +161,7 @@ describe('UsersService', () => {
 
     it('ignores a supplied password and generates a random one when the org has SSO enabled', async () => {
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: true }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(1) },
         user: {
           findFirst: jest.fn().mockResolvedValue(null),
           create: jest.fn().mockResolvedValue({ id: 'u1', email: 'a@b.com', organizationId: 'org-1', role: 'recruiter' }),
@@ -172,9 +178,38 @@ describe('UsersService', () => {
       expect(await argon2.verify(createCall.data.passwordHash, '')).toBe(false);
     });
 
+    it('applies the password floor to a chosen password and stores the re-check flag (YX-IAM-08)', async () => {
+      passwordPolicy.hashNewPassword.mockResolvedValue({ passwordHash: 'h', passwordRecheckPending: true });
+      const tx = {
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
+        user: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: 'u1', email: 'a@b.com', organizationId: 'org-1', role: 'recruiter' }),
+        },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      await service.create(ctx, { email: 'a@b.com', password: 'a-long-passphrase', role: 'recruiter' });
+
+      expect(passwordPolicy.hashNewPassword).toHaveBeenCalledWith('a-long-passphrase', 'org-1');
+      expect(tx.user.create.mock.calls[0][0].data).toEqual(expect.objectContaining({ passwordHash: 'h', passwordRecheckPending: true }));
+    });
+
+    it('creates nothing when the chosen password fails the floor', async () => {
+      passwordPolicy.hashNewPassword.mockRejectedValue(new BadRequestException('breached'));
+      const tx = {
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
+        user: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      };
+      tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+
+      await expect(service.create(ctx, { email: 'a@b.com', password: 'password1234', role: 'recruiter' })).rejects.toThrow(BadRequestException);
+      expect(tx.user.create).not.toHaveBeenCalled();
+    });
+
     it('rejects creation with no password when the org does NOT have SSO enabled', async () => {
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
@@ -188,6 +223,7 @@ describe('UsersService', () => {
     // with no exception filter to translate it, surfacing a generic 500 instead of a clear message.
     it('rejects with a clear message when a user with that email already exists in the org', async () => {
       const tx = {
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 'existing-1', email: 'a@b.com' }) },
       };
       tenantPrisma.forTenant.mockImplementation((_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
@@ -578,10 +614,31 @@ describe('UsersService', () => {
     ).rejects.toThrow(UnauthorizedException);
   });
 
+  it('changePassword applies the floor for the user organisation and changes nothing on rejection', async () => {
+    const storedHash = await argon2.hash('correct-password');
+    const userUpdate = jest.fn();
+    passwordPolicy.hashNewPassword.mockRejectedValue(new BadRequestException('breached'));
+    tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+      fn({ user: { findUniqueOrThrow: async () => ({ id: 'user-1', organizationId: 'org-1', passwordHash: storedHash }), update: userUpdate } }),
+    );
+
+    await expect(
+      service.changePassword(
+        { organizationId: 'org-1', isSuperAdmin: false },
+        'user-1',
+        { currentPassword: 'correct-password', newPassword: 'password1234' },
+        undefined,
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(passwordPolicy.hashNewPassword).toHaveBeenCalledWith('password1234', 'org-1');
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
   it('changePassword updates the hash and revokes other sessions, keeping the caller\'s own session alive', async () => {
     const storedHash = await argon2.hash('correct-password');
     const userUpdate = jest.fn();
     const refreshTokenUpdateMany = jest.fn();
+    const sessionUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
     tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
       fn({
         user: {
@@ -589,6 +646,7 @@ describe('UsersService', () => {
           update: userUpdate,
         },
         refreshToken: { updateMany: refreshTokenUpdateMany },
+        session: { updateMany: sessionUpdateMany },
       }),
     );
     jwt.verify.mockReturnValue({ sub: 'user-1', familyId: 'family-current' });
@@ -606,6 +664,11 @@ describe('UsersService', () => {
     expect(refreshTokenUpdateMany).toHaveBeenCalledWith({
       where: { userId: 'user-1', revokedAt: null, familyId: { not: 'family-current' } },
       data: { revokedAt: expect.any(Date) },
+    });
+    // The family is the session: every other session ends too (YX-IAM-06), the caller's stays.
+    expect(sessionUpdateMany).toHaveBeenCalledWith({
+      where: { userId: 'user-1', id: { not: 'family-current' }, revokedAt: null },
+      data: { revokedAt: expect.any(Date), revokedReason: 'password_changed' },
     });
     expect(audit.record).toHaveBeenCalledWith(
       { organizationId: 'org-1', isSuperAdmin: false },
@@ -746,7 +809,8 @@ describe('UsersService', () => {
 
     expect(result.email).toBe('new@platform.test');
     expect(createCall).toEqual(
-      expect.objectContaining({ data: expect.objectContaining({ organizationId: null, email: 'new@platform.test', role: 'super_admin' }) }),
+      // Staff (Q1/Q7): no MFA enrolment grace.
+      expect.objectContaining({ data: expect.objectContaining({ organizationId: null, email: 'new@platform.test', role: 'super_admin', mfaEnrolmentDueAt: expect.any(Date) }) }),
     );
     expect(tokenCreateCall).toEqual(
       expect.objectContaining({ data: expect.objectContaining({ userId: 'new-sa' }) }),
@@ -799,12 +863,14 @@ describe('UsersService', () => {
     tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
       fn({
         user: {
-          findMany: async () => [{ id: 'u-1', role: 'org_admin' }],
+          findMany: async () => [{ id: 'u-1', role: 'org_admin', organizationId: 'org-9' }],
           update: async (args: unknown) => {
             updateCall = args;
             return { id: 'u-1', email: 'promote@x.test', createdAt: new Date('2026-01-01T00:00:00.000Z') };
           },
         },
+        refreshToken: { updateMany: async () => ({ count: 0 }) },
+        session: { updateMany: async () => ({ count: 0 }) },
       }),
     );
 
@@ -818,12 +884,19 @@ describe('UsersService', () => {
     expect(updateCall).toEqual(
       expect.objectContaining({
         where: { id: 'u-1' },
-        data: expect.objectContaining({ organizationId: null, role: 'super_admin' }),
+        // Staff (Q1/Q7): no MFA enrolment grace -- due now.
+        data: expect.objectContaining({ organizationId: null, role: 'super_admin', mfaEnrolmentDueAt: expect.any(Date) }),
       }),
     );
     expect(audit.record).toHaveBeenCalledWith(
       { organizationId: null, isSuperAdmin: true },
-      { actorUserId: 'actor-1', action: 'user.super_admin_promoted', entityType: 'user', entityId: 'u-1' },
+      {
+        actorUserId: 'actor-1',
+        action: 'user.super_admin_promoted',
+        entityType: 'user',
+        entityId: 'u-1',
+        metadata: { changes: { role: { from: 'org_admin', to: 'super_admin' }, organizationId: { from: 'org-9', to: null } } },
+      },
     );
   });
 
@@ -859,11 +932,17 @@ describe('UsersService', () => {
           update: jest.fn().mockResolvedValue(safe),
         },
         refreshToken: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
+        session: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
       const result = await service.setStatus(ctx, 't1', 'deactivated', 'admin1');
       expect(result.status).toBe('deactivated');
       expect(tx.refreshToken.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 't1', revokedAt: null } }));
+      // Deactivation ends every live session at once, so open access tokens stop working now.
+      expect(tx.session.updateMany).toHaveBeenCalledWith({
+        where: { userId: 't1', revokedAt: null },
+        data: { revokedAt: expect.any(Date), revokedReason: 'user_deactivated' },
+      });
       expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.deactivated', actorUserId: 'admin1' }));
     });
 
@@ -909,18 +988,62 @@ describe('UsersService', () => {
   describe('update', () => {
     const ctx = { organizationId: 'org1', isSuperAdmin: false };
 
+    const sessionTx = () => ({
+      refreshToken: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      session: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
+    });
+
     it('updates role and name for an in-org staff user', async () => {
       const tx = {
         user: {
-          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1', permissionProfileId: null }),
           update: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'panel', name: 'Al', organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() }),
         },
+        ...sessionTx(),
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
       const result = await service.update(ctx, 't1', { role: 'panel', name: 'Al' }, 'admin1');
       expect(result.role).toBe('panel');
       expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 't1' }, data: { role: 'panel', name: 'Al' } }));
       expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'user.updated', entityId: 't1', actorUserId: 'admin1' }));
+    });
+
+    // Regression: a demoted admin's access token kept role=org_admin until it expired. A role or
+    // profile change now ends every session and refresh family of the person, and the audit
+    // entry records who granted what, from and to (YX-IAM-10).
+    it('a role change ends the person\'s sessions and refresh tokens and audits from -> to', async () => {
+      const tx = {
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'org_admin', organizationId: 'org1', permissionProfileId: null }),
+          update: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter' }),
+        },
+        ...sessionTx(),
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await service.update(ctx, 't1', { role: 'recruiter' }, 'admin1');
+      expect(tx.session.updateMany).toHaveBeenCalledWith({
+        where: { userId: 't1', revokedAt: null },
+        data: { revokedAt: expect.any(Date), revokedReason: 'privileges_changed' },
+      });
+      expect(tx.refreshToken.updateMany).toHaveBeenCalledWith({ where: { userId: 't1', revokedAt: null }, data: { revokedAt: expect.any(Date) } });
+      expect(audit.record).toHaveBeenCalledWith(
+        ctx,
+        expect.objectContaining({ action: 'user.updated', metadata: { changes: { role: { from: 'org_admin', to: 'recruiter' } }, sessionsRevoked: 2 } }),
+      );
+    });
+
+    it('a name-only change, or the same role again, leaves sessions alone', async () => {
+      const tx = {
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1', permissionProfileId: null }),
+          update: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter' }),
+        },
+        ...sessionTx(),
+      };
+      tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
+      await service.update(ctx, 't1', { name: 'New', role: 'recruiter' }, 'admin1');
+      expect(tx.session.updateMany).not.toHaveBeenCalled();
+      expect(tx.refreshToken.updateMany).not.toHaveBeenCalled();
     });
 
     it('refuses to modify a super_admin target', async () => {
@@ -969,8 +1092,9 @@ describe('UsersService', () => {
 
     it('assigns a same-org permission profile and audits it', async () => {
       const tx = {
+        ...sessionTx(),
         user: {
-          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1', permissionProfileId: null }),
           update: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', name: 'Al', organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date(), permissionProfileId: 'profile1' }),
         },
         permissionProfile: {
@@ -987,6 +1111,12 @@ describe('UsersService', () => {
       expect(audit.record).toHaveBeenCalledWith(
         ctx,
         expect.objectContaining({ action: 'user.permission_profile_assigned', entityId: 't1', actorUserId: 'admin1' }),
+      );
+      // The profile's grants ride in the token: the person's sessions end with the change.
+      expect(tx.session.updateMany).toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(
+        ctx,
+        expect.objectContaining({ action: 'user.updated', metadata: expect.objectContaining({ changes: { permissionProfileId: { from: null, to: 'profile1' } } }) }),
       );
     });
 
@@ -1009,8 +1139,9 @@ describe('UsersService', () => {
 
     it('clears a user\'s permission profile when passed null', async () => {
       const tx = {
+        ...sessionTx(),
         user: {
-          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1' }),
+          findFirst: jest.fn().mockResolvedValue({ id: 't1', role: 'recruiter', organizationId: 'org1', permissionProfileId: 'profile1' }),
           update: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', name: 'Al', organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date(), permissionProfileId: null }),
         },
         permissionProfile: { findFirst: jest.fn() },
@@ -1051,7 +1182,7 @@ describe('UsersService', () => {
 
     it('creates a reset token and emails the target', async () => {
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', organizationId: 'org1' }) },
         passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok1' }) },
       };
@@ -1069,7 +1200,7 @@ describe('UsersService', () => {
 
     it('skips the reset token and email when the org has SSO enabled', async () => {
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: true }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(1) },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', organizationId: 'org1' }) },
         passwordResetToken: { create: jest.fn() },
       };
@@ -1088,7 +1219,7 @@ describe('UsersService', () => {
     // (rakesh.t@prudentconsulting.com never got his email) was invisible to the admin.
     it('reports emailSent: false when the email actually fails to send', async () => {
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 't1', email: 'a@b.com', role: 'recruiter', organizationId: 'org1' }) },
         passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok1' }) },
       };
@@ -1118,7 +1249,7 @@ describe('UsersService', () => {
     it('creates new emails and skips existing ones', async () => {
       const created = { id: 'n1', email: 'new@b.com', role: 'recruiter', name: null, organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() };
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: {
           findFirst: jest.fn()
             .mockResolvedValueOnce({ id: 'dup' }) // exists@b.com -> skipped
@@ -1140,7 +1271,7 @@ describe('UsersService', () => {
 
     it('does not check the soft seat limit when nothing was created', async () => {
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue({ id: 'dup' }) },
       };
       tenantPrisma.forTenant.mockImplementation(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx));
@@ -1154,7 +1285,7 @@ describe('UsersService', () => {
     it('still returns created users when the soft seat-limit check rejects', async () => {
       const created = { id: 'n1', email: 'new@b.com', role: 'recruiter', name: null, organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() };
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: false }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(0) },
         user: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) },
         passwordResetToken: { create: jest.fn().mockResolvedValue({ id: 'tok' }) },
       };
@@ -1170,7 +1301,7 @@ describe('UsersService', () => {
     it('creates users but sends no set-password email when the org has SSO enabled', async () => {
       const created = { id: 'n1', email: 'new@b.com', role: 'recruiter', name: null, organizationId: 'org1', status: 'active', lastLoginAt: null, createdAt: new Date() };
       const tx = {
-        organization: { findUnique: jest.fn().mockResolvedValue({ samlEnabled: true }) },
+        identityProvider: { count: jest.fn().mockResolvedValue(1) },
         user: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(created) },
         passwordResetToken: { create: jest.fn() },
       };

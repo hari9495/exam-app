@@ -168,10 +168,24 @@ async function main() {
           organizationId: demoOrg.id,
         },
       });
+
+      // Local testing of every way in on the sign-in screen (README "Sign-in on your laptop"): codes by
+      // email and SMS (the development SMS sink logs them), and Google / Microsoft through the mock
+      // identity provider (npm run dev:mock-idp). The recruiter gets a verified, fictional mobile number.
+      const signInWays = { otpSignInChannels: ['email', 'sms'], googleSignIn: true, microsoftSignIn: true };
+      await tx.tenantSecurityPolicy.upsert({
+        where: { organizationId: demoOrg.id },
+        update: signInWays,
+        create: { organizationId: demoOrg.id, ...signInWays },
+      });
+      await tx.user.updateMany({
+        where: { organizationId: demoOrg.id, email: 'recruiter@demo-org.test', mobileVerifiedAt: null },
+        data: { mobileNumber: '+919845012345', mobileVerifiedAt: new Date() },
+      });
     }
   }, { timeout: 30000 });
 
-  console.log('Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026, panel@demo-org.test / Passw0rd!2026 (org slug: demo-org)');
+  console.log('Seed complete: super@platform.test / DevSuper123!, admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026 (org slug: demo-org)');
 }
 
 // Only run when invoked as a script (prisma db seed / ts-node). Guarded so importing this module for

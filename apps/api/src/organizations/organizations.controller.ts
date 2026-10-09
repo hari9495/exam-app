@@ -4,6 +4,7 @@ import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireStepUp } from '../auth/step-up.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
@@ -16,7 +17,6 @@ import { UpdateAiKeyDto } from './dto/update-ai-key.dto';
 import { UpdateEmbeddingConfigDto } from './dto/update-embedding-config.dto';
 import { UpdateWebhookUrlDto } from './dto/update-webhook-url.dto';
 import { UpdateHrisConfigDto } from './dto/update-hris-config.dto';
-import { UpdateSsoSettingsDto } from './dto/update-sso-settings.dto';
 import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update-organization.dto';
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateReminderSettingsDto } from './dto/update-reminder-settings.dto';
@@ -101,8 +101,10 @@ export class OrganizationsController {
     return this.organizationsService.updateEmbeddingConfig(tenant, userId, dto);
   }
 
+  // Creating an API key and changing the identity provider are step-up actions (P12 §3).
   @Post('integrations/api-key')
   @RequirePermissions('org:manage_settings')
+  @RequireStepUp()
   generateApiKey(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
     return this.organizationsService.generateApiKey(tenant, userId);
   }
@@ -236,18 +238,6 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   updateApplyConsent(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateApplyConsentDto) {
     return this.organizationsService.setApplyConsent(tenant, userId, dto);
-  }
-
-  @Get('sso')
-  @RequirePermissions('org:manage_settings')
-  getSsoSettings(@CurrentTenant() tenant: TenantContext) {
-    return this.organizationsService.getSsoSettings(tenant);
-  }
-
-  @Patch('sso')
-  @RequirePermissions('org:manage_settings')
-  updateSsoSettings(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateSsoSettingsDto) {
-    return this.organizationsService.updateSsoSettings(tenant, userId, dto);
   }
 
   @Patch('branding')

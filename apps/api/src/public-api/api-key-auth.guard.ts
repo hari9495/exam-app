@@ -1,6 +1,6 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { NETWORK_NOT_ALLOWED_MESSAGE, TenantPrismaService, ipAllowedForSurface, loadTenantSecurityPolicy } from '@exam-platform/shared';
 
 @Injectable()
 export class ApiKeyAuthGuard implements CanActivate {
@@ -26,6 +26,11 @@ export class ApiKeyAuthGuard implements CanActivate {
     );
     if (!organization) {
       throw new UnauthorizedException('Invalid API key');
+    }
+    // The company's API IP allow-list (YX-IAM-09). Checked only after the key matched, so the
+    // refusal reveals nothing to a caller without a valid key.
+    if (!ipAllowedForSurface(await loadTenantSecurityPolicy(this.tenantPrisma, organization.id), 'api', request.ip)) {
+      throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
     }
     request.apiKeyOrg = { organizationId: organization.id };
     return true;

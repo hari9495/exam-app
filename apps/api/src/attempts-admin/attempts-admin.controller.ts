@@ -2,6 +2,8 @@ import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
+// Proctor interventions and evaluator grading are sensitive-role actions (P12 §3, YX-IAM-01).
+import { SensitiveRoleAction } from '../auth/step-up.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
@@ -23,18 +25,21 @@ export class AttemptsAdminController {
 
   @Post(':id/force-submit')
   @RequirePermissions('exam:manage')
+  @SensitiveRoleAction()
   forceSubmit(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.attemptsAdminService.forceSubmit(tenant, id, userId);
   }
 
   @Post(':id/unblock')
   @RequirePermissions('exam:manage')
+  @SensitiveRoleAction()
   unblock(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.attemptsAdminService.unblock(tenant, id, userId);
   }
 
   @Post(':id/proctoring-bypass')
   @RequirePermissions('exam:manage')
+  @SensitiveRoleAction()
   bypassProctoring(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
@@ -46,12 +51,14 @@ export class AttemptsAdminController {
 
   @Post(':id/proctoring-bypass/revoke')
   @RequirePermissions('exam:manage')
+  @SensitiveRoleAction()
   revokeProctoringBypass(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.attemptsAdminService.revokeProctoringBypass(tenant, id, userId);
   }
 
   @Post(':id/answers/:questionId/grade')
   @RequirePermissions('exam:manage')
+  @SensitiveRoleAction()
   gradeCodeAnswer(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
@@ -64,6 +71,7 @@ export class AttemptsAdminController {
 
   @Post(':id/finalize-manual-grade')
   @RequirePermissions('exam:manage')
+  @SensitiveRoleAction()
   finalizeManualGrade(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.attemptsAdminService.finalizeManualGrade(tenant, id, userId);
   }

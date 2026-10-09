@@ -1,0 +1,265 @@
+/*
+ * YukthiX design tokens — the ONLY file allowed to contain raw colours and sizes
+ * (DESIGN-SYSTEM.md §41). Layers: primitive → semantic → component.
+ * Components use semantic or component tokens, never primitives.
+ */
+
+/* ---------- 1. Primitives (§3, §48) ---------- */
+:root {
+  --yx-azure-50: #EEF2FD;
+  --yx-azure-100: #DDE5FB;
+  --yx-azure-200: #BACAF6;
+  --yx-azure-300: #8FA4F0;
+  --yx-azure-400: #6F8BF0;
+  --yx-azure-500: #3B5FE3;
+  --yx-azure-600: #3050CF;
+  --yx-azure-700: #2A46B8;
+  --yx-azure-800: #22398F;
+
+  --yx-slate-0: #FFFFFF;
+  --yx-slate-25: #F7F8FA;
+  --yx-slate-50: #F3F5F7;
+  --yx-slate-100: #E2E8F0;
+  --yx-slate-200: #CBD5E1;
+  --yx-slate-300: #94A3B8;
+  --yx-slate-500: #64748B;
+  --yx-slate-550: #5B6778; /* muted text: 4.5:1 on page, subtle and selected backgrounds (a11y fix, 29 Sep 2026) */
+  --yx-slate-600: #475569;
+  --yx-slate-700: #334155;
+  --yx-slate-800: #1E293B;
+  --yx-slate-850: #172236;
+  --yx-slate-875: #111A2B;
+  --yx-slate-900: #0B1220;
+
+  --yx-green-700: #1F6F4A; --yx-green-50: #E8F4EE; --yx-green-200: #B9DEC9;
+  --yx-amber-700: #8A5A00; --yx-amber-50: #FBF3DD; --yx-amber-200: #EDD49A;
+  --yx-red-700: #B42318;   --yx-red-50: #FDEDEC;   --yx-red-200: #F4C3BE;
+  --yx-purple-700: #6941C6; --yx-purple-50: #F2EEFB; --yx-purple-200: #D9CCF5;
+
+  /* chart categorical palette §48 (order matters) */
+  --yx-chart-1: #3B5FE3; --yx-chart-2: #0E9384; --yx-chart-3: #E07A2E; --yx-chart-4: #C2417A;
+  --yx-chart-5: #5B8C2A; --yx-chart-6: #2E90C9; --yx-chart-7: #B5891A; --yx-chart-8: #64748B;
+
+  /* type (§2) */
+  --yx-font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --yx-font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
+  --yx-weight-regular: 400;
+  --yx-weight-medium: 500;
+  --yx-weight-semibold: 600;
+
+  /* spacing (§4) */
+  --yx-space-0: 0;
+  --yx-space-half: 2px;
+  --yx-space-1: 4px;
+  --yx-space-2: 8px;
+  --yx-space-3: 12px;
+  --yx-space-4: 16px;
+  --yx-space-5: 20px;
+  --yx-space-6: 24px;
+  --yx-space-8: 32px;
+  --yx-space-10: 40px;
+  --yx-space-12: 48px;
+  --yx-space-16: 64px;
+
+  /* shape (§5) */
+  --yx-radius-badge: 4px;
+  --yx-radius-control: 6px;
+  --yx-radius-card: 8px;
+  --yx-radius-dialog: 12px;
+  --yx-radius-round: 9999px; /* avatars only; no pill buttons */
+  --yx-border-width: 1px;
+  --yx-focus-width: 2px;
+
+  /* motion (§7) */
+  --yx-duration-menu: 120ms;
+  --yx-duration-dialog: 150ms;
+  --yx-duration-toast: 150ms;
+  --yx-duration-drawer: 200ms;
+  --yx-ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ---------- 2. Semantic (light) ---------- */
+:root {
+  --yx-color-bg-page: var(--yx-slate-25);
+  --yx-color-bg-surface: var(--yx-slate-0);
+  --yx-color-bg-subtle: var(--yx-slate-50);
+  --yx-color-bg-raised: var(--yx-slate-0);
+  --yx-color-bg-selected: var(--yx-azure-50);
+  --yx-color-bg-inverse: var(--yx-slate-900);
+
+  --yx-color-border: var(--yx-slate-100);
+  --yx-color-border-strong: var(--yx-slate-200);
+  --yx-color-border-input: var(--yx-slate-300);
+
+  --yx-color-text: var(--yx-slate-900);
+  --yx-color-text-secondary: var(--yx-slate-600);
+  --yx-color-text-muted: var(--yx-slate-550);
+  --yx-color-text-disabled: var(--yx-slate-300);
+  --yx-color-text-inverse: var(--yx-slate-100);
+  --yx-color-text-on-action: var(--yx-slate-0);
+
+  --yx-color-action-primary: var(--yx-azure-500);
+  --yx-color-action-primary-hover: var(--yx-azure-600);
+  --yx-color-action-primary-pressed: var(--yx-azure-700);
+  --yx-color-link: var(--yx-azure-600);
+  --yx-color-focus-ring: var(--yx-azure-500);
+
+  --yx-color-success-text: var(--yx-green-700);
+  --yx-color-success-bg: var(--yx-green-50);
+  --yx-color-success-border: var(--yx-green-200);
+  --yx-color-warning-text: var(--yx-amber-700);
+  --yx-color-warning-bg: var(--yx-amber-50);
+  --yx-color-warning-border: var(--yx-amber-200);
+  --yx-color-danger-text: var(--yx-red-700);
+  --yx-color-danger-bg: var(--yx-red-50);
+  --yx-color-danger-border: var(--yx-red-200);
+  --yx-color-danger-action: var(--yx-red-700);
+  --yx-color-info-text: var(--yx-azure-700);
+  --yx-color-info-bg: var(--yx-azure-50);
+  --yx-color-info-border: var(--yx-azure-200);
+  --yx-color-ai-text: var(--yx-purple-700);
+  --yx-color-ai-bg: var(--yx-purple-50);
+  --yx-color-ai-border: var(--yx-purple-200);
+
+  --yx-shadow-popover: 0 4px 16px rgba(11, 18, 32, 0.12);
+  --yx-shadow-drawer: -8px 0 24px rgba(11, 18, 32, 0.08);
+  --yx-shadow-dialog: 0 16px 48px rgba(11, 18, 32, 0.18);
+  --yx-color-scrim: rgba(11, 18, 32, 0.4);
+
+  /* type roles (§2): size / line-height pairs */
+  --yx-text-xs: 12px;  --yx-leading-xs: 16px;
+  --yx-text-sm: 13px;  --yx-leading-sm: 18px;
+  --yx-text-md: 14px;  --yx-leading-md: 20px;
+  --yx-text-lg: 16px;  --yx-leading-lg: 24px;
+  --yx-text-xl: 18px;  --yx-leading-xl: 26px;
+  --yx-text-2xl: 22px; --yx-leading-2xl: 28px;
+  --yx-text-3xl: 28px; --yx-leading-3xl: 34px;
+  --yx-text-4xl: 36px; --yx-leading-4xl: 42px;
+  --yx-text-body: var(--yx-text-md);
+  --yx-leading-body: var(--yx-leading-md);
+
+  /* density (§2): comfortable default */
+  --yx-control-sm: 32px;
+  --yx-control-md: 36px;
+  --yx-control-lg: 40px;
+  --yx-row-height: 40px;
+  --yx-target-min: 24px;
+
+  /* layout (§4, §17, §18) */
+  --yx-form-max: 640px;
+  --yx-page-max: 1440px;
+  --yx-dialog-sm: 480px;
+  --yx-dialog-md: 640px;
+  --yx-drawer-md: 480px;
+  --yx-drawer-lg: 720px;
+  --yx-menu-min: 180px;
+  --yx-popover-max-h: 320px;
+  --yx-tooltip-max: 280px;
+  --yx-textarea-min: 88px;
+  --yx-icon-sm: 16px;
+  --yx-icon-md: 20px;
+
+  --yx-z-sticky: 10;
+  --yx-z-drawer: 40;
+  --yx-z-dialog: 50;
+  --yx-z-popover: 60;
+  --yx-z-toast: 70;
+  --yx-z-tooltip: 80;
+}
+
+/* compact density (§2) */
+[data-density="compact"] {
+  --yx-text-body: var(--yx-text-sm);
+  --yx-leading-body: var(--yx-leading-sm);
+  --yx-control-md: 32px;
+  --yx-row-height: 32px;
+}
+
+/* mobile (§2, §36): 16 px body, 44 px targets */
+@media (max-width: 767px) {
+  :root {
+    --yx-text-body: var(--yx-text-lg);
+    --yx-leading-body: var(--yx-leading-lg);
+    --yx-control-md: 44px;
+    --yx-control-lg: 44px;
+    --yx-target-min: 44px;
+  }
+}
+
+/* reduce motion (§7) */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --yx-duration-menu: 0ms;
+    --yx-duration-dialog: 0ms;
+    --yx-duration-toast: 0ms;
+    --yx-duration-drawer: 0ms;
+  }
+}
+
+/* ---------- 2b. Semantic (dark, §48) ---------- */
+[data-theme="dark"] {
+  --yx-color-bg-page: var(--yx-slate-900);
+  --yx-color-bg-surface: var(--yx-slate-875);
+  --yx-color-bg-subtle: var(--yx-slate-850);
+  --yx-color-bg-raised: var(--yx-slate-850);
+  --yx-color-bg-selected: #1B2847;
+  --yx-color-bg-inverse: var(--yx-slate-100);
+  --yx-color-border: var(--yx-slate-800);
+  --yx-color-border-strong: var(--yx-slate-700);
+  --yx-color-border-input: var(--yx-slate-600);
+  --yx-color-text: var(--yx-slate-100);
+  --yx-color-text-secondary: var(--yx-slate-300);
+  --yx-color-text-muted: var(--yx-slate-300);
+  --yx-color-text-disabled: var(--yx-slate-600);
+  --yx-color-text-inverse: var(--yx-slate-900);
+  --yx-color-text-on-action: var(--yx-slate-900);
+  --yx-color-action-primary: var(--yx-azure-400);
+  --yx-color-action-primary-hover: var(--yx-azure-300);
+  --yx-color-action-primary-pressed: var(--yx-azure-200);
+  --yx-color-link: var(--yx-azure-300);
+  --yx-color-focus-ring: var(--yx-azure-300);
+  --yx-color-success-text: #6CCB9A; --yx-color-success-bg: #10281D; --yx-color-success-border: #1F4D36;
+  --yx-color-warning-text: #E8B85A; --yx-color-warning-bg: #2B2210; --yx-color-warning-border: #5A4414;
+  --yx-color-danger-text: #F4877D;  --yx-color-danger-bg: #2E1414;  --yx-color-danger-border: #5C2320;
+  --yx-color-danger-action: #F4877D;
+  --yx-color-info-text: var(--yx-azure-300); --yx-color-info-bg: #1B2847; --yx-color-info-border: #2A3D6B;
+  --yx-color-ai-text: #B69CF0; --yx-color-ai-bg: #211A36; --yx-color-ai-border: #3D2F66;
+  --yx-shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --yx-shadow-drawer: -8px 0 24px rgba(0, 0, 0, 0.4);
+  --yx-shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --yx-color-scrim: rgba(0, 0, 0, 0.6);
+  color-scheme: dark;
+}
+
+/* ---------- 3. Component tokens ---------- */
+:root {
+  --yx-button-primary-bg: var(--yx-color-action-primary);
+  --yx-button-primary-bg-hover: var(--yx-color-action-primary-hover);
+  --yx-button-primary-fg: var(--yx-color-text-on-action);
+  --yx-button-secondary-bg: var(--yx-color-bg-surface);
+  --yx-button-secondary-bg-hover: var(--yx-color-bg-subtle);
+  --yx-button-secondary-border: var(--yx-color-border-strong);
+  --yx-button-danger-bg: var(--yx-color-danger-action);
+  --yx-input-bg: var(--yx-color-bg-surface);
+  --yx-input-border: var(--yx-color-border-input);
+  --yx-input-border-error: var(--yx-color-danger-text);
+  --yx-badge-height: 20px;
+  --yx-avatar-20: 20px;
+  --yx-avatar-24: 24px;
+  --yx-avatar-32: 32px;
+  --yx-avatar-40: 40px;
+  --yx-avatar-64: 64px;
+  --yx-checkbox-size: 16px;
+  --yx-switch-w: 32px;
+  --yx-switch-h: 18px;
+  --yx-switch-thumb: var(--yx-slate-0);
+  /* Third-party sign-in marks: the owners' own colours, unchanged in dark mode (Google and Microsoft brand guidelines). */
+  --yx-mark-google-blue: #4285F4;
+  --yx-mark-google-green: #34A853;
+  --yx-mark-google-yellow: #FBBC05;
+  --yx-mark-google-red: #EA4335;
+  --yx-mark-microsoft-red: #F25022;
+  --yx-mark-microsoft-green: #7FBA00;
+  --yx-mark-microsoft-blue: #00A4EF;
+  --yx-mark-microsoft-yellow: #FFB900;
+}

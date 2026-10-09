@@ -6,6 +6,8 @@ import { configureTrustProxy } from '@exam-platform/shared';
 import { AppModule } from './app.module';
 import { InternalAppModule } from './internal-app.module';
 import { resolveInternalBindHost } from './bootstrap-config';
+import { mountSmsCallbackBody } from './sms-channel/sms-channel.controller';
+import { companyOriginPattern } from './auth/company-scope';
 
 // Express's default 100kb JSON body limit rejects the public job-application endpoint's
 // résumé upload before it reaches the handler -- POST /public/jobs/:applyToken/apply carries
@@ -20,10 +22,18 @@ async function bootstrap() {
   // Buffer, not parsed JSON. Mount express.raw on just that path BEFORE the global json() below
   // (json() skips a body express.raw already consumed). Path includes the global 'api/v1' prefix.
   app.use('/api/v1/billing/stripe/webhook', raw({ type: 'application/json' }));
+  // SMS gateway callbacks are HMAC-verified over their raw bytes too.
+  mountSmsCallbackBody(app);
   app.use(json({ limit: JSON_BODY_LIMIT }));
   app.use(urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
   app.use(cookieParser());
-  app.enableCors({ origin: process.env.WEB_ORIGIN, credentials: true, exposedHeaders: ['Content-Disposition'] });
+  // The web app at WEB_ORIGIN, and (YX_BASE_DOMAIN set) at each company's https://<slug>.<base>.
+  const companyOrigins = companyOriginPattern();
+  app.enableCors({
+    origin: companyOrigins ? [process.env.WEB_ORIGIN ?? '', companyOrigins].filter(Boolean) : process.env.WEB_ORIGIN,
+    credentials: true,
+    exposedHeaders: ['Content-Disposition'],
+  });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
   app.setGlobalPrefix('api/v1');
   app.enableShutdownHooks();

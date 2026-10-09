@@ -11,7 +11,15 @@ import {
 } from '@nestjs/websockets';
 import { Namespace, Socket } from 'socket.io';
 import { PrismaService, resolvePermissionGrants } from '@exam-platform/shared';
-import { TenantPrismaService } from '@exam-platform/shared';
+import {
+  MFA_REQUIRED_CODE,
+  SessionAssurance,
+  TenantPrismaService,
+  clientIpOf,
+  mfaSatisfied,
+  staffDeskIpAllowed,
+  touchStaffSession,
+} from '@exam-platform/shared';
 import { MonitoringService, RosterRow } from './monitoring.service';
 import { LeaderboardService, RecruiterLeaderboardRow } from '../leaderboard/leaderboard.service';
 
@@ -21,6 +29,15 @@ interface StaffSocketUser {
   role: string;
   permissionProfileId: string | null;
   actingSuperAdmin?: boolean;
+  session: SessionAssurance;
+}
+
+// What re-validating the socket needs (kept apart from the user it describes): the server-side
+// session, whose holder owns it, and when the access token presented at connect expires.
+interface StaffSocketAuth {
+  sid: string;
+  sessionUserId: string;
+  expiresAtMs: number;
 }
 
 // Every tick rebroadcasts the full roster, so this is also how often a recruiter's
@@ -44,7 +61,13 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
     private readonly leaderboard: LeaderboardService,
   ) {}
 
-  afterInit(): void {
+  afterInit(server?: Namespace): void {
+    // Authenticate in the namespace middleware, which socket.io finishes BEFORE accepting the
+    // connection: the session check is async, and doing it in handleConnection would let a
+    // client's first event (join-exam) race ahead of `client.data.user` being set.
+    server?.use((socket, next) => {
+      this.authenticate(socket).finally(() => next());
+    });
     this.rosterInterval = setInterval(() => {
       this.tickRoster().catch((error) => this.logger.error('Roster tick failed', error as Error));
     }, ROSTER_TICK_MS);
@@ -56,10 +79,12 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
     }
   }
 
-  handleConnection(client: Socket): void {
+  // Same rule as the API's JwtStrategy: a validly signed staff token is accepted only while its
+  // server-side session is live (YX-IAM-06), so a revoked session cannot open a monitoring socket.
+  // Leaves `client.data.user` unset on any failure; handleConnection then disconnects.
+  async authenticate(client: Socket): Promise<void> {
     const token = client.handshake.auth?.token as string | undefined;
     if (!token) {
-      client.disconnect(true);
       return;
     }
     try {
@@ -69,15 +94,38 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
         role: string;
         permissionProfileId?: string | null;
         actingSuperAdmin?: boolean;
+        impersonatorUserId?: string;
+        sid?: string;
+        exp?: number;
       };
+      const session = await touchStaffSession(this.tenantPrisma, payload.sid, payload.impersonatorUserId ?? payload.sub);
+      if (!session) {
+        return;
+      }
+      // The company's desk IP allow-list (YX-IAM-09), as the API applies to every staff request.
+      if (!(await staffDeskIpAllowed(this.tenantPrisma, payload, clientIpOf(client.request)))) {
+        return;
+      }
       (client.data as { user?: StaffSocketUser }).user = {
         userId: payload.sub,
         organizationId: payload.organizationId,
         role: payload.role,
         permissionProfileId: payload.permissionProfileId ?? null,
         actingSuperAdmin: payload.actingSuperAdmin,
+        session,
+      };
+      (client.data as { auth?: StaffSocketAuth }).auth = {
+        sid: payload.sid!,
+        sessionUserId: payload.impersonatorUserId ?? payload.sub,
+        expiresAtMs: (payload.exp ?? 0) * 1000,
       };
     } catch {
+      // invalid / expired token, or the session lookup failed: stay unauthenticated
+    }
+  }
+
+  handleConnection(client: Socket): void {
+    if (!(client.data as { user?: StaffSocketUser }).user) {
       client.disconnect(true);
     }
   }
@@ -93,6 +141,12 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
     const hasPermission = user.actingSuperAdmin || (await this.hasExamManagePermission(user));
     if (!hasPermission) {
       client.emit('error', { message: 'Missing required permission: exam:manage' });
+      return;
+    }
+    // Live proctoring is a sensitive-role action (P12 §3 proctor): AAL2 once the enrolment grace
+    // has passed (YX-IAM-01), as the API applies to proctor endpoints.
+    if (!mfaSatisfied(user.session)) {
+      client.emit('error', { code: MFA_REQUIRED_CODE, message: 'Set up two-step verification to continue.' });
       return;
     }
 
@@ -159,7 +213,34 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
     return granted.has('exam:manage');
   }
 
+  // Every connected socket is re-checked on each roster tick (YX-IAM-06, ASVS V3.3): its session
+  // must still be live (not revoked, idle or past its absolute limit), the access token it
+  // connected with unexpired, and -- once it has joined an exam -- exam:manage and the MFA floor
+  // must still hold. Anything else disconnects it; the client reconnects with a fresh token, a
+  // revoked session cannot. Fails closed.
+  async revalidateSockets(): Promise<void> {
+    const sockets = this.server?.sockets;
+    if (!sockets) return;
+    await Promise.all(
+      [...sockets.values()].map(async (socket) => {
+        if (!(await this.stillAuthorised(socket).catch(() => false))) socket.disconnect(true);
+      }),
+    );
+  }
+
+  private async stillAuthorised(socket: Socket): Promise<boolean> {
+    const { user, auth } = socket.data as { user?: StaffSocketUser; auth?: StaffSocketAuth };
+    if (!user || !auth || auth.expiresAtMs <= Date.now()) return false;
+    const session = await touchStaffSession(this.tenantPrisma, auth.sid, auth.sessionUserId);
+    if (!session) return false;
+    user.session = session;
+    const watching = [...socket.rooms].some((room) => room.startsWith(EXAM_ROOM_PREFIX));
+    if (!watching) return true;
+    return Boolean(user.actingSuperAdmin || (await this.hasExamManagePermission(user))) && mfaSatisfied(session);
+  }
+
   private async tickRoster(): Promise<void> {
+    await this.revalidateSockets();
     const rooms = this.server.adapter.rooms;
     for (const roomName of rooms.keys()) {
       if (!roomName.startsWith(EXAM_ROOM_PREFIX)) {

@@ -1,8 +1,9 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { hasActiveIdentityProvider } from '../auth/identity-providers';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma, User } from '@prisma/client';
 import * as argon2 from 'argon2';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { TenantPrismaService, revokeStaffSessions } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -16,6 +17,7 @@ import { QuotaService } from '../billing/quota.service';
 import { SuperAdminEmailDto } from './dto/super-admin-email.dto';
 import { BulkCreateUsersDto } from './dto/bulk-create-users.dto';
 import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } from '../common/paginated-response';
+import { PasswordPolicyService } from '../auth/password-policy.service';
 
 /**
  * A User record with `passwordHash` (and any other sensitive fields) excluded.
@@ -29,7 +31,7 @@ import { resolvePaginationParams, buildPaginatedResponse, PaginatedResponse } fr
 // business being in a staff-list row -- only the "me" endpoints need it (see ProfileUser).
 // notificationDigest/lastDigestSentAt are the user's own email-cadence prefs, managed via the
 // /notifications/digest endpoints -- not part of the staff-user surface, so kept out of SafeUser.
-export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath' | 'emailSignature' | 'notificationDigest' | 'lastDigestSentAt'>;
+export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath' | 'emailSignature' | 'notificationDigest' | 'lastDigestSentAt' | 'passwordRecheckPending' | 'passwordChangeRequired' | 'mfaEnrolmentDueAt' | 'mobileNumber' | 'mobileVerifiedAt'>;
 
 // The staff pickers advertise "Search staff by name or email", but this filter matched email
 // only, so typing a person's NAME silently returned nothing -- the audit-log actor picker looked
@@ -90,11 +92,27 @@ export class UsersService {
     private readonly emailService: EmailService,
     private readonly blobStorage: BlobStorageService,
     private readonly quota: QuotaService,
+    private readonly passwordPolicy: PasswordPolicyService,
   ) {}
 
   async create(context: TenantContext, dto: CreateUserDto): Promise<SafeUser> {
     if (!context.organizationId) {
       throw new BadRequestException('A user must be created within an organization');
+    }
+
+    // SSO-enabled orgs authenticate staff via SAML, matched by email (see AuthService's
+    // ssoExchange) -- passwordHash is never checked for these users, so a caller-supplied
+    // password would just be dead weight nobody can use. Force a random, unusable one instead of
+    // trusting/requiring the frontend to send one. A chosen password meets the floor
+    // (YX-IAM-08); it is checked before the transaction so the breach lookup holds no DB tx open.
+    const ssoEnabled = await this.tenantPrisma.forTenant(context, (tx) => hasActiveIdentityProvider(tx, context.organizationId as string));
+    let chosen: { passwordHash: string; passwordRecheckPending: boolean };
+    if (ssoEnabled) {
+      chosen = { passwordHash: await argon2.hash(randomBytes(32).toString('hex')), passwordRecheckPending: false };
+    } else if (dto.password) {
+      chosen = await this.passwordPolicy.hashNewPassword(dto.password, context.organizationId);
+    } else {
+      throw new BadRequestException('Password is required');
     }
 
     const user = await this.tenantPrisma.forTenant(context, async (tx) => {
@@ -106,25 +124,13 @@ export class UsersService {
         throw new ConflictException('A user with this email already exists in your organization.');
       }
 
-      const org = await tx.organization.findUnique({
-        where: { id: context.organizationId as string },
-        select: { samlEnabled: true },
-      });
-      // SSO-enabled orgs authenticate staff via SAML, matched by email (see
-      // AuthService's ssoExchange) -- passwordHash is never checked for these users, so
-      // a caller-supplied password would just be dead weight nobody can use. Force a
-      // random, unusable one instead of trusting/requiring the frontend to send one.
-      const password = org?.samlEnabled ? randomBytes(32).toString('hex') : dto.password;
-      if (!password) {
-        throw new BadRequestException('Password is required');
-      }
-      const passwordHash = await argon2.hash(password);
       return tx.user.create({
         data: {
           organizationId: context.organizationId as string,
           email: dto.email,
           name: dto.name,
-          passwordHash,
+          passwordHash: chosen.passwordHash,
+          passwordRecheckPending: chosen.passwordRecheckPending,
           role: dto.role,
         },
         select: SAFE_USER_SELECT,
@@ -324,11 +330,27 @@ export class UsersService {
         },
         select: SAFE_USER_SELECT,
       });
+      // Privileges ride in the access token (role, permission profile), so a change ends every
+      // session and refresh family of the person: the new privileges apply from their next
+      // sign-in, and a demoted admin keeps nothing for the rest of the token's life (ASVS V3.3).
+      const privilegeChanges = {
+        ...(dto.role !== undefined && dto.role !== target.role ? { role: { from: target.role, to: dto.role } } : {}),
+        ...(dto.permissionProfileId !== undefined && dto.permissionProfileId !== target.permissionProfileId
+          ? { permissionProfileId: { from: target.permissionProfileId, to: dto.permissionProfileId } }
+          : {}),
+      };
+      let sessionsRevoked = 0;
+      if (Object.keys(privilegeChanges).length) {
+        await tx.refreshToken.updateMany({ where: { userId: targetUserId, revokedAt: null }, data: { revokedAt: new Date() } });
+        sessionsRevoked = await revokeStaffSessions(tx, { userId: targetUserId }, 'privileges_changed');
+      }
+      // YX-IAM-10: who granted what -- from and to.
       await this.audit.record(context, {
         actorUserId,
         action: 'user.updated',
         entityType: 'user',
         entityId: targetUserId,
+        ...(Object.keys(privilegeChanges).length ? { metadata: { changes: privilegeChanges, sessionsRevoked } } : {}),
       });
       if (dto.permissionProfileId !== undefined) {
         await this.audit.record(context, {
@@ -366,6 +388,7 @@ export class UsersService {
       const updated = await tx.user.update({ where: { id: targetUserId }, data: { status }, select: SAFE_USER_SELECT });
       if (status === 'deactivated') {
         await tx.refreshToken.updateMany({ where: { userId: targetUserId, revokedAt: null }, data: { revokedAt: new Date() } });
+        await revokeStaffSessions(tx, { userId: targetUserId }, 'user_deactivated');
       }
       await this.audit.record(context, {
         actorUserId,
@@ -391,7 +414,7 @@ export class UsersService {
       throw new UnauthorizedException('Current password is incorrect');
     }
 
-    const passwordHash = await argon2.hash(dto.newPassword);
+    const { passwordHash, passwordRecheckPending } = await this.passwordPolicy.hashNewPassword(dto.newPassword, user.organizationId);
 
     // Preserve the session making this request: decode its own refresh-token
     // family so the revoke-others write below can exclude it. A voluntary
@@ -410,7 +433,7 @@ export class UsersService {
     }
 
     await this.tenantPrisma.forTenant(context, async (tx) => {
-      await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+      await tx.user.update({ where: { id: userId }, data: { passwordHash, passwordRecheckPending } });
       await tx.refreshToken.updateMany({
         where: {
           userId,
@@ -419,6 +442,12 @@ export class UsersService {
         },
         data: { revokedAt: new Date() },
       });
+      // The refresh family is the session id: every other session ends, this one stays.
+      await revokeStaffSessions(
+        tx,
+        { userId, ...(currentFamilyId ? { id: { not: currentFamilyId } } : {}) },
+        'password_changed',
+      );
     });
 
     await this.audit.record(context, {
@@ -453,9 +482,10 @@ export class UsersService {
     }
 
     const passwordHash = await argon2.hash(randomBytes(32).toString('hex'));
+    // YukthiX staff (P12 Q1/Q7): no enrolment grace -- a security key before any staff action.
     const newAdmin = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.user.create({
-        data: { organizationId: null, email: dto.email, passwordHash, role: 'super_admin' },
+        data: { organizationId: null, email: dto.email, passwordHash, role: 'super_admin', mfaEnrolmentDueAt: new Date() },
         select: SUPER_ADMIN_SELECT,
       }),
     );
@@ -503,13 +533,18 @@ export class UsersService {
       throw new ConflictException(`"${dto.email}" is already a super_admin`);
     }
 
-    const promoted = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.user.update({
+    // Staff (P12 Q1/Q7): no enrolment grace, and the person signs in again as staff -- their old
+    // tenant sessions (and tokens claiming the old role) end here.
+    const promoted = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const row = await tx.user.update({
         where: { id: user.id },
-        data: { organizationId: null, role: 'super_admin' },
+        data: { organizationId: null, role: 'super_admin', mfaEnrolmentDueAt: new Date() },
         select: SUPER_ADMIN_SELECT,
-      }),
-    );
+      });
+      await tx.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+      await revokeStaffSessions(tx, { userId: user.id }, 'privileges_changed');
+      return row;
+    });
 
     this.dispatchPromotionEmail(dto.email).catch((error) =>
       this.logger.error(`Failed to dispatch super_admin promotion email to ${dto.email}`, error as Error),
@@ -520,6 +555,7 @@ export class UsersService {
       action: 'user.super_admin_promoted',
       entityType: 'user',
       entityId: promoted.id,
+      metadata: { changes: { role: { from: user.role, to: 'super_admin' }, organizationId: { from: user.organizationId, to: null } } },
     });
     return promoted;
   }
@@ -544,11 +580,10 @@ export class UsersService {
       if (!target) {
         throw new NotFoundException('User not found');
       }
-      const org = await tx.organization.findUnique({ where: { id: context.organizationId as string }, select: { samlEnabled: true } });
-      // SSO-enabled orgs authenticate via SAML, matched by email -- a reset link is
-      // meaningless there (see create/bulkCreate for the same reasoning), so skip the
+      // SSO-enabled orgs authenticate via their identity provider, matched by email -- a reset
+      // link is meaningless there (see create/bulkCreate for the same reasoning), so skip the
       // token and the email rather than send a link nobody can use.
-      if (org?.samlEnabled) {
+      if (await hasActiveIdentityProvider(tx, context.organizationId as string)) {
         ssoSkipped = true;
         return;
       }
@@ -584,11 +619,9 @@ export class UsersService {
     if (!context.organizationId) {
       throw new BadRequestException('Users must be created within an organization');
     }
-    // Read once, not per email -- samlEnabled can't change mid-call, and each of the
-    // (up to 200) emails already runs its own transaction below.
-    const org = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.organization.findUnique({ where: { id: context.organizationId as string }, select: { samlEnabled: true } }),
-    );
+    // Read once, not per email -- each of the (up to 200) emails already runs its own
+    // transaction below.
+    const ssoEnabled = await this.tenantPrisma.forTenant(context, (tx) => hasActiveIdentityProvider(tx, context.organizationId as string));
     const created: SafeUser[] = [];
     const skipped: { email: string; reason: string }[] = [];
     for (const email of dto.emails) {
@@ -607,7 +640,7 @@ export class UsersService {
         // SSO-enabled orgs authenticate staff via SAML, matched by email -- no set-password
         // link is ever needed, and sending one would promise an access path that doesn't
         // apply. Skip the token and the email entirely rather than send a dead link.
-        if (!org?.samlEnabled) {
+        if (!ssoEnabled) {
           const rawToken = randomBytes(32).toString('hex');
           const tokenHash = createHash('sha256').update(rawToken).digest('hex');
           await tx.passwordResetToken.create({

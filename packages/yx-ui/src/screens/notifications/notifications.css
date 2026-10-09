@@ -1,0 +1,4 @@
+/* Settings › Notifications (P04 §7). Tokens only; no sticky bars (R8); fits 390 px phones without sideways scroll (R4, R5). */
+.yx-ntf__head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--yx-space-3); }
+.yx-ntf__editor { display: flex; flex-direction: column; gap: var(--yx-space-6); min-width: 0; }
+.yx-ntf__code { font-family: var(--yx-font-mono); font-size: var(--yx-text-sm); }

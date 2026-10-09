@@ -1,0 +1,82 @@
+/* ConditionBuilder — P19 "When / If / Then" rows (§46). */
+.yx-rule { display: flex; flex-direction: column; gap: var(--yx-space-4); min-width: 0; }
+
+.yx-rule__section {
+  display: grid;
+  grid-template-columns: var(--yx-space-12) minmax(0, 1fr);
+  gap: var(--yx-space-3);
+  align-items: start;
+}
+.yx-rule__keyword {
+  margin: 0;
+  min-height: var(--yx-control-md);
+  display: flex;
+  align-items: center;
+  font-size: var(--yx-text-md);
+  line-height: var(--yx-leading-md);
+  font-weight: var(--yx-weight-semibold);
+  color: var(--yx-color-text);
+}
+.yx-rule__body { min-width: 0; }
+
+.yx-rule__group { display: flex; flex-direction: column; gap: var(--yx-space-2); min-width: 0; }
+.yx-rule__group[data-nested] {
+  padding: var(--yx-space-3);
+  border: var(--yx-border-width) solid var(--yx-color-border);
+  border-radius: var(--yx-radius-card);
+  background: var(--yx-color-bg-subtle);
+}
+
+.yx-rule__join { display: flex; align-items: center; gap: var(--yx-space-2); flex-wrap: wrap; }
+.yx-rule__join-label { font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); color: var(--yx-color-text-secondary); }
+.yx-rule__join .yx-rule__remove { margin-left: auto; }
+
+.yx-rule__rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-rule__item { display: flex; flex-direction: column; gap: var(--yx-space-2); min-width: 0; }
+.yx-rule__joiner {
+  font-size: var(--yx-text-xs);
+  line-height: var(--yx-leading-xs);
+  font-weight: var(--yx-weight-medium);
+  color: var(--yx-color-text-secondary);
+}
+
+.yx-rule__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  gap: var(--yx-space-2);
+  align-items: start;
+}
+.yx-rule__row .yx-rule__wide { grid-column: span 2; }
+.yx-rule__remove { align-self: start; }
+.yx-rule__value { min-width: 0; }
+.yx-rule__between { display: flex; align-items: center; gap: var(--yx-space-2); min-width: 0; }
+.yx-rule__between > :not(.yx-rule__and) { flex: 1 1 0; min-width: 0; }
+.yx-rule__and { font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
+
+.yx-rule__adds { display: flex; gap: var(--yx-space-2); flex-wrap: wrap; }
+
+.yx-rule__empty { margin: 0; font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); color: var(--yx-color-text-secondary); }
+.yx-rule__error { margin: 0; font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); color: var(--yx-color-danger-text); }
+
+.yx-rule__summary {
+  margin: 0;
+  padding: var(--yx-space-3) var(--yx-space-4);
+  border: var(--yx-border-width) solid var(--yx-color-border);
+  border-radius: var(--yx-radius-card);
+  background: var(--yx-color-bg-subtle);
+  font-size: var(--yx-text-md);
+  line-height: var(--yx-leading-md);
+  color: var(--yx-color-text);
+}
+.yx-rule[data-readonly] .yx-rule__summary { background: var(--yx-color-bg-surface); }
+.yx-rule__summary-label { font-weight: var(--yx-weight-medium); margin-right: var(--yx-space-1); }
+
+@media (max-width: 639px) {
+  .yx-rule__section { grid-template-columns: 1fr; gap: var(--yx-space-1); }
+  .yx-rule__keyword { min-height: 0; }
+  .yx-rule__row { grid-template-columns: minmax(0, 1fr) auto; }
+  .yx-rule__row > .yx-field, .yx-rule__row > .yx-rule__value { grid-column: 1; }
+  .yx-rule__row > .yx-rule__remove { grid-column: 2; grid-row: 1; }
+  .yx-rule__row .yx-rule__wide { grid-column: 1; }
+  .yx-rule__spacer { display: none; }
+}

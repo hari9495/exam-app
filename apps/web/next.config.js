@@ -4,6 +4,8 @@ const { withSentryConfig } = require('@sentry/nextjs');
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  // The YukthiX design system (packages/yx-ui) ships TypeScript source.
+  transpilePackages: ['@yukthix/ui'],
   experimental: {
     // Next 16 splits 404 handling: app/not-found.tsx only renders for notFound()
     // calls inside a MATCHED route, while a completely unmatched URL (a typo'd
@@ -19,6 +21,10 @@ const nextConfig = {
   // each console's routes to /v2. /reports now targets the dedicated /v2/panel/reports (its own
   // path, which admits the panel role), which resolves the old redirect loop. permanent:false keeps
   // this reversible.
+  // The SSO and Google / Microsoft callbacks carry a one-time code in the fragment; nothing about it may leak onward.
+  async headers() {
+    return ['/sso/callback', '/yx/sign-in/callback'].map((source) => ({ source, headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] }));
+  },
   async redirects() {
     const routes = ['/dashboard', '/exams', '/questions', '/candidates', '/walk-in-groups', '/jobs', '/analytics/hiring', '/message-templates', '/offer-template'];
     return [

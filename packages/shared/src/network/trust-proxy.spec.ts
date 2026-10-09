@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { configureTrustProxy } from './trust-proxy';
+import { clientIpOf, configureTrustProxy } from './trust-proxy';
 
 function fakeApp(): { app: INestApplication; set: jest.Mock } {
   const set = jest.fn();
@@ -41,5 +41,26 @@ describe('configureTrustProxy', () => {
     const { app, set } = fakeApp();
     configureTrustProxy(app);
     expect(set).not.toHaveBeenCalledWith('trust proxy', true);
+  });
+});
+
+describe('clientIpOf (socket handshakes)', () => {
+  const saved = process.env.TRUST_PROXY;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.TRUST_PROXY;
+    else process.env.TRUST_PROXY = saved;
+  });
+  const req = (xff?: string) => ({ headers: xff === undefined ? {} : { 'x-forwarded-for': xff }, socket: { remoteAddress: '127.0.0.1' } });
+
+  it('ignores X-Forwarded-For entirely unless TRUST_PROXY=true', () => {
+    delete process.env.TRUST_PROXY;
+    expect(clientIpOf(req('203.0.113.9'))).toBe('127.0.0.1');
+  });
+
+  it('trusts exactly one hop: the entry nginx appended, never a forged left-hand one', () => {
+    process.env.TRUST_PROXY = 'true';
+    expect(clientIpOf(req('6.6.6.6, 203.0.113.9'))).toBe('203.0.113.9');
+    expect(clientIpOf(req('203.0.113.9'))).toBe('203.0.113.9');
+    expect(clientIpOf(req())).toBe('127.0.0.1');
   });
 });
