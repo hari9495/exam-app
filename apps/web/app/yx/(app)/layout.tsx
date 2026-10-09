@@ -64,6 +64,7 @@ const APPROVALS: WorkspaceLink = { id: 'approvals', label: 'Approvals', href: '/
 // 3b-2 batch 2: everyone chats with a desk; agents with the chat key take chats and log calls.
 const DESK_CHAT: WorkspaceLink = { id: 'desk-chat', label: 'Chat with us', href: '/yx/desk/chat', group: 'Service desk' };
 const DESK_LIVE_CHAT: WorkspaceLink = { id: 'desk-live-chat', label: 'Live chat', href: '/yx/desk/live-chat', group: 'Service desk' };
+const DESK_TEAM: WorkspaceLink = { id: 'desk-team', label: 'Team and shifts', href: '/yx/desk/team', group: 'Service desk' };
 
 // Links follow the role; the API still checks every permission (audit:view, org:manage_users,
 // org:manage_settings) and the pages show "no access" on a 403. Platform staff outside any company use the
@@ -151,6 +152,8 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         DESK_CHAT,
         ...(perms.has('desk.ticket.view') ? [DESK_TICKETS, DESK_CALENDAR] : []),
         ...(perms.has('desk.chat.work') ? [DESK_LIVE_CHAT] : []),
+        // 3b-2 batch 3: presence, shifts, forecast, my mailbox (agents and leads).
+        ...(perms.has('desk.ticket.work') || perms.has('desk.report.view') ? [DESK_TEAM] : []),
         ...(perms.has('desk.desk.create') || perms.has('desk.settings.manage') || perms.has('desk.member.manage') || perms.has('desk.mailbox.manage') || perms.has('desk.portal.manage') || perms.has('desk.catalog.manage') || perms.has('desk.rule.manage') || perms.has('desk.lifecycle.manage') || perms.has('desk.channel.manage') ? [DESK_SETUP] : []),
         // Batch 3: customer admins, and agents (the API lets only Customer support desk agents read).
         ...(perms.has('desk.customer.manage') || perms.has('desk.ticket.view') ? [DESK_CUSTOMERS] : []),
