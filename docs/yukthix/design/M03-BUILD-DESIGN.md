@@ -1254,6 +1254,16 @@ Raised while building batch 5a and accepted on 9 Oct 2026. Built on `feat/yukthi
 | 5a-D3 | **Former employees sign in with their personal email on record, else their old work email**, for now. | As built. The "HR confirms the personal email at exit" step belongs to the lifecycle (onboarding / exit) batch. |
 | 5a-D4 | **The pay guard extends to the compensation tables in batch 5b; the time payroll feed stays attendance data** (no pay guard). | Part of the 5b plan: the `pay_guard` policy (own employee or `app_pay_entities()`) is added to `compensations` and the 5b compensation tables, with the CI catalogue test. |
 
+### 19.2 Batch 5b build decisions (founder, accepted 9 Oct 2026)
+
+Raised while building batch 5b and accepted on 9 Oct 2026. Built on .
+
+| # | Decision | What is built |
+|---|---|---|
+| 5b-D1 | **State minimum wages are data:** state, zone, skill, effective dates and the source notification, loaded through the console's draft-then-publish flow by two staff. Seed the states the demo companies use from official notifications, in our own words, every value marked *verify*. No invented figures; a state with no reachable official source stays empty and is listed. | Rule sets  per state and scheduled employment (: zones, skill classes, basic and VDA per month, the notification with its link and file hash). Publish checks that printed totals add up. Loaded by  and the seed (drafted by one staff member, published by another). Seeded: Karnataka shops and commercial establishments 2026-27 (KAE 20 LMW 2017 with the 2026-27 VDA) and Tamil Nadu G.O.(2D) No.65 of 2024 (basic; the yearly DA is not loaded and the check says so). Uttar Pradesh left empty: no current official order was reachable. The salary check uses the place's zone; without a skill class on record, the lowest class of the zone applies. |
+| 5b-D2 | **Payslip languages:** Google Noto fonts (SIL OFL), cut to the glyphs used; Hindi, Tamil, Telugu and Kannada payslips; English stays the default. | A layout is English plus at most one regional language; labels print in that script with the English beside them. Fonts in  with , cut by  (fonttools); a test fails if a label loses a glyph. The wording is to be read once by a native speaker before go-live. |
+| 5b-D3 | **CCA roots** come from the official CCA source (cca.gov.in) with SHA-256 fingerprints, through the two-person publish flow. | Rule set  (CCA India 2022 and CCA India 2022 SPL, fetched from the CCA's Root Certificate page) replaces the PEM config file of 5a-D1. A root whose bytes do not match its fingerprint is refused at publish and never trusted.  reads the CCA's DER, PEM or base64 files. |
+
 ---
 
 ## 20. Go-live items this design adds
@@ -1279,3 +1289,4 @@ To add to [GO-LIVE-CHECKLIST.md](../GO-LIVE-CHECKLIST.md) (the coordinator edits
 |---|---|
 | 9 Oct 2026 | First draft: payroll fit and run lifecycle, data model per batch, roles and keys, formula language, statutory engine, run engine, inputs, outputs, security, events, API, screens, test plan, 98 slices in 10 batches (5a–5j), stories to add, open decisions D1–D5. |
 | 9 Oct 2026 | §19.1: batch 5a build decisions 5a-D1 … 5a-D4 accepted (signed-PDF checks, frozen dates blocked, alumni email, pay guard on compensation in 5b). |
+| 9 Oct 2026 | §19.2: batch 5b build decisions 5b-D1 … 5b-D3 accepted (state minimum-wage tables, payslip languages, CCA roots as published data). |
