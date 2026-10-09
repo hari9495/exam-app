@@ -29,6 +29,9 @@ import { PdfConverter, acceptanceCopy, converterFromEnv, previewMark, stampPdf }
 //   e-sign     the person reads it, ticks "I accept" and enters a one-time code (G-19 disclosure once); a sealed
 //              acceptance copy (the issued pages + a certificate page) is stored; the issued file is never touched.
 
+/** Letters an employee may get for themselves at once (P05 Q8). */
+export const SELF_CERTIFICATES = ['employment_certificate'];
+type IssueInput = { letterType: string; personId: string; signatoryId?: string | null; subjectType?: string; subjectId?: string; supersedesId?: string | null };
 const KEYS = ['letter.template.manage', 'letter.issue', 'letter.signatory.manage', 'employee.personal.view'] as const;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const REQUEST_TYPE = 'letter.issue';
@@ -297,12 +300,13 @@ export class LettersService implements OnModuleInit {
     return { row: s, name: u.name || u.email, title: s.title };
   }
 
-  private async prepare(tx: Tx, c: CompanyContext, v: Viewer, dto: { letterType: string; personId: string; signatoryId?: string | null }) {
+  private async prepare(tx: Tx, c: CompanyContext, v: Viewer | null, dto: { letterType: string; personId: string; signatoryId?: string | null }) {
     const base = await letterData(tx, c, dto.personId).catch(() => {
       throw new BadRequestException('This person has no job or joiner record.');
     });
     const t = await this.activeTemplate(tx, c.organizationId, dto.letterType, base.legalEntityId);
-    await this.mayIssue(tx, c, v, dto.personId, t.fields);
+    // Null: the system issues it (exit letters, LIFE-4.03; a person's own certificate, LIFE-4.06).
+    if (v) await this.mayIssue(tx, c, v, dto.personId, t.fields);
     const signer = await this.signatoryFor(tx, c.organizationId, base.legalEntityId, dto.signatoryId);
     const { data } = await letterData(tx, c, dto.personId, { signatory: signer ? { name: signer.name, title: signer.title } : null });
     const missing = missingFields(t.fields, data);
@@ -320,8 +324,16 @@ export class LettersService implements OnModuleInit {
     return { file: await previewMark(await this.toPdf(fillDocx(p.docx, p.data))), name: 'preview.pdf', contentType: 'application/pdf' };
   }
 
-  async issue(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; personId: string; signatoryId?: string | null; subjectType?: string; subjectId?: string; supersedesId?: string | null }) {
-    const v = await this.viewer(user);
+  async issue(ctx: TenantContext, user: ScopeUser, dto: IssueInput) {
+    return this.issueAs(ctx, await this.viewer(user), dto);
+  }
+
+  /** Issued by the system for an event (exit letters) or a person's own instant certificate: no issuer checks. */
+  issueSystem(ctx: TenantContext, dto: IssueInput) {
+    return this.issueAs({ ...ctx, userId: ctx.userId ?? null }, null, dto);
+  }
+
+  private async issueAs(ctx: TenantContext, v: Viewer | null, dto: IssueInput) {
     let notices: Notice[] = [];
     const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -538,6 +550,20 @@ export class LettersService implements OnModuleInit {
   }
 
   /** My letters (issued to me), with what is waiting for my acceptance. */
+  /** PPL-31 (P05 Q8): an employee's own certificate, issued at once (the company switches the template on). */
+  async myCertificate(ctx: TenantContext, user: ScopeUser, letterType: string) {
+    if (!SELF_CERTIFICATES.includes(letterType)) throw new BadRequestException('That certificate is not available here.');
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Only the employee asks for their own certificate.');
+    const personId = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const own = await ownOf(tx, c, v);
+      const open = own.employeeId ? await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId: own.employeeId, exitedOn: null }, select: { id: true } }) : null;
+      if (!own.personId || !open) throw new ForbiddenException('Certificates are for current employees.');
+      return own.personId;
+    });
+    return this.issueSystem(ctx, { letterType, personId });
+  }
+
   async mine(ctx: TenantContext, user: ScopeUser) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {

@@ -4,11 +4,12 @@ import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { AssetDto, CompanyExitDto, HrFactsDto, InterviewDto, InterviewNotesDto, IssueAssetDto, NoticeChangeDto, ProbationReviewDto, ReasonDto, ResignDto, ReturnAssetDto, SignOffDto } from './exit-dto';
+import { AssetDto, CompanyExitDto, ManualStepDto, SettledOutsideDto, HrFactsDto, InterviewDto, InterviewNotesDto, IssueAssetDto, NoticeChangeDto, ProbationReviewDto, ReasonDto, ResignDto, ReturnAssetDto, SignOffDto } from './exit-dto';
 import { ExitsService } from './exits.service';
 import { OffboardingService } from './offboarding.service';
+import { LastDayService } from './last-day.service';
 
 // Lifecycle batch 6c (design §13). Keys (P02 YX-SEC-01), checked again per person, case, item and asset:
 //   lifecycle.exit.view                 exit cases of the people in scope (the manager sees their team's without a key)
@@ -23,6 +24,7 @@ export class ExitsController {
   constructor(
     private readonly exits: ExitsService,
     private readonly offboarding: OffboardingService,
+    private readonly lastDay: LastDayService,
   ) {}
 
   private user(req: Request) {
@@ -116,6 +118,41 @@ export class ExitsController {
   @RequirePermissions('lifecycle.exit.confidential.view')
   interviewNotes(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: InterviewNotesDto) {
     return this.offboarding.interview(ctx, this.user(req), id, dto.notes ?? null);
+  }
+
+  // ------------------------------------------------------------------------------------------ after the last day (6d)
+
+  @Get('exits/:id/steps')
+  @RequirePermissions('lifecycle.exit.manage')
+  steps(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.lastDay.panel(ctx, this.user(req), id);
+  }
+
+  @Post('exits/:id/steps/:handler/retry')
+  @HttpCode(200)
+  @RequirePermissions('lifecycle.exit.manage')
+  retryStep(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('handler') handler: string) {
+    return this.lastDay.retry(ctx, this.user(req), id, handler.slice(0, 40));
+  }
+
+  @Post('exits/:id/steps/:handler/done')
+  @HttpCode(200)
+  @RequirePermissions('lifecycle.exit.manage')
+  stepDone(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('handler') handler: string, @Body() dto: ManualStepDto) {
+    return this.lastDay.manualDone(ctx, this.user(req), id, handler.slice(0, 40), dto.note);
+  }
+
+  @Get('exits/:id/handoff')
+  @RequireAnyPermission('lifecycle.exit.manage', 'payroll.period.view')
+  handoff(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.lastDay.handoff(ctx, this.user(req), id);
+  }
+
+  @Post('exits/:id/settled-outside')
+  @HttpCode(200)
+  @RequirePermissions('lifecycle.exit.manage')
+  settledOutside(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SettledOutsideDto) {
+    return this.lastDay.settledOutside(ctx, this.user(req), id, dto);
   }
 
   // ------------------------------------------------------------------------------------------ clearance

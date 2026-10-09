@@ -14,6 +14,8 @@ import { holdersOf } from '../time/time-core';
 import { JourneysService as DeskJourneysService } from '../service-desk/journeys.service';
 import { ownOf, reachesPerson } from '../documents/person-access';
 import { LifecycleJourneysService } from './journeys.service';
+import { LastDayService } from './last-day.service';
+import { freezeSettlementIn } from './settlement';
 import { CLEARANCE_STARTER, EXIT_INTERVIEW_FORM_VERSION, MATERNITY_BLOCKED, NEEDS_APPROVAL, RESIGNATION_REASONS, type ExitType, noticeLabel, standardLwd } from './exit-rules';
 
 // Lifecycle batch 6c (design §10): probation reviews, resignations, notice changes and company-started exits.
@@ -91,6 +93,7 @@ export class ExitsService implements OnModuleInit {
     private readonly notifications: NotificationsService,
     private readonly journeys: LifecycleJourneysService,
     private readonly desk: DeskJourneysService,
+    private readonly lastDay: LastDayService,
   ) {}
 
   onModuleInit() {
@@ -500,6 +503,8 @@ export class ExitsService implements OnModuleInit {
     }
     await this.assetItemsIn(tx, org, id, k.personId, owner);
     if (k.exitType !== 'death' && k.exitType !== 'absconding') await tx.exitInterview.create({ data: { organizationId: org, exitCaseId: id, formVersion: EXIT_INTERVIEW_FORM_VERSION } });
+    // LIFE-4.05: the first payroll hand-off revision (wages due two working days after the last day).
+    await freezeSettlementIn(tx, c, id, 'accepted');
     await audit(tx, c, 'exit.case.accepted', 'exit_case', id, { lwd, journeyId });
     await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'exit.case.accepted', payload: { exitCaseId: id, employeeId: k.employeeId, lastDay: lwd, journeyId, exitType: k.exitType } } });
   }
@@ -570,6 +575,7 @@ export class ExitsService implements OnModuleInit {
     await tx.exitCase.update({ where: { id }, data: { approvedLwd: asDate(p.lwd), noticeArrangement: [...history, arrangement] as Prisma.InputJsonValue, changeKind: null, changeWfRequestId: null, changePayload: Prisma.DbNull, version: { increment: 1 } } });
     const j = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'exit_case', subjectId: id, status: { not: 'cancelled' } } });
     if (j) await this.journeys.reanchorIn(tx, c, j.id, p.lwd);
+    await freezeSettlementIn(tx, c, id, 'lwd_changed');
     await audit(tx, c, 'exit.lwd.changed', 'exit_case', id, arrangement);
     if (from !== p.lwd) await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'exit.lwd.changed', payload: { exitCaseId: id, employeeId: k.employeeId, from, to: p.lwd } } });
   }
@@ -635,7 +641,7 @@ export class ExitsService implements OnModuleInit {
 
   async setHrFacts(ctx: TenantContext, user: ScopeUser, id: string, dto: HrFactsDto) {
     const v = await this.viewer(user);
-    await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+    const released = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const { k, a } = await this.caseOr404(tx, c, v, id);
       if (!a.manage || !a.confidential) throw new ForbiddenException('HR-only facts need the confidential exit key.');
       if (k.version !== dto.version) throw new ConflictException('Someone else changed this exit. Reload it.');
@@ -654,7 +660,11 @@ export class ExitsService implements OnModuleInit {
       await tx.exitCase.update({ where: { id }, data: { ...(dto.hold !== undefined ? { lettersHeld: dto.hold } : {}), version: { increment: 1 } } });
       // The audit row says what changed, never the reasons (they stay in the HR-only table).
       await audit(tx, c, 'exit.hr_facts.updated', 'exit_case', id, { fields: Object.keys(dto).filter((x) => x !== 'version' && !x.endsWith('Reason')) });
+      if (dto.hold !== undefined && dto.hold !== k.lettersHeld && ['accepted', 'cleared', 'exited'].includes(k.status)) await freezeSettlementIn(tx, c, id, 'hold');
+      return dto.hold === false && k.lettersHeld && (k.status === 'exited' || k.status === 'closed') ? c.organizationId : null;
     });
+    // LIFE-4.03: letters held at the last day are issued as soon as HR releases them (into the alumni vault).
+    if (released) await this.lastDay.released(released, id);
     return this.get(ctx, user, id);
   }
 

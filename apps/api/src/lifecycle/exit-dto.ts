@@ -236,3 +236,20 @@ export class ReturnAssetDto {
   @IsIn(['in_stock', 'in_repair', 'lost'])
   status!: 'in_stock' | 'in_repair' | 'lost';
 }
+
+export class ManualStepDto {
+  @trim()
+  @IsString()
+  @Length(3, 500)
+  note!: string;
+}
+
+export class SettledOutsideDto {
+  @Matches(ISO)
+  settledOn!: string;
+
+  @trim()
+  @IsString()
+  @Length(3, 500)
+  reason!: string;
+}

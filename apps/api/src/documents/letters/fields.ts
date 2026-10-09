@@ -27,6 +27,7 @@ export const FIELDS: Readonly<Record<string, FieldDef>> = {
   employment_type: { label: 'Employment type', cls: 'internal', sample: 'Permanent' },
   manager_name: { label: "Manager's name", cls: 'internal', sample: 'Divya Raghunathan' },
   joining_date: { label: 'Joining day', cls: 'internal', sample: '19 October 2026' },
+  last_working_day: { label: 'Last working day (when leaving)', cls: 'internal', sample: '30 October 2026' },
   probation_months: { label: 'Probation length in months', cls: 'internal', sample: '6' },
   probation: { label: 'On probation (yes / no)', cls: 'internal', flag: true, sample: true },
   legal_entity: { label: 'Legal entity (employer) name', cls: 'internal', sample: 'Kaveri Foods Pvt Ltd' },
@@ -74,11 +75,14 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
   const person = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: personId } });
   const today = todayIst();
   const emp = await tx.employee.findFirst({ where: { organizationId: org, personId } });
+  let lastDay: string | null = null;
   let place: { legalEntityId: string; locationId: string | null; departmentId: string | null; designationId: string | null; employmentTypeId: string | null; managerEmployeeId: string | null; joiningOn: string; code: string | null; onProbation: boolean };
   if (emp) {
     const e = await tx.employment.findFirstOrThrow({ where: { organizationId: org, employeeId: emp.id }, orderBy: { joinedOn: 'desc' } });
     const a = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId: e.id, supersededAt: null, validFrom: { lte: new Date(`${today}T00:00:00Z`) } }, orderBy: { validFrom: 'desc' } });
     const st = await tx.employmentStatusPeriod.findFirst({ where: { organizationId: org, employmentId: e.id, supersededAt: null }, orderBy: { validFrom: 'desc' } });
+    const k = await tx.exitCase.findFirst({ where: { organizationId: org, employmentId: e.id, status: { in: ['accepted', 'cleared', 'exited', 'closed'] } }, orderBy: { createdAt: 'desc' }, select: { approvedLwd: true } });
+    lastDay = (e.exitedOn ?? k?.approvedLwd)?.toISOString().slice(0, 10) ?? null;
     place = { legalEntityId: e.legalEntityId, locationId: a?.locationId ?? null, departmentId: a?.departmentId ?? null, designationId: a?.designationId ?? null, employmentTypeId: a?.employmentTypeId ?? null, managerEmployeeId: a?.managerEmployeeId ?? null, joiningOn: e.joinedOn.toISOString().slice(0, 10), code: e.employeeCode, onProbation: st?.status === 'probation' };
   } else {
     const pb = await tx.preboarding.findFirst({ where: { organizationId: org, personId, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } });
@@ -107,6 +111,7 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
     employment_type: type?.name ?? '',
     manager_name: mgr ? name(mgr) : '',
     joining_date: longDate(place.joiningOn),
+    last_working_day: lastDay ? longDate(lastDay) : '',
     probation_months: months,
     probation: place.onProbation,
     legal_entity: entity?.name ?? '',
@@ -173,6 +178,67 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; requi
       { text: 'Date: {{today}}' },
       { text: 'Dear {{employee_name}} ({{employee_code}}),' },
       { text: 'We are pleased to confirm your employment as {{designation}} after your probation. All other terms of your appointment stay the same.' },
+      { text: 'For {{legal_entity}}' },
+      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
+    ],
+  },
+  // Lifecycle 6d: issued by the system on the exit events (no-dues once cleared; relieving and experience at the end of
+  // the last working day, unless HR holds them) and the employee's instant employment certificate (P05 Q8).
+  {
+    letterType: 'no_dues',
+    name: 'No-dues certificate',
+    requiresApproval: false,
+    personSigns: false,
+    paragraphs: [
+      { text: '{{legal_entity}}', heading: true },
+      { text: 'No-dues certificate', heading: true },
+      { text: 'Date: {{today}}' },
+      { text: 'This is to certify that {{employee_name}} ({{employee_code}}), {{designation}}, has completed the exit clearance with every department. Any amount to be recovered is settled in the final settlement.' },
+      { text: 'For {{legal_entity}}' },
+      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
+    ],
+  },
+  {
+    letterType: 'relieving',
+    name: 'Relieving letter',
+    requiresApproval: false,
+    personSigns: false,
+    paragraphs: [
+      { text: '{{legal_entity}}', heading: true },
+      { text: 'Relieving letter', heading: true },
+      { text: 'Date: {{today}}' },
+      { text: 'Dear {{employee_name}} ({{employee_code}}),' },
+      { text: 'You have been relieved of your duties as {{designation}} at the close of work on {{last_working_day}}.' },
+      { text: 'We thank you for your work with us and wish you well.' },
+      { text: 'For {{legal_entity}}' },
+      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
+    ],
+  },
+  {
+    letterType: 'experience',
+    name: 'Experience letter',
+    requiresApproval: false,
+    personSigns: false,
+    paragraphs: [
+      { text: '{{legal_entity}}', heading: true },
+      { text: 'To whom it may concern', heading: true },
+      { text: 'Date: {{today}}' },
+      { text: '{{employee_name}} worked with {{legal_entity}} from {{joining_date}} to {{last_working_day}}. Their last designation was {{designation}} in the {{department}} department at {{location}}.' },
+      { text: 'For {{legal_entity}}' },
+      { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
+    ],
+  },
+  {
+    letterType: 'employment_certificate',
+    name: 'Employment certificate',
+    requiresApproval: false,
+    personSigns: false,
+    paragraphs: [
+      { text: '{{legal_entity}}', heading: true },
+      { text: 'To whom it may concern', heading: true },
+      { text: 'Date: {{today}}' },
+      { text: 'This is to certify that {{employee_name}} ({{employee_code}}) works with {{legal_entity}} as {{designation}} in the {{department}} department at {{location}}, since {{joining_date}}.' },
+      { text: 'This certificate is issued at their request.' },
       { text: 'For {{legal_entity}}' },
       { text: '{{signatory_name}}, {{signatory_title}}', bold: true },
     ],

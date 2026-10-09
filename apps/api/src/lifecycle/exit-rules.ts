@@ -90,3 +90,29 @@ export const EXIT_INTERVIEW_FORM: FormDef = {
   ],
   rules: [],
 };
+
+/**
+ * YX-LC-08 (Code on Wages s.17(2)): the final dues are paid within two working days after the last working day.
+ * Working days skip Saturdays, Sundays and the holidays of the person's calendar. Open clearance never moves it.
+ */
+export function wagesDueBy(lwd: string, holidays: ReadonlySet<string>): string {
+  let d = lwd;
+  let left = 2;
+  while (left > 0) {
+    d = new Date(day(d).getTime() + 86_400_000).toISOString().slice(0, 10);
+    const wd = day(d).getUTCDay();
+    if (wd !== 0 && wd !== 6 && !holidays.has(d)) left--;
+  }
+  return d;
+}
+
+/** Where a last working day stands on `today` (both IST days): still ahead, the day itself, or over (exit at T+0). */
+export function lwdStage(lwd: string, today: string): 'ahead' | 'today' | 'over' {
+  return today < lwd ? 'ahead' : today === lwd ? 'today' : 'over';
+}
+
+/** Alumni read their own documents for this many years after the last day (P05 Q6; setting alumni.access_years). */
+export function alumniUntil(lastDay: string, years: number): string {
+  const d = day(lastDay);
+  return new Date(Date.UTC(d.getUTCFullYear() + years, d.getUTCMonth(), d.getUTCDate())).toISOString().slice(0, 10);
+}

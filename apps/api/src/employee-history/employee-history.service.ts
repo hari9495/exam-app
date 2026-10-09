@@ -27,6 +27,7 @@ import {
   reach,
   Reach,
   Segment,
+  capSegments,
   StatusValues,
 } from './history-rules';
 
@@ -714,7 +715,9 @@ export class EmployeeHistoryService {
       // The rows in force on or after the day before `from`: the first of them is the base the fold continues.
       const reaching = (current[fact] as FactRow[]).filter((r) => !r.validTo || isoDate(r.validTo) >= addDays(from, -1));
       const before = reaching.find((r) => isoDate(r.validFrom) < from);
-      const segments = fold(fact, before ? { from: isoDate(before.validFrom), to: null, changeId: before.changeId, values: values(fact, before) } : null, changes);
+      const folded = fold(fact, before ? { from: isoDate(before.validFrom), to: null, changeId: before.changeId, values: values(fact, before) } : null, changes);
+      // An ended employment stops every fact on its last day (lifecycle 6d).
+      const segments = e.exitedOn ? capSegments(folded, isoDate(e.exitedOn)) : folded;
       // Nothing moves for this fact: keep its rows as they are.
       const same =
         segments.length === reaching.length &&
@@ -729,6 +732,22 @@ export class EmployeeHistoryService {
       for (const seg of segments) await insert(fact, seg);
     }
     await this.checkInvariants(tx, c, e);
+  }
+
+  /**
+   * M01 §10.7 (lifecycle 6d): the employment ends after `lastDay` through a system exit change. exited_on is set and
+   * every fact row is cut at that day (rebuilt, never edited). Idempotent: an employment that ended stays as it is.
+   */
+  async exitIn(tx: Tx, c: CompanyContext, employmentId: string, lastDay: string, reason: string): Promise<boolean> {
+    await this.lockEmployment(tx, c, employmentId);
+    const e = await tx.employment.findFirstOrThrow({ where: { organizationId: c.organizationId, id: employmentId } });
+    if (e.exitedOn) return false;
+    const ch = await tx.employeeChange.create({ data: { organizationId: c.organizationId, employeeId: e.employeeId, employmentId: e.id, changeType: 'exit', effectiveDate: asDate(lastDay), status: 'scheduled', payload: {}, reason, decidedAt: new Date() } });
+    const ended = await tx.employment.update({ where: { id: e.id }, data: { exitedOn: asDate(lastDay) } });
+    await this.rebuild(tx, c, ended, lastDay, ch.id);
+    await tx.employeeChange.update({ where: { id: ch.id }, data: { status: 'effective', appliedAt: new Date() } });
+    await audit(tx, c, 'employee.change.effective', 'employee', e.employeeId, { changeId: ch.id, changeType: 'exit', effectiveDate: lastDay });
+    return true;
   }
 
   /** YX-HIS-03 continuity and YX-ORG-09 managers, proven on the stored rows with range aggregates. */

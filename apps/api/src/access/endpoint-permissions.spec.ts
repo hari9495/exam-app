@@ -8,6 +8,7 @@ import { OrgStructureController } from '../org-structure/org-structure.controlle
 import { LifecycleController } from '../lifecycle/lifecycle.controller';
 import { DocumentsController } from '../documents/documents.controller';
 import { LettersController } from '../documents/letters/letters.controller';
+import { ExitsController } from '../lifecycle/exits.controller';
 
 // P02 YX-SEC-01: every HR endpoint declares its permission. The only exceptions are the routes open to the
 // implicit grants (YX-SEC-04: the person themselves, their managers, colleagues' Public fields) and public
@@ -36,11 +37,13 @@ const IMPLICIT: Record<string, string[]> = {
   LifecycleController: ['joiningSoon', 'joiner', 'myTasks', 'journey', 'complete', 'skip'],
   DocumentsController: ['types', 'mine', 'upload', 'file'],
   // Batch 6b: my letters and my acceptance; the file route decides per letter (self, or HR in scope).
-  LettersController: ['mine', 'file', 'signCode', 'sign'],
+  LettersController: ['mine', 'file', 'signCode', 'sign', 'certificate'], // 6d: my own instant certificate
+  // Batches 6c / 6d: my resignation, interview, assets and clearance items, and my team's probation reviews and exits.
+  ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff'],
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

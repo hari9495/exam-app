@@ -4,9 +4,9 @@ import { addDays } from '../org-structure/org-validation';
 // P06 effective-dated history: the change types, which facts each may touch, and the fold that turns an
 // ordered list of changes into dated rows. Pure functions; the service does the database work.
 
-export const CHANGE_TYPES = ['join', 'promotion', 'transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction', 'notice', 'notice_withdrawal'] as const;
+export const CHANGE_TYPES = ['join', 'promotion', 'transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction', 'notice', 'notice_withdrawal', 'exit'] as const;
 /** System changes made by the exit flow (lifecycle 6c), never requested by hand. */
-export const SYSTEM_CHANGE_TYPES: readonly ChangeType[] = ['notice', 'notice_withdrawal'];
+export const SYSTEM_CHANGE_TYPES: readonly ChangeType[] = ['notice', 'notice_withdrawal', 'exit'];
 export type ChangeType = (typeof CHANGE_TYPES)[number];
 
 export const EMPLOYMENT_STATUSES = ['probation', 'confirmed', 'notice'] as const;
@@ -78,6 +78,8 @@ export const TYPE_RULES: Readonly<Record<ChangeType, TypeRule>> = {
   // M01 §10.2: an accepted resignation puts the employment on notice; a withdrawal ends it (back to the status before).
   notice: { status: ['notice'], requires: ['status'] },
   notice_withdrawal: { status: ['probation', 'confirmed'], requires: ['status'] },
+  // M01 §10.7 (lifecycle 6d): the employment ends after its last working day; every fact stops on that day.
+  exit: { requires: [] },
 };
 
 /** The problem with a payload for its type, or null. */
@@ -190,6 +192,11 @@ export function fold<V>(fact: Fact, initial: Segment<V> | null, changes: readonl
     current = next;
   }
   return out;
+}
+
+/** An ended employment (exited_on): segments after the last day go, the last one stops on it (lifecycle 6d). */
+export function capSegments<V>(segments: Segment<V>[], lastDay: string): Segment<V>[] {
+  return segments.filter((s) => s.from <= lastDay).map((s) => (s.to === null || s.to > lastDay ? { ...s, to: lastDay } : s));
 }
 
 const stripUndefined = <T extends object>(o: T): Partial<T> => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;

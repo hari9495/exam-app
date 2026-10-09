@@ -39,6 +39,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // uses the policy in force on the day it is submitted (YX-LC-04). Starter values: probation 15 days, confirmed 30.
   'exit.notice.probation': { label: 'Notice period during probation', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: true, values: ['0d', '7d', '15d', '30d', '45d', '60d', '90d', '1m', '2m', '3m'], default: '15d' },
   'exit.notice.confirmed': { label: 'Notice period once confirmed', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: true, values: ['0d', '7d', '15d', '30d', '45d', '60d', '90d', '1m', '2m', '3m'], default: '30d' },
+  // P05 Q6 (decided): alumni read their own letters and documents for this many years after the last day.
+  'alumni.access_years': { label: 'Alumni can read their documents for (years after leaving)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10'], default: '7' },
   // P02 Q2 (decided): managers view their whole reporting subtree by default; the company may narrow it.
   'access.manager.view_scope': { label: 'Managers can view', scopes: ['tenant'], dated: false, values: ['all_reports', 'direct_reports'], default: 'all_reports', guard: 'access.role.manage' },
   // P02 YX-SEC-18 (a): a role grant giving Confidential / Special access over more people than this warns first.

@@ -7,6 +7,7 @@ import { FilesService } from '../documents/files.service';
 import { LifecycleJourneysService } from './journeys.service';
 import { LettersService } from '../documents/letters/letters.service';
 import { PreboardingPortalService } from './portal.service';
+import { LastDayService } from './last-day.service';
 
 const QUEUE = 'lifecycle-jobs';
 
@@ -24,6 +25,7 @@ export class LifecycleJobs implements OnModuleInit, OnModuleDestroy {
     private readonly files: FilesService,
     private readonly letters: LettersService,
     private readonly portal: PreboardingPortalService,
+    private readonly lastDay: LastDayService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, { connection }), QUEUE);
   }
@@ -46,6 +48,8 @@ export class LifecycleJobs implements OnModuleInit, OnModuleDestroy {
         await this.journeys.raisePending();
         await this.journeys.sweep();
         await this.letters.retryRendering();
+        // Lifecycle 6d: last working days (the morning of, then T+0 once it is over in India) and their exit steps.
+        await this.lastDay.sweep();
       }
       if (name === 'daily') {
         await this.documents.expirySweep();

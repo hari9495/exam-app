@@ -54,6 +54,7 @@ describe('notification catalog', () => {
       'exit.interview.sent',
       'asset.assigned',
       'probation.review.done',
+      'exit.deprovisioning.failed',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

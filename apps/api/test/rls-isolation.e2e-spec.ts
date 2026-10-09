@@ -13,7 +13,7 @@ const SUPPORT_EXCLUDED = ['compensations', 'grade_pay_ranges', 'employee_identif
 // Payroll batch 5a: every payroll table too (payroll-5a.e2e-spec.ts checks them, and the pay guard, from the catalogue).
 const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_reopen_requests', 'pay_corrections', 'device_backfills', 'held_punches', 'payroll_feed_rows', 'exchange_files', 'exchange_file_links', 'pay_documents', 'pay_document_counters', 'pay_document_nominees', 'pay_portal_sessions'];
 // Lifecycle batch 6a: people's files and documents, and joiners' planned jobs.
-const LIFECYCLE_SUPPORT_EXCLUDED = ['files', 'documents', 'document_versions', 'preboardings', 'preboarding_portal_sessions', 'consent_records', 'bgv_checks', 'letter_issues', 'signature_requests', 'exit_cases', 'exit_case_hr', 'clearance_items', 'exit_interviews', 'exit_interview_answers', 'probation_reviews'];
+const LIFECYCLE_SUPPORT_EXCLUDED = ['files', 'documents', 'document_versions', 'preboardings', 'preboarding_portal_sessions', 'consent_records', 'bgv_checks', 'letter_issues', 'signature_requests', 'exit_cases', 'exit_case_hr', 'clearance_items', 'exit_interviews', 'exit_interview_answers', 'probation_reviews', 'exit_deprovisioning', 'exit_settlement_inputs', 'alumni_sessions'];
 const policiesOf = (table: string) => BigInt(SUPPORT_EXCLUDED.includes(table) ? 2 : 1);
 
 describe('PostgreSQL row-level security (app role)', () => {

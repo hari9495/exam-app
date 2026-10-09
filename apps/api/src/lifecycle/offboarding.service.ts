@@ -10,6 +10,7 @@ import { displayName } from '../employee-history/employee-history.service';
 import { ownOf, reachesPerson } from '../documents/person-access';
 import { EXIT_INTERVIEW_FORM } from './exit-rules';
 import { ExitsService } from './exits.service';
+import { freezeSettlementIn } from './settlement';
 
 // Lifecycle batch 6c (design §10.6): clearance sign-offs (LIFE-3.05), the exit interview (LIFE-3.06) and the shared
 // asset list (LIFE-3.07, D3).
@@ -115,6 +116,7 @@ export class OffboardingService {
       });
       if (!n.count) throw new ConflictException('Someone else signed this off. Reload it.');
       await audit(tx, c, `exit.clearance.${dto.action === 'clear' ? 'cleared' : 'waived'}`, 'exit_case', k.id, { itemId, department: i.department, recovery: dto.recoveryAmount ?? null });
+      if (dto.recoveryAmount) await freezeSettlementIn(tx, c, k.id, 'recovery');
       await this.maybeClearedIn(tx, c, k.id);
       return { ok: true };
     });
@@ -321,6 +323,8 @@ export class OffboardingService {
           await this.maybeClearedIn(tx, c, i.exitCaseId);
         }
       }
+      // The payroll hand-off of a leaver holding it moves on (returned: no recovery; lost: still to recover).
+      for (const i of await tx.clearanceItem.findMany({ where: { organizationId: org, assetAssignmentId: x.id }, select: { exitCaseId: true } })) await freezeSettlementIn(tx, c, i.exitCaseId, 'asset_returned');
       await audit(tx, c, lost ? 'asset.lost' : 'asset.returned', 'asset', assetId, { assignmentId: x.id });
       await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'asset.returned', payload: { assetId, assignmentId: x.id, lost } } });
       return { ok: true };

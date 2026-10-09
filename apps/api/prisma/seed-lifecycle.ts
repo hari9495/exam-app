@@ -94,16 +94,19 @@ export async function seedLifecycle(tx: Tx, organizationId: string): Promise<voi
  */
 export async function seedLifecycleLetters(tx: Tx, organizationId: string): Promise<void> {
   const org = { organizationId };
-  if (await tx.letterTemplate.findFirst({ where: org })) return;
+  const first = !(await tx.letterTemplate.findFirst({ where: org }));
   const hr = await tx.user.findFirstOrThrow({ where: { ...org, email: 'hr@demo-org.test' } });
   const store = new FileStore(new BlobStorageService(), new OrgSecretsCryptoService());
+  // Every YukthiX starter the company does not have yet (later batches add starters, e.g. the 6d exit letters).
   for (const l of STARTER_LETTERS) {
+    if (await tx.letterTemplate.findFirst({ where: { ...org, letterType: l.letterType } })) continue;
     const buf = buildDocx(l.paragraphs);
     const id = randomUUID();
     const ref = await store.put(`org/${organizationId}/letter-templates/${id}`, buf);
     await tx.file.create({ data: { id, ...org, area: 'letter-templates', storageRef: ref, fileName: `${l.letterType}.docx`, mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: buf.length, sha256: sha256(buf), scanStatus: 'clean', scanDetail: 'YukthiX starter', scannedAt: new Date(), uploadedBy: hr.id, uploadedVia: 'system' } });
     await tx.letterTemplate.create({ data: { ...org, letterType: l.letterType, name: l.name, source: 'starter', fileId: id, fields: templateFields(buf), requiresApproval: l.requiresApproval, personSigns: l.personSigns, version: 1, status: 'active', previewViewedBy: hr.id, previewViewedAt: new Date(), createdBy: hr.id } });
   }
+  if (!first) return;
   for (const e of await tx.legalEntity.findMany({ where: org, select: { id: true } })) {
     await tx.signatory.create({ data: { ...org, legalEntityId: e.id, userId: hr.id, title: 'Head of HR', createdBy: hr.id } });
   }

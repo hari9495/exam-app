@@ -136,6 +136,12 @@ export class LettersController {
     return this.letters.attachSignature(ctx, this.user(req), id, file?.buffer);
   }
 
+  @Post('me/certificates')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  certificate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: StarterLetterDto) {
+    return this.letters.myCertificate(ctx, this.user(req), dto.letterType);
+  }
+
   @Get('me')
   mine(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.letters.mine(ctx, this.user(req));

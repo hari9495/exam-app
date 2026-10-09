@@ -57,6 +57,7 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'exit.clearance.assigned', group: 'assignments', label: 'A clearance item for a leaver was given to you or your team' },
   { type: 'exit.interview.sent', group: 'reminders', label: 'Your exit interview is ready' },
   { type: 'asset.assigned', group: 'assignments', label: 'A company asset was issued to you' },
+  { type: 'exit.deprovisioning.failed', group: 'reminders', label: 'A step after someone left did not go through (HR)' },
   { type: 'probation.review.done', group: 'reminders', label: 'A manager reviewed a probation' },
 ];
 
