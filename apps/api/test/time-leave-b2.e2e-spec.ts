@@ -411,14 +411,24 @@ describe('Time and leave batch 2', () => {
       expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'time.register.exported' } }))).toBe(2);
     });
 
-    it('unlock needs step-up and a reason; the frozen feed is superseded and changes are allowed again', async () => {
+    it('unlock now asks to reopen (PAY-1.02): two other people approve it, then the frozen feed is set aside and changes are allowed again', async () => {
       await api('hrAdmin', 'post', '/time/periods/unlock').send({ legalEntityId: ids.entityA, month: lockMonth, reason: 'short' }).expect(400);
-      await api('hrAdmin', 'post', '/time/periods/unlock').send({ legalEntityId: ids.entityA, month: lockMonth, reason: 'Wrong shift data for the plant' }).expect(200);
+      // No one else holds payroll.period.reopen yet: the request cannot be checked, so it is refused in plain words.
+      expect((await api('hrAdmin', 'post', '/time/periods/unlock').send({ legalEntityId: ids.entityA, month: lockMonth, reason: 'Wrong shift data for the plant' }).expect(400)).body.message).toMatch(/No one else can check this reopen/);
+      const hrExecProfile = (await inA((tx) => tx.user.findUniqueOrThrow({ where: { id: users.hrExec } }))).permissionProfileId!;
+      await inA((tx) => tx.permissionProfile.update({ where: { id: hrExecProfile }, data: { permissionsJson: JSON.stringify(['leave.view', 'attendance.view', 'payroll.period.reopen']) } }));
+      const asked = (await api('hrAdmin', 'post', '/time/periods/unlock').send({ legalEntityId: ids.entityA, month: lockMonth, reason: 'Wrong shift data for the plant' }).expect(200)).body;
+      expect(asked).toMatchObject({ status: 'pending', stage: 'locked' });
+      const phrase = `REOPEN ${`T2FA-${run}`.toUpperCase()} ${lockMonth}`;
+      for (const who of ['hrExec', 'adminA'] as const) {
+        await markSteppedUp(tenantPrisma, token[who]);
+        await api(who, 'post', `/payroll/reopen-requests/${asked.id}/decide`).send({ decision: 'approve', confirmation: { phrase, impact: [{ label: 'Month', value: lockMonth }] } }).expect(200);
+      }
       expect(await inA((tx) => tx.payrollFeedRow.count({ where: { organizationId: org.A.id, supersededAt: null } }))).toBe(0);
       const fix = (await api('emp', 'post', '/time/me/regularise').send({ on: inLocked, kind: 'full_day', reason: 'Now open' }).expect(201)).body;
       await api('emp', 'post', `/time/me/regularise/${fix.id}/withdraw`).expect(200);
-      const actions = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: { in: ['time.period.locked', 'time.period.unlocked'] } }, select: { action: true } }));
-      expect(actions.map((a) => a.action).sort()).toEqual(['time.period.locked', 'time.period.unlocked']);
+      const actions = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: { in: ['time.period.locked', 'payroll.period.reopened'] } }, select: { action: true } }));
+      expect(actions.map((a) => a.action).sort()).toEqual(['payroll.period.reopened', 'time.period.locked']);
     });
   });
 

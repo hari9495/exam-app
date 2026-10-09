@@ -357,7 +357,7 @@ export class PayDocumentsService {
       JOIN employments m ON m.organization_id = e.organization_id AND m.employee_id = e.id
       LEFT JOIN employee_personal_details pd ON pd.organization_id = e.organization_id AND pd.employee_id = e.id
       WHERE e.organization_id = ${org}::uuid AND (lower(pd.personal_email) = ${email} OR lower(e.work_email) = ${email})
-        AND m.exited_on IS NOT NULL AND m.exited_on <= ${today}::date AND m.exited_on + make_interval(years => ${ALUMNI_YEARS}) >= ${today}::date
+        AND m.exited_on IS NOT NULL AND m.exited_on <= ${today}::date AND m.exited_on + ${ALUMNI_YEARS}::int * interval '1 year' >= ${today}::date
         AND NOT EXISTS (SELECT 1 FROM employments x WHERE x.organization_id = e.organization_id AND x.employee_id = e.id AND x.exited_on IS NULL)
       ORDER BY m.exited_on DESC LIMIT 1`;
     if (alumni) return { employeeId: alumni.id, nomineeId: null };
