@@ -98,6 +98,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'platform.channels.manage',
     'platform.support.request',
     'platform.audit.view',
+    'platform.statutory.manage',
     // M14 SD-1.31: the YukthiX Support desk in the console.
     'platform.support_desk.work',
   ],
