@@ -1257,9 +1257,10 @@
       "Name: Test gateway. Gateway: Development. Sender: KAVERI. DLT entity id: digits only.",
       "In One-time-code template fill DLT template id (digits) and Registered text.",
       "Click \"Add account\" and confirm it's you.",
-      "Click Edit on the new account."
+      "Click Edit on the new account.",
+      "To see secrets hidden: add a second account with Gateway = Twilio and fake test values (Account SID AC000…, Auth token test-token-1234567890, Generate a callback secret), save, then click Edit on it."
     ],
-    "expected": "The account is listed with its sender and template status. On Edit, secrets are empty: they are never shown again.",
+    "expected": "The account is listed with its sender and template status. The Development gateway has no secret fields. On Edit of the Twilio account, Auth token and Callback secret are empty with \"Saved. It is never shown again; type a new value to replace it.\"",
     "stories": [
       "US-A-022",
       "US-A-025"
