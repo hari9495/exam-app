@@ -26,6 +26,9 @@ const MAX_TEXT = 20_000;
 
 type Mailbox = Prisma.SdAgentMailboxGetPayload<object>;
 
+// DECISION NEEDED: US-E-283 also asks "send-as with my own grant"; not built: replies still go from the desk mailbox
+// (one address, DKIM-signed). Also: an outsider who quotes a ticket's Message-ID in a mail to an agent adds an internal
+// note (labelled with the real sender); keep, or import only mail from the requester, watchers and colleagues?
 /** Development only: messages handed to a "dev" mailbox (tests and the local demo). */
 export class DevMailboxPoller implements MailboxPoller {
   static readonly inbox = new Map<string, Buffer[]>();

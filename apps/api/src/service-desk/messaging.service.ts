@@ -472,6 +472,8 @@ export class MessagingService implements OnModuleInit {
     return true;
   }
 
+  // DECISION NEEDED: on the shared number one phone belongs to one person in one company; a newer JOIN (even in
+  // another company) moves the phone there and stops the old link. Alternative: ask "which company?" on every message.
   /** "JOIN <code>" from a phone: the code names the company and person; the message is the opt-in. */
   private async join(kind: MsgKind, line: Channel | null, m: InboundMessage, code: string): Promise<boolean> {
     const key = `sd:msg:join:${kind}:${code}`;
@@ -528,20 +530,25 @@ export class MessagingService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ agents in Teams / Slack
 
+  // DECISION NEEDED: an agent's command in Teams / Slack acts with their desk seats but without a fresh second factor
+  // in YukthiX (the chat app's own sign-in stands in, as for email commands). Require a recent YukthiX MFA instead?
   private async agentDo(a: DeskActor, cmd: NonNullable<ReturnType<typeof agentCommand>>): Promise<string> {
     if (cmd.kind === 'agent_help') return AGENT_HELP;
     const org = a.ctx.organizationId;
     if (cmd.kind === 'list') {
-      const rows = await this.tenantPrisma.forTenant(a.ctx, (tx) => tx.sdTicket.findMany({ where: { organizationId: org, assigneeUserId: a.userId, systemState: { in: OPEN_STATES } }, orderBy: [{ priority: 'asc' }, { updatedAt: 'desc' }], take: 10 }));
+      const rows = await this.tenantPrisma.forTenant(a.ctx, async (tx) => {
+        const list = await tx.sdTicket.findMany({ where: { organizationId: org, assigneeUserId: a.userId, systemState: { in: OPEN_STATES } }, orderBy: [{ priority: 'asc' }, { updatedAt: 'desc' }], take: 10 });
+        return Promise.all(list.map(async (t) => ({ t, hide: await wordsStayIn(tx, t) })));
+      });
       if (!rows.length) return 'You have no open tickets.';
-      return `Your open tickets:\n${rows.map((t) => `${t.number} · P${t.priority} · ${t.sensitive || t.private ? 'Private ticket' : t.subject}`).join('\n')}`;
+      return `Your open tickets:\n${rows.map(({ t, hide }) => `${t.number} · P${t.priority} · ${hide ? 'Private ticket' : t.subject}`).join('\n')}`;
     }
     const t = await this.tenantPrisma.forTenant(a.ctx, (tx) => tx.sdTicket.findFirst({ where: { organizationId: org, number: cmd.number } }));
     // Only tickets the agent works (never by role alone): anything else reads as not found.
     if (!t || !canWork(a, t.deskId)) throw new NotFoundException(`No ticket ${cmd.number} that you work on.`);
     if (cmd.kind === 'view') {
       // A private or sensitive ticket's words stay in the app.
-      if (t.sensitive || t.private) return `${t.number} is private. Open it in YukthiX: ${webOrigin()}/yx/desk/tickets/${t.id}`;
+      if (await this.tenantPrisma.forTenant(a.ctx, (tx) => wordsStayIn(tx, t))) return `${t.number} is private. Open it in YukthiX: ${webOrigin()}/yx/desk/tickets/${t.id}`;
       const last = await this.tenantPrisma.forTenant(a.ctx, (tx) => tx.sdTicketMessage.findMany({ where: { organizationId: org, ticketId: t.id, kind: 'reply' }, orderBy: { createdAt: 'desc' }, take: 3 }));
       return `${t.number} · ${t.subject} · P${t.priority} · ${t.systemState}\n${last
         .reverse()
@@ -592,7 +599,8 @@ export class MessagingService implements OnModuleInit {
       const tpl = ((ch.templates ?? {}) as Record<string, Template>).notice;
       msg = tpl?.status === 'approved' && tpl.body ? { mode: 'template', template: tpl, params: [out.text], text: tpl.body.replace(/\{#var#\}/, out.text.slice(0, 30)) } : { mode: 'none', reason: 'no_approved_template' };
     }
-    const masked = phone ? maskPhone(to) : to.slice(0, 40);
+    // The delivery log (read by company admins) never shows a chat account's id, only its kind.
+    const masked = phone ? maskPhone(to) : `${KIND_LABEL[channel]} account`.slice(0, 40);
     let deliveryId: string;
     try {
       deliveryId = (await this.tenantPrisma.forTenant(ctx, (tx) => tx.notificationDelivery.create({ data: { organizationId: org, channel, kind, idempotencyKey: `desk:${channel}:${key}`.slice(0, 128), addressMasked: masked, addressHash: phone ? this.addressHash(to) : sha256(to) }, select: { id: true } }))).id;
@@ -633,17 +641,18 @@ export class MessagingService implements OnModuleInit {
       const login = await tx.personRole.findFirst({ where: { organizationId: org, personId: t.requesterPersonId, roleType: 'login', sourceTable: 'users', endOn: null }, select: { sourceId: true } });
       if (!m || !ch || !login?.sourceId) return null;
       const agentName = m.authorUserId ? ((await this.tickets.userNames(tx, org, [m.authorUserId])).get(m.authorUserId) ?? 'The desk') : 'The desk';
+      const neutral = await wordsStayIn(tx, t);
       if (t.channel === 'whatsapp' || t.channel === 'sms') {
         const id = await tx.sdMsgIdentity.findFirst({ where: { organizationId: org, kind: t.channel, userId: login.sourceId, state: 'active' } });
-        return id ? { t, m, ch, userId: login.sourceId, to: this.crypto.decrypt(id.addressEncrypted), lastInbound: id.lastInboundAt, agentName } : null;
+        return id ? { t, m, ch, userId: login.sourceId, to: this.crypto.decrypt(id.addressEncrypted), lastInbound: id.lastInboundAt, agentName, neutral } : null;
       }
       const link = await tx.channelLink.findFirst({ where: { organizationId: org, userId: login.sourceId, provider: t.channel } });
-      return link ? { t, m, ch, userId: login.sourceId, to: link.externalRef, lastInbound: null, agentName } : null;
+      return link ? { t, m, ch, userId: login.sourceId, to: link.externalRef, lastInbound: null, agentName, neutral } : null;
     });
     if (!found) return;
     const { t, m, ch } = found;
     const tpl = ((ch.templates ?? {}) as Record<string, Template>).reply_notice ?? null;
-    const out = outgoing(ch.kind as MsgKind, { number: t.number, agentName: found.agentName, replyText: m.bodyText, neutral: t.sensitive || t.private, lastInbound: found.lastInbound, template: tpl });
+    const out = outgoing(ch.kind as MsgKind, { number: t.number, agentName: found.agentName, replyText: m.bodyText, neutral: found.neutral, lastInbound: found.lastInbound, template: tpl });
     await this.send(ch, found.to, out, `reply:${m.id}`, 'desk_reply', found.userId);
   }
 
@@ -721,6 +730,16 @@ export class MessagingService implements OnModuleInit {
   }
 }
 
+/**
+ * Security review fix (9 Oct 2026): the words of a ticket stay in the app when it is sensitive or private, and also for
+ * every ticket on a restricted desk or an HR desk (HR content never goes to WhatsApp, SMS, Teams or Slack, YX-NTF-04).
+ */
+export async function wordsStayIn(tx: Tx, t: { organizationId: string; deskId: string; sensitive: boolean; private: boolean }): Promise<boolean> {
+  if (t.sensitive || t.private) return true;
+  const d = await tx.sdDesk.findFirst({ where: { organizationId: t.organizationId, id: t.deskId }, select: { privacy: true, kind: true } });
+  return !d || d.privacy === 'restricted' || d.kind === 'hr';
+}
+
 export const KIND_LABEL: Record<MsgKind, string> = { whatsapp: 'WhatsApp', sms: 'SMS', teams: 'Microsoft Teams', slack: 'Slack' };
 
 /** Where each shared path is verified (YukthiX's own registrations, go-live). */
@@ -732,6 +751,9 @@ const SHARED_SECRETS: Record<MsgKind, { scheme: Scheme; secret: string }> = {
   teams: { scheme: 'yukthix', secret: 'YX_TEAMS_DEV_SECRET_NEVER_SET' },
 };
 
+// DECISION NEEDED: P04 contradicts itself on WhatsApp: its Q2 answer says "shared YukthiX number by default", its
+// decision log (24 Sep 2026) says "each company's own number, no shared number". Built as the brief asks: the shared
+// YukthiX number by default, a company's own number optional (one line per kind per company, on one desk).
 const sharedNumber = (kind: MsgKind) => (kind === 'whatsapp' ? (process.env.YX_WHATSAPP_DISPLAY_NUMBER ?? (devTransport() ? '+91 80000 00000 (demo)' : null)) : kind === 'sms' ? (process.env.YX_SMS_DISPLAY_NUMBER ?? (devTransport() ? '+91 80000 00001 (demo)' : null)) : null);
 const apiOrigin = () => (process.env.API_ORIGIN ?? 'http://localhost:3001').replace(/\/$/, '');
 const webOrigin = () => (process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '');

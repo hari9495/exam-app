@@ -252,6 +252,8 @@ export class TeamService {
     });
   }
 
+  // DECISION NEEDED: US-G-077 also asks billable vs non-billable time and cost per ticket; they need the rate cards of
+  // SD-2.32 (not built yet), so the report shows time logged only.
   /** US-G-077: per agent, time in each presence, replies and notes, tickets solved, replies per online hour, time logged. */
   async availability(a: DeskActor, deskId: string, from: string, to: string) {
     this.requireReport(a, deskId);

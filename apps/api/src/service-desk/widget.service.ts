@@ -149,6 +149,8 @@ export class WidgetService {
    * POST /desk/widget/:key/session: the company's signed token becomes a portal session. browserOrigin is the request's
    * Origin header (our iframe, or absent for a mobile SDK); parentOrigin is the site the iframe was told it runs on.
    */
+  // DECISION NEEDED: a visitor the company's server signed for becomes an outside contact even when the help page's
+  // own sign-up is closed (the company vouched for them). Keep, or obey the page's sign-up setting here too?
   async session(key: string, dto: { token: string; parentOrigin?: string }, browserOrigin: string | null, ip: string | null) {
     const { w, org, portal } = await this.byKey(key);
     const refuse = () => new UnauthorizedException('This sign-in is not accepted. Ask the site to sign you in again.');

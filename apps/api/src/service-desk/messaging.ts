@@ -192,6 +192,8 @@ export type Outgoing =
   | { mode: 'template'; template: Template; params: string[]; text: string }
   | { mode: 'none'; reason: 'no_approved_template' | 'not_linked' };
 
+// DECISION NEEDED: India's DLT allows 30 characters per {#var#}, so an SMS reply carries only the start of the agent's
+// words (then "…", and "open YukthiX"). Alternative: send a notice only, never words, by SMS.
 /** DLT limit per {#var#} value (APX-A §4.3): longer values are cut with "…". */
 export const DLT_VAR_MAX = 30;
 const cut = (v: string, n: number) => (v.length > n ? `${v.slice(0, n - 1)}…` : v);

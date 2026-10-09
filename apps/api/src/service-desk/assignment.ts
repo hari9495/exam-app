@@ -80,6 +80,8 @@ export interface Route {
 }
 
 /**
+ * DECISION NEEDED: US-G-239 says routing falls back "after a set wait"; built: the fallback happens at once (with the
+ * reason on the timeline). A timed fallback needs a re-route job per waiting ticket.
  * US-G-075 / US-G-239: the best available agent for a new ticket. Agents at their own capacity (or the group's cap) get
  * nothing. Among the rest, those with every skill the category needs and the requester's language come first; when
  * nobody has both, those with the skills, then those with the language, then anyone free (the reason says so).

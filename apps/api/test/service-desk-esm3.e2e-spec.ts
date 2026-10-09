@@ -503,6 +503,23 @@ describe('Service Desk 3b-2 batch 3', () => {
     expect(JSON.stringify(pushes[0].payload)).not.toContain(t.subject);
   });
 
+  // ------------------------------------------------------------------------------------------ security review fixes
+
+  it('review fix: a restricted (or HR) desk never sends a ticket’s words out, and the log never shows a chat account id', async () => {
+    await system((tx) => tx.sdDesk.update({ where: { id: ids.it }, data: { privacy: 'restricted' } }));
+    try {
+      await hook('whatsapp', msg(phone(3), 'Any news?')).expect(200);
+      await api('lead', 'post', `/desk/tickets/${ids.waTicket}/messages`).send({ kind: 'reply', bodyHtml: `<p>Words that stay inside ${run}</p>` }).expect(201);
+      await until(() => sentTo(phone(3)).find((x) => x.text === `There is a new reply on your request ${ids.waNumber}. Open YukthiX to read it.` && x.at.getTime() > Date.now() - 20_000), 'the neutral notice on a restricted desk');
+      expect(fake.sent.some((x) => x.text.includes(`stay inside ${run}`))).toBe(false);
+    } finally {
+      await system((tx) => tx.sdDesk.update({ where: { id: ids.it }, data: { privacy: 'standard' } }));
+    }
+    const log = await system((tx) => tx.notificationDelivery.findMany({ where: { organizationId: org.A.id, channel: 'teams' } }));
+    expect(log.length).toBeGreaterThan(0);
+    expect(log.every((d) => d.addressMasked === 'Microsoft Teams account')).toBe(true);
+  });
+
   // ------------------------------------------------------------------------------------------ founder decision (b)
 
   it('the HR starter pack on an existing standard HR desk asks first, showing what changes', async () => {

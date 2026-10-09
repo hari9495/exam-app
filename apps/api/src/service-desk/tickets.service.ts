@@ -35,6 +35,8 @@ export type Ticket = Prisma.SdTicketGetPayload<object>;
 /** Timeline kinds → the rule fields they change (the "updated" trigger can wait for some fields only). */
 const FIELD_OF: Record<string, string> = { status_changed: 'state', priority_changed: 'priority', category_changed: 'category', group_changed: 'group', tags_changed: 'tags', type_changed: 'type', subject_changed: 'subject', privacy_changed: 'private' };
 export const OPEN_STATES = ['new', 'open', 'pending', 'on_hold'];
+/** Channels counted against an agent's "messaging" capacity (SD-2.25). */
+const MESSAGING: string[] = ['whatsapp', 'sms', 'teams', 'slack'];
 const day = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
 export interface Changes {
@@ -67,7 +69,10 @@ export interface CreateInput {
   requestedForPersonId?: string;
   openedByUserId: string | null;
   channel: 'portal' | 'agent' | 'api' | 'email' | 'chat' | 'phone' | 'walk_up' | 'whatsapp' | 'sms' | 'teams' | 'slack' | 'widget';
-  /** SD-2.25: the language the requester wrote in (routing by language). */
+  /**
+   * SD-2.25: the language the requester wrote in (routing by language). DECISION NEEDED: only the raise form sends it
+   * today; WhatsApp, SMS and chat-app messages carry none (detect the language from the text, or ask the person once?).
+   */
   language?: string | null;
   private?: boolean;
   tags?: string[];
@@ -161,9 +166,10 @@ export class TicketsService {
     const branch = (await tx.sdDeskBranch.count({ where: { organizationId: org, deskId: desk.id } }))
       ? await tx.sdDeskBranch.findFirst({ where: { organizationId: org, deskId: desk.id, locationId: String((await profileOf(tx, org, forWhom))['requester.location'] ?? '00000000-0000-0000-0000-000000000000') } })
       : null;
-    const groupId = branch?.groupId ?? cat?.groupId ?? null;
+    // SD-2.25: a WhatsApp / SMS / Teams / Slack message has no category: it goes to the desk's first team for routing.
+    const groupId = branch?.groupId ?? cat?.groupId ?? (MESSAGING.includes(input.channel) ? ((await tx.sdGroup.findFirst({ where: { organizationId: org, deskId: desk.id, active: true }, orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id ?? null) : null);
     const language = input.language && /^[a-z]{2,3}$/.test(input.language) ? input.language : null;
-    const routed = groupId ? await this.route(tx, org, desk.id, groupId, { skills: cat?.skills ?? [], language }) : null;
+    const routed = groupId ? await this.route(tx, org, desk.id, groupId, { skills: cat?.skills ?? [], language }, new Date(), MESSAGING.includes(input.channel) ? 'messaging' : 'ticket') : null;
     const assigneeUserId = routed?.userId ?? null;
     const { bodyHtml, bodyText, found } = this.cleanMasked(input.bodyHtml);
     if (!bodyText) throw new BadRequestException('Describe the issue.');
@@ -367,7 +373,7 @@ export class TicketsService {
    * leave, and under their own capacity; then skills of the category and the requester's language first, with the
    * reason kept for the timeline.
    */
-  async route(tx: Tx, org: string, deskId: string, groupId: string, need: { skills: readonly string[]; language: string | null }, now = new Date()): Promise<Route> {
+  async route(tx: Tx, org: string, deskId: string, groupId: string, need: { skills: readonly string[]; language: string | null }, now = new Date(), work: 'ticket' | 'messaging' = 'ticket'): Promise<Route> {
     const [group] = await tx.$queryRaw<{ assignment_method: string; max_open_per_agent: number | null; last_assigned_user_id: string | null; active: boolean }[]>`
       SELECT assignment_method, max_open_per_agent, last_assigned_user_id, active FROM sd_groups
       WHERE organization_id = ${org}::uuid AND desk_id = ${deskId}::uuid AND id = ${groupId}::uuid FOR UPDATE`;
@@ -382,7 +388,7 @@ export class TicketsService {
     // desk's job inside the caller's transaction, then puts the caller's own view back.
     const { shifts, caps } = await asDeskJob(tx, async () => ({
       shifts: await tx.sdShift.findMany({ where: { organizationId: org, userId: { in: seated }, startsAt: { lt: new Date(now.getTime() + 16 * 3_600_000) }, endsAt: { gt: new Date(now.getTime() - 16 * 3_600_000) } }, select: { userId: true, startsAt: true, endsAt: true } }),
-      caps: await tx.sdAgentCapacity.findMany({ where: { organizationId: org, userId: { in: seated }, channel: 'ticket' }, select: { userId: true, maxOpen: true } }),
+      caps: await tx.sdAgentCapacity.findMany({ where: { organizationId: org, userId: { in: seated }, channel: work }, select: { userId: true, maxOpen: true } }),
     }));
     // An agent with a roster shift around now takes work only inside one.
     const rostered = (u: string) => {
@@ -393,7 +399,8 @@ export class TicketsService {
     if (!free.length) return { userId: null, reason: 'Nobody in the team is available: waiting in the team queue' };
     // ponytail: counted under the caller's own visibility (§5.7), so a requester's raise does not count sensitive tickets
     // they cannot see; load balancing is then slightly off for them. A counts-only SQL function fixes it if it matters.
-    const counts = await tx.sdTicket.groupBy({ by: ['assigneeUserId'], where: { organizationId: org, assigneeUserId: { in: free }, systemState: { in: OPEN_STATES } }, _count: { _all: true } });
+    // SD-2.25: WhatsApp, SMS, Teams and Slack work has its own capacity (US-G-075: per channel).
+    const counts = await tx.sdTicket.groupBy({ by: ['assigneeUserId'], where: { organizationId: org, assigneeUserId: { in: free }, systemState: { in: OPEN_STATES }, ...(work === 'messaging' ? { channel: { in: MESSAGING } } : {}) }, _count: { _all: true } });
     const open = new Map(counts.map((c) => [c.assigneeUserId!, c._count._all]));
     const cap = new Map(caps.map((c) => [c.userId, c.maxOpen]));
     const seat = new Map(seats.map((m) => [m.userId, m]));
