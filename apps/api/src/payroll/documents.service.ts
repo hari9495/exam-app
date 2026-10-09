@@ -25,6 +25,8 @@ const KIND_LABEL: Record<string, string> = { payslip: 'Payslip', revision_letter
 const KIND_CODE: Record<string, string> = { payslip: 'PS', revision_letter: 'RL', payment_advice: 'PA', form130: 'F130', form131: 'F131', register: 'REG', inspection_pack: 'INS', correction_statement: 'CS' };
 /** Kinds the company DSC signs (P05 Q2). */
 const DSC_KINDS = new Set(['form130', 'form131', 'register']);
+// DECISION NEEDED: former employees sign in with their personal email on record, else their old work email (which
+// usually stops working at exit); should HR confirm a personal email at exit (M01 F&F checklist) before portal access?
 const ALUMNI_YEARS = 7;
 const PORTAL_MINUTES = 30;
 const VERIFY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
