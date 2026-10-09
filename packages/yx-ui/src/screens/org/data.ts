@@ -128,6 +128,7 @@ export const SETTING_REGISTRY: Record<string, SettingDef> = {
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },
   'attendance.mode': { label: 'Attendance mode', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['punch', 'assumed_present', 'timesheet'], default: 'punch' },
   'attendance.missing_punch_effect': { label: 'Missing punches', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['block_payroll_approval', 'warning_only'], default: 'block_payroll_approval' },
+  'attendance.factories_act': { label: 'Factories Act (overtime is paid at the legal rate)', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['covered', 'not_covered'], default: 'not_covered' },
 };
 
 export const SETTING_OVERRIDES: SettingOverride[] = [

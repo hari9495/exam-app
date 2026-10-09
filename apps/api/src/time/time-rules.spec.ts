@@ -1,5 +1,5 @@
 import { DayRule, evaluateDay, instantAt } from './time-maths';
-import { compOffDays, daysWorked, eligibilityWindow, maternityChecks, mondayOf, overlapsNight, overtimeFor, patternCell, payOfDay, quarterOf, resolveDay, restConflicts, scheduledMinutes, workOnForPunch, type ShiftTimes } from './time-rules';
+import { compOffDays, daysWorked, eligibilityWindow, maternityChecks, mondayOf, overlapsNight, otSettlement, overtimeFor, patternCell, payOfDay, quarterOf, resolveDay, restConflicts, scheduledMinutes, workOnForPunch, type ShiftTimes } from './time-rules';
 
 const Z = 'Asia/Kolkata';
 const rule = (start: number, end: number): DayRule => ({ shiftStart: start, shiftEnd: end, graceMinutes: 10, halfDayMinutes: 240, fullDayMinutes: 480, breakMinutes: 30, breakAboveMinutes: 300 });
@@ -131,6 +131,14 @@ describe('overtime maths (Q7, YX-AT-04)', () => {
   });
   it('knows the quarter', () => {
     expect(quarterOf('2026-11-15')).toEqual({ from: '2026-10-01', to: '2026-12-31' });
+  });
+});
+
+describe('factory overtime is paid (founder decision 9 Oct 2026)', () => {
+  it('covered by the Factories Act: always paid, never below the legal rate; otherwise the rule decides', () => {
+    expect(otSettlement({ settle: 'comp_off', rate: 1.5 }, { covered: true, legalRate: 2 })).toEqual({ settle: 'pay', rate: 2 });
+    expect(otSettlement({ settle: 'pay', rate: 2.5 }, { covered: true, legalRate: 2 })).toEqual({ settle: 'pay', rate: 2.5 });
+    expect(otSettlement({ settle: 'comp_off', rate: 1.5 }, { covered: false, legalRate: 2 })).toEqual({ settle: 'comp_off', rate: 1.5 });
   });
 });
 

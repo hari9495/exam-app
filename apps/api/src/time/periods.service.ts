@@ -193,8 +193,8 @@ export class PeriodsService {
       const { from } = monthRange(month);
       const l = await tx.periodLock.findFirst({ where: { organizationId: org, legalEntityId: entityId, periodType: 'attendance', periodStart: asDate(from) } });
       if (!l || l.stage !== 'locked') throw new ConflictException(`${monthText(month)} is not locked.`);
-      // DECISION NEEDED: once payroll (step 5) exists, unlocking a month whose payroll is approved becomes the P08 reopen
-      // request (Payroll Admin and System Admin approval, refused after bank release); until then it is step-up + reason.
+      // Founder decision 9 Oct 2026: unlock = step-up + a reason now; once payroll (step 5) exists it becomes the P08
+      // two-approval reopen request (Payroll Admin and System Admin, refused after bank release).
       await tx.periodLock.update({ where: { id: l.id }, data: { stage: 'open', changedBy: c.userId ?? null, changedAt: new Date(), reason } });
       await tx.payrollFeedRow.updateMany({ where: { organizationId: org, lockId: l.id, supersededAt: null }, data: { supersededAt: new Date() } });
       await audit(tx, c, 'time.period.unlocked', 'period_lock', l.id, { legalEntityId: entityId, month, reason });
@@ -338,6 +338,8 @@ export class PeriodsService {
     });
   }
 
+  // The register formats and form numbers are P07 IN.REGISTERS data on the compliance verify list (founder decision
+  // 9 Oct 2026).
   private async formats(tx: Tx, state: string, on: string): Promise<{ registers: RegisterFormat[]; source: string | null; verify: boolean }> {
     const rs = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.REGISTERS', jurisdiction: state, validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }] }, orderBy: { validFrom: 'desc' } });
     return { registers: ((rs?.values ?? {}) as { registers?: RegisterFormat[] }).registers ?? [], source: rs?.source ?? null, verify: rs?.verify ?? true };

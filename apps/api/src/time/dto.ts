@@ -468,6 +468,19 @@ export class WithdrawConsentDto {
   on!: string;
 }
 
+/** Me › Attendance: opt in to (or out of) the night-work protection (founder decision 9 Oct 2026). */
+export class NightOptInDto {
+  @IsBoolean()
+  optIn!: boolean;
+}
+
+/** The one-time code that confirms a night-work consent. */
+export class NightConfirmDto {
+  @IsString()
+  @Matches(/^\d{6}$/)
+  code!: string;
+}
+
 export class SafeguardDto {
   @IsUUID()
   locationId!: string;

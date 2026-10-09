@@ -722,7 +722,7 @@ function Night({ data, onAddConsent, onWithdrawConsent, onAttest }: { data: Shif
   return (
     <div className="yx-tim-stack">
       <InlineAlert tone="info" title="The law guard">
-        A woman can be placed on a shift touching the legal night window (7 pm to 6 am) only with her written consent on file and every safeguard below in date. There is no override, and refusing or withdrawing consent never leads to any action against her.
+        A woman or transgender person, or anyone who opted in to this protection, can be placed on a shift touching the legal night window (7 pm to 6 am) only with their written consent on file, confirmed by them in the app with a one-time code, and every safeguard below in date. There is no override, and refusing or withdrawing consent never leads to any action against them.
       </InlineAlert>
       {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
       {data.night.locations.map((l) => (
@@ -764,6 +764,7 @@ function Night({ data, onAddConsent, onWithdrawConsent, onAttest }: { data: Shif
                     {x.withdrawnOn ? ` · withdrawn from ${dateText(x.withdrawnOn)}` : ''}
                   </span>
                 </span>
+                {!x.withdrawnOn && <Badge tone={x.confirmedAt ? 'success' : 'warning'}>{x.confirmedAt ? 'Confirmed by them' : 'Waiting for their confirmation'}</Badge>}
                 {!x.withdrawnOn && (
                   <Button size="sm" onClick={() => setWithdrawing(x.id)}>
                     Record a withdrawal
@@ -774,6 +775,22 @@ function Night({ data, onAddConsent, onWithdrawConsent, onAttest }: { data: Shif
           </ul>
         ) : (
           <p className="yx-tim-muted">No consents on file.</p>
+        )}
+      </Card>
+      <Card title="Opted in to the night-work protection">
+        {data.night.optIns?.length ? (
+          <ul className="yx-tim-list" aria-label="Opted in">
+            {data.night.optIns.map((x) => (
+              <li key={x.employeeId} className="yx-tim-row">
+                <span className="yx-tim-list__main">
+                  <span>{x.name}</span>
+                  <span className="yx-tim-note">Since {dateText(x.since.slice(0, 10))} · only they can turn it off</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="yx-tim-muted">Nobody has opted in. Anyone can, from Me › Attendance.</p>
         )}
       </Card>
       {withdrawing && (
@@ -791,7 +808,7 @@ function Night({ data, onAddConsent, onWithdrawConsent, onAttest }: { data: Shif
           }
         >
           <div className="yx-tim-form">
-            <FormField id="nw-on" label="From" required helper="She is not placed on nights from this day. Shifts already published stay until the roster changes.">
+            <FormField id="nw-on" label="From" required helper="They are not placed on nights from this day. Shifts already published stay until the roster changes.">
               <TextField type="date" value={withdrawOn} onChange={setWithdrawOn} />
             </FormField>
           </div>

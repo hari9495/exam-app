@@ -9,15 +9,19 @@ import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.
 import { OtClaimDto, OtRuleDto } from './dto';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { SCOPE_MODEL, TimeSetupService } from './setup.service';
-import { TIME_KEYS, Facts, asDate, dateOf, factsOn, grantCovers, holidaysFor, hrApprovers, monthRange, myEmployeeId, num, todayIn, visibleSql } from './time-core';
+import { TIME_KEYS, Facts, asDate, dateOf, factsOn, grantCovers, holidaysFor, hrApprovers, monthRange, myEmployeeId, num, settingOn, todayIn, visibleSql } from './time-core';
 import { addDays } from './time-maths';
-import { OtCategory, compOffDays, overtimeFor, quarterOf, scheduledMinutes } from './time-rules';
+import { OtCategory, compOffDays, otSettlement, overtimeFor, quarterOf, scheduledMinutes } from './time-rules';
 
 // M02 overtime (Q7, YX-AT-04): OT rules are company rules by scope and date; an employee claims OT for a worked day
 // after the fact; the maths (minimum, rounding down, the company's daily cap, the P07 daily and quarterly limits) is
 // fixed when the claim is raised; the manager approves through P03 (or it is approved at once where the rule needs no
 // approval); minutes over a cap are paid only after an HR override with a reason. A rule may settle approved OT as
 // comp-off: the credit goes into the leave ledger (YX-LV-01) exactly once, in the approval's transaction.
+// Founder decision 9 Oct 2026: factory overtime is paid, not comp-off. Where the Factories Act covers the person (the
+// dated setting attendance.factories_act, and an employment category P07 IN.FACTORIES counts as workers), approved OT
+// is always paid at the legal rate (P07: 2× ordinary wages, on the compliance verify list) through the payroll feed,
+// whatever the rule says; comp-off settlement is offered only where the Act does not apply.
 
 export const OVERTIME = 'time.overtime';
 const RULE_DEF: SettingDef = { label: 'Overtime rule', scopes: ['employee', 'designation', 'grade', 'employment_type', 'department', 'location', 'legal_entity', 'tenant'], dated: true, values: [], default: '' };
@@ -82,11 +86,21 @@ export class OvertimeService implements OnModuleInit {
     return rows.find((x) => x.id === r.value) ?? null;
   }
 
-  /** P07 limits for the location's state (else national). */
+  /**
+   * P07 limits for the location's state (else national). The figures (125 h quarterly OT cap, 10 h a day, the 2× rate,
+   * the covered categories) are P07 data on the compliance verify list (founder decision 9 Oct 2026), never code.
+   */
   private async statutory(tx: Tx, state: string, on: string) {
     const rows = await tx.statutoryRuleSet.findMany({ where: { statute: 'IN.FACTORIES', jurisdiction: { in: [state, 'IN'] }, validFrom: { lte: asDate(on) } }, orderBy: { validFrom: 'desc' } });
-    const v = ((rows.find((r) => r.jurisdiction === state) ?? rows[0])?.values ?? {}) as { dailyMaxWorkMinutes?: number; quarterlyOtMinutes?: number };
-    return { dailyMaxWorkMinutes: v.dailyMaxWorkMinutes ?? 600, quarterlyOtMinutes: v.quarterlyOtMinutes ?? 7500 };
+    const v = ((rows.find((r) => r.jurisdiction === state) ?? rows[0])?.values ?? {}) as { dailyMaxWorkMinutes?: number; quarterlyOtMinutes?: number; rate?: number; coveredCategories?: string[] };
+    return { dailyMaxWorkMinutes: v.dailyMaxWorkMinutes ?? 600, quarterlyOtMinutes: v.quarterlyOtMinutes ?? 7500, rate: v.rate ?? 2, coveredCategories: v.coveredCategories ?? [] };
+  }
+
+  /** Whether the Factories Act covers the person on a date: the company says the place is a factory, P07 the category. */
+  private async factoriesAct(tx: Tx, org: string, f: Facts, on: string, coveredCategories: string[]): Promise<boolean> {
+    if ((await settingOn(tx, { organizationId: org, isSuperAdmin: false }, 'attendance.factories_act', f, on)) !== 'covered') return false;
+    const t = await tx.employmentType.findFirst({ where: { organizationId: org, id: f.employmentTypeId }, select: { category: true } });
+    return Boolean(t && coveredCategories.includes(t.category));
   }
 
   /** The OT a worked day gives under the rule (nothing when the day is not worked or has no rule). */
@@ -104,8 +118,12 @@ export class OvertimeService implements OnModuleInit {
     const [{ used }] = await tx.$queryRaw<{ used: number }[]>`
       SELECT coalesce(sum(payable_minutes), 0)::int AS used FROM overtime_requests
       WHERE organization_id = ${org}::uuid AND employee_id = ${f.employeeId}::uuid AND status IN ('pending', 'approved') AND work_on BETWEEN ${q.from}::date AND ${q.to}::date`;
-    const ot = overtimeFor({ category, workedMinutes: day.workedMinutes, scheduledMinutes: scheduled, rule, statutory: await this.statutory(tx, f.state, on), quarterUsedMinutes: used });
-    return { rule, day, ot: { ...ot, category, scheduled, rate: Number(category === 'normal' ? rule.rateNormal : category === 'weekly_off' ? rule.rateWeeklyOff : rule.rateHoliday) } };
+    const statutory = await this.statutory(tx, f.state, on);
+    const ot = overtimeFor({ category, workedMinutes: day.workedMinutes, scheduledMinutes: scheduled, rule, statutory, quarterUsedMinutes: used });
+    const ruleRate = Number(category === 'normal' ? rule.rateNormal : category === 'weekly_off' ? rule.rateWeeklyOff : rule.rateHoliday);
+    const covered = await this.factoriesAct(tx, org, f, on, statutory.coveredCategories);
+    const { settle, rate } = otSettlement({ settle: rule.settle as 'pay' | 'comp_off', rate: ruleRate }, { covered, legalRate: statutory.rate });
+    return { rule, day, ot: { ...ot, category, scheduled, rate, settle, factoriesAct: covered } };
   }
 
   // ------------------------------------------------------------------------------------------ me › overtime
@@ -131,7 +149,7 @@ export class OvertimeService implements OnModuleInit {
         const f = await factsOn(tx, org, id, on);
         if (!f) continue;
         const w = await this.workOut(tx, org, f, on, book);
-        if (w.ot && w.ot.eligible > 0) open.push({ on, category: w.ot.category, workedMinutes: d.workedMinutes, scheduledMinutes: w.ot.scheduled, eligibleMinutes: w.ot.eligible, payableMinutes: w.ot.payable, overCapMinutes: w.ot.overCap, settle: w.rule!.settle, needsApproval: w.rule!.needsApproval });
+        if (w.ot && w.ot.eligible > 0) open.push({ on, category: w.ot.category, workedMinutes: d.workedMinutes, scheduledMinutes: w.ot.scheduled, eligibleMinutes: w.ot.eligible, payableMinutes: w.ot.payable, overCapMinutes: w.ot.overCap, settle: w.ot.settle, factoriesAct: w.ot.factoriesAct, needsApproval: w.rule!.needsApproval });
       }
       return { today, claims: claims.map((x) => this.view(x)), open };
     });
@@ -157,7 +175,7 @@ export class OvertimeService implements OnModuleInit {
       const w = await this.workOut(tx, org, f, dto.on, await ScheduleBook.load(tx, org));
       if (!w.rule) throw new BadRequestException('No overtime rule applies to you. Ask HR.');
       if (!w.ot || w.ot.eligible === 0) throw new BadRequestException(`No overtime on ${fmt(dto.on)}: the time past your shift is below the ${w.rule.minMinutes} minutes that count.`);
-      const settle = w.rule.settle;
+      const settle = w.ot.settle;
       const compOff = settle === 'comp_off' ? compOffDays(w.ot.payable, w.rule.compOffHalfMinutes, w.rule.compOffFullMinutes) : 0;
       const r = await tx.overtimeRequest.create({
         data: { organizationId: org, employeeId: me, workOn: asDate(dto.on), ruleId: w.rule.id, category: w.ot.category, scheduledMinutes: w.ot.scheduled, workedMinutes: w.day!.workedMinutes!, eligibleMinutes: w.ot.eligible, payableMinutes: w.ot.payable, overCapMinutes: w.ot.overCap, rate: w.ot.rate, settle, compOffDays: compOff, reason: dto.reason, raisedBy: c.userId ?? null },
@@ -173,7 +191,7 @@ export class OvertimeService implements OnModuleInit {
           { label: 'Day', value: `${fmt(dto.on)} · ${CATEGORY[w.ot.category]}` },
           { label: 'Worked', value: `${hm(w.day!.workedMinutes!)} against ${hm(w.ot.scheduled)} expected` },
           { label: 'Overtime', value: `${hm(w.ot.payable)} at ${w.ot.rate}×${w.ot.overCap ? ` (${hm(w.ot.overCap)} more is over the limit and needs HR)` : ''}` },
-          { label: 'Settled as', value: settle === 'comp_off' ? `Comp-off: ${compOff} ${compOff === 1 ? 'day' : 'days'}` : 'Paid in payroll' },
+          { label: 'Settled as', value: settle === 'comp_off' ? `Comp-off: ${compOff} ${compOff === 1 ? 'day' : 'days'}` : w.ot.factoriesAct ? `Paid in payroll at ${w.ot.rate}× (Factories Act)` : 'Paid in payroll' },
           { label: 'Why', value: dto.reason.slice(0, 300) },
         ],
         subjectPersonId: f.personId,
@@ -186,7 +204,7 @@ export class OvertimeService implements OnModuleInit {
       });
       notices.push(...sub.notices);
       await tx.overtimeRequest.update({ where: { id: r.id }, data: { wfRequestId: sub.id } });
-      await audit(tx, c, 'time.ot.claimed', 'overtime_request', r.id, { on: dto.on, eligible: w.ot.eligible, payable: w.ot.payable, overCap: w.ot.overCap, settle });
+      await audit(tx, c, 'time.ot.claimed', 'overtime_request', r.id, { on: dto.on, eligible: w.ot.eligible, payable: w.ot.payable, overCap: w.ot.overCap, settle, factoriesAct: w.ot.factoriesAct });
       return this.view(await tx.overtimeRequest.findFirstOrThrow({ where: { id: r.id } }));
     });
     await this.engine.send(ctx, notices);

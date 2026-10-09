@@ -4934,9 +4934,22 @@ model NightWorkConsent {
   withdrawnOn    DateTime? @map("withdrawn_on") @db.Date
   reference      String    @db.VarChar(200)
   recordedBy     String?   @map("recorded_by") @db.Uuid
+  /// The worker's own confirmation in the app with a one-time code (founder decision 9 Oct 2026).
+  confirmedAt    DateTime? @map("confirmed_at") @db.Timestamptz(3)
+  confirmedBy    String?   @map("confirmed_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("night_work_consents")
+}
+
+/// Opted in to the night-work protection (founder decision 9 Oct 2026): a row while opted in; only the person removes it.
+model NightWorkOptIn {
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  since          DateTime @default(now()) @db.Timestamptz(3)
+
+  @@id([organizationId, employeeId])
+  @@map("night_work_opt_ins")
 }
 
 model NightWorkSafeguard {

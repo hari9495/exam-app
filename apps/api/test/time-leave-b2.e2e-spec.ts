@@ -48,12 +48,32 @@ describe('Time and leave batch 2', () => {
     stream.on('data', (c: Buffer) => chunks.push(c));
     stream.on('end', () => cb(null, Buffer.concat(chunks)));
   };
+  const email = { send: jest.fn(async (_m: { to: string; subject: string }) => ({ success: true })) };
+  // The one-time code mailed to a person (sent fire-and-forget, so it is waited for).
+  const codeFor = async (who: Who) => {
+    for (let i = 0; i < 50; i++) {
+      const m = [...email.send.mock.calls].reverse().find(([x]) => x.to === `${who}@time2-${run}.test` && /is your YukthiX verification code/.test(x.subject));
+      if (m) return m[0].subject.slice(0, 6);
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`no code mailed to ${who}`);
+  };
+  /** The worker confirms a consent HR recorded, in the app with a one-time code (founder decision 9 Oct 2026). */
+  const confirmConsent = async (who: Who, id: string) => {
+    email.send.mockClear();
+    await api(who, 'post', `/time/me/night-consents/${id}/code`).expect(200);
+    const code = await codeFor(who);
+    await api(who, 'post', `/time/me/night-consents/${id}/confirm`).send({ code: code === '000000' ? '111111' : '000000' }).expect(400);
+    // A wrong try does not burn the code (5 tries); the right one confirms it, once.
+    await api(who, 'post', `/time/me/night-consents/${id}/confirm`).send({ code }).expect(200);
+    await api(who, 'post', `/time/me/night-consents/${id}/confirm`).send({ code }).expect(409);
+  };
   const times = (start: number, end: number, validFrom = today) => ({ validFrom, start, end, graceMinutes: 10, halfDayMinutes: 240, fullDayMinutes: 450, breakMinutes: 30, breakAboveMinutes: 300 });
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(EmailService)
-      .useValue({ send: jest.fn(async () => ({ success: true })) })
+      .useValue(email)
       .overrideProvider(BlobStorageService)
       .useValue(createFakeBlobStorage())
       .compile();
@@ -136,7 +156,7 @@ describe('Time and leave batch 2', () => {
   });
 
   it('every new table has forced RLS; frozen feed rows never change', async () => {
-    const tables = ['shifts', 'shift_versions', 'shift_patterns', 'shift_pattern_assignments', 'roster_entries', 'shift_swap_requests', 'night_work_consents', 'night_work_safeguards', 'overtime_rules', 'overtime_requests', 'timesheet_projects', 'timesheets', 'timesheet_lines', 'period_locks', 'payroll_feed_rows', 'leave_eligibility_overrides'];
+    const tables = ['shifts', 'shift_versions', 'shift_patterns', 'shift_pattern_assignments', 'roster_entries', 'shift_swap_requests', 'night_work_consents', 'night_work_opt_ins', 'night_work_safeguards', 'overtime_rules', 'overtime_requests', 'timesheet_projects', 'timesheets', 'timesheet_lines', 'period_locks', 'payroll_feed_rows', 'leave_eligibility_overrides'];
     const rows = await prisma.$queryRaw<{ relname: string; forced: boolean; policy: boolean }[]>`
       SELECT c.relname, c.relforcerowsecurity AS forced, EXISTS (SELECT 1 FROM pg_policies p WHERE p.tablename = c.relname AND p.policyname = 'tenant_isolation') AS policy
       FROM pg_class c WHERE c.relname = ANY(${tables}::text[]) AND c.relkind = 'r'`;
@@ -194,7 +214,15 @@ describe('Time and leave batch 2', () => {
       await api('mgr', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.empEmp, on: d(-1), value: ids.M }] }).expect(400);
       // A woman on a night shift: refused without consent, then without the safeguards, then allowed.
       expect((await api('mgr', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.empEmp, on: d(2), value: ids.N }] }).expect(409)).body.message).toMatch(/No night-work consent/);
-      await api('hrAdmin', 'post', '/time/night/consents').send({ employeeId: ids.empEmp, locationId: ids.locA, givenOn: today, reference: 'Signed form 1' }).expect(201);
+      const recorded = (await api('hrAdmin', 'post', '/time/night/consents').send({ employeeId: ids.empEmp, locationId: ids.locA, givenOn: today, reference: 'Signed form 1' }).expect(201)).body.id as string;
+      // Founder decision 9 Oct 2026: HR's record counts only once the worker confirms it in the app with a one-time code.
+      expect((await api('mgr', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.empEmp, on: d(2), value: ids.N }] }).expect(409)).body.message).toMatch(/has not yet confirmed/);
+      expect((await api('emp', 'get', '/time/me/night-work').expect(200)).body).toMatchObject({ byRecord: true, optedIn: false, consents: [{ id: recorded, confirmedAt: null }] });
+      await api('peer', 'post', `/time/me/night-consents/${recorded}/code`).expect(404);
+      await api('peer', 'post', `/time/me/night-consents/${recorded}/confirm`).send({ code: '123456' }).expect(404);
+      await confirmConsent('emp', recorded);
+      expect((await api('hrAdmin', 'get', '/time/shifts/setup').expect(200)).body.night.consents.find((x: { id: string }) => x.id === recorded).confirmedAt).toBeTruthy();
+      expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'time.night_consent.confirmed', entityId: recorded } }))).toBe(1);
       expect((await api('mgr', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.empEmp, on: d(2), value: ids.N }] }).expect(409)).body.message).toMatch(/Safeguards checklist lapsed/);
       for (const item of ['transport', 'security', 'rest_room', 'group', 'posh']) await api('hrAdmin', 'post', '/time/night/safeguards').send({ locationId: ids.locA, item, attestedOn: today, reviewDue: d(90), note: 'Checked' }).expect(201);
       await api('hrAdmin', 'post', '/time/night/safeguards').send({ locationId: ids.locA, item: 'made_up', attestedOn: today, reviewDue: d(90), note: 'x' }).expect(400);
@@ -276,6 +304,21 @@ describe('Time and leave batch 2', () => {
       await api('hrAdmin', 'post', `/time/overtime/${claim.id}/override`).send({ reason: 'Approved by the plant head for the audit' }).expect(200);
       await api('hrAdmin', 'post', `/time/overtime/${claim.id}/override`).send({ reason: 'Approved by the plant head for the audit' }).expect(409);
       expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'time.ot.overridden' } }))).toBe(1);
+    });
+
+    it('a factory: approved overtime is always paid at the legal rate, never comp-off (founder decision 9 Oct 2026)', async () => {
+      // The location is a factory from today; the person's employment category (permanent) is a worker under P07.
+      await api('adminA', 'put', '/org/settings').send({ key: 'attendance.factories_act', scopeType: 'location', scopeId: ids.locA, value: 'covered', validFrom: today }).expect(200);
+      await work('emp', today, 565, 1110 + 90); // now 90 minutes past the end
+      expect((await api('emp', 'get', '/time/me/overtime').expect(200)).body.open.find((x: { on: string }) => x.on === today)).toMatchObject({ settle: 'pay', factoriesAct: true });
+      // The rule says comp-off; the Act wins: paid, at the legal 2x.
+      const claim = (await api('emp', 'post', '/time/me/overtime').send({ on: today, reason: 'Boiler restart' }).expect(201)).body;
+      expect(claim).toMatchObject({ settle: 'pay', rate: 2, compOffDays: 0 });
+      const t = (await inbox('mgr')).find((x) => x.title.startsWith('emp ') && x.title.includes('overtime'))!;
+      expect(t.summary.find((s) => s.label === 'Settled as')!.value).toBe('Paid in payroll at 2× (Factories Act)');
+      await decide('mgr', t.taskId, 'approve').expect(200);
+      expect(await inA((tx) => tx.leaveLedgerEntry.count({ where: { organizationId: org.A.id, employeeId: ids.empEmp, kind: 'comp_off' } }))).toBe(0);
+      expect((await api('hrAdmin', 'get', `/time/payroll-feed?legalEntityId=${ids.entityA}&month=${today.slice(0, 7)}`).expect(200)).body.rows.find((r: { employeeId: string }) => r.employeeId === ids.empEmp).otNormalMinutes).toBe(60);
     });
   });
 
@@ -376,6 +419,41 @@ describe('Time and leave batch 2', () => {
       await api('emp', 'post', `/time/me/regularise/${fix.id}/withdraw`).expect(200);
       const actions = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: { in: ['time.period.locked', 'time.period.unlocked'] } }, select: { action: true } }));
       expect(actions.map((a) => a.action).sort()).toEqual(['time.period.locked', 'time.period.unlocked']);
+    });
+  });
+
+  describe('night-work protection (founder decisions 9 Oct 2026)', () => {
+    const plan = (on: string) => api('mgr', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.peerEmp, on, value: ids.N }] });
+
+    it('covers people recorded as transgender', async () => {
+      const gender = (g: string) => inA((tx) => tx.employeePersonalDetails.update({ where: { organizationId_employeeId: { organizationId: org.A.id, employeeId: ids.peerEmp } }, data: { gender: g } }));
+      await gender('transgender');
+      expect((await plan(d(20)).expect(409)).body.message).toMatch(/No night-work consent/);
+      await gender('male');
+      await plan(d(20)).expect(200);
+    });
+
+    it('anyone may opt in (audited, HR sees it); only the person turns it off', async () => {
+      expect((await api('peer', 'put', '/time/me/night-work/opt-in').send({ optIn: true }).expect(200)).body).toMatchObject({ byRecord: false, optedIn: true });
+      expect((await api('hrAdmin', 'get', '/time/shifts/setup').expect(200)).body.night.optIns.map((x: { employeeId: string }) => x.employeeId)).toEqual([ids.peerEmp]);
+      expect((await plan(d(21)).expect(409)).body.message).toMatch(/No night-work consent/);
+      // There is no HR path to turn it off: the only route acts on the caller's own record.
+      await api('hrAdmin', 'put', '/time/me/night-work/opt-in').send({ optIn: false }).expect(200);
+      expect((await api('peer', 'get', '/time/me/night-work').expect(200)).body.optedIn).toBe(true);
+      await api('peer', 'put', '/time/me/night-work/opt-in').send({ optIn: false }).expect(200);
+      await plan(d(21)).expect(200);
+      const actions = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, entityId: ids.peerEmp, action: { startsWith: 'time.night_protection.' } }, select: { action: true } }));
+      expect(actions.map((a) => a.action).sort()).toEqual(['time.night_protection.opted_in', 'time.night_protection.opted_out']);
+    });
+
+    it('the worker withdraws a consent in the app, from today; nobody else can', async () => {
+      const id = (await api('hrAdmin', 'post', '/time/night/consents').send({ employeeId: ids.empEmp, locationId: ids.locA, givenOn: today, reference: 'Signed form 2' }).expect(201)).body.id as string;
+      await confirmConsent('emp', id);
+      await api('peer', 'post', `/time/me/night-consents/${id}/withdraw`).expect(404);
+      expect((await api('emp', 'post', `/time/me/night-consents/${id}/withdraw`).expect(200)).body).toMatchObject({ withdrawnOn: today });
+      await api('emp', 'post', `/time/me/night-consents/${id}/withdraw`).expect(409);
+      await api('emp', 'post', `/time/me/night-consents/${id}/code`).expect(409);
+      expect((await api('mgr', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.empEmp, on: d(22), value: ids.N }] }).expect(409)).body.message).toMatch(/No night-work consent/);
     });
   });
 });

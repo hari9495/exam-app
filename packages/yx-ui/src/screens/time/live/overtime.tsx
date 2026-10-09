@@ -16,7 +16,7 @@ import type { LoadState, MyOvertime, OtCategory, OtClaim, OtReview } from './typ
 
 const CATEGORY: Record<OtCategory, string> = { normal: 'Working day', weekly_off: 'Weekly off', holiday: 'Holiday' };
 const STATUS = { pending: { label: 'Waiting for approval', tone: 'info' }, approved: { label: 'Approved', tone: 'success' }, rejected: { label: 'Not approved', tone: 'danger' }, withdrawn: { label: 'Withdrawn', tone: 'neutral' } } as const;
-const settled = (c: Pick<OtClaim, 'settle' | 'compOffDays'>) => (c.settle === 'comp_off' ? `Comp-off ${c.compOffDays} ${c.compOffDays === 1 ? 'day' : 'days'}` : 'Paid in payroll');
+const settled = (c: Pick<OtClaim, 'settle' | 'compOffDays' | 'rate'>) => (c.settle === 'comp_off' ? `Comp-off ${c.compOffDays} ${c.compOffDays === 1 ? 'day' : 'days'}` : `Paid in payroll at ${c.rate}×`);
 
 export interface MyOvertimeScreenProps {
   state: LoadState;
@@ -153,7 +153,7 @@ function ClaimDrawer({ day, onClose, onClaim }: { day: MyOvertime['open'][number
           </div>
           <div className="yx-tim-effect__row">
             <dt>Settled as</dt>
-            <dd>{day.settle === 'comp_off' ? 'Comp-off, added to your leave balance when approved' : 'Paid in payroll'}</dd>
+            <dd>{day.settle === 'comp_off' ? 'Comp-off, added to your leave balance when approved' : day.factoriesAct ? 'Paid in payroll at the legal overtime rate (Factories Act)' : 'Paid in payroll'}</dd>
           </div>
         </dl>
         <FormField id="ot-why" label="What was it for" required error={saveErrors.errorOf('ot-why')}>

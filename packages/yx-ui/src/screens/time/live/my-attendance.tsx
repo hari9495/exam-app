@@ -4,16 +4,18 @@ import { Badge } from '../../../components/display';
 import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
-import { TextArea, TimeField } from '../../../components/inputs';
+import { Switch } from '../../../components/choice';
+import { TextArea, TextField, TimeField } from '../../../components/inputs';
 import { Segment } from '../../../components/segment';
 import { Card } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
-import { DayStatusBadge, LivePage, MODE_TEXT, clock, dayText, duration, timeIn } from './kit';
-import type { DayRow, FixInput, FixKind, LoadState, MyAttendance, PunchResult } from './types';
+import { DayStatusBadge, LivePage, MODE_TEXT, clock, dateText, dayText, duration, timeIn } from './kit';
+import type { DayRow, FixInput, FixKind, LoadState, MyAttendance, MyNightWork, NightCodeSent, PunchResult } from './types';
 
 // Me › Attendance (TIM-07 / TIM-12 on the web): check in and out with the location shown before it counts (YX-AT-23:
 // a refused attempt says why in plain words and is kept), my days this month from the day engine, and fixes
-// (regularisation, Q5) with the monthly allowance.
+// (regularisation, Q5) with the monthly allowance. Night work (founder decisions 9 Oct 2026): opt in to the night-work
+// protection (only the person can turn it off), and confirm or withdraw a consent HR recorded, with a one-time code.
 
 export interface Pin {
   lat: number;
@@ -32,6 +34,12 @@ export interface MyAttendanceScreenProps {
   onPunch: (kind: 'in' | 'out', pin: Pin | null) => Promise<PunchResult>;
   onFix: (input: FixInput) => Promise<unknown>;
   onWithdrawFix: (id: string) => Promise<unknown>;
+  /** Night work: shown when loaded. */
+  night?: MyNightWork | null;
+  onNightOptIn?: (optIn: boolean) => Promise<unknown>;
+  onNightCode?: (consentId: string) => Promise<NightCodeSent>;
+  onNightConfirm?: (consentId: string, code: string) => Promise<unknown>;
+  onNightWithdraw?: (consentId: string) => Promise<unknown>;
 }
 
 const shiftMonth = (month: string, n: number) => {
@@ -67,6 +75,7 @@ export function MyAttendanceScreen(p: MyAttendanceScreenProps) {
             <Days data={d} onFix={setFixing} />
           </Card>
           <Fixes data={d} onWithdraw={p.onWithdrawFix} />
+          {p.night && <NightWork night={p.night} p={p} />}
           {fixing && <FixDrawer on={fixing} data={d} onClose={() => setFixing(null)} onFix={p.onFix} />}
         </>
       )}
@@ -281,5 +290,84 @@ function FixDrawer({ on, data, onClose, onFix }: { on: string; data: MyAttendanc
         </FormField>
       </div>
     </Drawer>
+  );
+}
+
+function NightWork({ night, p }: { night: MyNightWork; p: MyAttendanceScreenProps }) {
+  const { busy, error, run } = useRun();
+  const [sent, setSent] = useState<{ id: string; to: string } | null>(null);
+  const [code, setCode] = useState('');
+  const [withdrawing, setWithdrawing] = useState<string | null>(null);
+  const open = night.consents.filter((x) => !x.withdrawnOn);
+  return (
+    <Card title="Night work">
+      <div className="yx-tim-stack">
+        {night.byRecord ? (
+          <p className="yx-tim-muted">The night-work protection applies to you: you are placed on a shift between 7 pm and 6 am only with your consent, confirmed by you here, and the workplace safeguards in place.</p>
+        ) : (
+          <Switch
+            label="Night-work protection"
+            description="Placed on a shift between 7 pm and 6 am only with your consent, confirmed by you here, and the workplace safeguards in place. HR can see this. Only you can turn it off."
+            checked={night.optedIn}
+            disabled={busy === 'opt' || !p.onNightOptIn}
+            onChange={(on) => void run('opt', () => p.onNightOptIn!(on))}
+          />
+        )}
+        {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+        {night.consents.length > 0 && (
+          <ul className="yx-tim-list" aria-label="My night-work consents">
+            {night.consents.map((x) => (
+              <li key={x.id} className="yx-tim-row">
+                <Badge tone={x.withdrawnOn ? 'neutral' : x.confirmedAt ? 'success' : 'warning'}>{x.withdrawnOn ? 'Withdrawn' : x.confirmedAt ? 'Confirmed' : 'Needs your confirmation'}</Badge>
+                <span className="yx-tim-list__main">
+                  <span>{x.location}</span>
+                  <span className="yx-tim-note">
+                    Given {dateText(x.givenOn)} · {x.reference}
+                    {x.withdrawnOn ? ` · withdrawn from ${dateText(x.withdrawnOn)}` : ''}
+                  </span>
+                </span>
+                {!x.withdrawnOn && !x.confirmedAt && p.onNightCode && (
+                  <Button size="sm" loading={busy === `code-${x.id}`} onClick={() => void run(`code-${x.id}`, async () => setSent({ id: x.id, to: (await p.onNightCode!(x.id)).sentTo }))}>
+                    {sent?.id === x.id ? 'Send a new code' : 'Confirm with a code'}
+                  </Button>
+                )}
+                {!x.withdrawnOn && p.onNightWithdraw && (
+                  <Button size="sm" onClick={() => setWithdrawing(x.id)}>
+                    Withdraw
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {sent && open.some((x) => x.id === sent.id && !x.confirmedAt) && (
+          <div className="yx-tim-row">
+            <FormField id="nw-code" label={`The 6-digit code sent to ${sent.to}`} required>
+              <TextField value={code} onChange={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" />
+            </FormField>
+            <Button variant="primary" disabled={code.length !== 6} loading={busy === 'confirm'} onClick={() => void run('confirm', async () => (await p.onNightConfirm!(sent.id, code), setSent(null), setCode('')))}>
+              Confirm my consent
+            </Button>
+          </div>
+        )}
+      </div>
+      {withdrawing && (
+        <Drawer
+          open
+          onOpenChange={(o) => !o && setWithdrawing(null)}
+          title="Withdraw your night-work consent"
+          footer={
+            <>
+              <Button onClick={() => setWithdrawing(null)}>Cancel</Button>
+              <Button variant="primary" loading={busy === 'withdraw'} onClick={() => void run('withdraw', async () => (await p.onNightWithdraw!(withdrawing), setWithdrawing(null)))}>
+                Withdraw
+              </Button>
+            </>
+          }
+        >
+          <p>From today you are not placed on shifts between 7 pm and 6 am at this workplace. Withdrawing never leads to any action against you.</p>
+        </Drawer>
+      )}
+    </Card>
   );
 }

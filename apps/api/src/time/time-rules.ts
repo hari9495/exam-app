@@ -162,6 +162,16 @@ export function overtimeFor(i: { category: OtCategory; workedMinutes: number; sc
 /** Comp-off for approved OT settled as time off: a full day from `full` minutes, a half day from `half`. */
 export const compOffDays = (minutes: number, half: number, full: number) => (minutes >= full ? 1 : minutes >= half ? 0.5 : 0);
 
+/**
+ * How approved OT is settled (founder decision 9 Oct 2026): where the Factories Act covers the person (the dated setting
+ * attendance.factories_act says "covered" and P07 IN.FACTORIES counts their employment category as workers), OT is
+ * always paid through the payroll feed, at least at the legal rate (P07, 2× ordinary wages, on the verify list); comp-off
+ * is offered only where the Act does not apply. Elsewhere the company's rule decides.
+ */
+export function otSettlement(rule: { settle: 'pay' | 'comp_off'; rate: number }, factoriesAct: { covered: boolean; legalRate: number }): { settle: 'pay' | 'comp_off'; rate: number } {
+  return factoriesAct.covered ? { settle: 'pay', rate: Math.max(rule.rate, factoriesAct.legalRate) } : { settle: rule.settle, rate: rule.rate };
+}
+
 /** The calendar quarter (Jan–Mar …) holding a date, for the P07 quarterly OT cap. */
 export function quarterOf(on: string): { from: string; to: string } {
   const d = DateTime.fromISO(on, { zone: 'utc' });

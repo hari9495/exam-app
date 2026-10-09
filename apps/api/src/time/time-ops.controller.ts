@@ -7,13 +7,15 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
-import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
+import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import {
   ActiveDto,
   ConsentDto,
   EligibilityOverrideDto,
   MonthQueryDto,
+  NightConfirmDto,
+  NightOptInDto,
   OtClaimDto,
   OtRuleDto,
   OverrideDto,
@@ -36,13 +38,15 @@ import {
   YearQueryDto,
 } from './dto';
 import { LeaveService } from './leave.service';
+import { NightWorkService } from './night-work.service';
 import { OvertimeService } from './overtime.service';
 import { PeriodsService } from './periods.service';
 import { RosterService } from './roster.service';
 import { TimesheetService } from './timesheet.service';
 
 // M02 Time and leave, batch 2. Permissions (P02 YX-SEC-01), checked again in the services:
-//   no key (self)                  my shifts and swaps, my overtime claims, my timesheet
+//   no key (self)                  my shifts and swaps, my overtime claims, my timesheet, my night-work protection
+//                                  and consents (opt-in, confirm with a one-time code, withdraw)
 //   implicit (YX-SEC-04)           a manager plans and publishes their team's roster and sees its overtime
 //   roster.manage                  HR plans and publishes rosters of the people in scope
 //   leave.settings.manage          company-wide set-up: shifts, patterns, OT rules, projects, night-work records
@@ -60,6 +64,7 @@ export class TimeOpsController {
     private readonly timesheets: TimesheetService,
     private readonly periods: PeriodsService,
     private readonly leave: LeaveService,
+    private readonly night: NightWorkService,
   ) {}
 
   private user(req: Request) {
@@ -188,6 +193,38 @@ export class TimeOpsController {
   }
 
   // ------------------------------------------------------------------------------------------ me
+
+  // Founder decisions 9 Oct 2026: the night-work opt-in (only the person turns it off) and the worker's own
+  // confirmation (one-time code) and withdrawal of a consent HR recorded.
+  @Get('me/night-work')
+  myNightWork(@CurrentTenant() ctx: TenantContext) {
+    return this.night.me(ctx);
+  }
+
+  @Put('me/night-work/opt-in')
+  nightOptIn(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: NightOptInDto) {
+    return this.night.setOptIn(ctx, this.user(req), dto.optIn);
+  }
+
+  @Post('me/night-consents/:id/code')
+  @HttpCode(200)
+  @Throttle(STRICT_AUTH_THROTTLE)
+  nightCode(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.night.sendCode(ctx, this.user(req), id, req.ip ?? null);
+  }
+
+  @Post('me/night-consents/:id/confirm')
+  @HttpCode(200)
+  @Throttle(STRICT_AUTH_THROTTLE)
+  nightConfirm(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NightConfirmDto) {
+    return this.night.confirm(ctx, this.user(req), id, dto.code);
+  }
+
+  @Post('me/night-consents/:id/withdraw')
+  @HttpCode(200)
+  nightWithdraw(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.night.withdraw(ctx, this.user(req), id);
+  }
 
   @Get('me/shifts')
   myShifts(@CurrentTenant() ctx: TenantContext, @Query() q: WeekQueryDto) {

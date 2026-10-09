@@ -14,9 +14,10 @@ import { TIME_KEYS, Facts, asDate, dateOf, factsOn, holidaysFor, hrApprovers, le
 import { addDays } from './time-maths';
 import { Conflict, ShiftTimes, mondayOf, restConflicts } from './time-rules';
 
-// M02 §B2 shifts, patterns and the roster (Q1 / Q2, YX-AT-07), swaps through P03 (§B4), and the women's night-work
-// law guard (OSH Code, YX-AT-25): no path places a woman on a shift touching the legal night window without her
-// consent on record and the establishment's safeguards in date. Set-up is company configuration (leave.settings.manage
+// M02 §B2 shifts, patterns and the roster (Q1 / Q2, YX-AT-07), swaps through P03 (§B4), and the night-work law guard
+// (OSH Code, YX-AT-25): no path places a protected person (recorded as female or transgender, or opted in: founder
+// decision 9 Oct 2026) on a shift touching the legal night window without their consent on record, confirmed by them
+// in the app with a one-time code, and the establishment's safeguards in date. Set-up is company configuration (leave.settings.manage
 // held company-wide); planning reaches a manager's team (implicit, YX-SEC-04) and roster.manage holders in scope.
 
 export const SHIFT_SWAP = 'time.shift_swap';
@@ -55,7 +56,7 @@ export class RosterService implements OnModuleInit {
       const org = c.organizationId;
       const today = todayIst();
       const book = await ScheduleBook.load(tx, org);
-      const [patterns, assignments, otRules, projects, consents, safeguards, locations, departments, entities, people, users, types] = await Promise.all([
+      const [patterns, assignments, otRules, projects, consents, safeguards, locations, departments, entities, people, users, types, optIns] = await Promise.all([
         tx.shiftPattern.findMany({ where: { organizationId: org }, orderBy: { name: 'asc' } }),
         tx.shiftPatternAssignment.findMany({ where: { organizationId: org }, orderBy: { validFrom: 'desc' } }),
         tx.overtimeRule.findMany({ where: { organizationId: org }, orderBy: { validFrom: 'desc' } }),
@@ -71,6 +72,7 @@ export class RosterService implements OnModuleInit {
           WHERE e.organization_id = ${org}::uuid ORDER BY 2 LIMIT 1000`,
         tx.user.findMany({ where: { organizationId: org, status: 'active' }, orderBy: { name: 'asc' }, select: { id: true, name: true, email: true }, take: 500 }),
         tx.leaveType.findMany({ where: { organizationId: org, kind: 'comp_off', active: true }, select: { id: true } }),
+        tx.nightWorkOptIn.findMany({ where: { organizationId: org }, orderBy: { since: 'desc' } }),
       ]);
       const scopes = await this.setup.scopeNames(tx, org, [...assignments, ...otRules].map((a) => ({ type: a.scopeType, id: a.scopeId })));
       const scopeName = (t: string, id: string) => (t === 'tenant' ? 'Whole company' : (scopes.get(id) ?? ''));
@@ -105,7 +107,7 @@ export class RosterService implements OnModuleInit {
         })),
         otRules: otRules.map((r) => ({ id: r.id, name: r.name, scopeType: r.scopeType, scopeId: r.scopeId, scopeName: scopeName(r.scopeType, r.scopeId), validFrom: dateOf(r.validFrom), minMinutes: r.minMinutes, roundMinutes: r.roundMinutes, dailyCapMinutes: r.dailyCapMinutes, rateNormal: Number(r.rateNormal), rateWeeklyOff: Number(r.rateWeeklyOff), rateHoliday: Number(r.rateHoliday), needsApproval: r.needsApproval, settle: r.settle, compOffHalfMinutes: r.compOffHalfMinutes, compOffFullMinutes: r.compOffFullMinutes, removable: dateOf(r.validFrom) > today })),
         projects: projects.map((p) => ({ id: p.id, code: p.code, name: p.name, managerUserId: p.managerUserId, managerName: users.find((u) => u.id === p.managerUserId)?.name ?? null, billable: p.billable, activities: p.activities, active: p.active })),
-        night: { locations: night, consents: consents.map((x) => ({ id: x.id, employeeId: x.employeeId, name: names.get(x.employeeId) ?? '', locationId: x.locationId, location: locName.get(x.locationId) ?? '', givenOn: dateOf(x.givenOn), withdrawnOn: x.withdrawnOn ? dateOf(x.withdrawnOn) : null, reference: x.reference })) },
+        night: { locations: night, consents: consents.map((x) => ({ id: x.id, employeeId: x.employeeId, name: names.get(x.employeeId) ?? '', locationId: x.locationId, location: locName.get(x.locationId) ?? '', givenOn: dateOf(x.givenOn), withdrawnOn: x.withdrawnOn ? dateOf(x.withdrawnOn) : null, reference: x.reference, confirmedAt: x.confirmedAt })), optIns: optIns.map((x) => ({ employeeId: x.employeeId, name: names.get(x.employeeId) ?? '', since: x.since })) },
         hasCompOffType: types.length > 0,
         locations,
         departments,
@@ -242,8 +244,9 @@ export class RosterService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ night work (YX-AT-25 / 26)
 
-  // DECISION NEEDED: the Code wants written consent; until P05 e-sign exists HR records it with the signed form's
-  // reference. Should the worker also confirm it in the app (OTP acknowledgement)?
+  // The Code wants written consent: HR records it with the signed form's reference (until P05 e-sign exists), and it
+  // counts only once the worker confirms it in the app with a one-time code (founder decision 9 Oct 2026,
+  // NightWorkService); the worker may also withdraw it there.
   addConsent(ctx: TenantContext, user: ScopeUser, dto: ConsentDto) {
     return this.setup.run(ctx, user, true, async (tx, c) => {
       const org = c.organizationId;

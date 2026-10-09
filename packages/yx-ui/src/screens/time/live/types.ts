@@ -359,7 +359,9 @@ export interface ShiftSetup {
   projects: ProjectRow[];
   night: {
     locations: { locationId: string; name: string; window: { start: number; end: number }; items: { item: string; label: string; attestedOn: string | null; reviewDue: string | null; note: string | null; ok: boolean }[] }[];
-    consents: { id: string; employeeId: string; name: string; locationId: string; location: string; givenOn: string; withdrawnOn: string | null; reference: string }[];
+    consents: { id: string; employeeId: string; name: string; locationId: string; location: string; givenOn: string; withdrawnOn: string | null; reference: string; confirmedAt?: string | null }[];
+    /** People who opted in to the night-work protection themselves (only they can turn it off). */
+    optIns?: { employeeId: string; name: string; since: string }[];
   };
   hasCompOffType: boolean;
   locations: { id: string; name: string; state: string }[];
@@ -405,10 +407,23 @@ export interface OtClaim {
   code?: string | null;
   canOverride?: boolean;
 }
+/** Me › Attendance › Night work (founder decisions 9 Oct 2026). */
+export interface MyNightWork {
+  /** Covered because of the recorded gender (female or transgender). */
+  byRecord: boolean;
+  optedIn: boolean;
+  optedInSince: string | null;
+  consents: { id: string; location: string; givenOn: string; withdrawnOn: string | null; reference: string; confirmedAt: string | null }[];
+}
+export interface NightCodeSent {
+  sentTo: string;
+  expiresInSeconds: number;
+  resendAfterSeconds: number;
+}
 export interface MyOvertime {
   today: string;
   claims: OtClaim[];
-  open: { on: string; category: OtCategory; workedMinutes: number; scheduledMinutes: number; eligibleMinutes: number; payableMinutes: number; overCapMinutes: number; settle: 'pay' | 'comp_off'; needsApproval: boolean }[];
+  open: { on: string; category: OtCategory; workedMinutes: number; scheduledMinutes: number; eligibleMinutes: number; payableMinutes: number; overCapMinutes: number; settle: 'pay' | 'comp_off'; factoriesAct?: boolean; needsApproval: boolean }[];
 }
 export interface OtReview {
   month: string;

@@ -14,10 +14,12 @@ import { addDays, instantAt } from '../src/time/time-maths';
 //   - the Hosur plant (Tamil Nadu) runs three shifts: Morning 6–2, Afternoon 2–10 and Night 10 pm–6 am, on a 21-day
 //     rotation (six days on each shift, a weekly off between) with crews A / B / C; five plant workers under Kavya Reddy
 //     (production supervisor, now signing in as kavya@demo-org.test); Murugan signs in as murugan@demo-org.test;
-//   - Revathi (crew C, nights) has night-work consent on file and the plant's safeguards are attested (OSH Code guard);
-//     Selvi works the general day shift (no consent: the guard keeps her off nights);
-//   - the plant OT rule (from 1 Jan 2026): 30 minutes minimum, 15-minute steps, settled as comp-off; one approved claim
-//     last month and an open day this month Murugan can claim;
+//   - Revathi (crew C, nights) has night-work consent on file, confirmed by her in the app, and the plant's safeguards
+//     are attested (OSH Code guard); Selvi works the general day shift (no consent: the guard keeps her off nights);
+//   - the Hosur plant is a factory (attendance.factories_act "covered" from 1 Jan 2026), so its plant workers' overtime
+//     is paid at the legal 2× through the payroll feed, never comp-off (founder decision 9 Oct 2026); the plant OT rule:
+//     30 minutes minimum, 15-minute steps, paid; one approved claim last month and an open day this month Murugan can
+//     claim;
 //   - a timesheet project (FSSAI audit readiness, approved by Divya) with Kiran in Timesheet mode (kiran@demo-org.test);
 //   - 100 days of plant punches (so Revathi passes the 80-day maternity check, Selvi does not), and the previous month
 //     locked for Kaveri Foods TN with its frozen payroll feed and registers to export.
@@ -121,7 +123,7 @@ export async function seedTimeB2(tx: Tx, organizationId: string, passwordHash: s
   await assign(general.id, workers.selvi, 0);
 
   // ---- the women's night-work records (OSH Code s.43, YX-AT-25 / 26) ----
-  await tx.nightWorkConsent.create({ data: { ...org, employeeId: workers.revathi, locationId: hosur.id, givenOn: day(addDays(start, -1)), reference: 'Signed consent form HSR/NW/2026/014, kept by Plant HR', recordedBy: hr } });
+  await tx.nightWorkConsent.create({ data: { ...org, employeeId: workers.revathi, locationId: hosur.id, givenOn: day(addDays(start, -1)), reference: 'Signed consent form HSR/NW/2026/014, kept by Plant HR', recordedBy: hr, confirmedAt: day(addDays(start, -1)) } });
   for (const item of ['transport', 'security', 'rest_room', 'group', 'posh']) await tx.nightWorkSafeguard.create({ data: { ...org, locationId: hosur.id, item, attestedOn: day(addDays(start, -1)), reviewDue: day(addDays(today, 180)), note: 'Checked on the plant walk-round with the safety officer', attestedBy: hr } });
 
   // ---- maternity and paternity eligibility by the policy (founder decision 9 Oct 2026) ----
@@ -130,10 +132,10 @@ export async function seedTimeB2(tx: Tx, organizationId: string, passwordHash: s
     if (t) await tx.leaveType.update({ where: { id: t.id }, data: { rules: { ...DEFAULT_RULES, ...(t.rules as object), eligibleGenders: genders } as Prisma.InputJsonValue } });
   }
 
-  // ---- OT rule for plant workers (Q7): settled as comp-off ----
-  // DECISION NEEDED: for factory workers the law pays overtime at twice the wage; comp-off instead of OT pay is the
-  // brief's demo flow. Confirm with the compliance adviser before a real plant uses settle = comp-off.
-  await tx.overtimeRule.create({ data: { ...org, name: 'Hosur plant overtime', scopeType: 'location', scopeId: hosur.id, validFrom: day(from), minMinutes: 30, roundMinutes: 15, dailyCapMinutes: 240, rateNormal: 2, rateWeeklyOff: 2, rateHoliday: 2, needsApproval: true, settle: 'comp_off', compOffHalfMinutes: 60, compOffFullMinutes: 240, createdBy: hr } });
+  // ---- OT rule for plant workers (Q7): the plant is a factory, so overtime is paid at the legal rate ----
+  // Founder decision 9 Oct 2026: factory overtime is paid, not comp-off (P07 IN.FACTORIES, 2× ordinary wages, verify).
+  await tx.setting.create({ data: { ...org, scopeType: 'location', scopeId: hosur.id, key: 'attendance.factories_act', value: 'covered', validFrom: day(from) } });
+  await tx.overtimeRule.create({ data: { ...org, name: 'Hosur plant overtime', scopeType: 'location', scopeId: hosur.id, validFrom: day(from), minMinutes: 30, roundMinutes: 15, dailyCapMinutes: 240, rateNormal: 2, rateWeeklyOff: 2, rateHoliday: 2, needsApproval: true, settle: 'pay', compOffHalfMinutes: 60, compOffFullMinutes: 240, createdBy: hr } });
 
   // ---- a timesheet project, and Timesheet mode for probationers (D1) ----
   await tx.timesheetProject.create({ data: { ...org, code: 'FSSAI-AUDIT', name: 'FSSAI audit readiness', managerUserId: divyaUser, billable: false, activities: ['Documentation', 'Line checks', 'Training'], createdBy: hr } });
@@ -171,7 +173,7 @@ export async function seedTimeB2(tx: Tx, organizationId: string, passwordHash: s
   await tx.punch.createMany({ data: rows });
   for (const emp of [...Object.values(workers), kavya]) await days.evaluate(tx, c, emp, first, today, new Date(), book);
 
-  // ---- overtime: one claim last month approved by Kavya (comp-off credited), this month left for Murugan ----
+  // ---- overtime: one claim last month approved by Kavya (paid through the payroll feed), this month left for Murugan ----
   const tenant = { forTenant: (_c: unknown, fn: (t: Tx) => unknown) => fn(tx) } as unknown as TenantPrismaService;
   const ot = new OvertimeService(null as never, tenant, engine, null as never);
   ot.onModuleInit();

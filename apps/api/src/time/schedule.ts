@@ -92,7 +92,7 @@ export class ScheduleBook {
   /** Q1: what the person works on a date (`roster` false: ignoring the roster, i.e. the pattern or location). */
   async day(f: Facts, on: string, roster = true): Promise<Scheduled & { guarded?: string }> {
     const d = resolveDay({ roster: roster ? await this.rosterOf(f.employeeId, on) : null, pattern: this.patternOn(f, on)?.cell, location: await this.locationDay(f, on), shiftOn: (id) => this.shiftOn(id, on) });
-    // YX-AT-25 at the point of use: a pattern or an older publication never puts a woman at night once her consent
+    // YX-AT-25 at the point of use: a pattern or an older publication never puts a protected person at night once their consent
     // is withdrawn or a safeguard lapsed; the day falls back to the location's shift and the planner sees why.
     // ponytail: the location's own default shift is assumed to be a day shift.
     const why = d.shift && d.source !== 'location' ? await this.guarded(f, on, d.shift) : null;
@@ -102,14 +102,14 @@ export class ScheduleBook {
   }
 
   private readonly osh = new Map<string, Promise<{ nightWindow: { start: number; end: number } }>>();
-  private readonly gender = new Map<string, Promise<string | null>>();
+  private readonly covered = new Map<string, Promise<boolean>>();
 
   /** The night-work guard with the cheap checks cached (most shifts and most people never reach the queries). */
   private async guarded(f: Facts, on: string, shift: ShiftTimes): Promise<string | null> {
     if (!this.osh.has(f.state)) this.osh.set(f.state, oshOn(this.tx, f.state, on));
     if (!overlapsNight(shift, (await this.osh.get(f.state)!).nightWindow)) return null;
-    if (!this.gender.has(f.employeeId)) this.gender.set(f.employeeId, this.tx.employeePersonalDetails.findFirst({ where: { organizationId: this.org, employeeId: f.employeeId }, select: { gender: true } }).then((x) => x?.gender ?? null));
-    if ((await this.gender.get(f.employeeId)!) !== 'female') return null;
+    if (!this.covered.has(f.employeeId)) this.covered.set(f.employeeId, nightProtected(this.tx, this.org, f.employeeId));
+    if (!(await this.covered.get(f.employeeId)!)) return null;
     return nightGuard(this.tx, this.org, f, on, shift);
   }
 }
@@ -129,22 +129,25 @@ export async function lockedDates(tx: Tx, org: string, employeeId: string, from:
 
 /**
  * Refuses a change touching a locked month, in plain words (YX-LOCK-02: after the lock only HR corrections).
- * DECISION NEEDED: P08 Q4 late requests (an extra HR step, effect in the next payroll, a maximum lateness) need
- * payroll (step 5) to carry the effect; until then a locked month refuses employee requests and HR unlocks to correct.
+ * Founder decision 9 Oct 2026: late corrections on a locked month are refused; HR unlocks the month to correct. (P08 Q4
+ * late requests with their effect in the next payroll wait for payroll, step 5.)
  */
 export async function assertOpen(tx: Tx, org: string, employeeId: string, from: string, to: string = from): Promise<void> {
   const locked = [...(await lockedDates(tx, org, employeeId, from, to))].sort();
   if (locked.length) throw new ConflictException({ statusCode: 409, code: 'PERIOD_LOCKED', message: `${monthName(locked[0])} is locked for attendance and leave, so this can't change any more. Ask HR to record a correction.` });
 }
 
-// ------------------------------------------------------------------------------------------ women's night work (YX-AT-25)
+// ------------------------------------------------------------------------------------------ night-work protection (YX-AT-25)
 
 interface OshValues {
   nightWindow: { start: number; end: number };
   safeguards: { item: string; label: string }[];
 }
 
-/** P07 IN.OSH for the state on a date (the state's own rule set, else the national one). */
+/**
+ * P07 IN.OSH for the state on a date (the state's own rule set, else the national one). The 7 pm–6 am window is P07
+ * data on the compliance verify list (founder decision 9 Oct 2026).
+ */
 export async function oshOn(tx: Tx, state: string, on: string): Promise<OshValues & { source: string; verify: boolean }> {
   const rows = await tx.statutoryRuleSet.findMany({ where: { statute: 'IN.OSH', jurisdiction: { in: [state, 'IN'] }, validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }] }, orderBy: { validFrom: 'desc' } });
   const rs = rows.find((r) => r.jurisdiction === state) ?? rows[0];
@@ -153,19 +156,32 @@ export async function oshOn(tx: Tx, state: string, on: string): Promise<OshValue
 }
 
 /**
- * The law guard: a woman may be placed on a shift touching the legal night window only with her consent on record for
- * that establishment and date and every safeguard attested and in date. No switch, no override. Null when allowed.
+ * Who the night-work protection covers (founder decision 9 Oct 2026): people recorded as female or transgender, and
+ * anyone who opted in to it themselves (Me › Attendance; only they can turn it off).
+ */
+export const NIGHT_PROTECTED_GENDERS = ['female', 'transgender'];
+
+export async function nightProtected(tx: Tx, org: string, employeeId: string): Promise<boolean> {
+  const [pd, optIn] = await Promise.all([
+    tx.employeePersonalDetails.findFirst({ where: { organizationId: org, employeeId }, select: { gender: true } }),
+    tx.nightWorkOptIn.findUnique({ where: { organizationId_employeeId: { organizationId: org, employeeId } } }),
+  ]);
+  return Boolean(optIn) || NIGHT_PROTECTED_GENDERS.includes(pd?.gender ?? '');
+}
+
+/**
+ * The law guard: a protected person (above) may be placed on a shift touching the legal night window only with their
+ * consent on record for that establishment and date, confirmed by them in the app with a one-time code (founder
+ * decision 9 Oct 2026), and every safeguard attested and in date. No switch, no override. Null when allowed.
  */
 export async function nightGuard(tx: Tx, org: string, f: Pick<Facts, 'employeeId' | 'locationId' | 'state' | 'name'>, on: string, shift: ShiftTimes | null): Promise<string | null> {
   if (!shift) return null;
   const osh = await oshOn(tx, f.state, on);
   if (!overlapsNight(shift, osh.nightWindow)) return null;
-  const pd = await tx.employeePersonalDetails.findFirst({ where: { organizationId: org, employeeId: f.employeeId }, select: { gender: true } });
-  // DECISION NEEDED: the Code says "woman"; the guard applies to people recorded as female. Whether it also covers
-  // other recorded genders (transgender, non-binary) is for the founder and legal counsel.
-  if (pd?.gender !== 'female') return null;
-  const consent = await tx.nightWorkConsent.findFirst({ where: { organizationId: org, employeeId: f.employeeId, locationId: f.locationId, givenOn: { lte: asDate(on) }, OR: [{ withdrawnOn: null }, { withdrawnOn: { gt: asDate(on) } }] } });
-  if (!consent) return `No night-work consent on file for ${f.name}`;
+  if (!(await nightProtected(tx, org, f.employeeId))) return null;
+  const consents = await tx.nightWorkConsent.findMany({ where: { organizationId: org, employeeId: f.employeeId, locationId: f.locationId, givenOn: { lte: asDate(on) }, OR: [{ withdrawnOn: null }, { withdrawnOn: { gt: asDate(on) } }] } });
+  if (!consents.length) return `No night-work consent on file for ${f.name}`;
+  if (!consents.some((x) => x.confirmedAt)) return `${f.name} has not yet confirmed the night-work consent in the app`;
   for (const s of osh.safeguards) {
     const a = await tx.nightWorkSafeguard.findFirst({ where: { organizationId: org, locationId: f.locationId, item: s.item, attestedOn: { lte: asDate(on) } }, orderBy: { attestedOn: 'desc' } });
     if (!a || dateOf(a.reviewDue) < on) return `Safeguards checklist lapsed: ${s.label.toLowerCase()}`;
