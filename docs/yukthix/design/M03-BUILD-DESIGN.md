@@ -1177,7 +1177,17 @@ The coordinator owns the tracker; these are proposals only.
 
 ---
 
-## 19. Open decisions
+## 19. Decisions (founder, 9 Oct 2026)
+
+All five recommendations below were accepted on 9 Oct 2026:
+1. **Bank files:** the generic format plus the pilot customer's bank first; more banks by demand.
+2. **States with full golden tests and CA sign-off:** Karnataka, Tamil Nadu, Maharashtra, Telangana, Delhi.
+3. **Filing:** the pilot customer self-files from our outputs; the filing-partner adapter ships before public launch.
+4. **DSC key:** a USB-token signing helper for the pilot; a key held in our HSM later.
+5. **Pay amounts at rest:** plain columns behind the two database guards (forced RLS + the pay guard), not per-field encryption; identifiers stay encrypted.
+
+The options that were weighed are kept below for the record.
+
 
 Only things **not** already decided. Each has options and a plain recommendation.
 
