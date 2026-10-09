@@ -12,6 +12,7 @@ import { seedServiceDeskChannels } from './seed-service-desk-channels';
 import { seedServiceDeskKnowledge, seedYukthixSupport } from './seed-service-desk-knowledge';
 import { seedServiceDeskEsm } from './seed-service-desk-esm';
 import { seedServiceDeskEsm2 } from './seed-service-desk-esm2';
+import { seedServiceDeskEsm3 } from './seed-service-desk-esm3';
 import { TIME_PERMISSIONS, seedTime } from './seed-time';
 import { seedTimeB2 } from './seed-time-b2';
 import { PAY_PERMISSIONS, seedAuditAnchor, seedPay, seedPay5b } from './seed-pay';
@@ -370,6 +371,7 @@ async function main() {
       // (seed-service-desk-esm.ts); Arjun Kulkarni signs in as arjun@demo-org.test.
       await seedServiceDeskEsm(tx, demoOrg.id);
       await seedServiceDeskEsm2(tx, demoOrg.id);
+      await seedServiceDeskEsm3(tx, demoOrg.id);
       // Step 4 time and leave batch 1: holiday calendars, leave types and policies with Karnataka / Tamil Nadu floors,
       // balances, pending requests through P03 and a week of punches (seed-time.ts).
       await seedTime(tx, demoOrg.id);

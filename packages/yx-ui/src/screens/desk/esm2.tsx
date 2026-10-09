@@ -234,14 +234,35 @@ function SequencesCard(p: TicketEsmRailProps) {
 
 // ---------------------------------------------------------------------------------------------- the requester signs
 
-export function MyDocumentsCard({ documents, onSign, onDecline }: { documents: RequestDocument[]; onSign: (doc: RequestDocument, typedName: string) => Promise<unknown>; onDecline: (doc: RequestDocument, reason: string) => Promise<unknown> }) {
+/**
+ * The person's documents to sign. Founder decision 9 Oct 2026: signing also needs a one-time code, sent to the person's
+ * sign-in email when they ask for it (P05). Nothing is checked while typing; the buttons say what is still missing.
+ */
+export function MyDocumentsCard({
+  documents,
+  onSendCode,
+  onSign,
+  onDecline,
+}: {
+  documents: RequestDocument[];
+  onSendCode: (doc: RequestDocument) => Promise<{ to: string; minutes: number }>;
+  onSign: (doc: RequestDocument, typedName: string, code: string) => Promise<unknown>;
+  onDecline: (doc: RequestDocument, reason: string) => Promise<unknown>;
+}) {
   const [open, setOpen] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [agree, setAgree] = useState(false);
   const [reason, setReason] = useState('');
+  const [code, setCode] = useState('');
+  const [sent, setSent] = useState<{ to: string; minutes: number } | null>(null);
   const [mode, setMode] = useState<'sign' | 'decline'>('sign');
   const { busy, error, run } = useRun();
   if (!documents.length) return null;
+  const close = () => {
+    setOpen(null);
+    setSent(null);
+    setCode('');
+  };
   return (
     <Card title="Documents">
       <ul className="yx-esm-runs">
@@ -268,6 +289,16 @@ export function MyDocumentsCard({ documents, onSign, onDecline }: { documents: R
                       <TextField value={name} onChange={setName} maxLength={150} />
                     </FormField>
                     <Checkbox checked={agree} onChange={setAgree} label="I have read this document and I sign it." />
+                    {sent ? (
+                      <>
+                        <InlineAlert tone="info">{`We sent a 6-digit code to ${sent.to}. It works for ${sent.minutes} minutes.`}</InlineAlert>
+                        <FormField label="6-digit code" required helper="From the email we just sent you.">
+                          <TextField value={code} onChange={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))} maxLength={6} />
+                        </FormField>
+                      </>
+                    ) : (
+                      <p className="yx-chat__meta">To sign, we first send a one-time code to your email.</p>
+                    )}
                   </>
                 ) : (
                   <FormField label="Why not?" required>
@@ -276,20 +307,31 @@ export function MyDocumentsCard({ documents, onSign, onDecline }: { documents: R
                 )}
                 <Problem error={error} />
                 <div className="yx-ops-row">
-                  <Button
-                    variant={mode === 'sign' ? 'primary' : 'danger'}
-                    disabled={mode === 'sign' ? !agree || !name.trim() : !reason.trim()}
-                    loading={busy === d.id}
-                    onClick={() =>
-                      void run(d.id, async () => {
-                        await (mode === 'sign' ? onSign(d, name.trim()) : onDecline(d, reason.trim()));
-                        setOpen(null);
-                      })
-                    }
-                  >
-                    {mode === 'sign' ? 'Sign' : 'Send my answer'}
-                  </Button>
-                  <Button onClick={() => setOpen(null)}>Cancel</Button>
+                  {mode === 'sign' && !sent ? (
+                    <Button variant="primary" disabled={!agree || !name.trim()} loading={busy === `code-${d.id}`} onClick={() => void run(`code-${d.id}`, async () => setSent(await onSendCode(d)))}>
+                      Send me a code
+                    </Button>
+                  ) : (
+                    <Button
+                      variant={mode === 'sign' ? 'primary' : 'danger'}
+                      disabled={mode === 'sign' ? !agree || !name.trim() || code.length !== 6 : !reason.trim()}
+                      loading={busy === d.id}
+                      onClick={() =>
+                        void run(d.id, async () => {
+                          await (mode === 'sign' ? onSign(d, name.trim(), code) : onDecline(d, reason.trim()));
+                          close();
+                        })
+                      }
+                    >
+                      {mode === 'sign' ? 'Sign' : 'Send my answer'}
+                    </Button>
+                  )}
+                  {mode === 'sign' && sent && (
+                    <Button loading={busy === `code-${d.id}`} onClick={() => void run(`code-${d.id}`, async () => setSent(await onSendCode(d)))}>
+                      Send a new code
+                    </Button>
+                  )}
+                  <Button onClick={close}>Cancel</Button>
                 </div>
               </div>
             )}
@@ -883,7 +925,8 @@ export interface DeskOrgAdminProps {
   docFields: { key: string; label: string }[];
   onForwardTo: (deskIds: string[]) => Promise<unknown>;
   onClone: (input: { name: string; key: string }) => Promise<unknown>;
-  onStarterPack: () => Promise<{ items: number; sla: boolean }>;
+  /** restrict: the admin's answer when an existing HR desk would become restricted (asked first, 9 Oct 2026). */
+  onStarterPack: (restrict?: boolean) => Promise<{ items: number; sla: boolean; restricted?: boolean }>;
   onAddBranch: (input: { locationId: string; groupId?: string }) => Promise<unknown>;
   onSaveTemplate: (t: DocTemplate | null, input: { name: string; body: string; needsSignature: boolean }) => Promise<unknown>;
   journeys?: { setup: JourneySetup | null | undefined; onSave: (input: { kind: 'join' | 'exit'; name: string; itemIds: string[] }) => Promise<unknown> } | null;
@@ -899,11 +942,30 @@ export function DeskOrgAdmin(p: DeskOrgAdminProps) {
   const [tplBody, setTplBody] = useState('');
   const [tplSign, setTplSign] = useState<'yes' | 'no'>('yes');
   const [packDone, setPackDone] = useState<string | null>(null);
+  const [packAsk, setPackAsk] = useState<string[] | null>(null);
   const [jKind, setJKind] = useState<'join' | 'exit'>('join');
   const [jName, setJName] = useState('');
   const [jItems, setJItems] = useState<string[]>([]);
   const { busy, error, run } = useRun();
   useEffect(() => setForward(p.forwardTo), [p.forwardTo.join(',')]);
+  /** The HR pack on an existing standard desk answers CONFIRM_RESTRICT first, with what changes; the admin chooses. */
+  const addPack = async (restrict: boolean | undefined) => {
+    try {
+      const r = await p.onStarterPack(restrict);
+      setPackAsk(null);
+      const what = r.items || r.sla ? `Added ${r.items} catalogue item${r.items === 1 ? '' : 's'}${r.sla ? ' and response targets' : ''}.` : 'Nothing was missing.';
+      setPackDone(restrict ? `${what} The desk is restricted now.` : what);
+    } catch (e) {
+      const err = e as Error & { code?: string; body?: { changes?: string[] } };
+      if (err.code === 'CONFIRM_RESTRICT' && err.body?.changes) {
+        setPackDone(null);
+        setPackAsk(err.body.changes);
+        return;
+      }
+      throw e;
+    }
+  };
+
   return (
     <div className="yx-ops-stack">
       <Problem error={error} />
@@ -911,13 +973,31 @@ export function DeskOrgAdmin(p: DeskOrgAdminProps) {
         <div className="yx-ops-stack" data-gap="sm">
           <p className="yx-chat__meta">Ready catalogue items, response targets and (for HR) private sensitive categories for this kind of desk. Only what is missing is added.</p>
           {packDone && <InlineAlert tone="success">{packDone}</InlineAlert>}
+          {packAsk ? (
+            <InlineAlert tone="warning" title="This makes the desk restricted">
+              <ul className="yx-esm-changes">
+                {packAsk.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            </InlineAlert>
+          ) : null}
           <div className="yx-ops-row">
-            <Button loading={busy === 'pack'} onClick={() => void run('pack', async () => {
-              const r = await p.onStarterPack();
-              setPackDone(r.items || r.sla ? `Added ${r.items} catalogue item${r.items === 1 ? '' : 's'}${r.sla ? ' and response targets' : ''}.` : 'Nothing was missing.');
-            })}>
-              Add the starter pack
-            </Button>
+            {packAsk ? (
+              <>
+                <Button variant="primary" loading={busy === 'pack-yes'} onClick={() => void run('pack-yes', () => addPack(true))}>
+                  Make it restricted and add the pack
+                </Button>
+                <Button loading={busy === 'pack-no'} onClick={() => void run('pack-no', () => addPack(false))}>
+                  Add the pack, keep it as it is
+                </Button>
+                <Button onClick={() => setPackAsk(null)}>Cancel</Button>
+              </>
+            ) : (
+              <Button loading={busy === 'pack'} onClick={() => void run('pack', () => addPack(undefined))}>
+                Add the starter pack
+              </Button>
+            )}
           </div>
         </div>
       </Card>

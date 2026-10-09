@@ -8,6 +8,7 @@ import { InternalAppModule } from './internal-app.module';
 import { resolveInternalBindHost } from './bootstrap-config';
 import { mountSmsCallbackBody } from './sms-channel/sms-channel.controller';
 import { mountInboundMailBody } from './service-desk/channels.controller';
+import { mountInboundMsgBody } from './service-desk/esm3.controller';
 import { companyOriginPattern } from './auth/company-scope';
 import { ChatIoAdapter } from './service-desk/chat-io.adapter';
 
@@ -28,6 +29,7 @@ async function bootstrap() {
   mountSmsCallbackBody(app);
   // Service Desk inbound mail: raw MIME, HMAC-verified over its exact bytes (M14 §9.1).
   mountInboundMailBody(app);
+  mountInboundMsgBody(app);
   app.use(json({ limit: JSON_BODY_LIMIT }));
   app.use(urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
   app.use(cookieParser());

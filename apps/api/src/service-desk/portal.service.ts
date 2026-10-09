@@ -325,6 +325,25 @@ export class PortalService {
     });
   }
 
+  /**
+   * SD-2.20: a help-widget user the company's own server vouched for (a signed token). They become (or are) an outside
+   * contact and get a portal session; colleagues never do (they sign in to YukthiX), and a turned-off contact stays out.
+   */
+  async vouchedSession(org: string, portalId: string, email: string, name: string, ip: string | null, widgetId: string) {
+    return this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, async (tx) => {
+      const person = await tx.person.findFirst({ where: { organizationId: org, status: 'active', primaryEmail: email }, select: { id: true } });
+      if (person && (await isInternal(tx, org, person.id))) throw new UnauthorizedException('This person signs in to YukthiX itself.');
+      const contacts = person ? await tx.sdCustomerContact.findMany({ where: { organizationId: org, personId: person.id }, select: { status: true } }) : [];
+      if (contacts.length && contacts.every((c) => c.status !== 'active')) throw new UnauthorizedException('This contact cannot sign in.');
+      // Founder decision 9 Oct 2026: the help page's own sign-up rule holds here too. When it is closed (or the email's
+      // domain is not allowed), only a known contact gets in and nobody new is made.
+      const portal = await tx.sdPortal.findFirstOrThrow({ where: { organizationId: org, id: portalId } });
+      if (!(await this.eligible(tx, org, portal, email)).ok) throw new ForbiddenException({ statusCode: 403, code: 'WIDGET_SIGN_UP_CLOSED', message: 'This help is only for existing customers. Ask the company to add you as a contact.' });
+      const personId = (await ensureContact(tx, org, email, name, null)).personId;
+      return this.startSession(tx, org, portalId, personId, ip, `widget:${widgetId}`);
+    });
+  }
+
   private async startSession(tx: Tx, org: string, portalId: string, personId: string, ip: string | null, how: string) {
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + SESSION_HOURS * 3_600_000);
