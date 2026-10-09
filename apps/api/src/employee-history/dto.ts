@@ -17,7 +17,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { CHANGE_TYPES, ChangeType, EMPLOYMENT_STATUSES, EmploymentStatus } from './history-rules';
+import { CHANGE_TYPES, ChangeType, EMPLOYMENT_STATUSES, EmploymentStatus, SKILL_CLASSES, SkillClass } from './history-rules';
 
 // Request bodies for the employee core and P06 changes. Every field is whitelisted (the global pipe
 // refuses anything else); amounts and percentages are decimal strings so no float ever touches pay.
@@ -53,6 +53,11 @@ export class AssignmentPayloadDto {
   @Nullable()
   @IsUUID()
   gradeId?: string | null;
+
+  /** 5c-D2: the minimum-wage skill class of the job. */
+  @Nullable()
+  @IsIn(SKILL_CLASSES)
+  skillClass?: SkillClass | null;
 
   @IsOptional()
   @IsUUID()

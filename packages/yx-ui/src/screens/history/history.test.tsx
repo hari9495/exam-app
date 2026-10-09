@@ -49,6 +49,11 @@ function Changes(over: Partial<JobChangesScreenProps>) {
 }
 
 describe('changeInput (P06 §4.3, YX-HIS-12, R1)', () => {
+  it('5c-D2: a promotion or a correction can set the skill class (a dated job fact)', () => {
+    expect(changeInput(draft({ values: { skillClass: 'skilled' } }), OPTIONS).input?.payload).toEqual({ assignment: { skillClass: 'skilled' } });
+    expect(changeInput(draft({ changeType: 'correction', values: { skillClass: 'highly_skilled' } }), OPTIONS).input?.payload).toEqual({ assignment: { skillClass: 'highly_skilled' } });
+  });
+
   it('builds the payload for the kind of change, with pay as an amount or a percentage', () => {
     expect(changeInput(draft({ values: { designationId: 'des-sr', gradeId: 'g-g3' }, pay: '780000' }), OPTIONS).input).toEqual({
       employeeId: 'p-arjun',
@@ -97,6 +102,7 @@ describe('PersonHistoryScreen (P06 §4.7, §7)', () => {
     const onShowPay = ok();
     render(<History onShowPay={onShowPay} />);
     expect(screen.getByText('Quality Analyst')).toBeTruthy();
+    expect(screen.getByText('Skilled')).toBeTruthy();
     expect(screen.getByText('Divya Raghunathan')).toBeTruthy();
     expect(screen.queryByText('Annual CTC')).toBeNull();
     expect(screen.getByText('Corrected records')).toBeTruthy();

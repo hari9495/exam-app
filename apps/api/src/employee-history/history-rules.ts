@@ -21,14 +21,18 @@ export interface AssignmentValues {
   departmentId: string;
   designationId: string;
   gradeId: string | null;
+  /** 5c-D2: the minimum-wage skill class of the job, or null. */
+  skillClass: SkillClass | null;
   employmentTypeId: string;
   managerEmployeeId: string | null;
   costCentres: CostCentreShare[];
   /** M01 Q5: visibility and feedback only, never an approver unless a policy names them (YX-EMP-04). Sorted. */
   dottedLineManagerIds: string[];
 }
+export const SKILL_CLASSES = ['unskilled', 'semi_skilled', 'skilled', 'highly_skilled'] as const;
+export type SkillClass = (typeof SKILL_CLASSES)[number];
 export type AssignmentField = keyof AssignmentValues;
-export const ASSIGNMENT_FIELDS: readonly AssignmentField[] = ['locationId', 'departmentId', 'designationId', 'gradeId', 'employmentTypeId', 'managerEmployeeId', 'costCentres', 'dottedLineManagerIds'];
+export const ASSIGNMENT_FIELDS: readonly AssignmentField[] = ['locationId', 'departmentId', 'designationId', 'gradeId', 'skillClass', 'employmentTypeId', 'managerEmployeeId', 'costCentres', 'dottedLineManagerIds'];
 const REQUIRED_ASSIGNMENT: readonly AssignmentField[] = ['locationId', 'departmentId', 'designationId', 'employmentTypeId'];
 
 export interface StatusValues {
@@ -63,9 +67,9 @@ interface TypeRule {
 // M01 §3.3: one change action with types; each type declares the facts it can change.
 export const TYPE_RULES: Readonly<Record<ChangeType, TypeRule>> = {
   join: { assignment: 'all', status: ['probation', 'confirmed'], compensation: true, requires: ['assignment', 'status'] },
-  promotion: { assignment: ['designationId', 'gradeId'], compensation: true, requires: ['assignment'] },
+  promotion: { assignment: ['designationId', 'gradeId', 'skillClass'], compensation: true, requires: ['assignment'] },
   transfer: { assignment: ['locationId', 'departmentId', 'costCentres', 'managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'] },
-  redesignation: { assignment: ['designationId'], requires: ['assignment'] },
+  redesignation: { assignment: ['designationId', 'skillClass'], requires: ['assignment'] },
   // M01 §3.2: the primary manager and the dotted lines change through the same change type.
   manager_change: { assignment: ['managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'] },
   salary_revision: { compensation: true, requires: ['compensation'] },
@@ -140,6 +144,7 @@ export function applyFact(fact: Fact, base: unknown, p: ChangePayload): unknown 
     if (!p.assignment) return undefined;
     const next = { ...(base as AssignmentValues | null), ...stripUndefined(p.assignment) } as AssignmentValues;
     next.gradeId ??= null;
+    next.skillClass ??= null;
     next.managerEmployeeId ??= null;
     // Stored form: shares sorted, two decimals, so equal splits compare equal.
     next.costCentres = (next.costCentres ?? []).map((x) => ({ costCentreId: x.costCentreId, percent: new Prisma.Decimal(x.percent).toFixed(2) })).sort((a, b) => a.costCentreId.localeCompare(b.costCentreId));

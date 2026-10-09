@@ -108,6 +108,14 @@ describe('state minimum-wage tables (5b-D1)', () => {
     expect(checkShape(ka).join()).toMatch(/do not add up/);
   });
 
+  it('5c-D2: the skill class on the job picks its rate; a missing or unknown class falls back to the lowest, flagged', () => {
+    const [ka, tn] = file.ruleSets;
+    expect(minWage(floor, { table: ka, zone: '1', skill: 'skilled' })).toMatchObject({ state: { skill: 'skilled', skillFallback: false } });
+    expect(minWage(floor, { table: ka, zone: '1', skill: 'skilled' }).monthly.toFixed(2)).toBe('18570.47');
+    expect(minWage(floor, { table: ka, zone: '1', skill: null })).toMatchObject({ state: { skill: 'unskilled', skillFallback: true } });
+    expect(minWage(floor, { table: tn, zone: 'A', skill: 'skilled' })).toMatchObject({ state: { skill: 'class_5', skillFallback: true } });
+  });
+
   it('the check uses the state rate for the place, else the national floor; a table without its DA says so', () => {
     const [ka, tn] = file.ruleSets;
     expect(minWage(floor, { table: ka, zone: '1' })).toMatchObject({ floorApplied: false, daMissing: false });

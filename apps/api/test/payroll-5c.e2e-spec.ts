@@ -174,6 +174,8 @@ describe('Payroll batch 5c', () => {
     const ready = (await api('payAdmin', 'get', `/payroll/runs/${ids.run}/readiness`).expect(200)).body;
     const banks = ready.checks.filter((c: { checkKey: string }) => c.checkKey === 'bank_missing');
     expect(banks).toHaveLength(2);
+    // 5c-D2: no skill class on the jobs yet: a warning (the minimum-wage check uses the lowest class).
+    expect(ready.checks.filter((c: { checkKey: string; severity: string }) => c.checkKey === 'skill_missing' && c.severity === 'warn')).toHaveLength(2);
     expect((await api('payAdmin', 'post', `/payroll/runs/${ids.run}/calculate`).expect(409)).body.code).toBe('RUN_BLOCKED');
     for (const b of banks) await api('payAdmin', 'post', `/payroll/runs/${ids.run}/validations/${b.id}/waive`).send({ reason: 'Bank details come next week' }).expect(200);
   });
@@ -294,5 +296,14 @@ describe('Payroll batch 5c', () => {
     const theirs = (await api('approver2', 'get', '/workflow/approvals/inbox').expect(200)).body as { title: string }[];
     expect(mine.some((t) => /Salary advance of ₹6000/.test(t.title))).toBe(false);
     expect(theirs.some((t) => /Salary advance of ₹6000/.test(t.title))).toBe(true);
+  });
+
+  it('5c-D2: the skill class is a dated job fact set through a change someone else approves, shown to HR and used by the salary check', async () => {
+    const ch = (await api('adminA', 'post', '/people/changes').send({ employeeId: ids.emp2, changeType: 'redesignation', effectiveDate: today, payload: { assignment: { skillClass: 'skilled' } }, reason: 'Skilled work from today' }).expect(201)).body;
+    await api('adminA', 'post', '/people/changes').send({ employeeId: ids.emp2, changeType: 'redesignation', effectiveDate: today, payload: { assignment: { skillClass: 'expert' } }, reason: 'Not a class' }).expect(400);
+    await stepUp('approver1');
+    await api('approver1', 'post', `/people/changes/${ch.id}/approve`).send({ confirmRebase: true }).expect(201);
+    const asOf = (await api('adminA', 'get', `/people/employees/${ids.emp2}/as-of?date=${today}`).expect(200)).body;
+    expect(JSON.stringify(asOf)).toMatch(/"skillClass":"skilled"/);
   });
 });

@@ -10,7 +10,7 @@ import { Breadcrumbs, Card, ObjectHeader, PageHeader } from '../../components/sh
 import { DataTable, type TableColumn } from '../../components/table';
 import { dayKey } from '../../lib/dates';
 import { dateLabel, useRun } from '../org/org-kit';
-import { ChangeDrawer, ChangeStatusBadge, money, STATUS_LABEL, TYPE_LABEL, WhenBadge } from './history-kit';
+import { ChangeDrawer, ChangeStatusBadge, money, STATUS_LABEL, TYPE_LABEL, WhenBadge, SKILL_CLASS_LABEL } from './history-kit';
 import type { AsOfView, ChangeInput, ChangeOptions, ChangeRecord, HistoryView, Impact, LoadState, PersonOption } from './types';
 
 // People › Job history (P06 §4.7, §7; PPL-03 History tab): the record as on any date, past or scheduled,
@@ -131,6 +131,8 @@ export function PersonHistoryScreen({ state, onRetry, people, personId, onPickPe
                     <dd>{a.designation?.name ?? '—'}</dd>
                     <dt>Grade</dt>
                     <dd>{a.grade?.name ?? '—'}</dd>
+                    <dt>Skill class</dt>
+                    <dd>{a.skillClass ? SKILL_CLASS_LABEL[a.skillClass] : 'Not set'}</dd>
                     <dt>Department</dt>
                     <dd>{a.department?.name ?? '—'}</dd>
                     <dt>Location</dt>

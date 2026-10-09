@@ -2484,6 +2484,8 @@ model EmployeeAssignment {
   designationId        String    @map("designation_id") @db.Uuid
   gradeId              String?   @map("grade_id") @db.Uuid
   employmentTypeId     String    @map("employment_type_id") @db.Uuid
+  /// 5c-D2: minimum-wage skill class (unskilled, semi_skilled, skilled, highly_skilled); null until HR sets it.
+  skillClass           String?   @map("skill_class") @db.VarChar(16)
   managerEmployeeId    String?   @map("manager_employee_id") @db.Uuid
   changeId             String    @map("change_id") @db.Uuid
   recordedAt           DateTime  @default(now()) @map("recorded_at") @db.Timestamptz(3)

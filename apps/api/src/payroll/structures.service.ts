@@ -36,6 +36,7 @@ const def = (c: ComponentRow): ComponentDef => ({ id: c.id, code: c.code, name: 
 /** The minimum-wage notes shown with a breakup (YX-PAY-22, 5b-D1). */
 const mwWarnings = (b: ReturnType<typeof breakup>) => [
   ...(b.minWage?.below ? ['The pay is below the minimum or floor wage for this place (YX-PAY-22).'] : []),
+  ...(b.minWage && !b.minWage.floorApplied && b.minWage.skillFallback ? ['No skill class matches this person in the state table, so the lowest class was used. Set the skill class on their job.'] : []),
   ...(b.minWage?.daMissing ? ['The state’s dearness allowance for this period is not loaded, so the minimum wage was compared on its basic rate only.'] : []),
 ];
 
@@ -267,6 +268,7 @@ export class PayStructuresService {
       pwd: prof?.pwdCeilingConsent ?? false,
       // The state minimum-wage zone of the place of work (5b-D1); the skill class is not on the record yet, so the lowest class applies.
       zone: loc.minWageZone,
+      skill: a.skillClass,
     };
   }
 

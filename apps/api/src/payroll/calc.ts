@@ -43,6 +43,8 @@ export interface Segment {
   holidayMultiplier: string | null;
   state: string;
   zone: string | null;
+  /** 5c-D2: the job's skill class (minimum-wage tables); absent or null means the lowest class with a warning. */
+  skill?: string | null;
   changeId: string | null;
 }
 
@@ -95,7 +97,7 @@ export interface CalcResult {
   recoveries: { courtOrders: { id: string; amount: string }[]; loans: { id: string; amount: string }[]; carryForwards: { id: string; amount: string }[] };
   deferred: { kind: string; ref: string; amount: string }[];
   carryForward: string;
-  minWage: { monthly: string; below: boolean; floorApplied: boolean } | null;
+  minWage: { monthly: string; below: boolean; floorApplied: boolean; skillFallback: boolean } | null;
   resultHash: string;
 }
 
@@ -262,7 +264,7 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   const gross0 = lines.filter((l) => l.kind === 'earning').reduce((t, l) => t.add(l.amount), ZERO);
   const mwTable = last ? minWageTableFor(rules, last.state, on) : null;
   if (mwTable) used.set(`${mwTable.statute}|${mwTable.jurisdiction}`, mwTable);
-  const mw = mwRs ? minWage(mwRs, { table: mwTable, zone: last?.zone }) : null;
+  const mw = mwRs ? minWage(mwRs, { table: mwTable, zone: last?.zone, skill: last?.skill ?? null }) : null;
   if (bonusRs) {
     const r = bonus(bonusRs, { bonusWage: earned('bonusWage').add(addBack), rate: s.options.bonusRate ?? String(bonusRs.values.minRate), minWageMonthly: mw?.monthly ?? ZERO });
     if (r.eligible) {
@@ -320,7 +322,7 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   }
   const employerCost = gross.add(lines.filter((l) => l.kind === 'employer').reduce((t, l) => t.add(l.amount), ZERO));
   if (s.held) add({ code: 'held', name: 'Net pay held', kind: 'info', segmentNo: 0, amount: net, explanation: 'Net pay is held; statutory deductions are made as usual and the pay is released later.' });
-  const minW = mw ? { monthly: mw.monthly.toFixed(2), below: gross0.lt(mw.monthly) && unpaid.isZero(), floorApplied: mw.floorApplied } : null;
+  const minW = mw ? { monthly: mw.monthly.toFixed(2), below: gross0.lt(mw.monthly) && unpaid.isZero(), floorApplied: mw.floorApplied, skillFallback: !!mw.state?.skillFallback } : null;
   const ruleVersions = Object.fromEntries([...used.entries()].map(([k, v]) => [k, v.version]));
   const result = { lines, gross: gross.toFixed(2), deductions: deductions.toFixed(2), net: net.toFixed(2), employerCost: employerCost.toFixed(2), verify: lines.some((l) => l.verify), ruleVersions, recoveries: out, deferred, carryForward: carryForward.toFixed(2), minWage: minW };
   return { ...result, resultHash: hashOf({ lines, gross: result.gross, deductions: result.deductions, net: result.net, employerCost: result.employerCost }) };

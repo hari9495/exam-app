@@ -124,11 +124,15 @@ export interface MinWageRate {
  */
 export function minWageTable(rs: RuleSet, i: { zone?: string | null; skill?: string | null }) {
   const v = need(rs, 'min_wage_table');
-  const rates = (v.rates as MinWageRate[]).filter((r) => (!i.zone || r.zone === i.zone) && (!i.skill || r.skill === i.skill));
-  if (!rates.length) throw new StatutoryError(`No ${rs.jurisdiction} rate for zone ${i.zone ?? 'any'} and skill ${i.skill ?? 'any'}`);
+  const inZone = (v.rates as MinWageRate[]).filter((r) => !i.zone || r.zone === i.zone);
+  const exact = inZone.filter((r) => !i.skill || r.skill === i.skill);
+  // 5c-D2: a skill class the table does not list (or none on record) falls back to the zone's lowest class, and says so.
+  const skillFallback = !i.skill || !exact.length;
+  const rates = exact.length ? exact : inZone;
+  if (!rates.length) throw new StatutoryError(`No ${rs.jurisdiction} rate for zone ${i.zone ?? 'any'}`);
   const total = (r: MinWageRate) => D(r.basicMonthly).add(r.vdaMonthly ?? 0);
   const low = rates.reduce((a, b) => (total(b).lt(total(a)) ? b : a));
-  return { monthly: total(low), basic: D(low.basicMonthly), vda: low.vdaMonthly === null ? null : D(low.vdaMonthly), daMissing: low.vdaMonthly === null, zone: low.zone, skill: low.skill, citation: cite(rs) };
+  return { monthly: total(low), basic: D(low.basicMonthly), vda: low.vdaMonthly === null ? null : D(low.vdaMonthly), daMissing: low.vdaMonthly === null, zone: low.zone, skill: low.skill, skillFallback, citation: cite(rs) };
 }
 
 /**
