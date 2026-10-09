@@ -125,7 +125,7 @@ export function PaySetupScreen(p: PaySetupScreenProps) {
       )}
       {saved && <InlineAlert tone="success" title={saved} />}
       {p.registrations && canStatutory && (
-        <Card className="yx-pay-card" className="yx-pay-card"
+        <Card className="yx-pay-card"
           title="Statutory registrations"
           actions={
             <div className="yx-tim-row">
@@ -631,7 +631,7 @@ export function PayslipLayoutLiveScreen(p: PayslipLayoutLiveProps) {
             {active ? `In use: version ${active.version}${active.activatedAt ? `, since ${dateText(active.activatedAt.slice(0, 10))}` : ''}.` : 'No layout in use yet.'}{' '}
             {draft ? `Draft: version ${draft.version}${draft.previewedAt ? ' (previewed)' : ' (not previewed yet)'}.` : ''} Payslips are in English for now.
           </p>
-          <Card className="yx-pay-card" className="yx-pay-card"
+          <Card className="yx-pay-card"
             title="Blocks"
             actions={
               <div className="yx-tim-row">

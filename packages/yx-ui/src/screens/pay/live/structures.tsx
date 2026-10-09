@@ -389,7 +389,7 @@ export function TemplatesLiveScreen(p: TemplatesLiveProps) {
         </div>
       </Card>
       {(p.templates ?? []).map((t) => (
-        <Card className="yx-pay-card" className="yx-pay-card"
+        <Card className="yx-pay-card"
           key={t.id}
           title={t.name}
           actions={
@@ -445,7 +445,7 @@ export function TemplatesLiveScreen(p: TemplatesLiveProps) {
             <FormField id="tv-from" label="From">
               <TextField type="date" value={build.v.validFrom} onChange={(v) => setBuild({ ...build, v: { ...build.v, validFrom: v } })} />
             </FormField>
-            <Card className="yx-pay-card" className="yx-pay-card"
+            <Card className="yx-pay-card"
               title="Lines"
               actions={
                 <Button

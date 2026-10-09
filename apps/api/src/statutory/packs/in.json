@@ -668,7 +668,7 @@
       "validFrom": "2019-06-01",
       "lawVersion": "CODE",
       "verify": true,
-      "source": "National floor-level minimum wage (₹178 a day, MoLE 2019; the Code on Wages 2019 s.9 floor wage once notified). State rates per zone and skill are loaded per state from the official notifications (see DECISION NEEDED in statutory/calculators.ts).",
+      "source": "National floor-level minimum wage (₹178 a day, MoLE 2019; the Code on Wages 2019 s.9 floor wage once notified). State rates per zone and skill are loaded per state from the official notifications (see DECISION NEEDED in statutory/evaluator.ts).",
       "values": {
         "kind": "min_wage",
         "floorDaily": "178",
