@@ -18,8 +18,6 @@ const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_r
   'payroll_runs', 'run_employees', 'run_validations', 'payslips', 'payslip_lines', 'payslip_snapshots', 'lop_inputs', 'one_time_pays', 'special_days', 'variance_flags', 'payroll_withholds', 'pay_carry_forwards', 'court_orders', 'loans', 'loan_repayments', 'loan_schedule_changes', 'journals', 'employee_cost_rates',
   // Batch 5d.
   'bank_files', 'payment_records', 'employee_payment_modes', 'disbursements', 'payslip_queries', 'payslip_links',
-  // 5d-D3.
-  'payslip_passwords',
   // Batch 5e.
   'tax_workspaces', 'tax_declaration_lines', 'tds_projections', 'perquisites', 'tax_certificates'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).

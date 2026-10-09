@@ -6486,6 +6486,8 @@ model PayslipLink {
   employeeId     String    @map("employee_id") @db.Uuid
   payslipId      String    @map("payslip_id") @db.Uuid
   tokenHash      String    @unique(map: "payslip_links_token_key") @map("token_hash") @db.Char(64)
+  /// pdf: a 60-second download; view: the emailed link that opens one payslip in the app (5e-D1).
+  purpose        String    @default("pdf") @db.VarChar(4)
   userId         String    @map("user_id") @db.Uuid
   expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
   usedAt         DateTime? @map("used_at") @db.Timestamptz(3)
@@ -6494,16 +6496,6 @@ model PayslipLink {
   @@map("payslip_links")
 }
 
-/// Founder decision 5d-D3: the employee's own password for emailed payslips (argon2 hash only); RLS: own row only.
-model PayslipPassword {
-  organizationId String   @map("organization_id") @db.Uuid
-  userId         String   @map("user_id") @db.Uuid
-  passwordHash   String   @map("password_hash")
-  setAt          DateTime @default(now()) @map("set_at") @db.Timestamptz(3)
-
-  @@id([organizationId, userId])
-  @@map("payslip_passwords")
-}
 
 // ---- M03 payroll batch 5e (migration 20261101000000_payroll_5e): income tax. RLS and the pay guard live in the migration.
 

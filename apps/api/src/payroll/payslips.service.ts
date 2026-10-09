@@ -1,6 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import * as argon2 from 'argon2';
 import { createHash, randomBytes } from 'crypto';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
@@ -8,6 +7,7 @@ import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import type { ScopeUser, Viewer } from '../access/scope';
 import { localOf } from '../documents/payslip-languages';
+import { EmailService } from '../email/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StatutoryRulesService } from '../statutory/statutory.service';
 import { inForce } from '../statutory/evaluator';
@@ -24,6 +24,7 @@ import { sha256 } from './pay-file-store';
 // when the company turns it on (password protected, YX-NTF-15); payslip queries between the employee and payroll.
 
 const LINK_SECONDS = 60;
+const EMAIL_LINK_DAYS = 7;
 const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');
 const istNow = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 16).replace('T', ' ');
 type Slip = Prisma.PayslipGetPayload<object>;
@@ -38,6 +39,7 @@ export class PayslipsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly rules: StatutoryRulesService,
     private readonly notifications: NotificationsService,
+    private readonly email: EmailService,
   ) {}
 
   private async viewer(user: ScopeUser) {
@@ -105,57 +107,66 @@ export class PayslipsService {
   }
 
   /**
-   * PAY-4.05 with founder decision 5d-D3 (9 Oct 2026): a payslip is emailed only to someone who set a payslip password in
-   * My security (kept as an argon2 hash); everyone else gets the in-app payslip only. Never the date of birth.
+   * PAY-4.05 with founder decision 5e-D1 (9 Oct 2026): never a PDF by email. Each employee with an active sign-in gets a link
+   * to their payslip in the app: it works only after they sign in, only for them, only for that payslip, and expires.
+   * The email has no pay figures (P04 Q6).
+   * ponytail: sent one by one after publishing; move to a queue if a run's emails take too long.
    */
   private async emailAll(org: string, slips: Slip[]) {
-    const users = await this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, async (tx) => {
-      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: slips.map((x) => x.employeeId) } }, select: { userId: true } });
-      const ids = people.map((p) => p.userId).filter((u): u is string => Boolean(u));
-      const [{ set }] = await tx.$queryRaw<{ set: string[] }[]>`SELECT payslip_password_users(${org}::uuid, ${ids}::uuid[])::text[] AS set`;
-      return { withPassword: (set ?? []).length };
-    });
-    // DECISION NEEDED: an argon2 hash cannot lock a PDF (the lock needs the password or the PDF format's own key material), so
-    // nothing is emailed yet; the people who set a password are counted as waiting (M03 §19.5 build note).
-    return { sent: 0, waitingForDecision: users.withPassword, inAppOnly: slips.length - users.withPassword };
-  }
-
-  // ------------------------------------------------------------------------------------------ payslip password (5d-D3)
-
-  async passwordStatus(ctx: TenantContext, user: ScopeUser) {
-    const v = await this.viewer(user);
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const row = await tx.payslipPassword.findFirst({ where: { organizationId: c.organizationId, userId: v.userId! }, select: { setAt: true } });
-      return { set: Boolean(row), setAt: row?.setAt ?? null };
-    });
-  }
-
-  /** Sets or changes the payslip password; the sign-in password is asked first when the person has one, and is never reused. */
-  async setPassword(ctx: TenantContext, user: ScopeUser, password: string, currentPassword?: string) {
-    const v = await this.viewer(user);
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const me = await tx.user.findFirstOrThrow({ where: { organizationId: c.organizationId, id: v.userId! }, select: { passwordHash: true } });
-      if (me.passwordHash) {
-        if (!currentPassword || !(await argon2.verify(me.passwordHash, currentPassword))) throw new ForbiddenException('Your sign-in password is not right.');
-        if (await argon2.verify(me.passwordHash, password)) throw new BadRequestException('Use a payslip password that is different from your sign-in password.');
+    const base = (process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '');
+    let sent = 0;
+    let noEmail = 0;
+    for (const s of slips) {
+      try {
+        const r = await this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, async (tx) => {
+          await payScope(tx, [s.legalEntityId]);
+          const e = await tx.employee.findFirst({ where: { organizationId: org, id: s.employeeId }, select: { userId: true } });
+          const u = e?.userId ? await tx.user.findFirst({ where: { organizationId: org, id: e.userId, status: 'active' }, select: { id: true, email: true } }) : null;
+          if (!u?.email) return null;
+          const token = randomBytes(32).toString('base64url');
+          await tx.payslipLink.create({
+            data: {
+              organizationId: org,
+              legalEntityId: s.legalEntityId,
+              employeeId: s.employeeId,
+              payslipId: s.id,
+              tokenHash: tokenHash(token),
+              userId: u.id,
+              purpose: 'view',
+              expiresAt: new Date(Date.now() + EMAIL_LINK_DAYS * 86_400_000),
+            },
+          });
+          return { to: u.email, token };
+        });
+        if (!r) {
+          noEmail++;
+          continue;
+        }
+        const month = new Date(`${dateOf(s.periodStart).slice(0, 7)}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+        await this.email.send({
+          to: r.to,
+          subject: `Your payslip for ${month} is ready`,
+          html: `<p>Your payslip for ${month} is ready in YukthiX.</p><p><a href="${base}/yx/me/payslips?open=${r.token}">Open your payslip</a> (you sign in first). The link works for ${EMAIL_LINK_DAYS} days and only for you.</p>`,
+        });
+        sent++;
+      } catch (e) {
+        noEmail++;
+        this.logger.warn(`payslip email ${s.id}: ${(e as Error).message}`);
       }
-      const passwordHash = await argon2.hash(password);
-      await tx.payslipPassword.upsert({
-        where: { organizationId_userId: { organizationId: c.organizationId, userId: v.userId! } },
-        update: { passwordHash, setAt: new Date() },
-        create: { organizationId: c.organizationId, userId: v.userId!, passwordHash },
-      });
-      await audit(tx, c, 'payroll.payslip_password.set', 'user', v.userId!, {});
-      return { set: true };
-    });
+    }
+    return { sent, noEmail };
   }
 
-  async removePassword(ctx: TenantContext, user: ScopeUser) {
+  /** The emailed link (5e-D1): only the person it was sent to, once signed in, within its days; it opens that one payslip. */
+  async openEmailLink(ctx: TenantContext, user: ScopeUser, token: string) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const n = await tx.payslipPassword.deleteMany({ where: { organizationId: c.organizationId, userId: v.userId! } });
-      if (n.count) await audit(tx, c, 'payroll.payslip_password.removed', 'user', v.userId!, {});
-      return { set: false };
+      const l = await tx.payslipLink.findFirst({ where: { organizationId: c.organizationId, tokenHash: tokenHash(token), purpose: 'view' } });
+      if (!l || l.userId !== v.userId || l.expiresAt < new Date()) throw new NotFoundException('This link has expired or is not yours. Your payslips are under Me › Payslips.');
+      const s = await this.ownSlip(tx, c, l.payslipId);
+      if (!l.usedAt) await tx.payslipLink.update({ where: { id: l.id }, data: { usedAt: new Date() } });
+      await audit(tx, c, 'payroll.payslip.email_link_opened', 'payslip', s.id, { employeeId: s.employeeId });
+      return { payslipId: s.id, month: dateOf(s.periodStart).slice(0, 7) };
     });
   }
 
@@ -217,7 +228,7 @@ export class PayslipsService {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const gone = () => new NotFoundException('This link has been used or has expired. Ask for a new one.');
-      const l = await tx.payslipLink.findFirst({ where: { organizationId: c.organizationId, tokenHash: tokenHash(token) } });
+      const l = await tx.payslipLink.findFirst({ where: { organizationId: c.organizationId, tokenHash: tokenHash(token), purpose: 'pdf' } });
       if (!l || l.userId !== v.userId || l.usedAt || l.expiresAt < new Date()) throw gone();
       if (!(await tx.payslipLink.updateMany({ where: { id: l.id, usedAt: null }, data: { usedAt: new Date() } })).count) throw gone();
       const s = await this.ownSlip(tx, c, l.payslipId);
