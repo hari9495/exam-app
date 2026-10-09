@@ -1307,7 +1307,7 @@
     "url": "http://localhost:3000/yx/settings/sms",
     "account": "admin@demo-org.test (System Admin)",
     "steps": [
-      "Edit Test gateway: in Gateway settings set simulate to \"unavailable\". Save.",
+      "Edit Test gateway: under Development, set Result to Unavailable. Save.",
       "Add a second Development account with a lower priority.",
       "Send a test from the first account."
     ],
