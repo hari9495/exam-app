@@ -4,6 +4,7 @@ import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connectio
 import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { WorkflowModule } from '../workflow/workflow.module';
+import { DSC_REVOCATION, DSC_ROOTS, OnlineRevocationChecker, trustedRoots } from '../documents/signed-pdf';
 import { PayAuditService } from './audit.service';
 import { PayDocumentsService } from './documents.service';
 import { ExchangeFilesService } from './exchange-files.service';
@@ -17,7 +18,7 @@ import { PayPeriodsService } from './periods.service';
 @Module({
   imports: [AuditModule, CryptoModule, StorageModule, WorkflowModule, NotificationsModule, AuthModule],
   controllers: [PayrollController, PublicPayController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PayrollJobs],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useFactory: trustedRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PayrollJobs],
   exports: [PayPeriodsService, PayDocumentsService, ExchangeFilesService],
 })
 export class PayrollModule {}

@@ -8,9 +8,8 @@ import { Viewer, buildViewer, has, tenantWide, type ScopeUser } from '../access/
 // scope becomes the legal entities it reaches, and the database pay guard is told which entities this transaction may
 // read (app.pay_entities, §5.1). YukthiX staff, impersonation and support sessions never get pay (P02 YX-SEC-20, Q8).
 
-// DECISION NEEDED: the pay guard covers batch-5a tables (pay documents, exchange files). The step-2 compensations table
-// and the step-4 payroll feed (paid / LOP days) are read today by HR under employee.salary.view / attendance.view; the
-// guard reaches compensations in 5b with compensation lines — confirm that the feed stays an attendance (not pay) table.
+// Founder decision D4 (9 Oct 2026): the pay guard covers the batch-5a tables (pay documents, exchange files) and, from
+// batch 5b, the compensation tables; the step-4 payroll feed (paid / LOP days) stays attendance data (no pay guard).
 export const PAY_KEYS = [
   'payroll.period.view',
   'payroll.period.reopen',

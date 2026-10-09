@@ -167,7 +167,8 @@ export class PeriodsService {
       // Every day of the month evaluated with the inputs as they are now, before the check and the freeze.
       const people = await this.employeesOf(tx, org, entityId, from, to);
       const book = await ScheduleBook.load(tx, org);
-      for (const p of people) await this.days.evaluate(tx, c, p.id, from, to, new Date(), book);
+      // D2: a frozen month's days are already fixed (the database refuses changes to them); they are locked as they are.
+      if (current?.stage !== 'frozen') for (const p of people) await this.days.evaluate(tx, c, p.id, from, to, new Date(), book);
       const pre = await this.preflightIn(tx, c, entityId, month);
       if (pre.pending.length || pre.exceptions) {
         const parts = [...pre.pending.map((x) => `${x.count} ${x.kind.toLowerCase()} waiting`), ...(pre.exceptions ? [`${pre.exceptions} days with missing punches or timesheets`] : [])];

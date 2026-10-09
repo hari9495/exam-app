@@ -1,12 +1,12 @@
 import { createHmac } from 'crypto';
 
-// §19 D4 (founder, 9 Oct 2026): the company's DSC signs Form 130 / 131 and registers with its own USB token through a
-// small signing helper; YukthiX never holds the key. This is the seam: one adapter chosen by DSC_SIGNER.
+// Shared document signing seam (P05 Q2, M03 §19 D4, founder 9 Oct 2026): the company's DSC signs Form 130 / 131,
+// registers and letters with its own USB token through a small signing helper; YukthiX never holds the key. Used by
+// pay documents and lifecycle letters alike. One adapter, chosen by DSC_SIGNER:
 //   dev-fake     development and tests only: "signs" at once with a marker (an HMAC of the file), never in production;
-//   usb-helper   the pilot: the document waits ("awaiting signature") until the helper uploads the signed PDF.
-// DECISION NEEDED: how the server checks the helper's signed PDF (the PAdES signature against the company's registered
-// certificate) and how the helper is packaged and code-signed; until then usb-helper uploads are refused (see
-// PayDocumentsService.attachSignature).
+//   usb-helper   the pilot: the document waits ("awaiting signature") until the helper uploads the signed PDF, which is
+//                accepted only after signed-pdf.ts checks the signature, the signer's chain to a CCA-licensed CA (not
+//                expired, not revoked) and that the signed bytes are exactly the document that was issued.
 
 export interface DscSigner {
   readonly mode: 'immediate' | 'helper';
