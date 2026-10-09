@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { SmsAccountEditor, SmsSettingsScreen, accountInput, deliveryDetail, newCallbackSecret, secretNames, type SmsSettingsScreenProps } from './sms-settings';
+import { SmsAccountEditor, SmsSettingsScreen, accountInput, deliveryDetail, guessVariables, newCallbackSecret, previewText, secretNames, type SmsSettingsScreenProps } from './sms-settings';
 import { ACCOUNTS, DELIVERIES, OVERVIEW, OVERVIEW_AT_LIMIT, OVERVIEW_PLATFORM, OVERVIEW_SHARED_ONLY } from './data';
 
 function Screen(over: Partial<SmsSettingsScreenProps>) {
@@ -191,5 +191,16 @@ describe('accountInput', () => {
     expect(deliveryDetail({ status: 'fallback', error: 'over_monthly_cap' })).toBe('Monthly SMS limit reached');
     expect(deliveryDetail({ status: 'fallback', error: 'no_approved_template: Main: template is pending, not approved' })).toBe('No approved DLT template. Main: template is pending, not approved');
     expect(deliveryDetail({ status: 'sent', error: null })).toBeNull();
+  });
+});
+
+describe('template values', () => {
+  it('guesses minutes from the word after {#var#}, the code first, then what it is for', () => {
+    expect(guessVariables('{#var#} is your sign-in code. It expires in {#var#} minutes.')).toEqual(['code', 'minutes']);
+    expect(guessVariables('{#var#} is your YukthiX {#var#}. Valid for {#var#} mins.')).toEqual(['code', 'purpose', 'minutes']);
+  });
+
+  it('previews the text as the person receives it', () => {
+    expect(previewText({ dltTemplateId: null, body: '{#var#} is your code. Valid {#var#} minutes.', variables: ['code', 'minutes'], status: 'approved' })).toBe('482913 is your code. Valid 10 minutes.');
   });
 });

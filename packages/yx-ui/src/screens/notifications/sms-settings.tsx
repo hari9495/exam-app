@@ -70,6 +70,22 @@ export function deliveryDetail(row: Pick<SmsDeliveryRow, 'status' | 'error'>): s
 
 /** How many {#var#} the DLT text has. */
 export const placeholderCount = (body: string) => body.split('{#var#}').length - 1;
+
+/** A first guess for each {#var#}, from the words around it: "{#var#} minutes" is the minutes, the first other one the code. */
+export function guessVariables(body: string): SmsTemplateVariable[] {
+  const after = body.split('{#var#}').slice(1);
+  let codeSeen = false;
+  return after.map((text) => {
+    if (/^\s*min/i.test(text)) return 'minutes';
+    if (codeSeen) return 'purpose';
+    codeSeen = true;
+    return 'code';
+  });
+}
+
+const SAMPLE: Record<SmsTemplateVariable, string> = { code: '482913', purpose: 'sign-in code', minutes: '10', app: 'YukthiX' };
+/** The text as a person would receive it, with sample values. */
+export const previewText = (t: SmsTemplate) => t.body.split('{#var#}').reduce((out, part, i) => out + SAMPLE[t.variables[i - 1]] + part);
 /** {secret.x} names an http config uses. */
 export const secretNames = (configText: string) => [...new Set([...configText.matchAll(/\{secret\.([A-Za-z0-9_-]{1,40})\}/g)].map((m) => m[1]))];
 
@@ -203,10 +219,11 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
   };
   const setTemplate = (patch: Partial<SmsTemplate>) => {
     const next = { ...draft.template, ...patch };
-    const count = placeholderCount(next.body);
-    // Keep one variable per {#var#}: the code first, then what it is for, then minutes.
-    const defaults: SmsTemplateVariable[] = ['code', 'purpose', 'minutes', 'app'];
-    next.variables = Array.from({ length: count }, (_, i) => next.variables[i] ?? defaults[Math.min(i, defaults.length - 1)]);
+    if (patch.body !== undefined) {
+      // One variable per {#var#}: re-guess from the text, but keep any the admin chose differently from the old guess.
+      const before = guessVariables(draft.template.body);
+      next.variables = guessVariables(next.body).map((g, i) => (draft.template.variables[i] !== undefined && draft.template.variables[i] !== before[i] ? draft.template.variables[i] : g));
+    }
     set({ template: next });
   };
   const secretsSet = new Set(account?.secretsSet ?? []);
@@ -358,6 +375,9 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
               />
             </FormField>
           ))}
+          {draft.template.body.trim() && placeholderCount(draft.template.body) === draft.template.variables.length && (
+            <Text tone="secondary" size="sm">Reads as: {previewText(draft.template)}</Text>
+          )}
           <FormField label="DLT approval">
             <Segment
               label="DLT approval"
