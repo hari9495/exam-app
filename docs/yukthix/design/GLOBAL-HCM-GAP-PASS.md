@@ -309,6 +309,18 @@ Short questions. Each has options. The recommended default is in **bold**.
 
 ---
 
+### 7.1 Founder answer (10 Oct 2026)
+
+All 13 decisions above were accepted with the recommended defaults.
+
+Where the India-now items are built:
+
+| Item | Where |
+|---|---|
+| Ledger mapping, two-level, with an unmapped bucket that blocks posting | Payroll, the next batch (costing) |
+| Life-event journeys (each off until the company turns it on), "Your first 30 days" card | Lifecycle batch 6f, after PR #139 merges |
+| Working hours and FTE on every job, three service dates, per-country person fields, leave pay-step data shape, translating company words (hi/ta/te), "Add a country" guide | New batch G1, "global core", after PR #139 merges (it touches core HR) |
+
 ## 8. What this pass does not change
 
 - No founder decision is changed. Every row is a proposal.
