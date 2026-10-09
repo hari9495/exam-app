@@ -33,12 +33,11 @@ export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath' | 'emailSignatur
 
 // The staff pickers advertise "Search staff by name or email", but this filter matched email
 // only, so typing a person's NAME silently returned nothing -- the audit-log actor picker looked
-// broken even though the user existed. Matches either identifier; SQL Server's default collation
-// makes `contains` case-insensitive, so no manual lower-casing is needed.
+// broken even though the user existed. Matches either identifier, case-insensitively (ILIKE via `mode: 'insensitive'`).
 function staffSearchWhere(search?: string): Prisma.UserWhereInput {
   const term = search?.trim();
   if (!term) return {};
-  return { OR: [{ email: { contains: term } }, { name: { contains: term } }] };
+  return { OR: [{ email: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] };
 }
 
 const SAFE_USER_SELECT = {

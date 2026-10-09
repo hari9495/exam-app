@@ -132,9 +132,8 @@ describe('Candidate data subject rights (GDPR export + erasure)', () => {
   });
 
   afterAll(async () => {
-    await tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
-      tx.auditLog.deleteMany({ where: { organizationId: { in: [orgId, orgBId] } } }),
-    );
+    // audit_logs is append-only (the app role has no DELETE on it); deleting the org below
+    // nulls these rows' organization_id via ON DELETE SET NULL instead.
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.exam.deleteMany({ where: { organizationId: orgId } }));
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.question.deleteMany({ where: { organizationId: orgId } }));
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.candidate.deleteMany({ where: { organizationId: orgId } }));
@@ -223,10 +222,10 @@ describe('Candidate data subject rights (GDPR export + erasure)', () => {
       .set('Authorization', `Bearer ${orgAdminAccessToken}`)
       .expect(200);
 
-    const actions = auditResponse.body.map((entry: { action: string }) => entry.action);
+    const actions = auditResponse.body.data.map((entry: { action: string }) => entry.action);
     expect(actions).toContain('candidate.data_exported');
     expect(actions).toContain('candidate.erased');
-    const erasedEntry = auditResponse.body.find((entry: { action: string }) => entry.action === 'candidate.erased');
+    const erasedEntry = auditResponse.body.data.find((entry: { action: string }) => entry.action === 'candidate.erased');
     expect(erasedEntry.entityId).toBe(candidateId);
     expect(erasedEntry.actorEmail).toBe('orgadmin@gdpr-a.test');
   });

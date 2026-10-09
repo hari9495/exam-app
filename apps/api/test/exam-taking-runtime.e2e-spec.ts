@@ -17,7 +17,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
   let planId: string;
   let orgId: string;
   let recruiterAccessToken: string;
-  let orgAdminAccessToken: string;
+  let viewOnlyAccessToken: string;
   let examId: string;
   let singleMcqId: string;
   let multiMcqId: string;
@@ -43,8 +43,10 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     prisma = adminApp.get(PrismaService);
     tenantPrisma = adminApp.get(TenantPrismaService);
 
+    // Generous proctoring-minutes quota: the elapsed-duration test backdates an anti-cheating attempt by
+    // hours, which counts against the monthly quota, and every later start() in this suite must not hit it.
     const plan = await prisma.plan.create({
-      data: { name: `ci-attempt-plan-${randomUUID()}`, candidateLimit: 10, aiCreditLimit: 1, proctoringMinutesLimit: 1 },
+      data: { name: `ci-attempt-plan-${randomUUID()}`, candidateLimit: 10, aiCreditLimit: 1, proctoringMinutesLimit: 100_000 },
     });
     planId = plan.id;
 
@@ -52,11 +54,16 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     orgId = org.id;
 
     const recruiterHash = await argon2.hash('RecruiterPassw0rd!');
-    const orgAdminHash = await argon2.hash('OrgAdminPassw0rd!');
+    const viewOnlyHash = await argon2.hash('ViewOnlyPassw0rd!');
+    // A permission profile REPLACES the role's grants, so this user holds org:view only -- no results:view.
+    // (Every built-in org role holds results:view, so a profile is the way to get a denied caller.)
+    const viewOnlyProfile = await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
+      tx.permissionProfile.create({ data: { organizationId: orgId, name: 'View only', permissionsJson: JSON.stringify(['org:view']) } }),
+    );
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
       Promise.all([
         tx.user.create({ data: { organizationId: orgId, email: 'recruiter@ci-attempt.test', passwordHash: recruiterHash, role: 'recruiter' } }),
-        tx.user.create({ data: { organizationId: orgId, email: 'orgadmin@ci-attempt.test', passwordHash: orgAdminHash, role: 'org_admin' } }),
+        tx.user.create({ data: { organizationId: orgId, email: 'viewonly@ci-attempt.test', passwordHash: viewOnlyHash, role: 'recruiter', permissionProfileId: viewOnlyProfile.id } }),
       ]),
     );
 
@@ -67,10 +74,10 @@ describe('Exam-Taking Runtime HTTP flow', () => {
         .expect(200)
     ).body.accessToken;
 
-    orgAdminAccessToken = (
+    viewOnlyAccessToken = (
       await request(adminHttp)
         .post('/api/v1/auth/staff/login')
-        .send({ organizationSlug: org.slug, email: 'orgadmin@ci-attempt.test', password: 'OrgAdminPassw0rd!' })
+        .send({ organizationSlug: org.slug, email: 'viewonly@ci-attempt.test', password: 'ViewOnlyPassw0rd!' })
         .expect(200)
     ).body.accessToken;
 
@@ -142,6 +149,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.candidate.deleteMany({ where: { organizationId: orgId } }));
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: true }, (tx) => tx.refreshToken.deleteMany({ where: { user: { organizationId: orgId } } }));
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.user.deleteMany({ where: { organizationId: orgId } }));
+    await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.permissionProfile.deleteMany({ where: { organizationId: orgId } }));
     await prisma.organization.delete({ where: { id: orgId } }).catch(() => undefined);
     await prisma.plan.delete({ where: { id: planId } }).catch(() => undefined);
     await adminApp.close();
@@ -176,7 +184,8 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       .set('Authorization', `Bearer ${candidateAccessToken}`)
       .expect(200);
     expect(previewResponse.body.exam.title).toBe('Full Stack Round');
-    expect(previewResponse.body.sections).toBeUndefined();
+    // Before start() the preview shows only the section outline, never question content.
+    expect(previewResponse.body.sections).toEqual([{ title: 'Section One', questionCount: 3 }]);
 
     const startResponse = await request(runtimeHttp)
       .post('/api/v1/attempt/start')
@@ -213,7 +222,14 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       .set('Authorization', `Bearer ${candidateAccessToken}`)
       .expect(200);
     const multiMcqAnswer = markedOnlyState.body.answers.find((answer: Record<string, unknown>) => answer.questionId === multiMcqId);
-    expect(multiMcqAnswer).toEqual({ questionId: multiMcqId, selectedOptionIds: [], answerText: null, isMarkedForReview: true });
+    expect(multiMcqAnswer).toEqual({
+      questionId: multiMcqId,
+      selectedOptionIds: [],
+      answerText: null,
+      codeLanguage: null,
+      isMarkedForReview: true,
+      answerFiles: [],
+    });
 
     const partialMultiOptionId = multiMcqOptions.find((option) => option.text === '2')!.id;
     await request(runtimeHttp)
@@ -267,7 +283,7 @@ describe('Exam-Taking Runtime HTTP flow', () => {
 
     await request(adminHttp)
       .get(`/api/v1/exams/${examId}/results`)
-      .set('Authorization', `Bearer ${orgAdminAccessToken}`)
+      .set('Authorization', `Bearer ${viewOnlyAccessToken}`)
       .expect(403);
   });
 
@@ -284,7 +300,10 @@ describe('Exam-Taking Runtime HTTP flow', () => {
       .get('/api/v1/attempt/current')
       .set('Authorization', `Bearer ${carolAccess}`)
       .expect(200);
-    expect(carolState.body.sections).toBeUndefined();
+    // Carol still sees only her own not-started preview (section outline, no status/answers), not Bob's attempt.
+    expect(carolState.body.sections).toEqual([{ title: 'Section One', questionCount: 3 }]);
+    expect(carolState.body.status).toBeUndefined();
+    expect(carolState.body.answers).toBeUndefined();
   });
 
   it('auto-submits and grades an attempt that is touched again after its duration has elapsed', async () => {

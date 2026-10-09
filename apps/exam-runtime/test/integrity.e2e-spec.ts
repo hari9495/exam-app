@@ -7,6 +7,7 @@ import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../../api/src/email/email.service';
 import { IntegrityNarrativeClient } from '../src/integrity/integrity-narrative.client';
 import { ProctoringRiskClient } from '../src/proctoring-analysis/proctoring-risk.client';
+import { PistonClient } from '../src/code-execution/piston-client';
 
 // Settlement (grading) and the integrity/proctoring analyses it kicks off are fire-and-forget
 // (see attempt-settlement.service.ts), so assertions on integrity_analyses must poll rather than
@@ -50,13 +51,20 @@ describe('Integrity analysis e2e', () => {
   const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
   const fakeIntegrityNarrativeClient = { writeNarrative: jest.fn().mockResolvedValue('Mock integrity narrative for CI.') };
   const fakeProctoringRiskClient = { assessRisk: jest.fn() };
+  // Fixed-mode code questions are validated against the runtime's live language list (Piston);
+  // fake it at the client boundary so no test reaches a real Piston server.
+  const fakePistonClient = {
+    listRuntimes: jest.fn().mockResolvedValue([{ language: 'javascript', version: '18.15.0', aliases: ['node'] }]),
+    execute: jest.fn(),
+  };
 
   beforeAll(async () => {
     adminApp = await bootAdminApp((builder) => builder.overrideProvider(EmailService).useValue(fakeEmailService));
     ({ app: runtimeApp } = await bootRuntimeApp((builder) =>
       builder
         .overrideProvider(IntegrityNarrativeClient).useValue(fakeIntegrityNarrativeClient)
-        .overrideProvider(ProctoringRiskClient).useValue(fakeProctoringRiskClient),
+        .overrideProvider(ProctoringRiskClient).useValue(fakeProctoringRiskClient)
+        .overrideProvider(PistonClient).useValue(fakePistonClient),
     ));
     adminHttp = adminApp.getHttpServer();
     runtimeHttp = runtimeApp.getHttpServer();
@@ -105,7 +113,8 @@ describe('Integrity analysis e2e', () => {
         text: 'Write a function that totals an invoice.',
         difficulty: 'easy',
         marks: 10,
-        codeLanguage: 'javascript',
+        languageMode: 'fixed',
+        allowedLanguages: ['javascript'],
         starterCode: 'function computeInvoiceTotal(items) {\n  \n}',
         options: [],
       })

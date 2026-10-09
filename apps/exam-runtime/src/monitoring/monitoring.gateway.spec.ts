@@ -9,7 +9,7 @@ import { LeaderboardService } from '../leaderboard/leaderboard.service';
 describe('MonitoringGateway', () => {
   let gateway: MonitoringGateway;
   let jwt: JwtService;
-  let prisma: { rolePermission: { findFirst: jest.Mock } };
+  let prisma: { rolePermission: { findMany: jest.Mock } };
   let tenantPrisma: { forTenant: jest.Mock };
   let monitoring: { getRosterSnapshot: jest.Mock; getRecentAlerts: jest.Mock };
   let leaderboardService: { computeRecruiterView: jest.Mock };
@@ -26,7 +26,7 @@ describe('MonitoringGateway', () => {
   }
 
   beforeEach(async () => {
-    prisma = { rolePermission: { findFirst: jest.fn() } };
+    prisma = { rolePermission: { findMany: jest.fn() } };
     tenantPrisma = { forTenant: jest.fn() };
     monitoring = { getRosterSnapshot: jest.fn(), getRecentAlerts: jest.fn().mockResolvedValue([]) };
     leaderboardService = { computeRecruiterView: jest.fn() };
@@ -74,7 +74,7 @@ describe('MonitoringGateway', () => {
       gateway.handleConnection(socket);
 
       expect(socket.disconnect).not.toHaveBeenCalled();
-      expect(socket.data.user).toEqual({ userId: 'user-1', organizationId: 'org-1', role: 'recruiter' });
+      expect(socket.data.user).toEqual({ userId: 'user-1', organizationId: 'org-1', role: 'recruiter', permissionProfileId: null });
     });
 
     it('carries the actingSuperAdmin claim onto the socket for a super-admin acting in an org', () => {
@@ -90,6 +90,7 @@ describe('MonitoringGateway', () => {
         userId: 'user-1',
         organizationId: 'org-1',
         role: 'super_admin',
+        permissionProfileId: null,
         actingSuperAdmin: true,
       });
     });
@@ -106,10 +107,43 @@ describe('MonitoringGateway', () => {
 
     it('emits an error and does not join when the role lacks exam:manage', async () => {
       const socket = makeSocket({ data: { user: { userId: 'user-1', organizationId: 'org-1', role: 'panel' } } });
-      prisma.rolePermission.findFirst.mockResolvedValue(null);
+      prisma.rolePermission.findMany.mockResolvedValue([]);
 
       await gateway.handleJoinExam(socket, { examId: 'exam-1' });
 
+      expect(socket.emit).toHaveBeenCalledWith('error', { message: 'Missing required permission: exam:manage' });
+      expect(socket.join).not.toHaveBeenCalled();
+    });
+
+    // Must match apps/api's PermissionsGuard: a profile or a per-org override REPLACES the role default.
+    it('denies a recruiter whose permission profile lacks exam:manage, even though the role grants it', async () => {
+      const socket = makeSocket({
+        data: { user: { userId: 'user-1', organizationId: 'org-1', role: 'recruiter', permissionProfileId: 'profile-1' } },
+      });
+      const findUnique = jest.fn().mockResolvedValue({ permissionsJson: JSON.stringify(['org:view', 'results:view']) });
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ permissionProfile: { findUnique } }));
+      prisma.rolePermission.findMany.mockResolvedValue([{ permission: { key: 'exam:manage' } }]);
+
+      await gateway.handleJoinExam(socket, { examId: 'exam-1' });
+
+      expect(findUnique).toHaveBeenCalledWith({ where: { id: 'profile-1' }, select: { permissionsJson: true } });
+      expect(prisma.rolePermission.findMany).not.toHaveBeenCalled();
+      expect(socket.emit).toHaveBeenCalledWith('error', { message: 'Missing required permission: exam:manage' });
+      expect(socket.join).not.toHaveBeenCalled();
+    });
+
+    it('denies a recruiter when the org override for the role removed exam:manage', async () => {
+      const socket = makeSocket({ data: { user: { userId: 'user-1', organizationId: 'org-1', role: 'recruiter', permissionProfileId: null } } });
+      const findUnique = jest.fn().mockResolvedValue({ permissionsJson: JSON.stringify(['org:view']) });
+      tenantPrisma.forTenant.mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn({ orgRolePermission: { findUnique } }));
+      prisma.rolePermission.findMany.mockResolvedValue([{ permission: { key: 'exam:manage' } }]);
+
+      await gateway.handleJoinExam(socket, { examId: 'exam-1' });
+
+      expect(findUnique).toHaveBeenCalledWith({
+        where: { organizationId_role: { organizationId: 'org-1', role: 'recruiter' } },
+        select: { permissionsJson: true },
+      });
       expect(socket.emit).toHaveBeenCalledWith('error', { message: 'Missing required permission: exam:manage' });
       expect(socket.join).not.toHaveBeenCalled();
     });
@@ -127,14 +161,14 @@ describe('MonitoringGateway', () => {
       // A plain super_admin role has no seeded RolePermission row (it bypasses via the
       // actingSuperAdmin claim, same as apps/api's PermissionsGuard) -- the lookup must
       // never run, or this would fail exactly like it did in production.
-      expect(prisma.rolePermission.findFirst).not.toHaveBeenCalled();
+      expect(prisma.rolePermission.findMany).not.toHaveBeenCalled();
       expect(socket.join).toHaveBeenCalledWith('exam:exam-1');
       expect(socket.emit).toHaveBeenCalledWith('roster:snapshot', roster);
     });
 
     it('emits an error when the roster lookup throws (exam not found / not owned)', async () => {
       const socket = makeSocket({ data: { user: { userId: 'user-1', organizationId: 'org-1', role: 'recruiter' } } });
-      prisma.rolePermission.findFirst.mockResolvedValue({ role: 'recruiter' });
+      prisma.rolePermission.findMany.mockResolvedValue([{ permission: { key: 'exam:manage' } }]);
       monitoring.getRosterSnapshot.mockRejectedValue(new Error('not found'));
 
       await gateway.handleJoinExam(socket, { examId: 'exam-1' });
@@ -145,7 +179,7 @@ describe('MonitoringGateway', () => {
 
     it('joins the exam room and emits a roster snapshot on success', async () => {
       const socket = makeSocket({ data: { user: { userId: 'user-1', organizationId: 'org-1', role: 'recruiter' } } });
-      prisma.rolePermission.findFirst.mockResolvedValue({ role: 'recruiter' });
+      prisma.rolePermission.findMany.mockResolvedValue([{ permission: { key: 'exam:manage' } }]);
       const roster = [{ candidateId: 'cand-1' }];
       monitoring.getRosterSnapshot.mockResolvedValue(roster);
       const recentAlerts = [
@@ -173,7 +207,7 @@ describe('MonitoringGateway', () => {
       // proctoring:flag broadcast during the awaited history query was delivered,
       // appended client-side, and then thrown away by the replay that followed.
       const socket = makeSocket({ data: { user: { userId: 'user-1', organizationId: 'org-1', role: 'recruiter' } } });
-      prisma.rolePermission.findFirst.mockResolvedValue({ role: 'recruiter' });
+      prisma.rolePermission.findMany.mockResolvedValue([{ permission: { key: 'exam:manage' } }]);
       monitoring.getRosterSnapshot.mockResolvedValue([]);
       monitoring.getRecentAlerts.mockResolvedValue([]);
       leaderboardService.computeRecruiterView.mockResolvedValue([]);
@@ -187,7 +221,7 @@ describe('MonitoringGateway', () => {
 
     it('does not throw and still emits the leaderboard snapshot when recent-alerts lookup fails', async () => {
       const socket = makeSocket({ data: { user: { userId: 'user-1', organizationId: 'org-1', role: 'recruiter' } } });
-      prisma.rolePermission.findFirst.mockResolvedValue({ role: 'recruiter' });
+      prisma.rolePermission.findMany.mockResolvedValue([{ permission: { key: 'exam:manage' } }]);
       const roster = [{ candidateId: 'cand-1' }];
       monitoring.getRosterSnapshot.mockResolvedValue(roster);
       monitoring.getRecentAlerts.mockRejectedValue(new Error('db hiccup'));

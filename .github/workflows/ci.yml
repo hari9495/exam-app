@@ -7,6 +7,24 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Throwaway database for this job only: the container lives and dies with the runner and is
+    # bound to it, so its bootstrap password is not a secret. The app/owner role passwords are
+    # generated per run (see "Provision database roles").
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: examapp
+          POSTGRES_PASSWORD: ci-throwaway
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d examapp"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -37,6 +55,35 @@ jobs:
 
       - name: Build packages/shared
         run: npm run build --workspace=packages/shared
+
+      # Same least-privilege layout as local docker-compose and production (README "Database"):
+      # migrations run as the owner, everything else as the NOBYPASSRLS app role.
+      - name: Provision database roles
+        env:
+          PGHOST: localhost
+          PGPASSWORD: ci-throwaway
+          POSTGRES_USER: postgres
+          POSTGRES_DB: examapp
+        run: |
+          owner_pw=$(openssl rand -hex 24); app_pw=$(openssl rand -hex 24)
+          echo "::add-mask::$owner_pw"; echo "::add-mask::$app_pw"
+          APP_DB_OWNER_PASSWORD=$owner_pw APP_DB_APP_PASSWORD=$app_pw sh docker/postgres/init/01-roles.sh
+          echo "MIGRATION_DATABASE_URL=postgresql://examapp_owner:$owner_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://examapp_app:$app_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
+          # Per-run key for encrypted org secrets (SSO client secrets, TOTP secrets) used by the e2e suites.
+          org_key=$(openssl rand -hex 32); echo "::add-mask::$org_key"
+          echo "ORG_SECRETS_ENCRYPTION_KEY=$org_key" >> "$GITHUB_ENV"
+
+      - name: Migrate and seed database
+        working-directory: apps/api
+        run: npx prisma migrate deploy && npx prisma db seed
+
+      # Proves tenant isolation in PostgreSQL itself, connected as the app role: no context =>
+      # zero rows, cross-tenant reads/writes rejected, no context leak across pooled connections,
+      # and every organization_id table has forced RLS.
+      - name: Database-level tenant isolation tests
+        working-directory: apps/api
+        run: npx jest --config ./test/jest-e2e.json rls-isolation tenant-isolation email-sender-rls soft-delete-for-tenant
 
       - name: Run packages/shared unit tests
         run: npm run test:shared

@@ -277,7 +277,7 @@ export class PipelineService {
         where: {
           organizationId: context.organizationId as string,
           ...(status ? { status } : {}),
-          ...(search ? { title: { contains: search } } : {}),
+          ...(search ? { title: { contains: search, mode: 'insensitive' } } : {}),
         },
         orderBy: { createdAt: 'desc' },
       });

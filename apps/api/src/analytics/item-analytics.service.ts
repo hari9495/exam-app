@@ -58,10 +58,10 @@ export class ItemAnalyticsService {
       const rows = await tx.$queryRaw<AggregateRow[]>`
         SELECT e.question_id,
                COUNT(*)                                         AS n,
-               AVG(CAST(e.is_correct AS FLOAT))                 AS p,
-               AVG(CASE WHEN e.is_correct = 1 THEN e.rest END)  AS m1,
-               AVG(CASE WHEN e.is_correct = 0 THEN e.rest END)  AS m0,
-               STDEVP(e.rest)                                   AS sd_rest
+               AVG(e.is_correct::int)::float8                    AS p,
+               AVG(e.rest) FILTER (WHERE e.is_correct)            AS m1,
+               AVG(e.rest) FILTER (WHERE NOT e.is_correct)        AS m0,
+               stddev_pop(e.rest)                                   AS sd_rest
         FROM (
           SELECT ans.question_id, ans.is_correct,
                  res.score - COALESCE(ans.marks_awarded, 0) AS rest
@@ -77,7 +77,7 @@ export class ItemAnalyticsService {
             AND (q.answer_key_changed_at IS NULL OR att.submitted_at >= q.answer_key_changed_at)
             AND ans.is_correct IS NOT NULL
             AND q.type IN ('single_mcq', 'multi_mcq', 'true_false')
-            AND ans.question_id = ${questionId}
+            AND ans.question_id = ${questionId}::uuid
         ) e
         GROUP BY e.question_id`;
 
@@ -104,15 +104,15 @@ export class ItemAnalyticsService {
       const rows = await tx.$queryRaw<AggregateRow[]>`
         SELECT e.question_id,
                COUNT(*)                                         AS n,
-               AVG(CAST(e.is_correct AS FLOAT))                 AS p,
-               AVG(CASE WHEN e.is_correct = 1 THEN e.rest END)  AS m1,
-               AVG(CASE WHEN e.is_correct = 0 THEN e.rest END)  AS m0,
-               STDEVP(e.rest)                                   AS sd_rest,
+               AVG(e.is_correct::int)::float8                    AS p,
+               AVG(e.rest) FILTER (WHERE e.is_correct)            AS m1,
+               AVG(e.rest) FILTER (WHERE NOT e.is_correct)        AS m0,
+               stddev_pop(e.rest)                                   AS sd_rest,
                MAX(e.text)                                      AS text
         FROM (
           SELECT ans.question_id, ans.is_correct,
                  res.score - COALESCE(ans.marks_awarded, 0) AS rest,
-                 CAST(q.text AS NVARCHAR(300)) AS text
+                 left(q.text, 300) AS text
           FROM answers   ans
           JOIN attempts  att ON att.id = ans.attempt_id
           JOIN results   res ON res.attempt_id = att.id
@@ -148,13 +148,13 @@ export class ItemAnalyticsService {
       const rows = await tx.$queryRaw<CalibrationAggRow[]>`
         SELECT e.question_id,
                COUNT(*)                          AS n,
-               AVG(CAST(e.is_correct AS FLOAT))  AS p,
+               AVG(e.is_correct::int)::float8     AS p,
                MAX(e.difficulty)                 AS difficulty,
                MAX(e.text)                       AS text
         FROM (
           SELECT ans.question_id, ans.is_correct,
                  q.difficulty AS difficulty,
-                 CAST(q.text AS NVARCHAR(300)) AS text
+                 left(q.text, 300) AS text
           FROM answers   ans
           JOIN attempts  att ON att.id = ans.attempt_id
           JOIN results   res ON res.attempt_id = att.id
@@ -184,14 +184,14 @@ export class ItemAnalyticsService {
     tx: { $queryRaw: <T>(query: TemplateStringsArray, ...values: unknown[]) => Promise<T> },
     questionId: string,
   ): Promise<OptionCount[]> {
-    // JSON_VALUE reads the first element of selected_option_ids_json, i.e. the whole
+    // ->> 0 reads the first element of selected_option_ids_json, i.e. the whole
     // selection for single-select types (single_mcq, true_false). multi_mcq is explicitly
     // excluded below (q.type <> 'multi_mcq'): counting only each candidate's first selection
     // would undercount every option except the first pick, leaving options that were never
     // picked first misread as dead_distractor and percentages that don't sum to 100.
     const rows = await tx.$queryRaw<OptionRow[]>`
       SELECT o.id AS option_id, o.text, o.is_correct, o.order_index,
-             SUM(CASE WHEN JSON_VALUE(ans.selected_option_ids_json, '$[0]') = CAST(o.id AS NVARCHAR(36)) THEN 1 ELSE 0 END) AS selections
+             COUNT(*) FILTER (WHERE ans.selected_option_ids_json::jsonb ->> 0 = o.id::text) AS selections
       FROM question_options o
       -- Joining questions here is not for any column it contributes -- it's what makes this
       -- query's tenant scoping explicit rather than an accident of forQuestion() never being
@@ -200,7 +200,7 @@ export class ItemAnalyticsService {
       JOIN answers  ans ON ans.question_id = o.question_id
       JOIN attempts att ON att.id = ans.attempt_id
       JOIN results  res ON res.attempt_id = att.id
-      WHERE o.question_id = ${questionId}
+      WHERE o.question_id = ${questionId}::uuid
         AND q.type <> 'multi_mcq'
         AND att.submitted_at IS NOT NULL
         AND (q.answer_key_changed_at IS NULL OR att.submitted_at >= q.answer_key_changed_at)

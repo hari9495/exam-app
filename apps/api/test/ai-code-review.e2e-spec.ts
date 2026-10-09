@@ -6,6 +6,7 @@ import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import { PistonClient } from '../../exam-runtime/src/code-execution/piston-client';
 import { CodeReviewClient } from '../../exam-runtime/src/code-review/code-review.client';
 
 describe('AI Code Review flow', () => {
@@ -22,11 +23,17 @@ describe('AI Code Review flow', () => {
   let codeQuestionId: string;
   const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
   const fakeCodeReviewClient = { review: jest.fn() };
+  // Fixed-mode code questions are validated against the runtime's live language list (Piston);
+  // fake it at the client boundary so no test reaches a real Piston server.
+  const fakePistonClient = {
+    listRuntimes: jest.fn().mockResolvedValue([{ language: 'javascript', version: '18.15.0', aliases: ['node'] }]),
+    execute: jest.fn(),
+  };
 
   beforeAll(async () => {
     adminApp = await bootAdminApp((builder) => builder.overrideProvider(EmailService).useValue(fakeEmailService));
     ({ app: runtimeApp } = await bootRuntimeApp((builder) =>
-      builder.overrideProvider(CodeReviewClient).useValue(fakeCodeReviewClient),
+      builder.overrideProvider(CodeReviewClient).useValue(fakeCodeReviewClient).overrideProvider(PistonClient).useValue(fakePistonClient),
     ));
     adminHttp = adminApp.getHttpServer();
     runtimeHttp = runtimeApp.getHttpServer();
@@ -35,7 +42,7 @@ describe('AI Code Review flow', () => {
     tenantPrisma = adminApp.get(TenantPrismaService);
 
     const plan = await prisma.plan.create({
-      data: { name: `ci-ai-code-review-plan-${randomUUID()}`, candidateLimit: 10, aiCreditLimit: 1, proctoringMinutesLimit: 1 },
+      data: { name: `ci-ai-code-review-plan-${randomUUID()}`, candidateLimit: 10, aiCreditLimit: 100, proctoringMinutesLimit: 1 },
     });
     planId = plan.id;
 
@@ -75,7 +82,8 @@ describe('AI Code Review flow', () => {
         text: 'Write a function that reverses a string.',
         difficulty: 'easy',
         marks: 10,
-        codeLanguage: 'javascript',
+        languageMode: 'fixed',
+        allowedLanguages: ['javascript'],
         starterCode: 'function reverse(str) {\n  \n}',
         options: [],
       })
@@ -142,6 +150,23 @@ describe('AI Code Review flow', () => {
     return attemptId;
   }
 
+  // Regenerate answers immediately with the row claimed as 'processing'; exam-runtime writes the
+  // verdict in the background. Poll GET (bounded) until it settles.
+  async function pollForSettledReview(attemptId: string, timeoutMs = 5000): Promise<any> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const response = await request(adminHttp)
+        .get(`/api/v1/attempts/${attemptId}/answers/${codeQuestionId}/code-review`)
+        .set('Authorization', `Bearer ${recruiterAccessToken}`)
+        .expect(200);
+      if (response.body.status !== 'processing') {
+        return response.body;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error(`Timed out waiting for the code review of attempt ${attemptId}`);
+  }
+
   it('regenerates a completed code review and persists it, readable via GET', async () => {
     const submittedCode = 'function reverse(str) {\n  return str.split("").reverse().join("");\n}';
     const attemptId = await inviteStartAndSubmitCode('alice@ci-ai-code-review.test', 'Alice', submittedCode);
@@ -153,14 +178,14 @@ describe('AI Code Review flow', () => {
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(201);
 
-    expect(regenerateResponse.body).toMatchObject({ status: 'completed', suggestedMarks: 7, summary: 'Correct logic, minor style issues.' });
+    expect(regenerateResponse.body).toMatchObject({ status: 'processing', suggestedMarks: null, summary: null });
 
-    const getResponse = await request(adminHttp)
-      .get(`/api/v1/attempts/${attemptId}/answers/${codeQuestionId}/code-review`)
-      .set('Authorization', `Bearer ${recruiterAccessToken}`)
-      .expect(200);
-
-    expect(getResponse.body).toMatchObject({ status: 'completed', suggestedMarks: 7, summary: 'Correct logic, minor style issues.' });
+    const settled = await pollForSettledReview(attemptId);
+    expect(settled).toMatchObject({ status: 'completed', suggestedMarks: 7, summary: 'Correct logic, minor style issues.' });
+    expect(fakeCodeReviewClient.review).toHaveBeenCalledWith(
+      expect.objectContaining({ answerText: submittedCode, marks: 10 }),
+      expect.anything(),
+    );
   });
 
   it('degrades gracefully to a failed review when Claude is unavailable, and grading/finalizing still works', async () => {
@@ -174,7 +199,8 @@ describe('AI Code Review flow', () => {
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(201);
 
-    expect(regenerateResponse.body).toMatchObject({ status: 'failed', suggestedMarks: null, summary: null });
+    expect(regenerateResponse.body).toMatchObject({ status: 'processing', suggestedMarks: null, summary: null });
+    expect(await pollForSettledReview(attemptId)).toMatchObject({ status: 'failed', suggestedMarks: null, summary: null });
 
     await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/answers/${codeQuestionId}/grade`)

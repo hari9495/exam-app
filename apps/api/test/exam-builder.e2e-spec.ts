@@ -64,7 +64,7 @@ describe('Exam Builder HTTP flow', () => {
   let planId: string;
   let orgId: string;
   let recruiterAccessToken: string;
-  let orgAdminAccessToken: string;
+  let panelAccessToken: string;
   let questionAId: string;
   let questionBId: string;
   let examId: string;
@@ -89,11 +89,11 @@ describe('Exam Builder HTTP flow', () => {
     orgId = org.id;
 
     const recruiterHash = await argon2.hash('RecruiterPassw0rd!');
-    const orgAdminHash = await argon2.hash('OrgAdminPassw0rd!');
+    const panelHash = await argon2.hash('PanelPassw0rd!');
     const questions = await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, async (tx) => {
       await Promise.all([
         tx.user.create({ data: { organizationId: orgId, email: 'recruiter@eb-http.test', passwordHash: recruiterHash, role: 'recruiter' } }),
-        tx.user.create({ data: { organizationId: orgId, email: 'orgadmin@eb-http.test', passwordHash: orgAdminHash, role: 'org_admin' } }),
+        tx.user.create({ data: { organizationId: orgId, email: 'panel@eb-http.test', passwordHash: panelHash, role: 'panel' } }),
       ]);
       const questionA = await tx.question.create({
         data: {
@@ -128,11 +128,11 @@ describe('Exam Builder HTTP flow', () => {
       .expect(200);
     recruiterAccessToken = recruiterLogin.body.accessToken;
 
-    const orgAdminLogin = await request(app.getHttpServer())
+    const panelLogin = await request(app.getHttpServer())
       .post('/api/v1/auth/staff/login')
-      .send({ organizationSlug: org.slug, email: 'orgadmin@eb-http.test', password: 'OrgAdminPassw0rd!' })
+      .send({ organizationSlug: org.slug, email: 'panel@eb-http.test', password: 'PanelPassw0rd!' })
       .expect(200);
-    orgAdminAccessToken = orgAdminLogin.body.accessToken;
+    panelAccessToken = panelLogin.body.accessToken;
   });
 
   afterAll(async () => {
@@ -159,7 +159,7 @@ describe('Exam Builder HTTP flow', () => {
   it('rejects a non-permitted role from creating an exam', async () => {
     await request(app.getHttpServer())
       .post('/api/v1/exams')
-      .set('Authorization', `Bearer ${orgAdminAccessToken}`)
+      .set('Authorization', `Bearer ${panelAccessToken}`)
       .send({ title: 'Should be forbidden' })
       .expect(403);
   });

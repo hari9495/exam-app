@@ -17,7 +17,7 @@ describe('Exam Reporting HTTP flow', () => {
   let planId: string;
   let orgId: string;
   let recruiterAccessToken: string;
-  let orgAdminAccessToken: string;
+  let viewOnlyAccessToken: string;
   let panelAccessToken: string;
   let examId: string;
   let questionId: string;
@@ -43,12 +43,17 @@ describe('Exam Reporting HTTP flow', () => {
     orgId = org.id;
 
     const recruiterHash = await argon2.hash('RecruiterPassw0rd!');
-    const orgAdminHash = await argon2.hash('OrgAdminPassw0rd!');
+    const viewOnlyHash = await argon2.hash('ViewOnlyPassw0rd!');
+    // A permission profile REPLACES the role's grants, so this user holds org:view only -- no results:view.
+    // (Every built-in org role now holds results:view, so a profile is the way to get a denied caller.)
+    const viewOnlyProfile = await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
+      tx.permissionProfile.create({ data: { organizationId: orgId, name: 'View only', permissionsJson: JSON.stringify(['org:view']) } }),
+    );
     const panelHash = await argon2.hash('PanelPassw0rd!');
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
       Promise.all([
         tx.user.create({ data: { organizationId: orgId, email: 'recruiter@ci-reporting.test', passwordHash: recruiterHash, role: 'recruiter' } }),
-        tx.user.create({ data: { organizationId: orgId, email: 'orgadmin@ci-reporting.test', passwordHash: orgAdminHash, role: 'org_admin' } }),
+        tx.user.create({ data: { organizationId: orgId, email: 'viewonly@ci-reporting.test', passwordHash: viewOnlyHash, role: 'recruiter', permissionProfileId: viewOnlyProfile.id } }),
         tx.user.create({ data: { organizationId: orgId, email: 'panel@ci-reporting.test', passwordHash: panelHash, role: 'panel' } }),
       ]),
     );
@@ -60,10 +65,10 @@ describe('Exam Reporting HTTP flow', () => {
         .expect(200)
     ).body.accessToken;
 
-    orgAdminAccessToken = (
+    viewOnlyAccessToken = (
       await request(adminHttp)
         .post('/api/v1/auth/staff/login')
-        .send({ organizationSlug: org.slug, email: 'orgadmin@ci-reporting.test', password: 'OrgAdminPassw0rd!' })
+        .send({ organizationSlug: org.slug, email: 'viewonly@ci-reporting.test', password: 'ViewOnlyPassw0rd!' })
         .expect(200)
     ).body.accessToken;
 
@@ -156,6 +161,7 @@ describe('Exam Reporting HTTP flow', () => {
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.candidate.deleteMany({ where: { organizationId: orgId } }));
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: true }, (tx) => tx.refreshToken.deleteMany({ where: { user: { organizationId: orgId } } }));
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.user.deleteMany({ where: { organizationId: orgId } }));
+    await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.permissionProfile.deleteMany({ where: { organizationId: orgId } }));
     await prisma.organization.delete({ where: { id: orgId } }).catch(() => undefined);
     await prisma.plan.delete({ where: { id: planId } }).catch(() => undefined);
     await adminApp.close();
@@ -185,10 +191,10 @@ describe('Exam Reporting HTTP flow', () => {
     expect(response.body.attemptDuration.avgMinutes).toBeGreaterThanOrEqual(0);
   });
 
-  it('rejects a summary request from a role without exam:manage', async () => {
+  it('rejects a summary request from a caller without results:view', async () => {
     await request(adminHttp)
       .get(`/api/v1/exams/${examId}/results/summary`)
-      .set('Authorization', `Bearer ${orgAdminAccessToken}`)
+      .set('Authorization', `Bearer ${viewOnlyAccessToken}`)
       .expect(403);
   });
 
@@ -364,7 +370,9 @@ describe('Exam Reporting HTTP flow', () => {
     expect(compareResponse.body).toHaveLength(3);
     const alice = compareResponse.body.find((row: { invitationId: string }) => row.invitationId === aliceInvitationId);
     expect(alice.score).toBe(10);
-    expect(alice.sectionScores).toEqual([{ sectionId: expect.any(String), title: 'Section One', score: 10, maxScore: 10 }]);
+    expect(alice.sectionScores).toEqual([
+      { sectionId: expect.any(String), title: 'Section One', score: 10, maxScore: 10, weightPercent: 100, requiredCount: null },
+    ]);
     const carol = compareResponse.body.find((row: { invitationId: string }) => row.invitationId === carolInvitationId);
     expect(carol.status).toBe('in_progress');
     expect(carol.score).toBeNull();

@@ -185,7 +185,7 @@ export class QuestionsService {
         ...(filters.difficulty ? { difficulty: filters.difficulty } : {}),
         ...(filters.tagId ? { tags: { some: { tagId: filters.tagId } } } : {}),
         status: filters.status ?? 'active',
-        ...(filters.search ? { text: { contains: filters.search } } : {}),
+        ...(filters.search ? { text: { contains: filters.search, mode: 'insensitive' as const } } : {}),
       };
       const [questions, total] = await Promise.all([
         tx.question.findMany({

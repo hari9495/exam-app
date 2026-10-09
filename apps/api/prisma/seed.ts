@@ -65,20 +65,13 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
 
 async function main() {
   await prisma.$transaction(async (tx) => {
-    // ponytail: 30s timeout — remote (Azure SQL) round-trip latency across this
-    // script's many sequential inserts exceeds Prisma's 5s default; raise if
-    // seeding still times out against a slower connection.
-    // Enable bypass of RLS by setting session context to super admin mode. This must run
-    // on the same physical connection as every write below (including the users-table
-    // writes that actually require it), which is only guaranteed inside a single
-    // $transaction — sp_set_session_context is scoped to the physical connection, not to
-    // the Prisma Client instance, so independent top-level calls could be routed to
-    // different pooled connections.
-    await tx.$executeRawUnsafe(
-      "EXEC sp_set_session_context @key=N'app_is_super_admin', @value=1"
-    );
+    // ponytail: 30s timeout — remote round-trip latency across this script's many sequential
+    // inserts exceeds Prisma's 5s default; raise if seeding still times out on a slower link.
+    // Super-admin RLS bypass, transaction-local (is_local = true): it applies to every write
+    // below and is discarded at COMMIT/ROLLBACK, so nothing needs resetting afterwards.
+    await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`;
 
-    try {
+    {
       for (const perm of PERMISSIONS) {
         await tx.permission.upsert({
           where: { key: perm.key },
@@ -175,15 +168,6 @@ async function main() {
           organizationId: demoOrg.id,
         },
       });
-    } finally {
-      // sp_set_session_context is scoped to the physical connection, not the transaction,
-      // and is not undone by rollback. Reset it before the transaction callback returns for
-      // consistency with TenantPrismaService.forTenant's established pattern (defense in
-      // depth; not strictly load-bearing here since the script disconnects and exits
-      // immediately after).
-      await tx.$executeRawUnsafe(
-        "EXEC sp_set_session_context @key=N'app_is_super_admin', @value=0"
-      );
     }
   }, { timeout: 30000 });
 

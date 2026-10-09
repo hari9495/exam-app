@@ -2,14 +2,14 @@
 
 ## Phase 0: local development setup
 
-1. Get a SQL Server instance reachable at `localhost:1433`. Either `docker compose up -d` (if Docker is available), or a native SQL Server Express/Developer install configured for TCP on port 1433 with Mixed Mode auth — see Task 2's notes in `docs/superpowers/plans/2026-07-07-phase-0-foundation.md` for the exact native-install steps used on this project's original dev machine.
+1. Start PostgreSQL 17: put `POSTGRES_SUPERUSER_PASSWORD`, `APP_DB_OWNER_PASSWORD` and `APP_DB_APP_PASSWORD` (any random dev values, e.g. `openssl rand -base64 24`) in a repo-root `.env`, then `docker compose up -d`. The first start of the empty volume provisions the roles described under [Database](#database).
 
 1a. Get Redis reachable at `localhost:6379` — `docker compose up -d` starts it (this repo's `docker-compose.yml`, added in Phase 5a). Required for `apps/api` to boot at all (it runs an in-process BullMQ worker) and for its e2e suite to run, not just for AI-job-specific features.
 
 1b. `apps/api/package.json` pins `ioredis` to an exact version (`5.10.1`, no caret) instead of a caret range, because it must match `bullmq`'s own nested `ioredis` dependency exactly — a caret range doesn't dedupe against it, leaving two structurally-incompatible `Redis` classes and a TypeScript compile error. If bumping `bullmq`, check its `package.json` for its current `ioredis` requirement and update this pin to match.
 
 2. `npm install` — installs all workspace dependencies. The Prisma client is generated automatically during install (`packages/shared`'s `prepare` script runs `prisma generate` before its own build, since its compile depends on the generated client). No separate `prisma generate` step is needed after a plain `npm install`/`npm ci` — only `--ignore-scripts` installs (like CI's) still need it run explicitly.
-3. `cp .env.example apps/api/.env`
+3. `cp .env.example apps/api/.env`, then fill the two passwords into `DATABASE_URL` / `MIGRATION_DATABASE_URL`.
 4. `cd apps/api && npx prisma migrate deploy && npx prisma db seed && cd ../..`
 5. `npm run dev:api` (terminal 1), `npm run dev:web` (terminal 2)
 6. Visit `http://localhost:3000/login` — log in with `admin@demo-org.test` / `DevAdmin123!`, org slug `demo-org`.
@@ -19,7 +19,7 @@
 `apps/exam-runtime` is a second app, separate from `apps/api`. It's the candidate-facing service — exam-taking, live monitoring, proctoring analysis, and grading. It needs its own `.env` file:
 
 1. `cp .env.example apps/exam-runtime/.env`
-2. Set `DATABASE_URL` to the same value as `apps/api/.env`.
+2. Set `DATABASE_URL` to the same value as `apps/api/.env` (the app role). exam-runtime never migrates, so it does not need `MIGRATION_DATABASE_URL`.
 3. Set `EXAM_RUNTIME_PORT`, `CANDIDATE_JWT_ACCESS_SECRET`, `CANDIDATE_JWT_REFRESH_SECRET`, and `ANTHROPIC_API_KEY`.
 4. Set `WEB_ORIGIN`.
 5. Set `JWT_ACCESS_SECRET` to the exact same value as `apps/api/.env`'s — the live-monitoring WebSocket gateway verifies staff JWTs issued by `apps/api`, so the secrets must match.
@@ -31,6 +31,16 @@
 
 - Unit tests: `npm run test:api`
 - End-to-end tests (requires the database from step 1 running and migrated): `npm run test:api:e2e`
+- Database-level tenant isolation (runs as the app role; part of the e2e suite): `cd apps/api && npx jest --config ./test/jest-e2e.json rls-isolation`
+
+## Database
+
+PostgreSQL 17. Tenant isolation is enforced by the database with row-level security, not by app code alone:
+
+- **Roles.** `examapp_owner` owns the database and schema and is the only role that runs `prisma migrate` (`MIGRATION_DATABASE_URL`, the schema's `directUrl`). `examapp_app` is the apps' login (`DATABASE_URL`): `NOSUPERUSER NOBYPASSRLS`, owns nothing, and gets DML through the `NOLOGIN` group `app_runtime`. Locally `docker/postgres/init/01-roles.sh` creates them; in production a DBA creates the same three roles once before the first `prisma migrate deploy` (the citext extension is created by the baseline migration and is a trusted extension, so the owner needs no superuser).
+- **Policies.** Every table with an `organization_id` column has RLS enabled **and forced**, with one policy (`USING` + `WITH CHECK`): `organization_id = app.current_org`, or `app.is_super_admin = 'on'`. No context means zero rows and every write rejected. `audit_logs` is append-only for the app role. `rls-isolation.e2e-spec.ts` fails if a new tenant table is missing forced RLS.
+- **Context.** `TenantPrismaService.forTenant` sets the context with `set_config(..., true)` inside the request's transaction, so it is discarded at commit/rollback and cannot leak across pooled connections. Scripts that need cross-tenant access do the same with `set_config('app.is_super_admin', 'on', true)` inside one `$transaction`.
+- **Deploy.** `cd apps/api && npx prisma migrate deploy` (needs `MIGRATION_DATABASE_URL`), then start the apps with only `DATABASE_URL`. Use TLS (`sslmode=require` or `verify-full`) for any non-local server. The pre-PostgreSQL SQL Server migration history is kept read-only in `apps/api/prisma/migrations-sqlserver-archive/`; it is not applied.
 
 ## Working with packages/shared
 

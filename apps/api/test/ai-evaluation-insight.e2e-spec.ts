@@ -20,6 +20,7 @@ describe('AI Evaluation Insight flow', () => {
   let orgId: string;
   let recruiterAccessToken: string;
   let orgAdminAccessToken: string;
+  let viewOnlyAccessToken: string;
   let examId: string;
   let trueFalseQuestionId: string;
   let correctOptionId: string;
@@ -43,7 +44,7 @@ describe('AI Evaluation Insight flow', () => {
     tenantPrisma = adminApp.get(TenantPrismaService);
 
     const plan = await prisma.plan.create({
-      data: { name: `ci-ai-insight-plan-${randomUUID()}`, candidateLimit: 10, aiCreditLimit: 1, proctoringMinutesLimit: 1 },
+      data: { name: `ci-ai-insight-plan-${randomUUID()}`, candidateLimit: 10, aiCreditLimit: 100, proctoringMinutesLimit: 1 },
     });
     planId = plan.id;
 
@@ -52,10 +53,17 @@ describe('AI Evaluation Insight flow', () => {
 
     const recruiterHash = await argon2.hash('RecruiterPassw0rd!');
     const orgAdminHash = await argon2.hash('OrgAdminPassw0rd!');
+    const viewOnlyHash = await argon2.hash('ViewOnlyPassw0rd!');
+    // A permission profile REPLACES the role's grants, so this user holds org:view only -- no results:view.
+    // (Every built-in org role holds results:view, so a profile is the way to get a denied caller.)
+    const viewOnlyProfile = await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
+      tx.permissionProfile.create({ data: { organizationId: orgId, name: 'View only', permissionsJson: JSON.stringify(['org:view']) } }),
+    );
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
       Promise.all([
         tx.user.create({ data: { organizationId: orgId, email: 'recruiter@ci-ai-insight.test', passwordHash: recruiterHash, role: 'recruiter' } }),
         tx.user.create({ data: { organizationId: orgId, email: 'orgadmin@ci-ai-insight.test', passwordHash: orgAdminHash, role: 'org_admin' } }),
+        tx.user.create({ data: { organizationId: orgId, email: 'viewonly@ci-ai-insight.test', passwordHash: viewOnlyHash, role: 'recruiter', permissionProfileId: viewOnlyProfile.id } }),
       ]),
     );
 
@@ -70,6 +78,13 @@ describe('AI Evaluation Insight flow', () => {
       await request(adminHttp)
         .post('/api/v1/auth/staff/login')
         .send({ organizationSlug: org.slug, email: 'orgadmin@ci-ai-insight.test', password: 'OrgAdminPassw0rd!' })
+        .expect(200)
+    ).body.accessToken;
+
+    viewOnlyAccessToken = (
+      await request(adminHttp)
+        .post('/api/v1/auth/staff/login')
+        .send({ organizationSlug: org.slug, email: 'viewonly@ci-ai-insight.test', password: 'ViewOnlyPassw0rd!' })
         .expect(200)
     ).body.accessToken;
 
@@ -115,6 +130,7 @@ describe('AI Evaluation Insight flow', () => {
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.candidate.deleteMany({ where: { organizationId: orgId } }));
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: true }, (tx) => tx.refreshToken.deleteMany({ where: { user: { organizationId: orgId } } }));
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.user.deleteMany({ where: { organizationId: orgId } }));
+    await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.permissionProfile.deleteMany({ where: { organizationId: orgId } }));
     await prisma.organization.delete({ where: { id: orgId } }).catch(() => undefined);
     await prisma.plan.delete({ where: { id: planId } }).catch(() => undefined);
     await adminApp.close();
@@ -153,13 +169,17 @@ describe('AI Evaluation Insight flow', () => {
     return row.attemptId;
   }
 
-  async function pollForInsight(attemptId: string, timeoutMs = 5000): Promise<any> {
+  async function pollForInsight(
+    attemptId: string,
+    isDone: (insight: { status: string; summary: string | null }) => boolean = (insight) => insight.status !== 'processing',
+    timeoutMs = 5000,
+  ): Promise<any> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const response = await request(adminHttp)
         .get(`/api/v1/attempts/${attemptId}/ai-insight`)
         .set('Authorization', `Bearer ${recruiterAccessToken}`);
-      if (response.status === 200) {
+      if (response.status === 200 && isDone(response.body)) {
         return response.body;
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -178,6 +198,7 @@ describe('AI Evaluation Insight flow', () => {
     expect(insight).toEqual(expect.objectContaining({ status: 'completed', summary: 'Strong in SQL overall.' }));
     expect(fakeInsightClient.generate).toHaveBeenCalledWith(
       expect.objectContaining({ topicBreakdown: [{ topic: 'SQL', correct: 1, total: 1 }] }),
+      expect.anything(),
     );
 
     const usageResponse = await request(adminHttp)
@@ -198,8 +219,12 @@ describe('AI Evaluation Insight flow', () => {
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(201);
 
-    expect(regenerateResponse.body.summary).toBe('Regenerated summary.');
-    expect(new Date(regenerateResponse.body.generatedAt).getTime()).toBeGreaterThanOrEqual(new Date(initial.generatedAt).getTime());
+    // Regeneration runs in the background (exam-runtime accepts the job and answers at once), so the
+    // response may still carry the previous row; wait (bounded) for the regenerated one.
+    expect(regenerateResponse.body.attemptId).toBe(attemptId);
+    const regenerated = await pollForInsight(attemptId, (row) => row.summary === 'Regenerated summary.');
+    expect(regenerated.status).toBe('completed');
+    expect(new Date(regenerated.generatedAt).getTime()).toBeGreaterThanOrEqual(new Date(initial.generatedAt).getTime());
   });
 
   it('returns 404 for an attempt with no insight yet generated', async () => {
@@ -210,13 +235,13 @@ describe('AI Evaluation Insight flow', () => {
   });
 
   it('rejects a role without results:view from reading the insight', async () => {
-    fakeInsightClient.generate.mockResolvedValueOnce('Org admin should not see this.');
+    fakeInsightClient.generate.mockResolvedValueOnce('A view-only caller should not see this.');
     const attemptId = await inviteStartAndSubmit('dave@ci-ai-insight.test', 'Dave');
     await pollForInsight(attemptId);
 
     await request(adminHttp)
       .get(`/api/v1/attempts/${attemptId}/ai-insight`)
-      .set('Authorization', `Bearer ${orgAdminAccessToken}`)
+      .set('Authorization', `Bearer ${viewOnlyAccessToken}`)
       .expect(403);
   });
 });

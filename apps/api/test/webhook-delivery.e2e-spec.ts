@@ -8,6 +8,21 @@ import { AppModule } from '../src/app.module';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
 
+// The org webhook must be a public https endpoint (checked at save time), and the worker re-checks the
+// resolved address before every delivery (SSRF guard). The test receiver is a local http server, so:
+// the org is configured with a reserved, never-resolving public-looking https host; the delivery-time
+// guard treats exactly that host as public (a stand-in for DNS -- every other target still goes through
+// the real guard); and fetch() to exactly that URL is forwarded, unchanged, to the local receiver.
+const PUBLIC_WEBHOOK_URL = 'https://webhooks.example.test/exam-events';
+jest.mock('../src/integrations/webhook-url-allowlist', () => {
+  const actual = jest.requireActual('../src/integrations/webhook-url-allowlist');
+  return {
+    ...actual,
+    assertPublicWebhookTarget: (url: string) =>
+      url === 'https://webhooks.example.test/exam-events' ? Promise.resolve() : actual.assertPublicWebhookTarget(url),
+  };
+});
+
 // Exercises the real enqueue -> BullMQ worker -> signed HTTP POST flow end to end
 // (Task 10's public-api.e2e-spec.ts never configures a webhookUrl, so that path has
 // only ever been unit-tested with mocks). Requires live Redis (WebhookDeliveryWorkerService
@@ -28,6 +43,7 @@ describe('Webhook delivery HTTP flow', () => {
   let invitationId: string;
 
   let receiverServer: http.Server;
+  let fetchSpy: jest.SpyInstance;
   let receiverPort: number;
   const receivedRequests: Array<{ rawBody: string; signature: string | undefined }> = [];
 
@@ -50,6 +66,12 @@ describe('Webhook delivery HTTP flow', () => {
     });
     await new Promise<void>((resolve) => receiverServer.listen(0, '127.0.0.1', () => resolve()));
     receiverPort = (receiverServer.address() as { port: number }).port;
+    const realFetch = global.fetch;
+    fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation((input, init) =>
+        String(input) === PUBLIC_WEBHOOK_URL ? realFetch(`http://127.0.0.1:${receiverPort}`, init) : realFetch(input, init),
+      );
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(EmailService)
@@ -95,11 +117,17 @@ describe('Webhook delivery HTTP flow', () => {
     ).body.accessToken;
 
     // Configure the webhook URL + secret via the same org-admin endpoints apps/web's
-    // Integrations page uses, exactly like a real customer would.
+    // Integrations page uses, exactly like a real customer would. A plain-http / loopback target is
+    // refused outright.
     await request(app.getHttpServer())
       .patch('/api/v1/organizations/integrations/webhook')
       .set('Authorization', `Bearer ${orgAdminAccessToken}`)
       .send({ url: `http://127.0.0.1:${receiverPort}` })
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch('/api/v1/organizations/integrations/webhook')
+      .set('Authorization', `Bearer ${orgAdminAccessToken}`)
+      .send({ url: PUBLIC_WEBHOOK_URL })
       .expect(200);
 
     const secretResponse = await request(app.getHttpServer())
@@ -179,6 +207,7 @@ describe('Webhook delivery HTTP flow', () => {
     await prisma.plan.delete({ where: { id: planId } }).catch(() => undefined);
     await app.close();
     await new Promise<void>((resolve) => receiverServer.close(() => resolve()));
+    fetchSpy.mockRestore();
   });
 
   it('delivers invitation.created to the configured webhook URL with a verifiable signature', async () => {
@@ -196,14 +225,23 @@ describe('Webhook delivery HTTP flow', () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
 
+    const expectedPayload = {
+      id: invitationId,
+      examId,
+      candidateId,
+      status: 'invited',
+      subject: 'bob@ci-webhook-delivery.test',
+      examTitle: 'Webhook Delivery Screening',
+      linkPath: '/candidates',
+    };
     expect(delivery).not.toBeNull();
     expect(delivery!.status).toBe('delivered');
-    expect(JSON.parse(delivery!.payloadJson)).toEqual({ id: invitationId, examId, candidateId, status: 'invited' });
+    expect(JSON.parse(delivery!.payloadJson)).toEqual(expectedPayload);
 
     expect(receivedRequests).toHaveLength(1);
     const received = receivedRequests[0];
     expect(received.rawBody).toBe(delivery!.payloadJson);
-    expect(JSON.parse(received.rawBody)).toEqual({ id: invitationId, examId, candidateId, status: 'invited' });
+    expect(JSON.parse(received.rawBody)).toEqual(expectedPayload);
 
     const expectedSignature = createHmac('sha256', webhookSecret).update(received.rawBody).digest('hex');
     expect(received.signature).toBe(expectedSignature);

@@ -65,7 +65,7 @@ describe('Candidates & Invitations HTTP flow', () => {
   let planId: string;
   let orgId: string;
   let recruiterAccessToken: string;
-  let orgAdminAccessToken: string;
+  let panelAccessToken: string;
   let examId: string;
   const fakeEmailService = {
     send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }),
@@ -92,11 +92,11 @@ describe('Candidates & Invitations HTTP flow', () => {
     orgId = org.id;
 
     const recruiterHash = await argon2.hash('RecruiterPassw0rd!');
-    const orgAdminHash = await argon2.hash('OrgAdminPassw0rd!');
+    const panelHash = await argon2.hash('PanelPassw0rd!');
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
       Promise.all([
         tx.user.create({ data: { organizationId: orgId, email: 'recruiter@ci-http.test', passwordHash: recruiterHash, role: 'recruiter' } }),
-        tx.user.create({ data: { organizationId: orgId, email: 'orgadmin@ci-http.test', passwordHash: orgAdminHash, role: 'org_admin' } }),
+        tx.user.create({ data: { organizationId: orgId, email: 'panel@ci-http.test', passwordHash: panelHash, role: 'panel' } }),
       ]),
     );
 
@@ -106,11 +106,11 @@ describe('Candidates & Invitations HTTP flow', () => {
       .expect(200);
     recruiterAccessToken = recruiterLogin.body.accessToken;
 
-    const orgAdminLogin = await request(app.getHttpServer())
+    const panelLogin = await request(app.getHttpServer())
       .post('/api/v1/auth/staff/login')
-      .send({ organizationSlug: org.slug, email: 'orgadmin@ci-http.test', password: 'OrgAdminPassw0rd!' })
+      .send({ organizationSlug: org.slug, email: 'panel@ci-http.test', password: 'PanelPassw0rd!' })
       .expect(200);
-    orgAdminAccessToken = orgAdminLogin.body.accessToken;
+    panelAccessToken = panelLogin.body.accessToken;
   });
 
   afterAll(async () => {
@@ -137,7 +137,7 @@ describe('Candidates & Invitations HTTP flow', () => {
   it('rejects a non-permitted role from creating a candidate', async () => {
     await request(app.getHttpServer())
       .post('/api/v1/candidates')
-      .set('Authorization', `Bearer ${orgAdminAccessToken}`)
+      .set('Authorization', `Bearer ${panelAccessToken}`)
       .send({ email: 'blocked@test.com', name: 'Blocked' })
       .expect(403);
   });
@@ -158,7 +158,7 @@ describe('Candidates & Invitations HTTP flow', () => {
 
     const csvContent = [
       'email,name,phone',
-      'not-an-email,Bad Row,',
+      'not-an-email,Bad,Row,',
       `alice@ci-http.test,Alice Updated,555-0001`,
       'carol@ci-http.test,Carol,',
       'dave@ci-http.test,Dave,',
@@ -282,17 +282,17 @@ describe('Candidates & Invitations HTTP flow', () => {
 
     await request(app.getHttpServer())
       .post(`/api/v1/exams/${examId}/invitations`)
-      .set('Authorization', `Bearer ${orgAdminAccessToken}`)
+      .set('Authorization', `Bearer ${panelAccessToken}`)
       .send({ candidateIds: [candidateIds[0]] })
       .expect(403);
   });
 
   it('bulk-uploads a CSV of candidates and invites them, splitting created/skipped/errors', async () => {
     const csv = [
-      'Email,Name,Phone',
-      'frank@ci-http.test,Frank,555-2000',
-      'alice@ci-http.test,Alice Renamed,',
-      'not-an-email,Bad Row,',
+      'Email,First Name,Last Name,Phone',
+      'frank@ci-http.test,Frank,Fields,555-2000',
+      'alice@ci-http.test,Alice,Renamed,',
+      'not-an-email,Bad,Row,',
     ].join('\n');
 
     const response = await request(app.getHttpServer())

@@ -1,123 +1,127 @@
 datasource db {
-  provider = "sqlserver"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  // The app connects as a NOBYPASSRLS role that owns nothing; migrations run as the schema owner.
+  directUrl  = env("MIGRATION_DATABASE_URL")
+  extensions = [citext]
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 model Plan {
-  id                     String         @id @default(uuid()) @db.UniqueIdentifier
-  name                   String
+  id                     String         @id @default(uuid()) @db.Uuid
+  name                   String         @db.VarChar(1000)
   candidateLimit         Int            @map("candidate_limit")
   aiCreditLimit          Int            @map("ai_credit_limit")
   proctoringMinutesLimit Int            @map("proctoring_minutes_limit")
-  seatLimit              Int            @default(5)  @map("seat_limit")
-  priceLabel             String?        @map("price_label")
-  billingInterval        String         @default("month") @map("billing_interval")
-  isPublic               Boolean        @default(true)  @map("is_public")
-  stripeProductId        String?        @map("stripe_product_id")
-  stripePriceId          String?        @map("stripe_price_id")
-  createdAt              DateTime       @default(now()) @map("created_at")
+  seatLimit              Int            @default(5) @map("seat_limit")
+  priceLabel             String?        @map("price_label") @db.VarChar(1000)
+  billingInterval        String         @default("month") @map("billing_interval") @db.VarChar(1000)
+  isPublic               Boolean        @default(true) @map("is_public")
+  stripeProductId        String?        @map("stripe_product_id") @db.VarChar(1000)
+  stripePriceId          String?        @map("stripe_price_id") @db.VarChar(1000)
+  createdAt              DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   organizations          Organization[]
 
   @@map("plans")
 }
 
 model Organization {
-  id                     String            @id @default(uuid()) @db.UniqueIdentifier
-  name                   String
-  slug                   String            @unique
-  region                 String            @default("us")
-  status                 String            @default("active")
-  logoPath               String?           @map("logo_path")
-  primaryColor           String?           @map("primary_color")
-  accentColor            String?           @map("accent_color")
-  textColor              String?           @map("text_color")
-  loginWatermarkEnabled  Boolean           @default(false) @map("login_watermark_enabled")
-  smtpHost               String?           @map("smtp_host")
-  smtpPort               Int?              @map("smtp_port")
-  smtpUser               String?           @map("smtp_user")
-  smtpPasswordEncrypted  String?           @map("smtp_password_encrypted")
-  emailFromAddress       String?           @map("email_from_address")
-  aiApiKeyEncrypted      String?           @map("ai_api_key_encrypted")
-  aiProvider             String            @default("anthropic") @map("ai_provider")
-  aiBaseUrl              String?           @map("ai_base_url")
-  aiModelFast            String?           @map("ai_model_fast")
-  aiModelStandard        String?           @map("ai_model_standard")
+  id                            String            @id @default(uuid()) @db.Uuid
+  name                          String            @db.VarChar(1000)
+  slug                          String            @unique @db.Citext
+  region                        String            @default("us") @db.VarChar(1000)
+  status                        String            @default("active") @db.VarChar(1000)
+  logoPath                      String?           @map("logo_path") @db.VarChar(1000)
+  primaryColor                  String?           @map("primary_color") @db.VarChar(1000)
+  accentColor                   String?           @map("accent_color") @db.VarChar(1000)
+  textColor                     String?           @map("text_color") @db.VarChar(1000)
+  loginWatermarkEnabled         Boolean           @default(false) @map("login_watermark_enabled")
+  smtpHost                      String?           @map("smtp_host") @db.VarChar(1000)
+  smtpPort                      Int?              @map("smtp_port")
+  smtpUser                      String?           @map("smtp_user") @db.VarChar(1000)
+  smtpPasswordEncrypted         String?           @map("smtp_password_encrypted") @db.VarChar(1000)
+  emailFromAddress              String?           @map("email_from_address") @db.VarChar(1000)
+  aiApiKeyEncrypted             String?           @map("ai_api_key_encrypted") @db.VarChar(1000)
+  aiProvider                    String            @default("anthropic") @map("ai_provider") @db.VarChar(1000)
+  aiBaseUrl                     String?           @map("ai_base_url") @db.VarChar(1000)
+  aiModelFast                   String?           @map("ai_model_fast") @db.VarChar(1000)
+  aiModelStandard               String?           @map("ai_model_standard") @db.VarChar(1000)
   // Generic, bring-your-own embeddings provider (OpenAI-compatible /embeddings), decoupled from the
   // chat provider above. Null = semantic search inert for this org.
-  embeddingApiKeyEncrypted String?         @map("embedding_api_key_encrypted")
-  embeddingBaseUrl         String?         @map("embedding_base_url")
-  embeddingModel           String?         @map("embedding_model")
-  apiKeyHash             String?           @map("api_key_hash")
-  apiKeyPrefix           String?           @map("api_key_prefix")
-  apiKeyCreatedAt        DateTime?         @map("api_key_created_at")
-  webhookUrl             String?           @map("webhook_url")
-  webhookSecretEncrypted String?           @map("webhook_secret_encrypted")
-  samlEnabled            Boolean           @default(false) @map("saml_enabled")
-  samlIdpEntityId        String?           @map("saml_idp_entity_id")
-  samlIdpSsoUrl          String?           @map("saml_idp_sso_url")
-  samlIdpCertificate     String?           @map("saml_idp_certificate") @db.NVarChar(Max)
-  autoArchiveSiblingsOnHire Boolean        @default(true) @map("auto_archive_siblings_on_hire")
-  businessHoursJson      String?           @map("business_hours_json") @db.NVarChar(Max)
-  holidaysJson           String?           @map("holidays_json") @db.NVarChar(Max)
-  fieldPermissionsJson   String?           @map("field_permissions_json") @db.NVarChar(Max)
-  recordVisibilityEnabled Boolean          @default(false) @map("record_visibility_enabled")
-  planId                 String            @map("plan_id") @db.UniqueIdentifier
-  plan                   Plan              @relation(fields: [planId], references: [id])
-  billingStatus          String            @default("active") @map("billing_status")
-  stripeCustomerId       String?           @map("stripe_customer_id")
-  stripeSubscriptionId   String?           @map("stripe_subscription_id")
-  createdAt              DateTime          @default(now()) @map("created_at")
-  applyConsentText       String?           @map("apply_consent_text") @db.NVarChar(Max)
-  applyConsentVersion    Int               @default(1) @map("apply_consent_version")
-  careersEnabled         Boolean           @default(false) @map("careers_enabled")
-  careersHeadline        String?           @map("careers_headline")
-  careersIntro           String?           @map("careers_intro") @db.NVarChar(Max)
-  careersBannerPath      String?           @map("careers_banner_path")
+  embeddingApiKeyEncrypted      String?           @map("embedding_api_key_encrypted") @db.VarChar(1000)
+  embeddingBaseUrl              String?           @map("embedding_base_url") @db.VarChar(1000)
+  embeddingModel                String?           @map("embedding_model") @db.VarChar(1000)
+  apiKeyHash                    String?           @map("api_key_hash") @db.VarChar(1000)
+  apiKeyPrefix                  String?           @map("api_key_prefix") @db.VarChar(1000)
+  apiKeyCreatedAt               DateTime?         @map("api_key_created_at") @db.Timestamptz(3)
+  webhookUrl                    String?           @map("webhook_url") @db.VarChar(1000)
+  webhookSecretEncrypted        String?           @map("webhook_secret_encrypted") @db.VarChar(1000)
+  samlEnabled                   Boolean           @default(false) @map("saml_enabled")
+  samlIdpEntityId               String?           @map("saml_idp_entity_id") @db.VarChar(1000)
+  samlIdpSsoUrl                 String?           @map("saml_idp_sso_url") @db.VarChar(1000)
+  samlIdpCertificate            String?           @map("saml_idp_certificate") @db.Text
+  autoArchiveSiblingsOnHire     Boolean           @default(true) @map("auto_archive_siblings_on_hire")
+  businessHoursJson             String?           @map("business_hours_json") @db.Text
+  holidaysJson                  String?           @map("holidays_json") @db.Text
+  fieldPermissionsJson          String?           @map("field_permissions_json") @db.Text
+  recordVisibilityEnabled       Boolean           @default(false) @map("record_visibility_enabled")
+  planId                        String            @map("plan_id") @db.Uuid
+  plan                          Plan              @relation(fields: [planId], references: [id])
+  billingStatus                 String            @default("active") @map("billing_status") @db.VarChar(1000)
+  stripeCustomerId              String?           @map("stripe_customer_id") @db.VarChar(1000)
+  stripeSubscriptionId          String?           @map("stripe_subscription_id") @db.VarChar(1000)
+  createdAt                     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  applyConsentText              String?           @map("apply_consent_text") @db.Text
+  applyConsentVersion           Int               @default(1) @map("apply_consent_version")
+  careersEnabled                Boolean           @default(false) @map("careers_enabled")
+  careersHeadline               String?           @map("careers_headline") @db.VarChar(1000)
+  careersIntro                  String?           @map("careers_intro") @db.Text
+  careersBannerPath             String?           @map("careers_banner_path") @db.VarChar(1000)
   // Opt-in public AI assistant on the careers site (default off — it is public AI spend).
-  careersAssistantEnabled Boolean          @default(false) @map("careers_assistant_enabled")
-  smsEnabled             Boolean           @default(false) @map("sms_enabled")
-  smsProvider            String            @default("twilio") @map("sms_provider")
-  smsConfigEncrypted     String?           @map("sms_config_encrypted") @db.NVarChar(Max)
+  careersAssistantEnabled       Boolean           @default(false) @map("careers_assistant_enabled")
+  smsEnabled                    Boolean           @default(false) @map("sms_enabled")
+  smsProvider                   String            @default("twilio") @map("sms_provider") @db.VarChar(1000)
+  smsConfigEncrypted            String?           @map("sms_config_encrypted") @db.Text
   // External Easy Apply (Indeed/LinkedIn) ingestion creds, encrypted JSON keyed by provider:
   // { "<provider>": { "secret": "..." } }. A provider is enabled iff it has a stored secret;
   // the feature is inert until an org configures one. Same on/off shape as the SMS config blob.
-  easyApplyConfigEncrypted String?         @map("easy_apply_config_encrypted") @db.NVarChar(Max)
-  whatsappEnabled         Boolean          @default(false) @map("whatsapp_enabled")
-  whatsappProvider        String           @default("twilio") @map("whatsapp_provider")
-  whatsappConfigEncrypted String?          @map("whatsapp_config_encrypted") @db.NVarChar(Max)
+  easyApplyConfigEncrypted      String?           @map("easy_apply_config_encrypted") @db.Text
+  whatsappEnabled               Boolean           @default(false) @map("whatsapp_enabled")
+  whatsappProvider              String            @default("twilio") @map("whatsapp_provider") @db.VarChar(1000)
+  whatsappConfigEncrypted       String?           @map("whatsapp_config_encrypted") @db.Text
   // HRIS/ATS export: on candidate hire, POST a structured employee record to the org's HRIS inbound
   // API / iPaaS endpoint. Bring-your-own endpoint + auth token; inert until enabled + a target URL
   // is set. hrisAuthHeaderEncrypted holds the full Authorization header value (e.g. "Bearer xxx").
   // Daily staff reminder sweep (pending grading, stale invites, expiring offers, upcoming
   // interviews, feedback owed) — opt-in per org; per-user email opt-out via userNotificationPreference.
-  remindersEnabled        Boolean          @default(false) @map("reminders_enabled")
+  remindersEnabled              Boolean           @default(false) @map("reminders_enabled")
   // Weekly scheduled-report digest — opt-in per org. Recipients are a JSON array of staff user ids;
   // lastSentAt gates the 7-day cadence (and prevents a restart from re-sending the same week).
-  scheduledReportEnabled       Boolean     @default(false) @map("scheduled_report_enabled")
-  scheduledReportRecipientsJson String?    @map("scheduled_report_recipients_json") @db.NVarChar(Max)
-  scheduledReportLastSentAt     DateTime?  @map("scheduled_report_last_sent_at")
-  hrisExportEnabled       Boolean          @default(false) @map("hris_export_enabled")
-  hrisProvider            String           @default("generic") @map("hris_provider")
-  hrisTargetUrl           String?          @map("hris_target_url")
-  hrisAuthHeaderEncrypted String?          @map("hris_auth_header_encrypted") @db.NVarChar(Max)
-  users                  User[]
-  auditLogs              AuditLog[]
-  webhookDeliveries      WebhookDelivery[]
+  scheduledReportEnabled        Boolean           @default(false) @map("scheduled_report_enabled")
+  scheduledReportRecipientsJson String?           @map("scheduled_report_recipients_json") @db.Text
+  scheduledReportLastSentAt     DateTime?         @map("scheduled_report_last_sent_at") @db.Timestamptz(3)
+  hrisExportEnabled             Boolean           @default(false) @map("hris_export_enabled")
+  hrisProvider                  String            @default("generic") @map("hris_provider") @db.VarChar(1000)
+  hrisTargetUrl                 String?           @map("hris_target_url") @db.VarChar(1000)
+  hrisAuthHeaderEncrypted       String?           @map("hris_auth_header_encrypted") @db.Text
+  users                         User[]
+  auditLogs                     AuditLog[]
+  webhookDeliveries             WebhookDelivery[]
 
   @@map("organizations")
 }
 
 model BillingNotice {
-  id             String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
-  dimension      String
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  dimension      String   @db.VarChar(1000)
   threshold      Int
-  periodStart    DateTime @map("period_start")
-  createdAt      DateTime @default(now()) @map("created_at")
+  periodStart    DateTime @map("period_start") @db.Timestamptz(3)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([organizationId, dimension, threshold, periodStart])
   @@index([organizationId])
@@ -125,32 +129,32 @@ model BillingNotice {
 }
 
 model OrgIntegration {
-  id                 String    @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
-  organizationId     String    @map("organization_id") @db.UniqueIdentifier
-  type               String
-  label              String
-  targetUrlEncrypted String    @map("target_url_encrypted") @db.NVarChar(Max)
-  events             String    @db.NVarChar(Max)
-  status             String    @default("active")
-  lastDeliveryAt     DateTime? @map("last_delivery_at")
-  lastError          String?   @map("last_error") @db.NVarChar(Max)
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  type               String    @db.VarChar(1000)
+  label              String    @db.VarChar(1000)
+  targetUrlEncrypted String    @map("target_url_encrypted") @db.Text
+  events             String    @db.Text
+  status             String    @default("active") @db.VarChar(1000)
+  lastDeliveryAt     DateTime? @map("last_delivery_at") @db.Timestamptz(3)
+  lastError          String?   @map("last_error") @db.Text
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("org_integrations")
 }
 
 model IntegrationDelivery {
-  id             String    @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
-  organizationId String    @map("organization_id") @db.UniqueIdentifier
-  integrationId  String    @map("integration_id") @db.UniqueIdentifier
-  eventType      String    @map("event_type")
-  status         String    @default("pending")
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  integrationId  String    @map("integration_id") @db.Uuid
+  eventType      String    @map("event_type") @db.VarChar(1000)
+  status         String    @default("pending") @db.VarChar(1000)
   httpStatusCode Int?      @map("http_status_code")
   attemptCount   Int       @default(0) @map("attempt_count")
-  errorDetail    String?   @map("error_detail") @db.NVarChar(Max)
-  createdAt      DateTime  @default(now()) @map("created_at")
-  lastAttemptAt  DateTime? @map("last_attempt_at")
+  errorDetail    String?   @map("error_detail") @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastAttemptAt  DateTime? @map("last_attempt_at") @db.Timestamptz(3)
 
   @@map("integration_deliveries")
 }
@@ -159,72 +163,72 @@ model IntegrationDelivery {
 // WebhookDelivery (super-admin accessed, not RLS): payloadJson snapshots the employee record at
 // hire so a later candidate edit can't rewrite what was exported.
 model HrisExportDelivery {
-  id             String    @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
-  organizationId String    @map("organization_id") @db.UniqueIdentifier
-  candidateId    String    @map("candidate_id") @db.UniqueIdentifier
-  payloadJson    String    @map("payload_json") @db.NVarChar(Max)
-  status         String    @default("pending")
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  candidateId    String    @map("candidate_id") @db.Uuid
+  payloadJson    String    @map("payload_json") @db.Text
+  status         String    @default("pending") @db.VarChar(1000)
   httpStatusCode Int?      @map("http_status_code")
   attemptCount   Int       @default(0) @map("attempt_count")
-  errorDetail    String?   @map("error_detail") @db.NVarChar(Max)
-  createdAt      DateTime  @default(now()) @map("created_at")
-  lastAttemptAt  DateTime? @map("last_attempt_at")
+  errorDetail    String?   @map("error_detail") @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastAttemptAt  DateTime? @map("last_attempt_at") @db.Timestamptz(3)
 
   @@index([organizationId, createdAt])
   @@map("hris_export_deliveries")
 }
 
 model WebhookDelivery {
-  id             String       @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String       @map("organization_id") @db.UniqueIdentifier
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  eventType      String       @map("event_type")
-  payloadJson    String       @map("payload_json") @db.NVarChar(Max)
-  status         String       @default("pending")
+  eventType      String       @map("event_type") @db.VarChar(1000)
+  payloadJson    String       @map("payload_json") @db.Text
+  status         String       @default("pending") @db.VarChar(1000)
   httpStatusCode Int?         @map("http_status_code")
   attemptCount   Int          @default(0) @map("attempt_count")
-  lastAttemptAt  DateTime?    @map("last_attempt_at")
-  createdAt      DateTime     @default(now()) @map("created_at")
+  lastAttemptAt  DateTime?    @map("last_attempt_at") @db.Timestamptz(3)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([organizationId, createdAt])
   @@map("webhook_deliveries")
 }
 
 model SsoLoginCode {
-  id        String   @id @default(uuid()) @db.UniqueIdentifier
-  codeHash  String   @unique @map("code_hash")
-  userId    String   @map("user_id") @db.UniqueIdentifier
-  user      User     @relation(fields: [userId], references: [id])
-  expiresAt DateTime @map("expires_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid()) @db.Uuid
+  codeHash  String   @unique @map("code_hash") @db.VarChar(1000)
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("sso_login_codes")
 }
 
 model User {
-  id                  String               @id @default(uuid()) @db.UniqueIdentifier
-  organizationId      String?              @map("organization_id") @db.UniqueIdentifier
+  id                  String               @id @default(uuid()) @db.Uuid
+  organizationId      String?              @map("organization_id") @db.Uuid
   organization        Organization?        @relation(fields: [organizationId], references: [id])
-  email               String
-  name                String?
-  timeZone            String?              @map("time_zone")
-  emailSignature      String?              @map("email_signature") @db.NVarChar(Max)
+  email               String               @db.Citext
+  name                String?              @db.VarChar(1000)
+  timeZone            String?              @map("time_zone") @db.VarChar(1000)
+  emailSignature      String?              @map("email_signature") @db.Text
   // Notification email cadence: 'immediate' (default = one email per event, today's behavior),
   // 'daily' (batched into one daily digest by the digest sweep), or 'off' (no notification emails at
   // all; the in-app bell is unaffected). lastDigestSentAt anchors the once-per-day digest sweep.
-  notificationDigest  String               @default("immediate") @map("notification_digest")
-  lastDigestSentAt    DateTime?            @map("last_digest_sent_at")
-  passwordHash        String               @map("password_hash")
-  role                String
-  status              String               @default("active")
+  notificationDigest  String               @default("immediate") @map("notification_digest") @db.VarChar(1000)
+  lastDigestSentAt    DateTime?            @map("last_digest_sent_at") @db.Timestamptz(3)
+  passwordHash        String               @map("password_hash") @db.VarChar(1000)
+  role                String               @db.VarChar(1000)
+  status              String               @default("active") @db.VarChar(1000)
   // Blob path, not a URL. The container is private, so every read has to be
   // SAS-signed on the way out -- see UsersService.toProfileResponse.
-  avatarPath          String?              @map("avatar_path")
-  lastLoginAt         DateTime?            @map("last_login_at")
-  managerId           String?              @map("manager_id") @db.UniqueIdentifier
-  permissionProfileId String?              @map("permission_profile_id") @db.UniqueIdentifier
+  avatarPath          String?              @map("avatar_path") @db.VarChar(1000)
+  lastLoginAt         DateTime?            @map("last_login_at") @db.Timestamptz(3)
+  managerId           String?              @map("manager_id") @db.Uuid
+  permissionProfileId String?              @map("permission_profile_id") @db.Uuid
   permissionProfile   PermissionProfile?   @relation(fields: [permissionProfileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  createdAt           DateTime             @default(now()) @map("created_at")
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
   ssoLoginCodes       SsoLoginCode[]
@@ -235,17 +239,17 @@ model User {
 }
 
 model Permission {
-  id              String           @id @default(uuid()) @db.UniqueIdentifier
-  key             String           @unique
-  description     String
+  id              String           @id @default(uuid()) @db.Uuid
+  key             String           @unique @db.VarChar(1000)
+  description     String           @db.VarChar(1000)
   rolePermissions RolePermission[]
 
   @@map("permissions")
 }
 
 model RolePermission {
-  role         String
-  permissionId String     @map("permission_id") @db.UniqueIdentifier
+  role         String     @db.VarChar(1000)
+  permissionId String     @map("permission_id") @db.Uuid
   permission   Permission @relation(fields: [permissionId], references: [id])
 
   @@id([role, permissionId])
@@ -254,37 +258,37 @@ model RolePermission {
 }
 
 model RefreshToken {
-  id        String    @id @default(uuid()) @db.UniqueIdentifier
-  userId    String    @map("user_id") @db.UniqueIdentifier
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
   user      User      @relation(fields: [userId], references: [id])
-  tokenHash String    @map("token_hash")
-  familyId  String    @map("family_id")
-  expiresAt DateTime  @map("expires_at")
-  revokedAt DateTime? @map("revoked_at")
-  createdAt DateTime  @default(now()) @map("created_at")
+  tokenHash String    @map("token_hash") @db.VarChar(1000)
+  familyId  String    @map("family_id") @db.VarChar(1000)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([userId])
   @@map("refresh_tokens")
 }
 
 model PasswordResetToken {
-  id        String    @id @default(uuid()) @db.UniqueIdentifier
-  userId    String    @map("user_id") @db.UniqueIdentifier
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
   user      User      @relation(fields: [userId], references: [id])
-  tokenHash String    @unique @map("token_hash")
-  expiresAt DateTime  @map("expires_at")
-  usedAt    DateTime? @map("used_at")
-  createdAt DateTime  @default(now()) @map("created_at")
+  tokenHash String    @unique @map("token_hash") @db.VarChar(1000)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([userId])
   @@map("password_reset_tokens")
 }
 
 model SetupToken {
-  id        String   @id @default(uuid()) @db.UniqueIdentifier
-  tokenHash String   @unique @map("token_hash")
-  expiresAt DateTime @map("expires_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid()) @db.Uuid
+  tokenHash String   @unique @map("token_hash") @db.VarChar(1000)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("setup_tokens")
 }
@@ -292,42 +296,36 @@ model SetupToken {
 // Landing-page "Get Started" submissions. Platform-level, no organizationId -- these are
 // prospects who don't have an org yet, unlike everything else in this schema.
 model Lead {
-  id        String   @id @default(uuid()) @db.UniqueIdentifier
-  name      String
-  workEmail String   @map("work_email")
-  company   String
-  teamSize  String?  @map("team_size")
-  message   String?  @db.NVarChar(Max)
-  createdAt DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(1000)
+  workEmail String   @map("work_email") @db.VarChar(1000)
+  company   String   @db.VarChar(1000)
+  teamSize  String?  @map("team_size") @db.VarChar(1000)
+  message   String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("leads")
 }
 
 model AuditLog {
-  id             String        @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String?       @map("organization_id") @db.UniqueIdentifier
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String?       @map("organization_id") @db.Uuid
   organization   Organization? @relation(fields: [organizationId], references: [id])
-  actorUserId    String?       @map("actor_user_id") @db.UniqueIdentifier
-  // onDelete: NoAction here is a schema-validator-only annotation, not the real DB behavior.
-  // Prisma's generate/validate step flags this relation and the organization relation above as
-  // two ambiguous SetNull-cascade paths into AuditLog (Organization -> AuditLog directly, and
-  // Organization -> User -> AuditLog.actor), even though the actual FK constraint -- defined by
-  // this project's hand-written migration, never auto-generated from this annotation -- really is
-  // ON DELETE SET NULL ON UPDATE NO ACTION, exactly as applied and already accepted by SQL Server.
-  actor          User?         @relation(fields: [actorUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  action         String
-  entityType     String        @map("entity_type")
-  entityId       String?       @map("entity_id")
+  actorUserId    String?       @map("actor_user_id") @db.Uuid
+  actor          User?         @relation(fields: [actorUserId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  action         String        @db.VarChar(1000)
+  entityType     String        @map("entity_type") @db.VarChar(1000)
+  entityId       String?       @map("entity_id") @db.VarChar(1000)
   // Actor identity snapshotted at write time. The live `actor` relation can't be
   // resolved at read time when the viewer is an org-admin and the actor is a
   // super-admin (RLS hides the super-admin's out-of-org user row), which rendered
   // such events as "System". Snapshotting also survives the actor being renamed
   // or deleted later -- both required for a trustworthy audit trail.
-  actorEmail     String?       @map("actor_email")
-  actorName      String?       @map("actor_name")
-  actorRole      String?       @map("actor_role")
-  metadataJson   String?       @map("metadata_json") @db.NVarChar(Max)
-  createdAt      DateTime      @default(now()) @map("created_at")
+  actorEmail     String?       @map("actor_email") @db.VarChar(1000)
+  actorName      String?       @map("actor_name") @db.VarChar(1000)
+  actorRole      String?       @map("actor_role") @db.VarChar(1000)
+  metadataJson   String?       @map("metadata_json") @db.Text
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([organizationId, createdAt])
   @@index([actorUserId])
@@ -341,15 +339,15 @@ model AuditLog {
 // Organization FK relation -- org id is a scoping value only (RLS filters on the column),
 // and a relation would add another cascade path into the AuditLog-style validator mess.
 model SystemEvent {
-  id             String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String?  @map("organization_id") @db.UniqueIdentifier
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @map("organization_id") @db.Uuid
   // 'api' | 'exam-runtime' | 'candidate-browser'
-  service        String
+  service        String   @db.VarChar(1000)
   // 'error' | 'warn'
-  severity       String
-  message        String   @db.NVarChar(2000)
-  contextJson    String?  @map("context_json") @db.NVarChar(Max)
-  occurredAt     DateTime @default(now()) @map("occurred_at")
+  severity       String   @db.VarChar(1000)
+  message        String   @db.VarChar(2000)
+  contextJson    String?  @map("context_json") @db.Text
+  occurredAt     DateTime @default(now()) @map("occurred_at") @db.Timestamptz(3)
 
   @@index([organizationId, occurredAt])
   @@index([occurredAt])
@@ -358,13 +356,13 @@ model SystemEvent {
 }
 
 model Question {
-  id                 String                @id @default(uuid()) @db.UniqueIdentifier
-  organizationId     String                @map("organization_id") @db.UniqueIdentifier
-  type               String
-  text               String                @db.NVarChar(Max)
-  topic              String?
-  category           String?
-  difficulty         String
+  id                 String                @id @default(uuid()) @db.Uuid
+  organizationId     String                @map("organization_id") @db.Uuid
+  type               String                @db.VarChar(1000)
+  text               String                @db.Text
+  topic              String?               @db.VarChar(1000)
+  category           String?               @db.VarChar(1000)
+  difficulty         String                @db.VarChar(1000)
   marks              Int
   negativeMarks      Int                   @default(0) @map("negative_marks")
   // Opt-in partial credit for a multi_mcq question. When true, a non-exact selection earns
@@ -372,30 +370,30 @@ model Question {
   // for multi_mcq; forced false for every other type in the write path. Default false preserves
   // the existing all-or-nothing behavior for every current question.
   partialCredit      Boolean               @default(false) @map("partial_credit")
-  status             String                @default("active")
+  status             String                @default("active") @db.VarChar(1000)
   aiGenerated        Boolean               @default(false) @map("ai_generated")
-  aiJobId            String?               @map("ai_job_id") @db.UniqueIdentifier
-  languageMode       String                @default("fixed") @map("language_mode")
-  allowedLanguages   String?               @map("allowed_languages") @db.NVarChar(Max)
-  starterCode        String?               @map("starter_code") @db.NVarChar(Max)
+  aiJobId            String?               @map("ai_job_id") @db.Uuid
+  languageMode       String                @default("fixed") @map("language_mode") @db.VarChar(1000)
+  allowedLanguages   String?               @map("allowed_languages") @db.Text
+  starterCode        String?               @map("starter_code") @db.Text
   allowStdin         Boolean               @default(false) @map("allow_stdin")
   // Auto-grading test cases for a code question (JSON array of {stdin, expectedStdout, weight,
   // hidden}). Null/empty = the question is graded manually, as before.
-  codeTestsJson      String?               @map("code_tests_json") @db.NVarChar(Max)
+  codeTestsJson      String?               @map("code_tests_json") @db.Text
   // Recruiter-only reference answer / grading notes for an essay question. Null for other types
   // and never exposed to candidates; shown to the grader in the manual-grading queue.
-  modelAnswer        String?               @map("model_answer") @db.NVarChar(Max)
-  snippetCode        String?               @map("snippet_code") @db.NVarChar(Max)
-  snippetLanguage    String?               @map("snippet_language")
-  imageUrl           String?               @map("image_url")
-  createdBy          String                @map("created_by") @db.UniqueIdentifier
-  createdAt          DateTime              @default(now()) @map("created_at")
+  modelAnswer        String?               @map("model_answer") @db.Text
+  snippetCode        String?               @map("snippet_code") @db.Text
+  snippetLanguage    String?               @map("snippet_language") @db.VarChar(1000)
+  imageUrl           String?               @map("image_url") @db.VarChar(1000)
+  createdBy          String                @map("created_by") @db.Uuid
+  createdAt          DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
   // Stamped only when an edit actually changes WHICH answers are correct. Item analytics
   // discards responses submitted before this instant: those candidates answered a question
   // whose key was different, so pooling them measures two different items as one -- and it
   // is why a miskeyed question stayed flagged even after a recruiter fixed it.
   // Null means the key has never changed, so every response counts.
-  answerKeyChangedAt DateTime?             @map("answer_key_changed_at")
+  answerKeyChangedAt DateTime?             @map("answer_key_changed_at") @db.Timestamptz(3)
   options            QuestionOption[]
   examLinks          ExamSectionQuestion[]
   answers            Answer[]
@@ -407,12 +405,12 @@ model Question {
 }
 
 model QuestionOption {
-  id         String   @id @default(uuid()) @db.UniqueIdentifier
-  questionId String   @map("question_id") @db.UniqueIdentifier
-  text       String
+  id         String   @id @default(uuid()) @db.Uuid
+  questionId String   @map("question_id") @db.Uuid
+  text       String   @db.VarChar(1000)
   isCorrect  Boolean  @map("is_correct")
   orderIndex Int      @map("order_index")
-  imageUrl   String?  @map("image_url")
+  imageUrl   String?  @map("image_url") @db.VarChar(1000)
   question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@index([questionId])
@@ -420,10 +418,10 @@ model QuestionOption {
 }
 
 model Tag {
-  id             String               @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String               @map("organization_id") @db.UniqueIdentifier
-  name           String
-  createdAt      DateTime             @default(now()) @map("created_at")
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  name           String               @db.VarChar(1000)
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
   questions      QuestionTag[]
   poolSections   ExamSectionPoolTag[]
 
@@ -432,16 +430,16 @@ model Tag {
 }
 
 model WalkInGroup {
-  id             String         @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String         @map("organization_id") @db.UniqueIdentifier
-  name           String
-  createdAt      DateTime       @default(now()) @map("created_at")
-  jobId          String?        @map("job_id") @db.UniqueIdentifier
-  deletedAt      DateTime?      @map("deleted_at")
-  deletedByUserId String?       @map("deleted_by_user_id") @db.UniqueIdentifier
-  job            Job?           @relation(fields: [jobId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  exams          Exam[]
-  driveSessions  DriveSession[]
+  id              String         @id @default(uuid()) @db.Uuid
+  organizationId  String         @map("organization_id") @db.Uuid
+  name            String         @db.VarChar(1000)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  jobId           String?        @map("job_id") @db.Uuid
+  deletedAt       DateTime?      @map("deleted_at") @db.Timestamptz(3)
+  deletedByUserId String?        @map("deleted_by_user_id") @db.Uuid
+  job             Job?           @relation(fields: [jobId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  exams           Exam[]
+  driveSessions   DriveSession[]
 
   @@unique([organizationId, name])
   @@index([jobId])
@@ -449,13 +447,13 @@ model WalkInGroup {
 }
 
 model DriveSession {
-  id             String       @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String       @map("organization_id") @db.UniqueIdentifier
-  walkInGroupId  String       @map("walk_in_group_id") @db.UniqueIdentifier
-  name           String
-  startsAt       DateTime     @map("starts_at")
-  endsAt         DateTime     @map("ends_at")
-  createdAt      DateTime     @default(now()) @map("created_at")
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  walkInGroupId  String       @map("walk_in_group_id") @db.Uuid
+  name           String       @db.VarChar(1000)
+  startsAt       DateTime     @map("starts_at") @db.Timestamptz(3)
+  endsAt         DateTime     @map("ends_at") @db.Timestamptz(3)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   walkInGroup    WalkInGroup  @relation(fields: [walkInGroupId], references: [id], onUpdate: NoAction)
   invitations    Invitation[]
 
@@ -464,8 +462,8 @@ model DriveSession {
 }
 
 model QuestionTag {
-  questionId String   @map("question_id") @db.UniqueIdentifier
-  tagId      String   @map("tag_id") @db.UniqueIdentifier
+  questionId String   @map("question_id") @db.Uuid
+  tagId      String   @map("tag_id") @db.Uuid
   question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
   tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
@@ -474,23 +472,23 @@ model QuestionTag {
 }
 
 model Exam {
-  id                            String        @id @default(uuid()) @db.UniqueIdentifier
-  organizationId                String        @map("organization_id") @db.UniqueIdentifier
-  title                         String
-  instructions                  String?       @db.NVarChar(Max)
-  status                        String        @default("draft")
+  id                            String        @id @default(uuid()) @db.Uuid
+  organizationId                String        @map("organization_id") @db.Uuid
+  title                         String        @db.VarChar(1000)
+  instructions                  String?       @db.Text
+  status                        String        @default("draft") @db.VarChar(1000)
   durationMinutes               Int           @default(60) @map("duration_minutes")
   passCriteriaPercent           Int           @default(40) @map("pass_criteria_percent")
   randomizeOrder                Boolean       @default(false) @map("randomize_order")
-  feedbackVisibility            String        @default("pass_fail") @map("feedback_visibility")
+  feedbackVisibility            String        @default("pass_fail") @map("feedback_visibility") @db.VarChar(1000)
   // 'immediate' (default, behavior-preserving): a settled result is shown to the candidate at once.
   // 'manual': the result is withheld until a recruiter releases it (per-attempt override on Result).
-  resultsReleaseMode            String        @default("immediate") @map("results_release_mode")
+  resultsReleaseMode            String        @default("immediate") @map("results_release_mode") @db.VarChar(1000)
   // Issue a downloadable certificate to candidates who pass this exam (inert until enabled).
   certificatesEnabled           Boolean       @default(false) @map("certificates_enabled")
   schedulingEnabled             Boolean       @default(false) @map("scheduling_enabled")
-  availabilityWindowStart       DateTime?     @map("availability_window_start")
-  availabilityWindowEnd         DateTime?     @map("availability_window_end")
+  availabilityWindowStart       DateTime?     @map("availability_window_start") @db.Timestamptz(3)
+  availabilityWindowEnd         DateTime?     @map("availability_window_end") @db.Timestamptz(3)
   walkInEnabled                 Boolean       @default(false) @map("walk_in_enabled")
   // Independent of walkInEnabled: controls whether this exam appears in the shared
   // /walk-in/{orgSlug} picker alongside every other walk-in-enabled exam, vs. only being
@@ -501,16 +499,9 @@ model Exam {
   // its old one. A group's own shared link (WalkInShareCard's ?group=<id>) shows
   // exactly its member exams regardless of walkInListed, which only governs the
   // org-wide default picker.
-  walkInGroupId                 String?       @map("walk_in_group_id") @db.UniqueIdentifier
-  // onDelete/onUpdate declared NoAction here only to satisfy Prisma's client-generation
-  // cyclic-referential-actions check (adding WalkInGroup.jobId in 20260820090000 created a
-  // second path Job -> WalkInGroup -> Exam -> JobExam alongside the direct Job -> JobExam
-  // cascade, which Prisma's validator rejects even though SQL Server itself accepted the
-  // new FK). The REAL deployed constraint (20260805020000_walk_in_groups) is still
-  // ON DELETE SET NULL ON UPDATE CASCADE -- this annotation doesn't change DB behavior,
-  // it only breaks the graph Prisma walks at generate time.
-  walkInGroup                   WalkInGroup?  @relation(fields: [walkInGroupId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  allowedIpRange                String?       @map("allowed_ip_range")
+  walkInGroupId                 String?       @map("walk_in_group_id") @db.Uuid
+  walkInGroup                   WalkInGroup?  @relation(fields: [walkInGroupId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  allowedIpRange                String?       @map("allowed_ip_range") @db.VarChar(1000)
   // Master switch for every anti-cheating measure below. Off forces webcam/screen-capture/
   // lockdown to false and every browser-behavior signal disabled at write time (exams.service's
   // resolveProctoringFields), so a stale/duplicated row can't leave monitoring silently active.
@@ -526,21 +517,21 @@ model Exam {
   // signals normally. Default false preserves today's behavior (webcam follows the same
   // enforcement as everything else) for every existing exam.
   webcamRecordOnly              Boolean       @default(false) @map("webcam_record_only")
-  proctoringEnforcement         String        @default("block") @map("proctoring_enforcement")
+  proctoringEnforcement         String        @default("block") @map("proctoring_enforcement") @db.VarChar(1000)
   proctoringStrikeLimit         Int           @default(3) @map("proctoring_strike_limit")
-  disabledProctoringSignalsJson String?       @map("disabled_proctoring_signals_json") @db.NVarChar(Max)
+  disabledProctoringSignalsJson String?       @map("disabled_proctoring_signals_json") @db.Text
   screenCaptureEnabled          Boolean       @default(false) @map("screen_capture_enabled")
   lockdownRequired              Boolean       @default(false) @map("lockdown_required")
   faceVerificationEnabled       Boolean       @default(false) @map("face_verification_enabled")
-  faceEnrolmentPolicy           String        @default("retry_then_allow") @map("face_enrolment_policy")
+  faceEnrolmentPolicy           String        @default("retry_then_allow") @map("face_enrolment_policy") @db.VarChar(1000)
   // What happens when a confirmed face mismatch fires mid-exam. Stage 2 ships flag-only: every
   // value is accepted, stored and surfaced to recruiters, but only 'flag' has any candidate-
   // facing effect right now -- see AttemptService's applyFaceMismatchAction and the stage-2
   // brief. warn/pause/block enforcement is deferred to stage 3 pending threshold calibration
   // and a fairness check.
-  faceMismatchAction            String        @default("flag") @map("face_mismatch_action")
-  createdBy                     String        @map("created_by") @db.UniqueIdentifier
-  createdAt                     DateTime      @default(now()) @map("created_at")
+  faceMismatchAction            String        @default("flag") @map("face_mismatch_action") @db.VarChar(1000)
+  createdBy                     String        @map("created_by") @db.Uuid
+  createdAt                     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   sections                      ExamSection[]
   invitations                   Invitation[]
   jobExams                      JobExam[]
@@ -550,13 +541,13 @@ model Exam {
 }
 
 model ExamSection {
-  id                    String                @id @default(uuid()) @db.UniqueIdentifier
-  examId                String                @map("exam_id") @db.UniqueIdentifier
-  title                 String
+  id                    String                @id @default(uuid()) @db.Uuid
+  examId                String                @map("exam_id") @db.Uuid
+  title                 String                @db.VarChar(1000)
   orderIndex            Int                   @map("order_index")
-  selectionMode         String                @default("fixed") @map("selection_mode")
+  selectionMode         String                @default("fixed") @map("selection_mode") @db.VarChar(1000)
   poolSize              Int?                  @map("pool_size")
-  poolDifficulty        String?               @map("pool_difficulty")
+  poolDifficulty        String?               @map("pool_difficulty") @db.VarChar(1000)
   targetDurationMinutes Int?                  @map("target_duration_minutes")
   // A section's share of the exam's grade, independent of its questions' raw marks -- see
   // docs/superpowers/specs/2026-08-05-section-weightage-design.md. Every exam's sections must
@@ -577,8 +568,8 @@ model ExamSection {
 }
 
 model ExamSectionQuestion {
-  sectionId  String      @map("section_id") @db.UniqueIdentifier
-  questionId String      @map("question_id") @db.UniqueIdentifier
+  sectionId  String      @map("section_id") @db.Uuid
+  questionId String      @map("question_id") @db.Uuid
   orderIndex Int         @map("order_index")
   section    ExamSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   question   Question    @relation(fields: [questionId], references: [id])
@@ -588,8 +579,8 @@ model ExamSectionQuestion {
 }
 
 model ExamSectionPoolTag {
-  sectionId String      @map("section_id") @db.UniqueIdentifier
-  tagId     String      @map("tag_id") @db.UniqueIdentifier
+  sectionId String      @map("section_id") @db.Uuid
+  tagId     String      @map("tag_id") @db.Uuid
   section   ExamSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   tag       Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
@@ -598,30 +589,30 @@ model ExamSectionPoolTag {
 }
 
 model Candidate {
-  id              String            @id @default(uuid()) @db.UniqueIdentifier
-  organizationId  String            @map("organization_id") @db.UniqueIdentifier
-  email           String
-  name            String
-  phone           String?
-  status          String            @default("active")
-  globalStage     String            @default("new") @map("global_stage")
-  portalToken     String?           @unique @map("portal_token")
-  unsubscribeToken String?          @unique @map("unsubscribe_token")
-  emailOptedOutAt  DateTime?        @map("email_opted_out_at")
-  whatsappOptedOutAt DateTime?      @map("whatsapp_opted_out_at")
-  createdAt       DateTime          @default(now()) @map("created_at")
-  erasedAt        DateTime?         @map("erased_at")
-  deletedAt       DateTime?         @map("deleted_at")
-  deletedByUserId String?           @map("deleted_by_user_id") @db.UniqueIdentifier
-  consentedAt     DateTime?         @map("consented_at")
-  consentVersion  Int?              @map("consent_version")
-  smsOptedOutAt   DateTime?         @map("sms_opted_out_at")
-  invitations     Invitation[]
-  pipelineEntries PipelineEntry[]
-  profile         CandidateProfile?
-  candidateEmails CandidateEmail[]
-  candidateSms    CandidateSms[]
-  candidateWhatsapp CandidateWhatsapp[]
+  id                 String              @id @default(uuid()) @db.Uuid
+  organizationId     String              @map("organization_id") @db.Uuid
+  email              String              @db.Citext
+  name               String              @db.VarChar(1000)
+  phone              String?             @db.VarChar(1000)
+  status             String              @default("active") @db.VarChar(1000)
+  globalStage        String              @default("new") @map("global_stage") @db.VarChar(1000)
+  portalToken        String?             @unique @map("portal_token") @db.VarChar(1000)
+  unsubscribeToken   String?             @unique @map("unsubscribe_token") @db.VarChar(1000)
+  emailOptedOutAt    DateTime?           @map("email_opted_out_at") @db.Timestamptz(3)
+  whatsappOptedOutAt DateTime?           @map("whatsapp_opted_out_at") @db.Timestamptz(3)
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  erasedAt           DateTime?           @map("erased_at") @db.Timestamptz(3)
+  deletedAt          DateTime?           @map("deleted_at") @db.Timestamptz(3)
+  deletedByUserId    String?             @map("deleted_by_user_id") @db.Uuid
+  consentedAt        DateTime?           @map("consented_at") @db.Timestamptz(3)
+  consentVersion     Int?                @map("consent_version")
+  smsOptedOutAt      DateTime?           @map("sms_opted_out_at") @db.Timestamptz(3)
+  invitations        Invitation[]
+  pipelineEntries    PipelineEntry[]
+  profile            CandidateProfile?
+  candidateEmails    CandidateEmail[]
+  candidateSms       CandidateSms[]
+  candidateWhatsapp  CandidateWhatsapp[]
 
   @@unique([organizationId, email])
   @@index([organizationId, globalStage])
@@ -629,54 +620,54 @@ model Candidate {
 }
 
 model CandidateProfile {
-  id                    String    @id @default(uuid()) @db.UniqueIdentifier
-  organizationId        String    @map("organization_id") @db.UniqueIdentifier
-  candidateId           String    @unique @map("candidate_id") @db.UniqueIdentifier
-  resumePath            String?   @map("resume_path")
-  parseStatus           String    @default("pending") @map("parse_status")
-  parsedSummary         String?   @map("parsed_summary") @db.NVarChar(Max)
-  parsedSkills          String?   @map("parsed_skills") @db.NVarChar(Max)
-  parsedTitle           String?   @map("parsed_title")
+  id                    String    @id @default(uuid()) @db.Uuid
+  organizationId        String    @map("organization_id") @db.Uuid
+  candidateId           String    @unique @map("candidate_id") @db.Uuid
+  resumePath            String?   @map("resume_path") @db.VarChar(1000)
+  parseStatus           String    @default("pending") @map("parse_status") @db.VarChar(1000)
+  parsedSummary         String?   @map("parsed_summary") @db.Text
+  parsedSkills          String?   @map("parsed_skills") @db.Text
+  parsedTitle           String?   @map("parsed_title") @db.VarChar(1000)
   parsedYearsExperience Int?      @map("parsed_years_experience")
-  parsedAt              DateTime? @map("parsed_at")
+  parsedAt              DateTime? @map("parsed_at") @db.Timestamptz(3)
   // Semantic-search embedding of the parsed résumé text. embeddingHash guards re-embeds (text+model);
   // embeddingModel records which model produced the vector so a model switch re-embeds everyone.
-  embeddingJson        String?   @map("embedding_json") @db.NVarChar(Max)
-  embeddingModel       String?   @map("embedding_model")
-  embeddingHash        String?   @map("embedding_hash")
-  embeddedAt           DateTime? @map("embedded_at")
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
+  embeddingJson         String?   @map("embedding_json") @db.Text
+  embeddingModel        String?   @map("embedding_model") @db.VarChar(1000)
+  embeddingHash         String?   @map("embedding_hash") @db.VarChar(1000)
+  embeddedAt            DateTime? @map("embedded_at") @db.Timestamptz(3)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   candidate             Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("candidate_profiles")
 }
 
 model Invitation {
-  id                     String                  @id @default(uuid()) @db.UniqueIdentifier
-  examId                 String                  @map("exam_id") @db.UniqueIdentifier
-  candidateId            String                  @map("candidate_id") @db.UniqueIdentifier
-  token                  String                  @unique
-  status                 String                  @default("invited")
-  source                 String                  @default("invited") @map("source")
+  id                     String                  @id @default(uuid()) @db.Uuid
+  examId                 String                  @map("exam_id") @db.Uuid
+  candidateId            String                  @map("candidate_id") @db.Uuid
+  token                  String                  @unique @db.VarChar(1000)
+  status                 String                  @default("invited") @db.VarChar(1000)
+  source                 String                  @default("invited") @map("source") @db.VarChar(1000)
   // Tracks the invite EMAIL's own lifecycle, separate from `status` (which tracks the
   // invitation itself: invited/revoked). 'pending' until dispatchInvitationEmail's fire-
   // and-forget send resolves, then 'sent' or 'failed' -- lets the recruiter UI show
   // "In queue" for the brief window before the email actually goes out.
-  emailStatus            String                  @default("pending") @map("email_status")
+  emailStatus            String                  @default("pending") @map("email_status") @db.VarChar(1000)
   // Set when this invitation was created by "Advance to Next Round" from another exam, so
   // that exam's results table can report whether the invite it triggered actually went out.
   // Deliberately NOT a relation: it is provenance for a UI column, and a FK would make
   // deleting the source exam either fail or cascade-delete a live invitation to a different
   // exam. Null for every hand-made invite, and for everything created before this shipped.
-  advancedFromExamId     String?                 @map("advanced_from_exam_id") @db.UniqueIdentifier
+  advancedFromExamId     String?                 @map("advanced_from_exam_id") @db.Uuid
   resendCount            Int                     @default(0) @map("resend_count")
   extraTimePercent       Int                     @default(0) @map("extra_time_percent")
-  invitedAt              DateTime                @default(now()) @map("invited_at")
-  expiresAt              DateTime                @map("expires_at")
-  revokedAt              DateTime?               @map("revoked_at")
-  activeSessionFamilyId  String?                 @map("active_session_family_id")
-  driveSessionId         String?                 @map("drive_session_id") @db.UniqueIdentifier
+  invitedAt              DateTime                @default(now()) @map("invited_at") @db.Timestamptz(3)
+  expiresAt              DateTime                @map("expires_at") @db.Timestamptz(3)
+  revokedAt              DateTime?               @map("revoked_at") @db.Timestamptz(3)
+  activeSessionFamilyId  String?                 @map("active_session_family_id") @db.VarChar(1000)
+  driveSessionId         String?                 @map("drive_session_id") @db.Uuid
   exam                   Exam                    @relation(fields: [examId], references: [id], onDelete: Cascade)
   candidate              Candidate               @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   driveSession           DriveSession?           @relation(fields: [driveSessionId], references: [id], onDelete: SetNull)
@@ -689,12 +680,12 @@ model Invitation {
 }
 
 model Notification {
-  id           String     @id @default(uuid()) @db.UniqueIdentifier
-  invitationId String     @map("invitation_id") @db.UniqueIdentifier
-  channel      String     @default("email")
-  status       String
-  sentAt       DateTime?  @map("sent_at")
-  createdAt    DateTime   @default(now()) @map("created_at")
+  id           String     @id @default(uuid()) @db.Uuid
+  invitationId String     @map("invitation_id") @db.Uuid
+  channel      String     @default("email") @db.VarChar(1000)
+  status       String     @db.VarChar(1000)
+  sentAt       DateTime?  @map("sent_at") @db.Timestamptz(3)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   invitation   Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
 
   @@index([invitationId])
@@ -705,17 +696,17 @@ model Notification {
 // feedback; more types later). Distinct from `notifications` above (which tracks invitation email
 // delivery). Per-recipient; org-scoped by RLS, recipient-scoped in the service layer.
 model UserNotification {
-  id              String    @id @default(uuid()) @db.UniqueIdentifier
-  organizationId  String    @map("organization_id") @db.UniqueIdentifier
-  recipientUserId String    @map("recipient_user_id") @db.UniqueIdentifier
-  actorUserId     String?   @map("actor_user_id") @db.UniqueIdentifier
-  type            String
-  entityType      String    @map("entity_type")
-  entityId        String    @map("entity_id") @db.UniqueIdentifier
-  contextText     String?   @map("context_text") @db.NVarChar(500)
-  linkPath        String    @map("link_path")
-  readAt          DateTime? @map("read_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  recipientUserId String    @map("recipient_user_id") @db.Uuid
+  actorUserId     String?   @map("actor_user_id") @db.Uuid
+  type            String    @db.VarChar(1000)
+  entityType      String    @map("entity_type") @db.VarChar(1000)
+  entityId        String    @map("entity_id") @db.Uuid
+  contextText     String?   @map("context_text") @db.VarChar(500)
+  linkPath        String    @map("link_path") @db.VarChar(1000)
+  readAt          DateTime? @map("read_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([recipientUserId, readAt])
   @@map("user_notifications")
@@ -723,13 +714,13 @@ model UserNotification {
 
 // Per-user, per-notification-type preference for whether a staff notification is also emailed.
 model UserNotificationPreference {
-  id             String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
-  userId         String   @map("user_id") @db.UniqueIdentifier
-  type           String
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  type           String   @db.VarChar(1000)
   emailEnabled   Boolean  @map("email_enabled")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([userId, type])
   @@index([organizationId])
@@ -737,36 +728,36 @@ model UserNotificationPreference {
 }
 
 model Attempt {
-  id                            String              @id @default(uuid()) @db.UniqueIdentifier
-  invitationId                  String              @unique @map("invitation_id") @db.UniqueIdentifier
-  candidateId                   String              @map("candidate_id") @db.UniqueIdentifier
-  examId                        String              @map("exam_id") @db.UniqueIdentifier
-  status                        String              @default("in_progress")
-  questionOrderJson             String              @map("question_order_json") @db.NVarChar(Max)
-  sectionSnapshotJson           String              @map("section_snapshot_json") @db.NVarChar(Max)
-  optionOrderJson               String?             @map("option_order_json") @db.NVarChar(Max)
-  startedAt                     DateTime            @default(now()) @map("started_at")
-  submittedAt                   DateTime?           @map("submitted_at")
-  deviceFingerprint             String?             @map("device_fingerprint")
-  lastSeenAt                    DateTime?           @map("last_seen_at")
+  id                            String              @id @default(uuid()) @db.Uuid
+  invitationId                  String              @unique @map("invitation_id") @db.Uuid
+  candidateId                   String              @map("candidate_id") @db.Uuid
+  examId                        String              @map("exam_id") @db.Uuid
+  status                        String              @default("in_progress") @db.VarChar(1000)
+  questionOrderJson             String              @map("question_order_json") @db.Text
+  sectionSnapshotJson           String              @map("section_snapshot_json") @db.Text
+  optionOrderJson               String?             @map("option_order_json") @db.Text
+  startedAt                     DateTime            @default(now()) @map("started_at") @db.Timestamptz(3)
+  submittedAt                   DateTime?           @map("submitted_at") @db.Timestamptz(3)
+  deviceFingerprint             String?             @map("device_fingerprint") @db.VarChar(1000)
+  lastSeenAt                    DateTime?           @map("last_seen_at") @db.Timestamptz(3)
   webcamViolationCount          Int                 @default(0) @map("webcam_violation_count")
   browserActivityViolationCount Int                 @default(0) @map("browser_activity_violation_count")
   screenCaptureCount            Int                 @default(0) @map("screen_capture_count")
-  pausedAt                      DateTime?           @map("paused_at")
-  pausedReason                  String?             @map("paused_reason") @db.NVarChar(50)
+  pausedAt                      DateTime?           @map("paused_at") @db.Timestamptz(3)
+  pausedReason                  String?             @map("paused_reason") @db.VarChar(50)
   pausedDurationMs              Int                 @default(0) @map("paused_duration_ms")
-  consentAt                     DateTime?           @map("consent_at")
-  screenShareStartedAt          DateTime?           @map("screen_share_started_at")
-  proctoringBypassedAt          DateTime?           @map("proctoring_bypassed_at")
-  proctoringBypassedBy          String?             @map("proctoring_bypassed_by") @db.UniqueIdentifier
-  proctoringBypassReason        String?             @map("proctoring_bypass_reason")
-  proctoringBypassRevokedAt     DateTime?           @map("proctoring_bypass_revoked_at")
+  consentAt                     DateTime?           @map("consent_at") @db.Timestamptz(3)
+  screenShareStartedAt          DateTime?           @map("screen_share_started_at") @db.Timestamptz(3)
+  proctoringBypassedAt          DateTime?           @map("proctoring_bypassed_at") @db.Timestamptz(3)
+  proctoringBypassedBy          String?             @map("proctoring_bypassed_by") @db.Uuid
+  proctoringBypassReason        String?             @map("proctoring_bypass_reason") @db.VarChar(1000)
+  proctoringBypassRevokedAt     DateTime?           @map("proctoring_bypass_revoked_at") @db.Timestamptz(3)
   faceMismatchCount             Int                 @default(0) @map("face_mismatch_count")
   // Stage-3 face-mismatch enforcement: a non-freezing "warn" heads-up. Set when a confirmed
   // mismatch fires on an exam whose faceMismatchAction is 'warn'; the candidate sees a one-time
   // dismissible notice (timer keeps running) and clears it via /attempt/face-warning-ack. pause
   // and block reuse status/pausedReason instead; only warn needs its own field.
-  faceWarningAt                 DateTime?           @map("face_warning_at")
+  faceWarningAt                 DateTime?           @map("face_warning_at") @db.Timestamptz(3)
   invitation                    Invitation          @relation(fields: [invitationId], references: [id], onDelete: Cascade)
   answers                       Answer[]
   result                        Result?
@@ -782,21 +773,21 @@ model Attempt {
 }
 
 model Answer {
-  id                    String            @id @default(uuid()) @db.UniqueIdentifier
-  attemptId             String            @map("attempt_id") @db.UniqueIdentifier
-  questionId            String            @map("question_id") @db.UniqueIdentifier
-  selectedOptionIdsJson String            @map("selected_option_ids_json") @db.NVarChar(Max)
+  id                    String            @id @default(uuid()) @db.Uuid
+  attemptId             String            @map("attempt_id") @db.Uuid
+  questionId            String            @map("question_id") @db.Uuid
+  selectedOptionIdsJson String            @map("selected_option_ids_json") @db.Text
   isMarkedForReview     Boolean           @default(false) @map("is_marked_for_review")
-  answeredAt            DateTime          @default(now()) @map("answered_at")
+  answeredAt            DateTime          @default(now()) @map("answered_at") @db.Timestamptz(3)
   isCorrect             Boolean?          @map("is_correct")
   marksAwarded          Int?              @map("marks_awarded")
-  answerText            String?           @map("answer_text") @db.NVarChar(Max)
+  answerText            String?           @map("answer_text") @db.Text
   // file_upload answers: JSON array of { path, fileName, contentType, size } — the candidate's
   // uploaded files (blob paths). Manually graded like code/essay; "attempted" = non-empty array.
-  answerFilesJson       String?           @map("answer_files_json") @db.NVarChar(Max)
-  gradingFeedback       String?           @map("grading_feedback") @db.NVarChar(Max)
-  codeLanguage          String?           @map("code_language")
-  telemetryJson         String?           @map("telemetry_json") @db.NVarChar(Max)
+  answerFilesJson       String?           @map("answer_files_json") @db.Text
+  gradingFeedback       String?           @map("grading_feedback") @db.Text
+  codeLanguage          String?           @map("code_language") @db.VarChar(1000)
+  telemetryJson         String?           @map("telemetry_json") @db.Text
   attempt               Attempt           @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question              Question          @relation(fields: [questionId], references: [id])
   codeReview            CodeAnswerReview?
@@ -806,46 +797,46 @@ model Answer {
 }
 
 model CodeAnswerReview {
-  id             String   @id @default(uuid()) @db.UniqueIdentifier
-  answerId       String   @unique @map("answer_id") @db.UniqueIdentifier
-  status         String
+  id             String   @id @default(uuid()) @db.Uuid
+  answerId       String   @unique @map("answer_id") @db.Uuid
+  status         String   @db.VarChar(1000)
   suggestedMarks Int?     @map("suggested_marks")
-  summary        String?  @db.NVarChar(Max)
-  generatedAt    DateTime @default(now()) @map("generated_at")
+  summary        String?  @db.Text
+  generatedAt    DateTime @default(now()) @map("generated_at") @db.Timestamptz(3)
   answer         Answer   @relation(fields: [answerId], references: [id], onDelete: Cascade)
 
   @@map("code_answer_reviews")
 }
 
 model Result {
-  id         String   @id @default(uuid()) @db.UniqueIdentifier
-  attemptId  String   @unique @map("attempt_id") @db.UniqueIdentifier
-  score      Int
-  maxScore   Int      @map("max_score")
-  percentage Float
-  passFail   String?  @map("pass_fail")
-  computedAt DateTime @default(now()) @map("computed_at")
+  id              String    @id @default(uuid()) @db.Uuid
+  attemptId       String    @unique @map("attempt_id") @db.Uuid
+  score           Int
+  maxScore        Int       @map("max_score")
+  percentage      Float
+  passFail        String?   @map("pass_fail") @db.VarChar(1000)
+  computedAt      DateTime  @default(now()) @map("computed_at") @db.Timestamptz(3)
   // Per-attempt release override, layered over Exam.resultsReleaseMode. 'released'/'held' force the
   // outcome either way; null = inherit the exam's mode. releasedAt is stamped when it first becomes
   // visible (for display + email idempotency).
-  releaseOverride String?   @map("release_override")
-  releasedAt      DateTime? @map("released_at")
+  releaseOverride String?   @map("release_override") @db.VarChar(1000)
+  releasedAt      DateTime? @map("released_at") @db.Timestamptz(3)
   // Blob path of the generated pass certificate, minted lazily on first download (recruiter or
   // candidate) and reused thereafter.
-  certificatePath String?   @map("certificate_path")
-  attempt    Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  certificatePath String?   @map("certificate_path") @db.VarChar(1000)
+  attempt         Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   @@map("results")
 }
 
 model CandidateRefreshToken {
-  id           String     @id @default(uuid()) @db.UniqueIdentifier
-  invitationId String     @map("invitation_id") @db.UniqueIdentifier
-  tokenHash    String     @map("token_hash")
-  familyId     String     @map("family_id")
-  expiresAt    DateTime   @map("expires_at")
-  revokedAt    DateTime?  @map("revoked_at")
-  createdAt    DateTime   @default(now()) @map("created_at")
+  id           String     @id @default(uuid()) @db.Uuid
+  invitationId String     @map("invitation_id") @db.Uuid
+  tokenHash    String     @map("token_hash") @db.VarChar(1000)
+  familyId     String     @map("family_id") @db.VarChar(1000)
+  expiresAt    DateTime   @map("expires_at") @db.Timestamptz(3)
+  revokedAt    DateTime?  @map("revoked_at") @db.Timestamptz(3)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   invitation   Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
 
   @@index([invitationId])
@@ -853,12 +844,12 @@ model CandidateRefreshToken {
 }
 
 model ProctoringEvent {
-  id           String   @id @default(uuid()) @db.UniqueIdentifier
-  attemptId    String   @map("attempt_id") @db.UniqueIdentifier
-  eventType    String   @map("event_type")
-  severity     String
-  occurredAt   DateTime @default(now()) @map("occurred_at")
-  metadataJson String?  @map("metadata_json") @db.NVarChar(Max)
+  id           String   @id @default(uuid()) @db.Uuid
+  attemptId    String   @map("attempt_id") @db.Uuid
+  eventType    String   @map("event_type") @db.VarChar(1000)
+  severity     String   @db.VarChar(1000)
+  occurredAt   DateTime @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  metadataJson String?  @map("metadata_json") @db.Text
   attempt      Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   @@index([attemptId, occurredAt])
@@ -866,31 +857,31 @@ model ProctoringEvent {
 }
 
 model FaceEnrolment {
-  id                 String    @id @default(uuid()) @db.UniqueIdentifier
-  attemptId          String    @unique @map("attempt_id") @db.UniqueIdentifier
-  status             String
+  id                 String    @id @default(uuid()) @db.Uuid
+  attemptId          String    @unique @map("attempt_id") @db.Uuid
+  status             String    @db.VarChar(1000)
   // Populated in stage 2 from referenceImagePath; encrypted with OrgSecretsCryptoService.
-  embedding          String?   @db.NVarChar(Max)
-  referenceImagePath String?   @map("reference_image_path")
-  qualityJson        String?   @map("quality_json") @db.NVarChar(Max)
+  embedding          String?   @db.Text
+  referenceImagePath String?   @map("reference_image_path") @db.VarChar(1000)
+  qualityJson        String?   @map("quality_json") @db.Text
   // Nullable on purpose: a candidate who DECLINES still gets a not_verified row (so a refusal is
   // a flag with their name on it, not silence), and that row must not claim a consent moment
   // that never happened.
-  consentAt          DateTime? @map("consent_at")
-  capturedAt         DateTime? @map("captured_at")
-  createdAt          DateTime  @default(now()) @map("created_at")
+  consentAt          DateTime? @map("consent_at") @db.Timestamptz(3)
+  capturedAt         DateTime? @map("captured_at") @db.Timestamptz(3)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   attempt            Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   @@map("face_enrolments")
 }
 
 model CandidateMessage {
-  id           String    @id @default(uuid()) @db.UniqueIdentifier
-  attemptId    String    @map("attempt_id") @db.UniqueIdentifier
-  sentByUserId String    @map("sent_by_user_id") @db.UniqueIdentifier
-  body         String    @db.NVarChar(Max)
-  sentAt       DateTime  @default(now()) @map("sent_at")
-  readAt       DateTime? @map("read_at")
+  id           String    @id @default(uuid()) @db.Uuid
+  attemptId    String    @map("attempt_id") @db.Uuid
+  sentByUserId String    @map("sent_by_user_id") @db.Uuid
+  body         String    @db.Text
+  sentAt       DateTime  @default(now()) @map("sent_at") @db.Timestamptz(3)
+  readAt       DateTime? @map("read_at") @db.Timestamptz(3)
   attempt      Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   @@index([attemptId, sentAt])
@@ -898,41 +889,41 @@ model CandidateMessage {
 }
 
 model ProctoringAnalysis {
-  id         String   @id @default(uuid()) @db.UniqueIdentifier
-  attemptId  String   @unique @map("attempt_id") @db.UniqueIdentifier
-  status     String
-  riskLevel  String?  @map("risk_level")
-  summary    String?  @db.NVarChar(Max)
-  analyzedAt DateTime @default(now()) @map("analyzed_at")
+  id         String   @id @default(uuid()) @db.Uuid
+  attemptId  String   @unique @map("attempt_id") @db.Uuid
+  status     String   @db.VarChar(1000)
+  riskLevel  String?  @map("risk_level") @db.VarChar(1000)
+  summary    String?  @db.Text
+  analyzedAt DateTime @default(now()) @map("analyzed_at") @db.Timestamptz(3)
   attempt    Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   @@map("proctoring_analyses")
 }
 
 model IntegrityAnalysis {
-  id         String   @id @default(uuid()) @db.UniqueIdentifier
-  attemptId  String   @unique @map("attempt_id") @db.UniqueIdentifier
-  status     String
-  level      String?
-  flagsJson  String?  @map("flags_json") @db.NVarChar(Max)
-  narrative  String?  @db.NVarChar(Max)
-  analyzedAt DateTime @default(now()) @map("analyzed_at")
+  id         String   @id @default(uuid()) @db.Uuid
+  attemptId  String   @unique @map("attempt_id") @db.Uuid
+  status     String   @db.VarChar(1000)
+  level      String?  @db.VarChar(1000)
+  flagsJson  String?  @map("flags_json") @db.Text
+  narrative  String?  @db.Text
+  analyzedAt DateTime @default(now()) @map("analyzed_at") @db.Timestamptz(3)
   attempt    Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   @@map("integrity_analyses")
 }
 
 model AiJob {
-  id             String     @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String     @map("organization_id") @db.UniqueIdentifier
-  type           String
-  status         String     @default("pending")
-  inputJson      String     @map("input_json") @db.NVarChar(Max)
-  outputJson     String?    @map("output_json") @db.NVarChar(Max)
-  error          String?    @db.NVarChar(Max)
-  createdBy      String     @map("created_by") @db.UniqueIdentifier
-  createdAt      DateTime   @default(now()) @map("created_at")
-  updatedAt      DateTime   @updatedAt @map("updated_at")
+  id             String     @id @default(uuid()) @db.Uuid
+  organizationId String     @map("organization_id") @db.Uuid
+  type           String     @db.VarChar(1000)
+  status         String     @default("pending") @db.VarChar(1000)
+  inputJson      String     @map("input_json") @db.Text
+  outputJson     String?    @map("output_json") @db.Text
+  error          String?    @db.Text
+  createdBy      String     @map("created_by") @db.Uuid
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
   questions      Question[]
 
   @@index([organizationId, status])
@@ -940,89 +931,89 @@ model AiJob {
 }
 
 model AttemptInsight {
-  id          String   @id @default(uuid()) @db.UniqueIdentifier
-  attemptId   String   @unique @map("attempt_id") @db.UniqueIdentifier
-  status      String
-  summary     String?  @db.NVarChar(Max)
-  generatedAt DateTime @default(now()) @map("generated_at")
+  id          String   @id @default(uuid()) @db.Uuid
+  attemptId   String   @unique @map("attempt_id") @db.Uuid
+  status      String   @db.VarChar(1000)
+  summary     String?  @db.Text
+  generatedAt DateTime @default(now()) @map("generated_at") @db.Timestamptz(3)
   attempt     Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   @@map("attempt_insights")
 }
 
 model AiCreditUsage {
-  id             String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
-  source         String
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  source         String   @db.VarChar(1000)
   credits        Int
-  sourceId       String?  @map("source_id") @db.UniqueIdentifier
-  occurredAt     DateTime @default(now()) @map("occurred_at")
+  sourceId       String?  @map("source_id") @db.Uuid
+  occurredAt     DateTime @default(now()) @map("occurred_at") @db.Timestamptz(3)
 
   @@index([organizationId])
   @@map("ai_credit_usage")
 }
 
 model Job {
-  id                 String          @id @default(uuid()) @db.UniqueIdentifier
-  organizationId     String          @map("organization_id") @db.UniqueIdentifier
-  title              String
-  description        String?         @db.NVarChar(Max)
-  status             String          @default("open")
-  createdById        String          @map("created_by_id") @db.UniqueIdentifier
-  createdAt          DateTime        @default(now()) @map("created_at")
-  closedAt           DateTime?       @map("closed_at")
-  publicApplyEnabled Boolean         @default(false) @map("public_apply_enabled")
-  listOnCareers      Boolean         @default(false) @map("list_on_careers")
-  applyToken         String?         @unique @map("apply_token")
-  location           String?         @db.NVarChar(200)
-  employmentType     String?         @map("employment_type") @db.NVarChar(50)
-  entries            PipelineEntry[]
-  examLinks          JobExam[]
-  walkInGroups       WalkInGroup[]
-  fitCriteria        String?         @map("fit_criteria") @db.NVarChar(Max)
-  fitRubric          String?         @map("fit_rubric") @db.NVarChar(Max)
-  department         String?         @db.NVarChar(200)
-  hiringManagerId    String?         @map("hiring_manager_id") @db.UniqueIdentifier
-  headcount          Int?
-  salaryMin          Int?            @map("salary_min")
-  salaryMax          Int?            @map("salary_max")
-  salaryCurrency     String?         @map("salary_currency") @db.NVarChar(10)
-  pipelineId         String?         @map("pipeline_id") @db.UniqueIdentifier
-  pipeline           Pipeline?       @relation(fields: [pipelineId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  deletedAt          DateTime?       @map("deleted_at")
-  deletedByUserId    String?         @map("deleted_by_user_id") @db.UniqueIdentifier
+  id                   String                @id @default(uuid()) @db.Uuid
+  organizationId       String                @map("organization_id") @db.Uuid
+  title                String                @db.VarChar(1000)
+  description          String?               @db.Text
+  status               String                @default("open") @db.VarChar(1000)
+  createdById          String                @map("created_by_id") @db.Uuid
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  closedAt             DateTime?             @map("closed_at") @db.Timestamptz(3)
+  publicApplyEnabled   Boolean               @default(false) @map("public_apply_enabled")
+  listOnCareers        Boolean               @default(false) @map("list_on_careers")
+  applyToken           String?               @unique @map("apply_token") @db.VarChar(1000)
+  location             String?               @db.VarChar(200)
+  employmentType       String?               @map("employment_type") @db.VarChar(50)
+  entries              PipelineEntry[]
+  examLinks            JobExam[]
+  walkInGroups         WalkInGroup[]
+  fitCriteria          String?               @map("fit_criteria") @db.Text
+  fitRubric            String?               @map("fit_rubric") @db.Text
+  department           String?               @db.VarChar(200)
+  hiringManagerId      String?               @map("hiring_manager_id") @db.Uuid
+  headcount            Int?
+  salaryMin            Int?                  @map("salary_min")
+  salaryMax            Int?                  @map("salary_max")
+  salaryCurrency       String?               @map("salary_currency") @db.VarChar(10)
+  pipelineId           String?               @map("pipeline_id") @db.Uuid
+  pipeline             Pipeline?             @relation(fields: [pipelineId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  deletedAt            DateTime?             @map("deleted_at") @db.Timestamptz(3)
+  deletedByUserId      String?               @map("deleted_by_user_id") @db.Uuid
   jobBoardPublications JobBoardPublication[]
-  agencyJobs         AgencyJob[]
-  agencySubmissions  AgencySubmission[]
+  agencyJobs           AgencyJob[]
+  agencySubmissions    AgencySubmission[]
 
   @@index([organizationId, status])
   @@map("jobs")
 }
 
 model Pipeline {
-  id             String          @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String          @map("organization_id") @db.UniqueIdentifier
-  name           String          @db.NVarChar(200)
-  isDefault      Boolean         @default(false) @map("is_default")
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
-  deletedAt      DateTime?       @map("deleted_at")
-  deletedByUserId String?        @map("deleted_by_user_id") @db.UniqueIdentifier
-  stages         PipelineStage[]
-  jobs           Job[]
+  id              String          @id @default(uuid()) @db.Uuid
+  organizationId  String          @map("organization_id") @db.Uuid
+  name            String          @db.VarChar(200)
+  isDefault       Boolean         @default(false) @map("is_default")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt       DateTime?       @map("deleted_at") @db.Timestamptz(3)
+  deletedByUserId String?         @map("deleted_by_user_id") @db.Uuid
+  stages          PipelineStage[]
+  jobs            Job[]
 
   @@index([organizationId])
   @@map("pipelines")
 }
 
 model PipelineStage {
-  id             String           @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String           @map("organization_id") @db.UniqueIdentifier
-  pipelineId     String           @map("pipeline_id") @db.UniqueIdentifier
-  name           String           @db.NVarChar(200)
-  category       String           @db.NVarChar(20)
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  pipelineId     String           @map("pipeline_id") @db.Uuid
+  name           String           @db.VarChar(200)
+  category       String           @db.VarChar(20)
   position       Int
-  rulesJson      String?          @map("rules_json") @db.NVarChar(Max)
+  rulesJson      String?          @map("rules_json") @db.Text
   pipeline       Pipeline         @relation(fields: [pipelineId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   statuses       PipelineStatus[]
 
@@ -1031,10 +1022,10 @@ model PipelineStage {
 }
 
 model PipelineStatus {
-  id             String          @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String          @map("organization_id") @db.UniqueIdentifier
-  stageId        String          @map("stage_id") @db.UniqueIdentifier
-  name           String          @db.NVarChar(200)
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  stageId        String          @map("stage_id") @db.Uuid
+  name           String          @db.VarChar(200)
   position       Int
   stage          PipelineStage   @relation(fields: [stageId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   entries        PipelineEntry[]
@@ -1044,31 +1035,31 @@ model PipelineStatus {
 }
 
 model PipelineEntry {
-  id               String             @id @default(uuid()) @db.UniqueIdentifier
-  organizationId   String             @map("organization_id") @db.UniqueIdentifier
-  jobId            String             @map("job_id") @db.UniqueIdentifier
-  candidateId      String             @map("candidate_id") @db.UniqueIdentifier
-  rejected         Boolean            @default(false)
-  rejectedReason   String?            @map("rejected_reason")
-  rejectedAt       DateTime?          @map("rejected_at")
-  enteredVia       String             @map("entered_via")
-  applicationToken String?            @unique @map("application_token")
-  assignedUserId   String?            @map("assigned_user_id") @db.UniqueIdentifier
-  assignedGroupId  String?            @map("assigned_group_id") @db.UniqueIdentifier
-  createdAt        DateTime           @default(now()) @map("created_at")
-  updatedAt        DateTime           @updatedAt @map("updated_at")
-  statusId         String?            @map("status_id") @db.UniqueIdentifier
-  archivedAt       DateTime?          @map("archived_at")
-  blueprintChecklistJson String?      @map("blueprint_checklist_json") @db.NVarChar(Max)
-  referrerUserId   String?            @map("referrer_user_id") @db.UniqueIdentifier // set when enteredVia='referral'
-  job              Job                @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  candidate        Candidate          @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  status           PipelineStatus?    @relation(fields: [statusId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  feedback         PipelineFeedback[]
-  candidateEmails  CandidateEmail[]
-  offers           Offer[]
-  interviews       Interview[]
-  fitAssessment    CandidateFitAssessment?
+  id                     String                  @id @default(uuid()) @db.Uuid
+  organizationId         String                  @map("organization_id") @db.Uuid
+  jobId                  String                  @map("job_id") @db.Uuid
+  candidateId            String                  @map("candidate_id") @db.Uuid
+  rejected               Boolean                 @default(false)
+  rejectedReason         String?                 @map("rejected_reason") @db.VarChar(1000)
+  rejectedAt             DateTime?               @map("rejected_at") @db.Timestamptz(3)
+  enteredVia             String                  @map("entered_via") @db.VarChar(1000)
+  applicationToken       String?                 @unique @map("application_token") @db.VarChar(1000)
+  assignedUserId         String?                 @map("assigned_user_id") @db.Uuid
+  assignedGroupId        String?                 @map("assigned_group_id") @db.Uuid
+  createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+  statusId               String?                 @map("status_id") @db.Uuid
+  archivedAt             DateTime?               @map("archived_at") @db.Timestamptz(3)
+  blueprintChecklistJson String?                 @map("blueprint_checklist_json") @db.Text
+  referrerUserId         String?                 @map("referrer_user_id") @db.Uuid // set when enteredVia='referral'
+  job                    Job                     @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  candidate              Candidate               @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  status                 PipelineStatus?         @relation(fields: [statusId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  feedback               PipelineFeedback[]
+  candidateEmails        CandidateEmail[]
+  offers                 Offer[]
+  interviews             Interview[]
+  fitAssessment          CandidateFitAssessment?
 
   @@unique([jobId, candidateId])
   @@index([jobId])
@@ -1080,17 +1071,17 @@ model PipelineEntry {
 // like an application; this row adds the referral program's own state — who referred, an optional note,
 // and the reward/bonus lifecycle the recruiter manages. One referral per pipeline entry.
 model Referral {
-  id               String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId   String   @map("organization_id") @db.UniqueIdentifier
-  referrerUserId   String   @map("referrer_user_id") @db.UniqueIdentifier
-  jobId            String   @map("job_id") @db.UniqueIdentifier
-  candidateId      String   @map("candidate_id") @db.UniqueIdentifier
-  entryId          String   @map("entry_id") @db.UniqueIdentifier
-  note             String?  @db.NVarChar(Max)
-  rewardStatus     String   @default("pending") @map("reward_status") // 'pending' | 'approved' | 'paid' | 'rejected'
-  rewardNote       String?  @map("reward_note") @db.NVarChar(Max)
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  referrerUserId String   @map("referrer_user_id") @db.Uuid
+  jobId          String   @map("job_id") @db.Uuid
+  candidateId    String   @map("candidate_id") @db.Uuid
+  entryId        String   @map("entry_id") @db.Uuid
+  note           String?  @db.Text
+  rewardStatus   String   @default("pending") @map("reward_status") @db.VarChar(1000) // 'pending' | 'approved' | 'paid' | 'rejected'
+  rewardNote     String?  @map("reward_note") @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([entryId])
   @@index([organizationId, referrerUserId])
@@ -1102,15 +1093,15 @@ model Referral {
 // sends it manually or auto-fires it when a candidate reaches a target global stage (e.g. 'rejected').
 // questionsJson = [{ type: 'rating' | 'text', prompt }]. triggerStage null = manual send only.
 model SurveyDefinition {
-  id              String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId  String   @map("organization_id") @db.UniqueIdentifier
-  name            String   @db.NVarChar(200)
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  name            String   @db.VarChar(200)
   enabled         Boolean  @default(false)
-  triggerStage    String?  @map("trigger_stage") // a GlobalStage (e.g. 'rejected','hired'); null = manual only
-  questionsJson   String   @default("[]") @map("questions_json") @db.NVarChar(Max)
-  createdByUserId String?  @map("created_by_user_id") @db.UniqueIdentifier
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  triggerStage    String?  @map("trigger_stage") @db.VarChar(1000) // a GlobalStage (e.g. 'rejected','hired'); null = manual only
+  questionsJson   String   @default("[]") @map("questions_json") @db.Text
+  createdByUserId String?  @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([organizationId])
   @@map("survey_definitions")
@@ -1121,16 +1112,16 @@ model SurveyDefinition {
 // at submit time so aggregates survive later edits to the definition. @@unique keeps one invite per
 // survey+entry (repeated stage changes / re-sends don't spam).
 model SurveyResponse {
-  id             String    @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String    @map("organization_id") @db.UniqueIdentifier
-  surveyId       String    @map("survey_id") @db.UniqueIdentifier
-  candidateId    String    @map("candidate_id") @db.UniqueIdentifier
-  entryId        String    @map("entry_id") @db.UniqueIdentifier
-  token          String    @unique @map("token")
-  status         String    @default("pending") // 'pending' | 'submitted'
-  answersJson    String?   @map("answers_json") @db.NVarChar(Max)
-  invitedAt      DateTime  @default(now()) @map("invited_at")
-  submittedAt    DateTime? @map("submitted_at")
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  surveyId       String    @map("survey_id") @db.Uuid
+  candidateId    String    @map("candidate_id") @db.Uuid
+  entryId        String    @map("entry_id") @db.Uuid
+  token          String    @unique @map("token") @db.VarChar(1000)
+  status         String    @default("pending") @db.VarChar(1000) // 'pending' | 'submitted'
+  answersJson    String?   @map("answers_json") @db.Text
+  invitedAt      DateTime  @default(now()) @map("invited_at") @db.Timestamptz(3)
+  submittedAt    DateTime? @map("submitted_at") @db.Timestamptz(3)
 
   @@unique([surveyId, entryId])
   @@index([organizationId, surveyId])
@@ -1138,25 +1129,25 @@ model SurveyResponse {
 }
 
 model CandidateFitAssessment {
-  id              String    @id @default(uuid()) @db.UniqueIdentifier
-  organizationId  String    @map("organization_id") @db.UniqueIdentifier
-  entryId         String    @unique @map("entry_id") @db.UniqueIdentifier
-  jobId           String    @map("job_id") @db.UniqueIdentifier
-  candidateId     String    @map("candidate_id") @db.UniqueIdentifier
-  status          String    @default("pending")
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  entryId         String    @unique @map("entry_id") @db.Uuid
+  jobId           String    @map("job_id") @db.Uuid
+  candidateId     String    @map("candidate_id") @db.Uuid
+  status          String    @default("pending") @db.VarChar(1000)
   overallScore    Int?      @map("overall_score")
-  summary         String?   @db.NVarChar(Max)
-  strengths       String?   @db.NVarChar(Max)
-  concerns        String?   @db.NVarChar(Max)
-  dimensionScores String?   @map("dimension_scores") @db.NVarChar(Max)
-  criteriaHash    String?   @map("criteria_hash")
-  modelUsed       String?   @map("model_used")
-  scoredByUserId  String?   @map("scored_by_user_id") @db.UniqueIdentifier
-  scoredAt        DateTime? @map("scored_at")
-  aiJobId         String?   @map("ai_job_id") @db.UniqueIdentifier
-  error           String?   @db.NVarChar(Max)
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  summary         String?   @db.Text
+  strengths       String?   @db.Text
+  concerns        String?   @db.Text
+  dimensionScores String?   @map("dimension_scores") @db.Text
+  criteriaHash    String?   @map("criteria_hash") @db.VarChar(1000)
+  modelUsed       String?   @map("model_used") @db.VarChar(1000)
+  scoredByUserId  String?   @map("scored_by_user_id") @db.Uuid
+  scoredAt        DateTime? @map("scored_at") @db.Timestamptz(3)
+  aiJobId         String?   @map("ai_job_id") @db.Uuid
+  error           String?   @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   entry PipelineEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
 
@@ -1165,13 +1156,13 @@ model CandidateFitAssessment {
 }
 
 model PipelineFeedback {
-  id             String        @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String        @map("organization_id") @db.UniqueIdentifier
-  entryId        String        @map("entry_id") @db.UniqueIdentifier
-  authorUserId   String        @map("author_user_id") @db.UniqueIdentifier
-  note           String?       @db.NVarChar(Max)
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  entryId        String        @map("entry_id") @db.Uuid
+  authorUserId   String        @map("author_user_id") @db.Uuid
+  note           String?       @db.Text
   rating         Int?
-  createdAt      DateTime      @default(now()) @map("created_at")
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   entry          PipelineEntry @relation(fields: [entryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([entryId])
@@ -1179,18 +1170,18 @@ model PipelineFeedback {
 }
 
 model CustomFieldDefinition {
-  id             String    @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
-  organizationId String    @map("organization_id") @db.UniqueIdentifier
-  entityType     String    @map("entity_type") @db.NVarChar(20)
-  key            String    @db.NVarChar(100)
-  label          String    @db.NVarChar(200)
-  fieldType      String    @map("field_type") @db.NVarChar(20)
-  optionsJson    String?   @map("options_json") @db.NVarChar(Max)
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  entityType     String    @map("entity_type") @db.VarChar(20)
+  key            String    @db.VarChar(100)
+  label          String    @db.VarChar(200)
+  fieldType      String    @map("field_type") @db.VarChar(20)
+  optionsJson    String?   @map("options_json") @db.Text
   required       Boolean   @default(false)
   showOnApply    Boolean   @default(false) @map("show_on_apply")
   position       Int       @default(0)
-  archivedAt     DateTime? @map("archived_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
+  archivedAt     DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([organizationId, entityType, key])
   @@index([organizationId, entityType])
@@ -1198,15 +1189,15 @@ model CustomFieldDefinition {
 }
 
 model CustomFieldValue {
-  id             String    @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
-  organizationId String    @map("organization_id") @db.UniqueIdentifier
-  definitionId   String    @map("definition_id") @db.UniqueIdentifier
-  entityType     String    @map("entity_type") @db.NVarChar(20)
-  entityId       String    @map("entity_id") @db.UniqueIdentifier
-  valueText      String?   @map("value_text") @db.NVarChar(Max)
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  definitionId   String    @map("definition_id") @db.Uuid
+  entityType     String    @map("entity_type") @db.VarChar(20)
+  entityId       String    @map("entity_id") @db.Uuid
+  valueText      String?   @map("value_text") @db.Text
   valueNumber    Float?    @map("value_number")
-  valueDate      DateTime? @map("value_date")
-  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
+  valueDate      DateTime? @map("value_date") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, definitionId, entityId])
   @@index([organizationId, entityType, entityId])
@@ -1214,18 +1205,18 @@ model CustomFieldValue {
 }
 
 model CandidateEmailTemplate {
-  id             String           @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String           @map("organization_id") @db.UniqueIdentifier
-  name           String
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  name           String           @db.VarChar(1000)
   // a PipelineStage id, or null = manual-only
-  triggerStageId String?          @map("trigger_stage_id") @db.UniqueIdentifier
+  triggerStageId String?          @map("trigger_stage_id") @db.Uuid
   // 'manual' | 'prompt' | 'auto'
-  triggerMode    String           @map("trigger_mode")
-  subject        String           @db.NVarChar(Max)
-  body           String           @db.NVarChar(Max)
+  triggerMode    String           @map("trigger_mode") @db.VarChar(1000)
+  subject        String           @db.Text
+  body           String           @db.Text
   enabled        Boolean          @default(true)
-  createdAt      DateTime         @default(now()) @map("created_at")
-  updatedAt      DateTime         @updatedAt @map("updated_at")
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
   messages       CandidateEmail[]
 
   @@index([organizationId])
@@ -1233,19 +1224,19 @@ model CandidateEmailTemplate {
 }
 
 model CandidateEmail {
-  id              String                  @id @default(uuid()) @db.UniqueIdentifier
-  organizationId  String                  @map("organization_id") @db.UniqueIdentifier
-  candidateId     String                  @map("candidate_id") @db.UniqueIdentifier
-  pipelineEntryId String?                 @map("pipeline_entry_id") @db.UniqueIdentifier
-  templateId      String?                 @map("template_id") @db.UniqueIdentifier
-  toEmail         String                  @map("to_email")
-  subject         String                  @db.NVarChar(Max)
-  renderedBody    String                  @map("rendered_body") @db.NVarChar(Max)
-  status          String                  // 'sent' | 'failed'
-  source          String                  // 'manual' | 'stage_prompt' | 'stage_auto'
-  sentByUserId    String?                 @map("sent_by_user_id") @db.UniqueIdentifier
-  errorDetail     String?                 @map("error_detail") @db.NVarChar(Max)
-  createdAt       DateTime                @default(now()) @map("created_at")
+  id              String                  @id @default(uuid()) @db.Uuid
+  organizationId  String                  @map("organization_id") @db.Uuid
+  candidateId     String                  @map("candidate_id") @db.Uuid
+  pipelineEntryId String?                 @map("pipeline_entry_id") @db.Uuid
+  templateId      String?                 @map("template_id") @db.Uuid
+  toEmail         String                  @map("to_email") @db.VarChar(1000)
+  subject         String                  @db.Text
+  renderedBody    String                  @map("rendered_body") @db.Text
+  status          String                  @db.VarChar(1000) // 'sent' | 'failed'
+  source          String                  @db.VarChar(1000) // 'manual' | 'stage_prompt' | 'stage_auto'
+  sentByUserId    String?                 @map("sent_by_user_id") @db.Uuid
+  errorDetail     String?                 @map("error_detail") @db.Text
+  createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
   candidate       Candidate               @relation(fields: [candidateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   pipelineEntry   PipelineEntry?          @relation(fields: [pipelineEntryId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   template        CandidateEmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull, onUpdate: NoAction)
@@ -1260,17 +1251,17 @@ model CandidateEmail {
 // tallying the outcome here so the web can poll live progress. The per-send audit + candidate_emails
 // rows are still written by sendMessage; this row is only the batch-level tally.
 model CandidateEmailBatch {
-  id               String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId   String   @map("organization_id") @db.UniqueIdentifier
-  createdByUserId  String?  @map("created_by_user_id") @db.UniqueIdentifier
-  subject          String   @db.NVarChar(Max)
-  status           String   @default("pending") // 'pending' | 'processing' | 'completed'
-  total            Int      @default(0)
-  sent             Int      @default(0)
-  skipped          Int      @default(0)
-  failed           Int      @default(0)
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  createdByUserId String?  @map("created_by_user_id") @db.Uuid
+  subject         String   @db.Text
+  status          String   @default("pending") @db.VarChar(1000) // 'pending' | 'processing' | 'completed'
+  total           Int      @default(0)
+  sent            Int      @default(0)
+  skipped         Int      @default(0)
+  failed          Int      @default(0)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([organizationId, createdAt])
   @@map("candidate_email_batches")
@@ -1282,15 +1273,15 @@ model CandidateEmailBatch {
 // they enter that talent-pool global stage (via pipeline patchEntry); null = manual enrol only. The
 // 'drip-steps' scheduled sweep sends due steps via CandidateEmailsService.sendMessage(source:'drip').
 model DripCampaign {
-  id                String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId    String   @map("organization_id") @db.UniqueIdentifier
-  name              String   @db.NVarChar(200)
+  id                String   @id @default(uuid()) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  name              String   @db.VarChar(200)
   enabled           Boolean  @default(false)
-  targetGlobalStage String?  @map("target_global_stage") // e.g. 'available'; null = manual enrol only
-  stepsJson         String   @default("[]") @map("steps_json") @db.NVarChar(Max)
-  createdByUserId   String?  @map("created_by_user_id") @db.UniqueIdentifier
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  targetGlobalStage String?  @map("target_global_stage") @db.VarChar(1000) // e.g. 'available'; null = manual enrol only
+  stepsJson         String   @default("[]") @map("steps_json") @db.Text
+  createdByUserId   String?  @map("created_by_user_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([organizationId])
   @@map("drip_campaigns")
@@ -1301,17 +1292,17 @@ model DripCampaign {
 // nextStepDueAt, and completes at the end. Exits on hire (pipeline hook) or when a send is skipped
 // because the candidate opted out. @@unique keeps auto-enrol idempotent (one enrolment per campaign+candidate).
 model DripEnrolment {
-  id               String    @id @default(uuid()) @db.UniqueIdentifier
-  organizationId   String    @map("organization_id") @db.UniqueIdentifier
-  campaignId       String    @map("campaign_id") @db.UniqueIdentifier
-  candidateId      String    @map("candidate_id") @db.UniqueIdentifier
-  entryId          String    @map("entry_id") @db.UniqueIdentifier
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  campaignId       String    @map("campaign_id") @db.Uuid
+  candidateId      String    @map("candidate_id") @db.Uuid
+  entryId          String    @map("entry_id") @db.Uuid
   currentStepIndex Int       @default(0) @map("current_step_index")
-  status           String    @default("active") // 'active' | 'completed' | 'exited'
-  nextStepDueAt    DateTime  @map("next_step_due_at")
-  enrolledAt       DateTime  @default(now()) @map("enrolled_at")
-  lastSentAt       DateTime? @map("last_sent_at")
-  exitReason       String?   @map("exit_reason")
+  status           String    @default("active") @db.VarChar(1000) // 'active' | 'completed' | 'exited'
+  nextStepDueAt    DateTime  @map("next_step_due_at") @db.Timestamptz(3)
+  enrolledAt       DateTime  @default(now()) @map("enrolled_at") @db.Timestamptz(3)
+  lastSentAt       DateTime? @map("last_sent_at") @db.Timestamptz(3)
+  exitReason       String?   @map("exit_reason") @db.VarChar(1000)
 
   @@unique([campaignId, candidateId])
   @@index([organizationId, status, nextStepDueAt])
@@ -1322,63 +1313,63 @@ model DripEnrolment {
 // in @exam-platform/shared); the org edits the title/body/signatory text with {{merge}} fields. A
 // missing or disabled row falls back to CERTIFICATE_DEFAULT.
 model CertificateTemplate {
-  id             String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String   @unique @map("organization_id") @db.UniqueIdentifier
-  title          String   @db.NVarChar(300)
-  bodyText       String   @map("body_text") @db.NVarChar(Max)
-  signatoryName  String?  @map("signatory_name") @db.NVarChar(200)
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @unique @map("organization_id") @db.Uuid
+  title          String   @db.VarChar(300)
+  bodyText       String   @map("body_text") @db.Text
+  signatoryName  String?  @map("signatory_name") @db.VarChar(200)
   enabled        Boolean  @default(true)
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("certificate_templates")
 }
 
 model CandidateSmsTemplate {
-  id             String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
-  name           String   @db.NVarChar(200)
-  triggerStageId String?  @map("trigger_stage_id") @db.UniqueIdentifier
-  triggerMode    String   @default("manual") @map("trigger_mode") // 'manual' | 'prompt' | 'auto'
-  body           String   @db.NVarChar(Max)
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(200)
+  triggerStageId String?  @map("trigger_stage_id") @db.Uuid
+  triggerMode    String   @default("manual") @map("trigger_mode") @db.VarChar(1000) // 'manual' | 'prompt' | 'auto'
+  body           String   @db.Text
   enabled        Boolean  @default(true)
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([organizationId])
   @@map("candidate_sms_templates")
 }
 
 model CandidateWhatsappTemplate {
-  id             String              @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String              @map("organization_id") @db.UniqueIdentifier
-  name           String              @db.NVarChar(200)
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(200)
   // a PipelineStage id, or null = manual-only
-  triggerStageId String?             @map("trigger_stage_id") @db.UniqueIdentifier
+  triggerStageId String?  @map("trigger_stage_id") @db.Uuid
   // 'manual' | 'prompt' | 'auto'
-  triggerMode    String              @default("manual") @map("trigger_mode")
-  body           String              @db.NVarChar(Max)
-  enabled        Boolean             @default(true)
-  createdAt      DateTime            @default(now()) @map("created_at")
-  updatedAt      DateTime            @updatedAt @map("updated_at")
+  triggerMode    String   @default("manual") @map("trigger_mode") @db.VarChar(1000)
+  body           String   @db.Text
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([organizationId])
   @@map("candidate_whatsapp_templates")
 }
 
 model CandidateSms {
-  id              String    @id @default(uuid()) @db.UniqueIdentifier
-  organizationId  String    @map("organization_id") @db.UniqueIdentifier
-  candidateId     String    @map("candidate_id") @db.UniqueIdentifier
-  pipelineEntryId String?   @map("pipeline_entry_id") @db.UniqueIdentifier
-  templateId      String?   @map("template_id") @db.UniqueIdentifier
-  toPhone         String    @map("to_phone")
-  renderedBody    String    @map("rendered_body") @db.NVarChar(Max)
-  status          String    // 'sent' | 'failed'
-  source          String    // 'manual' | 'stage_prompt' | 'stage_auto'
-  sentByUserId    String?   @map("sent_by_user_id") @db.UniqueIdentifier
-  errorDetail     String?   @map("error_detail") @db.NVarChar(Max)
-  createdAt       DateTime  @default(now()) @map("created_at")
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  candidateId     String    @map("candidate_id") @db.Uuid
+  pipelineEntryId String?   @map("pipeline_entry_id") @db.Uuid
+  templateId      String?   @map("template_id") @db.Uuid
+  toPhone         String    @map("to_phone") @db.VarChar(1000)
+  renderedBody    String    @map("rendered_body") @db.Text
+  status          String    @db.VarChar(1000) // 'sent' | 'failed'
+  source          String    @db.VarChar(1000) // 'manual' | 'stage_prompt' | 'stage_auto'
+  sentByUserId    String?   @map("sent_by_user_id") @db.Uuid
+  errorDetail     String?   @map("error_detail") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   candidate       Candidate @relation(fields: [candidateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([organizationId, candidateId])
@@ -1387,18 +1378,18 @@ model CandidateSms {
 }
 
 model CandidateWhatsapp {
-  id              String    @id @default(uuid()) @db.UniqueIdentifier
-  organizationId  String    @map("organization_id") @db.UniqueIdentifier
-  candidateId     String    @map("candidate_id") @db.UniqueIdentifier
-  pipelineEntryId String?   @map("pipeline_entry_id") @db.UniqueIdentifier
-  templateId      String?   @map("template_id") @db.UniqueIdentifier
-  toPhone         String    @map("to_phone")
-  renderedBody    String    @map("rendered_body") @db.NVarChar(Max)
-  status          String    // 'sent' | 'failed'
-  source          String    // 'manual' | 'stage_prompt' | 'stage_auto'
-  sentByUserId    String?   @map("sent_by_user_id") @db.UniqueIdentifier
-  errorDetail     String?   @map("error_detail") @db.NVarChar(Max)
-  createdAt       DateTime  @default(now()) @map("created_at")
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  candidateId     String    @map("candidate_id") @db.Uuid
+  pipelineEntryId String?   @map("pipeline_entry_id") @db.Uuid
+  templateId      String?   @map("template_id") @db.Uuid
+  toPhone         String    @map("to_phone") @db.VarChar(1000)
+  renderedBody    String    @map("rendered_body") @db.Text
+  status          String    @db.VarChar(1000) // 'sent' | 'failed'
+  source          String    @db.VarChar(1000) // 'manual' | 'stage_prompt' | 'stage_auto'
+  sentByUserId    String?   @map("sent_by_user_id") @db.Uuid
+  errorDetail     String?   @map("error_detail") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   candidate       Candidate @relation(fields: [candidateId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([organizationId, candidateId])
@@ -1407,23 +1398,23 @@ model CandidateWhatsapp {
 }
 
 model Offer {
-  id              String        @id @default(uuid()) @db.UniqueIdentifier
-  organizationId  String        @map("organization_id") @db.UniqueIdentifier
-  pipelineEntryId String        @map("pipeline_entry_id") @db.UniqueIdentifier
-  candidateId     String        @map("candidate_id") @db.UniqueIdentifier
-  compensation    String        @db.NVarChar(Max)
-  startDate       DateTime      @map("start_date")
-  expiresAt       DateTime      @map("expires_at")
-  status          String        @default("draft")
-  offerToken      String?       @unique @map("offer_token")
-  pdfPath         String?       @map("pdf_path")
-  letterSubject   String        @map("letter_subject") @db.NVarChar(Max)
-  letterBody      String        @map("letter_body") @db.NVarChar(Max)
-  sentByUserId    String?       @map("sent_by_user_id") @db.UniqueIdentifier
-  sentAt          DateTime?     @map("sent_at")
-  respondedAt     DateTime?     @map("responded_at")
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
+  id              String        @id @default(uuid()) @db.Uuid
+  organizationId  String        @map("organization_id") @db.Uuid
+  pipelineEntryId String        @map("pipeline_entry_id") @db.Uuid
+  candidateId     String        @map("candidate_id") @db.Uuid
+  compensation    String        @db.Text
+  startDate       DateTime      @map("start_date") @db.Timestamptz(3)
+  expiresAt       DateTime      @map("expires_at") @db.Timestamptz(3)
+  status          String        @default("draft") @db.VarChar(1000)
+  offerToken      String?       @unique @map("offer_token") @db.VarChar(1000)
+  pdfPath         String?       @map("pdf_path") @db.VarChar(1000)
+  letterSubject   String        @map("letter_subject") @db.Text
+  letterBody      String        @map("letter_body") @db.Text
+  sentByUserId    String?       @map("sent_by_user_id") @db.Uuid
+  sentAt          DateTime?     @map("sent_at") @db.Timestamptz(3)
+  respondedAt     DateTime?     @map("responded_at") @db.Timestamptz(3)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
   pipelineEntry   PipelineEntry @relation(fields: [pipelineEntryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([organizationId, pipelineEntryId])
@@ -1432,12 +1423,12 @@ model Offer {
 }
 
 model ApprovalChain {
-  id             String              @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String              @map("organization_id") @db.UniqueIdentifier
-  gate           String              // 'requisition' | 'offer'
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  gate           String              @db.VarChar(1000) // 'requisition' | 'offer'
   enabled        Boolean             @default(false)
-  createdAt      DateTime            @default(now()) @map("created_at")
-  updatedAt      DateTime            @updatedAt @map("updated_at")
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
   steps          ApprovalChainStep[]
 
   @@unique([organizationId, gate])
@@ -1445,13 +1436,13 @@ model ApprovalChain {
 }
 
 model ApprovalChainStep {
-  id              String        @id @default(uuid()) @db.UniqueIdentifier
-  chainId         String        @map("chain_id") @db.UniqueIdentifier
+  id              String        @id @default(uuid()) @db.Uuid
+  chainId         String        @map("chain_id") @db.Uuid
   position        Int
-  name            String        @db.NVarChar(200)
-  approverType    String        @map("approver_type") // 'users' | 'reporting_manager' | 'hiring_manager'
-  approverUserIds String?       @map("approver_user_ids") @db.NVarChar(Max) // JSON array
-  groupId         String?       @map("group_id") @db.UniqueIdentifier
+  name            String        @db.VarChar(200)
+  approverType    String        @map("approver_type") @db.VarChar(1000) // 'users' | 'reporting_manager' | 'hiring_manager'
+  approverUserIds String?       @map("approver_user_ids") @db.Text // JSON array
+  groupId         String?       @map("group_id") @db.Uuid
   managerLevel    Int?          @map("manager_level")
   chain           ApprovalChain @relation(fields: [chainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -1460,19 +1451,19 @@ model ApprovalChainStep {
 }
 
 model ApprovalRequest {
-  id                  String             @id @default(uuid()) @db.UniqueIdentifier
-  organizationId      String             @map("organization_id") @db.UniqueIdentifier
-  gate                String
-  subjectType         String             @map("subject_type") // 'job' | 'offer'
-  subjectId           String             @map("subject_id") @db.UniqueIdentifier
-  status              String             @default("pending_approval")
+  id                  String             @id @default(uuid()) @db.Uuid
+  organizationId      String             @map("organization_id") @db.Uuid
+  gate                String             @db.VarChar(1000)
+  subjectType         String             @map("subject_type") @db.VarChar(1000) // 'job' | 'offer'
+  subjectId           String             @map("subject_id") @db.Uuid
+  status              String             @default("pending_approval") @db.VarChar(1000)
   currentStepPosition Int                @map("current_step_position")
-  submittedByUserId   String             @map("submitted_by_user_id") @db.UniqueIdentifier
-  submittedAt         DateTime           @default(now()) @map("submitted_at")
-  decidedAt           DateTime?          @map("decided_at")
-  chainSnapshotJson   String             @map("chain_snapshot_json") @db.NVarChar(Max)
-  createdAt           DateTime           @default(now()) @map("created_at")
-  updatedAt           DateTime           @updatedAt @map("updated_at")
+  submittedByUserId   String             @map("submitted_by_user_id") @db.Uuid
+  submittedAt         DateTime           @default(now()) @map("submitted_at") @db.Timestamptz(3)
+  decidedAt           DateTime?          @map("decided_at") @db.Timestamptz(3)
+  chainSnapshotJson   String             @map("chain_snapshot_json") @db.Text
+  createdAt           DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
   decisions           ApprovalDecision[]
 
   @@index([organizationId, status])
@@ -1481,13 +1472,13 @@ model ApprovalRequest {
 }
 
 model ApprovalDecision {
-  id             String          @id @default(uuid()) @db.UniqueIdentifier
-  requestId      String          @map("request_id") @db.UniqueIdentifier
+  id             String          @id @default(uuid()) @db.Uuid
+  requestId      String          @map("request_id") @db.Uuid
   stepPosition   Int             @map("step_position")
-  approverUserId String          @map("approver_user_id") @db.UniqueIdentifier
-  decision       String          // 'approved' | 'rejected'
-  note           String?         @db.NVarChar(Max)
-  decidedAt      DateTime        @default(now()) @map("decided_at")
+  approverUserId String          @map("approver_user_id") @db.Uuid
+  decision       String          @db.VarChar(1000) // 'approved' | 'rejected'
+  note           String?         @db.Text
+  decidedAt      DateTime        @default(now()) @map("decided_at") @db.Timestamptz(3)
   request        ApprovalRequest @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([requestId])
@@ -1495,37 +1486,37 @@ model ApprovalDecision {
 }
 
 model Interview {
-  id                   String              @id @default(uuid()) @db.UniqueIdentifier
-  organizationId       String              @map("organization_id") @db.UniqueIdentifier
-  pipelineEntryId      String              @map("pipeline_entry_id") @db.UniqueIdentifier
-  candidateId          String              @map("candidate_id") @db.UniqueIdentifier
-  status               String              @default("proposed")
-  interviewToken       String?             @unique @map("interview_token")
-  location             String              @db.NVarChar(Max)
-  timeZone             String              @map("time_zone")
-  recruiterNote        String?             @map("recruiter_note") @db.NVarChar(Max)
-  confirmedSlotId      String?             @map("confirmed_slot_id") @db.UniqueIdentifier
-  candidateReschedNote String?             @map("candidate_resched_note") @db.NVarChar(Max)
-  sentByUserId         String?             @map("sent_by_user_id") @db.UniqueIdentifier
-  sentAt               DateTime?           @map("sent_at")
-  respondedAt          DateTime?           @map("responded_at")
-  bookingMode          String              @default("proposed") @map("booking_mode")
-  bookingWindowStart   DateTime?           @map("booking_window_start")
-  bookingWindowEnd     DateTime?           @map("booking_window_end")
-  slotDurationMinutes  Int?                @map("slot_duration_minutes")
+  id                    String              @id @default(uuid()) @db.Uuid
+  organizationId        String              @map("organization_id") @db.Uuid
+  pipelineEntryId       String              @map("pipeline_entry_id") @db.Uuid
+  candidateId           String              @map("candidate_id") @db.Uuid
+  status                String              @default("proposed") @db.VarChar(1000)
+  interviewToken        String?             @unique @map("interview_token") @db.VarChar(1000)
+  location              String              @db.Text
+  timeZone              String              @map("time_zone") @db.VarChar(1000)
+  recruiterNote         String?             @map("recruiter_note") @db.Text
+  confirmedSlotId       String?             @map("confirmed_slot_id") @db.Uuid
+  candidateReschedNote  String?             @map("candidate_resched_note") @db.Text
+  sentByUserId          String?             @map("sent_by_user_id") @db.Uuid
+  sentAt                DateTime?           @map("sent_at") @db.Timestamptz(3)
+  respondedAt           DateTime?           @map("responded_at") @db.Timestamptz(3)
+  bookingMode           String              @default("proposed") @map("booking_mode") @db.VarChar(1000)
+  bookingWindowStart    DateTime?           @map("booking_window_start") @db.Timestamptz(3)
+  bookingWindowEnd      DateTime?           @map("booking_window_end") @db.Timestamptz(3)
+  slotDurationMinutes   Int?                @map("slot_duration_minutes")
   // Calendar OAuth sync (Zoho #22): set when a confirmed interview was pushed to an
   // organizer's connected calendar. ownerId is whose connection holds the event (so we
   // can update/delete it); meetingUrl is the auto-generated Meet/Teams join link. All null
   // when no organizer had a connected calendar (the feature is best-effort and inert).
-  externalEventProvider String?            @map("external_event_provider")
-  externalEventId       String?            @map("external_event_id") @db.NVarChar(Max)
-  externalEventOwnerId  String?            @map("external_event_owner_id") @db.UniqueIdentifier
-  meetingUrl            String?            @map("meeting_url") @db.NVarChar(Max)
-  createdAt            DateTime            @default(now()) @map("created_at")
-  updatedAt            DateTime            @updatedAt @map("updated_at")
-  pipelineEntry        PipelineEntry       @relation(fields: [pipelineEntryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  slots                InterviewSlot[]
-  panelists            InterviewPanelist[]
+  externalEventProvider String?             @map("external_event_provider") @db.VarChar(1000)
+  externalEventId       String?             @map("external_event_id") @db.Text
+  externalEventOwnerId  String?             @map("external_event_owner_id") @db.Uuid
+  meetingUrl            String?             @map("meeting_url") @db.Text
+  createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  pipelineEntry         PipelineEntry       @relation(fields: [pipelineEntryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  slots                 InterviewSlot[]
+  panelists             InterviewPanelist[]
 
   @@index([organizationId, pipelineEntryId])
   @@index([organizationId, candidateId])
@@ -1533,11 +1524,11 @@ model Interview {
 }
 
 model InterviewSlot {
-  id             String    @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String    @map("organization_id") @db.UniqueIdentifier
-  interviewId    String    @map("interview_id") @db.UniqueIdentifier
-  startsAt       DateTime  @map("starts_at")
-  endsAt         DateTime  @map("ends_at")
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  interviewId    String    @map("interview_id") @db.Uuid
+  startsAt       DateTime  @map("starts_at") @db.Timestamptz(3)
+  endsAt         DateTime  @map("ends_at") @db.Timestamptz(3)
   interview      Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([interviewId])
@@ -1545,10 +1536,10 @@ model InterviewSlot {
 }
 
 model InterviewPanelist {
-  id             String    @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String    @map("organization_id") @db.UniqueIdentifier
-  interviewId    String    @map("interview_id") @db.UniqueIdentifier
-  userId         String    @map("user_id") @db.UniqueIdentifier
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  interviewId    String    @map("interview_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
   interview      Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([interviewId, userId])
@@ -1562,17 +1553,17 @@ model InterviewPanelist {
 // same AES-256-GCM as smtp/ai/sms secrets). userId is a plain scalar (no User back-relation),
 // matching InterviewPanelist. Tenant-scoped -> RLS predicate in the _rls sibling migration.
 model CalendarConnection {
-  id                    String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId        String   @map("organization_id") @db.UniqueIdentifier
-  userId                String   @map("user_id") @db.UniqueIdentifier
-  provider              String // 'google' | 'microsoft'
-  connectedEmail        String?  @map("connected_email")
-  accessTokenEncrypted  String   @map("access_token_encrypted") @db.NVarChar(Max)
-  refreshTokenEncrypted String   @map("refresh_token_encrypted") @db.NVarChar(Max)
-  tokenExpiresAt        DateTime @map("token_expires_at")
-  scope                 String?  @db.NVarChar(Max)
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
+  id                    String   @id @default(uuid()) @db.Uuid
+  organizationId        String   @map("organization_id") @db.Uuid
+  userId                String   @map("user_id") @db.Uuid
+  provider              String   @db.VarChar(1000) // 'google' | 'microsoft'
+  connectedEmail        String?  @map("connected_email") @db.VarChar(1000)
+  accessTokenEncrypted  String   @map("access_token_encrypted") @db.Text
+  refreshTokenEncrypted String   @map("refresh_token_encrypted") @db.Text
+  tokenExpiresAt        DateTime @map("token_expires_at") @db.Timestamptz(3)
+  scope                 String?  @db.Text
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([userId, provider])
   @@index([organizationId, userId])
@@ -1584,25 +1575,25 @@ model CalendarConnection {
 // the returned state to recover the initiating user/provider. One-time, short TTL. NOT
 // RLS-scoped -- looked up by stateHash without a tenant context, exactly like SsoLoginCode.
 model CalendarOAuthState {
-  id             String   @id @default(uuid()) @db.UniqueIdentifier
-  stateHash      String   @unique @map("state_hash")
-  userId         String   @map("user_id") @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
-  provider       String
-  expiresAt      DateTime @map("expires_at")
-  createdAt      DateTime @default(now()) @map("created_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  stateHash      String   @unique @map("state_hash") @db.VarChar(1000)
+  userId         String   @map("user_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  provider       String   @db.VarChar(1000)
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("calendar_oauth_states")
 }
 
 model OfferTemplate {
-  id             String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
-  name           String   @default("Default offer letter") @db.NVarChar(200)
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @default("Default offer letter") @db.VarChar(200)
   isDefault      Boolean  @default(false) @map("is_default")
-  subject        String   @db.NVarChar(Max)
-  body           String   @db.NVarChar(Max)
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  subject        String   @db.Text
+  body           String   @db.Text
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -1610,11 +1601,11 @@ model OfferTemplate {
 }
 
 model JobExam {
-  id             String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
-  jobId          String   @map("job_id") @db.UniqueIdentifier
-  examId         String   @map("exam_id") @db.UniqueIdentifier
-  createdAt      DateTime @default(now()) @map("created_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  jobId          String   @map("job_id") @db.Uuid
+  examId         String   @map("exam_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   exam           Exam     @relation(fields: [examId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -1624,14 +1615,14 @@ model JobExam {
 }
 
 model ApprovalEmailTemplate {
-  id             String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
-  eventType      String   @map("event_type") @db.NVarChar(50)
-  subject        String   @db.NVarChar(Max)
-  body           String   @db.NVarChar(Max)
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  eventType      String   @map("event_type") @db.VarChar(50)
+  subject        String   @db.Text
+  body           String   @db.Text
   enabled        Boolean  @default(true)
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, eventType])
   @@index([organizationId])
@@ -1642,14 +1633,14 @@ model ApprovalEmailTemplate {
 // One row per org per fixed eventType; a missing or disabled row falls back to the built-in copy.
 // Mirrors ApprovalEmailTemplate exactly (RLS-protected — see _rls migration).
 model InterviewEmailTemplate {
-  id             String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
-  eventType      String   @map("event_type") @db.NVarChar(50)
-  subject        String   @db.NVarChar(Max)
-  body           String   @db.NVarChar(Max)
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  eventType      String   @map("event_type") @db.VarChar(50)
+  subject        String   @db.Text
+  body           String   @db.Text
   enabled        Boolean  @default(true)
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, eventType])
   @@index([organizationId])
@@ -1657,11 +1648,11 @@ model InterviewEmailTemplate {
 }
 
 model UserGroup {
-  id             String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
-  name           String   @db.NVarChar(200)
-  description    String?  @db.NVarChar(1000)
-  createdAt      DateTime @default(now()) @map("created_at")
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(200)
+  description    String?  @db.VarChar(1000)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -1669,11 +1660,11 @@ model UserGroup {
 }
 
 model UserGroupMember {
-  id             String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
-  groupId        String   @map("group_id") @db.UniqueIdentifier
-  userId         String   @map("user_id") @db.UniqueIdentifier
-  createdAt      DateTime @default(now()) @map("created_at")
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  groupId        String   @map("group_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([groupId, userId])
   @@index([organizationId, userId])
@@ -1681,13 +1672,13 @@ model UserGroupMember {
 }
 
 model OrgSenderAddress {
-  id             String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
-  label          String   @db.NVarChar(200)
-  address        String   @db.NVarChar(320)
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  label          String   @db.VarChar(200)
+  address        String   @db.VarChar(320)
   isDefault      Boolean  @default(false) @map("is_default")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, address])
   @@index([organizationId])
@@ -1695,14 +1686,14 @@ model OrgSenderAddress {
 }
 
 model ApiUsageDaily {
-  id             String   @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
   day            DateTime @map("day") @db.Date
-  endpoint       String   @map("endpoint")
+  endpoint       String   @map("endpoint") @db.VarChar(1000)
   requestCount   Int      @default(0) @map("request_count")
   throttledCount Int      @default(0) @map("throttled_count")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, day, endpoint])
   @@index([organizationId, day])
@@ -1710,16 +1701,16 @@ model ApiUsageDaily {
 }
 
 model PermissionProfile {
-  id              String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
-  organizationId  String   @map("organization_id") @db.UniqueIdentifier
-  name            String   @db.NVarChar(200)
-  permissionsJson String   @map("permissions_json") @db.NVarChar(Max)
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String   @map("organization_id") @db.Uuid
+  name                 String   @db.VarChar(200)
+  permissionsJson      String   @map("permissions_json") @db.Text
   // Optional per-user field rules (entity->field->level). Overlaid per-field on the org role config
   // for users assigned this profile. Null = inherit role field rules entirely.
-  fieldPermissionsJson String? @map("field_permissions_json") @db.NVarChar(Max)
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  users           User[]
+  fieldPermissionsJson String?  @map("field_permissions_json") @db.Text
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  users                User[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -1733,12 +1724,12 @@ model PermissionProfile {
 // (organization_id) -> RLS-paired migration. permissionsJson is a JSON string[] of permission keys,
 // same shape as PermissionProfile.
 model OrgRolePermission {
-  id              String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
-  organizationId  String   @map("organization_id") @db.UniqueIdentifier
-  role            String
-  permissionsJson String   @map("permissions_json") @db.NVarChar(Max)
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  role            String   @db.VarChar(1000)
+  permissionsJson String   @map("permissions_json") @db.Text
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, role])
   @@index([organizationId])
@@ -1746,18 +1737,18 @@ model OrgRolePermission {
 }
 
 model JobBoard {
-  id             String                @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String                @map("organization_id") @db.UniqueIdentifier
-  name           String                @db.NVarChar(200)
-  feedToken      String                @unique @map("feed_token")
+  id              String                @id @default(uuid()) @db.Uuid
+  organizationId  String                @map("organization_id") @db.Uuid
+  name            String                @db.VarChar(200)
+  feedToken       String                @unique @map("feed_token") @db.VarChar(1000)
   // Paid job-board adapters (Zoho backlog): a board is either the default free XML-feed board
   // (pull) or a paid push board with per-org encrypted API creds. configEncrypted holds the
   // adapter's config blob (AES-256-GCM, same as smtp/sms/ai secrets); null until configured.
-  provider        String               @default("xml_feed") @map("provider") // 'xml_feed' | 'linkedin' | 'indeed' | 'http'
-  configEncrypted String?              @map("config_encrypted") @db.NVarChar(Max)
-  createdAt      DateTime              @default(now()) @map("created_at")
-  updatedAt      DateTime              @updatedAt @map("updated_at")
-  publications   JobBoardPublication[]
+  provider        String                @default("xml_feed") @map("provider") @db.VarChar(1000) // 'xml_feed' | 'linkedin' | 'indeed' | 'http'
+  configEncrypted String?               @map("config_encrypted") @db.Text
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  publications    JobBoardPublication[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -1765,18 +1756,18 @@ model JobBoard {
 }
 
 model JobBoardPublication {
-  jobBoardId     String   @map("job_board_id") @db.UniqueIdentifier
-  jobId          String   @map("job_id") @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
+  jobBoardId     String    @map("job_board_id") @db.Uuid
+  jobId          String    @map("job_id") @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
   // Paid push tracking: null for free XML-feed boards. externalPostId is the id the board's API
   // returned, needed to close/remove the posting later. postStatus: pending|posted|failed|removed.
-  externalPostId String?   @map("external_post_id") @db.NVarChar(Max)
-  postStatus     String?   @map("post_status")
-  postError      String?   @map("post_error") @db.NVarChar(Max)
-  postedAt       DateTime? @map("posted_at")
-  createdAt      DateTime @default(now()) @map("created_at")
-  jobBoard       JobBoard @relation(fields: [jobBoardId], references: [id], onDelete: Cascade)
-  job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  externalPostId String?   @map("external_post_id") @db.Text
+  postStatus     String?   @map("post_status") @db.VarChar(1000)
+  postError      String?   @map("post_error") @db.Text
+  postedAt       DateTime? @map("posted_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  jobBoard       JobBoard  @relation(fields: [jobBoardId], references: [id], onDelete: Cascade)
+  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@id([jobBoardId, jobId])
   @@index([jobId])
@@ -1785,14 +1776,14 @@ model JobBoardPublication {
 }
 
 model Agency {
-  id             String             @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String             @map("organization_id") @db.UniqueIdentifier
-  name           String             @db.NVarChar(200)
-  contactEmail   String?            @map("contact_email")
-  portalToken    String             @unique @map("portal_token")
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  name           String             @db.VarChar(200)
+  contactEmail   String?            @map("contact_email") @db.VarChar(1000)
+  portalToken    String             @unique @map("portal_token") @db.VarChar(1000)
   active         Boolean            @default(true)
-  createdAt      DateTime           @default(now()) @map("created_at")
-  updatedAt      DateTime           @updatedAt @map("updated_at")
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
   agencyJobs     AgencyJob[]
   submissions    AgencySubmission[]
 
@@ -1802,10 +1793,10 @@ model Agency {
 }
 
 model AgencyJob {
-  agencyId       String   @map("agency_id") @db.UniqueIdentifier
-  jobId          String   @map("job_id") @db.UniqueIdentifier
-  organizationId String   @map("organization_id") @db.UniqueIdentifier
-  createdAt      DateTime @default(now()) @map("created_at")
+  agencyId       String   @map("agency_id") @db.Uuid
+  jobId          String   @map("job_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   agency         Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -1816,22 +1807,22 @@ model AgencyJob {
 }
 
 model AgencySubmission {
-  id             String    @id @default(uuid()) @db.UniqueIdentifier
-  organizationId String    @map("organization_id") @db.UniqueIdentifier
-  agencyId       String    @map("agency_id") @db.UniqueIdentifier
-  jobId          String    @map("job_id") @db.UniqueIdentifier
-  candidateName  String    @map("candidate_name")
-  candidateEmail String    @map("candidate_email")
-  candidatePhone String?   @map("candidate_phone")
-  resumePath     String    @map("resume_path")
-  isDuplicate    Boolean   @default(false) @map("is_duplicate")
-  status         String    @default("pending") // 'pending' | 'accepted' | 'rejected'
-  candidateId    String?   @map("candidate_id") @db.UniqueIdentifier
-  reviewedByUserId String? @map("reviewed_by_user_id") @db.UniqueIdentifier
-  reviewedAt     DateTime? @map("reviewed_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  agency         Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  agencyId         String    @map("agency_id") @db.Uuid
+  jobId            String    @map("job_id") @db.Uuid
+  candidateName    String    @map("candidate_name") @db.VarChar(1000)
+  candidateEmail   String    @map("candidate_email") @db.VarChar(1000)
+  candidatePhone   String?   @map("candidate_phone") @db.VarChar(1000)
+  resumePath       String    @map("resume_path") @db.VarChar(1000)
+  isDuplicate      Boolean   @default(false) @map("is_duplicate")
+  status           String    @default("pending") @db.VarChar(1000) // 'pending' | 'accepted' | 'rejected'
+  candidateId      String?   @map("candidate_id") @db.Uuid
+  reviewedByUserId String?   @map("reviewed_by_user_id") @db.Uuid
+  reviewedAt       DateTime? @map("reviewed_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  agency           Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  job              Job       @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([organizationId, status])
   @@index([agencyId])

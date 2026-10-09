@@ -6,6 +6,7 @@ import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import { PistonClient } from '../../exam-runtime/src/code-execution/piston-client';
 
 describe('Exam code-grading HTTP flow', () => {
   let adminApp: INestApplication;
@@ -20,10 +21,16 @@ describe('Exam code-grading HTTP flow', () => {
   let examId: string;
   let codeQuestionId: string;
   const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
+  // Fixed-mode code questions are validated against the runtime's live language list (Piston);
+  // fake it at the client boundary so no test reaches a real Piston server.
+  const fakePistonClient = {
+    listRuntimes: jest.fn().mockResolvedValue([{ language: 'javascript', version: '18.15.0', aliases: ['node'] }]),
+    execute: jest.fn(),
+  };
 
   beforeAll(async () => {
     adminApp = await bootAdminApp((builder) => builder.overrideProvider(EmailService).useValue(fakeEmailService));
-    ({ app: runtimeApp } = await bootRuntimeApp());
+    ({ app: runtimeApp } = await bootRuntimeApp((builder) => builder.overrideProvider(PistonClient).useValue(fakePistonClient)));
     adminHttp = adminApp.getHttpServer();
     runtimeHttp = runtimeApp.getHttpServer();
 
@@ -71,7 +78,8 @@ describe('Exam code-grading HTTP flow', () => {
         text: 'Write a function that reverses a string.',
         difficulty: 'easy',
         marks: 10,
-        codeLanguage: 'javascript',
+        languageMode: 'fixed',
+        allowedLanguages: ['javascript'],
         starterCode: 'function reverse(str) {\n  \n}',
         options: [],
       })
@@ -183,7 +191,7 @@ describe('Exam code-grading HTTP flow', () => {
     expect(pendingAfterFinalize.body).toHaveLength(0);
   });
 
-  it('surfaces and allows finalizing an attempt where the candidate never answered the code question', async () => {
+  it('auto-zeroes a code question the candidate never answered, skipping the manual-grading queue', async () => {
     const candidateResponse = await request(adminHttp)
       .post('/api/v1/candidates')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
@@ -204,32 +212,33 @@ describe('Exam code-grading HTTP flow', () => {
     // Candidate submits without ever answering the code question — no POST /attempt/answer call for it.
     await request(runtimeHttp).post('/api/v1/attempt/submit').set('Authorization', `Bearer ${accessToken}`).expect(201);
 
+    // An unanswered code question is auto-zeroed at settlement ("Not attempted."), so there is nothing
+    // for a human to grade: the attempt settles straight to submitted and never enters the queue.
     const pendingResponse = await request(adminHttp)
       .get(`/api/v1/exams/${examId}/pending-grading`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    const row = pendingResponse.body.find((r: any) => r.attemptId === attemptId);
-    expect(row).toBeDefined();
-    expect(row.codeQuestions).toEqual([
-      expect.objectContaining({ questionId: codeQuestionId, answerText: null, marks: 10, marksAwarded: null }),
-    ]);
+    expect(pendingResponse.body.find((r: any) => r.attemptId === attemptId)).toBeUndefined();
 
-    // Finalizing before grading the blank submission is still rejected.
+    // Nothing is pending, so a manual finalize is rejected.
     await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/finalize-manual-grade`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(400);
 
-    await request(adminHttp)
-      .post(`/api/v1/attempts/${attemptId}/answers/${codeQuestionId}/grade`)
+    const resultsResponse = await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/results`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
-      .send({ marksAwarded: 0, feedback: 'No submission' })
-      .expect(201);
+      .expect(200);
+    const row = resultsResponse.body.find((r: any) => r.attemptId === attemptId);
+    expect(row).toMatchObject({ status: 'submitted', score: 0, maxScore: 10 });
+    expect(row.passFail).not.toBeNull();
 
-    const finalizeResponse = await request(adminHttp)
-      .post(`/api/v1/attempts/${attemptId}/finalize-manual-grade`)
+    const reportResponse = await request(adminHttp)
+      .get(`/api/v1/exams/${examId}/candidates/${candidateResponse.body.id}/report`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
-      .expect(201);
-    expect(finalizeResponse.body).toEqual({ status: 'submitted' });
+      .expect(200);
+    const codeAnswer = reportResponse.body.sections.flatMap((section: any) => section.questions).find((q: any) => q.questionId === codeQuestionId);
+    expect(codeAnswer).toMatchObject({ marksAwarded: 0, gradingFeedback: 'Not attempted.' });
   });
 });

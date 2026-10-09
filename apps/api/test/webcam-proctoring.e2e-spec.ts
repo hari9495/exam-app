@@ -153,6 +153,7 @@ describe('Webcam proctoring pause/block/unblock flow', () => {
     // Candidate can act again.
     const current = await request(runtimeHttp).get('/api/v1/attempt/current').set('Authorization', `Bearer ${accessToken}`).expect(200);
     expect(current.body.status).toBe('in_progress');
-    expect(current.body.webcamViolationCount).toBe(3);
+    // A recruiter unblock clears the slate (a candidate self-resume never does).
+    expect(current.body.webcamViolationCount).toBe(0);
   });
 });

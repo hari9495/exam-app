@@ -200,6 +200,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
         return new HealthService({
           checkDb: () => prisma.$queryRaw`SELECT 1`,
           checkRedis: () => redis.ping(),
+          close: () => redis.disconnect(),
         });
       },
       inject: [PrismaService],

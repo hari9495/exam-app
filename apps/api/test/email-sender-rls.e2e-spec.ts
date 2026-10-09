@@ -7,7 +7,7 @@ import { EmailService } from '../src/email/email.service';
 // Regression test for a whole-branch-review finding: org_sender_addresses is under tenant RLS
 // (this branch's `_rls` migration), but EmailService used to read the org's default sender with
 // `this.prisma.orgSenderAddress.findFirst(...)` on the RAW PrismaService. The raw connection
-// never sets app_current_org/app_is_super_admin in SESSION_CONTEXT, so the RLS predicate on
+// never sets app.current_org/app.is_super_admin, so the RLS policy on
 // org_sender_addresses returned ZERO rows for every org -- the default sender silently never
 // applied (it failed "safe" to org.emailFromAddress, so nothing crashed and nothing looked
 // wrong). Only a real database, with RLS actually enforced, can catch this -- a mocked

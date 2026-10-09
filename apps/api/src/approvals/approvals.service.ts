@@ -757,7 +757,7 @@ export class ApprovalsService {
         FROM users u
         INNER JOIN role_permissions rp ON rp.role = u.role
         INNER JOIN permissions p ON p.id = rp.permission_id
-        WHERE p.[key] = 'approvals:configure' AND u.organization_id = ${context.organizationId} AND u.status = 'active'
+        WHERE p.key = 'approvals:configure' AND u.organization_id = ${context.organizationId}::uuid AND u.status = 'active'
       `;
       return rows.map((r) => r.id);
     });

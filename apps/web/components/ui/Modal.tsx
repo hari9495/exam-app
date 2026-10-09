@@ -51,7 +51,7 @@ export function Modal({ open, title, onClose, children, footer, size = 'md', clo
               <Dialog.Title className="font-display text-lg font-bold text-ink">{title}</Dialog.Title>
               <Dialog.Close
                 aria-label={closeAriaLabel}
-                className="rounded p-1 text-muted transition-colors hover:bg-ground hover:text-ink"
+                className="rounded-sm p-1 text-muted transition-colors hover:bg-ground hover:text-ink"
               >
                 <X size={18} />
               </Dialog.Close>

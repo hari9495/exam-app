@@ -10,7 +10,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Namespace, Socket } from 'socket.io';
-import { PrismaService } from '@exam-platform/shared';
+import { PrismaService, resolvePermissionGrants } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { MonitoringService, RosterRow } from './monitoring.service';
 import { LeaderboardService, RecruiterLeaderboardRow } from '../leaderboard/leaderboard.service';
@@ -19,6 +19,7 @@ interface StaffSocketUser {
   userId: string;
   organizationId: string | null;
   role: string;
+  permissionProfileId: string | null;
   actingSuperAdmin?: boolean;
 }
 
@@ -66,12 +67,14 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
         sub: string;
         organizationId: string | null;
         role: string;
+        permissionProfileId?: string | null;
         actingSuperAdmin?: boolean;
       };
       (client.data as { user?: StaffSocketUser }).user = {
         userId: payload.sub,
         organizationId: payload.organizationId,
         role: payload.role,
+        permissionProfileId: payload.permissionProfileId ?? null,
         actingSuperAdmin: payload.actingSuperAdmin,
       };
     } catch {
@@ -87,7 +90,7 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
       return;
     }
 
-    const hasPermission = user.actingSuperAdmin || (await this.hasExamManagePermission(user.role));
+    const hasPermission = user.actingSuperAdmin || (await this.hasExamManagePermission(user));
     if (!hasPermission) {
       client.emit('error', { message: 'Missing required permission: exam:manage' });
       return;
@@ -148,9 +151,12 @@ export class MonitoringGateway implements OnGatewayConnection, OnGatewayInit, On
     this.server?.to(`${EXAM_ROOM_PREFIX}${examId}`).emit('leaderboard:update', rows);
   }
 
-  private async hasExamManagePermission(role: string): Promise<boolean> {
-    const grant = await this.prisma.rolePermission.findFirst({ where: { role, permission: { key: 'exam:manage' } } });
-    return !!grant;
+  // Same resolution as the HTTP PermissionsGuard (profile > per-org role override > role default).
+  // Checking only the global role default let a user whose profile or org override removed
+  // exam:manage still watch the live roster, proctoring flags and leaderboard.
+  private async hasExamManagePermission(user: StaffSocketUser): Promise<boolean> {
+    const granted = await resolvePermissionGrants(this.prisma, this.tenantPrisma, user, ['exam:manage']);
+    return granted.has('exam:manage');
   }
 
   private async tickRoster(): Promise<void> {

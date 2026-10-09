@@ -211,7 +211,7 @@ export class CandidatesService {
         organizationId: context.organizationId as string,
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.globalStage ? { globalStage: filters.globalStage } : {}),
-        ...(filters.search ? { OR: [{ name: { contains: filters.search } }, { email: { contains: filters.search } }] } : {}),
+        ...(filters.search ? { OR: [{ name: { contains: filters.search, mode: 'insensitive' as const } }, { email: { contains: filters.search, mode: 'insensitive' as const } }] } : {}),
       };
       const [candidates, total] = await Promise.all([
         tx.candidate.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip, take }),

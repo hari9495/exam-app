@@ -36,13 +36,13 @@ export class QuotaService {
     const { used, limit } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const org = await tx.organization.findFirst({ where: { id: orgId }, include: { plan: true } });
       const rows = await tx.$queryRaw<{ minutes: number | null }[]>(Prisma.sql`
-        SELECT COALESCE(SUM(DATEDIFF(MINUTE, a.[started_at], a.[submitted_at])), 0) AS minutes
-        FROM [dbo].[attempts] a
-        JOIN [dbo].[exams] e ON e.[id] = a.[exam_id]
-        WHERE e.[organization_id] = ${orgId}
-          AND e.[enable_anti_cheating] = 1
-          AND a.[submitted_at] IS NOT NULL
-          AND a.[submitted_at] >= ${periodStart}
+        SELECT COALESCE(SUM(FLOOR(EXTRACT(EPOCH FROM a.submitted_at - a.started_at) / 60)), 0)::bigint AS minutes
+        FROM attempts a
+        JOIN exams e ON e.id = a.exam_id
+        WHERE e.organization_id = ${orgId}::uuid
+          AND e.enable_anti_cheating
+          AND a.submitted_at IS NOT NULL
+          AND a.submitted_at >= ${periodStart}
       `);
       return { used: Number(rows[0]?.minutes ?? 0), limit: org?.plan.proctoringMinutesLimit ?? Number.MAX_SAFE_INTEGER };
     });

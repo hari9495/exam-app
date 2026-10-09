@@ -440,8 +440,23 @@ describe('AttemptsAdminService', () => {
   });
 
   describe('regenerateCodeReview', () => {
+    // answers have no organization_id, so RLS does not scope the answer lookup: the attempt must be
+    // proven to belong to the caller's org first, or another org's review could be reset and billed.
+    it('rejects an attempt outside the caller org before touching its answer, review or AI', async () => {
+      const answerFindFirst = jest.fn();
+      const attemptFindFirst = jest.fn().mockResolvedValue(null);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn({ attempt: { findFirst: attemptFindFirst }, answer: { findFirst: answerFindFirst } }));
+
+      await expect(service.regenerateCodeReview(context, 'user-1', 'foreign-attempt', 'question-1')).rejects.toThrow(NotFoundException);
+      expect(attemptFindFirst).toHaveBeenCalledWith({
+        where: { id: 'foreign-attempt', invitation: { exam: { organizationId: context.organizationId } } },
+      });
+      expect(answerFindFirst).not.toHaveBeenCalled();
+      expect(examRuntime.generateCodeReview).not.toHaveBeenCalled();
+    });
+
     it('throws NotFoundException without calling the internal client when no answer is found', async () => {
-      const tx = { answer: { findFirst: jest.fn().mockResolvedValue(null) } };
+      const tx = { attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, answer: { findFirst: jest.fn().mockResolvedValue(null) } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       await expect(service.regenerateCodeReview(context, 'user-1', 'attempt-1', 'question-1')).rejects.toThrow(NotFoundException);
@@ -468,6 +483,9 @@ describe('AttemptsAdminService', () => {
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => {
         call += 1;
         if (call === 1) {
+          return fn({ attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) } });
+        }
+        if (call === 2) {
           return fn({ answer: { findFirst: jest.fn().mockResolvedValue({ id: 'answer-1' }) } });
         }
         return fn({ codeAnswerReview: { upsert } });

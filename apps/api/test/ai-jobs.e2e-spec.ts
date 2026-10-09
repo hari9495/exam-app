@@ -16,7 +16,7 @@ describe('AI Jobs HTTP flow', () => {
   let planId: string;
   let orgId: string;
   let recruiterAccessToken: string;
-  let orgAdminAccessToken: string;
+  let panelAccessToken: string;
 
   beforeAll(async () => {
     adminApp = await bootAdminApp();
@@ -34,11 +34,11 @@ describe('AI Jobs HTTP flow', () => {
     orgId = org.id;
 
     const recruiterHash = await argon2.hash('RecruiterPassw0rd!');
-    const orgAdminHash = await argon2.hash('OrgAdminPassw0rd!');
+    const panelHash = await argon2.hash('PanelPassw0rd!');
     await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
       Promise.all([
         tx.user.create({ data: { organizationId: orgId, email: 'recruiter@ci-ai-jobs.test', passwordHash: recruiterHash, role: 'recruiter' } }),
-        tx.user.create({ data: { organizationId: orgId, email: 'orgadmin@ci-ai-jobs.test', passwordHash: orgAdminHash, role: 'org_admin' } }),
+        tx.user.create({ data: { organizationId: orgId, email: 'panel@ci-ai-jobs.test', passwordHash: panelHash, role: 'panel' } }),
       ]),
     );
 
@@ -49,10 +49,10 @@ describe('AI Jobs HTTP flow', () => {
         .expect(200)
     ).body.accessToken;
 
-    orgAdminAccessToken = (
+    panelAccessToken = (
       await request(adminHttp)
         .post('/api/v1/auth/staff/login')
-        .send({ organizationSlug: org.slug, email: 'orgadmin@ci-ai-jobs.test', password: 'OrgAdminPassw0rd!' })
+        .send({ organizationSlug: org.slug, email: 'panel@ci-ai-jobs.test', password: 'PanelPassw0rd!' })
         .expect(200)
     ).body.accessToken;
   });
@@ -114,7 +114,7 @@ describe('AI Jobs HTTP flow', () => {
 
     await request(adminHttp)
       .get(`/api/v1/ai-jobs/${job.id}`)
-      .set('Authorization', `Bearer ${orgAdminAccessToken}`)
+      .set('Authorization', `Bearer ${panelAccessToken}`)
       .expect(403);
   });
 });

@@ -264,7 +264,7 @@ export class OrganizationsService {
     const where = {
       status: { not: 'deleted' },
       ...(filters.search
-        ? { OR: [{ name: { contains: filters.search } }, { slug: { contains: filters.search } }] }
+        ? { OR: [{ name: { contains: filters.search, mode: 'insensitive' as const } }, { slug: { contains: filters.search, mode: 'insensitive' as const } }] }
         : {}),
     };
     const [organizations, total] = await Promise.all([
@@ -858,6 +858,12 @@ export class OrganizationsService {
 
   async updateWebhookUrl(context: TenantContext, actorUserId: string, dto: UpdateWebhookUrlDto): Promise<{ webhookUrl: string }> {
     const organizationId = this.requireOrganizationId(context);
+    // Same save-time rule as every other org-supplied endpoint (integrations, HRIS): https only, and
+    // no private/loopback IP literal. Signed event payloads carry candidate data, so plain http is
+    // refused; hostnames are re-checked against their resolved address by the delivery-time SSRF guard.
+    if (!isAllowedWebhookUrl('webhook', dto.url)) {
+      throw new BadRequestException('Webhook URL must be a public https endpoint');
+    }
 
     await this.prisma.organization.update({ where: { id: organizationId }, data: { webhookUrl: dto.url } });
     await this.audit.record(context, {

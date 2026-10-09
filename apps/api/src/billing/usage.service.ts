@@ -32,13 +32,13 @@ export class UsageService {
         // Proctoring minutes: attempts of anti-cheating-enabled exams, completed this period.
         // Attempt has no direct org column -> join via exam. datediff in minutes; NULL -> 0.
         tx.$queryRaw<{ minutes: number | null }[]>(Prisma.sql`
-          SELECT COALESCE(SUM(DATEDIFF(MINUTE, a.[started_at], a.[submitted_at])), 0) AS minutes
-          FROM [dbo].[attempts] a
-          JOIN [dbo].[exams] e ON e.[id] = a.[exam_id]
-          WHERE e.[organization_id] = ${orgId}
-            AND e.[enable_anti_cheating] = 1
-            AND a.[submitted_at] IS NOT NULL
-            AND a.[submitted_at] >= ${periodStart}
+          SELECT COALESCE(SUM(FLOOR(EXTRACT(EPOCH FROM a.submitted_at - a.started_at) / 60)), 0)::bigint AS minutes
+          FROM attempts a
+          JOIN exams e ON e.id = a.exam_id
+          WHERE e.organization_id = ${orgId}::uuid
+            AND e.enable_anti_cheating
+            AND a.submitted_at IS NOT NULL
+            AND a.submitted_at >= ${periodStart}
         `),
       ]);
 

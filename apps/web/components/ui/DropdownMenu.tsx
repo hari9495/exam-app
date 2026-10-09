@@ -44,7 +44,7 @@ export function DropdownMenuItem({
   return (
     <RadixDropdown.Item
       onSelect={onSelect}
-      className={clsx('cursor-pointer rounded px-3 py-2 font-body text-sm text-ink outline-none data-[highlighted]:bg-ground', className)}
+      className={clsx('cursor-pointer rounded-sm px-3 py-2 font-body text-sm text-ink outline-hidden data-highlighted:bg-ground', className)}
     >
       {children}
     </RadixDropdown.Item>

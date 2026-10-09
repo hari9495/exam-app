@@ -666,7 +666,7 @@ describe('CandidatesService', () => {
     expect(tx.candidate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          OR: [{ name: { contains: 'alice' } }, { email: { contains: 'alice' } }],
+          OR: [{ name: { contains: 'alice', mode: 'insensitive' } }, { email: { contains: 'alice', mode: 'insensitive' } }],
         }),
         skip: 0,
         take: 10,

@@ -684,7 +684,7 @@ describe('UsersService', () => {
     await service.list({ organizationId: 'org-1', isSuperAdmin: false }, { search: 'Jane' });
 
     expect(whereArg.organizationId).toBe('org-1');
-    expect(whereArg.OR).toEqual([{ email: { contains: 'Jane' } }, { name: { contains: 'Jane' } }]);
+    expect(whereArg.OR).toEqual([{ email: { contains: 'Jane', mode: 'insensitive' } }, { name: { contains: 'Jane', mode: 'insensitive' } }]);
   });
 
   it('list applies no search filter when the term is blank', async () => {

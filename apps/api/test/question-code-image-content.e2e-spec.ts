@@ -5,6 +5,8 @@ import { randomUUID } from 'crypto';
 import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { BlobStorageService } from '@exam-platform/shared';
+import { createFakeBlobStorage, FAKE_BLOB_CONTAINER_URL } from './fixtures/fake-blob-storage';
 import { EmailService } from '../src/email/email.service';
 
 describe('Question code-snippet and image content HTTP flow', () => {
@@ -18,6 +20,8 @@ describe('Question code-snippet and image content HTTP flow', () => {
   let orgId: string;
   let recruiterAccessToken: string;
   const fakeEmailService = { send: jest.fn().mockResolvedValue({ success: true, previewUrl: 'https://ethereal.email/fake' }) };
+  // Question images go to Azure Blob Storage; both apps share one in-memory fake instead.
+  const fakeBlobStorage = createFakeBlobStorage();
 
   // 1x1 transparent PNG.
   const pngBuffer = Buffer.from(
@@ -26,8 +30,10 @@ describe('Question code-snippet and image content HTTP flow', () => {
   );
 
   beforeAll(async () => {
-    adminApp = await bootAdminApp((builder) => builder.overrideProvider(EmailService).useValue(fakeEmailService));
-    ({ app: runtimeApp } = await bootRuntimeApp());
+    adminApp = await bootAdminApp((builder) =>
+      builder.overrideProvider(EmailService).useValue(fakeEmailService).overrideProvider(BlobStorageService).useValue(fakeBlobStorage),
+    );
+    ({ app: runtimeApp } = await bootRuntimeApp((builder) => builder.overrideProvider(BlobStorageService).useValue(fakeBlobStorage)));
     adminHttp = adminApp.getHttpServer();
     runtimeHttp = runtimeApp.getHttpServer();
 
@@ -77,7 +83,10 @@ describe('Question code-snippet and image content HTTP flow', () => {
       .attach('file', pngBuffer, { filename: 'snippet.png', contentType: 'image/png' })
       .expect(201);
     const imageUrl = uploadResponse.body.imageUrl;
-    expect(typeof imageUrl).toBe('string');
+    expect(imageUrl).toMatch(new RegExp(`^${FAKE_BLOB_CONTAINER_URL}/question-images/[0-9a-f-]{36}\\.png$`));
+    const storedImage = fakeBlobStorage.blobs.get(imageUrl.slice(FAKE_BLOB_CONTAINER_URL.length + 1))!;
+    expect(Buffer.compare(storedImage.data, pngBuffer)).toBe(0);
+    expect(storedImage.contentType).toBe('image/png');
 
     const snippetCode = 'function add(a, b) {\n  return a + b;\n}';
     const questionResponse = await request(adminHttp)

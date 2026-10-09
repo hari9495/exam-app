@@ -144,11 +144,11 @@ export class EmailService {
         // in the UI, so most orgs will not have set one.
         //
         // org_sender_addresses is under tenant RLS -- unlike the `organization.findUnique`
-        // above, this MUST go through a tenant-scoped forTenant() so app_current_org is set on
-        // the session, or the RLS predicate returns zero rows for every org and the default
+        // above, this MUST go through a tenant-scoped forTenant() so app.current_org is set in
+        // the transaction, or the RLS policy returns zero rows for every org and the default
         // sender silently never applies (fails "safe" to org.emailFromAddress). send() commonly
         // runs post-commit, outside any caller transaction, so a fresh forTenant read here --
-        // its own connection + session context -- is correct; only this lookup needs the tx,
+        // its own transaction + tenant context -- is correct; only this lookup needs the tx,
         // not the whole send.
         const defaultSender = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
           tx.orgSenderAddress.findFirst({

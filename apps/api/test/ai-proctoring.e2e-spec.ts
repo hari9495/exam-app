@@ -32,7 +32,7 @@ describe('AI Proctoring flow', () => {
     tenantPrisma = adminApp.get(TenantPrismaService);
 
     const plan = await prisma.plan.create({
-      data: { name: `ci-ai-proctoring-plan-${randomUUID()}`, candidateLimit: 10, aiCreditLimit: 1, proctoringMinutesLimit: 1 },
+      data: { name: `ci-ai-proctoring-plan-${randomUUID()}`, candidateLimit: 10, aiCreditLimit: 100, proctoringMinutesLimit: 1 },
     });
     planId = plan.id;
 
@@ -111,7 +111,13 @@ describe('AI Proctoring flow', () => {
     return inviteResponse.body.created[0].token;
   }
 
-  async function pollForAnalysis(attemptCandidateEmail: string, timeoutMs = 5000): Promise<any> {
+  // Analysis runs in the background after settlement (and after reanalyze): the row is claimed as
+  // 'processing' first, so wait (bounded) for a settled status rather than for the row to exist.
+  async function pollForAnalysis(
+    attemptCandidateEmail: string,
+    isDone: (analysis: { status: string }) => boolean = (analysis) => analysis.status !== 'processing',
+    timeoutMs = 5000,
+  ): Promise<any> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const results = await request(adminHttp)
@@ -119,12 +125,22 @@ describe('AI Proctoring flow', () => {
         .set('Authorization', `Bearer ${recruiterAccessToken}`)
         .expect(200);
       const row = results.body.find((r: any) => r.candidateName === attemptCandidateEmail);
-      if (row?.proctoringAnalysis) {
+      if (row?.proctoringAnalysis && isDone(row.proctoringAnalysis)) {
         return row;
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     throw new Error(`Timed out waiting for proctoring analysis for ${attemptCandidateEmail}`);
+  }
+
+  // tab_switch / copy_paste are strike-worthy: the attempt pauses until the candidate acknowledges
+  // the warning, and a paused attempt cannot be submitted.
+  async function acknowledgeStrikeAndSubmit(accessToken: string): Promise<void> {
+    const current = await request(runtimeHttp).get('/api/v1/attempt/current').set('Authorization', `Bearer ${accessToken}`).expect(200);
+    expect(current.body).toMatchObject({ status: 'paused', pausedReason: 'browser_activity' });
+    await request(runtimeHttp).post('/api/v1/attempt/webcam-resume').set('Authorization', `Bearer ${accessToken}`).send({}).expect(201);
+    const submitResponse = await request(runtimeHttp).post('/api/v1/attempt/submit').set('Authorization', `Bearer ${accessToken}`).expect(201);
+    expect(submitResponse.body.status).toBe('submitted');
   }
 
   it('records a completed analysis with the LLM-provided risk level and summary for an attempt with proctoring events', async () => {
@@ -138,14 +154,15 @@ describe('AI Proctoring flow', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ eventType: 'tab_switch' })
       .expect(201);
-    await request(runtimeHttp).post('/api/v1/attempt/submit').set('Authorization', `Bearer ${accessToken}`).expect(201);
+    await acknowledgeStrikeAndSubmit(accessToken);
 
     const row = await pollForAnalysis('Alice');
 
     expect(row.proctoringAnalysis).toEqual({ status: 'completed', riskLevel: 'medium', summary: 'One tab switch mid-exam.' });
-    expect(fakeProctoringRiskClient.assessRisk).toHaveBeenCalledWith([
-      expect.objectContaining({ eventType: 'tab_switch', severity: 'medium' }),
-    ]);
+    expect(fakeProctoringRiskClient.assessRisk).toHaveBeenCalledWith(
+      [expect.objectContaining({ eventType: 'tab_switch', severity: 'medium' })],
+      expect.anything(),
+    );
   });
 
   it('records skipped_clean without ever calling the LLM for an attempt with no proctoring events', async () => {
@@ -173,7 +190,7 @@ describe('AI Proctoring flow', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ eventType: 'copy_paste' })
       .expect(201);
-    await request(runtimeHttp).post('/api/v1/attempt/submit').set('Authorization', `Bearer ${accessToken}`).expect(201);
+    await acknowledgeStrikeAndSubmit(accessToken);
 
     const failedRow = await pollForAnalysis('Carol');
     expect(failedRow.proctoringAnalysis).toEqual({ status: 'failed', riskLevel: null, summary: null });
@@ -184,11 +201,9 @@ describe('AI Proctoring flow', () => {
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(201);
 
-    const finalResults = await request(adminHttp)
-      .get(`/api/v1/exams/${examId}/results`)
-      .set('Authorization', `Bearer ${recruiterAccessToken}`)
-      .expect(200);
-    const finalRow = finalResults.body.find((r: any) => r.candidateName === 'Carol');
+    // reanalyze answers before the background run starts, so the old 'failed' row may still be
+    // visible for a moment -- wait for the replacement verdict itself.
+    const finalRow = await pollForAnalysis('Carol', (analysis) => analysis.status === 'completed');
     expect(finalRow.proctoringAnalysis).toEqual({ status: 'completed', riskLevel: 'high', summary: 'Copy-paste detected.' });
   });
 });

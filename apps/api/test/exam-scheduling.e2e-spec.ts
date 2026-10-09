@@ -161,17 +161,36 @@ describe('Exam scheduling HTTP flow', () => {
       .expect(400);
     expect(startBeforeOpen.body.message).toContain('not open yet');
 
-    // Step 6: recruiter moves the window to already-open (30 min ago -> 30 min from now).
+    // Step 6: recruiter moves the window to already-open (30 min ago -> 30 min from now). A published
+    // exam's details are locked (409) until it is unpublished, which is allowed while nobody has started.
+    const openWindowEnd = new Date(Date.now() + 30 * 60 * 1000);
+    const openWindowPatch = {
+      title: 'Scheduled Round',
+      schedulingEnabled: true,
+      availabilityWindowStart: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+      availabilityWindowEnd: openWindowEnd.toISOString(),
+    };
     await request(adminHttp)
       .patch(`/api/v1/exams/${examId}`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
-      .send({
-        title: 'Scheduled Round',
-        schedulingEnabled: true,
-        availabilityWindowStart: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-        availabilityWindowEnd: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-      })
+      .send(openWindowPatch)
+      .expect(409);
+    await request(adminHttp).post(`/api/v1/exams/${examId}/unpublish`).set('Authorization', `Bearer ${recruiterAccessToken}`).expect(201);
+    await request(adminHttp)
+      .patch(`/api/v1/exams/${examId}`)
+      .set('Authorization', `Bearer ${recruiterAccessToken}`)
+      .send(openWindowPatch)
       .expect(200);
+    await request(adminHttp).post(`/api/v1/exams/${examId}/publish`).set('Authorization', `Bearer ${recruiterAccessToken}`).expect(201);
+
+    // The PATCH re-synced every not-yet-started invitation's expiry to the new window end.
+    const invitationsAfterReschedule = await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) =>
+      tx.invitation.findMany({ where: { examId }, select: { expiresAt: true } }),
+    );
+    expect(invitationsAfterReschedule).toHaveLength(2);
+    for (const invitation of invitationsAfterReschedule) {
+      expect(invitation.expiresAt.getTime()).toBe(openWindowEnd.getTime());
+    }
 
     // Step 7: preview now reports the window is open.
     const previewOpen = await request(runtimeHttp)
@@ -189,17 +208,22 @@ describe('Exam scheduling HTTP flow', () => {
     const attemptId = startResponse.body.id;
     expect(startResponse.body.status).toBe('in_progress');
 
-    // Step 9: recruiter moves the window fully into the past — now closed.
+    // Step 9: once a candidate has started, the exam is locked for good -- the recruiter can no longer
+    // reschedule it.
     await request(adminHttp)
       .patch(`/api/v1/exams/${examId}`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
-      .send({
-        title: 'Scheduled Round',
-        schedulingEnabled: true,
-        availabilityWindowStart: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        availabilityWindowEnd: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-      })
-      .expect(200);
+      .send({ ...openWindowPatch, availabilityWindowEnd: new Date(Date.now() - 60 * 60 * 1000).toISOString() })
+      .expect(409);
+
+    // Let the window close: shift it (and the invitation expiries synced to its end) an hour into the
+    // past, exactly what the clock passing the window end would do.
+    const windowStartInPast = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const windowEndInPast = new Date(Date.now() - 60 * 60 * 1000);
+    await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, async (tx) => {
+      await tx.exam.update({ where: { id: examId }, data: { availabilityWindowStart: windowStartInPast, availabilityWindowEnd: windowEndInPast } });
+      await tx.invitation.updateMany({ where: { examId }, data: { expiresAt: windowEndInPast } });
+    });
 
     // Step 10: Alice's already-started attempt is unaffected by the now-closed window — start()
     // returns the same attempt idempotently, and answer/submit both still succeed.
@@ -218,8 +242,8 @@ describe('Exam scheduling HTTP flow', () => {
 
     await request(runtimeHttp).post('/api/v1/attempt/submit').set('Authorization', `Bearer ${aliceAccessToken}`).expect(201);
 
-    // Step 11: Bob never redeemed or started — his invitation's expiresAt was re-synced to the new
-    // (already-past) availabilityWindowEnd in step 9, so redeem() now correctly rejects him as expired.
+    // Step 11: Bob never redeemed or started -- his invitation's expiresAt tracked the window end (re-synced
+    // in step 6), so now that the window has closed, redeem() correctly rejects him as expired.
     const bobRedeemResponse = await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: bobToken }).expect(400);
     expect(bobRedeemResponse.body.message).toContain('expired');
   });

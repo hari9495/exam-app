@@ -18,7 +18,7 @@ const withNotDeleted = (where: unknown) => ({ ...(where as object), deletedAt: n
  * a `where` combining a unique field with a non-unique one on findUnique, and so redirected
  * findUnique to findFirst on a model delegate obtained one of two broken ways -- a client closed
  * over at extension-definition time (escapes `TenantPrismaService.forTenant`'s transaction and
- * its SESSION_CONTEXT, so tenant RLS sees no org and silently returns zero rows), or
+ * its tenant context (app.current_org), so tenant RLS sees no org and silently returns zero rows), or
  * `Prisma.getExtensionContext(this)` (verified empirically, real DB, in
  * soft-delete-for-tenant.e2e-spec.ts's first failing run: inside a `query.$allModels` hook in
  * 5.22, `this` is some Prisma-internal array-like object, not a client -- `getExtensionContext`

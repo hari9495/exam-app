@@ -88,7 +88,7 @@ export class AiQuestionGenerationProcessor implements JobProcessor {
     const questionIds = await this.tenantPrisma.forTenant(
       context,
       async (tx) => {
-        // question_tags has no RLS and SQL Server does not apply RLS predicates to FK validation, so a tag id
+        // FK validation bypasses RLS in PostgreSQL, so a tag id
         // from another organization would otherwise attach successfully. Resolve org-scoped here and use only
         // what comes back — a single indexed lookup, not slow I/O like the AI provider call above.
         const resolvedTagIds =

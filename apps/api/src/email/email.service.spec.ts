@@ -53,7 +53,7 @@ describe('EmailService', () => {
     prisma = { organization: { findUnique: jest.fn() }, orgSenderAddress: { findFirst: jest.fn().mockResolvedValue(null) } };
     cryptoService = { decrypt: jest.fn() };
     // forTenant is exercised here only as "runs the callback against a tx" -- the real
-    // RLS-scoping behavior (setting app_current_org so the query actually sees rows) can only
+    // RLS-scoping behavior (setting app.current_org so the query actually sees rows) can only
     // be caught by a real-DB test; see email-sender-rls.e2e-spec.ts.
     tenantPrisma = { forTenant: jest.fn((_context, fn) => fn(prisma)) };
     service = new EmailService(prisma as never, cryptoService as never, tenantPrisma as never);
@@ -299,7 +299,7 @@ describe('EmailService', () => {
     await service.send({ to: 'a@b.com', subject: 's', html: '<p>h</p>', organizationId: 'org-1' });
 
     // org_sender_addresses is RLS-protected -- the read must go through forTenant (which sets
-    // app_current_org on the session) rather than the raw prisma client, or it silently returns
+    // app.current_org in the transaction) rather than the raw prisma client, or it silently returns
     // zero rows in production. A mock can't reproduce the RLS failure itself (see
     // email-sender-rls.e2e-spec.ts for that), but it CAN catch a regression back to the raw
     // client.

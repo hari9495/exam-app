@@ -12,7 +12,7 @@ export interface SystemEventEntry {
   context?: Record<string, unknown>;
 }
 
-// SQL Server column cap (NVARCHAR(2000)); truncate rather than fail the insert.
+// Column cap (varchar(2000)); truncate rather than fail the insert.
 const MAX_MESSAGE_LENGTH = 2000;
 
 @Injectable()

@@ -8,7 +8,7 @@ import { randomUUID } from 'crypto';
 // Proves the Task 3 wiring end to end against a real DB: `TenantPrismaService.forTenant` now
 // runs through the soft-delete-filtered client (soft-delete.extension.ts), so a soft-deleted
 // Candidate is invisible to `findUnique` inside it -- while staying correctly tenant-scoped, on
-// the same tx/SESSION_CONTEXT as any other forTenant query, for a non-deleted row -- and the
+// the same tx/tenant context as any other forTenant query, for a non-deleted row -- and the
 // SAME findUnique via `forTenantIncludingDeleted` (raw client, no filter) still sees it. Harness
 // pattern copied from tenant-isolation.e2e-spec.ts (same real DB, same PrismaModule bootstrap)
 // -- deliberately not a new harness.
@@ -78,7 +78,7 @@ describe('TenantPrismaService soft-delete filtering (real DB)', () => {
 
   // The previous test proves forTenant's tenant scoping still works for findUnique (a real row
   // comes back). This one proves the soft-delete filter is what's hiding the deleted row, not
-  // some tenant-scoping regression -- both hit the same tx/SESSION_CONTEXT, only one is filtered.
+  // some tenant-scoping regression -- both hit the same tx/tenant context, only one is filtered.
   it('forTenant: findUnique on a soft-deleted candidate returns null (filtered, not merely tenant-invisible)', async () => {
     const result = await tenantPrisma.forTenant(context(), (tx) => tx.candidate.findUnique({ where: { id: deletedCandidateId } }));
 
