@@ -5,6 +5,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { FieldDef, Group, RecordValues, RuleError, evaluate, parseGroup } from '../rules-engine/conditions';
+import { ApprovalCards } from './approval-channels';
 
 // P03 approvals engine (shared platform engine, built first for the Service Desk catalogue, SD-2.05; leave, expenses
 // and the rest plug in later by registering a request type). A request freezes its route at submit (YX-WF-02): every
@@ -52,6 +53,11 @@ export interface RequestType {
   onDecided(tx: Tx, req: Prisma.WfRequestGetPayload<object>, outcome: Outcome): Promise<void>;
   /** Where the requester follows the request. */
   requesterLink(req: Prisma.WfRequestGetPayload<object>): string;
+  /**
+   * SD-2.06: may the request's title and summary go out of the app (a Teams / Slack card, a push)? Anything but 'full'
+   * keeps cards neutral and the request is decided only after signing in. Omitted = neutral.
+   */
+  cardPreview?(tx: Tx, req: Prisma.WfRequestGetPayload<object>): Promise<'full' | 'neutral'>;
 }
 
 export interface SubmitInput {
@@ -177,7 +183,14 @@ export class ApprovalsEngine {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifications: NotificationsService,
+    private readonly cards: ApprovalCards,
   ) {}
+
+  /** SD-2.06: whether a request's words may leave the app (fails closed). */
+  async previewOf(tx: Tx, req: Prisma.WfRequestGetPayload<object>): Promise<'full' | 'neutral'> {
+    const t = this.types.get(req.requestType);
+    return t?.cardPreview ? t.cardPreview(tx, req).catch(() => 'neutral' as const) : 'neutral';
+  }
 
   /** A module registers its request types once, at start-up (P03 §4.1). */
   register(t: RequestType) {
@@ -373,7 +386,7 @@ export class ApprovalsEngine {
    * An approver's decision. Only the task's holder decides; a reject needs a reason (YX-WF-08). channel is the SD-2.06
    * seam (Teams / Slack / push arrive later with their own signed links).
    */
-  async decide(ctx: CompanyContext, userId: string, taskId: string, decision: 'approve' | 'reject', reason: string | null, channel: 'web' | 'mobile' = 'web') {
+  async decide(ctx: CompanyContext, userId: string, taskId: string, decision: 'approve' | 'reject', reason: string | null, channel: 'web' | 'mobile' | 'teams' | 'slack' | 'push' = 'web') {
     const notices: Notice[] = [];
     const res = await this.tenantPrisma.forTenant(ctx, async (tx) => {
       const org = ctx.organizationId;
@@ -659,6 +672,8 @@ export class ApprovalsEngine {
       } catch (e) {
         this.logger.warn(`approval notice not sent: ${(e as Error).message}`);
       }
+      // SD-2.06: a card to the linked chat apps and phones of whoever must decide.
+      if (n.type === 'workflow.approval.needed' || n.type === 'workflow.approval.reminder') await this.cards.deliver(ctx, n.requestId, to, (tx, req) => this.previewOf(tx, req));
     }
   }
 }

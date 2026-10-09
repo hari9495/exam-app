@@ -25,7 +25,14 @@ import {
   type TimelineEntry,
   type TicketRequestView,
   type PickOption,
+  TicketEsmRail,
+  type DocumentsView,
+  type HrSummary,
+  type SequenceDef,
+  type SequenceRunView,
+  type TicketShare,
 } from '@yukthix/ui/desk';
+import { useYxPermissions } from '../../../../../../lib/yx-org';
 import { apiFetch } from '../../../../../../lib/api-client';
 import { useAuth } from '../../../../../../lib/auth-context';
 import { useCurrentUser } from '../../../../../../lib/hooks/useCurrentUser';
@@ -56,6 +63,14 @@ export default function YxDeskTicketPage() {
   const kbSpaces = useDesk<{ id: string; name: string; canAuthor: boolean }[]>('/kb/spaces');
   // 3b-2: ordered items with their approvals and tasks, and ad-hoc approvals on this ticket.
   const request = useDesk<TicketRequestView>(`${path}/request`);
+  // 3b-2 batch 2: the HR summary, shares and moves, documents, follow-up messages.
+  const perms = useYxPermissions();
+  const hr = useDesk<HrSummary>(perms.has('desk.hr_summary.view') ? `${path}/hr-summary` : null);
+  const shares = useDesk<TicketShare[]>(`${path}/shares`);
+  const docs = useDesk<DocumentsView>(`${path}/documents`);
+  const seqRuns = useDesk<SequenceRunView[]>(`${path}/sequences`);
+  const sequences = useDesk<SequenceDef[]>(ticket.data?.deskId ? `/sequences?deskId=${ticket.data.deskId}` : null);
+  const targets = useDesk<{ id: string; name: string; categories: { id: string; name: string; sensitive: boolean }[] }[]>('/my/desks');
   const write = useDeskWrite();
   const upload = useDeskUpload();
   const openFile = useDeskFile();
@@ -148,6 +163,29 @@ export default function YxDeskTicketPage() {
                 onFindPeople={(q) => apiFetch(`/workflow/people?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>}
               />
             )}
+            <TicketEsmRail
+              canWork={Boolean(t.canWork)}
+              canMove={Boolean(t.canWork) && perms.has('desk.ticket.move')}
+              hr={hr.data}
+              desks={(targets.data ?? []).map((x) => ({ id: x.id, name: x.name }))}
+              currentDeskId={t.deskId}
+              shares={shares.data ?? []}
+              categories={(deskId) => targets.data?.find((x) => x.id === deskId)?.categories ?? []}
+              sensitive={Boolean(t.sensitive || t.private)}
+              onMove={async (input) => {
+                const moved = await write<{ id: string }>(`${path}/move`, 'POST', input);
+                open(moved.id);
+              }}
+              onShare={(deskId, level) => write(`${path}/share`, 'POST', { deskId, level })}
+              onUnshare={(deskId) => write(`${path}/share/${encodeURIComponent(deskId)}`, 'DELETE')}
+              documents={docs.data}
+              onMakeDocument={(templateId) => write(`${path}/documents`, 'POST', { templateId })}
+              onWithdrawDocument={(doc) => write(`${path}/documents/${encodeURIComponent(doc.id)}/withdraw`, 'POST')}
+              sequences={sequences.data ?? []}
+              runs={seqRuns.data ?? []}
+              onStartSequence={(sequenceId) => write(`${path}/sequences`, 'POST', { sequenceId })}
+              onStopSequence={(run) => write(`${path}/sequences/${encodeURIComponent(run.id)}/stop`, 'POST')}
+            />
             <TicketKbCard
               links={kbLinks.data ?? []}
               solved={['solved', 'closed'].includes(t.systemState)}

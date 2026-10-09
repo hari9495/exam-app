@@ -112,7 +112,7 @@ export async function seedTime(tx: Tx, organizationId: string) {
 
   // ---- the shared engines, running inside this seed transaction ----
   const tenant = { forTenant: (_c: unknown, fn: (t: Tx) => unknown) => fn(tx) } as unknown as TenantPrismaService;
-  const engine = new ApprovalsEngine(tenant, { notifySystem: async () => undefined } as never);
+  const engine = new ApprovalsEngine(tenant, { notifySystem: async () => undefined } as never, { deliver: async () => undefined } as never);
   const days = new DayEngine();
   const leave = new LeaveService(null as never, tenant, engine, days);
   leave.onModuleInit();

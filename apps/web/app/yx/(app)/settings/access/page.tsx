@@ -10,7 +10,7 @@ import { loadState, todayIst, useOrg } from '../../../../../lib/yx-org';
 const id = encodeURIComponent;
 
 // Settings › Roles & access (PLT-11; P02 §4.2–4.3, §4.6): grants with scope and dates, the approval queue,
-// roles from templates and the effective-access preview. The API checks every rule (access.role.manage,
+// roles from templates, the effective-access preview and who is a System Admin. The API checks every rule (access.role.manage,
 // step-up, second admin, risk confirmation).
 export default function YxRolesAccessPage() {
   const me = useCurrentUser();
@@ -45,6 +45,7 @@ export default function YxRolesAccessPage() {
       onReject={async (grantId, reason) => void (await write(`/grants/${id(grantId)}/reject`, { reason }))}
       onRevoke={async (grantId, reason) => void (await write(`/grants/${id(grantId)}/revoke`, { reason }))}
       onFromTemplate={async (templateKey, name) => void (await write('/roles/from-template', { templateKey, name }))}
+      onSystemAdmin={async (userId, makeAdmin, reason) => void (await write(`/users/${id(userId)}/system-admin${makeAdmin ? '' : '/remove'}`, { reason }))}
     />
   );
 }

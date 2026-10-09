@@ -4,7 +4,7 @@ import { Badge } from '../../../components/display';
 import { Checkbox } from '../../../components/choice';
 import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
-import { ErrorSummary, FormField } from '../../../components/field';
+import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
 import { TextArea, TextField } from '../../../components/inputs';
 import { Dialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
@@ -207,7 +207,6 @@ function ApplyDrawer({ data, onClose, onPreview, onApply, onFindPeople }: { data
   const [delegate, setDelegate] = useState<string | null>(null);
   const [certificate, setCertificate] = useState(false);
   const [plan, setPlan] = useState<LeavePlan | null>(null);
-  const [showErrors, setShowErrors] = useState(false);
   const { busy, error, run } = useRun();
   const end = to || from;
   const oneDay = from !== '' && end === from;
@@ -237,11 +236,11 @@ function ApplyDrawer({ data, onClose, onPreview, onApply, onFindPeople }: { data
     for (const b of plan?.blocks ?? []) e.push({ fieldId: 'lv-from', message: b });
     return e;
   }, [typeId, from, end, plan, certificate]);
-  const errorOf = (id: string) => (showErrors ? errors.find((x) => x.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
 
   const send = () => {
-    setShowErrors(true);
-    if (errors.length) return;
+    if (errors.length) return saveErrors.reveal();
     void run('apply', async () => {
       await onApply({ leaveTypeId: typeId!, from, to: end, fromHalf, toHalf, reason: reason.trim() || undefined, delegateUserId: delegate ?? undefined, certificate: certificate || undefined });
       onClose();
@@ -265,7 +264,7 @@ function ApplyDrawer({ data, onClose, onPreview, onApply, onFindPeople }: { data
       }
     >
       <div className="yx-tim-form">
-        {showErrors && errors.length > 0 && <ErrorSummary errors={errors} title="Check these before sending" />}
+        <ErrorSummary errors={saveErrors.shownErrors} title="Check these before sending" />
         {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
         <FormField id="lv-type" label="Leave" required error={errorOf('lv-type')}>
           <Select value={typeId} onChange={setTypeId} options={types.map((t) => ({ value: t.leaveTypeId, label: t.hasBalance ? `${t.name} (${t.available} available)` : t.name }))} />

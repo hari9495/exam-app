@@ -3,7 +3,7 @@ import { Button } from '../../../components/button';
 import { Badge } from '../../../components/display';
 import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
-import { ErrorSummary, FormField } from '../../../components/field';
+import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
 import { TextArea, TimeField } from '../../../components/inputs';
 import { Segment } from '../../../components/segment';
 import { Card } from '../../../components/shell';
@@ -226,7 +226,6 @@ function FixDrawer({ on, data, onClose, onFix }: { on: string; data: MyAttendanc
   const [inTime, setIn] = useState<string | null>(null);
   const [outTime, setOut] = useState<string | null>(null);
   const [reason, setReason] = useState('');
-  const [showErrors, setShowErrors] = useState(false);
   const { busy, error, run } = useRun();
   const needIn = kind === 'missed_in' || kind === 'wrong_time';
   const needOut = kind === 'missed_out' || kind === 'wrong_time';
@@ -236,11 +235,11 @@ function FixDrawer({ on, data, onClose, onFix }: { on: string; data: MyAttendanc
     ...(kind === 'wrong_time' && inTime && outTime && toMinute(outTime)! <= toMinute(inTime)! ? [{ fieldId: 'fx-out', message: 'The finish time is before the start time.' }] : []),
     ...(!reason.trim() ? [{ fieldId: 'fx-reason', message: 'Say what happened.' }] : []),
   ];
-  const errorOf = (id: string) => (showErrors ? errors.find((x) => x.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   const left = Math.max(0, data.regularise.limit - data.regularise.used);
   const send = () => {
-    setShowErrors(true);
-    if (errors.length) return;
+    if (errors.length) return saveErrors.reveal();
     void run('fix', async () => {
       await onFix({ on, kind, ...(needIn ? { inMinute: toMinute(inTime)! } : {}), ...(needOut ? { outMinute: toMinute(outTime)! } : {}), reason: reason.trim() });
       onClose();
@@ -263,7 +262,7 @@ function FixDrawer({ on, data, onClose, onFix }: { on: string; data: MyAttendanc
       }
     >
       <div className="yx-tim-form">
-        {showErrors && errors.length > 0 && <ErrorSummary errors={errors} title="Check these before sending" />}
+        <ErrorSummary errors={saveErrors.shownErrors} title="Check these before sending" />
         {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
         <p className="yx-tim-muted">{left > 0 ? `Your manager approves this. ${left} of ${data.regularise.limit} fixes left this month without HR.` : 'You have used this month’s fixes, so HR approves this one after your manager.'}</p>
         <Segment label="What to fix" value={kind} onChange={setKind} options={(Object.keys(FIX_TEXT) as FixKind[]).map((k) => ({ value: k, label: FIX_TEXT[k] }))} />

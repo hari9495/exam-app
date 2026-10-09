@@ -36,6 +36,7 @@ export const USERS: AccessUser[] = [
   { id: 'u-anitha', name: 'Anitha Rao', email: 'plant-hr@demo-org.test', role: 'panel', status: 'active', employeeId: null },
   { id: 'u-lakshmi', name: 'Lakshmi Venkatesan', email: 'hr@demo-org.test', role: 'panel', status: 'active', employeeId: 'p-lakshmi' },
   { id: 'u-suresh', name: 'Suresh Pillai', email: 'payroll@demo-org.test', role: 'panel', status: 'active', employeeId: null },
+  { id: 'u-ramesh', name: 'Ramesh Iyer', email: 'admin@demo-org.test', role: 'org_admin', status: 'active', employeeId: null },
 ];
 
 export const GRANTS: Grant[] = [

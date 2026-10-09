@@ -1,3 +1,5 @@
+import { Throttle } from '@nestjs/throttler';
+import { STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import {
   Body,
   Controller,
@@ -169,6 +171,8 @@ export class UsersController {
 
   @Post('me/change-password')
   @HttpCode(200)
+  // Guessing the current password from a stolen session is capped like a sign-in.
+  @Throttle(STRICT_AUTH_THROTTLE)
   async changePassword(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,

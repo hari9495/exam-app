@@ -46,3 +46,12 @@ YukthiX is an all-in-one HR, hiring and assessment platform from India, priced a
 
 ## 8. Add-on: custom icon set (added 28 Sep 2026, design system §8)
 Quote separately: a custom YukthiX icon set in the same visual grammar as the monogram — 1.5 px outline on a 24 px grid, optical sizes 16 / 20 / 24. First batch (~40): payslip, attendance punch, leave, statutory filing, proctoring, offer letter, org unit, rule builder, workflow, approvals, candidate, test, invigilator, contract worker, and other HR concepts. Later batches replace the general Lucide set. Delivered as SVG with a naming convention and a usage sheet.
+
+## 9. Add-on: 4 colour composites (added 7 Oct 2026, design system §8)
+Separate from the outline set above. Four colour icons in the **Fluent UI System Icons Color** style, built from Fluent's own MIT Color parts (github.com/microsoft/fluentui-system-icons): same grid, soft gradients and sizes 20 / 24 / 32 / 48, with a **16 px badge bottom-right** like Fluent's send-clock, star-settings and people-sync (base art cut back around the badge).
+- **Payslip** = document-text + coin-multiple badge.
+- **Attendance punch** = person + clock badge.
+- **Offer letter** = mail + ribbon badge (or briefcase).
+- **Workflow** = clipboard-task + people-sync badge.
+
+Deliver SVG per size named `ic_yx_<name>_<size>_color.svg`, checked on white and on the dark surface `#111A2B`. They replace today's stand-ins (Receipt, Shifts, Mail, ApprovalsApp).

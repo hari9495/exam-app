@@ -16,7 +16,7 @@ import { OrgChart, type OrgPerson, type OrgView } from '../../components/orgchar
 import { MenuItem } from '../../components/menu';
 import { Text } from '../../components/foundations';
 import { Select } from '../../components/select';
-import { formatDate } from '../../lib/format';
+import { formatDate, formatPhone } from '../../lib/format';
 import { matchesFilter, type FilterValue } from '../../lib/table';
 import { daysBetween, type Persona } from './people-logic';
 import { DISTINCT_PERSONS, ME, ORG_PROMOTED, type WorkforceKind, type WorkforceRow } from './people-data';
@@ -249,7 +249,7 @@ function DirectoryCard({ row, persona }: { row: WorkforceRow; persona: Persona }
         <div className="yx-ppl__dl-row"><dt>Location</dt><dd>{row.location}</dd></div>
         <div className="yx-ppl__dl-row"><dt>Manager</dt><dd>{row.manager}</dd></div>
         {row.email && <div className="yx-ppl__dl-row"><dt>Work email</dt><dd>{row.email}</dd></div>}
-        <div className="yx-ppl__dl-row"><dt>Work phone</dt><dd>{row.phone}</dd></div>
+        <div className="yx-ppl__dl-row"><dt>Work phone</dt><dd>{formatPhone(row.phone)}</dd></div>
         {persona === 'hr' && <div className="yx-ppl__dl-row"><dt>ID</dt><dd className="yx-mono">{row.code}</dd></div>}
         {persona === 'hr' && <div className="yx-ppl__dl-row"><dt>Joined</dt><dd>{formatDate(row.joined)}</dd></div>}
         {persona === 'hr' && row.via && <div className="yx-ppl__dl-row"><dt>Via</dt><dd>{row.via}</dd></div>}

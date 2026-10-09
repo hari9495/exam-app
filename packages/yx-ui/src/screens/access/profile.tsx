@@ -12,6 +12,7 @@ import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Select } from '../../components/select';
 import { Breadcrumbs, Card, DescriptionList, PageHeader } from '../../components/shell';
 import { dayKey } from '../../lib/dates';
+import { formatPhone } from '../../lib/format';
 import { dateLabel, errorText } from '../org/org-kit';
 import { GENDER_LABEL, KIND_LABEL, shown } from './access-kit';
 import type { LoadState, PersonalDetails, ProfileRequest, ProfileRequestInput, ProfileView, RequestKind, RevealField } from './types';
@@ -232,7 +233,7 @@ export function ProfileScreen(props: ProfileScreenProps) {
                   { label: 'Date of birth', value: p.personal.dateOfBirth ? dateLabel(p.personal.dateOfBirth) : '—' },
                   { label: 'Gender', value: p.personal.gender ? GENDER_LABEL[p.personal.gender] ?? p.personal.gender : '—' },
                   { label: 'Personal email', value: p.personal.personalEmail ?? '—' },
-                  { label: 'Personal phone', value: p.personal.personalPhone ?? '—', mono: true },
+                  { label: 'Personal phone', value: p.personal.personalPhone ? formatPhone(p.personal.personalPhone) : '—' },
                   { label: 'Address', value: [p.personal.addressLine1, p.personal.addressLine2, p.personal.city, p.personal.postalCode].filter(Boolean).join(', ') || '—' },
                   { label: 'Birthday in the directory', value: p.personal.hideBirthday ? 'Hidden' : 'Shown' },
                 ]}

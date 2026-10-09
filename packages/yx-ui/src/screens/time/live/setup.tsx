@@ -4,7 +4,7 @@ import { Badge } from '../../../components/display';
 import { Checkbox } from '../../../components/choice';
 import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
-import { ErrorSummary, FormField } from '../../../components/field';
+import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
 import { NumberField, TextField, TimeField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
@@ -154,7 +154,6 @@ function TypeDrawer({ row, onClose, onSave }: { row: LeaveTypeRow | null; onClos
   const [colour, setColour] = useState<string | null>(row?.colour ?? 'blue');
   const [active, setActive] = useState(row?.active ?? true);
   const [r, setR] = useState<LeaveRules>(row?.rules ?? DEFAULT_RULES);
-  const [showErrors, setShowErrors] = useState(false);
   const { busy, error, run } = useRun();
   const set = <K extends keyof LeaveRules>(k: K, v: LeaveRules[K]) => setR((x) => ({ ...x, [k]: v }));
   const errors = [
@@ -162,7 +161,8 @@ function TypeDrawer({ row, onClose, onSave }: { row: LeaveTypeRow | null; onClos
     ...(!name.trim() ? [{ fieldId: 'lt-name', message: 'Name the leave type.' }] : []),
     ...(kind === 'lop' && paid === 'paid' ? [{ fieldId: 'lt-paid', message: 'Leave without pay is unpaid.' }] : []),
   ];
-  const errorOf = (id: string) => (showErrors ? errors.find((x) => x.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   const num = (k: 'minDays' | 'maxDays' | 'certificateAfterDays' | 'hrApprovalAboveDays', label: string, helper: string) => (
     <FormField id={`lt-${k}`} label={label} optional helper={helper}>
       <NumberField value={r[k]} onChange={(v) => set(k, v)} decimals min={0} max={366} />
@@ -181,8 +181,7 @@ function TypeDrawer({ row, onClose, onSave }: { row: LeaveTypeRow | null; onClos
             variant="primary"
             loading={busy === 'save'}
             onClick={() => {
-              setShowErrors(true);
-              if (errors.length) return;
+              if (errors.length) return saveErrors.reveal();
               void run('save', async () => {
                 await onSave(row?.id ?? null, { code, name: name.trim(), kind: kind!, paid: paid === 'paid', colour: colour ?? 'blue', active, rules: kind === 'lop' ? { ...r, negativeLimit: 0 } : r });
                 onClose();
@@ -195,7 +194,7 @@ function TypeDrawer({ row, onClose, onSave }: { row: LeaveTypeRow | null; onClos
       }
     >
       <div className="yx-tim-form">
-        {showErrors && errors.length > 0 && <ErrorSummary errors={errors} />}
+        <ErrorSummary errors={saveErrors.shownErrors} />
         {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
         <div className="yx-tim-row">
           <FormField id="lt-code" label="Code" required helper={row ? 'A code never changes.' : undefined} error={errorOf('lt-code')}>
@@ -491,11 +490,11 @@ function Holidays({ data, onCreateCalendar, onAddHoliday, onRemoveHoliday }: { d
   const [kind, setKind] = useState<string | null>('festival');
   const [halfDay, setHalfDay] = useState(false);
   const [newFor, setNewFor] = useState<string | null>(null);
-  const [showErrors, setShowErrors] = useState(false);
   const { busy, error, run } = useRun();
   const cal = data.calendars.find((c) => c.id === calId);
   const withoutCalendar = data.locations.filter((l) => !data.calendars.some((c) => c.locationId === l.id));
-  const errs = [...(!on ? ['Choose the date.'] : []), ...(!name.trim() ? ['Name the holiday.'] : [])];
+  const errs = [...(!on ? [{ fieldId: 'hd-on', message: 'Choose the date.' }] : []), ...(!name.trim() ? [{ fieldId: 'hd-name', message: 'Name the holiday.' }] : [])];
+  const saveErrors = useSaveErrors(errs);
   return (
     <div className="yx-tim-stack">
       {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
@@ -552,7 +551,7 @@ function Holidays({ data, onCreateCalendar, onAddHoliday, onRemoveHoliday }: { d
           </table>
           <Card title="Add a holiday">
             <div className="yx-tim-form">
-              {showErrors && errs.length > 0 && <ErrorSummary errors={errs.map((m) => ({ fieldId: 'hd-on', message: m }))} />}
+              <ErrorSummary errors={saveErrors.shownErrors} />
               <div className="yx-tim-row">
                 <FormField id="hd-on" label="Date" required>
                   <TextField type="date" value={on} onChange={setOn} />
@@ -569,13 +568,12 @@ function Holidays({ data, onCreateCalendar, onAddHoliday, onRemoveHoliday }: { d
                 <Button
                   loading={busy === 'holiday'}
                   onClick={() => {
-                    setShowErrors(true);
-                    if (errs.length) return;
+                    if (errs.length) return saveErrors.reveal();
                     void run('holiday', async () => {
                       await onAddHoliday(cal.id, { on, name: name.trim(), kind: kind ?? 'festival', halfDay: kind === 'optional' || kind === 'restricted' ? false : halfDay });
                       setOn('');
                       setName('');
-                      setShowErrors(false);
+                      saveErrors.reset();
                     });
                   }}
                 >
@@ -652,11 +650,11 @@ function RuleDrawer({ today, location, onClose, onSave }: { today: string; locat
   const [grace, setGrace] = useState<number | null>(r.graceMinutes);
   const [offs, setOffs] = useState(r.weeklyOffs);
   const [checkIn, setCheckIn] = useState(r.checkIn);
-  const [showErrors, setShowErrors] = useState(false);
   const { busy, error, run } = useRun();
   const toggle = (weekday: number, on: boolean) => setOffs((x) => (on ? [...x.filter((o) => o.weekday !== weekday), { weekday }] : x.filter((o) => o.weekday !== weekday)));
   const sat = offs.find((o) => o.weekday === 6);
   const errors = [...(!start || !end ? [{ fieldId: 'rl-start', message: 'Give the shift start and end.' }] : []), ...(start && end && start === end ? [{ fieldId: 'rl-start', message: 'The shift ends at a different time from when it starts.' }] : []), ...(validFrom < today ? [{ fieldId: 'rl-from', message: 'Changes start today or later.' }] : [])];
+  const saveErrors = useSaveErrors(errors);
   return (
     <Drawer
       open
@@ -670,8 +668,7 @@ function RuleDrawer({ today, location, onClose, onSave }: { today: string; locat
             variant="primary"
             loading={busy === 'save'}
             onClick={() => {
-              setShowErrors(true);
-              if (errors.length) return;
+              if (errors.length) return saveErrors.reveal();
               void run('save', async () => {
                 await onSave(location.id, { validFrom, shiftName: shiftName.trim() || 'General', shiftStart: minute(start)!, shiftEnd: minute(end)!, graceMinutes: grace ?? 0, weeklyOffs: offs, checkIn });
                 onClose();
@@ -684,7 +681,7 @@ function RuleDrawer({ today, location, onClose, onSave }: { today: string; locat
       }
     >
       <div className="yx-tim-form">
-        {showErrors && errors.length > 0 && <ErrorSummary errors={errors} />}
+        <ErrorSummary errors={saveErrors.shownErrors} />
         {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
         <FormField id="rl-from" label="From" required>
           <TextField type="date" value={validFrom} min={today} onChange={setValidFrom} />

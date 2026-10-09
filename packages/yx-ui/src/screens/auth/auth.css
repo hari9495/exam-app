@@ -43,12 +43,15 @@
 .yx-auth__stack { display: flex; flex-direction: column; gap: var(--yx-space-4); min-width: 0; }
 .yx-auth__list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
 .yx-auth__item { display: flex; align-items: center; justify-content: space-between; gap: var(--yx-space-3); padding: var(--yx-space-3) 0; min-width: 0; }
+.yx-auth__item > .yx-button, .yx-auth__item > button { flex: none; white-space: nowrap; }
 .yx-auth__list > .yx-auth__item + .yx-auth__item { border-top: var(--yx-border-width) solid var(--yx-color-border); }
 .yx-auth__item-main { display: flex; flex-direction: column; align-items: flex-start; gap: var(--yx-space-half); min-width: 0; overflow-wrap: anywhere; }
-.yx-auth__badges { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); }
+.yx-auth__nowrap { white-space: nowrap; }
+.yx-auth__badges { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: var(--yx-space-2); }
 .yx-auth__filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 2fr); gap: var(--yx-space-3); align-items: end; }
 @media (max-width: 1100px) { .yx-auth__filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .yx-auth__filters { grid-template-columns: minmax(0, 1fr); } }
+.yx-auth__clashes { margin: 0; padding-left: var(--yx-space-5); display: flex; flex-direction: column; gap: var(--yx-space-1); }
 .yx-auth__settings { display: flex; flex-direction: column; gap: var(--yx-space-6); max-width: var(--yx-form-max); }
 .yx-auth__fieldset { margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: var(--yx-space-3); min-width: 0; }
 .yx-auth__fieldset > legend { padding: 0; margin-bottom: var(--yx-space-2); font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); color: var(--yx-color-text); }
@@ -61,3 +64,4 @@
 
 /* §12 two-tier sidebar: the desktop panel shows only the area chosen in the rail; the phone sheet shows all. */
 .yx-shell__panel .yx-workspace__area[data-other-area] { display: none; }
+.yx-auth__url { overflow-wrap: anywhere; min-width: 0; }

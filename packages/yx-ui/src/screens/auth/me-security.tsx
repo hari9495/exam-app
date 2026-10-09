@@ -4,11 +4,12 @@ import { Button } from '../../components/button';
 import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { Heading, Text } from '../../components/foundations';
-import { TextField } from '../../components/inputs';
+import { PasswordField, TextField } from '../../components/inputs';
 import { ConfirmDialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { MethodCards } from '../../components/choice';
 import { Card, PageHeader } from '../../components/shell';
+import { formatPhone } from '../../lib/format';
 import { RecoveryCodes, day, deviceLabel, methodLabel, setupMethodOptions, useStep, when, type SetupMethod, ipLabel } from './kit';
 import { TotpConfirm, type TotpSetup } from './mfa';
 import { LoginEventsTable } from './tables';
@@ -36,6 +37,10 @@ export interface MeSecurityScreenProps {
   onSendMobileCode: (mobileNumber: string) => Promise<string>;
   onVerifyMobile: (code: string) => Promise<void>;
   onRemoveMobile: () => Promise<void>;
+  /** Changes the password; other devices are signed out, this one stays. Omit to hide the card (no password to change). */
+  onChangePassword?: (currentPassword: string, newPassword: string) => Promise<void>;
+  /** The company's minimum length (YukthiX floor 12). */
+  passwordMinLength?: number;
   onSignOutSession: (session: SessionRow) => Promise<void>;
   onSignOutOthers: () => Promise<void>;
   /** Fixed "today" for stories and tests. */
@@ -58,6 +63,7 @@ export function MeSecurityScreen(props: MeSecurityScreenProps) {
       {state === 'ready' && mfa && (
         <>
           <TwoStepCard {...props} mfa={mfa} />
+          {props.onChangePassword && <PasswordCard onChangePassword={props.onChangePassword} minLength={props.passwordMinLength ?? 12} />}
           <MobileCard {...props} mfa={mfa} />
           <SessionsCard sessions={sessions ?? []} onSignOutSession={props.onSignOutSession} onSignOutOthers={props.onSignOutOthers} />
           <Card title="Sign-in history" actions={
@@ -154,11 +160,17 @@ function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFa
         )}
         {!totp && error && <InlineAlert tone="danger">{error}</InlineAlert>}
         {!totp && !codes && mfa.factors.length > 0 && (
-          <div className="yx-auth__row">
-            <Button disabled={busy} onClick={() => void run(async () => setCodes(await onNewRecoveryCodes()))}>
-              New recovery codes ({mfa.recoveryCodesRemaining} left)
-            </Button>
-          </div>
+          <section className="yx-auth__stack" aria-labelledby="yx-recovery">
+            <Heading level={4} as="h3" id="yx-recovery">Recovery codes</Heading>
+            <Text as="p" tone="secondary" size="sm">
+              {mfa.recoveryCodesRemaining} of 10 left. Use one if you lose your passkey or phone. Making new codes stops the old ones.
+            </Text>
+            <div className="yx-auth__row">
+              <Button disabled={busy} onClick={() => void run(async () => setCodes(await onNewRecoveryCodes()))}>
+                Make new codes
+              </Button>
+            </div>
+          </section>
         )}
       </div>
       <ConfirmDialog
@@ -191,6 +203,64 @@ function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFa
   );
 }
 
+function PasswordCard({ onChangePassword, minLength }: { onChangePassword: (current: string, next: string) => Promise<void>; minLength: number }) {
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [again, setAgain] = useState('');
+  const [done, setDone] = useState(false);
+  const { busy, error, setError, run } = useStep();
+  const reset = () => {
+    setOpen(false);
+    setCurrent('');
+    setNext('');
+    setAgain('');
+    setError(null);
+  };
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (next.length < minLength) return setError(`Use at least ${minLength} characters.`);
+    if (next !== again) return setError('The two new passwords are not the same.');
+    if (next === current) return setError('Choose a password you have not used here before.');
+    void run(async () => {
+      await onChangePassword(current, next);
+      reset();
+      setDone(true);
+    });
+  };
+  return (
+    <Card title="Password">
+      {!open ? (
+        <div className="yx-auth__item">
+          <div className="yx-auth__item-main">
+            <Text tone="secondary" size="sm">
+              {done ? 'Password changed. Other devices were signed out, and we emailed you about it.' : 'Change it any time. Other devices are signed out; you stay signed in here.'}
+            </Text>
+          </div>
+          <Button size="sm" onClick={() => { setDone(false); setOpen(true); }}>Change password</Button>
+        </div>
+      ) : (
+        <form className="yx-auth__form" onSubmit={submit} noValidate>
+          <FormField label="Current password" required>
+            <PasswordField value={current} onChange={setCurrent} autoComplete="current-password" maxLength={1024} />
+          </FormField>
+          <FormField label="New password" required helper={`At least ${minLength} characters. Passwords found in known breaches are refused.`}>
+            <PasswordField value={next} onChange={setNext} autoComplete="new-password" maxLength={128} />
+          </FormField>
+          <FormField label="New password again" required>
+            <PasswordField value={again} onChange={setAgain} autoComplete="new-password" maxLength={128} />
+          </FormField>
+          {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+          <div className="yx-auth__row">
+            <Button type="submit" variant="primary" loading={busy} disabled={!current || !next || !again}>Change password</Button>
+            <Button onClick={reset}>Cancel</Button>
+          </div>
+        </form>
+      )}
+    </Card>
+  );
+}
+
 function MobileCard({ mfa, onSendMobileCode, onVerifyMobile, onRemoveMobile }: MeSecurityScreenProps & { mfa: MfaStatus }) {
   const [number, setNumber] = useState('');
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -214,7 +284,7 @@ function MobileCard({ mfa, onSendMobileCode, onVerifyMobile, onRemoveMobile }: M
       {mfa.mobileNumber ? (
         <div className="yx-auth__item">
           <div className="yx-auth__item-main">
-            <Text weight="medium" className="yx-mono">{mfa.mobileNumber}</Text>
+            <Text weight="medium">{formatPhone(mfa.mobileNumber)}</Text>
             <Text tone="secondary" size="sm">Verified. Used for sign-in codes where your company allows them.</Text>
           </div>
           <ConfirmDialog
@@ -228,7 +298,7 @@ function MobileCard({ mfa, onSendMobileCode, onVerifyMobile, onRemoveMobile }: M
         </div>
       ) : sentTo ? (
         <form className="yx-auth__form" onSubmit={verify} noValidate>
-          <Text as="p" tone="secondary" role="status">We texted a 6-digit code to {sentTo}. It expires in 5 minutes.</Text>
+          <Text as="p" tone="secondary" role="status">We texted a 6-digit code to {formatPhone(sentTo)}. It expires in 5 minutes.</Text>
           <FormField label="Code from the text" required>
             <TextField value={code} onChange={setCode} inputMode="numeric" autoComplete="one-time-code" maxLength={6} />
           </FormField>

@@ -54,6 +54,8 @@ export interface LoginEventRow {
   geo: string | null;
   newDevice: boolean;
   createdAt: string;
+  /** Admin list only: this lock row's lock still stands (the API reads the login-protection store), so Unlock does something. */
+  lockActive?: boolean;
 }
 
 export interface Page<T> {
@@ -141,4 +143,36 @@ export interface PersonOption {
   id: string;
   name: string;
   email: string;
+}
+
+/** One identity provider as GET /security/identity-providers returns it. The client secret never comes back. */
+export interface IdentityProviderDetail extends IdentityProviderRow {
+  samlEntityId: string | null;
+  samlSsoUrl: string | null;
+  samlCertificate: string | null;
+  oidcIssuer: string | null;
+  oidcClientId: string | null;
+  entraTenantId: string | null;
+  jitRole: string | null;
+  mfaTrusted: boolean;
+  /** A client secret is saved (write-only). */
+  clientSecretSet: boolean;
+}
+
+/** POST / PATCH /security/identity-providers body: only the fields of the provider's type. */
+export interface IdentityProviderInput {
+  type?: IdentityProviderRow['type'];
+  name?: string;
+  status?: 'active' | 'disabled';
+  domains?: string[];
+  samlEntityId?: string;
+  samlSsoUrl?: string;
+  samlCertificate?: string;
+  oidcIssuer?: string;
+  oidcClientId?: string;
+  oidcClientSecret?: string;
+  entraTenantId?: string;
+  jitEnabled?: boolean;
+  jitRole?: string;
+  mfaTrusted?: boolean;
 }

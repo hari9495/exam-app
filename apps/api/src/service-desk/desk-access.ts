@@ -46,11 +46,21 @@ export const DESK_KEYS = [
   'desk.catalog.manage',
   'desk.rule.manage',
   'desk.integration.manage',
+  // Phase 3b-2 batch 2 (SD-2.06 … SD-2.11, SD-2.13, SD-2.17 … SD-2.19).
+  'desk.lifecycle.manage',
+  'desk.channel.manage',
+  'desk.chat.work',
+  'desk.hr_summary.view',
+  'desk.ticket.move',
 ] as const;
 export type DeskKey = (typeof DESK_KEYS)[number];
 export type DeskRole = 'agent' | 'lead' | 'admin' | 'collaborator';
-export type SetupKey = 'desk.settings.manage' | 'desk.member.manage' | 'desk.sla.manage' | 'desk.mailbox.manage' | 'desk.portal.manage' | 'desk.catalog.manage' | 'desk.rule.manage';
-/** How the signed-in person sees one ticket. observer = a desk admin's read-only view of a standard ticket. */
+export type SetupKey = 'desk.settings.manage' | 'desk.member.manage' | 'desk.sla.manage' | 'desk.mailbox.manage' | 'desk.portal.manage' | 'desk.catalog.manage' | 'desk.rule.manage' | 'desk.lifecycle.manage' | 'desk.channel.manage';
+/**
+ * How the signed-in person sees one ticket. observer = a desk admin's read-only view of a standard ticket, or an agent of
+ * a desk it is shared with for viewing; collaborator = added to the record, or an agent of a desk it is shared with for
+ * comments (notes only, never a reply).
+ */
 export type TicketAccess = 'agent' | 'observer' | 'collaborator';
 
 export interface DeskActor {
@@ -61,9 +71,11 @@ export interface DeskActor {
   roles: ReadonlyMap<string, DeskRole>;
   /** US-G-037: the customer accounts (with sub-accounts) this agent is limited to on Customer support desks; absent = all. */
   accounts?: readonly string[] | null;
+  /** Who signed in (role and profile), for P02 record scopes outside the desk keys (the HR summary, SD-2.10). */
+  user?: { userId: string; role: string; organizationId: string; permissionProfileId?: string | null };
 }
 
-interface RequestUser {
+export interface RequestUser {
   userId?: string;
   role: string;
   organizationId?: string | null;
@@ -101,8 +113,11 @@ export class DeskAccessService {
 
   /** The person behind this request with their desk keys and today's seats. Staff acting in a company get neither. */
   async actor(req: Request, tenant: TenantContext): Promise<DeskActor> {
-    const ctx = companyOf(tenant);
-    const user = req.user as RequestUser;
+    return this.actorOf(req.user as RequestUser, companyOf(tenant));
+  }
+
+  /** The same, for a signed-in person known without an HTTP request (the live chat socket, SD-2.18). */
+  async actorOf(user: RequestUser, ctx: CompanyContext): Promise<DeskActor> {
     if (!user?.userId) throw new ForbiddenException('Not authenticated');
     if (user.impersonatorUserId || user.actingSuperAdmin) return { ctx, userId: user.userId, keys: new Set(), roles: new Map() };
     const keys = await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: user.role, organizationId: ctx.organizationId, permissionProfileId: user.permissionProfileId, userId: user.userId }, [...DESK_KEYS]);
@@ -113,7 +128,7 @@ export class DeskAccessService {
     // (an agent still inside the enrolment grace reaches only their own requests).
     if (seats.length && user.session?.assuranceLevel !== 'aal2' && (await loadTenantSecurityPolicy(this.tenantPrisma, ctx.organizationId)).mfaScope === 'all') throw new MfaRequiredException();
     const accounts = await this.tenantPrisma.forTenant(ctx, (tx) => accountScopeOf(tx, ctx.organizationId, user.userId!));
-    return { ctx, userId: user.userId, keys, roles: new Map(seats.map((s) => [s.deskId, s.role as DeskRole])), accounts };
+    return { ctx, userId: user.userId, keys, roles: new Map(seats.map((s) => [s.deskId, s.role as DeskRole])), accounts, user: { userId: user.userId, role: user.role, organizationId: ctx.organizationId, permissionProfileId: user.permissionProfileId } };
   }
 
   /** An active colleague's keys and seats without a request: email commands from a proven, signed agent email (SD-1.20). */
@@ -170,6 +185,9 @@ export async function visibleTickets(tx: Tx, a: DeskActor): Promise<Prisma.SdTic
   const reach = deskReach(a, new Set(standard));
   const collab = (await tx.sdTicketCollaborator.findMany({ where: { organizationId: org, userId: a.userId }, select: { ticketId: true } })).map((c) => c.ticketId);
   const scoped = await accountLimit(tx, a);
+  // US-G-046: tickets shared with a desk where the person is an agent today.
+  const agentDesks = [...a.roles].filter(([, r]) => r === 'agent' || r === 'lead').map(([d]) => d);
+  const shared = agentDesks.length ? (await tx.sdTicketShare.findMany({ where: { organizationId: org, sharedDeskId: { in: agentDesks } }, select: { ticketId: true } })).map((x) => x.ticketId) : [];
   return {
     organizationId: org,
     ...(scoped ? { AND: [scoped] } : {}),
@@ -178,6 +196,7 @@ export async function visibleTickets(tx: Tx, a: DeskActor): Promise<Prisma.SdTic
       { deskId: { in: reach.observe }, sensitive: false, private: false },
       // A collaborator reaches a record only while they still hold a seat on its desk.
       { id: { in: collab }, deskId: { in: [...a.roles.keys()] } },
+      { id: { in: shared } },
     ],
   };
 }
@@ -192,6 +211,8 @@ export async function ticketAccess(tx: Tx, a: DeskActor, t: { id: string; deskId
   if (isAgentOn(a, t.deskId)) return 'agent';
   const collab = a.roles.has(t.deskId) && (await tx.sdTicketCollaborator.findFirst({ where: { organizationId: a.ctx.organizationId, ticketId: t.id, userId: a.userId }, select: { userId: true } }));
   if (collab) return 'collaborator';
+  const share = await tx.sdTicketShare.findFirst({ where: { organizationId: a.ctx.organizationId, ticketId: t.id, sharedDeskId: { in: [...a.roles].filter(([, r]) => r === 'agent' || r === 'lead').map(([d]) => d) } }, orderBy: { level: 'asc' }, select: { level: true } });
+  if (share) return share.level === 'comment' ? 'collaborator' : 'observer';
   if (a.roles.get(t.deskId) === 'admin' && !t.sensitive && !t.private) {
     const desk = await tx.sdDesk.findFirst({ where: { organizationId: a.ctx.organizationId, id: t.deskId }, select: { privacy: true } });
     if (desk?.privacy === 'standard') return 'observer';

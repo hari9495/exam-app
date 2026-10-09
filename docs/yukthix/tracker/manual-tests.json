@@ -27,12 +27,12 @@
       "Open the sign-in page in a fresh Incognito window.",
       "Look at the screen without typing anything."
     ],
-    "expected": "You see \"Work email\" with a Continue button, an \"or\" line, then \"Continue with mobile\", \"Continue with Microsoft\" and \"Continue with Google\". There is no box for a company code.",
+    "expected": "You see \"Work email\" with a Continue button, an \"or\" line, then \"Sign in with a passkey\", \"Continue with mobile\", \"Continue with Microsoft\" and \"Continue with Google\" (each shows only when the company allows it). There is no box for a company code.",
     "stories": [
       "new sign-in spec (7 Oct 2026)",
       "US-A-031"
     ],
-    "note": "New sign-in screen is being built now. May still be in progress."
+    "note": ""
   },
   {
     "id": "MT-1-02",
@@ -63,7 +63,7 @@
       "Type recruiter@demo-org.test and click Continue.",
       "Type a wrong password, for example Wrong-pass-1, and click Sign in."
     ],
-    "expected": "A red message \"Invalid credentials\" shows. You stay on the password step. No hint about whether the account exists.",
+    "expected": "A red message \"Wrong email or password. Try again.\" shows. You stay on the password step. No hint about whether the account exists.",
     "stories": [
       "US-A-013",
       "US-A-037"
@@ -80,7 +80,7 @@
       "Type nobody@demo-org.test and click Continue.",
       "Type any password and click Sign in."
     ],
-    "expected": "The same \"Invalid credentials\" message as a wrong password. Nothing tells you the email does not exist or which company it is.",
+    "expected": "The same \"Wrong email or password. Try again.\" message as a wrong password. Nothing tells you the email does not exist or which company it is.",
     "stories": [
       "US-A-013",
       "US-A-031",
@@ -101,7 +101,7 @@
       "Now type the correct password and click Sign in.",
       "Open Mailpit."
     ],
-    "expected": "After the limit you see \"Too many sign-in attempts. Please wait and try again.\" Even the correct password does not work while locked. Mailpit has an email to the recruiter saying the account was locked. The lock ends after the lock time (default 15 minutes) or when an admin unlocks it (MT-2-12).",
+    "expected": "After the limit you see \"Too many tries. Try again in N min N sec.\" and the time counts down on screen. Even the correct password does not work while locked. Mailpit has an email \"Sign-in to your YukthiX account was temporarily locked\" for the recruiter. The lock ends after the lock time (default 15 minutes) or when an admin unlocks it (MT-2-12).",
     "stories": [
       "US-A-012"
     ],
@@ -117,12 +117,12 @@
       "Type super@platform.test and click Continue.",
       "Type the staff password from the demo list and click Sign in."
     ],
-    "expected": "Sign-in is refused with the same \"Invalid credentials\" message. YukthiX staff never sign in through the company sign-in screen, and staff accounts never appear in the company picker.",
+    "expected": "Sign-in is refused with the same \"Wrong email or password. Try again.\" message. YukthiX staff never sign in through the company sign-in screen, and staff accounts never appear in the company picker.",
     "stories": [
       "US-A-034",
       "US-A-037"
     ],
-    "note": "NEGATIVE test. Story US-A-034 is still \"New\" in the tracker; the code for it is in the workspace and login branches. May still be in progress."
+    "note": "NEGATIVE test."
   },
   {
     "id": "MT-1-07",
@@ -135,7 +135,7 @@
       "Sign out. Open the sign-in page.",
       "Type panel@demo-org.test and click Continue.",
       "Click \"Email me a code instead\".",
-      "Open Mailpit, open the email \"Your YukthiX sign-in code\" and copy the 6-digit code.",
+      "Open Mailpit, open the email whose subject is \"<code> is your YukthiX sign-in code\" (it starts with the 6-digit code) and copy the code.",
       "Type the code in \"6-digit code\" and click Sign in."
     ],
     "expected": "The email has only the code, what it is for and when it expires (5 minutes). After typing the code you are signed in as Divya.",
@@ -160,7 +160,7 @@
       "US-A-021",
       "new sign-in spec (7 Oct 2026)"
     ],
-    "note": "NEGATIVE test. New sign-in screen is being built now. May still be in progress. On the older screen the button still shows but no email is sent."
+    "note": "NEGATIVE test."
   },
   {
     "id": "MT-1-09",
@@ -170,12 +170,12 @@
     "account": "admin@demo-org.test (System Admin)",
     "steps": [
       "Sign in as admin@demo-org.test for the first time (no second step set yet).",
-      "On \"Set up two-step verification\" choose \"Authenticator app\".",
-      "Click \"Show the QR code\". Scan it with the authenticator app on your phone.",
+      "On \"Secure your account\" pick the \"Authenticator app\" card. The QR code shows at once.",
+      "Scan the QR code with the authenticator app on your phone.",
       "Type the 6-digit code from the phone and click \"Turn on\".",
-      "Copy or write down the recovery codes. Tick \"I have saved my recovery codes\" and click Continue."
+      "Copy, download or write down the recovery codes. Tick \"I have saved my recovery codes\" and click Continue."
     ],
-    "expected": "The page \"Two-step verification is on - Last step: keep a way back in.\" shows recovery codes once. After Continue you land on the admin pages. Repeat this for hr@, payroll@ and plant-hr@ before the other tests.",
+    "expected": "The page \"Your account is secure - Last step: keep a way back in.\" shows recovery codes once. After Continue you land on the admin pages. Repeat this for hr@, payroll@ and plant-hr@ before the other tests.",
     "stories": [
       "US-A-017",
       "US-A-018",
@@ -190,9 +190,9 @@
     "url": "http://localhost:3000/yx/setup-mfa",
     "account": "payroll@demo-org.test (Payroll Admin - Suresh)",
     "steps": [
-      "Sign in as payroll@demo-org.test (or use My security > \"Add a passkey\" if the authenticator is already set).",
-      "Choose \"Passkey (recommended)\" and click \"Add a passkey\".",
-      "Follow the Windows Hello / phone prompt (fingerprint, face or PIN).",
+      "Sign in as payroll@demo-org.test (or use My security > \"Add a sign-in method\" if the authenticator is already set).",
+      "Pick the \"Passkey\" card (it carries a \"Recommended\" badge). The Windows Hello / phone prompt starts at once; there is no second button.",
+      "Follow the prompt (fingerprint, face or PIN).",
       "Save the recovery codes, tick the box and click Continue."
     ],
     "expected": "The passkey is saved. Next time, the second step offers \"Passkey\" first and it works with the fingerprint / PIN.",
@@ -209,11 +209,11 @@
     "account": "hr@demo-org.test (HR Admin - Lakshmi)",
     "steps": [
       "Sign in with an account in a sensitive role that has no second step yet (ask the developer to reset one if all are set).",
-      "On \"Set up two-step verification\" read the date in the subtitle.",
+      "On \"Secure your account\" read the date in the subtitle.",
       "Click \"Remind me later\".",
       "Open an admin page."
     ],
-    "expected": "The subtitle says \"Set it up by <date>\" (14 days). After \"Remind me later\" you can work, but a yellow banner \"Set up two-step verification\" shows. After the date, admin pages pause until you add a second step.",
+    "expected": "The subtitle says \"Your role needs it. Set it up by <date>\" (14 days). After \"Remind me later\" you can work, but a yellow banner \"Secure your account\" shows: \"Your role needs a passkey or an authenticator app. Set it up by <date>; after that, admin pages pause until you add one.\" with a \"Set it up now\" link. After the date, admin pages pause until you add a second step.",
     "stories": [
       "US-A-018"
     ],
@@ -288,7 +288,7 @@
       "US-A-032",
       "new sign-in spec (7 Oct 2026)"
     ],
-    "note": "Company-known screen showing only allowed methods is part of the new sign-in screen. May still be in progress."
+    "note": ""
   },
   {
     "id": "MT-1-16",
@@ -304,7 +304,7 @@
     "stories": [
       "new sign-in spec (7 Oct 2026)"
     ],
-    "note": "NEGATIVE test. New sign-in screen is being built now. May still be in progress."
+    "note": "NEGATIVE test."
   },
   {
     "id": "MT-1-17",
@@ -323,7 +323,7 @@
     "stories": [
       "new sign-in spec (7 Oct 2026)"
     ],
-    "note": "New sign-in screen is being built now. May still be in progress."
+    "note": ""
   },
   {
     "id": "MT-1-18",
@@ -340,7 +340,7 @@
     "stories": [
       "new sign-in spec (7 Oct 2026)"
     ],
-    "note": "New sign-in screen is being built now. May still be in progress."
+    "note": ""
   },
   {
     "id": "MT-1-19",
@@ -353,11 +353,11 @@
       "Sign out. Click \"Not your company?\" if shown, then click \"Continue with Google\" on the general first screen.",
       "On the test sign-in page use hr@demo-org.test."
     ],
-    "expected": "You are NOT signed in to Kaveri Foods. A message says this sign-in method is not allowed for your company (or no account was found).",
+    "expected": "You are NOT signed in to Kaveri Foods. The message \"We couldn't sign you in with that account. Try another way, or ask your admin.\" shows. It does not say whether an account exists.",
     "stories": [
       "new sign-in spec (7 Oct 2026)"
     ],
-    "note": "NEGATIVE test. New sign-in screen is being built now. May still be in progress."
+    "note": "NEGATIVE test."
   },
   {
     "id": "MT-1-20",
@@ -375,24 +375,24 @@
       "US-A-021",
       "new sign-in spec (7 Oct 2026)"
     ],
-    "note": "New sign-in screen is being built now. May still be in progress. On a local machine texts go to a development sink and are not shown; if you cannot get the code, mark Blocked."
+    "note": "On a local machine texts go to a development sink and are not shown; if you cannot get the code, mark Blocked."
   },
   {
     "id": "MT-1-21",
     "area": "1 Sign-in",
     "screen": "Sign-in - company picker",
     "url": "http://localhost:3000/yx/sign-in",
-    "account": "An email that has accounts in two companies",
+    "account": "consultant@sharma-advisory.test (partner user with accounts in Kaveri Foods and Ganga Textiles)",
     "steps": [
-      "Ask the developer for a second test company where the same email and password exist (the demo data has only one company).",
-      "Sign in with that email and password.",
+      "Type consultant@sharma-advisory.test and click Continue.",
+      "Type the password from the demo list and click Sign in.",
       "On \"Choose your company\" pick one company."
     ],
-    "expected": "\"Choose your company\" lists only the companies where this password worked (name and logo only). After picking, you are signed in to that company. \"Use a different email or number\" goes back to the start.",
+    "expected": "\"Choose your company\" lists Kaveri Foods and Ganga Textiles (name and logo only). After picking, you are signed in to that company. \"Sign in another way\" goes back to the start.",
     "stories": [
       "US-A-031"
     ],
-    "note": "Needs a second company. Mark Blocked if there is none."
+    "note": "The demo data has two companies for this email. plant-hr@demo-org.test also works."
   },
   {
     "id": "MT-1-22",
@@ -473,7 +473,7 @@
       "Sign in as hr@demo-org.test.",
       "In the menu click Me > My security."
     ],
-    "expected": "You see: Two-step verification (your second steps), recovery codes, Mobile number, \"Where you're signed in\" and \"Sign-in history\".",
+    "expected": "You see: \"Sign-in methods\" (your passkeys and authenticator apps), \"Recovery codes\", \"Password\", \"Mobile number\", \"Where you're signed in\" and \"Sign-in history\".",
     "stories": [
       "US-A-036"
     ],
@@ -486,10 +486,10 @@
     "url": "http://localhost:3000/yx/me/security",
     "account": "hr@demo-org.test (HR Admin - Lakshmi)",
     "steps": [
-      "Click \"Add a passkey\".",
+      "Under \"Add a sign-in method\" pick the \"Passkey\" card (it carries a \"Recommended\" badge).",
       "Confirm it's you if asked, then follow the Windows Hello / phone prompt."
     ],
-    "expected": "The passkey appears under \"Your second steps\". Mailpit has an email about the security change.",
+    "expected": "The passkey appears under \"Your sign-in methods\" as \"Passkey · <name>\" with Rename and Remove buttons. Mailpit has an email about the security change.",
     "stories": [
       "US-A-017",
       "US-A-011"
@@ -503,10 +503,10 @@
     "url": "http://localhost:3000/yx/me/security",
     "account": "hr@demo-org.test (HR Admin - Lakshmi)",
     "steps": [
-      "Click \"Set up authenticator app\".",
+      "Under \"Add a sign-in method\" pick the \"Authenticator app\" card.",
       "Scan the QR code with your phone app and type the 6-digit code. Click \"Turn on\"."
     ],
-    "expected": "A second \"Authenticator app\" entry appears in the list.",
+    "expected": "A second entry, \"Authenticator app\", appears under \"Your sign-in methods\".",
     "stories": [
       "US-A-017"
     ],
@@ -522,7 +522,7 @@
       "Use an account with exactly one second step (for example payroll@ with only the authenticator).",
       "Look at the Remove button next to it."
     ],
-    "expected": "You see \"You can't remove your only second step, because your role needs one. Add another first.\" The only factor cannot be removed.",
+    "expected": "You see \"You can't remove your only sign-in method, because your role needs one. Add another first.\" The Remove button is disabled (its tooltip says \"Your role needs at least one\").",
     "stories": [
       "US-A-018"
     ],
@@ -535,12 +535,12 @@
     "url": "http://localhost:3000/yx/me/security",
     "account": "hr@demo-org.test (HR Admin - Lakshmi)",
     "steps": [
-      "Click \"New recovery codes (N left)\".",
-      "Confirm it's you (passkey or authenticator).",
-      "Save the codes, tick \"I have saved my recovery codes\".",
+      "Under \"Recovery codes · N of 10 left\" click \"Make new codes\".",
+      "In the \"Confirm it's you\" dialog confirm with your passkey or authenticator.",
+      "Save the codes with \"Copy codes\" or \"Download\", then tick \"I have saved my recovery codes\".",
       "Try one of the OLD codes at the next sign-in."
     ],
-    "expected": "Before the new codes show you must confirm it's you. The new codes show once. The old codes no longer work.",
+    "expected": "Before the new codes show you must confirm it's you. The new codes show once, with Copy codes and Download buttons. The old codes no longer work.",
     "stories": [
       "US-A-017",
       "US-A-019"
@@ -621,10 +621,10 @@
     "account": "admin@demo-org.test (System Admin)",
     "steps": [
       "Sign in as admin@. Click Security > Login activity.",
-      "On \"Sign-in attempts\" filter Result = unsuccessful. Then filter Method and Person.",
-      "Click \"Show failed attempts\"."
+      "On \"Sign-in attempts\" set Result to Failed. Then filter by Method, by Person (the list starts at \"Everyone\") and by a date range.",
+      "If the yellow banner about failed attempts shows (20 or more in the last 24 hours), click \"Show failed attempts\"."
     ],
-    "expected": "You see the sign-ins of Kaveri Foods only, with the filters working. The number of failed attempts in the last 24 hours shows. New devices are marked \"New device\".",
+    "expected": "You see the sign-ins of Kaveri Foods only, with the filters working. Result offers Signed in, Failed, Blocked, Wrong second step, Code sent and Unlocked by admin. The number of failed attempts in the last 24 hours shows in the header. New devices are marked \"New device\".",
     "stories": [
       "US-A-011",
       "US-A-036"
@@ -655,11 +655,11 @@
     "account": "admin@demo-org.test (System Admin)",
     "steps": [
       "First lock recruiter@ (MT-1-05).",
-      "In Login activity find the locked attempt for recruiter@ and click \"Unlock\".",
-      "Type a reason and confirm. Confirm it's you if asked.",
+      "In Login activity set Result to Failed. Find recruiter@'s newest Failed row: it carries the badge \"Locked the account\" and an Unlock button. Click \"Unlock\".",
+      "Type a reason of at least 10 characters and click \"Unlock account\". Confirm it's you if asked.",
       "Sign in as recruiter@ with the right password."
     ],
-    "expected": "The unlock asks for a reason and your second step. After it, the recruiter can sign in. The unlock is recorded.",
+    "expected": "The unlock asks for a reason (at least 10 characters) and your second step. After it, the recruiter can sign in, Mailpit has an email \"Your YukthiX account was unlocked\" for the recruiter, and a new \"Unlocked by admin\" row appears in Sign-in attempts. Unlock shows only on the lock that is still active, never on an old lock.",
     "stories": [
       "US-A-012"
     ],

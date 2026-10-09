@@ -17,7 +17,7 @@ import { Calendar, type CalendarEvent } from '../../components/calendar';
 import { Timeline, type TimelineItem } from '../../components/timeline';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Text } from '../../components/foundations';
-import { formatDate, formatINR } from '../../lib/format';
+import { formatDate, formatINR, formatPhone } from '../../lib/format';
 import { PhoneFrame } from '../_kit/frames';
 import { assignInterviewDay, findSlots, identityFlags, minutesToLabel, scorecardResult, type IdCheckpoint, type Panelist, type ScoreItem, type SlotRules } from './hiring-logic';
 import { ExEmployeeBanner, HireFrame, IdentityStrip, PipelineFacts, RecordLayout, RecordingPlaceholder, SlotGrid, SummaryTiles, type ExEmployeeInfo, type Score } from './hiring-kit';
@@ -200,7 +200,7 @@ export function CandidateRecordScreen({ candidate: c, viewer, exEmployee, minor,
                   ]
                 : [
                     { label: 'Email', value: c.email },
-                    { label: 'Mobile', value: c.phone },
+                    { label: 'Mobile', value: formatPhone(c.phone) },
                     { label: 'Expected CTC', value: formatINR(c.expected) },
                     { label: 'Source', value: c.source },
                   ]

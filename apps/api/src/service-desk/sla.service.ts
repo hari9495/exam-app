@@ -115,7 +115,10 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
 
   private async versionCalendar(tx: Tx, t: TicketRow, v: Version): Promise<string | null> {
     if (v.calendarSource === 'calendar') return v.calendarId;
-    // 'requester_location' falls back to the desk calendar until locations carry their own calendars (P01 seam).
+    // US-G-050: a ticket raised at a branch keeps that site's hours. 'requester_location' otherwise falls back to the
+    // desk calendar until locations carry their own calendars (P01 seam).
+    const branch = t.branchId ? await tx.sdDeskBranch.findFirst({ where: { organizationId: t.organizationId, id: t.branchId }, select: { calendarId: true } }) : null;
+    if (branch?.calendarId) return branch.calendarId;
     return (await tx.sdDesk.findFirst({ where: { organizationId: t.organizationId, id: t.deskId }, select: { calendarId: true } }))?.calendarId ?? null;
   }
 

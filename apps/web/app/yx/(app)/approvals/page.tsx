@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ApprovalsScreen, type ApprovalHistory, type ApprovalTask, type Delegation, type PickOption } from '@yukthix/ui/desk';
+import { ApprovalsScreen, ChannelLinksCard, type ApprovalHistory, type ApprovalTask, type ChannelLinkView, type Delegation, type PickOption } from '@yukthix/ui/desk';
 import { apiFetch } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
 import { useCurrentUser } from '../../../../lib/hooks/useCurrentUser';
@@ -18,12 +18,16 @@ export default function YxApprovalsPage() {
   const tasks = useQuery(get<ApprovalTask[]>('/approvals/inbox'));
   const history = useQuery(get<ApprovalHistory>('/approvals/history'));
   const delegations = useQuery(get<Delegation[]>('/delegations'));
+  // SD-2.06: linked chat apps, and (local demo only) the cards they were sent.
+  const links = useQuery(get<ChannelLinkView>('/channel-links'));
+  const sent = useQuery({ ...get<{ provider: string; at: string; title: string; url: string | null }[]>('/channel-links/sent'), enabled: Boolean(token && links.data?.typedLinksAllowed), refetchInterval: 15_000 });
   const write = async (path: string, body?: unknown) => {
     const r = await apiFetch(`/workflow${path}`, { method: 'POST', ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, token);
     await qc.invalidateQueries({ queryKey: ['workflow'] });
     return r;
   };
   return (
+    <>
     <ApprovalsScreen
       state={deskState(tasks)}
       onRetry={() => void tasks.refetch()}
@@ -36,5 +40,17 @@ export default function YxApprovalsPage() {
       onRevoke={(id) => write(`/delegations/${encodeURIComponent(id)}/revoke`)}
       onFindPeople={(q) => apiFetch(`/workflow/people?q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>}
     />
+    <div className="yx-auth__page">
+      <ChannelLinksCard
+        links={links.data}
+        sent={sent.data ?? null}
+        onAdd={(provider, externalRef) => write('/channel-links', { provider, externalRef })}
+        onRemove={async (id) => {
+          await apiFetch(`/workflow/channel-links/${encodeURIComponent(id)}`, { method: 'DELETE' }, token);
+          await qc.invalidateQueries({ queryKey: ['workflow'] });
+        }}
+      />
+    </div>
+    </>
   );
 }

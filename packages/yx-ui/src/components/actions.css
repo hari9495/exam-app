@@ -164,5 +164,6 @@
 /* Solid Approve (phone, dialog footers) darkens on hover like the primary button. */
 .yx-dialog__foot .yx-button[data-variant="approve"]:hover:not(:disabled), .yx-sheet__foot .yx-button[data-variant="approve"]:hover:not(:disabled), .yx-drawer__foot .yx-button[data-variant="approve"]:hover:not(:disabled), .yx-button[data-variant="approve"][data-full]:hover:not(:disabled) { filter: brightness(0.9); }
 /* On a tinted (unread) row the blue View / Review button keeps a 3:1 edge. */
-[data-unread] .yx-button[data-variant="review"] { border-color: var(--yx-color-info-text); }
-[data-unread] .yx-button[data-variant="review"]:hover:not(:disabled) { box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-color-info-text); }
+/* Same on a selected / open table row, whose tint is the button's own fill. */
+[data-unread] .yx-button[data-variant="review"], .yx-table tbody tr:is([data-active], :has([role="checkbox"][data-state="checked"])) .yx-button[data-variant="review"] { border-color: var(--yx-color-info-text); }
+[data-unread] .yx-button[data-variant="review"]:hover:not(:disabled), .yx-table tbody tr:is([data-active], :has([role="checkbox"][data-state="checked"])) .yx-button[data-variant="review"]:hover:not(:disabled) { box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-color-info-text); }

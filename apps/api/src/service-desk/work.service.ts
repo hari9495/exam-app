@@ -485,9 +485,15 @@ export class WorkService {
       const t = await this.working(tx, a, id);
       await this.tickets.checkVersion(tx, a, t, dto.version);
       if (!OPEN_STATES.includes(t.systemState)) throw new ConflictException('This ticket is already resolved or closed.');
-      const solved = await tx.sdStatus.findFirst({ where: { organizationId: a.ctx.organizationId, deskId: t.deskId, systemState: 'solved', active: true, OR: [{ ticketTypeId: t.typeId }, { ticketTypeId: null }] }, orderBy: [{ ticketTypeId: { sort: 'asc', nulls: 'last' } }, { sortOrder: 'asc' }] });
+      // SD-2.11: with a lifecycle, the resolved status is one this ticket may move to from where it is.
+      const lc = t.lifecycleId ? await tx.sdLifecycleVersion.findFirst({ where: { organizationId: a.ctx.organizationId, lifecycleId: t.lifecycleId, version: t.lifecycleVersion ?? 0 } }) : null;
+      const onward = lc ? (lc.transitions as unknown as { from: string; to: string }[]).filter((x) => x.from === t.statusId).map((x) => x.to) : null;
+      const solved = await tx.sdStatus.findFirst({ where: { organizationId: a.ctx.organizationId, deskId: t.deskId, systemState: 'solved', active: true, OR: [{ ticketTypeId: t.typeId }, { ticketTypeId: null }], ...(onward ? { id: { in: onward } } : {}) }, orderBy: [{ ticketTypeId: { sort: 'asc', nulls: 'last' } }, { sortOrder: 'asc' }] });
+      if (!solved && onward) throw new ConflictException({ statusCode: 409, code: 'MOVE_NOT_ALLOWED', message: 'This ticket cannot be resolved from its current status. Move it on first.' });
       if (!solved) throw new BadRequestException('This desk has no "resolved" status. Ask the desk admin to add one.');
-      const after = await this.tickets.applyIn(tx, a, t, { statusId: solved.id, resolutionCode: dto.resolutionCode || null, resolutionNote: dto.resolutionNote?.trim() || null, linkedReplyHtml: dto.linkedReplyHtml ?? null });
+      const changes = { statusId: solved.id, resolutionCode: dto.resolutionCode || null, resolutionNote: dto.resolutionNote?.trim() || null, linkedReplyHtml: dto.linkedReplyHtml ?? null };
+      await this.tickets.checkLifecycle(tx, a, t, solved.id, changes);
+      const after = await this.tickets.applyIn(tx, a, t, changes);
       return this.tickets.summary(after);
     });
   }

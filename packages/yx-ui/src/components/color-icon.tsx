@@ -1,31 +1,9 @@
 // Colour icons (§8): Fluent UI System Icons, Color variant (MIT, © Microsoft — see THIRD-PARTY-NOTICES.md).
+// Vendored SVG copies (src/icons/color), not the npm package: Microsoft deprecated the *Color React exports (§8).
 // Big, friendly icons for areas, Home tiles, empty states, the setup hub and help. Everything small and dense
 // stays on Lucide outline (<Icon>). Screens never import Fluent icons directly: add a meaning here, then use
 // <ColorIcon name="area.people" />. One icon per meaning.
-// Per-icon imports (`/svg/<name>`) so only the icons listed here reach the bundle.
-import type { FluentIcon } from '@fluentui/react-icons';
-import { ApprovalsApp20Color, ApprovalsApp24Color, ApprovalsApp32Color } from '@fluentui/react-icons/svg/approvals-app';
-import { Beach20Color, Beach24Color, Beach32Color, Beach48Color } from '@fluentui/react-icons/svg/beach';
-import { BookOpen20Color, BookOpen24Color, BookOpen32Color, BookOpen48Color } from '@fluentui/react-icons/svg/book-open';
-import { Briefcase20Color, Briefcase24Color, Briefcase32Color, Briefcase48Color } from '@fluentui/react-icons/svg/briefcase';
-import { Calendar20Color, Calendar24Color, Calendar32Color, Calendar48Color } from '@fluentui/react-icons/svg/calendar';
-import { CalendarClock20Color, CalendarClock24Color } from '@fluentui/react-icons/svg/calendar-clock';
-import { CheckmarkCircle20Color, CheckmarkCircle24Color, CheckmarkCircle32Color, CheckmarkCircle48Color } from '@fluentui/react-icons/svg/checkmark-circle';
-import { ClipboardTextEdit20Color, ClipboardTextEdit24Color, ClipboardTextEdit32Color } from '@fluentui/react-icons/svg/clipboard-text-edit';
-import { CoinMultiple20Color, CoinMultiple24Color, CoinMultiple32Color, CoinMultiple48Color } from '@fluentui/react-icons/svg/coin-multiple';
-import { DataTrending20Color, DataTrending24Color, DataTrending32Color, DataTrending48Color } from '@fluentui/react-icons/svg/data-trending';
-import { DocumentText20Color, DocumentText24Color, DocumentText32Color, DocumentText48Color } from '@fluentui/react-icons/svg/document-text';
-import { Headset20Color, Headset24Color, Headset32Color, Headset48Color } from '@fluentui/react-icons/svg/headset';
-import { Home20Color, Home24Color, Home32Color, Home48Color } from '@fluentui/react-icons/svg/home';
-import { MegaphoneLoud20Color, MegaphoneLoud24Color, MegaphoneLoud32Color } from '@fluentui/react-icons/svg/megaphone-loud';
-import { Org20Color, Org24Color, Org32Color, Org48Color } from '@fluentui/react-icons/svg/org';
-import { People20Color, People24Color, People32Color, People48Color } from '@fluentui/react-icons/svg/people';
-import { PersonAdd20Color, PersonAdd24Color, PersonAdd32Color, PersonAdd48Color } from '@fluentui/react-icons/svg/person-add';
-import { PersonStarburst20Color, PersonStarburst24Color, PersonStarburst32Color, PersonStarburst48Color } from '@fluentui/react-icons/svg/person-starburst';
-import { QuestionCircle20Color, QuestionCircle24Color, QuestionCircle32Color, QuestionCircle48Color } from '@fluentui/react-icons/svg/question-circle';
-import { Settings20Color, Settings24Color, Settings32Color, Settings48Color } from '@fluentui/react-icons/svg/settings';
-import { Toolbox20Color, Toolbox24Color, Toolbox32Color } from '@fluentui/react-icons/svg/toolbox';
-import { Trophy20Color, Trophy24Color, Trophy32Color, Trophy48Color } from '@fluentui/react-icons/svg/trophy';
+import * as F from '../icons/color/fluent-color';
 import { cx } from '../lib/cx';
 
 export type ColorIconSize = 20 | 24 | 32 | 48;
@@ -36,62 +14,65 @@ export interface ColorIconEntry {
   /** Fluent icon name, for the registry table and the notices file. */
   fluent: string;
   /** Hand-drawn art per size; a missing size scales the nearest drawing. */
-  art: Partial<Record<ColorIconSize, FluentIcon>>;
+  art: Partial<Record<ColorIconSize, string>>;
   /** Too dark for dark surfaces (measured, §8): sits on a light neutral tile in dark mode. */
   darkTile?: boolean;
+  /** Approved stand-in until the designer delivers a composite (§8 brief). */
+  standIn?: boolean;
 }
 
-const e = (meaning: string, fluent: string, art: ColorIconEntry['art'], darkTile?: boolean): ColorIconEntry => ({ meaning, fluent, art, darkTile });
+const e = (meaning: string, fluent: string, art: ColorIconEntry['art'], darkTile?: boolean, standIn?: boolean): ColorIconEntry => ({ meaning, fluent, art, darkTile, standIn });
 
 /** The icon registry: one meaning → one icon. Add here, never ad hoc in a screen. */
 export const COLOR_ICONS = {
   // Navigation areas (rail, 20 px)
-  'area.home': e('Home', 'Home', { 20: Home20Color, 24: Home24Color, 32: Home32Color, 48: Home48Color }),
-  'area.people': e('People', 'People', { 20: People20Color, 24: People24Color, 32: People32Color, 48: People48Color }),
-  'area.time': e('Time and leave', 'CalendarClock', { 20: CalendarClock20Color, 24: CalendarClock24Color }),
-  'area.payroll': e('Payroll', 'CoinMultiple', { 20: CoinMultiple20Color, 24: CoinMultiple24Color, 32: CoinMultiple32Color, 48: CoinMultiple48Color }),
-  'area.hiring': e('Hiring', 'PersonAdd', { 20: PersonAdd20Color, 24: PersonAdd24Color, 32: PersonAdd32Color, 48: PersonAdd48Color }),
-  'area.assessments': e('Assessments', 'ClipboardTextEdit', { 20: ClipboardTextEdit20Color, 24: ClipboardTextEdit24Color, 32: ClipboardTextEdit32Color }),
-  'area.serviceDesk': e('Service desk', 'Headset', { 20: Headset20Color, 24: Headset24Color, 32: Headset32Color, 48: Headset48Color }, true),
-  'area.performance': e('Performance', 'Trophy', { 20: Trophy20Color, 24: Trophy24Color, 32: Trophy32Color, 48: Trophy48Color }),
-  'area.learning': e('Learning', 'BookOpen', { 20: BookOpen20Color, 24: BookOpen24Color, 32: BookOpen32Color, 48: BookOpen48Color }),
-  'area.analytics': e('Analytics', 'DataTrending', { 20: DataTrending20Color, 24: DataTrending24Color, 32: DataTrending32Color, 48: DataTrending48Color }),
-  'area.settings': e('Settings', 'Settings', { 20: Settings20Color, 24: Settings24Color, 32: Settings32Color, 48: Settings48Color }),
+  'area.home': e('Home', 'Home', { 20: F.home20, 24: F.home24, 32: F.home32, 48: F.home48 }),
+  'area.people': e('People', 'People', { 20: F.people20, 24: F.people24, 32: F.people32, 48: F.people48 }),
+  'area.time': e('Time and leave', 'CalendarClock', { 20: F.calendarClock20, 24: F.calendarClock24 }),
+  'area.payroll': e('Payroll', 'CoinMultiple', { 20: F.coinMultiple20, 24: F.coinMultiple24, 32: F.coinMultiple32, 48: F.coinMultiple48 }),
+  'area.hiring': e('Hiring', 'PersonAdd', { 20: F.personAdd20, 24: F.personAdd24, 32: F.personAdd32, 48: F.personAdd48 }),
+  'area.assessments': e('Assessments', 'ClipboardTextEdit', { 20: F.clipboardTextEdit20, 24: F.clipboardTextEdit24, 32: F.clipboardTextEdit32 }),
+  'area.serviceDesk': e('Service desk', 'Headset', { 20: F.headset20, 24: F.headset24, 32: F.headset32, 48: F.headset48 }, true),
+  'area.performance': e('Performance', 'Trophy', { 20: F.trophy20, 24: F.trophy24, 32: F.trophy32, 48: F.trophy48 }),
+  'area.learning': e('Learning', 'BookOpen', { 20: F.bookOpen20, 24: F.bookOpen24, 32: F.bookOpen32, 48: F.bookOpen48 }),
+  'area.analytics': e('Analytics', 'DataTrending', { 20: F.dataTrending20, 24: F.dataTrending24, 32: F.dataTrending32, 48: F.dataTrending48 }),
+  'area.settings': e('Settings', 'Settings', { 20: F.settings20, 24: F.settings24, 32: F.settings32, 48: F.settings48 }),
+  // Workspace rail areas (the live app's sidebar groups)
+  'area.access': e('Roles and access', 'PersonKey', { 20: F.personKey20, 24: F.personKey24, 32: F.personKey32 }),
+  'area.security': e('Security', 'ShieldCheckmark', { 20: F.shieldCheckmark20, 24: F.shieldCheckmark24, 48: F.shieldCheckmark48 }),
+  'area.me': e('Me', 'Person', { 20: F.person20, 24: F.person24, 32: F.person32, 48: F.person48 }),
   // Home tiles, empty states, setup and help
-  'leave': e('Leave', 'Beach', { 20: Beach20Color, 24: Beach24Color, 32: Beach32Color, 48: Beach48Color }),
-  'holidays': e('Holiday calendar', 'Calendar', { 20: Calendar20Color, 24: Calendar24Color, 32: Calendar32Color, 48: Calendar48Color }),
-  'approvals': e('Approvals', 'ApprovalsApp', { 20: ApprovalsApp20Color, 24: ApprovalsApp24Color, 32: ApprovalsApp32Color }),
-  'announcements': e('Announcements', 'MegaphoneLoud', { 20: MegaphoneLoud20Color, 24: MegaphoneLoud24Color, 32: MegaphoneLoud32Color }),
-  'orgChart': e('Org chart', 'Org', { 20: Org20Color, 24: Org24Color, 32: Org32Color, 48: Org48Color }),
-  'documents': e('Documents', 'DocumentText', { 20: DocumentText20Color, 24: DocumentText24Color, 32: DocumentText32Color, 48: DocumentText48Color }),
-  'jobOpening': e('Job opening', 'Briefcase', { 20: Briefcase20Color, 24: Briefcase24Color, 32: Briefcase32Color, 48: Briefcase48Color }),
-  'allDone': e('All done', 'CheckmarkCircle', { 20: CheckmarkCircle20Color, 24: CheckmarkCircle24Color, 32: CheckmarkCircle32Color, 48: CheckmarkCircle48Color }),
-  'onboarding': e('Onboarding', 'PersonStarburst', { 20: PersonStarburst20Color, 24: PersonStarburst24Color, 32: PersonStarburst32Color, 48: PersonStarburst48Color }),
-  'setup': e('Setup hub', 'Toolbox', { 20: Toolbox20Color, 24: Toolbox24Color, 32: Toolbox32Color }),
-  'help': e('Help', 'QuestionCircle', { 20: QuestionCircle20Color, 24: QuestionCircle24Color, 32: QuestionCircle32Color, 48: QuestionCircle48Color }),
+  'leave': e('Leave', 'Beach', { 20: F.beach20, 24: F.beach24, 32: F.beach32, 48: F.beach48 }),
+  'holidays': e('Holiday calendar', 'Calendar', { 20: F.calendar20, 24: F.calendar24, 32: F.calendar32, 48: F.calendar48 }),
+  'approvals': e('Approvals', 'ApprovalsApp', { 20: F.approvalsApp20, 24: F.approvalsApp24, 32: F.approvalsApp32 }),
+  'announcements': e('Announcements', 'MegaphoneLoud', { 20: F.megaphoneLoud20, 24: F.megaphoneLoud24, 32: F.megaphoneLoud32 }),
+  'orgChart': e('Org chart', 'Org', { 20: F.org20, 24: F.org24, 32: F.org32, 48: F.org48 }),
+  'documents': e('Documents', 'DocumentText', { 20: F.documentText20, 24: F.documentText24, 32: F.documentText32, 48: F.documentText48 }),
+  'jobOpening': e('Job opening', 'Briefcase', { 20: F.briefcase20, 24: F.briefcase24, 32: F.briefcase32, 48: F.briefcase48 }),
+  'allDone': e('All done', 'CheckmarkCircle', { 20: F.checkmarkCircle20, 24: F.checkmarkCircle24, 32: F.checkmarkCircle32, 48: F.checkmarkCircle48 }),
+  'onboarding': e('Onboarding', 'PersonStarburst', { 20: F.personStarburst20, 24: F.personStarburst24, 32: F.personStarburst32, 48: F.personStarburst48 }),
+  'setup': e('Setup hub', 'Toolbox', { 20: F.toolbox20, 24: F.toolbox24, 32: F.toolbox32 }),
+  'help': e('Help', 'QuestionCircle', { 20: F.questionCircle20, 24: F.questionCircle24, 32: F.questionCircle32, 48: F.questionCircle48 }),
+  // HR meanings Fluent has no icon for: founder-approved stand-ins (7 Oct 2026). standIn = composite brief sent to the designer.
+  'payslip': e('Payslip', 'Receipt', { 20: F.receipt20, 24: F.receipt24, 32: F.receipt32 }, false, true),
+  'attendancePunch': e('Attendance punch', 'Shifts', { 20: F.shifts20, 24: F.shifts24, 32: F.shifts32 }, false, true),
+  'statutoryFiling': e('Statutory filing', 'BuildingGovernment', { 20: F.buildingGovernment20, 24: F.buildingGovernment24, 32: F.buildingGovernment32 }),
+  'proctoring': e('Proctoring', 'ScanPerson', { 20: F.scanPerson20, 24: F.scanPerson24, 48: F.scanPerson48 }),
+  'offerLetter': e('Offer letter', 'Mail', { 20: F.mail20, 24: F.mail24, 32: F.mail32, 48: F.mail48 }, false, true),
+  'orgUnit': e('Org unit', 'Org', { 20: F.org20, 24: F.org24, 32: F.org32, 48: F.org48 }),
+  'ruleBuilder': e('Rule builder', 'Options', { 20: F.options20, 24: F.options24, 32: F.options32, 48: F.options48 }),
+  'workflow': e('Workflow', 'ApprovalsApp', { 20: F.approvalsApp20, 24: F.approvalsApp24, 32: F.approvalsApp32 }, false, true),
 } satisfies Record<string, ColorIconEntry>;
 
 export type ColorIconName = keyof typeof COLOR_ICONS;
 
-/** HR meanings Fluent Color does not cover: commissioned from the brand designer in the same style (§8). */
-export const COLOR_ICONS_TO_COMMISSION = [
-  'Payslip',
-  'Attendance punch',
-  'Statutory filing',
-  'Proctoring',
-  'Offer letter',
-  'Org unit',
-  'Rule builder',
-  'Workflow',
-] as const;
-
 const SIZES: ColorIconSize[] = [20, 24, 32, 48];
 
 /** The drawing for a size: exact, else the nearest larger, else the largest there is. */
-export function pickArt(art: ColorIconEntry['art'], size: ColorIconSize): FluentIcon {
+export function pickArt(art: ColorIconEntry['art'], size: ColorIconSize): string {
   const have = SIZES.filter((s) => art[s]);
   const s = have.find((h) => h >= size) ?? have[have.length - 1];
-  return art[s] as FluentIcon;
+  return art[s] as string;
 }
 
 export interface ColorIconProps {
@@ -107,7 +88,8 @@ export interface ColorIconProps {
 
 export function ColorIcon({ name, size = 24, label, tile, className }: ColorIconProps) {
   const entry: ColorIconEntry = COLOR_ICONS[name];
-  const Art = pickArt(entry.art, size);
+  // An <img> keeps each icon's gradient ids private and needs no innerHTML.
+  const src = `data:image/svg+xml,${encodeURIComponent(pickArt(entry.art, size))}`;
   return (
     <span
       className={cx('yx-color-icon', className)}
@@ -118,7 +100,7 @@ export function ColorIcon({ name, size = 24, label, tile, className }: ColorIcon
       aria-label={label}
       aria-hidden={label ? undefined : true}
     >
-      <Art focusable="false" aria-hidden />
+      <img src={src} alt="" draggable={false} />
     </span>
   );
 }

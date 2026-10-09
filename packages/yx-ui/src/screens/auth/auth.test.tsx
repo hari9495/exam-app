@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ForgotPasswordScreen, ResetPasswordScreen, SignInScreen, StaffSignInScreen, type SignInFields, type SignInScreenProps, type SignInStep } from './sign-in';
 import { MfaChallengeScreen, MfaEnrolScreen, StepUpDialog } from './mfa';
 import { MeSecurityScreen, type MeSecurityScreenProps } from './me-security';
-import { LoginActivityScreen, NO_FILTERS, type LoginActivityScreenProps } from './login-activity';
+import { ANY_FAILURE, LoginActivityScreen, NO_FILTERS, type LoginActivityScreenProps } from './login-activity';
 import { SecuritySettingsScreen, policyChanges, policyErrors, type SecuritySettingsScreenProps } from './security-settings';
 import { deviceLabel, errorText } from './kit';
+import type { LoginEventRow } from './types';
 import { ADMINS, COMPANIES, FLOOR, IDPS, MFA_ENROLLED, MFA_NONE, MY_HISTORY, MY_SESSIONS, NOW, ORG_EVENTS, ORG_SESSIONS, PEOPLE, POLICY, PROVIDERS, RECOVERY_CODES, TOTP_SETUP } from './data';
 import { GROUP_2 } from '../settings/registry-g1-g2';
 
@@ -245,6 +246,27 @@ describe('SecuritySettingsScreen email domains', () => {
   });
 });
 
+describe('SecuritySettingsScreen save errors', () => {
+  it('after a failed Save, typing in another field shows no new error', async () => {
+    render(<SecuritySettingsScreen state="ready" policy={POLICY} floor={FLOOR} providers={IDPS} admins={ADMINS} providersHref="#" onSave={vi.fn()} />);
+    const lock = screen.getByRole('textbox', { name: /Lock after/ });
+    await userEvent.clear(lock);
+    await userEvent.type(lock, '2');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Lock after must be between');
+
+    const pwd = screen.getByRole('textbox', { name: /Minimum password length/ });
+    await userEvent.clear(pwd);
+    await userEvent.type(pwd, '1');
+    expect(screen.queryByText(/Minimum password length must be between/)).toBeNull();
+    await userEvent.type(pwd, '4');
+
+    await userEvent.clear(lock);
+    await userEvent.type(lock, '5');
+    expect(screen.queryByText(/Lock after must be between/)).toBeNull();
+  });
+});
+
 describe('StaffSignInScreen', () => {
   it('takes a staff email and password, with no company or other ways in', async () => {
     const onSubmit = vi.fn();
@@ -433,8 +455,38 @@ describe('MeSecurityScreen', () => {
 
   it('shows new recovery codes once', async () => {
     render(<Me onNewRecoveryCodes={async () => RECOVERY_CODES} />);
-    await userEvent.click(screen.getByRole('button', { name: /New recovery codes/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Make new codes' }));
     expect(await screen.findByRole('list', { name: 'Recovery codes' })).toBeInTheDocument();
+  });
+
+  it('downloads the recovery codes as a text file made in the browser', async () => {
+    const parts: BlobPart[][] = [];
+    const created = vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => (parts.push([b as Blob]), 'blob:x'));
+    const clicked = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    render(<Me onNewRecoveryCodes={async () => RECOVERY_CODES} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Make new codes' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Download' }));
+    expect(clicked).toHaveBeenCalled();
+    expect(await (parts[0][0] as Blob).text()).toContain(RECOVERY_CODES[0]);
+    created.mockRestore();
+    clicked.mockRestore();
+  });
+
+  it('changes the password after checking the two new ones match', async () => {
+    const onChangePassword = vi.fn().mockResolvedValue(undefined);
+    render(<Me onChangePassword={onChangePassword} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    await userEvent.type(screen.getByLabelText(/^Current password/), 'Passw0rd!2026');
+    await userEvent.type(screen.getAllByLabelText(/^New password/)[0], 'Kaveri@Test2026');
+    await userEvent.type(screen.getAllByLabelText(/^New password/)[1], 'Kaveri@Test2027');
+    await userEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(await screen.findByText('The two new passwords are not the same.')).toBeInTheDocument();
+    expect(onChangePassword).not.toHaveBeenCalled();
+    await userEvent.clear(screen.getAllByLabelText(/^New password/)[1]);
+    await userEvent.type(screen.getAllByLabelText(/^New password/)[1], 'Kaveri@Test2026');
+    await userEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(onChangePassword).toHaveBeenCalledWith('Passw0rd!2026', 'Kaveri@Test2026');
+    expect(await screen.findByText(/Password changed/)).toBeInTheDocument();
   });
 
   it('verifies a mobile number by text', async () => {
@@ -486,11 +538,36 @@ describe('LoginActivityScreen', () => {
     expect(screen.getAllByText('Code by SMS').length).toBeGreaterThan(0);
   });
 
-  it('flags a spike of failed attempts and filters to them', async () => {
+  it('flags a spike of failed attempts once, and filters to the same failures the count means', async () => {
     const onFiltersChange = vi.fn();
     render(<Activity failedLast24h={46} onFiltersChange={onFiltersChange} />);
+    expect(screen.getAllByText(/46 failed/)).toHaveLength(1);
     await userEvent.click(screen.getByRole('button', { name: 'Show failed attempts' }));
-    expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed' }));
+    expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ result: ANY_FAILURE }));
+    // The same set is a choice in the Result filter, so the chosen filter reads back.
+    await userEvent.click(screen.getByRole('combobox', { name: 'Result' }));
+    expect(await screen.findByRole('option', { name: 'Any failure' })).toBeInTheDocument();
+  });
+
+  it('below a spike the count is a header fact', () => {
+    render(<Activity failedLast24h={2} />);
+    expect(screen.getByText('2 failed attempts in the last 24 hours')).toBeInTheDocument();
+  });
+
+  it('the Method filter lists Single sign-on once, for both kinds of provider', async () => {
+    render(<Activity />);
+    await userEvent.click(screen.getByRole('combobox', { name: 'Method' }));
+    expect(await screen.findAllByRole('option', { name: 'Single sign-on' })).toHaveLength(1);
+  });
+
+  it('the Person filter asks the host to search (every user, not the first page) and keeps the matches it is given', async () => {
+    const onPeopleSearch = vi.fn();
+    render(<Activity onPeopleSearch={onPeopleSearch} people={[{ id: 'u-1', name: 'Divya Raghunathan', email: 'divya.r@kaverifoods.in' }]} />);
+    await userEvent.click(screen.getByRole('combobox', { name: 'Person' }));
+    await userEvent.type(await screen.findByPlaceholderText('Name or email'), 'zzz');
+    await waitFor(() => expect(onPeopleSearch).toHaveBeenCalledWith('zzz'));
+    // Not filtered locally: what the host returned is what is listed.
+    expect(screen.getByRole('option', { name: /Divya/ })).toBeInTheDocument();
   });
 
   it('signs a person out after confirming', async () => {
@@ -524,6 +601,20 @@ describe('LoginActivityScreen', () => {
     expect(within(pk).getByText('Passkey')).toBeInTheDocument();
     expect(within(pk).queryByText('Two-step')).toBeNull();
     expect(within(sso).getByText('Two-step')).toBeInTheDocument();
+  });
+
+  it('offers Unlock only where the API says the lock still stands, never inferred from the page; the locking attempt is marked', () => {
+    const row = (id: string, result: LoginEventRow['result'], reason: string | null = null, lockActive = false) =>
+      ({ ...ORG_EVENTS.data[1], id, result, reason, lockActive }) as LoginEventRow;
+    // Filtered to failures: the sign-in that ended lock a3 is not on the page, and the API says so.
+    const rows = [row('a3', 'failed', 'bad_password+lockout_started'), row('b1', 'failed', 'bad_password+lockout_started', true), row('b0', 'failed', 'bad_password')];
+    render(<Activity onUnlock={vi.fn()} events={{ ...ORG_EVENTS, data: rows, total: 3 }} />);
+    expect(screen.getAllByRole('button', { name: /^Unlock / })).toHaveLength(1);
+    const [a3, b1, b0] = screen.getAllByRole('row').slice(1);
+    expect(within(b1).getByRole('button', { name: /^Unlock / })).toBeInTheDocument();
+    expect(within(a3).getByText('Locked the account')).toBeInTheDocument();
+    expect(within(b1).getByText('Locked the account')).toBeInTheDocument();
+    expect(within(b0).queryByText('Locked the account')).toBeNull();
   });
 
   it('offers no Unlock without the permission (no handler)', () => {
@@ -677,6 +768,9 @@ describe('ResetPasswordScreen', () => {
     render(<Harness onSubmit={onSubmit} />);
     await userEvent.type(screen.getByLabelText(/New password/), 'Kaveri-Recruit-Oct26');
     await userEvent.type(screen.getByLabelText(/Type it again/), 'Kaveri-Recruit-Oct2');
+    // No message while typing; it shows once the person leaves the field.
+    expect(screen.queryByText('The two passwords are not the same')).toBeNull();
+    await userEvent.tab();
     expect(screen.getByText('The two passwords are not the same')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save new password' })).toBeDisabled();
     await userEvent.type(screen.getByLabelText(/Type it again/), '6');

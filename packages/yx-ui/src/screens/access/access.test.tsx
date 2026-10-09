@@ -28,6 +28,7 @@ function roles(over: Partial<RolesAccessScreenProps> = {}) {
     onReject: ok(),
     onRevoke: ok(),
     onFromTemplate: ok(),
+    onSystemAdmin: ok(),
     ...over,
   };
   render(<RolesAccessScreen {...props} />);
@@ -50,6 +51,30 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
     await ue.type(within(dialog).getByRole('textbox'), 'Moved to Chennai');
     await ue.click(within(dialog).getByRole('button', { name: 'Revoke' }));
     expect(p.onRevoke).toHaveBeenCalledWith('g-1', 'Moved to Chennai');
+  });
+
+  it('makes a person a System Admin with a reason, and shows who the System Admins are', async () => {
+    const p = roles();
+    expect(screen.getByText('System Admins now: Ramesh Iyer.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Make System Admin' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Make Anitha Rao a System Admin?' });
+    expect(within(dialog).getByRole('button', { name: 'Make System Admin' })).toBeDisabled();
+    await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Runs HR and access');
+    await ue.click(within(dialog).getByRole('button', { name: 'Make System Admin' }));
+    expect(p.onSystemAdmin).toHaveBeenCalledWith('u-anitha', true, 'Runs HR and access');
+  });
+
+  it('a System Admin carries the badge; removing the last one shows the refusal in plain words', async () => {
+    const onSystemAdmin = vi.fn().mockRejectedValue(coded('LAST_SYSTEM_ADMIN', 'This is the only System Admin. Make someone else a System Admin first.'));
+    roles({ onSystemAdmin });
+    await pick('Person', 'Ramesh Iyer · admin@demo-org.test · System Admin');
+    expect(screen.getByText('System Admin', { selector: '.yx-badge, [class*="badge"]' })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Remove System Admin' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Remove Ramesh Iyer as System Admin?' });
+    await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Leaving');
+    await ue.click(within(dialog).getByRole('button', { name: 'Remove System Admin' }));
+    expect(await within(dialog).findByText(/only System Admin/)).toBeInTheDocument();
+    expect(onSystemAdmin).toHaveBeenCalledWith('u-ramesh', false, 'Leaving');
   });
 
   it('a second admin approves (green); the one who asked never sees Approve (YX-SEC-11)', async () => {

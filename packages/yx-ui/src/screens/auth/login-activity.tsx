@@ -33,7 +33,10 @@ export interface LoginActivityScreenProps {
   onEventsPage: (page: number) => void;
   /** Failed attempts across the company in the last 24 hours; null while loading. */
   failedLast24h: number | null;
+  /** People matching the Person filter's search (the host asks the API); the chosen person stays in the list. */
   people: PersonOption[];
+  /** Typed in the Person filter's search box: the host fetches matches. Omitted: the list is filtered here. */
+  onPeopleSearch?: (query: string) => void;
   sessions: Page<SessionRow> | null;
   sessionsState: 'ready' | 'loading' | 'error';
   onSessionsPage: (page: number) => void;
@@ -45,7 +48,11 @@ export interface LoginActivityScreenProps {
   noAccess?: boolean;
 }
 
-const METHOD_FILTERS = ['password', 'saml', 'oidc', 'otp_email', 'otp_sms', 'otp_whatsapp'];
+// 'sso' is both kinds of company identity provider (one "Single sign-on" entry, not one per kind).
+const METHOD_FILTERS = ['password', 'sso', 'passkey', 'google', 'microsoft', 'otp_email', 'otp_sms', 'otp_whatsapp'];
+// 'unsuccessful' = failed + blocked + wrong second step: the set the 24-hour count uses (sessions.service UNSUCCESSFUL).
+export const ANY_FAILURE = 'unsuccessful';
+const RESULT_FILTERS = [{ value: ANY_FAILURE, label: 'Any failure' }, ...Object.entries(RESULTS).map(([value, r]) => ({ value, label: r.label }))];
 
 /** Admin › Login activity (P12 §7, YX-IAM-06/10): the company's sign-in attempts and who is signed in now. */
 export function LoginActivityScreen(props: LoginActivityScreenProps) {
@@ -68,13 +75,14 @@ export function LoginActivityScreen(props: LoginActivityScreenProps) {
       <PageHeader
         title="Login activity"
         description="Every sign-in attempt in your company, and who is signed in now."
-        facts={props.failedLast24h != null && <span>{props.failedLast24h} failed {props.failedLast24h === 1 ? 'attempt' : 'attempts'} in the last 24 hours</span>}
+        // The number once: in the warning when there is one, else here.
+        facts={props.failedLast24h != null && !spike && <span>{props.failedLast24h} failed {props.failedLast24h === 1 ? 'attempt' : 'attempts'} in the last 24 hours</span>}
       />
       {spike && (
         <InlineAlert
           tone="warning"
           title={`${props.failedLast24h} failed sign-in attempts in the last 24 hours`}
-          actions={<Button size="sm" onClick={() => setFilters({ ...NO_FILTERS, result: 'failed', range: { from: new Date(Date.now() - 86_400_000), to: null } })}>Show failed attempts</Button>}
+          actions={<Button size="sm" onClick={() => setFilters({ ...NO_FILTERS, result: ANY_FAILURE, range: { from: new Date(Date.now() - 86_400_000), to: null } })}>Show failed attempts</Button>}
         >
           This is more than usual. Accounts lock after too many wrong tries in a row and the person is emailed. Unlock someone from their row.
         </InlineAlert>
@@ -93,6 +101,9 @@ export function LoginActivityScreen(props: LoginActivityScreenProps) {
                   onChange={(v) => set({ userId: v })}
                   clearable
                   placeholder="Everyone"
+                  searchable
+                  searchPlaceholder="Name or email"
+                  onSearchChange={props.onPeopleSearch}
                   options={props.people.map((p) => ({ value: p.id, label: p.name, description: p.email, keywords: [p.email] }))}
                 />
               </FormField>
@@ -102,13 +113,13 @@ export function LoginActivityScreen(props: LoginActivityScreenProps) {
                   onChange={(v) => set({ result: v })}
                   clearable
                   placeholder="Any result"
-                  options={Object.entries(RESULTS).map(([value, r]) => ({ value, label: r.label }))}
+                  options={RESULT_FILTERS}
                 />
               </FormField>
               <FormField label="Method">
                 <Select value={filters.method} onChange={(v) => set({ method: v })} clearable placeholder="Any method" options={METHOD_FILTERS.map((m) => ({ value: m, label: methodLabel(m) }))} />
               </FormField>
-              <DateRangePicker label="Dates" value={filters.range} onChange={(range) => set({ range })} max={new Date()} />
+              <DateRangePicker label="Dates" hideLabel fromLabel="From date" toLabel="To date" value={filters.range} onChange={(range) => set({ range })} max={new Date()} />
             </div>
             <LoginEventsTable
               label="Sign-in attempts"

@@ -99,6 +99,8 @@ const JOBS_QUEUE = 'rule-jobs';
 export class AutomationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AutomationService.name);
   private readonly handlers = new Map<string, RecordTypeHandler>();
+  /** Modules that react to business events themselves (SD-2.08 journeys from M01): each event once, best effort. */
+  private readonly subscribers: ((ev: { id: string; organizationId: string; type: string; payload: Record<string, unknown> }) => Promise<void>)[] = [];
   private readonly hooks: Queue;
   private readonly jobs: Queue;
   private workers: Worker[] = [];
@@ -136,6 +138,10 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
     for (const w of this.workers) await w.close();
     await this.hooks.close();
     await this.jobs.close();
+  }
+
+  subscribe(fn: (ev: { id: string; organizationId: string; type: string; payload: Record<string, unknown> }) => Promise<void>) {
+    this.subscribers.push(fn);
   }
 
   register(h: RecordTypeHandler) {
@@ -276,6 +282,7 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
     );
     let n = 0;
     for (const ev of events) {
+      for (const fn of this.subscribers) await fn({ id: ev.id, organizationId: ev.organization_id, type: ev.event_type, payload: ev.payload ?? {} }).catch((e: Error) => this.logger.warn(`event ${ev.event_type} ${ev.id}: ${e.message}`));
       for (const h of this.handlers.values()) {
         const hit = h.fromEvent(ev.event_type, ev.payload ?? {});
         if (!hit) continue;

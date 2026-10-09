@@ -55,7 +55,7 @@ p.yx-text { margin: 0; }
 
 /* Colour icons (§8): Fluent Color art at 20 / 24 / 32 / 48 px; optional neutral tile. */
 .yx-color-icon { flex: none; display: inline-grid; place-items: center; line-height: 0; }
-.yx-color-icon > svg { width: var(--yx-color-icon-size); height: var(--yx-color-icon-size); }
+.yx-color-icon > img { width: var(--yx-color-icon-size); height: var(--yx-color-icon-size); }
 .yx-color-icon[data-size="20"] { --yx-color-icon-size: var(--yx-icon-md); }
 .yx-color-icon[data-size="24"] { --yx-color-icon-size: var(--yx-icon-lg); }
 .yx-color-icon[data-size="32"] { --yx-color-icon-size: var(--yx-icon-xl); }

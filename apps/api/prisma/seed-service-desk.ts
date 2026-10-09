@@ -42,6 +42,11 @@ export const DESK_PERMISSIONS = [
   { key: 'desk.catalog.manage', description: 'Set up the service catalogue, order guides and the question library' },
   { key: 'desk.rule.manage', description: 'Set up automation rules for a desk' },
   { key: 'desk.integration.manage', description: 'Set up webhooks that desk rules call (needs a fresh security check)' },
+  { key: 'desk.lifecycle.manage', description: 'Design ticket lifecycles: statuses, allowed moves and what each move needs' },
+  { key: 'desk.channel.manage', description: 'Set up live chat queues, pre-chat forms and chat prompts' },
+  { key: 'desk.chat.work', description: 'Take live chats from the desk queue' },
+  { key: 'desk.hr_summary.view', description: 'See the employee summary beside a ticket (only the fields your HR access allows)' },
+  { key: 'desk.ticket.move', description: 'Move a ticket to another desk or share it with one' },
 ];
 
 const day = (iso: string) => new Date(`${iso}T00:00:00Z`);

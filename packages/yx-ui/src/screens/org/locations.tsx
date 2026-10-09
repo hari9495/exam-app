@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react';
 import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
 import { EmptyState } from '../../components/feedback';
-import { FieldRow, FormField, FormSection, type FormErrorItem } from '../../components/field';
+import { FieldRow, FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
-import { Select } from '../../components/select';
+import { Select, type SelectOption } from '../../components/select';
 import { DataTable, type TableColumn } from '../../components/table';
 import { AddressFields, ArchivedToggle, EditorDrawer, OrgPage, SectionHead, StatusBadge, addressDraft, addressInput, entityName, lifecycleItems, useConfirm, useRun, type AddressDraft } from './org-kit';
 import type { LegalEntity, LoadState, LocationInput, OrgLocation, StateOption } from './types';
@@ -25,6 +25,13 @@ interface Draft {
 }
 
 const CIDR = /^(\d{1,3}(\.\d{1,3}){3}\/\d{1,2}|[0-9A-Fa-f:]+\/\d{1,3})$/;
+
+/** IANA time zones from the browser, India first (every company today); a saved zone the browser lacks stays choosable. */
+export function timeZoneOptions(current?: string): SelectOption[] {
+  const known = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
+  const zones = ['Asia/Kolkata', ...known.filter((z) => z !== 'Asia/Kolkata'), ...(current && !known.includes(current) && current !== 'Asia/Kolkata' ? [current] : [])];
+  return zones.map((z) => ({ value: z, label: z }));
+}
 
 /** The request body, or what to fix. Mirrors the API's checks; the API checks again. */
 export function locationInput(d: Draft): { input: LocationInput | null; errors: FormErrorItem[] } {
@@ -74,16 +81,17 @@ function LocationEditor({ location, entities, states, onClose, onSave }: { locat
     ipRanges: location?.ipRanges.join('\n') ?? '',
   });
   const [dirty, setDirty] = useState(false);
-  const [showErrors, setShowErrors] = useState(false);
   const { busy, error, run } = useRun();
   const set = (patch: Partial<Draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
     setDirty(true);
   };
   const { input, errors } = locationInput(draft);
-  const errorOf = (id: string) => (showErrors ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
+  const timeZones = useMemo(() => timeZoneOptions(location?.timezone), [location?.timezone]);
   const save = () => {
-    if (!input) return setShowErrors(true);
+    if (!input) return saveErrors.reveal();
     void run('save', () => onSave(input)).then((ok) => ok && onClose());
   };
   return (
@@ -92,8 +100,7 @@ function LocationEditor({ location, entities, states, onClose, onSave }: { locat
       onClose={onClose}
       dirty={dirty}
       title={location ? `Edit ${location.name}` : 'Add location'}
-      errors={errors}
-      showErrors={showErrors}
+      errors={saveErrors.shownErrors}
       saving={busy === 'save'}
       failed={error}
       saveLabel={location ? 'Save changes' : 'Add location'}
@@ -116,7 +123,7 @@ function LocationEditor({ location, entities, states, onClose, onSave }: { locat
           <TextField value={draft.code} onChange={(code) => set({ code: code.trim() })} maxLength={30} />
         </FormField>
         <FormField id="loc-tz" label="Time zone" required helper="Changes take effect at midnight here." error={errorOf('loc-tz')}>
-          <TextField value={draft.timezone} onChange={(timezone) => set({ timezone })} maxLength={64} />
+          <Select value={draft.timezone || null} onChange={(timezone) => set({ timezone: timezone ?? '' })} options={timeZones} searchable searchPlaceholder="Search time zones" aria-label="Time zone" />
         </FormField>
         <FormField id="loc-mw" label="Minimum wage zone" optional>
           <TextField value={draft.minWageZone} onChange={(minWageZone) => set({ minWageZone })} maxLength={40} />
@@ -130,10 +137,10 @@ function LocationEditor({ location, entities, states, onClose, onSave }: { locat
         {draft.fence && (
           <FieldRow>
             <FormField id="loc-lat" label="Latitude" required error={errorOf('loc-lat')}>
-              <NumberField value={draft.lat} onChange={(lat) => set({ lat })} min={-90} max={90} />
+              <NumberField value={draft.lat} onChange={(lat) => set({ lat })} min={-90} max={90} decimals />
             </FormField>
             <FormField id="loc-lng" label="Longitude" required error={errorOf('loc-lng')}>
-              <NumberField value={draft.lng} onChange={(lng) => set({ lng })} min={-180} max={180} />
+              <NumberField value={draft.lng} onChange={(lng) => set({ lng })} min={-180} max={180} decimals />
             </FormField>
             <FormField id="loc-radius" label="Radius" required error={errorOf('loc-radius')}>
               <NumberField value={draft.radiusM} onChange={(radiusM) => set({ radiusM })} min={10} max={5000} suffix="m" />

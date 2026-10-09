@@ -79,6 +79,8 @@ export interface DeskSetupScreenProps {
   /** 3b-2 batch 1 tabs, built by the page (each only for people who hold its key). */
   catalog?: ReactNode;
   rules?: ReactNode;
+  /** 3b-2 batch 2 tabs (lifecycles, schedules, live chat, organisation), each only for people who hold its key. */
+  more?: { value: string; label: string; node: ReactNode }[];
   banners?: BannerSetupProps;
   /** HR only: logins that may be the same person as an existing one. */
   duplicates?: { rows: DuplicatePerson[]; onLink: (personId: string, intoPersonId: string) => Promise<void> } | null;
@@ -223,6 +225,11 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
           {props.banners && <TabsTrigger value="banners">Banners</TabsTrigger>}
           {props.catalog && <TabsTrigger value="catalog">Catalogue</TabsTrigger>}
           {props.rules && <TabsTrigger value="rules">Rules</TabsTrigger>}
+          {props.more?.map((m) => (
+            <TabsTrigger key={m.value} value={m.value}>
+              {m.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
         <TabsContent value="members">
           <MembersTab {...props} />
@@ -277,6 +284,11 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
         )}
         {props.catalog && <TabsContent value="catalog">{props.catalog}</TabsContent>}
         {props.rules && <TabsContent value="rules">{props.rules}</TabsContent>}
+        {props.more?.map((m) => (
+          <TabsContent key={m.value} value={m.value}>
+            {m.node}
+          </TabsContent>
+        ))}
       </Tabs>
     </Card>
   );

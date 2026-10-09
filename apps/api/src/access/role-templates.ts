@@ -22,7 +22,7 @@ const TIME_HR_ADMIN = [...TIME_HR_VIEW, 'leave.settings.manage', 'leave.balance.
 
 // M14 §6.1 Service Desk roles (phase 3b-1 keys). A desk key reaches only the desks where the person holds a seat
 // (sd_desk_members), so these are granted company-wide; replying and owning also need an agent or lead seat (§6.3).
-const DESK_AGENT = ['desk.ticket.view', 'desk.ticket.work', 'desk.ticket.note', 'desk.ticket.export', 'desk.task.work', 'desk.kb.view_internal', 'desk.kb.author'];
+const DESK_AGENT = ['desk.ticket.view', 'desk.ticket.work', 'desk.ticket.note', 'desk.ticket.export', 'desk.task.work', 'desk.kb.view_internal', 'desk.kb.author', 'desk.chat.work', 'desk.hr_summary.view', 'desk.ticket.move'];
 
 export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
   {
@@ -95,7 +95,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'tenant',
     summary: 'Creates desks, hands out agent seats (the cost is shown first), sets up every desk, its mailboxes, portals, customers and help articles, the service catalogue, automation rules and webhooks, the people list and directory sync, reports, surveys and privacy requests.',
     cannot: 'See tickets without a seat on the desk, or private and sensitive tickets.',
-    permissions: ['desk.desk.create', 'desk.settings.manage', 'desk.member.manage', 'desk.sla.manage', 'desk.mailbox.manage', 'desk.portal.manage', 'desk.customer.manage', 'desk.kb.view_internal', 'desk.kb.publish', 'desk.report.view', 'desk.report.manage', 'desk.survey.manage', 'desk.directory.manage', 'desk.catalog.manage', 'desk.rule.manage', 'desk.integration.manage'],
+    permissions: ['desk.desk.create', 'desk.settings.manage', 'desk.member.manage', 'desk.sla.manage', 'desk.mailbox.manage', 'desk.portal.manage', 'desk.customer.manage', 'desk.kb.view_internal', 'desk.kb.publish', 'desk.report.view', 'desk.report.manage', 'desk.survey.manage', 'desk.directory.manage', 'desk.catalog.manage', 'desk.rule.manage', 'desk.integration.manage', 'desk.lifecycle.manage', 'desk.channel.manage'],
   },
   {
     key: 'desk_admin',
@@ -103,13 +103,13 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'tenant',
     summary: 'Sets up the desks where they hold an admin seat: groups, categories, statuses, saved replies, calendars, mailboxes, portals, catalogue items and automation rules.',
     cannot: 'Answer tickets, see private and sensitive tickets, or set up webhooks.',
-    permissions: ['desk.ticket.view', 'desk.settings.manage', 'desk.member.manage', 'desk.sla.manage', 'desk.mailbox.manage', 'desk.portal.manage', 'desk.kb.view_internal', 'desk.report.view', 'desk.catalog.manage', 'desk.rule.manage'],
+    permissions: ['desk.ticket.view', 'desk.settings.manage', 'desk.member.manage', 'desk.sla.manage', 'desk.mailbox.manage', 'desk.portal.manage', 'desk.kb.view_internal', 'desk.report.view', 'desk.catalog.manage', 'desk.rule.manage', 'desk.lifecycle.manage', 'desk.channel.manage'],
   },
   {
     key: 'desk_agent',
     name: 'Desk Agent',
     typicalScope: 'tenant',
-    summary: 'Works tickets on the desks where they hold an agent seat: owns, replies, notes, logs time.',
+    summary: 'Works tickets on the desks where they hold an agent seat: owns, replies, notes, logs time, takes live chats, moves and shares tickets, sees the employee summary (within their HR access).',
     cannot: 'Assign tickets to others, change many at once, or set up the desk.',
     permissions: DESK_AGENT,
   },

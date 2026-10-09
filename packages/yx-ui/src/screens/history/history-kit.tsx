@@ -4,7 +4,7 @@ import { Button } from '../../components/button';
 import { DatePicker } from '../../components/date';
 import { Drawer } from '../../components/drawer';
 import { InlineAlert } from '../../components/feedback';
-import { ErrorSummary, FormField, FormSection, type FormErrorItem } from '../../components/field';
+import { ErrorSummary, FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
@@ -202,7 +202,6 @@ export interface ChangeDrawerProps {
 export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose }: ChangeDrawerProps) {
   const [draft, setDraft] = useState<ChangeDraft>({ employeeId: employeeId ?? null, changeType: null, effectiveDate: null, values: {}, dotted: null, payMode: 'amount', pay: '', confirm: false, reason: '', overrideReason: '' });
   const [impact, setImpact] = useState<Impact | null>(null);
-  const [showErrors, setShowErrors] = useState(false);
   const [dirty, setDirty] = useState(false);
   const { busy, error, run } = useRun();
   const set = (patch: Partial<ChangeDraft>) => {
@@ -211,7 +210,8 @@ export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose
     setDirty(true);
   };
   const { input, errors } = changeInput(draft, options);
-  const errorOf = (id: string) => (showErrors ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
   const person = options.people.find((p) => p.id === draft.employeeId) ?? null;
   const entity = person?.legalEntityId ?? null;
   const choices: Record<Field, { value: string; label: string }[]> = useMemo(
@@ -228,11 +228,11 @@ export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose
   );
   const date = draft.effectiveDate ? dayKey(draft.effectiveDate) : null;
   const preview = () => {
-    if (!input) return setShowErrors(true);
+    if (!input) return saveErrors.reveal();
     void run('preview', async () => setImpact(await onPreview(input)));
   };
   const submit = () => {
-    if (!input || !impact) return setShowErrors(true);
+    if (!input || !impact) return saveErrors.reveal();
     void run('submit', () => onSubmit(input)).then((ok) => ok && onClose());
   };
   const types = (options.types ?? RAISABLE).filter((t) => t !== 'salary_revision' || options.canPay);
@@ -253,7 +253,7 @@ export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose
       }
     >
       <form className="yx-org__editor" onSubmit={(e) => { e.preventDefault(); preview(); }} noValidate>
-        {showErrors && errors.length > 0 && <ErrorSummary errors={errors} />}
+        <ErrorSummary errors={saveErrors.shownErrors} />
         <FormSection title="The change">
           {!employeeId && (
             <FormField id="ch-person" label="Person" required error={errorOf('ch-person')}>

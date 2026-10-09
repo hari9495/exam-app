@@ -54,6 +54,12 @@ export const YX_KEYS = [
   'desk.catalog.manage',
   'desk.rule.manage',
   'desk.integration.manage',
+  // 3b-2 batch 2.
+  'desk.lifecycle.manage',
+  'desk.channel.manage',
+  'desk.chat.work',
+  'desk.hr_summary.view',
+  'desk.ticket.move',
   // Step 4 time and leave: HR views in scope, balances, set-up.
   'leave.settings.manage',
   'leave.view',
