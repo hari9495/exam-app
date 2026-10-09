@@ -60,6 +60,12 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'attendance.min_rest_hours': { label: 'Least rest between shifts (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '8', '9', '10', '11', '12'], default: '11' },
   // Founder decision 9 Oct 2026: where the Factories Act / OSH Code covers the place (a factory), approved overtime of the
   // employment categories P07 IN.FACTORIES counts as workers is always paid at the legal rate, never comp-off. Dated.
+  // P08 Q4 / YX-LOCK-02: how late an employee may still ask to correct a day of a frozen or locked month (then only HR).
+  'payroll.late_request_max_days': { label: 'Late corrections may be asked for up to (days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['30', '45', '60', '90', '120', '180'], default: '60' },
+  // YX-AUD-08: audit is kept at least 8 years (the list never offers less), the last 13 months online.
+  'audit.retention_years': { label: 'Keep the audit log for (years)', scopes: ['tenant'], dated: false, values: ['8', '9', '10', '12', '15', '20'], default: '8', guard: 'access.role.manage' },
+  // YX-DOC-13: issued pay documents are kept this long, then the file is deleted (a legal hold keeps it).
+  'payroll.document_retention_years': { label: 'Keep issued pay documents for (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['8', '10', '12', '15'], default: '8', guard: 'access.role.manage' },
   'attendance.factories_act': {
     label: 'Factories Act (overtime is paid at the legal rate)',
     scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'],
