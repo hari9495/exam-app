@@ -162,7 +162,7 @@ export function accountInput(d: Draft, account: SmsAccount | null): { input: Sms
   return {
     input: {
       name: d.name.trim(),
-      provider: d.provider,
+      ...(account ? {} : { provider: d.provider }),
       sender: d.sender || null,
       dltEntityId: d.dltEntityId || null,
       priority: d.priority!,

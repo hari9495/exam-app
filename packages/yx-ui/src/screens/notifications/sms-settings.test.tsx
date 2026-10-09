@@ -110,7 +110,8 @@ describe('SmsAccountEditor', () => {
     render(<SmsAccountEditor account={ACCOUNTS[0]} open onOpenChange={vi.fn()} onSave={onSave} />);
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0][0]).toMatchObject({ name: 'Kaveri DLT gateway', provider: 'http', secrets: {}, otpTemplate: { status: 'approved', variables: ['code', 'purpose', 'minutes'] } });
+    expect(onSave.mock.calls[0][0]).toMatchObject({ name: 'Kaveri DLT gateway', secrets: {}, otpTemplate: { status: 'approved', variables: ['code', 'purpose', 'minutes'] } });
+    expect(onSave.mock.calls[0][0]).not.toHaveProperty('provider');
     expect(onSave.mock.calls[0][0].config).not.toHaveProperty('secrets');
   });
 
@@ -153,6 +154,11 @@ describe('accountInput', () => {
     template: { dltTemplateId: '1107000000000000001', body: '{#var#} is your code. -KAVERI', variables: ['code' as const], status: 'approved' as const },
   };
   const problems = (over: object, account = null) => accountInput({ ...base, ...over }, account).errors.map((e) => e.message);
+
+  it('an edit never sends the gateway type, which the API refuses to change', () => {
+    const account = { provider: 'http', secretsSet: ['secret.key'] } as unknown as Parameters<typeof accountInput>[1];
+    expect(accountInput(base, account).input).not.toHaveProperty('provider');
+  });
 
   it("keeps a development account's chosen failure, and sends none when it works", () => {
     expect(accountInput({ ...base, provider: 'dev', simulate: 'unavailable' }, null).input?.config).toEqual({ simulate: 'unavailable' });
