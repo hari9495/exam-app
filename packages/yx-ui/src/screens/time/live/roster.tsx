@@ -48,7 +48,7 @@ export function RosterPlannerScreen(p: RosterPlannerScreenProps) {
   const idOf = useMemo(() => new Map((d?.shifts ?? []).map((s) => [s.code, s.id])), [d]);
   // What each cell will be once published: a shift code, OFF, or empty (the location's default shift).
   const value: RosterValue = useMemo(() => Object.fromEntries((d?.people ?? []).map((x) => [x.id, x.cells.map((c) => (!c.employed ? null : c.planned ? (c.planned.shiftId ? (codeOf.get(c.planned.shiftId) ?? null) : null) : 'OFF'))])), [d, codeOf]);
-  const leave: RosterLeave[] = useMemo(() => (d?.people ?? []).flatMap((x) => x.cells.flatMap((c) => (c.conflicts ?? []).filter((k) => k.kind === 'leave').map(() => ({ personId: x.id, date: local(c.on), code: 'Leave' })))), [d]);
+  const leave: RosterLeave[] = useMemo(() => (d?.people ?? []).flatMap((x) => x.cells.flatMap((c) => (c.conflicts ?? []).filter((k) => k.kind === 'leave').map((k) => ({ personId: x.id, date: local(c.on), code: k.message.startsWith('Half') ? 'half day' : 'full day' })))), [d]);
   const serverChecks = (d?.people ?? []).flatMap((x) => x.cells.flatMap((c) => (c.conflicts ?? []).filter((k) => k.kind !== 'leave').map((k) => ({ who: x.name, ...k }))));
   const change = (next: RosterValue) => {
     if (!d) return;

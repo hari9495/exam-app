@@ -212,6 +212,13 @@ describe('Time and leave batch 2', () => {
       await api('hrAdmin', 'post', `/time/night/consents/${consent.id}/withdraw`).send({ on: d(10) }).expect(200);
       await api('mgr', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.empEmp, on: d(11), value: ids.N }] }).expect(409);
       await api('mgr', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.empEmp, on: d(9), value: ids.N }] }).expect(200);
+      // Security review (law guard at the point of use): a night shift published before the withdrawal never applies
+      // after it; the day falls back to the usual shift and the planner is told why.
+      await inA((tx) => tx.rosterEntry.create({ data: { organizationId: org.A.id, employeeId: ids.empEmp, workOn: new Date(`${d(12)}T00:00:00Z`), shiftId: ids.N, published: true } }));
+      const after = (await api('emp', 'get', `/time/me/shifts?week=${d(12)}`).expect(200)).body.days.find((x: { on: string }) => x.on === d(12));
+      expect(after.shift.name).not.toBe('Night');
+      const flagged = (await api('mgr', 'get', `/time/roster?week=${d(12)}`).expect(200)).body.people.find((p: { id: string }) => p.id === ids.empEmp).cells.find((x: { on: string }) => x.on === d(12));
+      expect(flagged.conflicts.map((c: { message: string }) => c.message).join()).toMatch(/does not apply/);
     });
 
     it('a swap goes to the colleague, then the manager, and changes both days once (P03)', async () => {

@@ -200,15 +200,18 @@ export class RosterService implements OnModuleInit {
       if (existing && dto.validFrom <= todayIst()) throw new ConflictException('A pattern is already in force there from that date. Add the change from a later date.');
       if (existing) await tx.shiftPatternAssignment.delete({ where: { id: existing.id } });
       const a = await tx.shiftPatternAssignment.create({ data: { ...at, patternId, offsetDays: dto.offsetDays, createdBy: c.userId ?? null } });
-      // YX-AT-25: the pattern is a roster path; the people it now reaches are checked over its first four weeks.
+      // YX-AT-25: the pattern is a roster path; the people it now reaches are checked over its first four weeks (later
+      // days are guarded where the schedule is used, ScheduleBook.day).
+      // ponytail: one query set per person and day; a company-wide pattern on thousands of people wants a set-based check.
       const book = await ScheduleBook.load(tx, org);
       const people = await this.peopleIn(tx, org, dto.scopeType, scopeId, dto.validFrom);
       for (const e of people) {
         for (let k = 0; k < 28; k++) {
           const on = addDays(dto.validFrom, k);
           const f = await factsOn(tx, org, e, on);
-          if (!f || book.patternOn(f, on)?.patternId !== patternId) continue;
-          const reason = await nightGuard(tx, org, f, on, (await book.day(f, on, false)).shift);
+          const cell = f ? book.patternOn(f, on) : undefined;
+          if (!f || cell?.patternId !== patternId || !cell.cell) continue;
+          const reason = await nightGuard(tx, org, f, on, book.shiftOn(cell.cell, on));
           if (reason) throw new ConflictException({ statusCode: 409, code: 'NIGHT_GUARD', message: `${reason} (${fmt(on)}). The pattern was not applied.` });
         }
       }
@@ -239,6 +242,8 @@ export class RosterService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ night work (YX-AT-25 / 26)
 
+  // DECISION NEEDED: the Code wants written consent; until P05 e-sign exists HR records it with the signed form's
+  // reference. Should the worker also confirm it in the app (OTP acknowledgement)?
   addConsent(ctx: TenantContext, user: ScopeUser, dto: ConsentDto) {
     return this.setup.run(ctx, user, true, async (tx, c) => {
       const org = c.organizationId;
@@ -335,8 +340,8 @@ export class RosterService implements OnModuleInit {
           const conflicts: Conflict[] = [];
           if (plan.shift && leave.get(on)) conflicts.push({ on, kind: 'leave', message: leave.get(on) === 'full' ? 'On leave' : 'Half day on leave' });
           if (plan.shift && holidays.get(on)) conflicts.push({ on, kind: 'holiday', message: `Holiday: ${holidays.get(on)!.name}` });
-          const night = await nightGuard(tx, org, f, on, plan.shift);
-          if (night) conflicts.push({ on, kind: 'night', message: night });
+          const night = (draft === null && effective.guarded) || (await nightGuard(tx, org, f, on, plan.shift));
+          if (night) conflicts.push({ on, kind: 'night', message: draft === null && effective.guarded ? `${night}: the night shift does not apply, so the usual shift does` : night });
           cells.push({
             on,
             employed: true,

@@ -131,6 +131,8 @@ export async function seedTimeB2(tx: Tx, organizationId: string, passwordHash: s
   }
 
   // ---- OT rule for plant workers (Q7): settled as comp-off ----
+  // DECISION NEEDED: for factory workers the law pays overtime at twice the wage; comp-off instead of OT pay is the
+  // brief's demo flow. Confirm with the compliance adviser before a real plant uses settle = comp-off.
   await tx.overtimeRule.create({ data: { ...org, name: 'Hosur plant overtime', scopeType: 'location', scopeId: hosur.id, validFrom: day(from), minMinutes: 30, roundMinutes: 15, dailyCapMinutes: 240, rateNormal: 2, rateWeeklyOff: 2, rateHoliday: 2, needsApproval: true, settle: 'comp_off', compOffHalfMinutes: 60, compOffFullMinutes: 240, createdBy: hr } });
 
   // ---- a timesheet project, and Timesheet mode for probationers (D1) ----

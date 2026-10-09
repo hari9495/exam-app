@@ -7,7 +7,7 @@ import { SettingDef, resolveSetting } from '../org-structure/settings-registry';
 import { Viewer, buildViewer, has, tenantWide, type ScopeUser } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
 import { OtClaimDto, OtRuleDto } from './dto';
-import { ScheduleBook, assertOpen } from './schedule';
+import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { SCOPE_MODEL, TimeSetupService } from './setup.service';
 import { TIME_KEYS, Facts, asDate, dateOf, factsOn, grantCovers, holidaysFor, hrApprovers, monthRange, myEmployeeId, num, todayIn, visibleSql } from './time-core';
 import { addDays } from './time-maths';
@@ -123,9 +123,11 @@ export class OvertimeService implements OnModuleInit {
       const book = await ScheduleBook.load(tx, org);
       const days = await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: id, workOn: { gte: asDate(addDays(today, -31)), lte: asDate(today) }, workedMinutes: { gt: 0 } }, orderBy: { workOn: 'desc' } });
       const open = [];
+      // A locked month takes no new claims (P08).
+      const locked = await lockedDates(tx, org, id, addDays(today, -31), today);
       for (const d of days) {
         const on = dateOf(d.workOn);
-        if (claimed.has(on)) continue;
+        if (claimed.has(on) || locked.has(on)) continue;
         const f = await factsOn(tx, org, id, on);
         if (!f) continue;
         const w = await this.workOut(tx, org, f, on, book);

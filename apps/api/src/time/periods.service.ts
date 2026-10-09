@@ -235,12 +235,13 @@ export class PeriodsService {
         const f = await factsOn(tx, org, p.id, on);
         if (!f || f.legalEntityId !== entityId || on < f.joinedOn || (f.exitedOn && on > f.exitedOn)) continue;
         calendarDays++;
+        // The person's mode on the day (P01 scoped, dated), whether or not the day was worked out.
+        mode = await settingOn(tx, c, 'attendance.mode', f, on);
         const d = mine.get(on);
         if (!d) {
           unevaluated++;
           continue;
         }
-        mode = d.mode;
         const lp = leavePaid.find((x) => x.employeeId === p.id && x.on === on);
         const pay = payOfDay({ status: d.status, leavePart: d.leavePart as 'full' | 'first' | 'second' | null, leavePaid: lp ? lp.paid : null });
         paid += pay.paid;

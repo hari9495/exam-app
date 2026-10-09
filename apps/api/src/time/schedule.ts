@@ -90,8 +90,27 @@ export class ScheduleBook {
   }
 
   /** Q1: what the person works on a date (`roster` false: ignoring the roster, i.e. the pattern or location). */
-  async day(f: Facts, on: string, roster = true): Promise<Scheduled> {
-    return resolveDay({ roster: roster ? await this.rosterOf(f.employeeId, on) : null, pattern: this.patternOn(f, on)?.cell, location: await this.locationDay(f, on), shiftOn: (id) => this.shiftOn(id, on) });
+  async day(f: Facts, on: string, roster = true): Promise<Scheduled & { guarded?: string }> {
+    const d = resolveDay({ roster: roster ? await this.rosterOf(f.employeeId, on) : null, pattern: this.patternOn(f, on)?.cell, location: await this.locationDay(f, on), shiftOn: (id) => this.shiftOn(id, on) });
+    // YX-AT-25 at the point of use: a pattern or an older publication never puts a woman at night once her consent
+    // is withdrawn or a safeguard lapsed; the day falls back to the location's shift and the planner sees why.
+    // ponytail: the location's own default shift is assumed to be a day shift.
+    const why = d.shift && d.source !== 'location' ? await this.guarded(f, on, d.shift) : null;
+    if (!why) return d;
+    const loc = await this.locationDay(f, on);
+    return { shift: loc.weeklyOff ? null : loc.rule, weeklyOff: loc.weeklyOff, source: 'location', guarded: why };
+  }
+
+  private readonly osh = new Map<string, Promise<{ nightWindow: { start: number; end: number } }>>();
+  private readonly gender = new Map<string, Promise<string | null>>();
+
+  /** The night-work guard with the cheap checks cached (most shifts and most people never reach the queries). */
+  private async guarded(f: Facts, on: string, shift: ShiftTimes): Promise<string | null> {
+    if (!this.osh.has(f.state)) this.osh.set(f.state, oshOn(this.tx, f.state, on));
+    if (!overlapsNight(shift, (await this.osh.get(f.state)!).nightWindow)) return null;
+    if (!this.gender.has(f.employeeId)) this.gender.set(f.employeeId, this.tx.employeePersonalDetails.findFirst({ where: { organizationId: this.org, employeeId: f.employeeId }, select: { gender: true } }).then((x) => x?.gender ?? null));
+    if ((await this.gender.get(f.employeeId)!) !== 'female') return null;
+    return nightGuard(this.tx, this.org, f, on, shift);
   }
 }
 
@@ -108,7 +127,11 @@ export async function lockedDates(tx: Tx, org: string, employeeId: string, from:
   return new Set(rows.map((r) => r.on));
 }
 
-/** Refuses a change touching a locked month, in plain words (YX-LOCK-02: after the lock only HR corrections). */
+/**
+ * Refuses a change touching a locked month, in plain words (YX-LOCK-02: after the lock only HR corrections).
+ * DECISION NEEDED: P08 Q4 late requests (an extra HR step, effect in the next payroll, a maximum lateness) need
+ * payroll (step 5) to carry the effect; until then a locked month refuses employee requests and HR unlocks to correct.
+ */
 export async function assertOpen(tx: Tx, org: string, employeeId: string, from: string, to: string = from): Promise<void> {
   const locked = [...(await lockedDates(tx, org, employeeId, from, to))].sort();
   if (locked.length) throw new ConflictException({ statusCode: 409, code: 'PERIOD_LOCKED', message: `${monthName(locked[0])} is locked for attendance and leave, so this can't change any more. Ask HR to record a correction.` });
