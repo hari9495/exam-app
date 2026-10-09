@@ -450,7 +450,7 @@ export interface TimesheetLineInput {
 export interface Periods {
   year: string;
   today: string;
-  entities: { id: string; name: string; months: { month: string; stage: 'open' | 'locked'; changedAt: string | null; changedBy: string | null; reason: string | null; lockable: boolean }[] }[];
+  entities: { id: string; name: string; months: { month: string; stage: 'open' | 'frozen' | 'locked' | 'filed'; reopenAsked?: boolean; changedAt: string | null; changedBy: string | null; reason: string | null; lockable: boolean }[] }[];
 }
 export interface Preflight {
   month: string;

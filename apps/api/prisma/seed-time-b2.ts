@@ -34,6 +34,12 @@ export async function seedTimeB2(tx: Tx, organizationId: string, passwordHash: s
   const today = todayIn('Asia/Kolkata');
   const engine = new ApprovalsEngine({ forTenant: (_c: unknown, fn: (t: Tx) => unknown) => fn(tx) } as unknown as TenantPrismaService, { notifySystem: async () => undefined } as never, { deliver: async () => undefined } as never);
   const days = new DayEngine();
+  // The Hosur plant is a factory (founder decision 9 Oct 2026): ensured on every run, so a database seeded before the
+  // decision gets it too (factory overtime is paid at the legal rate, never comp-off).
+  const plant = await tx.location.findFirst({ where: { ...org, code: 'HSR-PLT' } });
+  if (plant && !(await tx.setting.findFirst({ where: { ...org, scopeType: 'location', scopeId: plant.id, key: 'attendance.factories_act' } }))) {
+    await tx.setting.create({ data: { ...org, scopeType: 'location', scopeId: plant.id, key: 'attendance.factories_act', value: 'covered', validFrom: day('2026-01-01') } });
+  }
   if (await tx.shift.findFirst({ where: { ...org, code: 'M' } })) {
     const book = await ScheduleBook.load(tx, organizationId);
     for (const e of await tx.employee.findMany({ where: { ...org, workEmail: { endsWith: '@kaverifoods.test' } }, select: { id: true } })) await days.evaluate(tx, c, e.id, addDays(today, -3), today, new Date(), book);
@@ -134,7 +140,6 @@ export async function seedTimeB2(tx: Tx, organizationId: string, passwordHash: s
 
   // ---- OT rule for plant workers (Q7): the plant is a factory, so overtime is paid at the legal rate ----
   // Founder decision 9 Oct 2026: factory overtime is paid, not comp-off (P07 IN.FACTORIES, 2× ordinary wages, verify).
-  await tx.setting.create({ data: { ...org, scopeType: 'location', scopeId: hosur.id, key: 'attendance.factories_act', value: 'covered', validFrom: day(from) } });
   await tx.overtimeRule.create({ data: { ...org, name: 'Hosur plant overtime', scopeType: 'location', scopeId: hosur.id, validFrom: day(from), minMinutes: 30, roundMinutes: 15, dailyCapMinutes: 240, rateNormal: 2, rateWeeklyOff: 2, rateHoliday: 2, needsApproval: true, settle: 'pay', compOffHalfMinutes: 60, compOffFullMinutes: 240, createdBy: hr } });
 
   // ---- a timesheet project, and Timesheet mode for probationers (D1) ----
@@ -187,8 +192,9 @@ export async function seedTimeB2(tx: Tx, organizationId: string, passwordHash: s
   }
 
   // ---- the previous month locked for Kaveri Foods TN, with its frozen payroll feed (P08, §B6) ----
-  const periods = new PeriodsService(null as never, tenant, days);
-  const lock = await tx.periodLock.create({ data: { ...org, legalEntityId: tnEntity, periodStart: day(prev.from), periodEnd: day(prev.to), stage: 'locked', changedBy: hr } });
+  const periods = new PeriodsService(null as never, tenant, days, null as never);
+  const lock = await tx.payPeriod.create({ data: { ...org, legalEntityId: tnEntity, periodStart: day(prev.from), periodEnd: day(prev.to), stage: 'locked', changedBy: hr, lockedAt: new Date(), lockedBy: hr } });
+  await tx.periodLockEvent.create({ data: { ...org, payPeriodId: lock.id, fromStage: 'open', toStage: 'locked', byUser: hr } });
   const feed = await periods.feedRows(tx, c, tnEntity, prev.from.slice(0, 7));
-  await tx.payrollFeedRow.createMany({ data: feed.map((r) => ({ ...org, lockId: lock.id, legalEntityId: tnEntity, periodStart: day(prev.from), employeeId: r.employeeId, mode: r.mode, calendarDays: r.calendarDays, paidDays: r.paidDays, lopDays: r.lopDays, otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: r.compOffDays, timesheetMinutes: r.timesheetMinutes })) });
+  await tx.payrollFeedRow.createMany({ data: feed.map((r) => ({ ...org, payPeriodId: lock.id, legalEntityId: tnEntity, periodStart: day(prev.from), employeeId: r.employeeId, mode: r.mode, calendarDays: r.calendarDays, paidDays: r.paidDays, lopDays: r.lopDays, otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: r.compOffDays, timesheetMinutes: r.timesheetMinutes })) });
 }

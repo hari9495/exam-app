@@ -1,7 +1,7 @@
 import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { DEFAULT_SECURITY_POLICY, invalidateTenantSecurityPolicy } from '@exam-platform/shared';
-import { ApiKeyAuthGuard } from './api-key-auth.guard';
+import { ApiKeyAuthGuard, RequireApiScope } from './api-key-auth.guard';
 
 describe('ApiKeyAuthGuard', () => {
   let guard: ApiKeyAuthGuard;
@@ -101,6 +101,29 @@ describe('ApiKeyAuthGuard', () => {
       tenantPrisma.forTenant.mockResolvedValue(null);
       await expect(guard.canActivate(contextWithHeader('Bearer pk_live_wrongkey'))).rejects.toThrow(UnauthorizedException);
       expect(tenantPrisma.forTenant).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('the payroll-write scope (P11 YX-API-12)', () => {
+    class Routes {
+      @RequireApiScope('payroll-write')
+      write() {}
+    }
+    const ctx = (scopes: string[]) => {
+      tenantPrisma.forTenant.mockResolvedValueOnce({ id: 'org-1', apiKeyScopes: scopes }).mockResolvedValueOnce({ ...DEFAULT_SECURITY_POLICY, organizationId: 'org-1' });
+      const request: any = { ip: '203.0.113.10', headers: { authorization: 'Bearer pk_live_realkey' } };
+      return { request, context: { switchToHttp: () => ({ getRequest: () => request }), getHandler: () => Routes.prototype.write } as unknown as ExecutionContext };
+    };
+
+    it('refuses a payroll write with a key that lacks the scope', async () => {
+      const { request, context } = ctx([]);
+      await expect(guard.canActivate(context)).rejects.toThrow(/payroll-write/);
+      expect(request.apiKeyOrg).toBeUndefined();
+    });
+
+    it('lets a key with the scope through', async () => {
+      const { context } = ctx(['payroll-write']);
+      await expect(guard.canActivate(context)).resolves.toBe(true);
     });
   });
 });

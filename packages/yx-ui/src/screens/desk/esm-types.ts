@@ -108,6 +108,8 @@ export interface ApprovalTask {
   step: { index: number; of: number; name: string; need: number; approvers: number };
   dueAt: string | null;
   submittedAt: string;
+  /** Irreversible requests (e.g. reopening a locked pay month) are decided on their own page, with a fresh second step. */
+  decideAt?: string | null;
 }
 export interface ApprovalHistory {
   decided: { requestId: string; title: string; type: string; decision: string; at: string; requestStatus: string }[];

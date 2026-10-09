@@ -4,6 +4,7 @@ import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connectio
 import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { WorkflowModule } from '../workflow/workflow.module';
+import { PayrollModule } from '../payroll/payroll.module';
 import { AttendanceService } from './attendance.service';
 import { DayEngine } from './day-engine.service';
 import { LeaveService } from './leave.service';
@@ -19,7 +20,7 @@ import { TimesheetService } from './timesheet.service';
 
 // M02 Time and leave (step 4, batches 1 and 2) on the shared P03 approvals engine and P19 conditions.
 @Module({
-  imports: [AuditModule, WorkflowModule, NotificationsModule, AuthModule],
+  imports: [AuditModule, WorkflowModule, NotificationsModule, AuthModule, PayrollModule],
   controllers: [TimeController, TimeOpsController],
   providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, DayEngine, LeaveService, AttendanceService, TimeSetupService, TimeJobs, RosterService, OvertimeService, TimesheetService, PeriodsService, NightWorkService],
   // PeriodsService.feedRows / feed: the stable read of the frozen payroll feed for payroll (step 5).

@@ -11,6 +11,7 @@ import { ScheduleBook } from './schedule';
 import { TIME_KEYS, asDate, dateOf, factsOn, monthRange, num, settingOn, visibleSql } from './time-core';
 import { addDays, daysBetween } from './time-maths';
 import { payOfDay } from './time-rules';
+import { PayPeriodsService } from '../payroll/periods.service';
 
 // P08 attendance periods per legal entity and month (lock / unlock with a fresh second sign-in step, audited), the
 // §B6 payroll feed (per person and period, frozen when the period locks; a stable read for payroll in step 5), and the
@@ -53,6 +54,7 @@ export class PeriodsService {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly days: DayEngine,
+    private readonly payPeriods: PayPeriodsService,
   ) {}
 
   private viewer(user: ScopeUser): Promise<Viewer> {
@@ -77,8 +79,10 @@ export class PeriodsService {
     if (!has(v, 'attendance.lock')) throw new ForbiddenException('Locking attendance needs attendance.lock.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const entities = (await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true } })).filter((e) => this.coversEntity(v, e.id));
-      const locks = await tx.periodLock.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: entities.map((e) => e.id) }, periodStart: { gte: asDate(`${year}-01-01`), lte: asDate(`${year}-12-01`) } } });
+      const locks = await tx.payPeriod.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: entities.map((e) => e.id) }, periodStart: { gte: asDate(`${year}-01-01`), lte: asDate(`${year}-12-01`) } } });
       const users = new Map((await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: locks.map((l) => l.changedBy).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
+      // PAY-1.02: "unlock" asks to reopen; a month with a request waiting shows it.
+      const asked = new Set((await tx.periodReopenRequest.findMany({ where: { organizationId: c.organizationId, payPeriodId: { in: locks.map((l) => l.id) }, status: 'pending' }, select: { payPeriodId: true } })).map((r) => r.payPeriodId));
       const today = todayIst();
       return {
         year,
@@ -89,7 +93,7 @@ export class PeriodsService {
           months: Array.from({ length: 12 }, (_, i) => {
             const month = `${year}-${String(i + 1).padStart(2, '0')}`;
             const l = locks.find((x) => x.legalEntityId === e.id && dateOf(x.periodStart) === `${month}-01`);
-            return { month, stage: l?.stage ?? 'open', changedAt: l?.changedAt ?? null, changedBy: l?.changedBy ? (users.get(l.changedBy) ?? null) : null, reason: l?.reason ?? null, lockable: this.lockableFrom(month) <= today };
+            return { month, stage: l?.stage ?? 'open', reopenAsked: Boolean(l && asked.has(l.id)), changedAt: l?.changedAt ?? null, changedBy: l?.changedBy ? (users.get(l.changedBy) ?? null) : null, reason: l?.reason ?? null, lockable: this.lockableFrom(month) <= today };
           }),
         })),
       };
@@ -158,48 +162,39 @@ export class PeriodsService {
       if (!(await tx.legalEntity.findFirst({ where: { organizationId: org, id: entityId } }))) throw new NotFoundException('Not found');
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`lock:${org}:${entityId}:${month}`}))`;
       const { from, to } = monthRange(month);
-      const current = await tx.periodLock.findFirst({ where: { organizationId: org, legalEntityId: entityId, periodType: 'attendance', periodStart: asDate(from) } });
-      if (current?.stage === 'locked') throw new ConflictException(`${monthText(month)} is already locked.`);
+      const current = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: entityId, periodStart: asDate(from) } });
+      if (current && (current.stage === 'locked' || current.stage === 'filed')) throw new ConflictException(`${monthText(month)} is already locked.`);
       // Every day of the month evaluated with the inputs as they are now, before the check and the freeze.
       const people = await this.employeesOf(tx, org, entityId, from, to);
       const book = await ScheduleBook.load(tx, org);
-      for (const p of people) await this.days.evaluate(tx, c, p.id, from, to, new Date(), book);
+      // D2: a frozen month's days are already fixed (the database refuses changes to them); they are locked as they are.
+      if (current?.stage !== 'frozen') for (const p of people) await this.days.evaluate(tx, c, p.id, from, to, new Date(), book);
       const pre = await this.preflightIn(tx, c, entityId, month);
       if (pre.pending.length || pre.exceptions) {
         const parts = [...pre.pending.map((x) => `${x.count} ${x.kind.toLowerCase()} waiting`), ...(pre.exceptions ? [`${pre.exceptions} days with missing punches or timesheets`] : [])];
         throw new ConflictException({ statusCode: 409, code: 'LOCK_PREFLIGHT', message: `${monthText(month)} can't be locked yet: ${parts.join(', ')}. Decide or fix them first.`, preflight: pre });
       }
       const lock = current
-        ? await tx.periodLock.update({ where: { id: current.id }, data: { stage: 'locked', changedBy: c.userId ?? null, changedAt: new Date(), reason: null } })
-        : await tx.periodLock.create({ data: { organizationId: org, legalEntityId: entityId, periodStart: asDate(from), periodEnd: asDate(to), stage: 'locked', changedBy: c.userId ?? null } });
+        ? await tx.payPeriod.update({ where: { id: current.id }, data: { stage: 'locked', changedBy: c.userId ?? null, changedAt: new Date(), reason: null, lockedAt: new Date(), lockedBy: c.userId ?? null, version: { increment: 1 } } })
+        : await tx.payPeriod.create({ data: { organizationId: org, legalEntityId: entityId, periodStart: asDate(from), periodEnd: asDate(to), stage: 'locked', changedBy: c.userId ?? null, lockedAt: new Date(), lockedBy: c.userId ?? null } });
+      await tx.periodLockEvent.create({ data: { organizationId: org, payPeriodId: lock.id, fromStage: current?.stage ?? 'open', toStage: 'locked', byUser: c.userId ?? null } });
       const rows = await this.feedRows(tx, c, entityId, month);
       if (rows.length)
         await tx.payrollFeedRow.createMany({
-          data: rows.map((r) => ({ organizationId: org, lockId: lock.id, legalEntityId: entityId, periodStart: asDate(from), employeeId: r.employeeId, mode: r.mode, calendarDays: r.calendarDays, paidDays: r.paidDays, lopDays: r.lopDays, otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: r.compOffDays, timesheetMinutes: r.timesheetMinutes })),
+          data: rows.map((r) => ({ organizationId: org, payPeriodId: lock.id, legalEntityId: entityId, periodStart: asDate(from), employeeId: r.employeeId, mode: r.mode, calendarDays: r.calendarDays, paidDays: r.paidDays, lopDays: r.lopDays, otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: r.compOffDays, timesheetMinutes: r.timesheetMinutes })),
         });
       // YX-AUD-09: what was seen and confirmed.
-      await audit(tx, c, 'time.period.locked', 'period_lock', lock.id, { legalEntityId: entityId, month, people: rows.length, paidDays: rows.reduce((s, r) => s + r.paidDays, 0), lopDays: rows.reduce((s, r) => s + r.lopDays, 0) });
+      await audit(tx, c, 'time.period.locked', 'pay_period', lock.id, { legalEntityId: entityId, month, people: rows.length, paidDays: rows.reduce((s, r) => s + r.paidDays, 0), lopDays: rows.reduce((s, r) => s + r.lopDays, 0) });
       return { id: lock.id, stage: 'locked', frozen: rows.length };
     });
   }
 
-  /** Unlocks a month (step-up, reason, audited); the frozen feed is kept but superseded. */
-  async unlock(ctx: TenantContext, user: ScopeUser, entityId: string, month: string, reason: string) {
-    const v = await this.viewer(user);
-    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
-    if (!this.coversEntity(v, entityId)) throw new NotFoundException('Not found');
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const org = c.organizationId;
-      const { from } = monthRange(month);
-      const l = await tx.periodLock.findFirst({ where: { organizationId: org, legalEntityId: entityId, periodType: 'attendance', periodStart: asDate(from) } });
-      if (!l || l.stage !== 'locked') throw new ConflictException(`${monthText(month)} is not locked.`);
-      // Founder decision 9 Oct 2026: unlock = step-up + a reason now; once payroll (step 5) exists it becomes the P08
-      // two-approval reopen request (Payroll Admin and System Admin, refused after bank release).
-      await tx.periodLock.update({ where: { id: l.id }, data: { stage: 'open', changedBy: c.userId ?? null, changedAt: new Date(), reason } });
-      await tx.payrollFeedRow.updateMany({ where: { organizationId: org, lockId: l.id, supersededAt: null }, data: { supersededAt: new Date() } });
-      await audit(tx, c, 'time.period.unlocked', 'period_lock', l.id, { legalEntityId: entityId, month, reason });
-      return { id: l.id, stage: 'open' };
-    });
+  /**
+   * "Unlock" asks to reopen the month (founder decision 9 Oct 2026: unlock was step-up + a reason until payroll existed;
+   * now it is the P08 two-approval reopen request, PAY-1.02). The month stays locked until both approvals are given.
+   */
+  unlock(ctx: TenantContext, user: ScopeUser, entityId: string, month: string, reason: string) {
+    return this.payPeriods.requestReopen(ctx, user, entityId, month, reason, 'attendance.lock');
   }
 
   // ------------------------------------------------------------------------------------------ the payroll feed (§B6)
@@ -297,12 +292,12 @@ export class PeriodsService {
           await tx.$queryRaw<{ id: string }[]>`SELECT e.id::text FROM employees e WHERE e.organization_id = ${org}::uuid AND ${await visibleSql(tx, c, v, own, 'attendance.view', Prisma.sql`e.id`, to, false)} AND (${own}::uuid IS NULL OR e.id <> ${own}::uuid)`
         ).map((r) => r.id),
       );
-      const lock = await tx.periodLock.findFirst({ where: { organizationId: org, legalEntityId: entityId, periodType: 'attendance', periodStart: asDate(from) } });
+      const lock = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: entityId, periodStart: asDate(from) } });
       const frozen = lock?.stage === 'locked';
       let rows: (FeedRow & { frozenAt?: Date })[];
       if (frozen) {
         const people = new Map((await this.employeesOf(tx, org, entityId, from, to)).map((p) => [p.id, p]));
-        rows = (await tx.payrollFeedRow.findMany({ where: { organizationId: org, lockId: lock!.id, supersededAt: null }, orderBy: { frozenAt: 'desc' } }))
+        rows = (await tx.payrollFeedRow.findMany({ where: { organizationId: org, payPeriodId: lock!.id, supersededAt: null }, orderBy: { frozenAt: 'desc' } }))
           .filter((r) => visible.has(r.employeeId))
           .map((r) => ({ employeeId: r.employeeId, name: people.get(r.employeeId)?.name ?? '', code: people.get(r.employeeId)?.code ?? null, mode: r.mode, calendarDays: r.calendarDays, paidDays: num(r.paidDays), lopDays: num(r.lopDays), otNormalMinutes: r.otNormalMinutes, otWeeklyOffMinutes: r.otWeeklyOffMinutes, otHolidayMinutes: r.otHolidayMinutes, nightShifts: r.nightShifts, compOffDays: num(r.compOffDays), timesheetMinutes: r.timesheetMinutes, unevaluatedDays: 0, frozenAt: r.frozenAt }))
           .sort((a, b) => a.name.localeCompare(b.name));
@@ -331,7 +326,7 @@ export class PeriodsService {
       const out = [];
       for (const l of locs) {
         const formats = await this.formats(tx, l.state, from);
-        const lock = await tx.periodLock.findFirst({ where: { organizationId: org, legalEntityId: l.entityId, periodType: 'attendance', periodStart: asDate(from) } });
+        const lock = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: l.entityId, periodStart: asDate(from) } });
         out.push({ ...l, locked: lock?.stage === 'locked', formats: formats.registers.map((r) => ({ type: r.type, title: r.title, form: r.form, columns: r.columns.map((x) => x.label) })), source: formats.source, verify: formats.verify });
       }
       return { month, locations: out };
@@ -368,7 +363,7 @@ export class PeriodsService {
         WHERE e.organization_id = ${org}::uuid AND ${await visibleSql(tx, c, v, own, 'attendance.view', Prisma.sql`e.id`, to, false)}
         GROUP BY 1, 2 ORDER BY 3, 2 LIMIT 5000`;
       if (!people.length) throw new NotFoundException('Not found');
-      const lock = await tx.periodLock.findFirst({ where: { organizationId: org, legalEntityId: loc.legalEntityId, periodType: 'attendance', periodStart: asDate(from) } });
+      const lock = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: loc.legalEntityId, periodStart: asDate(from) } });
       const ids = people.map((p) => p.id);
       const rows: Record<string, string | number>[] = [];
       if (type === 'muster') {

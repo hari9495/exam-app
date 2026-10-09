@@ -56,6 +56,8 @@ model Organization {
   embeddingBaseUrl              String?                   @map("embedding_base_url") @db.VarChar(1000)
   embeddingModel                String?                   @map("embedding_model") @db.VarChar(1000)
   apiKeyHash                    String?                   @map("api_key_hash") @db.VarChar(1000)
+  /// P11 YX-API-12: what the company API key may do beyond the default (e.g. "payroll-write").
+  apiKeyScopes                  String[]                  @default([]) @map("api_key_scopes")
   apiKeyPrefix                  String?                   @map("api_key_prefix") @db.VarChar(1000)
   apiKeyCreatedAt               DateTime?                 @map("api_key_created_at") @db.Timestamptz(3)
   webhookUrl                    String?                   @map("webhook_url") @db.VarChar(1000)
@@ -540,6 +542,11 @@ model AuditLog {
   actorRole      String?       @map("actor_role") @db.VarChar(1000)
   metadataJson   String?       @map("metadata_json") @db.Text
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  // P08 YX-AUD-03 hash chain, set by the database on insert (audit_chain_link); never written by the app.
+  chainKey       String?       @map("chain_key") @db.Uuid
+  chainSeq       BigInt?       @map("chain_seq")
+  prevHash       String?       @map("prev_hash") @db.Char(64)
+  rowHash        String?       @map("row_hash") @db.Char(64)
 
   @@index([organizationId, createdAt])
   @@index([actorUserId])
@@ -2933,22 +2940,22 @@ model SdCounter {
 }
 
 model SdDeskMember {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
-  deskId         String    @map("desk_id") @db.Uuid
-  userId         String    @map("user_id") @db.Uuid
-  role           String    @db.VarChar(12)
-  tier           String?   @db.VarChar(2)
-  skills         String[]  @default([])
-  validFrom      DateTime  @map("valid_from") @db.Date
-  validTo        DateTime? @map("valid_to") @db.Date
-  createdBy      String?   @map("created_by") @db.Uuid
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  endedBy        String?   @map("ended_by") @db.Uuid
-  endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  deskId            String    @map("desk_id") @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  role              String    @db.VarChar(12)
+  tier              String?   @db.VarChar(2)
+  skills            String[]  @default([])
+  validFrom         DateTime  @map("valid_from") @db.Date
+  validTo           DateTime? @map("valid_to") @db.Date
+  createdBy         String?   @map("created_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  endedBy           String?   @map("ended_by") @db.Uuid
+  endedAt           DateTime? @map("ended_at") @db.Timestamptz(3)
   /// 'manual' (an admin) or 'directory' (a directory group mapping of directorySourceId).
-  grantedBy         String  @default("manual") @map("granted_by") @db.VarChar(10)
-  directorySourceId String? @map("directory_source_id") @db.Uuid
+  grantedBy         String    @default("manual") @map("granted_by") @db.VarChar(10)
+  directorySourceId String?   @map("directory_source_id") @db.Uuid
 
   @@map("sd_desk_members")
 }
@@ -2998,20 +3005,20 @@ model SdGroupMember {
 }
 
 model SdCategory {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId  String   @map("organization_id") @db.Uuid
-  deskId          String   @map("desk_id") @db.Uuid
-  parentId        String?  @map("parent_id") @db.Uuid
-  name            String   @db.VarChar(100)
-  sensitive       Boolean  @default(false)
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  deskId           String   @map("desk_id") @db.Uuid
+  parentId         String?  @map("parent_id") @db.Uuid
+  name             String   @db.VarChar(100)
+  sensitive        Boolean  @default(false)
   /// SD-2.09 (M08): every new ticket in this category is private.
-  privateByDefault Boolean @default(false) @map("private_by_default")
-  defaultGroupId  String?  @map("default_group_id") @db.Uuid
-  defaultPriority Int?     @map("default_priority") @db.SmallInt
-  active          Boolean  @default(true)
-  sortOrder       Int      @default(0) @map("sort_order")
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  privateByDefault Boolean  @default(false) @map("private_by_default")
+  defaultGroupId   String?  @map("default_group_id") @db.Uuid
+  defaultPriority  Int?     @map("default_priority") @db.SmallInt
+  active           Boolean  @default(true)
+  sortOrder        Int      @default(0) @map("sort_order")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("sd_categories")
 }
@@ -5064,25 +5071,277 @@ model TimesheetLine {
   @@map("timesheet_lines")
 }
 
-model PeriodLock {
+/// P08 pay periods (batch 5a, the one lock model; step 4's attendance locks carried over). Pay groups arrive in 5b.
+model PayPeriod {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  payGroupId     String?   @map("pay_group_id") @db.Uuid
+  periodStart    DateTime  @map("period_start") @db.Date
+  periodEnd      DateTime  @map("period_end") @db.Date
+  stage          String    @db.VarChar(8)
+  cutOffAt       DateTime? @map("cut_off_at") @db.Timestamptz(3)
+  lockedAt       DateTime? @map("locked_at") @db.Timestamptz(3)
+  lockedBy       String?   @map("locked_by") @db.Uuid
+  lockedByRunId  String?   @map("locked_by_run_id") @db.Uuid
+  changedBy      String?   @map("changed_by") @db.Uuid
+  changedAt      DateTime  @default(now()) @map("changed_at") @db.Timestamptz(3)
+  reason         String?   @db.VarChar(500)
+  version        Int       @default(1)
+
+  @@map("pay_periods")
+}
+
+model PeriodLockEvent {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  payPeriodId     String   @map("pay_period_id") @db.Uuid
+  fromStage       String   @map("from_stage") @db.VarChar(8)
+  toStage         String   @map("to_stage") @db.VarChar(8)
+  byUser          String?  @map("by_user") @db.Uuid
+  reason          String?  @db.VarChar(500)
+  reopenRequestId String?  @map("reopen_request_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("period_lock_events")
+}
+
+model PeriodReopenRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  payPeriodId    String    @map("pay_period_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  reason         String    @db.VarChar(500)
+  status         String    @default("pending") @db.VarChar(10)
+  wfRequestId    String?   @map("wf_request_id") @db.Uuid
+  requestedBy    String    @map("requested_by") @db.Uuid
+  confirmation   Json
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+
+  @@map("period_reopen_requests")
+}
+
+model PayCorrection {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  payPeriodId    String    @map("pay_period_id") @db.Uuid
+  workOn         DateTime  @map("work_on") @db.Date
+  kind           String    @db.VarChar(16)
+  source         String    @db.VarChar(16)
+  change         Json
+  reason         String    @db.VarChar(500)
+  status         String    @default("pending") @db.VarChar(10)
+  wfRequestId    String?   @map("wf_request_id") @db.Uuid
+  backfillId     String?   @map("backfill_id") @db.Uuid
+  targetPeriod   DateTime? @map("target_period") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+
+  @@map("pay_corrections")
+}
+
+model DeviceBackfill {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
   legalEntityId  String   @map("legal_entity_id") @db.Uuid
-  periodType     String   @default("attendance") @map("period_type") @db.VarChar(12)
-  periodStart    DateTime @map("period_start") @db.Date
-  periodEnd      DateTime @map("period_end") @db.Date
-  stage          String   @db.VarChar(8)
-  changedBy      String?  @map("changed_by") @db.Uuid
-  changedAt      DateTime @default(now()) @map("changed_at") @db.Timestamptz(3)
-  reason         String?  @db.VarChar(500)
+  deviceRef      String   @map("device_ref") @db.VarChar(100)
+  fromOn         DateTime @map("from_on") @db.Date
+  toOn           DateTime @map("to_on") @db.Date
+  punches        Int
+  people         Int
+  reason         String   @db.VarChar(500)
+  createdBy      String   @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  @@map("period_locks")
+  @@map("device_backfills")
+}
+
+model HeldPunch {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  punchedAt      DateTime @map("punched_at") @db.Timestamptz(3)
+  workOn         DateTime @map("work_on") @db.Date
+  kind           String   @db.VarChar(3)
+  deviceRef      String   @map("device_ref") @db.VarChar(100)
+  status         String   @default("held") @db.VarChar(10)
+  backfillId     String?  @map("backfill_id") @db.Uuid
+  receivedBy     String?  @map("received_by") @db.Uuid
+  receivedAt     DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
+
+  @@map("held_punches")
+}
+
+model AuditAnchor {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String?  @map("organization_id") @db.Uuid
+  chainKey       String   @map("chain_key") @db.Uuid
+  lastSeq        BigInt   @map("last_seq")
+  lastHash       String   @map("last_hash") @db.Char(64)
+  rowsChecked    BigInt   @map("rows_checked")
+  result         String   @db.VarChar(8)
+  brokenAtSeq    BigInt?  @map("broken_at_seq")
+  problem        String?  @db.VarChar(500)
+  verifiedAt     DateTime @default(now()) @map("verified_at") @db.Timestamptz(3)
+
+  @@map("audit_anchors")
+}
+
+model AuditLegalHold {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  caseRef        String    @map("case_ref") @db.VarChar(100)
+  employeeId     String?   @map("employee_id") @db.Uuid
+  fromAt         DateTime  @map("from_at") @db.Timestamptz(3)
+  toAt           DateTime  @map("to_at") @db.Timestamptz(3)
+  reason         String    @db.VarChar(500)
+  setBy          String    @map("set_by") @db.Uuid
+  setAt          DateTime  @default(now()) @map("set_at") @db.Timestamptz(3)
+  releasedBy     String?   @map("released_by") @db.Uuid
+  releasedAt     DateTime? @map("released_at") @db.Timestamptz(3)
+
+  @@map("audit_legal_holds")
+}
+
+model AuditArchive {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String?   @map("organization_id") @db.Uuid
+  chainKey       String    @map("chain_key") @db.Uuid
+  fromSeq        BigInt    @map("from_seq")
+  toSeq          BigInt    @map("to_seq")
+  lastHash       String    @map("last_hash") @db.Char(64)
+  rows           Int
+  newestAt       DateTime  @map("newest_at") @db.Timestamptz(3)
+  fileRef        String?   @map("file_ref") @db.VarChar(500)
+  sha256         String    @db.Char(64)
+  archivedAt     DateTime  @default(now()) @map("archived_at") @db.Timestamptz(3)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(3)
+
+  @@map("audit_archives")
+}
+
+model ExchangeFile {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  legalEntityId      String    @map("legal_entity_id") @db.Uuid
+  kind               String    @db.VarChar(10)
+  ownerType          String    @map("owner_type") @db.VarChar(20)
+  ownerId            String?   @map("owner_id") @db.Uuid
+  periodStart        DateTime? @map("period_start") @db.Date
+  fileName           String    @map("file_name") @db.VarChar(200)
+  contentType        String    @map("content_type") @db.VarChar(100)
+  fileRef            String    @map("file_ref") @db.VarChar(500)
+  sha256             String    @db.Char(64)
+  sizeBytes          Int       @map("size_bytes")
+  rowCount           Int       @map("row_count")
+  totals             Json      @default("{}")
+  status             String    @default("generated") @db.VarChar(16)
+  generatedBy        String    @map("generated_by") @db.Uuid
+  generatedAt        DateTime  @default(now()) @map("generated_at") @db.Timestamptz(3)
+  releaseWfRequestId String?   @map("release_wf_request_id") @db.Uuid
+  releasedBy         String?   @map("released_by") @db.Uuid
+  releasedAt         DateTime? @map("released_at") @db.Timestamptz(3)
+  supersededBy       String?   @map("superseded_by") @db.Uuid
+
+  @@map("exchange_files")
+}
+
+model ExchangeFileLink {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  fileId         String    @map("file_id") @db.Uuid
+  tokenHash      String    @unique @map("token_hash") @db.Char(64)
+  userId         String    @map("user_id") @db.Uuid
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt         DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("exchange_file_links")
+}
+
+model PayDocument {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  legalEntityId   String    @map("legal_entity_id") @db.Uuid
+  employeeId      String    @map("employee_id") @db.Uuid
+  kind            String    @db.VarChar(20)
+  title           String    @db.VarChar(200)
+  periodStart     DateTime? @map("period_start") @db.Date
+  templateKey     String    @map("template_key") @db.VarChar(40)
+  templateVersion Int       @map("template_version")
+  referenceNo     String    @map("reference_no") @db.VarChar(60)
+  fileRef         String?   @map("file_ref") @db.VarChar(500)
+  sha256          String    @db.Char(64)
+  /// D1: the issued (unsigned) file, so a signed upload can be checked against it.
+  unsignedSha256  String    @map("unsigned_sha256") @db.Char(64)
+  unsignedBytes   Int?      @map("unsigned_bytes")
+  verifyCode      String?   @unique @map("verify_code") @db.VarChar(16)
+  status          String    @db.VarChar(20)
+  supersedesId    String?   @map("supersedes_id") @db.Uuid
+  supersededById  String?   @map("superseded_by_id") @db.Uuid
+  signature       String    @default("none") @db.VarChar(20)
+  signatureRef    String?   @map("signature_ref") @db.VarChar(200)
+  signedAt        DateTime? @map("signed_at") @db.Timestamptz(3)
+  issuedBy        String    @map("issued_by") @db.Uuid
+  issuedAt        DateTime  @default(now()) @map("issued_at") @db.Timestamptz(3)
+  retainUntil     DateTime  @map("retain_until") @db.Date
+  purgedAt        DateTime? @map("purged_at") @db.Timestamptz(3)
+
+  @@map("pay_documents")
+}
+
+model PayDocumentCounter {
+  organizationId String @map("organization_id") @db.Uuid
+  legalEntityId  String @map("legal_entity_id") @db.Uuid
+  kind           String @db.VarChar(20)
+  year           Int    @db.SmallInt
+  lastNo         Int    @default(0) @map("last_no")
+
+  @@id([organizationId, legalEntityId, kind, year])
+  @@map("pay_document_counters")
+}
+
+model PayDocumentNominee {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  name           String    @db.VarChar(200)
+  emailHash      String    @map("email_hash") @db.Char(64)
+  emailEnc       String    @map("email_enc")
+  emailLast4     String    @map("email_last4") @db.VarChar(8)
+  validUntil     DateTime  @map("valid_until") @db.Date
+  grantedBy      String    @map("granted_by") @db.Uuid
+  grantedAt      DateTime  @default(now()) @map("granted_at") @db.Timestamptz(3)
+  revokedBy      String?   @map("revoked_by") @db.Uuid
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  @@map("pay_document_nominees")
+}
+
+model PayPortalSession {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  nomineeId      String?   @map("nominee_id") @db.Uuid
+  tokenHash      String    @unique @map("token_hash") @db.Char(64)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("pay_portal_sessions")
 }
 
 model PayrollFeedRow {
   id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId     String    @map("organization_id") @db.Uuid
-  lockId             String    @map("lock_id") @db.Uuid
+  payPeriodId        String    @map("pay_period_id") @db.Uuid
   legalEntityId      String    @map("legal_entity_id") @db.Uuid
   periodStart        DateTime  @map("period_start") @db.Date
   employeeId         String    @map("employee_id") @db.Uuid

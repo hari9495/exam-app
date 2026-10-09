@@ -68,6 +68,14 @@ export const YX_KEYS = [
   // Step 4 batch 2: rosters in scope and locking attendance months.
   'roster.manage',
   'attendance.lock',
+  // M03 payroll batch 5a: pay periods and reopen, pay documents, payroll files, the audit log.
+  'payroll.period.view',
+  'payroll.period.reopen',
+  'payroll.period.reopen.approve',
+  'payroll.document.view',
+  'payroll.file.view',
+  'audit.view',
+  'audit.export',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 
