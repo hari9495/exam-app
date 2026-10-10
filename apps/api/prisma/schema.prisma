@@ -7315,3 +7315,116 @@ model PayslipLink {
 
   @@map("payslip_links")
 }
+
+
+// ---- M03 payroll batch 5e (migration 20261101000000_payroll_5e): income tax. RLS and the pay guard live in the migration.
+
+model TaxWorkspace {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  legalEntityId        String    @map("legal_entity_id") @db.Uuid
+  employeeId           String    @map("employee_id") @db.Uuid
+  employmentId         String    @map("employment_id") @db.Uuid
+  taxYear              String    @map("tax_year") @db.VarChar(7)
+  lawVersion           String    @map("law_version") @db.VarChar(8)
+  regime               String    @default("new") @db.VarChar(3)
+  regimeSetAt          DateTime? @map("regime_set_at") @db.Timestamptz(3)
+  regimeOverrideBy     String?   @map("regime_override_by") @db.Uuid
+  regimeOverrideReason String?   @map("regime_override_reason") @db.VarChar(500)
+  residentialStatus    String    @default("resident") @map("residential_status") @db.VarChar(12)
+  trcValidTo           DateTime? @map("trc_valid_to") @db.Date
+  dtaaCountry          String?   @map("dtaa_country") @db.Char(2)
+  panStatus            String    @default("unchecked") @map("pan_status") @db.VarChar(12)
+  panStatusBy          String?   @map("pan_status_by") @db.Uuid
+  panStatusReason      String?   @map("pan_status_reason") @db.VarChar(300)
+  otherIncome          Json      @default("[]") @map("other_income")
+  version              Int       @default(1)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employmentId, taxYear], map: "tax_workspaces_key")
+  @@map("tax_workspaces")
+}
+
+model TaxDeclarationLine {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  legalEntityId    String    @map("legal_entity_id") @db.Uuid
+  employeeId       String    @map("employee_id") @db.Uuid
+  workspaceId      String    @map("workspace_id") @db.Uuid
+  subjectKey       String    @map("subject_key") @db.VarChar(30)
+  amount           Decimal   @db.Decimal(14, 2)
+  landlordName     String?   @map("landlord_name") @db.VarChar(200)
+  landlordPanEnc   String?   @map("landlord_pan_enc")
+  landlordPanLast4 String?   @map("landlord_pan_last4") @db.Char(4)
+  rentFrom         String?   @map("rent_from") @db.Char(7)
+  rentTo           String?   @map("rent_to") @db.Char(7)
+  metro            Boolean?
+  proofFiles       Json      @default("[]") @map("proof_files")
+  proofStatus      String    @default("none") @map("proof_status") @db.VarChar(8)
+  approvedAmount   Decimal?  @map("approved_amount") @db.Decimal(14, 2)
+  verifierId       String?   @map("verifier_id") @db.Uuid
+  verifierComment  String?   @map("verifier_comment") @db.VarChar(500)
+  verifiedAt       DateTime? @map("verified_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, workspaceId, subjectKey], map: "tax_declaration_lines_key")
+  @@map("tax_declaration_lines")
+}
+
+model TdsProjection {
+  payslipId      String   @id @map("payslip_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  employmentId   String   @map("employment_id") @db.Uuid
+  taxYear        String   @map("tax_year") @db.VarChar(7)
+  lawVersion     String   @map("law_version") @db.VarChar(8)
+  regime         String   @db.VarChar(3)
+  calcVersion    String   @map("calc_version") @db.VarChar(20)
+  monthTds       Decimal  @map("month_tds") @db.Decimal(14, 2)
+  annualTax      Decimal  @map("annual_tax") @db.Decimal(14, 2)
+  inputs         Json
+  result         Json
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("tds_projections")
+}
+
+model Perquisite {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  employmentId   String    @map("employment_id") @db.Uuid
+  taxYear        String    @map("tax_year") @db.VarChar(7)
+  kind           String    @db.VarChar(14)
+  annualValue    Decimal   @map("annual_value") @db.Decimal(14, 2)
+  description    String    @db.VarChar(300)
+  enteredBy      String    @map("entered_by") @db.Uuid
+  cancelledAt    DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("perquisites")
+}
+
+model TaxCertificate {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  employmentId   String   @map("employment_id") @db.Uuid
+  taxYear        String   @map("tax_year") @db.VarChar(7)
+  lawVersion     String   @map("law_version") @db.VarChar(8)
+  form           String   @db.VarChar(8)
+  partARef       String?  @map("part_a_ref") @db.VarChar(500)
+  partASha256    String?  @map("part_a_sha256") @db.Char(64)
+  partB          Json     @map("part_b")
+  payDocumentId  String?  @map("pay_document_id") @db.Uuid
+  createdBy      String   @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employmentId, taxYear], map: "tax_certificates_key")
+  @@map("tax_certificates")
+}

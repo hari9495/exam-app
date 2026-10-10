@@ -1,13 +1,14 @@
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
-import { Citation, RuleSet, StatutoryError, bonus, codeWage, deductionCap, esi, gratuity, inForce, injury, lwf, maternity, minWage, minWageTableFor, pf, pt, subsistence } from '../statutory/evaluator';
+import { projectTax, type TaxInputs, type TaxProjection } from './tax';
+import { Citation, RuleSet, cite, StatutoryError, bonus, codeWage, deductionCap, esi, gratuity, inForce, injury, lwf, maternity, minWage, minWageTableFor, pf, pt, subsistence } from '../statutory/evaluator';
 
 // The payroll calculation (M03-BUILD-DESIGN §9.4, PAY-3.04 … 3.16): a pure function of one person's month snapshot and the
 // rule sets. It reads no database and no clock, so a payslip can be reproduced from its snapshot with the rule versions it
 // used (§3.5), and golden and property tests call the same function. Money is Decimal; every line explains itself and
-// cites the rule it came from. TDS is batch 5e (§8.5) and is not computed here.
+// cites the rule it came from. TDS (batch 5e, §8.5) comes from the same pure tax function as the employee's tax sheet.
 
-export const ENGINE_VERSION = '5c.1';
+export const ENGINE_VERSION = '5e.1';
 const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
 const ZERO = D(0);
 const r2 = (x: Prisma.Decimal) => x.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
@@ -28,6 +29,8 @@ export interface CalcComponent {
   prorated: boolean;
   rounding: 'none' | 'rupee' | 'up_rupee';
   statutory: string | null;
+  /** Batch 5e: counts as salary income for tax (absent = taxable). */
+  taxable?: boolean;
 }
 
 /** One stretch of the month with the same compensation and place (P06 segments). */
@@ -70,6 +73,8 @@ export interface Snapshot {
   };
   options: { bonusRate: string | null; bonusPayment: 'annual' | 'monthly'; protectedNetPercent: string; netRounding: 'none' | 'rupee'; standardDailyHours: string };
   held: boolean;
+  /** Batch 5e: the tax inputs (absent before 5e; then no TDS line). */
+  tax?: TaxInputs | null;
 }
 
 export interface CalcLine {
@@ -98,6 +103,8 @@ export interface CalcResult {
   deferred: { kind: string; ref: string; amount: string }[];
   carryForward: string;
   minWage: { monthly: string; below: boolean; floorApplied: boolean; skillFallback: boolean } | null;
+  /** Batch 5e: the projection behind the TDS line (the tax sheet shows this, YX-TAX-06). */
+  tax: TaxProjection | null;
   resultHash: string;
 }
 
@@ -273,6 +280,17 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
     }
   }
 
+  // 5b. Income tax: the year's projection spread over the periods left (PAY-5.02); the same function makes the tax sheet.
+  let tax: TaxProjection | null = null;
+  if (s.tax) {
+    rule('IN.TDS');
+    rule('IN.TAXDED');
+    const sumOf = (pick: (l: CalcLine) => boolean) => lines.filter(pick).reduce((t, l) => t.add(l.amount), ZERO).toFixed(2);
+    tax = projectTax(s.tax, rules, { month: on.slice(0, 7), gross: sumOf((l) => l.kind === 'earning' && comps.get(l.code)?.taxable !== false), basic: sumOf((l) => l.code === 'basic'), hra: sumOf((l) => l.code === 'hra'), pt: sumOf((l) => l.code === statCode('pt')) });
+    const tdsRs = rule('IN.TDS');
+    add({ code: statCode('tds'), name: nameOf(statCode('tds'), 'Income tax (TDS)'), kind: 'deduction', segmentNo: 0, amount: D(tax.monthTds), explanation: `Tax for the year ${rupees(tax.tax.total)} (${tax.regime} regime) less ${rupees(tax.alreadyDeducted)} already deducted, over ${tax.remainingPeriods} pay ${tax.remainingPeriods === 1 ? 'period' : 'periods'}.`, rule: tdsRs ? cite(tdsRs) : undefined });
+  }
+
   // 6. Recoveries in legal order within the protected net and the deduction cap (§8.4); a negative net is carried forward.
   const gross = lines.filter((l) => l.kind === 'earning').reduce((t, l) => t.add(l.amount), ZERO);
   const statutoryDed = lines.filter((l) => l.kind === 'deduction').reduce((t, l) => t.add(l.amount), ZERO);
@@ -324,6 +342,6 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   if (s.held) add({ code: 'held', name: 'Net pay held', kind: 'info', segmentNo: 0, amount: net, explanation: 'Net pay is held; statutory deductions are made as usual and the pay is released later.' });
   const minW = mw ? { monthly: mw.monthly.toFixed(2), below: gross0.lt(mw.monthly) && unpaid.isZero(), floorApplied: mw.floorApplied, skillFallback: !!mw.state?.skillFallback } : null;
   const ruleVersions = Object.fromEntries([...used.entries()].map(([k, v]) => [k, v.version]));
-  const result = { lines, gross: gross.toFixed(2), deductions: deductions.toFixed(2), net: net.toFixed(2), employerCost: employerCost.toFixed(2), verify: lines.some((l) => l.verify), ruleVersions, recoveries: out, deferred, carryForward: carryForward.toFixed(2), minWage: minW };
+  const result = { lines, gross: gross.toFixed(2), deductions: deductions.toFixed(2), net: net.toFixed(2), employerCost: employerCost.toFixed(2), verify: lines.some((l) => l.verify), ruleVersions, recoveries: out, deferred, carryForward: carryForward.toFixed(2), minWage: minW, tax };
   return { ...result, resultHash: hashOf({ lines, gross: result.gross, deductions: result.deductions, net: result.net, employerCost: result.employerCost }) };
 }

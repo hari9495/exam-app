@@ -84,6 +84,10 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'payroll.payslip.publish',
   'payroll.query.handle',
   'payroll.payment_mode.approve',
+  // M03 batch 5e: tax workspaces, proof verification, regime changes.
+  'tax.workspace.view',
+  'tax.proof.verify',
+  'tax.regime.override',
 ];
 
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).

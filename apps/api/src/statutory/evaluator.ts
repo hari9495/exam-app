@@ -224,7 +224,7 @@ interface TdsRegime {
   superSeniorExemption?: string;
 }
 /** Annual tax on taxable income for a regime and age: slabs, rebate with marginal relief, surcharge, cess. */
-export function tds(rs: RuleSet, i: { taxable: Prisma.Decimal.Value; regime: 'new' | 'old'; age: number }) {
+export function tds(rs: RuleSet, i: { taxable: Prisma.Decimal.Value; regime: 'new' | 'old'; age: number; resident?: boolean }) {
   const v = need(rs, 'tds');
   const r = (v.regimes as Record<string, TdsRegime>)[i.regime];
   if (!r) throw new StatutoryError(`No ${i.regime} regime in ${rs.version}`);
@@ -243,13 +243,57 @@ export function tds(rs: RuleSet, i: { taxable: Prisma.Decimal.Value; regime: 'ne
   slabTax = round(slabTax, 'nearest');
   let rebate = ZERO;
   const limit = D(r.rebate.incomeUpTo);
-  if (income.lte(limit)) rebate = Prisma.Decimal.min(slabTax, D(r.rebate.max));
+  // The rebate (s.87A, and its successor) is for residents only (PAY-5.05).
+  if (i.resident === false) rebate = ZERO;
+  else if (income.lte(limit)) rebate = Prisma.Decimal.min(slabTax, D(r.rebate.max));
   else if (i.regime === 'new' && slabTax.gt(income.sub(limit))) rebate = slabTax.sub(income.sub(limit)); // marginal relief
   const afterRebate = slabTax.sub(rebate);
   const sc = [...r.surcharge].reverse().find((x) => income.gt(D(x.above)));
   const surcharge = sc ? round(afterRebate.mul(D(sc.rate)), 'nearest') : ZERO;
   const tax = round(afterRebate.add(surcharge).mul(D(1).add(D(v.cess as string))), 'nearest');
   return { slabTax, rebate, surcharge, tax, citation: cite(rs) };
+}
+
+// Batch 5e (PAY-5.04, 5.06): salary exemptions and deductions from the reviewed rule set IN.TAXDED (kind tax_deductions).
+interface TaxDeductions {
+  caps: Record<string, string | null>;
+  newRegimeKeys: string[];
+  hra: { metroPercent: string; otherPercent: string; rentOverBasic: string };
+  landlordPanAbove: string;
+  leaveEncashmentMax: string;
+  vrsMax: string;
+}
+
+/** One month's HRA exemption (old regime): the least of HRA received, rent above the set share of basic, and the metro / other share of basic. */
+export function hraExempt(rs: RuleSet, i: { hra: Prisma.Decimal.Value; basic: Prisma.Decimal.Value; rent: Prisma.Decimal.Value; metro: boolean }) {
+  const v = need(rs, 'tax_deductions') as unknown as TaxDeductions;
+  const basic = D(i.basic);
+  const least = Prisma.Decimal.min(D(i.hra), Prisma.Decimal.max(ZERO, D(i.rent).sub(basic.mul(D(v.hra.rentOverBasic)))), basic.mul(D(i.metro ? v.hra.metroPercent : v.hra.otherPercent)));
+  return { exempt: money(Prisma.Decimal.max(ZERO, least)), citation: cite(rs) };
+}
+
+/** A deduction claimed under one subject key, within its cap (no cap = the amount); unknown keys allow nothing. */
+export function taxDeduction(rs: RuleSet, i: { key: string; amount: Prisma.Decimal.Value; regime: 'new' | 'old' }) {
+  const v = need(rs, 'tax_deductions') as unknown as TaxDeductions;
+  const known = i.key in v.caps;
+  const allowedInRegime = i.regime === 'old' || v.newRegimeKeys.includes(i.key);
+  const cap = v.caps[i.key];
+  const allowed = !known || !allowedInRegime ? ZERO : cap === null || cap === undefined ? D(i.amount) : Prisma.Decimal.min(D(i.amount), D(cap));
+  return { allowed: money(allowed), known, allowedInRegime, citation: cite(rs) };
+}
+
+/** Leave encashment at exit (s.10(10AA)(ii)): the least of the cap, what was paid, 10 months' average pay and the leave credit (at most 30 days a year of service). */
+export function leaveEncashmentExempt(rs: RuleSet, i: { received: Prisma.Decimal.Value; averageMonthly: Prisma.Decimal.Value; leaveDays: Prisma.Decimal.Value; serviceYears: number }) {
+  const v = need(rs, 'tax_deductions') as unknown as TaxDeductions;
+  const credit = Prisma.Decimal.min(D(i.leaveDays), D(30 * Math.max(0, Math.floor(i.serviceYears))));
+  const exempt = Prisma.Decimal.min(D(v.leaveEncashmentMax), D(i.received), D(i.averageMonthly).mul(10), D(i.averageMonthly).mul(credit).div(30));
+  return { exempt: money(Prisma.Decimal.max(ZERO, exempt)), citation: cite(rs) };
+}
+
+/** Voluntary retirement pay (s.10(10C)): exempt up to the cap. */
+export function vrsExempt(rs: RuleSet, i: { received: Prisma.Decimal.Value }) {
+  const v = need(rs, 'tax_deductions') as unknown as TaxDeductions;
+  return { exempt: money(Prisma.Decimal.min(D(v.vrsMax), D(i.received))), citation: cite(rs) };
 }
 
 export function penalty(rs: RuleSet, i: { item: string; amount: Prisma.Decimal.Value; days?: number; months?: number }) {
@@ -344,6 +388,16 @@ export function checkShape(rs: RuleSet, limits: { ptAnnualMax?: string } = {}): 
   }
   if (rs.values.kind === 'trusted_roots') problems.push(...rootProblems(rs));
   if (rs.values.kind === 'bank_format') problems.push(...bankLayoutProblems(rs.values));
+  if (rs.values.kind === 'tax_deductions') {
+    const t = rs.values as unknown as TaxDeductions;
+    const amount = (x: unknown) => typeof x === 'string' && /^\d{1,10}$/.test(x);
+    for (const [k, cap] of Object.entries(t.caps ?? {})) if (cap !== null && !amount(cap)) problems.push(`The cap for ${k} is whole rupees or null`);
+    rate(t.hra?.metroPercent, 'hra.metroPercent');
+    rate(t.hra?.otherPercent, 'hra.otherPercent');
+    rate(t.hra?.rentOverBasic, 'hra.rentOverBasic');
+    for (const k of ['landlordPanAbove', 'leaveEncashmentMax', 'vrsMax'] as const) if (!amount(t[k])) problems.push(`${k} is whole rupees`);
+    if (!Array.isArray(t.newRegimeKeys) || t.newRegimeKeys.some((k) => !(k in (t.caps ?? {})))) problems.push('newRegimeKeys lists keys of caps');
+  }
   if (rs.validTo && rs.validTo < rs.validFrom) problems.push('The rule set ends before it starts');
   return problems;
 }
@@ -354,7 +408,7 @@ export interface GoldenCase {
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
 }
-const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
 
 /** Runs one golden case; returns the fields that differ (empty when it passes). */
 export function runGolden(rs: RuleSet, g: GoldenCase): string[] {

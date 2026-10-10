@@ -49,6 +49,10 @@ export const PAY_KEYS = [
   'payroll.payslip.publish',
   'payroll.query.handle',
   'payroll.payment_mode.approve',
+  // Batch 5e.
+  'tax.workspace.view',
+  'tax.proof.verify',
+  'tax.regime.override',
 ] as const;
 export type PayKey = (typeof PAY_KEYS)[number];
 

@@ -34,6 +34,8 @@ const PAY_ADMIN_5B = ['payroll.setup.manage', 'payroll.statutory.setup', 'payrol
 const PAY_ADMIN_5C = ['payroll.run.view', 'payroll.run.prepare', 'payroll.input.manage', 'payroll.hold.manage', 'payroll.loan.manage', 'payroll.journal.export', 'payroll.cost_rate.view'];
 // Batch 5d: bank files (generate), payment results, cash / cheque register, publishing payslips, payslip queries.
 const PAY_ADMIN_5D = ['payroll.bankfile.generate', 'payroll.payment.record', 'payroll.payslip.publish', 'payroll.query.handle'];
+// Batch 5e: tax workspaces, proof verification (never one's own), regime changes after the cut-off.
+const PAY_ADMIN_5E = ['tax.workspace.view', 'tax.proof.verify', 'tax.regime.override'];
 const PAY_APPROVER_5A = ['payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release'];
 
 const DESK_AGENT = ['desk.ticket.view', 'desk.ticket.work', 'desk.ticket.note', 'desk.ticket.export', 'desk.task.work', 'desk.kb.view_internal', 'desk.kb.author', 'desk.chat.work', 'desk.hr_summary.view', 'desk.ticket.move'];
@@ -61,7 +63,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'Pay, pay ranges, entity tax identifiers, and approving bank and identity changes.',
     cannot: 'HR settings.',
-    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D],
+    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E],
   },
   {
     key: 'payroll_approver',

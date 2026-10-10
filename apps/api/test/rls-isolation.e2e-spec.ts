@@ -17,7 +17,9 @@ const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_r
   // Batch 5c.
   'payroll_runs', 'run_employees', 'run_validations', 'payslips', 'payslip_lines', 'payslip_snapshots', 'lop_inputs', 'one_time_pays', 'special_days', 'variance_flags', 'payroll_withholds', 'pay_carry_forwards', 'court_orders', 'loans', 'loan_repayments', 'loan_schedule_changes', 'journals', 'employee_cost_rates',
   // Batch 5d.
-  'bank_files', 'payment_records', 'employee_payment_modes', 'disbursements', 'payslip_queries', 'payslip_links'];
+  'bank_files', 'payment_records', 'employee_payment_modes', 'disbursements', 'payslip_queries', 'payslip_links',
+  // Batch 5e.
+  'tax_workspaces', 'tax_declaration_lines', 'tds_projections', 'perquisites', 'tax_certificates'];
 // Lifecycle batch 6a: people's files and documents, and joiners' planned jobs.
 const LIFECYCLE_SUPPORT_EXCLUDED = ['files', 'documents', 'document_versions', 'preboardings', 'preboarding_portal_sessions', 'consent_records', 'bgv_checks', 'letter_issues', 'signature_requests', 'exit_cases', 'exit_case_hr', 'clearance_items', 'exit_interviews', 'exit_interview_answers', 'probation_reviews', 'exit_deprovisioning', 'exit_settlement_inputs', 'alumni_sessions', 'employee_nominations', 'exit_payees', 'absconding_timelines'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).

@@ -17,6 +17,8 @@ import { Payroll5cController } from './payroll-5c.controller';
 import { Payroll5dController } from './payroll-5d.controller';
 import { PayoutService } from './payout.service';
 import { PayslipsService } from './payslips.service';
+import { TaxController } from './tax.controller';
+import { TaxService } from './tax.service';
 import { PayRunsService } from './runs.service';
 import { PayInputsService } from './inputs.service';
 import { PayImportsService } from './imports.service';
@@ -28,12 +30,12 @@ import { PayPeriodsService } from './periods.service';
 
 // M03 payroll, batch 5a: locks, audit, documents and exchange files (PAY-1.01 … PAY-1.12); batch 5b: set-up,
 // structures, compensation, statutory profiles and imports (PAY-2.04 … PAY-2.13); batch 5c: runs and inputs;
-// batch 5d: pay-out and payslips (PAY-4.01 … PAY-4.06). Time imports it for the
+// batch 5d: pay-out and payslips (PAY-4.01 … PAY-4.06); batch 5e: income tax (PAY-5.01 … PAY-5.08). Time imports it for the
 // reopen request (the step-4 unlock became it) and nothing here depends on time's services.
 @Module({
   imports: [AuditModule, CryptoModule, StorageModule, WorkflowModule, NotificationsModule, EmailModule, AuthModule, EmployeeHistoryModule],
-  controllers: [PayrollController, PublicPayController, Payroll5bController, Payroll5cController, Payroll5dController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayRunsService, PayInputsService, PayoutService, PayslipsService, PayrollJobs],
+  controllers: [PayrollController, PublicPayController, Payroll5bController, Payroll5cController, Payroll5dController, TaxController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayRunsService, PayInputsService, PayoutService, PayslipsService, TaxService, PayrollJobs],
   exports: [PayPeriodsService, PayDocumentsService, ExchangeFilesService],
 })
 export class PayrollModule {}

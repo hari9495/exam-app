@@ -18,6 +18,8 @@ import { ApprovalsEngine, type Notice, type StepSpec } from '../workflow/approva
 import { ENGINE_VERSION, calculatePayslip, hashOf, type CalcComponent, type Segment, type Snapshot } from './calc';
 import type { ConfirmationDto } from './dto';
 import { principalPart } from './inputs.service';
+import { buildTaxInputs } from './tax.service';
+import { taxYearOf } from './tax';
 import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf, systemAdmins, withPayScope } from './pay-access';
 
 // Payroll runs (M03-BUILD-DESIGN §3.2, §9, PAY-3.01 … 3.10, 3.18): create per pay group and month; validations with
@@ -193,6 +195,14 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     // 5c-D2: without a skill class on the job, the minimum-wage check uses the lowest class of the state table.
     const noSkill = await tx.employeeAssignment.findMany({ where: { organizationId: org, employeeId: { in: ids }, supersededAt: null, skillClass: null, validFrom: { lte: run.periodEnd }, OR: [{ validTo: null }, { validTo: { gte: run.periodEnd } }] }, select: { employeeId: true } });
     for (const x of noSkill) found.push({ employeeId: x.employeeId, checkKey: 'skill_missing', severity: 'warn', message: `${nameOf(x.employeeId)}: no skill class on the job; the minimum-wage check uses the lowest class.` });
+    // US-A-157: pay from another entity of the company this tax year carries into this one's tax (transfer continuity).
+    const ty = taxYearOf(month);
+    const all = (await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true } })).map((e) => e.id);
+    const elsewhere = await withPayScope(tx, all, () => tx.payslip.findMany({ where: { organizationId: org, employeeId: { in: ids }, status: 'approved', legalEntityId: { not: run.legalEntityId }, periodStart: { gte: new Date(`${ty.slice(0, 4)}-04-01T00:00:00Z`), lt: run.periodStart } }, distinct: ['employeeId'], select: { employeeId: true } }));
+    // 5e-D3: a treaty (DTAA) claim is handled by payroll by hand (no relief is worked out).
+    const treaty = await withPayScope(tx, all, () => tx.taxWorkspace.findMany({ where: { organizationId: org, employeeId: { in: ids }, taxYear: ty, dtaaCountry: { not: null } }, select: { employeeId: true, dtaaCountry: true } }));
+    for (const x of treaty) found.push({ employeeId: x.employeeId, checkKey: 'tax_dtaa', severity: 'warn', message: `${nameOf(x.employeeId)}: claims treaty (DTAA) relief with ${x.dtaaCountry}; TDS is worked out without it. Check it by hand.` });
+    for (const x of elsewhere) found.push({ employeeId: x.employeeId, checkKey: 'tax_continuity', severity: 'info', message: `${nameOf(x.employeeId)}: pay from another entity of the company this tax year is counted for tax.` });
     const lop = await withPayScope(tx, [run.legalEntityId], () => tx.lopInput.findMany({ where: { organizationId: org, periodStart: run.periodStart, employeeId: { in: ids } } }));
     const days = Number(monthRange(month).to.slice(8));
     for (const l of lop) if (D(l.lopDays).gt(days)) found.push({ employeeId: l.employeeId, checkKey: 'lop_too_many', severity: 'block', message: `${nameOf(l.employeeId)}: ${l.lopDays.toString()} loss-of-pay days in a ${days}-day month.` });
@@ -320,6 +330,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
           });
           await tx.payslipLine.createMany({ data: result.lines.map((l, i) => ({ organizationId: job.org, legalEntityId: r.legalEntityId, employeeId: re.employeeId, payslipId: slip.id, position: i, componentCode: l.code, name: l.name.slice(0, 80), kind: l.kind, segmentNo: l.segmentNo, amount: l.amount, quantity: l.quantity ?? null, rate: l.rate ?? null, explanation: l.explanation.slice(0, 1000), rule: l.rule ? (l.rule as unknown as Prisma.InputJsonValue) : Prisma.DbNull, verify: !!l.verify, sourceRef: l.sourceRef ?? null })) });
           await tx.payslipSnapshot.create({ data: { payslipId: slip.id, organizationId: job.org, legalEntityId: r.legalEntityId, employeeId: re.employeeId, inputs: snap as unknown as Prisma.InputJsonValue, ruleVersions: result.ruleVersions, engineVersion: ENGINE_VERSION, inputsHash: hashOf(snap) } });
+          if (result.tax) await tx.tdsProjection.create({ data: { payslipId: slip.id, organizationId: job.org, legalEntityId: r.legalEntityId, employeeId: re.employeeId, employmentId, taxYear: result.tax.taxYear, lawVersion: result.tax.lawVersion, regime: result.tax.regime, calcVersion: result.tax.calcVersion, monthTds: result.tax.monthTds, annualTax: result.tax.tax.total, inputs: snap.tax as unknown as Prisma.InputJsonValue, result: result.tax as unknown as Prisma.InputJsonValue } });
           await tx.runEmployee.update({ where: { id: re.id }, data: { state: 'ok', failure: Prisma.DbNull, updatedAt: new Date() } });
         });
       } catch (e) {
@@ -401,7 +412,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       const loc = await tx.location.findFirstOrThrow({ where: { organizationId: org, id: asg.locationId }, select: { state: true, minWageZone: true } });
       segments.push({ from: sFrom, to: sTo, days: Number(sTo.slice(8)) - Number(sFrom.slice(8)) + 1, lines: pl.map((l) => ({ code: codes.get(l.componentId)!, monthly: l.monthly.toFixed(2) })), payBasis: pkg.payBasis as Segment['payBasis'], rate: pkg.rate?.toFixed(2) ?? null, otMultiplier: pkg.otMultiplier?.toFixed(2) ?? null, holidayMultiplier: pkg.holidayMultiplier?.toFixed(2) ?? null, state: loc.state, zone: loc.minWageZone, skill: asg.skillClass ?? null, changeId: comp.changeId });
     }
-    const components: CalcComponent[] = (await tx.payComponent.findMany({ where: { organizationId: org } })).map((x) => ({ code: x.code, name: x.name, kind: x.kind as CalcComponent['kind'], pfWage: x.pfWage, esiWage: x.esiWage, ptWage: x.ptWage, gratuityWage: x.gratuityWage, bonusWage: x.bonusWage, codeWagePart: x.codeWagePart, codeExclusion: x.codeExclusion, prorated: x.prorated, rounding: x.rounding as CalcComponent['rounding'], statutory: x.statutory }));
+    const components: CalcComponent[] = (await tx.payComponent.findMany({ where: { organizationId: org } })).map((x) => ({ code: x.code, name: x.name, kind: x.kind as CalcComponent['kind'], pfWage: x.pfWage, esiWage: x.esiWage, ptWage: x.ptWage, gratuityWage: x.gratuityWage, bonusWage: x.bonusWage, codeWagePart: x.codeWagePart, codeExclusion: x.codeExclusion, prorated: x.prorated, rounding: x.rounding as CalcComponent['rounding'], statutory: x.statutory, taxable: x.taxable }));
     // Attendance: the frozen feed, or the manual LOP of an assumed-present group (D1).
     const period = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, payGroupId: null, periodStart: run.periodStart } });
     const feed = period ? await tx.payrollFeedRow.findFirst({ where: { organizationId: org, payPeriodId: period.id, employeeId: em.employeeId, supersededAt: null }, orderBy: { frozenAt: 'desc' } }) : null;
@@ -486,6 +497,8 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         standardDailyHours: await settingFor(tx, c, 'payroll.standard_daily_hours', lev),
       },
       held: !!hold || waivedBank,
+      // Batch 5e: income tax, from the same function as the employee's tax sheet.
+      tax: await buildTaxInputs(tx, c, { employeeId: em.employeeId, employmentId, legalEntityId: run.legalEntityId, month, periodStart: run.periodStart, exitedOn: em.exitedOn, segment: segments[segments.length - 1], components, age }),
     };
   }
 
