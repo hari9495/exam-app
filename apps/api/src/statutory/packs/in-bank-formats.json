@@ -1,0 +1,50 @@
+{
+  "ruleSets": [
+    {
+      "statute": "IN.BANKFMT",
+      "jurisdiction": "GENERIC",
+      "version": "BANKFMT-GENERIC-1",
+      "validFrom": "2026-10-09",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "YukthiX generic NEFT / RTGS bulk payment layout (one row per payee: type, accounts, IFSC, name, amount, value date); RTGS from Rs 2 lakh per RBI RTGS minimum. Founder decision §19 D1: generic first, then the pilot's bank.",
+      "values": {
+        "kind": "bank_format",
+        "label": "Generic NEFT / RTGS (XLSX)",
+        "fileType": "xlsx",
+        "header": true,
+        "dateFormat": "DD/MM/YYYY",
+        "amountFormat": "decimal",
+        "rtgsFrom": "200000",
+        "nameMax": 35,
+        "upper": true,
+        "columns": [
+          { "title": "Transaction type", "field": "txnType" },
+          { "title": "Beneficiary account", "field": "account" },
+          { "title": "IFSC", "field": "ifsc" },
+          { "title": "Beneficiary name", "field": "name" },
+          { "title": "Amount", "field": "amount" },
+          { "title": "Value date", "field": "date" },
+          { "title": "Debit account", "field": "debitAccount" },
+          { "title": "Narration", "field": "narration" },
+          { "title": "Employee code", "field": "code" }
+        ]
+      },
+      "golden": [
+        {
+          "name": "NEFT row keeps the leading zeros",
+          "fn": "bank_format",
+          "input": { "account": "000123456789", "ifsc": "HDFC0001234", "name": "Asha Rao", "amount": "58500.00", "code": "EMP-1", "narration": "Salary Oct 2026", "debitAccount": "50200012345678", "date": "2026-10-31" },
+          "expected": { "txnType": "NEFT", "cells": "NEFT|000123456789|HDFC0001234|ASHA RAO|58500.00|31/10/2026|50200012345678|SALARY OCT 2026|EMP 1" }
+        },
+        {
+          "name": "RTGS from two lakh; a formula-looking name is cleaned",
+          "fn": "bank_format",
+          "input": { "account": "0011223344", "ifsc": "SBIN0000001", "name": "=HYPERLINK(x)", "amount": "200000.00", "code": "E2", "narration": "Salary", "debitAccount": "50200012345678", "date": "2026-10-31" },
+          "expected": { "txnType": "RTGS", "cells": "RTGS|0011223344|SBIN0000001|HYPERLINK X|200000.00|31/10/2026|50200012345678|SALARY|E2" }
+        }
+      ]
+    }
+  ]
+}

@@ -522,10 +522,11 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       await payScope(tx, ids);
       const s = await tx.payslip.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!s) throw new NotFoundException('Not found');
-      const run = s.runId ? await tx.payrollRun.findFirst({ where: { organizationId: c.organizationId, id: s.runId } }) : null;
       const staff = ids.includes(s.legalEntityId);
-      // An employee sees their own payslip once it is published (batch 5d publishes); payroll staff see their entities'.
-      if (!staff && !(s.status === 'approved' && run?.publishedAt)) throw new NotFoundException('Not found');
+      // An employee sees their own payslip once it is published (5d); the runs table is payroll staff's, so a definer
+      // function says only whether the run is published. Payroll staff see their entities'.
+      const published = async () => !!s.runId && (await tx.$queryRaw<{ ids: string[] }[]>`SELECT payroll_runs_published(${c.organizationId}::uuid, ARRAY[${s.runId}::uuid])::text[] AS ids`)[0].ids.length > 0;
+      if (!staff && !(s.status === 'approved' && (await published()))) throw new NotFoundException('Not found');
       const lines = await tx.payslipLine.findMany({ where: { organizationId: c.organizationId, payslipId: s.id }, orderBy: { position: 'asc' } });
       if (staff) await audit(tx, c, 'payroll.payslip.viewed', 'payslip', s.id, { employeeId: s.employeeId });
       return { ...this.slipView(s), ruleVersions: s.ruleVersions, lines: lines.map((l) => ({ code: l.componentCode, name: l.name, kind: l.kind, segmentNo: l.segmentNo, amount: l.amount.toFixed(2), quantity: l.quantity?.toFixed(2) ?? null, rate: l.rate?.toFixed(4) ?? null, explanation: l.explanation, rule: l.rule, verify: l.verify })) };

@@ -42,6 +42,13 @@ export const PAY_KEYS = [
   'payroll.loan.approve',
   'payroll.journal.export',
   'payroll.cost_rate.view',
+  // Batch 5d.
+  'payroll.bankfile.generate',
+  'payroll.bankfile.release',
+  'payroll.payment.record',
+  'payroll.payslip.publish',
+  'payroll.query.handle',
+  'payroll.payment_mode.approve',
 ] as const;
 export type PayKey = (typeof PAY_KEYS)[number];
 
