@@ -43,6 +43,24 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'helpdesk.msg.link_ended', group: 'reminders', label: 'A phone linked to your desk was linked in another company' },
   // M02 step 4 batch 2 (YX-AT-07).
   { type: 'time.roster.published', group: 'assignments', label: 'Your shifts for the coming days were published or changed' },
+  // M01 lifecycle batches 6a / 6b.
+  { type: 'lifecycle.joiner.added', group: 'assignments', label: 'Someone is joining your team' },
+  { type: 'journey.task.assigned', group: 'assignments', label: 'An onboarding or offboarding task was given to you or your team' },
+  { type: 'journey.task.due', group: 'reminders', label: 'A checklist task is due today' },
+  { type: 'journey.task.overdue', group: 'reminders', label: 'A checklist task you own is overdue' },
+  { type: 'document.requested', group: 'reminders', label: 'HR asked you to upload a document' },
+  { type: 'document.rejected', group: 'reminders', label: 'A document you uploaded was not accepted' },
+  { type: 'document.expiring', group: 'reminders', label: 'A document of yours expires soon' },
+  { type: 'letter.ready', group: 'assignments', label: 'A letter for you is ready' },
+  { type: 'letter.signed', group: 'reminders', label: 'A joiner or employee accepted a letter' },
+  { type: 'preboarding.completed', group: 'reminders', label: 'A joiner finished their pre-boarding forms' },
+  // Batch 6c: exits, clearance, exit interviews, assets, probation reviews.
+  { type: 'exit.case.update', group: 'reminders', label: 'A resignation or exit you are part of moved on (received, accepted, withdrawn, new last day)' },
+  { type: 'exit.clearance.assigned', group: 'assignments', label: 'A clearance item for a leaver was given to you or your team' },
+  { type: 'exit.interview.sent', group: 'reminders', label: 'Your exit interview is ready' },
+  { type: 'asset.assigned', group: 'assignments', label: 'A company asset was issued to you' },
+  { type: 'exit.deprovisioning.failed', group: 'reminders', label: 'A step after someone left did not go through (HR)' },
+  { type: 'probation.review.done', group: 'reminders', label: 'A manager reviewed a probation' },
 ];
 
 export const NOTIFICATION_TYPE_BY_KEY = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));

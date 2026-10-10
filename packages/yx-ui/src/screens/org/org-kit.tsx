@@ -122,6 +122,7 @@ export function EditorDrawer({
       onOpenChange={(o) => !o && onClose()}
       size="md"
       dirty={dirty}
+      notice={failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
       title={title}
       subtitle={subtitle}
       footer={
@@ -134,7 +135,6 @@ export function EditorDrawer({
       <form className="yx-org__editor" onSubmit={(e) => { e.preventDefault(); onSave(); }} noValidate>
         <ErrorSummary errors={errors} />
         {children}
-        {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
       </form>
     </Drawer>
   );

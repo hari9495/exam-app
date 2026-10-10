@@ -28,6 +28,7 @@ import {
   reach,
   Reach,
   Segment,
+  capSegments,
   StatusValues,
 } from './history-rules';
 
@@ -513,6 +514,7 @@ export class EmployeeHistoryService {
         const a = current.find((x) => x.employeeId === p.id);
         return {
           id: p.id,
+          personId: p.personId,
           name: displayName(p),
           employeeCode: e?.employeeCode ?? null,
           legalEntityId: e?.legalEntityId ?? null,
@@ -719,7 +721,9 @@ export class EmployeeHistoryService {
       // The rows in force on or after the day before `from`: the first of them is the base the fold continues.
       const reaching = (current[fact] as FactRow[]).filter((r) => !r.validTo || isoDate(r.validTo) >= addDays(from, -1));
       const before = reaching.find((r) => isoDate(r.validFrom) < from);
-      const segments = fold(fact, before ? { from: isoDate(before.validFrom), to: null, changeId: before.changeId, values: values(fact, before) } : null, changes);
+      const folded = fold(fact, before ? { from: isoDate(before.validFrom), to: null, changeId: before.changeId, values: values(fact, before) } : null, changes);
+      // An ended employment stops every fact on its last day (lifecycle 6d).
+      const segments = e.exitedOn ? capSegments(folded, isoDate(e.exitedOn)) : folded;
       // Nothing moves for this fact: keep its rows as they are.
       const same =
         segments.length === reaching.length &&
@@ -734,6 +738,22 @@ export class EmployeeHistoryService {
       for (const seg of segments) await insert(fact, seg);
     }
     await this.checkInvariants(tx, c, e);
+  }
+
+  /**
+   * M01 §10.7 (lifecycle 6d): the employment ends after `lastDay` through a system exit change. exited_on is set and
+   * every fact row is cut at that day (rebuilt, never edited). Idempotent: an employment that ended stays as it is.
+   */
+  async exitIn(tx: Tx, c: CompanyContext, employmentId: string, lastDay: string, reason: string): Promise<boolean> {
+    await this.lockEmployment(tx, c, employmentId);
+    const e = await tx.employment.findFirstOrThrow({ where: { organizationId: c.organizationId, id: employmentId } });
+    if (e.exitedOn) return false;
+    const ch = await tx.employeeChange.create({ data: { organizationId: c.organizationId, employeeId: e.employeeId, employmentId: e.id, changeType: 'exit', effectiveDate: asDate(lastDay), status: 'scheduled', payload: {}, reason, decidedAt: new Date() } });
+    const ended = await tx.employment.update({ where: { id: e.id }, data: { exitedOn: asDate(lastDay) } });
+    await this.rebuild(tx, c, ended, lastDay, ch.id);
+    await tx.employeeChange.update({ where: { id: ch.id }, data: { status: 'effective', appliedAt: new Date() } });
+    await audit(tx, c, 'employee.change.effective', 'employee', e.employeeId, { changeId: ch.id, changeType: 'exit', effectiveDate: lastDay });
+    return true;
   }
 
   /**
@@ -935,6 +955,8 @@ export class EmployeeHistoryService {
     await audit(tx, c, 'employee.change.approved', 'employee', ch.employeeId, { changeId: ch.id, changeType: ch.changeType, effectiveDate: isoDate(ch.effectiveDate) });
     // YX-HIS-05: the employee.change.effective event (P04 notifications, P09 metrics, P02 grants).
     if (effectiveNow) await audit(tx, c, 'employee.change.effective', 'employee', ch.employeeId, { changeId: ch.id, changeType: ch.changeType, effectiveDate: isoDate(ch.effectiveDate) });
+    // Lifecycle 6c (§12.1): a probation ends with an approved confirmation.
+    if (ch.changeType === 'confirmation') await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'employee.probation.confirmed', payload: { employeeId: ch.employeeId, employmentId: ch.employmentId, effectiveDate: isoDate(ch.effectiveDate) } } });
     // P06 §4.5: the downstream signal for payroll arrears / recoveries.
     if (impact.retro) await audit(tx, c, 'employee.change.retro_applied', 'employee', ch.employeeId, { changeId: ch.id, ...(impact.retro as object) });
   }
@@ -1192,11 +1214,17 @@ export class EmployeeHistoryService {
    * salary revision from the joining date, which someone else approves.
    */
   createEmployee(ctx: TenantContext, v: Viewer, dto: EmployeeCreateDto) {
+    return this.run(ctx, (tx, c) => this.createEmployeeIn(tx, c, v, dto));
+  }
+
+  /** The hire inside the caller's transaction (lifecycle 6b: a joiner joins in the same transaction as their record). */
+  /** A new hire; with `rehireOf`, a new employment on that employee's existing record (lifecycle 6e, YX-LC-11 / 18). */
+  async createEmployeeIn(tx: Tx, c: CompanyContext, v: Viewer, dto: EmployeeCreateDto, rehireOf: string | null = null) {
     const payload = toPayload({ assignment: dto.assignment, status: dto.status });
     this.checkPayload('join', payload, v);
     const pay = dto.compensation ? toPayload({ compensation: dto.compensation }) : null;
     if (pay) this.checkPayload('salary_revision', pay, v);
-    return this.run(ctx, async (tx, c) => {
+    {
       const entity = await tx.legalEntity.findFirst({ where: { id: dto.legalEntityId, organizationId: c.organizationId } });
       if (!entity) throw new BadRequestException('No such legal entity in this company.');
       if (entity.archivedAt) throw new BadRequestException('That legal entity is archived.');
@@ -1205,20 +1233,25 @@ export class EmployeeHistoryService {
       if (pay) await this.mustHireInto(tx, c, v, 'employee.salary.manage', entity.id, dto.assignment);
       // The login gives its holder the person's own view, pay included (P01 §4.5).
       if (dto.userId) await checkLoginLink(tx, c, dto.userId, dto.workEmail ?? null);
-      // P01 §4.5a: the person behind the record (YX-ORG-26/27).
-      const personId = await personForEmployee(tx, c, { givenName: dto.givenName, familyName: dto.familyName, preferredName: dto.preferredName, email: dto.workEmail, phone: dto.mobilePhone, personId: dto.personId });
-      const person = await tx.employee.create({
-        data: {
-          organizationId: c.organizationId,
-          personId,
-          userId: dto.userId ?? null,
-          givenName: dto.givenName.trim(),
-          familyName: dto.familyName?.trim() || null,
-          preferredName: dto.preferredName?.trim() || null,
-          workEmail: dto.workEmail ?? null,
-          createdBy: c.userId,
-        },
-      });
+      // A rehire keeps the same employee record (YX-ORG-26), never a second one.
+      const before = rehireOf ? await tx.employment.findFirst({ where: { organizationId: c.organizationId, id: rehireOf } }) : null;
+      if (rehireOf && (!before || !before.exitedOn)) throw new ConflictException('Only someone who has left can be rehired.');
+      const person = before
+        ? await tx.employee.update({ where: { id: before.employeeId }, data: { ...(dto.userId ? { userId: dto.userId } : {}), ...(dto.workEmail ? { workEmail: dto.workEmail } : {}) } })
+        : await tx.employee.create({
+            data: {
+              organizationId: c.organizationId,
+              // P01 §4.5a: the person behind the record (YX-ORG-26/27).
+              personId: await personForEmployee(tx, c, { givenName: dto.givenName, familyName: dto.familyName, preferredName: dto.preferredName, email: dto.workEmail, phone: dto.mobilePhone, personId: dto.personId }),
+              userId: dto.userId ?? null,
+              givenName: dto.givenName.trim(),
+              familyName: dto.familyName?.trim() || null,
+              preferredName: dto.preferredName?.trim() || null,
+              workEmail: dto.workEmail ?? null,
+              createdBy: c.userId,
+            },
+          });
+      const personId = person.personId;
       // YX-ORG-16: codes are unique per legal entity or across the company (setting), generated if blank.
       const scopeRows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key: 'employee_code.scope' } });
       const scope = resolveSetting(SETTINGS['employee_code.scope'], scopeRows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: c.organizationId }, null).value;
@@ -1226,7 +1259,7 @@ export class EmployeeHistoryService {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`employee-code:${c.organizationId}:${codeScopeKey}`}))`;
       const employeeCode = dto.employeeCode ?? (await this.nextCode(tx, c, codeScopeKey));
       const e = await tx.employment.create({
-        data: { organizationId: c.organizationId, employeeId: person.id, legalEntityId: entity.id, employeeCode, codeScopeKey, joinedOn: asDate(dto.joinedOn), createdBy: c.userId },
+        data: { organizationId: c.organizationId, employeeId: person.id, legalEntityId: entity.id, employeeCode, codeScopeKey, joinedOn: asDate(dto.joinedOn), rehireOf, createdBy: c.userId },
       });
       // YX-HIS-12: a joining date in the past needs employee.change.retro, before the retro limit the override and a reason.
       await this.checkReach(tx, c, v, e, dto.joinedOn, dto.overrideReason);
@@ -1276,7 +1309,7 @@ export class EmployeeHistoryService {
         : null;
       if (payChange) await audit(tx, c, 'employee.change.requested', 'employee', person.id, { changeId: payChange.id, changeType: 'salary_revision', effectiveDate: dto.joinedOn, touchesPay: true });
       return { id: person.id, employmentId: e.id, employeeCode, changeId: join.id, payChangeId: payChange?.id ?? null };
-    });
+    }
   }
 
   /** A new hire is inside `key`'s scope when a grant names the company, their entity, location or a department above theirs. */

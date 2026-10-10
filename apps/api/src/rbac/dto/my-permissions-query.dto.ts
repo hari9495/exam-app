@@ -1,7 +1,8 @@
-import { Matches } from 'class-validator';
+import { Matches, MaxLength } from 'class-validator';
 
 export class MyPermissionsQueryDto {
-  /** Comma-separated permission keys, at most 60 (the YukthiX menu asks for about 35 since the Service Desk batch 4). */
-  @Matches(/^[a-z_]+([.:][a-z_]+)+(,[a-z_]+([.:][a-z_]+)+){0,59}$/, { message: 'keys is a comma-separated list of up to 60 permission keys' })
+  /** Comma-separated permission keys, at most 120 (the YukthiX menu asks for about 65 since lifecycle batch 6b). */
+  @MaxLength(6000)
+  @Matches(/^[a-z_]+([.:][a-z_]+)+(,[a-z_]+([.:][a-z_]+)+){0,119}$/, { message: 'keys is a comma-separated list of up to 120 permission keys' })
   keys!: string;
 }

@@ -718,6 +718,26 @@ export class CatalogService implements OnModuleInit {
   }
 
   /** US-B-126: when every item is delivered, rejected or cancelled, the request resolves by itself. */
+  /**
+   * Lifecycle 6b: HR cancelled a joiner (did not join, reneged, offer withdrawn): their checklist's desk requests stop
+   * as system work, whatever their stage; open tasks are cancelled with the reason and the request settles.
+   */
+  async stopForLifecycle(tx: Tx, a: { ctx: DeskActor['ctx'] }, ticketId: string, reason: string) {
+    const org = a.ctx.organizationId;
+    const t = await tx.sdTicket.findFirst({ where: { organizationId: org, id: ticketId } });
+    if (!t) return;
+    const items = await tx.sdRequestItem.findMany({ where: { organizationId: org, ticketId, stage: { notIn: ['delivered', 'rejected', 'cancelled'] } } });
+    for (const ri of items) {
+      await tx.sdTask.updateMany({ where: { organizationId: org, requestItemId: ri.id, state: { in: ['open', 'in_progress'] } }, data: { state: 'cancelled' } });
+      await tx.sdRequestItem.update({ where: { id: ri.id }, data: { stage: 'cancelled', cancelReason: reason, stageAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
+      await this.tickets.event(tx, t, 'request_stage', ri.stage, 'cancelled', { by: null, reason, requesterVisible: true });
+    }
+    if (items.length) {
+      await emit(tx, org, 'helpdesk.request.cancelled', { ticketId: t.id, deskId: t.deskId, items: items.length });
+      await this.settleTicket(tx, a, t.id);
+    }
+  }
+
   private async settleTicket(tx: Tx, a: { ctx: DeskActor['ctx'] }, ticketId: string) {
     const org = a.ctx.organizationId;
     const items = await tx.sdRequestItem.findMany({ where: { organizationId: org, ticketId }, select: { stage: true } });

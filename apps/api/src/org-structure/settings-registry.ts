@@ -35,6 +35,29 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'probation.max_total_months': { label: 'Probation with extensions lasts at most (months)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['6', '9', '12', '18', '24'], default: '12' },
   // Auto-confirmation is a system change with no approver (YX-SEC-11), so turning it on is the access admin's.
   'probation.auto_confirm_after_days': { label: 'Confirm automatically after the end date', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '0', '7', '15', '30'], default: 'off', guard: 'access.role.manage' },
+  // M01 §10.2 / D7 (decided 9 Oct 2026): the notice period, in calendar days (d) or months (m), dated so a resignation
+  // uses the policy in force on the day it is submitted (YX-LC-04). Starter values: probation 15 days, confirmed 30.
+  'exit.notice.probation': { label: 'Notice period during probation', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: true, values: ['0d', '7d', '15d', '30d', '45d', '60d', '90d', '1m', '2m', '3m'], default: '15d' },
+  'exit.notice.confirmed': { label: 'Notice period once confirmed', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: true, values: ['0d', '7d', '15d', '30d', '45d', '60d', '90d', '1m', '2m', '3m'], default: '30d' },
+  // P05 Q6 (decided): alumni read their own letters and documents for this many years after the last day.
+  'alumni.access_years': { label: 'Alumni can read their documents for (years after leaving)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10'], default: '7' },
+  // M01 YX-LC-18 (lifecycle 6e): the rehire policy. Starter template "fresh start, same record, code and UAN"; HR may
+  // change any option for one rehire with a reason.
+  'rehire.code': { label: 'Rehire: employee code', scopes: ['tenant', 'legal_entity'], dated: false, values: ['reuse', 'new'], default: 'reuse' },
+  'rehire.pf': { label: 'Rehire: PF membership (the UAN is always kept)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['continue', 'transfer', 'fresh'], default: 'continue' },
+  'rehire.same_fy_tax': { label: 'Rehire in the same financial year: tax', scopes: ['tenant', 'legal_entity'], dated: false, values: ['combine', 'previous_employer'], default: 'combine' },
+  'rehire.service': { label: 'Rehire: service', scopes: ['tenant', 'legal_entity'], dated: false, values: ['fresh', 'continuous', 'break_counted'], default: 'fresh' },
+  'rehire.gratuity': { label: 'Rehire: gratuity service', scopes: ['tenant', 'legal_entity'], dated: false, values: ['fresh', 'add_prior'], default: 'fresh' },
+  'rehire.leave': { label: 'Rehire: leave balance', scopes: ['tenant', 'legal_entity'], dated: false, values: ['fresh', 'carry'], default: 'fresh' },
+  'rehire.probation': { label: 'Rehire: probation', scopes: ['tenant', 'legal_entity'], dated: false, values: ['normal', 'skip_if_break_lt_6m', 'never'], default: 'normal' },
+  'rehire.prior_records': { label: 'Rehire: earlier warnings and PIPs', scopes: ['tenant', 'legal_entity'], dated: false, values: ['hr_only', 'manager', 'hidden'], default: 'hr_only' },
+  // YX-LC-17: the absconding timeline, days of unauthorised absence for the salary hold, notice 1, notice 2, abandonment.
+  'absconding.days': { label: 'Absconding timeline (days: hold, notice 1, notice 2, abandonment)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['3,7,14,21', '3,7,14,30', '5,10,20,30'], default: '3,7,14,21' },
+  // YX-LC-20: retirement age (the last day is the end of that month) and how early the retirement exit opens.
+  'retirement.age': { label: 'Retirement age', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: false, values: ['58', '60', '62', '65'], default: '58' },
+  'retirement.alert_months': { label: 'Open the retirement exit this many months before', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '3', '6'], default: '6' },
+  // YX-LC-19: at the end of a fixed-term contract: remind HR and the manager (30 and 7 days before), or also exit on the day.
+  'contract_end.action': { label: 'When a fixed-term contract ends', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['alert', 'auto_exit'], default: 'alert' },
   // P02 Q2 (decided): managers view their whole reporting subtree by default; the company may narrow it.
   'access.manager.view_scope': { label: 'Managers can view', scopes: ['tenant'], dated: false, values: ['all_reports', 'direct_reports'], default: 'all_reports', guard: 'access.role.manage' },
   // P02 YX-SEC-18 (a): a role grant giving Confidential / Special access over more people than this warns first.

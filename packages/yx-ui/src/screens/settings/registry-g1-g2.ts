@@ -695,7 +695,7 @@ export const GROUP_2: SettingsGroupDef = {
               columns: ['Template', 'Sign-in', 'Ends'],
               rows: [
                 ['Pre-boarding candidate', 'OTP', 'On joining date'],
-                ['Alumni', 'OTP', '3 years after exit'],
+                ['Alumni', 'OTP', '7 years after exit'],
                 ['External trainer', 'OTP', '7 days after last session'],
                 ['POSH IC external member', 'OTP + passkey', 'When appointment ends'],
                 ['External case party', 'OTP', 'Case closed + appeal window'],

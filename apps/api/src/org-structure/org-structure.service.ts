@@ -54,10 +54,10 @@ export function mapDbError(e: unknown): unknown {
   return e;
 }
 
-export async function inCompany<T>(tenantPrisma: TenantPrismaService, ctx: TenantContext, fn: (tx: Tx, c: CompanyContext) => Promise<T>): Promise<T> {
+export async function inCompany<T>(tenantPrisma: TenantPrismaService, ctx: TenantContext, fn: (tx: Tx, c: CompanyContext) => Promise<T>, options?: { timeout?: number }): Promise<T> {
   const c = companyContext(ctx);
   try {
-    return await tenantPrisma.forTenant(c, (tx) => fn(tx, c));
+    return await tenantPrisma.forTenant(c, (tx) => fn(tx, c), options);
   } catch (e) {
     throw mapDbError(e);
   }
