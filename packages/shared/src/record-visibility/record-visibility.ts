@@ -54,7 +54,7 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   if (key === 'asset.view' || key === 'asset.manage') return ['tenant', 'legal_entity', 'location'];
   // M03 batch 5a: payroll and its audit work per legal entity (the pay guard reads the granted entities); legal holds are company-wide.
   // Batch 5e: income tax (workspaces, proofs, regime) works per legal entity like the rest of payroll.
-  if (key.startsWith('payroll.') || key.startsWith('tax.') || key === 'audit.view' || key === 'audit.export') return ['tenant', 'legal_entity'];
+  if (key.startsWith('payroll.') || key.startsWith('tax.') || key.startsWith('statutory.') || key === 'audit.view' || key === 'audit.export') return ['tenant', 'legal_entity'];
   if (key.startsWith('org.') || key.startsWith('pay.range.')) return ['tenant', 'legal_entity'];
   return ['tenant'];
 }

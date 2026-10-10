@@ -722,7 +722,6 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       const hours = D(await settingFor(tx, c, 'payroll.standard_daily_hours', { legalEntityId: run.legalEntityId })).mul(Number(monthRange(this.month(run)).to.slice(8)));
       await tx.employeeCostRate.upsert({ where: { organizationId_employeeId_periodStart: { organizationId: org, employeeId: s.employeeId, periodStart: run.periodStart } }, update: { employerCost: s.employerCost, standardHours: hours, rate: s.employerCost.div(hours), sourcePayslipId: s.id, provisional: false }, create: { organizationId: org, legalEntityId: run.legalEntityId, employeeId: s.employeeId, periodStart: run.periodStart, employerCost: s.employerCost, standardHours: hours, rate: s.employerCost.div(hours), sourcePayslipId: s.id } });
     }
-    await tx.journal.upsert({ where: { organizationId_runId: { organizationId: org, runId: run.id } }, update: { lines: await this.journalLines(tx, org, slips.map((s) => s.id)) }, create: { organizationId: org, legalEntityId: run.legalEntityId, runId: run.id, lines: await this.journalLines(tx, org, slips.map((s) => s.id)) } });
     await tx.payrollRun.update({ where: { id: run.id }, data: { status: 'approved', approvedAt: now, approvedBy: (await tx.wfAction.findFirst({ where: { organizationId: org, requestId: wf.id, action: { in: ['approved', 'self_approved'] } }, orderBy: { createdAt: 'desc' } }))?.actorUserId ?? null, version: { increment: 1 } } });
     // YX-LOCK-04: the month locks (with attendance and pay-affecting leave) once every regular run of the entity is approved.
     const waiting = await tx.payrollRun.count({ where: { organizationId: org, legalEntityId: run.legalEntityId, periodStart: run.periodStart, runType: 'regular', status: { notIn: ['approved', 'paid', 'void'] } } });
@@ -742,33 +741,6 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     const chosen = all.filter((r) => wanted.some((w) => w.statute === r.statute && w.jur === r.jurisdiction && w.ver === r.version));
     // Rules the payslip did not use stay as they were in force (they made no line), so the hash still matches.
     return [...chosen, ...all.filter((r) => !wanted.some((w) => w.statute === r.statute && w.jur === r.jurisdiction))];
-  }
-
-  /** Journal lines (P10 Q7): a debit per expense ledger, credits for net pay and each deduction or contribution payable. */
-  private async journalLines(tx: Tx, org: string, slipIds: string[]): Promise<Prisma.InputJsonValue> {
-    const lines = await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: slipIds }, kind: { in: ['earning', 'deduction', 'employer'] } }, select: { componentCode: true, kind: true, amount: true } });
-    const ledgers = new Map((await tx.payComponent.findMany({ where: { organizationId: org }, select: { code: true, ledger: true, name: true } })).map((x) => [x.code, x.ledger ?? x.name]));
-    const acc = new Map<string, { ledger: string; debit: Prisma.Decimal; credit: Prisma.Decimal }>();
-    const post = (ledger: string, debit: Prisma.Decimal, credit: Prisma.Decimal) => {
-      const a = acc.get(ledger) ?? { ledger, debit: D(0), credit: D(0) };
-      acc.set(ledger, { ledger, debit: a.debit.add(debit), credit: a.credit.add(credit) });
-    };
-    let net = D(0);
-    for (const l of lines) {
-      const name = ledgers.get(l.componentCode) ?? l.componentCode;
-      if (l.kind === 'earning') {
-        post(`Salary expense: ${name}`, l.amount, D(0));
-        net = net.add(l.amount);
-      } else if (l.kind === 'deduction') {
-        post(`Payable: ${name}`, D(0), l.amount);
-        net = net.sub(l.amount);
-      } else {
-        post(`Employer cost: ${name}`, l.amount, D(0));
-        post(`Payable: ${name}`, D(0), l.amount);
-      }
-    }
-    post('Net salary payable', D(0), Prisma.Decimal.max(net, D(0)));
-    return [...acc.values()].map((a) => ({ ledger: a.ledger, debit: a.debit.toFixed(2), credit: a.credit.toFixed(2) }));
   }
 
   async void(ctx: TenantContext, user: ScopeUser, id: string, reason: string) {

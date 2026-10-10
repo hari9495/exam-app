@@ -7428,3 +7428,184 @@ model TaxCertificate {
   @@unique([organizationId, employmentId, taxYear], map: "tax_certificates_key")
   @@map("tax_certificates")
 }
+
+/// GP-PAY-1 (10 Oct 2026): pay lines to ledger accounts; company default, then legal entity or cost centre overrides.
+model LedgerMapping {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  scopeType      String   @map("scope_type") @db.VarChar(12)
+  scopeId        String?  @map("scope_id") @db.Uuid
+  componentCode  String   @map("component_code") @db.VarChar(30)
+  side           String   @db.VarChar(8)
+  accountCode    String   @map("account_code") @db.VarChar(40)
+  accountName    String   @map("account_name") @db.VarChar(120)
+  updatedBy      String   @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("ledger_mappings")
+}
+
+// ---- M03 payroll batch 5f (migration 20261103000000_payroll_5f): statutory files, TDS challans and returns, registers,
+// inspection packs and advisory reviews. RLS and the pay guard live in the migration.
+
+model StatutoryFiling {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  legalEntityId      String    @map("legal_entity_id") @db.Uuid
+  statute            String    @db.VarChar(10)
+  state              String?   @db.VarChar(6)
+  periodStart        DateTime  @map("period_start") @db.Date
+  kind               String    @default("original") @db.VarChar(18)
+  correctsId         String?   @map("corrects_id") @db.Uuid
+  filingMode         String    @default("self") @map("filing_mode") @db.VarChar(8)
+  status             String    @default("generated") @db.VarChar(12)
+  formatVersion      String    @map("format_version") @db.VarChar(30)
+  exchangeFileId     String?   @map("exchange_file_id") @db.Uuid
+  generationNo       Int       @default(1) @map("generation_no")
+  regenerationReason String?   @map("regeneration_reason") @db.VarChar(500)
+  rows               Int       @default(0)
+  totals             Json      @default("{}")
+  basis              Json      @default("{}")
+  amount             Decimal?  @db.Decimal(14, 2)
+  reason             String?   @db.VarChar(500)
+  reference          String?   @db.VarChar(60)
+  uploadedBy         String?   @map("uploaded_by") @db.Uuid
+  uploadedAt         DateTime? @map("uploaded_at") @db.Timestamptz(3)
+  filedBy            String?   @map("filed_by") @db.Uuid
+  filedAt            DateTime? @map("filed_at") @db.Timestamptz(3)
+  createdBy          String    @map("created_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("statutory_filings")
+}
+
+model StatutoryPenaltyLine {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  filingId       String   @map("filing_id") @db.Uuid
+  kind           String   @db.VarChar(16)
+  daysLate       Int      @map("days_late")
+  base           Decimal  @db.Decimal(14, 2)
+  rate           String   @db.VarChar(20)
+  amount         Decimal  @db.Decimal(14, 2)
+  ruleVersion    String   @map("rule_version") @db.VarChar(40)
+  paidRef        String?  @map("paid_ref") @db.VarChar(60)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("statutory_penalty_lines")
+}
+
+model TdsChallan {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  depositMonth   DateTime  @map("deposit_month") @db.Date
+  subjectKey     String    @default("salary_tds") @map("subject_key") @db.VarChar(30)
+  lawVersion     String    @map("law_version") @db.VarChar(8)
+  tds            Decimal   @db.Decimal(14, 2)
+  interest       Decimal   @default(0) @db.Decimal(14, 2)
+  fee            Decimal   @default(0) @db.Decimal(14, 2)
+  prefill        Json      @default("{}")
+  challanNo      String?   @map("challan_no") @db.VarChar(20)
+  bsrCode        String?   @map("bsr_code") @db.Char(7)
+  depositDate    DateTime? @map("deposit_date") @db.Date
+  status         String    @default("draft") @db.VarChar(10)
+  editReason     String?   @map("edit_reason") @db.VarChar(500)
+  updatedBy      String    @map("updated_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, legalEntityId, depositMonth, subjectKey], map: "tds_challans_key")
+  @@map("tds_challans")
+}
+
+model TdsReturn {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  formCode       String    @map("form_code") @db.VarChar(4)
+  lawVersion     String    @map("law_version") @db.VarChar(8)
+  taxYear        String    @map("tax_year") @db.VarChar(7)
+  quarter        Int       @db.SmallInt
+  kind           String    @default("original") @db.VarChar(10)
+  correctsId     String?   @map("corrects_id") @db.Uuid
+  rows           Json
+  reconciliation Json?
+  /// 5f-D1: the File Validation Utility outcome (validator, ok, errors, hashes).
+  fvu            Json?
+  exchangeFileId String?   @map("exchange_file_id") @db.Uuid
+  status         String    @default("draft") @db.VarChar(10)
+  tokenNo        String?   @map("token_no") @db.VarChar(30)
+  filedBy        String?   @map("filed_by") @db.Uuid
+  filedAt        DateTime? @map("filed_at") @db.Timestamptz(3)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("tds_returns")
+}
+
+model StatutoryRegister {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  locationId     String?   @map("location_id") @db.Uuid
+  registerType   String    @map("register_type") @db.VarChar(20)
+  periodStart    DateTime  @map("period_start") @db.Date
+  formatVersion  String    @map("format_version") @db.VarChar(30)
+  version        Int       @default(1)
+  status         String    @default("generated") @db.VarChar(12)
+  supersedesId   String?   @map("supersedes_id") @db.Uuid
+  reason         String?   @db.VarChar(500)
+  fileRef        String    @map("file_ref") @db.VarChar(500)
+  sha256         String    @db.Char(64)
+  unsignedSha256 String    @map("unsigned_sha256") @db.Char(64)
+  unsignedBytes  Int       @map("unsigned_bytes")
+  signatureRef   String?   @map("signature_ref") @db.VarChar(500)
+  rowCount       Int       @map("row_count")
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  frozenAt       DateTime? @map("frozen_at") @db.Timestamptz(3)
+  signedAt       DateTime? @map("signed_at") @db.Timestamptz(3)
+
+  @@map("statutory_registers")
+}
+
+model RegisterRow {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  legalEntityId  String @map("legal_entity_id") @db.Uuid
+  registerId     String @map("register_id") @db.Uuid
+  employeeId     String @map("employee_id") @db.Uuid
+  data           Json
+
+  @@map("register_rows")
+}
+
+model InspectionPack {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  locationId     String?  @map("location_id") @db.Uuid
+  periodStart    DateTime @map("period_start") @db.Date
+  registerIds    String[] @map("register_ids") @db.Uuid
+  exchangeFileId String   @map("exchange_file_id") @db.Uuid
+  createdBy      String   @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("inspection_packs")
+}
+
+model AdvisoryReview {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  advisoryCode   String   @map("advisory_code") @db.VarChar(40)
+  ruleVersion    String   @map("rule_version") @db.VarChar(20)
+  note           String   @db.VarChar(1000)
+  reviewedBy     String   @map("reviewed_by") @db.Uuid
+  reviewedAt     DateTime @default(now()) @map("reviewed_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, legalEntityId, advisoryCode, ruleVersion], map: "advisory_reviews_key")
+  @@map("advisory_reviews")
+}

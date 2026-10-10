@@ -51,6 +51,7 @@
     "ioredis": "5.10.1",
     "ipaddr.js": "1.9.1",
     "jsep": "^1.4.0",
+    "jszip": "3.10.1",
     "ldapts": "8.1.8",
     "libphonenumber-js": "^1.13.14",
     "luxon": "3.7.2",
