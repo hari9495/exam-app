@@ -52,6 +52,7 @@ export const fvuFor = (taxYear: string) => {
 const CAP_ZIP_ENTRY = 20 * 1024 * 1024;
 const CAP_FVU_OUTPUT = 50 * 1024 * 1024;
 const CAP_REPORT = 2 * 1024 * 1024;
+const RUN_MS = 5 * 60 * 1000;
 
 /** Strict reading of an FVU report: tags and control characters gone, at most 200 lines of 500 characters. */
 export function reportLines(text: string): string[] {
@@ -161,7 +162,7 @@ export class FvuRunner {
             'com.tin.FVU.FVU',
             ...filled,
           ],
-          { timeout: 300_000, maxBuffer: 1024 * 1024 },
+          { timeout: RUN_MS, maxBuffer: CAP_REPORT },
           (err) => (err && !('code' in err && typeof err.code === 'number') ? reject(err) : resolve()),
         ),
       );
