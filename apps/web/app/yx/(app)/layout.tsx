@@ -63,6 +63,9 @@ const ABSCONDING: WorkspaceLink = { id: 'absconding', label: 'Absconding', href:
 const UPCOMING_EXITS: WorkspaceLink = { id: 'upcoming-exits', label: 'Retirements and contracts', href: '/yx/people/upcoming-exits', group: 'People' };
 const RETRENCHMENT: WorkspaceLink = { id: 'retrenchment', label: 'Retrenchment and VRS', href: '/yx/people/retrenchment', group: 'People' };
 const MY_DOCUMENTS: WorkspaceLink = { id: 'my-documents', label: 'My documents', href: '/yx/me/documents', group: 'Me' };
+// Lifecycle 6f: a new hire's first 30 days (first in the menu, so their home page) and HR's life-event checklists.
+const FIRST_30: WorkspaceLink = { id: 'first-30', label: 'My first 30 days', href: '/yx/me/first-30-days', group: 'Me' };
+const LIFE_EVENTS: WorkspaceLink = { id: 'life-events', label: 'Life events', href: '/yx/people/life-events', group: 'People' };
 const CHECKLISTS: WorkspaceLink = { id: 'checklists', label: 'Onboarding checklists', href: '/yx/settings/checklists', group: 'Organisation' };
 const PROFILE: WorkspaceLink = { id: 'profile', label: 'My profile', href: '/yx/people/profile', group: 'People' };
 const ID_CHANGES: WorkspaceLink = { id: 'profile-requests', label: 'Identity and bank changes', href: '/yx/people/profile-requests', group: 'People' };
@@ -152,6 +155,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   // Checklist tasks reach IT, Admin and managers too (founder D1): the menu shows them to whoever has some.
   const myTasks = useLife<{ tasks: unknown[] }>('/lifecycle/my-tasks');
   const myClearance = useLife<{ rows: unknown[] }>('/lifecycle/clearance/mine');
+  const firstDays = useLife<{ card: unknown }>('/lifecycle/me/first-30-days');
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
   // A sensitive role with no second step: a reminder during the grace period, a pause after it.
@@ -198,6 +202,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...(bulk ? [BULK] : []),
     ...(perms.has('lifecycle.onboarding.view') || perms.has('lifecycle.onboarding.manage') ? [ONBOARDING] : []),
     ...(perms.has('lifecycle.onboarding.manage') ? [READY] : []),
+    ...(perms.has('lifecycle.onboarding.view') || perms.has('lifecycle.onboarding.manage') ? [LIFE_EVENTS] : []),
     ...(perms.has('letter.issue') ? [LETTERS] : []),
     ...(perms.has('lifecycle.exit.view') || perms.has('lifecycle.exit.manage') || manager ? [EXITS] : []),
     ...(myClearance.data?.rows.length || perms.has('lifecycle.exit.manage') ? [CLEARANCE] : []),
@@ -264,7 +269,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         ...(perms.has('payroll.template.manage') ? [PAY_TEMPLATES] : []),
         ...(perms.has('employee.salary.manage') ? [PAY_COMPENSATION] : []),
         ...(perms.has('payroll.import.run') ? [PAY_IMPORTS] : [])];
-  const links = [...staff, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAY_DOCUMENTS] : []), ...security];
+  const links = [...(firstDays.data?.card && !support ? [FIRST_30] : []), ...staff, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAY_DOCUMENTS] : []), ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
   return (

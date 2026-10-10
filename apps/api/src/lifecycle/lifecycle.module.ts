@@ -12,6 +12,7 @@ import { DocumentsModule } from '../documents/documents.module';
 import { JoinersService } from './joiners.service';
 import { JoiningService } from './joining.service';
 import { LifecycleJourneysService } from './journeys.service';
+import { LifeEventsService } from './life-events.service';
 import { LifecycleController } from './lifecycle.controller';
 import { ExitsController } from './exits.controller';
 import { ExitsService } from './exits.service';
@@ -32,7 +33,7 @@ import { PreboardingPortalService } from './portal.service';
 @Module({
   imports: [WorkflowModule, NotificationsModule, RulesEngineModule, ServiceDeskModule, DocumentsModule, AuthModule, CryptoModule, EmailModule, EmployeeHistoryModule, PeopleModule],
   controllers: [LifecycleController, PreboardingPortalController, ExitsController, AlumniPortalController, SpecialCasesController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService, LastDayService, AlumniPortalService, OnboardingExtrasService, ExitExtrasService],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService, LastDayService, AlumniPortalService, OnboardingExtrasService, ExitExtrasService, LifeEventsService],
   exports: [LifecycleJourneysService],
 })
 export class LifecycleModule {}

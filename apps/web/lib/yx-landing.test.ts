@@ -7,6 +7,11 @@ describe('landingFor (where a YukthiX sign-in lands)', () => {
     expect(landingFor('panel', ['desk.ticket.view', 'results:view'], true)).toBe('/yx/desk/tickets');
   });
 
+  it('a new hire in their first 30 days lands on that page, before the directory (lifecycle 6f)', () => {
+    expect(landingFor('panel', ['employee.profile.view'], true, true)).toBe('/yx/me/first-30-days');
+    expect(landingFor('super_admin', [], false, true)).not.toBe('/yx/me/first-30-days');
+  });
+
   it('sends someone with neither to My security', () => {
     expect(landingFor('panel', [])).toBe('/yx/me/security');
   });

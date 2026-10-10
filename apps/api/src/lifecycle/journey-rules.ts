@@ -62,3 +62,57 @@ export function checkTemplateTasks(tasks: readonly { key: string; dependsOn: str
   }
   return null;
 }
+
+// ------------------------------------------------------------------------------------------ 6f content steps (§5.7)
+
+const httpsUrl = (u: unknown): string | null => {
+  if (typeof u !== 'string' || !u.trim()) return null;
+  try {
+    const x = new URL(u.trim());
+    return x.protocol === 'https:' && u.trim().length <= 500 ? x.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
+/** The stored config of a read / watch / survey step, or the problem in plain words. */
+export function contentConfig(kind: 'read' | 'watch' | 'survey', cfg: Record<string, unknown>): { config: Record<string, unknown> } | { problem: string } {
+  if (kind === 'read') {
+    const text = typeof cfg.text === 'string' ? cfg.text.trim() : '';
+    const url = httpsUrl(cfg.url);
+    if (cfg.url && !url) return { problem: 'needs a link that starts with https://' };
+    if (!text && !url) return { problem: 'needs the text to read or a link to it' };
+    if (text.length > 4000) return { problem: 'can have at most 4,000 characters of text' };
+    return { config: { ...(text ? { text } : {}), ...(url ? { url } : {}) } };
+  }
+  if (kind === 'watch') {
+    const url = httpsUrl(cfg.url);
+    if (!url) return { problem: 'needs a link to the video that starts with https://' };
+    const minutes = cfg.minutes === undefined || cfg.minutes === null ? null : Number(cfg.minutes);
+    if (minutes !== null && !(Number.isInteger(minutes) && minutes >= 1 && minutes <= 180)) return { problem: 'must last between 1 and 180 minutes' };
+    return { config: { url, ...(minutes ? { minutes } : {}) } };
+  }
+  const qs = Array.isArray(cfg.questions) ? cfg.questions.map((q) => (typeof q === 'string' ? q.trim() : '')).filter(Boolean) : [];
+  if (!qs.length || qs.length > 5) return { problem: 'needs 1 to 5 statements to rate' };
+  if (qs.some((q) => q.length > 200)) return { problem: 'can have at most 200 characters per statement' };
+  return { config: { questions: qs } };
+}
+
+/** A quick-survey answer: one rating 1–5 per statement and an optional comment. */
+export function surveyAnswers(questions: readonly string[], a: Record<string, unknown>): { ratings: number[]; comment?: string } | null {
+  const r = a.ratings;
+  if (!Array.isArray(r) || r.length !== questions.length || !r.every((x) => Number.isInteger(x) && x >= 1 && x <= 5)) return null;
+  const comment = typeof a.comment === 'string' ? a.comment.trim().slice(0, 500) : '';
+  return { ratings: r as number[], ...(comment ? { comment } : {}) };
+}
+
+/** "Your first 30 days" (§7.6): the person's own open steps by when they fall. */
+export function firstThirtyBuckets<T extends { dueOn: string }>(tasks: readonly T[], today: string, joinedOn: string) {
+  const week = addDays(today, 7);
+  const end = addDays(joinedOn, 30);
+  return {
+    today: tasks.filter((t) => t.dueOn <= today),
+    week: tasks.filter((t) => t.dueOn > today && t.dueOn <= week),
+    month: tasks.filter((t) => t.dueOn > week && t.dueOn <= end),
+  };
+}
