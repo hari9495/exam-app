@@ -69,3 +69,21 @@ export async function translated(tx: Tx, c: CompanyContext, language: Language, 
   const rows = await tx.contentTranslation.findMany({ where: { organizationId: c.organizationId, subjectType, language, subjectId: { in: [...new Set(ids)] } }, select: { subjectId: true, text: true } });
   return new Map(rows.map((r) => [r.subjectId, r.text]));
 }
+
+/**
+ * Journey names and step titles in the reader's language (lifecycle 6f screens). A journey's steps are copies of its
+ * template's steps, matched back by the step key.
+ */
+export async function journeyWords(tx: Tx, c: CompanyContext, journeys: readonly { id: string; templateId: string }[]) {
+  const lang = await readerLanguage(tx, c);
+  const templateIds = [...new Set(journeys.map((j) => j.templateId))];
+  const names = await translated(tx, c, lang, 'journey_template', templateIds);
+  const steps = lang === (await companyLanguage(tx, c)) ? [] : await tx.journeyTemplateTask.findMany({ where: { organizationId: c.organizationId, templateId: { in: templateIds } }, select: { id: true, templateId: true, key: true } });
+  const words = await translated(tx, c, lang, 'journey_task', steps.map((s) => s.id));
+  const templateOf = new Map(journeys.map((j) => [j.id, j.templateId]));
+  const stepId = new Map(steps.map((s) => [`${s.templateId}:${s.key}`, s.id]));
+  return {
+    template: (templateId: string, base: string) => names.get(templateId) ?? base,
+    step: (journeyId: string, key: string, base: string) => words.get(stepId.get(`${templateOf.get(journeyId)}:${key}`) ?? '') ?? base,
+  };
+}

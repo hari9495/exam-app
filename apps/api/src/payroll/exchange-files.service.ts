@@ -95,6 +95,8 @@ export class ExchangeFilesService {
       await payScope(tx, await entitiesFor(tx, c, v, 'payroll.file.view'));
       const f = await tx.exchangeFile.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!f) throw new NotFoundException('Not found');
+      // A bank file carries full account numbers (§12.5): only the people who make or release it may download it.
+      if (f.kind === 'bank' && !(await entitiesFor(tx, c, v, 'payroll.bankfile.generate')).concat(await entitiesFor(tx, c, v, 'payroll.bankfile.release')).includes(f.legalEntityId)) throw new ForbiddenException('Bank files are downloaded by the people who generate or release them.');
       const token = randomBytes(32).toString('base64url');
       await tx.exchangeFileLink.create({ data: { organizationId: c.organizationId, legalEntityId: f.legalEntityId, fileId: f.id, tokenHash: tokenHash(token), userId: v.userId!, expiresAt: new Date(Date.now() + LINK_SECONDS * 1000) } });
       await audit(tx, c, 'payroll.file.link_issued', 'exchange_file', f.id, { legalEntityId: f.legalEntityId, kind: f.kind, sha256: f.sha256 });
@@ -131,20 +133,25 @@ export class ExchangeFilesService {
     return file;
   }
 
-  /** The checker releases a file someone else generated (step-up by the route), after its hash is checked again. */
-  async release(ctx: TenantContext, user: ScopeUser, id: string, confirmation: ConfirmationDto) {
+  /**
+   * The checker releases a file someone else generated (step-up by the route), after its hash is checked again. Bank
+   * files have their own key and checks (batch 5d: its check runs in the same transaction); the generic route refuses them.
+   */
+  async release(ctx: TenantContext, user: ScopeUser, id: string, confirmation: ConfirmationDto, bank?: { check: (tx: Tx, c: CompanyContext, f: File) => Promise<void> }) {
     const v = await payViewer(this.prisma, this.tenantPrisma, user);
     requireSelf(v);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      await payScope(tx, await entitiesFor(tx, c, v, 'payroll.file.release'));
+      await payScope(tx, await entitiesFor(tx, c, v, bank ? 'payroll.bankfile.release' : 'payroll.file.release'));
       await tx.$queryRaw`SELECT id FROM exchange_files WHERE organization_id = ${c.organizationId}::uuid AND id = ${id}::uuid FOR UPDATE`;
       const f = await tx.exchangeFile.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!f) throw new NotFoundException('Not found');
+      if ((f.kind === 'bank') !== Boolean(bank)) throw new ForbiddenException(f.kind === 'bank' ? 'Release a bank file from its payroll run (payroll.bankfile.release).' : 'Not a bank file.');
       if (f.generatedBy === v.userId) throw new ForbiddenException('You generated this file, so someone else must release it.');
       if (f.status !== 'generated') throw new ConflictException(f.status === 'released' ? 'This file is already released.' : 'A newer file replaced this one.');
       const phrase = `RELEASE ${f.rowCount}`;
       if (confirmation.phrase !== phrase) throw new BadRequestException(`Type ${phrase} to confirm.`);
       await this.checked(f);
+      if (bank) await bank.check(tx, c, f);
       await tx.exchangeFile.update({ where: { id: f.id }, data: { status: 'released', releasedBy: v.userId!, releasedAt: new Date() } });
       await audit(tx, c, 'payroll.file.released', 'exchange_file', f.id, { legalEntityId: f.legalEntityId, kind: f.kind, sha256: f.sha256, rows: f.rowCount, totals: f.totals, confirmed: { phrase: confirmation.phrase, impact: confirmation.impact } });
       return { id: f.id, status: 'released' };

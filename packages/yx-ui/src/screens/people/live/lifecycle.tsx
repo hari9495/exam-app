@@ -18,7 +18,7 @@ import { dayKey } from '../../../lib/dates';
 import { WhenBadge } from '../../history/history-kit';
 import { errorText, useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
-import type { FormDef, ImportResult, Joiner, JoinerBoard, JoinerInput, JoinerPlaces, Journey, JourneyTask, LoadState, MyTasks, QueueDocument } from './types';
+import { JOURNEY_KIND_LABEL, type FirstThirtyDays, type FormDef, type ImportResult, type Joiner, type JoinerBoard, type JoinerInput, type JoinerPlaces, type Journey, type JourneyKind, type JourneyTask, type LifeJourneyRow, type LoadState, type MyTasks, type QueueDocument } from './types';
 
 // Lifecycle batch 6a, wired (M01-LIFECYCLE-BUILD-DESIGN §14): the onboarding board (PPL-11), a checklist (PPL-13),
 // my checklist tasks, the document verification queue (PPL-27) and "Joining soon" for managers. A joiner is not an
@@ -38,7 +38,13 @@ const KIND_HINT: Record<JourneyTask['kind'], string> = {
   document: 'Closes when the document is in',
   letter: LETTER_KIND_HINT_TEXT,
   desk_request: 'Service Desk request',
+  read: 'Read and acknowledge',
+  watch: 'Watch',
+  survey: 'Quick survey',
 };
+/** What a journey's day 0 is, in words (6f adds life events). */
+const ANCHOR_WORD: Record<JourneyKind, string> = { onboarding: 'Joins', offboarding: 'Leaves', new_manager: 'Manages from', transfer: 'Moves', parental_leave: 'Leave from', return_to_work: 'Back on' };
+const DAY_WORD: Record<JourneyKind, string> = { onboarding: 'joining', offboarding: 'last working', new_manager: 'first', transfer: 'move', parental_leave: 'first leave', return_to_work: 'return' };
 const fromKey = (iso: string) => new Date(`${iso}T00:00:00`);
 
 // ------------------------------------------------------------------------------------------ onboarding board
@@ -357,13 +363,20 @@ export interface TaskActions {
   onIssueLetter?: (task: JourneyTask) => Promise<unknown>;
 }
 
-type Ask = { kind: 'done' | 'form' | 'letter' | 'skip' | 'upload'; task: JourneyTask };
+type Ask = { kind: 'done' | 'form' | 'letter' | 'skip' | 'upload' | 'read' | 'watch' | 'survey'; task: JourneyTask };
+const CONTENT_ASK: Partial<Record<JourneyTask['kind'], { ask: Ask['kind']; button: string; confirm: string }>> = {
+  form: { ask: 'form', button: 'Fill in', confirm: 'Submit' },
+  letter: { ask: 'letter', button: 'Record the letter', confirm: 'Issue letter' },
+  read: { ask: 'read', button: 'Read', confirm: 'I have read this' },
+  watch: { ask: 'watch', button: 'Watch', confirm: 'I have watched this' },
+  survey: { ask: 'survey', button: 'Answer', confirm: 'Send answers' },
+};
 
 function TaskTable({ tasks, today, showPerson, actions, onOpen, canUpload }: { tasks: JourneyTask[]; today: string; showPerson?: boolean; actions: TaskActions; onOpen?: (journeyId: string) => void; canUpload?: boolean }) {
   const [ask, setAsk] = useState<Ask | null>(null);
   const columns: TableColumn<JourneyTask>[] = [
     ...(showPerson
-      ? [{ key: 'person', header: 'For', type: 'person' as const, value: (r: JourneyTask) => r.person ?? '', person: (r: JourneyTask) => ({ name: r.person ?? '', secondary: r.anchorOn ? `${r.journeyKind === 'offboarding' ? 'Leaves' : 'Joins'} ${dateText(r.anchorOn)}` : undefined }), width: 220, hideable: false }]
+      ? [{ key: 'person', header: 'For', type: 'person' as const, value: (r: JourneyTask) => r.person ?? '', person: (r: JourneyTask) => ({ name: r.person ?? '', secondary: r.anchorOn ? `${ANCHOR_WORD[r.journeyKind ?? 'onboarding']} ${dateText(r.anchorOn)}` : undefined }), width: 220, hideable: false }]
       : []),
     {
       key: 'title',
@@ -428,8 +441,8 @@ function TaskTable({ tasks, today, showPerson, actions, onOpen, canUpload }: { t
         rowButtons={(r) => (
           <>
             {r.canComplete && (
-              <Button size="sm" variant="primary" onClick={() => setAsk({ kind: r.kind === 'form' ? 'form' : r.kind === 'letter' ? 'letter' : 'done', task: r })}>
-                {r.kind === 'form' ? 'Fill in' : r.kind === 'letter' ? 'Record the letter' : 'Mark done'}
+              <Button size="sm" variant="primary" onClick={() => setAsk({ kind: CONTENT_ASK[r.kind]?.ask ?? 'done', task: r })}>
+                {CONTENT_ASK[r.kind]?.button ?? 'Mark done'}
               </Button>
             )}
             {canUpload && actions.onIssueLetter && r.kind === 'letter' && r.status === 'open' && (
@@ -466,11 +479,15 @@ function TaskDialog({ ask, actions, onClose }: { ask: Ask; actions: TaskActions;
   const [file, setFile] = useState<File | null>(null);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const questions = t.content?.questions ?? [];
+  const [ratings, setRatings] = useState<(string | null)[]>(questions.map(() => null));
   const confirm = async () => {
     try {
       if (ask.kind === 'skip') await actions.onSkip(t, text.trim());
       else if (ask.kind === 'upload') await actions.onUpload!(t, file!);
       else if (ask.kind === 'letter') await actions.onIssueLetter!(t);
+      else if (ask.kind === 'survey') await actions.onComplete(t, { answers: { ratings: ratings.map(Number), ...(text.trim() ? { comment: text.trim() } : {}) } });
+      else if (ask.kind === 'read' || ask.kind === 'watch') await actions.onComplete(t, {});
       else await actions.onComplete(t, ask.kind === 'form' ? { answers } : text.trim() ? { note: text.trim() } : {});
     } catch (e) {
       const errs = (e as { body?: { errors?: Record<string, string> } }).body?.errors;
@@ -479,7 +496,7 @@ function TaskDialog({ ask, actions, onClose }: { ask: Ask; actions: TaskActions;
     }
     onClose();
   };
-  const ready = ask.kind === 'skip' ? text.trim().length >= 3 : ask.kind === 'upload' ? Boolean(file) : true;
+  const ready = ask.kind === 'skip' ? text.trim().length >= 3 : ask.kind === 'upload' ? Boolean(file) : ask.kind === 'survey' ? ratings.every(Boolean) : true;
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   return (
@@ -495,9 +512,13 @@ function TaskDialog({ ask, actions, onClose }: { ask: Ask; actions: TaskActions;
             ? 'The letter is made from your company’s active template with the joiner’s details. Letters that need approval go to the signatory first. Once issued it never changes, and this task closes by itself.'
             : ask.kind === 'upload'
               ? 'The file is checked for viruses before anyone can open it. HR verifies it in the documents queue.'
-              : 'The task is marked done with your name and the time.'
+              : ask.kind === 'survey'
+                ? 'HR sees your answers. Your manager sees only that you answered.'
+                : ask.kind === 'read' || ask.kind === 'watch'
+                  ? `${ask.kind === 'read' ? 'Read' : 'Watch'} it, then confirm. The step is marked done with your name and the time.`
+                  : 'The task is marked done with your name and the time.'
       }
-      confirmLabel={ask.kind === 'skip' ? 'Skip task' : ask.kind === 'upload' ? 'Upload' : ask.kind === 'form' ? 'Submit' : ask.kind === 'letter' ? 'Issue letter' : 'Mark done'}
+      confirmLabel={ask.kind === 'skip' ? 'Skip task' : ask.kind === 'upload' ? 'Upload' : ask.kind === 'done' ? 'Mark done' : (CONTENT_ASK[t.kind]?.confirm ?? 'Mark done')}
       confirmDisabled={!ready}
       onConfirm={confirm}
     >
@@ -542,7 +563,39 @@ function TaskDialog({ ask, actions, onClose }: { ask: Ask; actions: TaskActions;
         </FormField>
       )}
       {ask.kind === 'form' && t.form && <TaskForm form={t.form} answers={answers} onChange={setAnswers} errors={formErrors} />}
+      {(ask.kind === 'read' || ask.kind === 'watch') && <StepContent task={t} />}
+      {ask.kind === 'survey' && (
+        <>
+          {questions.map((q, i) => (
+            <FormField key={q} id={`sv-${i}`} label={q} required helper="1 = not at all, 5 = fully">
+              <Segment label={q} value={ratings[i]} onChange={(x) => setRatings(ratings.map((r, j) => (j === i ? x : r)))} options={['1', '2', '3', '4', '5'].map((v) => ({ value: v, label: v }))} />
+            </FormField>
+          ))}
+          <FormField id="sv-comment" label="Anything else" optional>
+            <TextArea value={text} onChange={setText} rows={2} maxLength={500} />
+          </FormField>
+        </>
+      )}
     </ConfirmDialog>
+  );
+}
+
+/** What a read or watch step shows: the text, and the link (opens in a new tab). */
+function StepContent({ task }: { task: JourneyTask }) {
+  const c = task.content ?? {};
+  return (
+    <>
+      {c.text?.split(/\n+/).map((para, i) => (
+        <Text as="p" key={i}>
+          {para}
+        </Text>
+      ))}
+      {c.url && (
+        <a className="yx-link" href={c.url} target="_blank" rel="noopener noreferrer">
+          {task.kind === 'watch' ? `Open the video${c.minutes ? ` (about ${c.minutes} minutes)` : ''}` : 'Open the page'}
+        </a>
+      )}
+    </>
   );
 }
 
@@ -598,8 +651,8 @@ export function JourneyScreen(p: JourneyScreenProps) {
   const tasks = j ? j.tasks.filter((t) => show === 'all' || t.status === 'open' || t.status === 'waiting') : [];
   return (
     <LivePage
-      title={j ? `${j.person}: ${j.kind === 'onboarding' ? 'onboarding' : 'offboarding'}` : 'Checklist'}
-      description={j ? `${j.kind === 'onboarding' ? 'Joins' : 'Leaves'} on ${dateText(j.anchorOn)}. Checklist: ${j.template}${j.owner ? `, run by ${j.owner}` : ''}. Due dates follow the ${j.kind === 'onboarding' ? 'joining' : 'last working'} day.` : undefined}
+      title={j ? `${j.person}: ${j.kind === 'onboarding' ? 'onboarding' : j.kind === 'offboarding' ? 'offboarding' : JOURNEY_KIND_LABEL[j.kind].toLowerCase()}` : 'Checklist'}
+      description={j ? `${ANCHOR_WORD[j.kind]} ${j.kind === 'onboarding' || j.kind === 'offboarding' ? 'on ' : ''}${dateText(j.anchorOn)}. Checklist: ${j.template}${j.owner ? `, run by ${j.owner}` : ''}. Due dates follow the ${DAY_WORD[j.kind]} day.` : undefined}
       state={p.state}
       onRetry={p.onRetry}
       what="this checklist"
@@ -674,6 +727,91 @@ export function MyTasksScreen(p: MyTasksScreenProps) {
       what="your tasks"
     >
       {p.data && <TaskTable tasks={p.data.tasks} today={p.data.today} showPerson actions={p} onOpen={p.onOpen} />}
+    </LivePage>
+  );
+}
+
+// ------------------------------------------------------------------------------------------ 6f: my first 30 days, life events
+
+export interface FirstThirtyDaysScreenProps extends TaskActions {
+  state: LoadState;
+  onRetry?: () => void;
+  data: FirstThirtyDays | null;
+}
+
+/** Design §7.6 (gap pass O2): a new hire's own steps for today, this week and this month, from their joining checklist. */
+export function FirstThirtyDaysScreen(p: FirstThirtyDaysScreenProps) {
+  const d = p.data;
+  const sections: [string, JourneyTask[], string][] = d
+    ? [
+        ['Today', d.today, 'Nothing for today.'],
+        ['This week', d.week, 'Nothing else this week.'],
+        ['This month', d.month, 'Nothing else this month.'],
+      ]
+    : [];
+  return (
+    <LivePage title="My first 30 days" description={d ? `Day ${d.day} of 30. You joined on ${dateText(d.joinedOn)}.` : undefined} state={p.state} onRetry={p.onRetry} what="your first days">
+      {d && (
+        <>
+          <Card title="Your people">
+            <ul className="yx-lif-list">
+              <li>
+                <Text tone="secondary">Manager</Text> <Text>{d.manager ?? 'Not set yet'}</Text>
+              </li>
+              {d.buddy && (
+                <li>
+                  <Text tone="secondary">Buddy</Text> <Text>{d.buddy}</Text>
+                </li>
+              )}
+              <li>
+                <Text tone="secondary">Steps done</Text> <Text>{String(d.done)}</Text>
+              </li>
+            </ul>
+          </Card>
+          {sections.map(([title, rows, none]) => (
+            <Card key={title} title={title}>
+              {rows.length ? <TaskTable tasks={rows} today={d.date} actions={p} /> : <Text tone="secondary">{none}</Text>}
+            </Card>
+          ))}
+        </>
+      )}
+    </LivePage>
+  );
+}
+
+export interface LifeJourneysScreenProps {
+  state: LoadState;
+  onRetry?: () => void;
+  rows: LifeJourneyRow[] | null;
+  onOpen: (journeyId: string) => void;
+}
+
+/** Design §7.5: active life-event checklists in the viewer's scope (new manager, transfer, parental leave, return). */
+export function LifeJourneysScreen(p: LifeJourneysScreenProps) {
+  const columns: TableColumn<LifeJourneyRow>[] = [
+    { key: 'person', header: 'Person', type: 'person', value: (r) => r.person, person: (r) => ({ name: r.person }), width: 220, hideable: false },
+    { key: 'kind', header: 'Life event', value: (r) => r.kindLabel, width: 160 },
+    { key: 'on', header: 'Day', value: (r) => r.anchorOn, render: (r) => <Text>{dateText(r.anchorOn)}</Text>, width: 140 },
+    { key: 'progress', header: 'Required tasks done', value: (r) => r.progress, render: (r) => <Text>{`${r.progress}%`}</Text>, width: 170 },
+  ];
+  return (
+    <LivePage title="Life events" description="Checklists for new managers, transfers, parental leave and return to work. Each starts by itself once the company turns it on in Settings › Checklists." state={p.state} onRetry={p.onRetry} what="life-event checklists">
+      {p.rows && (
+        <DataTable
+          label="Life-event checklists"
+          columns={columns}
+          rows={p.rows}
+          getRowId={(r) => r.id}
+          rowNoun={['checklist', 'checklists']}
+          cardSummary
+          empty={<EmptyState compact title="No life-event checklists running." description="Turn one on in Settings › Checklists › Life events." />}
+          rowButtons={(r) => (
+            <Button size="sm" onClick={() => p.onOpen(r.id)}>
+              Checklist
+            </Button>
+          )}
+        />
+      )}
     </LivePage>
   );
 }

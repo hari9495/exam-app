@@ -1,0 +1,54 @@
+{
+  "ruleSets": [
+    {
+      "statute": "IN.TAXDED",
+      "jurisdiction": "IN",
+      "version": "FY2025-26",
+      "validFrom": "2025-04-01",
+      "validTo": "2026-03-31",
+      "lawVersion": "IT-1961",
+      "verify": true,
+      "source": "Income-tax Act 1961: s.10(13A) with rule 2A (HRA), s.80C, 80CCD(1B), 80CCD(2), 80D, 80E, s.24(b), s.10(10AA)(ii) (leave encashment, limit raised to Rs 25 lakh from 1 Apr 2023), s.10(10C) (VRS); landlord PAN above Rs 1 lakh of rent a year (CBDT Circular 8/2013).",
+      "values": {
+        "kind": "tax_deductions",
+        "caps": { "sec80c": "150000", "sec80ccd1b": "50000", "sec80ccd2": null, "sec80d_self": "25000", "sec80d_self_senior": "50000", "sec80d_parents": "25000", "sec80d_parents_senior": "50000", "sec80e": null, "sec24b": "200000" },
+        "newRegimeKeys": ["sec80ccd2"],
+        "hra": { "metroPercent": "0.5", "otherPercent": "0.4", "rentOverBasic": "0.1" },
+        "landlordPanAbove": "100000",
+        "leaveEncashmentMax": "2500000",
+        "vrsMax": "500000"
+      },
+      "golden": [
+        { "name": "HRA in a metro: the least is HRA received", "fn": "hra_exempt", "input": { "hra": "20000", "basic": "50000", "rent": "25000", "metro": true }, "expected": { "exempt": "20000" } },
+        { "name": "HRA elsewhere: rent over 10% of basic is the least", "fn": "hra_exempt", "input": { "hra": "20000", "basic": "50000", "rent": "15000", "metro": false }, "expected": { "exempt": "10000" } },
+        { "name": "80C capped at 1.5 lakh (old regime)", "fn": "tax_deduction", "input": { "key": "sec80c", "amount": "200000", "regime": "old" }, "expected": { "allowed": "150000" } },
+        { "name": "80C is not allowed in the new regime", "fn": "tax_deduction", "input": { "key": "sec80c", "amount": "200000", "regime": "new" }, "expected": { "allowed": "0" } },
+        { "name": "Leave encashment: 300 days credit at 50,000 a month", "fn": "leave_encashment_exempt", "input": { "received": "600000", "averageMonthly": "50000", "leaveDays": "300", "serviceYears": 12 }, "expected": { "exempt": "500000" } },
+        { "name": "VRS exempt up to 5 lakh", "fn": "vrs_exempt", "input": { "received": "800000" }, "expected": { "exempt": "500000" } }
+      ]
+    },
+    {
+      "statute": "IN.TAXDED",
+      "jurisdiction": "IN",
+      "version": "TY2026-27",
+      "validFrom": "2026-04-01",
+      "validTo": null,
+      "lawVersion": "IT-2025",
+      "verify": true,
+      "source": "Income-tax Act 2025 (in force 1 Apr 2026): the provisions corresponding to the 1961 Act ones listed for FY2025-26, same limits carried over; section numbers to be confirmed by the compliance owner and the partner CA.",
+      "values": {
+        "kind": "tax_deductions",
+        "caps": { "sec80c": "150000", "sec80ccd1b": "50000", "sec80ccd2": null, "sec80d_self": "25000", "sec80d_self_senior": "50000", "sec80d_parents": "25000", "sec80d_parents_senior": "50000", "sec80e": null, "sec24b": "200000" },
+        "newRegimeKeys": ["sec80ccd2"],
+        "hra": { "metroPercent": "0.5", "otherPercent": "0.4", "rentOverBasic": "0.1" },
+        "landlordPanAbove": "100000",
+        "leaveEncashmentMax": "2500000",
+        "vrsMax": "500000"
+      },
+      "golden": [
+        { "name": "HRA in a metro: the least is HRA received", "fn": "hra_exempt", "input": { "hra": "20000", "basic": "50000", "rent": "25000", "metro": true }, "expected": { "exempt": "20000" } },
+        { "name": "80C capped at 1.5 lakh (old regime)", "fn": "tax_deduction", "input": { "key": "sec80c", "amount": "200000", "regime": "old" }, "expected": { "allowed": "150000" } }
+      ]
+    }
+  ]
+}

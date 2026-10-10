@@ -4,7 +4,18 @@
 export type { LoadState } from '../../org/types';
 
 export type TaskStatus = 'waiting' | 'open' | 'done' | 'skipped' | 'cancelled';
-export type TaskKind = 'tick' | 'form' | 'document' | 'letter' | 'desk_request';
+export type TaskKind = 'tick' | 'form' | 'document' | 'letter' | 'desk_request' | 'read' | 'watch' | 'survey';
+/** 6f: life events run on the same engine as joining and leaving (design §7.5). */
+export type LifeEventKind = 'new_manager' | 'transfer' | 'parental_leave' | 'return_to_work';
+export type JourneyKind = 'onboarding' | 'offboarding' | LifeEventKind;
+export const JOURNEY_KIND_LABEL: Record<JourneyKind, string> = { onboarding: 'Joining', offboarding: 'Leaving', new_manager: 'New manager', transfer: 'Transfer', parental_leave: 'Parental leave', return_to_work: 'Return to work' };
+/** 6f read / watch / quick-survey content (the API checks it when a checklist is saved). */
+export interface TaskContent {
+  text?: string;
+  url?: string;
+  minutes?: number;
+  questions?: string[];
+}
 export type OwnerType = 'hr' | 'it' | 'admin' | 'finance' | 'payroll' | 'manager' | 'person' | 'user' | 'group' | 'buddy';
 
 export interface FormFieldDef {
@@ -42,6 +53,8 @@ export interface JourneyTask {
   /** Letter tasks: the letter type HR issues (6b: the task closes from the issued letter). */
   letterType?: string | null;
   answers: Record<string, unknown> | null;
+  /** Read / watch / survey steps (6f). */
+  content?: TaskContent | null;
   link: { type: string; id: string } | null;
   completedAt: string | null;
   completedBy: string | null;
@@ -51,14 +64,14 @@ export interface JourneyTask {
   version: number;
   /** My tasks only. */
   journeyId?: string;
-  journeyKind?: 'onboarding' | 'offboarding';
+  journeyKind?: JourneyKind;
   person?: string;
   anchorOn?: string;
 }
 
 export interface Journey {
   id: string;
-  kind: 'onboarding' | 'offboarding';
+  kind: JourneyKind;
   person: string;
   personId: string;
   subjectType: string;
@@ -76,6 +89,30 @@ export interface Journey {
 export interface MyTasks {
   today: string;
   tasks: JourneyTask[];
+}
+
+/** 6f "Your first 30 days" (design §7.6): the new hire's own steps by when they fall. */
+export interface FirstThirtyDays {
+  journeyId: string;
+  joinedOn: string;
+  date: string;
+  day: number;
+  manager: string | null;
+  buddy: string | null;
+  done: number;
+  today: JourneyTask[];
+  week: JourneyTask[];
+  month: JourneyTask[];
+}
+
+/** 6f People › Life events. */
+export interface LifeJourneyRow {
+  id: string;
+  kind: LifeEventKind;
+  kindLabel: string;
+  person: string;
+  anchorOn: string;
+  progress: number;
 }
 
 export interface Joiner {
@@ -176,7 +213,7 @@ export interface TemplateTask {
 }
 export interface JourneyTemplate {
   id: string;
-  kind: 'onboarding' | 'offboarding';
+  kind: JourneyKind;
   name: string;
   legalEntityId: string | null;
   locationId: string | null;
@@ -188,7 +225,7 @@ export interface JourneyTemplate {
 }
 export interface JourneyTemplates {
   templates: JourneyTemplate[];
-  starters: { key: string; kind: 'onboarding' | 'offboarding'; name: string; summary: string; tasks: number; copied: boolean }[];
+  starters: { key: string; kind: JourneyKind; name: string; summary: string; tasks: number; copied: boolean }[];
 }
 
 // ------------------------------------------------------------------------------------------ batch 6b

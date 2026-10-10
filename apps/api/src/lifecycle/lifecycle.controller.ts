@@ -15,11 +15,12 @@ import { BgvCheckDto, BgvUpdateDto, CancelJoinerDto, CompleteTaskDto, JoinDto, J
 import { JoiningService } from './joining.service';
 import { JoinersService } from './joiners.service';
 import { LifecycleJourneysService } from './journeys.service';
+import { LifeEventsService } from './life-events.service';
 
 // M01 lifecycle batch 6a (M01-LIFECYCLE-BUILD-DESIGN §13). Keys (P02 YX-SEC-01), checked again per joiner / person:
 //   lifecycle.onboarding.view             the onboarding board and joiners in scope (planned entity / location / dept)
 //   lifecycle.onboarding.manage           add, import and postpone joiners; hand tasks to someone else
-//   lifecycle.journey.template.manage     onboarding and offboarding checklists
+//   lifecycle.journey.template.manage     onboarding, offboarding and life-event checklists (6f)
 //   lifecycle.bgv.manage                  background-check consent requests and checks (Special data)
 //   + employee.change.manage              mark a joiner joined (the ordinary hire path checks it again)
 //   no key (implicit)                     my tasks; a checklist I have a task on (or HR in scope); joiners joining my
@@ -31,6 +32,7 @@ export class LifecycleController {
     private readonly journeys: LifecycleJourneysService,
     private readonly joiners: JoinersService,
     private readonly joining: JoiningService,
+    private readonly lifeEvents: LifeEventsService,
   ) {}
 
   private user(req: Request) {
@@ -113,6 +115,18 @@ export class LifecycleController {
   @Get('my-tasks')
   myTasks(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.journeys.myTasks(ctx, this.user(req));
+  }
+
+  // 6f (design §7.5 / §7.6): HR's list of life-event journeys; a new hire's first 30 days (null when there is none).
+  @Get('life-journeys')
+  @RequireAnyPermission('lifecycle.onboarding.view', 'lifecycle.onboarding.manage')
+  lifeJourneys(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.lifeEvents.list(ctx, this.user(req));
+  }
+
+  @Get('me/first-30-days')
+  async firstThirtyDays(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return { card: await this.lifeEvents.firstThirtyDays(ctx, this.user(req)) };
   }
 
   @Get('journeys/:id')

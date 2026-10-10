@@ -99,6 +99,13 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'payroll.protected_net_percent': { label: 'Recoveries leave at least this share of gross pay (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '10', '20', '25', '30', '40', '50'], default: '0' },
   'payroll.net_rounding': { label: 'Round net pay', scopes: ['tenant', 'legal_entity'], dated: false, values: ['none', 'rupee'], default: 'rupee' },
   'payroll.standard_daily_hours': { label: 'Standard hours a day (for hourly rates and cost rates)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['8', '8.5', '9'], default: '8' },
+  // PAY-4.05 (YX-NTF-15): payslips by email as a password-protected PDF (no amounts in the email); off unless the company turns it on.
+  // Batch 5e (§8.5, §8.6): the employee picks the regime until this day of the tax year; proofs are sent between the
+  // window's opening and the proof cut-off (after it only verified amounts count).
+  'tax.regime_cutoff': { label: 'Employees choose their tax regime until (day of the tax year)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['04-30', '05-31', '06-30', '07-31'], default: '05-31' },
+  'tax.proof_window_opens': { label: 'Tax proof window opens', scopes: ['tenant', 'legal_entity'], dated: false, values: ['10-01', '11-01', '12-01', '01-01', '01-15'], default: '01-01' },
+  'tax.proof_cutoff': { label: 'Tax proof cut-off', scopes: ['tenant', 'legal_entity'], dated: false, values: ['01-31', '02-15', '02-28', '03-15'], default: '02-28' },
+  'payroll.payslip_email': { label: 'Email payslips as password-protected PDFs', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
   'payroll.one_time_review_above': { label: 'One-time pay above this amount needs approval', scopes: ['tenant', 'legal_entity'], dated: false, values: ['none', '10000', '25000', '50000', '100000'], default: '50000' },
   'payroll.mid_period.join': { label: 'Joining in the middle of a month is paid', scopes: ['tenant', 'legal_entity'], dated: false, values: ['segments', 'cutoff', 'next_month_arrears'], default: 'segments' },
   'payroll.mid_period.exit': { label: 'Leaving in the middle of a month is paid', scopes: ['tenant', 'legal_entity'], dated: false, values: ['segments', 'cutoff'], default: 'segments' },

@@ -253,9 +253,20 @@ describe('Payroll batch 5a', () => {
       await api('hrAdmin', 'get', '/payroll/files').expect(403);
       await api('payAdminB', 'get', '/payroll/files').expect(200).then((r) => expect(r.body.files).toEqual([]));
       await stepUp('payApprover');
-      await api('payApprover', 'post', `/payroll/files/${f.id}/release`).send({ confirmation: { phrase: 'RELEASE 2', impact } }).expect(400);
-      await api('payApprover', 'post', `/payroll/files/${f.id}/release`).send({ confirmation: { phrase: 'RELEASE 1', impact } }).expect(200);
-      await api('payApprover', 'post', `/payroll/files/${f.id}/release`).send({ confirmation: { phrase: 'RELEASE 1', impact } }).expect(409);
+      // Batch 5d: a bank file is released from its payroll run (payroll.bankfile.release, payroll-5d.e2e-spec.ts), never here.
+      expect((await api('payApprover', 'post', `/payroll/files/${f.id}/release`).send({ confirmation: { phrase: 'RELEASE 1', impact } }).expect(403)).body.message).toMatch(/payroll run/);
+      await inA(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entityA}}`}, true)`;
+        await tx.exchangeFile.update({ where: { id: f.id }, data: { status: 'released', releasedBy: users.payApprover, releasedAt: new Date() } });
+      });
+      // Any other file: the typed phrase, released once.
+      const g = await inA(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entityA}}`}, true)`;
+        return exchange.generateIn(tx, { organizationId: org.A.id, isSuperAdmin: false, userId: users.payAdmin }, { legalEntityId: ids.entityA, kind: 'ecr', ownerType: 'test', ownerId: null, periodStart: `${lockMonth}-01`, fileName: 'ecr.txt', contentType: 'text/plain', data: Buffer.from('ECR'), rows: 1, totals: { amount: '1800.00' }, by: users.payAdmin });
+      }, { userId: users.payAdmin });
+      await api('payApprover', 'post', `/payroll/files/${g.id}/release`).send({ confirmation: { phrase: 'RELEASE 2', impact } }).expect(400);
+      await api('payApprover', 'post', `/payroll/files/${g.id}/release`).send({ confirmation: { phrase: 'RELEASE 1', impact } }).expect(200);
+      await api('payApprover', 'post', `/payroll/files/${g.id}/release`).send({ confirmation: { phrase: 'RELEASE 1', impact } }).expect(409);
       // The database stops a maker releasing their own file even if code forgot.
       await expect(inA(async (tx) => {
         await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entityA}}`}, true)`;

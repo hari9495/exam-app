@@ -27,10 +27,10 @@ import { entitiesFor, payScope, payViewer, requireEntity, requireSelf } from './
 // page, the company DSC where the kind needs it (§19 D4). An issued document never changes (database trigger); a
 // correction issues a new one that supersedes it.
 
-const KIND_LABEL: Record<string, string> = { payslip: 'Payslip', revision_letter: 'Salary revision letter', payment_advice: 'Payment advice', form130: 'Form 130', form131: 'Form 131', register: 'Statutory register', inspection_pack: 'Inspection pack', correction_statement: 'Correction statement' };
-const KIND_CODE: Record<string, string> = { payslip: 'PS', revision_letter: 'RL', payment_advice: 'PA', form130: 'F130', form131: 'F131', register: 'REG', inspection_pack: 'INS', correction_statement: 'CS' };
+const KIND_LABEL: Record<string, string> = { payslip: 'Payslip', revision_letter: 'Salary revision letter', payment_advice: 'Payment advice', form16: 'Form 16', form130: 'Form 130', form131: 'Form 131', register: 'Statutory register', inspection_pack: 'Inspection pack', correction_statement: 'Correction statement' };
+const KIND_CODE: Record<string, string> = { payslip: 'PS', revision_letter: 'RL', payment_advice: 'PA', form16: 'F16', form130: 'F130', form131: 'F131', register: 'REG', inspection_pack: 'INS', correction_statement: 'CS' };
 /** Kinds the company DSC signs (P05 Q2: Form 130 / 131, registers and letters). */
-const DSC_KINDS = new Set(['form130', 'form131', 'register', 'revision_letter']);
+const DSC_KINDS = new Set(['form16', 'form130', 'form131', 'register', 'revision_letter']);
 // Founder decision D3 (9 Oct 2026): former employees sign in with their personal email on record, else their old work
 // email. The step where HR confirms the personal email at exit is built by the lifecycle (onboarding / exit) batch.
 const ALUMNI_YEARS = 7;
@@ -48,7 +48,12 @@ interface Template {
   /** Fields that hold lists of { label, amount } lines. */
   lines: string[];
 }
-const TEMPLATES: Record<IssueDocumentDto['kind'], Template> = {
+/** Batch 5e: the year-end tax certificates are issued from the tax module, never by hand. */
+export type DocKind = IssueDocumentDto['kind'] | 'form16' | 'form130';
+const CERTIFICATE: Omit<Template, 'key'> = { version: 1, fields: [{ key: 'employerName', label: 'Employer' }, { key: 'employeeName', label: 'Employee' }, { key: 'employeeCode', label: 'Employee code' }, { key: 'pan', label: 'PAN of the employee' }, { key: 'taxYear', label: 'Tax year' }, { key: 'regime', label: 'Tax regime' }, { key: 'taxable', label: 'Taxable income' }, { key: 'taxDeducted', label: 'Tax deducted' }, { key: 'partA', label: 'Part A (TRACES)' }], lines: ['earnings', 'deductions'] };
+const TEMPLATES: Record<DocKind, Template> = {
+  form16: { key: 'form16-part-b', ...CERTIFICATE },
+  form130: { key: 'form130-part-b', ...CERTIFICATE },
   payslip: { key: 'payslip-starter', version: 1, fields: [{ key: 'payDate', label: 'Pay date' }], lines: ['earnings', 'deductions'] },
   revision_letter: { key: 'revision-letter-starter', version: 1, fields: [{ key: 'employeeName', label: 'Name' }, { key: 'effectiveFrom', label: 'Effective from' }, { key: 'newAnnualCtc', label: 'New annual cost to company' }, { key: 'signatory', label: 'Signed by' }], lines: [] },
   payment_advice: { key: 'payment-advice-starter', version: 1, fields: [{ key: 'employeeName', label: 'Name' }, { key: 'amount', label: 'Amount' }, { key: 'paidOn', label: 'Paid on' }, { key: 'reference', label: 'Bank reference' }], lines: [] },
@@ -81,7 +86,7 @@ export class PayDocumentsService {
   ) {}
 
   /** The mandatory fields of a kind on a date: the template's own and, for a payslip, the law's (P07, locked). */
-  private async mandatory(tx: Tx, kind: IssueDocumentDto['kind'], on: string): Promise<Field[]> {
+  private async mandatory(tx: Tx, kind: DocKind, on: string): Promise<Field[]> {
     const t = TEMPLATES[kind];
     if (kind !== 'payslip') return t.fields;
     const rs = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.WAGESLIP', jurisdiction: 'IN', validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }] }, orderBy: { validFrom: 'desc' } });
@@ -180,7 +185,7 @@ export class PayDocumentsService {
       if (confirmation.phrase !== `CORRECT ${old.referenceNo}`) throw new BadRequestException(`Type CORRECT ${old.referenceNo} to confirm.`);
       const emp = await this.subject(tx, c.organizationId, old.employeeId);
       if (emp.userId === v.userId) throw new ForbiddenException('Someone else must correct your own pay documents.');
-      const d = await this.issueIn(tx, c, { employeeId: old.employeeId, legalEntityId: old.legalEntityId, kind: old.kind as IssueDocumentDto['kind'], month: old.periodStart ? dateOf(old.periodStart).slice(0, 7) : null, fields, supersedes: old, by: v.userId!, confirmation, reason });
+      const d = await this.issueIn(tx, c, { employeeId: old.employeeId, legalEntityId: old.legalEntityId, kind: old.kind as DocKind, month: old.periodStart ? dateOf(old.periodStart).slice(0, 7) : null, fields, supersedes: old, by: v.userId!, confirmation, reason });
       return this.summary(d);
     });
   }
@@ -195,7 +200,7 @@ export class PayDocumentsService {
   }
 
   /** The shared issue step (the pay guard must already allow the entity). */
-  async issueIn(tx: Tx, c: CompanyContext, a: { employeeId: string; legalEntityId: string; kind: IssueDocumentDto['kind']; month: string | null; fields: Record<string, unknown>; supersedes: Doc | null; by: string; confirmation: ConfirmationDto; reason?: string }) {
+  async issueIn(tx: Tx, c: CompanyContext, a: { employeeId: string; legalEntityId: string; kind: DocKind; month: string | null; fields: Record<string, unknown>; supersedes: Doc | null; by: string; confirmation: ConfirmationDto; reason?: string }) {
     const org = c.organizationId;
     const t = TEMPLATES[a.kind];
     const today = todayIst();
@@ -373,7 +378,7 @@ export class PayDocumentsService {
         throw new NotFoundException('No document has this code.');
       }
       const [org, emp] = await Promise.all([tx.organization.findUnique({ where: { id: d.organizationId }, select: { name: true } }), tx.employee.findFirst({ where: { organizationId: d.organizationId, id: d.employeeId }, select: { givenName: true, familyName: true, preferredName: true } })]);
-      return { company: org?.name ?? '', kind: KIND_LABEL[d.kind], name: emp ? [emp.preferredName ?? emp.givenName, emp.familyName].filter(Boolean).join(' ') : '', issuedOn: d.issuedAt.toISOString().slice(0, 10), status: d.status === 'issued' ? 'current' : 'superseded' };
+      return { company: org?.name ?? '', kind: KIND_LABEL[d.kind], name: emp ? [emp.preferredName ?? emp.givenName, emp.familyName].filter(Boolean).join(' ') : '', issuedOn: new Date(d.issuedAt.getTime() + 330 * 60_000).toISOString().slice(0, 10) /* the Indian date it was issued */, status: d.status === 'issued' ? 'current' : 'superseded' };
     });
   }
 

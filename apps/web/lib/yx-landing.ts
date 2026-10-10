@@ -20,10 +20,11 @@ const LANDING_KEYS = [...EXAM_ATS_KEYS, DIRECTORY_KEY, DESK_KEY, ...YX_SETTINGS_
  * Pure: where a signed-in person lands. Anyone with an employee record or any YukthiX HR permission lands in
  * YukthiX (Directory if they may read it, else their own Profile); exam / hiring stays one click away
  * ("Hiring and assessments"). Only exam/ATS accounts with no employee record (and platform staff)
- * keep their role's console.
+ * keep their role's console. A new hire in their first 30 days lands on that page (lifecycle 6f, design §7.6).
  */
-export function landingFor(role: string | undefined, granted: readonly string[], isEmployee = false): string {
+export function landingFor(role: string | undefined, granted: readonly string[], isEmployee = false, firstDays = false): string {
   if (role === 'super_admin') return roleToLandingPath(role);
+  if (firstDays) return '/yx/me/first-30-days';
   if (granted.includes(DIRECTORY_KEY)) return '/yx/people/directory';
   if (granted.includes(DESK_KEY)) return '/yx/desk/tickets';
   if (isEmployee) return '/yx/people/profile';
@@ -37,11 +38,15 @@ const grantedKeys = (token: string | undefined): Promise<string[]> => apiFetch(`
 /** Landing after a YukthiX sign-in. If the permissions cannot be read, the safe default is My security. */
 export async function yxLandingPath(accessToken: string, role: string | undefined): Promise<string> {
   try {
-    const [granted, isEmployee] = await Promise.all([
+    const [granted, isEmployee, firstDays] = await Promise.all([
       grantedKeys(accessToken),
       apiFetch('/people/me', {}, accessToken).then(() => true, () => false),
+      // A new hire's first 30 days (lifecycle 6f); any failure just means no such page.
+      Promise.resolve()
+        .then(() => apiFetch('/lifecycle/me/first-30-days', {}, accessToken))
+        .then((r: { card?: unknown } | null | undefined) => Boolean(r?.card), () => false),
     ]);
-    return landingFor(role, granted, isEmployee);
+    return landingFor(role, granted, isEmployee, firstDays);
   } catch {
     return '/yx/me/security';
   }

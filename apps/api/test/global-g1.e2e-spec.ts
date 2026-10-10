@@ -144,7 +144,26 @@ describe('Global core G1 (country packs, languages, translations, pay steps, Add
       await api('adminA', 'put', '/global/translations').send({ subjectType: 'designation', subjectId: ids.desigA, language: 'ta', text: 'x'.repeat(151) }).expect(400);
       await api('emp', 'put', '/global/translations').send({ subjectType: 'designation', subjectId: ids.desigA, language: 'ta', text: 'x' }).expect(403);
       expect((await api('adminB', 'get', '/global/translations?subjectType=designation').expect(200)).body.items.map((i: { translations: object }) => i.translations)).toEqual([{}]);
-      expect((await auditActions('org.translation.')).map((a) => a.action)).toEqual(['org.translation.saved', 'org.translation.saved', 'org.translation.saved', 'org.translation.removed']);
+      expect((await auditActions('org.translation.')).map((a) => a.action).slice(0, 4)).toEqual(['org.translation.saved', 'org.translation.saved', 'org.translation.saved', 'org.translation.removed']);
+    });
+  });
+
+  describe('journey names and steps (G1.06 with lifecycle 6f)', () => {
+    it('a person sees their checklist step in their language; the template editor keeps the company words', async () => {
+      const j = await inA(async (tx) => {
+        const o = { organizationId: org.A.id };
+        const e = await tx.employee.findFirstOrThrow({ where: { ...o, id: ids.emp } });
+        const m = await tx.employment.findFirstOrThrow({ where: { ...o, employeeId: ids.emp } });
+        const t = await tx.journeyTemplate.create({ data: { ...o, kind: 'onboarding', name: 'Welcome to stores' } });
+        const step = await tx.journeyTemplateTask.create({ data: { ...o, templateId: t.id, key: 'welcome', title: 'Read the welcome note', ownerType: 'user', ownerUserId: users.emp, kind: 'tick', dueOffsetDays: 0, sortOrder: 1 } });
+        const journey = await tx.journey.create({ data: { ...o, kind: 'onboarding', personId: e.personId, subjectType: 'employment', subjectId: m.id, templateId: t.id, templateVersion: 1, anchorOn: new Date(`${today}T00:00:00Z`), status: 'active' } });
+        await tx.journeyTask.create({ data: { ...o, journeyId: journey.id, key: 'welcome', title: 'Read the welcome note', kind: 'tick', ownerType: 'user', assigneeUserId: users.emp, dueOffsetDays: 0, dueOn: new Date(`${today}T00:00:00Z`), sortOrder: 1, status: 'open' } });
+        return { template: t.id, step: step.id };
+      });
+      expect((await api('adminA', 'get', '/global/translations?subjectType=journey_task').expect(200)).body.items).toEqual([{ id: j.step, name: 'Welcome to stores › Read the welcome note', translations: {} }]);
+      await api('adminA', 'put', '/global/translations').send({ subjectType: 'journey_task', subjectId: j.step, language: 'ta', text: 'வரவேற்புக் குறிப்பைப் படிக்கவும்' }).expect(200);
+      const mine = (await api('emp', 'get', '/lifecycle/my-tasks').expect(200)).body.tasks.find((t: { key: string }) => t.key === 'welcome');
+      expect(mine.title).toBe('வரவேற்புக் குறிப்பைப் படிக்கவும்');
     });
   });
 

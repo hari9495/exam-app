@@ -132,3 +132,22 @@ describe('/yx/people/changes', () => {
     await waitFor(() => expect(posted).toEqual([{ confirmRebase: false }]));
   });
 });
+
+describe('/yx layout: lifecycle 6f menu entries', () => {
+  const MFA = { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' };
+  const links = async () => within(await screen.findByRole('navigation', { name: 'Menu' })).getAllByRole('link').map((a) => a.textContent);
+
+  it('a new hire gets My first 30 days as their home page while the joining checklist runs', async () => {
+    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: [], 'GET /people/employees': [PERSON], 'GET /people/team': { managerId: 'p-divya', members: [] }, 'GET /lifecycle/me/first-30-days': { card: { journeyId: 'jr1', day: 3 } } });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    await waitFor(async () => expect(await links()).toContain('My first 30 days'));
+    expect(document.querySelector('.yx-workspace__home')).toHaveAttribute('href', '/yx/me/first-30-days');
+  });
+
+  it('HR who can see joiners also gets Life events', async () => {
+    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: ['lifecycle.onboarding.view'], 'GET /people/employees': [], 'GET /people/team': { managerId: null, members: [] }, 'GET /lifecycle/me/first-30-days': { card: null } });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    await waitFor(async () => expect(await links()).toContain('Life events'));
+    expect(await links()).not.toContain('My first 30 days');
+  });
+});
