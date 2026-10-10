@@ -14,6 +14,6 @@ import { PeopleService } from './people.service';
   imports: [EmployeeHistoryModule, CryptoModule, EmailModule],
   providers: [PeopleService, BulkChangesService, ProfileService],
   controllers: [PeopleController],
-  exports: [PeopleService],
+  exports: [PeopleService, ProfileService],
 })
 export class PeopleModule {}

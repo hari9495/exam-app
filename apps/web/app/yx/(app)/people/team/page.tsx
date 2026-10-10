@@ -2,9 +2,11 @@
 
 import { useRouter } from 'next/navigation';
 import { TeamScreen, type OrgChartData, type TeamMember } from '@yukthix/ui/workforce';
+import { JoiningSoonCard, type Joiner } from '@yukthix/ui/lifecycle';
 import type { PersonOption } from '@yukthix/ui/history';
 import { loadState, todayIst, useYxPermissions } from '../../../../../lib/yx-org';
 import { chartPeople, useChangeOptions, usePeople, useRaiseChange } from '../../../../../lib/yx-people';
+import { useLife } from '../../../../../lib/yx-lifecycle';
 
 const id = encodeURIComponent;
 
@@ -25,7 +27,11 @@ export default function YxTeamPage() {
   const options = useChangeOptions(subjects, perms.has('employee.salary.manage'), canRaise);
   const raise = useRaiseChange();
   const types = hrDesk ? undefined : (['promotion', 'transfer', 'redesignation', 'manager_change'] as const);
+  // M01 lifecycle 6a (founder D2): joiners are not team members until day one; they show here, above the team.
+  const soon = useLife<Joiner[]>('/lifecycle/joining-soon');
   return (
+    <>
+    {soon.data?.length ? <JoiningSoonCard rows={soon.data} today={todayIst()} onOpen={(journeyId) => router.push(`/yx/people/onboarding/${id(journeyId)}`)} /> : null}
     <TeamScreen
       state={loadState(team)}
       onRetry={() => void team.refetch()}
@@ -34,5 +40,6 @@ export default function YxTeamPage() {
       onOpenHistory={(personId) => router.push(`/yx/people/history?person=${id(personId)}`)}
       raise={canRaise && chart.data ? { options: { ...options, managers: everyone, ...(types ? { types: [...types] } : {}) }, ...raise } : undefined}
     />
+    </>
   );
 }

@@ -35,6 +35,21 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'employee.aadhaar.view',
   'access.role.manage',
   // M03 batch 5a: payroll periods, documents and files, the audit log (P12 Q1: MFA mandatory for payroll roles).
+  // M01 lifecycle batch 6a: joiners, checklists and person documents (Personal / Confidential / Special data).
+  'lifecycle.onboarding.view',
+  'lifecycle.onboarding.manage',
+  'lifecycle.journey.template.manage',
+  'document.view',
+  'document.manage',
+  // Batch 6b: background checks (Special data) and letters.
+  'lifecycle.bgv.manage',
+  'letter.template.manage',
+  'letter.issue',
+  'letter.signatory.manage',
+  // Batch 6c: exit cases, HR-only exit facts and confidential exit-interview answers.
+  'lifecycle.exit.view',
+  'lifecycle.exit.manage',
+  'lifecycle.exit.confidential.view',
   'payroll.period.view',
   'payroll.period.reopen',
   'payroll.period.reopen.approve',

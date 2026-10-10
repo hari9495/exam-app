@@ -40,6 +40,22 @@ describe('notification catalog', () => {
       'helpdesk.rule.failed',
       'helpdesk.msg.link_ended',
       'time.roster.published',
+      'lifecycle.joiner.added',
+      'journey.task.assigned',
+      'journey.task.due',
+      'journey.task.overdue',
+      'document.requested',
+      'document.rejected',
+      'document.expiring',
+      'letter.ready',
+      'letter.signed',
+      'preboarding.completed',
+      'exit.case.update',
+      'exit.clearance.assigned',
+      'exit.interview.sent',
+      'asset.assigned',
+      'probation.review.done',
+      'exit.deprovisioning.failed',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

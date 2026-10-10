@@ -16,6 +16,7 @@ import { withNextHere } from '../../../lib/safe-next';
 import { useOrgBranding } from '../../../lib/hooks/useBranding';
 import { useYxPermissions } from '../../../lib/yx-org';
 import { usePeople } from '../../../lib/yx-people';
+import { useLife } from '../../../lib/yx-lifecycle';
 import type { TeamMember } from '@yukthix/ui/workforce';
 import { DeskHelpButton } from './desk-help';
 
@@ -41,6 +42,28 @@ const HISTORY: WorkspaceLink = { id: 'job-history', label: 'Job history', href: 
 const CHANGES: WorkspaceLink = { id: 'job-changes', label: 'Job changes', href: '/yx/people/changes', group: 'People' };
 const PROBATION: WorkspaceLink = { id: 'probation', label: 'Probation', href: '/yx/people/probation', group: 'People' };
 const BULK: WorkspaceLink = { id: 'bulk-changes', label: 'Bulk changes', href: '/yx/people/bulk-changes', group: 'People' };
+// M01 lifecycle batch 6a: joiners and checklists, checklist tasks for their owners, documents to verify, templates.
+const ONBOARDING: WorkspaceLink = { id: 'onboarding', label: 'Onboarding', href: '/yx/people/onboarding', group: 'People' };
+const MY_TASKS: WorkspaceLink = { id: 'my-tasks', label: 'My checklist tasks', href: '/yx/people/my-tasks', group: 'People' };
+const DOC_QUEUE: WorkspaceLink = { id: 'documents-verify', label: 'Documents to verify', href: '/yx/people/documents', group: 'People' };
+const LETTERS: WorkspaceLink = { id: 'letters', label: 'Letters', href: '/yx/people/letters', group: 'People' };
+const READY: WorkspaceLink = { id: 'ready-to-onboard', label: 'Ready to onboard', href: '/yx/people/ready-to-onboard', group: 'People' };
+const LETTER_TEMPLATES: WorkspaceLink = { id: 'letter-templates', label: 'Letter templates', href: '/yx/settings/letters', group: 'Organisation' };
+const MY_LETTERS: WorkspaceLink = { id: 'my-letters', label: 'My letters', href: '/yx/me/letters', group: 'Me' };
+// Lifecycle 6c: exits, clearance, assets; Me › Resign, my assets, my exit interview.
+const EXITS: WorkspaceLink = { id: 'exits', label: 'Exits', href: '/yx/people/exits', group: 'People' };
+const CLEARANCE: WorkspaceLink = { id: 'clearance', label: 'Clearance', href: '/yx/people/clearance', group: 'People' };
+const ASSETS: WorkspaceLink = { id: 'assets', label: 'Assets', href: '/yx/people/assets', group: 'People' };
+const RESIGN: WorkspaceLink = { id: 'resign', label: 'Resign', href: '/yx/me/resignation', group: 'Me' };
+const MY_ASSETS: WorkspaceLink = { id: 'my-assets', label: 'My assets', href: '/yx/me/assets', group: 'Me' };
+// Lifecycle 6d: my documents and the instant employment certificate.
+// Lifecycle 6e: campus batches, absconding, retirements and contract ends, retrenchment and VRS.
+const BATCHES: WorkspaceLink = { id: 'batches', label: 'Campus batches', href: '/yx/people/batches', group: 'People' };
+const ABSCONDING: WorkspaceLink = { id: 'absconding', label: 'Absconding', href: '/yx/people/absconding', group: 'People' };
+const UPCOMING_EXITS: WorkspaceLink = { id: 'upcoming-exits', label: 'Retirements and contracts', href: '/yx/people/upcoming-exits', group: 'People' };
+const RETRENCHMENT: WorkspaceLink = { id: 'retrenchment', label: 'Retrenchment and VRS', href: '/yx/people/retrenchment', group: 'People' };
+const MY_DOCUMENTS: WorkspaceLink = { id: 'my-documents', label: 'My documents', href: '/yx/me/documents', group: 'Me' };
+const CHECKLISTS: WorkspaceLink = { id: 'checklists', label: 'Onboarding checklists', href: '/yx/settings/checklists', group: 'Organisation' };
 const PROFILE: WorkspaceLink = { id: 'profile', label: 'My profile', href: '/yx/people/profile', group: 'People' };
 const ID_CHANGES: WorkspaceLink = { id: 'profile-requests', label: 'Identity and bank changes', href: '/yx/people/profile-requests', group: 'People' };
 const ACCESS: WorkspaceLink = { id: 'access', label: 'Roles & access', href: '/yx/settings/access', group: 'Access' };
@@ -126,6 +149,9 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   const people = usePeople<unknown[]>('/employees');
   // My team and team probations appear for managers (P02 Q2, M01 §3.10).
   const team = usePeople<{ managerId: string | null; members: TeamMember[] }>('/team');
+  // Checklist tasks reach IT, Admin and managers too (founder D1): the menu shows them to whoever has some.
+  const myTasks = useLife<{ tasks: unknown[] }>('/lifecycle/my-tasks');
+  const myClearance = useLife<{ rows: unknown[] }>('/lifecycle/clearance/mine');
   // Shares the cache with My security, so the banner clears as soon as a factor is added there.
   const mfa = useQuery<MfaStatus>({ queryKey: ['yx', 'mfa'], queryFn: () => apiFetch('/auth/mfa', {}, accessToken ?? undefined), enabled: Boolean(accessToken) });
   // A sensitive role with no second step: a reminder during the grace period, a pause after it.
@@ -170,15 +196,28 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...(hr || perms.has('request.raise_on_behalf') ? [CHANGES] : []),
     ...(hr || manager ? [PROBATION] : []),
     ...(bulk ? [BULK] : []),
+    ...(perms.has('lifecycle.onboarding.view') || perms.has('lifecycle.onboarding.manage') ? [ONBOARDING] : []),
+    ...(perms.has('lifecycle.onboarding.manage') ? [READY] : []),
+    ...(perms.has('letter.issue') ? [LETTERS] : []),
+    ...(perms.has('lifecycle.exit.view') || perms.has('lifecycle.exit.manage') || manager ? [EXITS] : []),
+    ...(myClearance.data?.rows.length || perms.has('lifecycle.exit.manage') ? [CLEARANCE] : []),
+    ...(perms.has('asset.view') ? [ASSETS] : []),
+    ...(perms.has('lifecycle.onboarding.manage') ? [BATCHES] : []),
+    ...(perms.has('lifecycle.exit.view') || perms.has('lifecycle.exit.manage') ? [UPCOMING_EXITS] : []),
+    ...(perms.has('lifecycle.exit.manage') ? [ABSCONDING, RETRENCHMENT] : []),
+    ...(myTasks.data?.tasks.length || perms.has('lifecycle.onboarding.manage') ? [MY_TASKS] : []),
+    ...(perms.has('document.manage') ? [DOC_QUEUE] : []),
     ...(idDesk ? [ID_CHANGES] : []),
     ...org,
+    ...(perms.has('lifecycle.journey.template.manage') ? [CHECKLISTS] : []),
+    ...(perms.has('letter.template.manage') || perms.has('letter.signatory.manage') ? [LETTER_TEMPLATES] : []),
     ...(perms.has('access.role.manage') ? [ACCESS] : []),
     // Read by anyone who reads the structure; changed with org.settings.manage (+ access.role.manage for guarded keys).
     ...(settingsAdmin ? [ACCESS_SETTINGS] : []),
   ];
   // P04 Q5: the company's email branding and wording, for those who hold the key (read-only in a support session).
   const emails = perms.has('notification.template.manage') || support ? [EMAILS] : [];
-  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee ? [PRIVACY] : [])];
+  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee ? [PRIVACY, MY_LETTERS, MY_DOCUMENTS, MY_ASSETS, RESIGN] : [])];
   const supportEndsAt = support ? (decodeJwtPayload(accessToken)?.supportEndsAt as string | undefined) : undefined;
   const desk = support
     ? []

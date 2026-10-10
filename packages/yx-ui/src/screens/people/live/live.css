@@ -1,0 +1,10 @@
+/* Lifecycle batch 6a wired screens: short lists inside cards, the checklist editor's field grid, inline action rows. */
+.yx-lif-list { display: flex; flex-direction: column; gap: var(--yx-space-2); margin: 0; padding: 0; list-style: none; }
+.yx-lif-list > li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); min-width: 0; }
+.yx-lif-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(calc(var(--yx-space-16) * 3), 1fr)); gap: var(--yx-space-3); }
+.yx-lif-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-2); margin-top: var(--yx-space-3); }
+
+/* Batch 6c: label / value facts on the exit screens, and a row of secondary actions. */
+.yx-lif-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(calc(var(--yx-space-16) * 3), 1fr)); gap: var(--yx-space-3); margin: var(--yx-space-2) 0; }
+.yx-lif-facts dt, .yx-lif-facts dd { margin: 0; }
+.yx-lif-actions { display: flex; flex-wrap: wrap; gap: var(--yx-space-2); }

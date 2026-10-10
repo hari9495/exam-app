@@ -32,6 +32,8 @@ export interface ProbationScreenProps {
   onOpenHistory: (employeeId: string) => void;
   /** Where waiting confirmations are approved. */
   changesHref: string;
+  /** LIFE-3.01: the direct manager's review (confirm for approval, extend, or end the probation after HR). */
+  onReview?: (employeeId: string, review: { outcome: 'confirm' | 'extend' | 'terminate'; months: number | null; comments: string; rating: number | null }) => Promise<void>;
 }
 
 type Ask = { kind: 'confirm' | 'extend'; row: ProbationRow };
@@ -85,9 +87,51 @@ function AskDialog({ ask, onClose, onConfirm, onExtend }: { ask: Ask; onClose: (
   );
 }
 
-export function ProbationScreen({ state, onRetry, rows, today, canManage, onConfirm, onExtend, onOpenHistory, changesHref }: ProbationScreenProps) {
+function ReviewDialog({ row: r, onClose, onReview }: { row: ProbationRow; onClose: () => void; onReview: NonNullable<ProbationScreenProps['onReview']> }) {
+  const left = Math.max(0, r.maxTotalMonths - monthsRun(r));
+  const [outcome, setOutcome] = useState<'confirm' | 'extend' | 'terminate'>('confirm');
+  const [months, setMonths] = useState<string | null>(left ? String(Math.min(3, left)) : null);
+  const [comments, setComments] = useState('');
+  const [rating, setRating] = useState<string | null>(null);
+  const ready = comments.trim().length >= 3 && (outcome !== 'extend' || Boolean(months));
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="md"
+      title={`Review ${r.name}'s probation`}
+      consequence={outcome === 'confirm' ? 'HR approves the confirmation; until then they stay on probation.' : outcome === 'extend' ? 'The probation runs longer and the review reminder comes again before the new end.' : 'HR reviews it first. If HR agrees, the exit starts with the notice for probation.'}
+      confirmLabel={outcome === 'confirm' ? 'Send for approval' : outcome === 'extend' ? 'Extend probation' : 'Send to HR'}
+      confirmDisabled={!ready}
+      destructive={outcome === 'terminate'}
+      onConfirm={async () => {
+        await onReview(r.employeeId, { outcome, months: outcome === 'extend' ? Number(months) : null, comments: comments.trim(), rating: rating ? Number(rating) : null });
+        onClose();
+      }}
+    >
+      <Segment label="Outcome" value={outcome} onChange={setOutcome} options={[{ value: 'confirm', label: 'Confirm' }, { value: 'extend', label: 'Extend' }, { value: 'terminate', label: 'Do not confirm' }]} />
+      {outcome === 'extend' &&
+        (left === 0 ? (
+          <Text as="p" tone="danger">{`The probation already runs the company maximum of ${r.maxTotalMonths} months.`}</Text>
+        ) : (
+          <FormField id="rv-months" label="Extend by" required helper={`Up to ${left} more month${left === 1 ? '' : 's'}.`}>
+            <Select aria-label="Extend by" value={months} onChange={setMonths} options={Array.from({ length: Math.min(12, left) }, (_, i) => ({ value: String(i + 1), label: `${i + 1} month${i ? 's' : ''}` }))} />
+          </FormField>
+        ))}
+      <FormField id="rv-rating" label="Overall rating" optional>
+        <Select aria-label="Overall rating" value={rating} onChange={setRating} clearable options={[['1', '1 · Below what the job needs'], ['2', '2 · Partly meets it'], ['3', '3 · Meets it'], ['4', '4 · Above it'], ['5', '5 · Well above it']].map(([value, label]) => ({ value, label }))} />
+      </FormField>
+      <FormField id="rv-comments" label="Comments" required helper="HR reads them; they are kept on the record.">
+        <TextArea value={comments} onChange={setComments} rows={3} maxLength={2000} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
+export function ProbationScreen({ state, onRetry, rows, today, canManage, onConfirm, onExtend, onOpenHistory, changesHref, onReview }: ProbationScreenProps) {
   const [show, setShow] = useState<Show>('open');
   const [ask, setAsk] = useState<Ask | null>(null);
+  const [reviewing, setReviewing] = useState<ProbationRow | null>(null);
   const shown = rows.filter((r) => (show === 'confirmed' ? r.stage === 'confirmed' : r.stage !== 'confirmed'));
   const columns: TableColumn<ProbationRow>[] = [
     { key: 'name', header: 'Person', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.employeeCode }), width: 240, hideable: false },
@@ -149,6 +193,10 @@ export function ProbationScreen({ state, onRetry, rows, today, canManage, onConf
                 <Button size="sm" variant="review" asChild>
                   <a href={changesHref}>Review</a>
                 </Button>
+              ) : onReview && r.canReview ? (
+                <Button size="sm" variant="primary" onClick={() => setReviewing(r)}>
+                  Review
+                </Button>
               ) : canManage && r.stage !== 'confirmed' ? (
                 <>
                   <Button size="sm" onClick={() => setAsk({ kind: 'confirm', row: r })}>
@@ -168,6 +216,7 @@ export function ProbationScreen({ state, onRetry, rows, today, canManage, onConf
         </>
       )}
       {ask && <AskDialog ask={ask} onClose={() => setAsk(null)} onConfirm={onConfirm} onExtend={onExtend} />}
+      {reviewing && onReview && <ReviewDialog row={reviewing} onClose={() => setReviewing(null)} onReview={onReview} />}
     </div>
   );
 }

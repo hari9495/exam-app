@@ -294,7 +294,7 @@ export async function grantCovers(tx: Tx, c: CompanyContext, v: Viewer, own: str
  * Active users who hold `key` over the employee today: through their own role profile (company-wide) or a role grant
  * whose scope covers the employee (P02 §4.3). Used for the HR step of leave and regularisation approvals.
  */
-export async function holdersOf(tx: Tx, org: string, key: TimeKey, employeeId: string, today: string): Promise<string[]> {
+export async function holdersOf(tx: Tx, org: string, key: TimeKey | string, employeeId: string, today: string): Promise<string[]> {
   const like = `%"${key}"%`;
   const rows = await tx.$queryRaw<{ id: string }[]>`
     SELECT u.id::text FROM users u JOIN permission_profiles p ON p.organization_id = u.organization_id AND p.id = u.permission_profile_id

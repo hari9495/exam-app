@@ -16,6 +16,7 @@ import { seedServiceDeskEsm3 } from './seed-service-desk-esm3';
 import { TIME_PERMISSIONS, seedTime } from './seed-time';
 import { seedTimeB2 } from './seed-time-b2';
 import { PAY_PERMISSIONS, seedAuditAnchor, seedPay, seedPay5b } from './seed-pay';
+import { LIFE_PERMISSIONS, seedLifecycle, seedLifecycleAssets, seedLifecycleLetters } from './seed-lifecycle';
 import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file';
 
 const prisma = new PrismaClient();
@@ -85,6 +86,8 @@ export const PERMISSIONS = [
   ...TIME_PERMISSIONS,
   // M03 payroll batch 5a (also in the payroll_5a migration).
   ...PAY_PERMISSIONS,
+  // M01 lifecycle batch 6a (also in the lifecycle_6a migration).
+  ...LIFE_PERMISSIONS,
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -171,6 +174,19 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'audit.export',
     'audit.hold.manage',
     'payroll.period.reopen.approve',
+    // M01 lifecycle 6a: checklists and joiners like adding employees; documents only by data class (none Confidential).
+    'lifecycle.onboarding.view',
+    'lifecycle.onboarding.manage',
+    'lifecycle.journey.template.manage',
+    'document.view',
+    // Batch 6b: letter templates and who signs them (issuing stays with HR).
+    'letter.template.manage',
+    'letter.signatory.manage',
+    // Batch 6c: exit cases and the asset list (the HR-only facts stay with HR Admins).
+    'lifecycle.exit.view',
+    'lifecycle.exit.manage',
+    'asset.view',
+    'asset.manage',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
@@ -381,6 +397,10 @@ async function main() {
       // Step 5 payroll batch 5a: pay periods, a reopen request waiting for its second approver, a sample payslip and
       // a bank file waiting for release (seed-pay.ts).
       await seedPay(tx, demoOrg.id, panelHash);
+      // M01 lifecycle batch 6a: checklists from the starters and a joiner in Divya's team (seed-lifecycle.ts).
+      await seedLifecycle(tx, demoOrg.id);
+      await seedLifecycleLetters(tx, demoOrg.id);
+      await seedLifecycleAssets(tx, demoOrg.id);
       // Step 5 payroll batch 5b: the starter components and template, pay groups, statutory registrations.
       await seedPay5b(tx, demoOrg.id);
     }

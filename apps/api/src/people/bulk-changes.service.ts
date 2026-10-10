@@ -16,7 +16,7 @@ import { CsvProblem, parseBulkCsv, RawRow } from './bulk-csv';
 // Each row goes through the same change path as a single change (YX-HIS-01), so every rule applies to it.
 
 /** Change types a file may carry: joins come from hiring, corrections and confirmations one by one. */
-const BULK_TYPES = CHANGE_TYPES.filter((t) => !['join', 'correction', 'confirmation'].includes(t));
+const BULK_TYPES = CHANGE_TYPES.filter((t) => !['join', 'correction', 'confirmation', 'notice', 'notice_withdrawal', 'exit'].includes(t));
 
 interface Item {
   line: number;

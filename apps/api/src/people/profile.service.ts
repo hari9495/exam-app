@@ -280,6 +280,30 @@ export class ProfileService {
     });
   }
 
+  /**
+   * Lifecycle 6b: identity and bank details a joiner gave in pre-boarding become ordinary change requests on their new
+   * record on the joining day, inside that transaction, so the usual approval (maker ≠ checker, cooling hours) applies.
+   */
+  async raiseIn(tx: Tx, c: CompanyContext, employeeId: string, kind: RequestKind, value: ProposedValueDto, reason: string) {
+    const p = this.proposal(kind, value);
+    if (await this.sameAsOnFile(tx, c, employeeId, kind, p)) return null;
+    const row = await tx.employeeProfileRequest.create({
+      data: {
+        organizationId: c.organizationId,
+        employeeId,
+        kind,
+        proposedEnc: this.seal(c, employeeId, JSON.stringify(p)),
+        proposedDisplay: this.display(kind, p),
+        currentDisplay: (await this.currentDisplay(tx, c, employeeId, kind)) ?? Prisma.DbNull,
+        reason,
+        requestedBy: c.userId!,
+        notifyContacts: await this.contactsOnFile(tx, c, employeeId),
+      },
+    });
+    await audit(tx, c, 'employee.profile_change.requested', 'employee', employeeId, { requestId: row.id, kind, by: 'preboarding' });
+    return row.id;
+  }
+
   private async sameAsOnFile(tx: Tx, c: CompanyContext, employeeId: string, kind: Kind, p: Proposal) {
     if (BANK[kind]) {
       const b = await tx.employeeBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId, purpose: BANK[kind], validTo: null } });
