@@ -1312,6 +1312,14 @@ From the global HCM gap pass (GLOBAL-HCM-GAP-PASS.md §7.1), accepted on 10 Oct 
 |---|---|---|
 | GP-PAY-1 | **Ledger mapping, two levels:** pay lines map to ledger accounts by a company default, then an override per legal entity or cost centre. An **unmapped** bucket blocks journal posting until every line is mapped. | Extends the 5c journal (PAY-3.17), built in the costing / journal slice with batch 5f: a mapping per component (and net pay) and side (expense or payable) at company, legal-entity or cost-centre level, the most specific winning (cost centre, then entity, then company). The journal is worked out from the approved payslips and today's mapping; lines with no account sit in "Unmapped", and export and "mark posted" are refused until it is empty. Mapping changes are audited. |
 
+### 19.8 Batch 5f build decisions (founder, accepted 10 Oct 2026)
+
+| # | Decision | What is built |
+|---|---|---|
+| 5f-D1 | **TDS returns in the official government file format, validated with the government's free File Validation Utility (FVU)**, run in an isolated worker with no network and no other access. If the FVU cannot be fetched from the official source, the worker seam is built with a fake and the exact file needed is reported. | The quarterly return writes the e-TDS text file (file, batch, challan and deductee records, caret-separated) from the reconciled return and the deposited challans. The FVU runs in a throw-away container (no network, read-only, non-root, only the return file mounted) given by configuration; without it, a fake validator (development only) checks the file's structure and says it is not the FVU. Production refuses to validate until the FVU is installed. Go-live checklist item 16 names the file. |
+| 5f-D2 | **Filing partner: self-filing for the pilot.** | `POST /statutory/filings/{id}/transmit` keeps answering "no partner connected". |
+| 5f-D3 | **State PT and LWF layouts, PF / ESI damages rates, register formats and the ELI fields go on the go-live checklist for the compliance owner.** ELI is built later. | Go-live checklist item 17. The files and rule sets stay marked verify until then. |
+
 ---
 
 ## 20. Go-live items this design adds
@@ -1342,3 +1350,4 @@ To add to [GO-LIVE-CHECKLIST.md](../GO-LIVE-CHECKLIST.md) (the coordinator edits
 | 9 Oct 2026 | §19.4–19.5: batch 5d build decisions 5d-D1 … 5d-D3 accepted (generic bank format only and the pilot's bank as an open data item, penny drop by a second person, an employee-set payslip password); the hash-versus-PDF-lock question recorded as open. |
 | 9 Oct 2026 | §19.6: batch 5e build decisions 5e-D1 … 5e-D3 accepted (payslip email as a link to the in-app payslip, PAN status by hand, no DTAA relief with cases flagged). |
 | 10 Oct 2026 | §19.7: ledger mapping (global gap pass §7.1) accepted: two-level mapping with an unmapped bucket that blocks posting. |
+| 10 Oct 2026 | §19.8: batch 5f build decisions 5f-D1 … 5f-D3 accepted (official e-TDS file and FVU in an isolated worker, self-filing for the pilot, statutory data items on the go-live checklist). |
