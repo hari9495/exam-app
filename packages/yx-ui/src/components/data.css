@@ -101,6 +101,7 @@
 .yx-drawer__body { flex: 1; overflow-y: auto; padding: var(--yx-space-4) var(--yx-space-5); }
 .yx-drawer__foot { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--yx-space-2); padding: var(--yx-space-3) var(--yx-space-5); border-top: var(--yx-border-width) solid var(--yx-color-border); }
 .yx-drawer__foot > .yx-alert { flex: 1; }
+.yx-drawer__notice { flex: 0 0 100%; order: -3; }
 /* A plain-text hint in the footer ("No changes yet") lines up with the buttons. */
 .yx-drawer__foot { align-items: center; }
 .yx-drawer__foot > span, .yx-drawer__foot > p { margin: 0; color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }

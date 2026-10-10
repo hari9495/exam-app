@@ -70,6 +70,22 @@ export function deliveryDetail(row: Pick<SmsDeliveryRow, 'status' | 'error'>): s
 
 /** How many {#var#} the DLT text has. */
 export const placeholderCount = (body: string) => body.split('{#var#}').length - 1;
+
+/** A first guess for each {#var#}, from the words around it: "{#var#} minutes" is the minutes, the first other one the code. */
+export function guessVariables(body: string): SmsTemplateVariable[] {
+  const after = body.split('{#var#}').slice(1);
+  let codeSeen = false;
+  return after.map((text) => {
+    if (/^\s*min/i.test(text)) return 'minutes';
+    if (codeSeen) return 'purpose';
+    codeSeen = true;
+    return 'code';
+  });
+}
+
+const SAMPLE: Record<SmsTemplateVariable, string> = { code: '482913', purpose: 'sign-in code', minutes: '10', app: 'YukthiX' };
+/** The text as a person would receive it, with sample values. */
+export const previewText = (t: SmsTemplate) => t.body.split('{#var#}').reduce((out, part, i) => out + SAMPLE[t.variables[i - 1]] + part);
 /** {secret.x} names an http config uses. */
 export const secretNames = (configText: string) => [...new Set([...configText.matchAll(/\{secret\.([A-Za-z0-9_-]{1,40})\}/g)].map((m) => m[1]))];
 
@@ -91,6 +107,8 @@ interface Draft {
   httpConfig: string;
   twilioSid: string;
   twilioFrom: string;
+  /** Development accounts only: fail on purpose, to try failover. */
+  simulate: '' | 'rejected' | 'unavailable' | 'unknown';
   secrets: Record<string, string>;
   template: SmsTemplate;
 }
@@ -109,6 +127,7 @@ function draftOf(account: SmsAccount | null): Draft {
     httpConfig: account?.provider === 'http' ? JSON.stringify(visible, null, 2) : '',
     twilioSid: String(account?.config.accountSid ?? ''),
     twilioFrom: String(account?.config.from ?? ''),
+    simulate: (account?.provider === 'dev' ? (account.config.simulate as Draft['simulate']) : undefined) ?? '',
     secrets: {},
     template: account?.otpTemplate ?? EMPTY_TEMPLATE,
   };
@@ -143,6 +162,8 @@ export function accountInput(d: Draft, account: SmsAccount | null): { input: Sms
     if (!d.twilioSid.trim()) errors.push({ fieldId: 'sms-twilio-sid', message: 'Enter the Account SID' });
     if (!d.twilioFrom.trim()) errors.push({ fieldId: 'sms-twilio-from', message: 'Enter the sending number' });
     if (!set.has('authToken') && !d.secrets.authToken) errors.push({ fieldId: 'sms-secret-authToken', message: 'Type the auth token' });
+  } else if (d.simulate) {
+    config = { simulate: d.simulate };
   }
 
   const t = d.template;
@@ -157,7 +178,7 @@ export function accountInput(d: Draft, account: SmsAccount | null): { input: Sms
   return {
     input: {
       name: d.name.trim(),
-      provider: d.provider,
+      ...(account ? {} : { provider: d.provider }),
       sender: d.sender || null,
       dltEntityId: d.dltEntityId || null,
       priority: d.priority!,
@@ -173,7 +194,7 @@ export function accountInput(d: Draft, account: SmsAccount | null): { input: Sms
 function SecretField({ id, label, name, set, value, onChange, helper }: { id: string; label: string; name: string; set: boolean; value: string; onChange: (v: string) => void; helper?: string }) {
   return (
     <FormField id={id} label={label} required={!set} helper={set ? 'Saved. It is never shown again; type a new value to replace it.' : helper}>
-      <PasswordField value={value} onChange={onChange} autoComplete="new-password" placeholder={set ? '••••••••' : undefined} aria-label={label} name={name} />
+      <PasswordField value={value} onChange={onChange} autoComplete="new-password" placeholder={set ? 'Saved and hidden' : undefined} aria-label={label} name={name} />
     </FormField>
   );
 }
@@ -198,10 +219,11 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
   };
   const setTemplate = (patch: Partial<SmsTemplate>) => {
     const next = { ...draft.template, ...patch };
-    const count = placeholderCount(next.body);
-    // Keep one variable per {#var#}: the code first, then what it is for, then minutes.
-    const defaults: SmsTemplateVariable[] = ['code', 'purpose', 'minutes', 'app'];
-    next.variables = Array.from({ length: count }, (_, i) => next.variables[i] ?? defaults[Math.min(i, defaults.length - 1)]);
+    if (patch.body !== undefined) {
+      // One variable per {#var#}: re-guess from the text, but keep any the admin chose differently from the old guess.
+      const before = guessVariables(draft.template.body);
+      next.variables = guessVariables(next.body).map((g, i) => (draft.template.variables[i] !== undefined && draft.template.variables[i] !== before[i] ? draft.template.variables[i] : g));
+    }
     set({ template: next });
   };
   const secretsSet = new Set(account?.secretsSet ?? []);
@@ -229,6 +251,7 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
       onOpenChange={onOpenChange}
       size="lg"
       dirty={dirty}
+      notice={status.kind === 'failed' && <InlineAlert tone="danger" title="Not saved">{status.message}</InlineAlert>}
       title={account ? `Edit ${account.name}` : 'Add SMS account'}
       subtitle={account ? PROVIDERS[account.provider] : 'Your own gateway account, with your DLT registration'}
       footer={
@@ -317,6 +340,24 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
           </FormSection>
         )}
 
+        {draft.provider === 'dev' && (
+          <FormSection title="Development" description="Never sends. To try failover, make this account fail on purpose.">
+            <FormField label="Result">
+              <Segment
+                label="Result"
+                options={[
+                  { value: '', label: 'Works' },
+                  { value: 'rejected', label: 'Refused' },
+                  { value: 'unavailable', label: 'Unavailable' },
+                  { value: 'unknown', label: 'Error' },
+                ]}
+                value={draft.simulate}
+                onChange={(simulate) => set({ simulate })}
+              />
+            </FormField>
+          </FormSection>
+        )}
+
         <FormSection title="One-time-code template" description="The text exactly as registered on DLT, with {#var#} where values go. Codes are sent only with an approved template; otherwise they go by email where the sign-in allows it.">
           <FormField id="sms-template-id" label="DLT template id" error={errorOf('sms-template-id')} required={Boolean(draft.dltEntityId)}>
             <TextField value={draft.template.dltTemplateId ?? ''} onChange={(v) => setTemplate({ dltTemplateId: v.trim() || null })} inputMode="numeric" maxLength={30} />
@@ -334,6 +375,9 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
               />
             </FormField>
           ))}
+          {draft.template.body.trim() && placeholderCount(draft.template.body) === draft.template.variables.length && (
+            <Text tone="secondary" size="sm">Reads as: {previewText(draft.template)}</Text>
+          )}
           <FormField label="DLT approval">
             <Segment
               label="DLT approval"
@@ -367,8 +411,6 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
             </div>
           </FormSection>
         )}
-
-        {status.kind === 'failed' && <InlineAlert tone="danger" title="Not saved">{status.message}</InlineAlert>}
       </form>
     </Drawer>
   );

@@ -139,6 +139,7 @@ function IdentityProviderEditor({ provider, onClose, onSave }: EditorProps) {
       onOpenChange={(open) => !open && onClose()}
       size="lg"
       dirty={dirty}
+      notice={status.kind === 'failed' && <InlineAlert tone="danger" title="Not saved">{status.message}</InlineAlert>}
       title={provider ? `Edit ${provider.name}` : 'Add identity provider'}
       subtitle={provider ? IDP_TYPE_LABEL[provider.type] : 'New providers start switched off. Turn one on once its settings are in.'}
       footer={
@@ -194,7 +195,7 @@ function IdentityProviderEditor({ provider, onClose, onSave }: EditorProps) {
               <TextField value={draft.oidcClientId} onChange={(oidcClientId) => set({ oidcClientId })} spellCheck={false} />
             </FormField>
             <FormField id="idp-client-secret" label="Client secret" required={!secretSaved} error={errorOf('idp-client-secret')} helper={secretSaved ? 'Saved. It is never shown again; type a new one to replace it.' : undefined}>
-              <PasswordField value={draft.oidcClientSecret} onChange={(oidcClientSecret) => set({ oidcClientSecret })} autoComplete="new-password" placeholder={secretSaved ? '••••••••' : undefined} />
+              <PasswordField value={draft.oidcClientSecret} onChange={(oidcClientSecret) => set({ oidcClientSecret })} autoComplete="new-password" placeholder={secretSaved ? 'Saved and hidden' : undefined} />
             </FormField>
           </FormSection>
         )}
@@ -214,7 +215,6 @@ function IdentityProviderEditor({ provider, onClose, onSave }: EditorProps) {
           />
         </FormSection>
 
-        {status.kind === 'failed' && <InlineAlert tone="danger" title="Not saved">{status.message}</InlineAlert>}
       </form>
     </Drawer>
   );

@@ -41,7 +41,8 @@ export interface SmsOverview {
 /** What the editor sends: POST /notifications/sms/accounts or PATCH .../accounts/:id. */
 export interface SmsAccountInput {
   name: string;
-  provider: SmsProvider;
+  /** Only when adding: an account's type never changes, and the API refuses it on an edit. */
+  provider?: SmsProvider;
   sender: string | null;
   dltEntityId: string | null;
   priority: number;

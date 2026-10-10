@@ -20,12 +20,14 @@ export interface DrawerProps {
   size?: 'md' | 'lg' | 'full';
   /** When true, closing asks to discard changes first (§18). */
   dirty?: boolean;
+  /** Shown above the footer buttons, so it is always in view: e.g. why a save failed. */
+  notice?: ReactNode;
   /** Plain description for screen readers when there is no subtitle. */
   description?: string;
 }
 
 /** Slide-over from the right (§18). The list behind stays visible on wide screens. */
-export function Drawer({ open, onOpenChange, title, subtitle, meta, children, footer, size = 'md', dirty, description }: DrawerProps) {
+export function Drawer({ open, onOpenChange, title, subtitle, meta, children, footer, size = 'md', dirty, description, notice }: DrawerProps) {
   const [confirming, setConfirming] = useState(false);
   const [panel, setPanel] = useState<HTMLDivElement | null>(null);
   const requestClose = (next: boolean) => {
@@ -92,7 +94,10 @@ export function Drawer({ open, onOpenChange, title, subtitle, meta, children, fo
                   }
                 />
               ) : (
-                footer
+                <>
+                  {notice && <div className="yx-drawer__notice">{notice}</div>}
+                  {footer}
+                </>
               )}
             </footer>
           )}

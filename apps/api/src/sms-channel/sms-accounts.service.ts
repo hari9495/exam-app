@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomInt, randomUUID } from 'crypto';
 import { AuditService, OrgSecretsCryptoService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
@@ -187,6 +187,7 @@ export class SmsAccountsService {
   async create(ctx: TenantContext, actorUserId: string, dto: CreateSmsAccountDto) {
     const organizationId = this.scope(ctx);
     const dltEntityId = dto.dltEntityId ?? null;
+    await this.assertNameFree(ctx, organizationId, dto.name);
     const config = await this.buildConfig(dto.provider, {}, dto);
     const row = await this.tenantPrisma.forTenant(ctx, (tx) =>
       tx.channelAccount.create({
@@ -209,6 +210,15 @@ export class SmsAccountsService {
     return accountView(row, config);
   }
 
+  /** Names tell accounts apart in the list, the test results and the delivery log, so they must be unique. */
+  // ponytail: check-then-write, so two saves in the same instant could still both pass; add a unique index if that ever matters.
+  private async assertNameFree(ctx: TenantContext, organizationId: string | null, name: string, exceptId?: string) {
+    const clash = await this.tenantPrisma.forTenant(ctx, (tx) =>
+      tx.channelAccount.findFirst({ where: { organizationId, channel: 'sms', name: { equals: name.trim(), mode: 'insensitive' }, ...(exceptId ? { id: { not: exceptId } } : {}) }, select: { id: true } }),
+    );
+    if (clash) throw new ConflictException(`An SMS account named "${name.trim()}" already exists. Choose another name.`);
+  }
+
   private async load(ctx: TenantContext, id: string) {
     const scope = this.scope(ctx);
     const row = await this.tenantPrisma.forTenant(ctx, (tx) => tx.channelAccount.findFirst({ where: { id, organizationId: scope, channel: 'sms' } }));
@@ -218,6 +228,7 @@ export class SmsAccountsService {
 
   async update(ctx: TenantContext, actorUserId: string, id: string, dto: UpdateSmsAccountDto) {
     const row = await this.load(ctx, id);
+    if (dto.name !== undefined) await this.assertNameFree(ctx, row.organizationId, dto.name, row.id);
     const dltEntityId = dto.dltEntityId !== undefined ? dto.dltEntityId : row.dltEntityId;
     const config = await this.buildConfig(row.provider, this.safeConfig(row.configEncrypted), dto);
     const updated = await this.tenantPrisma.forTenant(ctx, (tx) =>
