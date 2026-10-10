@@ -17,8 +17,8 @@ import { TicketsService } from './tickets.service';
 // its own teams and OLAs, batch 1) and an optional audience (department, location, legal entity, cost centre). When M01
 // says someone joins (outbox event employee.joined), every active joiner journey whose audience holds starts: one request
 // per desk, one item per line, fulfilment straight away (the hire was already approved in HR) with every task due before
-// the first day (or after its OLA if that day is near). A leaver journey starts from employee.exit_scheduled (M01's exit
-// flow, when it lands) or by hand from HR (request.raise_on_behalf over that person). Each journey starts once per
+// the first day (or after its OLA if that day is near). A leaver journey starts from exit.case.accepted (M01's exit
+// flow) or by hand from HR (request.raise_on_behalf over that person). Each journey starts once per
 // person and date.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,11 +37,10 @@ export class JourneysService implements OnModuleInit {
     private readonly tickets: TicketsService,
   ) {}
 
-  // DECISION NEEDED: M01 has no exit flow yet (employee.exit_scheduled is the agreed event name), and a changed joining
-  // date does not move task due dates yet (US-B-127 third line): both need M01 events that do not exist today.
+  // Lifecycle 6c: a leaver journey starts when the exit is accepted (APX-B exit.case.accepted, design §7.4).
   onModuleInit() {
     this.automation.subscribe(async (ev) => {
-      if (ev.type !== 'employee.joined' && ev.type !== 'employee.exit_scheduled') return;
+      if (ev.type !== 'employee.joined' && ev.type !== 'exit.case.accepted') return;
       const employeeId = typeof ev.payload.employeeId === 'string' && UUID.test(ev.payload.employeeId) ? ev.payload.employeeId : null;
       const date = String(ev.type === 'employee.joined' ? ev.payload.joinedOn : ev.payload.lastDay);
       if (!employeeId || !ISO.test(date)) return;
@@ -137,6 +136,51 @@ export class JourneysService implements OnModuleInit {
     return made;
   }
 
+  // ------------------------------------------------------------------------------------------ lifecycle tasks
+
+  /**
+   * Lifecycle 6a (founder D1): one catalogue item for one person (a joiner before day one, or a leaver), raised by an
+   * HR checklist task and fulfilled by the desk at once (the hire or exit was already approved in HR). The request is
+   * due on the task's day, 9:00 India time, never sooner than an hour from now.
+   */
+  async raiseFor(ctx: CompanyContext, input: { personId: string; itemId: string; dueOn: string; subject: string; note: string; by: string | null; tag: 'joiner' | 'leaver' }): Promise<{ ticketId: string; number: string }> {
+    return this.tx(ctx, async (tx) => {
+      const org = ctx.organizationId;
+      const item = await tx.sdCatalogItem.findFirst({ where: { organizationId: org, id: input.itemId, state: 'published' } });
+      if (!item) throw new BadRequestException('That catalogue item is not published.');
+      const v = await tx.sdCatalogItemVersion.findFirstOrThrow({ where: { organizationId: org, itemId: item.id, version: item.currentVersion! } });
+      const type = (await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: item.deskId, kind: 'request', active: true }, orderBy: { sortOrder: 'asc' } })) ?? undefined;
+      const dueBy = new Date(Math.max(new Date(`${input.dueOn}T03:30:00Z`).getTime(), Date.now() + 3_600_000));
+      const t = await this.tickets.createIn(tx, { ctx, userId: input.by }, {
+        deskId: item.deskId,
+        typeId: type?.id,
+        categoryId: item.categoryId ?? undefined,
+        subject: input.subject.slice(0, 200),
+        bodyHtml: textToHtml(`${input.note}
+
+- ${item.name}`),
+        requesterPersonId: input.personId,
+        openedByUserId: input.by,
+        channel: 'api',
+        side: 'requester',
+        authorPersonId: null,
+        tags: [input.tag],
+      });
+      const ri = await tx.sdRequestItem.create({ data: { organizationId: org, deskId: item.deskId, ticketId: t.id, itemId: item.id, itemVersion: v.version, quantity: 1, answers: {}, forPersonId: input.personId } });
+      await this.catalog.startFulfilment(tx, { ctx }, t, ri, v, dueBy);
+      await audit(tx, { ctx, userId: input.by as string }, 'desk.lifecycle_request.raised', 'sd_ticket', t.id, { itemId: item.id, tag: input.tag });
+      return { ticketId: t.id, number: t.number };
+    });
+  }
+
+  /** Lifecycle 6b: stop a cancelled joiner's desk requests (system work on the desks they reach). */
+  async stopFor(ctx: CompanyContext, ticketIds: string[], reason: string) {
+    if (!ticketIds.length) return;
+    await this.tx(ctx, async (tx) => {
+      for (const id of ticketIds) await this.catalog.stopForLifecycle(tx, { ctx }, id, reason);
+    });
+  }
+
   // ------------------------------------------------------------------------------------------ starting
 
   async startAll(ctx: CompanyContext, kind: 'join' | 'exit', employeeId: string, date: string, by: string | null) {
@@ -159,6 +203,10 @@ export class JourneysService implements OnModuleInit {
       const org = ctx.organizationId;
       const emp = await tx.employee.findFirst({ where: { organizationId: org, id: employeeId } });
       if (!emp?.personId) return null;
+      // Lifecycle 6a (founder D1): a person with an HR onboarding checklist gets their desk requests from it, not twice.
+      // Lifecycle 6c: the same for a leaver with an HR offboarding checklist.
+      const lifecycleKind = j.kind === 'join' ? 'onboarding' : 'offboarding';
+      if (await tx.journey.findFirst({ where: { organizationId: org, personId: emp.personId, kind: lifecycleKind, status: { not: 'cancelled' } }, select: { id: true } })) return null;
       const profile = await profileOf(tx, org, emp.personId);
       if (j.audience && !evaluate(j.audience as unknown as Group, profile, REQUESTER_FIELDS).pass) return null;
       // Once per person and date, even when the event and a person start it at the same moment.

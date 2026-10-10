@@ -78,6 +78,22 @@ export const YX_KEYS = [
   'payroll.file.view',
   'audit.view',
   'audit.export',
+  // M01 lifecycle batch 6a: joiners, checklists, documents.
+  'lifecycle.onboarding.view',
+  'lifecycle.onboarding.manage',
+  'lifecycle.journey.template.manage',
+  'document.view',
+  'document.manage',
+  // Batch 6b: background checks, letters, signatories.
+  'lifecycle.bgv.manage',
+  'letter.template.manage',
+  'letter.issue',
+  'letter.signatory.manage',
+  'lifecycle.exit.view',
+  'lifecycle.exit.manage',
+  'lifecycle.exit.confidential.view',
+  'asset.view',
+  'asset.manage',
   // Batch 5b: payroll set-up, statutory registrations, components, templates, imports.
   'payroll.setup.manage',
   'payroll.statutory.setup',

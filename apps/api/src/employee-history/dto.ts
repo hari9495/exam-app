@@ -17,7 +17,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { CHANGE_TYPES, ChangeType, EMPLOYMENT_STATUSES, EmploymentStatus, SKILL_CLASSES, SkillClass } from './history-rules';
+import { CHANGE_TYPES, ChangeType, SYSTEM_CHANGE_TYPES, EMPLOYMENT_STATUSES, EmploymentStatus, SKILL_CLASSES, SkillClass } from './history-rules';
 
 // Request bodies for the employee core and P06 changes. Every field is whitelisted (the global pipe
 // refuses anything else); amounts and percentages are decimal strings so no float ever touches pay.
@@ -118,7 +118,7 @@ export class ChangeRequestDto {
   @IsUUID()
   employeeId!: string;
 
-  @IsIn(CHANGE_TYPES.filter((t) => t !== 'join'))
+  @IsIn(CHANGE_TYPES.filter((t) => t !== 'join' && !SYSTEM_CHANGE_TYPES.includes(t)))
   changeType!: Exclude<ChangeType, 'join'>;
 
   @IsDateString({ strict: true })

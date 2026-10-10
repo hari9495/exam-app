@@ -229,6 +229,14 @@ describe('SMS channel (P04 §4.4/§4.5a; YX-NTF-07/10/11/12/13/14)', () => {
       await api('adminA', 'patch', `/accounts/${row.id}`).send({ secrets: { callbackSecret: SECRET.callback } }).expect(200);
     });
 
+    it('two accounts of one company cannot share a name (any case); keeping its own name is fine', async () => {
+      const [row] = await accounts(org.A.id);
+      const clash = await api('adminA', 'post', '/accounts').send(httpAccount('primary GATEWAY', 'reject', 20)).expect(409);
+      expect(clash.body.message).toContain('already exists');
+      await api('adminA', 'patch', `/accounts/${row.id}`).send({ name: 'Primary gateway' }).expect(200);
+      expect(await accounts(org.A.id)).toHaveLength(1);
+    });
+
     it('a company never reads, edits or tests another company’s account', async () => {
       const [row] = await accounts(org.A.id);
       expect((await api('adminB', 'get', '').expect(200)).body.accounts).toEqual([]);

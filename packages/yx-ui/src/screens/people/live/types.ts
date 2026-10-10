@@ -1,0 +1,557 @@
+// What the lifecycle batch-6a API returns (apps/api/src/lifecycle, apps/api/src/documents). The screens stay
+// presentational; the API checks every call.
+
+export type { LoadState } from '../../org/types';
+
+export type TaskStatus = 'waiting' | 'open' | 'done' | 'skipped' | 'cancelled';
+export type TaskKind = 'tick' | 'form' | 'document' | 'letter' | 'desk_request';
+export type OwnerType = 'hr' | 'it' | 'admin' | 'finance' | 'payroll' | 'manager' | 'person' | 'user' | 'group' | 'buddy';
+
+export interface FormFieldDef {
+  key: string;
+  type: string;
+  label: string;
+  help?: string;
+  required?: boolean;
+  min?: number;
+  max?: number;
+  options?: { value: string; label: string }[];
+}
+export interface FormDef {
+  sections: { id: string; title?: string; fields: FormFieldDef[] }[];
+  rules: unknown[];
+}
+
+export interface JourneyTask {
+  id: string;
+  key: string;
+  title: string;
+  kind: TaskKind;
+  ownerType: OwnerType;
+  ownerLabel: string;
+  assignee: string | null;
+  dueOn: string;
+  dueOffsetDays: number;
+  status: TaskStatus;
+  overdue: boolean;
+  required: boolean;
+  locked: boolean;
+  form: FormDef | null;
+  /** Document tasks: the document type asked for. */
+  documentType: string | null;
+  /** Letter tasks: the letter type HR issues (6b: the task closes from the issued letter). */
+  letterType?: string | null;
+  answers: Record<string, unknown> | null;
+  link: { type: string; id: string } | null;
+  completedAt: string | null;
+  completedBy: string | null;
+  skipReason: string | null;
+  canComplete: boolean;
+  canSkip: boolean;
+  version: number;
+  /** My tasks only. */
+  journeyId?: string;
+  journeyKind?: 'onboarding' | 'offboarding';
+  person?: string;
+  anchorOn?: string;
+}
+
+export interface Journey {
+  id: string;
+  kind: 'onboarding' | 'offboarding';
+  person: string;
+  personId: string;
+  subjectType: string;
+  subjectId: string;
+  anchorOn: string;
+  status: 'active' | 'done' | 'cancelled';
+  progress: number;
+  template: string;
+  owner: string | null;
+  canManage: boolean;
+  today: string;
+  tasks: JourneyTask[];
+}
+
+export interface MyTasks {
+  today: string;
+  tasks: JourneyTask[];
+}
+
+export interface Joiner {
+  id: string;
+  personId: string;
+  name: string;
+  email: string | null;
+  joiningOn: string;
+  status: 'invited' | 'joined' | 'cancelled';
+  source: 'direct' | 'import' | 'offer';
+  location: string;
+  department: string | null;
+  designation: string | null;
+  manager: string | null;
+  journeyId: string | null;
+  departmentId: string | null;
+  designationId: string | null;
+  employmentTypeId: string | null;
+  progress: number;
+  openTasks: number;
+  overdueTasks: number;
+  version: number;
+  /** 6e */
+  personType?: 'new' | 'rehire';
+  batchId?: string | null;
+  buddyEmployeeId?: string | null;
+  managerEmployeeId?: string | null;
+}
+
+export interface JoinerBoard {
+  today: string;
+  canAdd: boolean;
+  joiners: Joiner[];
+}
+
+export interface Choice {
+  value: string;
+  label: string;
+}
+/** Where a joiner can be placed: entities, their locations, and the structure masters. */
+export interface JoinerPlaces {
+  entities: Choice[];
+  locations: (Choice & { entityId: string })[];
+  departments: Choice[];
+  designations: Choice[];
+  employmentTypes: Choice[];
+  managers: Choice[];
+}
+
+export interface JoinerInput {
+  givenName: string;
+  familyName: string | null;
+  email: string | null;
+  phone: string | null;
+  joiningOn: string;
+  legalEntityId: string;
+  locationId: string;
+  departmentId: string | null;
+  designationId: string | null;
+  employmentTypeId: string | null;
+  managerEmployeeId: string | null;
+}
+
+export interface ImportResult {
+  committed: boolean;
+  added: number;
+  rows: { line: number; name: string; joiningOn: string | null; ok: boolean; problem: string | null }[];
+}
+
+export interface QueueDocument {
+  id: string;
+  personId: string;
+  person?: string;
+  typeKey: string;
+  typeName: string;
+  sensitivity: string;
+  status: 'requested' | 'uploaded' | 'verified' | 'rejected' | 'expired';
+  expiresOn: string | null;
+  rejectReason: string | null;
+  file: { name: string; scanStatus: 'pending' | 'clean' | 'infected'; size: number } | null;
+  uploadedAt?: string;
+  version: number;
+}
+
+export interface TemplateTask {
+  key: string;
+  title: string;
+  ownerType: OwnerType;
+  ownerLabel?: string;
+  ownerUserId: string | null;
+  ownerGroupId: string | null;
+  kind: TaskKind;
+  config: Record<string, unknown>;
+  dueOffsetDays: number;
+  dependsOn: string[];
+  required: boolean;
+  locked: boolean;
+}
+export interface JourneyTemplate {
+  id: string;
+  kind: 'onboarding' | 'offboarding';
+  name: string;
+  legalEntityId: string | null;
+  locationId: string | null;
+  departmentId: string | null;
+  starterKey: string | null;
+  active: boolean;
+  version: number;
+  tasks: TemplateTask[];
+}
+export interface JourneyTemplates {
+  templates: JourneyTemplate[];
+  starters: { key: string; kind: 'onboarding' | 'offboarding'; name: string; summary: string; tasks: number; copied: boolean }[];
+}
+
+// ------------------------------------------------------------------------------------------ batch 6b
+
+export type SectionKey = 'personal' | 'identity' | 'bank' | 'emergency' | 'nominees' | 'tax';
+
+export interface PortalAnswers {
+  personal: { dateOfBirth: string; gender: string; addressLine1: string; addressLine2?: string; city: string; stateCode: string; postalCode: string } | null;
+  identity: { legalName: string; pan: string; aadhaar: string | null; uan: string | null } | null;
+  bank: { holderName: string; account: string; ifsc: string } | null;
+  emergency: { name: string; relation: string; phone: string } | null;
+  nominees: { name: string; relation: string; sharePercent: number }[] | null;
+  tax: { regime: 'new' | 'old' } | null;
+}
+
+export interface Letter {
+  id: string;
+  title: string;
+  letterType: string;
+  personId: string;
+  person?: string;
+  referenceNo: string | null;
+  verifyCode: string | null;
+  status: 'pending_approval' | 'rejected' | 'rendering' | 'awaiting_signature' | 'issued' | 'superseded' | 'withdrawn';
+  renderError: string | null;
+  issuedAt: string | null;
+  personSigns: boolean;
+  acceptedAt: string | null;
+  signature: { status: 'open' | 'signed' | 'declined' | 'cancelled'; signedAt: string | null } | null;
+  supersededById: string | null;
+}
+
+export interface PortalMe {
+  company: string;
+  employer: string;
+  name: string;
+  joiningOn: string;
+  location: string;
+  designation: string | null;
+  manager: string | null;
+  completion: number;
+  sections: Record<SectionKey, 'done' | 'to_do'>;
+  answers: PortalAnswers;
+  steppedUp: boolean;
+  documents: { typeKey: string; name: string; status: string; rejectReason: string | null; personUploads: boolean }[];
+  bgv: { notice: string; items: string[]; consented: boolean; consentedAt: string | null } | null;
+  letters: Letter[];
+  esignAccepted: boolean;
+}
+
+export interface JoinerForms {
+  id: string;
+  status: 'invited' | 'joined' | 'cancelled';
+  outcome: string | null;
+  completion: number;
+  sections: Record<SectionKey, 'done' | 'to_do'>;
+  answers: PortalAnswers;
+  identityAttested: boolean;
+  bgv: {
+    requested: boolean;
+    consent: { givenAt: string; withdrawnAt: string | null } | null;
+    checks: { id: string; checkType: string; status: string; gate: string; note: string | null; resultDocumentId: string | null; version: number }[];
+  } | null;
+  version: number;
+}
+
+export interface LetterTemplate {
+  id: string;
+  letterType: string;
+  name: string;
+  legalEntityId: string | null;
+  language: string;
+  source: 'upload' | 'starter' | 'editor';
+  fields: string[];
+  requiresApproval: boolean;
+  personSigns: boolean;
+  companyDsc: boolean;
+  version: number;
+  status: 'draft' | 'active' | 'retired';
+  previewViewed: boolean;
+  createdAt: string;
+}
+
+export interface LetterTemplates {
+  templates: LetterTemplate[];
+  starters: { letterType: string; name: string; added: boolean }[];
+  fields: { key: string; label: string; personal: boolean; flag: boolean }[];
+}
+
+export interface Signatory {
+  id: string;
+  legalEntityId: string;
+  userId: string;
+  name: string;
+  title: string;
+  hasSignatureImage: boolean;
+}
+
+export interface ReadyOffer {
+  offerId: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  startDate: string;
+  jobTitle: string;
+  personType: 'new' | 'ex_employee' | 'internal';
+}
+
+// ---- Batch 6c: exits, clearance, exit interviews, assets (apps/api/src/lifecycle/exits.service.ts, offboarding.service.ts)
+
+export type ExitType = 'resignation' | 'termination' | 'probation_termination' | 'end_of_contract' | 'retirement' | 'death' | 'absconding' | 'retrenchment' | 'vrs';
+export type ExitStatus = 'submitted' | 'accepted' | 'rejected' | 'withdrawn' | 'cleared' | 'exited' | 'closed';
+export interface ExitCase {
+  id: string;
+  employeeId: string;
+  personId?: string;
+  exitType: ExitType;
+  typeLabel: string;
+  initiatedBy: 'employee' | 'company';
+  reasonCode: string | null;
+  reasonText: string | null;
+  submittedOn: string;
+  requestedLwd: string | null;
+  noticePeriod: string;
+  noticeLabel: string;
+  standardLwd: string;
+  approvedLwd: string | null;
+  lastDay: string;
+  noticeArrangement: { kind: string; from: string; to: string; buyoutBy: string | null; buyoutDays: number | null; reason: string }[] | null;
+  status: ExitStatus;
+  pendingChange: { kind: string; lwd?: string; reason?: string } | null;
+  lettersHeld: boolean;
+  version: number;
+}
+export interface ExitRow extends ExitCase {
+  name: string;
+  employeeCode: string | null;
+  clearance: { open: number; total: number };
+  interview: 'sent' | 'submitted' | 'skipped' | null;
+  canManage: boolean;
+}
+export interface ClearanceItem {
+  id: string;
+  department: 'manager_handover' | 'it' | 'admin' | 'finance' | 'hr' | 'asset' | 'custom';
+  title: string;
+  owner: string;
+  status: 'open' | 'cleared' | 'waived';
+  note: string | null;
+  recoveryAmount: string | null;
+  recoveryReason: string | null;
+  signedOffAt: string | null;
+  version: number;
+}
+export interface MyClearanceItem extends ClearanceItem {
+  exitCaseId: string;
+  person: string;
+  lastDay: string;
+}
+export interface ExitHrFacts {
+  rehireEligible: boolean | null;
+  rehireReason: string | null;
+  regretted: boolean | null;
+  backfillRequested: boolean;
+  openCaseFlags: Record<string, string>;
+  holdReason: string | null;
+  holdReviewOn: string | null;
+}
+export interface ExitWorkspace extends ExitCase {
+  name: string;
+  employeeCode: string | null;
+  journeyId: string | null;
+  interview: 'sent' | 'submitted' | 'skipped' | null;
+  clearance: ClearanceItem[];
+  hr: ExitHrFacts | null;
+  can: { manage: boolean; confidential: boolean; interview: boolean };
+}
+export interface MyResignation {
+  today: string;
+  notice: { period: string; label: string; standardLwd: string; onProbation: boolean } | null;
+  reasons: string[];
+  current: (ExitCase & { interview: 'sent' | 'submitted' | 'skipped' | null }) | null;
+  last: { status: ExitStatus; submittedOn: string } | null;
+}
+export interface InterviewForm {
+  form: FormDef;
+  status: 'sent' | 'submitted' | 'skipped' | null;
+  lastDay: string | null;
+}
+export interface InterviewAnswers {
+  form: FormDef;
+  status: string;
+  submittedAt: string | null;
+  answers: Record<string, unknown> | null;
+  hrNotes: string | null;
+}
+export interface AssetRow {
+  id: string;
+  category: string;
+  name: string;
+  tag: string;
+  serial: string | null;
+  legalEntityId: string | null;
+  locationId: string | null;
+  purchasedOn: string | null;
+  cost: string | null;
+  status: 'in_stock' | 'assigned' | 'in_repair' | 'retired' | 'lost';
+  version: number;
+  canManage: boolean;
+  holder: { assignmentId: string; employeeId: string | null; name: string; issuedOn: string; acknowledged: boolean } | null;
+}
+export interface MyAsset {
+  assignmentId: string;
+  name: string;
+  category: string;
+  tag: string;
+  serial: string | null;
+  issuedOn: string;
+  condition: string;
+  acknowledgedAt: string | null;
+}
+
+// ---- Batch 6d: exit steps, the payroll hand-off, the alumni vault
+
+export interface ExitStep {
+  handler: string;
+  label: string;
+  timing: 'at_lwd' | 't0' | 'cleared';
+  status: 'pending' | 'held' | 'done' | 'failed' | 'manual';
+  attempts: number;
+  lastError: string | null;
+  doneAt: string | null;
+}
+export interface Handoff {
+  current: {
+    revision: number;
+    cause: string;
+    lwd: string;
+    wagesDueBy: string;
+    noticePeriod: string;
+    noticeServedDays: number | null;
+    recoveries: { source: string; title: string; amount: string | null; reason: string | null; status: 'recorded' | 'open' }[];
+    holds: { letters?: boolean };
+    frozenAt: string;
+  } | null;
+  earlier: { revision: number; cause: string; frozenAt: string }[];
+  settledOutside: { on: string; reason: string } | null;
+  canSettle: boolean;
+}
+export interface AlumniMe {
+  company: string;
+  name: string;
+  lastDay: string;
+  accessUntil: string;
+  letters: Letter[];
+}
+export interface MyDocuments {
+  documents: QueueDocument[];
+}
+
+// ---- Batch 6e: rehire, batches, buddy, payees, absconding, contracts, retrenchment, VRS, the letter editor
+
+export interface RehireOption {
+  key: string;
+  label: string;
+  choices: string[];
+  policy: string;
+  value: string;
+  overridden: boolean;
+  reason: string | null;
+  meaning: string;
+}
+export interface RehireView {
+  previous: { employeeCode: string; joinedOn: string; exitedOn: string; exitType: string | null; rehireEligible: boolean | null; breakMonths: number; sameEntityFy: boolean };
+  options: RehireOption[];
+  version: number;
+}
+export interface Batch {
+  id: string;
+  name: string;
+  legalEntityId: string;
+  joiningOn: string;
+  touchpoints: { title: string; on: string }[];
+  status: 'open' | 'closed';
+  version: number;
+  members: { id: string; personId: string; name: string; status: string; joiningOn: string }[];
+}
+export interface Payee {
+  id?: string;
+  kind: 'nominee' | 'legal_heir';
+  name: string;
+  relation: string;
+  sharePercent: string;
+  email: string | null;
+  documentId: string | null;
+}
+export interface Payees {
+  payees: Payee[];
+  total: string;
+  complete: boolean;
+}
+export interface AbscondingStep {
+  key: 'hold' | 'notice_1' | 'notice_2' | 'abandoned';
+  label: string;
+  day: number;
+  dueOn: string;
+  doneAt: string | null;
+  note: string | null;
+  dispatchRef: string | null;
+}
+export interface AbscondingRow {
+  id: string;
+  employeeId: string;
+  name: string;
+  lastPresentOn: string;
+  status: 'running' | 'stopped' | 'abandoned';
+  stoppedReason: string | null;
+  exitCaseId: string | null;
+  version: number;
+  steps: AbscondingStep[];
+}
+export interface UpcomingExit {
+  employeeId: string;
+  name: string;
+  kind: 'retirement' | 'contract_end';
+  on: string;
+}
+export interface IrPermission {
+  id: string;
+  legalEntityId: string;
+  kind: 'retrenchment' | 'layoff' | 'closure';
+  workersAffected: number;
+  reasons: string;
+  appliedOn: string;
+  authority: string;
+  status: 'applied' | 'granted' | 'deemed' | 'refused';
+  decidedOn: string | null;
+  version: number;
+}
+export interface VrsSchemeRow {
+  id: string;
+  name: string;
+  legalEntityId: string | null;
+  opensOn: string;
+  closesOn: string;
+  minAge: number;
+  minServiceYears: number;
+  status: string;
+}
+export interface IrOverview {
+  workers: Record<string, number>;
+  requests: IrPermission[];
+  schemes: VrsSchemeRow[];
+}
+export interface MyVrsScheme {
+  id: string;
+  name: string;
+  closesOn: string;
+  minAge: number;
+  minServiceYears: number;
+  eligible: boolean;
+}
+export interface EditorParagraph {
+  text: string;
+  bold: boolean;
+  heading: boolean;
+}
