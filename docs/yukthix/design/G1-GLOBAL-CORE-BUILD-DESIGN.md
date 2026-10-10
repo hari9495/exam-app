@@ -134,9 +134,20 @@ India is configured through the guide: the demo company's India entity has a fin
 2. **Company start for people from an acquired company.** Company start is read from their first employment with us; acquired service is entered as "continuous service from". *Recommended:* yes; add a separate override only if a customer asks.
 3. **Part-time leave and pay.** FTE is stored now; leave accrual and pay pro-rating by FTE wait for the payroll batch. *Recommended:* yes.
 
+### 12.1 Founder answer (10 Oct 2026)
+
+All three accepted as recommended:
+
+| # | Decision |
+|---|---|
+| 1 | India person fields: religion, caste category and ethnicity are not allowed; Aadhaar is optional; PAN is required. The compliance owner confirms the pack values. |
+| 2 | Acquired staff: earlier service goes in "continuous service from"; company start stays the first day with us (no separate override). |
+| 3 | Part-time leave and pay pro-rating by FTE waits for the payroll batch; G1 stores hours and FTE only. |
+
 ## 13. Change log
 
 | Date | Change |
 |---|---|
 | 10 Oct 2026 | First version: slices G1.01–G1.07 from the gap pass §7.1. |
+| 10 Oct 2026 | Founder accepted decisions 1–3 as recommended (§12.1). |
 | 10 Oct 2026 | As built: the language setting is `people.language` (setting keys need a dot); person fields are read from the country pack API (no per-person route yet); the rehire chain is covered by unit tests. |
