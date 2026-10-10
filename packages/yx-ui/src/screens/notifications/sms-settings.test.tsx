@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { SmsAccountEditor, SmsSettingsScreen, accountInput, deliveryDetail, newCallbackSecret, secretNames, type SmsSettingsScreenProps } from './sms-settings';
+import { SmsAccountEditor, SmsSettingsScreen, accountInput, deliveryDetail, guessVariables, newCallbackSecret, previewText, secretNames, type SmsSettingsScreenProps } from './sms-settings';
 import { ACCOUNTS, DELIVERIES, OVERVIEW, OVERVIEW_AT_LIMIT, OVERVIEW_PLATFORM, OVERVIEW_SHARED_ONLY } from './data';
 
 function Screen(over: Partial<SmsSettingsScreenProps>) {
@@ -110,7 +110,8 @@ describe('SmsAccountEditor', () => {
     render(<SmsAccountEditor account={ACCOUNTS[0]} open onOpenChange={vi.fn()} onSave={onSave} />);
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    expect(onSave.mock.calls[0][0]).toMatchObject({ name: 'Kaveri DLT gateway', provider: 'http', secrets: {}, otpTemplate: { status: 'approved', variables: ['code', 'purpose', 'minutes'] } });
+    expect(onSave.mock.calls[0][0]).toMatchObject({ name: 'Kaveri DLT gateway', secrets: {}, otpTemplate: { status: 'approved', variables: ['code', 'purpose', 'minutes'] } });
+    expect(onSave.mock.calls[0][0]).not.toHaveProperty('provider');
     expect(onSave.mock.calls[0][0].config).not.toHaveProperty('secrets');
   });
 
@@ -148,10 +149,21 @@ describe('accountInput', () => {
     httpConfig: JSON.stringify({ url: 'https://gw.example.in/send', bodyTemplate: 'k={secret.key}&m={message}' }),
     twilioSid: '',
     twilioFrom: '',
+    simulate: '' as const,
     secrets: { key: 'typed-now' },
     template: { dltTemplateId: '1107000000000000001', body: '{#var#} is your code. -KAVERI', variables: ['code' as const], status: 'approved' as const },
   };
   const problems = (over: object, account = null) => accountInput({ ...base, ...over }, account).errors.map((e) => e.message);
+
+  it('an edit never sends the gateway type, which the API refuses to change', () => {
+    const account = { provider: 'http', secretsSet: ['secret.key'] } as unknown as Parameters<typeof accountInput>[1];
+    expect(accountInput(base, account).input).not.toHaveProperty('provider');
+  });
+
+  it("keeps a development account's chosen failure, and sends none when it works", () => {
+    expect(accountInput({ ...base, provider: 'dev', simulate: 'unavailable' }, null).input?.config).toEqual({ simulate: 'unavailable' });
+    expect(accountInput({ ...base, provider: 'dev' }, null).input?.config).toEqual({});
+  });
 
   it('builds the request from a valid draft', () => {
     expect(accountInput(base, null).input).toMatchObject({ provider: 'http', status: 'active', secrets: { key: 'typed-now' }, config: { url: 'https://gw.example.in/send' } });
@@ -179,5 +191,16 @@ describe('accountInput', () => {
     expect(deliveryDetail({ status: 'fallback', error: 'over_monthly_cap' })).toBe('Monthly SMS limit reached');
     expect(deliveryDetail({ status: 'fallback', error: 'no_approved_template: Main: template is pending, not approved' })).toBe('No approved DLT template. Main: template is pending, not approved');
     expect(deliveryDetail({ status: 'sent', error: null })).toBeNull();
+  });
+});
+
+describe('template values', () => {
+  it('guesses minutes from the word after {#var#}, the code first, then what it is for', () => {
+    expect(guessVariables('{#var#} is your sign-in code. It expires in {#var#} minutes.')).toEqual(['code', 'minutes']);
+    expect(guessVariables('{#var#} is your YukthiX {#var#}. Valid for {#var#} mins.')).toEqual(['code', 'purpose', 'minutes']);
+  });
+
+  it('previews the text as the person receives it', () => {
+    expect(previewText({ dltTemplateId: null, body: '{#var#} is your code. Valid {#var#} minutes.', variables: ['code', 'minutes'], status: 'approved' })).toBe('482913 is your code. Valid 10 minutes.');
   });
 });
