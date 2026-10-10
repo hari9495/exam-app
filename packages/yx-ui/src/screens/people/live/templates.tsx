@@ -7,17 +7,18 @@ import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
 import { Icon, Text } from '../../../components/foundations';
-import { NumberField, TextField } from '../../../components/inputs';
+import { NumberField, TextArea, TextField } from '../../../components/inputs';
 import { Segment } from '../../../components/segment';
 import { Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
 import { errorText, useRun } from '../../org/org-kit';
 import { LivePage } from '../../time/live/kit';
-import type { Choice, JourneyTemplate, JourneyTemplates, LoadState, OwnerType, TemplateTask } from './types';
+import { JOURNEY_KIND_LABEL, type Choice, type JourneyKind, type JourneyTemplate, type JourneyTemplates, type LoadState, type OwnerType, type TaskKind, type TemplateTask } from './types';
 
 // Settings › Onboarding checklists (LIFE-1.04 / 1.06; D17): start from the YukthiX starter, then change task names,
 // owners, teams, days and which Service Desk item a task raises (founder D1). The law's appointment-letter task can
-// move and change owner but cannot be removed or made optional (YX-LC-26).
+// move and change owner but cannot be removed or made optional (YX-LC-26). 6f (design §7.5): life-event checklists
+// (new manager, transfer, parental leave, return to work) start Not in use; read / watch / quick-survey steps.
 
 const OWNERS: { value: OwnerType; label: string }[] = [
   { value: 'hr', label: 'HR' },
@@ -28,10 +29,17 @@ const OWNERS: { value: OwnerType; label: string }[] = [
   { value: 'manager', label: 'Manager' },
   { value: 'group', label: 'A team' },
   { value: 'buddy', label: 'The buddy' },
+  { value: 'person', label: 'The person' },
 ];
-const KIND_TEXT: Record<TemplateTask['kind'], string> = { tick: 'To do', form: 'Form', document: 'Document', letter: 'Letter', desk_request: 'Service Desk request' };
+const KIND_TEXT: Record<TemplateTask['kind'], string> = { tick: 'To do', form: 'Form', document: 'Document', letter: 'Letter', desk_request: 'Service Desk request', read: 'Read and acknowledge', watch: 'Watch a video', survey: 'Quick survey' };
+/** Kinds HR can pick for a step it adds or changes; the others come from starters and stay as they are. */
+const PICKABLE: TaskKind[] = ['tick', 'read', 'watch', 'survey'];
+const LIFE: JourneyKind[] = ['new_manager', 'transfer', 'parental_leave', 'return_to_work'];
+type Group = 'onboarding' | 'offboarding' | 'life';
+const groupOf = (k: JourneyKind): Group => (k === 'onboarding' || k === 'offboarding' ? k : 'life');
+const DAY_NAME: Record<JourneyKind, string> = { onboarding: 'joining', offboarding: 'last', new_manager: 'first', transfer: 'move', parental_leave: 'first leave', return_to_work: 'return' };
 const TEAM_OWNERS = new Set<OwnerType>(['hr', 'it', 'admin', 'finance', 'payroll', 'group']);
-const dayText = (n: number, kind: 'onboarding' | 'offboarding') => (n === 0 ? `On the ${kind === 'onboarding' ? 'joining' : 'last'} day` : `${Math.abs(n)} day${Math.abs(n) === 1 ? '' : 's'} ${n < 0 ? 'before' : 'after'}`);
+const dayText = (n: number, kind: JourneyKind) => (n === 0 ? `On the ${DAY_NAME[kind]} day` : `${Math.abs(n)} day${Math.abs(n) === 1 ? '' : 's'} ${n < 0 ? 'before' : 'after'}`);
 
 export interface JourneyTemplatesScreenProps {
   state: LoadState;
@@ -44,20 +52,25 @@ export interface JourneyTemplatesScreenProps {
 }
 
 export function JourneyTemplatesScreen(p: JourneyTemplatesScreenProps) {
-  const [kind, setKind] = useState<'onboarding' | 'offboarding'>('onboarding');
+  const [kind, setKind] = useState<Group>('onboarding');
   const [editing, setEditing] = useState<JourneyTemplate | null>(null);
   const { busy, error, run } = useRun();
   const d = p.data;
-  const templates = d?.templates.filter((t) => t.kind === kind) ?? [];
-  const starters = d?.starters.filter((s) => s.kind === kind && !s.copied) ?? [];
+  const templates = d?.templates.filter((t) => groupOf(t.kind) === kind) ?? [];
+  const starters = d?.starters.filter((s) => groupOf(s.kind) === kind && !s.copied) ?? [];
   return (
-    <LivePage title="Onboarding and offboarding checklists" description="What has to happen before someone joins or after they leave, who does it and when. Start from the YukthiX starter and change it to fit your company." state={p.state} onRetry={p.onRetry} what="checklists" grantedBy="your System Admin">
+    <LivePage title="Checklists" description="What has to happen when someone joins, leaves, or meets a life event (a first team, a transfer, parental leave), who does it and when. Start from the YukthiX starter and change it to fit your company." state={p.state} onRetry={p.onRetry} what="checklists" grantedBy="your System Admin">
       {error && (
         <InlineAlert tone="danger" title="That didn't work">
           {error}
         </InlineAlert>
       )}
-      <Segment label="Checklist" value={kind} onChange={setKind} options={[{ value: 'onboarding', label: 'Joining' }, { value: 'offboarding', label: 'Leaving' }]} />
+      <Segment label="Checklist" value={kind} onChange={setKind} options={[{ value: 'onboarding', label: 'Joining' }, { value: 'offboarding', label: 'Leaving' }, { value: 'life', label: 'Life events' }]} />
+      {kind === 'life' && (
+        <Text as="p" tone="secondary">
+          Each life-event checklist starts by itself: a first direct report, an approved transfer, approved maternity or paternity leave, and the day after that leave. Your copy starts Not in use; turn it on when it fits your company.
+        </Text>
+      )}
       {starters.map((s) => (
         <Card key={s.key} title={s.name}>
           <Text as="p">{s.summary}</Text>
@@ -71,7 +84,7 @@ export function JourneyTemplatesScreen(p: JourneyTemplatesScreenProps) {
       {templates.map((t) => (
         <Card key={t.id} title={t.name}>
           <Text as="p" tone="secondary" size="sm">
-            {`${t.tasks.length} tasks · ${t.active ? 'In use' : 'Not in use'}${t.starterKey ? ' · from the YukthiX starter' : ''}`}
+            {`${LIFE.includes(t.kind) ? `${JOURNEY_KIND_LABEL[t.kind]} · ` : ''}${t.tasks.length} tasks · ${t.active ? 'In use' : 'Not in use'}${t.starterKey ? ' · from the YukthiX starter' : ''}`}
           </Text>
           <ul className="yx-lif-list">
             {t.tasks.map((x) => (
@@ -137,7 +150,7 @@ function TemplateEditor({ template, teams, items, onClose, onSave }: { template:
       open
       onOpenChange={(o) => !o && onClose()}
       title={`Edit ${template.name}`}
-      subtitle="Days count from the joining day (or the last working day when leaving). Use minus for days before."
+      subtitle={'Days count from the ' + DAY_NAME[template.kind] + ' day. Use minus for days before.'}
       size="full"
       dirty={dirty}
       footer={
@@ -171,14 +184,19 @@ function TemplateEditor({ template, teams, items, onClose, onSave }: { template:
           setDirty(true);
           setActive(c);
         }}
-        label="In use for new joiners"
+        label={template.kind === 'onboarding' ? 'In use for new joiners' : template.kind === 'offboarding' ? 'In use for leavers' : `In use: starts by itself for each ${JOURNEY_KIND_LABEL[template.kind].toLowerCase()}`}
       />
       {tasks.map((t, i) => (
         <Card key={t.key} title={t.title || `Task ${i + 1}`} actions={t.locked ? <Badge tone="info"><Icon icon={Lock} size="sm" /> Required by law</Badge> : undefined}>
           <div className="yx-lif-grid">
-            <FormField id={`tpl-t-${i}`} label="Task" required error={v.errorOf(`tpl-t-${i}`)} helper={KIND_TEXT[t.kind]}>
+            <FormField id={`tpl-t-${i}`} label="Task" required error={v.errorOf(`tpl-t-${i}`)} helper={PICKABLE.includes(t.kind) ? undefined : KIND_TEXT[t.kind]}>
               <TextField value={t.title} onChange={(x) => edit(i, { title: x })} maxLength={150} />
             </FormField>
+            {PICKABLE.includes(t.kind) && !t.locked && (
+              <FormField id={`tpl-k-${i}`} label="Kind of step">
+                <Select aria-label="Kind of step" value={t.kind} onChange={(x) => x && edit(i, { kind: x as TaskKind, config: {} })} options={PICKABLE.map((k) => ({ value: k, label: KIND_TEXT[k] }))} />
+              </FormField>
+            )}
             <FormField id={`tpl-o-${i}`} label="Who does it">
               <Select aria-label="Who does it" value={OWNERS.some((o) => o.value === t.ownerType) ? t.ownerType : null} onChange={(x) => x && edit(i, { ownerType: x as OwnerType, ownerGroupId: TEAM_OWNERS.has(x as OwnerType) ? t.ownerGroupId : null })} options={OWNERS} />
             </FormField>
@@ -190,6 +208,26 @@ function TemplateEditor({ template, teams, items, onClose, onSave }: { template:
             <FormField id={`tpl-d-${i}`} label="Due (days from the day)" helper={dayText(t.dueOffsetDays, template.kind)}>
               <NumberField value={t.dueOffsetDays} onChange={(x) => edit(i, { dueOffsetDays: x ?? 0 })} min={-90} max={180} />
             </FormField>
+            {t.kind === 'read' && (
+              <FormField id={`tpl-text-${i}`} label="What to read" helper="Plain text, up to 4,000 characters. Or give a link below.">
+                <TextArea value={typeof t.config.text === 'string' ? t.config.text : ''} onChange={(x) => edit(i, { config: { ...t.config, text: x } })} rows={4} maxLength={4000} />
+              </FormField>
+            )}
+            {(t.kind === 'read' || t.kind === 'watch') && (
+              <FormField id={`tpl-url-${i}`} label={t.kind === 'watch' ? 'Video link' : 'Link'} optional={t.kind === 'read'} required={t.kind === 'watch'} helper="Starts with https://">
+                <TextField value={typeof t.config.url === 'string' ? t.config.url : ''} onChange={(x) => edit(i, { config: { ...t.config, url: x } })} maxLength={500} />
+              </FormField>
+            )}
+            {t.kind === 'watch' && (
+              <FormField id={`tpl-min-${i}`} label="About how many minutes" optional>
+                <NumberField value={typeof t.config.minutes === 'number' ? t.config.minutes : null} onChange={(x) => edit(i, { config: { ...t.config, minutes: x ?? undefined } })} min={1} max={180} />
+              </FormField>
+            )}
+            {t.kind === 'survey' && (
+              <FormField id={`tpl-q-${i}`} label="Statements to rate from 1 to 5" helper="One per line, up to five. HR sees the answers; the manager sees only that the person answered.">
+                <TextArea value={Array.isArray(t.config.questions) ? (t.config.questions as string[]).join('\n') : ''} onChange={(x) => edit(i, { config: { questions: x.split('\n') } })} rows={4} />
+              </FormField>
+            )}
             {t.kind === 'desk_request' && (
               <FormField id={`tpl-i-${i}`} label="Service Desk item" optional helper="The desk gets a request for it on the due day and the task closes when the desk delivers. Without an item, the team ticks it by hand.">
                 <Select aria-label="Service Desk item" value={typeof t.config.itemId === 'string' ? t.config.itemId : null} onChange={(x) => edit(i, { config: x ? { itemId: x } : {} })} options={items.map((it) => ({ value: it.value, label: `${it.label} (${it.desk})` }))} clearable searchable />

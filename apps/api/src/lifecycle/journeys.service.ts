@@ -9,8 +9,8 @@ import { AutomationService } from '../rules-engine/automation.service';
 import { FormDef, checkAnswers, parseForm } from '../rules-engine/forms';
 import { JourneysService as DeskJourneysService } from '../service-desk/journeys.service';
 import { joinerInScope, ownOf } from '../documents/person-access';
-import { TaskStatus, addDays, checkTemplateTasks, daysBetween, dueOn, openable, progress } from './journey-rules';
-import { LOCKED_STARTER_KEYS, STARTERS, type OwnerType, type TaskKind } from './starters';
+import { TaskStatus, addDays, checkTemplateTasks, contentConfig, daysBetween, dueOn, openable, progress, surveyAnswers } from './journey-rules';
+import { LOCKED_STARTER_KEYS, STARTERS, isLifeEvent, type JourneyKind, type OwnerType, type TaskKind } from './starters';
 
 // LIFE-1.04 / 1.05 the journey engine (M01 §3.5, design §7): one checklist per joiner (anchored on the joining day) or
 // leaver (on the last working day), made from the company's most specific active template.
@@ -44,14 +44,14 @@ export interface TemplateTaskInput {
   locked?: boolean;
 }
 export interface StartInput {
-  kind: 'onboarding' | 'offboarding';
+  kind: JourneyKind;
   personId: string;
-  subjectType: 'preboarding' | 'exit_case' | 'employment';
+  subjectType: 'preboarding' | 'exit_case' | 'employment' | 'employee_change' | 'leave_request';
   subjectId: string;
   anchorOn: string;
   templateId?: string | null;
   place: { legalEntityId: string; locationId: string; departmentId: string | null };
-  ownerUserId: string;
+  ownerUserId: string | null;
   managerEmployeeId: string | null;
   personUserId: string | null;
 }
@@ -140,10 +140,11 @@ export class LifecycleJourneysService implements OnModuleInit {
     await this.mayEditTemplate(user, null);
     const s = STARTERS.find((x) => x.key === starterKey);
     if (!s) throw new NotFoundException('No such starter.');
-    return this.saveTemplate(ctx, user, null, { kind: s.kind, name: s.name.replace(' (starter)', ''), starterKey: s.key, active: true, tasks: s.tasks.map((t) => ({ ...t, config: t.config ?? {} })) });
+    // 6f: a life-event journey is off until the company turns it on (gap pass O1).
+    return this.saveTemplate(ctx, user, null, { kind: s.kind, name: s.name.replace(' (starter)', ''), starterKey: s.key, active: !isLifeEvent(s.kind), tasks: s.tasks.map((t) => ({ ...t, config: t.config ?? {} })) });
   }
 
-  async saveTemplate(ctx: TenantContext, user: ScopeUser, id: string | null, dto: { kind: 'onboarding' | 'offboarding'; name: string; legalEntityId?: string | null; locationId?: string | null; departmentId?: string | null; starterKey?: string; active: boolean; version?: number; tasks: TemplateTaskInput[] }) {
+  async saveTemplate(ctx: TenantContext, user: ScopeUser, id: string | null, dto: { kind: JourneyKind; name: string; legalEntityId?: string | null; locationId?: string | null; departmentId?: string | null; starterKey?: string; active: boolean; version?: number; tasks: TemplateTaskInput[] }) {
     await this.mayEditTemplate(user, dto.legalEntityId);
     const problem = checkTemplateTasks(dto.tasks.map((t) => ({ key: t.key, dependsOn: t.dependsOn ?? [], dueOffsetDays: t.dueOffsetDays })));
     if (problem) throw new BadRequestException(problem);
@@ -154,7 +155,7 @@ export class LifecycleJourneysService implements OnModuleInit {
         const cur = await tx.journeyTemplate.findFirst({ where: { organizationId: org, id } });
         if (!cur) throw new NotFoundException('No such checklist.');
         if (cur.legalEntityId !== (dto.legalEntityId ?? null)) await this.mayEditTemplate(user, cur.legalEntityId);
-        if (cur.kind !== dto.kind) throw new BadRequestException('A checklist cannot change between onboarding and offboarding.');
+        if (cur.kind !== dto.kind) throw new BadRequestException('A checklist cannot change what it is for.');
         const n = await tx.journeyTemplate.updateMany({ where: { organizationId: org, id, version: dto.version ?? -1 }, data: { name: dto.name, legalEntityId: dto.legalEntityId ?? null, locationId: dto.locationId ?? null, departmentId: dto.departmentId ?? null, active: dto.active, version: { increment: 1 } } });
         if (!n.count) throw new ConflictException('Someone else changed this checklist. Reload it.');
         t = await tx.journeyTemplate.findFirstOrThrow({ where: { organizationId: org, id } });
@@ -220,6 +221,11 @@ export class LifecycleJourneysService implements OnModuleInit {
       }
       if (x.kind === 'letter') x.config = { letterType: typeof cfg.letterType === 'string' ? cfg.letterType.slice(0, 40) : 'other' };
       if (x.kind === 'tick') x.config = {};
+      if (x.kind === 'read' || x.kind === 'watch' || x.kind === 'survey') {
+        const r = contentConfig(x.kind, cfg);
+        if ('problem' in r) throw new BadRequestException(`"${x.title}" ${r.problem}.`);
+        x.config = r.config;
+      }
     }
   }
 
@@ -263,13 +269,13 @@ export class LifecycleJourneysService implements OnModuleInit {
   }
 
   /** After the journey's transaction: raise desk requests for open desk tasks and tell the assignees. */
-  async afterStart(ctx: CompanyContext, journeyId: string, by: string | null) {
+  async afterStart(ctx: CompanyContext, journeyId: string, by: string | null, word = 'onboarding') {
     await this.raiseDeskRequests(ctx, journeyId, by);
     const tasks = await this.tenantPrisma.forTenant(ctx, (tx) => tx.journeyTask.findMany({ where: { organizationId: ctx.organizationId, journeyId, status: 'open' } }));
     const users = [...new Set(tasks.map((t) => t.assigneeUserId).filter((u): u is string => Boolean(u)))];
     if (users.length)
       await this.notifications
-        .notifySystem(ctx, users, 'journey.task.assigned', { entityType: 'journey', entityId: journeyId, contextText: 'You have new onboarding tasks', linkPath: '/yx/people/my-tasks' }, { subject: 'You have new onboarding tasks', html: '<p>New onboarding tasks are waiting for you in YukthiX.</p>' })
+        .notifySystem(ctx, users, 'journey.task.assigned', { entityType: 'journey', entityId: journeyId, contextText: `You have new ${word} tasks`, linkPath: '/yx/people/my-tasks' }, { subject: `You have new ${word} tasks`, html: `<p>New ${word} tasks are waiting for you in YukthiX.</p>` })
         .catch(() => undefined);
   }
 
@@ -309,7 +315,7 @@ export class LifecycleJourneysService implements OnModuleInit {
   // ------------------------------------------------------------------------------------------ access
 
   /** What the viewer may do on a journey: HR in scope runs it; the manager and assignees see it. */
-  private async access(tx: Tx, c: CompanyContext, v: Viewer, j: Journey): Promise<{ manage: boolean; see: boolean; own: { employeeId: string | null; personId: string | null }; groups: string[] }> {
+  async access(tx: Tx, c: CompanyContext, v: Viewer, j: Journey): Promise<{ manage: boolean; see: boolean; own: { employeeId: string | null; personId: string | null }; groups: string[] }> {
     const own = await ownOf(tx, c, v);
     const groups = v.userId ? (await tx.userGroupMember.findMany({ where: { organizationId: c.organizationId, userId: v.userId }, select: { groupId: true } })).map((g) => g.groupId) : [];
     const reach = async (key: string) => {
@@ -338,9 +344,9 @@ export class LifecycleJourneysService implements OnModuleInit {
     return { user: (id: string | null) => users.find((u) => u.id === id)?.name ?? users.find((u) => u.id === id)?.email ?? null, group: (id: string | null) => groups.find((g) => g.id === id)?.name ?? null };
   }
 
-  private taskView(t: Task, n: { user: (id: string | null) => string | null; group: (id: string | null) => string | null }, can: boolean, today: string) {
+  private taskView(t: Task, n: { user: (id: string | null) => string | null; group: (id: string | null) => string | null }, can: boolean, today: string, seeSurvey = true) {
     const due = iso(t.dueOn);
-    const manualKinds = ['tick', 'form'];
+    const manualKinds = ['tick', 'form', 'read', 'watch', 'survey'];
     const deskWithoutItem = t.kind === 'desk_request' && !(t.config as { itemId?: string }).itemId;
     return {
       id: t.id,
@@ -359,7 +365,9 @@ export class LifecycleJourneysService implements OnModuleInit {
       form: t.kind === 'form' ? ((t.config as { form?: FormDef }).form ?? null) : null,
       documentType: t.kind === 'document' ? ((t.config as { typeKey?: string }).typeKey ?? null) : null,
       letterType: t.kind === 'letter' ? ((t.config as { letterType?: string }).letterType ?? null) : null,
-      answers: t.answers ?? null,
+      // 6f: read / watch / survey content for the step; survey ratings only for HR running it and the person (§7.5).
+      content: ['read', 'watch', 'survey'].includes(t.kind) ? t.config : null,
+      answers: t.kind === 'survey' && !seeSurvey ? null : (t.answers ?? null),
       link: t.linkType ? { type: t.linkType, id: t.linkId } : null,
       completedAt: t.completedAt?.toISOString() ?? null,
       completedBy: n.user(t.completedBy),
@@ -397,7 +405,7 @@ export class LifecycleJourneysService implements OnModuleInit {
         owner: n.user(j.ownerUserId),
         canManage: a.manage,
         today,
-        tasks: tasks.map((x) => this.taskView(x, n, this.canDo(x, v, a), today)),
+        tasks: tasks.map((x) => this.taskView(x, n, this.canDo(x, v, a), today, a.manage || (v.userId !== null && x.completedBy === v.userId))),
       };
     });
   }
@@ -463,6 +471,10 @@ export class LifecycleJourneysService implements OnModuleInit {
         const res = checkAnswers((t.config as unknown as { form: FormDef }).form, dto.answers ?? {});
         if (Object.keys(res.errors).length) throw new BadRequestException({ statusCode: 400, code: 'FORM_INVALID', message: 'Some answers need fixing.', errors: res.errors });
         answers = res.values as Prisma.InputJsonValue;
+      } else if (t.kind === 'survey') {
+        const ok = surveyAnswers((t.config as { questions?: string[] }).questions ?? [], dto.answers ?? {});
+        if (!ok) throw new BadRequestException('Rate every statement from 1 to 5.');
+        answers = ok as Prisma.InputJsonValue;
       } else if (t.kind === 'letter' || t.kind === 'document' || (t.kind === 'desk_request' && (t.config as { itemId?: string }).itemId)) {
         throw new ConflictException(t.kind === 'letter' ? 'This task closes itself when the letter is issued (YX-LC-26).' : t.kind === 'document' ? 'This task closes itself when the document is in.' : 'This task closes itself when the desk fulfils the request.');
       } else if (dto.note?.trim()) answers = { note: dto.note.trim().slice(0, 300) };

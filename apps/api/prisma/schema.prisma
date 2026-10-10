@@ -5806,7 +5806,7 @@ model DocumentVersion {
 model JourneyTemplate {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
-  kind           String   @db.VarChar(12)
+  kind           String   @db.VarChar(16)
   name           String   @db.VarChar(100)
   legalEntityId  String?  @map("legal_entity_id") @db.Uuid
   locationId     String?  @map("location_id") @db.Uuid
@@ -5844,9 +5844,9 @@ model JourneyTemplateTask {
 model Journey {
   id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId  String   @map("organization_id") @db.Uuid
-  kind            String   @db.VarChar(12)
+  kind            String   @db.VarChar(16)
   personId        String   @map("person_id") @db.Uuid
-  subjectType     String   @map("subject_type") @db.VarChar(12)
+  subjectType     String   @map("subject_type") @db.VarChar(16)
   subjectId       String   @map("subject_id") @db.Uuid
   templateId      String   @map("template_id") @db.Uuid
   templateVersion Int      @map("template_version")
