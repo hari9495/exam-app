@@ -15,7 +15,7 @@
 | C3 service dates | Company start and this employer's start are read from the employments we already store (never copied). Continuous service from is new: filled from the rehire choice, HR may change it with a reason. | Rules that read a date by name (gratuity, notice, awards) switch to these dates in their own batches. |
 | G3 person fields | Each country pack lists every person field as required, optional or not allowed. India is the first pack. A read API gives the list for a country. | Hiding fields on the profile and blocking custom fields per country. |
 | T1 pay steps | Leave types carry pay steps (days at a pay %) and a window (leave year or rolling 12 months). A tested calculator says which days are paid at which %. | The leave type screen and the "Days 11–15 at 50 %" line on the leave form. |
-| G1 translations | A company translates its own words into Hindi, Tamil and Telugu: leave types, job titles, departments, grades, employment types, locations, journey names and journey steps. People see their language, else the company's words. | An export / import file for translators; AI draft translations; journey screens showing the translations (after 6f merges). |
+| G1 translations | A company translates its own words into Hindi, Tamil and Telugu: leave types, job titles, departments, grades, employment types, locations, journey names and journey steps. People see their language, else the company's words. | An export / import file for translators; AI draft translations. |
 | G6 Add a country | A guide: country → legal entity → identifiers and registrations → working week and language → what is still open. India is set up through it. | Data region choice beyond India, holiday feeds, starter leave and time rule templates per country (T2, T4), payroll mode choice. |
 
 ## 2. Country pack data (P07)
@@ -80,7 +80,7 @@ Only a paid type may have steps. Editing a type keeps its steps unless the reque
 
 - Setting **`people.language`** (company, legal entity or person; values `en`, `hi`, `ta`, `te`; starter `en`). The company value is the **company default**: the language its own words are typed in. A person picks their own language on **Me › Language** (any signed-in employee; it saves a person-scope value, audited).
 - Table **`content_translations`**: one row per company, subject type, subject id and language, with the text (1–150 characters). Subject types: `leave_type`, `designation`, `department`, `grade`, `employment_type`, `location`, `journey_template`, `journey_task`. Forced RLS; no foreign key (one table serves eight subjects), the API checks the subject belongs to the company.
-- **Shown:** the reader's language when a translation exists, else the company's words. Used now on the job record (designation, department, grade, employment type, location) and on My leave (leave type names). Journeys use it after 6f.
+- **Shown:** the reader's language when a translation exists, else the company's words. Used on the job record (designation, department, grade, employment type, location), on My leave (leave type names), and, with lifecycle 6f merged, on the journey page, My checklist tasks and My first 30 days (journey names and step titles; a step is matched to its template step by its key). The template editor keeps the company's own words.
 - **Settings › Organisation › Translations** (org.settings.manage): pick what to translate, one box per language other than the company default. An empty box removes the translation.
 
 ## 8. "Add a country" guide (G6)
@@ -150,4 +150,5 @@ All three accepted as recommended:
 |---|---|
 | 10 Oct 2026 | First version: slices G1.01–G1.07 from the gap pass §7.1. |
 | 10 Oct 2026 | Founder accepted decisions 1–3 as recommended (§12.1). |
+| 10 Oct 2026 | After lifecycle 6f merged: translated journey names and steps shown on the journey screens (§7). |
 | 10 Oct 2026 | As built: the language setting is `people.language` (setting keys need a dot); person fields are read from the country pack API (no per-person route yet); the rehire chain is covered by unit tests. |
