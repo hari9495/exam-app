@@ -10,7 +10,6 @@ export const FORMATS = {
   esi: 'ESIC-MC-XLSX-1',
   pt: 'PT-STATE-CSV-1',
   lwf: 'LWF-STATE-CSV-1',
-  tds: 'TDS-ANNEXURE-CSV-1',
 } as const;
 
 const clean = (s: string, max = 85) =>
@@ -118,10 +117,4 @@ export interface TdsRow {
   paid: string;
   tds: string;
   noPan: boolean;
-}
-/** The quarterly TDS return's deductee annexure (one row per person and month), the data the return utility takes. */
-export function tdsAnnexure(rows: TdsRow[]): Buffer {
-  const lines = [csv(['Employee code', 'Name', 'PAN', 'Month', 'Amount paid', 'Tax deducted', 'No PAN (higher rate)'])];
-  for (const r of rows) lines.push(csv([clean(r.employeeCode, 30), clean(r.name), r.pan ?? 'PANNOTAVBL', r.month, r.paid, r.tds, r.noPan ? 'Y' : 'N']));
-  return Buffer.from(lines.join('\r\n') + '\r\n', 'utf8');
 }

@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { checkShape, damages, runGolden, type GoldenCase, type RuleSet } from './evaluator';
-import { ecrFile, esiFile, ptFile, tdsAnnexure } from './filing-files';
+import { ecrFile, esiFile, ptFile } from './filing-files';
 
 const pack = (JSON.parse(readFileSync(join(__dirname, 'packs', 'in-filing.json'), 'utf8')) as { ruleSets: (RuleSet & { golden: GoldenCase[] })[] }).ruleSets;
 
@@ -40,7 +40,7 @@ describe('statutory files (PAY-6.02 … 6.05)', () => {
     expect([r.getCell(1).value, r.getCell(3).value, r.getCell(4).value]).toEqual(['0012345678', 30, 20000]);
   });
 
-  it('PT: people, then a summary by the tax each paid; TDS annexure marks a missing PAN', () => {
+  it('PT: people, then a summary by the tax each paid', () => {
     const pt = ptFile('IN-KA', '2026-10', [
       { code: 'E1', name: 'A', ptWage: '60500.00', pt: '200.00' },
       { code: 'E2', name: '=cmd', ptWage: '20000.00', pt: '0.00' },
@@ -48,7 +48,6 @@ describe('statutory files (PAY-6.02 … 6.05)', () => {
     ]).toString();
     expect(pt).toContain('"","200.00",2,"400.00"');
     expect(pt).not.toContain('=cmd');
-    expect(tdsAnnexure([{ employeeCode: 'E1', name: 'A', pan: null, month: '2026-10', paid: '1', tds: '1', noPan: true }]).toString()).toContain('"PANNOTAVBL"');
   });
 
   it('damages: the yearly rate by months late', () => {

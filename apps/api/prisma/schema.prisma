@@ -7532,6 +7532,8 @@ model TdsReturn {
   correctsId     String?   @map("corrects_id") @db.Uuid
   rows           Json
   reconciliation Json?
+  /// 5f-D1: the File Validation Utility outcome (validator, ok, errors, hashes).
+  fvu            Json?
   exchangeFileId String?   @map("exchange_file_id") @db.Uuid
   status         String    @default("draft") @db.VarChar(10)
   tokenNo        String?   @map("token_no") @db.VarChar(30)

@@ -378,8 +378,23 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
     await api('payAdmin', 'post', `/statutory/tds-returns/${ret.id}/file`).expect(409);
     await api('payAdmin', 'patch', `/statutory/challans/${ch.id}`).send({ challanNo: '00042', bsrCode: '0510308', depositDate: today }).expect(200);
     expect((await api('payAdmin', 'post', `/statutory/tds-returns/${ret.id}/reconcile`).expect(200)).body).toMatchObject({ status: 'reconciled', reconciliation: { ok: true } });
+    // 5f-D1: the official e-TDS file needs the deductor's details first.
+    expect((await api('payAdmin', 'post', `/statutory/tds-returns/${ret.id}/file`).expect(400)).body.problems).toEqual(expect.arrayContaining([expect.stringMatching(/TAN/)]));
+    await inA(async (tx) => {
+      await tx.legalEntity.update({
+        where: { id: ids.entity },
+        data: { tan: 'BLRP12345E', pan: 'AAACP1234F', registeredAddress: { lines: ['12 MG Road'], city: 'Bengaluru', state: 'IN-KA', postalCode: '560001', country: 'IN' } },
+      });
+      await tx.statutoryRegistration.create({
+        data: { organizationId: org.A.id, legalEntityId: ids.entity, statute: 'IN.TDS', registrationNo: 'BLRP12345E', responsiblePerson: 'Divya R', responsibleDesignation: 'Director', status: 'on' },
+      });
+    });
     const file = (await api('payAdmin', 'post', `/statutory/tds-returns/${ret.id}/file`).expect(200)).body;
-    expect((await download('payAdmin', file.fileId)).toString()).toContain(PAN1);
+    // No FVU in this environment: the development fake checks the structure and says it is not the FVU.
+    expect(file.validation).toMatchObject({ validator: 'fake', ok: true, errors: [] });
+    const etds = (await download('payAdmin', file.fileId)).toString();
+    expect(etds).toContain(PAN1);
+    expect(etds.split('\r\n')[0]).toMatch(/^1\^FH\^NS1\^R\^/);
     await stepUp('compliance');
     const phrase = `FILED ${ret.formCode} Q${quarter} ${ty}`;
     expect(

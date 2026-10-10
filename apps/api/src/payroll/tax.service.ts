@@ -488,7 +488,7 @@ export class TaxService {
 
   /**
    * PAN operative or inoperative (YX-TAX-10): recorded by payroll with a reason. Without a PAN on file the tax is at the
-   * higher rate anyway. DECISION NEEDED: the P10 partner that checks PAN status before each run and each filing.
+   * higher rate anyway. Founder decision 5e-D2: recorded by hand; a checking provider comes later.
    */
   async panStatus(ctx: TenantContext, user: ScopeUser, id: string, status: 'operative' | 'inoperative', reason: string) {
     const v = await this.viewer(user);

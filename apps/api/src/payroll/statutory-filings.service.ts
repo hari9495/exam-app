@@ -6,7 +6,10 @@ import { entityTimeZone, localDate } from '../org-structure/org-validation';
 import type { ScopeUser, Viewer } from '../access/scope';
 import { StatutoryRulesService } from '../statutory/statutory.service';
 import { damages, due, inForce, penalty, type RuleSet } from '../statutory/evaluator';
-import { FORMATS, ecrFile, esiFile, lwfFile, ptFile, tdsAnnexure, type EcrRow, type EsiRow, type LwfRow, type PtRow, type TdsRow } from '../statutory/filing-files';
+import { FORMATS, ecrFile, esiFile, lwfFile, ptFile, type EcrRow, type EsiRow, type LwfRow, type PtRow, type TdsRow } from '../statutory/filing-files';
+import { ETDS_FORMAT, etdsFile } from '../statutory/etds';
+import { FvuRunner, FvuUnavailable, type FvuOutcome } from '../statutory/fvu';
+import { sha256 } from './pay-file-store';
 import { asDate, dateOf, monthRange } from '../time/time-core';
 import type { ConfirmationDto } from './dto';
 import type { ChallanUpdateDto, FilingDto } from './dto-5f';
@@ -46,6 +49,7 @@ export class StatutoryFilingsService {
     private readonly rules: StatutoryRulesService,
     private readonly files: ExchangeFilesService,
     private readonly crypto: OrgSecretsCryptoService,
+    private readonly fvu: FvuRunner,
   ) {}
 
   private async viewer(user: ScopeUser) {
@@ -531,7 +535,7 @@ export class StatutoryFilingsService {
     });
   }
 
-  /** PAY-6.06 partner path. DECISION NEEDED: which filing partner (M03 §19 D3 — self-file for the pilot, a partner before public launch). */
+  /** PAY-6.06 partner path. Founder decision 5f-D2 (10 Oct 2026): self-filing for the pilot, so no partner is connected. */
   async transmit(ctx: TenantContext, user: ScopeUser, id: string) {
     const v = await this.viewer(user);
     await inCompany(this.tenantPrisma, ctx, (tx, c) => this.filingFor(tx, c, v, id, 'statutory.filing.generate'));
@@ -739,18 +743,76 @@ export class StatutoryFilingsService {
   }
 
   /**
-   * The deductee annexure (full PANs, so the file is stored encrypted and downloaded through an audited single-use link).
-   * DECISION NEEDED: the return utility's own file format and the FVU validation (the Protean FVU tool runs in an
-   * isolated worker without network); until then this is the data the return is filed from.
+   * Founder decision 5f-D1: the return in the official e-TDS format (deductor from the entity and its TDS registration,
+   * a challan record per deposited month and its deductees under it, full PANs only in the file), validated by the
+   * government's File Validation Utility in an isolated worker (a fake with structural checks in development only).
+   * Stored encrypted and downloaded through an audited single-use link; a valid file makes the return "validated".
    */
-  async returnFile(ctx: TenantContext, user: ScopeUser, id: string) {
+  async returnFile(ctx: TenantContext, user: ScopeUser, id: string, csi: Buffer | null = null) {
     const v = await this.viewer(user);
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+    const built = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
       const r = await this.returnFor(tx, c, v, id, 'statutory.filing.generate');
-      if (r.status !== 'reconciled') throw new ConflictException('Reconcile the return with the challans first (the difference must be zero).');
-      const rows = await this.tdsRows(tx, c.organizationId, r.legalEntityId, r.taxYear, r.quarter);
+      if (!['reconciled', 'validated'].includes(r.status)) throw new ConflictException('Reconcile the return with the challans first (the difference must be zero).');
+      const rows = await this.tdsRows(tx, org, r.legalEntityId, r.taxYear, r.quarter);
       const problems = rows.filter((x) => x.pan && !/^[A-Z]{5}\d{4}[A-Z]$/.test(x.pan)).map((x) => `${x.employeeCode}: the PAN on file is not valid.`);
+      const e = await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: r.legalEntityId }, select: { name: true, pan: true, tan: true, registeredAddress: true } });
+      const reg = await tx.statutoryRegistration.findFirst({ where: { organizationId: org, legalEntityId: r.legalEntityId, statute: 'IN.TDS' } });
+      const tan = e.tan ?? reg?.registrationNo ?? null;
+      const addr = (e.registeredAddress ?? reg?.address ?? null) as { lines?: string[]; city?: string; state?: string; postalCode?: string | null } | null;
+      if (!tan) problems.push('The TAN of the legal entity is missing (Payroll set-up › Registrations).');
+      if (!e.pan) problems.push('The PAN of the legal entity is missing.');
+      if (!reg?.responsiblePerson) problems.push('The person responsible for deducting tax is missing on the TDS registration.');
+      if (!addr?.state || !addr?.postalCode) problems.push('The registered address (with state and PIN) of the legal entity is missing.');
       if (problems.length) throw new BadRequestException({ statusCode: 400, message: 'Fix these before the return file is made.', problems });
+      const months = [...new Set(rows.map((x) => x.month))].sort();
+      const challans = await tx.tdsChallan.findMany({
+        where: { organizationId: org, legalEntityId: r.legalEntityId, subjectKey: 'salary_tds', status: 'deposited', depositMonth: { in: months.map((m) => asDate(`${m}-01`)) } },
+      });
+      const input = {
+        formNo: r.formCode as '24Q' | '138',
+        taxYear: r.taxYear,
+        quarter: r.quarter,
+        createdOn: localDate(new Date(), await entityTimeZone(tx, org, r.legalEntityId)),
+        deductor: {
+          tan: tan!,
+          pan: e.pan!,
+          name: e.name,
+          address: [...(addr!.lines ?? []), addr!.city ?? ''].filter(Boolean),
+          state: addr!.state!,
+          pin: addr!.postalCode!,
+          email: '',
+          responsibleName: reg!.responsiblePerson!,
+          responsibleDesignation: reg!.responsibleDesignation ?? '',
+          responsiblePan: null,
+          mobile: '',
+        },
+        challans: months.map((m) => {
+          const ch = challans.find((x) => dateOf(x.depositMonth).slice(0, 7) === m)!;
+          const end = monthRange(m).to;
+          return {
+            bsr: ch.bsrCode!,
+            challanNo: ch.challanNo!,
+            depositDate: dateOf(ch.depositDate!),
+            tds: ch.tds.toFixed(2),
+            interest: ch.interest.toFixed(2),
+            fee: ch.fee.toFixed(2),
+            deductees: rows.filter((x) => x.month === m).map((x) => ({ pan: x.pan, name: x.name, paid: x.paid, tds: x.tds, paidOn: end, deductedOn: end, noPan: x.noPan })),
+          };
+        }),
+      };
+      return { r, data: etdsFile(input), rows };
+    });
+    let outcome: FvuOutcome;
+    try {
+      outcome = await this.fvu.validate(built.data, built.r.taxYear, csi);
+    } catch (e) {
+      if (e instanceof FvuUnavailable) throw new ConflictException({ statusCode: 409, code: 'FVU_UNAVAILABLE', message: e.message });
+      throw e;
+    }
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const r = built.r;
+      await payScope(tx, [r.legalEntityId]);
       const kind: FileKind = r.formCode === '24Q' ? 'form24q' : 'form138';
       const ex = await this.files.generateIn(tx, c, {
         legalEntityId: r.legalEntityId,
@@ -758,15 +820,43 @@ export class StatutoryFilingsService {
         ownerType: 'tds_return',
         ownerId: r.id,
         periodStart: null,
-        fileName: `${r.formCode.toLowerCase()}-${r.taxYear}-q${r.quarter}${r.kind === 'correction' ? '-correction' : ''}.csv`,
-        contentType: 'text/csv; charset=utf-8',
-        data: tdsAnnexure(rows),
-        rows: rows.length,
-        totals: { tds: rows.reduce((t, x) => t.add(x.tds), ZERO).toFixed(2) },
+        fileName: `${r.formCode.toLowerCase()}-${r.taxYear}-q${r.quarter}${r.kind === 'correction' ? '-correction' : ''}.txt`,
+        contentType: 'text/plain; charset=utf-8',
+        data: built.data,
+        rows: built.rows.length,
+        totals: { tds: built.rows.reduce((t, x) => t.add(x.tds), ZERO).toFixed(2) },
         by: v.userId!,
       });
-      await tx.tdsReturn.update({ where: { id }, data: { exchangeFileId: ex.id } });
-      return { id, fileId: ex.id, rows: rows.length, sha256: ex.sha256 };
+      // The FVU's .fvu output is what the portal takes: kept beside the return file, under the same audited links.
+      const out = outcome.output
+        ? await this.files.generateIn(tx, c, {
+            legalEntityId: r.legalEntityId,
+            kind,
+            ownerType: 'tds_return',
+            ownerId: r.id,
+            periodStart: null,
+            fileName: `${r.formCode.toLowerCase()}-${r.taxYear}-q${r.quarter}.fvu`,
+            contentType: 'application/octet-stream',
+            data: outcome.output,
+            rows: built.rows.length,
+            totals: {},
+            by: v.userId!,
+          })
+        : null;
+      const fvu = {
+        fvuFileId: out?.id ?? null,
+        validator: outcome.validator,
+        version: outcome.version,
+        ok: outcome.ok,
+        errors: outcome.errors.slice(0, 50),
+        fileSha256: ex.sha256,
+        fvuSha256: outcome.output ? sha256(outcome.output) : null,
+        format: ETDS_FORMAT,
+        at: new Date().toISOString(),
+      };
+      await tx.tdsReturn.update({ where: { id: r.id }, data: { exchangeFileId: ex.id, fvu: fvu as unknown as Prisma.InputJsonValue, status: outcome.ok ? 'validated' : 'reconciled' } });
+      await audit(tx, c, 'statutory.tds_return.validated', 'tds_return', r.id, { validator: outcome.validator, ok: outcome.ok, errors: outcome.errors.length, sha256: ex.sha256 });
+      return { id: r.id, fileId: ex.id, rows: built.rows.length, sha256: ex.sha256, validation: fvu };
     });
   }
 
@@ -775,7 +865,7 @@ export class StatutoryFilingsService {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const r = await this.returnFor(tx, c, v, id, 'statutory.filing.mark_filed');
-      if (r.status !== 'reconciled' || !r.exchangeFileId) throw new ConflictException('Reconcile the return and make its file first.');
+      if (r.status !== 'validated' || !r.exchangeFileId) throw new ConflictException('Make the return file and have it validated first.');
       const phrase = `FILED ${r.formCode} Q${r.quarter} ${r.taxYear}`;
       if (confirmation.phrase !== phrase) throw new BadRequestException(`Type ${phrase} to confirm.`);
       await tx.tdsReturn.update({ where: { id }, data: { status: 'filed', tokenNo, filedBy: v.userId!, filedAt: new Date() } });

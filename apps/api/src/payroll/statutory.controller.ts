@@ -151,8 +151,11 @@ export class StatutoryController {
   @Post('tds-returns/:id/file')
   @HttpCode(200)
   @RequirePermissions('statutory.filing.generate')
-  returnFile(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.filings.returnFile(ctx, this.user(req), id);
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  // The challan file (CSI) from the TIN website, which the FVU checks the challans against.
+  @UseInterceptors(FileInterceptor('csi', { limits: { fileSize: 2 * 1024 * 1024, files: 1 } }))
+  returnFile(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() csi?: { buffer: Buffer }) {
+    return this.filings.returnFile(ctx, this.user(req), id, csi?.buffer ?? null);
   }
 
   @Post('tds-returns/:id/filed')
