@@ -139,7 +139,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private view(r: Run) {
-    return { id: r.id, legalEntityId: r.legalEntityId, payGroupId: r.payGroupId, month: this.month(r), runType: r.runType, offcycleKind: r.offcycleKind, status: r.status, calcVersion: r.calcVersion, totals: r.totals, preparedBy: r.preparedBy, approvedAt: r.approvedAt, voidReason: r.voidReason, createdAt: r.createdAt };
+    return { id: r.id, legalEntityId: r.legalEntityId, payGroupId: r.payGroupId, month: this.month(r), runType: r.runType, offcycleKind: r.offcycleKind, status: r.status, publishedAt: r.publishedAt, calcVersion: r.calcVersion, totals: r.totals, preparedBy: r.preparedBy, approvedAt: r.approvedAt, voidReason: r.voidReason, createdAt: r.createdAt };
   }
 
   async list(ctx: TenantContext, user: ScopeUser, month?: string) {
@@ -152,9 +152,30 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /** One run; while it waits for approval, whether the viewer decides it now and the phrase to type (batch 5j screens). */
   async get(ctx: TenantContext, user: ScopeUser, id: string) {
     const v = await this.viewer(user);
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) => this.view(await this.runIn(tx, c, v, id, VIEW)));
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const run = await this.runIn(tx, c, v, id, VIEW);
+      const e = await tx.legalEntity.findFirstOrThrow({ where: { organizationId: c.organizationId, id: run.legalEntityId }, select: { name: true, shortName: true } });
+      let approval: { canDecide: boolean; phrase: string; step: number; steps: number } | null = null;
+      if (run.status === 'submitted' && run.wfRequestId) {
+        const w = await tx.wfRequest.findFirst({ where: { organizationId: c.organizationId, id: run.wfRequestId } });
+        const task = w ? await tx.wfTask.findFirst({ where: { organizationId: c.organizationId, requestId: w.id, assigneeUserId: v.userId!, status: 'open', step: w.currentStep } }) : null;
+        const steps = w ? (await tx.wfTask.findMany({ where: { organizationId: c.organizationId, requestId: w.id }, distinct: ['step'], select: { step: true } })).length : 0;
+        approval = { canDecide: !!task, phrase: approvePhrase(e.shortName, this.month(run)), step: w?.currentStep ?? 0, steps };
+      }
+      return { ...this.view(run), entityName: e.name, preparedByMe: run.preparedBy === v.userId, approval };
+    });
+  }
+
+  /** Who the run pays, by name and code (the screens show names; the rows carry ids). */
+  async people(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const run = await this.runIn(tx, c, v, id, VIEW);
+      return (await this.members(tx, c.organizationId, run)).map((m) => ({ employeeId: m.employeeId, name: m.name, employeeCode: m.employeeCode }));
+    });
   }
 
   // ------------------------------------------------------------------------------------------ who is paid

@@ -36,3 +36,9 @@ export {
   type PayImportsScreenProps,
 } from './setup';
 export { ComponentLibraryLiveScreen, TemplatesLiveScreen, CompensationLiveScreen, BreakupTable, type ComponentLibraryLiveProps, type TemplatesLiveProps, type CompensationLiveProps } from './structures';
+// Batch 5j (PAY-10.01 … 10.04): runs, inputs, the employee's payslips and the compliance screens, wired.
+export * from './types-5j';
+export { PayRunsScreen, PayRunScreen, PayslipLines, ReasonDrawer, RunStatusBadge, rupees, runName, type PayRunsScreenProps, type PayRunScreenProps } from './runs';
+export { PayInputsScreen, PersonPicker, type PayInputsScreenProps, type PersonHit, type LopRow, type HoldRow } from './inputs';
+export { MyPayslipsScreen, MyTaxScreen, payDiff, type MyPayslipsScreenProps, type MyTaxScreenProps, type MyTaxWorkspace, type RegimeComparison, type PayDiffRow } from './employee';
+export { StatutoryHubScreen, FnfScreen, ArrearsScreen, type StatutoryHubScreenProps, type FnfScreenProps, type ArrearsScreenProps } from './compliance';

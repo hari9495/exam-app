@@ -130,6 +130,14 @@ const PAY_LAYOUT: WorkspaceLink = { id: 'pay-layout', label: 'Payslip layout', h
 const PAY_RULES: WorkspaceLink = { id: 'pay-rules', label: 'Statutory rules', href: '/yx/payroll/statutory-rules', group: 'Payroll' };
 const PAY_COVERAGE: WorkspaceLink = { id: 'pay-coverage', label: 'Statutory coverage', href: '/yx/payroll/coverage', group: 'Payroll' };
 const PAY_IMPORTS: WorkspaceLink = { id: 'pay-imports', label: 'Import old payroll', href: '/yx/payroll/imports', group: 'Payroll' };
+// Batch 5j: runs, inputs, statutory filings, F&F and arrears; the employee's payslips and tax.
+const PAY_RUNS: WorkspaceLink = { id: 'pay-runs', label: 'Payroll runs', href: '/yx/payroll/runs', group: 'Payroll' };
+const PAY_INPUTS: WorkspaceLink = { id: 'pay-inputs', label: 'Payroll inputs', href: '/yx/payroll/inputs', group: 'Payroll' };
+const PAY_STATUTORY: WorkspaceLink = { id: 'pay-statutory', label: 'Statutory filings', href: '/yx/payroll/statutory', group: 'Payroll' };
+const PAY_FNF: WorkspaceLink = { id: 'pay-fnf', label: 'Full and final', href: '/yx/payroll/fnf', group: 'Payroll' };
+const PAY_ARREARS: WorkspaceLink = { id: 'pay-arrears', label: 'Arrears and recoveries', href: '/yx/payroll/arrears', group: 'Payroll' };
+const MY_PAYSLIPS: WorkspaceLink = { id: 'my-payslips', label: 'My payslips', href: '/yx/me/payslips', group: 'Me' };
+const MY_TAX: WorkspaceLink = { id: 'my-tax', label: 'My tax', href: '/yx/me/tax', group: 'Me' };
 const MY_PAY_DOCUMENTS: WorkspaceLink = { id: 'my-pay-documents', label: 'My pay documents', href: '/yx/me/pay-documents', group: 'Me' };
 
 // Links follow the role; the API still checks every permission (audit:view, org:manage_users,
@@ -266,14 +274,19 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   const periodKeys = perms.has('payroll.period.view') || perms.has('payroll.period.reopen') || perms.has('payroll.period.reopen.approve');
   const payroll = support
     ? []
-    : [...(periodKeys ? [PAY_PERIODS, REOPEN_REQUESTS] : []), ...(perms.has('payroll.document.view') ? [PAY_DOCUMENTS] : []), ...(perms.has('payroll.file.view') ? [PAY_FILES] : []), ...(perms.has('audit.view') ? [PAY_AUDIT] : []),
+    : [...(perms.has('payroll.run.view') || perms.has('payroll.run.prepare') || perms.has('payroll.run.approve') || perms.has('payroll.offcycle.prepare') ? [PAY_RUNS] : []),
+        ...(perms.has('payroll.input.manage') ? [PAY_INPUTS] : []),
+        ...(perms.has('statutory.filing.view') ? [PAY_STATUTORY] : []),
+        ...(perms.has('payroll.fnf.manage') ? [PAY_FNF] : []),
+        ...(perms.has('payroll.arrears.approve') || perms.has('payroll.writeoff.approve') ? [PAY_ARREARS] : []),
+        ...(periodKeys ? [PAY_PERIODS, REOPEN_REQUESTS] : []), ...(perms.has('payroll.document.view') ? [PAY_DOCUMENTS] : []), ...(perms.has('payroll.file.view') ? [PAY_FILES] : []), ...(perms.has('audit.view') ? [PAY_AUDIT] : []),
         ...(perms.has('payroll.setup.manage') || perms.has('payroll.statutory.setup') ? [PAY_SETUP] : []),
         ...(perms.has('payroll.setup.manage') ? [PAY_GROUPS, PAY_LAYOUT, PAY_RULES, PAY_COVERAGE] : []),
         ...(perms.has('payroll.component.manage') ? [PAY_COMPONENTS] : []),
         ...(perms.has('payroll.template.manage') ? [PAY_TEMPLATES] : []),
         ...(perms.has('employee.salary.manage') ? [PAY_COMPENSATION] : []),
         ...(perms.has('payroll.import.run') ? [PAY_IMPORTS] : [])];
-  const links = [...(firstDays.data?.card && !support ? [FIRST_30] : []), ...staff, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAY_DOCUMENTS] : []), ...security];
+  const links = [...(firstDays.data?.card && !support ? [FIRST_30] : []), ...staff, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAYSLIPS, MY_TAX, MY_PAY_DOCUMENTS] : []), ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
   return (
