@@ -2,9 +2,10 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { FnfScreen, StatutoryHubScreen } from './compliance';
+import { GoLiveScreen } from './golive';
 import { MyPayslipsScreen, payDiff } from './employee';
 import { PayRunScreen, PayRunsScreen, rupees } from './runs';
-import { BANK_FILES, DETAIL, FILINGS, FNF, HUB, MY_PAYSLIPS, PAYSLIPS, PEOPLE, PREVIOUS, READINESS, RETURNS, RUN, VARIANCES } from './fixtures-5j';
+import { BANK_FILES, DETAIL, FILINGS, FNF, GO_LIVE, HUB, MY_PAYSLIPS, PARALLEL, PAYSLIPS, PEOPLE, PREVIOUS, READINESS, RETURNS, RUN, VARIANCES } from './fixtures-5j';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const ok = vi.fn(async () => ({}) as never);
@@ -153,5 +154,19 @@ describe('batch 5j payroll screens', () => {
     expect(screen.getByRole('table', { name: 'Settlement lines' })).toHaveTextContent(/permission for retrenchment/);
     await ue.click(screen.getByRole('button', { name: 'Release' }));
     await waitFor(() => expect(onHold).toHaveBeenCalledWith(FNF[0], 'i1', null, 'Released for payment'));
+  });
+
+  it('go-live: what is left, and a comparison with differences signed off only with a reason, never by its uploader', async () => {
+    const onDecide = vi.fn(async () => ({}));
+    const props = { state: 'ready' as const, entities: [{ id: 'e1', name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', keys: [] }], entityId: 'e1', onEntity: vi.fn(), readiness: GO_LIVE, runs: [RUN], parallel: PARALLEL, can: { upload: true, decide: true }, onUpload: ok, onDecide };
+    const { rerender } = render(<GoLiveScreen {...props} me="u-other" />);
+    expect(screen.getByRole('list', { name: 'Readiness checks' })).toHaveTextContent('UAN on file');
+    expect(screen.getByText(/someone else signs it off/)).toBeInTheDocument();
+    rerender(<GoLiveScreen {...props} me="u-me" />);
+    expect(screen.getByRole('table', { name: 'Differences' })).toHaveTextContent('Divya Raghunathan');
+    await ue.click(screen.getByRole('button', { name: 'Sign off' }));
+    await ue.type(screen.getByRole('textbox', { name: /accepted/ }), 'Old payroll rounded PT wrongly');
+    await ue.click(screen.getAllByRole('button', { name: 'Sign off' }).pop()!);
+    await waitFor(() => expect(onDecide).toHaveBeenCalledWith('pr1', 'signed_off', 'Old payroll rounded PT wrongly'));
   });
 });

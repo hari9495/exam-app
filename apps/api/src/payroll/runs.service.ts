@@ -33,7 +33,9 @@ import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, re
 
 export const RUN = 'payroll.run';
 const QUEUE = 'payroll-calc';
-const CHUNK = 200;
+const CHUNK = 100;
+// PAY-10.08 load test: chunks are worked on side by side (each person is its own transaction, so they never meet).
+const CONCURRENCY = Number(process.env.PAYROLL_CALC_CONCURRENCY ?? 8);
 const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
 const monthText = (month: string) => new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 const VIEW: PayKey[] = ['payroll.run.view', 'payroll.run.prepare', 'payroll.run.approve'];
@@ -80,7 +82,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       onDecided: (tx, req, outcome) => this.decided(tx, req, outcome),
       requesterLink: () => '/yx/payroll/runs',
     });
-    this.worker = logBullErrors(new Worker(QUEUE, (job) => this.calculateChunk(job.data as { org: string; runId: string; version: number; ids: string[] }), { connection: this.connection }), QUEUE);
+    this.worker = logBullErrors(new Worker(QUEUE, (job) => this.calculateChunk(job.data as { org: string; runId: string; version: number; ids: string[] }), { connection: this.connection, concurrency: CONCURRENCY }), QUEUE);
   }
 
   async onModuleDestroy() {

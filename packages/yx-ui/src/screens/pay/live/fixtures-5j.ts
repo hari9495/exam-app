@@ -1,3 +1,4 @@
+import type { GoLiveReadiness, ParallelRunView } from './golive';
 import type { BankFileRow, FilingRow, FnfSettlementView, MyPayslip, PayRun, PayslipDetail, RunPayslip, RunPerson, RunReadiness, RunVariance, StatutoryHub, TdsReturnRow, Worksheet, Recovery } from './types-5j';
 
 // Sample data for the batch 5j screens' stories and tests (Kaveri Foods, September 2026).
@@ -117,3 +118,29 @@ export const WORKSHEETS: Worksheet[] = [
   },
 ];
 export const RECOVERIES: Recovery[] = [{ id: 'o1', employeeId: 'p2', originTaxYear: '2025-26', crossYear: true, amount: '3000.00', recovered: '1000.00', balance: '2000.00', instalment: '1000.00', reason: 'Paid twice in March', status: 'active' }];
+export const GO_LIVE: GoLiveReadiness = {
+  entityId: 'e1',
+  people: 7,
+  ready: false,
+  items: [
+    { key: 'registrations', label: 'Statutory registrations recorded', ok: true, detail: 'IN.PF, IN.ESI, IN.PT, IN.TDS' },
+    { key: 'banks', label: 'Everyone has a salary bank account', ok: true, detail: '7 of 7' },
+    { key: 'uan', label: 'UAN on file', ok: false, detail: '5 of 7 (the PF file lists people by UAN)' },
+    { key: 'parallel', label: 'A parallel run signed off', ok: false, detail: 'Pay one month in the old payroll too, upload its register on the run and have someone else sign it off.' },
+    { key: 'rules', label: 'Statutory rules marked verify', ok: true, info: true, detail: '31 published rule sets are marked verify.' },
+  ],
+};
+export const PARALLEL: ParallelRunView[] = [
+  {
+    id: 'pr1',
+    runId: 'r1',
+    status: 'compared',
+    people: 7,
+    matched: 6,
+    differences: 1,
+    rows: [{ employeeCode: 'KF-0117', name: 'Divya Raghunathan', field: 'deductions', ours: '2000.00', theirs: '2200.00', difference: '-200.00' }],
+    reason: null,
+    createdBy: 'u-other',
+    createdAt: '2026-10-05T06:00:00Z',
+  },
+];

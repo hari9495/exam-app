@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ArrearsScreen, FnfScreen, StatutoryHubScreen } from './compliance';
 import { MyPayslipsScreen, MyTaxScreen } from './employee';
+import { GoLiveScreen } from './golive';
 import { PayInputsScreen } from './inputs';
 import { PayRunScreen, PayRunsScreen } from './runs';
-import { BANK_FILES, DETAIL, FILINGS, FNF, HUB, MY_PAYSLIPS, PAYSLIPS, PEOPLE, PREVIOUS, READINESS, RECOVERIES, RETURNS, RUN, VARIANCES, WORKSHEETS } from './fixtures-5j';
+import { BANK_FILES, DETAIL, FILINGS, FNF, GO_LIVE, HUB, MY_PAYSLIPS, PARALLEL, PAYSLIPS, PEOPLE, PREVIOUS, READINESS, RECOVERIES, RETURNS, RUN, VARIANCES, WORKSHEETS } from './fixtures-5j';
 
 // Batch 5j wired payroll screens with sample data (the affordance guard opens these in light and dark).
 const ok = async () => ({}) as never;
@@ -133,4 +134,22 @@ export const Fnf: S = {
 export const Arrears: S = {
   name: 'PAY-28 · Arrears and recoveries',
   render: () => <ArrearsScreen state="ready" worksheets={WORKSHEETS} recoveries={RECOVERIES} nameOf={nameOf} me="u-me" can={{ approve: true, writeOff: true }} onApprove={ok} onCancel={ok} onConfirmBase={ok} onWriteOff={ok} />,
+};
+export const GoLive: S = {
+  name: 'PAY-10.07 · Go-live readiness and parallel run',
+  render: () => (
+    <GoLiveScreen
+      state="ready"
+      entities={[{ id: 'e1', name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', keys: [] }]}
+      entityId="e1"
+      onEntity={() => undefined}
+      readiness={GO_LIVE}
+      runs={[RUN]}
+      parallel={PARALLEL}
+      me="u-me"
+      can={{ upload: true, decide: true }}
+      onUpload={ok}
+      onDecide={ok}
+    />
+  ),
 };

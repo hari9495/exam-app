@@ -136,6 +136,7 @@ const PAY_INPUTS: WorkspaceLink = { id: 'pay-inputs', label: 'Payroll inputs', h
 const PAY_STATUTORY: WorkspaceLink = { id: 'pay-statutory', label: 'Statutory filings', href: '/yx/payroll/statutory', group: 'Payroll' };
 const PAY_FNF: WorkspaceLink = { id: 'pay-fnf', label: 'Full and final', href: '/yx/payroll/fnf', group: 'Payroll' };
 const PAY_ARREARS: WorkspaceLink = { id: 'pay-arrears', label: 'Arrears and recoveries', href: '/yx/payroll/arrears', group: 'Payroll' };
+const PAY_GO_LIVE: WorkspaceLink = { id: 'pay-go-live', label: 'Go-live readiness', href: '/yx/payroll/go-live', group: 'Payroll' };
 const MY_PAYSLIPS: WorkspaceLink = { id: 'my-payslips', label: 'My payslips', href: '/yx/me/payslips', group: 'Me' };
 const MY_TAX: WorkspaceLink = { id: 'my-tax', label: 'My tax', href: '/yx/me/tax', group: 'Me' };
 const MY_PAY_DOCUMENTS: WorkspaceLink = { id: 'my-pay-documents', label: 'My pay documents', href: '/yx/me/pay-documents', group: 'Me' };
@@ -279,6 +280,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         ...(perms.has('statutory.filing.view') ? [PAY_STATUTORY] : []),
         ...(perms.has('payroll.fnf.manage') ? [PAY_FNF] : []),
         ...(perms.has('payroll.arrears.approve') || perms.has('payroll.writeoff.approve') ? [PAY_ARREARS] : []),
+        ...(perms.has('payroll.run.prepare') || perms.has('payroll.setup.manage') ? [PAY_GO_LIVE] : []),
         ...(periodKeys ? [PAY_PERIODS, REOPEN_REQUESTS] : []), ...(perms.has('payroll.document.view') ? [PAY_DOCUMENTS] : []), ...(perms.has('payroll.file.view') ? [PAY_FILES] : []), ...(perms.has('audit.view') ? [PAY_AUDIT] : []),
         ...(perms.has('payroll.setup.manage') || perms.has('payroll.statutory.setup') ? [PAY_SETUP] : []),
         ...(perms.has('payroll.setup.manage') ? [PAY_GROUPS, PAY_LAYOUT, PAY_RULES, PAY_COVERAGE] : []),

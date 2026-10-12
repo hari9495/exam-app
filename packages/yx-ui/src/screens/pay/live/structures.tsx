@@ -599,10 +599,23 @@ export interface CompensationLiveProps {
   onLetter: (changeId: string, signatory: string) => Promise<{ referenceNo: string }>;
   profile: StatutoryProfile | null;
   onSaveProfile: (p: { validFrom: string; pf: 'yes' | 'no'; esi: 'yes' | 'no' | 'by_wage'; vpfPercent?: string; reason: string }) => Promise<unknown>;
+  /** PAY-10.06: the same CTC worked out with every template the person can use (nothing is kept). */
+  onSuggest?: (annualCtc: string, effectiveDate: string) => Promise<SplitSuggestion[]>;
+}
+
+export interface SplitSuggestion {
+  templateVersionId: string;
+  template: string;
+  monthlyGross?: string;
+  takeHomeBeforeTax?: string;
+  codeWageAddBack?: string;
+  belowMinimumWage?: boolean;
+  problem?: string;
 }
 
 export function CompensationLiveScreen(p: CompensationLiveProps) {
   const { busy, error, run } = useRun();
+  const [suggestions, setSuggestions] = useState<SplitSuggestion[] | null>(null);
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<EmployeeHit[]>([]);
   const [form, setForm] = useState<CompensationInput>({
@@ -777,9 +790,48 @@ export function CompensationLiveScreen(p: CompensationLiveProps) {
                     />
                   </FormField>
                 )}
-                <Button disabled={!form.templateVersionId} loading={busy === 'preview'} onClick={() => void run('preview', async () => setPreview(await p.onPreview(form)))}>
-                  Work out the breakup
-                </Button>
+                <div className="yx-tim-row">
+                  <Button disabled={!form.templateVersionId} loading={busy === 'preview'} onClick={() => void run('preview', async () => setPreview(await p.onPreview(form)))}>
+                    Work out the breakup
+                  </Button>
+                  {p.onSuggest && form.entryMode === 'ctc' && (
+                    <Button disabled={!/^\d{1,12}(\.\d{1,2})?$/.test(form.annualCtc ?? '')} loading={busy === 'suggest'} onClick={() => void run('suggest', async () => setSuggestions(await p.onSuggest!(form.annualCtc!, form.effectiveDate)))}>
+                      Suggest a split
+                    </Button>
+                  )}
+                </div>
+                {suggestions && (
+                  <table className="yx-tim-table" aria-label="Splits suggested">
+                    <thead>
+                      <tr>
+                        <th scope="col">Template</th>
+                        <th scope="col">Monthly gross</th>
+                        <th scope="col">Take-home before tax</th>
+                        <th scope="col">Notes</th>
+                        <th scope="col">
+                          <span className="yx-visually-hidden">Use</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {suggestions.map((x) => (
+                        <tr key={x.templateVersionId}>
+                          <th scope="row">{x.template}</th>
+                          <td>{x.monthlyGross ? rupees(x.monthlyGross) : ''}</td>
+                          <td>{x.takeHomeBeforeTax ? rupees(x.takeHomeBeforeTax) : ''}</td>
+                          <td className="yx-tim-note">{x.problem ?? [x.belowMinimumWage ? 'Below the minimum wage' : '', x.codeWageAddBack && x.codeWageAddBack !== '0.00' ? `${rupees(x.codeWageAddBack)} added back to the Code wage` : ''].filter(Boolean).join('; ')}</td>
+                          <td>
+                            {!x.problem && (
+                              <Button size="sm" onClick={() => setForm({ ...form, templateVersionId: x.templateVersionId })} aria-pressed={form.templateVersionId === x.templateVersionId}>
+                                Use this template
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
                 {preview && (
                   <>
                     <BreakupTable b={preview} />
