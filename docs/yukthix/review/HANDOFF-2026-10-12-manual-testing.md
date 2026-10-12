@@ -10,14 +10,15 @@ For a new session that continues the founder's manual testing. The building sess
 - Test list: `docs/yukthix/tracker/manual-tests.json` (update a test's wording when the real behaviour differs from it, and commit).
 
 ## Where we are
-- Done: Areas 1–3, and Area 4 up to **4-19**.
-- **Next: MT-4-20** (SMS monthly limit): Settings › SMS → Monthly limit = 1 → save → Send test → expect the "Monthly limit reached" notice, no text sent, and an admin email in the local mailbox (http://localhost:8025). Then clear the limit (empty = no limit) and save. Before 4-20, set Test gateway's Development **Result** back to **Works** if it is still Unavailable from 4-19.
+- Done: Areas 1–4 (MT-4-20 passed 12 Oct; its email-text fix is PR #153).
+- **Test app moved to latest `main` on 12 Oct** (branch `test/yukthix-main` in the org worktree, `examapp_org` rebuilt from zero + seeded, Redis db 4 cleared). The founder must set up passkey, authenticator and mobile number again.
+- **Next: Area 5 Access (MT-5-1).**
 - Then Areas **5 Access (13 tests), 6 People (14), 7 Changes (19), 8 Privacy (11)**.
 
 ## The test app
 - Runs from worktree `C:\D-drive\exam-app-org` (branch `feat/yukthix-org`, the old org branch), database `examapp_org`, Redis db 4. Preview servers (launch config `C:\.claude\launch.json`): yx-api 3001, yx-web 3000, yx-mock-idp 4010. Local mailbox (Mailpit) 8025; SMS texts are copied there as emails.
 - Accounts: admin@demo-org.test / `DevAdmin123!`; others / `Passw0rd!2026` (hr@, panel@, arjun@, payroll@, …).
-- **After 4-20, move the test app to the latest `main`.** Main now also has Time and leave, payroll (runs, payslips, filings), onboarding and exit, Service Desk, global core (hours, translations, Add a country) and expenses (with receipt OCR). Plan: point the org worktree at a new branch from `origin/main`, rebuild `examapp_org` from zero (migrate deploy + seed), restart the three preview servers. Warn the founder first: the data is reset, so they must set up their passkey, authenticator and mobile number again.
+- Main also has Time and leave, payroll, onboarding and exit, Service Desk, global core and expenses. PowerShell 5.1 has no `&&`: give the founder commands for the Bash tool or one per line.
 - Manual test lists do not exist yet for the new modules. After the move, write them in `manual-tests.json` (same style), area by area, starting with the ones the founder wants to see first (likely payroll screens and expenses).
 
 ## State of the code (12 Oct 2026)
