@@ -296,6 +296,25 @@ export function vrsExempt(rs: RuleSet, i: { received: Prisma.Decimal.Value }) {
   return { exempt: money(Prisma.Decimal.min(D(v.vrsMax), D(i.received))), citation: cite(rs) };
 }
 
+/** Damages on a late PF or ESI payment (batch 5f, PAY-6.08): a yearly rate by how many months late, for the days late. */
+export function damages(rs: RuleSet, i: { statute: 'pf' | 'esi'; amount: Prisma.Decimal.Value; daysLate: number }) {
+  const v = need(rs, 'damages');
+  const bands = (v.bands as Record<string, { upToMonths: number | null; rate: string }[]>)[i.statute];
+  if (!bands) throw new StatutoryError(`No damages bands for ${i.statute}`);
+  const months = i.daysLate / 30;
+  const band = bands.find((b) => b.upToMonths === null || months <= b.upToMonths)!;
+  const amount = i.daysLate > 0 ? money(D(i.amount).mul(D(band.rate)).mul(i.daysLate).div(365)) : ZERO;
+  return { rate: band.rate, amount, citation: cite(rs) };
+}
+
+/** A register's title and columns (the golden case of a register format). */
+export function registerColumns(rs: RuleSet, i: { key: string }) {
+  const v = need(rs, 'registers');
+  const t = (v.types as { key: string; title: string; columns: string[] }[]).find((x) => x.key === i.key);
+  if (!t) throw new StatutoryError(`No register ${i.key} in ${rs.version}`);
+  return { title: t.title, columns: t.columns.join('|'), citation: cite(rs) };
+}
+
 export function penalty(rs: RuleSet, i: { item: string; amount: Prisma.Decimal.Value; days?: number; months?: number }) {
   const v = need(rs, 'penalty');
   const rate = (v.items as Record<string, string>)[i.item];
@@ -388,6 +407,20 @@ export function checkShape(rs: RuleSet, limits: { ptAnnualMax?: string } = {}): 
   }
   if (rs.values.kind === 'trusted_roots') problems.push(...rootProblems(rs));
   if (rs.values.kind === 'bank_format') problems.push(...bankLayoutProblems(rs.values));
+  if (rs.values.kind === 'damages') {
+    for (const [k, bands] of Object.entries((v.bands as Record<string, { upToMonths: number | null; rate: string }[]>) ?? {})) {
+      bands.forEach((b) => rate(b.rate, `${k} band rate`));
+      if (!bands.length || bands[bands.length - 1].upToMonths !== null) problems.push(`The last ${k} band is open-ended`);
+    }
+  }
+  if (rs.values.kind === 'registers') {
+    const types = (v.types as { key: string; title: string; columns: string[] }[]) ?? [];
+    if (!types.length) problems.push('A register rule set lists its registers');
+    for (const t of types) if (!t.key || !t.title || !Array.isArray(t.columns) || !t.columns.length) problems.push(`Register ${t.key ?? '?'} has a key, a title and columns`);
+  }
+  if (rs.values.kind === 'advisory') {
+    for (const k of ['code', 'title', 'summary', 'action']) if (typeof v[k] !== 'string' || !(v[k] as string).trim()) problems.push(`An advisory has its ${k}`);
+  }
   if (rs.values.kind === 'tax_deductions') {
     const t = rs.values as unknown as TaxDeductions;
     const amount = (x: unknown) => typeof x === 'string' && /^\d{1,10}$/.test(x);
@@ -408,7 +441,7 @@ export interface GoldenCase {
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
 }
-const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
 
 /** Runs one golden case; returns the fields that differ (empty when it passes). */
 export function runGolden(rs: RuleSet, g: GoldenCase): string[] {

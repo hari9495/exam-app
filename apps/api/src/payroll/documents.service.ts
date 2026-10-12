@@ -6,7 +6,7 @@ import PDFDocument from 'pdfkit';
 import { createHash, randomBytes } from 'crypto';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
-import { todayIst } from '../org-structure/org-validation';
+import { entityTimeZone, localDate, todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import { OtpService } from '../auth/otp.service';
 import { has, type ScopeUser } from '../access/scope';
@@ -203,7 +203,8 @@ export class PayDocumentsService {
   async issueIn(tx: Tx, c: CompanyContext, a: { employeeId: string; legalEntityId: string; kind: DocKind; month: string | null; fields: Record<string, unknown>; supersedes: Doc | null; by: string; confirmation: ConfirmationDto; reason?: string }) {
     const org = c.organizationId;
     const t = TEMPLATES[a.kind];
-    const today = todayIst();
+    // The company's date, not the server's UTC day (the reference year and the retention period count from it).
+    const today = localDate(new Date(), await entityTimeZone(tx, org, a.legalEntityId));
     const required = await this.mandatory(tx, a.kind, a.month ? `${a.month}-01` : today);
     const fields = this.check(a.fields, required, t);
     const entity = await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: a.legalEntityId }, select: { shortName: true, name: true } });
@@ -370,7 +371,7 @@ export class PayDocumentsService {
     if (!VERIFY_CODE.test(code)) throw new NotFoundException('No document has this code.');
     return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.pay_verify_code', ${code}, true)`;
-      const d = await tx.payDocument.findFirst({ where: { verifyCode: code }, select: { organizationId: true, employeeId: true, kind: true, issuedAt: true, status: true } });
+      const d = await tx.payDocument.findFirst({ where: { verifyCode: code }, select: { organizationId: true, legalEntityId: true, employeeId: true, kind: true, issuedAt: true, status: true } });
       if (!d || d.status === 'awaiting_signature') {
         // Lifecycle letters share this page (D10).
         const other = await verifyElsewhere(code);
@@ -378,7 +379,7 @@ export class PayDocumentsService {
         throw new NotFoundException('No document has this code.');
       }
       const [org, emp] = await Promise.all([tx.organization.findUnique({ where: { id: d.organizationId }, select: { name: true } }), tx.employee.findFirst({ where: { organizationId: d.organizationId, id: d.employeeId }, select: { givenName: true, familyName: true, preferredName: true } })]);
-      return { company: org?.name ?? '', kind: KIND_LABEL[d.kind], name: emp ? [emp.preferredName ?? emp.givenName, emp.familyName].filter(Boolean).join(' ') : '', issuedOn: new Date(d.issuedAt.getTime() + 330 * 60_000).toISOString().slice(0, 10) /* the Indian date it was issued */, status: d.status === 'issued' ? 'current' : 'superseded' };
+      return { company: org?.name ?? '', kind: KIND_LABEL[d.kind], name: emp ? [emp.preferredName ?? emp.givenName, emp.familyName].filter(Boolean).join(' ') : '', issuedOn: localDate(d.issuedAt, await entityTimeZone(tx, d.organizationId, d.legalEntityId)), status: d.status === 'issued' ? 'current' : 'superseded' };
     });
   }
 
@@ -500,7 +501,6 @@ export class PayDocumentsService {
 
   /** Daily: files past their retention date are deleted (the record, hash and verify code stay), unless on legal hold. */
   async purgeExpired(now = new Date()): Promise<number> {
-    const today = now.toISOString().slice(0, 10);
     const orgs = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.$queryRaw<{ id: string }[]>`SELECT DISTINCT organization_id::text AS id FROM legal_entities`);
     let n = 0;
     for (const { id: org } of orgs) {
@@ -508,7 +508,10 @@ export class PayDocumentsService {
         const entities = (await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true } })).map((e) => e.id);
         await payScope(tx, entities);
         const held = (await tx.auditLegalHold.findMany({ where: { organizationId: org, releasedAt: null, employeeId: { not: null } }, select: { employeeId: true } })).map((h) => h.employeeId!);
-        const due = await tx.payDocument.findMany({ where: { organizationId: org, purgedAt: null, retainUntil: { lt: asDate(today) }, employeeId: { notIn: held } }, take: 500 });
+        // Each entity's own date: a document is purged the day after its retention ends where the company is.
+        const today = new Map<string, string>();
+        for (const e of entities) today.set(e, localDate(now, await entityTimeZone(tx, org, e)));
+        const due = (await tx.payDocument.findMany({ where: { organizationId: org, purgedAt: null, retainUntil: { lt: asDate(localDate(now, 'Pacific/Kiritimati')) /* the world's earliest date: no entity is ahead of it */ }, employeeId: { notIn: held } }, take: 500 })).filter((d) => dateOf(d.retainUntil) < today.get(d.legalEntityId)!);
         for (const d of due) {
           await tx.payDocument.update({ where: { id: d.id }, data: { purgedAt: now, fileRef: null } });
           await audit(tx, { organizationId: org, isSuperAdmin: false }, 'payroll.document.purged', 'pay_document', d.id, { legalEntityId: d.legalEntityId, referenceNo: d.referenceNo, retainedUntil: dateOf(d.retainUntil) });

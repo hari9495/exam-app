@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
-import { todayIst } from '../org-structure/org-validation';
+import { entityTimeZone, localDate, todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import { has, type ScopeUser, type Viewer } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
@@ -442,13 +442,14 @@ export class PayPeriodsService implements OnModuleInit {
       const codes = [...new Set(dto.punches.map((p) => p.employeeCode))];
       const staff = await tx.employment.findMany({ where: { organizationId: org, legalEntityId: dto.legalEntityId, employeeCode: { in: codes } }, select: { employeeId: true, employeeCode: true } });
       const byCode = new Map(staff.map((s) => [s.employeeCode.toLowerCase(), s.employeeId]));
+      const zone = await entityTimeZone(tx, org, dto.legalEntityId);
       let held = 0;
       const notHeld: { employeeCode: string; at: string; why: string }[] = [];
       for (const p of dto.punches) {
         const employeeId = byCode.get(p.employeeCode.toLowerCase());
         const at = new Date(p.at);
-        // ponytail: the work date is the India date of the punch; a device's own shift mapping comes with the device feed.
-        const on = new Date(at.getTime() + 330 * 60_000).toISOString().slice(0, 10);
+        // The work date is the entity's date of the punch; a device's own shift mapping comes with the device feed.
+        const on = localDate(at, zone);
         if (!employeeId) {
           notHeld.push({ employeeCode: p.employeeCode, at: p.at, why: 'No one with this code in the legal entity' });
           continue;

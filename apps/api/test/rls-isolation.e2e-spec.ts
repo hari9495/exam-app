@@ -19,7 +19,11 @@ const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_r
   // Batch 5d.
   'bank_files', 'payment_records', 'employee_payment_modes', 'disbursements', 'payslip_queries', 'payslip_links',
   // Batch 5e.
-  'tax_workspaces', 'tax_declaration_lines', 'tds_projections', 'perquisites', 'tax_certificates'];
+  'tax_workspaces', 'tax_declaration_lines', 'tds_projections', 'perquisites', 'tax_certificates',
+  // GP-PAY-1 ledger mapping.
+  'ledger_mappings',
+  // Batch 5f.
+  'statutory_filings', 'statutory_penalty_lines', 'tds_challans', 'tds_returns', 'statutory_registers', 'register_rows', 'inspection_packs', 'advisory_reviews'];
 // Lifecycle batch 6a: people's files and documents, and joiners' planned jobs.
 const LIFECYCLE_SUPPORT_EXCLUDED = ['files', 'documents', 'document_versions', 'preboardings', 'preboarding_portal_sessions', 'consent_records', 'bgv_checks', 'letter_issues', 'signature_requests', 'exit_cases', 'exit_case_hr', 'clearance_items', 'exit_interviews', 'exit_interview_answers', 'probation_reviews', 'exit_deprovisioning', 'exit_settlement_inputs', 'alumni_sessions', 'employee_nominations', 'exit_payees', 'absconding_timelines'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
