@@ -56,6 +56,12 @@ describe('MFA, step-up and recovery (P12 YX-IAM-01/02/03/11)', () => {
   let ipSeq = 0;
   const freshIp = () => `2001:db8:${runId.slice(0, 4)}:${(++ipSeq).toString(16)}::1`;
   const server = () => app.getHttpServer();
+  // Security emails go out after the response (fire-and-forget): wait for the one expected, bounded at 2 s.
+  const emailed = async (expected: Record<string, string>) => {
+    const sent = () => email.send.mock.calls.some(([m]: [Record<string, unknown>]) => Object.entries(expected).every(([k, v]) => m[k] === v));
+    for (let i = 0; i < 100 && !sent(); i++) await new Promise((r) => setTimeout(r, 20));
+    expect(email.send).toHaveBeenCalledWith(expect.objectContaining(expected));
+  };
 
   // TOTP: each time step is accepted once per authenticator, so hand out a new one each time
   // (current step, then the next; wait for the clock when both are used).
@@ -246,7 +252,7 @@ describe('MFA, step-up and recovery (P12 YX-IAM-01/02/03/11)', () => {
       // AAL2 as 'enrolment': the MFA floor is met, but it is no step-up (see the attack block).
       expect(await session(s.sid)).toMatchObject({ assuranceLevel: 'aal2', mfaMethod: 'enrolment', mfaVerifiedAt: expect.any(Date) });
       expect(await auditActions(A().id, 'mfa.enrolled')).toEqual([expect.objectContaining({ actorUserId: users[TOTP_USER] })]);
-      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: TOTP_USER, subject: 'Two-step verification added to your YukthiX account' }));
+      await emailed({ to: TOTP_USER, subject: 'Two-step verification added to your YukthiX account' });
 
       const status = await call('get', '/auth/mfa', s).expect(200);
       expect(status.body).toMatchObject({ required: true, recoveryCodesRemaining: 10, assuranceLevel: 'aal2', factors: [expect.objectContaining({ type: 'totp' })] });
@@ -304,7 +310,7 @@ describe('MFA, step-up and recovery (P12 YX-IAM-01/02/03/11)', () => {
       const code = recoveryCodes[0];
       const s = await signInWith(A().slug, TOTP_USER, async () => ({ factor: 'recovery_code', code: code.toUpperCase() }));
       expect(await session(s.sid)).toMatchObject({ assuranceLevel: 'aal2', mfaMethod: 'recovery_code' });
-      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: TOTP_USER, subject: 'A recovery code was used on your YukthiX account' }));
+      await emailed({ to: TOTP_USER, subject: 'A recovery code was used on your YukthiX account' });
       expect(await auditActions(A().id, 'mfa.recovery_code_used')).toHaveLength(1);
 
       const ip = freshIp();
@@ -327,7 +333,7 @@ describe('MFA, step-up and recovery (P12 YX-IAM-01/02/03/11)', () => {
         }
         const blocked = await verify(await totp(secret)).expect(429);
         expect(blocked.body.retryAfterSeconds).toBeGreaterThan(800);
-        expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: TOTP_USER, subject: 'Sign-in to your YukthiX account was temporarily locked' }));
+        await emailed({ to: TOTP_USER, subject: 'Sign-in to your YukthiX account was temporarily locked' });
         expect(await events(TOTP_USER)).toEqual(expect.arrayContaining([expect.objectContaining({ result: 'locked' })]));
       } finally {
         await redis.del(`auth:lp:acct:fail:${mfaKey(TOTP_USER)}`, `auth:lp:acct:block:${mfaKey(TOTP_USER)}`);
@@ -518,7 +524,7 @@ describe('MFA, step-up and recovery (P12 YX-IAM-01/02/03/11)', () => {
       // The owner's other session is gone, and they hear about it at once.
       await call('get', '/auth/mfa', owner).expect(401);
       expect((await session(owner.sid)).revokedReason).toBe('mfa_enrolled');
-      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: VICTIM, subject: 'Two-step verification added to your YukthiX account' }));
+      await emailed({ to: VICTIM, subject: 'Two-step verification added to your YukthiX account' });
     });
   });
 
@@ -542,7 +548,7 @@ describe('MFA, step-up and recovery (P12 YX-IAM-01/02/03/11)', () => {
       expect((await session(panel.sid)).revokedReason).toBe('mfa_reset');
       await call('get', '/auth/mfa', panel).expect(401);
       expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.user.findUniqueOrThrow({ where: { id: users[PANEL] } }))).mfaEnrolmentDueAt.getTime()).toBeLessThanOrEqual(Date.now());
-      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: PANEL, subject: 'Two-step verification on your YukthiX account was reset' }));
+      await emailed({ to: PANEL, subject: 'Two-step verification on your YukthiX account was reset' });
       // Next sign-in is password only, straight into enrolment.
       const again = await signIn(A().slug, PANEL);
       expect(again.access).toEqual(expect.any(String));
@@ -554,7 +560,7 @@ describe('MFA, step-up and recovery (P12 YX-IAM-01/02/03/11)', () => {
       const requested = await call('post', '/security/mfa-resets', admin2).send({ userId: users[TOTP_USER], reason: 'Lost phone and recovery codes' }).expect(200);
       expect(requested.body).toMatchObject({ status: 'pending', id: expect.any(String) });
       expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.authenticator.count({ where: { userId: users[TOTP_USER], revokedAt: null } }))).toBe(1);
-      expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ subject: 'A two-step verification reset needs your approval' }));
+      await emailed({ subject: 'A two-step verification reset needs your approval' });
       await call('post', '/security/mfa-resets', admin2).send({ userId: users[TOTP_USER], reason: 'Second request for the same user' }).expect(409);
 
       const list = await call('get', '/security/mfa-resets', admin2).expect(200);

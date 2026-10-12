@@ -18,6 +18,7 @@ import { mountSmsCallbackBody } from '../src/sms-channel/sms-channel.controller'
 import { markSteppedUp } from './fixtures/step-up';
 import { trackEmailCodes, trackOtpSends } from './fixtures/sms';
 import { OtpService } from '../src/auth/otp.service';
+import { ipBucket } from '../src/auth/login-protection.service';
 
 // P04 SMS channel end to end, against the real database (forced RLS, app role), real Redis and a local
 // mock HTTP gateway (no real provider): accounts with write-only secrets, failover, retries only where
@@ -386,7 +387,11 @@ describe('SMS channel (P04 §4.4/§4.5a; YX-NTF-07/10/11/12/13/14)', () => {
   describe('sign-in by SMS falls back to email (YX-NTF-07)', () => {
     const signInBySms = async (ip: string) => {
       const id = createHash('sha256').update(`signin ${org.A.slug} ${mobile(3)}`).digest('hex');
-      await redis.del(`auth:otp:cool:${id}`, `auth:otp:sends:${id}`);
+      // Every limiter this sign-in passes starts clean: the identifier's own, this IP's /64 OTP bucket (shared by
+      // the other sign-ins here) and the sign-in lockout counters, so nothing carries over from earlier tests.
+      await redis.del(`auth:otp:cool:${id}`, `auth:otp:sends:${id}`, `auth:otp:ip:${ipBucket(ip)}`);
+      const lp = await redis.keys('auth:lp:*');
+      if (lp.length) await redis.del(...lp);
       await request(server()).post('/api/v1/auth/otp/start').set('X-Forwarded-For', ip).send({ organizationSlug: org.A.slug, identifier: mobile(3), channel: 'sms' }).expect(200);
       await settle();
     };

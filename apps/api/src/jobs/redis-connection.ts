@@ -10,7 +10,28 @@ const log = new Logger('Jobs');
  * and takes the whole API down. Every queue and worker goes through here so such errors are logged and BullMQ retries.
  */
 export function logBullErrors<T>(emitter: T, name: string): T {
-  (emitter as unknown as NodeJS.EventEmitter).on('error', (e: Error) => log.error(`Queue ${name}: ${e?.message ?? e}`));
+  type Bull = NodeJS.EventEmitter & {
+    close(...args: unknown[]): Promise<void>;
+    connection?: NodeJS.EventEmitter;
+    blockingConnection?: NodeJS.EventEmitter;
+    onModuleDestroy?: () => Promise<void>;
+  };
+  const bull = emitter as unknown as Bull;
+  bull.on('error', (e: Error) => log.error(`Queue ${name}: ${e?.message ?? e}`));
+  // close() strips every listener from BullMQ's internal connections, but one still connecting when the app
+  // stops rejects later, once the shared Redis connection is closed, and emits 'error' with nobody listening:
+  // an unhandled error. Keep a listener there after close; at shutdown that rejection is expected.
+  const close = bull.close.bind(bull);
+  bull.close = async (...args: unknown[]) => {
+    try {
+      await close(...args);
+    } finally {
+      for (const c of [bull.connection, bull.blockingConnection]) c?.on('error', (e: Error) => log.debug(`Queue ${name} after close: ${e?.message ?? e}`));
+    }
+  };
+  // Queues provided by a factory have no owner to close them: Nest runs this hook on factory values, before
+  // the shared connection's onApplicationShutdown. For queues a service owns, a second close is a no-op.
+  bull.onModuleDestroy ??= () => bull.close();
   return emitter;
 }
 
