@@ -21,7 +21,19 @@ const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Which components each module may pay. */
-export const MODULE_SOURCES = { m05: ['exp_reimb', 'exp_taxable'], m06: ['perf_bonus'] } as const;
+export const MODULE_SOURCES = {
+  m05: ['exp_reimb', 'exp_taxable'],
+  m06: ['perf_bonus'],
+  // Batch 5i: approved special-pay postings (SpecialPayService).
+  piece: ['piece_pay', 'min_wage_topup'],
+  incentive: ['incentive', 'incentive_clawback'],
+  tips: ['tips'],
+  oncall: ['standby_allowance', 'callout_pay'],
+  union: ['union_dues'],
+  settle: ['settlement_arrears'],
+  layoff: ['layoff_comp'],
+  vrs: ['vrs_exempt', 'vrs_taxable'],
+} as const;
 export type ModuleSource = keyof typeof MODULE_SOURCES;
 
 @Injectable()

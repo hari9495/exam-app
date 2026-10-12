@@ -249,6 +249,12 @@ export function exitExempt(rs: RuleSet, i: { code: string; amount: Prisma.Decima
  * noticeMonths when notice is paid in lieu, the employer's re-skilling fund of reskillingDays of the last wage, and
  * whether the establishment needs the government's permission first (at permissionThreshold workers or more).
  */
+/** Lay-off compensation (IR Code s.67, YX-PAY-63): the rule's share of the basic and DA for the lay-off days. */
+export function layoff(rs: RuleSet, i: { basicDaMonthly: Prisma.Decimal.Value; days: number; monthDays: number }) {
+  const v = need(rs, 'layoff');
+  return { amount: money(D(i.basicDaMonthly).div(i.monthDays).mul(i.days).mul(D(v.share as string))), share: String(v.share), citation: cite(rs) };
+}
+
 export function retrenchment(rs: RuleSet, i: { averagePay: Prisma.Decimal.Value; lastWage: Prisma.Decimal.Value; joined: string; lastDay: string; noticePaid: boolean; workers: number }) {
   const v = need(rs, 'retrenchment');
   const y = serviceYears(i.joined, i.lastDay);
@@ -479,6 +485,7 @@ export function checkShape(rs: RuleSet, limits: { ptAnnualMax?: string } = {}): 
     for (const k of ['landlordPanAbove', 'leaveEncashmentMax', 'vrsMax'] as const) if (!amount(t[k])) problems.push(`${k} is whole rupees`);
     if (!Array.isArray(t.newRegimeKeys) || t.newRegimeKeys.some((k) => !(k in (t.caps ?? {})))) problems.push('newRegimeKeys lists keys of caps');
   }
+  if (rs.values.kind === 'layoff') rate((rs.values as V).share, 'share');
   if (rs.values.kind === 'tds_nonsalary') {
     const t = rs.values as unknown as TdsNonSalary;
     const amount = (x: unknown) => x === null || (typeof x === 'string' && /^\d{1,10}$/.test(x));
@@ -504,7 +511,7 @@ export interface GoldenCase {
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
 }
-const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, gratuity_due: gratuityDue, retrenchment, exit_exempt: exitExempt, tds, tds_nonsalary: tdsNonSalary, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, gratuity_due: gratuityDue, retrenchment, layoff, exit_exempt: exitExempt, tds, tds_nonsalary: tdsNonSalary, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
 
 // Batch 5h (PAY-8.03, YX-TAX-16): TDS on consultant invoices from the reviewed rule set IN.TDS-NONSAL (kind tds_nonsalary).
 interface NonSalarySection {
