@@ -1,6 +1,6 @@
 # M06 · Performance · Build design
 
-> **Status:** 📝 Draft for founder review, 12 Oct 2026. Design only, no product code. The module decisions (Q1–Q8, D7, B16, C3, T2, J11, T4) were taken on 25–28 Sep 2026 in [M06](M06-performance.md); this doc turns the launch part of them into tables, permissions, APIs, jobs, screens, tests and small pull requests.
+> **Status:** ✅ Decided, 12 Oct 2026: the founder accepted D1–D14 with the recommended defaults (§23). Batch PM1 is being built on `feat/yukthix-performance-1`. The module decisions (Q1–Q8, D7, B16, C3, T2, J11, T4) were taken on 25–28 Sep 2026 in [M06](M06-performance.md); this doc turns the launch part of them into tables, permissions, APIs, jobs, screens, tests and small pull requests.
 > **Scope:** goals and OKRs with alignment and check-ins; continuous feedback and 1:1s; review cycles (self, manager, peer / 360°, skip-level) with templates and rating scales as data; calibration with distribution guidance (never forced by default); the outcome to compensation (merit and bonus proposals with budgets, handed to payroll as approved pay changes); PIPs linked to lifecycle exits; privacy and anonymity; reports; India and global points.
 > **Order:** eight batches, **PM1 → PM8**. PM1–PM5 run a first review cycle end to end; PM6 adds calibration and reports; PM7 turns ratings into pay; PM8 adds PIPs.
 > **Builds on:** P03 approvals, P19 rules, P04 notifications, P05 letters, P06 effective-dated history (employee changes, bulk batches), P02 visibility, P09 small-group suppression, M01 lifecycle (manager changes, probation, exits), M03 payroll (pay ranges, one-time pay, arrears), G1 (translations, country packs).
@@ -689,7 +689,7 @@ Every batch ends with the usual checks: typecheck, unit, the batch's e2e and the
 
 ## 23. Decisions for the founder
 
-Each has a recommended default in **bold**. Short questions, one at a time.
+**Accepted 12 Oct 2026.** The founder accepted D1–D14 with the recommended defaults (bold).
 
 ### D1 · Where competencies live at launch
 - A: **Build the first form of the company skills library now and make competencies a view of it (T2 from day one).**
@@ -755,4 +755,5 @@ Each has a recommended default in **bold**. Short questions, one at a time.
 
 | Date | Change |
 |---|---|
+| 12 Oct 2026 | Founder accepted D1–D14 with the recommended defaults; PM1 started. |
 | 12 Oct 2026 | First draft: scope (launch core) and what is left for a second design, reuse and the six small changes in other modules, data model by batch with RLS, settings and starters, goals and OKRs, feedback and 1:1s, cycles with templates and scales as data, eligibility, stages, 360° anonymity, calibration with a guide only, ratings to pay (matrix, budgets, bonus, P06 batch, arrears by payroll, letters, pay band, pay equity), PIPs with the exit link, privacy matrix, India points (fairness, records, POSH), global points and a do-not-copy list, AI as a later seam, permissions, events, API, screens, security, 38 slices in batches PM1–PM8, founder decisions D1–D14. |
