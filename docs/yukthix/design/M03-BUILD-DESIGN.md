@@ -1332,6 +1332,13 @@ From the global HCM gap pass (GLOBAL-HCM-GAP-PASS.md §7.1), accepted on 10 Oct 
 | 5g-D6 | **PF, ESI and PT differences from past-dated rule changes go into the arrears worksheets.** The employee share is recovered only with consent, like overpayments; the employer share is a company cost. | Worksheet lines carry the statutory components too (earnings, employee and employer shares); on approval the employee share owed becomes a recovery plan the employee agrees to; one deducted too much is refunded; the employer share is shown on the worksheet as company cost (remitted with the supplementary filing by hand for the pilot). |
 | 5g-D7 | **Earlier-year overpayment tax (revised Form 16, s.89): by hand for the pilot**, listed for payroll; built later. | The cross-year list stays (`GET /payroll/overpayments?crossYear=true`). |
 
+### 19.10 Batch 5j build decisions (founder, accepted 12 Oct 2026)
+
+| # | Decision | What is built |
+|---|---|---|
+| 5j-D1 | **Speed: the per-person database reads are batched now**, to reach 10,000 people in under 10 minutes; re-measured with the load scripts. | The calculation reads what a chunk of people needs in a few queries per chunk (compensation, packages, lines, assignments, statutory profiles, one-time pay, recoveries, earlier payslips) instead of per person; chunks still run side by side and each person is still saved in its own transaction. `scripts/payroll-load.sql` / `.mjs` give the time. |
+| 5j-D2 | **Waiving an unserved notice has its own permission**; HR Admin and Payroll Admin get it. | Key `payroll.notice.waive` on `POST /payroll/fnf/{id}/waive-notice` (no longer `payroll.fnf.manage`), in the HR Admin and Payroll Admin role templates. |
+
 ---
 
 ## 20. Go-live items this design adds
@@ -1363,4 +1370,5 @@ To add to [GO-LIVE-CHECKLIST.md](../GO-LIVE-CHECKLIST.md) (the coordinator edits
 | 9 Oct 2026 | §19.6: batch 5e build decisions 5e-D1 … 5e-D3 accepted (payslip email as a link to the in-app payslip, PAN status by hand, no DTAA relief with cases flagged). |
 | 10 Oct 2026 | §19.7: ledger mapping (global gap pass §7.1) accepted: two-level mapping with an unmapped bucket that blocks posting. |
 | 10 Oct 2026 | §19.8: batch 5f build decisions 5f-D1 … 5f-D3 accepted (official e-TDS file and FVU in an isolated worker, self-filing for the pilot, statutory data items on the go-live checklist). |
+| 12 Oct 2026 | §19.10: batch 5j build decisions 5j-D1 (batched calculation reads for the 10-minute target) and 5j-D2 (a separate key for waiving unserved notice) accepted. |
 | 12 Oct 2026 | §19.9: batch 5g build decisions 5g-D1 … 5g-D7 accepted (filer-run FVU with upload and check, heirs paid by the bank file, exit exemptions as rule data, encashment basis and notice shortfall settings, statutory differences in arrears with consent, cross-year tax by hand). |
