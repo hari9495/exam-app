@@ -14,6 +14,8 @@ import { tierFor } from './checks';
 import { TRAVEL_BOOKING, openBalance, settleClaim, tripBudget, type TravelBookingAdapter } from './travel';
 import { exchangeDifference, toPay } from './fx';
 import { fxRateFor } from './setup.service';
+import { PayrollIntakeService } from '../payroll/intake.service';
+import { withPayScope } from '../payroll/pay-access';
 import type { AdvanceAmountDto, AdvanceDto, BookingDto, CloseTripDto, PayAdvanceDto, ReturnDto, TripDto } from './trips-dto';
 
 // Expenses batch E4 (M05-BUILD-DESIGN §5.5, §9.4, §10, §11.3; XP-4.01 … XP-4.06): trips with legs and bookings, and
@@ -22,8 +24,9 @@ import type { AdvanceAmountDto, AdvanceDto, BookingDto, CloseTripDto, PayAdvance
 //              (travel.booking.manage in scope) for trips; finance (expense.payout.manage for the entity) for advances
 //   money      pay currency only (forex advances are E5); an advance's open balance = paid − Σ settlements, and an
 //              approved claim on the trip (or the imprest) settles it first (YX-EXP-08, M05 §9)
-//   pending    salary recovery of an overdue advance waits for payroll's 'expense' loan type (§22.1 change 5); until
-//              then overdue advances are flagged, finance is told, and money comes back by bank return or at F&F
+//   recovery   an overdue advance is recovered from salary as an interest-free 'expense' loan (§11.3, E3) in
+//              expense.advance.recovery_instalments instalments from next month; a bank return reduces that loan, and the
+//              instalments payroll recovers are written back as settlements when the run is paid (payments.service)
 
 export const TRIP_TYPE = 'expense.trip';
 export const ADVANCE_TYPE = 'expense.advance';
@@ -108,6 +111,7 @@ export class ExpenseTripsService implements OnModuleInit {
     private readonly engine: ApprovalsEngine,
     private readonly notifications: NotificationsService,
     @Inject(TRAVEL_BOOKING) private readonly partner: TravelBookingAdapter,
+    private readonly intake: PayrollIntakeService,
   ) {}
 
   onModuleInit() {
@@ -627,6 +631,13 @@ export class ExpenseTripsService implements OnModuleInit {
         await tx.expenseAdvance.update({ where: { id }, data: { status: 'settled', version: { increment: 1 } } });
         await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'advance.settled', payload: { advanceId: id } } });
       }
+      const back = adv.fxRate ? amount.mul(adv.fxRate).toDecimalPlaces(2) : amount;
+      await withPayScope(tx, [adv.legalEntityId], async () => {
+        const loan = await tx.loan.findFirst({ where: { organizationId: org, sourceRef: id, loanType: 'expense', status: 'active' } });
+        if (!loan) return;
+        const left = Prisma.Decimal.max(D(0), loan.outstanding.sub(back));
+        await tx.loan.update({ where: { id: loan.id }, data: { outstanding: left, ...(left.lte(0) ? { status: 'closed' } : {}) } });
+      });
       await audit(tx, c, 'expense.advance.returned', 'expense_advance', id, { amount: amount.toFixed(2) });
       await refreezeExitOf(tx, c, adv.employmentId);
       await closeTripIfDone(tx, org, adv.tripId);
@@ -731,8 +742,14 @@ export class ExpenseTripsService implements OnModuleInit {
             await tx.expenseAdvance.update({ where: { id: x.id }, data: { overdueOn: asDate(today), version: { increment: 1 } } });
             await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'advance.overdue', payload: { advanceId: x.id } } });
             await audit(tx, c, 'expense.advance.overdue', 'expense_advance', x.id, { settleBy: by });
-            // shortcut: salary recovery (a loans row of type 'expense', §11.3) waits for payroll change 5 (§22.1); finance is told instead.
-            out.push({ users: [employee, ...(await holdersOf(tx, org, 'expense.payout.manage', x.employeeId, today))], text: `An expense advance was due to be settled by ${by}`, id: x.id });
+            // §11.3: recovered from salary through the payroll loan engine (protected net, deferral and F&F already work).
+            const n = Number(await settingFor(tx, c, 'expense.advance.recovery_instalments', { legalEntityId: x.legalEntityId }));
+            const owed = x.fxRate ? open.mul(x.fxRate).toDecimalPlaces(2) : open;
+            const first = addDays(`${today.slice(0, 7)}-01`, 32).slice(0, 7);
+            const loan = await this.intake
+              .expenseLoan(tx, c, { sourceRef: x.id, employeeId: x.employeeId, amount: owed.toFixed(2), instalments: n, firstMonth: first, reason: `Overdue expense advance: ${x.purpose}`.slice(0, 300), by: '00000000-0000-0000-0000-000000000000' })
+              .catch((e: Error) => (this.logger.warn(`advance ${x.id}: ${e.message}`), null));
+            out.push({ users: [employee, ...(await holdersOf(tx, org, 'expense.payout.manage', x.employeeId, today))], text: loan ? `An expense advance was due by ${by}; it is recovered from salary in ${n} instalments from ${first}` : `An expense advance was due to be settled by ${by}`, id: x.id });
           } else if (by >= today && !x.remindedOn) {
             await tx.expenseAdvance.update({ where: { id: x.id }, data: { remindedOn: asDate(today), version: { increment: 1 } } });
             out.push({ users: [employee], text: `Settle your advance by ${by} with claims or a bank return`, id: x.id });

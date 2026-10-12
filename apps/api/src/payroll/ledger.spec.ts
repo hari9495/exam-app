@@ -35,6 +35,13 @@ describe('ledger mapping and the journal (GP-PAY-1)', () => {
     ]);
   });
 
+  it('M05 §12.1: a reimbursement is debited to its mapped clearing account and paid in net pay', () => {
+    const j = buildJournal([slip({ lines: [...slip().lines, { code: 'exp_reimb', kind: 'reimbursement', amount: '1200.00' }] })], [...ALL, company('exp_reimb', 'expense', '2400')]);
+    expect(j.balanced).toBe(true);
+    expect(j.lines.find((l) => l.accountCode === '2400')).toMatchObject({ debit: '1200.00' });
+    expect(j.lines.find((l) => l.accountCode === '2100')).toMatchObject({ credit: '49400.00' });
+  });
+
   it('anything without an account goes to Unmapped (still balanced, so nothing is lost) and is listed', () => {
     const j = buildJournal(
       [slip()],

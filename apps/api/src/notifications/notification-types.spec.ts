@@ -60,6 +60,7 @@ describe('notification catalog', () => {
       'payroll.overpayment.consent',
       'expense.trip.update',
       'expense.advance.update',
+      'expense.payment.update',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);
