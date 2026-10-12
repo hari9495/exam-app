@@ -115,6 +115,9 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'perf.feedback.investigate',
   // PM6: moving ratings in calibration.
   'perf.calibration.facilitate',
+  // PM7: pay changes and their approval.
+  'perf.comp.manage',
+  'perf.comp.approve',
 ];
 
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).

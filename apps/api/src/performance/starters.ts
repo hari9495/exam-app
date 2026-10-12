@@ -117,3 +117,19 @@ export const STARTER_DOMAINS = [
   { key: 'domain_functional', name: 'Functional', group: 'functional' },
   { key: 'domain_leadership', name: 'Leadership', group: 'leadership' },
 ] as const;
+
+/**
+ * PM7 starter merit matrix (§6.2): five bands × three compa-ratio ranges (below 0.9, 0.9–1.1, above 1.1) with example
+ * percentages a company replaces with its own. Rows go from the lowest band to the highest.
+ */
+export const STARTER_MATRIX = {
+  key: 'matrix_5x3',
+  name: 'Merit matrix (example, replace with your own)',
+  byRank: [
+    [{ compaFrom: null, compaTo: 0.9, minPct: 0, targetPct: 2, maxPct: 3 }, { compaFrom: 0.9, compaTo: 1.1, minPct: 0, targetPct: 1, maxPct: 2 }, { compaFrom: 1.1, compaTo: null, minPct: 0, targetPct: 0, maxPct: 1 }],
+    [{ compaFrom: null, compaTo: 0.9, minPct: 3, targetPct: 4, maxPct: 5 }, { compaFrom: 0.9, compaTo: 1.1, minPct: 2, targetPct: 3, maxPct: 4 }, { compaFrom: 1.1, compaTo: null, minPct: 1, targetPct: 2, maxPct: 3 }],
+    [{ compaFrom: null, compaTo: 0.9, minPct: 6, targetPct: 8, maxPct: 10 }, { compaFrom: 0.9, compaTo: 1.1, minPct: 5, targetPct: 6, maxPct: 7 }, { compaFrom: 1.1, compaTo: null, minPct: 3, targetPct: 4, maxPct: 5 }],
+    [{ compaFrom: null, compaTo: 0.9, minPct: 10, targetPct: 12, maxPct: 14 }, { compaFrom: 0.9, compaTo: 1.1, minPct: 7, targetPct: 9, maxPct: 11 }, { compaFrom: 1.1, compaTo: null, minPct: 4, targetPct: 6, maxPct: 8 }],
+    [{ compaFrom: null, compaTo: 0.9, minPct: 14, targetPct: 16, maxPct: 18 }, { compaFrom: 0.9, compaTo: 1.1, minPct: 10, targetPct: 12, maxPct: 14 }, { compaFrom: 1.1, compaTo: null, minPct: 6, targetPct: 8, maxPct: 10 }],
+  ],
+} as const;

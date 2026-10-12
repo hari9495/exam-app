@@ -493,3 +493,80 @@ export interface PerfReport {
   total?: number;
   min?: number;
 }
+
+// ------------------------------------------------------------------------------------------ PM7: ratings to pay (§19)
+
+export interface CompMatrix {
+  id: string;
+  name: string;
+  axis: 'compa_ratio' | 'rating_only';
+  status: 'active' | 'retired';
+  starter: boolean;
+  version: number;
+  cells: { band: string; compaFrom: number | null; compaTo: number | null; minPct: number; targetPct: number; maxPct: number }[];
+}
+
+export interface CompCycle {
+  id: string;
+  name: string;
+  reviewCycleId: string | null;
+  legalEntityId: string;
+  currency: string;
+  effectiveOn: string;
+  matrixId: string;
+  bonus: { month: string; targetPct: number; multipliers: Record<string, number> } | null;
+  status: 'draft' | 'open' | 'approved' | 'applied' | 'closed';
+  appliedAt: string | null;
+  version: number;
+}
+
+export interface CompProposal {
+  id: string;
+  employee: string;
+  employeeId: string;
+  departmentId: string;
+  manager: string;
+  band: string | null;
+  currentCtc: number | null;
+  compaRatio: number | null;
+  proration: number | null;
+  cell: { band: string; minPct: number; targetPct: number; maxPct: number } | null;
+  meritPct: number | null;
+  meritAmount: number | null;
+  promotionToGradeId: string | null;
+  promotionToDesignationId: string | null;
+  promotionAmount: number | null;
+  bonusAmount: number | null;
+  newCtc: number | null;
+  outOfRange: boolean;
+  justification: string | null;
+  status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'applied';
+  version: number;
+}
+
+export interface CompSheet {
+  cycle: CompCycle;
+  role: 'hr' | 'finance' | 'manager';
+  proposals: CompProposal[];
+  budgets: { departmentId: string; department: string; kind: 'merit' | 'bonus'; amount: number; used: number; remaining: number; over: boolean }[];
+  overrun: string;
+  can: { edit: boolean; submit: boolean; apply: boolean };
+}
+
+export interface MyPayBand {
+  visible: boolean;
+  currency?: string;
+  range?: { min: number; mid: number; max: number } | null;
+  position?: 'below' | 'within' | 'above';
+  quartile?: 1 | 2 | 3 | 4 | null;
+}
+
+type Gap = { group: string; count: null; suppressed: true } | { group: string; count: number; suppressed: false; meanGapPct: number; medianGapPct: number; adjustedGapPct: number };
+export interface PayEquity {
+  dimension: string;
+  before: Gap[];
+  after: Gap[];
+  flagged: { employeeId: string; employee: string }[];
+  threshold: number;
+  min: number;
+}

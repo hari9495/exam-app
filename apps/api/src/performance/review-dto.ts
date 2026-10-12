@@ -275,3 +275,164 @@ export class ReportQueryDto {
   @IsUUID()
   cycle!: string;
 }
+
+// ------------------------------------------------------------------------------------------ PM7: ratings to pay (§19)
+
+export class MatrixCellDto {
+  @IsString()
+  @Length(1, 60)
+  band!: string;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  @Max(10)
+  compaFrom?: number | null;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0)
+  @Max(10)
+  compaTo?: number | null;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  minPct!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  targetPct!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  maxPct!: number;
+}
+
+export class MatrixDto {
+  @trim()
+  @IsString()
+  @Length(2, 100)
+  name!: string;
+
+  @IsIn(['compa_ratio', 'rating_only'])
+  axis!: 'compa_ratio' | 'rating_only';
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => MatrixCellDto)
+  cells!: MatrixCellDto[];
+
+  @IsOptional()
+  @IsInt()
+  version?: number;
+}
+
+export class BonusDto {
+  /** The pay month the bonus is paid in (YYYY-MM). */
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/)
+  month!: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  targetPct!: number;
+
+  /** Band label → multiplier (for example Exceeds 1.5). */
+  @IsObject()
+  multipliers!: Record<string, number>;
+}
+
+export class CompCycleDto {
+  @trim()
+  @IsString()
+  @Length(2, 100)
+  name!: string;
+
+  @IsOptional()
+  @IsUUID()
+  reviewCycleId?: string | null;
+
+  @IsUUID()
+  legalEntityId!: string;
+
+  @Matches(/^[A-Z]{3}$/)
+  currency!: string;
+
+  @Matches(ISO)
+  effectiveOn!: string;
+
+  @IsUUID()
+  matrixId!: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BonusDto)
+  bonus?: BonusDto | null;
+}
+
+export class BudgetDto {
+  @IsUUID()
+  departmentId!: string;
+
+  @IsIn(['merit', 'bonus'])
+  kind!: 'merit' | 'bonus';
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(1_000_000_000)
+  amount!: number;
+}
+
+export class BudgetsDto {
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ValidateNested({ each: true })
+  @Type(() => BudgetDto)
+  budgets!: BudgetDto[];
+}
+
+export class ProposalDto {
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  meritPct!: number;
+
+  @IsOptional()
+  @IsUUID()
+  promotionToGradeId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  promotionToDesignationId?: string | null;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(1_000_000_000)
+  promotionAmount?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(1_000_000_000)
+  bonusAmount?: number;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(1000)
+  justification?: string | null;
+
+  @IsInt()
+  version!: number;
+}
+
+export class EquityQueryDto {
+  @IsIn(['gender', 'grade', 'location'])
+  dimension!: 'gender' | 'grade' | 'location';
+}
