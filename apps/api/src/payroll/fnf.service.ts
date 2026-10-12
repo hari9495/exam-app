@@ -25,6 +25,12 @@ import type { FnfPatchDto, FnfPayeesDto } from './dto-5g';
 // nominees or legal heirs by share (their bank accounts encrypted). Anyone with payroll.fnf.manage for the entity edits
 // the lines before the run is submitted; the run's approval is the usual maker ≠ checker approval.
 
+// DECISION NEEDED: (1) paying nominees and heirs: today the net of a death-in-service F&F is held from the bank file and
+// split by share on the settlement for payroll to pay by hand; should the bank file pay each payee? (2) Heirs and tax:
+// dues paid after death are not salary of the heir; no TDS is worked out on the heirs' shares. (3) Exemptions: gratuity,
+// leave encashment and retrenchment compensation are taxed as salary here (no s.10(10), 10(10AA), 10(10B) relief yet).
+// (4) Leave encashment is paid at monthly gross ÷ the pay group's day basis; some companies use basic + DA. (5) Notice:
+// only an approved buy-out is recovered or paid; an unserved notice without a buy-out is not recovered.
 const SYSTEM = '00000000-0000-0000-0000-000000000000';
 const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
 const r2 = (x: Prisma.Decimal) => x.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);

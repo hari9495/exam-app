@@ -31,6 +31,10 @@ const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
 const lock = (tx: Tx, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
 const NIL = '00000000-0000-0000-0000-000000000000';
 const EDITABLE = ['draft', 'calculated', 'in_review', 'reopened'];
+// DECISION NEEDED: worksheets cover pay (earnings). When a past-dated rule changes a statutory deduction (PF, ESI, PT),
+// who bears the difference for months already paid: recovered from the employee (with consent) or borne by the company?
+// Today the statutory side is settled by the supplementary filing (5f) and the employee side is not recovered. Also, an
+// overpayment from an earlier tax year is listed (crossYear) but its tax effect (revised Form 16 / s.89) is handled by hand.
 const NOT_PAY = ['IN.TDS', 'IN.TAXDED'];
 const months = (from: string, to: string) => {
   const out: string[] = [];
