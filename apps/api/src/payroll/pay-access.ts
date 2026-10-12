@@ -63,6 +63,11 @@ export const PAY_KEYS = [
   'statutory.challan.manage',
   'statutory.register.sign',
   'statutory.advisory.review',
+  // Batch 5g.
+  'payroll.offcycle.prepare',
+  'payroll.arrears.approve',
+  'payroll.fnf.manage',
+  'payroll.writeoff.approve',
 ] as const;
 export type PayKey = (typeof PAY_KEYS)[number];
 
