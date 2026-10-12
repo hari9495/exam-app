@@ -69,7 +69,7 @@ export const PAY_PERMISSIONS = [
   { key: 'payroll.payment_mode.approve', description: 'Approve a cash or cheque payment mode asked for by someone else' },
   // Batch 5e (also in the payroll_5e migration).
   { key: 'tax.workspace.view', description: "See employees' tax workspaces, declarations and tax sheets for the legal entities in scope" },
-  { key: 'tax.proof.verify', description: "Verify tax proofs line by line, record PAN status and perquisites (never one's own)" },
+  { key: 'tax.proof.verify', description: "Verify tax proofs line by line, record PAN status and perquisites (never one’s own)" },
   // Batch 5f (also in the payroll_5f migration).
   { key: 'statutory.filing.view', description: 'See the statutory hub, filings, challans, returns and registers of the legal entities in scope' },
   { key: 'statutory.filing.generate', description: 'Generate PF, ESI, PT and LWF files, supplementary filings and TDS returns' },
@@ -84,8 +84,8 @@ export const PAY_PERMISSIONS = [
   { key: 'payroll.offcycle.prepare', description: 'Prepare off-cycle runs (bonus, arrears, correction, payment) and their items' },
   { key: 'payroll.arrears.approve', description: 'Make, confirm and approve arrears worksheets, and accept or dismiss arrears proposals after a past-dated rule change' },
   { key: 'payroll.fnf.manage', description: 'Manage full and final settlements: items, held items, payees and the second run' },
-  { key: 'consultant.manage', description: 'The consultant register, their invoices, TDS and payments, Form 140 rows and Form 131 (never one's own)' },
-  { key: 'consultant.invoice.approve', description: 'Approve consultant invoices for payment (never one's own upload)' },
+  { key: 'consultant.manage', description: 'The consultant register, their invoices, TDS and payments, Form 140 rows and Form 131 (never one’s own)' },
+  { key: 'consultant.invoice.approve', description: 'Approve consultant invoices for payment (never one’s own upload)' },
   { key: 'payroll.notice.waive', description: 'Waive the recovery of an unserved notice period for one leaver, with a reason' },
   { key: 'payroll.writeoff.approve', description: 'Write off the rest of an overpayment raised by someone else, with a reason (needs a fresh second sign-in step)' },
 ];
