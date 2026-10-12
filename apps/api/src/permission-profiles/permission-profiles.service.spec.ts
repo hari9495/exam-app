@@ -99,7 +99,7 @@ describe('PermissionProfilesService', () => {
       const result = await service.create(context, 'user-1', { name: 'Recruiter Lite', permissions: ['pipeline:manage'] });
 
       expect(tx.permissionProfile.create).toHaveBeenCalledWith({
-        data: { organizationId: 'org-1', name: 'Recruiter Lite', permissionsJson: '["pipeline:manage"]', fieldPermissionsJson: null },
+        data: { organizationId: 'org-1', name: 'Recruiter Lite', permissionsJson: '["pipeline:manage"]', fieldPermissionsJson: null, templateChecked: true },
       });
       expect(audit.record).toHaveBeenCalledWith(
         context,
@@ -130,6 +130,7 @@ describe('PermissionProfilesService', () => {
         data: {
           organizationId: 'org-1', name: 'Sr Recruiter', permissionsJson: '["pipeline:manage"]',
           fieldPermissionsJson: '{"candidate":{"email":"editable"}}',
+          templateChecked: true,
         },
       });
       expect(result.fieldPermissions).toEqual({ candidate: { email: 'editable' } });
@@ -191,7 +192,7 @@ describe('PermissionProfilesService', () => {
 
       expect(tx.permissionProfile.update).toHaveBeenCalledWith({
         where: { id: 'p1' },
-        data: { name: 'New', permissionsJson: '["org:manage_settings"]' },
+        data: { name: 'New', permissionsJson: '["org:manage_settings"]', templateKey: null },
       });
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'permission_profile.updated', entityId: 'p1' }));
       expect(result.assignedUserCount).toBe(1);

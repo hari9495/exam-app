@@ -6,3 +6,6 @@ export { fromRows, toRows, sameRules, type MatrixRow, type Per } from './matrix'
 export { ExpensesHomeScreen, ClaimScreen, STATUS as CLAIM_STATUS, PAYMENT as CLAIM_PAYMENT, type ExpensesHomeScreenProps, type ClaimScreenProps } from './claims';
 export { TripsScreen, TripScreen, AdvancesScreen, AdvanceScreen, TRIP_STATUS, ADVANCE_STATUS, type TripsScreenProps, type TripScreenProps, type AdvancesScreenProps, type AdvanceScreenProps } from './travel';
 export { ExpenseReportsScreen, REPORT_TABS, type ExpenseReportsScreenProps } from './reports';
+// Batch E3: what finance pays (EXP-06), bank files and the expense journal.
+export { ToPayLiveScreen, type ToPayLiveScreenProps } from './topay';
+export { paymentText } from './claims';

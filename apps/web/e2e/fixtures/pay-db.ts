@@ -27,3 +27,18 @@ export async function openProofWindow(orgSlug: string): Promise<void> {
     await prisma.$disconnect();
   }
 }
+
+/** Sets a company-wide setting (what an admin would change in Settings). */
+export async function setCompanySetting(orgSlug: string, key: string, value: string): Promise<void> {
+  const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl() } } });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`;
+      const org = await tx.organization.findFirstOrThrow({ where: { slug: orgSlug }, select: { id: true } });
+      await tx.setting.deleteMany({ where: { organizationId: org.id, scopeType: 'tenant', key } });
+      await tx.setting.create({ data: { organizationId: org.id, scopeType: 'tenant', scopeId: org.id, key, value } });
+    });
+  } finally {
+    await prisma.$disconnect();
+  }
+}

@@ -66,6 +66,12 @@ describe('/yx layout: the People group follows grants and the employee record', 
     await waitFor(async () => expect(await links()).toEqual(['My profile', 'Directory', 'Org chart', 'Job history', 'Job changes', 'Probation', 'Bulk changes', 'Help centre', 'Service catalogue', 'Chat with us', 'People to check', 'Approvals', 'My security']));
   });
 
+  it('Expenses to pay follows expense.payout.manage (EXP-06)', async () => {
+    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: ['expense.payout.manage'], 'GET /people/employees': [PERSON], 'GET /people/team': NO_TEAM });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    await waitFor(async () => expect(await links()).toContain('Expenses to pay'));
+  });
+
   it('payroll operations pages follow their own keys (PAY-10.09 … 10.16)', async () => {
     route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: ['payroll.loan.manage', 'statutory.advisory.review'], 'GET /people/employees': [PERSON], 'GET /people/team': NO_TEAM });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);

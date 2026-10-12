@@ -9,6 +9,7 @@ import { PLATFORM_CHAIN, ZERO_HASH, checkBatch, type ChainRow } from '../src/pay
 import { monthRange, todayIn } from '../src/time/time-core';
 import { addDays } from '../src/time/time-maths';
 import { readFileSync } from 'fs';
+import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { join } from 'path';
 import { PAY_VARIABLES, checkFormula } from '../src/rules-engine/expressions';
 import type { RuleSet } from '../src/statutory/evaluator';
@@ -89,7 +90,8 @@ export const PAY_PERMISSIONS = [
 ];
 export const PAYROLL_APPROVER = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', 'payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', 'payroll.arrears.approve', 'payroll.writeoff.approve'];
 export const PAYROLL_ADMIN_5A = ['employee.change.manage', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view', 'payroll.setup.manage', 'payroll.statutory.setup', 'payroll.component.manage', 'payroll.template.manage', 'payroll.import.run', 'payroll.run.view', 'payroll.run.prepare', 'payroll.input.manage', 'payroll.hold.manage', 'payroll.loan.manage', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.generate', 'payroll.payment.record', 'payroll.payslip.publish', 'payroll.query.handle', 'tax.workspace.view', 'tax.proof.verify', 'tax.regime.override', 'payroll.ledger.manage', 'statutory.filing.view', 'statutory.filing.generate', 'statutory.filing.download', 'statutory.challan.manage', 'payroll.offcycle.prepare', 'payroll.arrears.approve', 'payroll.fnf.manage', 'payroll.notice.waive'];
-export const FINANCE_APPROVER = ['org:view', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.release'];
+// The Finance Approver template as it is today (payroll approvals, bank file release, paying expense claims).
+export const FINANCE_APPROVER = ['org:view', ...ROLE_TEMPLATES.find((t) => t.key === 'finance_approver')!.permissions];
 
 export async function seedPay(tx: Tx, organizationId: string, passwordHash: string) {
   const org = { organizationId };
