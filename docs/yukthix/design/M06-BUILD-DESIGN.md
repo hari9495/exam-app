@@ -385,7 +385,7 @@ M01 probation reviews use a `probation` template from this engine: one manager s
 
 ### 12.6 Hand-off to payroll and letters
 When the comp cycle is approved, HR **applies** it. In one transaction:
-1. Merit and promotion rows become P06 changes (`salary_revision`, or `promotion` with the new grade and designation and the new pay) in **one bulk batch** (`source = comp_review`), effective on the cycle date. They are already approved by the comp chain, so the batch is created approved, and the change log shows the comp cycle as its approval.
+1. Merit and promotion rows become P06 changes (`salary_revision`, or `promotion` with the new grade and designation and the new pay) in **bulk batches** (`source = comp_review`), effective on the cycle date. A batch holds at most 1,000 rows (M01), so a larger cycle is split into several batches of up to 1,000, each linked to the comp cycle (`employee_change_batches.comp_cycle_id`, added in PM7). All batches, bonuses and letters of one apply are created in **one transaction**: either every row is applied or none is, and a retry after a failure starts clean. They are already approved by the comp chain, so the batches are created approved, and the change log shows the comp cycle as their approval.
 2. With `perf.comp.effective_basis = cycle_date` (starter), a date already in a processed payroll month becomes a back-dated change. P06 classifies it, and **M03 pays arrears in the next run** per month and component (M03-BUILD §7.6). Nothing in M06 computes arrears.
 3. Bonus amounts become `one_time_pays` (source `m06`, component `perf_bonus`, the chosen pay month), approved, so the next run pays them.
 4. Letters are issued from P05 templates (increment, promotion; optionally one appraisal-outcome letter that states the rating and the new pay), in the employee's language where a translation exists, and released to the employee's documents.
@@ -672,7 +672,7 @@ Every route is added to `endpoint-permissions.spec.ts`.
 | PM-7.03 | Budgets: used and remaining, overrun rule | e2e: over-budget adds the finance step (`extra_approval`) or blocks (`block`) |
 | PM-7.04 | Bonus pool split by band multiplier | unit: shares scale to fit the pool; manager moves within the pool need a reason |
 | PM-7.05 | Approval chain (P03 `perf.comp`), team-pay visibility only inside the cycle, access log | e2e: a manager sees team pay only in their own comp cycle; maker ≠ checker on the finance step |
-| PM-7.06 | Apply: one P06 bulk batch, one-time bonuses, letters; back-dated date → arrears by payroll | e2e: applying creates `salary_revision` changes effective 1 Apr, a `perf_bonus` one-time pay and letters; a 1 Apr date approved in June shows arrears for April–May in the next run (M03); re-apply refused |
+| PM-7.06 | Apply: P06 bulk batches split at 1,000 rows in one transaction, one-time bonuses, letters; back-dated date → arrears by payroll | e2e: applying creates `salary_revision` changes effective 1 Apr, a `perf_bonus` one-time pay and letters; a 2,300-person cycle makes 3 linked batches, and a failure on the last one leaves none applied; a 1 Apr date approved in June shows arrears for April–May in the next run (M03); re-apply refused |
 | PM-7.07 | Own pay band (PAY-39), pay-equity panel with suppression; screens PRF-10 wired | e2e: an employee sees only their own band; a 3-person cell shows "suppressed" in the panel and the export; Playwright: propose, approve, apply |
 
 ### 22.8 Batch PM8 · PIPs (3 slices; needs §4.1 change 4)
@@ -755,6 +755,7 @@ Every batch ends with the usual checks: typecheck, unit, the batch's e2e and the
 
 | Date | Change |
 |---|---|
+| 12 Oct 2026 | PM7 apply splits comp cycles into bulk batches of up to 1,000 rows in one transaction (§12.6, PM-7.06). Forward migration restating the full translation subject list after expenses and PM1 both changed it. |
 | 12 Oct 2026 | PM1 built: the `perf.*` settings keys arrive with the batch that first reads them (none in PM1); a template's P19 "applies to" moves to PM4 with cycle populations; `comp_review` added to bulk change batches (§4.1 change 1); translation subjects added (change 2). |
 | 12 Oct 2026 | Founder accepted D1–D14 with the recommended defaults; PM1 started. |
 | 12 Oct 2026 | First draft: scope (launch core) and what is left for a second design, reuse and the six small changes in other modules, data model by batch with RLS, settings and starters, goals and OKRs, feedback and 1:1s, cycles with templates and scales as data, eligibility, stages, 360° anonymity, calibration with a guide only, ratings to pay (matrix, budgets, bonus, P06 batch, arrears by payroll, letters, pay band, pay equity), PIPs with the exit link, privacy matrix, India points (fairness, records, POSH), global points and a do-not-copy list, AI as a later seam, permissions, events, API, screens, security, 38 slices in batches PM1–PM8, founder decisions D1–D14. |
