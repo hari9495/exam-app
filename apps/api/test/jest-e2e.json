@@ -24,6 +24,7 @@
     "./fixtures/offline-hibp.ts"
   ],
   "maxWorkers": 1,
+  "workerIdleMemoryLimit": "1GB",
   "transformIgnorePatterns": [
     "/node_modules/(?!(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space)/)"
   ]

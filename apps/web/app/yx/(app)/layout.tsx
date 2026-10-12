@@ -72,6 +72,11 @@ const MY_DOCUMENTS: WorkspaceLink = { id: 'my-documents', label: 'My documents',
 const FIRST_30: WorkspaceLink = { id: 'first-30', label: 'My first 30 days', href: '/yx/me/first-30-days', group: 'Me' };
 const LIFE_EVENTS: WorkspaceLink = { id: 'life-events', label: 'Life events', href: '/yx/people/life-events', group: 'People' };
 const CHECKLISTS: WorkspaceLink = { id: 'checklists', label: 'Onboarding checklists', href: '/yx/settings/checklists', group: 'Organisation' };
+// M05 expenses E1: categories, limits, rates and GST registrations.
+// M05 expenses E2: claims (my own, waiting for me, finance's check).
+const MY_EXPENSES: WorkspaceLink = { id: 'expenses', label: 'My expenses', href: '/yx/expenses', group: 'Me' };
+const EXPENSE_REPORTS: WorkspaceLink = { id: 'expense-reports', label: 'Expense reports', href: '/yx/expenses/reports', group: 'Organisation' };
+const EXPENSE_SETUP: WorkspaceLink = { id: 'expense-setup', label: 'Expenses', href: '/yx/settings/expenses', group: 'Organisation' };
 const PROFILE: WorkspaceLink = { id: 'profile', label: 'My profile', href: '/yx/people/profile', group: 'People' };
 const ID_CHANGES: WorkspaceLink = { id: 'profile-requests', label: 'Identity and bank changes', href: '/yx/people/profile-requests', group: 'People' };
 const ACCESS: WorkspaceLink = { id: 'access', label: 'Roles & access', href: '/yx/settings/access', group: 'Access' };
@@ -229,6 +234,8 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...(idDesk ? [ID_CHANGES] : []),
     ...org,
     ...(perms.has('lifecycle.journey.template.manage') ? [CHECKLISTS] : []),
+    ...(perms.has('expense.policy.manage') ? [EXPENSE_SETUP] : []),
+    ...(perms.has('expense.report.view') ? [EXPENSE_REPORTS] : []),
     ...(perms.has('perf.setup.manage') ? [PERFORMANCE_SETUP] : []),
     ...(perms.has('letter.template.manage') || perms.has('letter.signatory.manage') ? [LETTER_TEMPLATES] : []),
     ...(perms.has('access.role.manage') ? [ACCESS] : []),
@@ -237,7 +244,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   ];
   // P04 Q5: the company's email branding and wording, for those who hold the key (read-only in a support session).
   const emails = perms.has('notification.template.manage') || support ? [EMAILS] : [];
-  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee ? [PRIVACY, MY_LANGUAGE, MY_LETTERS, MY_DOCUMENTS, MY_ASSETS, RESIGN] : [])];
+  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee || perms.has('expense.finance.review') ? [MY_EXPENSES] : []), ...(employee ? [PRIVACY, MY_LANGUAGE, MY_LETTERS, MY_DOCUMENTS, MY_ASSETS, RESIGN] : [])];
   const supportEndsAt = support ? (decodeJwtPayload(accessToken)?.supportEndsAt as string | undefined) : undefined;
   const desk = support
     ? []

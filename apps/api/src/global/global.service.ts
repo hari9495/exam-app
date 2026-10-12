@@ -38,6 +38,11 @@ async function subjects(tx: Tx, org: string, type: SubjectType): Promise<Subject
       const tasks = await tx.journeyTemplateTask.findMany({ where: { ...where, templateId: { in: [...by.keys()] } }, select: { id: true, title: true, templateId: true }, orderBy: [{ templateId: 'asc' }, { sortOrder: 'asc' }] });
       return tasks.map((t) => ({ id: t.id, name: `${by.get(t.templateId)} › ${t.title}` }));
     }
+    // M05 expenses E1 (§6.4): category and city-tier names.
+    case 'expense_category':
+      return tx.expenseCategory.findMany({ where: { ...where, active: true }, select: name, orderBy: { name: 'asc' } });
+    case 'city_tier':
+      return tx.cityTier.findMany({ where: { ...where, active: true }, select: name, orderBy: { rank: 'asc' } });
     // M06 performance PM1 (§6.4): rating and band labels of scales in use, section titles of templates in use
     // (drafts and active), competency names. Free-text answers are never translated.
     case 'rating_level': {

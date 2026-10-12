@@ -149,6 +149,7 @@
 .yx-ops-matrix tbody th { font-weight: var(--yx-weight-medium); background: var(--yx-color-bg-surface); }
 .yx-ops-matrix td[data-num] { text-align: right; font-variant-numeric: tabular-nums; }
 .yx-ops-matrix input { width: 100%; }
+.yx-ops-matrix input.yx-input { padding: 0 var(--yx-space-2); text-align: right; font-variant-numeric: tabular-nums; }
 .yx-ops-scroll { overflow-x: auto; max-width: 100%; }
 
 /* Ticket / message conversation */
