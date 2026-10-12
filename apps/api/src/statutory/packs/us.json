@@ -1,7 +1,7 @@
 {
   "ruleSets": [
     {
-      "statute": "US.PACK",
+      "statute": "US.PAYROLL",
       "jurisdiction": "US",
       "version": "2026-v1",
       "validFrom": "2025-01-01",

@@ -21,4 +21,10 @@ describe('5i packs (AE, US, IN.LAYOFF)', () => {
     const nec = sets.find((s) => s.version === 'TY2026')!;
     expect(nec.golden.flatMap((g) => runGolden({ ...nec, values: { ...nec.values, threshold: '600' } }, g)).length).toBeGreaterThan(0);
   });
+
+  it('payroll pack data never takes the G1 <CC>.PACK statute (that one is the global country pack, kind country_pack)', () => {
+    const { readdirSync } = jest.requireActual('fs') as typeof import('fs');
+    const all = readdirSync(join(__dirname, 'packs')).filter((x) => x.endsWith('.json')).flatMap((x) => load(x));
+    expect(all.filter((s) => s.statute.endsWith('.PACK') && s.values.kind !== 'country_pack').map((s) => `${s.statute} ${s.version}`)).toEqual([]);
+  });
 });

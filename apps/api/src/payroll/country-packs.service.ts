@@ -53,7 +53,7 @@ export class CountryPackService {
 
   /** What the pack needs and what is missing, on a day. */
   private check(sets: RuleSet[], country: string, on: string, settings: Record<string, string>) {
-    const manifest = inForce(sets, `${country}.PACK`, [country], on);
+    const manifest = inForce(sets, `${country}.PAYROLL`, [country], on);
     if (!manifest) return { manifest: null, missing: [`No ${country} country pack is published.`] };
     const m = manifest.values as unknown as Manifest;
     const missing = [

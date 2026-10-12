@@ -1,7 +1,7 @@
 {
   "ruleSets": [
     {
-      "statute": "AE.PACK",
+      "statute": "AE.PAYROLL",
       "jurisdiction": "AE",
       "version": "2026-v1",
       "validFrom": "2026-01-01",
