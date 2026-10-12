@@ -42,7 +42,11 @@ export interface StatutoryHubScreenProps {
   hub: StatutoryHub | null;
   filings: FilingRow[] | null;
   returns: TdsReturnRow[] | null;
-  can: { generate: boolean; markFiled: boolean };
+  can: { generate: boolean; markFiled: boolean; challan?: boolean };
+  /** The month's TDS challan, once prepared. */
+  challan?: { id: string; status: string; tds: string; interest: string } | null;
+  onPrepareChallan?: () => Promise<unknown>;
+  onDeposit?: (id: string, d: { challanNo: string; bsrCode: string; depositDate: string }) => Promise<unknown>;
   onGenerate: (card: HubCard, reason?: string) => Promise<unknown>;
   onUploaded: (filingId: string, reference: string) => Promise<unknown>;
   onFiled: (filingId: string, confirmation: Confirmation) => Promise<unknown>;
@@ -94,6 +98,7 @@ function MonthTab(p: StatutoryHubScreenProps) {
   const [again, setAgain] = useState<HubCard | null>(null);
   const [uploading, setUploading] = useState<FilingRow | null>(null);
   const [filing, setFiling] = useState<FilingRow | null>(null);
+  const [depositing, setDepositing] = useState(false);
   const { busy, error, run } = useRun();
   if (!p.hub || !p.filings) return <Skeleton height={240} />;
   const fileOf = (c: HubCard) => p.filings!.find((f) => f.id === c.filingId) ?? null;
@@ -130,7 +135,8 @@ function MonthTab(p: StatutoryHubScreenProps) {
                 <td>{filingBadge(c.status)}</td>
                 <td>
                   <div className="yx-tim-row">
-                    {c.status === 'not_generated' && p.can.generate && (
+                    {c.status === 'not_generated' && Number(c.amount) === 0 && <span className="yx-tim-note">Nothing due</span>}
+                    {c.status === 'not_generated' && Number(c.amount) > 0 && p.can.generate && (
                       <Button size="sm" variant="primary" loading={busy === `g-${c.label}`} onClick={() => void run(`g-${c.label}`, () => p.onGenerate(c))}>
                         Make file
                       </Button>
@@ -169,12 +175,26 @@ function MonthTab(p: StatutoryHubScreenProps) {
             <td>
               <Badge tone={p.hub.tds.challanStatus === 'deposited' ? 'success' : 'neutral'}>{p.hub.tds.challanStatus === 'deposited' ? 'Deposited' : p.hub.tds.challanStatus === 'prepared' ? 'Challan prepared' : 'Not deposited'}</Badge>
             </td>
-            <td />
+            <td>
+              <div className="yx-tim-row">
+                {p.can.challan && p.onPrepareChallan && p.hub.tds.challanStatus === 'not_prepared' && Number(p.hub.tds.amount) > 0 && (
+                  <Button size="sm" variant="primary" loading={busy === 'challan'} onClick={() => void run('challan', p.onPrepareChallan!)}>
+                    Prepare challan
+                  </Button>
+                )}
+                {p.can.challan && p.challan && p.challan.status !== 'deposited' && (
+                  <Button size="sm" onClick={() => setDepositing(true)}>
+                    Record deposit
+                  </Button>
+                )}
+              </div>
+            </td>
           </tr>
         </tbody>
       </table>
       {again && <ReasonDrawer title={`Make the ${again.label} file again?`} subtitle="The earlier file is kept and marked replaced." label="Why" confirm="Make file" onClose={() => setAgain(null)} onSave={(reason) => p.onGenerate(again, reason)} />}
       {uploading && <ReferenceDrawer onClose={() => setUploading(null)} onSave={(ref) => p.onUploaded(uploading.id, ref)} />}
+      {depositing && p.challan && p.onDeposit && <DepositDrawer challan={p.challan} onClose={() => setDepositing(false)} onSave={(d) => p.onDeposit!(p.challan!.id, d)} />}
       {filing && (
         <IrreversibleSheet
           open
@@ -242,6 +262,63 @@ function ReferenceDrawer({ onClose, onSave }: { onClose: () => void; onSave: (re
         )}
         <FormField id="up-ref" label="Portal reference" required error={save.errorOf('up-ref')}>
           <TextField value={ref} onChange={setRef} />
+        </FormField>
+      </div>
+    </Drawer>
+  );
+}
+
+function DepositDrawer({ challan, onClose, onSave }: { challan: { tds: string; interest: string }; onClose: () => void; onSave: (d: { challanNo: string; bsrCode: string; depositDate: string }) => Promise<unknown> }) {
+  const [challanNo, setChallanNo] = useState('');
+  const [bsrCode, setBsr] = useState('');
+  const [depositDate, setDate] = useState('');
+  const { busy, error, run } = useRun();
+  const errors = [
+    ...(!/^\d{7}$/.test(bsrCode) ? [{ fieldId: 'dp-bsr', message: 'The BSR code is 7 digits.' }] : []),
+    ...(!/^\d{5}$/.test(challanNo) ? [{ fieldId: 'dp-no', message: 'The challan serial number is 5 digits.' }] : []),
+    ...(!/^\d{4}-\d{2}-\d{2}$/.test(depositDate) ? [{ fieldId: 'dp-date', message: 'Choose the deposit date.' }] : []),
+  ];
+  const save = useSaveErrors(errors);
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Record the TDS deposit"
+      subtitle={`TDS ${rupees(challan.tds)}${Number(challan.interest) ? ` and interest ${rupees(challan.interest)}` : ''}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            loading={busy === 'save'}
+            onClick={() => {
+              if (errors.length) return save.reveal();
+              void run('save', async () => {
+                await onSave({ challanNo, bsrCode, depositDate });
+                onClose();
+              });
+            }}
+          >
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-tim-form">
+        <ErrorSummary errors={save.shownErrors} />
+        {error && (
+          <InlineAlert tone="danger" title="Not saved">
+            {error}
+          </InlineAlert>
+        )}
+        <FormField id="dp-bsr" label="BSR code of the bank" required error={save.errorOf('dp-bsr')}>
+          <TextField value={bsrCode} onChange={setBsr} inputMode="numeric" />
+        </FormField>
+        <FormField id="dp-no" label="Challan serial number" required error={save.errorOf('dp-no')}>
+          <TextField value={challanNo} onChange={setChallanNo} inputMode="numeric" />
+        </FormField>
+        <FormField id="dp-date" label="Deposit date" required error={save.errorOf('dp-date')}>
+          <TextField type="date" value={depositDate} onChange={setDate} />
         </FormField>
       </div>
     </Drawer>

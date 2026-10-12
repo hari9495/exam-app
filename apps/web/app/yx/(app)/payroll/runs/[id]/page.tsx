@@ -31,6 +31,10 @@ export default function YxPayRunPage() {
     const t = setInterval(() => void Promise.all([run.refetch(), progress.refetch()]), 2000);
     return () => clearInterval(t);
   }, [calculating]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Each new status (calculated, approved, paid) brings new payslips, checks and files: read them again.
+  useEffect(() => {
+    void Promise.all([payslips.refetch(), variances.refetch(), readiness.refetch(), people.refetch()]);
+  }, [run.data?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <PayRunScreen
       state={payState(run)}

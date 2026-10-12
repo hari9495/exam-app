@@ -46,6 +46,9 @@ const PAY_APPROVER_5A = ['payroll.period.view', 'payroll.period.reopen', 'payrol
 
 const DESK_AGENT = ['desk.ticket.view', 'desk.ticket.work', 'desk.ticket.note', 'desk.ticket.export', 'desk.task.work', 'desk.kb.view_internal', 'desk.kb.author', 'desk.chat.work', 'desk.hr_summary.view', 'desk.ticket.move'];
 
+/** The compliance owner's keys (the demo's compliance@ login uses them). */
+export const COMPLIANCE_OWNER_5J = ['org:view', 'org.structure.view', 'payroll.period.view', 'payroll.file.view', 'payroll.document.view', 'audit.view', 'payroll.statutory.setup', ...COMPLIANCE_5F];
+
 export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
   {
     key: 'hr_admin',

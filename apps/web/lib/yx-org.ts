@@ -116,6 +116,7 @@ export const YX_KEYS = [
   'statutory.filing.view',
   'statutory.filing.generate',
   'statutory.filing.mark_filed',
+  'statutory.challan.manage',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

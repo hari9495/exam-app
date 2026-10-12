@@ -24,6 +24,7 @@ export default function YxPayStatutoryPage() {
   const hub = useApi<StatutoryHub>(q ? `/statutory/hub?${q}&month=${month}` : null);
   const filings = useApi<FilingRow[]>(q ? `/statutory/filings?${q}&month=${month}` : null);
   const returns = useApi<TdsReturnRow[]>(q ? `/statutory/tds-returns?${q}` : null);
+  const challans = useApi<{ id: string; month: string; status: string; tds: string; interest: string }[]>(q ? `/statutory/challans?${q}` : null);
   const write = useApiWrite();
   const payWrite = usePayWrite();
   const download = usePayDownload();
@@ -39,7 +40,10 @@ export default function YxPayStatutoryPage() {
       hub={hub.data ?? null}
       filings={filings.data ?? null}
       returns={returns.data ?? (returns.isError ? [] : null)}
-      can={{ generate: perms.has('statutory.filing.generate'), markFiled: perms.has('statutory.filing.mark_filed') }}
+      can={{ generate: perms.has('statutory.filing.generate'), markFiled: perms.has('statutory.filing.mark_filed'), challan: perms.has('statutory.challan.manage') }}
+      challan={challans.data?.find((c) => c.month === month) ?? null}
+      onPrepareChallan={() => write('/statutory/challans', { entityId, month })}
+      onDeposit={(id, d) => write(`/statutory/challans/${encodeURIComponent(id)}`, d, 'PATCH')}
       onGenerate={(c, reason) => write('/statutory/filings', { legalEntityId: entityId, statute: c.statute, ...(c.state ? { state: c.state } : {}), month, ...(reason ? { reason } : {}) })}
       onUploaded={(id, reference) => write(`/statutory/filings/${encodeURIComponent(id)}/uploaded`, { reference })}
       onFiled={(id, confirmation) => write(`/statutory/filings/${encodeURIComponent(id)}/filed`, { confirmation })}
