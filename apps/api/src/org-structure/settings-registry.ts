@@ -44,6 +44,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'exit.notice.probation': { label: 'Notice period during probation', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: true, values: ['0d', '7d', '15d', '30d', '45d', '60d', '90d', '1m', '2m', '3m'], default: '15d' },
   'exit.notice.confirmed': { label: 'Notice period once confirmed', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: true, values: ['0d', '7d', '15d', '30d', '45d', '60d', '90d', '1m', '2m', '3m'], default: '30d' },
   // P05 Q6 (decided): alumni read their own letters and documents for this many years after the last day.
+  // M05 §13 (expenses E1): capture supplier GSTIN, invoice and tax split on GST-eligible lines, per entity (off by default, Q5).
+  'expense.gst.capture': { label: 'Expenses: capture GST for input credit', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
   'alumni.access_years': { label: 'Alumni can read their documents for (years after leaving)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10'], default: '7' },
   // M01 YX-LC-18 (lifecycle 6e): the rehire policy. Starter template "fresh start, same record, code and UAN"; HR may
   // change any option for one rehire with a reason.

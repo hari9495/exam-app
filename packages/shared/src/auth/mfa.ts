@@ -98,6 +98,8 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'statutory.challan.manage',
   'statutory.register.sign',
   'statutory.advisory.review',
+  // M05 expenses E1: categories, limits and rates decide what people are paid back (M05-BUILD-DESIGN §16.3).
+  'expense.policy.manage',
 ];
 
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).

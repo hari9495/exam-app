@@ -93,6 +93,14 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     permissions: ['org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.release'],
   },
   {
+    key: 'expense_setup',
+    name: 'Expense set-up',
+    typicalScope: 'tenant',
+    summary: 'Expense categories, city tiers, policies and limits, mileage and per-diem rates, and GST registrations (M05).',
+    cannot: 'See, approve or pay anyone’s claims.',
+    permissions: ['expense.policy.manage'],
+  },
+  {
     key: 'compliance_owner',
     name: 'Compliance Owner',
     typicalScope: 'legal_entity',

@@ -7647,3 +7647,127 @@ model AdvisoryReview {
   @@unique([organizationId, legalEntityId, advisoryCode, ruleVersion], map: "advisory_reviews_key")
   @@map("advisory_reviews")
 }
+
+// ---- Expenses batch E1 (M05-BUILD-DESIGN §5.2): categories, tiers, dated policies and rules, rates, GST registrations.
+// Checks, EXCLUDE constraints and RLS live in the migration SQL (20261105000000_expenses_e1).
+
+model ExpenseCategory {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  code             String   @db.VarChar(30)
+  name             String   @db.VarChar(80)
+  kind             String   @db.VarChar(18)
+  receiptAbove     Decimal? @map("receipt_above") @db.Decimal(14, 2)
+  gstEligible      Boolean  @default(false) @map("gst_eligible")
+  itcBlockedReason String?  @map("itc_blocked_reason") @db.VarChar(40)
+  taxable          String   @default("never") @db.VarChar(12)
+  ledgerCode       String?  @map("ledger_code") @db.VarChar(40)
+  active           Boolean  @default(true)
+  starterKey       String?  @map("starter_key") @db.VarChar(40)
+  version          Int      @default(1)
+  createdBy        String?  @map("created_by") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, code], map: "expense_categories_code_key")
+  @@map("expense_categories")
+}
+
+model CityTier {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(60)
+  rank           Int
+  country        String?  @db.Char(2)
+  cities         String[] @default([])
+  active         Boolean  @default(true)
+  starterKey     String?  @map("starter_key") @db.VarChar(40)
+  version        Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, name], map: "city_tiers_name_key")
+  @@map("city_tiers")
+}
+
+model ExpensePolicy {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String    @db.VarChar(100)
+  appliesIf      Json?     @map("applies_if")
+  priority       Int       @default(100)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  status         String    @default("active") @db.VarChar(8)
+  starterKey     String?   @map("starter_key") @db.VarChar(40)
+  version        Int       @default(1)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("expense_policies")
+}
+
+model ExpensePolicyRule {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  policyId           String   @map("policy_id") @db.Uuid
+  categoryCode       String   @map("category_code") @db.VarChar(30)
+  tierId             String?  @map("tier_id") @db.Uuid
+  perLine            Decimal? @map("per_line") @db.Decimal(14, 2)
+  perDay             Decimal? @map("per_day") @db.Decimal(14, 2)
+  perTrip            Decimal? @map("per_trip") @db.Decimal(14, 2)
+  perMonth           Decimal? @map("per_month") @db.Decimal(14, 2)
+  currency           String   @db.Char(3)
+  overLimit          String   @default("justify_and_approve") @map("over_limit") @db.VarChar(20)
+  needsJustification Boolean  @default(false) @map("needs_justification")
+
+  @@map("expense_policy_rules")
+}
+
+model MileageRate {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  vehicle        String    @db.VarChar(16)
+  ratePerKm      Decimal   @map("rate_per_km") @db.Decimal(10, 2)
+  currency       String    @db.Char(3)
+  monthlyKmCap   Int?      @map("monthly_km_cap")
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("mileage_rates")
+}
+
+model PerDiemRate {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  tierId         String?   @map("tier_id") @db.Uuid
+  country        String?   @db.Char(2)
+  ratePerDay     Decimal   @map("rate_per_day") @db.Decimal(14, 2)
+  currency       String    @db.Char(3)
+  partialDayRule String    @default("full") @map("partial_day_rule") @db.VarChar(18)
+  mealsDeduction Json      @default("{}") @map("meals_deduction")
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("per_diem_rates")
+}
+
+model EntityGstRegistration {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  state          String    @db.Char(2)
+  gstin          String    @db.VarChar(15)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, gstin], map: "entity_gst_registrations_gstin_key")
+  @@map("entity_gst_registrations")
+}
