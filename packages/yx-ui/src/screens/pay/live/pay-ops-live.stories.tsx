@@ -17,7 +17,7 @@ export const Payments: S = {
     <RunPaymentsScreen
       state="ready"
       run={{ ...RUN, status: 'approved' }}
-      payslips={PAYSLIPS.map((s, i) => ({ ...s, status: 'approved', paymentStatus: i ? 'released' : 'failed' }))}
+      payslips={PAYSLIPS.map((s, i) => ({ ...s, status: 'approved', paymentStatus: i ? 'sent' : 'failed' }))}
       disbursements={DISBURSEMENTS}
       nameOf={nameOf}
       can={{ record: true }}

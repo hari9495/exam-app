@@ -40,6 +40,20 @@ describe('payroll operations screens', () => {
     await waitFor(() => expect(onResults).toHaveBeenCalledWith([{ payslipId: 's1', status: 'failed', reason: 'Account closed' }]));
   });
 
+  it('payments: a paid result entered by hand says how it is known; the API’s row problems are shown', async () => {
+    const onResults = vi.fn(async () => {
+      throw Object.assign(new Error('Nothing was recorded. Fix these rows first.'), { body: { problems: ['Row 1: the payslip is pending, not waiting for a bank result.'] } });
+    });
+    render(<RunPaymentsScreen state="ready" run={{ ...RUN, status: 'approved' }} payslips={PAYSLIPS} disbursements={[]} nameOf={nameOf} can={{ record: true }} onBack={vi.fn()} onResults={onResults} onUploadResults={vi.fn(async () => ({ recorded: 0 }))} onDisburse={fn()} />);
+    await ue.click(screen.getByRole('button', { name: 'Record the bank result for Arjun Kulkarni' }));
+    await ue.click(screen.getByRole('button', { name: 'Record' }));
+    expect(onResults).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /How you know/ }), 'Seen on the statement');
+    await ue.click(screen.getByRole('button', { name: 'Record' }));
+    expect(await screen.findByText(/not waiting for a bank result/)).toBeInTheDocument();
+    expect(onResults).toHaveBeenCalledWith([{ payslipId: 's1', status: 'paid', reason: 'Seen on the statement' }]);
+  });
+
   it('cash and cheque: a cheque needs its number; cash records the day', async () => {
     const onDisburse = fn();
     render(<RunPaymentsScreen state="ready" run={{ ...RUN, status: 'approved' }} payslips={PAYSLIPS} disbursements={DISBURSEMENTS} nameOf={nameOf} can={{ record: true }} onBack={vi.fn()} onResults={fn()} onUploadResults={vi.fn(async () => ({ recorded: 0 }))} onDisburse={onDisburse} />);
@@ -122,6 +136,13 @@ describe('payroll operations screens', () => {
     await ue.click(screen.getByRole('radio', { name: /Delhi, Mumbai/ }));
     await ue.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(onDeclare).toHaveBeenCalledWith({ subjectKey: 'hra', amount: '180000', rentFrom: '2026-04', rentTo: '2027-03', metro: true }));
+  });
+
+  it('declarations: before the proof window opens there is no proof upload, and the day is given', () => {
+    render(<MyDeclarationsScreen state="ready" data={{ ...DECLARATIONS, proofWindowOpens: '2099-01-01', lines: [{ ...DECLARATIONS.lines[1], proofStatus: 'none', proofs: [], comment: null }] }} certificates={[]} onDeclare={fn()} onProof={fn()} onPartA={fn()} />);
+    expect(screen.getByText(/Proofs open on/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Add a proof/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Change/ })).toBeInTheDocument();
   });
 
   it('proof checking: a part acceptance is below what was declared; turning down needs a reason', async () => {

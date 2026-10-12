@@ -321,6 +321,7 @@ export class TaxService {
       const labels = await tx.statutoryLawCrosswalk.findMany({ where: { lawVersion: ws.lawVersion, subjectKey: { in: [...keys] } } });
       return {
         taxYear: ws.taxYear,
+        proofWindowOpens: dates.proofWindowOpens,
         proofCutoff: dates.proofCutoff,
         subjects: [...keys].map((k) => ({ key: k, section: labels.find((x) => x.subjectKey === k)?.section ?? null })),
         form: ws.lawVersion === 'IT-2025' ? 'Form 12BB successor (verify number)' : 'Form 12BB',

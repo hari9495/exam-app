@@ -107,6 +107,8 @@ export interface DeclarationLine {
 export interface MyDeclarations {
   taxYear: string;
   form: string;
+  /** Proofs are sent from this day to the cut-off. */
+  proofWindowOpens: string;
   proofCutoff: string;
   subjects: { key: string; section: string | null }[];
   lines: DeclarationLine[];

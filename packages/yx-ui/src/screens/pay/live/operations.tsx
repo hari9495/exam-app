@@ -48,6 +48,17 @@ const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
 const MONTH = /^\d{4}-\d{2}$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Bank results are all or nothing: the API's row problems are shown with its message. */
+const withProblems = async <T,>(fn: () => Promise<T>): Promise<T> => {
+  try {
+    return await fn();
+  } catch (e) {
+    const problems = (e as { body?: { problems?: unknown } }).body?.problems;
+    if (e instanceof Error && Array.isArray(problems) && problems.length) throw new Error(`${e.message} ${problems.slice(0, 10).join(' ')}`);
+    throw e;
+  }
+};
+
 function Failed({ error }: { error: string | null }) {
   return error ? (
     <InlineAlert tone="danger" title="This didn't go through">
@@ -121,7 +132,9 @@ function ConfirmDrawer({ title, children, confirm, onClose, onConfirm }: { title
 
 const PAYMENT: Record<string, { label: string; tone: BadgeTone }> = {
   pending: { label: 'Not paid yet', tone: 'neutral' },
-  released: { label: 'Sent to the bank', tone: 'info' },
+  sent: { label: 'Sent to the bank', tone: 'info' },
+  held: { label: 'Held', tone: 'warning' },
+  cash: { label: 'Cash or cheque', tone: 'neutral' },
   paid: { label: 'Paid', tone: 'success' },
   failed: { label: 'Failed', tone: 'danger' },
   returned: { label: 'Came back', tone: 'danger' },
@@ -178,7 +191,7 @@ export function RunPaymentsScreen(p: RunPaymentsScreenProps) {
         <TabsContent value="bank">
           {paid && p.can.record && (
             <div className="yx-tim-row">
-              <FileButton label="Upload the bank's results" accept=".csv,text/csv" ariaLabel="Upload the bank's results file (CSV)" loading={busy === 'up'} onFile={(f) => void run('up', async () => setUploaded((await p.onUploadResults(f)).recorded))} />
+              <FileButton label="Upload the bank's results" accept=".csv,text/csv" ariaLabel="Upload the bank's results file (CSV)" loading={busy === 'up'} onFile={(f) => void run('up', async () => setUploaded((await withProblems(() => p.onUploadResults(f))).recorded))} />
               <p className="yx-tim-note">A CSV with the columns employee_code, status (paid, failed or returned), reference and reason.</p>
             </div>
           )}
@@ -254,7 +267,7 @@ export function RunPaymentsScreen(p: RunPaymentsScreenProps) {
           )}
         </TabsContent>
       </Tabs>
-      {result && <ResultDrawer who={p.nameOf(result.employeeId)} onClose={() => setResult(null)} onSave={(r) => p.onResults([{ payslipId: result.id, ...r }])} />}
+      {result && <ResultDrawer who={p.nameOf(result.employeeId)} onClose={() => setResult(null)} onSave={(r) => withProblems(() => p.onResults([{ payslipId: result.id, ...r }]))} />}
       {paying && <DisburseDrawer d={paying} who={p.nameOf(paying.employeeId)} onClose={() => setPaying(null)} onSave={p.onDisburse} />}
     </LivePage>
   );
@@ -266,10 +279,10 @@ function ResultDrawer({ who, onClose, onSave }: { who: string; onClose: () => vo
   const [reason, setReason] = useState('');
   const errors: FormErrorItem[] = [
     ...(ref.trim() && !/^[A-Za-z0-9/-]{1,60}$/.test(ref.trim()) ? [{ fieldId: 'pr-ref', message: 'A bank reference is letters, digits, / and -.' }] : []),
-    ...(status !== 'paid' && reason.trim().length < 3 ? [{ fieldId: 'pr-why', message: 'Say what the bank gave as the reason.' }] : []),
+    ...(reason.trim().length < 3 ? [{ fieldId: 'pr-why', message: status === 'paid' ? 'Say how you know it was paid.' : 'Say what the bank gave as the reason.' }] : []),
   ];
   return (
-    <FormDrawer title={`Bank result for ${who}`} confirm="Record" errors={errors} onClose={onClose} onSave={() => onSave({ status, ...(ref.trim() ? { bankReference: ref.trim() } : {}), ...(status !== 'paid' ? { reason: reason.trim() } : {}) })}>
+    <FormDrawer title={`Bank result for ${who}`} confirm="Record" errors={errors} onClose={onClose} onSave={() => onSave({ status, ...(ref.trim() ? { bankReference: ref.trim() } : {}), reason: reason.trim() })}>
       {(errorOf) => (
         <>
           <FormField id="pr-status" label="Result">
@@ -287,11 +300,9 @@ function ResultDrawer({ who, onClose, onSave }: { who: string; onClose: () => vo
           <FormField id="pr-ref" label="Bank reference" optional error={errorOf('pr-ref')}>
             <TextField value={ref} onChange={setRef} maxLength={60} />
           </FormField>
-          {status !== 'paid' && (
-            <FormField id="pr-why" label="Reason from the bank" required error={errorOf('pr-why')}>
-              <TextArea value={reason} onChange={setReason} rows={2} maxLength={300} />
-            </FormField>
-          )}
+          <FormField id="pr-why" label={status === 'paid' ? 'How you know' : 'Reason from the bank'} required helper={status === 'paid' ? 'For example, seen on the bank statement of 3 October.' : undefined} error={errorOf('pr-why')}>
+            <TextArea value={reason} onChange={setReason} rows={2} maxLength={300} />
+          </FormField>
         </>
       )}
     </FormDrawer>
@@ -852,6 +863,7 @@ export function MyDeclarationsScreen(p: MyDeclarationsScreenProps) {
   const d = p.data;
   const today = new Date().toISOString().slice(0, 10);
   const open = d ? today <= d.proofCutoff : false;
+  const proofs = d ? today >= d.proofWindowOpens && open : false;
   const locked = (l: DeclarationLine) => ['approved', 'partly'].includes(l.proofStatus);
   return (
     <LivePage
@@ -863,6 +875,7 @@ export function MyDeclarationsScreen(p: MyDeclarationsScreenProps) {
       actions={open ? <Button variant="primary" onClick={() => setEditing('new')}>Declare</Button> : undefined}
     >
       <Failed error={error} />
+      {d && open && !proofs && <InlineAlert tone="info" title={`Proofs open on ${dateText(d.proofWindowOpens)}`}>Declare now; send the proofs from then until {dateText(d.proofCutoff)}.</InlineAlert>}
       {d && !open && <InlineAlert tone="info" title="Declarations are closed">They closed on {dateText(d.proofCutoff)}. Anything else is claimed in your own tax return.</InlineAlert>}
       {d && !d.lines.length && <EmptyState title="Nothing declared" description="Declare rent, investments and insurance to lower the tax taken from your pay." compact />}
       {d && d.lines.length > 0 && (
@@ -893,7 +906,9 @@ export function MyDeclarationsScreen(p: MyDeclarationsScreenProps) {
                 <td>
                   {open && !locked(l) && (
                     <div className="yx-tim-row">
-                      <FileButton label="Add proof" accept=".pdf,.jpg,.jpeg,.png" ariaLabel={`Add a proof for ${subjectText(l.subjectKey, l.section)}`} loading={busy === `p-${l.id}`} onFile={(f) => void run(`p-${l.id}`, () => p.onProof(l.id, f))} />
+                      {proofs && (
+                        <FileButton label="Add proof" accept=".pdf,.jpg,.jpeg,.png" ariaLabel={`Add a proof for ${subjectText(l.subjectKey, l.section)}`} loading={busy === `p-${l.id}`} onFile={(f) => void run(`p-${l.id}`, () => p.onProof(l.id, f))} />
+                      )}
                       <Button size="sm" onClick={() => setEditing(l)} aria-label={`Change ${subjectText(l.subjectKey, l.section)}`}>
                         Change
                       </Button>
@@ -1140,6 +1155,7 @@ const REGISTER: Record<string, { label: string; tone: BadgeTone }> = {
   generated: { label: 'Made', tone: 'info' },
   frozen: { label: 'Frozen', tone: 'warning' },
   signed: { label: 'Signed', tone: 'success' },
+  superseded: { label: 'Replaced', tone: 'neutral' },
 };
 const registerName = (key: string) => key.replace(/[_-]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 
@@ -1304,7 +1320,7 @@ export function AdvisoriesScreen(p: AdvisoriesScreenProps) {
 const taxYears = () => {
   const now = new Date();
   const y = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-  return [y - 1, y - 2, y].map((s) => `${s}-${String((s + 1) % 100).padStart(2, '0')}`);
+  return [y - 2, y - 1, y].map((s) => `${s}-${String((s + 1) % 100).padStart(2, '0')}`);
 };
 const formText = (f: string) => (f === 'form130' ? 'Form 130' : 'Form 16');
 
