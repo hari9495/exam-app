@@ -45,6 +45,8 @@ export interface TaxInputs {
   otherIncome: string;
   /** Perquisites for the tax year (Form 12BA). */
   perquisites: string;
+  /** Taxable salary paid outside payroll this tax year, such as taxable expense reimbursements paid by transfer (M05). */
+  paidOutside?: string;
   /** Whole months after this one, to the tax year's end or the last day of work. */
   futureMonths: number;
   /** One future month at the current pay (professional tax: this month's when not given). */
@@ -96,7 +98,7 @@ export function projectTax(t: TaxInputs, rules: RuleSet[], m: ThisMonth): TaxPro
   const notes: string[] = [];
   const n = t.futureMonths;
 
-  const salary = sum([t.past.gross, m.gross, D(t.future.gross).mul(n)]);
+  const salary = sum([t.past.gross, m.gross, D(t.future.gross).mul(n), t.paidOutside ?? '0']);
   const total = sum([salary, t.previous.gross, t.perquisites, t.otherIncome]);
   const standard = Prisma.Decimal.min(D(regime.standardDeduction), salary.add(t.previous.gross));
 

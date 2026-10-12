@@ -55,6 +55,18 @@ export const FNF_COMPONENTS: StarterComponent[] = [
   { code: 'reskilling_fund', name: 'Worker re-skilling fund (employer)', kind: 'employer', taxable: false, prorated: false, onPayslip: false, inCtc: false, rounding: 'none' },
 ];
 
+/**
+ * Components other modules pay through payroll: expense reimbursements (M05 §22.1 change 1; D3: a reimbursement is
+ * outside gross pay and every wage base, inside net pay) and the performance bonus (M06 PM7: taxable, outside the
+ * statutory bonus and wage bases unless the company changes its flags). Installed with the starter set, and added when
+ * a module first pays one (PayrollIntakeService).
+ */
+export const MODULE_COMPONENTS: StarterComponent[] = [
+  { code: 'exp_reimb', name: 'Expense reimbursement', kind: 'reimbursement', taxable: false, prorated: false, inCtc: false },
+  { code: 'exp_taxable', name: 'Taxable expense reimbursement', kind: 'earning', prorated: false, inCtc: false },
+  { code: 'perf_bonus', name: 'Performance bonus', kind: 'earning', ptWage: true, codeExclusion: true, prorated: false, inCtc: false },
+];
+
 /** The starter template: an editable split of the CTC; Special allowance balances it. */
 export const STARTER_TEMPLATE = {
   name: 'Standard monthly (India starter)',

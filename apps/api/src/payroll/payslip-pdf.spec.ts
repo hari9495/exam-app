@@ -35,6 +35,13 @@ describe('payslip PDF (PAY-4.04)', () => {
     });
   });
 
+  it('M05 D3: reimbursements have their own line, apart from earnings', () => {
+    const v = payslipValues({ ...slip, net: '59500.00', lines: [...slip.lines, { code: 'exp_reimb', name: 'Expense reimbursement', kind: 'reimbursement', amount: '1000.00', quantity: null }] });
+    expect(v.reimbursements).toBe('Expense reimbursement 1,000.00');
+    expect(v.earnings).toBe('Basic 24,200.00 · HRA 12,100.00 · Special 24,200.00');
+    expect(payslipValues(slip).reimbursements).toBe('—');
+  });
+
   it('renders a PDF that names the result hash; an emailed copy is encrypted', async () => {
     const blocks = [{ key: 'netPay', shown: true }];
     const plain = await renderPayslipPdf(blocks, { netPay: 'Net wages paid' }, null, payslipValues(slip), {

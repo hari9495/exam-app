@@ -8,7 +8,7 @@ import { Citation, RuleSet, cite, StatutoryError, bonus, codeWage, deductionCap,
 // used (§3.5), and golden and property tests call the same function. Money is Decimal; every line explains itself and
 // cites the rule it came from. TDS (batch 5e, §8.5) comes from the same pure tax function as the employee's tax sheet.
 
-export const ENGINE_VERSION = '5g.1';
+export const ENGINE_VERSION = '5k.1';
 const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
 const ZERO = D(0);
 const r2 = (x: Prisma.Decimal) => x.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
@@ -193,7 +193,7 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   for (const o of s.oneTime) {
     const c = comps.get(o.code);
     const amount = o.days === null ? D(o.amount) : D(o.amount).mul(o.days).div(monthDays);
-    add({ code: o.code, name: c?.name ?? o.code, kind: c?.kind === 'deduction' ? 'deduction' : c?.kind === 'employer' ? 'employer' : 'earning', segmentNo: 0, amount: r2(amount), explanation: o.label ?? (o.days === null ? 'One-time pay for this month.' : `Recurring pay ${rupees(o.amount)} for ${o.days} of ${monthDays} days (its last month).`), sourceRef: o.id });
+    add({ code: o.code, name: c?.name ?? o.code, kind: c?.kind === 'deduction' || c?.kind === 'employer' || c?.kind === 'reimbursement' ? c.kind : 'earning', segmentNo: 0, amount: r2(amount), explanation: o.label ?? (o.days === null ? 'One-time pay for this month.' : `Recurring pay ${rupees(o.amount)} for ${o.days} of ${monthDays} days (its last month).`), sourceRef: o.id });
   }
 
   // 3. Wage bases from flags; the Code wage add-back (YX-PAY-47).
@@ -374,6 +374,8 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
     add({ code: 'negative_net', name: 'Carried to next month', kind: 'info', segmentNo: 0, amount: carryForward, explanation: `Deductions exceed pay by ${rupees(carryForward)}; net is zero and the rest is recovered later.` });
     net = ZERO;
   }
+  // D3 (M05 §22.1 change 2): reimbursements are paid with the salary, after recoveries, never taken by them.
+  net = net.add(lines.filter((l) => l.kind === 'reimbursement').reduce((t, l) => t.add(l.amount), ZERO));
   if (s.options.netRounding === 'rupee') {
     const rounded = net.toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP);
     if (!rounded.eq(net)) add({ code: 'net_rounding', name: 'Net pay rounding', kind: 'info', segmentNo: 0, amount: rounded.sub(net), explanation: 'Net pay rounded to the rupee (company rule).' });

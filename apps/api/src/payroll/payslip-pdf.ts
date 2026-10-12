@@ -49,6 +49,7 @@ export function payslipValues(d: SlipData): Record<string, string> {
     paidDays: days ? String(days) : '—',
     earnings: list('earning'),
     deductions: list('deduction'),
+    reimbursements: list('reimbursement'),
     grossPay: inr(d.gross),
     netPay: inr(d.net),
     bankAccount: d.bankLast4 ? `•••• ${d.bankLast4}` : '—',
