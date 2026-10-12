@@ -65,6 +65,9 @@ describe('MFA, step-up and recovery (P12 YX-IAM-01/02/03/11)', () => {
 
   // TOTP: each time step is accepted once per authenticator, so hand out a new one each time
   // (current step, then the next; wait for the clock when both are used).
+  // A TOTP code is accepted once per 30 s step (replay protection), so totp() may wait out a whole step for a fresh
+  // one: tests here get a timeout that covers that wait on top of their own work.
+  jest.setTimeout(75_000);
   const lastStep = new Map<string, number>();
   async function totp(secret: string): Promise<string> {
     for (;;) {
