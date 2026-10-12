@@ -455,7 +455,7 @@ function ReturnsTab(p: StatutoryHubScreenProps) {
 }
 
 /** A button that opens the file chooser (a real button, so it looks and behaves like one). */
-function FileButton({ label, accept, ariaLabel, loading, onFile }: { label: string; accept: string; ariaLabel: string; loading?: boolean; onFile: (f: File) => void }) {
+export function FileButton({ label, accept, ariaLabel, loading, onFile }: { label: string; accept: string; ariaLabel: string; loading?: boolean; onFile: (f: File) => void }) {
   const input = useRef<HTMLInputElement>(null);
   return (
     <>
