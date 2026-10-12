@@ -4,8 +4,8 @@ import { signIn } from './fixtures/sign-in';
 import { stepUp } from './fixtures/time-db';
 
 // Expenses batch E3 on the seeded Kaveri Foods demo (XP-3.08): the company pays claims by bank transfer. Murugan's
-// mileage claim is approved by Kavya; the admin (finance) puts it in a bank file; the second admin, someone else,
-// releases it with step-up and the phrase; the admin records the bank's result; Murugan sees it paid, and a paid
+// mileage claim is approved by Kavya; the admin (finance) puts it in a bank file; Neha (Finance Approver), someone
+// else, releases it with step-up and the phrase; the admin records the bank's result; Murugan sees it paid, and a paid
 // line can no longer be changed (YX-EXP-12). Each run makes its own claim.
 //
 // Needs the API and web against a seeded database (locally: API on 3801, web on 3800, E2E_DATABASE_URL for step-up).
@@ -53,11 +53,11 @@ test('finance pays an approved claim by bank file, released by someone else; the
   await admin.getByRole('tab', { name: /Bank files/ }).click();
   await expect(admin.getByText('Someone else releases it.').first()).toBeVisible();
 
-  // The second admin, someone else, releases it with step-up and the phrase.
+  // Neha (Finance Approver), someone else, releases it with step-up and the phrase.
   const neha = await (await browser.newContext()).newPage();
-  await signIn(neha, 'admin2@demo-org.test', 'DevAdmin123!');
+  await signIn(neha, 'finance@demo-org.test', PASSWORD);
   await neha.waitForURL((url) => !url.pathname.includes('sign-in'));
-  await stepUp('admin2@demo-org.test');
+  await stepUp('finance@demo-org.test');
   await neha.goto('/yx/expenses/to-pay');
   await neha.getByRole('tab', { name: /Bank files/ }).click();
   await neha.getByRole('button', { name: 'Release' }).first().click();
