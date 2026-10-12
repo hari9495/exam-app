@@ -242,6 +242,18 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
       "payroll.run.view"
     ],
     [
+      "org.structure.view",
+      "payroll.bankfile.release",
+      "payroll.cost_rate.view",
+      "payroll.file.release",
+      "payroll.file.view",
+      "payroll.journal.export",
+      "payroll.period.reopen.approve",
+      "payroll.period.view",
+      "payroll.run.approve",
+      "payroll.run.view"
+    ],
+    [
       "expense.finance.review",
       "expense.payout.manage",
       "org.structure.view",
@@ -257,18 +269,6 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
     ],
     [
       "expense.finance.review",
-      "org.structure.view",
-      "payroll.bankfile.release",
-      "payroll.cost_rate.view",
-      "payroll.file.release",
-      "payroll.file.view",
-      "payroll.journal.export",
-      "payroll.period.reopen.approve",
-      "payroll.period.view",
-      "payroll.run.approve",
-      "payroll.run.view"
-    ],
-    [
       "org.structure.view",
       "payroll.bankfile.release",
       "payroll.cost_rate.view",
@@ -333,6 +333,8 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
       "org.settings.manage",
       "org.structure.view",
       "payroll.notice.waive",
+      "perf.goal.view",
+      "perf.review.view",
       "request.raise_on_behalf",
       "roster.manage"
     ],
@@ -368,6 +370,44 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
       "lifecycle.onboarding.view",
       "org.settings.manage",
       "org.structure.view",
+      "payroll.notice.waive",
+      "perf.goal.view",
+      "request.raise_on_behalf",
+      "roster.manage"
+    ],
+    [
+      "asset.view",
+      "attendance.lock",
+      "attendance.view",
+      "document.manage",
+      "document.view",
+      "employee.change.approve",
+      "employee.change.manage",
+      "employee.change.retro",
+      "employee.identity.manage",
+      "employee.identity.view",
+      "employee.personal.view",
+      "employee.profile.edit",
+      "employee.profile.view",
+      "expense.claim.view",
+      "leave.approve",
+      "leave.balance.adjust",
+      "leave.eligibility.override",
+      "leave.medical.view",
+      "leave.settings.manage",
+      "leave.view",
+      "letter.issue",
+      "letter.template.manage",
+      "lifecycle.bgv.manage",
+      "lifecycle.exit.confidential.view",
+      "lifecycle.exit.manage",
+      "lifecycle.exit.view",
+      "lifecycle.journey.template.manage",
+      "lifecycle.onboarding.manage",
+      "lifecycle.onboarding.view",
+      "org.settings.manage",
+      "org.structure.view",
+      "payroll.notice.waive",
       "request.raise_on_behalf",
       "roster.manage"
     ],
@@ -403,6 +443,41 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
       "org.settings.manage",
       "org.structure.view",
       "payroll.notice.waive",
+      "request.raise_on_behalf",
+      "roster.manage"
+    ],
+    [
+      "asset.view",
+      "attendance.lock",
+      "attendance.view",
+      "document.manage",
+      "document.view",
+      "employee.change.approve",
+      "employee.change.manage",
+      "employee.change.retro",
+      "employee.identity.manage",
+      "employee.identity.view",
+      "employee.personal.view",
+      "employee.profile.edit",
+      "employee.profile.view",
+      "expense.claim.view",
+      "leave.approve",
+      "leave.balance.adjust",
+      "leave.eligibility.override",
+      "leave.medical.view",
+      "leave.settings.manage",
+      "leave.view",
+      "letter.issue",
+      "letter.template.manage",
+      "lifecycle.bgv.manage",
+      "lifecycle.exit.confidential.view",
+      "lifecycle.exit.manage",
+      "lifecycle.exit.view",
+      "lifecycle.journey.template.manage",
+      "lifecycle.onboarding.manage",
+      "lifecycle.onboarding.view",
+      "org.settings.manage",
+      "org.structure.view",
       "request.raise_on_behalf",
       "roster.manage"
     ],
@@ -1083,6 +1158,20 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
       "payroll.document.view",
       "payroll.file.view",
       "payroll.period.view"
+    ]
+  ],
+  "performance_setup": [
+    [
+      "perf.cycle.manage",
+      "perf.goal.manage",
+      "perf.setup.manage"
+    ],
+    [
+      "perf.goal.manage",
+      "perf.setup.manage"
+    ],
+    [
+      "perf.setup.manage"
     ]
   ],
   "service_desk_admin": [
