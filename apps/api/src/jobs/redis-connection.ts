@@ -18,20 +18,19 @@ export function logBullErrors<T>(emitter: T, name: string): T {
   };
   const bull = emitter as unknown as Bull;
   bull.on('error', (e: Error) => log.error(`Queue ${name}: ${e?.message ?? e}`));
-  // close() strips every listener from BullMQ's internal connections, but one still connecting when the app
-  // stops rejects later, once the shared Redis connection is closed, and emits 'error' with nobody listening:
-  // an unhandled error. Keep a listener there after close; at shutdown that rejection is expected.
-  const close = bull.close.bind(bull);
-  bull.close = async (...args: unknown[]) => {
-    try {
-      await close(...args);
-    } finally {
-      for (const c of [bull.connection, bull.blockingConnection]) c?.on('error', (e: Error) => log.debug(`Queue ${name} after close: ${e?.message ?? e}`));
-    }
-  };
+  // close() strips every listener from BullMQ's internal connections (removeAllListeners), but one still
+  // connecting when the app stops rejects later, once the shared Redis connection is closed, and emits 'error'
+  // with nobody listening: an unhandled error. Whatever strips them, an 'error' listener stays; at shutdown
+  // that rejection is expected.
+  for (const c of [bull.connection, bull.blockingConnection]) {
+    if (!c) continue;
+    const strip = c.removeAllListeners.bind(c);
+    const afterClose = (e: Error) => log.debug(`Queue ${name} after close: ${e?.message ?? e}`);
+    c.removeAllListeners = (...args: Parameters<NodeJS.EventEmitter['removeAllListeners']>) => strip(...args).on('error', afterClose);
+  }
   // Queues provided by a factory have no owner to close them: Nest runs this hook on factory values, before
   // the shared connection's onApplicationShutdown. For queues a service owns, a second close is a no-op.
-  bull.onModuleDestroy ??= () => bull.close();
+  if (typeof bull.close === 'function') bull.onModuleDestroy ??= () => bull.close();
   return emitter;
 }
 
