@@ -49,3 +49,32 @@ describe('batch 5i calculators', () => {
     expect(vrsSplit('800000', '500000', '200000').taxable.toFixed(2)).toBe('500000.00');
   });
 });
+
+describe('earned wage access (YX-PAY-40)', () => {
+  it('Rohan: ₹30,000 net, 12 of 30 days, 50 % → ₹6,000; earlier draws and dues come off first; the maximum holds', () => {
+    const { ewaAvailable } = jest.requireActual('./special') as typeof import('./special');
+    expect(ewaAvailable({ expectedNet: '30000', monthDays: 30, payableDays: '12', drawn: '0', deductionsDue: '0', percent: '50', max: '20000' }).available.toFixed(0)).toBe('6000');
+    expect(ewaAvailable({ expectedNet: '30000', monthDays: 30, payableDays: '12', drawn: '5049', deductionsDue: '2000', percent: '50', max: '20000' }).available.toFixed(0)).toBe('2475');
+    expect(ewaAvailable({ expectedNet: '300000', monthDays: 30, payableDays: '29', drawn: '0', deductionsDue: '0', percent: '50', max: '20000' }).available.toFixed(0)).toBe('20000');
+  });
+});
+
+describe('equity (YX-PAY-46, YX-TAX-18)', () => {
+  const { vestingSchedule, esopPerquisite } = jest.requireActual('./special') as typeof import('./special');
+  it('four years, a one-year cliff, quarterly after: a quarter at the cliff, then equal parts', () => {
+    const v = vestingSchedule('2026-01-31', 4800, 12, 48, 3);
+    expect(v[0]).toEqual({ vestOn: '2027-01-31', units: 1200 });
+    expect(v[1]).toEqual({ vestOn: '2027-04-30', units: 300 });
+    expect(v).toHaveLength(13);
+    expect(v.reduce((t, x) => t + x.units, 0)).toBe(4800);
+    expect(v[v.length - 1].vestOn).toBe('2030-01-31');
+  });
+  it('odd units: whole units and the last date takes the rest', () => {
+    const v = vestingSchedule('2026-04-01', 1000, 0, 12, 4);
+    expect(v.map((x) => x.units)).toEqual([333, 333, 334]);
+  });
+  it('the perquisite is the gain over the price, never negative', () => {
+    expect(esopPerquisite('250', '100', 400).toFixed(2)).toBe('60000.00');
+    expect(esopPerquisite('80', '100', 400).toFixed(2)).toBe('0.00');
+  });
+});

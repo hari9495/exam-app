@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 
 // Batch 5i DTOs (M03-BUILD-DESIGN §14.7): special pay (piece-rate, incentives, tips, on-call, union dues, settlements,
 // lay-off, VRS) sent to payroll as postings.
@@ -363,4 +363,276 @@ export class VrsDto {
   /** VRS exemption claimed before (any employer), from the person's declaration. */
   @Matches(MONEY)
   priorExemption!: string;
+}
+
+// ------------------------------------------------------------------------------------------ earned wage access
+
+export class EwaPolicyDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @Matches(DAY)
+  validFrom!: string;
+
+  @IsBoolean()
+  enabled!: boolean;
+
+  @Matches(/^\d{1,3}(\.\d{1,2})?$/)
+  percentAvailable!: string;
+
+  @Matches(MONEY)
+  minAmount!: string;
+
+  @Matches(MONEY)
+  maxAmount!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  drawsPerMonth!: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(15)
+  blackoutDays!: number;
+
+  @Matches(MONEY)
+  fee!: string;
+
+  @IsIn(['employee', 'employer'])
+  feePayer!: 'employee' | 'employer';
+}
+
+export class EwaDrawDto {
+  @Matches(MONEY)
+  amount!: string;
+
+  /** The person saw the amount, the fee and the recovery and agreed (YX-PAY-40). */
+  @IsBoolean()
+  acceptDisclosure!: boolean;
+}
+
+export class EwaPaidDto {
+  @trim()
+  @Matches(/^[A-Za-z0-9/-]{4,60}$/, { message: 'The bank reference of the payment.' })
+  reference!: string;
+}
+
+export class ReasonDto {
+  @trim()
+  @IsString()
+  @MinLength(5)
+  @MaxLength(300)
+  reason!: string;
+}
+
+// ------------------------------------------------------------------------------------------ equity
+
+export class EquityPlanDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(200)
+  name!: string;
+
+  @IsIn(['ESOP', 'RSU', 'SAR'])
+  kind!: 'ESOP' | 'RSU' | 'SAR';
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  poolUnits!: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(3650)
+  exitWindowDays!: number;
+}
+
+export class ValuationDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @Matches(DAY)
+  valuedOn!: string;
+
+  @Matches(/^\d{1,10}(\.\d{1,4})?$/)
+  fmv!: string;
+
+  @IsIn(['listed_price', 'merchant_banker'])
+  basis!: 'listed_price' | 'merchant_banker';
+}
+
+export class MilestoneDto {
+  @trim()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(200)
+  milestone!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  units!: number;
+}
+
+export class GrantDto {
+  @IsUUID()
+  planId!: string;
+
+  @IsUUID()
+  employeeId!: string;
+
+  @Matches(DAY)
+  grantedOn!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  units!: number;
+
+  @Matches(/^\d{1,10}(\.\d{1,4})?$/)
+  exercisePrice!: string;
+
+  /** Time vesting: a cliff, then equal parts every few months until the end (units not covered by milestones). */
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(60)
+  cliffMonths!: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(120)
+  vestingMonths!: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  everyMonths!: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => MilestoneDto)
+  milestones?: MilestoneDto[];
+}
+
+export class ExerciseDto {
+  @IsUUID()
+  grantId!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  units!: number;
+}
+
+// ------------------------------------------------------------------------------------------ actuarial and country packs
+
+export class CensusDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @Matches(DAY)
+  asOf!: string;
+
+  @IsIn(['IND_AS_19', 'AS_15'])
+  standard!: 'IND_AS_19' | 'AS_15';
+}
+
+export class ValuationResultDto extends CensusDto {
+  @IsIn(['gratuity', 'leave'])
+  kind!: 'gratuity' | 'leave';
+
+  @IsOptional()
+  @IsUUID()
+  censusId?: string;
+
+  @Matches(/^\d{1,13}(\.\d{1,2})?$/)
+  closing!: string;
+}
+
+export class PackSwitchDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  /** The pack's set-up values (UAE: the employer establishment id and the agent's routing code). */
+  @IsOptional()
+  @IsObject()
+  settings?: Record<string, string>;
+}
+
+export class WpsIdsDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @Matches(/^\d{14}$/, { message: 'The person id from the labour card is 14 digits.' })
+  personId!: string;
+
+  @Matches(/^\d{9}$/, { message: 'The bank routing code is 9 digits.' })
+  routingCode!: string;
+
+  @upper()
+  @Matches(/^AE\d{21}$/, { message: 'A UAE IBAN is AE and 21 digits.' })
+  iban!: string;
+}
+
+export class W9Dto {
+  @IsUUID()
+  consultantId!: string;
+
+  @IsIn(['SSN', 'EIN'])
+  tinKind!: 'SSN' | 'EIN';
+
+  @Matches(/^\d{9}$/, { message: 'The TIN is 9 digits (no dashes).' })
+  tin!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(200)
+  legalName!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(200)
+  street!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  city!: string;
+
+  @upper()
+  @Matches(/^[A-Z]{2}$/)
+  state!: string;
+
+  @Matches(/^\d{5}(-\d{4})?$/)
+  zip!: string;
+
+  @Matches(DAY)
+  receivedOn!: string;
+}
+
+export class TaxYearDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(2020)
+  @Max(2100)
+  year!: number;
 }

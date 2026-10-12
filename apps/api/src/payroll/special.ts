@@ -136,3 +136,49 @@ export function vrsSplit(amount: string, limit: string, priorExemption: string) 
   const exempt = Prisma.Decimal.min(left, D(amount));
   return { exempt: r2(exempt), taxable: r2(D(amount).sub(exempt)) };
 }
+
+// ------------------------------------------------------------------------------------------ earned wage access (YX-PAY-40)
+
+/**
+ * Earned to date = expected net ÷ the month's days × payable days so far, less draws already taken and deductions
+ * already due; the policy's per cent of it is available, up to the policy's maximum (whole rupees, rounded down).
+ */
+export function ewaAvailable(i: { expectedNet: string; monthDays: number; payableDays: string; drawn: string; deductionsDue: string; percent: string; max: string }) {
+  const earned = Prisma.Decimal.max(ZERO, D(i.expectedNet).div(i.monthDays).mul(i.payableDays).sub(i.drawn).sub(i.deductionsDue));
+  const available = Prisma.Decimal.min(D(i.max), earned.mul(i.percent).div(100)).floor();
+  return { earned: r2(earned), available };
+}
+
+// ------------------------------------------------------------------------------------------ equity (YX-PAY-46, YX-TAX-18)
+
+const addMonths = (iso: string, n: number) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1 + n, 1));
+  const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
+};
+
+/**
+ * Time vesting of `units`: nothing before the cliff, then the share earned by each vesting date (every `every` months to
+ * `months`), whole units, the last date taking what is left.
+ */
+export function vestingSchedule(grantedOn: string, units: number, cliff: number, months: number, every: number) {
+  if (units <= 0) return [];
+  if (cliff > months) throw new SpecialPayError('The cliff is within the vesting period.');
+  const points = [...new Set([...Array.from({ length: Math.floor(months / every) }, (_, i) => (i + 1) * every), months, ...(cliff ? [cliff] : [])])].filter((m) => m >= cliff).sort((a, b) => a - b);
+  let before = 0;
+  return points.map((m) => {
+    const upTo = m === months ? units : Math.floor((units * m) / months);
+    const out = { vestOn: addMonths(grantedOn, m), units: upTo - before };
+    before = upTo;
+    return out;
+  }).filter((x) => x.units > 0);
+}
+
+/** The perquisite on exercise: (fair market value on the exercise date − exercise price) × units, never below zero. */
+export function esopPerquisite(fmv: string, exercisePrice: string, units: number) {
+  return r2(Prisma.Decimal.max(ZERO, D(fmv).sub(exercisePrice)).mul(units));
+}
+
+/** Service in years to two places (whole days ÷ 365.25), for the actuarial census. */
+export const serviceYearsBetween = (from: string, to: string) => (Math.max(0, daysBetween(from, to) - 1) / 365.25).toFixed(2);

@@ -150,6 +150,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       if (!g) throw new NotFoundException('Not found');
       await requireEntity(tx, c, v, kind ? 'payroll.offcycle.prepare' : 'payroll.run.prepare', g.legalEntityId);
       await payScope(tx, [g.legalEntityId]);
+      // PAY-9.10: a legal entity outside India is paid only once its country pack is switched on (YX-PAY-43).
+      const entity = await tx.legalEntity.findFirstOrThrow({ where: { organizationId: c.organizationId, id: g.legalEntityId }, select: { country: true } });
+      if (entity.country !== 'IN' && !(await tx.entityCountryPack.findFirst({ where: { organizationId: c.organizationId, legalEntityId: g.legalEntityId, country: entity.country } }))) throw new ConflictException(`Switch on the ${entity.country} country pack for this legal entity before its first payroll.`);
       const { from, to } = monthRange(month);
       // PAY-9.01: a weekly or fortnightly group's regular runs are one per period of the month (sub-period 1, 2 …).
       const periodic = g.frequency !== 'monthly' && !kind;

@@ -9285,6 +9285,7 @@ model EntityCountryPack {
   switchedOnBy   String   @map("switched_on_by") @db.Uuid
   switchedOnAt   DateTime @default(now()) @map("switched_on_at") @db.Timestamptz(3)
 
+  @@unique([organizationId, legalEntityId], map: "entity_country_packs_key")
   @@map("entity_country_packs")
 }
 

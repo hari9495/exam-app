@@ -1,0 +1,62 @@
+{
+  "ruleSets": [
+    {
+      "statute": "AE.PACK",
+      "jurisdiction": "AE",
+      "version": "2026-v1",
+      "validFrom": "2026-01-01",
+      "validTo": null,
+      "lawVersion": "AE-2021",
+      "verify": true,
+      "source": "YukthiX UAE country pack (M03 C4, YX-PAY-43 / 44): the rule sets a UAE legal entity needs before its payroll runs, and the set-up it needs (the employer's establishment id with the Ministry of Human Resources and Emiratisation and the WPS agent's routing code).",
+      "values": {
+        "kind": "pack_manifest",
+        "country": "AE",
+        "currency": "AED",
+        "requires": ["AE.WPS", "AE.EOSG"],
+        "settings": [
+          { "key": "establishmentId", "label": "Employer establishment id (13 digits)", "pattern": "^\\d{13}$" },
+          { "key": "agentRoutingCode", "label": "WPS agent routing code (9 digits)", "pattern": "^\\d{9}$" }
+        ]
+      },
+      "golden": [{ "name": "the manifest lists its rule sets", "fn": "pack_manifest", "input": {}, "expected": { "requires": "AE.WPS AE.EOSG" } }]
+    },
+    {
+      "statute": "AE.WPS",
+      "jurisdiction": "AE",
+      "version": "SIF-2026-v1",
+      "validFrom": "2026-01-01",
+      "validTo": null,
+      "lawVersion": "AE-2021",
+      "verify": true,
+      "source": "UAE Wage Protection System salary information file (SIF): one EDR record per employee (person id, agent routing code, IBAN, pay start and end, days, fixed and variable pay, days on leave) and one SCR record for the employer (establishment id, routing code, file date and time, salary month, record count, total, currency, reference); comma separated, as the agents publish it. To be checked against the agent's current specification before go-live.",
+      "values": {
+        "kind": "wps_sif",
+        "currency": "AED",
+        "edr": ["EDR", "personId", "routingCode", "iban", "payStart", "payEnd", "days", "fixed", "variable", "leaveDays"],
+        "scr": ["SCR", "establishmentId", "routingCode", "fileDate", "fileTime", "salaryMonth", "records", "total", "currency", "reference"],
+        "dateFormat": "YYYY-MM-DD",
+        "timeFormat": "HHMM",
+        "monthFormat": "MMYYYY"
+      },
+      "golden": [{ "name": "the file is in dirhams", "fn": "wps_sif", "input": {}, "expected": { "currency": "AED" } }]
+    },
+    {
+      "statute": "AE.EOSG",
+      "jurisdiction": "AE",
+      "version": "2022-v1",
+      "validFrom": "2022-02-02",
+      "validTo": null,
+      "lawVersion": "AE-2021",
+      "verify": true,
+      "source": "UAE Federal Decree-Law No. 33 of 2021, Art. 51: a full-time worker with at least one year of continuous service gets end-of-service gratuity of 21 days' basic wage for each of the first five years and 30 days for each further year, parts of a year in proportion, not more than two years' wages in total; the daily wage is the basic wage ÷ 30.",
+      "values": { "kind": "eosg", "firstYears": 5, "daysFirst": 21, "daysAfter": 30, "monthDays": 30, "capMonths": 24, "minYears": 1 },
+      "golden": [
+        { "name": "3 years at 10,000 basic", "fn": "eosg", "input": { "basicMonthly": "10000", "years": "3" }, "expected": { "amount": "21000" } },
+        { "name": "7 years at 12,000 basic", "fn": "eosg", "input": { "basicMonthly": "12000", "years": "7" }, "expected": { "amount": "66000" } },
+        { "name": "under a year: nothing", "fn": "eosg", "input": { "basicMonthly": "12000", "years": "0.9" }, "expected": { "amount": "0" } },
+        { "name": "30 years at 10,000: capped at two years' basic", "fn": "eosg", "input": { "basicMonthly": "10000", "years": "30" }, "expected": { "amount": "240000" } }
+      ]
+    }
+  ]
+}

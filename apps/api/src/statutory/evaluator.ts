@@ -249,6 +249,24 @@ export function exitExempt(rs: RuleSet, i: { code: string; amount: Prisma.Decima
  * noticeMonths when notice is paid in lieu, the employer's re-skilling fund of reskillingDays of the last wage, and
  * whether the establishment needs the government's permission first (at permissionThreshold workers or more).
  */
+/** End-of-service gratuity (UAE pack, YX-PAY-44): days of basic per year of service (fewer in the first years), capped. */
+export function eosg(rs: RuleSet, i: { basicMonthly: Prisma.Decimal.Value; years: Prisma.Decimal.Value }) {
+  const v = need(rs, 'eosg') as { firstYears: number; daysFirst: number; daysAfter: number; monthDays: number; capMonths: number; minYears: number };
+  const years = D(i.years);
+  if (years.lt(v.minYears)) return { amount: ZERO, citation: cite(rs) };
+  const daily = D(i.basicMonthly).div(v.monthDays);
+  const first = Prisma.Decimal.min(years, v.firstYears);
+  const after = Prisma.Decimal.max(ZERO, years.sub(v.firstYears));
+  const due = daily.mul(first.mul(v.daysFirst).add(after.mul(v.daysAfter)));
+  return { amount: money(Prisma.Decimal.min(due, D(i.basicMonthly).mul(v.capMonths))), citation: cite(rs) };
+}
+
+/** US 1099-NEC (YX-PAY-45): a contractor paid at least the threshold in the calendar year gets a form. */
+export function f1099Due(rs: RuleSet, i: { paid: Prisma.Decimal.Value }) {
+  const v = need(rs, 'f1099') as { threshold: string };
+  return { due: D(i.paid).gte(v.threshold), threshold: v.threshold, citation: cite(rs) };
+}
+
 /** Lay-off compensation (IR Code s.67, YX-PAY-63): the rule's share of the basic and DA for the lay-off days. */
 export function layoff(rs: RuleSet, i: { basicDaMonthly: Prisma.Decimal.Value; days: number; monthDays: number }) {
   const v = need(rs, 'layoff');
@@ -511,7 +529,7 @@ export interface GoldenCase {
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
 }
-const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, gratuity_due: gratuityDue, retrenchment, layoff, exit_exempt: exitExempt, tds, tds_nonsalary: tdsNonSalary, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, gratuity_due: gratuityDue, retrenchment, layoff, eosg, f1099_due: f1099Due, pack_manifest: (rs: RuleSet) => ({ requires: (rs.values.requires as string[]).join(' ') }), wps_sif: (rs: RuleSet) => ({ currency: String(rs.values.currency) }), exit_exempt: exitExempt, tds, tds_nonsalary: tdsNonSalary, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
 
 // Batch 5h (PAY-8.03, YX-TAX-16): TDS on consultant invoices from the reviewed rule set IN.TDS-NONSAL (kind tds_nonsalary).
 interface NonSalarySection {
