@@ -755,5 +755,6 @@ Every batch ends with the usual checks: typecheck, unit, the batch's e2e and the
 
 | Date | Change |
 |---|---|
+| 12 Oct 2026 | PM1 built: the `perf.*` settings keys arrive with the batch that first reads them (none in PM1); a template's P19 "applies to" moves to PM4 with cycle populations; `comp_review` added to bulk change batches (§4.1 change 1); translation subjects added (change 2). |
 | 12 Oct 2026 | Founder accepted D1–D14 with the recommended defaults; PM1 started. |
 | 12 Oct 2026 | First draft: scope (launch core) and what is left for a second design, reuse and the six small changes in other modules, data model by batch with RLS, settings and starters, goals and OKRs, feedback and 1:1s, cycles with templates and scales as data, eligibility, stages, 360° anonymity, calibration with a guide only, ratings to pay (matrix, budgets, bonus, P06 batch, arrears by payroll, letters, pay band, pay equity), PIPs with the exit link, privacy matrix, India points (fairness, records, POSH), global points and a do-not-copy list, AI as a later seam, permissions, events, API, screens, security, 38 slices in batches PM1–PM8, founder decisions D1–D14. |
