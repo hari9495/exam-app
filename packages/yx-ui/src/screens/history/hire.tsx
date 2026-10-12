@@ -34,6 +34,8 @@ export interface HireInput {
     gradeId: string | null;
     managerEmployeeId: string | null;
     costCentres: { costCentreId: string; percent: string }[];
+    /** G1 (gap pass C1): part-time hours a week; left out = full-time. */
+    hoursPerWeek?: string;
   };
   compensation?: { currency: string; annualCtc: string };
   reason: string;
@@ -58,6 +60,8 @@ export interface HireDraft {
   managerEmployeeId: string | null;
   costCentreId: string | null;
   annualCtc: string;
+  /** G1: empty = full-time. */
+  hoursPerWeek?: string;
   reason: string;
   overrideReason: string;
 }
@@ -103,6 +107,8 @@ export function hireInput(d: HireDraft, canPay: boolean): { input: HireInput | n
   need(d.designationId, 'hire-designation', 'Choose the designation');
   need(d.employmentTypeId, 'hire-type', 'Choose the employment type');
   need(d.costCentreId, 'hire-cc', 'Choose the cost centre');
+  const hours = (d.hoursPerWeek ?? '').trim();
+  if (hours && !(/^\d{1,2}(\.5)?$/.test(hours) && Number(hours) > 0 && Number(hours) <= 80)) errors.push({ fieldId: 'hire-hours', message: 'Enter the hours a week, e.g. 24 or 37.5 (at most 80), or leave it empty for full-time' });
   const ctc = d.annualCtc.trim();
   if (canPay && ctc && !AMOUNT.test(ctc)) errors.push({ fieldId: 'hire-ctc', message: 'Enter the annual CTC in rupees' });
   if (d.reason.trim().length < 3) errors.push({ fieldId: 'hire-reason', message: 'Say why, in a few words' });
@@ -127,6 +133,7 @@ export function hireInput(d: HireDraft, canPay: boolean): { input: HireInput | n
         gradeId: d.gradeId,
         managerEmployeeId: d.managerEmployeeId,
         costCentres: [{ costCentreId: d.costCentreId!, percent: '100' }],
+        ...(hours ? { hoursPerWeek: hours } : {}),
       },
       // R1: pay only from someone who may set it.
       ...(canPay && ctc ? { compensation: { currency: 'INR', annualCtc: ctc } } : {}),
@@ -277,6 +284,9 @@ export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreate
           ))}
           <FormField id="hire-grade" label="Grade" optional>
             <Select value={draft.gradeId} onChange={(gradeId) => set({ gradeId })} options={choices.grades} searchable clearable disabled={!entity} aria-label="Grade" />
+          </FormField>
+          <FormField id="hire-hours" label="Hours a week" optional helper="Leave empty for full-time. Part-time: for example 24 or 37.5." error={errorOf('hire-hours')}>
+            <TextField value={draft.hoursPerWeek ?? ''} onChange={(hoursPerWeek) => set({ hoursPerWeek: hoursPerWeek.trim() })} inputMode="decimal" maxLength={4} />
           </FormField>
           <FormField id="hire-manager" label="Manager" optional>
             <Select value={draft.managerEmployeeId} onChange={(managerEmployeeId) => set({ managerEmployeeId })} options={choices.managers} searchable clearable aria-label="Manager" />

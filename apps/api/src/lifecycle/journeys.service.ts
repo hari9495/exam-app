@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
+import { journeyWords } from '../global/global-data';
 import { ScopeUser, Viewer, buildViewer, covers, grantPeriods, started, tenantWide } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AutomationService } from '../rules-engine/automation.service';
@@ -390,6 +391,8 @@ export class LifecycleJourneysService implements OnModuleInit {
       const n = await this.names(tx, org, [...tasks.map((t) => t.assigneeUserId), ...tasks.map((t) => t.completedBy), j.ownerUserId], tasks.map((t) => t.assigneeGroupId));
       const p = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: j.personId } });
       const t = await tx.journeyTemplate.findFirst({ where: { organizationId: org, id: j.templateId }, select: { name: true } });
+      // G1: the journey's name and steps in the reader's language where the company translated them.
+      const words = await journeyWords(tx, c, [j]);
       const today = todayIst();
       return {
         id: j.id,
@@ -401,11 +404,11 @@ export class LifecycleJourneysService implements OnModuleInit {
         anchorOn: iso(j.anchorOn),
         status: j.status,
         progress: j.progress,
-        template: t?.name ?? '',
+        template: words.template(j.templateId, t?.name ?? ''),
         owner: n.user(j.ownerUserId),
         canManage: a.manage,
         today,
-        tasks: tasks.map((x) => this.taskView(x, n, this.canDo(x, v, a), today, a.manage || (v.userId !== null && x.completedBy === v.userId))),
+        tasks: tasks.map((x) => ({ ...this.taskView(x, n, this.canDo(x, v, a), today, a.manage || (v.userId !== null && x.completedBy === v.userId)), title: words.step(j.id, x.key, x.title) })),
       };
     });
   }
@@ -420,6 +423,7 @@ export class LifecycleJourneysService implements OnModuleInit {
       const journeys = await tx.journey.findMany({ where: { organizationId: org, id: { in: [...new Set(tasks.map((t) => t.journeyId))] }, status: 'active' } });
       const persons = await tx.person.findMany({ where: { organizationId: org, id: { in: journeys.map((j) => j.personId) } } });
       const n = await this.names(tx, org, tasks.map((t) => t.assigneeUserId), tasks.map((t) => t.assigneeGroupId));
+      const words = await journeyWords(tx, c, journeys);
       const today = todayIst();
       return {
         today,
@@ -428,7 +432,7 @@ export class LifecycleJourneysService implements OnModuleInit {
           .map((t) => {
             const j = journeys.find((x) => x.id === t.journeyId)!;
             const p = persons.find((x) => x.id === j.personId)!;
-            return { ...this.taskView(t, n, true, today), journeyId: j.id, journeyKind: j.kind, person: [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' '), anchorOn: iso(j.anchorOn) };
+            return { ...this.taskView(t, n, true, today), title: words.step(j.id, t.key, t.title), journeyId: j.id, journeyKind: j.kind, person: [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' '), anchorOn: iso(j.anchorOn) };
           }),
       };
     });

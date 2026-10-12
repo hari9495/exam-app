@@ -59,6 +59,11 @@ export class AssignmentPayloadDto {
   @IsIn(SKILL_CLASSES)
   skillClass?: SkillClass | null;
 
+  /** G1 (gap pass C1): contracted hours a week as a decimal string; null = full-time. */
+  @Nullable()
+  @Matches(/^\d{1,2}(\.\d{1,2})?$/, { message: 'hoursPerWeek is a number of hours, e.g. 24 or 37.5' })
+  hoursPerWeek?: string | null;
+
   @IsOptional()
   @IsUUID()
   employmentTypeId?: string;
@@ -328,4 +333,16 @@ export class EmployeeListQueryDto {
   @IsString()
   @MaxLength(100)
   q?: string;
+}
+
+/** G1 (gap pass C3): HR sets continuous service with a reason; null goes back to the rule (rehire choice or joining). */
+export class ServiceDatesDto {
+  @Nullable()
+  @Matches(DATE, { message: `continuousServiceFrom is ${DATE_MESSAGE}` })
+  continuousServiceFrom!: string | null;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  reason!: string;
 }

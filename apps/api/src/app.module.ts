@@ -68,6 +68,7 @@ import { ApprovalsModule } from './approvals/approvals.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { OrgStructureModule } from './org-structure/org-structure.module';
 import { EmployeeHistoryModule } from './employee-history/employee-history.module';
+import { GlobalModule } from './global/global.module';
 import { AccessModule } from './access/access.module';
 import { PeopleModule } from './people/people.module';
 import { FieldPermissionsModule } from './field-permissions/field-permissions.module';
@@ -161,6 +162,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     CustomFieldsModule,
     OrgStructureModule,
     EmployeeHistoryModule,
+    GlobalModule,
     PeopleModule,
     ServiceDeskModule,
     AccessModule,

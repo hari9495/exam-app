@@ -1,0 +1,9 @@
+/* Batch G1 · Countries, Translations, Me › Language. Tokens only; fits 390 px phones without sideways scroll (R4, R5). */
+.yx-glb__stack { display: flex; flex-direction: column; gap: var(--yx-space-4); min-width: 0; }
+.yx-glb__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.yx-glb__item {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-2);
+  padding-block: var(--yx-space-2); border-block-end: var(--yx-border-width) solid var(--yx-color-border);
+}
+.yx-glb__item:last-child { border-block-end: 0; }
+.yx-glb__item-main { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); min-width: 0; }

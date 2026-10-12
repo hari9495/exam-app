@@ -741,6 +741,56 @@ describe('PostgreSQL row-level security (app role)', () => {
     expect(await tenantPrisma.forTenant(asB, (tx) => tx.$executeRaw`UPDATE employee_bank_accounts SET valid_to = now() WHERE id = ${b.bank}::uuid`)).toBe(1);
   });
 
+  // Batch G1 (G1-GLOBAL-CORE-BUILD-DESIGN §11): translated company words and the "Add a country" guide.
+  const GLOBAL_TABLES = ['content_translations', 'country_setups'];
+
+  it('the global-core tables are forced-RLS tenant tables; a guide is never deleted by the app', async () => {
+    const rows = await prisma.$queryRaw<{ table: string; forced: boolean; policies: bigint; can_delete: boolean }[]>`
+      SELECT c.relname AS table, (c.relrowsecurity AND c.relforcerowsecurity) AS forced,
+             (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies, has_table_privilege(c.oid, 'DELETE') AS can_delete
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+      WHERE c.relname = ANY(${GLOBAL_TABLES}) ORDER BY c.relname`;
+    expect(rows).toEqual([
+      { table: 'content_translations', forced: true, policies: BigInt(1), can_delete: true },
+      { table: 'country_setups', forced: true, policies: BigInt(1), can_delete: false },
+    ]);
+  });
+
+  it("(b) org A cannot read, change or plant org B's translations and guides, nor point a guide at B's entity", async () => {
+    const asB = { organizationId: orgB, isSuperAdmin: false };
+    const b = await tenantPrisma.forTenant(asB, async (tx) => {
+      const entity = await tx.legalEntity.create({ data: { organizationId: orgB, name: 'B Global', shortName: `BG-${randomUUID().slice(0, 8)}` } });
+      const designation = await tx.designation.create({ data: { organizationId: orgB, name: 'B title', code: `BT-${randomUUID().slice(0, 6)}` } });
+      await tx.contentTranslation.create({ data: { organizationId: orgB, subjectType: 'designation', subjectId: designation.id, language: 'ta', text: 'B words' } });
+      const setup = await tx.countrySetup.create({ data: { organizationId: orgB, country: 'IN', legalEntityId: entity.id } });
+      return { entity: entity.id, designation: designation.id, setup: setup.id };
+    });
+    try {
+      const seenByA = await tenantPrisma.forTenant(asA(), async (tx) => ({
+        translations: await tx.contentTranslation.count({ where: { organizationId: orgB } }),
+        setups: await tx.countrySetup.count({ where: { organizationId: orgB } }),
+        reworded: await tx.$executeRaw`UPDATE content_translations SET text = 'hijacked' WHERE organization_id = ${orgB}::uuid`,
+        removed: await tx.$executeRaw`DELETE FROM content_translations WHERE organization_id = ${orgB}::uuid`,
+        finished: await tx.$executeRaw`UPDATE country_setups SET status = 'done', finished_at = now() WHERE id = ${b.setup}::uuid`,
+      }));
+      expect(seenByA).toEqual({ translations: 0, setups: 0, reworded: 0, removed: 0, finished: 0 });
+      await expect(tenantPrisma.forTenant(asA(), (tx) => tx.contentTranslation.create({ data: { organizationId: orgB, subjectType: 'designation', subjectId: b.designation, language: 'hi', text: 'planted' } }))).rejects.toThrow(RLS_VIOLATION);
+      await expect(tenantPrisma.forTenant(asA(), (tx) => tx.countrySetup.create({ data: { organizationId: orgB, country: 'IN' } }))).rejects.toThrow(RLS_VIOLATION);
+      // An own guide pointing at B's entity is refused by the composite key, even with the platform's bypass on.
+      for (const ctx of [asA(), SUPER]) {
+        await expect(tenantPrisma.forTenant(ctx, (tx) => tx.countrySetup.create({ data: { organizationId: orgA, country: 'IN', legalEntityId: b.entity } }))).rejects.toThrow(/country_setups_entity_fkey|Foreign key/);
+      }
+      const still = await tenantPrisma.forTenant(SUPER, (tx) => tx.contentTranslation.findMany({ where: { organizationId: orgB } }));
+      expect(still.map((r) => r.text)).toEqual(['B words']);
+    } finally {
+      await tenantPrisma.forTenant(SUPER, async (tx) => {
+        // Guides are never deleted by the app role; they (and their entities) go with the companies in afterAll.
+        await tx.contentTranslation.deleteMany({ where: { organizationId: { in: [orgA, orgB] } } });
+        await tx.designation.delete({ where: { id: b.designation } });
+      });
+    }
+  });
+
   it('(a) no context => writes are rejected', async () => {
     await expect(
       prisma.user.create({ data: { organizationId: orgA, email: `x-${randomUUID()}@rls.test`, passwordHash: 'x', role: 'org_admin' } }),

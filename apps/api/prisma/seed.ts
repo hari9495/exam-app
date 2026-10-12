@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { seedOrgStructure } from './seed-org-structure';
 import { seedEmployees } from './seed-employees';
+import { seedGlobal } from './seed-global';
 import { seedAccess } from './seed-access';
 import { CONSULTANT, seedSignInDemo } from './seed-sign-in';
 import { DESK_PERMISSIONS, seedServiceDesk } from './seed-service-desk';
@@ -406,6 +407,8 @@ async function main() {
       await seedLifecycleAssets(tx, demoOrg.id);
       // Step 5 payroll batch 5b: the starter components and template, pay groups, statutory registrations.
       await seedPay5b(tx, demoOrg.id);
+      // Batch G1: India set up through the "Add a country" guide; leave and job names in Hindi and Tamil.
+      await seedGlobal(tx, demoOrg.id);
     }
   }, { timeout: 420000 });
   // Payroll 5a: the demo company's audit chain checked once (the daily job's anchor), after the seed committed.

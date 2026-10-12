@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
+import { employeeLanguage, translated } from '../global/global-data';
 import { Viewer, buildViewer, has, tenantWide, type ScopeUser } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
 import { DayEngine } from './day-engine.service';
@@ -290,10 +291,12 @@ export class LeaveService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const { f, today } = await this.meFacts(tx, c, c.userId);
       const org = c.organizationId;
-      const balances = await this.balancesIn(tx, c, f, today);
+      // G1 (gap pass G1): leave names in the person's language where the company translated them.
+      const words = await translated(tx, c, await employeeLanguage(tx, c, f.employeeId), 'leave_type', (await this.types(tx, org)).map((t) => t.id));
+      const balances = (await this.balancesIn(tx, c, f, today)).map((b) => ({ ...b, name: words.get(b.leaveTypeId) ?? b.name }));
       const year = leaveYearOf(today, Number(await settingOn(tx, c, 'leave.year_start_month', f, today)));
       const requests = await tx.leaveRequest.findMany({ where: { organizationId: org, employeeId: f.employeeId, toOn: { gte: asDate(addDays(today, -400)) } }, orderBy: { fromOn: 'desc' }, take: 100 });
-      const types = new Map((await this.types(tx, org)).map((t) => [t.id, t]));
+      const types = new Map((await this.types(tx, org)).map((t) => [t.id, { ...t, name: words.get(t.id) ?? t.name }]));
       const cal = (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: f.locationId } })) ?? (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: null } }));
       const holidays = cal ? await tx.holiday.findMany({ where: { organizationId: org, calendarId: cal.id, holidayOn: { gte: asDate(year.start), lte: asDate(year.end) } }, orderBy: { holidayOn: 'asc' } }) : [];
       const chosen = new Set((await tx.optionalHolidayChoice.findMany({ where: { organizationId: org, employeeId: f.employeeId } })).map((x) => x.holidayId));

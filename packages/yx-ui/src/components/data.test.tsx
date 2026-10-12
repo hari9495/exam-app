@@ -26,6 +26,14 @@ const COLS: TableColumn<Row>[] = [
 ];
 
 describe('DataTable', () => {
+  // Affordance guard (PR #146): a sort button is named by its header, so a column without header text gets none.
+  it('never draws an unnamed sort button; every column menu has a name', () => {
+    render(<DataTable label="Words" columns={[...COLS, { key: 'act', header: ' ', value: () => '' }]} rows={ROWS} getRowId={(r) => r.id} />);
+    const head = screen.getAllByRole('columnheader');
+    for (const th of head) for (const b of within(th).queryAllByRole('button')) expect(b).toHaveAccessibleName();
+    expect(head.at(-1)!.querySelector('button.yx-table__sort')).toBeNull();
+  });
+
   // Legal entities: the default entity has Edit but no "…" menu; its Edit sat further right than the others (R9).
   it('keeps the menu slot on rows without a menu, so row buttons line up', () => {
     render(
