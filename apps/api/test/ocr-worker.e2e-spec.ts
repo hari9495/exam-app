@@ -9,6 +9,8 @@ import { LOOK_ALIKE_BITS, hamming } from '../src/expenses/fx';
 const spool = process.env.OCR_WORKER_SPOOL;
 const samples = process.env.OCR_SAMPLES;
 const maybe = spool && samples ? describe : describe.skip;
+// Logged so a skipped run says why (CI has no worker image; the fake reader covers the API side).
+if (!spool || !samples) console.info('ocr-worker contract test skipped: OCR_WORKER_SPOOL and OCR_SAMPLES are not set (no running OCR worker).');
 
 maybe('receipt OCR worker (PaddleOCR, isolated)', () => {
   const reader = new PaddleWorkerReader(spool ?? '', 60_000);
