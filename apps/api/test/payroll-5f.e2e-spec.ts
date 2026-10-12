@@ -13,6 +13,7 @@ import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { hashValue, sealValue } from '../src/people/profile.service';
 import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file';
+import { FH } from '../src/statutory/etds';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
 
@@ -395,6 +396,16 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
     const etds = (await download('payAdmin', file.fileId)).toString();
     expect(etds).toContain(PAN1);
     expect(etds.split('\r\n')[0]).toMatch(/^1\^FH\^NS1\^R\^/);
+    // 5g-D1: the filer's .fvu (the FVU fills its version and hash in the file header) is checked against our return.
+    const recs = etds.split('\r\n');
+    const fh = recs[0].split('^');
+    fh[FH.indexOf('fvuVersion')] = '1.2';
+    fh[FH.indexOf('fileHash')] = 'F00D';
+    const fvu = Buffer.from([fh.join('^'), ...recs.slice(1)].join('\r\n'));
+    const bad = Buffer.from(fvu.toString().replace(PAN1, 'ZZZPZ9999Z'));
+    expect((await api('payAdmin', 'post', `/statutory/tds-returns/${ret.id}/fvu`).attach('file', bad, 'return.fvu').expect(400)).body.problems).toEqual([expect.stringMatching(/differs from the return/)]);
+    await api('emp1', 'post', `/statutory/tds-returns/${ret.id}/fvu`).attach('file', fvu, 'return.fvu').expect(403);
+    expect((await api('payAdmin', 'post', `/statutory/tds-returns/${ret.id}/fvu`).attach('file', fvu, 'return.fvu').expect(200)).body).toMatchObject({ status: 'validated', validation: { validator: 'filer', version: '1.2', ok: true } });
     await stepUp('compliance');
     const phrase = `FILED ${ret.formCode} Q${quarter} ${ty}`;
     expect(

@@ -13,6 +13,11 @@ export class RunCreateDto {
 
   @Matches(MONTH)
   month!: string;
+
+  /** Batch 5g: an off-cycle run of this kind (absent: the regular run; F&F runs are made by the F&F settlement). */
+  @IsOptional()
+  @IsIn(['bonus', 'arrears', 'correction', 'payment'])
+  offcycleKind?: 'bonus' | 'arrears' | 'correction' | 'payment';
 }
 
 export class RunListDto {

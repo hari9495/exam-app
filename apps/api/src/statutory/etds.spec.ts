@@ -1,9 +1,9 @@
-import { BH, CD, DD, FH, etdsFile, etdsStructure, type EtdsInput } from './etds';
+import { BH, CD, DD, FH, checkFvu, etdsFile, etdsStructure, type EtdsInput } from './etds';
 import { mkdtemp, readdir, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import JSZip from 'jszip';
-import { FvuRunner, FvuUnavailable, fvuFor, reportLines, unpackTool } from './fvu';
+import { FvuRunner, fvuFor, reportLines, unpackTool } from './fvu';
 
 const input: EtdsInput = {
   formNo: '138',
@@ -71,7 +71,7 @@ describe('e-TDS return file and the File Validation Utility seam (5f-D1)', () =>
     expect(() => etdsFile({ ...input, deductor: { ...input.deductor, tan: 'BAD' } })).toThrow(/TAN/);
   });
 
-  it('without the FVU: a fake in development that says it is a fake; production refuses', async () => {
+  it('without the FVU: a fake in development that says it is a fake; production waits for the filer’s .fvu', async () => {
     const env = { ...process.env };
     delete process.env.FVU_DIR;
     delete process.env.FVU_JRE_IMAGE;
@@ -80,7 +80,7 @@ describe('e-TDS return file and the File Validation Utility seam (5f-D1)', () =>
       process.env.NODE_ENV = 'test';
       expect(await new FvuRunner().validate(etdsFile(input), '2026-27', null)).toMatchObject({ ok: true, validator: 'fake', output: null });
       process.env.NODE_ENV = 'production';
-      await expect(new FvuRunner().validate(etdsFile(input), '2026-27', null)).rejects.toBeInstanceOf(FvuUnavailable);
+      expect(await new FvuRunner().validate(etdsFile(input), '2026-27', null)).toMatchObject({ ok: false, validator: 'filer', output: null });
     } finally {
       process.env = env;
     }
@@ -104,6 +104,22 @@ describe('e-TDS return file and the File Validation Utility seam (5f-D1)', () =>
       process.env = env;
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  it('a filer-made .fvu is accepted only if it is our return with the FVU version and hash filled in (5g-D1)', () => {
+    const ours = etdsFile(input);
+    const lines = ours.toString().split('\r\n');
+    const fh = lines[0].split('^');
+    fh[FH.indexOf('fvuVersion')] = '1.2';
+    fh[FH.indexOf('fileHash')] = 'A1B2C3';
+    const good = Buffer.from([fh.join('^'), ...lines.slice(1)].join('\r\n'));
+    expect(checkFvu(ours, good)).toEqual({ problems: [], fvuVersion: '1.2' });
+    expect(checkFvu(ours, ours).problems).toEqual(['The .fvu has no FVU version or file hash: it was not made by the FVU.']);
+    const changed = Buffer.from(good.toString().replace('^200000.00^', '^900000.00^'));
+    expect(checkFvu(ours, changed).problems).toEqual([expect.stringMatching(/Record 4 \(DD\) differs/)]);
+    const otherTan = Buffer.from(good.toString().replace(/BLRK12345E/g, 'MUMK12345E'));
+    expect(checkFvu(ours, otherTan).problems).toEqual(expect.arrayContaining([expect.stringMatching(/File header tan/)]));
+    expect(checkFvu(ours, Buffer.concat([good, Buffer.from([0])])).problems).toEqual(['The .fvu file is not plain text.']);
   });
 
   it('unpacks only jars and certificates, flat, never outside its folder; reads reports as plain capped text', async () => {

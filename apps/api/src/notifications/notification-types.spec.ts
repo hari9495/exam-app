@@ -56,6 +56,8 @@ describe('notification catalog', () => {
       'asset.assigned',
       'probation.review.done',
       'exit.deprovisioning.failed',
+      'payroll.fnf.due',
+      'payroll.overpayment.consent',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

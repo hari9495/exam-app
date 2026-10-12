@@ -42,6 +42,19 @@ export const STARTER_COMPONENTS: StarterComponent[] = [
   { code: 'bonus_provision', name: 'Statutory bonus provision', kind: 'employer', statutory: 'bonus_provision', taxable: false, prorated: false, onPayslip: false, inCtc: false, rounding: 'none' },
 ];
 
+/** Batch 5g: full and final settlement lines (installed with the starter set, and added when an F&F needs them). */
+export const FNF_COMPONENTS: StarterComponent[] = [
+  { code: 'leave_encashment', name: 'Leave encashment', kind: 'earning', prorated: false, inCtc: false },
+  { code: 'gratuity', name: 'Gratuity', kind: 'earning', prorated: false, inCtc: false },
+  { code: 'notice_pay', name: 'Notice pay', kind: 'earning', prorated: false, inCtc: false },
+  { code: 'retrenchment_comp', name: 'Retrenchment compensation', kind: 'earning', prorated: false, inCtc: false },
+  { code: 'notice_recovery', name: 'Notice period recovery', kind: 'deduction', taxable: false, prorated: false, inCtc: false },
+  { code: 'fnf_recovery', name: 'Settlement recovery', kind: 'deduction', taxable: false, prorated: false, inCtc: false },
+  // 5g-D6: employee contributions deducted too much for months already paid, given back.
+  { code: 'deduction_refund', name: 'Refund of over-deducted contributions', kind: 'earning', taxable: false, prorated: false, inCtc: false },
+  { code: 'reskilling_fund', name: 'Worker re-skilling fund (employer)', kind: 'employer', taxable: false, prorated: false, onPayslip: false, inCtc: false, rounding: 'none' },
+];
+
 /** The starter template: an editable split of the CTC; Special allowance balances it. */
 export const STARTER_TEMPLATE = {
   name: 'Standard monthly (India starter)',
