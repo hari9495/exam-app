@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
-import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { PerformanceFeedbackService } from './feedback.service';
 import { PerformanceGoalsService } from './goals.service';
 import { PerformanceReviewsService } from './reviews.service';
@@ -21,11 +21,11 @@ export class PerformanceJobs implements OnModuleInit, OnModuleDestroy {
     private readonly feedback: PerformanceFeedbackService,
     private readonly reviews: PerformanceReviewsService,
   ) {
-    this.queue = logBullErrors(new Queue(QUEUE, { connection }), QUEUE);
+    this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
 
   async onModuleInit() {
-    this.worker = logBullErrors(new Worker(QUEUE, (job) => this.handle(job.name), { connection: this.connection }), QUEUE);
+    this.worker = logBullErrors(new Worker(QUEUE, (job) => this.handle(job.name), bullOpts(this.connection)), QUEUE);
     await this.queue.upsertJobScheduler('performance-daily', { every: 24 * 3_600_000 }, { name: 'daily', data: {} });
   }
 

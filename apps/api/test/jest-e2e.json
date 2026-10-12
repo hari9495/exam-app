@@ -21,7 +21,11 @@
   },
   "testTimeout": 30000,
   "setupFiles": [
-    "./fixtures/offline-hibp.ts"
+    "./fixtures/offline-hibp.ts",
+    "./fixtures/bull-prefix.ts"
+  ],
+  "setupFilesAfterEnv": [
+    "./fixtures/bull-cleanup.ts"
   ],
   "maxWorkers": 1,
   "workerIdleMemoryLimit": "1GB",

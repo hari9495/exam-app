@@ -6,7 +6,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { CommentDto, CycleDto, DecideDisagreementDto, DisagreeDto, EntryDto, OverrideDto, ReasonDto, ReviewListDto } from './review-dto';
+import { CommentDto, CycleDto, DecideDisagreementDto, DisagreeDto, EntryDto, OtherReviewerDto, OverrideDto, ReasonDto, ReviewListDto } from './review-dto';
 import { VersionDto } from './dto';
 import { PerformanceReviewsService } from './reviews.service';
 
@@ -169,5 +169,23 @@ export class PerformanceReviewsController {
   @Get('handovers')
   handovers(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.svc.handovers(ctx, this.user(req));
+  }
+
+  @Post('reviews/:id/other-reviewers')
+  @HttpCode(200)
+  @RequirePermissions('perf.cycle.manage')
+  addOther(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: OtherReviewerDto) {
+    return this.svc.addOther(ctx, this.user(req), id, dto.employeeId);
+  }
+
+  @Put('reviews/:id/entries/other')
+  saveOther(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: EntryDto) {
+    return this.svc.saveOther(ctx, this.user(req), id, dto, false);
+  }
+
+  @Post('reviews/:id/entries/other/submit')
+  @HttpCode(200)
+  submitOther(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: EntryDto) {
+    return this.svc.saveOther(ctx, this.user(req), id, dto, true);
   }
 }

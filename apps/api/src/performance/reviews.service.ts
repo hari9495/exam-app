@@ -29,7 +29,9 @@ import type { CycleDto, DecideDisagreementDto, EntryDto, OverrideDto } from './r
 //              (YX-PERF-09); they acknowledge (the rating stays) or disagree within perf.disagreement.days; HR answers;
 //              a changed rating goes through a reopen with a reason (audited)
 //   hand-over  when a manager changes, the open review moves to the new manager, logged in perf_owner_transfers (D7);
-//              the old manager's draft stays theirs and hidden; goals aligned to the old manager's goal are flagged
+//              the old manager's draft stays theirs and hidden; goals aligned to the old manager's goal are flagged;
+//              open 1:1 action items move to the next 1:1 with the new manager; HR may add the old manager (still
+//              employed) as a named "other" reviewer, whose input is advisory and never scored
 
 const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -409,7 +411,8 @@ export class PerformanceReviewsService {
       const r = await tx.review.findFirst({ where: { organizationId: org, id } });
       if (!r) throw new NotFoundException('No such review.');
       const a = await this.access(tx, c, v, r);
-      if (!a.own && !a.manager && !a.chain && !a.scope) throw new NotFoundException('No such review.');
+      const mineOther = v.userId ? await tx.reviewEntry.findFirst({ where: { organizationId: org, reviewId: id, stage: 'other', authorUserId: v.userId } }) : null;
+      if (!a.own && !a.manager && !a.chain && !a.scope && !mineOther) throw new NotFoundException('No such review.');
       const cycle = await tx.reviewCycle.findFirstOrThrow({ where: { id: r.cycleId } });
       const tpl = await this.template(tx, org, cycle);
       const { t, sections, levels, bands } = tpl;
@@ -418,7 +421,7 @@ export class PerformanceReviewsService {
         SELECT g.id::text, g.title, g.progress::float8 AS progress, g.weight::float8 AS weight, g.status FROM goals g JOIN goal_periods p ON p.organization_id = g.organization_id AND p.id = g.period_id
         WHERE g.organization_id = ${org}::uuid AND g.owner_type = 'person' AND g.owner_employee_id = ${r.employeeId}::uuid AND g.status IN ('active', 'done')
           AND p.from_on <= ${cycle.periodTo} AND p.to_on >= ${cycle.periodFrom} ORDER BY g.weight DESC, g.title`;
-      const entries = await tx.reviewEntry.findMany({ where: { organizationId: org, reviewId: id, stage: { in: ['self', 'manager', 'skip'] } } });
+      const entries = await tx.reviewEntry.findMany({ where: { organizationId: org, reviewId: id, stage: { in: ['self', 'manager', 'skip', 'other'] } } });
       const self = entries.find((e) => e.stage === 'self') ?? null;
       // Only the current manager's entry counts: a former manager's draft stays theirs (D7).
       const mgr = entries.find((e) => e.stage === 'manager' && e.authorEmployeeId === r.managerEmployeeId) ?? null;
@@ -430,8 +433,10 @@ export class PerformanceReviewsService {
       const afterDraft = (await settingFor(tx, c, 'perf.self_review.visible_to_manager', { legalEntityId: r.legalEntityId })) === 'after_manager_draft';
       // Before release the employee sees only their own self review; the manager sees the submitted self review once they
       // have saved a draft of their own (anti-anchoring, §9.3); the chain above and HR in scope read both.
-      const showSelf = a.own || ((a.manager || a.chain || a.scope) && self?.status === 'submitted' && (!a.manager || !afterDraft || Boolean(mgr)));
-      const showManager = !a.own || released;
+      // A named other reviewer (a former manager, D7) sees only the template and their own input.
+      const onlyOther = Boolean(mineOther) && !a.own && !a.manager && !a.chain && !a.scope;
+      const showSelf = !onlyOther && (a.own || ((a.manager || a.chain || a.scope) && self?.status === 'submitted' && (!a.manager || !afterDraft || Boolean(mgr))));
+      const showManager = !onlyOther && (!a.own || released);
       const entry = (e: typeof self) => (e ? { status: e.status, answers: e.answers, overallRating: num(e.overallRating), comment: e.comment, submittedAt: e.submittedAt?.toISOString() ?? null, version: e.version } : null);
       const people = await this.names(tx, org, [r.employeeId, r.managerEmployeeId]);
       const log = await tx.reviewStageLog.findMany({ where: { organizationId: org, reviewId: id }, orderBy: { at: 'asc' } });
@@ -442,7 +447,7 @@ export class PerformanceReviewsService {
         employee: people.get(r.employeeId) ?? '',
         employeeId: r.employeeId,
         manager: people.get(r.managerEmployeeId) ?? '',
-        role: a.own ? 'employee' : a.manager ? 'manager' : 'viewer',
+        role: a.own ? 'employee' : a.manager ? 'manager' : onlyOther ? 'other' : 'viewer',
         status: r.status,
         next: this.nextStep(r, cycle, people),
         template: {
@@ -461,12 +466,18 @@ export class PerformanceReviewsService {
         bands: bands.map((b) => ({ fromScore: num(b.fromScore), toScore: num(b.toScore), label: b.label })),
         trail: log.map((l) => ({ stage: l.stage, event: l.event, reason: l.reason, at: l.at.toISOString() })),
         skipComment: showManager ? (skipEntry?.comment ?? null) : null,
+        // Named other reviewers: advisory, never in the score; the employee does not see them.
+        others: !a.own && showManager ? await this.otherViews(tx, org, entries.filter((e) => e.stage === 'other')) : [],
+        otherEntry: mineOther ? entry(mineOther) : null,
+        formerManagers: tenantWide(v, 'perf.cycle.manage') && !v.actingForOther ? await this.formerManagers(tx, org, id) : [],
         released: released ? { at: r.releasedAt!.toISOString(), acknowledgedAt: r.acknowledgedAt?.toISOString() ?? null, acknowledgeComment: r.acknowledgeComment, disagreeBy } : null,
         disagreements: disagreements.map((d) => ({ id: d.id, text: d.text, status: d.status, hrNote: d.hrNote })),
         can: {
           self: a.own && open && r.stage === 'self' && self?.status !== 'submitted',
           manager: a.manager && open && (r.stage === 'self' || r.stage === 'manager') && mgr?.status !== 'submitted',
           skip: a.skip && open && r.stage === 'skip',
+          other: Boolean(mineOther) && open && mineOther!.status !== 'submitted',
+          addOther: tenantWide(v, 'perf.cycle.manage') && !v.actingForOther && open,
           acknowledge: a.own && r.status === 'released',
           disagree: a.own && released && !r.disagreement && (r.status === 'released' || r.status === 'acknowledged') && todayIst() <= disagreeBy!,
           reopen: tenantWide(v, 'perf.cycle.manage') && !v.actingForOther && ['ready', 'released', 'acknowledged'].includes(r.status),
@@ -707,7 +718,7 @@ export class PerformanceReviewsService {
 
   async handOverAll(today = todayIst()) {
     const SUPER = { organizationId: null, isSuperAdmin: true };
-    const orgs = await this.tenantPrisma.forTenant(SUPER, (tx) => tx.$queryRaw<{ id: string }[]>`SELECT DISTINCT organization_id::text AS id FROM reviews WHERE status = 'open'`);
+    const orgs = await this.tenantPrisma.forTenant(SUPER, (tx) => tx.$queryRaw<{ id: string }[]>`SELECT organization_id::text AS id FROM reviews WHERE status = 'open' UNION SELECT organization_id::text FROM one_on_one_actions WHERE done_at IS NULL`);
     for (const { id: org } of orgs) {
       try {
         await this.handOver(org, today);
@@ -739,10 +750,80 @@ export class PerformanceReviewsService {
             AND p.owner_type = 'person' AND p.owner_employee_id = ${r.old}::uuid`;
         for (const g of parented) await tx.perfOwnerTransfer.create({ data: { organizationId: org, employeeId: r.employee_id, oldManagerEmployeeId: r.old, newManagerEmployeeId: r.new, effectiveOn: asDate(today), artefactType: 'goal_parent', artefactId: g.id, decisionNeeded: true } });
       }
-      return (await tx.employee.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.new) } }, select: { userId: true } })).map((e) => e.userId);
+      // Open 1:1 action items of the old pair move to the next 1:1 with the new manager (made a week out if none is planned).
+      const pairs = await tx.$queryRaw<{ employee_id: string; old: string; new: string }[]>`
+        SELECT DISTINCT o.employee_id::text, o.manager_employee_id::text AS old, a.manager_employee_id::text AS new
+        FROM one_on_one_actions x JOIN one_on_ones o ON o.organization_id = x.organization_id AND o.id = x.one_on_one_id
+        JOIN employee_assignments a ON a.organization_id = o.organization_id AND a.employee_id = o.employee_id AND a.superseded_at IS NULL
+          AND a.valid_from <= ${today}::date AND (a.valid_to IS NULL OR a.valid_to >= ${today}::date)
+        WHERE x.organization_id = ${org}::uuid AND x.done_at IS NULL AND a.manager_employee_id IS NOT NULL AND a.manager_employee_id <> o.manager_employee_id`;
+      for (const p of pairs) {
+        let next = await tx.oneOnOne.findFirst({ where: { organizationId: org, employeeId: p.employee_id, managerEmployeeId: p.new, status: 'planned', on: { gte: asDate(today) } }, orderBy: { on: 'asc' } });
+        next ??= await tx.oneOnOne.create({ data: { organizationId: org, employeeId: p.employee_id, managerEmployeeId: p.new, on: asDate(addDays(today, 7)) } });
+        const old = await tx.oneOnOne.findMany({ where: { organizationId: org, employeeId: p.employee_id, managerEmployeeId: p.old }, select: { id: true } });
+        await tx.oneOnOneAction.updateMany({ where: { organizationId: org, oneOnOneId: { in: old.map((o) => o.id) }, doneAt: null }, data: { oneOnOneId: next.id } });
+        await tx.perfOwnerTransfer.create({ data: { organizationId: org, employeeId: p.employee_id, oldManagerEmployeeId: p.old, newManagerEmployeeId: p.new, effectiveOn: asDate(today), artefactType: 'one_on_one_actions', artefactId: next.id } });
+      }
+      const to = [...rows.map((r) => r.new), ...pairs.map((p) => p.new)];
+      return (await tx.employee.findMany({ where: { organizationId: org, id: { in: to } }, select: { userId: true } })).map((e) => e.userId);
     });
     await this.tell(org, moved, 'perf.review.stage_due', 'A review was handed over to you', '/yx/performance/reviews');
     return moved.filter(Boolean).length;
+  }
+
+  private async otherViews(tx: Tx, org: string, rows: Prisma.ReviewEntryGetPayload<object>[]) {
+    const people = await this.names(tx, org, rows.map((e) => e.authorEmployeeId));
+    return rows.map((e) => ({ name: people.get(e.authorEmployeeId ?? '') ?? '', status: e.status, answers: e.status === 'submitted' ? e.answers : null, comment: e.status === 'submitted' ? e.comment : null }));
+  }
+
+  private async formerManagers(tx: Tx, org: string, reviewId: string) {
+    const ids = (await tx.perfOwnerTransfer.findMany({ where: { organizationId: org, artefactType: 'review', artefactId: reviewId }, select: { oldManagerEmployeeId: true } })).map((t) => t.oldManagerEmployeeId).filter((x): x is string => Boolean(x));
+    const people = await this.names(tx, org, ids);
+    return [...new Set(ids)].map((x) => ({ value: x, label: people.get(x) ?? '' }));
+  }
+
+  /** D7: HR adds a former manager of this review, still employed, as a named other reviewer. */
+  async addOther(ctx: TenantContext, user: ScopeUser, id: string, employeeId: string) {
+    const v = await this.viewer(user);
+    this.manager(v);
+    const out = await this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const r = await tx.review.findFirst({ where: { organizationId: org, id } });
+      if (!r) throw new NotFoundException('No such review.');
+      if (r.status !== 'open') throw new ConflictException('Only an open review takes another reviewer.');
+      const was = await tx.perfOwnerTransfer.findFirst({ where: { organizationId: org, artefactType: 'review', artefactId: id, oldManagerEmployeeId: employeeId } });
+      if (!was) throw new BadRequestException('Only a former manager of this review is added as another reviewer.');
+      const today = todayIst();
+      const still = await tx.$queryRaw<{ user_id: string | null }[]>`
+        SELECT e.user_id::text FROM employees e JOIN employments m ON m.organization_id = e.organization_id AND m.employee_id = e.id
+        WHERE e.organization_id = ${org}::uuid AND e.id = ${employeeId}::uuid AND (m.exited_on IS NULL OR m.exited_on >= ${today}::date) LIMIT 1`;
+      if (!still.length) throw new ConflictException('They have left the company, so they cannot review.');
+      if (!still[0].user_id) throw new ConflictException('They have no YukthiX login to review with.');
+      const made = await tx.reviewEntry.createMany({ data: [{ organizationId: org, reviewId: id, stage: 'other', authorUserId: still[0].user_id, authorEmployeeId: employeeId, relationship: 'other' }], skipDuplicates: true });
+      if (!made.count) throw new ConflictException('They are already reviewing this.');
+      await audit(tx, c, 'perf.review.other_added', 'review', id, { employeeId });
+      return still[0].user_id;
+    });
+    void this.tell(ctx.organizationId!, [out], 'perf.review.stage_due', 'You were asked to add to a review', `/yx/performance/reviews/${id}`);
+    return this.get(ctx, user, id);
+  }
+
+  /** The other reviewer answers the manager's questions; advisory, never scored, never shown to the employee. */
+  async saveOther(ctx: TenantContext, user: ScopeUser, id: string, dto: EntryDto, submit: boolean) {
+    const v = await this.viewer(user);
+    await this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const e = v.userId ? await tx.reviewEntry.findFirst({ where: { organizationId: org, reviewId: id, stage: 'other', authorUserId: v.userId } }) : null;
+      if (!e) throw new NotFoundException('No such review.');
+      if (e.status === 'submitted') throw new ConflictException('You already sent your input.');
+      const r = await tx.review.findFirstOrThrow({ where: { id } });
+      if (r.status !== 'open') throw new ConflictException('This review is no longer open.');
+      const cycle = await tx.reviewCycle.findFirstOrThrow({ where: { id: r.cycleId } });
+      const answers = this.checkAnswers('manager', await this.template(tx, org, cycle), { ...dto, overallRating: null }, false);
+      await tx.reviewEntry.update({ where: { id: e.id }, data: { answers: asJson(answers), comment: dto.comment?.trim() || null, ...(submit ? { status: 'submitted', submittedAt: new Date() } : {}), version: { increment: 1 } } });
+      if (submit) await audit(tx, c, 'perf.review.other_submitted', 'review', id, {});
+    });
+    return this.get(ctx, user, id);
   }
 
   /** PRF-13: what moved to me or away from me when a manager changed. */

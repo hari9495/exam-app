@@ -151,3 +151,8 @@ export class DecideDisagreementDto {
   @Length(3, 2000)
   hrNote!: string;
 }
+
+export class OtherReviewerDto {
+  @IsUUID()
+  employeeId!: string;
+}

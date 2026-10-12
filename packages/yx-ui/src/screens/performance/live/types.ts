@@ -322,7 +322,8 @@ export interface ReviewDetail {
   employee: string;
   employeeId: string;
   manager: string;
-  role: 'employee' | 'manager' | 'viewer';
+  /** 'other': a former manager added by HR as a named reviewer; they see only their own input. */
+  role: 'employee' | 'manager' | 'viewer' | 'other';
   status: ReviewSummary['status'];
   next: NextStep;
   template: {
@@ -341,9 +342,14 @@ export interface ReviewDetail {
   trail: { stage: string; event: string; reason: string | null; at: string }[];
   /** The skip-level's comment when they agreed (not shown to the employee before release). */
   skipComment?: string | null;
+  /** Named other reviewers' input: advisory, never in the score, never shown to the employee. */
+  others?: { name: string; status: 'draft' | 'submitted'; answers: ReviewEntry['answers'] | null; comment: string | null }[];
+  otherEntry?: ReviewEntry | null;
+  /** Former managers HR can add as other reviewers. */
+  formerManagers?: Choice[];
   released?: { at: string; acknowledgedAt: string | null; acknowledgeComment: string | null; disagreeBy: string | null } | null;
   disagreements?: { id: string; text: string; status: 'open' | 'answered' | 'upheld' | 'not_upheld'; hrNote: string | null }[];
-  can: { self: boolean; manager: boolean; skip?: boolean; acknowledge?: boolean; disagree?: boolean; reopen?: boolean };
+  can: { self: boolean; manager: boolean; skip?: boolean; acknowledge?: boolean; disagree?: boolean; reopen?: boolean; other?: boolean; addOther?: boolean };
   version: number;
 }
 

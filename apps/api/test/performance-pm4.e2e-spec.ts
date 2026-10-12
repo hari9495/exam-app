@@ -285,6 +285,9 @@ describe('Performance batch PM4', () => {
     const period = (await api('adminA', 'post', '/goal-periods').send({ name: `P ${run}`, fromOn: shift(today, -30), toOn: shift(today, 150) }).expect(201)).body.id;
     const pg = (await api('priya', 'post', '/goals').send({ periodId: period, ownerType: 'person', kind: 'kpi', title: 'Team revenue', weight: 100, keyResults: [] }).expect(201)).body.id;
     await api('meena', 'post', '/goals').send({ periodId: period, ownerType: 'person', kind: 'kpi', title: 'My revenue', weight: 100, parentGoalId: pg, keyResults: [] }).expect(201);
+    // An open action from a 1:1 with Priya.
+    const oo = (await api('priya', 'post', '/one-on-ones').send({ withEmployeeId: emp.meena, on: today }).expect(201)).body;
+    await api('meena', 'post', `/one-on-ones/${oo.id}/actions`).send({ text: 'Share the dealer list', ownerEmployeeId: emp.meena }).expect(201);
     // Meena now reports to Arun (maker-checker change through job history).
     const raised = (await request(server()).post('/api/v1/people/changes').set('Authorization', `Bearer ${token.adminA}`).send({ employeeId: emp.meena, changeType: 'manager_change', effectiveDate: today, payload: { assignment: { managerEmployeeId: emp.head } }, reason: 'Team split' }).expect(201)).body;
     await markSteppedUp(tenantPrisma, token.admin2);
@@ -297,7 +300,25 @@ describe('Performance batch PM4', () => {
     const toHead = (await api('head', 'get', '/handovers').expect(200)).body as { direction: string; artefactType: string; decisionNeeded: boolean; employee: string }[];
     expect(toHead.filter((x) => x.employee.startsWith('Meena'))).toEqual(expect.arrayContaining([expect.objectContaining({ direction: 'to_me', artefactType: 'review' }), expect.objectContaining({ artefactType: 'goal_parent', decisionNeeded: true })]));
     expect((await api('priya', 'get', '/handovers').expect(200)).body.some((x: { direction: string }) => x.direction === 'from_me')).toBe(true);
+    // The open 1:1 action moved to the next 1:1 with Arun; Priya's old 1:1 keeps only what was done.
+    const moved = toHead.find((x) => x.artefactType === 'one_on_one_actions') as unknown as { artefactId: string } | undefined;
+    expect(moved).toBeTruthy();
+    const next = (await api('head', 'get', `/one-on-ones/${moved!.artefactId}`).expect(200)).body;
+    expect(next.actions.map((a: { text: string }) => a.text)).toEqual(['Share the dealer list']);
+    expect((await api('priya', 'get', `/one-on-ones/${oo.id}`).expect(200)).body.actions).toEqual([]);
     expect(await svc.handOver(org.A.id, today)).toBe(0);
+    // HR adds Priya, the former manager, as a named other reviewer: she sees only her own input; Arun sees it, Meena not.
+    await api('adminA', 'post', `/reviews/${rid}/other-reviewers`).send({ employeeId: emp.sita }).expect(400);
+    await api('priya', 'post', `/reviews/${rid}/other-reviewers`).send({ employeeId: emp.priya }).expect(403);
+    await api('adminA', 'post', `/reviews/${rid}/other-reviewers`).send({ employeeId: emp.priya }).expect(200);
+    await api('adminA', 'post', `/reviews/${rid}/other-reviewers`).send({ employeeId: emp.priya }).expect(409);
+    let o = (await api('priya', 'get', `/reviews/${rid}`).expect(200)).body;
+    expect(o).toMatchObject({ role: 'other', self: null, managerEntry: null, finalScore: null, can: { other: true } });
+    o = (await api('priya', 'post', `/reviews/${rid}/entries/other/submit`).send({ answers: answers(o, 'manager', { Goals: 3 }), comment: 'Strong first half.' }).expect(200)).body;
+    expect(o.otherEntry).toMatchObject({ status: 'submitted', comment: 'Strong first half.' });
+    await api('priya', 'put', `/reviews/${rid}/entries/manager`).send({ answers: [] }).expect(404);
+    expect((await api('head', 'get', `/reviews/${rid}`).expect(200)).body.others).toEqual([expect.objectContaining({ name: expect.stringMatching(/^Priya/), status: 'submitted', comment: 'Strong first half.' })]);
+    expect((await api('meena', 'get', `/reviews/${rid}`).expect(200)).body.others).toEqual([]);
   });
 
   it('a probation cycle overlaps the annual one (PF-D4)', async () => {

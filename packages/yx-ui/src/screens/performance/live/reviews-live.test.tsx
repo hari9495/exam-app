@@ -120,4 +120,22 @@ describe('Review cycles and reviews (PM4)', () => {
     await ue.click(within(d).getByRole('button', { name: 'Send answer' }));
     expect(onDecide).toHaveBeenCalledWith('d1', 'upheld', 'Accounts confirmed.');
   });
+
+  it('a former manager answers as other reviewer; HR asks one for input (D7)', async () => {
+    const onSave = vi.fn(ok);
+    const { unmount } = render(<ReviewScreen {...rp({ onSave, review: review({ role: 'other', can: { self: false, manager: false, other: true }, template: { ...review().template, sections: [{ ...review().template.sections[0], whoAnswers: ['manager'] }] } }) })} />);
+    expect(screen.getByText(/not scored/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('radio', { name: '3 · L3' }));
+    await ue.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(onSave).toHaveBeenCalledWith('other', expect.objectContaining({ answers: [{ questionId: 'g', rating: 3, text: null }] }), false);
+    unmount();
+    const onAddOther = vi.fn(ok);
+    render(<ReviewScreen {...rp({ onAddOther, review: review({ role: 'viewer', can: { self: false, manager: false, addOther: true }, formerManagers: [{ value: 'e3', label: 'Priya' }] }) })} />);
+    await ue.click(screen.getByRole('button', { name: 'Ask a former manager for input' }));
+    const d = screen.getByRole('dialog');
+    await ue.click(within(d).getByRole('combobox', { name: 'Former manager' }));
+    await ue.click(screen.getByRole('option', { name: 'Priya' }));
+    await ue.click(within(d).getByRole('button', { name: 'Ask' }));
+    expect(onAddOther).toHaveBeenCalledWith('e3');
+  });
 });

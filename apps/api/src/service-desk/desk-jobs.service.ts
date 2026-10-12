@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
-import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { DirectoryService } from './directory.service';
 import { KbService } from './kb.service';
 import { MeService } from './me.service';
@@ -43,11 +43,11 @@ export class DeskJobsService implements OnModuleInit, OnModuleDestroy {
     private readonly chat: ChatService,
     private readonly tickets: TicketsService,
   ) {
-    this.queue = logBullErrors(new Queue(DESK_JOBS_QUEUE, { connection }), DESK_JOBS_QUEUE);
+    this.queue = logBullErrors(new Queue(DESK_JOBS_QUEUE, bullOpts(connection)), DESK_JOBS_QUEUE);
   }
 
   async onModuleInit() {
-    this.worker = logBullErrors(new Worker(DESK_JOBS_QUEUE, (job) => this.run(job), { connection: this.connection }), DESK_JOBS_QUEUE);
+    this.worker = logBullErrors(new Worker(DESK_JOBS_QUEUE, (job) => this.run(job), bullOpts(this.connection)), DESK_JOBS_QUEUE);
     await this.queue.upsertJobScheduler('sd-autoclose', { every: 15 * 60_000 }, { name: 'autoclose', data: {} });
     await this.queue.upsertJobScheduler('sd-reminders', { every: 60_000 }, { name: 'reminders', data: {} });
     await this.queue.upsertJobScheduler('sd-agents-meter', { pattern: '30 0 * * *', tz: 'Asia/Kolkata' }, { name: 'meter', data: {} });

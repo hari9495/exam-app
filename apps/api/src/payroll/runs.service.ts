@@ -8,7 +8,7 @@ import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-struc
 import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import type { ScopeUser, Viewer } from '../access/scope';
-import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { StatutoryRulesService } from '../statutory/statutory.service';
 import { StatutoryError, empDefaults, esiCovered, inForce, type RuleSet } from '../statutory/evaluator';
 import { asDate, dateOf, monthRange } from '../time/time-core';
@@ -92,7 +92,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     private readonly moduleRef: ModuleRef,
     @Inject(REDIS_CONNECTION) private readonly connection: Redis,
   ) {
-    this.queue = logBullErrors(new Queue(QUEUE, { connection }), QUEUE);
+    this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
 
   onModuleInit() {
@@ -106,7 +106,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       onDecided: (tx, req, outcome) => this.decided(tx, req, outcome),
       requesterLink: () => '/yx/payroll/runs',
     });
-    this.worker = logBullErrors(new Worker(QUEUE, (job) => this.calculateChunk(job.data as { org: string; runId: string; version: number; ids: string[] }), { connection: this.connection, concurrency: CONCURRENCY }), QUEUE);
+    this.worker = logBullErrors(new Worker(QUEUE, (job) => this.calculateChunk(job.data as { org: string; runId: string; version: number; ids: string[] }), { ...bullOpts(this.connection), concurrency: CONCURRENCY }), QUEUE);
   }
 
   async onModuleDestroy() {

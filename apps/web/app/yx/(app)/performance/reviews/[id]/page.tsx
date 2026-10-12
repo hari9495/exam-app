@@ -20,6 +20,7 @@ export default function YxReviewPage() {
       review={review.data ?? null}
       onBack={() => router.push('/yx/performance/reviews')}
       onSave={(stage, input, submit) => (submit ? write('POST', `${base}/entries/${stage}/submit`, input) : write('PUT', `${base}/entries/${stage}`, input))}
+      onAddOther={(employeeId) => write('POST', `${base}/other-reviewers`, { employeeId })}
       onSkip={(agree, text) => (agree ? write('POST', `${base}/skip/agree`, { comment: text }) : write('POST', `${base}/send-back`, { reason: text }))}
       onAcknowledge={(comment) => write('POST', `${base}/acknowledge`, { comment })}
       onDisagree={(text) => write('POST', `${base}/disagree`, { text })}

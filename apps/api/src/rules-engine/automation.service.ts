@@ -5,7 +5,7 @@ import { createHmac, randomBytes, randomUUID } from 'crypto';
 import Redis from 'ioredis';
 import { AuditService, OrgSecretsCryptoService, TenantPrismaService } from '@exam-platform/shared';
 import { assertPublicHttpsHost, publicHttpsFetch } from '../common/ssrf';
-import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { FieldDef, Group, RecordValues, RuleError, TraceRow, evaluate, parseGroup } from './conditions';
 
@@ -110,13 +110,13 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
     private readonly crypto: OrgSecretsCryptoService,
     @Inject(REDIS_CONNECTION) private readonly connection: Redis,
   ) {
-    this.hooks = logBullErrors(new Queue(WEBHOOK_QUEUE, { connection }), WEBHOOK_QUEUE);
-    this.jobs = logBullErrors(new Queue(JOBS_QUEUE, { connection }), JOBS_QUEUE);
+    this.hooks = logBullErrors(new Queue(WEBHOOK_QUEUE, bullOpts(connection)), WEBHOOK_QUEUE);
+    this.jobs = logBullErrors(new Queue(JOBS_QUEUE, bullOpts(connection)), JOBS_QUEUE);
   }
 
   async onModuleInit() {
     this.workers = [
-      logBullErrors(new Worker(WEBHOOK_QUEUE, (job) => this.deliver(job), { connection: this.connection }), WEBHOOK_QUEUE),
+      logBullErrors(new Worker(WEBHOOK_QUEUE, (job) => this.deliver(job), bullOpts(this.connection)), WEBHOOK_QUEUE),
       logBullErrors(
         new Worker(
           JOBS_QUEUE,
@@ -124,7 +124,7 @@ export class AutomationService implements OnModuleInit, OnModuleDestroy {
             const n = job.name === 'dispatch' ? await this.dispatch() : job.name === 'tick' ? await this.tick() : await this.retention();
             if (n) this.logger.log(`${job.name}: ${n}`);
           },
-          { connection: this.connection },
+          bullOpts(this.connection),
         ),
         JOBS_QUEUE,
       ),

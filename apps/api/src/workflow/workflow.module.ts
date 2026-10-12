@@ -3,7 +3,7 @@ import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { AuditModule } from '@exam-platform/shared';
 import { NotificationsModule } from '../notifications/notifications.module';
-import { REDIS_CONNECTION, createRedisConnection, logBullErrors } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, createRedisConnection, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { ApprovalsEngine } from './approvals-engine.service';
 import { WorkflowController } from './workflow.controller';
 import { ApprovalCards } from './approval-channels';
@@ -22,7 +22,7 @@ export class WorkflowJobs implements OnModuleInit, OnModuleDestroy {
     @Inject(REDIS_CONNECTION) private readonly connection: Redis,
     private readonly engine: ApprovalsEngine,
   ) {
-    this.queue = logBullErrors(new Queue(QUEUE, { connection }), QUEUE);
+    this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
 
   async onModuleInit() {
@@ -33,7 +33,7 @@ export class WorkflowJobs implements OnModuleInit, OnModuleDestroy {
           const n = await this.engine.tick();
           if (n) this.logger.log(`approvals tick: ${n}`);
         },
-        { connection: this.connection },
+        bullOpts(this.connection),
       ),
       QUEUE,
     );

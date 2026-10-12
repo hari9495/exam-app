@@ -6,7 +6,7 @@ import Redis from 'ioredis';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import ipaddr from 'ipaddr.js';
 import { OrgSecretsCryptoService, TenantPrismaService } from '@exam-platform/shared';
-import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { NotificationsService } from '../notifications/notifications.service';
 import { Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
@@ -70,11 +70,11 @@ export class MailInService implements OnModuleInit, OnModuleDestroy {
     private readonly notifications: NotificationsService,
     @Inject(SD_DNS_RESOLVER) private readonly resolver: DnsResolver,
   ) {
-    this.queue = logBullErrors(new Queue(MAIL_IN_QUEUE, { connection }), MAIL_IN_QUEUE);
+    this.queue = logBullErrors(new Queue(MAIL_IN_QUEUE, bullOpts(connection)), MAIL_IN_QUEUE);
   }
 
   async onModuleInit() {
-    this.worker = logBullErrors(new Worker(MAIL_IN_QUEUE, (job) => this.run(job), { connection: this.connection, concurrency: 1 }), MAIL_IN_QUEUE);
+    this.worker = logBullErrors(new Worker(MAIL_IN_QUEUE, (job) => this.run(job), { ...bullOpts(this.connection), concurrency: 1 }), MAIL_IN_QUEUE);
     // Company mailboxes (Microsoft 365, Gmail, IMAP) every minute; raw mail older than 30 days removed daily.
     await this.queue.upsertJobScheduler('sd-mail-poll', { every: 60_000 }, { name: 'poll', data: {} });
     await this.queue.upsertJobScheduler('sd-mail-purge', { pattern: '15 3 * * *', tz: 'Asia/Kolkata' }, { name: 'purge', data: {} });

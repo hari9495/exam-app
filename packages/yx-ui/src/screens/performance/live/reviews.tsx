@@ -507,7 +507,8 @@ export interface ReviewScreenProps {
   onRetry?: () => void;
   review: ReviewDetail | null;
   onBack: () => void;
-  onSave: (stage: 'self' | 'manager', input: EntryInput, submit: boolean) => Promise<unknown>;
+  onSave: (stage: 'self' | 'manager' | 'other', input: EntryInput, submit: boolean) => Promise<unknown>;
+  onAddOther?: (employeeId: string) => Promise<unknown>;
   onSkip?: (agree: boolean, text: string | null) => Promise<unknown>;
   onAcknowledge?: (comment: string | null) => Promise<unknown>;
   onDisagree?: (text: string) => Promise<unknown>;
@@ -523,10 +524,12 @@ export function ReviewScreen(p: ReviewScreenProps) {
   );
 }
 
-function ReviewBody({ r, onSave, onSkip, onAcknowledge, onDisagree, onReopen }: ReviewScreenProps & { r: ReviewDetail }) {
+function ReviewBody({ r, onSave, onAddOther, onSkip, onAcknowledge, onDisagree, onReopen }: ReviewScreenProps & { r: ReviewDetail }) {
+  const [adding, setAdding] = useState(false);
+  const [former, setFormer] = useState<string | null>(null);
   const [asking, setAsking] = useState<'send_back' | 'agree' | 'acknowledge' | 'disagree' | 'reopen' | null>(null);
-  const stage: 'self' | 'manager' | null = r.can.self ? 'self' : r.can.manager ? 'manager' : null;
-  const mine = stage === 'self' ? r.self : stage === 'manager' ? r.managerEntry : null;
+  const stage: 'self' | 'manager' | 'other' | null = r.can.self ? 'self' : r.can.manager ? 'manager' : r.can.other ? 'other' : null;
+  const mine = stage === 'self' ? r.self : stage === 'manager' ? r.managerEntry : stage === 'other' ? (r.otherEntry ?? null) : null;
   const [answers, setAnswers] = useState<Record<string, { rating: number | null; text: string | null }>>(mine?.answers ?? {});
   const [overall, setOverall] = useState<number | null>(mine?.overallRating ?? null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -534,7 +537,8 @@ function ReviewBody({ r, onSave, onSkip, onAcknowledge, onDisagree, onReopen }: 
   const [submitting, setSubmitting] = useState(false);
   const set = (id: string, patch: Partial<{ rating: number | null; text: string | null }>) => setAnswers((a) => ({ ...a, [id]: { rating: a[id]?.rating ?? null, text: a[id]?.text ?? null, ...patch } }));
   const level = (v: number | null) => r.template.levels.find((l) => l.value === v);
-  const sections = r.template.sections.filter((s) => (stage ? s.whoAnswers.includes(stage) : true));
+  // A former manager answers what the manager answers.
+  const sections = r.template.sections.filter((s) => (stage ? s.whoAnswers.includes(stage === 'other' ? 'manager' : stage) : true));
   const input = (): EntryInput => ({ answers: Object.entries(answers).map(([questionId, a]) => ({ questionId, rating: a.rating, text: a.text })), overallRating: overall });
   const save = async (submit: boolean) => {
     setBusy(submit ? 'submit' : 'save');
@@ -613,6 +617,40 @@ function ReviewBody({ r, onSave, onSkip, onAcknowledge, onDisagree, onReopen }: 
           </div>
         </Card>
       )}
+      {stage === 'other' && (
+        <InlineAlert tone="info" title="Your input as a former manager">
+          {`${r.manager} now writes the review. Your input is shown to them and HR, not to ${r.employee}, and it is not scored.`}
+        </InlineAlert>
+      )}
+      {(r.others ?? []).filter((o) => o.status === 'submitted').map((o) => (
+        <Card key={o.name} title={`${o.name} (former manager, not scored)`}>
+          {r.template.sections.flatMap((s) =>
+            s.questions
+              .filter((q) => o.answers?.[q.id])
+              .map((q) => (
+                <Text as="p" key={`${o.name}-${q.id}`}>
+                  {`${q.text}: ${[o.answers![q.id].rating !== null ? `${o.answers![q.id].rating} · ${level(o.answers![q.id].rating)?.label ?? ''}` : null, o.answers![q.id].text].filter(Boolean).join(' · ')}`}
+                </Text>
+              )),
+          )}
+          {o.comment && <Text as="p">{o.comment}</Text>}
+        </Card>
+      ))}
+      {r.can.addOther && onAddOther && (r.formerManagers ?? []).length > 0 && (
+        <div className="yx-lif-row">
+          <Button onClick={() => setAdding(true)}>Ask a former manager for input</Button>
+        </div>
+      )}
+      {adding && (
+        <ConfirmDialog open onOpenChange={(o) => !o && setAdding(false)} size="md" title="Ask a former manager for input" confirmLabel="Ask" confirmDisabled={!former} onConfirm={async () => {
+          await onAddOther!(former!);
+          setAdding(false);
+        }}>
+          <FormField id="ao-who" label="Former manager" required helper="They see only the questions and their own input, never the self review or the rating.">
+            <Select aria-label="Former manager" value={former} onChange={setFormer} options={r.formerManagers ?? []} />
+          </FormField>
+        </ConfirmDialog>
+      )}
       {r.can.reopen && onReopen && (
         <div className="yx-lif-row">
           <Button onClick={() => setAsking('reopen')}>Reopen for the manager</Button>
@@ -680,11 +718,11 @@ function ReviewBody({ r, onSave, onSkip, onAcknowledge, onDisagree, onReopen }: 
             </Button>
           </div>
           {submitting && (
-            <ConfirmDialog open onOpenChange={(o) => !o && setSubmitting(false)} title={stage === 'self' ? 'Send your self review?' : `Submit ${r.employee}'s review?`} confirmLabel="Submit" onConfirm={async () => {
+            <ConfirmDialog open onOpenChange={(o) => !o && setSubmitting(false)} title={stage === 'self' ? 'Send your self review?' : stage === 'other' ? 'Send your input?' : `Submit ${r.employee}'s review?`} confirmLabel="Submit" onConfirm={async () => {
               await save(true);
               setSubmitting(false);
             }}>
-              <Text as="p">{stage === 'self' ? `It goes to ${r.manager}. You cannot change it afterwards.` : 'The score is worked out from your ratings. You cannot change it afterwards.'}</Text>
+              <Text as="p">{stage === 'self' ? `It goes to ${r.manager}. You cannot change it afterwards.` : stage === 'other' ? `It goes to ${r.manager} and HR. You cannot change it afterwards.` : 'The score is worked out from your ratings. You cannot change it afterwards.'}</Text>
             </ConfirmDialog>
           )}
         </>

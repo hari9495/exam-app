@@ -4,7 +4,7 @@ import { Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { AuditService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { NotificationsService } from '../notifications/notifications.service';
-import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { Tx } from '../org-structure/org-structure.service';
 import { addDays, todayIst } from '../org-structure/org-validation';
 import { approvedLeaveOfUsers } from '../time/time-core';
@@ -63,11 +63,11 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifications: NotificationsService,
   ) {
-    this.queue = logBullErrors(new Queue(SLA_QUEUE, { connection }), SLA_QUEUE);
+    this.queue = logBullErrors(new Queue(SLA_QUEUE, bullOpts(connection)), SLA_QUEUE);
   }
 
   async onModuleInit() {
-    this.worker = logBullErrors(new Worker(SLA_QUEUE, (job) => this.onJob(job), { connection: this.connection }), SLA_QUEUE);
+    this.worker = logBullErrors(new Worker(SLA_QUEUE, (job) => this.onJob(job), bullOpts(this.connection)), SLA_QUEUE);
     await this.queue.upsertJobScheduler('sd-sla-sweep', { every: 60_000 }, { name: 'sweep', data: {} });
   }
 
