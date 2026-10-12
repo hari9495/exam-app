@@ -60,6 +60,15 @@ const FLAG_TEXT: Record<string, string> = {
 };
 const FIELD_TEXT: Record<string, string> = { amount: 'amount', date: 'date', merchant: 'merchant', gstin: 'GSTIN', invoiceNo: 'invoice number', taxableValue: 'taxable value', cgst: 'CGST', sgst: 'SGST', igst: 'IGST' };
 
+/** U62: where the money comes from and when, in the employee's words. */
+export function paymentText(status: PaymentStatus, p: NonNullable<ClaimDetail['payment']>): string {
+  const month = p.month ? new Date(`${p.month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' }) : null;
+  if (status === 'paid') return p.paidOn ? `Paid on ${dateText(p.paidOn)}${p.route === 'payroll' ? ' with your salary' : ' to your bank account'}.` : 'Paid.';
+  if (status === 'payment_failed') return p.route === 'payroll' ? 'The salary payment did not go through; payroll pays it again with the salary.' : 'The bank transfer did not go through; finance pays it again.';
+  if (p.route === 'payroll') return month ? `Approved: payment in the ${month} payroll.` : 'Approved: payment in the next payroll.';
+  return status === 'payout_queued' ? 'Approved: bank transfer queued.' : 'Approved: finance pays it by bank transfer.';
+}
+
 function StatusBadges({ c }: { c: Pick<ClaimSummary, 'status' | 'paymentStatus'> }) {
   const pay = PAYMENT[c.paymentStatus];
   return (
@@ -237,6 +246,11 @@ export function ClaimScreen(p: ClaimScreenProps) {
               {money(c.currency, c.netPayable)}
             </Text>
             <StatusBadges c={c} />
+            {c.payment && (
+              <Text as="p" tone="secondary">
+                {paymentText(c.paymentStatus, c.payment)}
+              </Text>
+            )}
             {c.decisionNote && (c.status === 'sent_back' || c.status === 'rejected') && (
               <Text as="p" tone="secondary">
                 {`Approver's note: ${c.decisionNote}`}
