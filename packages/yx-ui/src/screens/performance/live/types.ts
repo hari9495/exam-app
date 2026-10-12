@@ -228,3 +228,123 @@ export interface OneOnOne {
   privateNote: string;
   version: number;
 }
+
+// ------------------------------------------------------------------------------------------ PM4: review cycles (§19)
+
+export type StageKey = 'self' | 'manager' | 'skip';
+export interface CycleStage {
+  key: StageKey;
+  dueOn: string;
+  optional?: boolean;
+}
+
+export interface ReviewCycle {
+  id: string;
+  name: string;
+  kind: TemplateKind;
+  periodFrom: string;
+  periodTo: string;
+  templateId: string;
+  scaleId: string;
+  /** A P19 condition group; null = everyone in the company. */
+  population: unknown;
+  stages: CycleStage[];
+  eligibilityRules: { cutoffMonths: number; rateLeavers: boolean };
+  status: 'draft' | 'launched' | 'calibrating' | 'released' | 'closed';
+  launchedAt: string | null;
+  version: number;
+}
+
+export interface CycleInput {
+  name: string;
+  kind: TemplateKind;
+  periodFrom: string;
+  periodTo: string;
+  templateId: string;
+  population: unknown;
+  stages: CycleStage[];
+  eligibilityRules: { cutoffMonths: number; rateLeavers: boolean };
+  version?: number;
+}
+
+export interface Preflight {
+  problems: { text: string; fix: string | null }[];
+  reviewed: number;
+  excluded: number;
+  protectedLeave: number;
+  leavers: number;
+}
+
+export interface EligibilityRow {
+  id: string;
+  employeeId: string;
+  name: string;
+  rule: 'included' | 'excluded_cutoff' | 'leaver' | 'transfer_split' | 'protected_leave' | 'override';
+  eligibleMonths: number;
+  proration: number;
+  reviewed: boolean;
+  overrideReason: string | null;
+}
+
+export interface NextStep {
+  stage: string;
+  label: string;
+  owner: string | null;
+  dueOn: string | null;
+}
+
+export interface ReviewSummary {
+  id: string;
+  cycle: string;
+  cycleId: string;
+  employee: string;
+  employeeId: string;
+  manager: string;
+  status: 'open' | 'in_calibration' | 'ready' | 'released' | 'acknowledged' | 'closed';
+  next: NextStep;
+  /** Null for the employee before release. */
+  finalScore: number | null;
+  band: string | null;
+}
+
+export interface ReviewEntry {
+  status: 'draft' | 'submitted';
+  answers: Record<string, { rating: number | null; text: string | null }>;
+  overallRating: number | null;
+  comment: string | null;
+  submittedAt: string | null;
+  version: number;
+}
+
+export interface ReviewDetail {
+  id: string;
+  cycle: { id: string; name: string; periodFrom: string; periodTo: string; stages: CycleStage[] };
+  employee: string;
+  employeeId: string;
+  manager: string;
+  role: 'employee' | 'manager' | 'viewer';
+  status: ReviewSummary['status'];
+  next: NextStep;
+  template: {
+    name: string;
+    scoring: 'weighted' | 'manager_overall';
+    sections: { id: string; kind: SectionKind; title: string; weight: number; rated: boolean; whoAnswers: string[]; questions: { id: string; text: string; answer: 'rating' | 'text' | 'both'; required: boolean; maxChars: number; wholeSection: boolean }[] }[];
+    levels: { value: number; label: string }[];
+  };
+  goals: { id: string; title: string; progress: number; weight: number; status: string }[];
+  self: ReviewEntry | null;
+  selfSubmitted: boolean;
+  managerEntry: ReviewEntry | null;
+  finalScore: number | null;
+  band: string | null;
+  excludedSections: string[];
+  trail: { stage: string; event: string; reason: string | null; at: string }[];
+  can: { self: boolean; manager: boolean };
+  version: number;
+}
+
+export interface EntryInput {
+  answers: { questionId: string; rating?: number | null; text?: string | null }[];
+  overallRating?: number | null;
+  comment?: string | null;
+}

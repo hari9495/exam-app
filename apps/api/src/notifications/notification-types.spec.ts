@@ -64,6 +64,8 @@ describe('notification catalog', () => {
       'perf.feedback.received',
       'perf.feedback.requested',
       'perf.one_on_one.reminder',
+      'perf.cycle.launched',
+      'perf.review.stage_due',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

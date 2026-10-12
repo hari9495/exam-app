@@ -205,6 +205,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'perf.goal.manage',
     // PM3: sealing a feedback item that reports a concern.
     'perf.concern.seal',
+    // PM4: review cycles and reviews of people in scope.
+    'perf.cycle.manage',
+    'perf.review.view',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],
