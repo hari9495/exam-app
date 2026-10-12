@@ -71,6 +71,8 @@ export class FnfService implements OnModuleInit {
       if (f && (f.status !== 'open' || f.inputRevision >= input.revision)) return;
       const run = f?.runId ? await tx.payrollRun.findFirst({ where: { organizationId: org, id: f.runId } }) : null;
       if (run && !EDITABLE.includes(run.status)) return; // submitted or approved: changes after that go to the second run.
+      // A company that does not run payroll here (no pay group in the entity) gets no settlement.
+      if (!f && !(await tx.payGroup.findFirst({ where: { organizationId: org, legalEntityId: em.legalEntityId }, select: { id: true } }))) return;
       const lwd = dateOf(input.lwd);
       const month = lwd.slice(0, 7);
       const lifePayees = (input.payees as { kind: string; name: string; relation: string; sharePercent: string }[]) ?? [];
