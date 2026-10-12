@@ -293,6 +293,11 @@ describe('Payroll batch 5h', () => {
     zip.file(`ABCDE1234F_Q${quarter}.pdf`, pdf);
     zip.file('ZZZZZ9999Z_Q1.pdf', pdf);
     const data = await zip.generateAsync({ type: 'nodebuffer' });
+    // A ZIP bomb (6 MB of zeros squeezed small) is refused before it is unpacked.
+    const bomb = new JSZip();
+    bomb.file('ABCDE1234F.pdf', Buffer.alloc(6_000_000));
+    const big = await bomb.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    await api('payAdmin', 'post', '/payroll/consultant-certificates/import').field('legalEntityId', ids.entity).field('taxYear', taxYear).field('quarter', String(quarter)).attach('file', big, 'bomb.zip').expect(400);
     const out = (await api('payAdmin', 'post', '/payroll/consultant-certificates/import').field('legalEntityId', ids.entity).field('taxYear', taxYear).field('quarter', String(quarter)).attach('file', data, 'traces.zip').expect(201)).body;
     expect(out.matched.map((m: { consultantId: string }) => m.consultantId)).toEqual([ids.k1]);
     expect(out.unmatched).toEqual(['ZZZZZ9999Z_Q1.pdf']);
@@ -305,5 +310,11 @@ describe('Payroll batch 5h', () => {
     await portal('get', `/certificates/${me.certificates[0].id}/file`, t2).expect(404);
     await portal('post', '/sign-out', t).expect(200);
     await portal('get', '/me', t).expect(401);
+  });
+
+  it('two bank files made at once never carry the same invoice', async () => {
+    const i = await invoice(ids.k1, 'INV-009', '1000.00');
+    const both = await Promise.all([1, 2].map(() => api('payAdmin', 'post', '/payroll/consultant-payouts').send({ invoiceIds: [i.id], debitAccount: '123456789012' })));
+    expect(both.map((r) => r.status).sort()).toEqual([201, 409]);
   });
 });

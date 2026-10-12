@@ -477,13 +477,14 @@ export class ConsultantsService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const ids = await this.reach(tx, c, v, ['consultant.manage']);
+      // Locked before they are read, so two bank files made at once never carry the same invoice.
+      await tx.$queryRaw`SELECT id FROM consultant_invoices WHERE organization_id = ${org}::uuid AND id = ANY(${dto.invoiceIds}::uuid[]) FOR UPDATE`;
       const invs = await tx.consultantInvoice.findMany({ where: { organizationId: org, id: { in: dto.invoiceIds } } });
       if (invs.length !== new Set(dto.invoiceIds).size || invs.some((i) => !ids.includes(i.legalEntityId))) throw new NotFoundException('Not found');
       const entity = invs[0].legalEntityId;
       if (invs.some((i) => i.legalEntityId !== entity)) throw new BadRequestException('One bank file pays one legal entity’s invoices.');
       const notReady = invs.filter((i) => !['approved', 'failed'].includes(i.status));
       if (notReady.length) throw new ConflictException(`Only approved invoices are paid (${notReady.map((i) => i.invoiceNo).join(', ')}).`);
-      await tx.$queryRaw`SELECT id FROM consultant_invoices WHERE organization_id = ${org}::uuid AND id = ANY(${dto.invoiceIds}::uuid[]) FOR UPDATE`;
       const payDate = todayIst();
       const fmt = inForce(await this.rules.published(), 'IN.BANKFMT', ['GENERIC'], payDate);
       if (!fmt) throw new ConflictException(`No published bank format "GENERIC" is in force on ${payDate}.`);
@@ -990,7 +991,10 @@ export class ConsultantsService implements OnModuleInit {
     }
     const entries = Object.values(archive.files).filter((f) => !f.dir && /\.pdf$/i.test(f.name));
     if (!entries.length || entries.length > ZIP_MAX_FILES) throw new BadRequestException(`The ZIP holds 1 to ${ZIP_MAX_FILES} PDF certificates.`);
-    // shortcut: JSZip has no public size before inflating; a PDF over the cap is refused right after, upgrade to a streaming reader if TRACES ZIPs grow.
+    // The declared size is checked before inflating (a ZIP bomb is refused unread); the real size again after.
+    // shortcut: JSZip keeps the declared size in a private field, upgrade to a streaming reader if TRACES ZIPs grow.
+    const declared = (e: JSZip.JSZipObject) => (e as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize ?? 0;
+    if (entries.some((e) => declared(e) > PDF_MAX_BYTES)) throw new BadRequestException('A file in the ZIP is larger than 5 MB.');
     const pdfs: { name: string; pan: string | null; data: Buffer }[] = [];
     for (const e of entries) {
       const data = await e.async('nodebuffer');
