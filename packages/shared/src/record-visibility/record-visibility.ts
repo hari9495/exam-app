@@ -52,6 +52,9 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   // Batch 6c: exit cases are about people, scoped like their records; the asset list is kept per entity or location.
   if (key.startsWith('lifecycle.exit.')) return GRANT_SCOPE_TYPES;
   if (key === 'asset.view' || key === 'asset.manage') return ['tenant', 'legal_entity', 'location'];
+  // M05 expenses E2: claims are about people, scoped like their records; finance checks them per legal entity.
+  if (key === 'expense.claim.view') return GRANT_SCOPE_TYPES;
+  if (key === 'expense.finance.review') return ['tenant', 'legal_entity'];
   // M03 batch 5a: payroll and its audit work per legal entity (the pay guard reads the granted entities); legal holds are company-wide.
   // Batch 5e: income tax (workspaces, proofs, regime) works per legal entity like the rest of payroll.
   if (key.startsWith('payroll.') || key.startsWith('tax.') || key.startsWith('statutory.') || key === 'audit.view' || key === 'audit.export') return ['tenant', 'legal_entity'];

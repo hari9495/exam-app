@@ -45,6 +45,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'exit.notice.confirmed': { label: 'Notice period once confirmed', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: true, values: ['0d', '7d', '15d', '30d', '45d', '60d', '90d', '1m', '2m', '3m'], default: '30d' },
   // P05 Q6 (decided): alumni read their own letters and documents for this many years after the last day.
   // M05 §13 (expenses E1): capture supplier GSTIN, invoice and tax split on GST-eligible lines, per entity (off by default, Q5).
+  // M05 E2 (§9): when finance checks claims, how old a bill may be before it needs that check, and above what claim
+  // total the cost-centre owner approves too.
+  'expense.finance_audit': { label: 'Expenses: finance check of claims', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'flagged_only', 'all', 'sample_10pct'], default: 'flagged_only' },
+  'expense.claim_window_days': { label: 'Expenses: bills older than this many days need the finance check', scopes: ['tenant', 'legal_entity'], dated: false, values: ['30', '60', '90', '180'], default: '60' },
+  'expense.cc_owner_above': { label: 'Expenses: the cost-centre owner also approves claims above', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '10000', '25000', '50000', '100000'], default: 'off' },
   'expense.gst.capture': { label: 'Expenses: capture GST for input credit', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
   'alumni.access_years': { label: 'Alumni can read their documents for (years after leaving)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10'], default: '7' },
   // M01 YX-LC-18 (lifecycle 6e): the rehire policy. Starter template "fresh start, same record, code and UAN"; HR may

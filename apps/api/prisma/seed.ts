@@ -190,6 +190,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'asset.manage',
     // M05 expenses E1: categories, limits, rates and GST registrations.
     'expense.policy.manage',
+    // E2: claims of people in scope, and the finance check.
+    'expense.claim.view',
+    'expense.finance.review',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],

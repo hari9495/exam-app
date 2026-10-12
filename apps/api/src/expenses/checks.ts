@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { evaluate, fieldsUsed, type FieldDef, type Group, type RecordValues } from '../rules-engine/conditions';
 
@@ -133,4 +134,86 @@ export function gstinProblem(gstin: string): string | null {
   if (!GST_STATE_CODES.includes(g.slice(0, 2))) return `${g.slice(0, 2)} is not a GST state code.`;
   if (gstinCheckChar(g.slice(0, 14)) !== g[14]) return 'The GSTIN check character does not match; check for a typing mistake.';
   return null;
+}
+
+// ------------------------------------------------------------------------------------------ claim lines (E2, §8, §13, §15)
+
+export interface TierLike {
+  id: string;
+  rank: number;
+  country: string | null;
+  cities: string[];
+  active: boolean;
+}
+
+/** A line's city tier: the tier listing the city, else the catch-all tier of its country, else the tier for abroad. */
+export function tierFor<T extends TierLike>(tiers: readonly T[], city: string | null, country: string): T | null {
+  const live = tiers.filter((t) => t.active);
+  const c = (city ?? '').trim().toLowerCase();
+  return (
+    (c ? live.find((t) => t.cities.some((x) => x.toLowerCase() === c)) : undefined) ??
+    live.find((t) => t.country === country && t.cities.length === 0) ??
+    (country !== 'IN' ? live.find((t) => t.country === null && t.cities.length === 0) : undefined) ??
+    null
+  );
+}
+
+/** Merchant names compared loosely: case, punctuation and common suffixes ignored. */
+export const normMerchant = (m: string | null) =>
+  (m ?? '')
+    .toLowerCase()
+    .replace(/\b(pvt|private|ltd|limited|llp|the|and)\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+export const merchantsAlike = (a: string | null, b: string | null) => {
+  const x = normMerchant(a);
+  const y = normMerchant(b);
+  return Boolean(x && y) && (x === y || x.includes(y) || y.includes(x));
+};
+
+/** F3 look-alike key: employee, date and amount (merchants are compared separately). */
+export const dupKey = (employeeId: string, spentOn: string, amount: string) => createHash('sha256').update(`${employeeId}|${spentOn}|${Number(amount).toFixed(2)}`).digest('hex');
+
+/** The published GST rates (P07 rule data; ponytail: a constant until the India pack carries the rate table). */
+export const GST_RATES: readonly number[] = [0.0025, 0.03, 0.05, 0.12, 0.18, 0.28, 0.4];
+
+/** F11 tax maths on a GST line: CGST = SGST, IGST never with them, and tax ÷ taxable value a published rate. */
+export function gstMathsProblem(g: { taxableValue: string | null; cgst: string | null; sgst: string | null; igst: string | null }): string | null {
+  const n = (x: string | null) => (x === null ? 0 : Number(x));
+  const [tv, c, s, i] = [n(g.taxableValue), n(g.cgst), n(g.sgst), n(g.igst)];
+  if (!tv && !c && !s && !i) return null;
+  if (!tv) return 'The taxable value is missing.';
+  if (i && (c || s)) return 'A bill has IGST, or CGST with SGST, never both.';
+  if (Math.abs(c - s) > 0.01) return 'CGST and SGST should be equal.';
+  const rate = (c + s + i) / tv;
+  if (!GST_RATES.some((r) => Math.abs(rate - r) <= 0.005)) return `The tax is ${(rate * 100).toFixed(2)}% of the taxable value, which is not a GST rate.`;
+  return null;
+}
+
+export type ItcStatus = 'eligible' | 'blocked' | 'not_billed_to_us' | 'wrong_state' | 'missing' | 'not_applicable';
+/**
+ * §13.1–13.3: credit needs the bill to name one of the entity's GSTINs, registered in the state where the service is
+ * supplied (the supplier's state unless the bill says otherwise); some kinds of spend are blocked whatever the bill says.
+ */
+export function itcStatusOf(i: { gstOn: boolean; gstEligible: boolean; blocked: boolean; supplierGstin: string | null; invoiceNo: string | null; billedTo: string | null; placeOfSupply: string | null; ourGstins: readonly string[] }): ItcStatus {
+  if (!i.gstOn || !i.gstEligible) return 'not_applicable';
+  if (i.blocked) return 'blocked';
+  if (!i.supplierGstin || !i.invoiceNo) return 'missing';
+  if (!i.billedTo || !i.ourGstins.includes(i.billedTo)) return 'not_billed_to_us';
+  const place = i.placeOfSupply ?? i.supplierGstin.slice(0, 2);
+  return i.billedTo.slice(0, 2) === place ? 'eligible' : 'wrong_state';
+}
+
+/** §15: high for a duplicate invoice, a bad e-invoice signature or three or more flags; low for any other flag. */
+export function riskOf(kinds: readonly string[]): 'none' | 'low' | 'high' {
+  if (!kinds.length) return 'none';
+  return kinds.includes('same_invoice') || kinds.includes('einvoice_invalid') || kinds.length >= 3 ? 'high' : 'low';
+}
+
+/** §11.2: the taxable part of an approved line, by the category's rule. */
+export function taxablePart(rule: string, approved: string, overBy: string): string {
+  if (rule === 'always') return Number(approved).toFixed(2);
+  if (rule === 'above_limit') return Math.min(Number(approved), Number(overBy)).toFixed(2);
+  return '0.00';
 }

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PolicySave } from '@yukthix/ui/expenses';
-import { apiFetch } from './api-client';
+import { apiFetch, apiFetchBlob } from './api-client';
 import { useAuth } from './auth-context';
 
 // API glue for expenses (M05, /expenses/*). The screens in @yukthix/ui/expenses stay presentational; the API checks
@@ -16,8 +16,8 @@ export function useExp<T>(path: string | null, enabled = true) {
 export function useExpWrite() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
-  return async <T = unknown>(method: 'POST' | 'PUT', path: string, body?: unknown): Promise<T> => {
-    const result = await apiFetch(`/expenses${path}`, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
+  return async <T = unknown>(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T> => {
+    const result = await apiFetch(`/expenses${path}`, { method, ...(body === undefined ? {} : body instanceof FormData ? { body } : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
     await queryClient.invalidateQueries({ queryKey: ['expenses'] });
     return result as T;
   };
@@ -30,4 +30,15 @@ export function policyRequest(s: PolicySave): { method: 'POST' | 'PUT'; path: st
   if (s.mode === 'create') return { method: 'POST', path: '/policies', body };
   if (s.mode === 'version') return { method: 'POST', path: `/policies/${encodeURIComponent(s.policy.id)}/new-version`, body: { ...body, validFrom: s.from, version: s.policy.version } };
   return { method: 'PUT', path: `/policies/${encodeURIComponent(s.policy.id)}`, body: { ...body, version: s.policy.version } };
+}
+
+/** Opens a receipt in a new tab (streamed through the API after its checks; never a storage link). */
+export function useReceiptOpen() {
+  const { accessToken } = useAuth();
+  return async (path: string) => {
+    const { blob } = await apiFetchBlob(`/expenses${path}`, {}, accessToken ?? undefined);
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank', 'noopener');
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
 }

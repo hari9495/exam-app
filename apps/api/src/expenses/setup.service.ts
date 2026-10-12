@@ -415,7 +415,7 @@ export class ExpenseSetupService {
   }
 
   /** Each current employee's job facts on a day, as the "applies to" condition reads them. */
-  private async recordsOf(tx: Tx, org: string, on: string, employeeId: string | null): Promise<{ employeeId: string; record: RecordValues }[]> {
+  async recordsOf(tx: Tx, org: string, on: string, employeeId: string | null): Promise<{ employeeId: string; record: RecordValues }[]> {
     const day = asDate(on);
     const rows = await tx.employeeAssignment.findMany({
       where: { organizationId: org, supersededAt: null, validFrom: { lte: day }, OR: [{ validTo: null }, { validTo: { gte: day } }], ...(employeeId ? { employeeId } : {}) },
@@ -423,6 +423,17 @@ export class ExpenseSetupService {
       take: 20_000, // ponytail: one read of every current assignment; page it when a company passes 20k people.
     });
     return rows.map((r) => ({ employeeId: r.employeeId, record: { legal_entity_id: r.legalEntityId, location_id: r.locationId, department_id: r.departmentId, grade_id: r.gradeId, designation_id: r.designationId, employment_type_id: r.employmentTypeId } }));
+  }
+
+  /** The employee's policy on a day and its rules (§7.1), or null when none applies. */
+  async policyFor(tx: Tx, org: string, employeeId: string, on: string) {
+    const [rec] = await this.recordsOf(tx, org, on, employeeId);
+    if (!rec) return null;
+    const policies = (await tx.expensePolicy.findMany({ where: { organizationId: org, status: 'active' } })).map((p) => ({ ...p, appliesIf: (p.appliesIf as Group | null) ?? null, validFrom: iso(p.validFrom), validTo: p.validTo ? iso(p.validTo) : null }));
+    const p = pickPolicy(policies, rec.record, APPLIES_FIELDS, on);
+    if (!p) return null;
+    const rules = (await tx.expensePolicyRule.findMany({ where: { organizationId: org, policyId: p.id } })).map((r) => ({ ...r, perLine: money(r.perLine), perDay: money(r.perDay), perTrip: money(r.perTrip), perMonth: money(r.perMonth), overLimit: r.overLimit as 'justify_and_approve' | 'block' }));
+    return { policy: { id: p.id, name: p.name }, rules };
   }
 
   // ------------------------------------------------------------------------------------------ my limits (EXP-02 preview)

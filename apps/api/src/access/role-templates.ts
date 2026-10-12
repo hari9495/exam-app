@@ -50,7 +50,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'All HR records, job changes, personal details and identity changes for the people in scope; leave and attendance set-up, balances and medical leave.',
     cannot: 'Pay, Aadhaar in full, payroll approval.',
-    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN],
+    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view'],
   },
   {
     key: 'hr_executive',
@@ -90,7 +90,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'The final approval to reopen a locked pay month; releases payroll files prepared by others.',
     cannot: 'Prepare pay, or see individual tax workspaces.',
-    permissions: ['org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.release'],
+    permissions: ['expense.finance.review', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.release'],
   },
   {
     key: 'expense_setup',

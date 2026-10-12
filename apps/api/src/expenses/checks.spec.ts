@@ -1,5 +1,5 @@
 import type { FieldDef, Group } from '../rules-engine/conditions';
-import { checkLimit, gstinCheckChar, gstinProblem, mileageAmount, perDiemAmount, pickPolicy, receiptNeed, ruleFor, type RuleLike } from './checks';
+import { checkLimit, dupKey, gstMathsProblem, gstinCheckChar, gstinProblem, itcStatusOf, merchantsAlike, mileageAmount, perDiemAmount, pickPolicy, receiptNeed, riskOf, ruleFor, taxablePart, tierFor, type RuleLike } from './checks';
 
 // M05-BUILD-DESIGN §7 and §13.4: XP-1.03 (policy pick), XP-1.04 (limits, mileage, per diem), XP-1.05 (GSTIN).
 
@@ -87,5 +87,51 @@ describe('GSTIN (§13.4)', () => {
     expect(gstinProblem('27AAPFU0939F1Z')).toMatch(/15 characters/);
     expect(gstinProblem('45AAPFU0939F1ZV')).toBe('45 is not a GST state code.');
     expect(gstinProblem('27AAPFU0939F1ZW')).toMatch(/check character/);
+  });
+});
+
+describe('claim line checks (E2, §13, §15)', () => {
+  const tiers = [
+    { id: 't1', rank: 1, country: 'IN', cities: ['Mumbai'], active: true },
+    { id: 't3', rank: 3, country: 'IN', cities: [], active: true },
+    { id: 'ti', rank: 9, country: null, cities: [], active: true },
+  ];
+  it('a city finds its tier; other Indian cities the catch-all; abroad the international tier', () => {
+    expect(tierFor(tiers, 'mumbai', 'IN')!.id).toBe('t1');
+    expect(tierFor(tiers, 'Hosur', 'IN')!.id).toBe('t3');
+    expect(tierFor(tiers, 'Dubai', 'AE')!.id).toBe('ti');
+    expect(tierFor([], 'Mumbai', 'IN')).toBeNull();
+  });
+  it('look-alike merchants and the duplicate key', () => {
+    expect(merchantsAlike('Hotel Sea View Pvt. Ltd.', 'HOTEL SEA VIEW')).toBe(true);
+    expect(merchantsAlike('Cafe Mocha', 'Chai Point')).toBe(false);
+    expect(merchantsAlike(null, 'x')).toBe(false);
+    expect(dupKey('e1', '2026-10-01', '450')).toBe(dupKey('e1', '2026-10-01', '450.00'));
+  });
+  it('GST maths', () => {
+    expect(gstMathsProblem({ taxableValue: '1000', cgst: '90', sgst: '90', igst: null })).toBeNull();
+    expect(gstMathsProblem({ taxableValue: '1000', cgst: null, sgst: null, igst: '180' })).toBeNull();
+    expect(gstMathsProblem({ taxableValue: '1000', cgst: '90', sgst: '80', igst: null })).toBe('CGST and SGST should be equal.');
+    expect(gstMathsProblem({ taxableValue: '1000', cgst: '90', sgst: '90', igst: '180' })).toMatch(/never both/);
+    expect(gstMathsProblem({ taxableValue: '1000', cgst: '70', sgst: '70', igst: null })).toMatch(/not a GST rate/);
+    expect(gstMathsProblem({ taxableValue: null, cgst: null, sgst: null, igst: null })).toBeNull();
+  });
+  it('input credit: billed to us in the supply state, not blocked', () => {
+    const base = { gstOn: true, gstEligible: true, blocked: false, supplierGstin: '27AAPFU0939F1ZV', invoiceNo: 'SV/1', billedTo: '27ABCDE1234F1Z5', placeOfSupply: null, ourGstins: ['27ABCDE1234F1Z5', '29ABCDE1234F1Z1'] };
+    expect(itcStatusOf(base)).toBe('eligible');
+    expect(itcStatusOf({ ...base, billedTo: '29ABCDE1234F1Z1' })).toBe('wrong_state');
+    expect(itcStatusOf({ ...base, billedTo: null })).toBe('not_billed_to_us');
+    expect(itcStatusOf({ ...base, invoiceNo: null })).toBe('missing');
+    expect(itcStatusOf({ ...base, blocked: true })).toBe('blocked');
+    expect(itcStatusOf({ ...base, gstOn: false })).toBe('not_applicable');
+  });
+  it('risk and the taxable part', () => {
+    expect(riskOf([])).toBe('none');
+    expect(riskOf(['look_alike'])).toBe('low');
+    expect(riskOf(['same_invoice'])).toBe('high');
+    expect(riskOf(['a', 'b', 'c'])).toBe('high');
+    expect(taxablePart('never', '1000', '200')).toBe('0.00');
+    expect(taxablePart('always', '1000', '0')).toBe('1000.00');
+    expect(taxablePart('above_limit', '1000', '200')).toBe('200.00');
   });
 });

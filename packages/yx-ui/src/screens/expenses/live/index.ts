@@ -3,3 +3,4 @@
 export * from './types';
 export { ExpenseSetupScreen, type ExpenseSetupScreenProps, type CategoryInput, type TierInput } from './setup';
 export { fromRows, toRows, sameRules, type MatrixRow, type Per } from './matrix';
+export { ExpensesHomeScreen, ClaimScreen, STATUS as CLAIM_STATUS, PAYMENT as CLAIM_PAYMENT, type ExpensesHomeScreenProps, type ClaimScreenProps } from './claims';
