@@ -14,6 +14,7 @@ import { PerformanceGoalsController } from '../performance/goals.controller';
 import { PerformanceFeedbackController } from '../performance/feedback.controller';
 import { PerformanceReviewsController } from '../performance/reviews.controller';
 import { PerformancePeerController } from '../performance/peer.controller';
+import { PerformanceCalibrationController } from '../performance/calibration.controller';
 import { SpecialCasesController } from '../lifecycle/special-cases.controller';
 import { ExpensesController } from '../expenses/expenses.controller';
 import { ExpenseClaimsController } from '../expenses/claims.controller';
@@ -68,11 +69,13 @@ const IMPLICIT: Record<string, string[]> = {
   PerformanceReviewsController: ['list', 'get', 'saveSelf', 'submitSelf', 'saveManager', 'submitManager', 'skipAgree', 'sendBack', 'acknowledge', 'disagree', 'handovers', 'saveOther', 'submitOther'],
   // PM5: nominations and answers are decided per review (the employee, the manager, an approved nominee).
   PerformancePeerController: ['nominations', 'options', 'nominate', 'approve', 'decline', 'withdraw', 'tasks', 'form', 'savePeer', 'submitPeer', 'grouped'],
+  // PM6: the board is open to its facilitator, HR and the managers of the people in it (decided per session).
+  PerformanceCalibrationController: ['board'],
   ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff'],
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

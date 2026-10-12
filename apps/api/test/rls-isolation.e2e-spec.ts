@@ -37,7 +37,9 @@ const PERFORMANCE_SUPPORT_EXCLUDED = ['feedback_requests', 'feedback_items', 'on
   // PM4: review cycles and reviews.
   'review_cycles', 'review_eligibility', 'reviews', 'review_entries', 'review_stage_log', 'review_disagreements', 'perf_owner_transfers',
   // PM5: peer and 360°.
-  'feedback_nominations', 'reviewer_blocks'];
+  'feedback_nominations', 'reviewer_blocks',
+  // PM6: calibration.
+  'calibration_sessions', 'calibration_changes'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt((SUPPORT_EXCLUDED.includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 

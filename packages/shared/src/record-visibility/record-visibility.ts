@@ -58,6 +58,8 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   if (key === 'perf.goal.view') return GRANT_SCOPE_TYPES;
   // PM4: reviews are about people, scoped like their records; cycles are company-wide for now.
   if (key === 'perf.review.view') return GRANT_SCOPE_TYPES;
+  // PM6: reports show people in scope; calibration is company-wide like cycles.
+  if (key === 'perf.report.view') return GRANT_SCOPE_TYPES;
   if (key === 'expense.finance.review') return ['tenant', 'legal_entity'];
   // E4: the travel desk books for people in scope; advances are paid per legal entity.
   if (key === 'travel.booking.manage') return GRANT_SCOPE_TYPES;

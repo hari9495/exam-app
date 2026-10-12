@@ -8,9 +8,12 @@ import { PerformanceFeedbackService } from './feedback.service';
 import { PerformanceGoalsController } from './goals.controller';
 import { PerformanceGoalsService } from './goals.service';
 import { PerformanceJobs } from './perf-jobs';
+import { PerformanceCalibrationController } from './calibration.controller';
+import { PerformanceCalibrationService } from './calibration.service';
 import { PerformancePeerController } from './peer.controller';
 import { PerformancePeerService } from './peer.service';
 import { PerformanceReviewsController } from './reviews.controller';
+import { PerformanceReportsService } from './reports.service';
 import { PerformanceReviewsService } from './reviews.service';
 import { PerformanceSetupController } from './setup.controller';
 import { PerformanceSetupService } from './setup.service';
@@ -20,10 +23,11 @@ import { PerformanceSetupService } from './setup.service';
 // PM3: feedback, requests for feedback, 1:1s and HR sealing of concerns.
 // PM4: review cycles (eligibility, launch) and reviews (self and manager stages, scoring, reminders).
 // PM5: peer and 360° feedback (nominations, anonymous groups, reviewer blocks, reveal for abuse).
+// PM6: calibration (sessions, guide, changes with reasons, sign-off) and reports with suppression.
 @Module({
   imports: [AuthModule, WorkflowModule, NotificationsModule],
-  controllers: [PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, PerformanceSetupService, PerformanceGoalsService, PerformanceFeedbackService, PerformanceReviewsService, PerformancePeerService, PerformanceJobs],
+  controllers: [PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, PerformanceSetupService, PerformanceGoalsService, PerformanceFeedbackService, PerformanceReviewsService, PerformancePeerService, PerformanceCalibrationService, PerformanceReportsService, PerformanceJobs],
   exports: [PerformanceSetupService, PerformanceGoalsService],
 })
 export class PerformanceModule {}

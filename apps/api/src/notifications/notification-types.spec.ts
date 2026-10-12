@@ -72,6 +72,7 @@ describe('notification catalog', () => {
       'perf.nomination.proposed',
       'perf.feedback.task',
       'perf.feedback.author_revealed',
+      'perf.calibration.signed_off',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);
