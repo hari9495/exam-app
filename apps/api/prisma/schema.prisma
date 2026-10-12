@@ -1929,6 +1929,12 @@ model PermissionProfile {
   // Optional per-user field rules (entity->field->level). Overlaid per-field on the org role config
   // for users assigned this profile. Null = inherit role field rules entirely.
   fieldPermissionsJson String?  @map("field_permissions_json") @db.Text
+  /// The role template this role still follows (null: the company's own role); see access/template-sync.service.ts.
+  templateKey          String?  @map("template_key") @db.VarChar(40)
+  /// The template keys the role was last brought up to (JSON, sorted).
+  templateSet          String?  @map("template_set") @db.Text
+  /// Whether the start-up sync has looked at this role once for a template it matches.
+  templateChecked      Boolean  @default(false) @map("template_checked")
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
   users                User[]

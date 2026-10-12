@@ -10,6 +10,9 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { ExpensePaymentsService } from '../src/expenses/payments.service';
+import { TemplateSyncService } from '../src/access/template-sync.service';
+import { PermissionProfilesService } from '../src/permission-profiles/permission-profiles.service';
+import { TEMPLATE_HISTORY } from '../src/access/role-template-history';
 import { hashValue, sealValue } from '../src/people/profile.service';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
@@ -268,5 +271,28 @@ describe('Expenses batch E3', () => {
     const batch = ((await api('fin', 'get', '/expenses/to-pay').expect(200)).body as ToPay).batches[0];
     await api('adminB', 'get', `/expenses/payouts/${batch.id}/file`).expect(403);
     await api('adminB', 'post', '/expenses/payouts').send({ claimIds: [ids.claim1], debitAccount: '00123456789' }).expect(403);
+  });
+  it('an existing company’s Finance Approver, made from the template before expenses, can open To pay after the template sync; a customised role is left alone', async () => {
+    const old = TEMPLATE_HISTORY.finance_approver.find((v) => !v.includes('expense.payout.manage'))!;
+    // Two roles as they were before roles remembered their template: an unchanged copy, and one the company changed.
+    const copy = await inA((tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name: `Finance Approver ${run}`, permissionsJson: JSON.stringify(old) } }));
+    const own = await inA((tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name: `Finance custom ${run}`, permissionsJson: JSON.stringify([...old, 'audit.view']) } }));
+    const passwordHash = await argon2.hash(PASSWORD);
+    const fa = await inA((tx) => tx.user.create({ data: { organizationId: org.A.id, email: `fa@exp3-${run}.test`, name: 'Finance approver', passwordHash, role: 'panel', permissionProfileId: copy.id } }));
+    const login = async () => (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org.A.slug, email: fa.email, password: PASSWORD }).expect(200)).body.accessToken as string;
+    await request(server()).get('/api/v1/expenses/to-pay').set('Authorization', `Bearer ${await login()}`).expect(403);
+
+    expect(await app.get(TemplateSyncService).syncOrg(org.A.id)).toBe(1);
+    await request(server()).get('/api/v1/expenses/to-pay').set('Authorization', `Bearer ${await login()}`).expect(200);
+    const after = new Map((await inA((tx) => tx.permissionProfile.findMany({ where: { id: { in: [copy.id, own.id] } } }))).map((p) => [p.id, p]));
+    expect(after.get(copy.id)).toMatchObject({ templateKey: 'finance_approver', templateChecked: true });
+    expect(JSON.parse(after.get(copy.id)!.permissionsJson)).toContain('expense.payout.manage');
+    expect(after.get(own.id)).toMatchObject({ templateKey: null, templateChecked: true, permissionsJson: own.permissionsJson });
+    const log = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { action: 'access.role.template_synced', entityId: copy.id } }));
+    expect(JSON.parse(log.metadataJson!)).toMatchObject({ template: 'finance_approver', added: expect.arrayContaining(['expense.payout.manage']) });
+    // Run again: nothing more to do. Changing its keys makes the role the company's own.
+    expect(await app.get(TemplateSyncService).syncOrg(org.A.id)).toBe(0);
+    await app.get(PermissionProfilesService).update({ organizationId: org.A.id, isSuperAdmin: false }, users.adminA, copy.id, { permissions: old });
+    expect((await inA((tx) => tx.permissionProfile.findUniqueOrThrow({ where: { id: copy.id } }))).templateKey).toBeNull();
   });
 });
