@@ -156,3 +156,50 @@ export class OtherReviewerDto {
   @IsUUID()
   employeeId!: string;
 }
+
+// ------------------------------------------------------------------------------------------ PM5: peer and 360° (§19)
+
+export class PeerConfigDto {
+  @IsInt()
+  @Min(0)
+  @Max(20)
+  minNominees!: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  maxNominees!: number;
+
+  @Matches(ISO)
+  dueOn!: string;
+}
+
+export class NominateDto {
+  @IsUUID()
+  reviewerEmployeeId!: string;
+
+  @IsIn(['peer', 'report', 'other'])
+  relationship!: 'peer' | 'report' | 'other';
+}
+
+export class NomineeQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+}
+
+export class BlockDto {
+  @IsUUID()
+  employeeA!: string;
+
+  @IsUUID()
+  employeeB!: string;
+
+  @IsIn(['conflict', 'confidential_matter'])
+  reasonCode!: 'conflict' | 'confidential_matter';
+
+  @IsOptional()
+  @Matches(ISO)
+  untilOn?: string | null;
+}

@@ -108,6 +108,7 @@ export class PerformanceReviewsService {
       population: x.population,
       stages: x.stages as StageIn[],
       eligibilityRules: x.eligibilityRules as EligibilityRules,
+      peerFeedback: x.peerFeedback ?? null,
       status: x.status,
       launchedAt: x.launchedAt?.toISOString() ?? null,
       version: x.version,
@@ -487,6 +488,23 @@ export class PerformanceReviewsService {
     });
   }
 
+  // Shared with the peer service (PM5): the same access rules, template and answer checks.
+  accessOf(tx: Tx, c: CompanyContext, v: Viewer, r: Review) {
+    return this.access(tx, c, v, r);
+  }
+
+  templateOf(tx: Tx, org: string, cycle: Cycle) {
+    return this.template(tx, org, cycle);
+  }
+
+  itemsOf(tpl: Awaited<ReturnType<PerformanceReviewsService['template']>>) {
+    return this.items(tpl);
+  }
+
+  answersFor(stage: 'peer', tpl: Awaited<ReturnType<PerformanceReviewsService['template']>>, dto: EntryDto, submit: boolean) {
+    return this.checkAnswers(stage, tpl, dto, submit);
+  }
+
   /** What a stage answers: every question, and each rated section without questions as one rating of the whole section. */
   private items(tpl: Awaited<ReturnType<PerformanceReviewsService['template']>>) {
     return [
@@ -496,7 +514,7 @@ export class PerformanceReviewsService {
   }
 
   /** Checks one entry against the template: only the stage's questions, ratings on the scale, texts within their limit. */
-  private checkAnswers(stage: StageKey, tpl: Awaited<ReturnType<PerformanceReviewsService['template']>>, dto: EntryDto, submit: boolean) {
+  private checkAnswers(stage: StageKey | 'peer', tpl: Awaited<ReturnType<PerformanceReviewsService['template']>>, dto: EntryDto, submit: boolean) {
     const qs = this.items(tpl).filter((q) => tpl.sections.find((s) => s.id === q.sectionId)!.whoAnswers.includes(stage));
     const byId = new Map(qs.map((q) => [q.id, q]));
     const values = new Set(tpl.levels.map((l) => num(l.value)));

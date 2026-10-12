@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Plus } from 'lucide-react';
 import { Button, Link } from '../../../components/button';
 import { Checkbox, RadioGroup } from '../../../components/choice';
@@ -251,6 +251,8 @@ export interface CycleScreenProps {
   disagreements?: Disagreement[];
   onRelease?: () => Promise<unknown>;
   onDecide?: (id: string, status: 'answered' | 'upheld' | 'not_upheld', hrNote: string) => Promise<unknown>;
+  /** More on the cycle, such as peer feedback set-up (PM5). */
+  extra?: ReactNode;
 }
 
 export function CycleScreen(p: CycleScreenProps) {
@@ -377,6 +379,7 @@ export function CycleScreen(p: CycleScreenProps) {
           </Card>
         </>
       )}
+      {x && p.extra}
       {editing && x && <CycleDrawer cycle={x} templates={p.templates} departments={p.departments} onClose={() => setEditing(false)} onSave={async (input) => {
         await p.onSave(input);
         setEditing(false);
@@ -509,6 +512,8 @@ export interface ReviewScreenProps {
   onBack: () => void;
   onSave: (stage: 'self' | 'manager' | 'other', input: EntryInput, submit: boolean) => Promise<unknown>;
   onAddOther?: (employeeId: string) => Promise<unknown>;
+  /** More on the review, such as feedback from colleagues (PM5). */
+  extra?: ReactNode;
   onSkip?: (agree: boolean, text: string | null) => Promise<unknown>;
   onAcknowledge?: (comment: string | null) => Promise<unknown>;
   onDisagree?: (text: string) => Promise<unknown>;
@@ -520,6 +525,7 @@ export function ReviewScreen(p: ReviewScreenProps) {
   return (
     <LivePage title={r ? `${r.cycle.name}: ${r.employee}` : 'Review'} description={r ? `Manager: ${r.manager}` : undefined} state={p.state} onRetry={p.onRetry} what="this review" actions={<Button onClick={p.onBack}>Back</Button>}>
       {r && <ReviewBody key={`${r.id}-${r.version}`} {...p} r={r} />}
+      {r && p.extra}
     </LivePage>
   );
 }

@@ -34,6 +34,7 @@ test('cycle → self review → manager review with a worked-out score', async (
   const starters = admin.getByRole('button', { name: 'Use the starters' });
   await expect(starters.or(admin.getByRole('tab', { name: 'Review templates' })).first()).toBeVisible({ timeout: 30_000 });
   if (await starters.isVisible()) await starters.click();
+  await expect(admin.getByRole('tab', { name: 'Review templates' })).toBeVisible({ timeout: 30_000 });
   await admin.goto('/yx/performance/cycles');
   await admin.getByRole('button', { name: 'New cycle' }).click();
   const sheet = admin.getByRole('dialog');

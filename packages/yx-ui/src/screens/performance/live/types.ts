@@ -250,6 +250,8 @@ export interface ReviewCycle {
   population: unknown;
   stages: CycleStage[];
   eligibilityRules: { cutoffMonths: number; rateLeavers: boolean };
+  /** PM5: feedback from colleagues; null = off. */
+  peerFeedback?: PeerConfig | null;
   status: 'draft' | 'launched' | 'calibrating' | 'released' | 'closed';
   launchedAt: string | null;
   version: number;
@@ -379,4 +381,68 @@ export interface Handover {
   artefactId: string;
   effectiveOn: string;
   decisionNeeded: boolean;
+}
+
+// ------------------------------------------------------------------------------------------ PM5: peer and 360° (§19)
+
+export interface PeerConfig {
+  minNominees: number;
+  maxNominees: number;
+  dueOn: string;
+}
+
+export interface Nomination {
+  id: string;
+  reviewer: string;
+  reviewerEmployeeId: string;
+  relationship: 'peer' | 'report' | 'other';
+  proposedBy: 'employee' | 'manager' | 'hr';
+  status: 'proposed' | 'approved' | 'declined' | 'withdrawn' | 'submitted';
+}
+
+export interface Nominations {
+  peer: PeerConfig | null;
+  nominations: Nomination[];
+  can: { propose: boolean; decide: boolean; add: boolean };
+}
+
+export interface PeerGroups {
+  advisory: true;
+  peer: PeerConfig | null;
+  released: boolean;
+  responses: number;
+  shown: { group: 'peer' | 'report' | 'others'; responses: number; ratings: Record<string, { average: number; low: number; high: number; count: number }>; texts: string[] }[];
+  heldBack: number;
+}
+
+export interface FeedbackTask {
+  id: string;
+  reviewId: string;
+  employee: string;
+  cycle: string;
+  dueOn: string | null;
+  done: boolean;
+  open: boolean;
+}
+
+export interface PeerForm {
+  reviewId: string;
+  employee: string;
+  cycle: string;
+  dueOn: string | null;
+  anonymous: boolean;
+  sections: { id: string; title: string; questions: { id: string; text: string; answer: 'rating' | 'text' | 'both'; required: boolean; maxChars: number; wholeSection: boolean }[] }[];
+  levels: { value: number; label: string }[];
+  entry: { status: 'draft' | 'submitted'; answers: Record<string, { rating: number | null; text: string | null }>; comment: string | null } | null;
+  can: { answer: boolean };
+}
+
+export interface ReviewerBlock {
+  id: string;
+  a: string;
+  b: string;
+  employeeA: string;
+  employeeB: string;
+  reasonCode: 'conflict' | 'confidential_matter';
+  untilOn: string | null;
 }

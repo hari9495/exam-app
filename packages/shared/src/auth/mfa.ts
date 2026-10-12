@@ -111,6 +111,8 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   // PM4: ratings before release, and starting or changing a review cycle.
   'perf.review.view',
   'perf.cycle.manage',
+  // PM5: revealing who wrote an anonymous answer.
+  'perf.feedback.investigate',
 ];
 
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).

@@ -74,6 +74,10 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'perf.review.stage_due', group: 'reminders', label: 'A review you owe is ready, due soon or overdue' },
   { type: 'perf.review.released', group: 'reminders', label: 'Your review is released for you to read' },
   { type: 'perf.review.disagreed', group: 'assignments', label: 'An employee disagrees with their review (HR)' },
+  // PM5: peer and 360° feedback.
+  { type: 'perf.nomination.proposed', group: 'approvals', label: 'Someone on your team suggested a colleague to give feedback' },
+  { type: 'perf.feedback.task', group: 'assignments', label: 'You were asked for feedback on a colleague\u2019s review' },
+  { type: 'perf.feedback.author_revealed', group: 'reminders', label: 'The author of an anonymous review answer was revealed (admins)' },
   // M05 E4: trips and advances.
   { type: 'expense.trip.update', group: 'assignments', label: 'A trip was approved, or needs bookings from the travel desk' },
   { type: 'expense.advance.update', group: 'reminders', label: 'An expense advance was paid, is due to be settled, or is overdue' },

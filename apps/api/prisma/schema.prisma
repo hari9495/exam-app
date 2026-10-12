@@ -8500,6 +8500,7 @@ model ReviewCycle {
   population       Json?
   stages           Json
   eligibilityRules Json      @map("eligibility_rules")
+  peerFeedback     Json?     @map("peer_feedback")
   status           String    @default("draft") @db.VarChar(12)
   launchedAt       DateTime? @map("launched_at") @db.Timestamptz(3)
   releasedAt       DateTime? @map("released_at") @db.Timestamptz(3)
@@ -8626,4 +8627,37 @@ model PerfOwnerTransfer {
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("perf_owner_transfers")
+}
+
+// ------------------------------------------------------------------------------------------ M06 PM5: peer and 360°
+
+model FeedbackNomination {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  reviewId           String   @map("review_id") @db.Uuid
+  reviewerEmployeeId String   @map("reviewer_employee_id") @db.Uuid
+  relationship       String   @db.VarChar(8)
+  proposedBy         String   @map("proposed_by") @db.VarChar(8)
+  status             String   @default("proposed") @db.VarChar(10)
+  decidedBy          String?  @map("decided_by") @db.Uuid
+  createdBy          String?  @map("created_by") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([reviewId, reviewerEmployeeId])
+  @@map("feedback_nominations")
+}
+
+model ReviewerBlock {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeA      String    @map("employee_a") @db.Uuid
+  employeeB      String    @map("employee_b") @db.Uuid
+  reasonCode     String    @map("reason_code") @db.VarChar(20)
+  untilOn        DateTime? @map("until_on") @db.Date
+  setBy          String?   @map("set_by") @db.Uuid
+  endedBy        String?   @map("ended_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("reviewer_blocks")
 }

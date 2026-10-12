@@ -141,6 +141,7 @@ export const YX_KEYS = [
   'perf.concern.seal',
   'perf.cycle.manage',
   'perf.review.view',
+  'perf.feedback.investigate',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

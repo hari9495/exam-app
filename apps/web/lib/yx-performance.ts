@@ -15,7 +15,7 @@ export function usePerf<T>(path: string | null, enabled = true) {
 export function usePerfWrite() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
-  return async <T = unknown>(method: 'POST' | 'PUT', path: string, body?: unknown): Promise<T> => {
+  return async <T = unknown>(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> => {
     const result = await apiFetch(`/performance${path}`, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
     await queryClient.invalidateQueries({ queryKey: ['performance'] });
     return result as T;
