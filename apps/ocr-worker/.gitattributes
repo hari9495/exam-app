@@ -1,0 +1,2 @@
+# The worker image is built on Linux: lock files, sources and scripts must keep LF line endings.
+* text eol=lf

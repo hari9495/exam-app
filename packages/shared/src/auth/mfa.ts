@@ -98,6 +98,10 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'statutory.challan.manage',
   'statutory.register.sign',
   'statutory.advisory.review',
+  // M05 expenses E1: categories, limits and rates decide what people are paid back (M05-BUILD-DESIGN §16.3).
+  'expense.policy.manage',
+  // E4: paying advances moves money.
+  'expense.payout.manage',
   'payroll.offcycle.prepare',
   'payroll.arrears.approve',
   'payroll.fnf.manage',

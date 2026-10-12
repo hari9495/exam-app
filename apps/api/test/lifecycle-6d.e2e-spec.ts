@@ -23,6 +23,7 @@ import { markSteppedUp } from './fixtures/step-up';
 // open clearance never moves it, a new revision when an asset comes back, payroll's guard), "settled outside", the
 // employee's instant certificate, and two companies apart. PDFs come from the dev-fake converter.
 process.env.LETTER_PDF_CONVERTER = 'dev-fake';
+process.env.SD_SCANNER = 'dev-fake'; // uploaded and generated files must pass the (fake) virus check before they open
 
 describe('Lifecycle batch 6d', () => {
   let app: INestApplication;

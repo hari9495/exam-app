@@ -6,8 +6,6 @@ import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
 import { json, urlencoded } from 'express';
 import { randomUUID } from 'crypto';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import { PrismaClient } from '@prisma/client';
 import { BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
@@ -68,9 +66,8 @@ describe('Service Desk batch 4: knowledge, ratings, reports, directory, privacy,
     await app.init();
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
-    const env = readFileSync(join(__dirname, '../.env'), 'utf8');
-    const ownerUrl = (env.split(/\r?\n/).find((l) => l.startsWith('MIGRATION_DATABASE_URL=')) ?? '').slice('MIGRATION_DATABASE_URL='.length).replace(/^"|"$/g, '');
-    owner = new PrismaClient({ datasources: { db: { url: ownerUrl } } });
+    // ConfigModule has loaded .env into process.env when one exists; CI sets it directly.
+    owner = new PrismaClient({ datasources: { db: { url: process.env.MIGRATION_DATABASE_URL } } });
 
     planId = (await prisma.plan.create({ data: { name: `sd4-plan-${run}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
     for (const k of ['A', 'B'] as const) {
