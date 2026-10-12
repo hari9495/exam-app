@@ -77,6 +77,7 @@ describe('Organization branding flow', () => {
       accentColor: null,
       textColor: null,
       loginWatermarkEnabled: false,
+      slug: orgSlug, // the signed-in company's own read also returns its slug (b4ecdb7a)
     });
   });
 
@@ -99,6 +100,7 @@ describe('Organization branding flow', () => {
       accentColor: '#fbbc04',
       textColor: null,
       loginWatermarkEnabled: false,
+      slug: orgSlug, // the signed-in company's own read also returns its slug (b4ecdb7a)
     });
   });
 
