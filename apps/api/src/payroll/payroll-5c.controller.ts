@@ -59,6 +59,12 @@ export class Payroll5cController {
     return this.runs.get(ctx, this.user(req), id);
   }
 
+  @Get('runs/:id/people')
+  @RequireAnyPermission(...RUN_VIEW)
+  people(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.runs.people(ctx, this.user(req), id);
+  }
+
   @Get('runs/:id/readiness')
   @RequirePermissions('payroll.run.prepare')
   readiness(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {

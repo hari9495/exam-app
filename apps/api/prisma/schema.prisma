@@ -7766,3 +7766,23 @@ model OverpaymentRecovery {
 
   @@map("overpayment_recoveries")
 }
+
+// Batch 5j (PAY-10.07): the parallel run, the old payroll's register compared with a YukthiX run before going live.
+model ParallelRun {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  runId          String    @map("run_id") @db.Uuid
+  fileSha256     String    @map("file_sha256") @db.Char(64)
+  reference      Json
+  result         Json
+  differences    Int
+  status         String    @default("compared") @db.VarChar(10)
+  reason         String?   @db.VarChar(300)
+  createdBy      String    @map("created_by") @db.Uuid
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("parallel_runs")
+}

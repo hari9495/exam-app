@@ -674,6 +674,7 @@ export class StatutoryFilingsService {
       tokenNo: r.tokenNo,
       reconciliation: r.reconciliation,
       fileId: r.exchangeFileId,
+      validation: r.fvu ?? null,
       rows: rows.length,
       tds: rows.reduce((t, x) => t.add(x.tds), ZERO).toFixed(2),
       deductees: rows,

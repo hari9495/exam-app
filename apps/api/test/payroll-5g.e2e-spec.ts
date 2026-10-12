@@ -414,6 +414,8 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     const f = (await api('payAdmin', 'get', `/payroll/fnf/${id}`).expect(200)).body;
     const line = f.items.find((i: { componentCode: string }) => i.componentCode === 'notice_recovery');
     expect(line.label).toMatch(/^Notice not served: 20 days/);
+    // 5j-D2: its own key (HR Admin and Payroll Admin), not the approver's.
+    await api('approver1', 'post', `/payroll/fnf/${id}/waive-notice`).send({ reason: 'Leaving to care for a parent' }).expect(403);
     await api('payAdmin', 'post', `/payroll/fnf/${id}/waive-notice`).send({ reason: 'ok' }).expect(400);
     const waived = (await api('payAdmin', 'post', `/payroll/fnf/${id}/waive-notice`).send({ reason: 'Leaving to care for a parent' }).expect(200)).body;
     expect(waived.noticeWaived).toMatchObject({ by: users.payAdmin, reason: 'Leaving to care for a parent' });

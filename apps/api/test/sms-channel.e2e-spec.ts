@@ -214,7 +214,7 @@ describe('SMS channel (P04 §4.4/§4.5a; YX-NTF-07/10/11/12/13/14)', () => {
       expect(JSON.parse(app.get(OrgSecretsCryptoService).decrypt(row.configEncrypted)).secrets.authkey).toBe(SECRET.authkey);
       const audit = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: { startsWith: 'notification.sms_' } } }));
       expect(audit.map((a) => a.action)).toEqual(['notification.sms_account_created']);
-      expect(JSON.stringify(audit)).not.toContain(SECRET.authkey);
+      expect(JSON.stringify(audit, (_k, v) => (typeof v === 'bigint' ? String(v) : v))).not.toContain(SECRET.authkey);
     });
 
     it('an edit keeps secrets it does not mention; null removes one; a secret cannot be smuggled in config', async () => {

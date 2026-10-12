@@ -68,6 +68,8 @@ export const PAY_KEYS = [
   'payroll.arrears.approve',
   'payroll.fnf.manage',
   'payroll.writeoff.approve',
+  // 5j-D2.
+  'payroll.notice.waive',
 ] as const;
 export type PayKey = (typeof PAY_KEYS)[number];
 

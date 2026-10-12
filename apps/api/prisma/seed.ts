@@ -16,7 +16,7 @@ import { seedServiceDeskEsm2 } from './seed-service-desk-esm2';
 import { seedServiceDeskEsm3 } from './seed-service-desk-esm3';
 import { TIME_PERMISSIONS, seedTime } from './seed-time';
 import { seedTimeB2 } from './seed-time-b2';
-import { PAY_PERMISSIONS, seedAuditAnchor, seedPay, seedPay5b } from './seed-pay';
+import { PAY_PERMISSIONS, seedAuditAnchor, seedPay, seedPay5b, seedPay5j } from './seed-pay';
 import { LIFE_PERMISSIONS, seedLifecycle, seedLifecycleAssets, seedLifecycleLetters } from './seed-lifecycle';
 import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file';
 
@@ -410,6 +410,8 @@ async function main() {
       await seedLifecycleAssets(tx, demoOrg.id);
       // Step 5 payroll batch 5b: the starter components and template, pay groups, statutory registrations.
       await seedPay5b(tx, demoOrg.id);
+      // Batch 5j: salary breakups, bank accounts, the TDS deductor and a compliance owner, so payroll runs end to end.
+      await seedPay5j(tx, demoOrg.id, panelHash);
       // Batch G1: India set up through the "Add a country" guide; leave and job names in Hindi and Tamil.
       await seedGlobal(tx, demoOrg.id);
     }
@@ -421,7 +423,7 @@ async function main() {
     if (demo) await seedAuditAnchor(tx, demo.id);
   });
 
-  console.log(`Seed complete: super@platform.test / DevSuper123! and rules@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026 (Payroll Admin), payroll-approver@demo-org.test / Passw0rd!2026 (Payroll Approver), finance@demo-org.test / Passw0rd!2026 (Finance Approver), hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); Service Desk: it-agent@ / it-lead@ / it-collab@ / arjun@demo-org.test / Passw0rd!2026, customer portal /yx/portal/demo-org/care (asha@annapurna-stores.test, sign-in code from scripts/desk-portal-code.ts); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
+  console.log(`Seed complete: super@platform.test / DevSuper123! and rules@platform.test / DevSuper123! (YukthiX staff: /staff/sign-in, then a security key), admin@demo-org.test / DevAdmin123!, recruiter@demo-org.test / Passw0rd!2026 (mobile +91 98450 12345), panel@demo-org.test / Passw0rd!2026, payroll@demo-org.test / Passw0rd!2026 (Payroll Admin), payroll-approver@demo-org.test / Passw0rd!2026 (Payroll Approver), compliance@demo-org.test / Passw0rd!2026 (Compliance Owner), finance@demo-org.test / Passw0rd!2026 (Finance Approver), hr@demo-org.test / Passw0rd!2026, plant-hr@demo-org.test / Passw0rd!2026, admin2@demo-org.test / DevAdmin123! (org slug: demo-org); Service Desk: it-agent@ / it-lead@ / it-collab@ / arjun@demo-org.test / Passw0rd!2026, customer portal /yx/portal/demo-org/care (asha@annapurna-stores.test, sign-in code from scripts/desk-portal-code.ts); admin@ganga-textiles.test / DevAdmin123! (org slug: ganga-textiles); ${CONSULTANT.email} / Passw0rd!2026 in both companies (mobile +91 98450 67890)`);
 }
 
 // Only run when invoked as a script (prisma db seed / ts-node). Guarded so importing this module for

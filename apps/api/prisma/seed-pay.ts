@@ -14,6 +14,8 @@ import { PAY_VARIABLES, checkFormula } from '../src/rules-engine/expressions';
 import type { RuleSet } from '../src/statutory/evaluator';
 import { STARTER_COMPONENTS, STARTER_TEMPLATE } from '../src/payroll/starter';
 import { breakup, breakupJson, type ComponentDef } from '../src/payroll/structure';
+import { COMPLIANCE_OWNER_5J } from '../src/access/role-templates';
+import { hashValue, sealValue } from '../src/people/profile.service';
 
 // Payroll batch 5a demo for Kaveri Foods (M03-BUILD-DESIGN §17.1), in the story world of the YukthiX screens:
 //   - Meena Raghavan (payroll-approver@demo-org.test), Payroll Approver; Neha Joshi (finance@demo-org.test), Finance
@@ -82,10 +84,11 @@ export const PAY_PERMISSIONS = [
   { key: 'payroll.offcycle.prepare', description: 'Prepare off-cycle runs (bonus, arrears, correction, payment) and their items' },
   { key: 'payroll.arrears.approve', description: 'Make, confirm and approve arrears worksheets, and accept or dismiss arrears proposals after a past-dated rule change' },
   { key: 'payroll.fnf.manage', description: 'Manage full and final settlements: items, held items, payees and the second run' },
+  { key: 'payroll.notice.waive', description: 'Waive the recovery of an unserved notice period for one leaver, with a reason' },
   { key: 'payroll.writeoff.approve', description: 'Write off the rest of an overpayment raised by someone else, with a reason (needs a fresh second sign-in step)' },
 ];
 export const PAYROLL_APPROVER = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', 'payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', 'payroll.arrears.approve', 'payroll.writeoff.approve'];
-export const PAYROLL_ADMIN_5A = ['employee.change.manage', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view', 'payroll.setup.manage', 'payroll.statutory.setup', 'payroll.component.manage', 'payroll.template.manage', 'payroll.import.run', 'payroll.run.view', 'payroll.run.prepare', 'payroll.input.manage', 'payroll.hold.manage', 'payroll.loan.manage', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.generate', 'payroll.payment.record', 'payroll.payslip.publish', 'payroll.query.handle', 'tax.workspace.view', 'tax.proof.verify', 'tax.regime.override', 'payroll.ledger.manage', 'statutory.filing.view', 'statutory.filing.generate', 'statutory.filing.download', 'statutory.challan.manage', 'payroll.offcycle.prepare', 'payroll.arrears.approve', 'payroll.fnf.manage'];
+export const PAYROLL_ADMIN_5A = ['employee.change.manage', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view', 'payroll.setup.manage', 'payroll.statutory.setup', 'payroll.component.manage', 'payroll.template.manage', 'payroll.import.run', 'payroll.run.view', 'payroll.run.prepare', 'payroll.input.manage', 'payroll.hold.manage', 'payroll.loan.manage', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.generate', 'payroll.payment.record', 'payroll.payslip.publish', 'payroll.query.handle', 'tax.workspace.view', 'tax.proof.verify', 'tax.regime.override', 'payroll.ledger.manage', 'statutory.filing.view', 'statutory.filing.generate', 'statutory.filing.download', 'statutory.challan.manage', 'payroll.offcycle.prepare', 'payroll.arrears.approve', 'payroll.fnf.manage', 'payroll.notice.waive'];
 export const FINANCE_APPROVER = ['org:view', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.release'];
 
 export async function seedPay(tx: Tx, organizationId: string, passwordHash: string) {
@@ -274,4 +277,72 @@ export async function seedPay5b(tx: Tx, organizationId: string) {
     ],
     skipDuplicates: true,
   });
+}
+
+// Payroll batch 5j demo (M03 §17.10), idempotent: so the founder can run a payroll end to end on Kaveri Foods. Each
+// current salary gets its breakup from the starter template (as the compensation screen would make it), everyone gets a
+// salary bank account, Kaveri Foods Pvt Ltd gets its TAN, PAN, registered address and TDS registration (for the quarterly
+// return), and Kavya Rao (compliance@demo-org.test) files statutory returns. Nothing is calculated here: the founder runs it.
+export async function seedPay5j(tx: Tx, organizationId: string, passwordHash: string) {
+  const org = { organizationId };
+  if (await tx.compensationPackage.findFirst({ where: org })) return;
+  const crypto = new OrgSecretsCryptoService();
+  const kfpl = await tx.legalEntity.findFirstOrThrow({ where: { ...org, shortName: 'KFPL' } });
+  const tn = await tx.legalEntity.findFirstOrThrow({ where: { ...org, shortName: 'KFPL-TN' } });
+  await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${kfpl.id},${tn.id}}`}, true)`;
+  const suresh = (await tx.user.findFirstOrThrow({ where: { ...org, email: 'payroll@demo-org.test' } })).id;
+  const t = await tx.salaryTemplate.findFirstOrThrow({ where: { ...org, name: STARTER_TEMPLATE.name } });
+  const ver = await tx.salaryTemplateVersion.findFirstOrThrow({ where: { ...org, templateId: t.id }, orderBy: { version: 'desc' } });
+  const rows = await tx.payComponent.findMany({ where: org });
+  const components = rows.map((r) => ({ id: r.id, code: r.code, name: r.name, kind: r.kind as ComponentDef['kind'], pfWage: r.pfWage, esiWage: r.esiWage, ptWage: r.ptWage, gratuityWage: r.gratuityWage, bonusWage: r.bonusWage, codeWagePart: r.codeWagePart, codeExclusion: r.codeExclusion, inCtc: r.inCtc, rounding: r.rounding as ComponentDef['rounding'], statutory: r.statutory }));
+  const names = new Set<string>([...PAY_VARIABLES, ...rows.map((r) => r.code)]);
+  const lines = STARTER_TEMPLATE.lines.map((l) => ({ code: l.code, ...checkFormula(l.formula, names) }));
+  const rules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in.json'), 'utf8')) as { ruleSets: RuleSet[] }).ruleSets;
+  const options = { balancingCode: STARTER_TEMPLATE.balancing, employerPfInCtc: true, employerEsiInCtc: true, gratuityInCtc: false };
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  for (const comp of await tx.compensation.findMany({ where: { ...org, supersededAt: null } })) {
+    const em = await tx.employment.findFirst({ where: { ...org, id: comp.employmentId } });
+    if (!em || ![kfpl.id, tn.id].includes(em.legalEntityId)) continue;
+    const a = await tx.employeeAssignment.findFirst({ where: { ...org, employmentId: em.id, supersededAt: null }, orderBy: { validFrom: 'desc' }, select: { locationId: true } });
+    const loc = a ? await tx.location.findFirst({ where: { ...org, id: a.locationId }, select: { state: true } }) : null;
+    // Worked out with the rules in force when the template version starts (an old salary date may predate the rule sets).
+    const on = iso(comp.validFrom) > iso(ver.validFrom) ? iso(comp.validFrom) : iso(ver.validFrom);
+    const b = breakup({ lines, components, options, facts: { on, month: Number(on.slice(5, 7)), state: loc?.state ?? 'IN-KA', age: 30, pf: true, pfOnActualWage: false, esi: 'by_wage', pwd: false }, rules, ctc: comp.annualCtc.toFixed(2) });
+    const pkg = await tx.compensationPackage.create({
+      data: { ...org, legalEntityId: em.legalEntityId, employeeId: em.employeeId, employmentId: em.id, changeId: comp.changeId, templateVersionId: ver.id, entryMode: 'ctc', annualCtc: b.annualCtc, monthlyGross: b.monthlyGross, minWageCheck: (breakupJson(b).minWage ?? {}) as Prisma.InputJsonValue, codeWageAddBack: b.codeWageAddBack, createdBy: suresh },
+    });
+    await tx.compensationLine.createMany({ data: b.lines.map((l) => ({ ...org, legalEntityId: em.legalEntityId, employeeId: em.employeeId, packageId: pkg.id, componentId: rows.find((x) => x.code === l.code)!.id, monthly: l.monthly, annual: l.annual, citation: l.citation ? (l.citation as unknown as Prisma.InputJsonValue) : Prisma.DbNull })) });
+  }
+  // Salary accounts (sealed and hashed as P02 keeps them), usable at once for the demo.
+  const people = await tx.employee.findMany({ where: { ...org, id: { in: (await tx.employment.findMany({ where: { ...org, exitedOn: null, legalEntityId: { in: [kfpl.id, tn.id] } }, select: { employeeId: true } })).map((e) => e.employeeId) } } });
+  let n = 0;
+  for (const e of people) {
+    if (await tx.employeeBankAccount.findFirst({ where: { ...org, employeeId: e.id, purpose: 'salary', validTo: null } })) continue;
+    const account = `5010${String(10_000_000 + ++n * 7919).slice(-8)}`;
+    await tx.employeeBankAccount.create({
+      data: { ...org, employeeId: e.id, purpose: 'salary', holderName: [e.givenName, e.familyName].filter(Boolean).join(' '), accountEnc: sealValue(crypto, organizationId, e.id, account), accountHash: hashValue(crypto, organizationId, 'bank', account), accountLast4: account.slice(-4), ifsc: 'HDFC0001234', validFrom: new Date('2025-01-01T00:00:00Z'), usableFrom: new Date('2025-01-01T00:00:00Z') },
+    });
+  }
+  // UAN and PAN for everyone (the PF file lists people by UAN; the TDS return by PAN), made up but well formed.
+  n = 0;
+  for (const e of people) {
+    n++;
+    const uan = `1002003${String(n).padStart(5, '0')}`;
+    const pan = `ABCP${'KLMNOPQRSTUVWXYZ'[n % 16]}${String(1000 + n).slice(-4)}F`;
+    const have = await tx.employeeIdentifiers.findFirst({ where: { ...org, employeeId: e.id } });
+    const ids = {
+      ...(have?.uanHash ? {} : { uanEnc: sealValue(crypto, organizationId, e.id, uan), uanHash: hashValue(crypto, organizationId, 'uan', uan), uanLast4: uan.slice(-4) }),
+      ...(have?.panHash ? {} : { panEnc: sealValue(crypto, organizationId, e.id, pan), panHash: hashValue(crypto, organizationId, 'pan', pan), panLast4: pan.slice(-4) }),
+    };
+    if (have) await tx.employeeIdentifiers.update({ where: { organizationId_employeeId: { organizationId, employeeId: e.id } }, data: ids });
+    else await tx.employeeIdentifiers.create({ data: { ...org, employeeId: e.id, ...ids } });
+  }
+  // The deductor details the quarterly TDS return needs.
+  const address = { lines: ['12 MG Road'], city: 'Bengaluru', state: 'IN-KA', postalCode: '560001', country: 'IN' };
+  await tx.legalEntity.update({ where: { id: kfpl.id }, data: { tan: 'BLRK12345E', pan: 'AAACK1234F', registeredAddress: address } });
+  await tx.statutoryRegistration.createMany({ data: [{ ...org, legalEntityId: kfpl.id, statute: 'IN.TDS', status: 'on', registrationNo: 'BLRK12345E', responsiblePerson: 'Ravi Kaveri', responsibleDesignation: 'Director', updatedBy: suresh, startOn: new Date('2015-04-01T00:00:00Z') }], skipDuplicates: true });
+  // The compliance owner who uploads and files statutory returns.
+  const profile = (await tx.permissionProfile.findFirst({ where: { ...org, name: 'Compliance Owner' } })) ?? (await tx.permissionProfile.create({ data: { ...org, name: 'Compliance Owner', permissionsJson: JSON.stringify(COMPLIANCE_OWNER_5J) } }));
+  await tx.user.upsert({ where: { organizationId_email: { organizationId, email: 'compliance@demo-org.test' } }, update: { permissionProfileId: profile.id }, create: { ...org, email: 'compliance@demo-org.test', name: 'Kavya Rao', passwordHash, role: 'panel', permissionProfileId: profile.id } });
+  await tx.$executeRaw`SELECT set_config('app.pay_entities', '', true)`;
 }
