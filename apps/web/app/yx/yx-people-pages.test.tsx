@@ -66,16 +66,24 @@ describe('/yx layout: the People group follows grants and the employee record', 
     await waitFor(async () => expect(await links()).toEqual(['My profile', 'Directory', 'Org chart', 'Job history', 'Job changes', 'Probation', 'Bulk changes', 'Help centre', 'Service catalogue', 'Chat with us', 'People to check', 'Approvals', 'My security']));
   });
 
+  it('payroll operations pages follow their own keys (PAY-10.09 … 10.16)', async () => {
+    route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: ['payroll.loan.manage', 'statutory.advisory.review'], 'GET /people/employees': [PERSON], 'GET /people/team': NO_TEAM });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    await waitFor(async () => expect(await links()).toEqual(expect.arrayContaining(['Loans and advances', 'Compliance advisories'])));
+    const shown = await links();
+    for (const other of ['Payment modes', 'Payslip queries', 'Proof checking', 'Tax certificates', 'Statutory registers']) expect(shown).not.toContain(other);
+  });
+
   it('a manager sees the directory, their team, history and probations; raising on behalf adds Job changes', async () => {
     route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: ['request.raise_on_behalf'], 'GET /people/employees': [PERSON], 'GET /people/team': { managerId: 'p-divya', members: [MEMBER] } });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(await links()).toEqual(['My profile', 'Directory', 'Org chart', 'My team', 'Job history', 'Job changes', 'Probation', 'Exits', 'My leave', 'My attendance', 'My shifts', 'My overtime', 'My timesheet', 'Team leave', 'Attendance muster', 'Overtime', 'Roster', 'Help centre', 'Service catalogue', 'Chat with us', 'Approvals', 'My payslips', 'My tax', 'My pay documents', 'My security', 'My expenses', 'Who accessed my data', 'Language', 'My letters', 'My documents', 'My assets', 'Resign']));
+    await waitFor(async () => expect(await links()).toEqual(['My profile', 'Directory', 'Org chart', 'My team', 'Job history', 'Job changes', 'Probation', 'Exits', 'My leave', 'My attendance', 'My shifts', 'My overtime', 'My timesheet', 'Team leave', 'Attendance muster', 'Overtime', 'Roster', 'Help centre', 'Service catalogue', 'Chat with us', 'Approvals', 'My payslips', 'My tax', 'My tax declarations', 'My loans', 'My pay documents', 'My security', 'My expenses', 'Who accessed my data', 'Language', 'My letters', 'My documents', 'My assets', 'Resign']));
   });
 
   it('an employee without reports sees the directory and their history; someone with no record sees no People group', async () => {
     route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: [], 'GET /people/employees': [PERSON], 'GET /people/team': { managerId: 'p-arjun', members: [] } });
     const { unmount } = wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(await links()).toEqual(['My profile', 'Directory', 'Org chart', 'Job history', 'My leave', 'My attendance', 'My shifts', 'My overtime', 'My timesheet', 'Help centre', 'Service catalogue', 'Chat with us', 'Approvals', 'My payslips', 'My tax', 'My pay documents', 'My security', 'My expenses', 'Who accessed my data', 'Language', 'My letters', 'My documents', 'My assets', 'Resign']));
+    await waitFor(async () => expect(await links()).toEqual(['My profile', 'Directory', 'Org chart', 'Job history', 'My leave', 'My attendance', 'My shifts', 'My overtime', 'My timesheet', 'Help centre', 'Service catalogue', 'Chat with us', 'Approvals', 'My payslips', 'My tax', 'My tax declarations', 'My loans', 'My pay documents', 'My security', 'My expenses', 'Who accessed my data', 'Language', 'My letters', 'My documents', 'My assets', 'Resign']));
     unmount();
     route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: [], 'GET /people/employees': [], 'GET /people/team': NO_TEAM });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);

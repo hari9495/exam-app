@@ -142,6 +142,15 @@ const PAY_STATUTORY: WorkspaceLink = { id: 'pay-statutory', label: 'Statutory fi
 const PAY_FNF: WorkspaceLink = { id: 'pay-fnf', label: 'Full and final', href: '/yx/payroll/fnf', group: 'Payroll' };
 const PAY_ARREARS: WorkspaceLink = { id: 'pay-arrears', label: 'Arrears and recoveries', href: '/yx/payroll/arrears', group: 'Payroll' };
 const PAY_GO_LIVE: WorkspaceLink = { id: 'pay-go-live', label: 'Go-live readiness', href: '/yx/payroll/go-live', group: 'Payroll' };
+const PAY_MODES: WorkspaceLink = { id: 'pay-modes', label: 'Payment modes', href: '/yx/payroll/payment-modes', group: 'Payroll' };
+const PAY_LOANS: WorkspaceLink = { id: 'pay-loans', label: 'Loans and advances', href: '/yx/payroll/loans', group: 'Payroll' };
+const PAY_QUERIES: WorkspaceLink = { id: 'pay-queries', label: 'Payslip queries', href: '/yx/payroll/payslip-queries', group: 'Payroll' };
+const PAY_PROOFS: WorkspaceLink = { id: 'pay-proofs', label: 'Proof checking', href: '/yx/payroll/proofs', group: 'Payroll' };
+const PAY_CERTIFICATES: WorkspaceLink = { id: 'pay-certificates', label: 'Tax certificates', href: '/yx/payroll/certificates', group: 'Payroll' };
+const PAY_REGISTERS: WorkspaceLink = { id: 'pay-registers', label: 'Statutory registers', href: '/yx/payroll/registers', group: 'Payroll' };
+const PAY_ADVISORIES: WorkspaceLink = { id: 'pay-advisories', label: 'Compliance advisories', href: '/yx/payroll/advisories', group: 'Payroll' };
+const MY_LOANS: WorkspaceLink = { id: 'my-loans', label: 'My loans', href: '/yx/me/loans', group: 'Me' };
+const MY_DECLARATIONS: WorkspaceLink = { id: 'my-declarations', label: 'My tax declarations', href: '/yx/me/tax-declarations', group: 'Me' };
 const MY_PAYSLIPS: WorkspaceLink = { id: 'my-payslips', label: 'My payslips', href: '/yx/me/payslips', group: 'Me' };
 const MY_TAX: WorkspaceLink = { id: 'my-tax', label: 'My tax', href: '/yx/me/tax', group: 'Me' };
 const MY_PAY_DOCUMENTS: WorkspaceLink = { id: 'my-pay-documents', label: 'My pay documents', href: '/yx/me/pay-documents', group: 'Me' };
@@ -288,6 +297,13 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         ...(perms.has('payroll.fnf.manage') || perms.has('payroll.notice.waive') ? [PAY_FNF] : []),
         ...(perms.has('payroll.arrears.approve') || perms.has('payroll.writeoff.approve') ? [PAY_ARREARS] : []),
         ...(perms.has('payroll.run.prepare') || perms.has('payroll.setup.manage') ? [PAY_GO_LIVE] : []),
+        ...(perms.has('payroll.payment.record') ? [PAY_MODES] : []),
+        ...(perms.has('payroll.loan.manage') ? [PAY_LOANS] : []),
+        ...(perms.has('payroll.query.handle') ? [PAY_QUERIES] : []),
+        ...(perms.has('tax.proof.verify') ? [PAY_PROOFS] : []),
+        ...(perms.has('payroll.document.issue') ? [PAY_CERTIFICATES] : []),
+        ...(perms.has('statutory.filing.view') ? [PAY_REGISTERS] : []),
+        ...(perms.has('statutory.advisory.review') ? [PAY_ADVISORIES] : []),
         ...(periodKeys ? [PAY_PERIODS, REOPEN_REQUESTS] : []), ...(perms.has('payroll.document.view') ? [PAY_DOCUMENTS] : []), ...(perms.has('payroll.file.view') ? [PAY_FILES] : []), ...(perms.has('audit.view') ? [PAY_AUDIT] : []),
         ...(perms.has('payroll.setup.manage') || perms.has('payroll.statutory.setup') ? [PAY_SETUP] : []),
         ...(perms.has('payroll.setup.manage') ? [PAY_GROUPS, PAY_LAYOUT, PAY_RULES, PAY_COVERAGE] : []),
@@ -295,7 +311,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         ...(perms.has('payroll.template.manage') ? [PAY_TEMPLATES] : []),
         ...(perms.has('employee.salary.manage') ? [PAY_COMPENSATION] : []),
         ...(perms.has('payroll.import.run') ? [PAY_IMPORTS] : [])];
-  const links = [...(firstDays.data?.card && !support ? [FIRST_30] : []), ...staff, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAYSLIPS, MY_TAX, MY_PAY_DOCUMENTS] : []), ...security];
+  const links = [...(firstDays.data?.card && !support ? [FIRST_30] : []), ...staff, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAYSLIPS, MY_TAX, MY_DECLARATIONS, MY_LOANS, MY_PAY_DOCUMENTS] : []), ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
   return (
