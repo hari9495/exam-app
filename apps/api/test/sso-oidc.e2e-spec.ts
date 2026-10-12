@@ -163,7 +163,7 @@ describe('OIDC single sign-on and identity providers (P12 Part 1e, YX-IAM-04/05)
       const audit = await tenantPrisma.forTenant(SUPER, (tx) =>
         tx.auditLog.findFirstOrThrow({ where: { organizationId: orgA.id, action: 'identity_provider.created', entityId: providerId } }),
       );
-      expect(JSON.stringify(audit)).not.toContain(issuer.clientSecret);
+      expect(JSON.stringify(audit, (_k, v) => (typeof v === 'bigint' ? String(v) : v))).not.toContain(issuer.clientSecret);
       // Every administrator is told (fire-and-forget email).
       await new Promise((resolve) => setTimeout(resolve, 300));
       for (const who of [at('admin'), at('admin2')]) {
