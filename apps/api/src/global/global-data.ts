@@ -6,7 +6,7 @@ import { CountryPack, Language, parsePack } from './country-pack';
 // Batch G1 loaders shared by core HR and leave: the country packs in force, a job's normal week, the reader's
 // language and the company's translated words. Everything runs inside the caller's company transaction (RLS).
 
-export const SUBJECT_TYPES = ['leave_type', 'designation', 'department', 'grade', 'employment_type', 'location', 'journey_template', 'journey_task'] as const;
+export const SUBJECT_TYPES = ['leave_type', 'designation', 'department', 'grade', 'employment_type', 'location', 'journey_template', 'journey_task', 'rating_level', 'rating_band', 'review_section', 'competency'] as const;
 export type SubjectType = (typeof SUBJECT_TYPES)[number];
 
 /** Every published country pack in force on `on`, the latest version per country. */

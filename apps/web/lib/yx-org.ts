@@ -118,6 +118,8 @@ export const YX_KEYS = [
   'statutory.filing.mark_filed',
   'statutory.challan.manage',
   'payroll.notice.waive',
+  // M06 performance PM1.
+  'perf.setup.manage',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

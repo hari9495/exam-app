@@ -7786,3 +7786,145 @@ model ParallelRun {
 
   @@map("parallel_runs")
 }
+
+// ---- Performance batch PM1 (migration 20261111000000_performance_pm1; M06-BUILD-DESIGN §5.2): rating scales,
+// review templates, the company skills library (first form) and competencies as a view of it.
+
+model RatingScale {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(80)
+  minValue       Decimal  @map("min_value") @db.Decimal(4, 1)
+  maxValue       Decimal  @map("max_value") @db.Decimal(4, 1)
+  step           Decimal  @default(1) @db.Decimal(2, 1)
+  status         String   @default("active") @db.VarChar(8)
+  starterKey     String?  @map("starter_key") @db.VarChar(40)
+  createdBy      String?  @map("created_by") @db.Uuid
+  version        Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("rating_scales")
+}
+
+model RatingScaleLevel {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  scaleId        String  @map("scale_id") @db.Uuid
+  value          Decimal @db.Decimal(4, 1)
+  label          String  @db.VarChar(60)
+  description    String? @db.VarChar(300)
+
+  @@map("rating_scale_levels")
+}
+
+model RatingBand {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  scaleId        String  @map("scale_id") @db.Uuid
+  fromScore      Decimal @map("from_score") @db.Decimal(5, 2)
+  toScore        Decimal @map("to_score") @db.Decimal(5, 2)
+  label          String  @db.VarChar(60)
+
+  @@map("rating_bands")
+}
+
+model ReviewTemplate {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  familyId        String    @map("family_id") @db.Uuid
+  templateVersion Int       @default(1) @map("template_version")
+  name            String    @db.VarChar(100)
+  kind            String    @db.VarChar(12)
+  scaleId         String    @map("scale_id") @db.Uuid
+  scoring         String    @default("weighted") @db.VarChar(16)
+  status          String    @default("draft") @db.VarChar(8)
+  starterKey      String?   @map("starter_key") @db.VarChar(40)
+  createdBy       String?   @map("created_by") @db.Uuid
+  activatedAt     DateTime? @map("activated_at") @db.Timestamptz(3)
+  version         Int       @default(1)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("review_templates")
+}
+
+model ReviewTemplateSection {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  templateId     String   @map("template_id") @db.Uuid
+  seq            Int      @db.SmallInt
+  kind           String   @db.VarChar(12)
+  title          String   @db.VarChar(100)
+  weight         Decimal  @default(0) @db.Decimal(5, 2)
+  rated          Boolean  @default(true)
+  whoAnswers     String[] @map("who_answers") @db.VarChar(8)
+
+  @@map("review_template_sections")
+}
+
+model ReviewTemplateQuestion {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  sectionId      String  @map("section_id") @db.Uuid
+  seq            Int     @db.SmallInt
+  text           String  @db.VarChar(500)
+  answer         String  @default("both") @db.VarChar(8)
+  required       Boolean @default(true)
+  maxChars       Int     @default(2000) @map("max_chars")
+
+  @@map("review_template_questions")
+}
+
+model CompanySkill {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  parentId       String?  @map("parent_id") @db.Uuid
+  name           String   @db.VarChar(120)
+  kind           String   @db.VarChar(10)
+  status         String   @default("active") @db.VarChar(8)
+  mergedIntoId   String?  @map("merged_into_id") @db.Uuid
+  starterKey     String?  @map("starter_key") @db.VarChar(40)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("company_skills")
+}
+
+model Competency {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  companySkillId String   @map("company_skill_id") @db.Uuid
+  group          String   @db.VarChar(12)
+  description    String?  @db.VarChar(500)
+  status         String   @default("active") @db.VarChar(8)
+  starterKey     String?  @map("starter_key") @db.VarChar(40)
+  version        Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("competencies")
+}
+
+model CompetencyLevel {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  competencyId   String  @map("competency_id") @db.Uuid
+  level          Int     @db.SmallInt
+  label          String  @db.VarChar(80)
+  behaviours     String? @db.VarChar(500)
+
+  @@map("competency_levels")
+}
+
+model RoleCompetencyMap {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  designationId  String    @map("designation_id") @db.Uuid
+  competencyId   String    @map("competency_id") @db.Uuid
+  expectedLevel  Int       @map("expected_level") @db.SmallInt
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+
+  @@map("role_competency_map")
+}

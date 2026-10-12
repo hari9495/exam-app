@@ -38,6 +38,28 @@ async function subjects(tx: Tx, org: string, type: SubjectType): Promise<Subject
       const tasks = await tx.journeyTemplateTask.findMany({ where: { ...where, templateId: { in: [...by.keys()] } }, select: { id: true, title: true, templateId: true }, orderBy: [{ templateId: 'asc' }, { sortOrder: 'asc' }] });
       return tasks.map((t) => ({ id: t.id, name: `${by.get(t.templateId)} › ${t.title}` }));
     }
+    // M06 performance PM1 (§6.4): rating and band labels of scales in use, section titles of templates in use
+    // (drafts and active), competency names. Free-text answers are never translated.
+    case 'rating_level': {
+      const scales = new Map((await tx.ratingScale.findMany({ where: { ...where, status: 'active' }, select: name })).map((s) => [s.id, s.name]));
+      const levels = await tx.ratingScaleLevel.findMany({ where: { ...where, scaleId: { in: [...scales.keys()] } }, orderBy: [{ scaleId: 'asc' }, { value: 'asc' }] });
+      return levels.map((l) => ({ id: l.id, name: `${scales.get(l.scaleId)} › ${l.label}` }));
+    }
+    case 'rating_band': {
+      const scales = new Map((await tx.ratingScale.findMany({ where: { ...where, status: 'active' }, select: name })).map((s) => [s.id, s.name]));
+      const bands = await tx.ratingBand.findMany({ where: { ...where, scaleId: { in: [...scales.keys()] } }, orderBy: [{ scaleId: 'asc' }, { fromScore: 'asc' }] });
+      return bands.map((b) => ({ id: b.id, name: `${scales.get(b.scaleId)} › ${b.label}` }));
+    }
+    case 'review_section': {
+      const templates = new Map((await tx.reviewTemplate.findMany({ where: { ...where, status: { in: ['draft', 'active'] } }, select: name })).map((t) => [t.id, t.name]));
+      const sections = await tx.reviewTemplateSection.findMany({ where: { ...where, templateId: { in: [...templates.keys()] } }, orderBy: [{ templateId: 'asc' }, { seq: 'asc' }] });
+      return sections.map((s) => ({ id: s.id, name: `${templates.get(s.templateId)} › ${s.title}` }));
+    }
+    case 'competency': {
+      const rows = await tx.competency.findMany({ where: { ...where, status: 'active' }, select: { id: true, companySkillId: true } });
+      const skills = new Map((await tx.companySkill.findMany({ where: { ...where, id: { in: rows.map((r) => r.companySkillId) } }, select: name })).map((s) => [s.id, s.name]));
+      return rows.map((r) => ({ id: r.id, name: skills.get(r.companySkillId) ?? '' })).sort((a, b) => a.name.localeCompare(b.name));
+    }
   }
 }
 

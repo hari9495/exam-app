@@ -68,7 +68,7 @@ export interface EntityDefaults {
   language: Language;
 }
 
-export type SubjectType = 'leave_type' | 'designation' | 'department' | 'grade' | 'employment_type' | 'location' | 'journey_template' | 'journey_task';
+export type SubjectType = 'leave_type' | 'designation' | 'department' | 'grade' | 'employment_type' | 'location' | 'journey_template' | 'journey_task' | 'rating_level' | 'rating_band' | 'review_section' | 'competency';
 
 export const SUBJECT_LABEL: Record<SubjectType, string> = {
   leave_type: 'Leave types',
@@ -79,6 +79,10 @@ export const SUBJECT_LABEL: Record<SubjectType, string> = {
   location: 'Locations',
   journey_template: 'Journeys and checklists',
   journey_task: 'Journey steps',
+  rating_level: 'Rating labels',
+  rating_band: 'Rating bands',
+  review_section: 'Review sections',
+  competency: 'Competencies',
 };
 
 export interface TranslationList {

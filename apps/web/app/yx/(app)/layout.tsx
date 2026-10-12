@@ -37,6 +37,7 @@ const ORG: WorkspaceLink[] = [
 const COMPANY_RULES: WorkspaceLink = { id: 'company-rules', label: 'Company rules', href: '/yx/settings/company-rules', group: 'Organisation' };
 // Batch G1: the "Add a country" guide, the company's words in Hindi / Tamil / Telugu, and the person's language.
 const COUNTRIES: WorkspaceLink = { id: 'countries', label: 'Countries', href: '/yx/settings/countries', group: 'Organisation' };
+const PERFORMANCE_SETUP: WorkspaceLink = { id: 'performance-setup', label: 'Performance', href: '/yx/settings/performance', group: 'Organisation' };
 const TRANSLATIONS: WorkspaceLink = { id: 'translations', label: 'Translations', href: '/yx/settings/translations', group: 'Organisation' };
 const MY_LANGUAGE: WorkspaceLink = { id: 'my-language', label: 'Language', href: '/yx/me/language', group: 'Me' };
 const DIRECTORY: WorkspaceLink = { id: 'directory', label: 'Directory', href: '/yx/people/directory', group: 'People' };
@@ -228,6 +229,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...(idDesk ? [ID_CHANGES] : []),
     ...org,
     ...(perms.has('lifecycle.journey.template.manage') ? [CHECKLISTS] : []),
+    ...(perms.has('perf.setup.manage') ? [PERFORMANCE_SETUP] : []),
     ...(perms.has('letter.template.manage') || perms.has('letter.signatory.manage') ? [LETTER_TEMPLATES] : []),
     ...(perms.has('access.role.manage') ? [ACCESS] : []),
     // Read by anyone who reads the structure; changed with org.settings.manage (+ access.role.manage for guarded keys).

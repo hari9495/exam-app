@@ -99,6 +99,14 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     permissions: ['org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.release'],
   },
   {
+    key: 'performance_setup',
+    name: 'Performance set-up',
+    typicalScope: 'tenant',
+    summary: 'Rating scales, review templates, competencies and the company skills library (M06).',
+    cannot: 'See anyone’s goals, reviews or ratings.',
+    permissions: ['perf.setup.manage'],
+  },
+  {
     key: 'compliance_owner',
     name: 'Compliance Owner',
     typicalScope: 'legal_entity',
