@@ -1,0 +1,43 @@
+{
+  "ruleSets": [
+    {
+      "statute": "IN.IR",
+      "jurisdiction": "IN",
+      "version": "2025-v1",
+      "validFrom": "2025-11-21",
+      "validTo": null,
+      "lawVersion": "CODE",
+      "verify": true,
+      "source": "Industrial Relations Code, 2020 s.70 (retrenchment: one month's notice or wages in lieu, 15 days' average pay for every completed year of continuous service or part over six months), s.83 (worker re-skilling fund: the employer pays 15 days' last wages) and s.79 (permission before retrenchment at 300 workers or more).",
+      "values": {
+        "kind": "retrenchment",
+        "compensationDays": 15,
+        "monthDays": 26,
+        "noticeMonths": 1,
+        "reskillingDays": 15,
+        "permissionThreshold": 300
+      },
+      "golden": [
+        {
+          "name": "6 years 7 months at 26,000, notice paid, 120 workers",
+          "fn": "retrenchment",
+          "input": {
+            "averagePay": "26000",
+            "lastWage": "26000",
+            "joined": "2019-03-01",
+            "lastDay": "2025-12-15",
+            "noticePaid": true,
+            "workers": 120
+          },
+          "expected": {
+            "years": 7,
+            "compensation": "105000",
+            "noticePay": "26000",
+            "reskillingFund": "15000",
+            "permissionNeeded": false
+          }
+        }
+      ]
+    }
+  ]
+}

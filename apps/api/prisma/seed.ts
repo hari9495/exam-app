@@ -366,6 +366,9 @@ async function main() {
       // Batch 5f: damages on late PF / ESI and the register formats (verify), by the same flow.
       const filingRules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-filing.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
       await loadRuleSets(tx, filingRules, anand.id, reviewer.id);
+      // Batch 5g: retrenchment under the IR Code (verify), by the same flow.
+      const exitRules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-exit.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
+      await loadRuleSets(tx, exitRules, anand.id, reviewer.id);
       for (const slug of ['demo-org', 'ganga-textiles']) {
         const org = await tx.organization.findUnique({ where: { slug }, select: { id: true } });
         if (org) {

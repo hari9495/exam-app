@@ -215,6 +215,47 @@ export function gratuity(rs: RuleSet, i: { gratuityWage: Prisma.Decimal.Value })
   return { monthly: money(D(i.gratuityWage).mul(Number(v.daysPerYear)).div(Number(v.monthDays)).div(12)), citation: cite(rs) };
 }
 
+/** Years of service as the gratuity and retrenchment laws count them: whole years, and a part year over six months counts. */
+export function serviceYears(from: string, to: string): { completed: number; counted: number } {
+  const [y1, m1, d1] = from.split('-').map(Number);
+  const [y2, m2, d2] = to.split('-').map(Number);
+  const months = (y2 - y1) * 12 + (m2 - m1) - (d2 + 1 < d1 ? 1 : 0);
+  const completed = Math.floor(months / 12);
+  return { completed, counted: completed + (months % 12 >= 6 ? 1 : 0) };
+}
+
+/**
+ * Gratuity due on exit (batch 5g): daysPerYear / monthDays of the last monthly wage per counted year, up to the cap; only
+ * after minYears of service (fixedTermMinYears for a fixed-term employee), and with no minimum on death or disablement.
+ */
+export function gratuityDue(rs: RuleSet, i: { lastWage: Prisma.Decimal.Value; joined: string; lastDay: string; fixedTerm?: boolean; death?: boolean }) {
+  const v = need(rs, 'gratuity');
+  const y = serviceYears(i.joined, i.lastDay);
+  const min = i.fixedTerm && v.fixedTermMinYears !== null && v.fixedTermMinYears !== undefined ? Number(v.fixedTermMinYears) : Number(v.minYears);
+  const eligible = !!i.death || y.completed >= min;
+  const amount = eligible ? Prisma.Decimal.min(D(v.cap as string), money(D(i.lastWage).mul(Number(v.daysPerYear)).div(Number(v.monthDays)).mul(y.counted))) : ZERO;
+  return { eligible, years: y.counted, amount: money(amount), citation: cite(rs) };
+}
+
+/**
+ * Retrenchment (IR Code, batch 5g): compensation of compensationDays of average pay per counted year, notice pay of
+ * noticeMonths when notice is paid in lieu, the employer's re-skilling fund of reskillingDays of the last wage, and
+ * whether the establishment needs the government's permission first (at permissionThreshold workers or more).
+ */
+export function retrenchment(rs: RuleSet, i: { averagePay: Prisma.Decimal.Value; lastWage: Prisma.Decimal.Value; joined: string; lastDay: string; noticePaid: boolean; workers: number }) {
+  const v = need(rs, 'retrenchment');
+  const y = serviceYears(i.joined, i.lastDay);
+  const daily = (m: Prisma.Decimal.Value) => D(m).div(Number(v.monthDays));
+  return {
+    years: y.counted,
+    compensation: money(daily(i.averagePay).mul(Number(v.compensationDays)).mul(y.completed >= 1 ? y.counted : 0)),
+    noticePay: i.noticePaid ? money(D(i.lastWage).mul(Number(v.noticeMonths))) : ZERO,
+    reskillingFund: money(daily(i.lastWage).mul(Number(v.reskillingDays))),
+    permissionNeeded: i.workers >= Number(v.permissionThreshold),
+    citation: cite(rs),
+  };
+}
+
 interface TdsRegime {
   standardDeduction: string;
   rebate: { incomeUpTo: string; max: string };
@@ -441,7 +482,7 @@ export interface GoldenCase {
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
 }
-const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, gratuity_due: gratuityDue, retrenchment, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
 
 /** Runs one golden case; returns the fields that differ (empty when it passes). */
 export function runGolden(rs: RuleSet, g: GoldenCase): string[] {

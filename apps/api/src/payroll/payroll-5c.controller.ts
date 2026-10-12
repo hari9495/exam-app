@@ -40,10 +40,11 @@ export class Payroll5cController {
 
   // ------------------------------------------------------------------------------------------ runs
 
+  /** The regular run needs payroll.run.prepare; an off-cycle run (offcycleKind) payroll.offcycle.prepare (checked by entity). */
   @Post('runs')
-  @RequirePermissions('payroll.run.prepare')
+  @RequireAnyPermission('payroll.run.prepare', 'payroll.offcycle.prepare')
   create(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RunCreateDto) {
-    return this.runs.create(ctx, this.user(req), dto.payGroupId, dto.month);
+    return this.runs.create(ctx, this.user(req), dto.payGroupId, dto.month, dto.offcycleKind ?? null);
   }
 
   @Get('runs')
