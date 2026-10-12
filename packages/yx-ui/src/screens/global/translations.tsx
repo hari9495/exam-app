@@ -66,7 +66,7 @@ export function TranslationsScreen({ state, onRetry, subjectType, onSubjectType,
         render: (i) => (i.translations[l] ? <span lang={l}>{i.translations[l]}</span> : <Text tone="secondary">Not translated</Text>),
       }),
     ),
-    ...(canManage ? [{ key: 'edit', header: '', value: () => '', render: (i: Item) => <Button size="sm" onClick={() => setEditing(i)} aria-label={`Translate ${i.name}`}>Translate</Button>, width: 120 } as TableColumn<Item>] : []),
+    ...(canManage ? [{ key: 'edit', header: 'Action', sortable: false, value: () => '', render: (i: Item) => <Button size="sm" onClick={() => setEditing(i)} aria-label={`Translate ${i.name}`}>Translate</Button>, width: 120 } as TableColumn<Item>] : []),
   ];
   return (
     <OrgPage crumb="Translations" title="Translations" description="Your company's own words in your people's languages. Each person sees their language where you translated it." state={state} onRetry={onRetry} what="translations">
