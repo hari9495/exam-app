@@ -59,6 +59,22 @@ describe('sign-in protection (P12 YX-IAM-07, ASVS V2.2 / V3.3)', () => {
     return req.send({ organizationSlug: org.slug, email: who, password: opts.password ?? PASSWORD });
   };
   const accountKey = (scope: string, identifier: string) => sha256(`${scope}\u0000${identifier}`);
+  // Each test starts from clean sign-in counters, so a test that stops half-way cannot leave a lock behind.
+  const clearCounters = async () => {
+    const keys = await redis.keys('auth:lp:*');
+    if (keys.length) await redis.del(...keys);
+  };
+  // A burst opens many sockets at once; one reset by the OS is a transport fault, not an answer: send it again.
+  // Safe for the assertions: a resent request can only be counted again, never let more guesses through.
+  const resendOnReset = async (send: () => request.Test): Promise<request.Response> => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await send();
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'ECONNRESET' || attempt === 3) throw e;
+      }
+    }
+  };
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(EmailService).useValue(email).compile();
@@ -72,6 +88,7 @@ describe('sign-in protection (P12 YX-IAM-07, ASVS V2.2 / V3.3)', () => {
     tenantPrisma = moduleRef.get(TenantPrismaService);
     redis = moduleRef.get(LOGIN_PROTECTION_REDIS);
     protection = moduleRef.get(LoginProtectionService);
+    await clearCounters();
 
     planId = (await prisma.plan.create({ data: { name: `lp-plan-${runId}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
     const created = await prisma.organization.create({ data: { name: 'LP', slug: `lp-${runId}`, planId } });
@@ -95,6 +112,8 @@ describe('sign-in protection (P12 YX-IAM-07, ASVS V2.2 / V3.3)', () => {
       tx.authenticator.create({ data: { organizationId: org.id, userId: users[MFA_USER], type: 'totp', label: 'Phone', secretEncrypted } }),
     );
   });
+
+  beforeEach(() => clearCounters());
 
   afterAll(async () => {
     await tenantPrisma
@@ -132,7 +151,7 @@ describe('sign-in protection (P12 YX-IAM-07, ASVS V2.2 / V3.3)', () => {
     });
 
     it('password: a parallel burst of wrong passwords from 30 IPs checks at most 3 of them', async () => {
-      const results = await Promise.all(Array.from({ length: 30 }, () => login(BURST, { password: 'wrong-password-xx' })));
+      const results = await Promise.all(Array.from({ length: 30 }, () => resendOnReset(() => login(BURST, { password: 'wrong-password-xx' }))));
       const statuses = results.map((r) => r.status);
       expect(statuses.filter((s) => s === 401)).toHaveLength(3);
       expect(statuses.filter((s) => s === 429)).toHaveLength(27);
@@ -150,10 +169,9 @@ describe('sign-in protection (P12 YX-IAM-07, ASVS V2.2 / V3.3)', () => {
           .set('Cookie', device)
           .set('X-Forwarded-For', freshIp())
           .send({ mfaToken: first.body.mfaToken, factor: 'totp', code: String(100000 + i) });
-      const results = await Promise.all(Array.from({ length: 30 }, (_, i) => guess(i)));
+      const results = await Promise.all(Array.from({ length: 30 }, (_, i) => resendOnReset(() => guess(i))));
       expect(results.filter((r) => r.status === 401).length).toBeLessThanOrEqual(3);
       expect(results.filter((r) => r.status === 429).length).toBeGreaterThanOrEqual(27);
-      await redis.del(`auth:lp:acct:fail:${accountKey('mfa', users[MFA_USER])}`, `auth:lp:acct:block:${accountKey('mfa', users[MFA_USER])}`);
     });
   });
 

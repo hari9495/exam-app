@@ -131,3 +131,76 @@ jobs:
         uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Every apps/api e2e suite, split across shards so wall time stays near 15 minutes. Each shard is
+  # its own job, so it gets its own Postgres/Redis service containers and a fresh, freshly seeded database.
+  e2e:
+    name: e2e (shard ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: examapp
+          POSTGRES_PASSWORD: ci-throwaway
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d examapp"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Generate Prisma Client
+        run: npx prisma generate --schema=apps/api/prisma/schema.prisma
+
+      - name: Rebuild native dependencies
+        run: npm rebuild
+
+      - name: Build packages/shared
+        run: npm run build --workspace=packages/shared
+
+      - name: Provision database roles
+        env:
+          PGHOST: localhost
+          PGPASSWORD: ci-throwaway
+          POSTGRES_USER: postgres
+          POSTGRES_DB: examapp
+        run: |
+          owner_pw=$(openssl rand -hex 24); app_pw=$(openssl rand -hex 24)
+          echo "::add-mask::$owner_pw"; echo "::add-mask::$app_pw"
+          APP_DB_OWNER_PASSWORD=$owner_pw APP_DB_APP_PASSWORD=$app_pw sh docker/postgres/init/01-roles.sh
+          echo "MIGRATION_DATABASE_URL=postgresql://examapp_owner:$owner_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://examapp_app:$app_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
+          # The suites boot the whole AppModule, which signs tokens: per-run secrets, never stored anywhere.
+          for name in ORG_SECRETS_ENCRYPTION_KEY JWT_ACCESS_SECRET JWT_REFRESH_SECRET CANDIDATE_JWT_ACCESS_SECRET CANDIDATE_JWT_REFRESH_SECRET INTERNAL_SERVICE_SECRET; do
+            value=$(openssl rand -hex 32); echo "::add-mask::$value"; echo "$name=$value" >> "$GITHUB_ENV"
+          done
+          echo "API_ORIGIN=http://localhost:3001" >> "$GITHUB_ENV"
+          echo "WEB_ORIGIN=http://localhost:3000" >> "$GITHUB_ENV"
+
+      - name: Migrate and seed database
+        working-directory: apps/api
+        run: npx prisma migrate deploy && npx prisma db seed
+
+      - name: API e2e suites (shard ${{ matrix.shard }}/4)
+        working-directory: apps/api
+        run: npx jest --config ./test/jest-e2e.json --shard=${{ matrix.shard }}/4
