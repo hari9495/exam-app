@@ -1324,9 +1324,11 @@
     "url": "http://localhost:3000/yx/settings/sms",
     "account": "admin@demo-org.test (System Admin)",
     "steps": [
-      "Set Monthly limit to 1 and save. Send two tests."
+      "Use an account marked \"Template approved\" (a pending template stops the test before the limit check). Set Monthly limit to 1 and save.",
+      "Click Send test on that account. Open the local mailbox (http://localhost:8025).",
+      "Clear Monthly limit (empty = no limit) and save."
     ],
-    "expected": "After the limit, \"Monthly limit reached\" shows and texts stop; codes go by email where allowed.",
+    "expected": "On save, \"This month\" shows the \"Monthly limit reached\" notice once texts sent are at or over the limit. Send test says \"not sent: Monthly SMS limit reached\" and no SMS copy arrives. Each org admin gets one \"Your organisation has reached its monthly SMS limit\" email (only once a month).",
     "stories": [
       "US-A-024"
     ],
