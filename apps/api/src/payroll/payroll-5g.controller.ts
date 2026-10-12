@@ -16,6 +16,7 @@ import { FnfService } from './fnf.service';
 //   payroll.offcycle.prepare   off-cycle runs (POST /payroll/runs with offcycleKind) and their items
 //   payroll.arrears.approve    arrears worksheets, base confirmation, rule-change proposals, overpayment recoveries
 //   payroll.fnf.manage         F&F settlements: lines, held lines, the second run; payees' bank accounts ⚡
+//   payroll.notice.waive       waive an unserved notice for one leaver (HR Admin, Payroll Admin; 5j-D2)
 //   payroll.writeoff.approve ⚡ write off the rest of an overpayment (never one's own)
 //   (no key)                   an employee's own recovery plans and their answer
 @Controller()
@@ -111,7 +112,7 @@ export class Payroll5gController {
   // ------------------------------------------------------------------------------------------ F&F
 
   @Get('payroll/fnf')
-  @RequirePermissions('payroll.fnf.manage')
+  @RequireAnyPermission('payroll.fnf.manage', 'payroll.notice.waive')
   fnfList(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.fnf.list(ctx, this.user(req));
   }
@@ -136,10 +137,10 @@ export class Payroll5gController {
     return this.fnf.payees(ctx, this.user(req), id, dto);
   }
 
-  /** 5g-D5: HR waives the unserved notice for this person, with a reason. */
+  /** 5g-D5 / 5j-D2: HR or payroll waives the unserved notice for this person, with a reason (its own key). */
   @Post('payroll/fnf/:id/waive-notice')
   @HttpCode(200)
-  @RequirePermissions('payroll.fnf.manage')
+  @RequirePermissions('payroll.notice.waive')
   waiveNotice(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DismissDto) {
     return this.fnf.waiveNotice(ctx, this.user(req), id, dto.reason);
   }

@@ -35,6 +35,8 @@ import { RulesEngineModule } from '../rules-engine/rules-engine.module';
 import { Payroll5gController } from './payroll-5g.controller';
 import { ArrearsService } from './arrears.service';
 import { FnfService } from './fnf.service';
+import { Payroll5jController } from './payroll-5j.controller';
+import { GoLiveService } from './golive.service';
 import { PayPeriodsService } from './periods.service';
 
 // M03 payroll, batch 5a: locks, audit, documents and exchange files (PAY-1.01 … PAY-1.12); batch 5b: set-up,
@@ -43,8 +45,8 @@ import { PayPeriodsService } from './periods.service';
 // reopen request (the step-4 unlock became it) and nothing here depends on time's services.
 @Module({
   imports: [AuditModule, CryptoModule, StorageModule, WorkflowModule, NotificationsModule, EmailModule, AuthModule, EmployeeHistoryModule, RulesEngineModule],
-  controllers: [PayrollController, PublicPayController, Payroll5bController, Payroll5cController, Payroll5dController, TaxController, StatutoryController, Payroll5gController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayRunsService, PayInputsService, PayoutService, PayslipsService, TaxService, LedgerService, StatutoryFilingsService, StatutoryRegistersService, FvuRunner, ArrearsService, FnfService, PayrollJobs],
+  controllers: [PayrollController, PublicPayController, Payroll5bController, Payroll5cController, Payroll5dController, TaxController, StatutoryController, Payroll5gController, Payroll5jController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayRunsService, PayInputsService, PayoutService, PayslipsService, TaxService, LedgerService, StatutoryFilingsService, StatutoryRegistersService, FvuRunner, ArrearsService, FnfService, GoLiveService, PayrollJobs],
   exports: [PayPeriodsService, PayDocumentsService, ExchangeFilesService],
 })
 export class PayrollModule {}

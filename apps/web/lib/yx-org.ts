@@ -100,6 +100,24 @@ export const YX_KEYS = [
   'payroll.component.manage',
   'payroll.template.manage',
   'payroll.import.run',
+  // Batch 5j: runs, inputs, pay-out, statutory filings, F&F and arrears.
+  'payroll.run.view',
+  'payroll.run.prepare',
+  'payroll.run.approve',
+  'payroll.input.manage',
+  'payroll.hold.manage',
+  'payroll.bankfile.generate',
+  'payroll.bankfile.release',
+  'payroll.payslip.publish',
+  'payroll.offcycle.prepare',
+  'payroll.arrears.approve',
+  'payroll.fnf.manage',
+  'payroll.writeoff.approve',
+  'statutory.filing.view',
+  'statutory.filing.generate',
+  'statutory.filing.mark_filed',
+  'statutory.challan.manage',
+  'payroll.notice.waive',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 
