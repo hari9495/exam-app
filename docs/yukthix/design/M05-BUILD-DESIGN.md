@@ -1,8 +1,8 @@
 # M05 · Expenses, advances and travel · Build design
 
-> **Status:** 📝 Draft for the founder, 12 Oct 2026. The module decisions (Q1–Q8, B18, B2) were taken on 25–26 Sep 2026 in [M05](M05-expenses-advances-travel.md); this doc turns them into tables, permissions, APIs, jobs, screens, tests and small pull requests. §22 lists the new questions this design raises.
+> **Status:** ✅ Decided, 12 Oct 2026: the founder accepted D2–D9 with the recommended defaults and changed D1 to **self-hosted receipt OCR at launch** (PaddleOCR in an isolated worker, §14.6; §22). Batch E1 is being built on `feat/yukthix-expenses-1`. The module decisions (Q1–Q8, B18, B2) were taken on 25–26 Sep 2026 in [M05](M05-expenses-advances-travel.md); this doc turns them into tables, permissions, APIs, jobs, screens, tests and small pull requests.
 > **Scope:** claims with receipts, mileage and per diem; policy limits as rule data; multi-level approval; advances and their settlement; travel requests and bookings (bookings through a partner seam, not built); corporate cards (a seam); the payroll hand-off (reimbursement in the payslip or a separate bank payout, recoveries, taxable portions) and the ledger hand-off; India GST input-credit capture; multi-currency.
-> **Order:** six batches, **E1 → E6**. E1–E4 are what a pilot company needs; E5 adds multi-currency, field-force mileage and reports; E6 holds the seams (OCR provider, travel partner, card feeds) that wait for a founder choice.
+> **Order:** six batches, **E1 → E6**. E1–E4 are what a pilot company needs (receipt OCR included in E2); E5 adds multi-currency, field-force mileage and reports; E6 holds the seams (travel partner, card feeds) that wait for a provider choice.
 > **Builds on:** P03 approvals, P19 rules, P04 notifications, P05 documents and the 6a file store, M03 payroll (one-time pay, loans, bank formats, ledger mapping GP-PAY-1), G1 global core (country packs, translations), M01 (F&F hand-off).
 > **Clean-room:** described in our own words from our own design docs and public law and guidance. No competitor text, screens or field names are copied. Frappe / ERPNext code is not read or copied.
 
@@ -63,7 +63,7 @@ Words used here:
 
 ### 3.2 Out
 - Booking through a travel partner (a seam only; wave 6, paid add-on).
-- A paid OCR provider (a seam only; §22 D1).
+- A cloud OCR provider (the adapter seam stays, so one can be added per customer later; §22 D1).
 - Live corporate-card feeds (later, through partners).
 - Company vehicle logs and fleet (a later module).
 - Salary advances and loans (M03; this module only uses the loan engine for recovery, §11.3).
@@ -207,7 +207,7 @@ Words used here:
 | `expense.fx.tolerance_pct` | tenant | 3 (B18) |
 | `expense.advance.settle_days` | tenant, entity | 30 after the trip ends (YX-EXP-09) |
 | `expense.advance.recovery_instalments` | tenant, entity | 3 (Q6) |
-| `expense.ocr.enabled` | tenant | off until a provider is chosen (§22 D1) |
+| `expense.ocr.enabled` | tenant | on (self-hosted OCR, §14.6); a company may turn it off |
 
 ### 6.2 Starter templates (YukthiX starters, copied and never overwritten)
 - **Categories:** air, rail, cab and local conveyance, lodging, meals, mileage, per diem, internet and phone, client entertainment, visa and fees, other. Each has a GST-eligible flag and, for India, the blocked-credit key from the P07 pack (§13.3).
@@ -461,22 +461,42 @@ A USD advance is settled by USD lines at the advance's rate. The unspent balance
 ### 14.5 Country packs (G1)
 The pack's currency is the default pay currency. A country pack can ship expense starters (categories, tiers, per-diem rates by country and the GST-like tax fields). Only India ships them now; a new country's pack adds them later (gap pass O4 pattern).
 
-### 14.6 Receipt OCR seam
-`interface ReceiptReader { read(file: Buffer, mime: string, hints: { country: string; currency: string }): Promise<{ fields: Partial<OcrFields>; confidence: number; adapter: string }> }`, chosen by `EXPENSE_OCR_ADAPTER`:
-- **`dev-fake`:** reads values from the file name in tests;
-- **`none`** (default): manual entry, with the e-invoice QR still read (§13.4).
+### 14.6 Receipt OCR (founder D1, 12 Oct 2026)
 
-OCR usage is metered per company as AI credits (P10) once a real adapter exists.
+**Engine.** Self-hosted **PaddleOCR** (Apache-2.0), plus the e-invoice QR read (§13.4). Receipts never leave our servers.
+
+**Seam.** `interface ReceiptReader { read(file: Buffer, mime: string, hints: { country: string; currency: string }): Promise<OcrResult> }`, chosen by `EXPENSE_OCR_ADAPTER`:
+- **`paddle-worker`**: the production adapter (below);
+- **`dev-fake`**: deterministic results for tests;
+- **`none`**: manual entry, with the QR still read.
+
+A cloud provider can be added later, per customer, as another adapter.
+
+**The isolated worker.**
+- A separate container image (Python, PaddleOCR and its pinned models baked in at build time), run with:
+  - **no network** at inference (`network: none`; the API passes the file over a local socket or a mounted spool directory);
+  - a non-root user and a read-only root filesystem;
+  - CPU, memory and wall-clock limits (starter: 1 CPU, 1.5 GB, 20 s per page, 3 pages per file).
+- **Input check before the worker:** only JPG, PNG, HEIC (converted to PNG) and PDF, sniffed from the bytes. Size up to 10 MB and dimensions up to 6,000 px a side. PDFs are rasterised by the API side, at most 3 pages, with no scripts or embedded files. The virus scan has to pass first.
+- **Output:** JSON only, parsed strictly against a schema: unknown keys refused, strings length-capped, amounts as decimal strings, dates as ISO. Anything else is a failed read, and the employee types the values. The worker never writes to the database.
+- **Queue:** a BullMQ queue with a small concurrency (per-company fairness), and a retry once on a crash.
+
+**What it fills.** Amount, date, vendor, GSTIN, invoice number and the tax lines (taxable value, CGST, SGST, IGST), as **suggestions**:
+- the parser is ours (`ocr-parse.ts`, pure, unit-tested): it turns PaddleOCR's text boxes into fields with Indian receipt patterns (₹ amounts, dd/mm/yyyy dates, GSTIN shape and check digit);
+- each field carries a **confidence** (0–1) from the recognition score and the pattern match.
+
+**What the employee sees.** Every suggested field is shown with its confidence; fields below the company threshold (starter 0.8) are highlighted "Please check". The employee confirms or edits each one. **Nothing is submitted or approved by OCR** (Q4). Edits are kept (`ocr` JSON on the line: suggested value, confidence, final value), and a big gap between OCR and the final amount is flag F10.
+
+**Downloads.** PaddleOCR packages, models and base images are pulled only after the founder approves the exact list: names, versions, sizes, official source and licence. Until then everything is built and tested against the `dev-fake` adapter.
+
+**Other options considered** (kept for a per-customer adapter later):
 
 | Option | Kind | Good | Watch out |
 |---|---|---|---|
-| **Tesseract** (Apache-2.0, maintained) | Open source, self-hosted | Free, offline, data stays in our region | Reads text only; we must parse merchant, date, amount and GST ourselves; weak on crumpled or angled photos and thermal paper |
-| **PaddleOCR** (Apache-2.0, maintained) | Open source, self-hosted | Better on phone photos; layout and key-value models | A Python service with a large model to run and patch; needs CPU or GPU sizing |
-| **docTR** (Apache-2.0) | Open source, self-hosted | Good detection and recognition; PyTorch | Same parsing work as Tesseract; heavier than it |
-| **Cloud receipt models** (AWS Textract expense analysis, Google Document AI expense parser, Azure AI Document Intelligence receipt model) | Paid provider | Fields already extracted, good quality, India regions available for some | Per-page cost; a data-processing agreement under the DPDP Act; vendor lock-in per adapter |
-| **Specialist receipt APIs** (for example Mindee, Veryfi) | Paid provider | Tuned for receipts and invoices, quick to integrate | Cost; data leaves our hosting; check the region and the DPA |
-
-Receipts are Internal class and may use external AI under P10 Q2. Whatever is chosen, OCR only pre-fills, never approves (Q4), and a big gap between the OCR amount and the typed amount is a flag (§15).
+| Tesseract (Apache-2.0) | Open source | Small, offline | Text only, weak on phone photos |
+| docTR (Apache-2.0) | Open source | Good recognition | Heavier; same parsing work |
+| Cloud receipt models (AWS Textract expense analysis, Google Document AI expense parser, Azure AI Document Intelligence receipts) | Provider | Fields pre-extracted | Per-page cost; data leaves our servers; DPDP agreement |
+| Specialist receipt APIs (for example Mindee, Veryfi) | Provider | Tuned for receipts | Cost; data leaves our servers |
 
 ---
 
@@ -651,7 +671,7 @@ Slice IDs are `XP-n.nn`, so they don't clash with the APX-D screen IDs EXP-01 �
 | XP-1.05 | GST registrations per entity and state; GSTIN check digit | unit: valid and invalid GSTINs, state codes |
 | XP-1.06 | Setup check and the EXP-07 policy matrix screen wired | screen tests; Playwright: finance sets a Tier 2 hotel cap |
 
-### 21.2 Batch E2 · Claims, approvals and checks (9 slices)
+### 21.2 Batch E2 · Claims, approvals, checks and OCR (10 slices)
 
 | ID | Slice | Tests |
 |---|---|---|
@@ -662,7 +682,8 @@ Slice IDs are `XP-n.nn`, so they don't clash with the APX-D screen IDs EXP-01 �
 | XP-2.05 | P03 registration: chain, cost-centre step, excess step, finance audit step, distinct steps | e2e: an over-limit line adds the excess step; a client approver is ignored (EX-D3) |
 | XP-2.06 | Approve with changes, send back, partly approved | e2e: "Approved ₹1,200 of ₹2,000 — hotel cap Tier 2" (U61, U68); no reason → 400 |
 | XP-2.07 | GST capture (company option), ITC status, blocked-credit list from P07 | e2e: two lines at different GST rates keep their own tax (EX-D5); hotel in another state → wrong state |
-| XP-2.08 | OCR seam (`none`, `dev-fake`) and e-invoice QR read with signature check | unit: QR decode and signature with a test key pair; e2e: the dev fake pre-fills, never approves |
+| XP-2.08 | OCR seam (`none`, `dev-fake`), the strict output parser and field confidence, e-invoice QR read with signature check | unit: parser on sample OCR text, schema refusal of bad output, QR signature with a test key pair; e2e: the dev fake pre-fills with confidence, never submits |
+| XP-2.10 | `paddle-worker` adapter: isolated container (no network, non-root, limits), queue, input checks (after the founder approves the downloads) | contract tests with sample receipts; e2e: oversize or wrong-type file refused before the worker; a worker timeout leaves manual entry |
 | XP-2.09 | Screens EXP-01, 02, 03 wired | screen tests; Playwright: snap, check, submit, manager reduces with reason |
 
 ### 21.3 Batch E3 · Payment, payroll and ledger (8 slices; needs §4 changes 1–4)
@@ -701,21 +722,30 @@ Slice IDs are `XP-n.nn`, so they don't clash with the APX-D screen IDs EXP-01 �
 | XP-5.05 | Look-alike image hash (F4) and approver-pattern report (F13) | unit: near-duplicate photos match, different receipts do not |
 | XP-5.06 | Reports EXP-09 including GST input CSV | e2e: report totals equal the claims; Playwright: GST tab export |
 
-### 21.6 Batch E6 · Seams waiting for a provider (3 slices, after §22 answers)
+### 21.6 Batch E6 · Seams waiting for a provider (2 slices)
 
 | ID | Slice | Tests |
 |---|---|---|
-| XP-6.01 | OCR adapter for the chosen option (§14.6) | contract tests with sample receipts; metering |
 | XP-6.02 | Corporate cards: statement import adapter (CSV first), matching, explain, personal spend recovery; EXP-08 wired | e2e: an unmatched line asks the employee; personal spend becomes a recovery |
 | XP-6.03 | Travel partner adapter for the chosen partner | contract tests with the partner sandbox |
 
-**Totals:** E1 6 · E2 9 · E3 8 · E4 7 · E5 6 · E6 3 = **39 slices**.
+**Totals:** E1 6 · E2 10 · E3 8 · E4 7 · E5 6 · E6 2 = **39 slices**.
 
 ---
 
 ## 22. Decisions for the founder
 
-Short questions. The recommended default is in bold.
+**Accepted 12 Oct 2026.** D2–D9 with the recommended defaults (bold). **D1 changed:** receipt OCR at launch with self-hosted PaddleOCR in an isolated worker plus the e-invoice QR read; receipts never leave our servers; the adapter seam stays for per-customer cloud providers; the OCR slice moves into E2 (§14.6, XP-2.08 and XP-2.10); downloads only after the founder approves the exact list.
+
+### 22.1 For the payroll builder (before E3)
+These are the five M03 changes from §4, to be made by the payroll builder, not in the expenses branch:
+1. Starter components `exp_reimb` (kind `reimbursement`, not taxable, no wage flags) and `exp_taxable` (earning, taxable, no wage flags).
+2. The calculation keeps kind `reimbursement` on the payslip under "Reimbursements": outside gross pay and every wage base, inside net pay (D3).
+3. A tax-projection input for taxable expense amounts already paid outside payroll (like `perquisites`).
+4. Outbox events `payroll.run.paid`, `payroll.run.voided`, `payment.failed` and `recovery.deferred`, once per transition, with ids only (D5).
+5. A forward migration adding `expense` to `loans_type_check`; recovery as an interest-free, non-perquisite loan (D4).
+
+Questions, with the recommended default in bold.
 
 ### D1 · Receipt OCR at launch
 M05 Q4 said "OCR at launch on every receipt", but no provider is chosen and we build no paid one without your choice.
@@ -777,4 +807,5 @@ Each legal entity has one GSTIN today; hotel credit needs the registration in th
 
 | Date | Change |
 |---|---|
+| 12 Oct 2026 | Founder accepted D2–D9; D1 changed to self-hosted PaddleOCR at launch in an isolated worker (no network, non-root, limits, strict output parse, per-field confidence, nothing auto-submits); OCR slice moved to E2 (XP-2.10); §22.1 lists the five payroll changes for the payroll builder. |
 | 12 Oct 2026 | First draft: scope, reuse, data model by batch with RLS, settings and starters, policies as P19 rule data, claims, P03 approvals with approve-with-changes, payment routes, payroll hand-off (reimbursement section, taxable portions, recovery through the loan engine, payroll events), ledger hand-off through GP-PAY-1 mapping, India GST input credit, FX (FBIL correction), OCR seam with options, fraud and duplicate checks F1–F13, permissions, events, API, screens, security, 39 slices in batches E1–E6, founder decisions D1–D9. |
