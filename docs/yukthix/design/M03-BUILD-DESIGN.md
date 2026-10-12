@@ -1320,6 +1320,18 @@ From the global HCM gap pass (GLOBAL-HCM-GAP-PASS.md §7.1), accepted on 10 Oct 
 | 5f-D2 | **Filing partner: self-filing for the pilot.** | `POST /statutory/filings/{id}/transmit` keeps answering "no partner connected". |
 | 5f-D3 | **State PT and LWF layouts, PF / ESI damages rates, register formats and the ELI fields go on the go-live checklist for the compliance owner.** ELI is built later. | Go-live checklist item 17. The files and rule sets stay marked verify until then. |
 
+### 19.9 Batch 5g build decisions (founder, accepted 12 Oct 2026)
+
+| # | Decision | What is built |
+|---|---|---|
+| 5g-D1 | **FVU for the pilot: the filer runs the FVU on their own computer and uploads the .fvu result**; YukthiX checks it against the return it generated (by hash and format). The sandbox worker stays, off until Protean's command-line rules are known. | `POST /statutory/tds-returns/{id}/fvu` takes the .fvu file (size-capped, parsed strictly as untrusted): it must carry the hash of the return file we made and the return's TAN, form, year and quarter; a match makes the return "validated" and stores the .fvu beside it. Go-live checklist item 18: ask Protean for the FVU command-line specification. |
+| 5g-D2 | **Death in service: the bank file pays each payee directly by share**, from the encrypted payee accounts (recorded with step-up). **No TDS on heirs' shares** by default, marked verify for the partner CA. | The F&F payslip's net is split by the payees' shares into one bank-file row each (account decrypted only into the file); the payslip is no longer held. A verify note on the settlement. |
+| 5g-D3 | **Exemptions as rule data:** gratuity, leave encashment and retrenchment compensation, with their limits, under both Acts by tax year, marked verify. | An `IN.EXIT-EXEMPT` rule set per law version; the F&F payslip's tax projection takes the exempt part off taxable salary, and the line says how much and why. |
+| 5g-D4 | **Leave encashment rate: a company setting**, default basic + DA. | Setting `payroll.leave_encashment_basis` (`basic_da` default, or `gross`), per entity. |
+| 5g-D5 | **Unserved notice: a company policy setting, default "recover"**; HR can waive it for one person, with a reason. | Setting `payroll.notice_shortfall` (`recover` default, or `waive`); the F&F recovers the days between the last day and the standard last day at the daily rate; a waiver on the settlement with its reason is audited. |
+| 5g-D6 | **PF, ESI and PT differences from past-dated rule changes go into the arrears worksheets.** The employee share is recovered only with consent, like overpayments; the employer share is a company cost. | Worksheet lines carry the statutory components too (earnings, employee and employer shares); on approval the employee share owed becomes a recovery plan the employee agrees to; the employer share is shown as company cost and paid with the supplementary filing. |
+| 5g-D7 | **Earlier-year overpayment tax (revised Form 16, s.89): by hand for the pilot**, listed for payroll; built later. | The cross-year list stays (`GET /payroll/overpayments?crossYear=true`). |
+
 ---
 
 ## 20. Go-live items this design adds
@@ -1351,3 +1363,4 @@ To add to [GO-LIVE-CHECKLIST.md](../GO-LIVE-CHECKLIST.md) (the coordinator edits
 | 9 Oct 2026 | §19.6: batch 5e build decisions 5e-D1 … 5e-D3 accepted (payslip email as a link to the in-app payslip, PAN status by hand, no DTAA relief with cases flagged). |
 | 10 Oct 2026 | §19.7: ledger mapping (global gap pass §7.1) accepted: two-level mapping with an unmapped bucket that blocks posting. |
 | 10 Oct 2026 | §19.8: batch 5f build decisions 5f-D1 … 5f-D3 accepted (official e-TDS file and FVU in an isolated worker, self-filing for the pilot, statutory data items on the go-live checklist). |
+| 12 Oct 2026 | §19.9: batch 5g build decisions 5g-D1 … 5g-D7 accepted (filer-run FVU with upload and check, heirs paid by the bank file, exit exemptions as rule data, encashment basis and notice shortfall settings, statutory differences in arrears with consent, cross-year tax by hand). |
