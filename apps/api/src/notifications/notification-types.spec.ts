@@ -66,6 +66,8 @@ describe('notification catalog', () => {
       'perf.one_on_one.reminder',
       'perf.cycle.launched',
       'perf.review.stage_due',
+      'perf.review.released',
+      'perf.review.disagreed',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

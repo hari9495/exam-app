@@ -39,6 +39,7 @@ export class PerformanceJobs implements OnModuleInit, OnModuleDestroy {
       if (name === 'daily') {
         await this.goals.sweep();
         await this.feedback.sweep();
+        await this.reviews.handOverAll();
         await this.reviews.sweep();
       }
     } catch (e) {

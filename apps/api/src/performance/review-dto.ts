@@ -119,3 +119,35 @@ export class EntryDto {
   @MaxLength(5000)
   comment?: string | null;
 }
+
+export class CommentDto {
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(2000)
+  comment?: string | null;
+}
+
+export class ReasonDto {
+  @trim()
+  @IsString()
+  @Length(3, 500)
+  reason!: string;
+}
+
+export class DisagreeDto {
+  @trim()
+  @IsString()
+  @Length(3, 2000)
+  text!: string;
+}
+
+export class DecideDisagreementDto {
+  @IsIn(['answered', 'upheld', 'not_upheld'])
+  status!: 'answered' | 'upheld' | 'not_upheld';
+
+  @trim()
+  @IsString()
+  @Length(3, 2000)
+  hrNote!: string;
+}
