@@ -106,6 +106,11 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'payroll.arrears.approve',
   'payroll.fnf.manage',
   'payroll.writeoff.approve',
+  // M06 PM3: sealing a concern reads feedback text that no one else may see (M06-BUILD-DESIGN §15.3).
+  'perf.concern.seal',
+  // PM4: ratings before release, and starting or changing a review cycle.
+  'perf.review.view',
+  'perf.cycle.manage',
 ];
 
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).

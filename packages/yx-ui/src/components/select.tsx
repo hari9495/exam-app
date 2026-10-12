@@ -230,6 +230,7 @@ export function MultiSelect<V extends string = string>({
   className,
   'aria-label': ariaLabel,
   defaultOpen = false,
+  onSearchChange,
 }: MultiSelectProps<V>) {
   const [open, setOpen] = useState(defaultOpen);
   const { controlProps } = useFieldControl({ id, required, disabled });
@@ -269,12 +270,13 @@ export function MultiSelect<V extends string = string>({
           options={options}
           isSelected={(v) => value.includes(v)}
           onPick={toggle}
-          searchable={searchable ?? options.length > 7}
+          searchable={searchable ?? (options.length > 7 || Boolean(onSearchChange))}
           searchPlaceholder={searchPlaceholder}
           emptyText={emptyText}
           renderOption={renderOption}
           multi
           initial={value[0]}
+          onSearchChange={onSearchChange}
         />
         {value.length > 0 && (
           <div className="yx-listbox__footer">
