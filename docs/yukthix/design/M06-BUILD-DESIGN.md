@@ -756,7 +756,7 @@ Every batch ends with the usual checks: typecheck, unit, the batch's e2e and the
 
 | Date | Change |
 |---|---|
-| 12 Oct 2026 | PM2 built: key `perf.goal.manage` added (goal periods, company and team goals; HR Admin has it); goal statuses `draft` / `submitted` / `active` / `done` / `dropped` (approval makes a goal active, no separate "approved"); a change to an approved goal is kept as a pending change until the manager decides, so the goal stays as it was; one check-in reminder per interval (`checkin_reminded_on`); the goals page serves as PRF-01 until reviews exist (PM4). |
+| 12 Oct 2026 | PM2 built: key `perf.goal.manage` added (goal periods, company and team goals; in the company-wide Performance set-up template, since it is a company-wide key); goal statuses `draft` / `submitted` / `active` / `done` / `dropped` (approval makes a goal active, no separate "approved"); a change to an approved goal is kept as a pending change until the manager decides, so the goal stays as it was; one check-in reminder per interval (`checkin_reminded_on`); the goals page serves as PRF-01 until reviews exist (PM4). |
 | 12 Oct 2026 | PM7 apply splits comp cycles into bulk batches of up to 1,000 rows in one transaction (§12.6, PM-7.06). Forward migration restating the full translation subject list after expenses and PM1 both changed it. |
 | 12 Oct 2026 | PM1 built: the `perf.*` settings keys arrive with the batch that first reads them (none in PM1); a template's P19 "applies to" moves to PM4 with cycle populations; `comp_review` added to bulk change batches (§4.1 change 1); translation subjects added (change 2). |
 | 12 Oct 2026 | Founder accepted D1–D14 with the recommended defaults; PM1 started. |
