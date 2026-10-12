@@ -101,7 +101,23 @@ export function codeFromName(name: string, taken: ReadonlySet<string>): string {
 // Dates are calendar dates (P06 YX-HIS-04). India is one time zone and the only live region, so "today"
 // is the IST date. ponytail: per-location zone once a non-IST region opens.
 export function todayIst(now = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  return localDate(now, 'Asia/Kolkata');
+}
+
+/** The calendar date of a moment in a time zone: dates shown to people are the company's day, never the server's UTC day. */
+export function localDate(at: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(at);
+}
+
+const COUNTRY_ZONE: Record<string, string> = { IN: 'Asia/Kolkata' };
+/** A legal entity's time zone: its first location's, else its country's, else UTC (pure, for tests). */
+export const zoneOf = (locationZones: readonly string[], country: string | null | undefined) => locationZones[0] ?? COUNTRY_ZONE[country ?? ''] ?? 'UTC';
+
+/** The time zone of a legal entity, read from its locations and country (the transaction must see the company's rows). */
+export async function entityTimeZone(tx: { location: { findMany: (a: object) => Promise<{ timezone: string }[]> }; legalEntity: { findFirst: (a: object) => Promise<{ country: string } | null> } }, organizationId: string, legalEntityId: string): Promise<string> {
+  const locs = await tx.location.findMany({ where: { organizationId, legalEntityId }, orderBy: { createdAt: 'asc' }, select: { timezone: true }, take: 1 });
+  const e = await tx.legalEntity.findFirst({ where: { organizationId, id: legalEntityId }, select: { country: true } });
+  return zoneOf(locs.map((l) => l.timezone), e?.country);
 }
 
 export const isoDate = (d: Date) => d.toISOString().slice(0, 10);

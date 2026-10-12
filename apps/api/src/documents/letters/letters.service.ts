@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Inject, Inj
 import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../../org-structure/org-structure.service';
-import { todayIst } from '../../org-structure/org-validation';
+import { entityTimeZone, localDate, todayIst } from '../../org-structure/org-validation';
 import { ScopeUser, Viewer, buildViewer, tenantWide } from '../../access/scope';
 import { ApprovalsEngine, type Notice } from '../../workflow/approvals-engine.service';
 import { NotificationsService } from '../../notifications/notifications.service';
@@ -713,14 +713,14 @@ export class LettersService implements OnModuleInit {
   async verify(code: string) {
     if (!VERIFY_CODE.test(code)) return null;
     return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
-      const l = await tx.letterIssue.findFirst({ where: { verifyCode: code, status: { in: ['issued', 'superseded'] } }, select: { organizationId: true, personId: true, letterType: true, templateId: true, issuedAt: true, status: true } });
+      const l = await tx.letterIssue.findFirst({ where: { verifyCode: code, status: { in: ['issued', 'superseded'] } }, select: { organizationId: true, legalEntityId: true, personId: true, letterType: true, templateId: true, issuedAt: true, status: true } });
       if (!l) return null;
       const [org, p, t] = await Promise.all([
         tx.organization.findUnique({ where: { id: l.organizationId }, select: { name: true } }),
         tx.person.findFirst({ where: { organizationId: l.organizationId, id: l.personId }, select: { givenName: true, familyName: true, preferredName: true } }),
         tx.letterTemplate.findFirst({ where: { organizationId: l.organizationId, id: l.templateId }, select: { name: true } }),
       ]);
-      return { company: org?.name ?? '', kind: t?.name ?? 'Letter', name: p ? [p.preferredName ?? p.givenName, p.familyName].filter(Boolean).join(' ') : '', issuedOn: l.issuedAt!.toISOString().slice(0, 10), status: (l.status === 'issued' ? 'current' : 'superseded') as 'current' | 'superseded' };
+      return { company: org?.name ?? '', kind: t?.name ?? 'Letter', name: p ? [p.preferredName ?? p.givenName, p.familyName].filter(Boolean).join(' ') : '', issuedOn: localDate(l.issuedAt!, await entityTimeZone(tx, l.organizationId, l.legalEntityId)), status: (l.status === 'issued' ? 'current' : 'superseded') as 'current' | 'superseded' };
     });
   }
 }
