@@ -362,6 +362,9 @@ export function VerifyDocumentScreen(p: VerifyDocumentScreenProps) {
 
 export interface PayPortalSignInProps {
   company: string;
+  /** Defaults to the pay documents portal. */
+  title?: string;
+  note?: string;
   onSendCode: (email: string) => Promise<unknown>;
   onVerify: (email: string, code: string) => Promise<unknown>;
 }
@@ -393,7 +396,7 @@ export function PayPortalSignIn(p: PayPortalSignInProps) {
   const save = useSaveErrors(errors);
   return (
     <div className="yx-auth__page yx-tim-live">
-      <Card title={`${p.company}: your pay documents`}>
+      <Card title={p.title ?? `${p.company}: your pay documents`}>
         <form
           className="yx-tim-form"
           onSubmit={(e) => {
@@ -407,7 +410,7 @@ export function PayPortalSignIn(p: PayPortalSignInProps) {
             });
           }}
         >
-          <p className="yx-tim-muted">For people who have left, for 7 years, and for nominees HR has added. Read only.</p>
+          <p className="yx-tim-muted">{p.note ?? 'For people who have left, for 7 years, and for nominees HR has added. Read only.'}</p>
           <ErrorSummary errors={save.shownErrors} />
           <FormField id="pp-email" label="Email" required error={save.errorOf('pp-email')}>
             <TextField type="email" value={email} onChange={setEmail} autoComplete="email" disabled={sent} />
