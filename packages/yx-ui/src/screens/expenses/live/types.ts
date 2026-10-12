@@ -218,3 +218,78 @@ export interface LineInput {
   gst?: { supplierGstin: string | null; invoiceNo: string | null; taxableValue: string | null; cgst: string | null; sgst: string | null; igst: string | null; billedToGstin: string | null };
   version?: number;
 }
+
+// ------------------------------------------------------------------------------------------ E4: trips and advances
+
+export type TripStatus = 'draft' | 'submitted' | 'approved' | 'rejected' | 'cancelled' | 'closed';
+export type AdvanceStatus = 'requested' | 'approved' | 'rejected' | 'paid' | 'settled' | 'to_fnf' | 'cancelled';
+export type TravelMode = 'air' | 'rail' | 'road' | 'other';
+export type Route = { status: string; currentStep: number; steps: { name: string; state: string }[] } | null;
+
+export interface TripSummary {
+  id: string;
+  purpose: string;
+  person: string;
+  fromOn: string;
+  toOn: string;
+  currency: string;
+  estimate: string;
+  advanceRequested: string;
+  bookingNeeded: boolean;
+  status: TripStatus;
+  version: number;
+}
+
+export interface AdvanceSummary {
+  id: string;
+  kind: 'trip' | 'imprest';
+  tripId: string | null;
+  purpose: string;
+  currency: string;
+  requested: string;
+  amount: string | null;
+  changeReason: string | null;
+  status: AdvanceStatus;
+  paidOn: string | null;
+  settleBy: string | null;
+  balance: string;
+  overdue: boolean;
+  version: number;
+  person?: string;
+}
+
+export interface TripDetail extends TripSummary {
+  decisionNote: string | null;
+  legs: { seq: number; fromCity: string; toCity: string; country: string; departOn: string; mode: TravelMode; stayNights: number }[];
+  bookings: { id: string; kind: string; title: string; amount: string; paidBy: 'company' | 'employee'; provider: string | null; providerRef: string | null; hasFile: boolean }[];
+  /** Hidden from the travel desk (it books; it does not see the money). */
+  budget: { estimate: string; companyPaid: string; claimed: string; used: string; left: string } | null;
+  claims: { id: string; title: string; status: ClaimStatus; claimedTotal: string; approvedTotal: string | null; advanceAdjusted: string }[];
+  advance: AdvanceSummary | null;
+  route: Route;
+  can: { edit: boolean; submit: boolean; cancel: boolean; book: boolean; partner: boolean; decide: string | null; claim: boolean };
+}
+
+export interface TripInput {
+  purpose: string;
+  fromOn: string;
+  toOn: string;
+  estimate: string;
+  advanceRequested: string;
+  bookingNeeded: boolean;
+  legs: { fromCity: string; toCity: string; departOn: string; mode: TravelMode; stayNights: number }[];
+}
+
+export interface BookingInput {
+  kind: 'ticket' | 'hotel' | 'cab' | 'visa' | 'other';
+  title: string;
+  amount: string;
+  paidBy: 'company' | 'employee';
+  file: File | null;
+}
+
+export interface AdvanceDetail extends AdvanceSummary {
+  person: string;
+  ledger: { id: string; on: string; kind: string; text: string; amount: string; claimId: string | null }[];
+  can: { changeAmount: boolean; decide: string | null; pay: boolean; recordReturn: boolean; claim: boolean };
+}

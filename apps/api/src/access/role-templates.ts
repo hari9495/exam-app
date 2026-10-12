@@ -93,7 +93,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'The final approval to reopen a locked pay month; releases payroll files prepared by others.',
     cannot: 'Prepare pay, or see individual tax workspaces.',
-    permissions: ['expense.finance.review', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.release'],
+    permissions: ['expense.finance.review', 'expense.payout.manage', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.release'],
   },
   {
     key: 'expense_setup',
@@ -102,6 +102,14 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     summary: 'Expense categories, city tiers, policies and limits, mileage and per-diem rates, and GST registrations (M05).',
     cannot: 'See, approve or pay anyone’s claims.',
     permissions: ['expense.policy.manage'],
+  },
+  {
+    key: 'travel_desk',
+    name: 'Travel Desk',
+    typicalScope: 'legal_entity',
+    summary: 'Adds tickets and hotel bookings to the approved trips of people in scope (M05).',
+    cannot: 'Approve trips, or see claims and advances.',
+    permissions: ['travel.booking.manage'],
   },
   {
     key: 'compliance_owner',

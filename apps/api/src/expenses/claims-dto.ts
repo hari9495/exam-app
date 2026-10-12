@@ -15,6 +15,16 @@ export class ClaimDto {
   @Length(2, 150)
   title!: string;
 
+  /** E4: the approved trip the claim belongs to (its advance settles the claim first). null unlinks it. */
+  @IsOptional()
+  @IsUUID()
+  tripId?: string | null;
+
+  /** E4: a paid standing imprest the claim settles. null unlinks it. */
+  @IsOptional()
+  @IsUUID()
+  advanceId?: string | null;
+
   @IsOptional()
   @IsInt()
   version?: number;

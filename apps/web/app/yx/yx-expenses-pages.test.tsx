@@ -8,6 +8,9 @@ import YxAppLayout from './(app)/layout';
 import YxExpenseSetupPage from './(app)/settings/expenses/page';
 import YxExpensesPage from './(app)/expenses/page';
 import YxClaimPage from './(app)/expenses/claims/[id]/page';
+import YxTripsPage from './(app)/expenses/trips/page';
+import YxTripPage from './(app)/expenses/trips/[id]/page';
+import YxAdvancePage from './(app)/expenses/advances/[id]/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
@@ -83,5 +86,50 @@ describe('Expenses claims (M05 batch E2)', () => {
     wrap(<YxClaimPage />);
     await userEvent.click(await screen.findByRole('button', { name: 'Send for approval' }));
     await waitFor(() => expect(sent).toEqual([{ version: 1 }]));
+  });
+});
+
+describe('Trips and advances (M05 batch E4)', () => {
+  const TRIP = { id: 't1', purpose: 'Pune distributor meetings', person: 'Ravi Kumar', fromOn: '2026-10-05', toOn: '2026-10-09', currency: 'INR', estimate: '20000.00', advanceRequested: '10000.00', bookingNeeded: false, status: 'approved', version: 4, decisionNote: null, legs: [], bookings: [], budget: { estimate: '20000.00', companyPaid: '0.00', claimed: '0.00', used: '0.00', left: '20000.00' }, claims: [], advance: null, route: null, can: { edit: false, submit: false, cancel: false, book: true, partner: false, decide: 'task1', claim: true } };
+
+  it('the trips list loads mine and those waiting for me; the travel desk list only for the desk', async () => {
+    route({ 'GET /rbac/me/permissions': [], 'GET /expenses/trips': (p: string) => ({ trips: p.includes('approvals') ? [] : [TRIP] }) });
+    wrap(<YxTripsPage />);
+    expect(await screen.findByText('Pune distributor meetings')).toBeInTheDocument();
+    expect(api.mock.calls.map((c) => c[0])).not.toContain('/expenses/trips?view=desk');
+  });
+
+  it('a trip page approves through the approvals engine and starts a claim on the trip', async () => {
+    const push = jest.fn();
+    (useRouter as jest.Mock).mockReturnValue({ push, replace: jest.fn() });
+    (useParams as jest.Mock).mockReturnValue({ id: 't1' });
+    const posted: [string, unknown][] = [];
+    route({
+      'GET /expenses/trips/t1': TRIP,
+      'POST /workflow/approvals/tasks/task1/decide': (p: string, init: RequestInit) => (posted.push([p, JSON.parse(String(init.body))]), {}),
+      'POST /expenses/claims': (p: string, init: RequestInit) => (posted.push([p, JSON.parse(String(init.body))]), { id: 'c9' }),
+    });
+    wrap(<YxTripPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add a claim to this trip' }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/expenses/claims/c9'));
+    expect(posted).toEqual([
+      ['/workflow/approvals/tasks/task1/decide', { decision: 'approve' }],
+      ['/expenses/claims', { title: 'Pune distributor meetings', tripId: 't1' }],
+    ]);
+  });
+
+  it('finance records a payment with the advance version', async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'a1' });
+    const posted: unknown[] = [];
+    route({
+      'GET /expenses/advances/a1': { id: 'a1', kind: 'imprest', tripId: null, purpose: 'Site petty cash', currency: 'INR', requested: '4000.00', amount: '4000.00', changeReason: null, status: 'approved', paidOn: null, settleBy: null, balance: '0.00', overdue: false, version: 2, person: 'Ravi Kumar', ledger: [], can: { changeAmount: false, decide: null, pay: true, recordReturn: false, claim: false } },
+      'POST /expenses/advances/a1/pay': (_p: string, init: RequestInit) => (posted.push(JSON.parse(String(init.body))), {}),
+    });
+    wrap(<YxAdvancePage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Record payment' }));
+    await userEvent.type(screen.getByRole('textbox', { name: /Bank reference/ }), 'NEFT-2');
+    await userEvent.click(screen.getByRole('button', { name: 'Record payment' }));
+    await waitFor(() => expect(posted).toEqual([expect.objectContaining({ ref: 'NEFT-2', version: 2 })]));
   });
 });

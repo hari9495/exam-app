@@ -25,7 +25,7 @@ import type { ClaimDetail, ClaimLine, ClaimStatus, ClaimSummary, ExpenseCategory
 // receipt is used until they do (Q4). "You will receive" is always the first figure (YX-EXP-06).
 
 const fromKey = (iso: string) => new Date(`${iso}T00:00:00`);
-const money = (cur: string, x: string | null) => (x === null ? '—' : `${cur === 'INR' ? '₹' : `${cur} `}${Number(x).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+export const money = (cur: string, x: string | null) => (x === null ? '—' : `${cur === 'INR' ? '₹' : `${cur} `}${Number(x).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 export const STATUS: Record<ClaimStatus, { label: string; tone: BadgeTone }> = {
   draft: { label: 'Draft', tone: 'neutral' },
   submitted: { label: 'With approvers', tone: 'info' },
@@ -79,6 +79,9 @@ export interface ExpensesHomeScreenProps {
   review: ClaimSummary[] | null;
   onNew: (title: string) => Promise<unknown>;
   onOpen: (id: string) => void;
+  /** E4: trips and advances live on their own pages. */
+  onTrips?: () => void;
+  onAdvances?: () => void;
 }
 
 export function ExpensesHomeScreen(p: ExpensesHomeScreenProps) {
@@ -107,9 +110,13 @@ export function ExpensesHomeScreen(p: ExpensesHomeScreenProps) {
       onRetry={p.onRetry}
       what="your expenses"
       actions={
-        <Button variant="primary" icon={Plus} onClick={() => setCreating(true)}>
-          New claim
-        </Button>
+        <>
+          {p.onTrips && <Button onClick={p.onTrips}>Trips</Button>}
+          {p.onAdvances && <Button onClick={p.onAdvances}>Advances</Button>}
+          <Button variant="primary" icon={Plus} onClick={() => setCreating(true)}>
+            New claim
+          </Button>
+        </>
       }
     >
       {tabs.length > 1 && <Segment label="Show" value={tab} onChange={setTab} options={tabs} />}
@@ -576,7 +583,7 @@ function LowerDialog({ line, currency, onClose, onSave }: { line: ClaimLine; cur
   );
 }
 
-function ReasonDialog({ title, consequence, label, confirm, onClose, onConfirm }: { title: string; consequence: string; label: string; confirm: string; onClose: () => void; onConfirm: (reason: string) => Promise<unknown> }) {
+export function ReasonDialog({ title, consequence, label, confirm, onClose, onConfirm }: { title: string; consequence: string; label: string; confirm: string; onClose: () => void; onConfirm: (reason: string) => Promise<unknown> }) {
   const [reason, setReason] = useState('');
   return (
     <ConfirmDialog

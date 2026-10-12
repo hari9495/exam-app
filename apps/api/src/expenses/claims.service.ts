@@ -14,6 +14,7 @@ import { checkEinvoiceQr, keysFromPem } from './einvoice';
 import { RECEIPT_READER, type ReceiptReader } from './ocr';
 import { lowConfidence, type OcrFields } from './ocr-parse';
 import { ExpenseSetupService } from './setup.service';
+import { settleAdvanceByClaim } from './trips.service';
 
 // Expenses batch E2 (M05-BUILD-DESIGN §8, §9, §13, §15; XP-2.01 … XP-2.08): claims and lines, snap-first receipts
 // (OCR suggestions only, every read line confirmed by the employee), the policy check, computed mileage and per diem,
@@ -122,7 +123,7 @@ export class ExpenseClaimsService implements OnModuleInit {
       const job = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employeeId: me.id, supersededAt: null, validFrom: { lte: asDate(today) }, OR: [{ validTo: null }, { validTo: { gte: asDate(today) } }] }, orderBy: { validFrom: 'desc' }, select: { employmentId: true, legalEntityId: true } });
       if (!job) throw new ForbiddenException('You have no current job to claim against.');
       const entity = await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: job.legalEntityId }, select: { currency: true } });
-      const claim = await tx.expenseClaim.create({ data: { organizationId: org, employeeId: me.id, employmentId: job.employmentId, legalEntityId: job.legalEntityId, title: dto.title, currency: entity.currency, createdBy: v.userId } });
+      const claim = await tx.expenseClaim.create({ data: { organizationId: org, employeeId: me.id, employmentId: job.employmentId, legalEntityId: job.legalEntityId, title: dto.title, currency: entity.currency, createdBy: v.userId, ...(await this.linkFor(tx, org, me.id, dto)) } });
       await audit(tx, c, 'expense.claim.created', 'expense_claim', claim.id, {});
       return this.view(tx, c, claim, { own: true, approver: false, openTaskId: null, openStep: null, finance: false, scope: false });
     });
@@ -133,10 +134,19 @@ export class ExpenseClaimsService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const { claim, a } = await this.claimOr404(tx, c, v, id);
       this.editable(claim, a);
-      const n = await tx.expenseClaim.updateMany({ where: { organizationId: c.organizationId, id, version: dto.version ?? -1 }, data: { title: dto.title, version: { increment: 1 } } });
+      const n = await tx.expenseClaim.updateMany({ where: { organizationId: c.organizationId, id, version: dto.version ?? -1 }, data: { title: dto.title, ...(await this.linkFor(tx, c.organizationId, claim.employeeId, dto)), version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Someone else changed this claim. Reload it.');
       return this.view(tx, c, await tx.expenseClaim.findFirstOrThrow({ where: { id } }), a);
     });
+  }
+
+  /** E4: a claim belongs to one of the person's approved trips, or settles their paid standing imprest (not both). */
+  private async linkFor(tx: Tx, org: string, employeeId: string, dto: ClaimDto) {
+    if (dto.tripId === undefined && dto.advanceId === undefined) return {};
+    if (dto.tripId && dto.advanceId) throw new BadRequestException('A claim belongs to a trip or to an imprest advance, not both.');
+    if (dto.tripId && !(await tx.trip.findFirst({ where: { organizationId: org, id: dto.tripId, employeeId, status: 'approved' }, select: { id: true } }))) throw new BadRequestException('Choose one of your approved trips.');
+    if (dto.advanceId && !(await tx.expenseAdvance.findFirst({ where: { organizationId: org, id: dto.advanceId, employeeId, kind: 'imprest', status: 'paid' }, select: { id: true } }))) throw new BadRequestException('Choose one of your paid imprest advances.');
+    return { tripId: dto.tripId ?? null, advanceId: dto.advanceId ?? null };
   }
 
   async list(ctx: TenantContext, user: ScopeUser, view: 'mine' | 'approvals' | 'review' | 'scope' = 'mine') {
@@ -187,6 +197,8 @@ export class ExpenseClaimsService implements OnModuleInit {
       // YX-EXP-06: the headline figure: what the person will receive.
       netPayable: (x.netPayable ?? x.approvedTotal ?? x.claimedTotal).sub(x.netPayable === null ? x.advanceAdjusted : 0).toFixed(2),
       risk: x.risk,
+      tripId: x.tripId,
+      advanceId: x.advanceId,
       submittedAt: x.submittedAt?.toISOString() ?? null,
       decidedAt: x.decidedAt?.toISOString() ?? null,
       version: x.version,
@@ -499,7 +511,15 @@ export class ExpenseClaimsService implements OnModuleInit {
     };
     const monthStart = `${on.slice(0, 8)}01`;
     const monthEnd = iso(new Date(Date.UTC(Number(on.slice(0, 4)), Number(on.slice(5, 7)), 0)));
-    const r = checkLimit(rule, line.claimed.toFixed(2), { day: await window(on, on), trip: null, month: await window(monthStart, monthEnd) });
+    let trip: string | null = null;
+    if (claim.tripId) {
+      const rows = await tx.$queryRaw<{ s: string | null }[]>`
+        SELECT SUM(l.claimed)::text AS s FROM expense_lines l JOIN expense_claims c ON c.organization_id = l.organization_id AND c.id = l.claim_id
+        WHERE l.organization_id = ${org}::uuid AND c.trip_id = ${claim.tripId}::uuid AND l.category_code = ${cat.code} AND l.removed_at IS NULL
+          AND c.status IN ('draft', 'submitted', 'sent_back', 'approved', 'partly_approved') AND l.id <> ${line.id}::uuid`;
+      trip = rows[0]?.s ?? '0';
+    }
+    const r = checkLimit(rule, line.claimed.toFixed(2), { day: await window(on, on), trip, month: await window(monthStart, monthEnd) });
     return { policyId: p.policy.id, policy: p.policy.name, ...r, receipt };
   }
 
@@ -752,7 +772,9 @@ export class ExpenseClaimsService implements OnModuleInit {
       total = total.add(payable);
       await tx.expenseLine.update({ where: { id: l.id }, data: { approved, taxableAmount: taxablePart(cats.get(l.categoryCode)?.taxable ?? 'never', payable.toFixed(2), over) } });
     }
-    await tx.expenseClaim.update({ where: { id: claim.id }, data: { status: reduced ? 'partly_approved' : 'approved', approvedTotal: total, netPayable: Prisma.Decimal.max(total.sub(claim.advanceAdjusted), 0), paymentStatus: 'approved_unpaid', decidedAt: new Date(), decisionNote: last?.reason ?? null, version: { increment: 1 } } });
+    // E4: the trip's (or imprest's) advance covers the claim first; only the rest is paid (XP-4.04).
+    const adjusted = await settleAdvanceByClaim(tx, org, claim, total);
+    await tx.expenseClaim.update({ where: { id: claim.id }, data: { status: reduced ? 'partly_approved' : 'approved', approvedTotal: total, advanceAdjusted: adjusted, netPayable: total.sub(adjusted), paymentStatus: total.sub(adjusted).gt(0) ? 'approved_unpaid' : 'not_due', decidedAt: new Date(), decisionNote: last?.reason ?? null, version: { increment: 1 } } });
     await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'expense.claim.approved', payload: { claimId: claim.id, reduced } } });
   }
 

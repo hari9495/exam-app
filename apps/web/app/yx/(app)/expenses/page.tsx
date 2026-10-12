@@ -24,6 +24,8 @@ export default function YxExpensesPage() {
         router.push(`/yx/expenses/claims/${encodeURIComponent(c.id)}`);
       }}
       onOpen={(id) => router.push(`/yx/expenses/claims/${encodeURIComponent(id)}`)}
+      onTrips={() => router.push('/yx/expenses/trips')}
+      onAdvances={() => router.push('/yx/expenses/advances')}
     />
   );
 }

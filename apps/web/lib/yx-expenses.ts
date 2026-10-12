@@ -23,6 +23,16 @@ export function useExpWrite() {
   };
 }
 
+/** Decides a P03 task (trips and advances are approved through the approvals engine's own route). */
+export function useWfDecide() {
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return async (taskId: string, decision: 'approve' | 'reject', reason: string) => {
+    await apiFetch(`/workflow/approvals/tasks/${encodeURIComponent(taskId)}/decide`, { method: 'POST', body: JSON.stringify({ decision, ...(reason ? { reason } : {}) }) }, accessToken ?? undefined);
+    await queryClient.invalidateQueries({ queryKey: ['expenses'] });
+  };
+}
+
 /** A policy save as the API wants it: in place, a new version from a date, or a new policy. */
 export function policyRequest(s: PolicySave): { method: 'POST' | 'PUT'; path: string; body: unknown } {
   const p = s.policy;

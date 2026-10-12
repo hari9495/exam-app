@@ -50,6 +50,7 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'expense.finance_audit': { label: 'Expenses: finance check of claims', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'flagged_only', 'all', 'sample_10pct'], default: 'flagged_only' },
   'expense.claim_window_days': { label: 'Expenses: bills older than this many days need the finance check', scopes: ['tenant', 'legal_entity'], dated: false, values: ['30', '60', '90', '180'], default: '60' },
   'expense.cc_owner_above': { label: 'Expenses: the cost-centre owner also approves claims above', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '10000', '25000', '50000', '100000'], default: 'off' },
+  'expense.advance.settle_days': { label: 'Expenses: a trip advance is settled within this many days of the trip ending', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30', '45'], default: '15' },
   'expense.gst.capture': { label: 'Expenses: capture GST for input credit', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
   'alumni.access_years': { label: 'Alumni can read their documents for (years after leaving)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10'], default: '7' },
   // M01 YX-LC-18 (lifecycle 6e): the rehire policy. Starter template "fresh start, same record, code and UAN"; HR may
