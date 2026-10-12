@@ -13,7 +13,7 @@ const people = [
   { value: 'e1', label: 'Arjun' },
   { value: 'e2', label: 'Sita' },
 ];
-const fb = (o: Partial<FeedbackScreenProps> = {}): FeedbackScreenProps => ({ state: 'ready', view: 'received', onView: vi.fn(), hasTeam: false, canSeal: false, sealEmployeeId: null, onSealEmployee: vi.fn(), items: [item(), item({ id: 'f2', text: null, sealed: true, can: { withdraw: false, seal: false } })], requests: [], colleagues: people, askAbout: [], concernHref: '/yx/desk/help', onGive: vi.fn(ok), onWithdraw: vi.fn(ok), onRequest: vi.fn(ok), onDecline: vi.fn(ok), onSeal: vi.fn(ok), ...o });
+const fb = (o: Partial<FeedbackScreenProps> = {}): FeedbackScreenProps => ({ state: 'ready', view: 'received', onView: vi.fn(), hasTeam: false, canSeal: false, sealEmployeeId: null, onSealEmployee: vi.fn(), items: [item(), item({ id: 'f2', text: null, sealed: true, can: { withdraw: false, seal: false } })], requests: [], people: people.map((x) => ({ id: x.value, name: x.label })), onPeopleSearch: vi.fn(), askAbout: [], concernHref: '/yx/desk/help', onGive: vi.fn(ok), onWithdraw: vi.fn(ok), onRequest: vi.fn(ok), onDecline: vi.fn(ok), onSeal: vi.fn(ok), ...o });
 const meeting = (o: Partial<OneOnOne> = {}): OneOnOne => ({ id: 'm1', employee: 'Arjun', employeeId: 'e1', manager: 'Priya', managerEmployeeId: 'e3', role: 'manager', on: '2026-10-13', status: 'planned', sharedNotes: null, agenda: [], actions: [], privateNote: '', version: 1, ...o });
 const oo = (o: Partial<OneOnOneScreenProps> = {}): OneOnOneScreenProps => ({ state: 'ready', meeting: meeting(), onBack: vi.fn(), onUpdate: vi.fn(ok), onAgenda: vi.fn(ok), onAgendaDone: vi.fn(ok), onPrivateNote: vi.fn(ok), onAction: vi.fn(ok), onActionDone: vi.fn(ok), ...o });
 
@@ -39,11 +39,29 @@ describe('Feedback and 1:1s (PM3)', () => {
     expect(p.onGive).not.toHaveBeenCalled();
     await ue.type(within(sheet).getByRole('textbox', { name: /^Feedback/ }), 'Great dealer meet.');
     await ue.click(within(sheet).getByRole('combobox', { name: 'For' }));
-    await ue.click(screen.getByRole('option', { name: 'Arjun' }));
+    await ue.click(screen.getByRole('option', { name: /Arjun/ }));
     await ue.click(within(sheet).getByRole('radio', { name: 'Suggestion' }));
     await ue.click(within(sheet).getByRole('checkbox', { name: /Only they can read it/ }));
     await ue.click(within(sheet).getByRole('button', { name: 'Send feedback' }));
     expect(p.onGive).toHaveBeenCalledWith({ toEmployeeId: 'e1', kind: 'suggestion', text: 'Great dealer meet.', visibility: 'recipient_only' });
+  });
+
+  it('colleagues come from the server search, with no cap; a chosen person stays chosen after the next search', async () => {
+    const p = fb({ people: [] });
+    const { rerender } = render(<FeedbackScreen {...p} />);
+    await ue.click(screen.getByRole('button', { name: 'Give feedback' }));
+    const sheet = screen.getByRole('dialog');
+    await ue.click(within(sheet).getByRole('combobox', { name: 'For' }));
+    await ue.type(screen.getByPlaceholderText('Name, email, role or department'), 'Meen');
+    await vi.waitFor(() => expect(p.onPeopleSearch).toHaveBeenLastCalledWith('Meen'));
+    // The host answers with the matches; person 250 of the company is as reachable as person 1.
+    rerender(<FeedbackScreen {...p} people={[{ id: 'e250', name: 'Meena Pillai', role: 'Buyer' }]} />);
+    await ue.click(await screen.findByRole('option', { name: /Meena Pillai/ }));
+    rerender(<FeedbackScreen {...p} people={[{ id: 'e9', name: 'Ravi' }]} />);
+    expect(within(sheet).getByRole('combobox', { name: 'For' })).toHaveTextContent('Meena Pillai');
+    await ue.type(within(sheet).getByRole('textbox', { name: /^Feedback/ }), 'Fast vendor sign-off.');
+    await ue.click(within(sheet).getByRole('button', { name: 'Send feedback' }));
+    expect(p.onGive).toHaveBeenCalledWith(expect.objectContaining({ toEmployeeId: 'e250' }));
   });
 
   it('HR seals an item with a reason', async () => {

@@ -28,7 +28,7 @@ test('feedback → 1:1 with a private note → HR seals a concern', async ({ bro
   const sheet = mu.getByRole('dialog');
   await expect(sheet.getByRole('link', { name: 'Report a concern instead' })).toBeVisible();
   await sheet.getByRole('combobox', { name: 'For' }).click();
-  await mu.getByRole('option', { name: /^Kavya/ }).first().click();
+  await mu.getByRole('option', { name: /Kavya/ }).first().click();
   await sheet.getByRole('textbox', { name: /^Feedback/ }).fill(praise);
   await sheet.getByRole('button', { name: 'Send feedback' }).click();
   await expect(sheet).toHaveCount(0, { timeout: 30_000 });
@@ -42,7 +42,7 @@ test('feedback → 1:1 with a private note → HR seals a concern', async ({ bro
   await kv.getByRole('button', { name: 'Plan a 1:1' }).click();
   const plan = kv.getByRole('dialog');
   await plan.getByRole('combobox', { name: 'With' }).click();
-  await kv.getByRole('option', { name: /^Murugan/ }).first().click();
+  await kv.getByRole('option', { name: /Murugan/ }).first().click();
   await plan.getByRole('textbox', { name: '1:1 date' }).fill(shown(day(3)));
   await plan.getByRole('textbox', { name: '1:1 date' }).press('Enter');
   await plan.getByRole('button', { name: 'Plan', exact: true }).click();
@@ -65,7 +65,7 @@ test('feedback → 1:1 with a private note → HR seals a concern', async ({ bro
   await admin.goto('/yx/performance/feedback');
   await admin.getByRole('radio', { name: 'Concerns' }).click();
   await admin.getByRole('combobox', { name: 'Employee' }).click();
-  await admin.getByRole('option', { name: /^Kavya/ }).first().click();
+  await admin.getByRole('option', { name: /Kavya/ }).first().click();
   const row = admin.getByRole('row').filter({ hasText: praise });
   await row.getByRole('button', { name: 'Seal' }).click();
   const seal = admin.getByRole('dialog');
@@ -88,7 +88,7 @@ test('on a phone, feedback can be given and the concern link is there', async ({
   const sheet = page.getByRole('dialog');
   await expect(sheet.getByRole('link', { name: 'Report a concern instead' })).toHaveAttribute('href', '/yx/desk/help');
   await sheet.getByRole('combobox', { name: 'For' }).click();
-  await page.getByRole('option', { name: /^Murugan/ }).first().click();
+  await page.getByRole('option', { name: /Murugan/ }).first().click();
   const text = `Clear shift hand-over ${Date.now().toString(36)}`;
   await sheet.getByRole('textbox', { name: /^Feedback/ }).fill(text);
   await sheet.getByRole('button', { name: 'Send feedback' }).click();

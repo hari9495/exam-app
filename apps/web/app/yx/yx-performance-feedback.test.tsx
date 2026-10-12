@@ -53,6 +53,25 @@ describe('Feedback and 1:1s (M06 batch PM3)', () => {
     expect(within(screen.getByRole('dialog')).getByRole('link', { name: 'Report a concern instead' })).toHaveAttribute('href', '/yx/desk/help');
   });
 
+  it('the colleague picker searches the directory on the server, 25 at a time, with no cap', async () => {
+    const asked: string[] = [];
+    route({
+      'GET /rbac/me/permissions': [],
+      'GET /people/me': { employeeId: 'e1' },
+      'GET /people/team': { managerId: 'e3', members: [] },
+      'GET /people/directory': (p: string) => (asked.push(p), { people: p.includes('q=Meen') ? [{ id: 'e250', name: 'Meena Pillai', designation: { name: 'Buyer' }, department: null }] : [] }),
+      'GET /performance/feedback-requests': { requests: [] },
+      'GET /performance/feedback': { items: [] },
+    });
+    wrap(<YxFeedbackPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Give feedback' }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('combobox', { name: 'For' }));
+    await userEvent.type(screen.getByPlaceholderText('Name, email, role or department'), 'Meen');
+    expect(await screen.findByRole('option', { name: /Meena Pillai/ })).toBeInTheDocument();
+    expect(asked[0]).toBe('/people/directory?limit=25');
+    expect(asked).toContain('/people/directory?limit=25&q=Meen');
+  });
+
   it('a 1:1 saves the private note to its own route', async () => {
     (useParams as jest.Mock).mockReturnValue({ id: 'm1' });
     const put: unknown[] = [];

@@ -11,7 +11,7 @@ import { Text } from '../../../components/foundations';
 import { TextArea, TextField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
-import { MultiSelect, Select } from '../../../components/select';
+import { MultiSelect, PersonPicker, Select, type PersonOption } from '../../../components/select';
 import { Card } from '../../../components/shell';
 import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
@@ -26,6 +26,8 @@ import type { Choice, FeedbackInput, FeedbackItem, FeedbackRequest, LoadState, O
 const KIND = { praise: { label: 'Praise', tone: 'success' }, suggestion: { label: 'Suggestion', tone: 'info' } } as const;
 const MEETING = { planned: { label: 'Planned', tone: 'info' }, held: { label: 'Held', tone: 'success' }, cancelled: { label: 'Cancelled', tone: 'neutral' } } as const;
 const at = (iso: string) => dateText(iso.slice(0, 10));
+/** Search results plus the people already chosen, so a chosen name stays shown after the next search. */
+const withChosen = (found: PersonOption[], chosen: PersonOption[]) => [...chosen.filter((c) => !found.some((f) => f.id === c.id)), ...found];
 
 export type FeedbackView = 'received' | 'given' | 'requests' | 'team' | 'concerns';
 
@@ -42,7 +44,9 @@ export interface FeedbackScreenProps {
   onSealEmployee: (id: string | null) => void;
   items: FeedbackItem[];
   requests: FeedbackRequest[];
-  colleagues: Choice[];
+  /** Matches of the colleague search: the server searches the directory, which RLS and its rules scope. */
+  people: PersonOption[];
+  onPeopleSearch: (query: string) => void;
   /** People the viewer can ask feedback about: themselves and their team. */
   askAbout: Choice[];
   /** Where to report a concern confidentially. */
@@ -59,6 +63,7 @@ export function FeedbackScreen(p: FeedbackScreenProps) {
   const [giving, setGiving] = useState<{ to?: string; request?: FeedbackRequest } | null>(null);
   const [asking, setAsking] = useState(false);
   const [sealing, setSealing] = useState<FeedbackItem | null>(null);
+  const [sealPerson, setSealPerson] = useState<PersonOption | null>(null);
   const columns: TableColumn<FeedbackItem>[] = [
     { key: 'who', header: p.view === 'given' ? 'To' : p.view === 'received' ? 'From' : 'From → to', value: (x) => (p.view === 'given' ? x.to : p.view === 'received' ? x.from : `${x.from} → ${x.to}`), width: 220, hideable: false },
     { key: 'kind', header: 'Kind', value: (x) => x.kind, render: (x) => <Badge tone={KIND[x.kind].tone}>{KIND[x.kind].label}</Badge>, width: 120 },
@@ -97,7 +102,10 @@ export function FeedbackScreen(p: FeedbackScreenProps) {
       <Segment label="Show" value={p.view} onChange={p.onView} options={views} />
       {p.view === 'concerns' && (
         <FormField id="fb-person" label="Employee" helper="Their feedback, given and received, including sealed text. Reading it is recorded.">
-          <Select aria-label="Employee" value={p.sealEmployeeId} onChange={p.onSealEmployee} options={p.colleagues} searchable clearable />
+          <PersonPicker aria-label="Employee" value={p.sealEmployeeId} onChange={(id) => {
+            setSealPerson(p.people.find((x) => x.id === id) ?? null);
+            p.onSealEmployee(id);
+          }} people={withChosen(p.people, sealPerson ? [sealPerson] : [])} onSearchChange={p.onPeopleSearch} clearable />
         </FormField>
       )}
       {p.view === 'requests' ? (
@@ -145,7 +153,8 @@ export function FeedbackScreen(p: FeedbackScreenProps) {
       )}
       {giving && (
         <GiveDrawer
-          colleagues={p.colleagues}
+          people={p.people}
+          onPeopleSearch={p.onPeopleSearch}
           to={giving.to ?? null}
           request={giving.request ?? null}
           concernHref={p.concernHref}
@@ -156,14 +165,15 @@ export function FeedbackScreen(p: FeedbackScreenProps) {
           }}
         />
       )}
-      {asking && <AskDialog about={p.askAbout} colleagues={p.colleagues} onClose={() => setAsking(false)} onSave={p.onRequest} />}
+      {asking && <AskDialog about={p.askAbout} people={p.people} onPeopleSearch={p.onPeopleSearch} onClose={() => setAsking(false)} onSave={p.onRequest} />}
       {sealing && <SealDialog item={sealing} onClose={() => setSealing(null)} onSeal={(reason) => p.onSeal(sealing.id, reason)} />}
     </LivePage>
   );
 }
 
-function GiveDrawer({ colleagues, to: initialTo, request, concernHref, onClose, onSave }: { colleagues: Choice[]; to: string | null; request: FeedbackRequest | null; concernHref: string; onClose: () => void; onSave: (f: FeedbackInput) => Promise<void> }) {
+function GiveDrawer({ people, onPeopleSearch, to: initialTo, request, concernHref, onClose, onSave }: { people: PersonOption[]; onPeopleSearch: (q: string) => void; to: string | null; request: FeedbackRequest | null; concernHref: string; onClose: () => void; onSave: (f: FeedbackInput) => Promise<void> }) {
   const [to, setTo] = useState<string | null>(initialTo);
+  const [chosen, setChosen] = useState<PersonOption[]>([]);
   const [kind, setKind] = useState<'praise' | 'suggestion'>('praise');
   const [text, setText] = useState('');
   const [onlyThem, setOnlyThem] = useState(false);
@@ -207,7 +217,10 @@ function GiveDrawer({ colleagues, to: initialTo, request, concernHref, onClose, 
       )}
       {!request && (
         <FormField id="fb-to" label="For" required error={v.errorOf('fb-to')}>
-          <Select aria-label="For" value={to} onChange={setTo} options={colleagues} searchable />
+          <PersonPicker aria-label="For" value={to} onChange={(id) => {
+            setChosen(people.filter((x) => x.id === id));
+            setTo(id);
+          }} people={withChosen(people, chosen)} onSearchChange={onPeopleSearch} />
         </FormField>
       )}
       <FormField id="fb-kind" label="Kind">
@@ -224,9 +237,10 @@ function GiveDrawer({ colleagues, to: initialTo, request, concernHref, onClose, 
   );
 }
 
-function AskDialog({ about, colleagues, onClose, onSave }: { about: Choice[]; colleagues: Choice[]; onClose: () => void; onSave: FeedbackScreenProps['onRequest'] }) {
+function AskDialog({ about, people, onPeopleSearch, onClose, onSave }: { about: Choice[]; people: PersonOption[]; onPeopleSearch: (q: string) => void; onClose: () => void; onSave: FeedbackScreenProps['onRequest'] }) {
   const [who, setWho] = useState<string | null>(about[0]?.value ?? null);
   const [asked, setAsked] = useState<string[]>([]);
+  const [chosen, setChosen] = useState<PersonOption[]>([]);
   const [question, setQuestion] = useState('');
   const [due, setDue] = useState<Date | null>(null);
   return (
@@ -246,7 +260,10 @@ function AskDialog({ about, colleagues, onClose, onSave }: { about: Choice[]; co
         <Select aria-label="About" value={who} onChange={setWho} options={about} searchable />
       </FormField>
       <FormField id="ask-who" label="Ask" required helper="Up to 10 colleagues.">
-        <MultiSelect aria-label="Colleagues to ask" value={asked} onChange={setAsked} options={colleagues.filter((c) => c.value !== who)} searchable />
+        <MultiSelect aria-label="Colleagues to ask" value={asked} onChange={(ids) => {
+          setChosen(withChosen(people, chosen).filter((x) => ids.includes(x.id)));
+          setAsked(ids);
+        }} options={withChosen(people, chosen).filter((x) => x.id !== who).map((x) => ({ value: x.id, label: x.name }))} onSearchChange={onPeopleSearch} searchPlaceholder="Search people" />
       </FormField>
       <FormField id="ask-q" label="Question" required>
         <TextField value={question} onChange={setQuestion} maxLength={500} />
@@ -346,7 +363,7 @@ export function OneOnOnesScreen(p: OneOnOnesScreenProps) {
           }}
         >
           <FormField id="oo-with" label="With" required>
-            <Select aria-label="With" value={withId} onChange={setWithId} options={p.partners} searchable />
+            <PersonPicker aria-label="With" value={withId} onChange={setWithId} people={p.partners.map((x) => ({ id: x.value, name: x.label }))} />
           </FormField>
           <FormField id="oo-on" label="On" required helper="Open action items from your earlier 1:1s move to this one.">
             <DatePicker value={on} onChange={setOn} aria-label="1:1 date" />

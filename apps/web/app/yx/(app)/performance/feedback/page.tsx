@@ -22,8 +22,9 @@ export default function YxFeedbackPage() {
   const requests = usePerf<{ requests: FeedbackRequest[] }>('/feedback-requests');
   const me = usePeople<{ employeeId: string | null }>('/me');
   const team = usePeople<{ managerId: string | null; members: TeamMember[] }>('/team');
-  // shortcut: the first 200 colleagues A to Z; search the directory as you type once companies pass that.
-  const directory = usePeople<{ people: { id: string; name: string }[] }>('/directory?limit=200');
+  // Colleagues are searched on the server (the directory: RLS and its visibility rules decide who appears).
+  const [search, setSearch] = useState('');
+  const directory = usePeople<{ people: { id: string; name: string; designation: { name: string | null } | null; department: { name: string | null } | null }[] }>(`/directory?limit=25${search ? `&q=${encodeURIComponent(search)}` : ''}`, { keepPrevious: true });
   const write = usePerfWrite();
   const reports = (team.data?.members ?? []).filter((m) => m.relation !== 'dotted').map((m) => ({ value: m.id, label: m.name }));
   const myId = me.data?.employeeId ?? null;
@@ -39,7 +40,8 @@ export default function YxFeedbackPage() {
       onSealEmployee={setPerson}
       items={list ? (items.data?.items ?? []) : []}
       requests={requests.data?.requests ?? []}
-      colleagues={(directory.data?.people ?? []).filter((p) => p.id !== myId).map((p) => ({ value: p.id, label: p.name }))}
+      people={(directory.data?.people ?? []).filter((p) => p.id !== myId).map((p) => ({ id: p.id, name: p.name, role: p.designation?.name ?? undefined, department: p.department?.name ?? undefined }))}
+      onPeopleSearch={setSearch}
       askAbout={[...(myId ? [{ value: myId, label: 'Myself' }] : []), ...reports]}
       concernHref={CONCERN_HREF}
       onGive={(input) => write('POST', '/feedback', input)}
