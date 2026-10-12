@@ -44,7 +44,7 @@ export interface PaymentModeRow {
 export interface LoanView {
   id: string;
   employeeId: string;
-  loanType: 'advance' | 'loan';
+  loanType: 'advance' | 'loan' | 'expense';
   principal: string;
   emi: string;
   outstanding: string;

@@ -12,8 +12,8 @@ export class LedgerMappingDto {
   @IsUUID()
   scopeId?: string;
 
-  /** A pay component's code, or _net_pay for net salary payable. */
-  @Matches(/^(_net_pay|[a-z0-9_]{1,30})$/)
+  /** A pay component's code, _net_pay for net salary payable, or an expense ledger code (exp.<category> or exp._<account>). */
+  @Matches(/^(_net_pay|[a-z0-9_]{1,30}|exp\.[a-z0-9_]{1,36})$/)
   componentCode!: string;
 
   @IsIn(['expense', 'payable'])

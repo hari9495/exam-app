@@ -33,7 +33,7 @@ const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_r
 // Lifecycle batch 6a: people's files and documents, and joiners' planned jobs.
 const LIFECYCLE_SUPPORT_EXCLUDED = ['files', 'documents', 'document_versions', 'preboardings', 'preboarding_portal_sessions', 'consent_records', 'bgv_checks', 'letter_issues', 'signature_requests', 'exit_cases', 'exit_case_hr', 'clearance_items', 'exit_interviews', 'exit_interview_answers', 'probation_reviews', 'exit_deprovisioning', 'exit_settlement_inputs', 'alumni_sessions', 'employee_nominations', 'exit_payees', 'absconding_timelines'];
 // M05 expenses E2: claims, their lines, the approvers' changes and the flags (§5.8).
-const EXPENSES_SUPPORT_EXCLUDED = ['expense_claims', 'expense_lines', 'expense_line_changes', 'expense_flags', 'trips', 'trip_legs', 'trip_bookings', 'expense_advances', 'advance_settlements'];
+const EXPENSES_SUPPORT_EXCLUDED = ['expense_claims', 'expense_lines', 'expense_line_changes', 'expense_flags', 'trips', 'trip_legs', 'trip_bookings', 'expense_advances', 'advance_settlements', 'expense_payments', 'expense_payout_batches', 'expense_event_receipts', 'expense_journals'];
 // M06 PM3: feedback and 1:1s (M06-BUILD-DESIGN 5.10).
 const PERFORMANCE_SUPPORT_EXCLUDED = ['feedback_requests', 'feedback_items', 'one_on_ones', 'one_on_one_agenda', 'one_on_one_private_notes', 'one_on_one_actions',
   // PM4: review cycles and reviews.

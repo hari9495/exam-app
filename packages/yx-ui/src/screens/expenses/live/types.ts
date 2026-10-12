@@ -204,6 +204,8 @@ export interface ClaimDetail extends ClaimSummary {
   changes: { lineId: string; from: string; to: string; reason: string; at: string }[];
   flags: ClaimFlag[];
   route: { status: string; currentStep: number; steps: { name: string; state: string }[] } | null;
+  /** E3: how and when an approved claim is paid. */
+  payment?: { route: 'payroll' | 'payout'; month: string | null; paidOn: string | null } | null;
   can: { edit: boolean; withdraw: boolean; decide: boolean; changeAmounts: boolean; review: boolean };
 }
 
@@ -326,4 +328,57 @@ export interface ExpenseReport {
   to: string;
   columns: { key: string; label: string }[];
   rows: Record<string, string | number | null>[];
+}
+
+// ------------------------------------------------------------------------------------------ E3: To pay (EXP-06)
+
+export interface ToPayClaim {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  legalEntityId: string;
+  title: string;
+  approvedTotal: string;
+  advanceAdjusted: string;
+  netPayable: string;
+  route: 'payroll' | 'payout' | null;
+  paymentStatus: PaymentStatus;
+  payMonth: string | null;
+  ref: string | null;
+  reason: string | null;
+  batchId: string | null;
+  paidOn: string | null;
+}
+
+export interface PayoutBatchRow {
+  id: string;
+  legalEntityId: string;
+  rows: number;
+  total: string;
+  status: 'draft' | 'released' | 'confirmed' | 'cancelled';
+  sha256: string;
+  madeByMe: boolean;
+  createdAt: string;
+  releasedAt: string | null;
+}
+
+export interface ToPayData {
+  entities: { id: string; name: string }[];
+  claims: ToPayClaim[];
+  batches: PayoutBatchRow[];
+}
+
+export interface ExpenseJournalView {
+  month: string;
+  lines: { accountCode: string; accountName: string; debit: string; credit: string }[];
+  unmapped: { componentCode: string; amount: string }[];
+  balanced: boolean;
+  exports: { id: string; status: 'exported' | 'posted'; sha256: string; createdAt: string; postedAt: string | null }[];
+}
+
+export interface PayoutResultInput {
+  claimId: string;
+  status: 'paid' | 'failed' | 'returned';
+  ref?: string;
+  reason?: string;
 }

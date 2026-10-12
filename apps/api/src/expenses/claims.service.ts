@@ -14,6 +14,7 @@ import { checkEinvoiceQr, keysFromPem } from './einvoice';
 import { RECEIPT_READER, type ReceiptReader } from './ocr';
 import { lowConfidence, type OcrFields } from './ocr-parse';
 import { ExpenseSetupService } from './setup.service';
+import { ExpensePaymentsService } from './payments.service';
 import { closeTripIfDone, settleAdvanceByClaim } from './trips.service';
 import { FX_TOLERANCE_PCT, LOOK_ALIKE_BITS, toPay, variancePct } from './fx';
 import { fxRateFor } from './setup.service';
@@ -53,6 +54,7 @@ export class ExpenseClaimsService implements OnModuleInit {
     private readonly files: FilesService,
     private readonly engine: ApprovalsEngine,
     @Inject(RECEIPT_READER) private readonly reader: ReceiptReader,
+    private readonly payments: ExpensePaymentsService,
   ) {}
 
   onModuleInit() {
@@ -253,6 +255,8 @@ export class ExpenseClaimsService implements OnModuleInit {
     const changes = await tx.expenseLineChange.findMany({ where: { organizationId: org, claimId: claim.id }, orderBy: { createdAt: 'asc' } });
     const flags = await tx.expenseFlag.findMany({ where: { organizationId: org, claimId: claim.id }, orderBy: { createdAt: 'asc' } });
     const person = (await this.names(tx, org, [claim.employeeId])).get(claim.employeeId) ?? '';
+    // E3 (U62): where the money comes from, and when.
+    const pay = await tx.expensePayment.findFirst({ where: { organizationId: org, claimId: claim.id }, orderBy: { createdAt: 'desc' }, select: { payMonth: true } });
     const route = claim.wfRequestId ? await tx.wfRequest.findFirst({ where: { organizationId: org, id: claim.wfRequestId }, select: { status: true, currentStep: true, steps: true } }) : null;
     return {
       ...this.summary(claim, person),
@@ -261,6 +265,7 @@ export class ExpenseClaimsService implements OnModuleInit {
       changes: changes.map((x) => ({ lineId: x.lineId, from: x.oldAmount.toFixed(2), to: x.newAmount.toFixed(2), reason: x.reason, at: x.createdAt.toISOString() })),
       // Flags name other claims only by reference, so nothing of another person leaks (§15).
       flags: flags.map((f) => ({ id: f.id, lineId: f.lineId, kind: f.kind, detail: f.detail, status: f.status, note: f.note })),
+      payment: claim.route ? { route: claim.route, month: pay?.payMonth ? iso(pay.payMonth).slice(0, 7) : null, paidOn: claim.paidAt ? iso(claim.paidAt) : null } : null,
       route: route ? { status: route.status, currentStep: route.currentStep, steps: (route.steps as { name: string; state: string }[]).map((s) => ({ name: s.name, state: s.state })) } : null,
       can: {
         edit: a.own && (claim.status === 'draft' || claim.status === 'sent_back'),
@@ -893,6 +898,8 @@ export class ExpenseClaimsService implements OnModuleInit {
     const adjusted = await settleAdvanceByClaim(tx, org, claim, total);
     await tx.expenseClaim.update({ where: { id: claim.id }, data: { status: reduced ? 'partly_approved' : 'approved', approvedTotal: total, advanceAdjusted: adjusted, netPayable: total.sub(adjusted), paymentStatus: total.sub(adjusted).gt(0) ? 'approved_unpaid' : 'not_due', decidedAt: new Date(), decisionNote: last?.reason ?? null, version: { increment: 1 } } });
     await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'expense.claim.approved', payload: { claimId: claim.id, reduced } } });
+    // E3 (§10.1): the route, and for payroll the one-time pay rows of the next open month.
+    await this.payments.onApproved(tx, { organizationId: org, isSuperAdmin: false, userId: null } as CompanyContext, claim.id);
     await closeTripIfDone(tx, org, claim.tripId);
   }
 

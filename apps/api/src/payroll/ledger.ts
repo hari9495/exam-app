@@ -71,10 +71,10 @@ export function buildJournal(slips: JournalSlip[], mappings: Mapping[]): Journal
     let net = D(0);
     for (const l of s.lines) {
       const amount = D(l.amount);
-      if (l.kind === 'earning') net = net.add(amount);
+      if (l.kind === 'earning' || l.kind === 'reimbursement') net = net.add(amount);
       if (l.kind === 'deduction') net = net.sub(amount);
       for (const p of split(amount)) {
-        if (l.kind === 'earning') post(l.code, 'expense', s.legalEntityId, p.cc, p.amount);
+        if (l.kind === 'earning' || l.kind === 'reimbursement') post(l.code, 'expense', s.legalEntityId, p.cc, p.amount);
         else if (l.kind === 'deduction') post(l.code, 'payable', s.legalEntityId, p.cc, p.amount);
         else if (l.kind === 'employer') {
           post(l.code, 'expense', s.legalEntityId, p.cc, p.amount);

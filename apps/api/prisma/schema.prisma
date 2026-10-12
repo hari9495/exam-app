@@ -1929,6 +1929,12 @@ model PermissionProfile {
   // Optional per-user field rules (entity->field->level). Overlaid per-field on the org role config
   // for users assigned this profile. Null = inherit role field rules entirely.
   fieldPermissionsJson String?  @map("field_permissions_json") @db.Text
+  /// The role template this role still follows (null: the company's own role); see access/template-sync.service.ts.
+  templateKey          String?  @map("template_key") @db.VarChar(40)
+  /// The template keys the role was last brought up to (JSON, sorted).
+  templateSet          String?  @map("template_set") @db.Text
+  /// Whether the start-up sync has looked at this role once for a template it matches.
+  templateChecked      Boolean  @default(false) @map("template_checked")
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
   users                User[]
@@ -7499,7 +7505,7 @@ model LedgerMapping {
   organizationId String   @map("organization_id") @db.Uuid
   scopeType      String   @map("scope_type") @db.VarChar(12)
   scopeId        String?  @map("scope_id") @db.Uuid
-  componentCode  String   @map("component_code") @db.VarChar(30)
+  componentCode  String   @map("component_code") @db.VarChar(40)
   side           String   @db.VarChar(8)
   accountCode    String   @map("account_code") @db.VarChar(40)
   accountName    String   @map("account_name") @db.VarChar(120)
@@ -8012,6 +8018,80 @@ model ExpenseAdvance {
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("expense_advances")
+}
+
+// ---- M05 expenses batch E3 (migration 20261116000000_expenses_e3): payments, payout batches, payroll events handled once,
+// and exported journals. RLS lives in the migration.
+model ExpensePayment {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  claimId        String    @map("claim_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  route          String    @db.VarChar(8)
+  payMonth       DateTime? @map("pay_month") @db.Date
+  oneTimePayIds  String[]  @default([]) @map("one_time_pay_ids") @db.Uuid
+  payoutBatchId  String?   @map("payout_batch_id") @db.Uuid
+  amount         Decimal   @db.Decimal(14, 2)
+  taxableAmount  Decimal   @default(0) @map("taxable_amount") @db.Decimal(14, 2)
+  status         String    @default("queued") @db.VarChar(10)
+  paidOn         DateTime? @map("paid_on") @db.Date
+  ref            String?   @db.VarChar(80)
+  reason         String?   @db.VarChar(300)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, claimId], map: "expense_payments_claim_idx")
+  @@map("expense_payments")
+}
+
+model ExpensePayoutBatch {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  formatKey      String    @map("format_key") @db.VarChar(20)
+  formatVersion  String    @map("format_version") @db.VarChar(20)
+  fileName       String    @map("file_name") @db.VarChar(200)
+  contentType    String    @map("content_type") @db.VarChar(100)
+  fileEnc        String    @map("file_enc")
+  sha256         String    @db.Char(64)
+  total          Decimal   @db.Decimal(14, 2)
+  rowCount       Int       @map("row_count")
+  claimIds       String[]  @map("claim_ids") @db.Uuid
+  status         String    @default("draft") @db.VarChar(10)
+  generatedBy    String    @map("generated_by") @db.Uuid
+  releasedBy     String?   @map("released_by") @db.Uuid
+  releasedAt     DateTime? @map("released_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("expense_payout_batches")
+}
+
+model ExpenseEventReceipt {
+  eventId        String   @id @map("event_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  eventType      String   @map("event_type") @db.VarChar(80)
+  handledAt      DateTime @default(now()) @map("handled_at") @db.Timestamptz(3)
+
+  @@map("expense_event_receipts")
+}
+
+model ExpenseJournal {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  period         DateTime  @db.Date
+  lines          Json
+  sha256         String    @db.Char(64)
+  status         String    @default("exported") @db.VarChar(8)
+  exportedBy     String    @map("exported_by") @db.Uuid
+  postedBy       String?   @map("posted_by") @db.Uuid
+  postedAt       DateTime? @map("posted_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, legalEntityId, period], map: "expense_journals_period_idx")
+  @@map("expense_journals")
 }
 
 model AdvanceSettlement {
