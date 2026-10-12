@@ -11,6 +11,7 @@ import { asDate, dateOf, monthRange } from '../time/time-core';
 import { calculatePayslip } from './calc';
 import { nextMonth, taxYearOf } from './tax';
 import { PayRunsService } from './runs.service';
+import { FNF_COMPONENTS } from './starter';
 import { PayKey, entitiesFor, payScope, payViewer, requireSelf } from './pay-access';
 import type { ConfirmBaseDto, OffcycleItemDto, OverpaymentDto, WorksheetApproveDto, WorksheetCreateDto } from './dto-5g';
 
@@ -31,11 +32,21 @@ const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
 const lock = (tx: Tx, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
 const NIL = '00000000-0000-0000-0000-000000000000';
 const EDITABLE = ['draft', 'calculated', 'in_review', 'reopened'];
-// DECISION NEEDED: worksheets cover pay (earnings). When a past-dated rule changes a statutory deduction (PF, ESI, PT),
-// who bears the difference for months already paid: recovered from the employee (with consent) or borne by the company?
-// Today the statutory side is settled by the supplementary filing (5f) and the employee side is not recovered. Also, an
-// overpayment from an earlier tax year is listed (crossYear) but its tax effect (revised Form 16 / s.89) is handled by hand.
+// Founder decisions 5g-D6 / 5g-D7 (12 Oct 2026, M03 §19.9): worksheets carry PF, ESI, PT and LWF too; the employee share
+// owed is recovered only with consent (like an overpayment), one deducted too much is refunded, and the employer share is
+// the company's cost (shown on the worksheet). The tax of an earlier-year overpayment (revised Form 16, s.89) is handled
+// by hand for the pilot; such recoveries are listed (crossYear).
 const NOT_PAY = ['IN.TDS', 'IN.TAXDED'];
+type Kind = 'earning' | 'deduction' | 'employer';
+/** Which statutory lines a worksheet carries: the employee and employer shares of PF, ESI, PT and LWF. */
+const EMPLOYEE_SHARE = ['pf_employee', 'esi_employee', 'pt', 'lwf_employee'];
+const EMPLOYER_SHARE = ['pf_employer', 'esi_employer', 'lwf_employer'];
+const EMPLOYER_LINES = ['eps_employer', 'edli_employer', 'pf_admin'];
+/** The employee's net position (pay owed less contributions owed) and the company's extra cost. */
+const totalsOf = (lines: { kind: string; difference: Prisma.Decimal | null }[]) => ({
+  total: lines.reduce((t, l) => (l.difference === null || l.kind === 'employer' ? t : l.kind === 'deduction' ? t.sub(l.difference) : t.add(l.difference)), D(0)),
+  employerCost: lines.reduce((t, l) => (l.difference !== null && l.kind === 'employer' ? t.add(l.difference) : t), D(0)),
+});
 const months = (from: string, to: string) => {
   const out: string[] = [];
   for (let m = from; m <= to; m = nextMonth(m)) out.push(m);
@@ -151,6 +162,7 @@ export class ArrearsService {
       to: dateOf(w.toMonth).slice(0, 7),
       status: w.status,
       total: w.total.toFixed(2),
+      employerCost: w.employerCost.toFixed(2),
       reason: w.reason,
       payMonth: w.payMonth ? dateOf(w.payMonth).slice(0, 7) : null,
       runId: w.runId,
@@ -161,6 +173,7 @@ export class ArrearsService {
         id: l.id,
         period: dateOf(l.period).slice(0, 7),
         componentCode: l.componentCode,
+        kind: l.kind,
         asPaid: l.asPaid?.toFixed(2) ?? null,
         corrected: l.corrected.toFixed(2),
         difference: l.difference?.toFixed(2) ?? null,
@@ -203,7 +216,10 @@ export class ArrearsService {
         createdBy: by,
       },
     });
-    let total = D(0);
+    const comps = await tx.payComponent.findMany({ where: { organizationId: org, statutory: { in: [...EMPLOYEE_SHARE, ...EMPLOYER_SHARE] } }, select: { code: true, statutory: true } });
+    const kindOf = new Map<string, Kind>([...comps.map((x) => [x.code, EMPLOYEE_SHARE.includes(x.statutory!) ? 'deduction' : 'employer'] as [string, Kind]), ...EMPLOYER_LINES.map((x) => [x, 'employer'] as [string, Kind])]);
+    const kind = (code: string, lineKind?: string): Kind | null => (kindOf.get(code) ?? (lineKind === undefined || lineKind === 'earning' ? 'earning' : null));
+    const made: { kind: string; difference: Prisma.Decimal | null }[] = [];
     for (const m of list) {
       const { from: ms, to: me } = monthRange(m);
       if (dateOf(em.joinedOn) > me || (em.exitedOn && dateOf(em.exitedOn) < ms)) continue;
@@ -240,7 +256,7 @@ export class ArrearsService {
       try {
         const r = calculatePayslip(await this.runs.snapshot(tx, c, run, em.id, rules), rules);
         corrected = new Map();
-        for (const l of r.lines.filter((x) => x.kind === 'earning')) corrected.set(l.code, (corrected.get(l.code) ?? D(0)).add(l.amount));
+        for (const l of r.lines) if (kind(l.code, l.kind)) corrected.set(l.code, (corrected.get(l.code) ?? D(0)).add(l.amount));
       } catch (e) {
         if (e instanceof StatutoryError || (e as { field?: string }).field) throw new BadRequestException(`${m}: ${(e as Error).message}`);
         throw e;
@@ -253,7 +269,7 @@ export class ArrearsService {
       let base: 'payslip' | 'import' | 'missing' = 'missing';
       if (slips.length) {
         base = 'payslip';
-        for (const l of await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: slips.map((s) => s.id) }, kind: 'earning' } })) put(l.componentCode, l.amount);
+        for (const l of await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: slips.map((s) => s.id) } } })) if (kind(l.componentCode, l.kind)) put(l.componentCode, l.amount);
       } else {
         const imported = await tx.asPaidLine.findMany({ where: { organizationId: org, employmentId: em.id, periodStart: asDate(ms) } });
         if (imported.length) {
@@ -278,7 +294,8 @@ export class ArrearsService {
         const asPaid = base === 'missing' ? null : (paid.get(code) ?? D(0));
         if (asPaid && cor.eq(asPaid)) continue;
         const difference = asPaid ? cor.sub(asPaid) : null;
-        if (difference) total = total.add(difference);
+        const k = kind(code)!;
+        made.push({ kind: k, difference });
         await tx.arrearsWorksheetLine.create({
           data: {
             organizationId: org,
@@ -291,12 +308,14 @@ export class ArrearsService {
             corrected: cor,
             difference,
             baseSource: base,
+            kind: k,
           },
         });
       }
     }
-    const done = await tx.arrearsWorksheet.update({ where: { id: w.id }, data: { total } });
-    await audit(tx, c, 'payroll.arrears.worksheet_created', 'arrears_worksheet', w.id, { employeeId: em.employeeId, from, to, source, sourceRef, total: total.toFixed(2) });
+    const { total, employerCost } = totalsOf(made);
+    const done = await tx.arrearsWorksheet.update({ where: { id: w.id }, data: { total, employerCost } });
+    await audit(tx, c, 'payroll.arrears.worksheet_created', 'arrears_worksheet', w.id, { employeeId: em.employeeId, from, to, source, sourceRef, total: total.toFixed(2), employerCost: employerCost.toFixed(2) });
     return done;
   }
 
@@ -353,8 +372,8 @@ export class ArrearsService {
         const asPaid = D(dto.lines.find((x) => x.componentCode === l.componentCode)?.asPaid ?? 0);
         await tx.arrearsWorksheetLine.update({ where: { id: l.id }, data: { asPaid, difference: l.corrected.sub(asPaid), baseSource: 'confirmed', confirmedBy: v.userId, confirmReason: dto.reason } });
       }
-      const all = await tx.arrearsWorksheetLine.findMany({ where: { organizationId: org, worksheetId: w.id, difference: { not: null } }, select: { difference: true } });
-      const done = await tx.arrearsWorksheet.update({ where: { id: w.id }, data: { total: all.reduce((t, l) => t.add(l.difference!), D(0)), version: { increment: 1 } } });
+      const all = await tx.arrearsWorksheetLine.findMany({ where: { organizationId: org, worksheetId: w.id }, select: { kind: true, difference: true } });
+      const done = await tx.arrearsWorksheet.update({ where: { id: w.id }, data: { ...totalsOf(all), version: { increment: 1 } } });
       await audit(tx, c, 'payroll.arrears.base_confirmed', 'arrears_worksheet', w.id, { period: dto.period, lines: dto.lines, reason: dto.reason });
       return this.sheetView(tx, org, done);
     });
@@ -371,9 +390,13 @@ export class ArrearsService {
       const lines = await tx.arrearsWorksheetLine.findMany({ where: { organizationId: org, worksheetId: w.id } });
       if (lines.some((l) => l.baseSource === 'missing')) throw new ConflictException('Confirm what was paid for the months with no payslip or imported history first.');
       // Net by component: owed amounts are paid under their own component; overpaid ones become one recovery.
+      // Contributions: the employee's owed share joins the recovery (consent), one deducted too much is refunded.
       const net = new Map<string, Prisma.Decimal>();
-      for (const l of lines) net.set(l.componentCode, (net.get(l.componentCode) ?? D(0)).add(l.difference ?? 0));
+      for (const l of lines.filter((x) => x.kind === 'earning')) net.set(l.componentCode, (net.get(l.componentCode) ?? D(0)).add(l.difference ?? 0));
+      const contributions = lines.filter((x) => x.kind === 'deduction').reduce((t, l) => t.add(l.difference ?? 0), D(0));
+      if (contributions.lt(0)) net.set('deduction_refund', contributions.neg());
       const owed = [...net.values()].some((x) => x.gt(0));
+      if (contributions.lt(0)) await tx.payComponent.createMany({ data: FNF_COMPONENTS.filter((x) => x.code === 'deduction_refund').map(({ ...x }) => ({ organizationId: org, ...x, taxable: x.taxable ?? true, statutory: null, createdBy: null })), skipDuplicates: true });
       let run: Prisma.PayrollRunGetPayload<object> | null = null;
       let payMonth = dto.payMonth ?? todayIst().slice(0, 7);
       if (dto.runId) {
@@ -385,7 +408,7 @@ export class ArrearsService {
         if (p?.lockedByRunId || p?.stage === 'filed') throw new ConflictException(`${payMonth} is already paid and locked; pay the arrears next month or in an off-cycle run.`);
       }
       const span = `${dateOf(w.fromMonth).slice(0, 7)}${w.toMonth.getTime() === w.fromMonth.getTime() ? '' : ` to ${dateOf(w.toMonth).slice(0, 7)}`}`;
-      let overpaid = D(0);
+      let overpaid = Prisma.Decimal.max(D(0), contributions);
       for (const [code, amount] of net) {
         if (amount.lt(0)) overpaid = overpaid.add(amount.neg());
         if (amount.lte(0)) continue;
@@ -401,7 +424,7 @@ export class ArrearsService {
             source: 'arrears',
             sourceRef: w.id,
             reason: w.reason,
-            label: `Arrears for ${span}.`,
+            label: code === 'deduction_refund' ? `Contributions deducted too much for ${span}.` : `Arrears for ${span}.`,
             status: 'approved',
             runId: run?.id ?? null,
             createdBy: w.createdBy,
@@ -431,7 +454,7 @@ export class ArrearsService {
         where: { id: w.id },
         data: { status: 'approved', approvedBy: v.userId, approvedAt: new Date(), payMonth: asDate(`${payMonth}-01`), runId: run?.id ?? null, version: { increment: 1 } },
       });
-      await audit(tx, c, 'payroll.arrears.worksheet_approved', 'arrears_worksheet', w.id, { total: w.total.toFixed(2), payMonth, runId: run?.id ?? null, overpaid: overpaid.toFixed(2), recoveryId });
+      await audit(tx, c, 'payroll.arrears.worksheet_approved', 'arrears_worksheet', w.id, { total: w.total.toFixed(2), employerCost: w.employerCost.toFixed(2), payMonth, runId: run?.id ?? null, overpaid: overpaid.toFixed(2), recoveryId });
       const userId = recoveryId ? (await tx.employee.findFirst({ where: { organizationId: org, id: w.employeeId }, select: { userId: true } }))?.userId : null;
       return { id: w.id, status: 'approved', payMonth, runId: run?.id ?? null, overpaid: overpaid.toFixed(2), recoveryId, notify: userId ?? null };
     });

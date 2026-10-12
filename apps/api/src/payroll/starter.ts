@@ -50,6 +50,8 @@ export const FNF_COMPONENTS: StarterComponent[] = [
   { code: 'retrenchment_comp', name: 'Retrenchment compensation', kind: 'earning', prorated: false, inCtc: false },
   { code: 'notice_recovery', name: 'Notice period recovery', kind: 'deduction', taxable: false, prorated: false, inCtc: false },
   { code: 'fnf_recovery', name: 'Settlement recovery', kind: 'deduction', taxable: false, prorated: false, inCtc: false },
+  // 5g-D6: employee contributions deducted too much for months already paid, given back.
+  { code: 'deduction_refund', name: 'Refund of over-deducted contributions', kind: 'earning', taxable: false, prorated: false, inCtc: false },
   { code: 'reskilling_fund', name: 'Worker re-skilling fund (employer)', kind: 'employer', taxable: false, prorated: false, onPayslip: false, inCtc: false, rounding: 'none' },
 ];
 

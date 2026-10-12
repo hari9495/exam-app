@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
+import { settingFor } from '../people/probation';
 import { todayIst } from '../org-structure/org-validation';
 import type { ScopeUser } from '../access/scope';
 import { AutomationService } from '../rules-engine/automation.service';
@@ -25,12 +26,10 @@ import type { FnfPatchDto, FnfPayeesDto } from './dto-5g';
 // nominees or legal heirs by share (their bank accounts encrypted). Anyone with payroll.fnf.manage for the entity edits
 // the lines before the run is submitted; the run's approval is the usual maker ≠ checker approval.
 
-// DECISION NEEDED: (1) paying nominees and heirs: today the net of a death-in-service F&F is held from the bank file and
-// split by share on the settlement for payroll to pay by hand; should the bank file pay each payee? (2) Heirs and tax:
-// dues paid after death are not salary of the heir; no TDS is worked out on the heirs' shares. (3) Exemptions: gratuity,
-// leave encashment and retrenchment compensation are taxed as salary here (no s.10(10), 10(10AA), 10(10B) relief yet).
-// (4) Leave encashment is paid at monthly gross ÷ the pay group's day basis; some companies use basic + DA. (5) Notice:
-// only an approved buy-out is recovered or paid; an unserved notice without a buy-out is not recovered.
+// Founder decisions 5g-D2 … 5g-D5 (12 Oct 2026, M03 §19.9): on death the bank file pays each payee by share; no TDS on
+// the heirs' shares (verify with the partner CA); exit exemptions come from the IN.EXIT-EXEMPT rules in the payslip's tax;
+// leave encashment is paid on basic + DA unless the company chose gross; an unserved resignation notice is recovered
+// unless the company's policy waives it or HR waives it for the person, with a reason.
 const SYSTEM = '00000000-0000-0000-0000-000000000000';
 const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
 const r2 = (x: Prisma.Decimal) => x.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
@@ -139,12 +138,15 @@ export class FnfService implements OnModuleInit {
     const basis = group ? (await tx.payGroup.findFirst({ where: { organizationId: org, id: group.payGroupId }, select: { dayBasis: true } }))?.dayBasis : null;
     const days = !basis || basis === 'calendar' ? Number(monthRange(lwd.slice(0, 7)).to.slice(8)) : Number(basis);
     const daily = pay.gross.div(days);
+    const lev = { legalEntityId: f.legalEntityId };
+    const encashOn = (await settingFor(tx, c, 'payroll.leave_encashment_basis', lev)) === 'gross' ? pay.gross : pay.gratuityWage;
+    const encashDaily = encashOn.div(days);
     const items: { code: string; amount: Prisma.Decimal; label: string; hold?: string }[] = [];
-    // Leave encashment: the balance of encashable leave on the last day at the daily rate of monthly pay.
+    // Leave encashment: the balance of encashable leave on the last day at the daily rate the company chose (5g-D4).
     const types = (await tx.leaveType.findMany({ where: { organizationId: org } })).filter((t) => (t.rules as { encashable?: boolean } | null)?.encashable);
     for (const t of types) {
       const bal = (await tx.leaveLedgerEntry.aggregate({ where: { organizationId: org, employeeId: em.employeeId, leaveTypeId: t.id, entryOn: { lte: f.lwd } }, _sum: { days: true } }))._sum.days;
-      if (bal && D(bal).gt(0)) items.push({ code: 'leave_encashment', amount: r2(daily.mul(bal)), label: `${t.name}: ${D(bal).toFixed(2)} days at ₹${r2(daily).toFixed(2)} a day.` });
+      if (bal && D(bal).gt(0)) items.push({ code: 'leave_encashment', amount: r2(encashDaily.mul(bal)), label: `${t.name}: ${D(bal).toFixed(2)} days at ₹${r2(encashDaily).toFixed(2)} a day.` });
     }
     // Gratuity on the last wage (basic and DA), by the law in force on the last day.
     const gratRs = inForce(rules, 'IN.SS-CODE', ['IN'], lwd) ?? inForce(rules, 'IN.GRATUITY', ['IN'], lwd);
@@ -188,6 +190,12 @@ export class FnfService implements OnModuleInit {
       if (a.buyoutBy === 'employee') items.push({ code: 'notice_recovery', amount, label: `Notice buy-out: ${a.buyoutDays} days at ₹${r2(daily).toFixed(2)} a day.` });
       else items.push({ code: 'notice_pay', amount, label: `Notice bought out by the company: ${a.buyoutDays} days at ₹${r2(daily).toFixed(2)} a day.` });
     }
+    // 5g-D5: a resignation that leaves before the standard last day, with no approved buy-out or release, recovers the
+    // days not served (unless the company's policy or HR waives it).
+    const arranged = ((k.noticeArrangement as { kind?: string }[] | null) ?? []).length > 0;
+    const short = dateOf(k.standardLwd) > lwd ? Math.round((asDate(dateOf(k.standardLwd)).getTime() - f.lwd.getTime()) / 86_400_000) : 0;
+    if (f.exitType === 'resignation' && !arranged && short > 0 && !f.noticeWaivedBy && (await settingFor(tx, c, 'payroll.notice_shortfall', lev)) === 'recover')
+      items.push({ code: 'notice_recovery', amount: r2(daily.mul(short)), label: `Notice not served: ${short} days at ₹${r2(daily).toFixed(2)} a day.` });
     // The statutory bonus provided this accounting year and not yet paid.
     const fy = `${Number(lwd.slice(5, 7)) >= 4 ? lwd.slice(0, 4) : Number(lwd.slice(0, 4)) - 1}-04-01`;
     const slips = await tx.payslip.findMany({ where: { organizationId: org, employmentId: em.id, status: 'approved', periodStart: { gte: asDate(fy) } }, select: { id: true } });
@@ -291,6 +299,8 @@ export class FnfService implements OnModuleInit {
         ifsc: p.ifsc ?? null,
         amount: net ? r2(net.mul(p.sharePercent).div(100)).toFixed(2) : null,
       })),
+      noticeWaived: f.noticeWaivedBy ? { by: f.noticeWaivedBy, reason: f.noticeWaiveReason } : null,
+      ...(f.exitType === 'death' ? { taxNote: "No TDS is deducted on the payees' shares (verify with the partner CA)." } : {}),
       version: f.version,
     };
   }
@@ -394,6 +404,7 @@ export class FnfService implements OnModuleInit {
       if (f.version !== dto.version) throw new ConflictException('The settlement changed since you opened it. Reload it.');
       if (f.status !== 'open') throw new ConflictException('This settlement is closed.');
       if (f.exitType !== 'death') throw new BadRequestException('Payees are recorded only for a death in service.');
+      if (dto.payees.some((p) => !!p.accountNumber !== !!p.ifsc)) throw new BadRequestException('Give the IFSC with each bank account.');
       const total = dto.payees.reduce((t, p) => t.add(p.sharePercent), D(0));
       if (!total.eq(100)) throw new BadRequestException('The shares must add up to 100%.');
       const payees: Payee[] = dto.payees.map((p) => ({
@@ -417,6 +428,23 @@ export class FnfService implements OnModuleInit {
       });
       const fresh = await tx.fnfSettlement.update({ where: { id: f.id }, data: { version: { increment: 1 } } });
       return this.view(tx, org, fresh);
+    });
+  }
+
+  /** HR waives the unserved notice for this person (5g-D5), with a reason; the recovery line goes. */
+  async waiveNotice(ctx: TenantContext, user: ScopeUser, id: string, reason: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const f = await this.settlementIn(tx, c, v, id);
+      if (f.status !== 'open') throw new ConflictException('This settlement is closed.');
+      if (f.noticeWaivedBy) throw new ConflictException('The notice is already waived.');
+      const run = f.runId ? await tx.payrollRun.findFirst({ where: { organizationId: org, id: f.runId } }) : null;
+      if (run && !EDITABLE.includes(run.status)) throw new ConflictException('The F&F run is waiting for approval or approved; the notice cannot be waived now.');
+      await tx.fnfSettlement.update({ where: { id: f.id }, data: { noticeWaivedBy: v.userId, noticeWaiveReason: reason, version: { increment: 1 } } });
+      const gone = await tx.oneTimePay.updateMany({ where: { organizationId: org, source: 'fnf', sourceRef: f.id, componentCode: 'notice_recovery', status: 'approved' }, data: { status: 'cancelled' } });
+      await audit(tx, c, 'payroll.fnf.notice_waived', 'fnf_settlement', f.id, { reason, linesRemoved: gone.count });
+      return this.view(tx, org, await tx.fnfSettlement.findFirstOrThrow({ where: { id: f.id } }));
     });
   }
 

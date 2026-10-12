@@ -136,6 +136,14 @@ export class Payroll5gController {
     return this.fnf.payees(ctx, this.user(req), id, dto);
   }
 
+  /** 5g-D5: HR waives the unserved notice for this person, with a reason. */
+  @Post('payroll/fnf/:id/waive-notice')
+  @HttpCode(200)
+  @RequirePermissions('payroll.fnf.manage')
+  waiveNotice(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DismissDto) {
+    return this.fnf.waiveNotice(ctx, this.user(req), id, dto.reason);
+  }
+
   @Post('payroll/fnf/:id/second-run')
   @RequirePermissions('payroll.fnf.manage')
   secondRun(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {

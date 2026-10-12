@@ -237,6 +237,13 @@ export function gratuityDue(rs: RuleSet, i: { lastWage: Prisma.Decimal.Value; jo
   return { eligible, years: y.counted, amount: money(amount), citation: cite(rs) };
 }
 
+/** Founder decision 5g-D3: the part of an exit payment exempt from tax (up to the rule's limit); 0 for other components. */
+export function exitExempt(rs: RuleSet, i: { code: string; amount: Prisma.Decimal.Value }) {
+  const v = need(rs, 'exit_exempt');
+  const item = (v.items as { code: string; cap: string; section: string }[]).find((x) => x.code === i.code);
+  return { exempt: item ? money(Prisma.Decimal.min(D(i.amount), D(item.cap))) : ZERO, section: item?.section ?? null, citation: cite(rs) };
+}
+
 /**
  * Retrenchment (IR Code, batch 5g): compensation of compensationDays of average pay per counted year, notice pay of
  * noticeMonths when notice is paid in lieu, the employer's re-skilling fund of reskillingDays of the last wage, and
@@ -482,7 +489,7 @@ export interface GoldenCase {
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
 }
-const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, gratuity_due: gratuityDue, retrenchment, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, gratuity_due: gratuityDue, retrenchment, exit_exempt: exitExempt, tds, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
 
 /** Runs one golden case; returns the fields that differ (empty when it passes). */
 export function runGolden(rs: RuleSet, g: GoldenCase): string[] {

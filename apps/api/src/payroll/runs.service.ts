@@ -196,7 +196,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     const nameOf = (id: string) => members.find((m) => m.employeeId === id)?.name ?? 'Someone';
     // Bank details (P05 Q7): a block; waiving it holds the person's net pay instead.
     const banks = await tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId: { in: ids }, purpose: 'salary', validTo: null }, select: { employeeId: true, accountHash: true } });
-    for (const m of members) if (!banks.some((b) => b.employeeId === m.employeeId)) found.push({ employeeId: m.employeeId, checkKey: 'bank_missing', severity: 'block', message: `${m.name}: no salary bank account. Waive it to hold their net pay instead.` });
+    // 5g-D2: a death-in-service F&F pays the payees' own accounts, not the deceased's.
+    const deaths = run.offcycleKind === 'fnf' ? (await tx.fnfSettlement.findMany({ where: { organizationId: org, exitType: 'death', OR: [{ runId: run.id }, { secondRunId: run.id }] }, select: { employeeId: true } })).map((x) => x.employeeId) : [];
+    for (const m of members) if (!deaths.includes(m.employeeId) && !banks.some((b) => b.employeeId === m.employeeId)) found.push({ employeeId: m.employeeId, checkKey: 'bank_missing', severity: 'block', message: `${m.name}: no salary bank account. Waive it to hold their net pay instead.` });
     const byHash = new Map<string, string[]>();
     for (const b of banks) byHash.set(b.accountHash, [...(byHash.get(b.accountHash) ?? []), b.employeeId]);
     for (const [, who] of byHash) if (who.length > 1) for (const id of who) found.push({ employeeId: id, checkKey: 'bank_shared', severity: 'block', message: `${nameOf(id)}: the same bank account as ${who.filter((x) => x !== id).map(nameOf).join(', ')}.` });
@@ -535,8 +537,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         netRounding: (await settingFor(tx, c, 'payroll.net_rounding', lev)) as 'none' | 'rupee',
         standardDailyHours: await settingFor(tx, c, 'payroll.standard_daily_hours', lev),
       },
-      // Death in service: the net is held from the bank file; payroll pays the nominees or heirs by their shares.
-      held: !!hold || waivedBank || fnf?.exitType === 'death',
+      held: !!hold || waivedBank,
       // Batch 5e: income tax, from the same function as the employee's tax sheet.
       ...(offcycle ? { offcycle } : {}),
       tax: await buildTaxInputs(tx, c, { employeeId: em.employeeId, employmentId, legalEntityId: run.legalEntityId, month, periodStart: run.periodStart, exitedOn: exitOn ? asDate(exitOn) : null, segment: segments[segments.length - 1], components, age }),

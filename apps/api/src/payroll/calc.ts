@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { projectTax, type TaxInputs, type TaxProjection } from './tax';
-import { Citation, RuleSet, cite, StatutoryError, bonus, codeWage, deductionCap, esi, gratuity, inForce, injury, lwf, maternity, minWage, minWageTableFor, pf, pt, subsistence } from '../statutory/evaluator';
+import { Citation, RuleSet, cite, StatutoryError, bonus, codeWage, deductionCap, esi, exitExempt, gratuity, inForce, injury, lwf, maternity, minWage, minWageTableFor, pf, pt, subsistence } from '../statutory/evaluator';
 
 // The payroll calculation (M03-BUILD-DESIGN §9.4, PAY-3.04 … 3.16): a pure function of one person's month snapshot and the
 // rule sets. It reads no database and no clock, so a payslip can be reproduced from its snapshot with the rule versions it
@@ -300,7 +300,17 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
     rule('IN.TAXDED');
     const sumOf = (pick: (l: CalcLine) => boolean) => lines.filter(pick).reduce((t, l) => t.add(l.amount), ZERO).toFixed(2);
     const tdsRs = rule('IN.TDS');
-    const taxable = sumOf((l) => l.kind === 'earning' && comps.get(l.code)?.taxable !== false);
+    let taxable = sumOf((l) => l.kind === 'earning' && comps.get(l.code)?.taxable !== false);
+    // 5g-D3: gratuity, leave encashment and retrenchment compensation are exempt up to their limits (rule data, verify).
+    const exitLines = lines.filter((l) => l.kind === 'earning' && ['gratuity', 'leave_encashment', 'retrenchment_comp'].includes(l.code));
+    const exemptRs = exitLines.length ? rule('IN.EXIT-EXEMPT') : null;
+    if (exemptRs)
+      for (const code of [...new Set(exitLines.map((l) => l.code))]) {
+        const r = exitExempt(exemptRs, { code, amount: exitLines.filter((l) => l.code === code).reduce((t, l) => t.add(l.amount), ZERO) });
+        if (r.exempt.isZero()) continue;
+        taxable = D(taxable).sub(r.exempt).toFixed(2);
+        add({ code: `${code}_exempt`, name: `${nameOf(code, code)} exempt from tax`, kind: 'info', segmentNo: 0, amount: r.exempt, explanation: `${rupees(r.exempt)} is exempt from income tax (${r.section}).`, rule: r.citation });
+      }
     if (itemsOnly) {
       // The extra tax for the year that these items cause (the year's pay with and without them), deducted in full now.
       const t = s.tax;

@@ -7664,6 +7664,7 @@ model ArrearsWorksheet {
   toMonth        DateTime  @map("to_month") @db.Date
   status         String    @default("draft") @db.VarChar(10)
   total          Decimal   @default(0) @db.Decimal(14, 2)
+  employerCost   Decimal   @default(0) @map("employer_cost") @db.Decimal(14, 2)
   payMonth       DateTime? @map("pay_month") @db.Date
   runId          String?   @map("run_id") @db.Uuid
   reason         String    @db.VarChar(300)
@@ -7688,6 +7689,7 @@ model ArrearsWorksheetLine {
   corrected      Decimal  @db.Decimal(14, 2)
   difference     Decimal? @db.Decimal(14, 2)
   baseSource     String   @map("base_source") @db.VarChar(10)
+  kind           String   @default("earning") @db.VarChar(10)
   confirmedBy    String?  @map("confirmed_by") @db.Uuid
   confirmReason  String?  @map("confirm_reason") @db.VarChar(300)
 
@@ -7729,6 +7731,8 @@ model FnfSettlement {
   status         String    @default("open") @db.VarChar(10)
   payees         Json      @default("[]")
   alertedOn      DateTime? @map("alerted_on") @db.Date
+  noticeWaivedBy    String? @map("notice_waived_by") @db.Uuid
+  noticeWaiveReason String? @map("notice_waive_reason") @db.VarChar(300)
   version        Int       @default(1)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 

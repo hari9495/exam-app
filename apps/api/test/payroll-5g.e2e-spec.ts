@@ -130,7 +130,7 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
       await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`;
       const staff = async (email: string) => (await tx.user.findFirstOrThrow({ where: { email, organizationId: null } })).id;
       const pack = (f: string) => (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', f), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
-      await loadRuleSets(tx, [...pack('in-tax.json'), ...pack('in-exit.json')], await staff('super@platform.test'), await staff('rules@platform.test'));
+      await loadRuleSets(tx, [...pack('in-tax.json'), ...pack('in-exit.json'), ...pack('in-bank-formats.json')], await staff('super@platform.test'), await staff('rules@platform.test'));
     });
     (moduleRef.get(StatutoryRulesService) as unknown as { cache: null }).cache = null;
     planId = (await prisma.plan.create({ data: { name: `pay5g-plan-${run}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
@@ -318,16 +318,18 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({}).expect(409);
     const lines = w.lines.map((l: { componentCode: string; corrected: string }) => ({
       componentCode: l.componentCode,
-      asPaid: l.componentCode === 'special' ? (Number(l.corrected) + 1000).toFixed(2) : l.corrected,
+      // 5g-D6: PF was under-deducted by 100 (employee and employer share alike).
+      asPaid: l.componentCode === 'special' ? (Number(l.corrected) + 1000).toFixed(2) : ['pf_employee', 'pf_employer'].includes(l.componentCode) ? (Number(l.corrected) - 100).toFixed(2) : l.corrected,
     }));
     const confirmed = (await api('payAdmin', 'post', `/payroll/arrears-worksheets/${w.id}/confirm-base`).send({ period: prevMonth, lines, reason: 'From the old payroll register' }).expect(200)).body;
-    expect(confirmed).toMatchObject({ missing: 0, total: '-1000.00' });
+    expect(confirmed).toMatchObject({ missing: 0, total: '-1100.00', employerCost: '100.00' });
+    expect(w.lines.find((l: { componentCode: string }) => l.componentCode === 'pf_employee').kind).toBe('deduction');
     const ok = (await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({}).expect(200)).body;
-    expect(ok).toMatchObject({ overpaid: '1000.00' });
+    expect(ok).toMatchObject({ overpaid: '1100.00' });
     // The employee sees and answers only their own plan.
     expect((await api('emp1', 'get', '/payroll/me/overpayments').expect(200)).body).toEqual([]);
     const mine = (await api('emp3', 'get', '/payroll/me/overpayments').expect(200)).body;
-    expect(mine).toEqual([expect.objectContaining({ id: ok.recoveryId, status: 'proposed', amount: '1000.00', balance: '1000.00' })]);
+    expect(mine).toEqual([expect.objectContaining({ id: ok.recoveryId, status: 'proposed', amount: '1100.00', balance: '1100.00' })]);
     await api('emp1', 'post', `/payroll/me/overpayments/${ok.recoveryId}/answer`).send({ agree: true }).expect(404);
     expect((await api('emp3', 'post', `/payroll/me/overpayments/${ok.recoveryId}/answer`).send({ agree: true }).expect(200)).body.status).toBe('active');
     await api('emp3', 'post', `/payroll/me/overpayments/${ok.recoveryId}/answer`).send({ agree: true }).expect(409);
@@ -340,7 +342,7 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     expect((await api('approver1', 'post', `/payroll/overpayments/${ids.recovery}/write-off`).send({ reason: 'Not worth recovering' }).expect(200)).body).toMatchObject({
       status: 'written_off',
       balance: '0.00',
-      writtenOff: '1000.00',
+      writtenOff: '1100.00',
     });
     const own = (
       await api('approver1', 'post', '/payroll/overpayments').send({ employeeId: ids.emp1, amount: '3000', instalment: '1000', reason: 'Paid twice in March', taxYear: '2024-25' }).expect(201)
@@ -406,12 +408,25 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     expect((await api('payAdmin', 'get', `/payroll/fnf/${id}`).expect(200)).body.status).toBe('settled');
   });
 
-  it('death in service: pay held from the bank file and split between the payees by share', async () => {
+  it('an unserved resignation notice is recovered by the company policy; HR waives it for one person with a reason', async () => {
+    const lwd = plus(today, 10);
+    const id = await exitCase(ids.emp1, 'resignation', lwd, { initiatedBy: 'employee', noticePeriod: '30d', standardLwd: new Date(`${plus(today, 30)}T00:00:00Z`) });
+    const f = (await api('payAdmin', 'get', `/payroll/fnf/${id}`).expect(200)).body;
+    const line = f.items.find((i: { componentCode: string }) => i.componentCode === 'notice_recovery');
+    expect(line.label).toMatch(/^Notice not served: 20 days/);
+    await api('payAdmin', 'post', `/payroll/fnf/${id}/waive-notice`).send({ reason: 'ok' }).expect(400);
+    const waived = (await api('payAdmin', 'post', `/payroll/fnf/${id}/waive-notice`).send({ reason: 'Leaving to care for a parent' }).expect(200)).body;
+    expect(waived.noticeWaived).toMatchObject({ by: users.payAdmin, reason: 'Leaving to care for a parent' });
+    expect(waived.items.some((i: { componentCode: string }) => i.componentCode === 'notice_recovery')).toBe(false);
+    await api('payAdmin', 'post', `/payroll/fnf/${id}/waive-notice`).send({ reason: 'Leaving to care for a parent' }).expect(409);
+  });
+
+  it('death in service: the bank file pays each payee by share; exit exemptions come off the taxed pay', async () => {
     const id = await exitCase(ids.emp3, 'death', today);
     const f = (await api('payAdmin', 'get', `/payroll/fnf/${id}`).expect(200)).body;
     const payees = (a: string, b: string) => [
       { kind: 'nominee', name: 'Lakshmi', relation: 'Spouse', sharePercent: a, accountNumber: '123456789012', ifsc: 'HDFC0001234' },
-      { kind: 'nominee', name: 'Arjun', relation: 'Son', sharePercent: b },
+      { kind: 'nominee', name: 'Arjun', relation: 'Son', sharePercent: b, accountNumber: '998877665544', ifsc: 'SBIN0000456' },
     ];
     // Bank accounts of payees need a fresh second sign-in step.
     await api('payAdmin', 'post', `/payroll/fnf/${id}/payees`)
@@ -440,9 +455,14 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     const stored = await scoped((tx) => tx.fnfSettlement.findFirstOrThrow({ where: { id } }));
     expect(JSON.stringify(stored.payees)).not.toContain('123456789012');
     const slips = await approveRun(f.runId);
-    expect(slips[0].held).toBe(true);
+    expect(slips[0].held).toBe(false);
+    const exempt = (await linesOf(slips[0].id)).body.lines.find((l: { code: string }) => l.code === 'gratuity_exempt');
+    expect(exempt).toMatchObject({ amount: '50000.00', explanation: expect.stringMatching(/exempt from income tax/) });
     const done = (await api('payAdmin', 'get', `/payroll/fnf/${id}`).expect(200)).body;
     expect(Number(done.net)).toBeGreaterThan(0);
+    expect(done.taxNote).toMatch(/verify/);
     expect(done.payees.map((p: { amount: string }) => p.amount)).toEqual([(Number(done.net) * 0.6).toFixed(2), (Number(done.net) * 0.4).toFixed(2)]);
+    const bank = (await api('payAdmin', 'post', `/payroll/runs/${f.runId}/bank-files`).send({ debitAccount: '0050200012345678' }).expect(201)).body;
+    expect(bank).toMatchObject({ rows: 2, total: done.net, excluded: [] });
   });
 });
