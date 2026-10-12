@@ -68,12 +68,12 @@ const screen = {
   onResults: ok,
 };
 
-export const Consultants: S = { name: 'PAY-37 · Consultants', render: () => <ConsultantsScreen {...screen} /> };
+export const Consultants: S = { name: 'Consultants', render: () => <ConsultantsScreen {...screen} /> };
 
-export const ConsultantsEmpty: S = { name: 'PAY-37 · Consultants (none yet)', render: () => <ConsultantsScreen {...screen} consultants={[]} invoices={[]} batches={[]} /> };
+export const ConsultantsEmpty: S = { name: 'Consultants (none yet)', render: () => <ConsultantsScreen {...screen} consultants={[]} invoices={[]} batches={[]} /> };
 
 export const ConsultantTax: S = {
-  name: 'PAY-38 · Consultant TDS returns',
+  name: 'Consultant TDS returns',
   render: () => (
     <ConsultantTaxScreen
       state="ready"
@@ -94,7 +94,7 @@ export const ConsultantTax: S = {
 };
 
 export const ConsultantPortal: S = {
-  name: 'PAY-37 · Consultant’s own page',
+  name: 'Consultant’s own page',
   render: () => (
     <ConsultantPortalScreen
       data={{
