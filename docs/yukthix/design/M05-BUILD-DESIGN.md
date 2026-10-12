@@ -747,6 +747,28 @@ These are the five M03 changes from §4, to be made by the payroll builder, not 
 4. Outbox events `payroll.run.paid`, `payroll.run.voided`, `payment.failed` and `recovery.deferred`, once per transition, with ids only (D5).
 5. A forward migration adding `expense` to `loans_type_check`; recovery as an interest-free, non-perquisite loan (D4).
 
+### 22.2 Receipt OCR worker: what was downloaded (approved 12 Oct 2026, option A)
+
+The founder approved the download list and then option A for OpenCV's system libraries (the full OpenCV build with libGL; no display is ever used). Everything comes from the official sources below and is pinned. The lock files are in git (`apps/ocr-worker/`); wheels, packages and model files are not. Built and tested 12 Oct 2026 (contract test on synthetic receipts: a hotel bill, the same bill tilted, a PDF bill, a bill with a QR code, and a broken file).
+
+| What | Pin | Official source | Licence |
+|---|---|---|---|
+| Base image `python:3.12-slim-bookworm` | `sha256:2ed6491b93cd49272ee6de2b5a38440c3448360322c089fc23e370722d74179d` | Docker Hub official image | PSF, Debian |
+| Python packages for the worker (70, incl. paddleocr 3.7.0, paddlex 3.7.0, paddlepaddle 3.3.1 CPU, opencv-contrib-python 4.10.0.84) | `requirements.lock`, every file by version and SHA-256 (`pip --require-hashes`); lock SHA-256 `1ddd17f3fd9b60f37f3984fae419f206dabef760fd927a03f93886372ac4280b` | PyPI (`files.pythonhosted.org`) | Apache-2.0, MIT, BSD in the main; crc32c LGPL-2.1+; certifi, tqdm MPL-2.0; OpenCV wheel bundles FFmpeg (LGPL-2.1) and Qt (LGPL-3) |
+| Python packages for the model-fetch build stage (15, huggingface_hub 2.2.0) | `models.lock`, SHA-256 `2863f261b93fe3a78d9af8bf841b493ac87ba40118bee2775b31cfc8a75a9c87` | PyPI | Apache-2.0, MIT, BSD |
+| Debian packages (43: libgl1, libglib2.0-0, libgomp1 and their dependencies incl. Mesa 22.3.6, LLVM 15, libz3, libicu72, libxml2, X11/xcb) | `debian.lock` exact versions, SHA-256 `c4d30e50911ad0bc73b9e4e3685bfc080208c74b4dafb78f9f5f1968ec2da10f`; archive at `snapshot.debian.org` timestamp `20261012T000000Z` (bookworm, bookworm-security), signed by the Debian archive keyring | `https://snapshot.debian.org/archive/debian/` and `.../debian-security/` | MIT/X11, Apache-2.0 with LLVM exception, ICU, LGPL-2.1+ (glib), GPL-3 with GCC runtime exception (libgomp) |
+| Model `PaddlePaddle/PP-OCRv5_mobile_det` | commit `0d63e78e2b680928f6b1747d76a08db6e645efb7`; `inference.pdiparams` SHA-256 `afa1820cb16c1fd0dad589d0f8b389139061c1ef6d68019685fd07be997dda5b` | `https://huggingface.co/PaddlePaddle/PP-OCRv5_mobile_det` | Apache-2.0 |
+| Model `PaddlePaddle/en_PP-OCRv5_mobile_rec` | commit `267c36e24c331595590fe7bd72bde2436fd286f2`; `inference.pdiparams` SHA-256 `3ec8a97ed6cefe8568d3e2ee90bb193299b566a7661aa4fd52d224b96b59f66b` | `https://huggingface.co/PaddlePaddle/en_PP-OCRv5_mobile_rec` | Apache-2.0 |
+| Model `PaddlePaddle/PP-LCNet_x1_0_textline_ori` | commit `cd237a44b0e359d4fe38310a416203cf7403faa5`; `inference.pdiparams` SHA-256 `0de2bcf996cf553e2b848dd7b1769dafffc6917b1ccdf55c1d8efe7909fbf743` | `https://huggingface.co/PaddlePaddle/PP-LCNet_x1_0_textline_ori` | Apache-2.0 |
+
+- **Build check:** the build verifies each model file against its SHA-256 and installs only hashed Python packages.
+- **No run-time fetching:** the models are baked into the image and paddlex's model-source check is off. The container runs with no network, so nothing can be fetched.
+- **Run:** network none, user 10001, read-only root filesystem, a 256 MB `/tmp` scratch mount, 1 CPU, 1.5 GB memory, 64 processes, all capabilities dropped, no new privileges.
+- **Notices:** `/licenses/THIRD-PARTY-LICENSES.txt` in the image holds every Python distribution's licence files (incl. OpenCV's FFmpeg and Qt notices), every Debian package's copyright file and the model sources.
+- **Image:** about 2.3 GB unpacked; the worker uses about 370 MB of memory when idle.
+- **Paddle setting:** on CPU, Paddle 3.3's oneDNN path cannot run these models (an unimplemented attribute), so the worker turns oneDNN off (`enable_mkldnn=False`). This is a setting, not another download.
+- **Upgrading:** a new version of anything above means a new approval, new pins and a new contract-test run.
+
 Questions, with the recommended default in bold.
 
 ### D1 · Receipt OCR at launch
@@ -809,6 +831,7 @@ Each legal entity has one GSTIN today; hotel credit needs the registration in th
 
 | Date | Change |
 |---|---|
+| 12 Oct 2026 | Batch E2 built; the receipt OCR worker built from the approved downloads (option A: full OpenCV with libGL and its Debian dependencies), pins and sources in §22.2, go-live item 20. |
 | 12 Oct 2026 | Batch E1 built: `fx_rates` moved to E5 (§5.7); one starter policy instead of three grade bands (§6.2); `expense.policy.manage` in a new company-wide Expense set-up template instead of HR Admin and Finance (§16.2). |
 | 12 Oct 2026 | Founder accepted D2–D9; D1 changed to self-hosted PaddleOCR at launch in an isolated worker (no network, non-root, limits, strict output parse, per-field confidence, nothing auto-submits); OCR slice moved to E2 (XP-2.10); §22.1 lists the five payroll changes for the payroll builder. |
 | 12 Oct 2026 | First draft: scope, reuse, data model by batch with RLS, settings and starters, policies as P19 rule data, claims, P03 approvals with approve-with-changes, payment routes, payroll hand-off (reimbursement section, taxable portions, recovery through the loan engine, payroll events), ledger hand-off through GP-PAY-1 mapping, India GST input credit, FX (FBIL correction), OCR seam with options, fraud and duplicate checks F1–F13, permissions, events, API, screens, security, 39 slices in batches E1–E6, founder decisions D1–D9. |
