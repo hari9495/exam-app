@@ -206,6 +206,23 @@ describe('Performance batch PM5', () => {
     expect(await inA((tx) => tx.userNotification.count({ where: { type: 'perf.feedback.author_revealed', recipientUserId: users.adminA } }))).toBe(1);
   });
 
+  it('HR seals a review comment: the ratings stay, the text leaves every view but the sealer’s (§15.3)', async () => {
+    await api('priya', 'get', `/reviews/${ids.review}/sealable-entries`).expect(403);
+    const rows = (await api('hr', 'get', `/reviews/${ids.review}/sealable-entries`).expect(200)).body as { id: string; stage: string; author: string | null; texts: string[]; sealed: boolean }[];
+    const calm = rows.find((r) => r.texts.includes('Calm with dealers.'))!;
+    expect(calm).toMatchObject({ stage: 'peer', author: null, sealed: false });
+    await api('priya', 'post', `/review-entries/${calm.id}/seal`).send({ reason: 'Raised as a concern' }).expect(403);
+    await api('hr', 'post', `/review-entries/${calm.id}/seal`).send({ reason: 'x' }).expect(400);
+    await api('hr', 'post', `/review-entries/${calm.id}/seal`).send({ reason: 'Passed to the confidential channel' }).expect(200);
+    await api('hr', 'post', `/review-entries/${calm.id}/seal`).send({ reason: 'Again' }).expect(409);
+    const g = (await api('priya', 'get', `/reviews/${ids.review}/peer-feedback`).expect(200)).body;
+    expect(g.shown[0].responses).toBe(3);
+    expect(Object.values(g.shown[0].ratings)[0]).toMatchObject({ average: 3, count: 3 });
+    expect(JSON.stringify(g)).not.toContain('Calm with dealers.');
+    expect((await api('hr', 'get', `/reviews/${ids.review}/sealable-entries`).expect(200)).body.find((r: { id: string }) => r.id === calm.id)).toMatchObject({ sealed: true, texts: expect.arrayContaining(['Calm with dealers.']) });
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'perf.review_entry.sealed', entityId: calm.id } }))).toBe(1);
+  });
+
   it('HR ends a block; companies stay apart', async () => {
     const blocks = (await api('hr', 'get', '/reviewer-blocks').expect(200)).body as { id: string }[];
     await api('hr', 'delete', `/reviewer-blocks/${blocks[0].id}`).expect(200);

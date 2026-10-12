@@ -8576,6 +8576,9 @@ model ReviewEntry {
   status           String    @default("draft") @db.VarChar(10)
   submittedAt      DateTime? @map("submitted_at") @db.Timestamptz(3)
   anonymous        Boolean   @default(false)
+  sealedAt         DateTime? @map("sealed_at") @db.Timestamptz(3)
+  sealedBy         String?   @map("sealed_by") @db.Uuid
+  sealReason       String?   @map("seal_reason") @db.VarChar(500)
   version          Int       @default(1)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)

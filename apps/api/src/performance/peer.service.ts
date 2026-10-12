@@ -277,9 +277,10 @@ export class PerformancePeerService {
         if (a.own) return { advisory: true, peer, released: false, shown: [], heldBack: 0, responses: 0 };
         throw new NotFoundException('No such review.');
       }
-      const rows = await tx.reviewEntry.findMany({ where: { organizationId: org, reviewId, stage: 'peer', status: 'submitted' }, select: { id: true, relationship: true, answers: true, comment: true } });
+      const rows = await tx.reviewEntry.findMany({ where: { organizationId: org, reviewId, stage: 'peer', status: 'submitted' }, select: { id: true, relationship: true, answers: true, comment: true, sealedAt: true } });
       const min = Number(await settingFor(tx, c, 'perf.anonymity.min_responses', { legalEntityId: r.legalEntityId }));
-      const g = groupFeedback(rows.map((x): PeerEntry => ({ id: x.id, relationship: x.relationship as Relationship, answers: x.answers as PeerEntry['answers'], comment: x.comment })), min);
+      // A sealed answer still counts and keeps its ratings; its texts are gone (§15.3).
+      const g = groupFeedback(rows.map((x): PeerEntry => ({ id: x.id, relationship: x.relationship as Relationship, answers: (x.sealedAt ? Object.fromEntries(Object.entries(x.answers as PeerEntry['answers']).map(([k, a]) => [k, { rating: a.rating ?? null, text: null }])) : x.answers) as PeerEntry['answers'], comment: x.sealedAt ? null : x.comment })), min);
       return { advisory: true, peer, released: Boolean(r.releasedAt), responses: rows.length, ...g };
     });
   }
@@ -327,6 +328,42 @@ export class PerformancePeerService {
       if (!n.count) throw new NotFoundException('No such block.');
       await audit(tx, c, 'perf.reviewer_block.ended', 'reviewer_block', id, {});
       return { id };
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------ sealing review comments (§15.3)
+
+  /** For HR who handle concerns: the texts of a review's entries, sealed ones too; never the author of an anonymous one. */
+  async sealable(ctx: TenantContext, user: ScopeUser, reviewId: string) {
+    const v = await this.viewer(user);
+    this.sealer(v);
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      if (!(await tx.review.findFirst({ where: { organizationId: org, id: reviewId }, select: { id: true } }))) throw new NotFoundException('No such review.');
+      const rows = await tx.reviewEntry.findMany({ where: { organizationId: org, reviewId, status: 'submitted' }, orderBy: { submittedAt: 'asc' } });
+      const people = await this.names(tx, org, rows.filter((e) => !e.anonymous).map((e) => e.authorEmployeeId));
+      return rows.map((e) => ({
+        id: e.id,
+        stage: e.stage,
+        author: e.anonymous ? null : (people.get(e.authorEmployeeId ?? '') ?? ''),
+        texts: [...Object.values(e.answers as PeerEntry['answers']).map((a) => a?.text).filter((t): t is string => Boolean(t)), ...(e.comment ? [e.comment] : [])],
+        sealed: Boolean(e.sealedAt),
+        sealReason: e.sealReason,
+      }));
+    });
+  }
+
+  /** Seals one entry's texts: its ratings stay; everyone but the sealer sees it removed; the reason is audited. */
+  async sealEntry(ctx: TenantContext, user: ScopeUser, entryId: string, reason: string) {
+    const v = await this.viewer(user);
+    this.sealer(v);
+    return this.run(ctx, async (tx, c) => {
+      const e = await tx.reviewEntry.findFirst({ where: { organizationId: c.organizationId, id: entryId } });
+      if (!e) throw new NotFoundException('No such review entry.');
+      if (e.sealedAt) throw new ConflictException('This entry is already sealed.');
+      await tx.reviewEntry.update({ where: { id: entryId }, data: { sealedAt: new Date(), sealedBy: v.userId, sealReason: reason } });
+      await audit(tx, c, 'perf.review_entry.sealed', 'review_entry', entryId, { reason });
+      return { id: entryId, sealed: true };
     });
   }
 

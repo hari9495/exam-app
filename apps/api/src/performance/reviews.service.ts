@@ -39,6 +39,8 @@ const num = (x: Prisma.Decimal | null) => (x === null ? null : Number(x.toString
 const addDays = (d: string, n: number) => iso(new Date(asDate(d).getTime() + n * 86_400_000));
 const asJson = (x: unknown) => x as Prisma.InputJsonValue;
 const CHUNK = 500;
+/** A sealed entry keeps its ratings; its texts leave every view but the sealer's (§15.3). */
+const withoutTexts = (answers: Prisma.JsonValue) => Object.fromEntries(Object.entries((answers ?? {}) as Record<string, { rating?: number | null }>).map(([k, a]) => [k, { rating: a?.rating ?? null, text: null }]));
 const STAGE_LABEL: Record<string, string> = { self: 'Self review', manager: 'Manager review', skip: 'Skip-level review', release: 'Waiting for release', done: 'Done' };
 
 type Cycle = Prisma.ReviewCycleGetPayload<object>;
@@ -438,7 +440,7 @@ export class PerformanceReviewsService {
       const onlyOther = Boolean(mineOther) && !a.own && !a.manager && !a.chain && !a.scope;
       const showSelf = !onlyOther && (a.own || ((a.manager || a.chain || a.scope) && self?.status === 'submitted' && (!a.manager || !afterDraft || Boolean(mgr))));
       const showManager = !onlyOther && (!a.own || released);
-      const entry = (e: typeof self) => (e ? { status: e.status, answers: e.answers, overallRating: num(e.overallRating), comment: e.comment, submittedAt: e.submittedAt?.toISOString() ?? null, version: e.version } : null);
+      const entry = (e: typeof self) => (e ? { status: e.status, answers: e.sealedAt ? withoutTexts(e.answers) : e.answers, overallRating: num(e.overallRating), comment: e.sealedAt ? null : e.comment, sealed: Boolean(e.sealedAt), submittedAt: e.submittedAt?.toISOString() ?? null, version: e.version } : null);
       const people = await this.names(tx, org, [r.employeeId, r.managerEmployeeId]);
       const log = await tx.reviewStageLog.findMany({ where: { organizationId: org, reviewId: id }, orderBy: { at: 'asc' } });
       const open = r.status === 'open';
@@ -466,7 +468,7 @@ export class PerformanceReviewsService {
         excludedSections: showManager ? ((r.excludedSections as string[] | null) ?? []) : [],
         bands: bands.map((b) => ({ fromScore: num(b.fromScore), toScore: num(b.toScore), label: b.label })),
         trail: log.map((l) => ({ stage: l.stage, event: l.event, reason: l.reason, at: l.at.toISOString() })),
-        skipComment: showManager ? (skipEntry?.comment ?? null) : null,
+        skipComment: showManager && !skipEntry?.sealedAt ? (skipEntry?.comment ?? null) : null,
         // Named other reviewers: advisory, never in the score; the employee does not see them.
         others: !a.own && showManager ? await this.otherViews(tx, org, entries.filter((e) => e.stage === 'other')) : [],
         otherEntry: mineOther ? entry(mineOther) : null,
@@ -791,7 +793,7 @@ export class PerformanceReviewsService {
 
   private async otherViews(tx: Tx, org: string, rows: Prisma.ReviewEntryGetPayload<object>[]) {
     const people = await this.names(tx, org, rows.map((e) => e.authorEmployeeId));
-    return rows.map((e) => ({ name: people.get(e.authorEmployeeId ?? '') ?? '', status: e.status, answers: e.status === 'submitted' ? e.answers : null, comment: e.status === 'submitted' ? e.comment : null }));
+    return rows.map((e) => ({ name: people.get(e.authorEmployeeId ?? '') ?? '', status: e.status, sealed: Boolean(e.sealedAt), answers: e.status === 'submitted' ? (e.sealedAt ? withoutTexts(e.answers) : e.answers) : null, comment: e.status === 'submitted' && !e.sealedAt ? e.comment : null }));
   }
 
   private async formerManagers(tx: Tx, org: string, reviewId: string) {

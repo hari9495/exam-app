@@ -311,6 +311,8 @@ export interface ReviewSummary {
 
 export interface ReviewEntry {
   status: 'draft' | 'submitted';
+  /** HR sealed its texts (§15.3); the ratings stay. */
+  sealed?: boolean;
   answers: Record<string, { rating: number | null; text: string | null }>;
   overallRating: number | null;
   comment: string | null;

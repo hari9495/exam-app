@@ -562,6 +562,7 @@ function ReviewBody({ r, onSave, onAddOther, onSkip, onAcknowledge, onDisagree, 
   const shown = (e: ReviewEntry | null, who: string) =>
     e && (
       <Card title={`${who}${e.status === 'submitted' ? '' : ' (draft)'}`}>
+        {e.sealed && <Text as="p" tone="secondary">Comments removed by HR.</Text>}
         {r.template.sections.flatMap((s) =>
           s.questions
             .filter((q) => e.answers[q.id])

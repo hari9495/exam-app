@@ -7,6 +7,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
 import { BlockDto, EntryDto, NominateDto, NomineeQueryDto, PeerConfigDto, ReasonDto } from './review-dto';
+import { SealDto } from './dto';
 import { PerformancePeerService } from './peer.service';
 
 // Performance batch PM5 (M06-BUILD-DESIGN §19 "360°", "Privacy"). Nominations and answers are open to the implicit
@@ -108,6 +109,19 @@ export class PerformancePeerController {
   @RequirePermissions('perf.concern.seal')
   endBlock(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.endBlock(ctx, this.user(req), id);
+  }
+
+  @Get('reviews/:id/sealable-entries')
+  @RequirePermissions('perf.concern.seal')
+  sealable(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.sealable(ctx, this.user(req), id);
+  }
+
+  @Post('review-entries/:id/seal')
+  @HttpCode(200)
+  @RequirePermissions('perf.concern.seal')
+  sealEntry(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SealDto) {
+    return this.svc.sealEntry(ctx, this.user(req), id, dto.reason);
   }
 
   @Get('reviews/:id/peer-entries')

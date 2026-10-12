@@ -138,4 +138,10 @@ describe('Review cycles and reviews (PM4)', () => {
     await ue.click(within(d).getByRole('button', { name: 'Ask' }));
     expect(onAddOther).toHaveBeenCalledWith('e3');
   });
+
+  it('a sealed entry shows its ratings and that HR removed the comments', () => {
+    render(<ReviewScreen {...rp({ review: review({ role: 'viewer', can: { self: false, manager: false }, managerEntry: { status: 'submitted', sealed: true, answers: { g: { rating: 4, text: null } }, overallRating: null, comment: null, submittedAt: '2026-10-20T09:00:00.000Z', version: 2 } }) })} />);
+    expect(screen.getByText('Comments removed by HR.')).toBeInTheDocument();
+    expect(screen.getByText('Goals: 4 · L4')).toBeInTheDocument();
+  });
 });
