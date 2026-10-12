@@ -307,8 +307,8 @@ export class SmsChannelService {
             firstName: admin.name,
             look,
             facts: [
-              text(`Your organisation has sent its limit of ${cap} text messages this month.`),
-              text('Until next month, one-time codes go by email where the sign-in allows it. You can change the limit in Settings › Notifications › SMS.'),
+              text(`Your organisation has sent its limit of ${cap === 1 ? '1 text message' : `${cap} text messages`} this month.`),
+              text('Until next month, one-time codes go by email where the sign-in allows it. You can change the limit in Security › Text messages (SMS).'),
             ],
           });
           void this.email.send({ to: admin.email, organizationId, ...mail });

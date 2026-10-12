@@ -442,6 +442,9 @@ describe('SMS channel (P04 §4.4/§4.5a; YX-NTF-07/10/11/12/13/14)', () => {
       await new Promise((r) => setTimeout(r, 300));
       const alerts = () => email.send.mock.calls.filter(([m]) => m.subject === 'Your organisation has reached its monthly SMS limit').map(([m]) => m.to).sort();
       expect(alerts()).toEqual([`adminA-${runId}@sms.test`, `adminA2-${runId}@sms.test`]);
+      const alert = email.send.mock.calls.find(([m]) => m.subject === 'Your organisation has reached its monthly SMS limit')![0];
+      expect(alert.text).toContain(`its limit of ${used + 1} text message${used + 1 === 1 ? '' : 's'} this month`);
+      expect(alert.text).toContain('Security › Text messages (SMS)'); // the menu path the admin actually sees
       expect((await send(org.A.id, mobile(3))).status).toBe('fallback');
       await new Promise((r) => setTimeout(r, 300));
       expect(alerts()).toHaveLength(2); // once a month
