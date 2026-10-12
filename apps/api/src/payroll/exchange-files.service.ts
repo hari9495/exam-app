@@ -134,7 +134,8 @@ export class ExchangeFilesService {
     });
   }
 
-  private async checked(f: File) {
+  /** The stored file, after its hash is checked against the one recorded when it was generated. */
+  async checked(f: File) {
     const file = await this.files.get(f.fileRef);
     if (sha256(file) !== f.sha256) {
       this.logger.error(`Exchange file ${f.id} does not match its hash`);

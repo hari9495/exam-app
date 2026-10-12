@@ -154,7 +154,25 @@ export class PayoutService implements OnModuleInit {
       const now = new Date();
       const rows: (BankRow & { slip: Slip })[] = [];
       const excluded: { employeeId: string; reason: string }[] = [];
+      // 5g-D2: a death-in-service F&F pays each nominee or heir directly, by share, to their own account.
+      const deaths = await tx.fnfSettlement.findMany({ where: { organizationId: org, exitType: 'death', OR: [{ runId: run.id }, { secondRunId: run.id }] } });
       for (const s of slips) {
+        const death = deaths.find((d) => d.employmentId === s.employmentId);
+        if (death) {
+          const payees = (death.payees as { name: string; sharePercent: string; accountEnc?: string | null; ifsc?: string | null }[]) ?? [];
+          if (!payees.length || payees.some((p) => !p.accountEnc || !p.ifsc)) {
+            excluded.push({ employeeId: s.employeeId, reason: 'Record every payee’s bank account on the F&F settlement first.' });
+            continue;
+          }
+          let left = s.net;
+          payees.forEach((p, i) => {
+            const amount = i === payees.length - 1 ? left : s.net.mul(p.sharePercent).div(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_DOWN);
+            left = left.sub(amount);
+            const code = employments.find((e) => e.id === s.employmentId)?.employeeCode ?? '';
+            rows.push({ slip: s, account: this.open(org, s.employeeId, p.accountEnc!), ifsc: p.ifsc!, name: p.name, amount: amount.toFixed(2), code, narration: `F&F share ${p.sharePercent}% ${code}` });
+          });
+          continue;
+        }
         const a = accounts.find((x) => x.employeeId === s.employeeId);
         const mode = modeOf(s.employmentId);
         if (mode !== 'bank') excluded.push({ employeeId: s.employeeId, reason: `Paid by ${mode} (disbursement register).` });
@@ -204,7 +222,7 @@ export class PayoutService implements OnModuleInit {
           debitAccountLast4: dto.debitAccount.slice(-4),
           generationNo: before + 1,
           regenerationReason: before ? dto.reason! : null,
-          payslipIds: rows.map((r) => r.slip.id),
+          payslipIds: [...new Set(rows.map((r) => r.slip.id))],
           total,
           generatedBy: v.userId!,
         },

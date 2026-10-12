@@ -98,6 +98,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'payroll.variance_threshold_pct': { label: 'Ask to confirm a net pay change above (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '10', '15', '20', '25'], default: '10' },
   'payroll.protected_net_percent': { label: 'Recoveries leave at least this share of gross pay (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '10', '20', '25', '30', '40', '50'], default: '0' },
   'payroll.net_rounding': { label: 'Round net pay', scopes: ['tenant', 'legal_entity'], dated: false, values: ['none', 'rupee'], default: 'rupee' },
+  // Founder decisions 5g-D4 / 5g-D5 (M03 §19.9): the daily rate leave encashment is paid at, and whether an unserved
+  // resignation notice is recovered in the F&F (HR can still waive it for one person, with a reason).
+  'payroll.leave_encashment_basis': { label: 'Leave encashment is paid on', scopes: ['tenant', 'legal_entity'], dated: false, values: ['basic_da', 'gross'], default: 'basic_da' },
+  'payroll.notice_shortfall': { label: 'An unserved notice period is', scopes: ['tenant', 'legal_entity'], dated: false, values: ['recover', 'waive'], default: 'recover' },
   'payroll.standard_daily_hours': { label: 'Standard hours a day (for hourly rates and cost rates)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['8', '8.5', '9'], default: '8' },
   // PAY-4.05 (YX-NTF-15): payslips by email as a password-protected PDF (no amounts in the email); off unless the company turns it on.
   // Batch 5e (§8.5, §8.6): the employee picks the regime until this day of the tax year; proofs are sent between the

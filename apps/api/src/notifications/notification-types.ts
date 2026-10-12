@@ -52,6 +52,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'document.rejected', group: 'reminders', label: 'A document you uploaded was not accepted' },
   { type: 'document.expiring', group: 'reminders', label: 'A document of yours expires soon' },
   { type: 'letter.ready', group: 'assignments', label: 'A letter for you is ready' },
+  { type: 'payroll.fnf.due', group: 'reminders', label: 'A full and final settlement is due' },
+  { type: 'payroll.overpayment.consent', group: 'approvals', label: 'Payroll asks you to agree to a repayment plan' },
   { type: 'letter.signed', group: 'reminders', label: 'A joiner or employee accepted a letter' },
   { type: 'preboarding.completed', group: 'reminders', label: 'A joiner finished their pre-boarding forms' },
   // Batch 6c: exits, clearance, exit interviews, assets, probation reviews.

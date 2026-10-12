@@ -369,6 +369,32 @@ export function etdsFile(i: EtdsInput): Buffer {
 }
 
 /** The structural checks the fake validator runs (never a substitute for the FVU): numbering, record order, counts, sums. */
+/** The FH fields the FVU fills in (versions and hashes); every other field of every record must be ours unchanged. */
+const FVU_FIELDS = new Set<string>(['recordHash', 'fvuVersion', 'fileHash', 'samVersion', 'samHash', 'scmVersion', 'scmHash', 'consolidatedHash']);
+
+/**
+ * Founder decision 5g-D1: the filer runs the FVU on their own computer and uploads the .fvu it made. It is untrusted
+ * input: size-capped, plain text only, and it must be the return we generated record for record, with only the FVU's
+ * version and hash fields of the file header filled in (so the TAN, form, year, quarter and every amount are ours).
+ */
+export function checkFvu(ours: Buffer, fvu: Buffer): { problems: string[]; fvuVersion: string | null } {
+  const problems: string[] = [];
+  if (fvu.length > ours.length * 2 + 64 * 1024) return { problems: ['The .fvu file is far larger than the return; it is not the FVU output of this return.'], fvuVersion: null };
+  const text = fvu.toString('latin1');
+  if (/[^\x20-\x7e\r\n]/.test(text)) return { problems: ['The .fvu file is not plain text.'], fvuVersion: null };
+  const split = (t: string) => t.split(/\r?\n/).filter(Boolean).map((l) => l.split('^'));
+  const a = split(ours.toString('latin1'));
+  const b = split(text);
+  if (a.length !== b.length) problems.push(`The .fvu has ${b.length} records; the return has ${a.length}.`);
+  if (b[0]?.[1] !== 'FH' || b[0].length !== FH.length) return { problems: [...problems, 'The .fvu does not start with a file header.'], fvuVersion: null };
+  FH.forEach((name, i) => {
+    if (!FVU_FIELDS.has(name) && a[0][i] !== b[0][i]) problems.push(`File header ${name}: the .fvu says "${b[0][i].slice(0, 40)}", the return "${a[0][i]}".`);
+  });
+  if (!b[0][FH.indexOf('fvuVersion')] || !b[0][FH.indexOf('fileHash')]) problems.push('The .fvu has no FVU version or file hash: it was not made by the FVU.');
+  for (let i = 1; i < Math.min(a.length, b.length); i++) if (a[i].join('^') !== b[i].join('^')) problems.push(`Record ${i + 1} (${a[i][1]}) differs from the return.`);
+  return { problems: problems.slice(0, 50), fvuVersion: b[0][FH.indexOf('fvuVersion')]?.slice(0, 20) || null };
+}
+
 export function etdsStructure(file: Buffer): string[] {
   const lines = file.toString('utf8').split('\r\n').filter(Boolean);
   const errors: string[] = [];

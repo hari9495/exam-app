@@ -158,6 +158,16 @@ export class StatutoryController {
     return this.filings.returnFile(ctx, this.user(req), id, csi?.buffer ?? null);
   }
 
+  /** 5g-D1: the .fvu the filer made with the FVU on their own computer, checked against the return we generated. */
+  @Post('tds-returns/:id/fvu')
+  @HttpCode(200)
+  @RequirePermissions('statutory.filing.generate')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024, files: 1 } }))
+  uploadFvu(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file?: { buffer: Buffer }) {
+    return this.filings.uploadFvu(ctx, this.user(req), id, file?.buffer);
+  }
+
   @Post('tds-returns/:id/filed')
   @HttpCode(200)
   @RequirePermissions('statutory.filing.mark_filed')

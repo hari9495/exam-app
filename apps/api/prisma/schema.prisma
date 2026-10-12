@@ -7033,6 +7033,9 @@ model OneTimePay {
   reason         String    @db.VarChar(300)
   status         String    @default("approved") @db.VarChar(10)
   wfRequestId    String?   @map("wf_request_id") @db.Uuid
+  runId          String?   @map("run_id") @db.Uuid
+  label          String?   @db.VarChar(200)
+  holdReason     String?   @map("hold_reason") @db.VarChar(300)
   createdBy      String    @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -7646,4 +7649,120 @@ model AdvisoryReview {
 
   @@unique([organizationId, legalEntityId, advisoryCode, ruleVersion], map: "advisory_reviews_key")
   @@map("advisory_reviews")
+}
+
+// Batch 5g (M03-BUILD-DESIGN §5.8): arrears, rule-change proposals, F&F settlements, overpayment recoveries.
+model ArrearsWorksheet {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  employmentId   String    @map("employment_id") @db.Uuid
+  source         String    @db.VarChar(10)
+  sourceRef      String?   @map("source_ref") @db.VarChar(80)
+  fromMonth      DateTime  @map("from_month") @db.Date
+  toMonth        DateTime  @map("to_month") @db.Date
+  status         String    @default("draft") @db.VarChar(10)
+  total          Decimal   @default(0) @db.Decimal(14, 2)
+  employerCost   Decimal   @default(0) @map("employer_cost") @db.Decimal(14, 2)
+  payMonth       DateTime? @map("pay_month") @db.Date
+  runId          String?   @map("run_id") @db.Uuid
+  reason         String    @db.VarChar(300)
+  createdBy      String    @map("created_by") @db.Uuid
+  approvedBy     String?   @map("approved_by") @db.Uuid
+  approvedAt     DateTime? @map("approved_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("arrears_worksheets")
+}
+
+model ArrearsWorksheetLine {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  worksheetId    String   @map("worksheet_id") @db.Uuid
+  period         DateTime @db.Date
+  componentCode  String   @map("component_code") @db.VarChar(30)
+  asPaid         Decimal? @map("as_paid") @db.Decimal(14, 2)
+  corrected      Decimal  @db.Decimal(14, 2)
+  difference     Decimal? @db.Decimal(14, 2)
+  baseSource     String   @map("base_source") @db.VarChar(10)
+  kind           String   @default("earning") @db.VarChar(10)
+  confirmedBy    String?  @map("confirmed_by") @db.Uuid
+  confirmReason  String?  @map("confirm_reason") @db.VarChar(300)
+
+  @@map("arrears_worksheet_lines")
+}
+
+model StatutoryArrearsProposal {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  statute        String    @db.VarChar(30)
+  jurisdiction   String    @db.VarChar(10)
+  ruleVersion    String    @map("rule_version") @db.VarChar(40)
+  periods        Json
+  employees      Json
+  employeeCount  Int       @map("employee_count")
+  status         String    @default("open") @db.VarChar(10)
+  reason         String?   @db.VarChar(300)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("statutory_arrears_proposals")
+}
+
+model FnfSettlement {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  employmentId   String    @map("employment_id") @db.Uuid
+  exitCaseId     String    @map("exit_case_id") @db.Uuid
+  exitType       String    @map("exit_type") @db.VarChar(24)
+  inputRevision  Int       @map("input_revision")
+  lwd            DateTime  @db.Date
+  deadline       DateTime  @db.Date
+  runId          String?   @map("run_id") @db.Uuid
+  secondRunId    String?   @map("second_run_id") @db.Uuid
+  status         String    @default("open") @db.VarChar(10)
+  payees         Json      @default("[]")
+  alertedOn      DateTime? @map("alerted_on") @db.Date
+  noticeWaivedBy    String? @map("notice_waived_by") @db.Uuid
+  noticeWaiveReason String? @map("notice_waive_reason") @db.VarChar(300)
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("fnf_settlements")
+}
+
+model OverpaymentRecovery {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  employmentId   String    @map("employment_id") @db.Uuid
+  origin         String    @db.VarChar(10)
+  originRef      String?   @map("origin_ref") @db.VarChar(80)
+  originTaxYear  String    @map("origin_tax_year") @db.VarChar(7)
+  amount         Decimal   @db.Decimal(14, 2)
+  recovered      Decimal   @default(0) @db.Decimal(14, 2)
+  writtenOff     Decimal   @default(0) @map("written_off") @db.Decimal(14, 2)
+  instalment     Decimal   @db.Decimal(14, 2)
+  reason         String    @db.VarChar(300)
+  status         String    @default("proposed") @db.VarChar(12)
+  consentAt      DateTime? @map("consent_at") @db.Timestamptz(3)
+  consentBy      String?   @map("consent_by") @db.Uuid
+  declinedAt     DateTime? @map("declined_at") @db.Timestamptz(3)
+  writeOffBy     String?   @map("write_off_by") @db.Uuid
+  writeOffAt     DateTime? @map("write_off_at") @db.Timestamptz(3)
+  writeOffReason String?   @map("write_off_reason") @db.VarChar(300)
+  createdBy      String    @map("created_by") @db.Uuid
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("overpayment_recoveries")
 }

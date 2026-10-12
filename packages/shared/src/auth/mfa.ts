@@ -98,6 +98,10 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'statutory.challan.manage',
   'statutory.register.sign',
   'statutory.advisory.review',
+  'payroll.offcycle.prepare',
+  'payroll.arrears.approve',
+  'payroll.fnf.manage',
+  'payroll.writeoff.approve',
 ];
 
 // A user holding any of these is in a sensitive role (MFA reset needs a second admin, YX-IAM-11).

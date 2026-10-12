@@ -80,7 +80,7 @@ export interface TaxProjection {
   thisMonth: ThisMonth;
 }
 
-const nextMonth = (m: string) => {
+export const nextMonth = (m: string) => {
   const d = new Date(`${m}-01T00:00:00Z`);
   d.setUTCMonth(d.getUTCMonth() + 1);
   return d.toISOString().slice(0, 7);
