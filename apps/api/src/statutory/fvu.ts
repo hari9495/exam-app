@@ -26,7 +26,7 @@ import { etdsStructure } from './etds';
 
 export interface FvuOutcome {
   ok: boolean;
-  validator: 'fvu' | 'fake';
+  validator: 'fvu' | 'fake' | 'filer';
   version: string | null;
   errors: string[];
   /** The .fvu file the portal takes (only from the real FVU). */
@@ -104,7 +104,8 @@ export class FvuRunner {
     const image = process.env.FVU_JRE_IMAGE;
     const argsText = process.env.FVU_ARGS;
     if (!dir || !image || !argsText) {
-      if (process.env.NODE_ENV === 'production') throw new FvuUnavailable('The File Validation Utility is not set up yet, so a return cannot be validated. Ask YukthiX support (go-live item 16).');
+      // 5g-D1: in production without the worker the filer runs the FVU and uploads the .fvu (checked against the return).
+      if (process.env.NODE_ENV === 'production') return { ok: false, validator: 'filer', version: null, errors: ['Run the FVU on your computer on the downloaded return and upload the .fvu file it makes.'], output: null };
       const errors = etdsStructure(file);
       return { ok: !errors.length, validator: 'fake', version: null, errors, output: null };
     }

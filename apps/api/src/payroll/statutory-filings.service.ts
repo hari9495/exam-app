@@ -7,7 +7,7 @@ import type { ScopeUser, Viewer } from '../access/scope';
 import { StatutoryRulesService } from '../statutory/statutory.service';
 import { damages, due, inForce, penalty, type RuleSet } from '../statutory/evaluator';
 import { FORMATS, ecrFile, esiFile, lwfFile, ptFile, type EcrRow, type EsiRow, type LwfRow, type PtRow, type TdsRow } from '../statutory/filing-files';
-import { ETDS_FORMAT, etdsFile } from '../statutory/etds';
+import { ETDS_FORMAT, checkFvu, etdsFile } from '../statutory/etds';
 import { FvuRunner, FvuUnavailable, type FvuOutcome } from '../statutory/fvu';
 import { sha256 } from './pay-file-store';
 import { asDate, dateOf, monthRange } from '../time/time-core';
@@ -857,6 +857,44 @@ export class StatutoryFilingsService {
       await tx.tdsReturn.update({ where: { id: r.id }, data: { exchangeFileId: ex.id, fvu: fvu as unknown as Prisma.InputJsonValue, status: outcome.ok ? 'validated' : 'reconciled' } });
       await audit(tx, c, 'statutory.tds_return.validated', 'tds_return', r.id, { validator: outcome.validator, ok: outcome.ok, errors: outcome.errors.length, sha256: ex.sha256 });
       return { id: r.id, fileId: ex.id, rows: built.rows.length, sha256: ex.sha256, validation: fvu };
+    });
+  }
+
+  /**
+   * Founder decision 5g-D1: the filer ran the FVU on their computer and uploads the .fvu. It must be this return as we
+   * generated it (checked record for record, the stored file's hash checked first); then the return is validated and the
+   * .fvu is kept beside it under the same audited links.
+   */
+  async uploadFvu(ctx: TenantContext, user: ScopeUser, id: string, fvuFile: Buffer | undefined) {
+    const v = await this.viewer(user);
+    if (!fvuFile?.length) throw new BadRequestException('Attach the .fvu file the FVU made.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const r = await this.returnFor(tx, c, v, id, 'statutory.filing.generate');
+      if (!['reconciled', 'validated'].includes(r.status) || !r.exchangeFileId) throw new ConflictException('Make the return file first, then run the FVU on it.');
+      const ex = await tx.exchangeFile.findFirstOrThrow({ where: { organizationId: c.organizationId, id: r.exchangeFileId } });
+      const { problems, fvuVersion } = checkFvu(await this.files.checked(ex), fvuFile);
+      if (problems.length) {
+        await audit(tx, c, 'statutory.tds_return.fvu_refused', 'tds_return', r.id, { problems: problems.length, sha256: sha256(fvuFile) });
+        throw new BadRequestException({ statusCode: 400, message: 'This .fvu is not the FVU output of this return.', problems });
+      }
+      const kind: FileKind = r.formCode === '24Q' ? 'form24q' : 'form138';
+      const out = await this.files.generateIn(tx, c, {
+        legalEntityId: r.legalEntityId,
+        kind,
+        ownerType: 'tds_return',
+        ownerId: r.id,
+        periodStart: null,
+        fileName: `${r.formCode.toLowerCase()}-${r.taxYear}-q${r.quarter}.fvu`,
+        contentType: 'application/octet-stream',
+        data: fvuFile,
+        rows: ex.rowCount,
+        totals: {},
+        by: v.userId!,
+      });
+      const fvu = { fvuFileId: out.id, validator: 'filer', version: fvuVersion, ok: true, errors: [], fileSha256: ex.sha256, fvuSha256: out.sha256, format: ETDS_FORMAT, at: new Date().toISOString() };
+      await tx.tdsReturn.update({ where: { id: r.id }, data: { fvu: fvu as unknown as Prisma.InputJsonValue, status: 'validated' } });
+      await audit(tx, c, 'statutory.tds_return.validated', 'tds_return', r.id, { validator: 'filer', fvuVersion, sha256: ex.sha256, fvuSha256: out.sha256 });
+      return { id: r.id, status: 'validated', validation: fvu };
     });
   }
 
