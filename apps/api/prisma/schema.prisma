@@ -8371,3 +8371,94 @@ model GoalCheckin {
 
   @@map("goal_checkins")
 }
+
+// ---- Performance batch PM3 (migration 20261114000000_performance_pm3; M06-BUILD-DESIGN §5.4): feedback and 1:1s.
+
+model FeedbackRequest {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId        String    @map("organization_id") @db.Uuid
+  requestedByEmployeeId String    @map("requested_by_employee_id") @db.Uuid
+  aboutEmployeeId       String    @map("about_employee_id") @db.Uuid
+  askedEmployeeId       String    @map("asked_employee_id") @db.Uuid
+  question              String    @db.VarChar(500)
+  dueOn                 DateTime? @map("due_on") @db.Date
+  status                String    @default("open") @db.VarChar(10)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  answeredAt            DateTime? @map("answered_at") @db.Timestamptz(3)
+
+  @@map("feedback_requests")
+}
+
+model FeedbackItem {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  fromEmployeeId String    @map("from_employee_id") @db.Uuid
+  toEmployeeId   String    @map("to_employee_id") @db.Uuid
+  kind           String    @db.VarChar(10)
+  text           String    @db.VarChar(2000)
+  visibility     String    @default("private") @db.VarChar(14)
+  goalId         String?   @map("goal_id") @db.Uuid
+  requestId      String?   @map("request_id") @db.Uuid
+  withdrawnAt    DateTime? @map("withdrawn_at") @db.Timestamptz(3)
+  sealedAt       DateTime? @map("sealed_at") @db.Timestamptz(3)
+  sealedBy       String?   @map("sealed_by") @db.Uuid
+  sealReason     String?   @map("seal_reason") @db.VarChar(500)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("feedback_items")
+}
+
+model OneOnOne {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  employeeId        String    @map("employee_id") @db.Uuid
+  managerEmployeeId String    @map("manager_employee_id") @db.Uuid
+  on                DateTime  @db.Date
+  status            String    @default("planned") @db.VarChar(10)
+  sharedNotes       String?   @map("shared_notes") @db.VarChar(10000)
+  remindedOn        DateTime? @map("reminded_on") @db.Date
+  createdBy         String?   @map("created_by") @db.Uuid
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("one_on_ones")
+}
+
+model OneOnOneAgendaItem {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  oneOnOneId        String   @map("one_on_one_id") @db.Uuid
+  addedByEmployeeId String   @map("added_by_employee_id") @db.Uuid
+  text              String   @db.VarChar(500)
+  done              Boolean  @default(false)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("one_on_one_agenda")
+}
+
+model OneOnOnePrivateNote {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  oneOnOneId     String   @map("one_on_one_id") @db.Uuid
+  authorUserId   String   @map("author_user_id") @db.Uuid
+  text           String   @db.VarChar(10000)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([oneOnOneId, authorUserId])
+  @@map("one_on_one_private_notes")
+}
+
+model OneOnOneAction {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  oneOnOneId      String    @map("one_on_one_id") @db.Uuid
+  ownerEmployeeId String    @map("owner_employee_id") @db.Uuid
+  text            String    @db.VarChar(500)
+  dueOn           DateTime? @map("due_on") @db.Date
+  goalId          String?   @map("goal_id") @db.Uuid
+  doneAt          DateTime? @map("done_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("one_on_one_actions")
+}

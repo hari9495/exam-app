@@ -397,3 +397,126 @@ export class PeriodQueryDto {
   @IsUUID()
   period!: string;
 }
+
+// ------------------------------------------------------------------------------------------ PM3: feedback and 1:1s (§19)
+
+export class FeedbackDto {
+  @IsUUID()
+  toEmployeeId!: string;
+
+  @IsIn(['praise', 'suggestion'])
+  kind!: 'praise' | 'suggestion';
+
+  @trim()
+  @IsString()
+  @Length(3, 2000)
+  text!: string;
+
+  @IsOptional()
+  @IsIn(['private', 'recipient_only'])
+  visibility?: 'private' | 'recipient_only';
+
+  @IsOptional()
+  @IsUUID()
+  goalId?: string | null;
+
+  /** Answering a request for feedback. */
+  @IsOptional()
+  @IsUUID()
+  requestId?: string | null;
+}
+
+export class FeedbackListDto {
+  @IsOptional()
+  @IsIn(['received', 'given', 'team'])
+  view?: 'received' | 'given' | 'team';
+}
+
+export class FeedbackRequestDto {
+  @IsUUID()
+  aboutEmployeeId!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @IsUUID('all', { each: true })
+  askedEmployeeIds!: string[];
+
+  @trim()
+  @IsString()
+  @Length(3, 500)
+  question!: string;
+
+  @IsOptional()
+  @Matches(ISO)
+  dueOn?: string | null;
+}
+
+export class SealDto {
+  @trim()
+  @IsString()
+  @Length(3, 500)
+  reason!: string;
+}
+
+export class OneOnOneDto {
+  @IsUUID()
+  withEmployeeId!: string;
+
+  @Matches(ISO)
+  on!: string;
+}
+
+export class OneOnOneUpdateDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(10000)
+  sharedNotes?: string | null;
+
+  @IsOptional()
+  @IsIn(['planned', 'held', 'cancelled'])
+  status?: 'planned' | 'held' | 'cancelled';
+
+  @IsOptional()
+  @Matches(ISO)
+  on?: string;
+
+  @IsInt()
+  version!: number;
+}
+
+export class AgendaDto {
+  @trim()
+  @IsString()
+  @Length(2, 500)
+  text!: string;
+}
+
+export class DoneDto {
+  @IsBoolean()
+  done!: boolean;
+}
+
+export class PrivateNoteDto {
+  @IsString()
+  @MaxLength(10000)
+  text!: string;
+}
+
+export class ActionDto {
+  @trim()
+  @IsString()
+  @Length(2, 500)
+  text!: string;
+
+  @IsUUID()
+  ownerEmployeeId!: string;
+
+  @IsOptional()
+  @Matches(ISO)
+  dueOn?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  goalId?: string | null;
+}

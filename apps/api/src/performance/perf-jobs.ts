@@ -2,11 +2,12 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nest
 import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
+import { PerformanceFeedbackService } from './feedback.service';
 import { PerformanceGoalsService } from './goals.service';
 
 const QUEUE = 'performance-jobs';
 
-/** M06 jobs on BullMQ (§18.3): daily goal check-in reminders (PM2). */
+/** M06 jobs on BullMQ (§18.3): daily goal check-in reminders (PM2), 1:1 reminders (PM3). */
 @Injectable()
 export class PerformanceJobs implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PerformanceJobs.name);
@@ -16,6 +17,7 @@ export class PerformanceJobs implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(REDIS_CONNECTION) private readonly connection: Redis,
     private readonly goals: PerformanceGoalsService,
+    private readonly feedback: PerformanceFeedbackService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, { connection }), QUEUE);
   }
@@ -32,7 +34,10 @@ export class PerformanceJobs implements OnModuleInit, OnModuleDestroy {
 
   async handle(name: string): Promise<void> {
     try {
-      if (name === 'daily') await this.goals.sweep();
+      if (name === 'daily') {
+        await this.goals.sweep();
+        await this.feedback.sweep();
+      }
     } catch (e) {
       this.logger.warn(`${name}: ${(e as Error).message}`);
     }

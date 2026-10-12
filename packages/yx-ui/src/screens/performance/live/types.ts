@@ -167,3 +167,64 @@ export interface GoalMap {
   unaligned: string[];
   offTrack: string[];
 }
+
+// ------------------------------------------------------------------------------------------ PM3: feedback and 1:1s (§19)
+
+export interface FeedbackItem {
+  id: string;
+  from: string;
+  fromEmployeeId: string;
+  to: string;
+  toEmployeeId: string;
+  kind: 'praise' | 'suggestion';
+  /** Null when HR sealed it: the people see that HR removed it. */
+  text: string | null;
+  visibility: 'private' | 'recipient_only';
+  goalId: string | null;
+  fromRequest: boolean;
+  at: string;
+  sealed: boolean;
+  can: { withdraw: boolean; seal: boolean };
+}
+
+export interface FeedbackRequest {
+  id: string;
+  about: string;
+  aboutEmployeeId: string;
+  requestedBy: string;
+  question: string;
+  dueOn: string | null;
+}
+
+export interface FeedbackInput {
+  toEmployeeId: string;
+  kind: 'praise' | 'suggestion';
+  text: string;
+  visibility: 'private' | 'recipient_only';
+  requestId?: string;
+}
+
+export interface OneOnOneSummary {
+  id: string;
+  with: string;
+  on: string;
+  status: 'planned' | 'held' | 'cancelled';
+  role: 'manager' | 'employee';
+}
+
+export interface OneOnOne {
+  id: string;
+  employee: string;
+  employeeId: string;
+  manager: string;
+  managerEmployeeId: string;
+  role: 'manager' | 'employee';
+  on: string;
+  status: 'planned' | 'held' | 'cancelled';
+  sharedNotes: string | null;
+  agenda: { id: string; text: string; done: boolean; addedBy: string }[];
+  actions: { id: string; text: string; owner: string; ownerEmployeeId: string; dueOn: string | null; goalId: string | null; done: boolean }[];
+  /** Only the viewer's own note; the other person never sees it. */
+  privateNote: string;
+  version: number;
+}

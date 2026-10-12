@@ -65,6 +65,10 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'probation.review.done', group: 'reminders', label: 'A manager reviewed a probation' },
   // M06 performance PM2.
   { type: 'perf.goal.checkin_due', group: 'reminders', label: 'Your goals are due a check-in' },
+  // PM3: feedback and 1:1s.
+  { type: 'perf.feedback.received', group: 'mentions', label: 'A colleague gave you feedback' },
+  { type: 'perf.feedback.requested', group: 'assignments', label: 'Someone asked you for feedback about a colleague' },
+  { type: 'perf.one_on_one.reminder', group: 'reminders', label: 'You have a 1:1 tomorrow' },
   // M05 E4: trips and advances.
   { type: 'expense.trip.update', group: 'assignments', label: 'A trip was approved, or needs bookings from the travel desk' },
   { type: 'expense.advance.update', group: 'reminders', label: 'An expense advance was paid, is due to be settled, or is overdue' },

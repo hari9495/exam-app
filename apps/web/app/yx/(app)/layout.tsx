@@ -38,6 +38,8 @@ const COMPANY_RULES: WorkspaceLink = { id: 'company-rules', label: 'Company rule
 // Batch G1: the "Add a country" guide, the company's words in Hindi / Tamil / Telugu, and the person's language.
 const COUNTRIES: WorkspaceLink = { id: 'countries', label: 'Countries', href: '/yx/settings/countries', group: 'Organisation' };
 const MY_GOALS: WorkspaceLink = { id: 'goals', label: 'My goals', href: '/yx/performance', group: 'Me' };
+const MY_FEEDBACK: WorkspaceLink = { id: 'feedback', label: 'Feedback', href: '/yx/performance/feedback', group: 'Me' };
+const MY_ONE_ON_ONES: WorkspaceLink = { id: 'one-on-ones', label: 'My 1:1s', href: '/yx/performance/one-on-ones', group: 'Me' };
 const GOAL_MAP: WorkspaceLink = { id: 'goal-map', label: 'Goal map', href: '/yx/performance/goal-map', group: 'People' };
 const PERFORMANCE_SETUP: WorkspaceLink = { id: 'performance-setup', label: 'Performance', href: '/yx/settings/performance', group: 'Organisation' };
 const TRANSLATIONS: WorkspaceLink = { id: 'translations', label: 'Translations', href: '/yx/settings/translations', group: 'Organisation' };
@@ -247,7 +249,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   ];
   // P04 Q5: the company's email branding and wording, for those who hold the key (read-only in a support session).
   const emails = perms.has('notification.template.manage') || support ? [EMAILS] : [];
-  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee || perms.has('expense.finance.review') ? [MY_EXPENSES] : []), ...(employee || perms.has('perf.goal.manage') ? [MY_GOALS] : []), ...(employee ? [PRIVACY, MY_LANGUAGE, MY_LETTERS, MY_DOCUMENTS, MY_ASSETS, RESIGN] : [])];
+  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee || perms.has('expense.finance.review') ? [MY_EXPENSES] : []), ...(employee || perms.has('perf.goal.manage') ? [MY_GOALS] : []), ...(employee ? [MY_FEEDBACK, MY_ONE_ON_ONES] : []), ...(employee ? [PRIVACY, MY_LANGUAGE, MY_LETTERS, MY_DOCUMENTS, MY_ASSETS, RESIGN] : [])];
   const supportEndsAt = support ? (decodeJwtPayload(accessToken)?.supportEndsAt as string | undefined) : undefined;
   const desk = support
     ? []

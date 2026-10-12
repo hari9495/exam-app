@@ -61,6 +61,9 @@ describe('notification catalog', () => {
       'expense.trip.update',
       'expense.advance.update',
       'perf.goal.checkin_due',
+      'perf.feedback.received',
+      'perf.feedback.requested',
+      'perf.one_on_one.reminder',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

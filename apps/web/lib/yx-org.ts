@@ -129,6 +129,7 @@ export const YX_KEYS = [
   'perf.setup.manage',
   'perf.goal.view',
   'perf.goal.manage',
+  'perf.concern.seal',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 
