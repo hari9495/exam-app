@@ -57,6 +57,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'expense.advance.recovery_instalments': { label: 'Expenses: an overdue advance is recovered from salary in this many instalments', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '6'], default: '3' },
   'expense.advance.settle_days': { label: 'Expenses: a trip advance is settled within this many days of the trip ending', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30', '45'], default: '15' },
   'expense.gst.capture': { label: 'Expenses: capture GST for input credit', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
+  // M06 performance PM2 (§6.1, D2): whether the manager approves a person's goals; how often check-ins are expected.
+  'perf.goal.approval': { label: 'Performance: the manager approves a person’s goals', scopes: ['tenant'], dated: false, values: ['manager', 'none'], default: 'manager' },
+  'perf.self_review.visible_to_manager': { label: 'Performance: the manager reads the self review', scopes: ['tenant'], dated: false, values: ['after_manager_draft', 'immediately'], default: 'after_manager_draft' },
+  'perf.goal.checkin_days': { label: 'Performance: remind about goal check-ins after (days)', scopes: ['tenant'], dated: false, values: ['14', '30', '90'], default: '30' },
   'alumni.access_years': { label: 'Alumni can read their documents for (years after leaving)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10'], default: '7' },
   // M01 YX-LC-18 (lifecycle 6e): the rehire policy. Starter template "fresh start, same record, code and UAN"; HR may
   // change any option for one rehire with a reason.

@@ -198,6 +198,16 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'expense.payout.manage',
     // E5: expense reports, including GST input.
     'expense.report.view',
+    // M06 performance PM1: rating scales, review templates, competencies and the skills library.
+    'perf.setup.manage',
+    // PM2: goals of people in scope; goal periods, company and team goals.
+    'perf.goal.view',
+    'perf.goal.manage',
+    // PM3: sealing a feedback item that reports a concern.
+    'perf.concern.seal',
+    // PM4: review cycles and reviews of people in scope.
+    'perf.cycle.manage',
+    'perf.review.view',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],

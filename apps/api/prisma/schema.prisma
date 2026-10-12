@@ -8020,7 +8020,7 @@ model ExpenseAdvance {
   @@map("expense_advances")
 }
 
-// ---- M05 expenses batch E3 (migration 20261112000000_expenses_e3): payments, payout batches, payroll events handled once,
+// ---- M05 expenses batch E3 (migration 20261116000000_expenses_e3): payments, payout batches, payroll events handled once,
 // and exported journals. RLS lives in the migration.
 model ExpensePayment {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -8260,4 +8260,450 @@ model ParallelRun {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("parallel_runs")
+}
+
+// ---- Performance batch PM1 (migration 20261111000000_performance_pm1; M06-BUILD-DESIGN §5.2): rating scales,
+// review templates, the company skills library (first form) and competencies as a view of it.
+
+model RatingScale {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(80)
+  minValue       Decimal  @map("min_value") @db.Decimal(4, 1)
+  maxValue       Decimal  @map("max_value") @db.Decimal(4, 1)
+  step           Decimal  @default(1) @db.Decimal(2, 1)
+  status         String   @default("active") @db.VarChar(8)
+  starterKey     String?  @map("starter_key") @db.VarChar(40)
+  createdBy      String?  @map("created_by") @db.Uuid
+  version        Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("rating_scales")
+}
+
+model RatingScaleLevel {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  scaleId        String  @map("scale_id") @db.Uuid
+  value          Decimal @db.Decimal(4, 1)
+  label          String  @db.VarChar(60)
+  description    String? @db.VarChar(300)
+
+  @@map("rating_scale_levels")
+}
+
+model RatingBand {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  scaleId        String  @map("scale_id") @db.Uuid
+  fromScore      Decimal @map("from_score") @db.Decimal(5, 2)
+  toScore        Decimal @map("to_score") @db.Decimal(5, 2)
+  label          String  @db.VarChar(60)
+
+  @@map("rating_bands")
+}
+
+model ReviewTemplate {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  familyId        String    @map("family_id") @db.Uuid
+  templateVersion Int       @default(1) @map("template_version")
+  name            String    @db.VarChar(100)
+  kind            String    @db.VarChar(12)
+  scaleId         String    @map("scale_id") @db.Uuid
+  scoring         String    @default("weighted") @db.VarChar(16)
+  status          String    @default("draft") @db.VarChar(8)
+  starterKey      String?   @map("starter_key") @db.VarChar(40)
+  createdBy       String?   @map("created_by") @db.Uuid
+  activatedAt     DateTime? @map("activated_at") @db.Timestamptz(3)
+  version         Int       @default(1)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("review_templates")
+}
+
+model ReviewTemplateSection {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  templateId     String   @map("template_id") @db.Uuid
+  seq            Int      @db.SmallInt
+  kind           String   @db.VarChar(12)
+  title          String   @db.VarChar(100)
+  weight         Decimal  @default(0) @db.Decimal(5, 2)
+  rated          Boolean  @default(true)
+  whoAnswers     String[] @map("who_answers") @db.VarChar(8)
+
+  @@map("review_template_sections")
+}
+
+model ReviewTemplateQuestion {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  sectionId      String  @map("section_id") @db.Uuid
+  seq            Int     @db.SmallInt
+  text           String  @db.VarChar(500)
+  answer         String  @default("both") @db.VarChar(8)
+  required       Boolean @default(true)
+  maxChars       Int     @default(2000) @map("max_chars")
+
+  @@map("review_template_questions")
+}
+
+model CompanySkill {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  parentId       String?  @map("parent_id") @db.Uuid
+  name           String   @db.VarChar(120)
+  kind           String   @db.VarChar(10)
+  status         String   @default("active") @db.VarChar(8)
+  mergedIntoId   String?  @map("merged_into_id") @db.Uuid
+  starterKey     String?  @map("starter_key") @db.VarChar(40)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("company_skills")
+}
+
+model Competency {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  companySkillId String   @map("company_skill_id") @db.Uuid
+  group          String   @db.VarChar(12)
+  description    String?  @db.VarChar(500)
+  status         String   @default("active") @db.VarChar(8)
+  starterKey     String?  @map("starter_key") @db.VarChar(40)
+  version        Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("competencies")
+}
+
+model CompetencyLevel {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  competencyId   String  @map("competency_id") @db.Uuid
+  level          Int     @db.SmallInt
+  label          String  @db.VarChar(80)
+  behaviours     String? @db.VarChar(500)
+
+  @@map("competency_levels")
+}
+
+model RoleCompetencyMap {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  designationId  String    @map("designation_id") @db.Uuid
+  competencyId   String    @map("competency_id") @db.Uuid
+  expectedLevel  Int       @map("expected_level") @db.SmallInt
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+
+  @@map("role_competency_map")
+}
+
+// ---- Performance batch PM2 (migration 20261113000000_performance_pm2; M06-BUILD-DESIGN §5.3): goals and OKRs.
+
+model GoalPeriod {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(80)
+  fromOn         DateTime @map("from_on") @db.Date
+  toOn           DateTime @map("to_on") @db.Date
+  status         String   @default("open") @db.VarChar(8)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("goal_periods")
+}
+
+model Goal {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  periodId          String   @map("period_id") @db.Uuid
+  ownerType         String   @map("owner_type") @db.VarChar(8)
+  ownerEmployeeId   String?  @map("owner_employee_id") @db.Uuid
+  ownerDepartmentId String?  @map("owner_department_id") @db.Uuid
+  parentGoalId      String?  @map("parent_goal_id") @db.Uuid
+  kind              String   @db.VarChar(4)
+  title             String   @db.VarChar(200)
+  description       String?  @db.VarChar(1000)
+  weight            Decimal  @default(0) @db.Decimal(5, 2)
+  status            String   @default("draft") @db.VarChar(10)
+  progress          Decimal  @default(0) @db.Decimal(5, 2)
+  wfRequestId       String?  @map("wf_request_id") @db.Uuid
+  pendingChange     Json?    @map("pending_change")
+  decisionNote      String?   @map("decision_note") @db.VarChar(500)
+  checkinRemindedOn DateTime? @map("checkin_reminded_on") @db.Date
+  createdBy         String?  @map("created_by") @db.Uuid
+  version           Int      @default(1)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("goals")
+}
+
+model KeyResult {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  goalId         String  @map("goal_id") @db.Uuid
+  seq            Int     @db.SmallInt
+  title          String  @db.VarChar(200)
+  unit           String? @db.VarChar(20)
+  direction      String  @default("up") @db.VarChar(4)
+  startValue     Decimal @default(0) @map("start_value") @db.Decimal(16, 4)
+  targetValue    Decimal @map("target_value") @db.Decimal(16, 4)
+  currentValue   Decimal @default(0) @map("current_value") @db.Decimal(16, 4)
+  weight         Decimal @default(1) @db.Decimal(5, 2)
+
+  @@map("key_results")
+}
+
+model GoalCheckin {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  goalId         String   @map("goal_id") @db.Uuid
+  byUserId       String?  @map("by_user_id") @db.Uuid
+  on             DateTime @db.Date
+  values         Json
+  progress       Decimal  @db.Decimal(5, 2)
+  confidence     String   @db.VarChar(10)
+  note           String?  @db.VarChar(1000)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("goal_checkins")
+}
+
+// ---- Performance batch PM3 (migration 20261114000000_performance_pm3; M06-BUILD-DESIGN §5.4): feedback and 1:1s.
+
+model FeedbackRequest {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId        String    @map("organization_id") @db.Uuid
+  requestedByEmployeeId String    @map("requested_by_employee_id") @db.Uuid
+  aboutEmployeeId       String    @map("about_employee_id") @db.Uuid
+  askedEmployeeId       String    @map("asked_employee_id") @db.Uuid
+  question              String    @db.VarChar(500)
+  dueOn                 DateTime? @map("due_on") @db.Date
+  status                String    @default("open") @db.VarChar(10)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  answeredAt            DateTime? @map("answered_at") @db.Timestamptz(3)
+
+  @@map("feedback_requests")
+}
+
+model FeedbackItem {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  fromEmployeeId String    @map("from_employee_id") @db.Uuid
+  toEmployeeId   String    @map("to_employee_id") @db.Uuid
+  kind           String    @db.VarChar(10)
+  text           String    @db.VarChar(2000)
+  visibility     String    @default("private") @db.VarChar(14)
+  goalId         String?   @map("goal_id") @db.Uuid
+  requestId      String?   @map("request_id") @db.Uuid
+  withdrawnAt    DateTime? @map("withdrawn_at") @db.Timestamptz(3)
+  sealedAt       DateTime? @map("sealed_at") @db.Timestamptz(3)
+  sealedBy       String?   @map("sealed_by") @db.Uuid
+  sealReason     String?   @map("seal_reason") @db.VarChar(500)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("feedback_items")
+}
+
+model OneOnOne {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  employeeId        String    @map("employee_id") @db.Uuid
+  managerEmployeeId String    @map("manager_employee_id") @db.Uuid
+  on                DateTime  @db.Date
+  status            String    @default("planned") @db.VarChar(10)
+  sharedNotes       String?   @map("shared_notes") @db.VarChar(10000)
+  remindedOn        DateTime? @map("reminded_on") @db.Date
+  createdBy         String?   @map("created_by") @db.Uuid
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("one_on_ones")
+}
+
+model OneOnOneAgendaItem {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  oneOnOneId        String   @map("one_on_one_id") @db.Uuid
+  addedByEmployeeId String   @map("added_by_employee_id") @db.Uuid
+  text              String   @db.VarChar(500)
+  done              Boolean  @default(false)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("one_on_one_agenda")
+}
+
+model OneOnOnePrivateNote {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  oneOnOneId     String   @map("one_on_one_id") @db.Uuid
+  authorUserId   String   @map("author_user_id") @db.Uuid
+  text           String   @db.VarChar(10000)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([oneOnOneId, authorUserId])
+  @@map("one_on_one_private_notes")
+}
+
+model OneOnOneAction {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  oneOnOneId      String    @map("one_on_one_id") @db.Uuid
+  ownerEmployeeId String    @map("owner_employee_id") @db.Uuid
+  text            String    @db.VarChar(500)
+  dueOn           DateTime? @map("due_on") @db.Date
+  goalId          String?   @map("goal_id") @db.Uuid
+  doneAt          DateTime? @map("done_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("one_on_one_actions")
+}
+
+// ------------------------------------------------------------------------------------------ M06 PM4: review cycles
+
+model ReviewCycle {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  name             String    @db.VarChar(100)
+  kind             String    @db.VarChar(12)
+  periodFrom       DateTime  @map("period_from") @db.Date
+  periodTo         DateTime  @map("period_to") @db.Date
+  templateId       String    @map("template_id") @db.Uuid
+  scaleId          String    @map("scale_id") @db.Uuid
+  population       Json?
+  stages           Json
+  eligibilityRules Json      @map("eligibility_rules")
+  status           String    @default("draft") @db.VarChar(12)
+  launchedAt       DateTime? @map("launched_at") @db.Timestamptz(3)
+  releasedAt       DateTime? @map("released_at") @db.Timestamptz(3)
+  createdBy        String?   @map("created_by") @db.Uuid
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("review_cycles")
+}
+
+model ReviewEligibility {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  cycleId        String   @map("cycle_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  employmentId   String   @map("employment_id") @db.Uuid
+  rule           String   @db.VarChar(16)
+  eligibleMonths Decimal  @map("eligible_months") @db.Decimal(4, 1)
+  proration      Decimal  @db.Decimal(5, 4)
+  reviewed       Boolean
+  overrideReason String?  @map("override_reason") @db.VarChar(500)
+  byUserId       String?  @map("by_user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([cycleId, employeeId])
+  @@map("review_eligibility")
+}
+
+model Review {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  cycleId            String    @map("cycle_id") @db.Uuid
+  employeeId         String    @map("employee_id") @db.Uuid
+  employmentId       String    @map("employment_id") @db.Uuid
+  legalEntityId      String    @map("legal_entity_id") @db.Uuid
+  managerEmployeeId  String    @map("manager_employee_id") @db.Uuid
+  stage              String    @db.VarChar(12)
+  status             String    @default("open") @db.VarChar(14)
+  sectionScores      Json?     @map("section_scores")
+  excludedSections   Json?     @map("excluded_sections")
+  finalScore         Decimal?  @map("final_score") @db.Decimal(5, 2)
+  band               String?   @db.VarChar(60)
+  calibratedScore    Decimal?  @map("calibrated_score") @db.Decimal(5, 2)
+  releasedAt         DateTime? @map("released_at") @db.Timestamptz(3)
+  acknowledgedAt     DateTime? @map("acknowledged_at") @db.Timestamptz(3)
+  acknowledgeComment String?   @map("acknowledge_comment") @db.VarChar(2000)
+  disagreement       Boolean   @default(false)
+  reopenedReason     String?   @map("reopened_reason") @db.VarChar(500)
+  remindedOn         DateTime? @map("reminded_on") @db.Date
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@unique([cycleId, employeeId])
+  @@map("reviews")
+}
+
+model ReviewEntry {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  reviewId         String    @map("review_id") @db.Uuid
+  stage            String    @db.VarChar(8)
+  authorUserId     String    @map("author_user_id") @db.Uuid
+  authorEmployeeId String?   @map("author_employee_id") @db.Uuid
+  relationship     String    @db.VarChar(8)
+  answers          Json      @default("{}")
+  overallRating    Decimal?  @map("overall_rating") @db.Decimal(4, 1)
+  comment          String?   @db.VarChar(5000)
+  status           String    @default("draft") @db.VarChar(10)
+  submittedAt      DateTime? @map("submitted_at") @db.Timestamptz(3)
+  anonymous        Boolean   @default(false)
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([reviewId, stage, authorUserId])
+  @@map("review_entries")
+}
+
+model ReviewStageLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  reviewId       String   @map("review_id") @db.Uuid
+  stage          String   @db.VarChar(12)
+  fromOwner      String?  @map("from_owner") @db.Uuid
+  toOwner        String?  @map("to_owner") @db.Uuid
+  event          String   @db.VarChar(12)
+  reason         String?  @db.VarChar(500)
+  byUserId       String?  @map("by_user_id") @db.Uuid
+  at             DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("review_stage_log")
+}
+
+model ReviewDisagreement {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  reviewId       String    @map("review_id") @db.Uuid
+  text           String    @db.VarChar(2000)
+  status         String    @default("open") @db.VarChar(12)
+  hrNote         String?   @map("hr_note") @db.VarChar(2000)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("review_disagreements")
+}
+
+model PerfOwnerTransfer {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String   @map("organization_id") @db.Uuid
+  employeeId           String   @map("employee_id") @db.Uuid
+  oldManagerEmployeeId String?  @map("old_manager_employee_id") @db.Uuid
+  newManagerEmployeeId String?  @map("new_manager_employee_id") @db.Uuid
+  effectiveOn          DateTime @map("effective_on") @db.Date
+  artefactType         String   @map("artefact_type") @db.VarChar(20)
+  artefactId           String   @map("artefact_id") @db.Uuid
+  decisionNeeded       Boolean  @default(false) @map("decision_needed")
+  byUserId             String?  @map("by_user_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("perf_owner_transfers")
 }

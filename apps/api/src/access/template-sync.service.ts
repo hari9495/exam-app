@@ -3,7 +3,7 @@ import { AuditService, TenantPrismaService, holdsConfidential } from '@exam-plat
 import { ROLE_TEMPLATES } from './role-templates';
 import { TEMPLATE_HISTORY } from './role-template-history';
 
-// Role templates reach existing companies (P02 §4.2, Q5; migration 20261113000000_role_template_follow). A company role
+// Role templates reach existing companies (P02 §4.2, Q5; migration 20261116100000_role_template_follow). A company role
 // made from a template follows it until someone edits its keys; at start-up every following role gets the keys its
 // template has gained since (additions only), each change recorded in the audit log. A role made before roles
 // remembered their template is recognised once: its keys equal a past (or the current) version of a template exactly.

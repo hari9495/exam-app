@@ -32,6 +32,10 @@ const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_r
 const LIFECYCLE_SUPPORT_EXCLUDED = ['files', 'documents', 'document_versions', 'preboardings', 'preboarding_portal_sessions', 'consent_records', 'bgv_checks', 'letter_issues', 'signature_requests', 'exit_cases', 'exit_case_hr', 'clearance_items', 'exit_interviews', 'exit_interview_answers', 'probation_reviews', 'exit_deprovisioning', 'exit_settlement_inputs', 'alumni_sessions', 'employee_nominations', 'exit_payees', 'absconding_timelines'];
 // M05 expenses E2: claims, their lines, the approvers' changes and the flags (§5.8).
 const EXPENSES_SUPPORT_EXCLUDED = ['expense_claims', 'expense_lines', 'expense_line_changes', 'expense_flags', 'trips', 'trip_legs', 'trip_bookings', 'expense_advances', 'advance_settlements', 'expense_payments', 'expense_payout_batches', 'expense_event_receipts', 'expense_journals'];
+// M06 PM3: feedback and 1:1s (M06-BUILD-DESIGN 5.10).
+const PERFORMANCE_SUPPORT_EXCLUDED = ['feedback_requests', 'feedback_items', 'one_on_ones', 'one_on_one_agenda', 'one_on_one_private_notes', 'one_on_one_actions',
+  // PM4: review cycles and reviews.
+  'review_cycles', 'review_eligibility', 'reviews', 'review_entries', 'review_stage_log', 'review_disagreements', 'perf_owner_transfers'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt((SUPPORT_EXCLUDED.includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 
@@ -685,7 +689,7 @@ describe('PostgreSQL row-level security (app role)', () => {
     const restrictive = await prisma.$queryRaw<{ table: string }[]>`
       SELECT c.relname AS table FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid
       WHERE p.polname = 'support_session_excluded' AND NOT p.polpermissive ORDER BY c.relname`;
-    expect(restrictive.map((r) => r.table)).toEqual([...SUPPORT_EXCLUDED, ...PAYROLL_SUPPORT_EXCLUDED, ...LIFECYCLE_SUPPORT_EXCLUDED, ...EXPENSES_SUPPORT_EXCLUDED].sort());
+    expect(restrictive.map((r) => r.table)).toEqual([...SUPPORT_EXCLUDED, ...PAYROLL_SUPPORT_EXCLUDED, ...LIFECYCLE_SUPPORT_EXCLUDED, ...EXPENSES_SUPPORT_EXCLUDED, ...PERFORMANCE_SUPPORT_EXCLUDED].sort());
   });
 
   it("(b) org A cannot read, change or point at org B's grants, personal data, identifiers, bank accounts or requests", async () => {

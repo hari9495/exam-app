@@ -83,13 +83,13 @@ describe('/yx layout: the People group follows grants and the employee record', 
   it('a manager sees the directory, their team, history and probations; raising on behalf adds Job changes', async () => {
     route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: ['request.raise_on_behalf'], 'GET /people/employees': [PERSON], 'GET /people/team': { managerId: 'p-divya', members: [MEMBER] } });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(await links()).toEqual(['My profile', 'Directory', 'Org chart', 'My team', 'Job history', 'Job changes', 'Probation', 'Exits', 'My leave', 'My attendance', 'My shifts', 'My overtime', 'My timesheet', 'Team leave', 'Attendance muster', 'Overtime', 'Roster', 'Help centre', 'Service catalogue', 'Chat with us', 'Approvals', 'My payslips', 'My tax', 'My tax declarations', 'My loans', 'My pay documents', 'My security', 'My expenses', 'Who accessed my data', 'Language', 'My letters', 'My documents', 'My assets', 'Resign']));
+    await waitFor(async () => expect(await links()).toEqual(['My profile', 'Directory', 'Org chart', 'My team', 'Job history', 'Job changes', 'Probation', 'Exits', 'My leave', 'My attendance', 'My shifts', 'My overtime', 'My timesheet', 'Team leave', 'Attendance muster', 'Overtime', 'Roster', 'Help centre', 'Service catalogue', 'Chat with us', 'Approvals', 'My payslips', 'My tax', 'My tax declarations', 'My loans', 'My pay documents', 'My security', 'My expenses', 'My goals', 'My reviews', 'Feedback', 'My 1:1s', 'Who accessed my data', 'Language', 'My letters', 'My documents', 'My assets', 'Resign']));
   });
 
   it('an employee without reports sees the directory and their history; someone with no record sees no People group', async () => {
     route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: [], 'GET /people/employees': [PERSON], 'GET /people/team': { managerId: 'p-arjun', members: [] } });
     const { unmount } = wrap(<YxAppLayout><p>page</p></YxAppLayout>);
-    await waitFor(async () => expect(await links()).toEqual(['My profile', 'Directory', 'Org chart', 'Job history', 'My leave', 'My attendance', 'My shifts', 'My overtime', 'My timesheet', 'Help centre', 'Service catalogue', 'Chat with us', 'Approvals', 'My payslips', 'My tax', 'My tax declarations', 'My loans', 'My pay documents', 'My security', 'My expenses', 'Who accessed my data', 'Language', 'My letters', 'My documents', 'My assets', 'Resign']));
+    await waitFor(async () => expect(await links()).toEqual(['My profile', 'Directory', 'Org chart', 'Job history', 'My leave', 'My attendance', 'My shifts', 'My overtime', 'My timesheet', 'Help centre', 'Service catalogue', 'Chat with us', 'Approvals', 'My payslips', 'My tax', 'My tax declarations', 'My loans', 'My pay documents', 'My security', 'My expenses', 'My goals', 'My reviews', 'Feedback', 'My 1:1s', 'Who accessed my data', 'Language', 'My letters', 'My documents', 'My assets', 'Resign']));
     unmount();
     route({ 'GET /auth/mfa': MFA, [`GET ${PERMS_PATH}`]: [], 'GET /people/employees': [], 'GET /people/team': NO_TEAM });
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);

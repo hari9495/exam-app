@@ -187,6 +187,16 @@ describe('Select', () => {
     await u.click(await screen.findByRole('option', { name: /Earned leave/ }));
     expect(screen.getByText('2 selected')).toBeInTheDocument();
   });
+  it('multi-select hands its search to the host when it searches the server', async () => {
+    const u = userEvent.setup();
+    const onSearchChange = vi.fn();
+    render(<MultiSelect aria-label="People" options={[{ value: 'a', label: 'Asha' }]} value={[]} onChange={vi.fn()} onSearchChange={onSearchChange} searchPlaceholder="Search people" />);
+    await u.click(screen.getByRole('combobox', { name: 'People' }));
+    await u.type(screen.getByPlaceholderText('Search people'), 'Zz');
+    await waitFor(() => expect(onSearchChange).toHaveBeenLastCalledWith('Zz'));
+    // Not filtered here: the host's matches show as given.
+    expect(screen.getByRole('option', { name: /Asha/ })).toBeInTheDocument();
+  });
   it('person picker searches by department', async () => {
     const u = userEvent.setup();
     const onChange = vi.fn();
