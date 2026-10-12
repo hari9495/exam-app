@@ -133,7 +133,6 @@ Words used here:
 | `expense_policy_rules` | `policy_id`, `category_code`, `tier_id` (null = any), `per_line`, `per_day`, `per_trip`, `per_month`, `currency`, `over_limit` (`justify_and_approve` / `block`), `needs_justification` | One row per category × tier; a missing row means the category is not allowed |
 | `mileage_rates` | `vehicle` (`two_wheeler` / `car` / `ev_car` / …), `rate_per_km`, `currency`, `valid_from`, `valid_to`, `monthly_km_cap` | Dated |
 | `per_diem_rates` | `tier_id` or `country`, `rate_per_day`, `currency`, `partial_day_rule` (`full` / `half_after_hours`), `meals_deduction` (json: share deducted per company-paid meal), `valid_from`, `valid_to` | Dated |
-| `fx_rates` | `source` (`fbil` / `ecb` / `company`), `base`, `quote`, `rate_date`, `rate`, `imported_at` | Unique on (source, base, quote, rate_date) |
 | `entity_gst_registrations` | `legal_entity_id`, `state` (two-digit GST state code), `gstin`, `valid_from`, `valid_to` | §22 D7; the entity's existing single `gstin` seeds one row |
 
 ### 5.3 Batch E2 · Claims, lines, checks
@@ -174,7 +173,9 @@ Words used here:
 | `card_statement_imports` | `card_account_id?`, `file_id`, `adapter`, `period`, `row_count`, `status` | One per uploaded statement |
 | `card_transactions` | `import_id`, `posted_on`, `merchant`, `amount`, `currency`, `match_status` (`unmatched` / `matched` / `explained` / `personal`), `line_id?`, `explanation`, `recovery_advance_id?` | Personal spend is recovered like an advance (Q8) |
 
-### 5.7 Currency columns (E5, on `expense_lines`; B18)
+### 5.7 Currency (E5, on `expense_lines`; B18)
+`fx_rates` (`source` (`fbil` / `ecb` / `company`), `base`, `quote`, `rate_date`, `rate`, `imported_at`; unique on source, base, quote and rate date) comes with E5, where it is first used (moved from E1 when E1 was built).
+
 `receipt_currency` (ISO 4217), `receipt_amount`, `fx_rate`, `fx_source` (`reference` / `advance` / `statement` / `company_table` / `manual`), `fx_rate_date`, `fx_proof_file_id?`, `fx_variance_pct`, `fx_flag` (bool). `claimed` and `approved` are always in the pay currency. A line in the pay currency has rate 1, source `reference`, and no proof.
 
 ### 5.8 RLS summary
@@ -212,7 +213,7 @@ Words used here:
 ### 6.2 Starter templates (YukthiX starters, copied and never overwritten)
 - **Categories:** air, rail, cab and local conveyance, lodging, meals, mileage, per diem, internet and phone, client entertainment, visa and fees, other. Each has a GST-eligible flag and, for India, the blocked-credit key from the P07 pack (§13.3).
 - **City tiers:** Tier 1 (the large metros), Tier 2, Tier 3, International. The city lists are editable data, not law.
-- **Policies:** three grade bands × the tiers above, with the M05 Q1 limit types filled in.
+- **Policies:** one company-wide starter policy with the M05 Q1 limit types filled in for each tier. Grade ids differ per company, so a starter cannot name grade bands; the company copies the policy and narrows each copy to a band with "Applies to" (built in E1).
 
 Starter amounts are examples a company replaces, written in our own words and not taken from any vendor.
 
@@ -550,7 +551,8 @@ Every M05 endpoint is added to `endpoint-permissions.spec.ts`.
 
 ### 16.2 Role templates
 - **Finance Approver** gains `expense.finance.review`, `expense.report.view` and `expense.payout.manage`.
-- **HR Admin** gains `expense.claim.view` and `expense.policy.manage`.
+- **HR Admin** gains `expense.claim.view`.
+- `expense.policy.manage` is company configuration, granted company-wide only, so it does not fit the entity-scoped HR Admin or Finance templates. A new company-wide **Expense set-up** template holds it (built in E1); System Admins have it too.
 - A new **Travel Desk** template has `travel.booking.manage`.
 - `expense.payout.release` is in no template by default. The company grants it to a named person.
 
@@ -807,5 +809,6 @@ Each legal entity has one GSTIN today; hotel credit needs the registration in th
 
 | Date | Change |
 |---|---|
+| 12 Oct 2026 | Batch E1 built: `fx_rates` moved to E5 (§5.7); one starter policy instead of three grade bands (§6.2); `expense.policy.manage` in a new company-wide Expense set-up template instead of HR Admin and Finance (§16.2). |
 | 12 Oct 2026 | Founder accepted D2–D9; D1 changed to self-hosted PaddleOCR at launch in an isolated worker (no network, non-root, limits, strict output parse, per-field confidence, nothing auto-submits); OCR slice moved to E2 (XP-2.10); §22.1 lists the five payroll changes for the payroll builder. |
 | 12 Oct 2026 | First draft: scope, reuse, data model by batch with RLS, settings and starters, policies as P19 rule data, claims, P03 approvals with approve-with-changes, payment routes, payroll hand-off (reimbursement section, taxable portions, recovery through the loan engine, payroll events), ledger hand-off through GP-PAY-1 mapping, India GST input credit, FX (FBIL correction), OCR seam with options, fraud and duplicate checks F1–F13, permissions, events, API, screens, security, 39 slices in batches E1–E6, founder decisions D1–D9. |
