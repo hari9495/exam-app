@@ -39,6 +39,11 @@ export interface AssignmentFacts {
   grade: Ref | null;
   /** 5c-D2: unskilled, semi_skilled, skilled or highly_skilled; null when not set. */
   skillClass?: string | null;
+  /** G1 (gap pass C1): contracted hours a week ("24.0"); null = full-time. */
+  hoursPerWeek?: string | null;
+  /** The normal week where the job is and the FTE it gives (null when no country pack covers it). */
+  normalWeekHours?: string | null;
+  ftePercent?: string | null;
   employmentType: Ref | null;
   manager: { id: string; name: string | null } | null;
   costCentres: (Ref & { percent: string })[];
@@ -92,6 +97,7 @@ export interface ChangePayload {
     designationId?: string;
     gradeId?: string | null;
     skillClass?: string | null;
+    hoursPerWeek?: string | null;
     employmentTypeId?: string;
     managerEmployeeId?: string | null;
     costCentres?: CostCentreShare[];
@@ -175,4 +181,20 @@ export interface ChangeOptions {
   types?: Exclude<ChangeType, 'join'>[];
   /** Who can be chosen as manager or dotted-line manager. Default: `people`. */
   managers?: PersonOption[];
+}
+
+/** G1 (gap pass C3): the three named service dates. */
+export interface ServiceDates {
+  companyStart: string;
+  employerStart: string;
+  continuousServiceFrom: string;
+  source: 'hr' | 'rehire_continuous' | 'rehire_break_counted' | 'joining';
+  /** HR's reason, only for HR. */
+  reason: string | null;
+}
+
+export interface ServiceDatesInput {
+  /** null: back to the rule (rehire choice or joining day). */
+  continuousServiceFrom: string | null;
+  reason: string;
 }

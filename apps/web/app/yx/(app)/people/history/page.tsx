@@ -3,9 +3,9 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Spinner } from '@yukthix/ui';
-import { PersonHistoryScreen, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
+import { PersonHistoryScreen, type AsOfView, type HistoryView, type PersonOption, type ServiceDates } from '@yukthix/ui/history';
 import { loadState, todayIst, useYxPermissions } from '../../../../../lib/yx-org';
-import { useChangeOptions, usePeople, useRaiseChange } from '../../../../../lib/yx-people';
+import { useChangeOptions, usePeople, usePeopleWrite, useRaiseChange } from '../../../../../lib/yx-people';
 
 const id = encodeURIComponent;
 
@@ -24,6 +24,9 @@ function History() {
   const pay = payShown ? '&pay=true' : '';
   const view = usePeople<AsOfView>(personId ? `/employees/${id(personId)}/as-of?date=${id(asOf)}${pay}` : null);
   const history = usePeople<HistoryView>(personId ? `/employees/${id(personId)}/history?${pay.slice(1)}` : null);
+  // G1 (gap pass C3): company start, this employer start, continuous service from.
+  const service = usePeople<ServiceDates>(personId ? `/employees/${id(personId)}/service-dates` : null);
+  const peopleWrite = usePeopleWrite();
   const canManage = perms.has('employee.change.manage');
   const options = useChangeOptions(people.data ?? [], perms.has('employee.salary.manage'), canManage);
   const raise = useRaiseChange();
@@ -50,6 +53,8 @@ function History() {
       payShown={payShown}
       onShowPay={async (show) => setPayShown(show)}
       change={canManage ? { options, ...raise } : undefined}
+      serviceDates={personId ? (service.data ?? null) : undefined}
+      onSaveServiceDates={canManage && personId ? async (input) => void (await peopleWrite('PUT', `/employees/${id(personId)}/service-dates`, input)) : undefined}
     />
   );
 }

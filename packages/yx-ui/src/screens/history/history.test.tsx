@@ -277,3 +277,40 @@ describe('Add person (P01 §4.4 / §4.5a, PPL-36)', () => {
     expect(screen.queryByLabelText(/Annual CTC/)).toBeNull();
   });
 });
+
+describe('G1: hours a week and service dates (gap pass C1, C3)', () => {
+  it('"Employment type or hours" sets part-time hours, back to full-time, or nothing', () => {
+    const t = { changeType: 'employment_type_change' as const };
+    expect(changeInput(draft({ ...t, hours: 'set', hoursValue: '24' }), OPTIONS).input?.payload).toEqual({ assignment: { hoursPerWeek: '24' } });
+    expect(changeInput(draft({ ...t, hours: 'full' }), OPTIONS).input?.payload).toEqual({ assignment: { hoursPerWeek: null } });
+    expect(changeInput(draft({ ...t, hours: 'set', hoursValue: '24.25' }), OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-hours']);
+    expect(changeInput(draft({ ...t, hours: 'set', hoursValue: '90' }), OPTIONS).errors.map((e) => e.fieldId)).toEqual(['ch-hours']);
+    // A promotion never carries hours, whatever the draft holds.
+    expect(changeInput(draft({ values: { designationId: 'des-sr' }, hours: 'set', hoursValue: '24' }), OPTIONS).input?.payload).toEqual({ assignment: { designationId: 'des-sr' } });
+  });
+
+  it('the hire form sends hours only when given', () => {
+    const base: HireDraft = { ...EMPTY_HIRE, givenName: 'Meera', legalEntityId: 'le-kfpl', joinedOn: new Date(2026, 10, 2), locationId: 'loc-blr', departmentId: 'dep-qa', designationId: 'des-qa', employmentTypeId: 'et-perm', costCentreId: 'cc-eng', reason: 'Offer accepted' };
+    expect(hireInput(base, false).input?.assignment.hoursPerWeek).toBeUndefined();
+    expect(hireInput({ ...base, hoursPerWeek: '37.5' }, false).input?.assignment.hoursPerWeek).toBe('37.5');
+    expect(hireInput({ ...base, hoursPerWeek: 'abc' }, false).errors.map((e) => e.fieldId)).toEqual(['hire-hours']);
+  });
+
+  it('shows hours with the FTE, and the three service dates with an edit for HR', async () => {
+    const view = { ...AS_OF, assignment: { ...AS_OF.assignment!, hoursPerWeek: '24.0', normalWeekHours: '48', ftePercent: '50.00' } };
+    const onSave = ok();
+    render(<History view={view} serviceDates={{ companyStart: '2021-06-01', employerStart: '2024-01-15', continuousServiceFrom: '2022-03-10', source: 'rehire_break_counted', reason: null }} onSaveServiceDates={onSave} />);
+    expect(screen.getByText('24 hours (50 % of a 48-hour week)')).toBeInTheDocument();
+    expect(screen.getByText('Company start')).toBeInTheDocument();
+    expect(screen.getByText(/Earlier service counted, the break not/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit continuous service' }));
+    // No red error while typing: the reason is asked for only on save.
+    await userEvent.type(screen.getByRole('textbox', { name: /Reason/ }), 'A');
+    expect(screen.queryByText('Say why, in a few words')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect((await screen.findAllByText('Say why, in a few words')).length).toBeGreaterThan(0);
+    await userEvent.type(screen.getByRole('textbox', { name: /Reason/ }), 'cquired company');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ continuousServiceFrom: null, reason: 'Acquired company' }));
+  });
+});

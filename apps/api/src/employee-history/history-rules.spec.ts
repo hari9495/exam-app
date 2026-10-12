@@ -2,7 +2,7 @@ import { affectedMonths, applyFact, fold, FoldError, fyStart, localToday, payloa
 
 // P06 rules that need no database: change types (M01 §3.3), the fold that turns changes into dated rows
 // (§4.3, §4.4, YX-HIS-06), retro reach (YX-HIS-12) and affected periods (§4.5).
-const A: AssignmentValues = { locationId: 'loc', departmentId: 'dep', designationId: 'des', gradeId: 'g1', skillClass: null, employmentTypeId: 'et', managerEmployeeId: 'm1', costCentres: [], dottedLineManagerIds: [] };
+const A: AssignmentValues = { locationId: 'loc', departmentId: 'dep', designationId: 'des', gradeId: 'g1', skillClass: null, hoursPerWeek: null, employmentTypeId: 'et', managerEmployeeId: 'm1', costCentres: [], dottedLineManagerIds: [] };
 
 describe('change types (M01 §3.3)', () => {
   it('each type changes only its own facts', () => {
@@ -126,5 +126,35 @@ describe('dotted-line managers (M01 Q5, P01 §4.4)', () => {
     expect(moved.dottedLineManagerIds).toEqual(['d1', 'd2']);
     const promoted = applyFact('assignment', withDotted, { assignment: { managerEmployeeId: 'd1' } }) as AssignmentValues;
     expect(promoted).toMatchObject({ managerEmployeeId: 'd1', dottedLineManagerIds: ['d2'] });
+  });
+});
+
+describe('hours a week (G1, gap pass C1)', () => {
+  it('a join, "employment type or hours" and a correction may set them; a transfer may not', () => {
+    expect(payloadProblem('join', { assignment: { ...A, hoursPerWeek: '24' }, status: 'confirmed' })).toBeNull();
+    expect(payloadProblem('employment_type_change', { assignment: { hoursPerWeek: '37.5' } })).toBeNull();
+    expect(payloadProblem('employment_type_change', { assignment: { hoursPerWeek: null } })).toBeNull();
+    expect(payloadProblem('correction', { assignment: { hoursPerWeek: '20' } })).toBeNull();
+    expect(payloadProblem('transfer', { assignment: { hoursPerWeek: '20' } })).toMatch(/cannot change hoursPerWeek/);
+  });
+
+  it('are above 0, at most 80, in half hours', () => {
+    for (const bad of ['0', '80.5', '81', '24.25', '-1']) expect(payloadProblem('employment_type_change', { assignment: { hoursPerWeek: bad } })).toMatch(/at most 80/);
+    expect(payloadProblem('employment_type_change', { assignment: { hoursPerWeek: '80' } })).toBeNull();
+  });
+
+  it('are dated like every job fact: empty is full-time, a change carries over, null goes back to full-time', () => {
+    const segs = fold<AssignmentValues>('assignment', null, [
+      { id: 'join', effectiveDate: '2026-04-01', payload: { assignment: A } },
+      { id: 'pt', effectiveDate: '2026-07-01', payload: { assignment: { hoursPerWeek: '24' } } },
+      { id: 'mv', effectiveDate: '2026-08-01', payload: { assignment: { designationId: 'lead' } } },
+      { id: 'ft', effectiveDate: '2026-10-01', payload: { assignment: { hoursPerWeek: null } } },
+    ]);
+    expect(segs.map((s) => [s.from, s.values.hoursPerWeek])).toEqual([
+      ['2026-04-01', null],
+      ['2026-07-01', '24.0'],
+      ['2026-08-01', '24.0'],
+      ['2026-10-01', null],
+    ]);
   });
 });

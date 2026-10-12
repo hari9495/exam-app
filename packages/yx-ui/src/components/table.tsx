@@ -967,7 +967,8 @@ export function DataTable<R>(props: DataTableProps<R>) {
               )}
               {visible.map((c) => {
                 const active = sort?.key === c.key ? sort.dir : null;
-                const canSort = c.sortable !== false;
+                // A sort button is named by its header: a column without header text is never sortable (affordance guard).
+                const canSort = c.sortable !== false && c.header.trim() !== '';
                 return (
                   <th
                     key={c.key}
@@ -993,7 +994,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
                       )}
                       <Menu>
                         <MenuTrigger asChild>
-                          <button type="button" className="yx-table__col-menu" aria-label={`${c.header} column options`}>
+                          <button type="button" className="yx-table__col-menu" aria-label={`${c.header.trim() || 'This'} column options`}>
                             <Icon icon={ChevronDown} />
                           </button>
                         </MenuTrigger>

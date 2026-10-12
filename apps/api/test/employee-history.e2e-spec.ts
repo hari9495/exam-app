@@ -35,7 +35,7 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
   const users: Record<string, string> = {};
   const token: Record<string, string> = {};
   type Who = 'adminA' | 'adminB' | 'hrA' | 'approverA' | 'payrollA' | 'payApproverA' | 'clerkA' | 'divyaA' | 'arjunA' | 'kavyaA' | 'outsiderA';
-  const api = (who: Who, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'put' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const ids: Record<string, string> = {};
   const asA = () => ({ organizationId: org.A.id, isSuperAdmin: false });
   const auditActions = async (prefix: string) =>
@@ -550,6 +550,48 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       expect((await api('hrA', 'get', `/people/changes/${raised.body.id}`).expect(200)).body).toMatchObject({ status: 'effective' });
       await service.applyDue(ist(tomorrow, '00:45:00'));
       expect((await auditActions('employee.change.effective')).filter((a) => a.metadata.changeId === raised.body.id)).toHaveLength(1);
+    });
+  });
+
+  describe('G1: hours a week and service dates (gap pass C1, C3)', () => {
+    it('a part-time join shows its FTE against the normal week; empty hours are full-time', async () => {
+      ids.meera = (await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Meera', joinedOn: today, overrideReason: undefined, assignment: { ...join({}).assignment, hoursPerWeek: '24' } })).expect(201)).body.id;
+      const meera = (await api('hrA', 'get', `/people/employees/${ids.meera}/as-of`).expect(200)).body.assignment;
+      // India pack: a 48-hour normal week (Factories Act s.51), until the company sets its own.
+      expect(meera).toMatchObject({ hoursPerWeek: '24.0', normalWeekHours: '48', ftePercent: '50.00' });
+      expect((await api('hrA', 'get', `/people/employees/${ids.lakshmi}/as-of`).expect(200)).body.assignment).toMatchObject({ hoursPerWeek: null, ftePercent: '100.00' });
+      // More than a full-time week, or not in half hours: refused.
+      await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Over', joinedOn: today, overrideReason: undefined, assignment: { ...join({}).assignment, hoursPerWeek: '50' } })).expect(400);
+      await api('hrA', 'post', '/people/employees').send(join({ givenName: 'Odd', joinedOn: today, overrideReason: undefined, assignment: { ...join({}).assignment, hoursPerWeek: '20.25' } })).expect(400);
+      // The company's own normal week wins over the pack, per location.
+      const set = (await api('adminA', 'put', '/org/settings').send({ key: 'work.normal_week_hours', scopeType: 'location', scopeId: ids.blr, value: '40' }).expect(200)).body;
+      expect((await api('hrA', 'get', `/people/employees/${ids.meera}/as-of`).expect(200)).body.assignment).toMatchObject({ normalWeekHours: '40', ftePercent: '60.00' });
+      await api('adminA', 'delete', `/org/settings/${set.id}`).expect(204);
+    });
+
+    it('hours change by "employment type or hours", dated like every job fact; a transfer cannot carry them', async () => {
+      const on = addDays(today, 10);
+      await approved('hrA', 'approverA', { employeeId: ids.meera, changeType: 'employment_type_change', effectiveDate: on, payload: { assignment: { hoursPerWeek: '36' } }, reason: 'More hours' });
+      expect((await api('hrA', 'get', `/people/employees/${ids.meera}/as-of?date=${on}`).expect(200)).body.assignment).toMatchObject({ hoursPerWeek: '36.0', ftePercent: '75.00' });
+      expect((await api('hrA', 'get', `/people/employees/${ids.meera}/as-of`).expect(200)).body.assignment.hoursPerWeek).toBe('24.0');
+      await api('hrA', 'post', '/people/changes').send({ employeeId: ids.meera, changeType: 'transfer', effectiveDate: on, payload: { assignment: { hoursPerWeek: '20' } }, reason: 'x' }).expect(400);
+    });
+
+    it('service dates: read from the employment; HR sets continuous service with a reason, audited', async () => {
+      const read = (who: Who, id: string) => api(who, 'get', `/people/employees/${id}/service-dates`);
+      expect((await read('hrA', ids.lakshmi).expect(200)).body).toEqual({ companyStart: joinOld, employerStart: joinOld, continuousServiceFrom: joinOld, source: 'joining', reason: null });
+      const earlier = addDays(joinOld, -365);
+      await api('clerkA', 'put', `/people/employees/${ids.lakshmi}/service-dates`).send({ continuousServiceFrom: earlier, reason: 'x' }).expect(400);
+      await api('hrA', 'put', `/people/employees/${ids.lakshmi}/service-dates`).send({ continuousServiceFrom: addDays(joinOld, 1), reason: 'Typo' }).expect(400);
+      expect((await api('hrA', 'put', `/people/employees/${ids.lakshmi}/service-dates`).send({ continuousServiceFrom: earlier, reason: 'Acquired from Kaveri Agro' }).expect(200)).body).toMatchObject({ continuousServiceFrom: earlier, source: 'hr', companyStart: joinOld });
+      const log = (await auditActions('employee.service_dates.changed')).at(-1);
+      expect(log).toMatchObject({ entityId: ids.lakshmi, metadata: { from: joinOld, to: earlier, reason: 'Acquired from Kaveri Agro' } });
+      // The person and their managers see the dates; the reason is HR's.
+      expect((await read('kavyaA', ids.kavya).expect(200)).body.reason).toBeNull();
+      // Managers and the person never change them; clearing goes back to the rule.
+      await api('divyaA', 'put', `/people/employees/${ids.arjun}/service-dates`).send({ continuousServiceFrom: null, reason: 'Mine' }).expect(403);
+      expect((await api('hrA', 'put', `/people/employees/${ids.lakshmi}/service-dates`).send({ continuousServiceFrom: null, reason: 'Undo' }).expect(200)).body).toMatchObject({ continuousServiceFrom: joinOld, source: 'joining' });
+      await read('outsiderA', ids.lakshmi).expect(404);
     });
   });
 });

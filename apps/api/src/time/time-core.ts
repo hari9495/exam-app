@@ -45,9 +45,20 @@ export interface LeaveRules {
   hrApprovalAboveDays: number | null;
   /** Eligibility by the recorded gender (P02 Personal; null: everyone), e.g. maternity: female. HR may override (audited). */
   eligibleGenders: string[] | null;
+  /** G1 (gap pass T1): pay by day ranges, e.g. 10 days at 100 % then 20 at 50 %; later days unpaid. null: paid as a whole. */
+  paySteps: PayStep[] | null;
+  /** Which earlier days count toward the steps. */
+  payWindow: 'leave_year' | 'rolling_12_months';
 }
 
-export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: 0, certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null };
+export interface PayStep {
+  /** Days in this step (half days allowed). */
+  days: number;
+  /** Whole percent of pay, 0-100. */
+  percent: number;
+}
+
+export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: 0, certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year' };
 export const GENDER_VALUES = ['female', 'male', 'transgender', 'non_binary', 'prefer_not_to_say'];
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -70,7 +81,38 @@ export function parseRules(input: unknown): LeaveRules {
   if (r.minDays !== null && r.maxDays !== null && r.minDays > r.maxDays) throw new BadRequestException('The least days per request is more than the most.');
   if (r.eligibleGenders !== null && (!Array.isArray(r.eligibleGenders) || !r.eligibleGenders.length || r.eligibleGenders.some((g) => !GENDER_VALUES.includes(g)))) throw new BadRequestException('Choose who the leave is for, or leave it open to everyone.');
   if (r.eligibleGenders) r.eligibleGenders = [...new Set(r.eligibleGenders)];
+  if (!['leave_year', 'rolling_12_months'].includes(r.payWindow)) throw new BadRequestException('Count earlier days in the leave year or the last 12 months.');
+  if (r.paySteps !== null) {
+    if (!Array.isArray(r.paySteps) || r.paySteps.length < 1 || r.paySteps.length > 5) throw new BadRequestException('Give 1 to 5 pay steps, or none.');
+    r.paySteps = r.paySteps.map((x, i) => {
+      if (!isObj(x) || Object.keys(x).some((k) => k !== 'days' && k !== 'percent')) throw new BadRequestException(`Pay step ${i + 1} is not in the expected shape.`);
+      if (!halfStep(x.days, 0.5, 366)) throw new BadRequestException(`Pay step ${i + 1}: days are 0.5 to 366, in half days.`);
+      if (!Number.isInteger(x.percent) || (x.percent as number) < 0 || (x.percent as number) > 100) throw new BadRequestException(`Pay step ${i + 1}: pay is a whole percent, 0 to 100.`);
+      return { days: x.days as number, percent: x.percent as number };
+    });
+  }
   return r;
+}
+
+/**
+ * G1 (gap pass T1): how the days asked are paid, given the days already taken in the window. Steps run in order;
+ * days past the last step are unpaid (0 %). Day numbers count from 1 in the window.
+ */
+export function payStepsFor(steps: readonly PayStep[], takenBefore: number, asked: number): { fromDay: number; toDay: number; days: number; percent: number }[] {
+  const out: { fromDay: number; toDay: number; days: number; percent: number }[] = [];
+  let at = takenBefore;
+  let left = asked;
+  let end = 0;
+  for (const s of [...steps, { days: Infinity, percent: 0 }]) {
+    end += s.days;
+    if (left <= 0) break;
+    if (at >= end) continue;
+    const days = Math.min(end - at, left);
+    out.push({ fromDay: Math.floor(at) + 1, toDay: at + days, days, percent: s.percent });
+    at += days;
+    left -= days;
+  }
+  return out;
 }
 
 // ------------------------------------------------------------------------------------------ policy lines

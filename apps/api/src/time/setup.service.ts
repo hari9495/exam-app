@@ -133,7 +133,9 @@ export class TimeSetupService {
       if (!t) throw new NotFoundException('No such leave type.');
       if (dto.code !== t.code) throw new BadRequestException('A leave type keeps its code. Add a new type instead.');
       if (dto.kind !== t.kind) throw new BadRequestException('A leave type keeps its kind. Add a new type instead.');
-      const rules = this.checkType(dto);
+      // G1 (gap pass T1): the leave type screen does not show pay steps yet, so an edit that leaves them out keeps them.
+      const old = t.rules as Record<string, unknown>;
+      const rules = this.checkType({ ...dto, rules: { paySteps: old.paySteps ?? null, payWindow: old.payWindow ?? 'leave_year', ...(dto.rules ?? {}) } });
       await tx.leaveType.update({ where: { id: t.id }, data: { name: dto.name, paid: dto.paid, colour: dto.colour ?? t.colour, rules: rules as unknown as Prisma.InputJsonValue, active: dto.active ?? t.active, version: { increment: 1 }, updatedAt: new Date() } });
       await audit(tx, c, 'leave.type.changed', 'leave_type', t.id, { code: t.code, from: { name: t.name, paid: t.paid, rules: t.rules, active: t.active }, to: { name: dto.name, paid: dto.paid, rules, active: dto.active ?? t.active } });
       return { id: t.id };
@@ -145,6 +147,7 @@ export class TimeSetupService {
     if (dto.kind === 'lop' && dto.paid) throw new BadRequestException('Leave without pay is unpaid.');
     // YX-LV-14: an unpaid type carries no balance, so it has nothing to go below zero.
     if (dto.kind === 'lop' && rules.negativeLimit) throw new BadRequestException('Leave without pay has no balance, so it cannot go below zero.');
+    if (!dto.paid && rules.paySteps) throw new BadRequestException('Only paid leave has pay steps.');
     return rules;
   }
 

@@ -7,7 +7,7 @@ import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { ownSession } from '../org-structure/org-structure.controller';
-import { ApproveDto, AsOfQueryDto, ChangeEditDto, ChangeListQueryDto, ChangeRequestDto, DecisionDto, EmployeeCreateDto, EmployeeListQueryDto, HistoryQueryDto, SegmentsQueryDto } from './dto';
+import { ApproveDto, AsOfQueryDto, ChangeEditDto, ChangeListQueryDto, ChangeRequestDto, DecisionDto, EmployeeCreateDto, EmployeeListQueryDto, HistoryQueryDto, SegmentsQueryDto, ServiceDatesDto } from './dto';
 import { EmployeeHistoryService, RequestUser } from './employee-history.service';
 
 // People › job history and changes (P06 §4.3–4.7, §7; M01 §3.3). Permissions (P02 YX-SEC-01):
@@ -53,6 +53,19 @@ export class EmployeeHistoryController {
   @Get('employees/:id/history')
   async timeline(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: HistoryQueryDto) {
     return this.history.history(ctx, await this.viewer(req), id, q.pay === 'true');
+  }
+
+  /** G1 (gap pass C3): implicit grants (self, managers in their periods) or employee.profile.view. */
+  @Get('employees/:id/service-dates')
+  async serviceDates(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.history.serviceDates(ctx, await this.viewer(req), id);
+  }
+
+  @Put('employees/:id/service-dates')
+  @RequirePermissions('employee.change.manage')
+  async setServiceDates(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ServiceDatesDto) {
+    ownSession(req);
+    return this.history.setServiceDates(ctx, await this.viewer(req), id, dto);
   }
 
   @Get('employees/:id/segments')
