@@ -52,6 +52,8 @@ def load_engine():
         use_doc_unwarping=False,
         use_textline_orientation=True,
         device="cpu",
+        # Paddle 3.x on CPU: the oneDNN path cannot run these models' attributes, so the plain CPU kernels are used.
+        enable_mkldnn=False,
     )
 
 
@@ -88,6 +90,10 @@ def read(engine, data: bytes, mime: str):
                 for text, score in zip(res["rec_texts"], res["rec_scores"]):
                     if len(lines) < MAX_LINES:
                         lines.append({"text": str(text)[:300], "score": float(max(0.0, min(1.0, score)))})
+        except Timeout:
+            raise
+        except Exception as e:  # one unreadable page leaves the others (and a QR already read) usable
+            print(f"page: {type(e).__name__}", file=sys.stderr, flush=True)
         finally:
             signal.alarm(0)
     return {"lines": lines, "qr": qr[:4096] if qr else None}
