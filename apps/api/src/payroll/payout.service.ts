@@ -123,6 +123,7 @@ export class PayoutService implements OnModuleInit {
     if (waiting) return;
     await tx.payrollRun.update({ where: { id: run.id }, data: { status: 'paid', version: { increment: 1 } } });
     await audit(tx, c, 'payroll.run.paid', 'payroll_run', run.id, {});
+    await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'payroll.run.paid', payload: { runId: run.id, paidOn: new Date().toISOString().slice(0, 10), offcycle: run.runType === 'offcycle' } } });
   }
 
   // ------------------------------------------------------------------------------------------ bank files (PAY-4.01)
@@ -386,6 +387,7 @@ export class PayoutService implements OnModuleInit {
         await tx.payslip.update({ where: { id: s.id }, data: { paymentStatus: r.status } });
         if (r.status !== 'paid') {
           await audit(tx, c, 'payment.failed', 'payslip', s.id, { employeeId: s.employeeId, status: r.status, reason: r.reason });
+          await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'payment.failed', payload: { payslipId: s.id, runId: run.id, kind: 'payslip', employeeId: s.employeeId, status: r.status } } });
           const u = (await tx.employee.findFirst({ where: { organizationId: org, id: s.employeeId }, select: { userId: true } }))?.userId;
           if (u)
             notices.push({

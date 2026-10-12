@@ -37,6 +37,7 @@ import { ArrearsService } from './arrears.service';
 import { FnfService } from './fnf.service';
 import { Payroll5jController } from './payroll-5j.controller';
 import { GoLiveService } from './golive.service';
+import { PayrollIntakeService } from './intake.service';
 import { PayPeriodsService } from './periods.service';
 
 // M03 payroll, batch 5a: locks, audit, documents and exchange files (PAY-1.01 … PAY-1.12); batch 5b: set-up,
@@ -46,7 +47,7 @@ import { PayPeriodsService } from './periods.service';
 @Module({
   imports: [AuditModule, CryptoModule, StorageModule, WorkflowModule, NotificationsModule, EmailModule, AuthModule, EmployeeHistoryModule, RulesEngineModule],
   controllers: [PayrollController, PublicPayController, Payroll5bController, Payroll5cController, Payroll5dController, TaxController, StatutoryController, Payroll5gController, Payroll5jController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayRunsService, PayInputsService, PayoutService, PayslipsService, TaxService, LedgerService, StatutoryFilingsService, StatutoryRegistersService, FvuRunner, ArrearsService, FnfService, GoLiveService, PayrollJobs],
-  exports: [PayPeriodsService, PayDocumentsService, ExchangeFilesService],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayRunsService, PayInputsService, PayoutService, PayslipsService, TaxService, LedgerService, StatutoryFilingsService, StatutoryRegistersService, FvuRunner, ArrearsService, FnfService, GoLiveService, PayrollIntakeService, PayrollJobs],
+  exports: [PayPeriodsService, PayDocumentsService, ExchangeFilesService, PayrollIntakeService],
 })
 export class PayrollModule {}

@@ -88,6 +88,7 @@ export async function buildTaxInputs(
     const opening = await tx.openingBalance.findMany({ where: { organizationId: org, employeeId: a.employeeId, fy: taxYear } });
     const head = (h: string) => opening.filter((o) => o.head === h).reduce((t, o) => t.add(o.amount), ZERO);
     const perqs = await tx.perquisite.findMany({ where: { organizationId: org, employeeId: a.employeeId, taxYear, cancelledAt: null } });
+    const outside = await tx.taxPaidOutside.aggregate({ where: { organizationId: org, employeeId: a.employeeId, taxYear, cancelledAt: null }, _sum: { amount: true } });
     const decl = ws ? await tx.taxDeclarationLine.findMany({ where: { organizationId: org, workspaceId: ws.id } }) : [];
     const counted = (l: (typeof decl)[number]) => (proofStage === 'declared' ? l.amount : ['approved', 'partly'].includes(l.proofStatus) ? (l.approvedAmount ?? ZERO) : ZERO);
     const hra = decl.find((l) => l.subjectKey === 'hra');
@@ -135,6 +136,7 @@ export async function buildTaxInputs(
         .reduce((t, p) => t.add(p.annualValue), ZERO)
         .add(head('perquisites'))
         .toFixed(2),
+      ...(outside._sum.amount?.gt(0) ? { paidOutside: outside._sum.amount.toFixed(2) } : {}),
       futureMonths: Math.max(0, monthsBetween(a.month, lastMonth)),
       future: {
         gross: monthly((code) => comp.get(code)?.kind === 'earning' && comp.get(code)?.taxable !== false),

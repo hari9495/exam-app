@@ -3,7 +3,8 @@ import { join } from 'path';
 import fc from 'fast-check';
 import { Prisma } from '@prisma/client';
 import { calculatePayslip, hashOf, type Snapshot } from './calc';
-import { PACKAGE, RULES, snapshot } from './regression/fixtures';
+import { COMPONENTS, PACKAGE, RULES, snapshot } from './regression/fixtures';
+import { MODULE_COMPONENTS } from './starter';
 
 // PAY-3.04 … 3.16: the pure payslip calculation. Hand-checked cases (full month, LOP, a mid-month revision with PF
 // ceilings per part, recoveries within the cap and protected net, a negative net carried forward, suspension, hourly pay),
@@ -23,6 +24,27 @@ describe('calculatePayslip', () => {
     expect(r.lines.every((l) => l.explanation.length > 10)).toBe(true);
     expect(r.ruleVersions['IN.PF|IN']).toBe('2025-v1');
     expect(r.minWage).toMatchObject({ below: false });
+  });
+
+  it('M05 D3: a reimbursement is outside gross pay and every wage base, inside net pay; a taxable one is an earning', () => {
+    const modules = MODULE_COMPONENTS.map((c) => ({ code: c.code, name: c.name, kind: c.kind, pfWage: !!c.pfWage, esiWage: !!c.esiWage, ptWage: !!c.ptWage, gratuityWage: !!c.gratuityWage, bonusWage: !!c.bonusWage, codeWagePart: !!c.codeWagePart, codeExclusion: !!c.codeExclusion, prorated: c.prorated ?? true, rounding: c.rounding ?? 'rupee', statutory: null }));
+    const plain = calculatePayslip(snapshot(), RULES);
+    const r = calculatePayslip(snapshot({ components: [...COMPONENTS, ...modules], oneTime: [{ id: 'o1', code: 'exp_reimb', amount: '1234.50', days: null }] }), RULES);
+    expect(r.lines.find((l) => l.code === 'exp_reimb')).toMatchObject({ kind: 'reimbursement', amount: '1234.50' });
+    expect([r.gross, r.deductions]).toEqual([plain.gross, plain.deductions]);
+    expect(amount(r, 'pf_employee')).toBe(amount(plain, 'pf_employee'));
+    // Net pay rounds to the rupee (company rule), the reimbursement included.
+    expect(r.net).toBe('58135.00');
+    const t = calculatePayslip(snapshot({ components: [...COMPONENTS, ...modules], oneTime: [{ id: 'o2', code: 'exp_taxable', amount: '2000', days: null }, { id: 'o3', code: 'perf_bonus', amount: '10000', days: null }] }), RULES);
+    expect(t.gross).toBe('70900.00');
+    expect(amount(t, 'pf_employee')).toBe(amount(plain, 'pf_employee'));
+  });
+
+  it('M05 D3: a reimbursement is paid even when recoveries take the whole salary', () => {
+    const modules = MODULE_COMPONENTS.map((c) => ({ code: c.code, name: c.name, kind: c.kind, pfWage: false, esiWage: false, ptWage: false, gratuityWage: false, bonusWage: false, codeWagePart: false, codeExclusion: false, prorated: false, rounding: 'rupee' as const, statutory: null }));
+    const r = calculatePayslip(snapshot({ components: [...COMPONENTS, ...modules], attendance: { lopDays: '31', source: 'manual', otMinutes: { normal: 0, weeklyOff: 0, holiday: 0 }, timesheetMinutes: 0 }, oneTime: [{ id: 'o1', code: 'advance_recovery', amount: '5000', days: null }, { id: 'o2', code: 'exp_reimb', amount: '800', days: null }] }), RULES);
+    expect(r.net).toBe('800.00');
+    expect(Number(r.carryForward)).toBeGreaterThan(0);
   });
 
   it('3 days of loss of pay are cut once, at the monthly rate ÷ days of the month', () => {

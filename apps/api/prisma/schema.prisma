@@ -7149,6 +7149,8 @@ model Loan {
   reason         String    @db.VarChar(300)
   status         String    @default("requested") @db.VarChar(10)
   pausedUntil    DateTime? @map("paused_until") @db.Date
+  /// An 'expense' loan's advance (M05), one loan per advance.
+  sourceRef      String?   @map("source_ref") @db.VarChar(80)
   wfRequestId    String?   @map("wf_request_id") @db.Uuid
   requestedBy    String    @map("requested_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -7448,6 +7450,27 @@ model Perquisite {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("perquisites")
+}
+
+/// Taxable salary paid outside payroll in a tax year (M05 §22.1 change 3: taxable expense amounts paid by transfer).
+model TaxPaidOutside {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  employmentId   String    @map("employment_id") @db.Uuid
+  taxYear        String    @map("tax_year") @db.VarChar(7)
+  amount         Decimal   @db.Decimal(14, 2)
+  paidOn         DateTime  @map("paid_on") @db.Date
+  source         String    @db.VarChar(8)
+  sourceRef      String    @map("source_ref") @db.VarChar(80)
+  enteredBy      String    @map("entered_by") @db.Uuid
+  cancelledAt    DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, source, sourceRef], map: "tax_paid_outside_source_ref_key")
+  @@index([organizationId, employeeId, taxYear], map: "tax_paid_outside_employee_idx")
+  @@map("tax_paid_outside")
 }
 
 model TaxCertificate {

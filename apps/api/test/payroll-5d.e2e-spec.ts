@@ -15,6 +15,7 @@ import { hashValue, sealValue } from '../src/people/profile.service';
 import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
+import { PayrollIntakeService } from '../src/payroll/intake.service';
 
 // Payroll batch 5d end to end against the real database: an approved run paid out. The bank file from the published
 // generic format (approved, unheld, bank-mode payslips past the bank-change cooling period; leading zeros kept), a new
@@ -341,6 +342,8 @@ describe('Payroll batch 5d', () => {
       .expect(200);
     expect((await slipOf(ids.emp1)).paymentStatus).toBe('failed');
     expect(await inA((tx) => tx.userNotification.count({ where: { recipientUserId: users.emp1, type: 'payroll.payment.failed' } }))).toBe(1);
+    // M05 §22.1 change 4: the business event, ids only.
+    expect((await inA((tx) => tx.eventOutbox.findMany({ where: { eventType: 'payment.failed' } }))).map((e) => e.payload)).toEqual([{ payslipId: s1.id, runId: ids.run, kind: 'payslip', employeeId: ids.emp1, status: 'failed' }]);
     await stepDown('payAdmin');
     expect((await api('payAdmin', 'post', `/payroll/payslips/${s1.id}/expedite-bank`).send({ pennyDropReference: 'PD-778899', reason: 'Salary failed, new account' }).expect(403)).body.code).toBe(
       'STEP_UP_REQUIRED',
@@ -389,6 +392,48 @@ describe('Payroll batch 5d', () => {
           .expect(200)
       ).body,
     ).toMatchObject({ runStatus: 'paid' });
+    expect((await inA((tx) => tx.eventOutbox.findMany({ where: { eventType: 'payroll.run.paid' } }))).map((e) => e.payload)).toEqual([expect.objectContaining({ runId: ids.run, offcycle: false })]);
+  });
+
+  it('M05 / M06 hooks: one-time pay once per reference, taxable pay outside payroll, the expense loan, and the voided event', async () => {
+    const intake = app.get(PayrollIntakeService);
+    const c = { organizationId: org.A.id, isSuperAdmin: false, userId: users.payAdmin };
+    const later = (() => {
+      const d = new Date(`${month}-01T00:00:00Z`);
+      d.setUTCMonth(d.getUTCMonth() + 1);
+      return d.toISOString().slice(0, 7);
+    })();
+    const pay = (x: { source: 'm05' | 'm06'; sourceRef: string; componentCode: string }) =>
+      inA((tx) => intake.oneTime(tx, c as never, { ...x, employeeId: ids.emp1, amount: '1250.00', month: later, reason: 'Approved claim', by: users.payAdmin }));
+    const first = await pay({ source: 'm05', sourceRef: 'claim-1', componentCode: 'exp_reimb' });
+    expect(first).toMatchObject({ status: 'approved', existing: false });
+    expect(await pay({ source: 'm05', sourceRef: 'claim-1', componentCode: 'exp_reimb' })).toEqual({ id: first.id, status: 'approved', existing: true });
+    await expect(pay({ source: 'm05', sourceRef: 'claim-2', componentCode: 'perf_bonus' })).rejects.toThrow(/m05 pays only/);
+    expect(await pay({ source: 'm06', sourceRef: 'proposal-1', componentCode: 'perf_bonus' })).toMatchObject({ existing: false });
+    // The components were installed on first use, with their flags.
+    const comps = await inA((tx) => tx.payComponent.findMany({ where: { code: { in: ['exp_reimb', 'perf_bonus'] } }, orderBy: { code: 'asc' } }));
+    expect(comps.map((x) => [x.code, x.kind, x.taxable, x.pfWage])).toEqual([
+      ['exp_reimb', 'reimbursement', false, false],
+      ['perf_bonus', 'earning', true, false],
+    ]);
+    expect((await inA((tx) => intake.cancelOneTime(tx, c as never, { source: 'm05', sourceRef: 'claim-1' })))).toEqual({ cancelled: true });
+
+    const out = await inA((tx) => intake.paidOutside(tx, c as never, { sourceRef: 'claim-9', employeeId: ids.emp1, amount: '4000.00', paidOn: today, by: users.payAdmin }));
+    expect((await inA((tx) => intake.paidOutside(tx, c as never, { sourceRef: 'claim-9', employeeId: ids.emp1, amount: '4000.00', paidOn: today, by: users.payAdmin }))).existing).toBe(true);
+    expect(await scoped((tx) => tx.taxPaidOutside.count({ where: { id: out.id } }))).toBe(1);
+    // The pay guard: without the entity in scope, nobody (but the employee) sees it.
+    expect(await inA((tx) => tx.taxPaidOutside.count())).toBe(0);
+
+    const loan = await inA((tx) => intake.expenseLoan(tx, c as never, { sourceRef: 'advance-7', employeeId: ids.emp1, amount: '9000.00', instalments: 3, firstMonth: later, reason: 'Unsettled trip advance', by: users.payAdmin }));
+    expect(loan).toMatchObject({ emi: '3000.00', existing: false });
+    expect((await api('payAdmin', 'get', '/payroll/loans').expect(200)).body.find((l: { id: string }) => l.id === loan.id)).toMatchObject({ loanType: 'expense', status: 'active', outstanding: '9000.00' });
+    // An expense loan is interest-free and never a perquisite (database check).
+    await expect(scoped((tx) => tx.loan.update({ where: { id: loan.id }, data: { interestRate: 5 } }))).rejects.toThrow(/loans_expense_terms_check/);
+
+    // payroll.run.voided, once.
+    const r = (await api('payAdmin', 'post', '/payroll/runs').send({ payGroupId: ids.group, month, offcycleKind: 'payment' }).expect(201)).body.id;
+    await api('payAdmin', 'post', `/payroll/runs/${r}/void`).send({ reason: 'Not needed after all' }).expect(200);
+    expect((await inA((tx) => tx.eventOutbox.findMany({ where: { eventType: 'payroll.run.voided' } }))).map((e) => e.payload)).toEqual([{ runId: r }]);
   });
 
   it('5e-D1: the company turns payslip email on (a link to the in-app payslip, never a PDF)', async () => {
