@@ -34,6 +34,11 @@ import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, re
 export const RUN = 'payroll.run';
 const QUEUE = 'payroll-calc';
 const CHUNK = 100;
+// The run-level steps (checks, queueing, finishing, submitting) read and write for everyone in the run in one
+// transaction: a batch whose size is the run's, so a large run gets longer than the 5-second default (5j-D1).
+const RUN_TX = { timeout: 600_000 };
+// The first person in a chunk also reads for the whole chunk (ChunkReads), which can pass 5 seconds when chunks run side by side.
+const PERSON_TX = { timeout: 60_000 };
 // PAY-10.08 load test: chunks are worked on side by side (each person is its own transaction, so they never meet).
 const CONCURRENCY = Number(process.env.PAYROLL_CALC_CONCURRENCY ?? 8);
 const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
@@ -44,6 +49,25 @@ export const approvePhrase = (shortName: string, month: string) => `APPROVE ${sh
 type Run = Prisma.PayrollRunGetPayload<object>;
 export type OffcycleKind = 'bonus' | 'arrears' | 'correction' | 'payment';
 type Member = { employmentId: string; employeeId: string; joinedOn: Date; exitedOn: Date | null; employeeCode: string; name: string; userId: string | null };
+
+/**
+ * Founder decision 5j-D1 (12 Oct 2026): what a chunk of people needs is read once for the whole chunk (the run's group,
+ * period and options, everyone's salaries, packages, jobs, inputs and recoveries) and shared by the people in it, who are
+ * still each saved in their own transaction. Without a chunk (arrears, one person) it is simply a chunk of one.
+ */
+export class ChunkReads {
+  private readonly memo = new Map<string, Promise<unknown>>();
+  constructor(readonly employmentIds: string[]) {}
+  once<T>(key: string, read: () => Promise<T>): Promise<T> {
+    let p = this.memo.get(key) as Promise<T> | undefined;
+    if (!p) {
+      p = read();
+      this.memo.set(key, p);
+      p.catch(() => this.memo.delete(key));
+    }
+    return p;
+  }
+}
 
 class NotReady extends Error {
   constructor(
@@ -290,7 +314,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       const period = await tx.payPeriod.findFirst({ where: { organizationId: c.organizationId, legalEntityId: run.legalEntityId, payGroupId: null, periodStart: run.periodStart } });
       const checks = await this.current(tx, c.organizationId, run);
       return { run: this.view(run), people: members.length, period: period?.stage ?? 'open', checks: checks.map((x) => ({ id: x.id, employeeId: x.employeeId, checkKey: x.checkKey, severity: x.severity, blocks: x.blocks, waivable: x.waivable, message: x.message, waived: !!x.waivedBy, waiverReason: x.waiverReason })) };
-    });
+    }, RUN_TX);
   }
 
   async waive(ctx: TenantContext, user: ScopeUser, id: string, validationId: string, reason: string) {
@@ -346,7 +370,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       await tx.payrollRun.update({ where: { id: run.id }, data: { status: 'calculating', calcVersion: version, version: { increment: 1 } } });
       await audit(tx, c, 'payroll.run.calculating', 'payroll_run', run.id, { calcVersion: version, people: members.length - skip.size });
       return { org, runId: run.id, version, ids: members.filter((m) => !skip.has(m.employeeId)).map((m) => m.employmentId) };
-    });
+    }, RUN_TX);
     for (let i = 0; i < out.ids.length; i += CHUNK) await this.queue.add('calc', { org: out.org, runId: out.runId, version: out.version, ids: out.ids.slice(i, i + CHUNK) }, { jobId: `${out.runId}:${out.version}:${i / CHUNK}`, removeOnComplete: 1000, removeOnFail: 1000 });
     if (!out.ids.length) await this.finish(out.org, out.runId, out.version);
     return { runId: out.runId, calcVersion: out.version, queued: out.ids.length };
@@ -356,16 +380,17 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
   async calculateChunk(job: { org: string; runId: string; version: number; ids: string[] }) {
     const c = { organizationId: job.org, isSuperAdmin: false, userId: null } as unknown as CompanyContext;
     const rules = await this.rules.published();
+    const reads = new ChunkReads(job.ids);
     for (const employmentId of job.ids) {
       try {
         await this.tenantPrisma.forTenant(c, async (tx) => {
-          const entity = await this.entityOfRun(tx, job.org, job.runId);
+          const entity = await reads.once('entity', () => this.entityOfRun(tx, job.org, job.runId));
           await payScope(tx, [entity]);
           const re = await tx.runEmployee.findFirst({ where: { organizationId: job.org, runId: job.runId, calcVersion: job.version, employmentId } });
           if (!re || re.state !== 'queued') return;
           const r = await tx.payrollRun.findFirstOrThrow({ where: { organizationId: job.org, id: job.runId } });
           if (r.calcVersion !== job.version || r.status !== 'calculating') return;
-          const snap = await this.snapshot(tx, c, r, employmentId, rules);
+          const snap = await this.snapshot(tx, c, r, employmentId, rules, reads);
           const result = calculatePayslip(snap, rules);
           const slip = await tx.payslip.create({
             data: { organizationId: job.org, legalEntityId: r.legalEntityId, runId: r.id, runType: r.runType, employmentId, employeeId: re.employeeId, periodStart: r.periodStart, calcVersion: job.version, version: await this.nextVersion(tx, job.org, employmentId, r), gross: result.gross, deductions: result.deductions, net: result.net, employerCost: result.employerCost, ruleVersions: result.ruleVersions, snapshotHash: hashOf(snap), resultHash: result.resultHash, verify: result.verify, held: snap.held },
@@ -374,7 +399,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
           await tx.payslipSnapshot.create({ data: { payslipId: slip.id, organizationId: job.org, legalEntityId: r.legalEntityId, employeeId: re.employeeId, inputs: snap as unknown as Prisma.InputJsonValue, ruleVersions: result.ruleVersions, engineVersion: ENGINE_VERSION, inputsHash: hashOf(snap) } });
           if (result.tax) await tx.tdsProjection.create({ data: { payslipId: slip.id, organizationId: job.org, legalEntityId: r.legalEntityId, employeeId: re.employeeId, employmentId, taxYear: result.tax.taxYear, lawVersion: result.tax.lawVersion, regime: result.tax.regime, calcVersion: result.tax.calcVersion, monthTds: result.tax.monthTds, annualTax: result.tax.tax.total, inputs: snap.tax as unknown as Prisma.InputJsonValue, result: result.tax as unknown as Prisma.InputJsonValue } });
           await tx.runEmployee.update({ where: { id: re.id }, data: { state: 'ok', failure: Prisma.DbNull, updatedAt: new Date() } });
-        });
+        }, PERSON_TX);
       } catch (e) {
         const field = e instanceof NotReady ? e.field : null;
         const message = e instanceof NotReady || e instanceof StatutoryError ? e.message : 'The calculation failed for this person.';
@@ -420,18 +445,23 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       for (const l of lines) await tx.runValidation.create({ data: { organizationId: org, legalEntityId: run.legalEntityId, runId, calcVersion: version, employeeId: l.employeeId, checkKey: 'code_wage_add_back', severity: 'info', message: 'Allowances pass half of pay: part is added back to the wage for PF, ESI, gratuity and bonus.' } });
       await tx.payrollRun.update({ where: { id: runId }, data: { status: 'calculated', totals, version: { increment: 1 } } });
       await audit(tx, c, 'payroll.run.calculated', 'payroll_run', runId, { calcVersion: version, ...totals });
-    });
+    }, RUN_TX);
   }
 
   // ------------------------------------------------------------------------------------------ the snapshot (§3.5)
 
   /** Everything one person's month is worked out from, by value (the function reads nothing else). */
-  async snapshot(tx: Tx, c: CompanyContext, run: Run, employmentId: string, rules: RuleSet[]): Promise<Snapshot> {
+  async snapshot(tx: Tx, c: CompanyContext, run: Run, employmentId: string, rules: RuleSet[], reads = new ChunkReads([employmentId])): Promise<Snapshot> {
     const org = c.organizationId;
     const month = this.month(run);
     const { from, to } = monthRange(month);
     const days = Number(to.slice(8));
-    const em = await tx.employment.findFirstOrThrow({ where: { organizationId: org, id: employmentId } });
+    const ids = reads.employmentIds;
+    const mine = <T extends { employmentId: string }>(rows: T[]) => rows.filter((x) => x.employmentId === employmentId);
+    const overlaps = { validFrom: { lte: asDate(to) }, OR: [{ validTo: null }, { validTo: { gte: asDate(from) } }] };
+    const ems = await reads.once('employments', () => tx.employment.findMany({ where: { organizationId: org, id: { in: ids } } }));
+    const em = ems.find((x) => x.id === employmentId);
+    if (!em) throw new NotReady('employment', 'No employment.');
     const fnf = run.offcycleKind === 'fnf' ? await tx.fnfSettlement.findFirst({ where: { organizationId: org, employmentId, OR: [{ runId: run.id }, { secondRunId: run.id }] } }) : null;
     // The F&F run pays salary to the approved last day (the employment may end only on that day); a second F&F run pays items only.
     let offcycle: Snapshot['offcycle'] = run.runType === 'regular' ? undefined : fnf && fnf.runId === run.id ? 'fnf' : run.offcycleKind === 'fnf' ? 'payment' : (run.offcycleKind as Snapshot['offcycle']);
@@ -441,9 +471,15 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     const exitOn = em.exitedOn ? dateOf(em.exitedOn) : fnf ? dateOf(fnf.lwd) : null;
     const start = dateOf(em.joinedOn) > from ? dateOf(em.joinedOn) : from;
     const end = exitOn && exitOn < to ? exitOn : to;
-    const group = await tx.payGroup.findFirstOrThrow({ where: { organizationId: org, id: run.payGroupId } });
-    const comps = await tx.compensation.findMany({ where: { organizationId: org, employmentId, supersededAt: null, validFrom: { lte: asDate(end) }, OR: [{ validTo: null }, { validTo: { gte: asDate(start) } }] }, orderBy: { validFrom: 'asc' } });
-    const assigns = await tx.employeeAssignment.findMany({ where: { organizationId: org, employmentId, supersededAt: null, validFrom: { lte: asDate(end) }, OR: [{ validTo: null }, { validTo: { gte: asDate(start) } }] }, orderBy: { validFrom: 'asc' } });
+    const group = await reads.once('group', () => tx.payGroup.findFirstOrThrow({ where: { organizationId: org, id: run.payGroupId } }));
+    const inRange = <T extends { validFrom: Date; validTo: Date | null }>(rows: T[]) => rows.filter((x) => dateOf(x.validFrom) <= end && (!x.validTo || dateOf(x.validTo) >= start));
+    const allComps = await reads.once('compensations', () => tx.compensation.findMany({ where: { organizationId: org, employmentId: { in: ids }, supersededAt: null, ...overlaps }, orderBy: { validFrom: 'asc' } }));
+    const comps = inRange(mine(allComps));
+    const assigns = inRange(mine(await reads.once('assignments', () => tx.employeeAssignment.findMany({ where: { organizationId: org, employmentId: { in: ids }, supersededAt: null, ...overlaps }, orderBy: { validFrom: 'asc' } }))));
+    const allComponents = await reads.once('components', () => tx.payComponent.findMany({ where: { organizationId: org } }));
+    const packages = await reads.once('packages', () => tx.compensationPackage.findMany({ where: { organizationId: org, changeId: { in: allComps.map((x) => x.changeId) } } }));
+    const packageLines = await reads.once('packageLines', () => tx.compensationLine.findMany({ where: { organizationId: org, packageId: { in: packages.map((x) => x.id) } } }));
+    const locations = await reads.once('locations', () => tx.location.findMany({ where: { organizationId: org }, select: { id: true, state: true, minWageZone: true } }));
     if (!comps.length) throw new NotReady('compensation', 'No salary for this month.');
     if (!assigns.length) throw new NotReady('assignment', 'No job details for this month.');
     const cuts = [...new Set([start, ...comps.map((x) => dateOf(x.validFrom)), ...assigns.map((x) => dateOf(x.validFrom))].filter((d) => d >= start && d <= end))].sort();
@@ -455,17 +491,19 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       const comp = covering(comps, sFrom);
       const asg = covering(assigns, sFrom);
       if (!comp || !asg) throw new NotReady('compensation', `No salary or job details on ${sFrom}.`);
-      const pkg = await tx.compensationPackage.findFirst({ where: { organizationId: org, changeId: comp.changeId } });
+      const pkg = packages.find((x) => x.changeId === comp.changeId);
       if (!pkg) throw new NotReady('compensation', `The salary from ${dateOf(comp.validFrom)} has no breakup. Revise it in Payroll › Compensation.`);
-      const pl = await tx.compensationLine.findMany({ where: { organizationId: org, packageId: pkg.id } });
-      const codes = new Map((await tx.payComponent.findMany({ where: { organizationId: org, id: { in: pl.map((l) => l.componentId) } }, select: { id: true, code: true } })).map((x) => [x.id, x.code]));
-      const loc = await tx.location.findFirstOrThrow({ where: { organizationId: org, id: asg.locationId }, select: { state: true, minWageZone: true } });
+      const pl = packageLines.filter((l) => l.packageId === pkg.id);
+      const codes = new Map(allComponents.map((x) => [x.id, x.code]));
+      const loc = locations.find((x) => x.id === asg.locationId);
+      if (!loc) throw new NotReady('assignment', 'The job has no work location.');
       segments.push({ from: sFrom, to: sTo, days: Number(sTo.slice(8)) - Number(sFrom.slice(8)) + 1, lines: pl.map((l) => ({ code: codes.get(l.componentId)!, monthly: l.monthly.toFixed(2) })), payBasis: pkg.payBasis as Segment['payBasis'], rate: pkg.rate?.toFixed(2) ?? null, otMultiplier: pkg.otMultiplier?.toFixed(2) ?? null, holidayMultiplier: pkg.holidayMultiplier?.toFixed(2) ?? null, state: loc.state, zone: loc.minWageZone, skill: asg.skillClass ?? null, changeId: comp.changeId });
     }
-    const components: CalcComponent[] = (await tx.payComponent.findMany({ where: { organizationId: org } })).map((x) => ({ code: x.code, name: x.name, kind: x.kind as CalcComponent['kind'], pfWage: x.pfWage, esiWage: x.esiWage, ptWage: x.ptWage, gratuityWage: x.gratuityWage, bonusWage: x.bonusWage, codeWagePart: x.codeWagePart, codeExclusion: x.codeExclusion, prorated: x.prorated, rounding: x.rounding as CalcComponent['rounding'], statutory: x.statutory, taxable: x.taxable }));
+    const components: CalcComponent[] = allComponents.map((x) => ({ code: x.code, name: x.name, kind: x.kind as CalcComponent['kind'], pfWage: x.pfWage, esiWage: x.esiWage, ptWage: x.ptWage, gratuityWage: x.gratuityWage, bonusWage: x.bonusWage, codeWagePart: x.codeWagePart, codeExclusion: x.codeExclusion, prorated: x.prorated, rounding: x.rounding as CalcComponent['rounding'], statutory: x.statutory, taxable: x.taxable }));
     // Attendance: the frozen feed, or the manual LOP of an assumed-present group (D1).
-    const period = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, payGroupId: null, periodStart: run.periodStart } });
-    let feed: { lopDays: Prisma.Decimal; otNormalMinutes: number; otWeeklyOffMinutes: number; otHolidayMinutes: number; timesheetMinutes: number } | null = period ? await tx.payrollFeedRow.findFirst({ where: { organizationId: org, payPeriodId: period.id, employeeId: em.employeeId, supersededAt: null }, orderBy: { frozenAt: 'desc' } }) : null;
+    const period = await reads.once('period', () => tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, payGroupId: null, periodStart: run.periodStart } }));
+    const feeds = period ? await reads.once('feed', () => tx.payrollFeedRow.findMany({ where: { organizationId: org, payPeriodId: period.id, employeeId: { in: ems.map((x) => x.employeeId) }, supersededAt: null }, orderBy: { frozenAt: 'desc' } })) : [];
+    let feed: { lopDays: Prisma.Decimal; otNormalMinutes: number; otWeeklyOffMinutes: number; otHolidayMinutes: number; timesheetMinutes: number } | null = feeds.find((x) => x.employeeId === em.employeeId) ?? null;
     // An F&F run before the month is frozen reads the leaver's attendance straight from the time module (nothing is frozen).
     if (!feed && offcycle === 'fnf') {
       const time = this.moduleRef.get(TimePeriodsService, { strict: false });
@@ -473,22 +511,23 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       if (row) feed = { lopDays: D(row.lopDays), otNormalMinutes: row.otNormalMinutes, otWeeklyOffMinutes: row.otWeeklyOffMinutes, otHolidayMinutes: row.otHolidayMinutes, timesheetMinutes: row.timesheetMinutes };
     }
     if (itemsOnly) feed = null;
-    const manual = itemsOnly ? null : await tx.lopInput.findFirst({ where: { organizationId: org, employmentId, periodStart: run.periodStart } });
+    const manual = itemsOnly ? null : (mine(await reads.once('lop', () => tx.lopInput.findMany({ where: { organizationId: org, employmentId: { in: ids }, periodStart: run.periodStart } })))[0] ?? null);
     const attendance: Snapshot['attendance'] = manual
       ? { lopDays: manual.lopDays.toFixed(2), source: 'manual', otMinutes: { normal: feed?.otNormalMinutes ?? 0, weeklyOff: feed?.otWeeklyOffMinutes ?? 0, holiday: feed?.otHolidayMinutes ?? 0 }, timesheetMinutes: feed?.timesheetMinutes ?? 0 }
       : feed
         ? { lopDays: feed.lopDays.toFixed(2), source: 'feed', otMinutes: { normal: feed.otNormalMinutes, weeklyOff: feed.otWeeklyOffMinutes, holiday: feed.otHolidayMinutes }, timesheetMinutes: feed.timesheetMinutes }
         : { lopDays: '0', source: 'none', otMinutes: { normal: 0, weeklyOff: 0, holiday: 0 }, timesheetMinutes: 0 };
     // The statutory profile in force at the month's end, else the employment-type defaults (IN.EMPTYPE).
-    const prof = await tx.employeeStatutory.findFirst({ where: { organizationId: org, employmentId, validFrom: { lte: asDate(end) }, OR: [{ validTo: null }, { validTo: { gte: asDate(end) } }] } });
+    const prof = mine(await reads.once('profiles', () => tx.employeeStatutory.findMany({ where: { organizationId: org, employmentId: { in: ids }, ...overlaps } }))).find((x) => dateOf(x.validFrom) <= end && (!x.validTo || dateOf(x.validTo) >= end)) ?? null;
     const lastAsg = assigns[assigns.length - 1];
     const lastState = segments[segments.length - 1].state;
-    const type = await tx.employmentType.findFirstOrThrow({ where: { organizationId: org, id: lastAsg.employmentTypeId }, select: { category: true } });
+    const type = (await reads.once('types', () => tx.employmentType.findMany({ where: { organizationId: org }, select: { id: true, category: true } }))).find((x) => x.id === lastAsg.employmentTypeId);
+    if (!type) throw new NotReady('assignment', 'The job has no employment type.');
     const empRs = inForce(rules, 'IN.EMPTYPE', ['IN'], end);
     const dflt = (s: string) => (empRs ? empDefaults(empRs, { category: type.category, statute: s }).applicability : 'mandatory');
-    const personal = await tx.employeePersonalDetails.findFirst({ where: { organizationId: org, employeeId: em.employeeId }, select: { dateOfBirth: true, gender: true } });
+    const personal = (await reads.once('personal', () => tx.employeePersonalDetails.findMany({ where: { organizationId: org, employeeId: { in: ems.map((x) => x.employeeId) } }, select: { employeeId: true, dateOfBirth: true, gender: true } }))).find((x) => x.employeeId === em.employeeId) ?? null;
     const age = personal?.dateOfBirth ? Number(end.slice(0, 4)) - Number(dateOf(personal.dateOfBirth).slice(0, 4)) - (end.slice(5) < dateOf(personal.dateOfBirth).slice(5) ? 1 : 0) : 30;
-    const option = async (key: string) => (await tx.entityStatutoryOption.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, optionKey: key, validFrom: { lte: asDate(end) }, OR: [{ validTo: null }, { validTo: { gte: asDate(end) } }] } }))?.value ?? null;
+    const option = (key: string) => reads.once(`option:${key}:${end}`, async () => (await tx.entityStatutoryOption.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, optionKey: key, validFrom: { lte: asDate(end) }, OR: [{ validTo: null }, { validTo: { gte: asDate(end) } }] } }))?.value ?? null);
     const esiMode = (prof?.esi ?? (dflt('IN.ESI') === 'excluded' ? 'no' : 'by_wage')) as 'yes' | 'no' | 'by_wage';
     // ESI coverage is decided at the start of each contribution period (Apr–Sep, Oct–Mar) and kept until it ends.
     const cpStart = `${month.slice(5) >= '10' || month.slice(5) <= '03' ? (month.slice(5) <= '03' ? Number(month.slice(0, 4)) - 1 : month.slice(0, 4)) : month.slice(0, 4)}-${month.slice(5) >= '04' && month.slice(5) <= '09' ? '04' : '10'}-01`;
@@ -506,19 +545,24 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     const ptCodes = components.filter((x) => x.statutory === 'pt').map((x) => x.code);
     const ytdPt = await tx.payslipLine.aggregate({ where: { organizationId: org, componentCode: { in: ptCodes }, payslipId: { in: (await tx.payslip.findMany({ where: { organizationId: org, employmentId, status: 'approved', periodStart: { gte: asDate(fyStart), lt: run.periodStart } }, select: { id: true } })).map((x) => x.id) } }, _sum: { amount: true } });
     // The regular run pays the items of no off-cycle run; an off-cycle run pays only its own (never held-back F&F items).
-    const oneTime = await tx.oneTimePay.findMany({
-      where: run.runType === 'regular' ? { organizationId: org, employmentId, status: 'approved', runId: null, holdReason: null, OR: [{ periodStart: run.periodStart, endOn: null }, { periodStart: { lte: run.periodStart }, endOn: { gte: run.periodStart } }] } : { organizationId: org, employmentId, status: 'approved', runId: run.id, holdReason: null },
-      orderBy: { createdAt: 'asc' },
-    });
-    const special = itemsOnly ? [] : await tx.specialDays.findMany({ where: { organizationId: org, employmentId, periodStart: run.periodStart } });
+    const oneTime = mine(
+      await reads.once('oneTime', () =>
+        tx.oneTimePay.findMany({
+          where: run.runType === 'regular' ? { organizationId: org, employmentId: { in: ids }, status: 'approved', runId: null, holdReason: null, OR: [{ periodStart: run.periodStart, endOn: null }, { periodStart: { lte: run.periodStart }, endOn: { gte: run.periodStart } }] } : { organizationId: org, employmentId: { in: ids }, status: 'approved', runId: run.id, holdReason: null },
+          orderBy: { createdAt: 'asc' },
+        }),
+      ),
+    );
+    const special = itemsOnly ? [] : mine(await reads.once('special', () => tx.specialDays.findMany({ where: { organizationId: org, employmentId: { in: ids }, periodStart: run.periodStart } })));
     const recent = await tx.payslip.findMany({ where: { organizationId: org, employmentId, status: 'approved', runType: 'regular', periodStart: { lt: run.periodStart } }, orderBy: { periodStart: 'desc' }, take: 3 });
     const recentDays = recent.reduce((t, x) => t + Number(monthRange(dateOf(x.periodStart).slice(0, 7)).to.slice(8)), 0);
-    const courts = itemsOnly ? [] : await tx.courtOrder.findMany({ where: { organizationId: org, employmentId, status: 'active', priorityDate: { lte: asDate(end) }, OR: [{ endOn: null }, { endOn: { gte: asDate(start) } }] } });
-    const loans = itemsOnly ? [] : await tx.loan.findMany({ where: { organizationId: org, employmentId, status: 'active', firstMonth: { lte: run.periodStart }, outstanding: { gt: 0 }, OR: [{ pausedUntil: null }, { pausedUntil: { lt: run.periodStart } }] }, orderBy: { firstMonth: 'asc' } });
-    const carries = itemsOnly ? [] : await tx.payCarryForward.findMany({ where: { organizationId: org, employmentId, status: 'open' }, orderBy: { createdAt: 'asc' } });
-    const overpaid = itemsOnly ? [] : await tx.overpaymentRecovery.findMany({ where: { organizationId: org, employmentId, status: 'active' }, orderBy: { createdAt: 'asc' } });
-    const hold = await tx.payrollWithhold.findFirst({ where: { organizationId: org, employmentId, releasedAt: null } });
-    const waivedBank = (await this.current(tx, org, run, run.calcVersion)).some((x) => x.checkKey === 'bank_missing' && x.employeeId === em.employeeId && x.waivedBy);
+    const courts = itemsOnly ? [] : mine(await reads.once('courts', () => tx.courtOrder.findMany({ where: { organizationId: org, employmentId: { in: ids }, status: 'active', priorityDate: { lte: asDate(to) }, OR: [{ endOn: null }, { endOn: { gte: asDate(from) } }] } }))).filter((o) => dateOf(o.priorityDate) <= end && (!o.endOn || dateOf(o.endOn) >= start));
+    const loans = itemsOnly ? [] : mine(await reads.once('loans', () => tx.loan.findMany({ where: { organizationId: org, employmentId: { in: ids }, status: 'active', firstMonth: { lte: run.periodStart }, outstanding: { gt: 0 }, OR: [{ pausedUntil: null }, { pausedUntil: { lt: run.periodStart } }] }, orderBy: { firstMonth: 'asc' } })));
+    const carries = itemsOnly ? [] : mine(await reads.once('carries', () => tx.payCarryForward.findMany({ where: { organizationId: org, employmentId: { in: ids }, status: 'open' }, orderBy: { createdAt: 'asc' } })));
+    const overpaid = itemsOnly ? [] : mine(await reads.once('overpaid', () => tx.overpaymentRecovery.findMany({ where: { organizationId: org, employmentId: { in: ids }, status: 'active' }, orderBy: { createdAt: 'asc' } })));
+    const hold = mine(await reads.once('holds', () => tx.payrollWithhold.findMany({ where: { organizationId: org, employmentId: { in: ids }, releasedAt: null } })))[0] ?? null;
+    const waived = await reads.once('waivedBank', async () => new Set((await this.current(tx, org, run, run.calcVersion)).filter((x) => x.checkKey === 'bank_missing' && x.waivedBy).map((x) => x.employeeId)));
+    const waivedBank = waived.has(em.employeeId);
     const lev = { legalEntityId: run.legalEntityId };
     return {
       employeeId: em.employeeId,
@@ -556,9 +600,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       options: {
         bonusRate: await option('bonus.rate'),
         bonusPayment: ((await option('bonus.payment')) ?? 'annual') as 'annual' | 'monthly',
-        protectedNetPercent: await settingFor(tx, c, 'payroll.protected_net_percent', lev),
-        netRounding: (await settingFor(tx, c, 'payroll.net_rounding', lev)) as 'none' | 'rupee',
-        standardDailyHours: await settingFor(tx, c, 'payroll.standard_daily_hours', lev),
+        protectedNetPercent: await reads.once('setting:net', () => settingFor(tx, c, 'payroll.protected_net_percent', lev)),
+        netRounding: (await reads.once('setting:rounding', () => settingFor(tx, c, 'payroll.net_rounding', lev))) as 'none' | 'rupee',
+        standardDailyHours: await reads.once('setting:hours', () => settingFor(tx, c, 'payroll.standard_daily_hours', lev)),
       },
       held: !!hold || waivedBank,
       // Batch 5e: income tax, from the same function as the employee's tax sheet.
@@ -615,20 +659,29 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
   private async variances(tx: Tx, org: string, run: Run, slips: Prisma.PayslipGetPayload<object>[]) {
     const c = { organizationId: org } as CompanyContext;
     const pct = D(await settingFor(tx, c, 'payroll.variance_threshold_pct', { legalEntityId: run.legalEntityId }));
+    if (!slips.length) return;
+    // 5j-D1: everyone's last approved regular payslip and both payslips' components, read once for the run.
+    const prevs = await tx.$queryRaw<{ id: string; employmentId: string; net: Prisma.Decimal }[]>`
+      SELECT DISTINCT ON (employment_id) id::text, employment_id::text AS "employmentId", net FROM payslips
+      WHERE organization_id = ${org}::uuid AND employment_id = ANY(${slips.map((x) => x.employmentId)}::uuid[]) AND status = 'approved' AND run_type = 'regular' AND period_start < ${run.periodStart}
+      ORDER BY employment_id, period_start DESC`;
+    const lines = await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: [...slips.map((x) => x.id), ...prevs.map((x) => x.id)] }, kind: { in: ['earning', 'deduction'] } }, select: { payslipId: true, componentCode: true } });
+    const codes = (id: string) => new Set(lines.filter((l) => l.payslipId === id).map((l) => l.componentCode));
+    const rows: Prisma.VarianceFlagCreateManyInput[] = [];
     for (const s of slips) {
-      const prev = await tx.payslip.findFirst({ where: { organizationId: org, employmentId: s.employmentId, status: 'approved', runType: 'regular', periodStart: { lt: run.periodStart } }, orderBy: { periodStart: 'desc' } });
+      const prev = prevs.find((x) => x.employmentId === s.employmentId);
       if (!prev) continue;
-      const flags: { kind: string; size: Prisma.Decimal | null; detail: string }[] = [];
-      if (!prev.net.isZero()) {
-        const change = s.net.sub(prev.net).div(prev.net).mul(100);
-        if (change.abs().gt(pct)) flags.push({ kind: 'net_change', size: s.net.sub(prev.net), detail: `Net pay changed by ${change.toFixed(1)}% (from ₹${prev.net.toFixed(2)} to ₹${s.net.toFixed(2)}).` });
+      const add = (kind: string, size: Prisma.Decimal | null, detail: string) => rows.push({ organizationId: org, legalEntityId: run.legalEntityId, employeeId: s.employeeId, runId: run.id, payslipId: s.id, kind, size, detail });
+      const prevNet = D(prev.net);
+      if (!prevNet.isZero()) {
+        const change = s.net.sub(prevNet).div(prevNet).mul(100);
+        if (change.abs().gt(pct)) add('net_change', s.net.sub(prevNet), `Net pay changed by ${change.toFixed(1)}% (from ₹${prevNet.toFixed(2)} to ₹${s.net.toFixed(2)}).`);
       }
-      const codes = async (id: string) => new Set((await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: id, kind: { in: ['earning', 'deduction'] } }, select: { componentCode: true } })).map((l) => l.componentCode));
-      const [now, before] = [await codes(s.id), await codes(prev.id)];
-      for (const x of now) if (!before.has(x)) flags.push({ kind: 'new_component', size: null, detail: `New this month: ${x}.` });
-      for (const x of before) if (!now.has(x)) flags.push({ kind: 'removed_component', size: null, detail: `Not paid this month: ${x}.` });
-      if (flags.length) await tx.varianceFlag.createMany({ data: flags.map((f) => ({ organizationId: org, legalEntityId: run.legalEntityId, employeeId: s.employeeId, runId: run.id, payslipId: s.id, kind: f.kind, size: f.size, detail: f.detail })) });
+      const [now, before] = [codes(s.id), codes(prev.id)];
+      for (const x of now) if (!before.has(x)) add('new_component', null, `New this month: ${x}.`);
+      for (const x of before) if (!now.has(x)) add('removed_component', null, `Not paid this month: ${x}.`);
     }
+    if (rows.length) await tx.varianceFlag.createMany({ data: rows });
   }
 
   async varianceList(ctx: TenantContext, user: ScopeUser, id: string) {
@@ -720,7 +773,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       await tx.payrollRun.update({ where: { id: run.id }, data: { status: 'submitted', wfRequestId: sub.id, version: { increment: 1 } } });
       await audit(tx, c, 'payroll.run.submitted', 'payroll_run', run.id, { calcVersion: run.calcVersion, people: slips.length, net: net.toFixed(2), selfApproval: !others.length, reason: selfApprovalReason ?? null });
       return { id: run.id, status: 'submitted', approvers: steps.length };
-    });
+    }, RUN_TX);
     await this.engine.send(ctx, notices);
     return out;
   }

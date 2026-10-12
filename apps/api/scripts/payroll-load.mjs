@@ -17,11 +17,14 @@ const call = async (method, path, body) => {
 };
 const group = (await call('GET', '/payroll/pay-groups')).filter((g) => g.name.startsWith('Load test')).pop();
 if (!group) throw new Error('No "Load test" pay group: run scripts/payroll-load.sql first.');
-const run = await call('POST', '/payroll/runs', { payGroupId: group.id, month });
+// A run already made for this group and month (an earlier attempt) is calculated again.
+const run = (await call('GET', `/payroll/runs?month=${month}`)).find((r) => r.payGroupId === group.id && r.status !== 'void') ?? (await call('POST', '/payroll/runs', { payGroupId: group.id, month }));
 const ready = await call('GET', `/payroll/runs/${run.id}/readiness`);
 console.log(`${ready.people} people; ${ready.checks.filter((c) => c.severity === 'block').length} blocking checks`);
 const started = Date.now();
 await call('POST', `/payroll/runs/${run.id}/calculate`);
+const queued = Date.now();
+console.log(`checks, month freeze and attendance copy: ${((queued - started) / 1000).toFixed(0)} s`);
 let p;
 for (;;) {
   await new Promise((ok) => setTimeout(ok, 5000));
