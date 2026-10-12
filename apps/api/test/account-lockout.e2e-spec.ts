@@ -254,7 +254,7 @@ describe('account lockout settings and admin unlock (P12 YX-IAM-07)', () => {
       const statuses: number[] = [];
       for (let i = 0; i < 10; i++) {
         // From the 3rd failure each try must wait 1, 2, 4 ... s: the person waiting it out.
-        await redis.del(`auth:lp:acct:block:${key}`);
+        await redis.del(`auth:lp:acct:block:${key}`, `auth:lp:acct:block:${sha256(`*\u0000${RECRUITER_A}`)}`); // and the email's own delay (W-016)
         statuses.push((await login(orgA().slug, RECRUITER_A, { password: WRONG, ip })).status);
       }
       expect(statuses).toEqual(Array(10).fill(401));

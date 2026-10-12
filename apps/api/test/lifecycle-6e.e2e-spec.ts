@@ -24,6 +24,7 @@ import { markSteppedUp } from './fixtures/step-up';
 // 7 days with auto-exit only by policy, the retirement exit opening months ahead, retrenchment at a 350-worker
 // establishment blocked until the government's permission, VRS, the in-app letter editor and the bulk letter wizard.
 process.env.LETTER_PDF_CONVERTER = 'dev-fake';
+process.env.SD_SCANNER = 'dev-fake'; // uploaded and generated files must pass the (fake) virus check before they open
 
 describe('Lifecycle batch 6e', () => {
   let app: INestApplication;

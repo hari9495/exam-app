@@ -27,6 +27,7 @@ import { markSteppedUp } from './fixtures/step-up';
 // for identity and bank, the portal closed), cancelling a joiner, the ATS hand-off, two companies apart.
 // PDFs come from the dev-fake converter (LETTER_PDF_CONVERTER=dev-fake): this suite does not start Gotenberg.
 process.env.LETTER_PDF_CONVERTER = 'dev-fake';
+process.env.SD_SCANNER = 'dev-fake'; // uploaded and generated files must pass the (fake) virus check before they open
 
 describe('Lifecycle batch 6b', () => {
   let app: INestApplication;

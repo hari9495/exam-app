@@ -1,3 +1,4 @@
+process.env.SD_SCANNER = 'dev-fake'; // uploaded files must pass the (fake) virus check before they open
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
