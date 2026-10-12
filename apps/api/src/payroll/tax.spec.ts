@@ -65,6 +65,14 @@ describe('income tax projection (PAY-5.02 … 5.07)', () => {
     expect(verified.notes.join(' ')).toMatch(/only verified proofs count/);
   });
 
+  it('M05 change 3: taxable salary paid outside payroll counts as salary for the year', () => {
+    const a = projectTax(base(), TAX, april);
+    const b = projectTax(base({ paidOutside: '60000' }), TAX, april);
+    expect(b.income.salary).toBe('1860000.00');
+    expect(b.taxable).toBe('1785000.00');
+    expect(Number(b.monthTds)).toBeGreaterThan(Number(a.monthTds));
+  });
+
   it('HRA is worked out month by month, only for the months rent was paid', () => {
     const rent = { monthly: '25000', from: '2026-07', to: '2027-03', metro: false };
     const p = projectTax(base({ regime: 'old', rent }), TAX, april);

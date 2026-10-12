@@ -820,6 +820,8 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     for (const s of slips) {
       const snap = await tx.payslipSnapshot.findFirstOrThrow({ where: { payslipId: s.id } });
       const result = calculatePayslip(snap.inputs as unknown as Snapshot, await this.rulesFor(snap.ruleVersions as Record<string, string>));
+      // What protected net pay or the deduction cap left for later (APX-B recovery.deferred; M05 shifts its advance schedule).
+      for (const d of result.deferred) await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'recovery.deferred', payload: { runId: run.id, payslipId: s.id, employeeId: s.employeeId, kind: d.kind, ref: d.ref } } });
       for (const l of result.recoveries.loans) {
         if (D(l.amount).isZero()) continue;
         await tx.loanRepayment.create({ data: { organizationId: org, legalEntityId: run.legalEntityId, employeeId: s.employeeId, loanId: l.id, payslipId: s.id, amount: l.amount } });
@@ -889,6 +891,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       if (['approved', 'paid', 'void', 'submitted'].includes(fresh.status)) throw new ConflictException(fresh.status === 'submitted' ? 'This run is waiting for approval; it can be rejected, not voided.' : `A ${fresh.status} run cannot be voided.`);
       await tx.payslip.updateMany({ where: { organizationId: c.organizationId, runId: run.id, status: 'draft' }, data: { status: 'void', voidReason: 'Run voided' } });
       await tx.payrollRun.update({ where: { id: run.id }, data: { status: 'void', voidReason: reason, version: { increment: 1 } } });
+      await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'payroll.run.voided', payload: { runId: run.id } } });
       await audit(tx, c, 'payroll.run.voided', 'payroll_run', run.id, { reason });
       return { id: run.id, status: 'void' };
     });

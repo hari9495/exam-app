@@ -185,7 +185,7 @@ describe('Payroll batch 5e (income tax)', () => {
   });
 
   it('every 5e table has forced RLS, tenant isolation, the support exclusion and the pay guard', async () => {
-    const tables = ['tax_workspaces', 'tax_declaration_lines', 'tds_projections', 'perquisites', 'tax_certificates'];
+    const tables = ['tax_workspaces', 'tax_declaration_lines', 'tds_projections', 'perquisites', 'tax_certificates', 'tax_paid_outside'];
     const rows = await prisma.$queryRaw<{ t: string; ok: boolean }[]>`
       SELECT c.relname AS t, (c.relrowsecurity AND c.relforcerowsecurity
         AND EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid AND p.polname = 'tenant_isolation')

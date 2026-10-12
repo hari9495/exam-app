@@ -19,7 +19,7 @@ const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_r
   // Batch 5d.
   'bank_files', 'payment_records', 'employee_payment_modes', 'disbursements', 'payslip_queries', 'payslip_links',
   // Batch 5e.
-  'tax_workspaces', 'tax_declaration_lines', 'tds_projections', 'perquisites', 'tax_certificates',
+  'tax_workspaces', 'tax_declaration_lines', 'tds_projections', 'perquisites', 'tax_certificates', 'tax_paid_outside',
   // GP-PAY-1 ledger mapping.
   'ledger_mappings',
   // Batch 5f.
