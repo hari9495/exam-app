@@ -8729,6 +8729,7 @@ model ConsultantInvoice {
   tdsRate         String?   @map("tds_rate") @db.VarChar(12)
   tdsReason       String?   @map("tds_reason") @db.VarChar(20)
   tdsRuleVersion  String?   @map("tds_rule_version") @db.VarChar(20)
+  tdsOn           DateTime? @map("tds_on") @db.Date
   certificateId   String?   @map("certificate_id") @db.Uuid
   certificateUsed Decimal   @default(0) @map("certificate_used") @db.Decimal(14, 2)
   netPayable      Decimal?  @map("net_payable") @db.Decimal(14, 2)

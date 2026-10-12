@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 
 // Batch 5h DTOs (M03-BUILD-DESIGN §14.7): the consultant register, s.197 certificates, invoices, payouts and the portal.
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
@@ -196,13 +196,6 @@ export class ConsultantPayoutDto {
   debitAccount!: string;
 }
 
-export class ConsultantReleaseDto {
-  @trim()
-  @IsString()
-  @MaxLength(40)
-  phrase!: string;
-}
-
 export class ConsultantResultRowDto {
   @IsUUID()
   invoiceId!: string;
@@ -241,6 +234,7 @@ export class Form131ImportDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(4)
   quarter!: number;
 }
 

@@ -45,7 +45,7 @@ import { PayPeriodsService } from './periods.service';
 //   payroll.file.view / .release ⚡      exchange files: single-use download links, release by a second person
 //   audit.view / audit.export / audit.hold.manage    the audit log, timelines, chain checks, exports, legal holds
 //   no key (self)                        my pay documents, my late corrections
-const file = (res: Response, out: { file: Buffer; name: string; contentType?: string }) => {
+export const file = (res: Response, out: { file: Buffer; name: string; contentType?: string }) => {
   res.set({ 'Content-Type': out.contentType ?? 'application/pdf', 'Content-Disposition': `attachment; filename="${out.name.replace(/[^A-Za-z0-9._-]/g, '_')}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
   return new StreamableFile(out.file);
 };

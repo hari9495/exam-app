@@ -124,6 +124,7 @@ CREATE TABLE "consultant_invoices" (
     "tds_rate" VARCHAR(12),
     "tds_reason" VARCHAR(20),
     "tds_rule_version" VARCHAR(20),
+    "tds_on" DATE,
     "certificate_id" UUID,
     "certificate_used" DECIMAL(14,2) NOT NULL DEFAULT 0,
     "net_payable" DECIMAL(14,2),
@@ -190,6 +191,9 @@ CREATE UNIQUE INDEX "consultant_certificates_issued_key" ON "consultant_certific
 -- Form 140 (26Q up to 31 Mar 2026) is a TDS return like Form 138; challans are kept per section.
 ALTER TABLE "tds_returns" DROP CONSTRAINT "tds_returns_form_check";
 ALTER TABLE "tds_returns" ADD CONSTRAINT "tds_returns_form_check" CHECK (("law_version" = 'IT-1961' AND "form_code" IN ('24Q', '26Q')) OR ("law_version" = 'IT-2025' AND "form_code" IN ('138', '140')));
+-- One original return per form and quarter: the salary return (24Q / 138) and the non-salary one (26Q / 140) are separate.
+DROP INDEX "tds_returns_one_original";
+CREATE UNIQUE INDEX "tds_returns_one_original" ON "tds_returns" ("organization_id", "legal_entity_id", "tax_year", "quarter", "form_code") WHERE "kind" = 'original';
 
 REVOKE DELETE, TRUNCATE ON TABLE "consultants", "tds_197_certificates", "consultant_payout_batches", "consultant_invoices", "consultant_certificates" FROM app_runtime;
 
