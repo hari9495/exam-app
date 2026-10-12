@@ -259,6 +259,7 @@ describe('Payroll batch 5e (income tax)', () => {
     // What can be declared comes from the rule pack, with the proof cut-off (screens PAY-10.09).
     expect(d.subjects.map((x: { key: string }) => x.key)).toEqual(expect.arrayContaining(['hra', 'sec80c', 'sec80d_self']));
     expect(d.proofCutoff).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(d.proofWindowOpens < d.proofCutoff).toBe(true);
     const raw = await scoped((tx) => tx.taxDeclarationLine.findFirstOrThrow({ where: { employeeId: ids.emp1, subjectKey: 'hra' } }));
     expect(raw.landlordPanEnc).not.toContain('ABCPI1234K');
     ids.line80c = d.lines.find((l: { subjectKey: string }) => l.subjectKey === 'sec80c').id;
