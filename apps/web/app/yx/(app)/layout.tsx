@@ -278,7 +278,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     : [...(perms.has('payroll.run.view') || perms.has('payroll.run.prepare') || perms.has('payroll.run.approve') || perms.has('payroll.offcycle.prepare') ? [PAY_RUNS] : []),
         ...(perms.has('payroll.input.manage') ? [PAY_INPUTS] : []),
         ...(perms.has('statutory.filing.view') ? [PAY_STATUTORY] : []),
-        ...(perms.has('payroll.fnf.manage') ? [PAY_FNF] : []),
+        ...(perms.has('payroll.fnf.manage') || perms.has('payroll.notice.waive') ? [PAY_FNF] : []),
         ...(perms.has('payroll.arrears.approve') || perms.has('payroll.writeoff.approve') ? [PAY_ARREARS] : []),
         ...(perms.has('payroll.run.prepare') || perms.has('payroll.setup.manage') ? [PAY_GO_LIVE] : []),
         ...(periodKeys ? [PAY_PERIODS, REOPEN_REQUESTS] : []), ...(perms.has('payroll.document.view') ? [PAY_DOCUMENTS] : []), ...(perms.has('payroll.file.view') ? [PAY_FILES] : []), ...(perms.has('audit.view') ? [PAY_AUDIT] : []),

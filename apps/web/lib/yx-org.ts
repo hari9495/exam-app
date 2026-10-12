@@ -117,6 +117,7 @@ export const YX_KEYS = [
   'statutory.filing.generate',
   'statutory.filing.mark_filed',
   'statutory.challan.manage',
+  'payroll.notice.waive',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

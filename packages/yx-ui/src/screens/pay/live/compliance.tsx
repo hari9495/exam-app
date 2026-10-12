@@ -486,6 +486,8 @@ export interface FnfScreenProps {
   onRetry?: () => void;
   settlements: FnfSettlementView[] | null;
   nameOf: (employeeId: string) => string;
+  /** payroll.fnf.manage edits; payroll.notice.waive (HR too) waives a notice (5j-D2). Default: both. */
+  can?: { manage: boolean; waiveNotice: boolean };
   onOpenRun: (runId: string) => void;
   onHold: (s: FnfSettlementView, itemId: string, holdReason: string | null, reason: string) => Promise<unknown>;
   onAdd: (s: FnfSettlementView, line: { componentCode: string; amount: string; label: string }, reason: string) => Promise<unknown>;
@@ -544,7 +546,8 @@ function FnfDrawer({ s, onClose, ...p }: FnfScreenProps & { s: FnfSettlementView
   const [holding, setHolding] = useState<string | null>(null);
   const [waiving, setWaiving] = useState(false);
   const { busy, error, run } = useRun();
-  const editable = s.status === 'open';
+  const can = p.can ?? { manage: true, waiveNotice: true };
+  const editable = s.status === 'open' && can.manage;
   return (
     <Drawer open onOpenChange={(o) => !o && onClose()} title={`${p.nameOf(s.employeeId)} · ${EXIT[s.exitType] ?? s.exitType}`} subtitle={`Last day ${dateText(s.lwd)} · pay by ${dateText(s.deadline)}`} size="lg" footer={<Button onClick={onClose}>Close</Button>}>
       <div className="yx-tim-stack">
@@ -602,13 +605,13 @@ function FnfDrawer({ s, onClose, ...p }: FnfScreenProps & { s: FnfSettlementView
         )}
         {s.noticeWaived && <InlineAlert tone="info" title="Notice recovery waived">{s.noticeWaived.reason}</InlineAlert>}
         <div className="yx-tim-row">
-          {s.runId && (
+          {s.runId && can.manage && (
             <Button variant="primary" onClick={() => p.onOpenRun(s.runId!)}>
               Open F&F run
             </Button>
           )}
           {s.secondRunId && <Button onClick={() => p.onOpenRun(s.secondRunId!)}>Open second run</Button>}
-          {editable && s.exitType === 'resignation' && !s.noticeWaived && s.runStatus !== 'approved' && <Button onClick={() => setWaiving(true)}>Waive notice recovery</Button>}
+          {s.status === 'open' && can.waiveNotice && s.exitType === 'resignation' && !s.noticeWaived && s.runStatus !== 'approved' && <Button onClick={() => setWaiving(true)}>Waive notice recovery</Button>}
           {editable && s.runStatus === 'approved' && !s.secondRunId && (
             <Button
               loading={busy === 'second'}
