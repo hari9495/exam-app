@@ -127,6 +127,8 @@ export const YX_KEYS = [
   'payroll.notice.waive',
   // M06 performance PM1.
   'perf.setup.manage',
+  'perf.goal.view',
+  'perf.goal.manage',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

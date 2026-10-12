@@ -56,7 +56,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'All HR records, job changes, personal details and identity changes for the people in scope; leave and attendance set-up, balances and medical leave.',
     cannot: 'Pay, Aadhaar in full, payroll approval.',
-    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view'],
+    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'perf.goal.view'],
   },
   {
     key: 'hr_executive',
@@ -118,9 +118,9 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     key: 'performance_setup',
     name: 'Performance set-up',
     typicalScope: 'tenant',
-    summary: 'Rating scales, review templates, competencies and the company skills library (M06).',
+    summary: 'Rating scales, review templates, competencies, the company skills library, goal periods and company and team goals (M06).',
     cannot: 'See anyone’s goals, reviews or ratings.',
-    permissions: ['perf.setup.manage'],
+    permissions: ['perf.setup.manage', 'perf.goal.manage'],
   },
   {
     key: 'compliance_owner',

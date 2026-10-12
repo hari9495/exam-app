@@ -75,3 +75,39 @@ export function templateProblem(scoring: 'weighted' | 'manager_overall', section
   if (total !== 10000) return `The weights of rated sections add up to ${(total / 100).toFixed(2).replace(/\.00$/, '')}, not 100.`;
   return null;
 }
+
+// ------------------------------------------------------------------------------------------ PM2: goal progress (§7.2)
+
+export type KrIn = { direction: 'up' | 'down' | 'hit'; start: number; target: number; current: number; weight: number };
+
+/** Why a key result cannot be saved: "up" climbs to its target, "down" falls to it, "hit" is reached or not. */
+export function krProblem(k: Pick<KrIn, 'direction' | 'start' | 'target'>): string | null {
+  if (k.direction === 'up' && !(k.target > k.start)) return 'An "increase to" key result needs a target above its start.';
+  if (k.direction === 'down' && !(k.target < k.start)) return 'A "decrease to" key result needs a target below its start.';
+  return null;
+}
+
+/** One key result's progress, 0–100: the share of the way from start to target, capped; "hit" is 0 or 100. */
+export function krProgress(k: Omit<KrIn, 'weight'>): number {
+  if (k.direction === 'hit') return k.current >= k.target ? 100 : 0;
+  const share = (k.current - k.start) / (k.target - k.start);
+  return Math.round(Math.min(1, Math.max(0, share)) * 10000) / 100;
+}
+
+/** Weighted average of parts (key results, or child goals). All-zero weights count equally. */
+export function weightedProgress(parts: readonly { progress: number; weight: number }[]): number {
+  if (!parts.length) return 0;
+  const total = parts.reduce((t, p) => t + p.weight, 0);
+  const avg = total > 0 ? parts.reduce((t, p) => t + p.progress * p.weight, 0) / total : parts.reduce((t, p) => t + p.progress, 0) / parts.length;
+  return Math.round(avg * 100) / 100;
+}
+
+/** True when making `parentId` the parent of `goalId` would close a loop (YX-PERF-01 allows any owner, not cycles). */
+export function wouldCycle(goalId: string, parentId: string, parentOf: ReadonlyMap<string, string | null>): boolean {
+  let at: string | null | undefined = parentId;
+  for (let i = 0; at && i < 1000; i++) {
+    if (at === goalId) return true;
+    at = parentOf.get(at);
+  }
+  return false;
+}

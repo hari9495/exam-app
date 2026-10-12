@@ -89,3 +89,81 @@ export interface Skill {
   /** This skill is a competency. */
   competency: boolean;
 }
+
+// ------------------------------------------------------------------------------------------ PM2: goals and OKRs
+
+export interface GoalPeriod {
+  id: string;
+  name: string;
+  fromOn: string;
+  toOn: string;
+  status: 'open' | 'closed';
+}
+
+export type GoalStatus = 'draft' | 'submitted' | 'active' | 'done' | 'dropped';
+
+export interface GoalSummary {
+  id: string;
+  periodId: string;
+  ownerType: 'person' | 'team' | 'company';
+  ownerEmployeeId: string | null;
+  ownerDepartmentId: string | null;
+  owner: string;
+  parentGoalId: string | null;
+  kind: 'okr' | 'kpi';
+  title: string;
+  weight: number;
+  status: GoalStatus;
+  progress: number;
+  version: number;
+}
+
+export interface KeyResult {
+  id: string;
+  title: string;
+  unit: string | null;
+  direction: 'up' | 'down' | 'hit';
+  start: number;
+  target: number;
+  current: number;
+  weight: number;
+  progress: number;
+}
+
+export interface GoalDetail extends GoalSummary {
+  description: string | null;
+  keyResults: KeyResult[];
+  parent: { id: string; title: string; progress: number } | null;
+  children: { id: string; title: string; progress: number; owner: string }[];
+  checkins: { id: string; on: string; progress: number; confidence: 'on_track' | 'at_risk' | 'off_track'; note: string | null }[];
+  pendingChange: unknown;
+  decisionNote: string | null;
+  can: { edit: boolean; checkIn: boolean; drop: boolean; cascade: boolean };
+}
+
+export interface GoalInput {
+  periodId: string;
+  ownerType: 'person' | 'team' | 'company';
+  ownerDepartmentId?: string | null;
+  parentGoalId: string | null;
+  kind: 'okr' | 'kpi';
+  title: string;
+  description: string | null;
+  weight: number;
+  keyResults: { title: string; unit: string | null; direction: 'up' | 'down' | 'hit'; start: number; target: number; weight?: number }[];
+  reason?: string;
+  version?: number;
+}
+
+export interface CheckinInput {
+  values: { keyResultId: string; value: number }[];
+  progress?: number;
+  confidence: 'on_track' | 'at_risk' | 'off_track';
+  note: string | null;
+}
+
+export interface GoalMap {
+  goals: GoalSummary[];
+  unaligned: string[];
+  offTrack: string[];
+}

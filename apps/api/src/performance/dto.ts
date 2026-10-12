@@ -231,3 +231,169 @@ export class MergeDto {
   @IsUUID()
   intoId!: string;
 }
+
+// ------------------------------------------------------------------------------------------ PM2: goals (§19 "Goals")
+
+export class GoalPeriodDto {
+  @trim()
+  @IsString()
+  @Length(2, 80)
+  name!: string;
+
+  @Matches(ISO)
+  fromOn!: string;
+
+  @Matches(ISO)
+  toOn!: string;
+}
+
+export class KeyResultDto {
+  @trim()
+  @IsString()
+  @Length(2, 200)
+  title!: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(20)
+  unit?: string | null;
+
+  @IsIn(['up', 'down', 'hit'])
+  direction!: 'up' | 'down' | 'hit';
+
+  @IsNumber({ maxDecimalPlaces: 4 })
+  start!: number;
+
+  @IsNumber({ maxDecimalPlaces: 4 })
+  target!: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(100)
+  weight?: number;
+}
+
+export class GoalDto {
+  @IsUUID()
+  periodId!: string;
+
+  @IsIn(['person', 'team', 'company'])
+  ownerType!: 'person' | 'team' | 'company';
+
+  /** A team goal belongs to a department; a person goal to the person writing it (managers cascade to reports). */
+  @IsOptional()
+  @IsUUID()
+  ownerDepartmentId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  parentGoalId?: string | null;
+
+  @IsIn(['okr', 'kpi'])
+  kind!: 'okr' | 'kpi';
+
+  @trim()
+  @IsString()
+  @Length(3, 200)
+  title!: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(1000)
+  description?: string | null;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  weight!: number;
+
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => KeyResultDto)
+  keyResults!: KeyResultDto[];
+
+  /** Changing an active goal: why (the manager approves it, §7.3). */
+  @IsOptional()
+  @trim()
+  @IsString()
+  @Length(3, 500)
+  reason?: string;
+
+  @IsOptional()
+  @IsInt()
+  version?: number;
+}
+
+export class SubmitGoalsDto {
+  @IsUUID()
+  periodId!: string;
+}
+
+export class CheckinValueDto {
+  @IsUUID()
+  keyResultId!: string;
+
+  @IsNumber({ maxDecimalPlaces: 4 })
+  value!: number;
+}
+
+export class CheckinDto {
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => CheckinValueDto)
+  values!: CheckinValueDto[];
+
+  /** Only for a goal without key results (a KPI with a typed value). */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  progress?: number;
+
+  @IsIn(['on_track', 'at_risk', 'off_track'])
+  confidence!: 'on_track' | 'at_risk' | 'off_track';
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(1000)
+  note?: string | null;
+}
+
+export class CascadeDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsUUID('all', { each: true })
+  employeeIds!: string[];
+}
+
+export class DropDto {
+  @trim()
+  @IsString()
+  @Length(3, 500)
+  reason!: string;
+}
+
+export class GoalListDto {
+  @IsUUID()
+  period!: string;
+
+  @IsOptional()
+  @IsIn(['mine', 'team', 'company', 'employee'])
+  view?: 'mine' | 'team' | 'company' | 'employee';
+
+  @IsOptional()
+  @IsUUID()
+  employeeId?: string;
+}
+
+export class PeriodQueryDto {
+  @IsUUID()
+  period!: string;
+}

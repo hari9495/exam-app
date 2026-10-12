@@ -63,6 +63,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'asset.assigned', group: 'assignments', label: 'A company asset was issued to you' },
   { type: 'exit.deprovisioning.failed', group: 'reminders', label: 'A step after someone left did not go through (HR)' },
   { type: 'probation.review.done', group: 'reminders', label: 'A manager reviewed a probation' },
+  // M06 performance PM2.
+  { type: 'perf.goal.checkin_due', group: 'reminders', label: 'Your goals are due a check-in' },
   // M05 E4: trips and advances.
   { type: 'expense.trip.update', group: 'assignments', label: 'A trip was approved, or needs bookings from the travel desk' },
   { type: 'expense.advance.update', group: 'reminders', label: 'An expense advance was paid, is due to be settled, or is overdue' },

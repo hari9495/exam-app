@@ -2,3 +2,4 @@
 // Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
 export { PerformanceSetupScreen, type PerformanceSetupScreenProps } from './setup';
+export { GoalsScreen, GoalScreen, GoalMapScreen, GOAL_STATUS, type GoalsScreenProps, type GoalScreenProps, type GoalMapScreenProps } from './goals';

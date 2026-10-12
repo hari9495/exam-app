@@ -8300,3 +8300,74 @@ model RoleCompetencyMap {
 
   @@map("role_competency_map")
 }
+
+// ---- Performance batch PM2 (migration 20261113000000_performance_pm2; M06-BUILD-DESIGN §5.3): goals and OKRs.
+
+model GoalPeriod {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(80)
+  fromOn         DateTime @map("from_on") @db.Date
+  toOn           DateTime @map("to_on") @db.Date
+  status         String   @default("open") @db.VarChar(8)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("goal_periods")
+}
+
+model Goal {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  periodId          String   @map("period_id") @db.Uuid
+  ownerType         String   @map("owner_type") @db.VarChar(8)
+  ownerEmployeeId   String?  @map("owner_employee_id") @db.Uuid
+  ownerDepartmentId String?  @map("owner_department_id") @db.Uuid
+  parentGoalId      String?  @map("parent_goal_id") @db.Uuid
+  kind              String   @db.VarChar(4)
+  title             String   @db.VarChar(200)
+  description       String?  @db.VarChar(1000)
+  weight            Decimal  @default(0) @db.Decimal(5, 2)
+  status            String   @default("draft") @db.VarChar(10)
+  progress          Decimal  @default(0) @db.Decimal(5, 2)
+  wfRequestId       String?  @map("wf_request_id") @db.Uuid
+  pendingChange     Json?    @map("pending_change")
+  decisionNote      String?   @map("decision_note") @db.VarChar(500)
+  checkinRemindedOn DateTime? @map("checkin_reminded_on") @db.Date
+  createdBy         String?  @map("created_by") @db.Uuid
+  version           Int      @default(1)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("goals")
+}
+
+model KeyResult {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  goalId         String  @map("goal_id") @db.Uuid
+  seq            Int     @db.SmallInt
+  title          String  @db.VarChar(200)
+  unit           String? @db.VarChar(20)
+  direction      String  @default("up") @db.VarChar(4)
+  startValue     Decimal @default(0) @map("start_value") @db.Decimal(16, 4)
+  targetValue    Decimal @map("target_value") @db.Decimal(16, 4)
+  currentValue   Decimal @default(0) @map("current_value") @db.Decimal(16, 4)
+  weight         Decimal @default(1) @db.Decimal(5, 2)
+
+  @@map("key_results")
+}
+
+model GoalCheckin {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  goalId         String   @map("goal_id") @db.Uuid
+  byUserId       String?  @map("by_user_id") @db.Uuid
+  on             DateTime @db.Date
+  values         Json
+  progress       Decimal  @db.Decimal(5, 2)
+  confidence     String   @db.VarChar(10)
+  note           String?  @db.VarChar(1000)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("goal_checkins")
+}

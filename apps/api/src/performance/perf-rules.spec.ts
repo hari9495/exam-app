@@ -1,4 +1,4 @@
-import { bandFor, bandsProblem, scaleProblem, templateProblem, type SectionIn } from './perf-rules';
+import { bandFor, bandsProblem, krProblem, krProgress, scaleProblem, templateProblem, weightedProgress, wouldCycle, type SectionIn } from './perf-rules';
 
 const L = (...labels: string[]) => labels.map((label, i) => ({ value: i + 1, label }));
 
@@ -44,5 +44,29 @@ describe('performance PM1: templates (PM-1.03, PF-D7)', () => {
   it('manager-overall scoring needs a rated overall section the manager answers', () => {
     expect(templateProblem('manager_overall', [s({ rated: false }), s({ kind: 'overall', title: 'Overall', whoAnswers: ['manager'] })])).toBeNull();
     expect(templateProblem('manager_overall', [s({})])).toBe('Manager-overall scoring needs a rated overall section the manager answers.');
+  });
+});
+
+describe('performance PM2: goal progress (PM-2.01, YX-PERF-01)', () => {
+  it('a key result counts the share of the way from start to target, capped at 0–100', () => {
+    expect(krProgress({ direction: 'up', start: 0, target: 3, current: 2 })).toBe(66.67);
+    expect(krProgress({ direction: 'up', start: 0, target: 3, current: 5 })).toBe(100);
+    expect(krProgress({ direction: 'down', start: 40, target: 10, current: 25 })).toBe(50);
+    expect(krProgress({ direction: 'down', start: 40, target: 10, current: 50 })).toBe(0);
+    expect(krProgress({ direction: 'hit', start: 0, target: 1, current: 1 })).toBe(100);
+    expect(krProblem({ direction: 'up', start: 5, target: 5 })).toMatch(/above its start/);
+    expect(krProblem({ direction: 'down', start: 5, target: 9 })).toMatch(/below its start/);
+  });
+
+  it('a goal is the weighted average of its key results or children; zero weights count equally', () => {
+    expect(weightedProgress([{ progress: 100, weight: 3 }, { progress: 0, weight: 1 }])).toBe(75);
+    expect(weightedProgress([{ progress: 100, weight: 0 }, { progress: 50, weight: 0 }])).toBe(75);
+    expect(weightedProgress([])).toBe(0);
+  });
+
+  it('a parent chain that comes back to the goal is a loop', () => {
+    const parentOf = new Map<string, string | null>([['a', 'b'], ['b', 'c'], ['c', null]]);
+    expect(wouldCycle('c', 'a', parentOf)).toBe(true);
+    expect(wouldCycle('x', 'a', parentOf)).toBe(false);
   });
 });

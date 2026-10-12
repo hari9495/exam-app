@@ -37,6 +37,8 @@ const ORG: WorkspaceLink[] = [
 const COMPANY_RULES: WorkspaceLink = { id: 'company-rules', label: 'Company rules', href: '/yx/settings/company-rules', group: 'Organisation' };
 // Batch G1: the "Add a country" guide, the company's words in Hindi / Tamil / Telugu, and the person's language.
 const COUNTRIES: WorkspaceLink = { id: 'countries', label: 'Countries', href: '/yx/settings/countries', group: 'Organisation' };
+const MY_GOALS: WorkspaceLink = { id: 'goals', label: 'My goals', href: '/yx/performance', group: 'Me' };
+const GOAL_MAP: WorkspaceLink = { id: 'goal-map', label: 'Goal map', href: '/yx/performance/goal-map', group: 'People' };
 const PERFORMANCE_SETUP: WorkspaceLink = { id: 'performance-setup', label: 'Performance', href: '/yx/settings/performance', group: 'Organisation' };
 const TRANSLATIONS: WorkspaceLink = { id: 'translations', label: 'Translations', href: '/yx/settings/translations', group: 'Organisation' };
 const MY_LANGUAGE: WorkspaceLink = { id: 'my-language', label: 'Language', href: '/yx/me/language', group: 'Me' };
@@ -237,6 +239,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...(perms.has('expense.policy.manage') ? [EXPENSE_SETUP] : []),
     ...(perms.has('expense.report.view') ? [EXPENSE_REPORTS] : []),
     ...(perms.has('perf.setup.manage') ? [PERFORMANCE_SETUP] : []),
+    ...(perms.has('perf.goal.view') ? [GOAL_MAP] : []),
     ...(perms.has('letter.template.manage') || perms.has('letter.signatory.manage') ? [LETTER_TEMPLATES] : []),
     ...(perms.has('access.role.manage') ? [ACCESS] : []),
     // Read by anyone who reads the structure; changed with org.settings.manage (+ access.role.manage for guarded keys).
@@ -244,7 +247,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   ];
   // P04 Q5: the company's email branding and wording, for those who hold the key (read-only in a support session).
   const emails = perms.has('notification.template.manage') || support ? [EMAILS] : [];
-  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee || perms.has('expense.finance.review') ? [MY_EXPENSES] : []), ...(employee ? [PRIVACY, MY_LANGUAGE, MY_LETTERS, MY_DOCUMENTS, MY_ASSETS, RESIGN] : [])];
+  const security = [...linksFor(role, actingSuperAdmin), ...emails, ...(perms.has('org.support_access.approve') && !support ? [SUPPORT] : []), ...(perms.has('org.yukthix_support.raise') && !support ? [CONTACT_YX] : []), ...(employee || perms.has('expense.finance.review') ? [MY_EXPENSES] : []), ...(employee || perms.has('perf.goal.manage') ? [MY_GOALS] : []), ...(employee ? [PRIVACY, MY_LANGUAGE, MY_LETTERS, MY_DOCUMENTS, MY_ASSETS, RESIGN] : [])];
   const supportEndsAt = support ? (decodeJwtPayload(accessToken)?.supportEndsAt as string | undefined) : undefined;
   const desk = support
     ? []
