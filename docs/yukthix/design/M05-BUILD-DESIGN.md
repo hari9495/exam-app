@@ -450,7 +450,7 @@ Every line keeps the receipt currency and amount, the rate, its source and date,
 | `manual` | An employee-entered rate with proof | Flagged when it differs from the reference by more than the tolerance (3 %) |
 
 - **Holidays and weekends:** the last published rate before the expense date.
-- **Import:** a daily job pulls the free published files (FBIL, ECB) into `fx_rates`. If a source is down, the last rate is used and the line says how old it is. A paid FX feed is a third-party add-on (D18). Each source's terms of reuse are checked before the job is switched on (§22 D2).
+- **Import:** a daily job pulls the free published files (FBIL, ECB) into `fx_rates`. If a source is down, the last rate is used and the line says how old it is. A paid FX feed is a third-party add-on (D18). Each source's terms of reuse are checked before the job is switched on (§22 D2). **As decided 12 Oct 2026:** only the company table at the pilot; a paid, licensed feed before the global launch; ECB and FBIL off.
 - **Accounting basis:** accounting standards (Ind AS 21 and its global twin) record a foreign-currency transaction at the spot rate on its date, or an average rate for a period when rates move little. The `reference` and `company_table` options cover both.
 
 ### 14.3 Policy limits in other currencies
@@ -783,6 +783,8 @@ M05 named the "RBI reference rate"; FBIL has published the INR reference rates s
 - B: Company monthly table only (no automatic import).
 - C: A paid FX feed (third-party add-on).
 
+**Changed 12 Oct 2026 (founder):** the pilot uses **B, the company rate table**. Before the global launch a **paid, licensed FX feed whose terms allow use for payments** is chosen and added as a feed next to the table. **ECB and FBIL stay off:** ECB says its reference rates are for information only and discourages transaction use; FBIL's reuse terms could not be confirmed. Built in E5 this way (§14.2, go-live item 21).
+
 ### D3 · Reimbursements on the payslip
 - A: **A separate "Reimbursements" section, outside gross pay and wage bases, inside net pay (needs a small payroll change).**
 - B: Show them as an ordinary earning (no payroll change, but gross pay looks inflated and confuses PF / ESI checks).
@@ -831,6 +833,7 @@ Each legal entity has one GSTIN today; hotel credit needs the registration in th
 
 | Date | Change |
 |---|---|
+| 12 Oct 2026 | Batches E4 (trips, bookings, advances) and E5 built. D2 changed by the founder: company rate table for the pilot; a paid, licensed FX feed allowing payment use before the global launch; ECB and FBIL off. |
 | 12 Oct 2026 | Batch E2 built; the receipt OCR worker built from the approved downloads (option A: full OpenCV with libGL and its Debian dependencies), pins and sources in §22.2, go-live item 20. |
 | 12 Oct 2026 | Batch E1 built: `fx_rates` moved to E5 (§5.7); one starter policy instead of three grade bands (§6.2); `expense.policy.manage` in a new company-wide Expense set-up template instead of HR Admin and Finance (§16.2). |
 | 12 Oct 2026 | Founder accepted D2–D9; D1 changed to self-hosted PaddleOCR at launch in an isolated worker (no network, non-root, limits, strict output parse, per-field confidence, nothing auto-submits); OCR slice moved to E2 (XP-2.10); §22.1 lists the five payroll changes for the payroll builder. |
