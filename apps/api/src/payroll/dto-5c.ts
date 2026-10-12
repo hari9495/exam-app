@@ -18,6 +18,13 @@ export class RunCreateDto {
   @IsOptional()
   @IsIn(['bonus', 'arrears', 'correction', 'payment'])
   offcycleKind?: 'bonus' | 'arrears' | 'correction' | 'payment';
+
+  /** PAY-9.01: which pay period of the month, for a weekly or fortnightly group's regular run. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(6)
+  subPeriod?: number;
 }
 
 export class RunListDto {
@@ -92,6 +99,11 @@ export class LopInputsDto {
   @IsOptional()
   @IsIn(['manual', 'upload'])
   source?: 'manual' | 'upload';
+
+  /** PAY-9.01: the first day of a weekly or fortnightly pay period in the month (absent: the whole month). */
+  @IsOptional()
+  @Matches(/^d{4}-d{2}-d{2}$/)
+  periodStart?: string;
 }
 
 export class OneTimeDto {
