@@ -47,6 +47,8 @@ const PAN = /[A-Z]{5}\d{4}[A-Z]/;
 const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');
 const CHALLAN_KEY = (s: string) => `nonsal_${s}`;
 const SECTION_LABEL: Record<string, string> = { '194C': '194C', '194J_A': '194J(a)', '194J_B': '194J(b)' };
+/** A fraction as per cent with four places (0.1 → 10.0000), as the return file wants it. */
+const percent = (fraction: string) => (Number(fraction) * 100).toFixed(4);
 const LIVE = ['approved', 'queued', 'sent', 'paid', 'failed'];
 const isPdf = (b: Buffer | undefined) => Boolean(b?.length && b.subarray(0, 5).toString('latin1') === '%PDF-');
 
@@ -937,7 +939,7 @@ export class ConsultantsService implements OnModuleInit {
             section: codeOf(section),
             deductees: rows
               .filter((x) => x.month === month && x.section === section)
-              .map((x) => ({ pan: x.panEnc && !x.noPan ? this.open(org, x.consultantId, x.panEnc) : null, name: x.name, paid: x.paid, tds: x.tds, paidOn: x.paidOn, deductedOn: x.tdsOn, noPan: x.noPan, code: '02', rate: (Number(x.rate) * 100).toFixed(4), lowerCertificate: x.lowerCertificate })),
+              .map((x) => ({ pan: x.panEnc && !x.noPan ? this.open(org, x.consultantId, x.panEnc) : null, name: x.name, paid: x.paid, tds: x.tds, paidOn: x.paidOn, deductedOn: x.tdsOn, noPan: x.noPan, code: '02', rate: percent(x.rate), lowerCertificate: x.lowerCertificate })),
           };
         }),
       });
