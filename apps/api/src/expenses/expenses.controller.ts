@@ -6,7 +6,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { CategoryDto, EndDto, GstRegistrationDto, LimitsQueryDto, MileageRateDto, NewVersionDto, PerDiemRateDto, PolicyDto, TierDto } from './dto';
+import { CategoryDto, EndDto, FxRatesDto, GstRegistrationDto, LimitsQueryDto, MileageRateDto, NewVersionDto, PerDiemRateDto, PolicyDto, TierDto } from './dto';
 import { ExpenseSetupService } from './setup.service';
 
 // Expenses batch E1 (M05-BUILD-DESIGN §18 "Setup", §16): company configuration under expense.policy.manage
@@ -106,6 +106,18 @@ export class ExpensesController {
   @RequirePermissions('expense.policy.manage')
   addPerDiem(@CurrentTenant() ctx: TenantContext, @Body() dto: PerDiemRateDto) {
     return this.setup.addPerDiemRate(ctx, dto);
+  }
+
+  @Get('fx-rates')
+  @RequirePermissions('expense.policy.manage')
+  fxRates(@CurrentTenant() ctx: TenantContext) {
+    return this.setup.fxRates(ctx);
+  }
+
+  @Post('fx-rates')
+  @RequirePermissions('expense.policy.manage')
+  importFx(@CurrentTenant() ctx: TenantContext, @Body() dto: FxRatesDto) {
+    return this.setup.importFxRates(ctx, dto);
   }
 
   @Get('gst-registrations')

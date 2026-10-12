@@ -57,7 +57,7 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   if (key === 'expense.finance.review') return ['tenant', 'legal_entity'];
   // E4: the travel desk books for people in scope; advances are paid per legal entity.
   if (key === 'travel.booking.manage') return GRANT_SCOPE_TYPES;
-  if (key === 'expense.payout.manage') return ['tenant', 'legal_entity'];
+  if (key === 'expense.payout.manage' || key === 'expense.report.view') return ['tenant', 'legal_entity'];
   // M03 batch 5a: payroll and its audit work per legal entity (the pay guard reads the granted entities); legal holds are company-wide.
   // Batch 5e: income tax (workspaces, proofs, regime) works per legal entity like the rest of payroll.
   if (key.startsWith('payroll.') || key.startsWith('tax.') || key.startsWith('statutory.') || key === 'audit.view' || key === 'audit.export') return ['tenant', 'legal_entity'];

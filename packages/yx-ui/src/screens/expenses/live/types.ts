@@ -181,6 +181,11 @@ export interface ClaimLine {
   perDiem: { fullDays: number; partialDays: number; meals: Record<string, number>; ratePerDay: string } | null;
   ocr: { adapter: string | null; fields: Partial<Record<'amount' | 'date' | 'merchant' | 'gstin' | 'invoiceNo' | 'taxableValue' | 'cgst' | 'sgst' | 'igst', Suggested>>; lowConfidence: string[]; confirmed: boolean; einvoice: string | null } | null;
   gst: { supplierGstin: string | null; invoiceNo: string | null; invoiceDate: string | null; placeOfSupply: string | null; taxableValue: string | null; cgst: string | null; sgst: string | null; igst: string | null; cess: string | null; billedToGstin: string | null; itcStatus: string | null; einvoiceVerified: boolean } | null;
+  /** E5: a bill in another currency, and how it became the pay-currency amount. */
+  fx?: { currency: string; amount: string | null; rate: string; source: string | null; rateDate: string | null; variancePct: string | null; hasProof: boolean } | null;
+  /** E5: 'field_day' lines are drafts from a field-force duty day, paid only once confirmed. */
+  origin?: 'employee' | 'field_day';
+  confirmed?: boolean;
   version: number;
 }
 
@@ -216,6 +221,7 @@ export interface LineInput {
   mileage?: { vehicle: string; km: number; from?: string; to?: string };
   perDiem?: { fullDays: number; partialDays: number; meals?: { breakfast?: number; lunch?: number; dinner?: number } };
   gst?: { supplierGstin: string | null; invoiceNo: string | null; taxableValue: string | null; cgst: string | null; sgst: string | null; igst: string | null; billedToGstin: string | null };
+  fx?: { currency: string; amount: string; rate?: string };
   version?: number;
 }
 
@@ -235,6 +241,7 @@ export interface TripSummary {
   currency: string;
   estimate: string;
   advanceRequested: string;
+  advanceCurrency?: string;
   bookingNeeded: boolean;
   status: TripStatus;
   version: number;
@@ -248,6 +255,8 @@ export interface AdvanceSummary {
   currency: string;
   requested: string;
   amount: string | null;
+  /** E5: a forex advance's loading rate (pay currency per unit). */
+  fxRate?: string | null;
   changeReason: string | null;
   status: AdvanceStatus;
   paidOn: string | null;
@@ -260,6 +269,8 @@ export interface AdvanceSummary {
 
 export interface TripDetail extends TripSummary {
   decisionNote: string | null;
+  closedAt?: string | null;
+  closeReason?: string | null;
   legs: { seq: number; fromCity: string; toCity: string; country: string; departOn: string; mode: TravelMode; stayNights: number }[];
   bookings: { id: string; kind: string; title: string; amount: string; paidBy: 'company' | 'employee'; provider: string | null; providerRef: string | null; hasFile: boolean }[];
   /** Hidden from the travel desk (it books; it does not see the money). */
@@ -267,7 +278,7 @@ export interface TripDetail extends TripSummary {
   claims: { id: string; title: string; status: ClaimStatus; claimedTotal: string; approvedTotal: string | null; advanceAdjusted: string }[];
   advance: AdvanceSummary | null;
   route: Route;
-  can: { edit: boolean; submit: boolean; cancel: boolean; book: boolean; partner: boolean; decide: string | null; claim: boolean };
+  can: { edit: boolean; submit: boolean; cancel: boolean; book: boolean; partner: boolean; decide: string | null; claim: boolean; close?: boolean };
 }
 
 export interface TripInput {
@@ -276,6 +287,7 @@ export interface TripInput {
   toOn: string;
   estimate: string;
   advanceRequested: string;
+  advanceCurrency?: string;
   bookingNeeded: boolean;
   legs: { fromCity: string; toCity: string; departOn: string; mode: TravelMode; stayNights: number }[];
 }
@@ -290,6 +302,28 @@ export interface BookingInput {
 
 export interface AdvanceDetail extends AdvanceSummary {
   person: string;
-  ledger: { id: string; on: string; kind: string; text: string; amount: string; claimId: string | null }[];
+  payCurrency?: string;
+  ledger: { id: string; on: string; kind: string; text: string; amount: string; amountPay?: string; claimId: string | null }[];
   can: { changeAmount: boolean; decide: string | null; pay: boolean; recordReturn: boolean; claim: boolean };
+}
+
+// ------------------------------------------------------------------------------------------ E5: rates and reports
+
+export interface FxRateRow {
+  id: string;
+  source: 'company' | 'fbil' | 'ecb';
+  base: string;
+  quote: string;
+  rateDate: string;
+  rate: string;
+}
+
+export type ReportKind = 'summary' | 'unpaid' | 'advance-ageing' | 'over-limit' | 'gst-input' | 'approver-patterns';
+
+export interface ExpenseReport {
+  kind: ReportKind;
+  from: string;
+  to: string;
+  columns: { key: string; label: string }[];
+  rows: Record<string, string | number | null>[];
 }

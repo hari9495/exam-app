@@ -36,6 +36,12 @@ export default function YxClaimPage() {
       onDecide={(decision, reason) => write('POST', `${base}/decide`, { decision, ...(reason ? { reason } : {}) })}
       onFlag={(flagId, decision, note) => write('POST', `/flags/${encodeURIComponent(flagId)}`, { decision, note })}
       onOpenReceipt={(lineId) => open(`${base}/lines/${encodeURIComponent(lineId)}/receipt`)}
+      onUploadFxProof={(lineId, file) => {
+        const form = new FormData();
+        form.append('file', file);
+        return write('POST', `${base}/lines/${encodeURIComponent(lineId)}/fx-proof`, form);
+      }}
+      onOpenFxProof={(lineId) => open(`${base}/lines/${encodeURIComponent(lineId)}/fx-proof`)}
     />
   );
 }

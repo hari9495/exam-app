@@ -196,6 +196,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     // E4: bookings on trips, and paying advances.
     'travel.booking.manage',
     'expense.payout.manage',
+    // E5: expense reports, including GST input.
+    'expense.report.view',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],

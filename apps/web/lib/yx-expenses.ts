@@ -42,6 +42,20 @@ export function policyRequest(s: PolicySave): { method: 'POST' | 'PUT'; path: st
   return { method: 'PUT', path: `/policies/${encodeURIComponent(s.policy.id)}`, body: { ...body, version: s.policy.version } };
 }
 
+/** Saves a file the API streams (a report's CSV) under the name the API gives it. */
+export function useExpDownload() {
+  const { accessToken } = useAuth();
+  return async (path: string) => {
+    const { blob, filename } = await apiFetchBlob(`/expenses${path}`, {}, accessToken ?? undefined);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename ?? 'expenses.csv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+}
+
 /** Opens a receipt in a new tab (streamed through the API after its checks; never a storage link). */
 export function useReceiptOpen() {
   const { accessToken } = useAuth();

@@ -74,6 +74,7 @@ const CHECKLISTS: WorkspaceLink = { id: 'checklists', label: 'Onboarding checkli
 // M05 expenses E1: categories, limits, rates and GST registrations.
 // M05 expenses E2: claims (my own, waiting for me, finance's check).
 const MY_EXPENSES: WorkspaceLink = { id: 'expenses', label: 'My expenses', href: '/yx/expenses', group: 'Me' };
+const EXPENSE_REPORTS: WorkspaceLink = { id: 'expense-reports', label: 'Expense reports', href: '/yx/expenses/reports', group: 'Organisation' };
 const EXPENSE_SETUP: WorkspaceLink = { id: 'expense-setup', label: 'Expenses', href: '/yx/settings/expenses', group: 'Organisation' };
 const PROFILE: WorkspaceLink = { id: 'profile', label: 'My profile', href: '/yx/people/profile', group: 'People' };
 const ID_CHANGES: WorkspaceLink = { id: 'profile-requests', label: 'Identity and bank changes', href: '/yx/people/profile-requests', group: 'People' };
@@ -224,6 +225,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...org,
     ...(perms.has('lifecycle.journey.template.manage') ? [CHECKLISTS] : []),
     ...(perms.has('expense.policy.manage') ? [EXPENSE_SETUP] : []),
+    ...(perms.has('expense.report.view') ? [EXPENSE_REPORTS] : []),
     ...(perms.has('letter.template.manage') || perms.has('letter.signatory.manage') ? [LETTER_TEMPLATES] : []),
     ...(perms.has('access.role.manage') ? [ACCESS] : []),
     // Read by anyone who reads the structure; changed with org.settings.manage (+ access.role.manage for guarded keys).

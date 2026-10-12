@@ -135,6 +135,20 @@ export class GstDto {
   billedToGstin?: string | null;
 }
 
+/** E5: a bill in another currency. The pay-currency amount is worked out from the rate (YX-EXP-14). */
+export class LineFxDto {
+  @Matches(/^[A-Z]{3}$/)
+  currency!: string;
+
+  @Matches(MONEY)
+  amount!: string;
+
+  /** The rate on the employee's card or bank statement (pay currency per unit); without it the company rate is used. */
+  @IsOptional()
+  @Matches(/^\d{1,10}(\.\d{1,8})?$/)
+  rate?: string;
+}
+
 export class LineDto {
   @Matches(/^[a-z][a-z0-9_]{1,29}$/)
   categoryCode!: string;
@@ -196,6 +210,11 @@ export class LineDto {
   @ValidateNested()
   @Type(() => GstDto)
   gst?: GstDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LineFxDto)
+  fx?: LineFxDto;
 
   @IsOptional()
   @IsInt()

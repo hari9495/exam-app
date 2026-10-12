@@ -8,7 +8,9 @@ the output strictly and the employee confirms every value.
 Spool protocol (the API's PaddleWorkerReader):
   in/<id>.bin   the receipt bytes (JPG, PNG or PDF; already virus-scanned and type-checked by the API)
   in/<id>.json  {"mime": "..."}  written last: a job exists once this file exists
-  out/<id>.json {"lines": [{"text": "...", "score": 0.93}, ...], "qr": "..." | null}
+  out/<id>.json {"lines": [{"text": "...", "score": 0.93}, ...], "qr": "..." | null, "phash": "16 hex" | null}
+
+The phash (OpenCV contrib img_hash pHash of the first page) lets the API spot a re-photographed receipt (F4).
 """
 
 import json
@@ -74,13 +76,19 @@ def pages(data: bytes, mime: str):
     yield img
 
 
+def phash_of(img) -> str:
+    return bytes(cv2.img_hash.PHash_create().compute(img).flatten()).hex()
+
+
 def read(engine, data: bytes, mime: str):
-    lines, qr = [], None
+    lines, qr, phash = [], None, None
     detector = cv2.QRCodeDetector()
     for img in pages(data, mime):
         h, w = img.shape[:2]
         if max(h, w) > MAX_SIDE:
             continue
+        if phash is None:
+            phash = phash_of(img)
         if qr is None:
             text, _points, _ = detector.detectAndDecode(img)
             qr = text or None
@@ -96,7 +104,7 @@ def read(engine, data: bytes, mime: str):
             print(f"page: {type(e).__name__}", file=sys.stderr, flush=True)
         finally:
             signal.alarm(0)
-    return {"lines": lines, "qr": qr[:4096] if qr else None}
+    return {"lines": lines, "qr": qr[:4096] if qr else None, "phash": phash}
 
 
 def answer(job: str, out: dict):
@@ -123,15 +131,15 @@ def main():
                     mime = json.load(f).get("mime")
                 size = os.path.getsize(bin_path)
                 if mime not in ("image/jpeg", "image/png", "application/pdf") or size > MAX_BYTES:
-                    answer(job, {"lines": [], "qr": None})
+                    answer(job, {"lines": [], "qr": None, "phash": None})
                     continue
                 with open(bin_path, "rb") as f:
                     answer(job, read(engine, f.read(), mime))
             except Timeout:
-                answer(job, {"lines": [], "qr": None})
+                answer(job, {"lines": [], "qr": None, "phash": None})
             except Exception as e:  # a bad file never stops the worker; the employee types the values instead
                 print(f"job {job}: {type(e).__name__}", file=sys.stderr, flush=True)
-                answer(job, {"lines": [], "qr": None})
+                answer(job, {"lines": [], "qr": None, "phash": None})
             finally:
                 for p in (meta_path, bin_path):
                     try:

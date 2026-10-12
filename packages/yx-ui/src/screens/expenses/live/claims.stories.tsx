@@ -86,3 +86,19 @@ export const Review: S = {
     />
   ),
 };
+export const ForeignAndFieldDay: S = {
+  name: 'A foreign bill at a card rate, and a field-day draft (E5)',
+  render: () => (
+    <ClaimScreen
+      {...BASE}
+      onUploadFxProof={ok}
+      onOpenFxProof={ok}
+      claim={claim({
+        lines: [
+          line({ ocr: null, claimed: '7098.00', merchant: 'Dubai Taxi', fx: { currency: 'AED', amount: '300.00', rate: '23.66000000', source: 'manual', rateDate: '2026-10-07', variancePct: '4.00', hasProof: false } }),
+          line({ id: 'l2', lineNo: 2, categoryCode: 'mileage', merchant: null, hasReceipt: false, claimed: '714.00', policy: { outcome: 'ok', overBy: '0.00', limit: null, receipt: 'none', policy: 'Standard' }, ocr: null, gst: null, mileage: { vehicle: 'car', km: 42, from: null, to: null, ratePerKm: '17.00' }, origin: 'field_day', confirmed: false }),
+        ],
+      })}
+    />
+  ),
+};

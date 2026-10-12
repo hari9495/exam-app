@@ -21,7 +21,7 @@ import type { Rule, RuleField } from '../../../lib/rules';
 import { errorText, useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
 import { ANY, fromRows, sameRules, toRows, type MatrixRow, type Per } from './matrix';
-import type { CategoryKind, Choice, CityTier, ExpenseCategory, ExpensePolicy, GstRegistration, LoadState, OverLimit, Policies, PolicySave, Rates, SetupCheck, Taxable } from './types';
+import type { CategoryKind, Choice, CityTier, ExpenseCategory, ExpensePolicy, FxRateRow, GstRegistration, LoadState, OverLimit, Policies, PolicySave, Rates, SetupCheck, Taxable } from './types';
 
 // Settings › Expenses (M05-BUILD-DESIGN §6, §7; EXP-07 wired, XP-1.06): the limits matrix of each dated policy,
 // categories, city tiers, mileage and per-diem rates, and GST registrations, with the set-up check on top. A policy
@@ -80,6 +80,10 @@ export interface ExpenseSetupScreenProps {
   onAddPerDiem: (r: { tierId: string | null; country: string | null; ratePerDay: string; currency: string; partialDayRule: 'full' | 'half_after_hours'; validFrom: string }) => Promise<unknown>;
   onAddGst: (r: { legalEntityId: string; gstin: string; validFrom: string }) => Promise<unknown>;
   onEndGst: (id: string, validTo: string) => Promise<unknown>;
+  /** E5: the company's own exchange-rate table (FBIL and ECB feeds stay off until their reuse terms are confirmed). */
+  fxRates?: FxRateRow[];
+  payCurrency?: string;
+  onAddFxRate?: (r: { base: string; quote: string; rateDate: string; rate: string }) => Promise<unknown>;
 }
 
 export function ExpenseSetupScreen(p: ExpenseSetupScreenProps) {
@@ -110,6 +114,7 @@ export function ExpenseSetupScreen(p: ExpenseSetupScreenProps) {
             <TabsTrigger value="tiers">City tiers</TabsTrigger>
             <TabsTrigger value="rates">Mileage and per diem</TabsTrigger>
             <TabsTrigger value="gst">GST registrations</TabsTrigger>
+            {p.onAddFxRate && <TabsTrigger value="fx">Exchange rates</TabsTrigger>}
           </TabsList>
           <TabsContent value="limits">{p.policies && <LimitsTab {...p} policies={p.policies} />}</TabsContent>
           <TabsContent value="categories">
@@ -119,6 +124,11 @@ export function ExpenseSetupScreen(p: ExpenseSetupScreenProps) {
             <TiersTab tiers={p.tiers} onSave={p.onSaveTier} />
           </TabsContent>
           <TabsContent value="rates">{p.rates && <RatesTab rates={p.rates} tiers={p.tiers} today={p.policies?.today ?? dayKey(new Date())} onAddMileage={p.onAddMileage} onAddPerDiem={p.onAddPerDiem} />}</TabsContent>
+          {p.onAddFxRate && (
+            <TabsContent value="fx">
+              <FxTab rows={p.fxRates ?? []} payCurrency={p.payCurrency ?? 'INR'} today={p.policies?.today ?? dayKey(new Date())} onAdd={p.onAddFxRate} />
+            </TabsContent>
+          )}
           <TabsContent value="gst">
             <GstTab gst={p.gst} entities={p.entities} today={p.policies?.today ?? dayKey(new Date())} onAdd={p.onAddGst} onEnd={p.onEndGst} />
           </TabsContent>
@@ -777,5 +787,53 @@ function GstDrawer({ entities, today, onClose, onAdd }: { entities: Choice[]; to
         <DatePicker value={from} onChange={setFrom} aria-label="From" />
       </FormField>
     </Drawer>
+  );
+}
+
+function FxTab({ rows, payCurrency, today, onAdd }: { rows: FxRateRow[]; payCurrency: string; today: string; onAdd: NonNullable<ExpenseSetupScreenProps['onAddFxRate']> }) {
+  const [adding, setAdding] = useState(false);
+  const [base, setBase] = useState('');
+  const [on, setOn] = useState<Date | null>(fromKey(today));
+  const [rate, setRate] = useState('');
+  const ok = /^[A-Z]{3}$/.test(base) && base !== payCurrency && on !== null && /^\d{1,10}(\.\d{1,8})?$/.test(rate) && Number(rate) > 0;
+  const columns: TableColumn<FxRateRow>[] = [
+    { key: 'pair', header: 'Currency', value: (r) => `1 ${r.base} = ${r.quote}`, width: 160, hideable: false },
+    { key: 'rate', header: 'Rate', value: (r) => Number(r.rate).toLocaleString('en-IN', { maximumFractionDigits: 6 }), width: 140 },
+    { key: 'date', header: 'From', value: (r) => dateText(r.rateDate), width: 140 },
+  ];
+  return (
+    <Card title="Exchange rates" actions={<Button size="sm" icon={Plus} onClick={() => setAdding(true)}>Add a rate</Button>}>
+      <Text as="p" tone="secondary" size="sm">
+        {`Bills in another currency are converted to ${payCurrency} at the last rate on or before the bill's date. Official rate feeds are switched on once their terms of reuse are confirmed.`}
+      </Text>
+      <DataTable label="Exchange rates" columns={columns} rows={rows} getRowId={(r) => r.id} rowNoun={['rate', 'rates']} cardSummary empty={<EmptyState compact title="No rates yet." description="Add the rates your company closes its books on." />} />
+      {adding && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setAdding(false)}
+          size="md"
+          title="Add an exchange rate"
+          consequence="A rate for the same currency and date replaces the one there."
+          confirmLabel="Add rate"
+          confirmDisabled={!ok}
+          onConfirm={async () => {
+            await onAdd({ base, quote: payCurrency, rateDate: dayKey(on!), rate });
+            setAdding(false);
+            setBase('');
+            setRate('');
+          }}
+        >
+          <FormField id="fx-base" label="Currency" required helper="A 3-letter code, e.g. USD.">
+            <TextField value={base} onChange={(x) => setBase(x.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3))} maxLength={3} />
+          </FormField>
+          <FormField id="fx-rate" label={`${payCurrency} for 1 unit`} required>
+            <TextField value={rate} onChange={(x) => setRate(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={20} />
+          </FormField>
+          <FormField id="fx-on" label="From" required>
+            <DatePicker value={on} onChange={setOn} aria-label="Rate from" />
+          </FormField>
+        </ConfirmDialog>
+      )}
+    </Card>
   );
 }

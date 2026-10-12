@@ -6,6 +6,7 @@ import { ArrayMaxSize, ArrayMinSize, IsBoolean, IsIn, IsInt, IsOptional, IsStrin
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const MONEY = /^\d{1,12}(\.\d{1,2})?$/;
+const RATE = /^\d{1,10}(\.\d{1,8})?$/;
 
 export class LegDto {
   @trim()
@@ -53,6 +54,11 @@ export class TripDto {
   @IsOptional()
   @Matches(MONEY)
   advanceRequested?: string;
+
+  /** E5: a forex advance (YX-EXP-15) is asked for in its own currency. */
+  @IsOptional()
+  @Matches(/^[A-Z]{3}$/)
+  advanceCurrency?: string;
 
   @IsOptional()
   @IsBoolean()
@@ -127,6 +133,11 @@ export class PayAdvanceDto {
   @Length(2, 80)
   ref!: string;
 
+  /** A forex advance: the rate it was loaded at (pay currency per unit); the company rate otherwise. */
+  @IsOptional()
+  @Matches(RATE)
+  fxRate?: string;
+
   @IsInt()
   version!: number;
 }
@@ -142,6 +153,18 @@ export class ReturnDto {
   @IsString()
   @Length(2, 80)
   ref!: string;
+
+  /** A forex advance: the rate the money came back at; the company rate for the day otherwise. */
+  @IsOptional()
+  @Matches(RATE)
+  fxRate?: string;
+}
+
+export class CloseTripDto {
+  @trim()
+  @IsString()
+  @Length(3, 300)
+  reason!: string;
 }
 
 export class TripListDto {

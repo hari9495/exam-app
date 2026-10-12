@@ -8,7 +8,8 @@ import { readerLanguage, translated } from '../global/global-data';
 import { RuleError, parseGroup, type FieldDef, type Group, type RecordValues } from '../rules-engine/conditions';
 import type { ScopeUser } from '../access/scope';
 import { gstinProblem, pickPolicy, ruleFor } from './checks';
-import type { CategoryDto, GstRegistrationDto, MileageRateDto, PerDiemRateDto, PolicyDto, TierDto } from './dto';
+import type { CategoryDto, FxRatesDto, GstRegistrationDto, MileageRateDto, PerDiemRateDto, PolicyDto, TierDto } from './dto';
+import { rateOn } from './fx';
 import { STARTER_CATEGORIES, STARTER_MEALS_DEDUCTION, STARTER_MILEAGE, STARTER_PER_DIEM, STARTER_POLICY, STARTER_TIERS } from './starters';
 
 // Expenses batch E1 (M05-BUILD-DESIGN §6, §7; XP-1.02 … XP-1.06): categories, city tiers, dated policies with a P19
@@ -287,6 +288,38 @@ export class ExpenseSetupService {
 
   // ------------------------------------------------------------------------------------------ GST registrations (§13.2)
 
+  // ------------------------------------------------------------------------------------------ E5: exchange rates (§14.2)
+
+  async fxRates(ctx: TenantContext) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) =>
+      (await tx.fxRate.findMany({ where: { organizationId: c.organizationId }, orderBy: [{ rateDate: 'desc' }, { base: 'asc' }], take: 500 })).map((r) => ({ id: r.id, source: r.source, base: r.base, quote: r.quote, rateDate: iso(r.rateDate), rate: r.rate.toFixed(8) })),
+    );
+  }
+
+  /** The company's own rate table (XP-5.01). Loading the same rows again changes nothing; a corrected rate replaces it. */
+  async importFxRates(ctx: TenantContext, dto: FxRatesDto) {
+    if (dto.rows.some((r) => r.base === r.quote)) throw new BadRequestException('A rate is between two different currencies.');
+    if (dto.rows.some((r) => D(r.rate).lte(0))) throw new BadRequestException('A rate is above zero.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      let added = 0;
+      let changed = 0;
+      for (const r of dto.rows) {
+        const key = { organizationId: org, source: 'company', base: r.base, quote: r.quote, rateDate: asDate(r.rateDate) };
+        const cur = await tx.fxRate.findUnique({ where: { organizationId_source_base_quote_rateDate: key } });
+        if (!cur) {
+          await tx.fxRate.create({ data: { ...key, rate: r.rate, createdBy: c.userId ?? null } });
+          added++;
+        } else if (!cur.rate.eq(D(r.rate))) {
+          await tx.fxRate.update({ where: { id: cur.id }, data: { rate: r.rate, importedAt: new Date(), createdBy: c.userId ?? null } });
+          changed++;
+        }
+      }
+      if (added || changed) await audit(tx, c, 'expense.fx.imported', 'fx_rate', org, { source: 'company', added, changed });
+      return { added, changed, unchanged: dto.rows.length - added - changed };
+    });
+  }
+
   async gstRegistrations(ctx: TenantContext) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) =>
       (await tx.entityGstRegistration.findMany({ where: { organizationId: c.organizationId }, orderBy: [{ legalEntityId: 'asc' }, { state: 'asc' }, { validFrom: 'desc' }] })).map((g) => ({ id: g.id, legalEntityId: g.legalEntityId, state: g.state, gstin: g.gstin, validFrom: iso(g.validFrom), validTo: g.validTo ? iso(g.validTo) : null })),
@@ -474,3 +507,10 @@ export class ExpenseSetupService {
   }
 }
 
+
+/** The rate for a day from the company table (the last one on or before it), or null when there is none. */
+export async function fxRateFor(tx: Tx, org: string, base: string, quote: string, on: string) {
+  if (base === quote) return { rate: '1.00000000', rateDate: on, ageDays: 0 };
+  const rows = await tx.fxRate.findMany({ where: { organizationId: org, base, quote, rateDate: { lte: asDate(on) } }, orderBy: { rateDate: 'desc' }, take: 1 });
+  return rateOn(rows.map((r) => ({ rateDate: iso(r.rateDate), rate: r.rate })), on);
+}

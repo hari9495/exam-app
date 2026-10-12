@@ -42,6 +42,7 @@ export default function YxTripPage() {
       }}
       onOpenClaim={(claimId) => router.push(`/yx/expenses/claims/${encodeURIComponent(claimId)}`)}
       onOpenAdvance={(advanceId) => router.push(`/yx/expenses/advances/${encodeURIComponent(advanceId)}`)}
+      onClose={(reason) => write('POST', `${base}/close`, { reason })}
     />
   );
 }

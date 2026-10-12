@@ -39,3 +39,4 @@ const BASE: ExpenseSetupScreenProps = {
 
 export const Limits: S = { name: 'Limits matrix (in force)', render: () => <ExpenseSetupScreen {...BASE} /> };
 export const Starters: S = { name: 'New company · starters', render: () => <ExpenseSetupScreen {...BASE} categories={[]} /> };
+export const WithExchangeRates: S = { name: 'With the exchange-rate table (E5)', render: () => <ExpenseSetupScreen {...BASE} payCurrency="INR" fxRates={[{ id: 'x1', source: 'company', base: 'AED', quote: 'INR', rateDate: '2026-10-01', rate: '22.75000000' }]} onAddFxRate={ok} /> };

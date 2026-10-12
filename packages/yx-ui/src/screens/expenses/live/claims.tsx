@@ -175,6 +175,9 @@ export interface ClaimScreenProps {
   onDecide: (decision: 'approve' | 'reject' | 'send_back', reason: string) => Promise<unknown>;
   onFlag: (flagId: string, decision: 'clear' | 'confirm', note: string) => Promise<unknown>;
   onOpenReceipt: (lineId: string) => Promise<unknown>;
+  /** E5: the statement behind a rate the employee entered. */
+  onUploadFxProof?: (lineId: string, file: File) => Promise<unknown>;
+  onOpenFxProof?: (lineId: string) => Promise<unknown>;
 }
 
 export function ClaimScreen(p: ClaimScreenProps) {
@@ -272,8 +275,23 @@ export function ClaimScreen(p: ClaimScreenProps) {
               actions={
                 <>
                   {c.can.edit && (
-                    <Button size="sm" variant={l.ocr && !l.ocr.confirmed ? 'primary' : 'secondary'} onClick={() => setEditing(l)}>
-                      {l.ocr && !l.ocr.confirmed ? 'Check and confirm' : 'Edit'}
+                    <Button size="sm" variant={(l.ocr && !l.ocr.confirmed) || l.confirmed === false ? 'primary' : 'secondary'} onClick={() => setEditing(l)}>
+                      {(l.ocr && !l.ocr.confirmed) || l.confirmed === false ? 'Check and confirm' : 'Edit'}
+                    </Button>
+                  )}
+                  {c.can.edit && l.fx?.source === 'manual' && !l.fx.hasProof && p.onUploadFxProof && (
+                    <label className="yx-button" data-variant="secondary" data-size="sm">
+                      Add rate proof
+                      <input type="file" accept="image/jpeg,image/png,application/pdf" className="yx-visually-hidden" aria-label={`Add the statement for the rate on line ${l.lineNo}`} onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = '';
+                        if (f) void run(`fx-${l.id}`, () => p.onUploadFxProof!(l.id, f));
+                      }} />
+                    </label>
+                  )}
+                  {l.fx?.hasProof && p.onOpenFxProof && (
+                    <Button size="sm" loading={busy === `vf-${l.id}`} onClick={() => void run(`vf-${l.id}`, () => p.onOpenFxProof!(l.id))}>
+                      View rate proof
                     </Button>
                   )}
                   {c.can.edit && !l.hasReceipt && l.policy?.receipt !== 'none' && (
@@ -363,6 +381,14 @@ function LineCard({ line: l, currency, category, changes, flags, actions }: { li
     <Card title={`${l.lineNo}. ${category?.shownName ?? category?.name ?? l.categoryCode}${l.merchant ? ` · ${l.merchant}` : ''}`} actions={<div className="yx-lif-row">{actions}</div>}>
       <Text as="p">{`${dateText(l.spentOn)}${l.city ? ` · ${l.city}` : ''} · ${money(currency, l.claimed)}${l.payMode === 'company_paid' ? ' (company paid, not reimbursed)' : ''}`}</Text>
       {l.mileage && <Text as="p" tone="secondary" size="sm">{`${l.mileage.km} km by ${l.mileage.vehicle.replace(/_/g, ' ')} at ${money(currency, l.mileage.ratePerKm)} a km`}</Text>}
+      {l.fx && <Text as="p" tone="secondary" size="sm">{`${money(l.fx.currency, l.fx.amount)} at ${Number(l.fx.rate).toLocaleString('en-IN', { maximumFractionDigits: 4 })} (${FX_SOURCE[l.fx.source ?? ''] ?? 'rate'}${l.fx.rateDate ? ` of ${dateText(l.fx.rateDate)}` : ''})`}</Text>}
+      {l.fx?.source === 'manual' && l.fx.variancePct !== null && Math.abs(Number(l.fx.variancePct)) > 3 && <Badge tone="warning">{`Rate ${l.fx.variancePct} % from the company rate`}</Badge>}
+      {l.fx?.source === 'manual' && !l.fx.hasProof && <Badge tone="warning">Statement needed for the rate</Badge>}
+      {l.confirmed === false && (
+        <InlineAlert tone="warning" title="From your field day">
+          Check the distance and save the line. It is paid only once you confirm it.
+        </InlineAlert>
+      )}
       {l.perDiem && <Text as="p" tone="secondary" size="sm">{`${l.perDiem.fullDays} full and ${l.perDiem.partialDays} part days at ${money(currency, l.perDiem.ratePerDay)}`}</Text>}
       {reduced && <InlineAlert tone="info" title={`Approved ${money(currency, l.approved)} of ${money(currency, l.claimed)}`}>{l.reduceReason}</InlineAlert>}
       {policy?.outcome === 'over_justify' && <Badge tone="warning">{`Over the limit by ${money(currency, policy.overBy)}`}</Badge>}
@@ -390,6 +416,7 @@ function LineCard({ line: l, currency, category, changes, flags, actions }: { li
     </Card>
   );
 }
+const FX_SOURCE: Record<string, string> = { company_table: 'company rate', advance: 'advance rate', manual: 'your card or bank rate', statement: 'statement rate', reference: 'reference rate' };
 const ITC: Record<string, string> = { eligible: 'GST credit', blocked: 'GST captured, no credit for this spend', not_billed_to_us: 'Not billed to the company', wrong_state: 'Billed to another state', missing: 'GST details missing' };
 
 function LineDrawer({ line, categories, today, currency, onClose, onSave }: { line: ClaimLine | null; categories: ExpenseCategory[]; today: string; currency: string; onClose: () => void; onSave: (x: LineInput) => Promise<void> }) {
@@ -399,7 +426,10 @@ function LineDrawer({ line, categories, today, currency, onClose, onSave }: { li
   const [on, setOn] = useState<Date | null>(fromKey(line?.spentOn ?? today));
   const [merchant, setMerchant] = useState(line?.merchant ?? '');
   const [city, setCity] = useState(line?.city ?? '');
-  const [amount, setAmount] = useState(line && Number(line.claimed) > 0 ? String(Number(line.claimed)) : '');
+  const [amount, setAmount] = useState(line?.fx?.amount ? String(Number(line.fx.amount)) : line && Number(line.claimed) > 0 ? String(Number(line.claimed)) : '');
+  const [billCurrency, setBillCurrency] = useState(line?.fx?.currency ?? currency);
+  const [rate, setRate] = useState(line?.fx?.source === 'manual' ? String(Number(line.fx.rate)) : '');
+  const foreign = billCurrency !== currency;
   const [vehicle, setVehicle] = useState<string | null>(line?.mileage?.vehicle ?? 'car');
   const [km, setKm] = useState<number | null>(line?.mileage?.km ?? null);
   const [full, setFull] = useState<number | null>(line?.perDiem?.fullDays ?? 1);
@@ -428,6 +458,8 @@ function LineDrawer({ line, categories, today, currency, onClose, onSave }: { li
     ...(kind === 'mileage' && !(km && km > 0) ? [{ fieldId: 'ln-km', message: 'Enter the distance in km.' }] : []),
     ...(kind === 'per_diem' && !((full ?? 0) + (partial ?? 0) > 0) ? [{ fieldId: 'ln-days', message: 'Enter at least one day.' }] : []),
     ...([taxable, cgst, sgst, igst].every(amt) ? [] : [{ fieldId: 'ln-gst', message: 'GST amounts are numbers, e.g. 450.00.' }]),
+    ...(/^[A-Z]{3}$/.test(billCurrency) ? [] : [{ fieldId: 'ln-cur', message: 'The currency is a 3-letter code, e.g. AED.' }]),
+    ...(foreign && rate !== '' && !/^\d{1,10}(\.\d{1,8})?$/.test(rate) ? [{ fieldId: 'ln-rate', message: 'The rate is a number, e.g. 22.75.' }] : []),
   ];
   const v = useSaveErrors(errors);
   const save = async () => {
@@ -444,7 +476,7 @@ function LineDrawer({ line, categories, today, currency, onClose, onSave }: { li
         payMode: companyPaid ? 'company_paid' : 'personal',
         description: line?.description ?? null,
         justification: n(why),
-        ...(kind === 'mileage' ? { mileage: { vehicle: vehicle ?? 'car', km: km! } } : kind === 'per_diem' ? { perDiem: { fullDays: full ?? 0, partialDays: partial ?? 0 } } : { amount: amount.trim() }),
+        ...(kind === 'mileage' ? { mileage: { vehicle: vehicle ?? 'car', km: km! } } : kind === 'per_diem' ? { perDiem: { fullDays: full ?? 0, partialDays: partial ?? 0 } } : foreign ? { fx: { currency: billCurrency, amount: amount.trim(), ...(rate ? { rate } : {}) } } : { amount: amount.trim() }),
         ...(line?.hasReceipt ? {} : { selfDeclared: declared }),
         ...(cat?.gstEligible ? { gst: { supplierGstin: n(gstin.toUpperCase()), invoiceNo: n(invoice.toUpperCase()), taxableValue: n(taxable), cgst: n(cgst), sgst: n(sgst), igst: n(igst), billedToGstin: n(billedTo.toUpperCase()) } } : {}),
         ...(line ? { version: line.version } : {}),
@@ -502,9 +534,21 @@ function LineDrawer({ line, categories, today, currency, onClose, onSave }: { li
           </FormField>
         </div>
       ) : (
-        <FormField id="ln-amount" label={`Amount (${currency})`} required error={v.errorOf('ln-amount')} helper={check('amount')}>
-          <TextField value={amount} onChange={(x) => setAmount(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={15} />
-        </FormField>
+        <>
+          <div className="yx-lif-grid">
+            <FormField id="ln-cur" label="Currency of the bill" error={v.errorOf('ln-cur')} helper={foreign ? `Converted to ${currency} at the company rate for the day, or your rate below.` : undefined}>
+              <TextField value={billCurrency} onChange={(x) => setBillCurrency(x.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3))} maxLength={3} />
+            </FormField>
+            <FormField id="ln-amount" label={`Amount (${billCurrency || currency})`} required error={v.errorOf('ln-amount')} helper={check('amount')}>
+              <TextField value={amount} onChange={(x) => setAmount(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={15} />
+            </FormField>
+          </div>
+          {foreign && (
+            <FormField id="ln-rate" label={`Rate on your card or bank statement (${currency} per ${billCurrency})`} optional error={v.errorOf('ln-rate')} helper="Leave it empty to use the company rate. A rate you enter needs the statement, and is checked against the company rate.">
+              <TextField value={rate} onChange={(x) => setRate(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={20} />
+            </FormField>
+          )}
+        </>
       )}
       <div className="yx-lif-grid">
         <FormField id="ln-merchant" label="Shop or supplier" optional helper={check('merchant')}>

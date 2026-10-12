@@ -87,6 +87,26 @@ export class ExpenseClaimsController {
     return new StreamableFile(out.file);
   }
 
+  @Post('claims/:id/lines/:lineId/fx-proof')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  @UseInterceptors(RECEIPT)
+  fxProof(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('lineId', ParseUUIDPipe) lineId: string, @UploadedFile() file?: Express.Multer.File) {
+    return this.claims.addFxProof(ctx, this.user(req), id, lineId, file);
+  }
+
+  @Get('claims/:id/lines/:lineId/fx-proof')
+  async fxProofFile(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('lineId', ParseUUIDPipe) lineId: string) {
+    const out = await this.claims.receipt(ctx, this.user(req), id, lineId, 'fx');
+    res.set({
+      'Content-Type': out.contentType,
+      'Content-Disposition': `inline; filename="${out.name.replace(/[^A-Za-z0-9._-]/g, '_')}"`,
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; sandbox",
+    });
+    return new StreamableFile(out.file);
+  }
+
   @Post('claims/:id/check')
   @HttpCode(200)
   check(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {

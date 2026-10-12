@@ -17,6 +17,8 @@ export interface OcrResult {
   fields: OcrFields;
   /** The raw text of a QR code on the receipt (an e-invoice QR is a signed token), checked separately (§13.4). */
   qr: string | null;
+  /** E5 (F4): a 64-bit perceptual hash of the first page (16 hex), to spot a re-photographed receipt. */
+  phash?: string | null;
   /** Why the read failed, in plain words (never shown as an error to the employee: manual entry is the fallback). */
   problem?: string;
 }
@@ -29,11 +31,11 @@ const MAX_LINES = 400;
 const MAX_TEXT = 300;
 const MAX_QR = 4096;
 
-/** The worker's JSON, checked strictly: { lines: [{ text, score }], qr: string | null }. */
-export function parseWorkerOutput(raw: unknown): { lines: OcrTextLine[]; qr: string | null } | null {
+/** The worker's JSON, checked strictly: { lines: [{ text, score }], qr: string | null, phash?: 16 hex | null }. */
+export function parseWorkerOutput(raw: unknown): { lines: OcrTextLine[]; qr: string | null; phash: string | null } | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
-  if (Object.keys(o).some((k) => k !== 'lines' && k !== 'qr')) return null;
+  if (Object.keys(o).some((k) => k !== 'lines' && k !== 'qr' && k !== 'phash')) return null;
   if (!Array.isArray(o.lines) || o.lines.length > MAX_LINES) return null;
   const lines: OcrTextLine[] = [];
   for (const l of o.lines) {
@@ -45,7 +47,9 @@ export function parseWorkerOutput(raw: unknown): { lines: OcrTextLine[]; qr: str
   }
   const qr = o.qr === null || o.qr === undefined ? null : typeof o.qr === 'string' && o.qr.length <= MAX_QR ? o.qr : undefined;
   if (qr === undefined) return null;
-  return { lines, qr };
+  const phash = o.phash === null || o.phash === undefined ? null : typeof o.phash === 'string' && /^[0-9a-f]{16}$/.test(o.phash) ? o.phash : undefined;
+  if (phash === undefined) return null;
+  return { lines, qr, phash };
 }
 
 /** Manual entry only (the e-invoice QR needs the worker's decoder, so it is not read either). */
@@ -58,25 +62,27 @@ export class NoReader implements ReceiptReader {
 /**
  * Deterministic results for tests and local use: the upload's file name carries the text lines, e.g.
  * "receipt__Hotel Sea View__GSTIN 27AAPFU0939F1ZV__Date 01-10-2026__Grand Total 1,180.00@0.6.png"; a trailing @score
- * sets the recognition score (default 0.95). "__qr=<token>" passes a QR payload. Nothing leaves the process.
+ * sets the recognition score (default 0.95). "__qr=<token>" passes a QR payload, "__phash=<16 hex>" an image hash.
+ * Nothing leaves the process.
  */
 export class DevFakeReader implements ReceiptReader {
   async read(_file: Buffer, _mime: string, hints: { name: string; country: string; currency: string }): Promise<OcrResult> {
     const parts = hints.name.replace(/\.[a-z0-9]+$/i, '').split('__').slice(1);
     const qr = parts.find((p) => p.startsWith('qr='))?.slice(3) ?? null;
-    const lines = parts.filter((p) => !p.startsWith('qr=')).map((p) => {
+    const phash = parts.find((p) => p.startsWith('phash='))?.slice(6) ?? null;
+    const lines = parts.filter((p) => !p.startsWith('qr=') && !p.startsWith('phash=')).map((p) => {
       const at = p.lastIndexOf('@');
       return at > 0 && /^0?\.\d+$|^1$/.test(p.slice(at + 1)) ? { text: p.slice(0, at), score: Number(p.slice(at + 1)) } : { text: p, score: 0.95 };
     });
-    const parsed = parseWorkerOutput({ lines, qr });
+    const parsed = parseWorkerOutput({ lines, qr, phash });
     if (!parsed) return { ok: false, adapter: 'dev-fake', fields: {}, qr: null, problem: 'The fake reader got unexpected input.' };
-    return { ok: true, adapter: 'dev-fake', fields: parseReceiptText(parsed.lines), qr: parsed.qr };
+    return { ok: true, adapter: 'dev-fake', fields: parseReceiptText(parsed.lines), qr: parsed.qr, phash: parsed.phash };
   }
 }
 
 /**
  * The isolated PaddleOCR worker, reached through a spool directory both sides mount (the worker has no network):
- * the API writes in/<id>.bin and in/<id>.json { mime }, the worker writes out/<id>.json { lines, qr } and removes the
+ * the API writes in/<id>.bin and in/<id>.json { mime }, the worker writes out/<id>.json { lines, qr, phash } and removes the
  * input. A missing or late answer is a failed read; the employee types the values.
  */
 export class PaddleWorkerReader implements ReceiptReader {
@@ -107,7 +113,7 @@ export class PaddleWorkerReader implements ReceiptReader {
           }
           const parsed = parseWorkerOutput(raw);
           if (!parsed) return { ok: false, adapter: 'paddle-worker', fields: {}, qr: null, problem: 'The reader returned something unexpected.' };
-          return { ok: true, adapter: 'paddle-worker', fields: parseReceiptText(parsed.lines), qr: parsed.qr };
+          return { ok: true, adapter: 'paddle-worker', fields: parseReceiptText(parsed.lines), qr: parsed.qr, phash: parsed.phash };
         }
         await new Promise((r) => setTimeout(r, 200));
       }

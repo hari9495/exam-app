@@ -100,6 +100,7 @@ export const YX_KEYS = [
   'expense.finance.review',
   'travel.booking.manage',
   'expense.payout.manage',
+  'expense.report.view',
   // Batch 5b: payroll set-up, statutory registrations, components, templates, imports.
   'payroll.setup.manage',
   'payroll.statutory.setup',

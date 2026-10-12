@@ -7854,6 +7854,17 @@ model ExpenseLine {
   version          Int       @default(1)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  receiptCurrency  String?   @map("receipt_currency") @db.Char(3)
+  receiptAmount    Decimal?  @map("receipt_amount") @db.Decimal(14, 2)
+  fxRate           Decimal?  @map("fx_rate") @db.Decimal(18, 8)
+  fxSource         String?   @map("fx_source") @db.VarChar(13)
+  fxRateDate       DateTime? @map("fx_rate_date") @db.Date
+  fxProofFileId    String?   @map("fx_proof_file_id") @db.Uuid
+  fxVariancePct    Decimal?  @map("fx_variance_pct") @db.Decimal(7, 2)
+  receiptPhash     String?   @map("receipt_phash") @db.Char(16)
+  origin           String    @default("employee") @db.VarChar(10)
+  originRef        String?   @map("origin_ref") @db.VarChar(60)
+  confirmed        Boolean   @default(true)
 
   @@map("expense_lines")
 }
@@ -7902,6 +7913,10 @@ model Trip {
   estimate         Decimal  @default(0) @db.Decimal(14, 2)
   advanceRequested Decimal  @default(0) @map("advance_requested") @db.Decimal(14, 2)
   bookingNeeded    Boolean  @default(false) @map("booking_needed")
+  advanceCurrency  String?   @map("advance_currency") @db.Char(3)
+  closedAt         DateTime? @map("closed_at") @db.Timestamptz(3)
+  closedBy         String?   @map("closed_by") @db.Uuid
+  closeReason      String?   @map("close_reason") @db.VarChar(300)
   status           String   @default("draft") @db.VarChar(10)
   wfRequestId      String?  @map("wf_request_id") @db.Uuid
   decisionNote     String?  @map("decision_note") @db.VarChar(500)
@@ -7960,6 +7975,7 @@ model ExpenseAdvance {
   requested      Decimal   @db.Decimal(14, 2)
   amount         Decimal?  @db.Decimal(14, 2)
   changeReason   String?   @map("change_reason") @db.VarChar(300)
+  fxRate         Decimal?  @map("fx_rate") @db.Decimal(18, 8)
   status         String    @default("requested") @db.VarChar(10)
   wfRequestId    String?   @map("wf_request_id") @db.Uuid
   paidOn         DateTime? @map("paid_on") @db.Date
@@ -7983,11 +7999,28 @@ model AdvanceSettlement {
   claimId        String?  @map("claim_id") @db.Uuid
   amount         Decimal  @db.Decimal(14, 2)
   on             DateTime @db.Date
+  amountPay      Decimal? @map("amount_pay") @db.Decimal(14, 2)
+  fxRate         Decimal? @map("fx_rate") @db.Decimal(18, 8)
   ref            String?  @db.VarChar(80)
   recordedBy     String?  @map("recorded_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("advance_settlements")
+}
+
+model FxRate {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  source         String   @db.VarChar(8)
+  base           String   @db.Char(3)
+  quote          String   @db.Char(3)
+  rateDate       DateTime @map("rate_date") @db.Date
+  rate           Decimal  @db.Decimal(18, 8)
+  importedAt     DateTime @default(now()) @map("imported_at") @db.Timestamptz(3)
+  createdBy      String?  @map("created_by") @db.Uuid
+
+  @@unique([organizationId, source, base, quote, rateDate])
+  @@map("fx_rates")
 }
 
 // Batch 5g (M03-BUILD-DESIGN §5.8): arrears, rule-change proposals, F&F settlements, overpayment recoveries.

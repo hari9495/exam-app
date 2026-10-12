@@ -41,6 +41,9 @@ def main():
     hotel.save(f"{OUT}/hotel.png")
     # A phone photo is rarely straight: the same bill turned a little, as JPEG.
     hotel.rotate(4, expand=True, fillcolor="white").save(f"{OUT}/hotel-tilted.jpg", quality=85)
+    # The same bill photographed again: a little smaller, a little darker, saved as a JPEG (F4 look-alike check).
+    w, h = hotel.size
+    hotel.resize((int(w * 0.9), int(h * 0.9))).point(lambda v: int(v * 0.93)).save(f"{OUT}/hotel-again.jpg", quality=70)
     cafe = receipt([
         ("Cafe Mocha", True),
         ("Bill No: CM-4471", False),

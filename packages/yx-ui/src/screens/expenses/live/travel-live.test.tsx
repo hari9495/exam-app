@@ -137,6 +137,30 @@ describe('Advances (EXP-05)', () => {
     await ue.clear(amount);
     await ue.type(amount, '3000');
     await ue.click(within(dialog).getByRole('button', { name: 'Record return' }));
-    expect(p.onReturn).toHaveBeenCalledWith('3000.00', '2026-10-12', 'UTR-9');
+    expect(p.onReturn).toHaveBeenCalledWith('3000.00', '2026-10-12', 'UTR-9', undefined);
+  });
+});
+
+describe('Closing trips and forex advances (E5)', () => {
+  it('the travel desk closes a trip only with a reason', async () => {
+    const onClose = vi.fn(ok);
+    render(<TripScreen {...tripProps(trip({ budget: null, advance: null, can: { edit: false, submit: false, cancel: false, book: true, partner: false, decide: null, claim: false, close: true } }), { onClose })} />);
+    await ue.click(screen.getByRole('button', { name: 'Close the trip' }));
+    const dialog = screen.getByRole('dialog');
+    expect((within(dialog).getByRole('button', { name: 'Close the trip' }) as HTMLButtonElement).disabled).toBe(true);
+    await ue.type(within(dialog).getByRole('textbox', { name: /Why/ }), 'No claims expected');
+    await ue.click(within(dialog).getByRole('button', { name: 'Close the trip' }));
+    expect(onClose).toHaveBeenCalledWith('No claims expected');
+  });
+
+  it('a forex advance is paid at the rate finance enters, and shows the pay-currency ledger', async () => {
+    const p = advanceProps(advance({ currency: 'USD', requested: '500.00', amount: '500.00', status: 'approved', can: { changeAmount: false, decide: null, pay: true, recordReturn: false, claim: false } }), { payCurrency: 'INR' });
+    render(<AdvanceScreen {...p} />);
+    await ue.click(screen.getByRole('button', { name: 'Record payment' }));
+    const dialog = screen.getByRole('dialog');
+    await ue.type(within(dialog).getByRole('textbox', { name: /Bank reference/ }), 'FX-1');
+    await ue.type(within(dialog).getByRole('textbox', { name: /Loading rate/ }), '83.00');
+    await ue.click(within(dialog).getByRole('button', { name: 'Record payment' }));
+    expect(p.onPay).toHaveBeenCalledWith('2026-10-12', 'FX-1', '83.00');
   });
 });

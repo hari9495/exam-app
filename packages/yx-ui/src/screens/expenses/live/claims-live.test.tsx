@@ -163,3 +163,32 @@ describe('Claim review (EXP-03)', () => {
     expect(onFlag).toHaveBeenCalledWith('f1', 'clear', 'Client venue, agreed');
   });
 });
+
+describe('Other currencies and field days (E5)', () => {
+  it('a bill in another currency sends its own amount and the card rate, never a typed pay amount', async () => {
+    const onSaveLine = vi.fn(async () => ({}));
+    render(<ClaimScreen {...props({ claim: claim({ lines: [line({ ocr: null })] }), onSaveLine })} />);
+    await ue.click(screen.getByRole('button', { name: 'Edit' }));
+    const sheet = screen.getByRole('dialog');
+    const cur = within(sheet).getByRole('textbox', { name: /Currency of the bill/ });
+    await ue.clear(cur);
+    await ue.type(cur, 'aed');
+    const amount = within(sheet).getByRole('textbox', { name: /Amount \(AED\)/ });
+    await ue.clear(amount);
+    await ue.type(amount, '300');
+    await ue.type(within(sheet).getByRole('textbox', { name: /Rate on your card/ }), '23.66');
+    await ue.click(within(sheet).getByRole('button', { name: 'Save' }));
+    const sent = (onSaveLine.mock.calls[0] as unknown as [string, Record<string, unknown>])[1];
+    expect(sent.fx).toEqual({ currency: 'AED', amount: '300', rate: '23.66' });
+    expect(sent.amount).toBeUndefined();
+  });
+
+  it('a card rate shows how far it is from the company rate and asks for the statement; a field-day draft asks to be confirmed', () => {
+    render(<ClaimScreen {...props({ onUploadFxProof: vi.fn(async () => ({})), claim: claim({ lines: [line({ ocr: null, fx: { currency: 'AED', amount: '300.00', rate: '23.66000000', source: 'manual', rateDate: '2026-10-07', variancePct: '4.00', hasProof: false } }), line({ id: 'l2', lineNo: 2, ocr: null, origin: 'field_day', confirmed: false })] }) })} />);
+    expect(screen.getByText('Rate 4.00 % from the company rate')).toBeInTheDocument();
+    expect(screen.getByText('Statement needed for the rate')).toBeInTheDocument();
+    expect(screen.getByLabelText('Add the statement for the rate on line 1')).toBeInTheDocument();
+    expect(screen.getByText('From your field day')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Check and confirm' })).toHaveLength(1);
+  });
+});

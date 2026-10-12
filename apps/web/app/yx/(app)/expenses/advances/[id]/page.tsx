@@ -23,8 +23,9 @@ export default function YxAdvancePage() {
       onBack={() => router.push('/yx/expenses/advances')}
       onChangeAmount={(amount, reason) => write('PATCH', `${base}/amount`, { amount, ...(reason ? { reason } : {}) })}
       onDecide={decide}
-      onPay={(paidOn, ref) => write('POST', `${base}/pay`, { paidOn, ref, version: advance.data!.version })}
-      onReturn={(amount, on, ref) => write('POST', `${base}/return`, { amount, on, ref })}
+      payCurrency={advance.data?.payCurrency}
+      onPay={(paidOn, ref, fxRate) => write('POST', `${base}/pay`, { paidOn, ref, version: advance.data!.version, ...(fxRate ? { fxRate } : {}) })}
+      onReturn={(amount, on, ref, fxRate) => write('POST', `${base}/return`, { amount, on, ref, ...(fxRate ? { fxRate } : {}) })}
       onNewClaim={async () => {
         const c = await write<{ id: string }>('POST', '/claims', { title: advance.data!.purpose.slice(0, 150), advanceId: id });
         router.push(`/yx/expenses/claims/${encodeURIComponent(c.id)}`);

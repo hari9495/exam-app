@@ -1,6 +1,6 @@
 'use client';
 
-import { ExpenseSetupScreen, type CityTier, type ExpenseCategory, type GstRegistration, type Policies, type Rates, type SetupCheck } from '@yukthix/ui/expenses';
+import { ExpenseSetupScreen, type CityTier, type ExpenseCategory, type FxRateRow, type GstRegistration, type Policies, type Rates, type SetupCheck } from '@yukthix/ui/expenses';
 import type { LegalEntity } from '@yukthix/ui/org';
 import { loadState, useOrg } from '../../../../../lib/yx-org';
 import { policyRequest, useExp, useExpWrite } from '../../../../../lib/yx-expenses';
@@ -15,6 +15,7 @@ export default function YxExpenseSetupPage() {
   const rates = useExp<Rates>('/rates');
   const gst = useExp<GstRegistration[]>('/gst-registrations');
   const entities = useOrg<LegalEntity[]>('/legal-entities');
+  const fx = useExp<FxRateRow[]>('/fx-rates');
   const write = useExpWrite();
   const all = [check, categories, tiers, policies, rates, gst];
   return (
@@ -39,6 +40,9 @@ export default function YxExpenseSetupPage() {
       onAddPerDiem={(r) => write('POST', '/per-diem-rates', r)}
       onAddGst={(r) => write('POST', '/gst-registrations', r)}
       onEndGst={(id, validTo) => write('POST', `/gst-registrations/${encodeURIComponent(id)}/end`, { validTo })}
+      fxRates={fx.data ?? []}
+      payCurrency={(entities.data ?? []).find((e) => e.isDefault)?.currency ?? (entities.data ?? [])[0]?.currency ?? 'INR'}
+      onAddFxRate={(r) => write('POST', '/fx-rates', { rows: [r] })}
     />
   );
 }

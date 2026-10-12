@@ -12,7 +12,9 @@ import { holdersOf, hrApprovers } from '../time/time-core';
 import { refreezeExitOf } from '../lifecycle/settlement';
 import { tierFor } from './checks';
 import { TRAVEL_BOOKING, openBalance, settleClaim, tripBudget, type TravelBookingAdapter } from './travel';
-import type { AdvanceAmountDto, AdvanceDto, BookingDto, PayAdvanceDto, ReturnDto, TripDto } from './trips-dto';
+import { exchangeDifference, toPay } from './fx';
+import { fxRateFor } from './setup.service';
+import type { AdvanceAmountDto, AdvanceDto, BookingDto, CloseTripDto, PayAdvanceDto, ReturnDto, TripDto } from './trips-dto';
 
 // Expenses batch E4 (M05-BUILD-DESIGN §5.5, §9.4, §10, §11.3; XP-4.01 … XP-4.06): trips with legs and bookings, and
 // advances (for a trip, or a standing imprest) with their settlement ledger.
@@ -51,15 +53,42 @@ export async function settleAdvanceByClaim(tx: Tx, org: string, claim: { id: str
   if (!adv || !['paid', 'to_fnf'].includes(adv.status)) return D(0);
   if (await tx.advanceSettlement.findFirst({ where: { organizationId: org, claimId: claim.id }, select: { id: true } })) return D(0);
   const open = await balanceOf(tx, org, adv);
-  const s = settleClaim(open, approved);
+  let s: { adjusted: string; leftOnAdvance: string };
+  let pay: string;
+  if (adv.fxRate) {
+    // YX-EXP-15: a forex advance is settled only by the bills in its own currency, at its own rate.
+    const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null, receiptCurrency: adv.currency, payMode: { not: 'company_paid' } } });
+    const spentFc = lines.reduce((t, l) => t.add(l.receiptAmount!.mul((l.approved ?? l.claimed).div(l.claimed.gt(0) ? l.claimed : 1))), D(0)).toDecimalPlaces(2);
+    s = settleClaim(open, spentFc);
+    pay = Prisma.Decimal.min(D(toPay(s.adjusted, adv.fxRate)), approved).toFixed(2);
+  } else {
+    s = settleClaim(open, approved);
+    pay = s.adjusted;
+  }
   if (D(s.adjusted).lte(0)) return D(0);
-  await tx.advanceSettlement.create({ data: { organizationId: org, advanceId: adv.id, kind: 'claim', claimId: claim.id, amount: s.adjusted, on: asDate(todayIst()) } });
+  await tx.advanceSettlement.create({ data: { organizationId: org, advanceId: adv.id, kind: 'claim', claimId: claim.id, amount: s.adjusted, amountPay: pay, fxRate: adv.fxRate, on: asDate(todayIst()) } });
   if (D(s.leftOnAdvance).lte(0)) {
     await tx.expenseAdvance.update({ where: { id: adv.id }, data: { status: 'settled', version: { increment: 1 } } });
     await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'advance.settled', payload: { advanceId: adv.id } } });
   }
   await refreezeExitOf(tx, SYSTEM(org), claim.employmentId);
-  return D(s.adjusted);
+  return D(pay);
+}
+
+/**
+ * A trip closes once it has ended, its advance is settled (or there was none) and every claim on it is decided
+ * (§5.5). Run when a claim on it is decided, when its advance settles, and daily.
+ */
+export async function closeTripIfDone(tx: Tx, org: string, tripId: string | null, today = todayIst()): Promise<boolean> {
+  if (!tripId) return false;
+  const trip = await tx.trip.findFirst({ where: { organizationId: org, id: tripId } });
+  if (!trip || trip.status !== 'approved' || iso(trip.toOn) >= today) return false;
+  const adv = await tx.expenseAdvance.findFirst({ where: { organizationId: org, tripId }, select: { status: true } });
+  if (adv && !['settled', 'cancelled', 'rejected'].includes(adv.status)) return false;
+  if (await tx.expenseClaim.findFirst({ where: { organizationId: org, tripId, status: { in: ['draft', 'submitted', 'sent_back'] } }, select: { id: true } })) return false;
+  await tx.trip.update({ where: { id: tripId }, data: { status: 'closed', closedAt: new Date(), closeReason: 'The trip ended, its advance is settled and its claims are decided', version: { increment: 1 } } });
+  await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'trip.closed', payload: { tripId } } });
+  return true;
 }
 
 async function balanceOf(tx: Tx, org: string, a: Advance) {
@@ -180,7 +209,8 @@ export class ExpenseTripsService implements OnModuleInit {
   private checkTrip(dto: TripDto) {
     if (dto.toOn < dto.fromOn) throw new BadRequestException('The trip cannot end before it starts.');
     for (const l of dto.legs) if (l.departOn < dto.fromOn || l.departOn > dto.toOn) throw new BadRequestException(`The leg ${l.fromCity} → ${l.toCity} is outside the trip dates.`);
-    if (D(dto.advanceRequested ?? '0').gt(D(dto.estimate))) throw new BadRequestException('The advance cannot be more than the estimate.');
+    // A forex advance is in another currency, so it is not compared with the estimate (pay currency).
+    if (!dto.advanceCurrency && D(dto.advanceRequested ?? '0').gt(D(dto.estimate))) throw new BadRequestException('The advance cannot be more than the estimate.');
   }
 
   private async writeLegs(tx: Tx, org: string, tripId: string, dto: TripDto) {
@@ -200,7 +230,7 @@ export class ExpenseTripsService implements OnModuleInit {
       const me = await this.myEmployee(tx, org, v);
       if (!me) throw new ForbiddenException('Only employees can request trips.');
       const job = await this.currentJob(tx, org, me.id);
-      const trip = await tx.trip.create({ data: { organizationId: org, employeeId: me.id, employmentId: job.employmentId, legalEntityId: job.legalEntityId, purpose: dto.purpose, fromOn: asDate(dto.fromOn), toOn: asDate(dto.toOn), currency: job.currency, estimate: dto.estimate, advanceRequested: dto.advanceRequested ?? '0', bookingNeeded: Boolean(dto.bookingNeeded), createdBy: v.userId } });
+      const trip = await tx.trip.create({ data: { organizationId: org, employeeId: me.id, employmentId: job.employmentId, legalEntityId: job.legalEntityId, purpose: dto.purpose, fromOn: asDate(dto.fromOn), toOn: asDate(dto.toOn), currency: job.currency, estimate: dto.estimate, advanceRequested: dto.advanceRequested ?? '0', advanceCurrency: dto.advanceCurrency && dto.advanceCurrency !== job.currency ? dto.advanceCurrency : null, bookingNeeded: Boolean(dto.bookingNeeded), createdBy: v.userId } });
       await this.writeLegs(tx, org, trip.id, dto);
       await audit(tx, c, 'expense.trip.created', 'trip', trip.id, {});
       return trip.id;
@@ -215,7 +245,7 @@ export class ExpenseTripsService implements OnModuleInit {
       const { trip, a } = await this.tripOr404(tx, c, v, id);
       if (!a.own) throw new ForbiddenException('Only the traveller can change the trip.');
       if (trip.status !== 'draft') throw new ConflictException('Only a draft trip can be changed.');
-      const n = await tx.trip.updateMany({ where: { organizationId: c.organizationId, id, version: dto.version ?? -1 }, data: { purpose: dto.purpose, fromOn: asDate(dto.fromOn), toOn: asDate(dto.toOn), estimate: dto.estimate, advanceRequested: dto.advanceRequested ?? '0', bookingNeeded: Boolean(dto.bookingNeeded), version: { increment: 1 } } });
+      const n = await tx.trip.updateMany({ where: { organizationId: c.organizationId, id, version: dto.version ?? -1 }, data: { purpose: dto.purpose, fromOn: asDate(dto.fromOn), toOn: asDate(dto.toOn), estimate: dto.estimate, advanceRequested: dto.advanceRequested ?? '0', advanceCurrency: dto.advanceCurrency && dto.advanceCurrency !== trip.currency ? dto.advanceCurrency : null, bookingNeeded: Boolean(dto.bookingNeeded), version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Someone else changed this trip. Reload it.');
       await this.writeLegs(tx, c.organizationId, id, dto);
     });
@@ -248,7 +278,7 @@ export class ExpenseTripsService implements OnModuleInit {
   }
 
   private tripSummary(t: Trip, person: string) {
-    return { id: t.id, purpose: t.purpose, person, fromOn: iso(t.fromOn), toOn: iso(t.toOn), currency: t.currency, estimate: t.estimate.toFixed(2), advanceRequested: t.advanceRequested.toFixed(2), bookingNeeded: t.bookingNeeded, status: t.status, version: t.version };
+    return { id: t.id, purpose: t.purpose, person, fromOn: iso(t.fromOn), toOn: iso(t.toOn), currency: t.currency, estimate: t.estimate.toFixed(2), advanceRequested: t.advanceRequested.toFixed(2), advanceCurrency: t.advanceCurrency ?? t.currency, bookingNeeded: t.bookingNeeded, status: t.status, version: t.version };
   }
 
   async getTrip(ctx: TenantContext, user: ScopeUser, id: string) {
@@ -278,6 +308,8 @@ export class ExpenseTripsService implements OnModuleInit {
     return {
       ...this.tripSummary(trip, person),
       decisionNote: trip.decisionNote,
+      closedAt: trip.closedAt?.toISOString() ?? null,
+      closeReason: trip.closeReason,
       legs: legs.map((l) => ({ seq: l.seq, fromCity: l.fromCity, toCity: l.toCity, country: l.country, departOn: iso(l.departOn), mode: l.mode, stayNights: l.stayNights, tierId: l.tierId })),
       bookings: bookings.map((b) => ({ id: b.id, kind: b.kind, title: b.title, amount: b.amount.toFixed(2), paidBy: b.paidBy, provider: b.provider, providerRef: b.providerRef, hasFile: Boolean(b.fileId) })),
       budget: money ? budget : null,
@@ -292,6 +324,7 @@ export class ExpenseTripsService implements OnModuleInit {
         partner: live && (a.own || a.desk) && this.partner.name !== 'none',
         decide: a.openTaskId,
         claim: a.own && trip.status === 'approved',
+        close: a.desk && !a.own && trip.status === 'approved',
       },
     };
   }
@@ -319,7 +352,7 @@ export class ExpenseTripsService implements OnModuleInit {
         summary: [
           { label: 'Dates', value: `${iso(trip.fromOn)} to ${iso(trip.toOn)}` },
           { label: 'Estimate', value: `${trip.currency} ${trip.estimate.toFixed(2)}` },
-          ...(trip.advanceRequested.gt(0) ? [{ label: 'Advance', value: `${trip.currency} ${trip.advanceRequested.toFixed(2)}` }] : []),
+          ...(trip.advanceRequested.gt(0) ? [{ label: 'Advance', value: `${trip.advanceCurrency ?? trip.currency} ${trip.advanceRequested.toFixed(2)}` }] : []),
         ],
         subjectPersonId: emp.personId,
         requesterUserId: v.userId,
@@ -353,6 +386,20 @@ export class ExpenseTripsService implements OnModuleInit {
     return this.getTrip(ctx, user, id);
   }
 
+  /** The travel desk closes a trip by hand, with a reason (an advance still open keeps its own follow-up). */
+  async closeTrip(ctx: TenantContext, user: ScopeUser, id: string, dto: CloseTripDto) {
+    const v = await this.viewer(user);
+    await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { trip, a } = await this.tripOr404(tx, c, v, id);
+      if (!a.desk || a.own) throw new ForbiddenException('The travel desk closes trips by hand.');
+      if (trip.status !== 'approved') throw new ConflictException('Only an approved trip can be closed.');
+      await tx.trip.update({ where: { id }, data: { status: 'closed', closedAt: new Date(), closedBy: v.userId, closeReason: dto.reason, version: { increment: 1 } } });
+      await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'trip.closed', payload: { tripId: id } } });
+      await audit(tx, c, 'expense.trip.closed', 'trip', id, { reason: dto.reason });
+    });
+    return this.getTrip(ctx, user, id);
+  }
+
   /** P03 effect for a trip, once, in the decision's own transaction (YX-EXP-08: approval creates the advance). */
   private async tripDecided(tx: Tx, req: Prisma.WfRequestGetPayload<object>, outcome: 'approved' | 'rejected') {
     const org = req.organizationId;
@@ -362,7 +409,7 @@ export class ExpenseTripsService implements OnModuleInit {
     await tx.trip.update({ where: { id: trip.id }, data: { status: outcome, decisionNote: last?.reason ?? null, version: { increment: 1 } } });
     if (outcome !== 'approved') return;
     // The approvers saw the amount on the trip, so the advance starts approved; finance pays it.
-    if (trip.advanceRequested.gt(0)) await tx.expenseAdvance.create({ data: { organizationId: org, employeeId: trip.employeeId, employmentId: trip.employmentId, legalEntityId: trip.legalEntityId, tripId: trip.id, kind: 'trip', purpose: trip.purpose, currency: trip.currency, requested: trip.advanceRequested, amount: trip.advanceRequested, status: 'approved' } });
+    if (trip.advanceRequested.gt(0)) await tx.expenseAdvance.create({ data: { organizationId: org, employeeId: trip.employeeId, employmentId: trip.employmentId, legalEntityId: trip.legalEntityId, tripId: trip.id, kind: 'trip', purpose: trip.purpose, currency: trip.advanceCurrency ?? trip.currency, requested: trip.advanceRequested, amount: trip.advanceRequested, status: 'approved' } });
     await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'trip.approved', payload: { tripId: trip.id } } });
   }
 
@@ -449,6 +496,7 @@ export class ExpenseTripsService implements OnModuleInit {
       currency: x.currency,
       requested: x.requested.toFixed(2),
       amount: x.amount?.toFixed(2) ?? null,
+      fxRate: x.fxRate?.toFixed(8) ?? null,
       changeReason: x.changeReason,
       status: x.status,
       paidOn: x.paidOn ? iso(x.paidOn) : null,
@@ -535,7 +583,14 @@ export class ExpenseTripsService implements OnModuleInit {
       const days = Number(await settingFor(tx, c, 'expense.advance.settle_days', { legalEntityId: adv.legalEntityId }));
       // A trip advance is settled within the window after the trip ends; a standing imprest has no end date.
       const settleBy = trip ? addDays(iso(trip.toOn), days) : null;
-      const n = await tx.expenseAdvance.updateMany({ where: { organizationId: org, id, version: dto.version }, data: { status: 'paid', paidOn: asDate(dto.paidOn), paidRef: dto.ref, paidBy: v.userId, settleBy: settleBy ? asDate(settleBy) : null, version: { increment: 1 } } });
+      // YX-EXP-15: a forex advance keeps the rate it was loaded at (the card or bank rate, else the company rate).
+      const payCurrency = (await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: adv.legalEntityId }, select: { currency: true } })).currency;
+      let fxRate: string | null = null;
+      if (adv.currency !== payCurrency) {
+        fxRate = dto.fxRate ?? (await fxRateFor(tx, org, adv.currency, payCurrency, dto.paidOn))?.rate ?? null;
+        if (!fxRate) throw new BadRequestException(`There is no company rate for ${adv.currency} on or before that day. Enter the rate the advance was loaded at.`);
+      }
+      const n = await tx.expenseAdvance.updateMany({ where: { organizationId: org, id, version: dto.version }, data: { status: 'paid', paidOn: asDate(dto.paidOn), paidRef: dto.ref, paidBy: v.userId, fxRate, settleBy: settleBy ? asDate(settleBy) : null, version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Someone else changed this advance. Reload it.');
       await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'advance.paid', payload: { advanceId: id } } });
       await audit(tx, c, 'expense.advance.paid', 'expense_advance', id, { paidOn: dto.paidOn });
@@ -557,13 +612,24 @@ export class ExpenseTripsService implements OnModuleInit {
       const open = await balanceOf(tx, org, adv);
       const amount = D(dto.amount);
       if (amount.lte(0) || amount.gt(open)) throw new BadRequestException(`Record between 0.01 and the open ${open.toFixed(2)}.`);
-      await tx.advanceSettlement.create({ data: { organizationId: org, advanceId: id, kind: 'return', amount: amount.toFixed(2), on: asDate(dto.on), ref: dto.ref, recordedBy: v.userId } });
+      if (adv.fxRate) {
+        // YX-EXP-15: the unspent foreign currency comes back at the day's rate; the gap is its own line.
+        const payCurrency = (await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: adv.legalEntityId }, select: { currency: true } })).currency;
+        const rate = dto.fxRate ?? (await fxRateFor(tx, org, adv.currency, payCurrency, dto.on))?.rate;
+        if (!rate) throw new BadRequestException(`There is no company rate for ${adv.currency} on or before that day. Enter the rate the money came back at.`);
+        const x = exchangeDifference(amount, adv.fxRate, rate);
+        await tx.advanceSettlement.create({ data: { organizationId: org, advanceId: id, kind: 'return', amount: amount.toFixed(2), amountPay: x.atReturn, fxRate: rate, on: asDate(dto.on), ref: dto.ref, recordedBy: v.userId } });
+        if (!D(x.difference).eq(0)) await tx.advanceSettlement.create({ data: { organizationId: org, advanceId: id, kind: 'exchange_difference', amount: 0, amountPay: x.difference, fxRate: rate, on: asDate(dto.on), ref: dto.ref, recordedBy: v.userId } });
+      } else {
+        await tx.advanceSettlement.create({ data: { organizationId: org, advanceId: id, kind: 'return', amount: amount.toFixed(2), amountPay: amount.toFixed(2), on: asDate(dto.on), ref: dto.ref, recordedBy: v.userId } });
+      }
       if (open.sub(amount).lte(0)) {
         await tx.expenseAdvance.update({ where: { id }, data: { status: 'settled', version: { increment: 1 } } });
         await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'advance.settled', payload: { advanceId: id } } });
       }
       await audit(tx, c, 'expense.advance.returned', 'expense_advance', id, { amount: amount.toFixed(2) });
       await refreezeExitOf(tx, c, adv.employmentId);
+      await closeTripIfDone(tx, org, adv.tripId);
     });
     return this.getAdvance(ctx, user, id);
   }
@@ -600,16 +666,25 @@ export class ExpenseTripsService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const { adv, a } = await this.advanceOr404(tx, c, v, id);
-      const ledger = await tx.advanceSettlement.findMany({ where: { organizationId: org, advanceId: id }, orderBy: [{ on: 'asc' }, { createdAt: 'asc' }] });
+      const ledger = await tx.advanceSettlement.findMany({ where: { organizationId: org, advanceId: id }, orderBy: { createdAt: 'asc' } });
       const claims = new Map((await tx.expenseClaim.findMany({ where: { organizationId: org, id: { in: ledger.map((l) => l.claimId).filter((x): x is string => Boolean(x)) } }, select: { id: true, title: true } })).map((x) => [x.id, x.title]));
       const person = (await this.names(tx, org, [adv.employeeId])).get(adv.employeeId) ?? '';
       const s = await this.advanceSummary(tx, org, adv);
       return {
         ...s,
         person,
+        payCurrency: (await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: adv.legalEntityId }, select: { currency: true } })).currency,
         ledger: [
-          ...(adv.paidOn ? [{ id: `${adv.id}-paid`, on: iso(adv.paidOn), kind: 'paid', text: 'Advance paid', amount: adv.amount!.toFixed(2), claimId: null }] : []),
-          ...ledger.map((l) => ({ id: l.id, on: iso(l.on), kind: l.kind, text: l.kind === 'claim' ? `Settled by claim: ${claims.get(l.claimId!) ?? ''}` : l.kind === 'return' ? `Returned by bank (${l.ref ?? ''})` : l.kind, amount: l.amount.neg().toFixed(2), claimId: l.claimId })),
+          ...(adv.paidOn ? [{ id: `${adv.id}-paid`, on: iso(adv.paidOn), kind: 'paid', text: adv.fxRate ? `Advance paid at ${adv.fxRate.toFixed(4)}` : 'Advance paid', amount: adv.amount!.toFixed(2), amountPay: adv.fxRate ? toPay(adv.amount!, adv.fxRate) : adv.amount!.toFixed(2), claimId: null }] : []),
+          ...ledger.map((l) => ({
+            id: l.id,
+            on: iso(l.on),
+            kind: l.kind,
+            text: l.kind === 'claim' ? `Settled by claim: ${claims.get(l.claimId!) ?? ''}` : l.kind === 'return' ? `Returned by bank (${l.ref ?? ''})${l.fxRate && adv.fxRate ? ` at ${l.fxRate.toFixed(4)}` : ''}` : l.kind === 'exchange_difference' ? 'Exchange difference' : l.kind,
+            amount: l.amount.neg().toFixed(2),
+            amountPay: l.kind === 'exchange_difference' ? (l.amountPay ?? D(0)).toFixed(2) : (l.amountPay ?? l.amount).neg().toFixed(2),
+            claimId: l.claimId,
+          })),
         ],
         can: {
           changeAmount: Boolean(a.openTaskId) && adv.status === 'requested',
@@ -626,7 +701,9 @@ export class ExpenseTripsService implements OnModuleInit {
 
   async sweep(today = todayIst()) {
     const SUPER = { organizationId: null, isSuperAdmin: true };
-    const orgs = await this.tenantPrisma.forTenant(SUPER, (tx) => tx.$queryRaw<{ id: string }[]>`SELECT DISTINCT organization_id::text AS id FROM expense_advances WHERE status = 'paid' AND settle_by IS NOT NULL`);
+    const orgs = await this.tenantPrisma.forTenant(SUPER, (tx) => tx.$queryRaw<{ id: string }[]>`
+      SELECT organization_id::text AS id FROM expense_advances WHERE status = 'paid' AND settle_by IS NOT NULL
+      UNION SELECT organization_id::text FROM trips WHERE status = 'approved' AND to_on < ${today}::date`);
     for (const { id: org } of orgs) {
       try {
         await this.sweepOrg(org, today);
@@ -643,6 +720,7 @@ export class ExpenseTripsService implements OnModuleInit {
       c,
       async (tx) => {
         const out: { users: (string | null)[]; text: string; id: string }[] = [];
+        for (const t of await tx.trip.findMany({ where: { organizationId: org, status: 'approved', toOn: { lt: asDate(today) } }, select: { id: true } })) await closeTripIfDone(tx, org, t.id, today);
         const due = await tx.expenseAdvance.findMany({ where: { organizationId: org, status: 'paid', settleBy: { not: null, lte: asDate(addDays(today, 3)) } } });
         for (const x of due) {
           const open = await balanceOf(tx, org, x);

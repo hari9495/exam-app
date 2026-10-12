@@ -14,7 +14,9 @@ import { checkEinvoiceQr, keysFromPem } from './einvoice';
 import { RECEIPT_READER, type ReceiptReader } from './ocr';
 import { lowConfidence, type OcrFields } from './ocr-parse';
 import { ExpenseSetupService } from './setup.service';
-import { settleAdvanceByClaim } from './trips.service';
+import { closeTripIfDone, settleAdvanceByClaim } from './trips.service';
+import { FX_TOLERANCE_PCT, LOOK_ALIKE_BITS, toPay, variancePct } from './fx';
+import { fxRateFor } from './setup.service';
 
 // Expenses batch E2 (M05-BUILD-DESIGN §8, §9, §13, §15; XP-2.01 … XP-2.08): claims and lines, snap-first receipts
 // (OCR suggestions only, every read line confirmed by the employee), the policy check, computed mileage and per diem,
@@ -237,6 +239,9 @@ export class ExpenseClaimsService implements OnModuleInit {
       mileage: l.mileage,
       perDiem: l.perDiem,
       ocr: ocr ? { adapter: ocr.adapter ?? null, fields: ocr.fields ?? {}, lowConfidence: lowConfidence(ocr.fields ?? {}), confirmed: Boolean(ocr.confirmed), einvoice: ocr.einvoice ?? null } : null,
+      fx: l.receiptCurrency ? { currency: l.receiptCurrency, amount: money(l.receiptAmount), rate: l.fxRate!.toFixed(8), source: l.fxSource, rateDate: l.fxRateDate ? iso(l.fxRateDate) : null, variancePct: money(l.fxVariancePct), hasProof: Boolean(l.fxProofFileId) } : null,
+      origin: l.origin,
+      confirmed: l.confirmed,
       gst: seeGst ? { supplierGstin: l.supplierGstin, invoiceNo: l.invoiceNo, invoiceDate: l.invoiceDate ? iso(l.invoiceDate) : null, placeOfSupply: l.placeOfSupply, taxableValue: money(l.taxableValue), cgst: money(l.cgst), sgst: money(l.sgst), igst: money(l.igst), cess: money(l.cess), billedToGstin: l.billedToGstin, itcStatus: l.itcStatus, einvoiceVerified: l.einvoiceVerified } : null,
       version: l.version,
     };
@@ -303,7 +308,7 @@ export class ExpenseClaimsService implements OnModuleInit {
       if (lineId) {
         const cur = await tx.expenseLine.findFirst({ where: { organizationId: org, id: lineId, claimId: id, removedAt: null } });
         if (!cur) throw new NotFoundException('No such line.');
-        line = await tx.expenseLine.update({ where: { id: lineId }, data: { receiptFileId: stored.id, receiptSha256: stored.sha256, selfDeclared: false, ocr: ocr as unknown as Prisma.InputJsonValue, version: { increment: 1 } } });
+        line = await tx.expenseLine.update({ where: { id: lineId }, data: { receiptFileId: stored.id, receiptSha256: stored.sha256, receiptPhash: read.phash ?? null, selfDeclared: false, ocr: ocr as unknown as Prisma.InputJsonValue, version: { increment: 1 } } });
       } else {
         const cat = await this.defaultCategory(tx, org);
         const spentOn = fields.date?.value ?? todayIst();
@@ -326,6 +331,7 @@ export class ExpenseClaimsService implements OnModuleInit {
             billedToGstin: ocr.billedTo,
             einvoiceIrn: ocr.irn,
             einvoiceVerified: einvoice === 'verified',
+            receiptPhash: read.phash ?? null,
           },
         });
       }
@@ -338,13 +344,14 @@ export class ExpenseClaimsService implements OnModuleInit {
     return this.get(ctx, user, id);
   }
 
-  async receipt(ctx: TenantContext, user: ScopeUser, id: string, lineId: string) {
+  async receipt(ctx: TenantContext, user: ScopeUser, id: string, lineId: string, which: 'receipt' | 'fx' = 'receipt') {
     const v = await this.viewer(user);
     const row = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.claimOr404(tx, c, v, id);
       const l = await tx.expenseLine.findFirst({ where: { organizationId: c.organizationId, id: lineId, claimId: id } });
-      if (!l?.receiptFileId) throw new NotFoundException('This line has no receipt.');
-      const f = await tx.file.findFirstOrThrow({ where: { organizationId: c.organizationId, id: l.receiptFileId } });
+      const fileId = which === 'fx' ? l?.fxProofFileId : l?.receiptFileId;
+      if (!fileId) throw new NotFoundException(which === 'fx' ? 'This line has no rate proof.' : 'This line has no receipt.');
+      const f = await tx.file.findFirstOrThrow({ where: { organizationId: c.organizationId, id: fileId } });
       if (f.scanStatus !== 'clean') throw new ConflictException('The receipt has not passed the virus check yet.');
       return f;
     });
@@ -399,6 +406,7 @@ export class ExpenseClaimsService implements OnModuleInit {
       let amount: string;
       let mileage: Prisma.InputJsonValue | typeof Prisma.DbNull = Prisma.DbNull;
       let perDiem: Prisma.InputJsonValue | typeof Prisma.DbNull = Prisma.DbNull;
+      let fx: Awaited<ReturnType<ExpenseClaimsService['fxFor']>> | null = null;
       if (cat.kind === 'mileage') {
         if (!dto.mileage) throw new BadRequestException('Enter the vehicle and the distance.');
         if (dto.amount !== undefined) throw new BadRequestException('Mileage is worked out from the distance; it cannot be typed.');
@@ -420,6 +428,10 @@ export class ExpenseClaimsService implements OnModuleInit {
         const meals = dto.perDiem.meals ?? {};
         amount = perDiemAmount(rate.ratePerDay.toFixed(2), { full: dto.perDiem.fullDays, partial: dto.perDiem.partialDays }, rate.partialDayRule as 'full' | 'half_after_hours', meals, rate.mealsDeduction as Record<string, number>);
         perDiem = { fullDays: dto.perDiem.fullDays, partialDays: dto.perDiem.partialDays, meals, ratePerDay: rate.ratePerDay.toFixed(2), currency: rate.currency, from: dto.spentOn, to: addDays(dto.spentOn, dto.perDiem.fullDays + dto.perDiem.partialDays - 1) } as unknown as Prisma.InputJsonValue;
+      } else if (dto.fx && dto.fx.currency !== claim.currency) {
+        if (dto.amount !== undefined) throw new BadRequestException('A bill in another currency is converted from its own amount; the amount in your pay currency cannot be typed.');
+        fx = await this.fxFor(tx, org, claim, dto.fx, dto.spentOn);
+        amount = toPay(dto.fx.amount, fx.fxRate);
       } else {
         if (dto.amount === undefined) throw new BadRequestException('Enter the amount on the bill.');
         amount = D(dto.amount).toFixed(2);
@@ -455,6 +467,15 @@ export class ExpenseClaimsService implements OnModuleInit {
         cess: g.cess ?? null,
         billedToGstin: g.billedToGstin ?? null,
         itcStatus: itc,
+        receiptCurrency: fx ? dto.fx!.currency : null,
+        receiptAmount: fx ? dto.fx!.amount : null,
+        fxRate: fx?.fxRate ?? null,
+        fxSource: fx?.fxSource ?? null,
+        fxRateDate: fx?.fxRateDate ? asDate(fx.fxRateDate) : null,
+        fxVariancePct: fx?.fxVariancePct ?? null,
+        ...(fx ? {} : { fxProofFileId: null }),
+        // Saving the line is the employee confirming it (a field-day draft is paid only once confirmed, YX-EXP-16).
+        confirmed: true,
         // Saving a read line is the employee confirming its values (nothing from OCR is used unconfirmed, Q4).
         ...(prevOcr ? { ocr: { ...prevOcr, confirmed: true } as Prisma.InputJsonValue } : {}),
       };
@@ -477,6 +498,87 @@ export class ExpenseClaimsService implements OnModuleInit {
       if (!n.count) throw new NotFoundException('No such line.');
       await this.retotal(tx, c.organizationId, id);
       return this.view(tx, c, await tx.expenseClaim.findFirstOrThrow({ where: { id } }), a);
+    });
+  }
+
+  /**
+   * E5 (§14.2, YX-EXP-14, 15): the rate for a bill in another currency. A forex advance in that currency settles at its
+   * own rate; otherwise the company rate for the day (the last one before a holiday), or the employee's card or bank
+   * rate, which needs proof and is flagged when it is more than 3 % from the company rate.
+   */
+  private async fxFor(tx: Tx, org: string, claim: Claim, fx: { currency: string; amount: string; rate?: string }, on: string) {
+    const adv = claim.advanceId ? await tx.expenseAdvance.findFirst({ where: { organizationId: org, id: claim.advanceId } }) : claim.tripId ? await tx.expenseAdvance.findFirst({ where: { organizationId: org, tripId: claim.tripId } }) : null;
+    if (adv && adv.currency === fx.currency && adv.fxRate && ['paid', 'to_fnf'].includes(adv.status)) return { fxRate: adv.fxRate.toFixed(8), fxSource: 'advance', fxRateDate: adv.paidOn ? iso(adv.paidOn) : on, fxVariancePct: null as string | null };
+    const ref = await fxRateFor(tx, org, fx.currency, claim.currency, on);
+    if (fx.rate) {
+      if (D(fx.rate).lte(0)) throw new BadRequestException('The rate is above zero.');
+      return { fxRate: D(fx.rate).toFixed(8), fxSource: 'manual', fxRateDate: on, fxVariancePct: ref ? variancePct(fx.rate, ref.rate) : null };
+    }
+    if (!ref) throw new BadRequestException(`There is no company rate for ${fx.currency} on or before that day. Enter the rate on your card or bank statement and upload the statement.`);
+    return { fxRate: ref.rate, fxSource: 'company_table', fxRateDate: ref.rateDate, fxVariancePct: null };
+  }
+
+  /** E5: the statement that shows an entered rate (proof for a manual rate, §14.2). */
+  async addFxProof(ctx: TenantContext, user: ScopeUser, id: string, lineId: string, file: { originalname: string; buffer: Buffer } | undefined) {
+    if (!file?.buffer?.length) throw new BadRequestException('Choose the statement to upload.');
+    const v = await this.viewer(user);
+    const fileId = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { claim, a } = await this.claimOr404(tx, c, v, id);
+      this.editable(claim, a);
+      const l = await tx.expenseLine.findFirst({ where: { organizationId: c.organizationId, id: lineId, claimId: id, removedAt: null } });
+      if (!l) throw new NotFoundException('No such line.');
+      if (l.fxSource !== 'manual') throw new ConflictException('Proof is needed only for a rate you entered.');
+      const stored = await this.files.storeIn(tx, c, { area: 'expense', name: file.originalname, data: file.buffer, allowedMime: RECEIPT_MIME, maxMb: 10, via: 'self' });
+      await tx.expenseLine.update({ where: { id: lineId }, data: { fxProofFileId: stored.id, version: { increment: 1 } } });
+      return stored.id;
+    });
+    void this.files.scan(ctx.organizationId!, fileId).catch(() => undefined);
+    return this.get(ctx, user, id);
+  }
+
+  /**
+   * E5 (M02 §B8, YX-EXP-16): a field-force duty day's distance becomes a draft mileage line on the person's open field
+   * travel claim for that month. It is worked out from the company rate like any mileage line and is paid only after
+   * the employee confirms it (saves the line). Attendance calls this once a duty day closes; one draft per day.
+   */
+  async fieldDayDraft(org: string, input: { employeeId: string; workOn: string; km: number; vehicle: string; visits: string[] }) {
+    const c: CompanyContext = { organizationId: org, isSuperAdmin: false, userId: null };
+    return this.tenantPrisma.forTenant(c, async (tx) => {
+      const ref = `field:${input.employeeId}:${input.workOn}`;
+      const had = await tx.expenseLine.findFirst({ where: { organizationId: org, originRef: ref, origin: 'field_day', removedAt: null }, select: { id: true, claimId: true } });
+      if (had) return had;
+      const cat = await tx.expenseCategory.findFirst({ where: { organizationId: org, kind: 'mileage', active: true }, orderBy: { code: 'asc' } });
+      const on = asDate(input.workOn);
+      const rate = await tx.mileageRate.findFirst({ where: { organizationId: org, vehicle: input.vehicle, validFrom: { lte: on }, OR: [{ validTo: null }, { validTo: { gte: on } }] } });
+      const job = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employeeId: input.employeeId, supersededAt: null, validFrom: { lte: on } }, orderBy: { validFrom: 'desc' }, select: { employmentId: true, legalEntityId: true } });
+      // Without a mileage category, a rate or a job there is nothing to draft; the employee can still claim by hand.
+      if (!cat || !rate || !job) return null;
+      const title = `Field travel, ${on.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}`;
+      const claim =
+        (await tx.expenseClaim.findFirst({ where: { organizationId: org, employeeId: input.employeeId, status: 'draft', title } })) ??
+        (await tx.expenseClaim.create({ data: { organizationId: org, employeeId: input.employeeId, employmentId: job.employmentId, legalEntityId: job.legalEntityId, title, currency: (await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: job.legalEntityId }, select: { currency: true } })).currency } }));
+      const m = mileageAmount(input.km, rate.ratePerKm.toFixed(2), rate.monthlyKmCap, await this.kmInMonth(tx, org, input.employeeId, input.workOn, null));
+      if ('problem' in m) return null;
+      const line = await tx.expenseLine.create({
+        data: {
+          organizationId: org,
+          claimId: claim.id,
+          lineNo: await this.nextLineNo(tx, org, claim.id),
+          categoryCode: cat.code,
+          spentOn: on,
+          payMode: 'personal',
+          description: input.visits.length ? `Visits: ${input.visits.join(', ')}`.slice(0, 500) : null,
+          claimed: m.amount,
+          mileage: { vehicle: input.vehicle, km: input.km, from: null, to: null, ratePerKm: rate.ratePerKm.toFixed(2) },
+          dupKey: dupKey(input.employeeId, input.workOn, m.amount),
+          origin: 'field_day',
+          originRef: ref,
+          confirmed: false,
+        },
+      });
+      await this.retotal(tx, org, claim.id);
+      await audit(tx, c, 'expense.line.field_day', 'expense_claim', claim.id, { lineId: line.id, workOn: input.workOn });
+      return { id: line.id, claimId: claim.id };
     });
   }
 
@@ -553,6 +655,20 @@ export class ExpenseClaimsService implements OnModuleInit {
       const name = `Line ${l.lineNo}`;
       const ocr = (l.ocr ?? null) as { confirmed?: boolean; fields?: OcrFields; einvoice?: string } | null;
       if (ocr && !ocr.confirmed) blockers.push({ lineId: l.id, text: `${name}: check the values read from the receipt and save the line.` });
+      if (!l.confirmed) blockers.push({ lineId: l.id, text: `${name}: check the distance from your field day and save the line.` });
+      // F12: an entered rate needs its statement, and is flagged when far from the company rate (B18).
+      if (l.fxSource === 'manual' && !l.fxProofFileId) blockers.push({ lineId: l.id, text: `${name}: upload the statement that shows your rate.` });
+      if (l.fxSource === 'manual' && l.fxVariancePct && l.fxVariancePct.abs().gt(FX_TOLERANCE_PCT)) flags.push({ kind: 'fx_rate', detail: `${name}: the rate entered is ${l.fxVariancePct.toFixed(2)} % from the company rate.`, lineId: l.id });
+      // F4: a re-photographed receipt (a near-identical image of another live bill in the company).
+      if (l.receiptPhash) {
+        // shortcut: compares against every live line of the company; add an index-friendly prefilter when volumes grow.
+        const near = await tx.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM expense_lines x JOIN expense_claims c ON c.organization_id = x.organization_id AND c.id = x.claim_id
+          WHERE x.organization_id = ${org}::uuid AND x.id <> ${l.id}::uuid AND x.removed_at IS NULL AND x.receipt_phash IS NOT NULL
+            AND x.receipt_sha256 IS DISTINCT FROM ${l.receiptSha256} AND c.status IN ('draft', 'submitted', 'sent_back', 'approved', 'partly_approved')
+            AND bit_count(('x' || x.receipt_phash)::bit(64) # ('x' || ${l.receiptPhash})::bit(64)) <= ${LOOK_ALIKE_BITS}`;
+        if (near[0].n) flags.push({ kind: 'look_alike_image', detail: `${name}: the receipt photo looks like another bill's receipt.`, lineId: l.id });
+      }
       if (l.claimed.lte(0) && l.payMode !== 'company_paid') blockers.push({ lineId: l.id, text: `${name}: enter the amount.` });
       const p = await this.policyCheck(tx, c, claim, l, cat);
       await tx.expenseLine.update({ where: { id: l.id }, data: { policyResult: p as Prisma.InputJsonValue } });
@@ -758,6 +874,7 @@ export class ExpenseClaimsService implements OnModuleInit {
       await tx.expenseClaim.update({ where: { id: claim.id }, data: { status: back ? 'sent_back' : 'rejected', sendBackPending: false, decidedAt: new Date(), decisionNote: last?.reason ?? null, version: { increment: 1 } } });
       if (back) await tx.expenseLine.updateMany({ where: { organizationId: org, claimId: claim.id }, data: { approved: null, reduceReason: null } });
       await tx.eventOutbox.create({ data: { organizationId: org, eventType: back ? 'expense.claim.sent_back' : 'expense.claim.rejected', payload: { claimId: claim.id } } });
+      if (!back) await closeTripIfDone(tx, org, claim.tripId);
       return;
     }
     const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null } });
@@ -776,6 +893,7 @@ export class ExpenseClaimsService implements OnModuleInit {
     const adjusted = await settleAdvanceByClaim(tx, org, claim, total);
     await tx.expenseClaim.update({ where: { id: claim.id }, data: { status: reduced ? 'partly_approved' : 'approved', approvedTotal: total, advanceAdjusted: adjusted, netPayable: total.sub(adjusted), paymentStatus: total.sub(adjusted).gt(0) ? 'approved_unpaid' : 'not_due', decidedAt: new Date(), decisionNote: last?.reason ?? null, version: { increment: 1 } } });
     await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'expense.claim.approved', payload: { claimId: claim.id, reduced } } });
+    await closeTripIfDone(tx, org, claim.tripId);
   }
 
   // ------------------------------------------------------------------------------------------ finance (§9.3)

@@ -45,7 +45,8 @@ export async function freezeSettlementIn(tx: Tx, c: CompanyContext, exitCaseId: 
     const done = await tx.advanceSettlement.aggregate({ where: { organizationId: org, advanceId: x.id }, _sum: { amount: true } });
     const open = (x.amount ?? new Prisma.Decimal(0)).sub(done._sum.amount ?? 0);
     if (open.lte(0)) continue;
-    recoveries.push({ source: 'expense_advance', title: `Expense advance: ${x.purpose}`.slice(0, 150), amount: open.toFixed(2), reason: 'Advance not settled by claims or a return', status: 'recorded' });
+    // A forex advance is recovered in pay currency at the rate it was paid at (E5).
+    recoveries.push({ source: 'expense_advance', title: `Expense advance: ${x.purpose}`.slice(0, 150), amount: open.mul(x.fxRate ?? 1).toDecimalPlaces(2).toFixed(2), reason: 'Advance not settled by claims or a return', status: 'recorded' });
     if (cause === 'exited' && x.status === 'paid') await tx.expenseAdvance.update({ where: { id: x.id }, data: { status: 'to_fnf', version: { increment: 1 } } });
   }
   await payScope(tx, [e.legalEntityId]);

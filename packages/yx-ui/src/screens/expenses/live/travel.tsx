@@ -146,6 +146,7 @@ function TripDrawer({ today, onClose, onSave }: { today: string; onClose: () => 
   const [legs, setLegs] = useState<LegDraft[]>([{ key: 1, from: '', to: '', on: null, mode: 'air', nights: 0 }]);
   const [estimate, setEstimate] = useState('');
   const [advance, setAdvance] = useState('');
+  const [advCurrency, setAdvCurrency] = useState('');
   const [who, setWho] = useState<'self' | 'desk'>('self');
   const [failed, setFailed] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -159,7 +160,8 @@ function TripDrawer({ today, onClose, onSave }: { today: string; onClose: () => 
     ...(fk && tk && legs.some((l) => l.on && (dayKey(l.on) < fk || dayKey(l.on) > tk)) ? [{ fieldId: 'tr-legs', message: 'Every leg is within the trip dates.' }] : []),
     ...(MONEY.test(estimate.trim()) ? [] : [{ fieldId: 'tr-estimate', message: 'Enter the estimated cost, e.g. 20000.' }]),
     ...(advance.trim() === '' || MONEY.test(advance.trim()) ? [] : [{ fieldId: 'tr-advance', message: 'The advance is an amount, e.g. 10000.' }]),
-    ...(MONEY.test(estimate.trim()) && MONEY.test(advance.trim()) && Number(advance) > Number(estimate) ? [{ fieldId: 'tr-advance', message: 'The advance cannot be more than the estimate.' }] : []),
+    ...(!advCurrency && MONEY.test(estimate.trim()) && MONEY.test(advance.trim()) && Number(advance) > Number(estimate) ? [{ fieldId: 'tr-advance', message: 'The advance cannot be more than the estimate.' }] : []),
+    ...(advCurrency === '' || /^[A-Z]{3}$/.test(advCurrency) ? [] : [{ fieldId: 'tr-advcur', message: 'The currency is a 3-letter code, e.g. USD.' }]),
   ];
   const v = useSaveErrors(errors);
   const save = async () => {
@@ -167,7 +169,7 @@ function TripDrawer({ today, onClose, onSave }: { today: string; onClose: () => 
     setSaving(true);
     setFailed(null);
     try {
-      await onSave({ purpose: purpose.trim(), fromOn: fk!, toOn: tk!, estimate: estimate.trim(), advanceRequested: advance.trim() || '0', bookingNeeded: who === 'desk', legs: legs.map((l) => ({ fromCity: l.from.trim(), toCity: l.to.trim(), departOn: dayKey(l.on!), mode: l.mode!, stayNights: l.nights ?? 0 })) });
+      await onSave({ purpose: purpose.trim(), fromOn: fk!, toOn: tk!, estimate: estimate.trim(), advanceRequested: advance.trim() || '0', ...(advCurrency ? { advanceCurrency: advCurrency } : {}), bookingNeeded: who === 'desk', legs: legs.map((l) => ({ fromCity: l.from.trim(), toCity: l.to.trim(), departOn: dayKey(l.on!), mode: l.mode!, stayNights: l.nights ?? 0 })) });
       onClose();
     } catch (e) {
       setFailed(errorText(e));
@@ -248,6 +250,9 @@ function TripDrawer({ today, onClose, onSave }: { today: string; onClose: () => 
         <FormField id="tr-advance" label="Advance needed" optional error={v.errorOf('tr-advance')} helper="Paid before you travel; your claims on the trip settle it.">
           <TextField value={advance} onChange={(x) => setAdvance(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={15} />
         </FormField>
+        <FormField id="tr-advcur" label="Advance in another currency" optional error={v.errorOf('tr-advcur')} helper="For a forex card, e.g. USD. Settled by your bills in that currency at the loading rate.">
+          <TextField value={advCurrency} onChange={(x) => setAdvCurrency(x.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3))} maxLength={3} />
+        </FormField>
       </div>
       <FormField id="tr-who" label="Who books tickets and hotel?">
         <Segment
@@ -284,6 +289,8 @@ export interface TripScreenProps {
   onNewClaim: () => Promise<unknown>;
   onOpenClaim: (id: string) => void;
   onOpenAdvance: (id: string) => void;
+  /** E5: the travel desk closes a trip by hand, with a reason. */
+  onClose?: (reason: string) => Promise<unknown>;
 }
 
 export function TripScreen(p: TripScreenProps) {
@@ -292,6 +299,7 @@ export function TripScreen(p: TripScreenProps) {
   const [booking, setBooking] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [closing, setClosing] = useState(false);
   const adv = t?.advance ?? null;
   const toReturn = adv && adv.status !== 'settled' && Number(adv.balance) > 0 ? adv.balance : null;
   return (
@@ -311,6 +319,11 @@ export function TripScreen(p: TripScreenProps) {
               </Text>
             )}
             <RouteSteps route={t.route} />
+            {t.status === 'closed' && t.closeReason && (
+              <Text as="p" tone="secondary">
+                {`Closed${t.closedAt ? ` on ${dateText(t.closedAt.slice(0, 10))}` : ''}: ${t.closeReason}`}
+              </Text>
+            )}
           </Card>
           {t.budget && (
             <Card title="Settlement">
@@ -320,11 +333,11 @@ export function TripScreen(p: TripScreenProps) {
               <Fact label="Left of the estimate" value={money(t.currency, t.budget.left)} tone={Number(t.budget.left) < 0 ? 'danger' : undefined} />
               {adv && (
                 <>
-                  <Fact label="Advance" value={`${money(t.currency, adv.amount)} · ${ADVANCE_STATUS[adv.status].label}`} />
-                  {adv.status === 'paid' && <Fact label="Left on the advance" value={money(t.currency, adv.balance)} tone={adv.overdue ? 'danger' : undefined} />}
+                  <Fact label="Advance" value={`${money(adv.currency, adv.amount)} · ${ADVANCE_STATUS[adv.status].label}`} />
+                  {adv.status === 'paid' && <Fact label="Left on the advance" value={money(adv.currency, adv.balance)} tone={adv.overdue ? 'danger' : undefined} />}
                   {adv.status === 'paid' && toReturn && (
                     <InlineAlert tone={adv.overdue ? 'danger' : 'warning'} title={adv.overdue ? 'The time to settle has passed' : 'Settle the advance'}>
-                      {`Claim your trip spend, or return ${money(t.currency, toReturn)} by bank${adv.settleBy ? ` by ${dateText(adv.settleBy)}` : ''}. Finance records the return.`}
+                      {`Claim your trip spend, or return ${money(adv.currency, toReturn)} by bank${adv.settleBy ? ` by ${dateText(adv.settleBy)}` : ''}. Finance records the return.`}
                     </InlineAlert>
                   )}
                   <Button size="sm" onClick={() => p.onOpenAdvance(adv.id)}>
@@ -442,7 +455,9 @@ export function TripScreen(p: TripScreenProps) {
               </>
             )}
             {t.can.cancel && <Button onClick={() => setCancelling(true)}>Cancel the trip</Button>}
+            {t.can.close && p.onClose && <Button onClick={() => setClosing(true)}>Close the trip</Button>}
           </div>
+          {closing && p.onClose && <ReasonDialog title="Close this trip?" consequence="No more bookings or claims can be added. An advance still open keeps its own follow-up." label="Why" confirm="Close the trip" onClose={() => setClosing(false)} onConfirm={p.onClose} />}
           {booking && <BookingDrawer currency={t.currency} onClose={() => setBooking(false)} onSave={p.onAddBooking} />}
           {rejecting && <ReasonDialog title="Not approve this trip?" consequence="The trip closes and the traveller sees your reason." label="Why not" confirm="Do not approve" onClose={() => setRejecting(false)} onConfirm={(reason) => p.onDecide(t.can.decide!, 'reject', reason)} />}
           {cancelling && (
@@ -619,8 +634,10 @@ export interface AdvanceScreenProps {
   onBack: () => void;
   onChangeAmount: (amount: string, reason: string) => Promise<unknown>;
   onDecide: (taskId: string, decision: 'approve' | 'reject', reason: string) => Promise<unknown>;
-  onPay: (paidOn: string, ref: string) => Promise<unknown>;
-  onReturn: (amount: string, on: string, ref: string) => Promise<unknown>;
+  onPay: (paidOn: string, ref: string, fxRate?: string) => Promise<unknown>;
+  onReturn: (amount: string, on: string, ref: string, fxRate?: string) => Promise<unknown>;
+  /** The pay currency, to tell a forex advance (E5) from one in pay currency. */
+  payCurrency?: string;
   onNewClaim: () => Promise<unknown>;
   onOpenTrip: (id: string) => void;
   onOpenClaim: (id: string) => void;
@@ -634,10 +651,14 @@ export function AdvanceScreen(p: AdvanceScreenProps) {
   const [reason, setReason] = useState('');
   const [on, setOn] = useState<Date | null>(fromKey(p.today));
   const [ref, setRef] = useState('');
+  const [rate, setRate] = useState('');
+  const forex = Boolean(a && p.payCurrency && a.currency !== p.payCurrency);
+  const okRate = rate === '' || /^\d{1,10}(\.\d{1,8})?$/.test(rate);
   const open = (d: 'amount' | 'pay' | 'return') => {
     setAmount(d === 'return' ? String(Number(a?.balance ?? 0)) : String(Number(a?.amount ?? a?.requested ?? 0)));
     setReason('');
     setRef('');
+    setRate('');
     setOn(fromKey(p.today));
     setDialog(d);
   };
@@ -661,6 +682,7 @@ export function AdvanceScreen(p: AdvanceScreenProps) {
               </Text>
             )}
             {a.paidOn && <Fact label="Paid on" value={dateText(a.paidOn)} />}
+            {a.fxRate && <Fact label={`Loaded at (${p.payCurrency ?? 'pay currency'} per ${a.currency})`} value={Number(a.fxRate).toLocaleString('en-IN', { maximumFractionDigits: 4 })} />}
             {a.paidOn && <Fact label="Open balance" value={money(a.currency, a.balance)} tone={a.overdue ? 'danger' : undefined} />}
             {a.settleBy && <Fact label="Settle by" value={dateText(a.settleBy)} />}
             {a.overdue && (
@@ -680,7 +702,8 @@ export function AdvanceScreen(p: AdvanceScreenProps) {
               columns={[
                 { key: 'd', header: 'Date', value: (l: AdvanceDetail['ledger'][number]) => l.on, render: (l) => <Text>{dateText(l.on)}</Text>, width: 140 },
                 { key: 't', header: 'What happened', value: (l) => l.text, width: 320 },
-                { key: 'a', header: 'Amount', value: (l) => Number(l.amount), render: (l) => <Text>{money(a.currency, l.amount)}</Text>, width: 140 },
+                { key: 'a', header: 'Amount', value: (l) => Number(l.amount), render: (l) => <Text>{l.kind === 'exchange_difference' ? '—' : money(a.currency, l.amount)}</Text>, width: 140 },
+                ...(a.fxRate && p.payCurrency ? [{ key: 'p', header: `In ${p.payCurrency}`, value: (l: AdvanceDetail['ledger'][number]) => Number(l.amountPay ?? 0), render: (l: AdvanceDetail['ledger'][number]) => <Text>{money(p.payCurrency!, l.amountPay ?? null)}</Text>, width: 150 }] : []),
               ]}
               rows={a.ledger}
               getRowId={(l) => l.id}
@@ -750,9 +773,9 @@ export function AdvanceScreen(p: AdvanceScreenProps) {
               title={`Record payment of ${money(a.currency, a.amount)}?`}
               consequence={a.kind === 'trip' ? 'The employee is told and the settle-by date starts from the trip end.' : 'The employee is told.'}
               confirmLabel="Record payment"
-              confirmDisabled={!okDate || ref.trim().length < 2}
+              confirmDisabled={!okDate || ref.trim().length < 2 || !okRate}
               onConfirm={async () => {
-                await p.onPay(dayKey(on!), ref.trim());
+                await p.onPay(dayKey(on!), ref.trim(), forex && rate ? rate : undefined);
                 setDialog(null);
               }}
             >
@@ -762,6 +785,11 @@ export function AdvanceScreen(p: AdvanceScreenProps) {
               <FormField id="ad-ref" label="Bank reference" required helper="The UTR or transfer reference.">
                 <TextField value={ref} onChange={setRef} maxLength={80} />
               </FormField>
+              {forex && (
+                <FormField id="ad-rate" label={`Loading rate (${p.payCurrency} per ${a.currency})`} optional helper="Leave it empty to use the company rate for that day.">
+                  <TextField value={rate} onChange={(x) => setRate(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={20} />
+                </FormField>
+              )}
             </ConfirmDialog>
           )}
           {dialog === 'return' && (
@@ -772,9 +800,9 @@ export function AdvanceScreen(p: AdvanceScreenProps) {
               title="Record money returned by the employee?"
               consequence={`Open balance ${money(a.currency, a.balance)}. When it reaches nil the advance is settled.`}
               confirmLabel="Record return"
-              confirmDisabled={!okDate || ref.trim().length < 2 || !MONEY.test(amount) || Number(amount) <= 0 || Number(amount) > Number(a.balance)}
+              confirmDisabled={!okDate || ref.trim().length < 2 || !okRate || !MONEY.test(amount) || Number(amount) <= 0 || Number(amount) > Number(a.balance)}
               onConfirm={async () => {
-                await p.onReturn(Number(amount).toFixed(2), dayKey(on!), ref.trim());
+                await p.onReturn(Number(amount).toFixed(2), dayKey(on!), ref.trim(), forex && rate ? rate : undefined);
                 setDialog(null);
               }}
             >
@@ -787,6 +815,11 @@ export function AdvanceScreen(p: AdvanceScreenProps) {
               <FormField id="ad-ret-ref" label="Bank reference" required>
                 <TextField value={ref} onChange={setRef} maxLength={80} />
               </FormField>
+              {forex && (
+                <FormField id="ad-ret-rate" label={`Rate it came back at (${p.payCurrency} per ${a.currency})`} optional helper="Leave it empty to use the company rate for that day. The gap to the loading rate is shown as an exchange difference.">
+                  <TextField value={rate} onChange={(x) => setRate(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={20} />
+                </FormField>
+              )}
             </ConfirmDialog>
           )}
         </>

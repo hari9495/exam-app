@@ -10,7 +10,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { AdvanceAmountDto, AdvanceDto, AdvanceListDto, BookingDto, PartnerBookingDto, PayAdvanceDto, ReturnDto, TripDto, TripListDto, VersionDto } from './trips-dto';
+import { AdvanceAmountDto, AdvanceDto, AdvanceListDto, BookingDto, CloseTripDto, PartnerBookingDto, PayAdvanceDto, ReturnDto, TripDto, TripListDto, VersionDto } from './trips-dto';
 import { ExpenseTripsService } from './trips.service';
 
 // Expenses batch E4 (M05-BUILD-DESIGN §18 "Trips", "Advances"). Every route is open to the implicit grants (the
@@ -57,6 +57,13 @@ export class ExpenseTripsController {
   @HttpCode(200)
   cancel(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.trips.cancelTrip(ctx, this.user(req), id);
+  }
+
+  @Post('trips/:id/close')
+  @HttpCode(200)
+  @RequirePermissions('travel.booking.manage')
+  close(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CloseTripDto) {
+    return this.trips.closeTrip(ctx, this.user(req), id, dto);
   }
 
   @Post('trips/:id/bookings')

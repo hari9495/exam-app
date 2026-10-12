@@ -8,7 +8,11 @@ import { dateOf, lowConfidence, moneyOf, parseReceiptText } from './ocr-parse';
 
 describe('worker output is untrusted and parsed strictly', () => {
   it('accepts only { lines: [{ text, score }], qr }', () => {
-    expect(parseWorkerOutput({ lines: [{ text: 'TOTAL 100', score: 0.9 }], qr: null })).toEqual({ lines: [{ text: 'TOTAL 100', score: 0.9 }], qr: null });
+    expect(parseWorkerOutput({ lines: [{ text: 'TOTAL 100', score: 0.9 }], qr: null })).toEqual({ lines: [{ text: 'TOTAL 100', score: 0.9 }], qr: null, phash: null });
+    // E5 (F4): an optional 64-bit image hash, 16 lower-case hex, nothing else.
+    expect(parseWorkerOutput({ lines: [], qr: null, phash: 'f0e1d2c3b4a59687' })!.phash).toBe('f0e1d2c3b4a59687');
+    expect(parseWorkerOutput({ lines: [], qr: null, phash: 'F0E1D2C3B4A59687' })).toBeNull();
+    expect(parseWorkerOutput({ lines: [], qr: null, phash: 'f0e1;drop table' })).toBeNull();
     expect(parseWorkerOutput({ lines: [], qr: null, amount: '100' })).toBeNull();
     expect(parseWorkerOutput({ lines: [{ text: 'x', score: 1.5 }], qr: null })).toBeNull();
     expect(parseWorkerOutput({ lines: [{ text: 'x', score: 0.5, html: '<b>' }], qr: null })).toBeNull();

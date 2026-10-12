@@ -50,3 +50,29 @@ export const Advances: S = { render: () => <AdvancesScreen state="ready" mine={[
 export const AdvanceLedger: S = { name: 'Advance · ledger', render: () => <AdvanceScreen {...advanceProps(advance())} /> };
 export const AdvanceOverdue: S = { name: 'Advance · overdue, finance view', render: () => <AdvanceScreen {...advanceProps(advance({ kind: 'imprest', tripId: null, settleBy: '2026-10-01', overdue: true, can: { changeAmount: false, decide: null, pay: false, recordReturn: true, claim: false } }))} /> };
 export const AdvanceToApprove: S = { name: 'Advance · approver may lower it', render: () => <AdvanceScreen {...advanceProps(advance({ kind: 'imprest', tripId: null, status: 'requested', amount: '4000.00', requested: '5000.00', changeReason: 'Two weeks is enough', paidOn: null, settleBy: null, balance: '0.00', ledger: [], can: { changeAmount: true, decide: 'task9', pay: false, recordReturn: false, claim: false } }))} /> };
+export const TripTravelDeskClose: S = { name: 'Trip · travel desk may close it (E5)', render: () => <TripScreen {...tripProps(trip({ budget: null, advance: null, claims: [], can: { edit: false, submit: false, cancel: false, book: true, partner: false, decide: null, claim: false, close: true } }))} onClose={ok} /> };
+export const TripClosed: S = { name: 'Trip · closed', render: () => <TripScreen {...tripProps(trip({ status: 'closed', closedAt: '2026-10-11T10:00:00.000Z', closeReason: 'The trip ended, its advance is settled and its claims are decided', advance: adv({ status: 'settled', balance: '0.00' }), can: { edit: false, submit: false, cancel: false, book: false, partner: false, decide: null, claim: false } }))} /> };
+export const ForexAdvance: S = {
+  name: 'Advance · forex with exchange difference (E5)',
+  render: () => (
+    <AdvanceScreen
+      {...advanceProps(
+        advance({
+          currency: 'USD',
+          requested: '500.00',
+          amount: '500.00',
+          fxRate: '83.00000000',
+          status: 'settled',
+          balance: '0.00',
+          ledger: [
+            { id: 'p', on: '2026-09-30', kind: 'paid', text: 'Advance paid at 83.0000', amount: '500.00', amountPay: '41500.00', claimId: null },
+            { id: 's1', on: '2026-10-11', kind: 'claim', text: 'Settled by claim: Singapore spend', amount: '-420.00', amountPay: '-34860.00', claimId: 'c1' },
+            { id: 's2', on: '2026-10-11', kind: 'return', text: 'Returned by bank (UTR-1) at 84.5000', amount: '-80.00', amountPay: '-6760.00', claimId: null },
+            { id: 's3', on: '2026-10-11', kind: 'exchange_difference', text: 'Exchange difference', amount: '0.00', amountPay: '120.00', claimId: null },
+          ],
+        }),
+      )}
+      payCurrency="INR"
+    />
+  ),
+};

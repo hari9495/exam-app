@@ -217,3 +217,26 @@ export class LimitsQueryDto {
   on?: string;
 }
 
+
+/** E5: one row of the company's exchange-rate table: pay currency (quote) per one unit of base. */
+export class FxRateRowDto {
+  @Matches(/^[A-Z]{3}$/)
+  base!: string;
+
+  @Matches(/^[A-Z]{3}$/)
+  quote!: string;
+
+  @Matches(ISO)
+  rateDate!: string;
+
+  @Matches(/^\d{1,10}(\.\d{1,8})?$/)
+  rate!: string;
+}
+
+export class FxRatesDto {
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ValidateNested({ each: true })
+  @Type(() => FxRateRowDto)
+  rows!: FxRateRowDto[];
+}

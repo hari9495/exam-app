@@ -11,6 +11,7 @@ import YxClaimPage from './(app)/expenses/claims/[id]/page';
 import YxTripsPage from './(app)/expenses/trips/page';
 import YxTripPage from './(app)/expenses/trips/[id]/page';
 import YxAdvancePage from './(app)/expenses/advances/[id]/page';
+import YxExpenseReportsPage from './(app)/expenses/reports/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
@@ -131,5 +132,23 @@ describe('Trips and advances (M05 batch E4)', () => {
     await userEvent.type(screen.getByRole('textbox', { name: /Bank reference/ }), 'NEFT-2');
     await userEvent.click(screen.getByRole('button', { name: 'Record payment' }));
     await waitFor(() => expect(posted).toEqual([expect.objectContaining({ ref: 'NEFT-2', version: 2 })]));
+  });
+});
+
+describe('Expense reports (M05 batch E5)', () => {
+  it('loads the spend report for this month and switches to the GST input report', async () => {
+    const seen: string[] = [];
+    route({ 'GET /expenses/reports/summary': (p: string) => (seen.push(p), { kind: 'summary', from: '2026-10-01', to: '2026-10-12', columns: [{ key: 'category', label: 'Category' }], rows: [{ category: 'Hotel and lodging' }] }), 'GET /expenses/reports/gst-input': (p: string) => (seen.push(p), { kind: 'gst-input', from: '2026-10-01', to: '2026-10-12', columns: [{ key: 'gstin', label: 'GSTIN of supplier' }], rows: [{ gstin: '27BBBBB2222B1Z5' }] }) });
+    wrap(<YxExpenseReportsPage />);
+    expect(await screen.findByText('Hotel and lodging')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: 'GST input' }));
+    expect(await screen.findByText('27BBBBB2222B1Z5')).toBeInTheDocument();
+    expect(seen[0]).toMatch(/^\/expenses\/reports\/summary\?from=\d{4}-\d{2}-01&to=\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('the menu shows Expense reports to whoever may read them', async () => {
+    route({ 'GET /auth/mfa': { factors: [], required: false, enrolmentDueAt: '2030-01-01T00:00:00Z' }, 'GET /rbac/me/permissions': ['expense.report.view'], 'GET /people/employees': [], 'GET /people/team': { managerId: null, members: [] } });
+    wrap(<YxAppLayout><p>page</p></YxAppLayout>);
+    await waitFor(async () => expect(within(await screen.findByRole('navigation', { name: 'Menu' })).getByRole('link', { name: 'Expense reports' })).toHaveAttribute('href', '/yx/expenses/reports'));
   });
 });
