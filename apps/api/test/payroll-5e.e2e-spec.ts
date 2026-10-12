@@ -256,6 +256,10 @@ describe('Payroll batch 5e (income tax)', () => {
       ['hra', '••••••234K'],
       ['sec80c', null],
     ]);
+    // What can be declared comes from the rule pack, with the proof cut-off (screens PAY-10.09).
+    expect(d.subjects.map((x: { key: string }) => x.key)).toEqual(expect.arrayContaining(['hra', 'sec80c', 'sec80d_self']));
+    expect(d.proofCutoff).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(d.proofWindowOpens < d.proofCutoff).toBe(true);
     const raw = await scoped((tx) => tx.taxDeclarationLine.findFirstOrThrow({ where: { employeeId: ids.emp1, subjectKey: 'hra' } }));
     expect(raw.landlordPanEnc).not.toContain('ABCPI1234K');
     ids.line80c = d.lines.find((l: { subjectKey: string }) => l.subjectKey === 'sec80c').id;
@@ -326,6 +330,11 @@ describe('Payroll batch 5e (income tax)', () => {
     const form = Number(ty.slice(0, 4)) >= 2026 ? 'form130' : 'form16';
     const c = (await api('payAdmin', 'post', '/tax/certificates').send({ employeeId: ids.emp1, taxYear: ty }).expect(201)).body;
     expect(c).toMatchObject({ form, partA: false, partB: { regime: 'old' } });
+    // The issuer's list for the entity and year (needs the key; another company's entity is not found).
+    const list = (await api('payAdmin', 'get', `/tax/certificates?entityId=${ids.entity}&taxYear=${ty}`).expect(200)).body;
+    expect(list).toEqual([{ id: c.id, employeeId: ids.emp1, taxYear: ty, form, partA: false, issued: false }]);
+    await api('emp1', 'get', `/tax/certificates?entityId=${ids.entity}&taxYear=${ty}`).expect(403);
+    await api('payAdminB', 'get', `/tax/certificates?entityId=${ids.entity}&taxYear=${ty}`).expect(404);
     await stepUp('payAdmin');
     expect(
       (

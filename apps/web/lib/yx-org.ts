@@ -125,6 +125,15 @@ export const YX_KEYS = [
   'statutory.filing.mark_filed',
   'statutory.challan.manage',
   'payroll.notice.waive',
+  // Payroll operations screens (PAY-10.09 … 10.16).
+  'payroll.payment.record',
+  'payroll.loan.manage',
+  'payroll.query.handle',
+  'payroll.document.issue',
+  'tax.proof.verify',
+  'statutory.filing.download',
+  'statutory.register.sign',
+  'statutory.advisory.review',
   // M06 performance PM1.
   'perf.setup.manage',
   'perf.goal.view',

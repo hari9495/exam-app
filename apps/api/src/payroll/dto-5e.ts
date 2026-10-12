@@ -153,6 +153,14 @@ export class PerquisiteDto {
   description!: string;
 }
 
+export class CertificateListDto {
+  @IsUUID()
+  entityId!: string;
+
+  @Matches(TAX_YEAR)
+  taxYear!: string;
+}
+
 export class CertificateDto {
   @IsUUID()
   employeeId!: string;
