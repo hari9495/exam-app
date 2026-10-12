@@ -7651,6 +7651,378 @@ model AdvisoryReview {
   @@map("advisory_reviews")
 }
 
+// ---- Expenses batch E1 (M05-BUILD-DESIGN §5.2): categories, tiers, dated policies and rules, rates, GST registrations.
+// Checks, EXCLUDE constraints and RLS live in the migration SQL (20261105000000_expenses_e1).
+
+model ExpenseCategory {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  code             String   @db.VarChar(30)
+  name             String   @db.VarChar(80)
+  kind             String   @db.VarChar(18)
+  receiptAbove     Decimal? @map("receipt_above") @db.Decimal(14, 2)
+  gstEligible      Boolean  @default(false) @map("gst_eligible")
+  itcBlockedReason String?  @map("itc_blocked_reason") @db.VarChar(40)
+  taxable          String   @default("never") @db.VarChar(12)
+  ledgerCode       String?  @map("ledger_code") @db.VarChar(40)
+  active           Boolean  @default(true)
+  starterKey       String?  @map("starter_key") @db.VarChar(40)
+  version          Int      @default(1)
+  createdBy        String?  @map("created_by") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, code], map: "expense_categories_code_key")
+  @@map("expense_categories")
+}
+
+model CityTier {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(60)
+  rank           Int
+  country        String?  @db.Char(2)
+  cities         String[] @default([])
+  active         Boolean  @default(true)
+  starterKey     String?  @map("starter_key") @db.VarChar(40)
+  version        Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, name], map: "city_tiers_name_key")
+  @@map("city_tiers")
+}
+
+model ExpensePolicy {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String    @db.VarChar(100)
+  appliesIf      Json?     @map("applies_if")
+  priority       Int       @default(100)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  status         String    @default("active") @db.VarChar(8)
+  starterKey     String?   @map("starter_key") @db.VarChar(40)
+  version        Int       @default(1)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("expense_policies")
+}
+
+model ExpensePolicyRule {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  policyId           String   @map("policy_id") @db.Uuid
+  categoryCode       String   @map("category_code") @db.VarChar(30)
+  tierId             String?  @map("tier_id") @db.Uuid
+  perLine            Decimal? @map("per_line") @db.Decimal(14, 2)
+  perDay             Decimal? @map("per_day") @db.Decimal(14, 2)
+  perTrip            Decimal? @map("per_trip") @db.Decimal(14, 2)
+  perMonth           Decimal? @map("per_month") @db.Decimal(14, 2)
+  currency           String   @db.Char(3)
+  overLimit          String   @default("justify_and_approve") @map("over_limit") @db.VarChar(20)
+  needsJustification Boolean  @default(false) @map("needs_justification")
+
+  @@map("expense_policy_rules")
+}
+
+model MileageRate {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  vehicle        String    @db.VarChar(16)
+  ratePerKm      Decimal   @map("rate_per_km") @db.Decimal(10, 2)
+  currency       String    @db.Char(3)
+  monthlyKmCap   Int?      @map("monthly_km_cap")
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("mileage_rates")
+}
+
+model PerDiemRate {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  tierId         String?   @map("tier_id") @db.Uuid
+  country        String?   @db.Char(2)
+  ratePerDay     Decimal   @map("rate_per_day") @db.Decimal(14, 2)
+  currency       String    @db.Char(3)
+  partialDayRule String    @default("full") @map("partial_day_rule") @db.VarChar(18)
+  mealsDeduction Json      @default("{}") @map("meals_deduction")
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("per_diem_rates")
+}
+
+model EntityGstRegistration {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  state          String    @db.Char(2)
+  gstin          String    @db.VarChar(15)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, gstin], map: "entity_gst_registrations_gstin_key")
+  @@map("entity_gst_registrations")
+}
+
+// ---- Expenses batch E2 (M05-BUILD-DESIGN §5.3): claims, lines, approver changes, flags. Checks, the paid-line guard
+// and RLS live in the migration SQL (20261106000000_expenses_e2).
+
+model ExpenseClaim {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  employeeId      String    @map("employee_id") @db.Uuid
+  employmentId    String    @map("employment_id") @db.Uuid
+  legalEntityId   String    @map("legal_entity_id") @db.Uuid
+  tripId          String?   @map("trip_id") @db.Uuid
+  advanceId       String?   @map("advance_id") @db.Uuid
+  title           String    @db.VarChar(150)
+  currency        String    @db.Char(3)
+  status          String    @default("draft") @db.VarChar(16)
+  paymentStatus   String    @default("not_due") @map("payment_status") @db.VarChar(16)
+  route           String?   @db.VarChar(8)
+  claimedTotal    Decimal   @default(0) @map("claimed_total") @db.Decimal(14, 2)
+  approvedTotal   Decimal?  @map("approved_total") @db.Decimal(14, 2)
+  advanceAdjusted Decimal   @default(0) @map("advance_adjusted") @db.Decimal(14, 2)
+  netPayable      Decimal?  @map("net_payable") @db.Decimal(14, 2)
+  risk            String    @default("none") @db.VarChar(8)
+  wfRequestId     String?   @map("wf_request_id") @db.Uuid
+  sendBackPending Boolean   @default(false) @map("send_back_pending")
+  decisionNote    String?   @map("decision_note") @db.VarChar(500)
+  submittedAt     DateTime? @map("submitted_at") @db.Timestamptz(3)
+  decidedAt       DateTime? @map("decided_at") @db.Timestamptz(3)
+  paidAt          DateTime? @map("paid_at") @db.Timestamptz(3)
+  createdBy       String?   @map("created_by") @db.Uuid
+  version         Int       @default(1)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("expense_claims")
+}
+
+model ExpenseLine {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  claimId          String    @map("claim_id") @db.Uuid
+  lineNo           Int       @map("line_no")
+  categoryCode     String    @map("category_code") @db.VarChar(30)
+  spentOn          DateTime  @map("spent_on") @db.Date
+  merchant         String?   @db.VarChar(120)
+  city             String?   @db.VarChar(60)
+  country          String    @default("IN") @db.Char(2)
+  tierId           String?   @map("tier_id") @db.Uuid
+  payMode          String    @default("personal") @map("pay_mode") @db.VarChar(14)
+  description      String?   @db.VarChar(500)
+  receiptFileId    String?   @map("receipt_file_id") @db.Uuid
+  receiptSha256    String?   @map("receipt_sha256") @db.Char(64)
+  selfDeclared     Boolean   @default(false) @map("self_declared")
+  ocr              Json?
+  claimed          Decimal   @db.Decimal(14, 2)
+  approved         Decimal?  @db.Decimal(14, 2)
+  reduceReason     String?   @map("reduce_reason") @db.VarChar(300)
+  justification    String?   @db.VarChar(500)
+  taxableAmount    Decimal   @default(0) @map("taxable_amount") @db.Decimal(14, 2)
+  policyResult     Json?     @map("policy_result")
+  flags            String[]  @default([])
+  dupKey           String    @map("dup_key") @db.Char(64)
+  mileage          Json?
+  perDiem          Json?     @map("per_diem")
+  supplierGstin    String?   @map("supplier_gstin") @db.VarChar(15)
+  invoiceNo        String?   @map("invoice_no") @db.VarChar(40)
+  invoiceDate      DateTime? @map("invoice_date") @db.Date
+  placeOfSupply    String?   @map("place_of_supply") @db.Char(2)
+  taxableValue     Decimal?  @map("taxable_value") @db.Decimal(14, 2)
+  cgst             Decimal?  @db.Decimal(14, 2)
+  sgst             Decimal?  @db.Decimal(14, 2)
+  igst             Decimal?  @db.Decimal(14, 2)
+  cess             Decimal?  @db.Decimal(14, 2)
+  billedToGstin    String?   @map("billed_to_gstin") @db.VarChar(15)
+  itcStatus        String?   @map("itc_status") @db.VarChar(18)
+  einvoiceIrn      String?   @map("einvoice_irn") @db.VarChar(64)
+  einvoiceVerified Boolean   @default(false) @map("einvoice_verified")
+  removedAt        DateTime? @map("removed_at") @db.Timestamptz(3)
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  receiptCurrency  String?   @map("receipt_currency") @db.Char(3)
+  receiptAmount    Decimal?  @map("receipt_amount") @db.Decimal(14, 2)
+  fxRate           Decimal?  @map("fx_rate") @db.Decimal(18, 8)
+  fxSource         String?   @map("fx_source") @db.VarChar(13)
+  fxRateDate       DateTime? @map("fx_rate_date") @db.Date
+  fxProofFileId    String?   @map("fx_proof_file_id") @db.Uuid
+  fxVariancePct    Decimal?  @map("fx_variance_pct") @db.Decimal(7, 2)
+  receiptPhash     String?   @map("receipt_phash") @db.Char(16)
+  origin           String    @default("employee") @db.VarChar(10)
+  originRef        String?   @map("origin_ref") @db.VarChar(60)
+  confirmed        Boolean   @default(true)
+
+  @@map("expense_lines")
+}
+
+model ExpenseLineChange {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  claimId        String   @map("claim_id") @db.Uuid
+  lineId         String   @map("line_id") @db.Uuid
+  byUserId       String   @map("by_user_id") @db.Uuid
+  oldAmount      Decimal  @map("old_amount") @db.Decimal(14, 2)
+  newAmount      Decimal  @map("new_amount") @db.Decimal(14, 2)
+  reason         String   @db.VarChar(300)
+  step           Int      @db.SmallInt
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("expense_line_changes")
+}
+
+model ExpenseFlag {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  claimId        String    @map("claim_id") @db.Uuid
+  lineId         String?   @map("line_id") @db.Uuid
+  kind           String    @db.VarChar(24)
+  detail         String    @db.VarChar(300)
+  status         String    @default("open") @db.VarChar(10)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  note           String?   @db.VarChar(300)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+
+  @@map("expense_flags")
+}
+
+model Trip {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  employeeId       String   @map("employee_id") @db.Uuid
+  employmentId     String   @map("employment_id") @db.Uuid
+  legalEntityId    String   @map("legal_entity_id") @db.Uuid
+  purpose          String   @db.VarChar(300)
+  fromOn           DateTime @map("from_on") @db.Date
+  toOn             DateTime @map("to_on") @db.Date
+  currency         String   @db.Char(3)
+  estimate         Decimal  @default(0) @db.Decimal(14, 2)
+  advanceRequested Decimal  @default(0) @map("advance_requested") @db.Decimal(14, 2)
+  bookingNeeded    Boolean  @default(false) @map("booking_needed")
+  advanceCurrency  String?   @map("advance_currency") @db.Char(3)
+  closedAt         DateTime? @map("closed_at") @db.Timestamptz(3)
+  closedBy         String?   @map("closed_by") @db.Uuid
+  closeReason      String?   @map("close_reason") @db.VarChar(300)
+  status           String   @default("draft") @db.VarChar(10)
+  wfRequestId      String?  @map("wf_request_id") @db.Uuid
+  decisionNote     String?  @map("decision_note") @db.VarChar(500)
+  createdBy        String?  @map("created_by") @db.Uuid
+  version          Int      @default(1)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("trips")
+}
+
+model TripLeg {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  tripId         String   @map("trip_id") @db.Uuid
+  seq            Int      @db.SmallInt
+  fromCity       String   @map("from_city") @db.VarChar(60)
+  toCity         String   @map("to_city") @db.VarChar(60)
+  country        String   @default("IN") @db.Char(2)
+  departOn       DateTime @map("depart_on") @db.Date
+  mode           String   @db.VarChar(6)
+  stayNights     Int      @default(0) @map("stay_nights") @db.SmallInt
+  tierId         String?  @map("tier_id") @db.Uuid
+
+  @@map("trip_legs")
+}
+
+model TripBooking {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  tripId         String    @map("trip_id") @db.Uuid
+  kind           String    @db.VarChar(8)
+  title          String    @db.VarChar(150)
+  fileId         String?   @map("file_id") @db.Uuid
+  provider       String?   @db.VarChar(30)
+  providerRef    String?   @map("provider_ref") @db.VarChar(80)
+  amount         Decimal   @db.Decimal(14, 2)
+  paidBy         String    @map("paid_by") @db.VarChar(8)
+  bookedBy       String    @map("booked_by") @db.Uuid
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("trip_bookings")
+}
+
+model ExpenseAdvance {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  employmentId   String    @map("employment_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  tripId         String?   @map("trip_id") @db.Uuid
+  kind           String    @db.VarChar(8)
+  purpose        String    @db.VarChar(300)
+  currency       String    @db.Char(3)
+  requested      Decimal   @db.Decimal(14, 2)
+  amount         Decimal?  @db.Decimal(14, 2)
+  changeReason   String?   @map("change_reason") @db.VarChar(300)
+  fxRate         Decimal?  @map("fx_rate") @db.Decimal(18, 8)
+  status         String    @default("requested") @db.VarChar(10)
+  wfRequestId    String?   @map("wf_request_id") @db.Uuid
+  paidOn         DateTime? @map("paid_on") @db.Date
+  paidRef        String?   @map("paid_ref") @db.VarChar(80)
+  paidBy         String?   @map("paid_by") @db.Uuid
+  settleBy       DateTime? @map("settle_by") @db.Date
+  remindedOn     DateTime? @map("reminded_on") @db.Date
+  overdueOn      DateTime? @map("overdue_on") @db.Date
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("expense_advances")
+}
+
+model AdvanceSettlement {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  advanceId      String   @map("advance_id") @db.Uuid
+  kind           String   @db.VarChar(20)
+  claimId        String?  @map("claim_id") @db.Uuid
+  amount         Decimal  @db.Decimal(14, 2)
+  on             DateTime @db.Date
+  amountPay      Decimal? @map("amount_pay") @db.Decimal(14, 2)
+  fxRate         Decimal? @map("fx_rate") @db.Decimal(18, 8)
+  ref            String?  @db.VarChar(80)
+  recordedBy     String?  @map("recorded_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("advance_settlements")
+}
+
+model FxRate {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  source         String   @db.VarChar(8)
+  base           String   @db.Char(3)
+  quote          String   @db.Char(3)
+  rateDate       DateTime @map("rate_date") @db.Date
+  rate           Decimal  @db.Decimal(18, 8)
+  importedAt     DateTime @default(now()) @map("imported_at") @db.Timestamptz(3)
+  createdBy      String?  @map("created_by") @db.Uuid
+
+  @@unique([organizationId, source, base, quote, rateDate])
+  @@map("fx_rates")
+}
+
 // Batch 5g (M03-BUILD-DESIGN §5.8): arrears, rule-change proposals, F&F settlements, overpayment recoveries.
 model ArrearsWorksheet {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

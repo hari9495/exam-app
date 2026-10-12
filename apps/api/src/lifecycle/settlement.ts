@@ -39,6 +39,16 @@ export async function freezeSettlementIn(tx: Tx, c: CompanyContext, exitCaseId: 
       recoveries.push({ source: 'asset', title: i.title, amount: asset?.cost?.toFixed(2) ?? null, reason: 'Not returned yet', status: 'open' });
     }
   }
+  // M05 XP-4.06: expense advances not yet settled go to F&F (M01 Q7); from the last day on they are marked as such.
+  const advances = await tx.expenseAdvance.findMany({ where: { organizationId: org, employmentId: e.id, status: { in: ['paid', 'to_fnf'] } } });
+  for (const x of advances) {
+    const done = await tx.advanceSettlement.aggregate({ where: { organizationId: org, advanceId: x.id }, _sum: { amount: true } });
+    const open = (x.amount ?? new Prisma.Decimal(0)).sub(done._sum.amount ?? 0);
+    if (open.lte(0)) continue;
+    // A forex advance is recovered in pay currency at the rate it was paid at (E5).
+    recoveries.push({ source: 'expense_advance', title: `Expense advance: ${x.purpose}`.slice(0, 150), amount: open.mul(x.fxRate ?? 1).toDecimalPlaces(2).toFixed(2), reason: 'Advance not settled by claims or a return', status: 'recorded' });
+    if (cause === 'exited' && x.status === 'paid') await tx.expenseAdvance.update({ where: { id: x.id }, data: { status: 'to_fnf', version: { increment: 1 } } });
+  }
   await payScope(tx, [e.legalEntityId]);
   const prev = await tx.exitSettlementInput.findFirst({ where: { organizationId: org, exitCaseId, supersededAt: null } });
   if (prev) await tx.exitSettlementInput.update({ where: { id: prev.id }, data: { supersededAt: new Date() } });
@@ -67,6 +77,12 @@ export async function freezeSettlementIn(tx: Tx, c: CompanyContext, exitCaseId: 
   // Ids only (Confidential): payroll reads the record itself.
   await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'exit.settlement_inputs.ready', payload: { exitCaseId, revision } } });
   return revision;
+}
+
+/** A new revision for the employment's live exit, if it has one: something payroll recovers at F&F changed (XP-4.06). */
+export async function refreezeExitOf(tx: Tx, c: CompanyContext, employmentId: string): Promise<void> {
+  const k = await tx.exitCase.findFirst({ where: { organizationId: c.organizationId, employmentId, approvedLwd: { not: null }, status: { in: ['accepted', 'cleared', 'exited'] } }, orderBy: { createdAt: 'desc' }, select: { id: true } });
+  if (k) await freezeSettlementIn(tx, c, k.id, 'recovery');
 }
 
 /** The current revision and the earlier ones (for the hand-off view), read under payroll's guard for that entity. */

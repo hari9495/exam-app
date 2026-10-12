@@ -94,6 +94,13 @@ export const YX_KEYS = [
   'lifecycle.exit.confidential.view',
   'asset.view',
   'asset.manage',
+  // M05 expenses E1.
+  'expense.policy.manage',
+  'expense.claim.view',
+  'expense.finance.review',
+  'travel.booking.manage',
+  'expense.payout.manage',
+  'expense.report.view',
   // Batch 5b: payroll set-up, statutory registrations, components, templates, imports.
   'payroll.setup.manage',
   'payroll.statutory.setup',

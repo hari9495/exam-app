@@ -10,6 +10,10 @@ import { DocumentsController } from '../documents/documents.controller';
 import { LettersController } from '../documents/letters/letters.controller';
 import { ExitsController } from '../lifecycle/exits.controller';
 import { SpecialCasesController } from '../lifecycle/special-cases.controller';
+import { ExpensesController } from '../expenses/expenses.controller';
+import { ExpenseClaimsController } from '../expenses/claims.controller';
+import { ExpenseTripsController } from '../expenses/trips.controller';
+import { ExpenseReportsController } from '../expenses/reports.controller';
 
 // P02 YX-SEC-01: every HR endpoint declares its permission. The only exceptions are the routes open to the
 // implicit grants (YX-SEC-04: the person themselves, their managers, colleagues' Public fields) and public
@@ -42,11 +46,18 @@ const IMPLICIT: Record<string, string[]> = {
   // Batches 6c / 6d: my resignation, interview, assets and clearance items, and my team's probation reviews and exits.
   // Batch 6e: VRS schemes open to me, and applying.
   SpecialCasesController: ['myVrs', 'applyVrs'],
+  // M05 E1: everyone who claims reads the categories, tiers and their own limits.
+  ExpensesController: ['categories', 'tiers', 'myLimits'],
+  // M05 E2: the service decides per claim (claimant, approver whose turn it is, expense.claim.view in scope, finance).
+  ExpenseClaimsController: ['home', 'list', 'create', 'get', 'rename', 'receipt', 'addLine', 'updateLine', 'removeLine', 'receiptFile', 'fxProof', 'fxProofFile', 'check', 'submit', 'withdraw', 'approveAmount', 'decide'],
+  // E4: the traveller, the approver whose task it is and the travel desk (in scope) are decided per trip or advance.
+  ExpenseTripsController: ['list', 'create', 'get', 'update', 'submit', 'cancel', 'addBooking', 'partner', 'removeBooking', 'bookingFile', 'advances', 'request', 'advance', 'amount'],
+  ExpenseReportsController: [],
   ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff'],
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController, SpecialCasesController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

@@ -22,6 +22,7 @@
     "./time": "./src/screens/time/live/index.ts",
     "./pay": "./src/screens/pay/live/index.ts",
     "./lifecycle": "./src/screens/people/live/index.ts",
+    "./expenses": "./src/screens/expenses/live/index.ts",
     "./screens/*": "./src/screens/*.tsx",
     "./styles.css": "./src/styles/index.css"
   },

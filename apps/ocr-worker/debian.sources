@@ -1,0 +1,13 @@
+Types: deb
+URIs: https://snapshot.debian.org/archive/debian/@SNAPSHOT@
+Suites: bookworm
+Components: main
+Check-Valid-Until: no
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb
+URIs: https://snapshot.debian.org/archive/debian-security/@SNAPSHOT@
+Suites: bookworm-security
+Components: main
+Check-Valid-Until: no
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg

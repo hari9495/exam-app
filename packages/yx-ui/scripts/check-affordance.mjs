@@ -38,6 +38,8 @@ const GUARD = [
   // the locked scope button, the résumé upload, phone tables with filters.
   'screens-expenses-exp-03', 'screens-analytics-anl-07', 'screens-proctoring-prc-03', 'screens-platform-inbox-requests--plt-04',
   'screens-platform-shell-homes--plt-01', 'screens-hiring-hir-12', 'screens-portals-t9-06',
+  // M05 expenses E1 (12 Oct 2026): the wired set-up screen, its limits matrix inputs and selects.
+  'screens-expenses-live',
 ];
 
 // Documented exceptions: [story id prefix or '*', selector, reason, rules skipped (all when omitted)].
