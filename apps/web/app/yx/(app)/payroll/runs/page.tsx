@@ -25,7 +25,7 @@ export default function YxPayRunsPage() {
       thisMonth={todayIndia().slice(0, 7)}
       canPrepare={perms.has('payroll.run.prepare')}
       canOffcycle={perms.has('payroll.offcycle.prepare')}
-      onCreate={(payGroupId, month, offcycleKind) => write<{ id: string }>('/runs', { payGroupId, month, ...(offcycleKind ? { offcycleKind } : {}) })}
+      onCreate={(payGroupId, month, offcycleKind, subPeriod) => write<{ id: string }>('/runs', { payGroupId, month, ...(offcycleKind ? { offcycleKind } : {}), ...(subPeriod ? { subPeriod } : {}) })}
       onOpen={(id) => router.push(`/yx/payroll/runs/${encodeURIComponent(id)}`)}
     />
   );

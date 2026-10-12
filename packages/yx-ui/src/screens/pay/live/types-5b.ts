@@ -73,6 +73,8 @@ export interface PayGroup {
   legalEntityId: string;
   name: string;
   frequency: string;
+  /** PAY-9.01: the first day of one of a weekly or fortnightly group's periods. */
+  anchorDate?: string | null;
   currency: string;
   dayBasis: 'calendar' | '30' | '26';
   cutOffDay: number;

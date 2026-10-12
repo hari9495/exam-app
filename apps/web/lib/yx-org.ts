@@ -133,6 +133,7 @@ export const YX_KEYS = [
   'payroll.special.manage',
   'payroll.ewa.manage',
   'payroll.equity.manage',
+  'payroll.journal.export',
   'payroll.query.handle',
   'payroll.document.issue',
   'tax.proof.verify',

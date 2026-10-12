@@ -21,12 +21,32 @@ export interface PayRun {
   entityName?: string;
   preparedByMe?: boolean;
   approval?: { canDecide: boolean; phrase: string; step: number; steps: number } | null;
+  /** PAY-9.01: a weekly or fortnightly group's run pays one period of the month. */
+  subPeriod?: number | null;
+  range?: { from: string; to: string } | null;
 }
 
 export interface PayGroupRef {
   id: string;
   name: string;
   legalEntityId: string;
+  frequency?: 'monthly' | 'weekly' | 'fortnightly';
+  anchorDate?: string | null;
+}
+
+/** The month's periods of a weekly or fortnightly group (the API's calendar: from the anchor, cut at month ends). */
+export function periodsOf(frequency: 'weekly' | 'fortnightly', anchor: string, month: string): { k: number; from: string; to: string }[] {
+  const len = frequency === 'weekly' ? 7 : 14;
+  const DAY = 86_400_000;
+  const at = (d: string) => Date.parse(`${d}T00:00:00Z`);
+  const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
+  const first = at(`${month}-01`);
+  const [y, m] = month.split('-').map(Number);
+  const last = Date.UTC(y, m, 0);
+  let start = at(anchor) + Math.floor((first - at(anchor)) / DAY / len) * len * DAY;
+  const out: { k: number; from: string; to: string }[] = [];
+  for (; start <= last; start += len * DAY) out.push({ k: out.length + 1, from: iso(Math.max(start, first)), to: iso(Math.min(start + (len - 1) * DAY, last)) });
+  return out;
 }
 
 export interface RunPerson {
