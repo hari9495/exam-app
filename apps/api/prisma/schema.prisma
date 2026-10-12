@@ -7038,7 +7038,7 @@ model OneTimePay {
   amount         Decimal   @db.Decimal(14, 2)
   periodStart    DateTime  @map("period_start") @db.Date
   endOn          DateTime? @map("end_on") @db.Date
-  source         String    @default("manual") @db.VarChar(8)
+  source         String    @default("manual") @db.VarChar(10)
   sourceRef      String?   @map("source_ref") @db.VarChar(80)
   reason         String    @db.VarChar(300)
   status         String    @default("approved") @db.VarChar(10)

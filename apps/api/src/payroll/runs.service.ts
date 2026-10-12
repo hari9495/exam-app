@@ -363,7 +363,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       if (run.runType === 'regular' && (!p || p.stage === 'open')) {
         const period = p
           ? await tx.payPeriod.update({ where: { id: p.id }, data: { stage: 'frozen', changedBy: v.userId, changedAt: new Date(), version: { increment: 1 } } })
-          : await tx.payPeriod.create({ data: { organizationId: org, legalEntityId: run.legalEntityId, periodStart: run.periodStart, periodEnd: run.periodEnd, stage: 'frozen', changedBy: v.userId } });
+          : await tx.payPeriod.create({ data: { organizationId: org, legalEntityId: run.legalEntityId, periodStart: run.periodStart, periodEnd: asDate(monthRange(this.month(run)).to), stage: 'frozen', changedBy: v.userId } });
         await tx.periodLockEvent.create({ data: { organizationId: org, payPeriodId: period.id, fromStage: 'open', toStage: 'frozen', byUser: v.userId, reason: 'Payroll calculation started' } });
         const time = this.moduleRef.get(TimePeriodsService, { strict: false });
         const rows = time ? await time.feedRows(tx, c, run.legalEntityId, month) : [];

@@ -102,7 +102,7 @@ export class LopInputsDto {
 
   /** PAY-9.01: the first day of a weekly or fortnightly pay period in the month (absent: the whole month). */
   @IsOptional()
-  @Matches(/^d{4}-d{2}-d{2}$/)
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
   periodStart?: string;
 }
 
