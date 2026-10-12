@@ -75,4 +75,49 @@ describe('Review cycles and reviews (PM4)', () => {
     render(<ReviewScreen {...rp({ review: review({ role: 'viewer', can: { self: false, manager: false }, finalScore: 4, band: 'Exceeds', excludedSections: ['Competencies'] }) })} />);
     expect(screen.getByText(/Competencies had no ratings/)).toBeInTheDocument();
   });
+
+  it('the skip-level sends back only with a reason, and agrees with an optional comment (PM-4.05)', async () => {
+    const onSkip = vi.fn(ok);
+    render(<ReviewScreen {...rp({ onSkip, review: review({ role: 'viewer', can: { self: false, manager: false, skip: true }, finalScore: 4 }) })} />);
+    await ue.click(screen.getByRole('button', { name: 'Send back' }));
+    let d = screen.getByRole('dialog');
+    expect(within(d).getByRole('button', { name: 'Send back' })).toBeDisabled();
+    await ue.type(within(d).getByRole('textbox', { name: /Reason/ }), 'Goals rating looks low');
+    await ue.click(within(d).getByRole('button', { name: 'Send back' }));
+    expect(onSkip).toHaveBeenCalledWith(false, 'Goals rating looks low');
+    await ue.click(screen.getByRole('button', { name: 'Agree' }));
+    d = screen.getByRole('dialog');
+    await ue.click(within(d).getByRole('button', { name: 'Agree' }));
+    expect(onSkip).toHaveBeenLastCalledWith(true, null);
+  });
+
+  it('after release the employee sees the score, acknowledges, and may disagree (PM-4.06)', async () => {
+    const onAcknowledge = vi.fn(ok);
+    const onDisagree = vi.fn(ok);
+    render(<ReviewScreen {...rp({ onAcknowledge, onDisagree, review: review({ status: 'released', finalScore: 3.8, band: 'Meets', can: { self: false, manager: false, acknowledge: true, disagree: true }, released: { at: '2026-11-20T09:00:00.000Z', acknowledgedAt: null, acknowledgeComment: null, disagreeBy: '2026-12-05' }, disagreements: [] }) })} />);
+    expect(screen.getByText('3.8 · Meets')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Acknowledge' }));
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Acknowledge' }));
+    expect(onAcknowledge).toHaveBeenCalledWith(null);
+    await ue.click(screen.getByRole('button', { name: /^Disagree/ }));
+    const d = screen.getByRole('dialog');
+    await ue.type(within(d).getByRole('textbox', { name: /What you disagree with/ }), 'The Madurai accounts were mine.');
+    await ue.click(within(d).getByRole('button', { name: 'Send to HR' }));
+    expect(onDisagree).toHaveBeenCalledWith('The Madurai accounts were mine.');
+  });
+
+  it('HR releases ready reviews and answers a disagreement with an outcome and a note', async () => {
+    const onRelease = vi.fn(ok);
+    const onDecide = vi.fn(ok);
+    render(<CycleScreen {...cp({ cycle: { ...cycle, status: 'launched' }, funnel: [{ stage: 'release', label: 'Waiting for release', count: 2 }], disagreements: [{ id: 'd1', reviewId: 'r1', employee: 'Arjun', text: 'Mine', status: 'open', hrNote: null, at: '2026-11-22T09:00:00.000Z' }], onRelease, onDecide })} />);
+    await ue.click(screen.getByRole('button', { name: 'Release ready reviews' }));
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Release' }));
+    expect(onRelease).toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Answer' }));
+    const d = screen.getByRole('dialog');
+    await ue.click(within(d).getByRole('radio', { name: 'Upheld' }));
+    await ue.type(within(d).getByRole('textbox', { name: /Note to the employee/ }), 'Accounts confirmed.');
+    await ue.click(within(d).getByRole('button', { name: 'Send answer' }));
+    expect(onDecide).toHaveBeenCalledWith('d1', 'upheld', 'Accounts confirmed.');
+  });
 });

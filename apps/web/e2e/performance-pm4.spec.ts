@@ -3,7 +3,8 @@ import { signIn } from './fixtures/sign-in';
 
 // Performance batch PM4 on the seeded Kaveri Foods demo: the admin starts a cycle for the plant team on the annual
 // starter template after the pre-flight check; Murugan sends his self review and sees no score; Kavya, his manager,
-// saves a draft, reads his self review and submits; the score is worked out from her ratings.
+// saves a draft, reads his self review and submits; the score is worked out from her ratings; HR releases and Murugan
+// acknowledges.
 // Each run makes its own cycle for a past period of its own, so the test can run again.
 
 const PASSWORD = 'Passw0rd!2026';
@@ -48,6 +49,7 @@ test('cycle → self review → manager review with a worked-out score', async (
   await pick(admin, 'Manager review due', day(14));
   await sheet.getByRole('button', { name: 'Save' }).click();
   await admin.waitForURL(/\/yx\/performance\/cycles\/[0-9a-f-]+$/, { timeout: 30_000 });
+  const cycleUrl = admin.url();
   await admin.getByRole('button', { name: 'Run the check' }).click();
   await expect(admin.getByText('Ready to start')).toBeVisible({ timeout: 30_000 });
   await admin.getByRole('button', { name: 'Start the cycle' }).click();
@@ -78,4 +80,17 @@ test('cycle → self review → manager review with a worked-out score', async (
   await kv.getByRole('dialog').getByRole('button', { name: 'Submit' }).click();
   await expect(kv.getByText(/^4 · /).first()).toBeVisible({ timeout: 30_000 });
   await expect(kv.getByText(/Competencies had no ratings/)).toBeVisible();
+
+  // HR releases; Murugan reads his rating and acknowledges it (PM-4.06).
+  await admin.goto(cycleUrl);
+  await admin.getByRole('button', { name: 'Release ready reviews' }).click();
+  await admin.getByRole('dialog').getByRole('button', { name: 'Release' }).click();
+  await expect(admin.getByRole('dialog')).toHaveCount(0, { timeout: 30_000 });
+  await mu.goto('/yx/performance/reviews');
+  await mu.getByRole('row', { name: new RegExp(name) }).getByRole('button', { name: 'Open' }).click();
+  await expect(mu.getByText('Your review is released')).toBeVisible({ timeout: 30_000 });
+  await expect(mu.getByText(/^4 · /).first()).toBeVisible();
+  await mu.getByRole('button', { name: 'Acknowledge' }).click();
+  await mu.getByRole('dialog').getByRole('button', { name: 'Acknowledge' }).click();
+  await expect(mu.getByText(/You acknowledged it on/)).toBeVisible({ timeout: 30_000 });
 });

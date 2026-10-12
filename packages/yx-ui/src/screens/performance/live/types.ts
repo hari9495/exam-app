@@ -339,7 +339,11 @@ export interface ReviewDetail {
   band: string | null;
   excludedSections: string[];
   trail: { stage: string; event: string; reason: string | null; at: string }[];
-  can: { self: boolean; manager: boolean };
+  /** The skip-level's comment when they agreed (not shown to the employee before release). */
+  skipComment?: string | null;
+  released?: { at: string; acknowledgedAt: string | null; acknowledgeComment: string | null; disagreeBy: string | null } | null;
+  disagreements?: { id: string; text: string; status: 'open' | 'answered' | 'upheld' | 'not_upheld'; hrNote: string | null }[];
+  can: { self: boolean; manager: boolean; skip?: boolean; acknowledge?: boolean; disagree?: boolean; reopen?: boolean };
   version: number;
 }
 
@@ -347,4 +351,26 @@ export interface EntryInput {
   answers: { questionId: string; rating?: number | null; text?: string | null }[];
   overallRating?: number | null;
   comment?: string | null;
+}
+
+export interface Disagreement {
+  id: string;
+  reviewId: string;
+  employee: string;
+  text: string;
+  status: 'open' | 'answered' | 'upheld' | 'not_upheld';
+  hrNote: string | null;
+  at: string;
+}
+
+export interface Handover {
+  id: string;
+  employee: string;
+  from: string;
+  to: string;
+  direction: 'to_me' | 'from_me';
+  artefactType: 'review' | 'goal_parent' | string;
+  artefactId: string;
+  effectiveOn: string;
+  decisionNeeded: boolean;
 }

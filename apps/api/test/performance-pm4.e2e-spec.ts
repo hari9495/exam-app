@@ -102,7 +102,9 @@ describe('Performance batch PM4', () => {
         if (r.status !== 201) throw new Error(`hire ${who}: ${JSON.stringify(r.body)}`);
         return r;
       })).body.id as string;
-    emp.head = await hire('head', 'Arun', 'KF-001', null, 'ops', '2020-01-06');
+    // Chandra heads the company (no login); Arun reports to her, so every manager has a manager for skip-level reviews.
+    emp.chandra = (await request(server()).post('/api/v1/people/employees').set('Authorization', `Bearer ${token.adminA}`).send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', overrideReason: 'Moving existing staff onto YukthiX', givenName: 'Chandra', familyName: run, employeeCode: 'KF-000', joinedOn: '2019-01-07', assignment: { locationId: ids.loc, departmentId: ids.ops, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: null } }).expect(201)).body.id;
+    emp.head = await hire('head', 'Arun', 'KF-001', emp.chandra, 'ops', '2020-01-06');
     emp.priya = await hire('priya', 'Priya', 'KF-002', emp.head, 'sales', '2022-01-03');
     emp.arjun = await hire('arjun', 'Arjun', 'KF-003', emp.priya, 'sales', '2025-07-01');
     emp.sita = await hire('sita', 'Sita', 'KF-004', emp.priya, 'sales', '2026-02-02');
@@ -140,7 +142,7 @@ describe('Performance batch PM4', () => {
 
   it('pre-flight names people with no manager; launch is refused until the population leaves them out (§6.3)', async () => {
     const pf = (await api('adminA', 'post', `/cycles/${ids.cycle}/preflight`).expect(200)).body as { problems: { text: string }[] };
-    expect(pf.problems.map((p) => p.text)).toEqual(expect.arrayContaining([expect.stringMatching(/^Arun .* has no manager/), expect.stringMatching(/^Ravi .* has no manager/)]));
+    expect(pf.problems.map((p) => p.text)).toEqual(expect.arrayContaining([expect.stringMatching(/^Chandra .* has no manager/), expect.stringMatching(/^Ravi .* has no manager/)]));
     expect((await api('adminA', 'post', `/cycles/${ids.cycle}/launch`).send({ version: Number(ids.cycleVersion) }).expect(409)).body.message).toMatch(/has no manager/);
     const sales = { id: 'root', join: 'and', items: [{ id: 'c1', field: 'department_id', operator: 'is', value: ids.sales }] };
     const c = (await api('adminA', 'put', `/cycles/${ids.cycle}`).send(cycleBody({ population: sales, version: Number(ids.cycleVersion) })).expect(200)).body;
@@ -314,8 +316,8 @@ describe('Performance batch PM4', () => {
              e AS (INSERT INTO employees (organization_id, person_id, given_name) SELECT ${org.A.id}::uuid, p.id, 'Packer' FROM p RETURNING id),
              m AS (INSERT INTO employments (organization_id, employee_id, legal_entity_id, employee_code, code_scope_key, joined_on)
                    SELECT ${org.A.id}::uuid, e.id, ${ids.entity}::uuid, 'PK' || row_number() OVER (), ${ids.entity}::uuid, '2020-01-01' FROM e RETURNING id, employee_id),
-             ch AS (INSERT INTO employee_changes (organization_id, employee_id, employment_id, change_type, effective_date, status, payload, reason)
-                    SELECT ${org.A.id}::uuid, m.employee_id, m.id, 'join', '2020-01-01', 'effective', '{}'::jsonb, 'Bulk' FROM m RETURNING id, employee_id, employment_id)
+             ch AS (INSERT INTO employee_changes (organization_id, employee_id, employment_id, change_type, effective_date, status, payload, reason, applied_at)
+                    SELECT ${org.A.id}::uuid, m.employee_id, m.id, 'join', '2020-01-01', 'effective', '{}'::jsonb, 'Bulk', now() FROM m RETURNING id, employee_id, employment_id)
         INSERT INTO employee_assignments (organization_id, legal_entity_id, employee_id, employment_id, valid_from, location_id, department_id, designation_id, employment_type_id, manager_employee_id, change_id)
         SELECT ${org.A.id}::uuid, ${ids.entity}::uuid, ch.employee_id, ch.employment_id, '2020-01-01', ${ids.loc}::uuid, ${ids.bulk}::uuid, ${ids.desig}::uuid, ${ids.perm}::uuid, ${emp.priya}::uuid, ch.id FROM ch`;
     });
