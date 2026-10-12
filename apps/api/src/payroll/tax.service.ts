@@ -317,11 +317,15 @@ export class TaxService {
   async declarations(ctx: TenantContext, user: ScopeUser) {
     await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const { ws } = await this.ownWorkspace(tx, c);
+      const { ws, dates, today } = await this.ownWorkspace(tx, c);
       const lines = await tx.taxDeclarationLine.findMany({ where: { organizationId: c.organizationId, workspaceId: ws.id }, orderBy: { subjectKey: 'asc' } });
-      const labels = await tx.statutoryLawCrosswalk.findMany({ where: { lawVersion: ws.lawVersion, subjectKey: { in: lines.map((l) => l.subjectKey) } } });
+      const { keys } = await this.subjectKeys(today);
+      const labels = await tx.statutoryLawCrosswalk.findMany({ where: { lawVersion: ws.lawVersion, subjectKey: { in: [...keys] } } });
       return {
         taxYear: ws.taxYear,
+        proofWindowOpens: dates.proofWindowOpens,
+        proofCutoff: dates.proofCutoff,
+        subjects: [...keys].map((k) => ({ key: k, section: labels.find((x) => x.subjectKey === k)?.section ?? null })),
         form: ws.lawVersion === 'IT-2025' ? 'Form 12BB successor (verify number)' : 'Form 12BB',
         lines: lines.map((l) => ({ ...this.lineView(l), section: labels.find((x) => x.subjectKey === l.subjectKey)?.section ?? null })),
       };
@@ -620,6 +624,17 @@ export class TaxService {
           });
       await audit(tx, c, 'tax.certificate.prepared', 'tax_certificate', row.id, { employeeId, taxYear, form: row.form });
       return { id: row.id, form: row.form, partB, partA: Boolean(row.partARef) };
+    });
+  }
+
+  /** The entity's certificates for a tax year: prepared, with Part A, issued (never one's own). */
+  async certificates(ctx: TenantContext, user: ScopeUser, entityId: string, taxYear: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await requireEntity(tx, c, v, 'payroll.document.issue', entityId);
+      await payScope(tx, [entityId]);
+      const rows = await tx.taxCertificate.findMany({ where: { organizationId: c.organizationId, legalEntityId: entityId, taxYear, employeeId: { notIn: await this.mine(tx) } }, orderBy: { createdAt: 'asc' }, take: 5000 });
+      return rows.map((t) => ({ id: t.id, employeeId: t.employeeId, taxYear: t.taxYear, form: t.form, partA: Boolean(t.partARef), issued: Boolean(t.payDocumentId) }));
     });
   }
 

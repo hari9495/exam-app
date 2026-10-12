@@ -56,6 +56,7 @@ export default function YxPayRunPage() {
         offcycle: perms.has('payroll.offcycle.prepare'),
       }}
       onBack={() => router.push('/yx/payroll/runs')}
+      onPayments={() => router.push(`/yx/payroll/runs/${encodeURIComponent(id)}/payments`)}
       onWaive={(vid, reason) => write(`${base}/validations/${encodeURIComponent(vid)}/waive`, { reason })}
       onCalculate={() => write(`${base}/calculate`)}
       onPayslip={(sid) => read<PayslipDetail>(`/payslips/${encodeURIComponent(sid)}`)}

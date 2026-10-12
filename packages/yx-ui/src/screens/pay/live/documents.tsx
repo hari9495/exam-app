@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Button } from '../../../components/button';
 import { Badge, type BadgeTone } from '../../../components/display';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
@@ -47,6 +47,8 @@ export interface PayDocumentsScreenProps {
   onEntity: (id: string | null) => void;
   onDownload: (doc: PayDocument) => Promise<unknown>;
   verifyUrl: (code: string) => string;
+  /** Header actions, such as adding a nominee for the pay portal. */
+  actions?: ReactNode;
 }
 
 export function PayDocumentsScreen(p: PayDocumentsScreenProps) {
@@ -60,6 +62,7 @@ export function PayDocumentsScreen(p: PayDocumentsScreenProps) {
       onRetry={p.onRetry}
       what="pay documents"
       grantedBy="your payroll admin"
+      actions={p.actions}
     >
       {d && (
         <>

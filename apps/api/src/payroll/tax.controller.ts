@@ -10,7 +10,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { CertificateDto, DeclarationsDto, IssueCertificateDto, PanStatusDto, PerquisiteDto, ProofDecisionDto, ProofQueueDto, RegimeOverrideDto, WorkspaceListDto, WorkspacePatchDto } from './dto-5e';
+import { CertificateDto, CertificateListDto, DeclarationsDto, IssueCertificateDto, PanStatusDto, PerquisiteDto, ProofDecisionDto, ProofQueueDto, RegimeOverrideDto, WorkspaceListDto, WorkspacePatchDto } from './dto-5e';
 import { TaxService } from './tax.service';
 
 // Payroll batch 5e, income tax (M03-BUILD-DESIGN §14.5). Every route declares its key (YX-SEC-01) or is the signed-in
@@ -158,6 +158,12 @@ export class TaxController {
   @RequirePermissions('tax.proof.verify')
   cancelPerquisite(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.tax.cancelPerquisite(ctx, this.user(req), id);
+  }
+
+  @Get('certificates')
+  @RequirePermissions('payroll.document.issue')
+  certificateList(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: CertificateListDto) {
+    return this.tax.certificates(ctx, this.user(req), q.entityId, q.taxYear);
   }
 
   @Post('certificates')

@@ -251,6 +251,8 @@ export interface PayRunScreenProps {
   onPublish: (confirmation: Confirmation) => Promise<unknown>;
   /** Off-cycle runs: add an item for a person (search by name). */
   onSearchPeople?: (q: string) => Promise<{ id: string; name: string; employeeCode?: string }[]>;
+  /** Opens the run's payments (bank results, cash and cheque) once it is approved. */
+  onPayments?: () => void;
   onAddItem?: (item: { employeeId: string; componentCode: string; amount: string; reason: string; label?: string }) => Promise<unknown>;
 }
 
@@ -273,9 +275,16 @@ export function PayRunScreen(p: PayRunScreenProps) {
       what="this payroll run"
       grantedBy="your payroll admin"
       actions={
-        <Button size="sm" onClick={p.onBack}>
-          All runs
-        </Button>
+        <>
+          {p.onPayments && r && ['approved', 'paid'].includes(r.status) && (
+            <Button size="sm" onClick={p.onPayments}>
+              Payments
+            </Button>
+          )}
+          <Button size="sm" onClick={p.onBack}>
+            All runs
+          </Button>
+        </>
       }
     >
       {r && (

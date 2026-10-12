@@ -38,6 +38,32 @@ export {
 export { ComponentLibraryLiveScreen, TemplatesLiveScreen, CompensationLiveScreen, BreakupTable, type ComponentLibraryLiveProps, type TemplatesLiveProps, type CompensationLiveProps, type SplitSuggestion } from './structures';
 // Batch 5j (PAY-10.01 … 10.04): runs, inputs, the employee's payslips and the compliance screens, wired.
 export * from './types-5j';
+// Payroll operations (PAY-10.09 … 10.16): payments, loans, payslip queries, tax declarations and proofs, registers,
+// advisories, certificates and nominees.
+export * from './types-ops';
+export {
+  RunPaymentsScreen,
+  PaymentModesScreen,
+  LoansScreen,
+  PayslipQueriesScreen,
+  MyDeclarationsScreen,
+  ProofCheckScreen,
+  RegistersScreen,
+  AdvisoriesScreen,
+  TaxCertificatesScreen,
+  NomineeDrawer,
+  subjectText,
+  type RunPaymentsScreenProps,
+  type PaymentModesScreenProps,
+  type LoansScreenProps,
+  type PayslipQueriesScreenProps,
+  type MyDeclarationsScreenProps,
+  type ProofCheckScreenProps,
+  type RegistersScreenProps,
+  type AdvisoriesScreenProps,
+  type TaxCertificatesScreenProps,
+  type NomineeInput,
+} from './operations';
 export { PayRunsScreen, PayRunScreen, PayslipLines, ReasonDrawer, RunStatusBadge, rupees, runName, type PayRunsScreenProps, type PayRunScreenProps } from './runs';
 export { PayInputsScreen, PersonPicker, type PayInputsScreenProps, type PersonHit, type LopRow, type HoldRow } from './inputs';
 export { MyPayslipsScreen, MyTaxScreen, payDiff, type MyPayslipsScreenProps, type MyTaxScreenProps, type MyTaxWorkspace, type RegimeComparison, type PayDiffRow } from './employee';
