@@ -202,7 +202,7 @@ describe('Expenses batch E4', () => {
     expect(a).toMatchObject({ status: 'paid', settleBy: null, balance: '4000.00' });
   });
 
-  it('reminders, then overdue; finance is told (XP-4.05; salary recovery waits for payroll change 5)', async () => {
+  it('reminders, then overdue; finance is told and the balance is recovered from salary as an expense loan (XP-4.05, §11.3)', async () => {
     const svc = app.get(ExpenseTripsService);
     await inA((tx) => tx.expenseAdvance.update({ where: { id: ids.imprest }, data: { settleBy: new Date(`${shift(today, 2)}T00:00:00Z`) } }));
     expect(await svc.sweepOrg(org.A.id, today)).toBe(1);
@@ -211,6 +211,11 @@ describe('Expenses batch E4', () => {
     expect(await svc.sweepOrg(org.A.id, today)).toBe(1);
     expect(await advance('ravi', ids.imprest)).toMatchObject({ overdue: true, balance: '4000.00' });
     expect(await inA((tx) => tx.eventOutbox.count({ where: { organizationId: org.A.id, eventType: 'advance.overdue' } }))).toBe(1);
+    const loans = await inA(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+      return tx.loan.findMany({ where: { sourceRef: ids.imprest } });
+    });
+    expect(loans.map((l) => [l.loanType, l.status, l.outstanding.toFixed(2), l.interestRate.toFixed(2), l.perquisite])).toEqual([['expense', 'active', '4000.00', '0.00', false]]);
   });
 
   it('at exit the open balance is in the F&F hand-off (XP-4.06)', async () => {

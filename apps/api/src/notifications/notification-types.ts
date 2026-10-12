@@ -75,6 +75,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   // M05 E4: trips and advances.
   { type: 'expense.trip.update', group: 'assignments', label: 'A trip was approved, or needs bookings from the travel desk' },
   { type: 'expense.advance.update', group: 'reminders', label: 'An expense advance was paid, is due to be settled, or is overdue' },
+  // M05 E3: payment of approved claims.
+  { type: 'expense.payment.update', group: 'reminders', label: 'An expense claim was paid, or its payment did not go through' },
 ];
 
 export const NOTIFICATION_TYPE_BY_KEY = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));

@@ -6,6 +6,7 @@ import { tenantWide, type ScopeUser, type Viewer } from '../access/scope';
 import { dateOf, monthRange } from '../time/time-core';
 import type { LedgerMappingDto } from './dto-ledger';
 import { NET_PAY, buildJournal, type JournalSlip, type Mapping } from './ledger';
+import { FIXED_CODES } from '../expenses/journal';
 import { entitiesFor, payScope, payViewer, requireSelf, withPayScope } from './pay-access';
 
 // The journal with ledger mapping (founder decision GP-PAY-1, 10 Oct 2026; M03 §19.7, extends PAY-3.17): mappings at
@@ -65,11 +66,13 @@ export class LedgerService {
       if (dto.scopeType !== 'company' && !scopeId) throw new BadRequestException('Say which legal entity or cost centre the override is for.');
       await this.requireScope(tx, c, v, dto.scopeType, scopeId);
       // A pay component, or a line the engine itself writes (loan instalments, court attachments, recoveries) seen on a payslip.
-      const known =
-        dto.componentCode === NET_PAY ||
+      const expense = dto.componentCode.startsWith('exp.');
+      const known = expense
+        ? FIXED_CODES.includes(dto.componentCode) || (await tx.expenseCategory.count({ where: { organizationId: org, code: dto.componentCode.slice(4) } })) > 0
+        : dto.componentCode === NET_PAY ||
         (await tx.payComponent.count({ where: { organizationId: org, code: dto.componentCode } })) > 0 ||
         (await withPayScope(tx, await entitiesFor(tx, c, v, 'payroll.ledger.manage'), () => tx.payslipLine.count({ where: { organizationId: org, componentCode: dto.componentCode } }))) > 0;
-      if (!known) throw new BadRequestException(`${dto.componentCode} is not a pay line.`);
+      if (!known) throw new BadRequestException(expense ? `${dto.componentCode} is not an expense category or account.` : `${dto.componentCode} is not a pay line.`);
       const key = { organizationId: org, scopeType: dto.scopeType, scopeId, componentCode: dto.componentCode, side: dto.side };
       const old = await tx.ledgerMapping.findFirst({ where: key });
       const data = { accountCode: dto.accountCode, accountName: dto.accountName, updatedBy: v.userId!, updatedAt: new Date() };

@@ -60,6 +60,7 @@ describe('notification catalog', () => {
       'payroll.overpayment.consent',
       'expense.trip.update',
       'expense.advance.update',
+      'expense.payment.update',
       'perf.goal.checkin_due',
       'perf.feedback.received',
       'perf.feedback.requested',
