@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { CompensationLiveScreen, type Breakup, type CompensationInForce, type EmployeeHit, type SalaryTemplate, type StatutoryProfile } from '@yukthix/ui/pay';
+import type { SplitSuggestion } from '@yukthix/ui/pay';
 import { payState, usePay, usePayWrite } from '../../../../../lib/yx-pay';
 import { usePeopleSearch } from '../../../../../lib/yx-pay-5b';
 import { todayIndia } from '../../../../../lib/yx-time';
@@ -26,6 +27,7 @@ export default function YxPayCompensationPage() {
       current={current.data ?? null}
       templates={templates.data ?? null}
       today={todayIndia()}
+      onSuggest={employee ? (annualCtc, effectiveDate) => write<SplitSuggestion[]>('/compensations/suggest', { employeeId: employee.id, annualCtc, effectiveDate }) : undefined}
       onPreview={(c) =>
         write<Breakup>('/compensations/preview', {
           ...c,

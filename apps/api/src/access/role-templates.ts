@@ -19,7 +19,7 @@ const HR_VIEW = ['org.structure.view', 'employee.profile.view'];
 // medical data.
 const TIME_HR_VIEW = ['leave.view', 'attendance.view'];
 // M01 lifecycle batch 6a: joiners and their checklists in scope, person documents (each type still needs its class key).
-const LIFE_HR_ADMIN = ['lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'lifecycle.journey.template.manage', 'document.view', 'document.manage', 'lifecycle.bgv.manage', 'letter.template.manage', 'letter.issue', 'lifecycle.exit.view', 'lifecycle.exit.manage', 'lifecycle.exit.confidential.view', 'asset.view'];
+const LIFE_HR_ADMIN = ['lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'lifecycle.journey.template.manage', 'document.view', 'document.manage', 'lifecycle.bgv.manage', 'letter.template.manage', 'letter.issue', 'lifecycle.exit.view', 'lifecycle.exit.manage', 'lifecycle.exit.confidential.view', 'asset.view', 'payroll.notice.waive'];
 const LIFE_HR_EXEC = ['lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'document.view', 'document.manage', 'letter.issue', 'lifecycle.exit.view'];
 // Batch 2: rosters in scope (HR Executive too), locking attendance months and maternity / paternity overrides (HR Admin).
 const TIME_HR_ADMIN = [...TIME_HR_VIEW, 'leave.settings.manage', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view', 'roster.manage', 'attendance.lock', 'leave.eligibility.override'];
@@ -40,11 +40,14 @@ const PAY_ADMIN_5E = ['tax.workspace.view', 'tax.proof.verify', 'tax.regime.over
 const PAY_ADMIN_5F = ['statutory.filing.view', 'statutory.filing.generate', 'statutory.filing.download', 'statutory.challan.manage'];
 const COMPLIANCE_5F = ['statutory.filing.view', 'statutory.filing.generate', 'statutory.filing.download', 'statutory.filing.mark_filed', 'statutory.challan.manage', 'statutory.register.sign', 'statutory.advisory.review'];
 // Batch 5g: off-cycle runs, arrears worksheets and F&F settlements; approvers also approve arrears and write off overpayments.
-const PAY_ADMIN_5G = ['payroll.offcycle.prepare', 'payroll.arrears.approve', 'payroll.fnf.manage'];
+const PAY_ADMIN_5G = ['payroll.offcycle.prepare', 'payroll.arrears.approve', 'payroll.fnf.manage', 'payroll.notice.waive'];
 const PAY_APPROVER_5G = ['payroll.arrears.approve', 'payroll.writeoff.approve'];
 const PAY_APPROVER_5A = ['payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release'];
 
 const DESK_AGENT = ['desk.ticket.view', 'desk.ticket.work', 'desk.ticket.note', 'desk.ticket.export', 'desk.task.work', 'desk.kb.view_internal', 'desk.kb.author', 'desk.chat.work', 'desk.hr_summary.view', 'desk.ticket.move'];
+
+/** The compliance owner's keys (the demo's compliance@ login uses them). */
+export const COMPLIANCE_OWNER_5J = ['org:view', 'org.structure.view', 'payroll.period.view', 'payroll.file.view', 'payroll.document.view', 'audit.view', 'payroll.statutory.setup', ...COMPLIANCE_5F];
 
 export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
   {

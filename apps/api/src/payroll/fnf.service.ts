@@ -308,15 +308,16 @@ export class FnfService implements OnModuleInit {
   async list(ctx: TenantContext, user: ScopeUser) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const ids = await entitiesFor(tx, c, v, 'payroll.fnf.manage');
+      // 5j-D2: HR with payroll.notice.waive sees the settlements (to waive a notice) and changes nothing else.
+      const ids = [...new Set([...(await entitiesFor(tx, c, v, 'payroll.fnf.manage')), ...(await entitiesFor(tx, c, v, 'payroll.notice.waive'))])];
       await payScope(tx, ids);
       const rows = await tx.fnfSettlement.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: ids } }, orderBy: [{ status: 'asc' }, { deadline: 'asc' }], take: 200 });
       return Promise.all(rows.map((f) => this.view(tx, c.organizationId, f)));
     });
   }
 
-  private async settlementIn(tx: Tx, c: CompanyContext, v: Awaited<ReturnType<FnfService['viewer']>>, id: string) {
-    const ids = await entitiesFor(tx, c, v, 'payroll.fnf.manage');
+  private async settlementIn(tx: Tx, c: CompanyContext, v: Awaited<ReturnType<FnfService['viewer']>>, id: string, key: 'payroll.fnf.manage' | 'payroll.notice.waive' = 'payroll.fnf.manage') {
+    const ids = await entitiesFor(tx, c, v, key);
     await payScope(tx, ids);
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`fnf-edit:${id}`}))`;
     const f = await tx.fnfSettlement.findFirst({ where: { organizationId: c.organizationId, id } });
@@ -436,7 +437,7 @@ export class FnfService implements OnModuleInit {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
-      const f = await this.settlementIn(tx, c, v, id);
+      const f = await this.settlementIn(tx, c, v, id, 'payroll.notice.waive');
       if (f.status !== 'open') throw new ConflictException('This settlement is closed.');
       if (f.noticeWaivedBy) throw new ConflictException('The notice is already waived.');
       const run = f.runId ? await tx.payrollRun.findFirst({ where: { organizationId: org, id: f.runId } }) : null;

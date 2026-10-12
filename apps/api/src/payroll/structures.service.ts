@@ -299,6 +299,35 @@ export class PayStructuresService {
     return { b, components: v.components };
   }
 
+  /**
+   * PAY-10.06 "suggest a split": the same CTC worked out with every active salary template the person's legal entity can use
+   * (each within its own formulas and the law: minimum wage, the Code wage add-back), with the take-home before tax, so HR
+   * picks one. Nothing is kept; the chosen template then goes through the usual change and approval.
+   */
+  suggest(ctx: TenantContext, user: ScopeUser, dto: { employeeId: string; effectiveDate: string; annualCtc: string }) {
+    return this.history.viewer(user).then((v) =>
+      this.history.run(ctx, async (tx, c) => {
+        requireSelf(v);
+        const e = await this.employmentOn(tx, c.organizationId, dto.employeeId, dto.effectiveDate);
+        if (!(await this.history.reachesFrom(tx, c, v, 'employee.salary.manage', e, dto.effectiveDate))) throw new NotFoundException('Not found');
+        const templates = await tx.salaryTemplate.findMany({ where: { organizationId: c.organizationId, status: 'active', OR: [{ legalEntityId: null }, { legalEntityId: e.legalEntityId }] } });
+        const out = [];
+        for (const t of templates) {
+          const ver = await tx.salaryTemplateVersion.findFirst({ where: { organizationId: c.organizationId, templateId: t.id, validFrom: { lte: new Date(`${dto.effectiveDate}T00:00:00Z`) } }, orderBy: { validFrom: 'desc' } });
+          if (!ver) continue;
+          try {
+            const { b, components } = await this.work(tx, c.organizationId, e, { employeeId: dto.employeeId, effectiveDate: dto.effectiveDate, templateVersionId: ver.id, entryMode: 'ctc', annualCtc: dto.annualCtc } as CompensationInputDto);
+            const deductions = b.lines.filter((l) => components.find((x) => x.code === l.code)?.kind === 'deduction').reduce((sum, l) => sum.add(l.monthly), new Prisma.Decimal(0));
+            out.push({ templateVersionId: ver.id, template: t.name, monthlyGross: b.monthlyGross.toFixed(2), takeHomeBeforeTax: b.monthlyGross.sub(deductions).toFixed(2), codeWageAddBack: b.codeWageAddBack.toFixed(2), belowMinimumWage: !!b.minWage?.below, warnings: mwWarnings(b), lines: breakupJson(b).lines });
+          } catch (err) {
+            out.push({ templateVersionId: ver.id, template: t.name, problem: (err as Error).message });
+          }
+        }
+        return out;
+      }),
+    );
+  }
+
   /** CTC breakup with the minimum-wage check and the Code wage add-back; nothing is kept. */
   preview(ctx: TenantContext, user: ScopeUser, dto: CompensationInputDto) {
     return this.history.viewer(user).then((v) =>
