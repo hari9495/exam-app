@@ -149,6 +149,12 @@ function PayslipView({ slip, previous, onOpen, onPdf, onQuery, onClose }: { slip
                 <dt>Deductions</dt>
                 <dd>−{rupees(d.deductions)}</dd>
               </div>
+              {reimbursements.length > 0 && (
+                <div>
+                  <dt>Reimbursements</dt>
+                  <dd>+{rupees(reimbursements.reduce((t, l) => t + Number(l.amount), 0).toFixed(2))}</dd>
+                </div>
+              )}
               <div>
                 <dt>Net pay</dt>
                 <dd>{rupees(d.net)}</dd>

@@ -14,7 +14,7 @@ import { addDays } from '../time/time-maths';
 import { PayDocumentsService } from './documents.service';
 import { CompensationChangeDto, CompensationInputDto, ComponentDto, FormulaCheckDto, LetterDto, StatutoryProfileDto, TemplateDto, TemplateVersionDto } from './dto-5b';
 import { entitiesFor, payScope, payViewer, requireEntity, requireSelf } from './pay-access';
-import { FNF_COMPONENTS, STARTER_COMPONENTS, STARTER_TEMPLATE } from './starter';
+import { FNF_COMPONENTS, MODULE_COMPONENTS, STARTER_COMPONENTS, STARTER_TEMPLATE } from './starter';
 import { breakup, breakupJson, type ComponentDef, type Facts, type Line } from './structure';
 
 // Batch 5b structures (PAY-2.06 formulas, 2.07 components, 2.08 templates, 2.09 compensation, 2.10 statutory profile).
@@ -124,7 +124,7 @@ export class PayStructuresService {
       this.need(v, 'payroll.template.manage');
       if (!tenantWide(v, 'payroll.template.manage')) throw new ForbiddenException('The starter template is company-wide: it needs payroll.template.manage for the whole company.');
       const added = await tx.payComponent.createMany({
-        data: [...STARTER_COMPONENTS, ...FNF_COMPONENTS].map(({ statutory, ...s }) => ({ organizationId: c.organizationId, ...s, taxable: s.taxable ?? true, statutory: statutory ?? null, createdBy: c.userId })),
+        data: [...STARTER_COMPONENTS, ...FNF_COMPONENTS, ...MODULE_COMPONENTS].map(({ statutory, ...s }) => ({ organizationId: c.organizationId, ...s, taxable: s.taxable ?? true, statutory: statutory ?? null, createdBy: c.userId })),
         skipDuplicates: true,
       });
       let templateId: string | null = null;

@@ -274,7 +274,12 @@ export class PayslipsService {
       bankLast4: bank?.accountLast4 ?? null,
       resultHash: s.resultHash,
     };
-    const labels = Object.fromEntries(mandatory.map((m) => [m.key, m.label]));
+    const labels: Record<string, string> = Object.fromEntries(mandatory.map((m) => [m.key, m.label]));
+    // D3 (M05): reimbursements are their own section, paid in net pay and not part of gross.
+    if (data.lines.some((l) => l.kind === 'reimbursement' && Number(l.amount) !== 0)) {
+      if (!blocks.some((b) => b.key === 'reimbursements')) blocks.push({ key: 'reimbursements', shown: true });
+      labels.reimbursements ??= 'Reimbursements (in net pay, not gross)';
+    }
     return renderPayslipPdf(blocks, labels, localOf(layout?.languages), payslipValues(data), { title: `Payslip ${month}`, keywords: `result:${s.resultHash}`, ...opts });
   }
 
