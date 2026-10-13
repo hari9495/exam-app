@@ -86,7 +86,7 @@ All its tables carry `organization_id` with **forced RLS and tenant isolation** 
 | Custom fields, field permissions, record visibility | Exist | **Reuse** | Mapped to P02 field classes for candidate fields (Confidential by default) |
 | Reports, analytics, scheduled reports | `reports` (2,200 lines), `analytics` | **Adapt** | Hiring metrics registered in P09 (funnel, time to fill, source, offer acceptance, cost per hire); small-group suppression for diversity (§14) |
 | AI (fit score, scorecard draft, parse) | `candidate-fit`, `interview-ai`, `ai` | **Reuse behind the seam** | Off by default for YukthiX tenants except parsing (D6); P10 rules |
-| Screens | `apps/web/app/v2` (recruiter, org-admin) | **Replace for YukthiX** | yx-ui hiring screens in `/yx/hiring/*` on the same API; v2 keeps serving hiring-only customers, with no new features there (D1) |
+| Screens | `apps/web/app/v2` (recruiter, org-admin) | **Replace, then retire** | yx-ui hiring screens in `/yx/hiring/*` on the same API. Founder decision D1 (13 Oct 2026): **one set of screens only**. Each v2 recruiter or org-admin hiring page is removed once its YukthiX screen is built and tested, and its URL redirects to the new screen. Candidate-facing pages (test-taking, proctoring, apply, offer accept) stay until their YukthiX version exists (D1) |
 | Permissions | Colon keys on fixed roles | **Adapt** | Scoped `ats.*` keys with the colon keys honoured as aliases (§17, D2) |
 
 ## 4. Where it lives
@@ -472,3 +472,7 @@ Short questions, each with the recommended default.
 | Date | Change |
 |---|---|
 | 13 Oct 2026 | First draft: reuse / adapt / replace table for the existing hiring product, headcount plans and requisitions on P03, careers site and job-board seam, candidates with dedupe, merge, pools, consent and retention, pipeline / interviews / scorecards, assessments link, offers with M03 breakup, P03, P05 e-sign and the M01 hand-off, referrals, agency logins and job shares, communication, P09 reports, AI seam, data model, permissions, APIs, events, 34 slices in batches AT1–AT8, founder decisions D1–D14. |
+
+## Founder decision D1 (13 Oct 2026)
+
+One set of hiring screens only. The v2 hiring screens are retired page by page as each YukthiX screen ships, with redirects so no link breaks. Candidate-facing v2 pages stay until replaced. The other 13 decisions are still open.
