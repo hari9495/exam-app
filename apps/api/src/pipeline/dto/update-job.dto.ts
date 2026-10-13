@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Min, MaxLength, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Min, MaxLength, MinLength, IsNumber, Matches } from 'class-validator';
 import { EMPLOYMENT_TYPES } from './create-job.dto';
 
 export class UpdateJobDto {
@@ -70,4 +70,26 @@ export class UpdateJobDto {
 
   @IsOptional() @IsUUID()
   locationId?: string | null;
+
+  /** M10 AT2: the requisition's plan facts (checked on submit against the headcount plan). */
+  @IsOptional() @IsUUID()
+  headcountPlanLineId?: string | null;
+
+  @IsOptional() @IsBoolean()
+  outsidePlan?: boolean;
+
+  @IsOptional() @IsString() @MaxLength(1000)
+  outsidePlanReason?: string | null;
+
+  @IsOptional() @IsIn(['new', 'replacement'])
+  requisitionReason?: 'new' | 'replacement' | null;
+
+  @IsOptional() @IsUUID()
+  replacementOfEmployeeId?: string | null;
+
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0)
+  budgetAmount?: number | null;
+
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  targetStart?: string | null;
 }
