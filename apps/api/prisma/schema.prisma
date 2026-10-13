@@ -1225,6 +1225,8 @@ model Job {
   slug                    String?               @db.VarChar(120)
   publishedAt             DateTime?             @map("published_at") @db.Timestamptz(3)
   showSalary              Boolean               @default(false) @map("show_salary")
+  /// M10 AT5: the scorecard new interviews for this job use, unless the scheduler picks another.
+  scorecardTemplateId     String?               @map("scorecard_template_id") @db.Uuid
   headcount               Int?
   salaryMin               Int?                  @map("salary_min")
   salaryMax               Int?                  @map("salary_max")
@@ -1302,6 +1304,8 @@ model PipelineEntry {
   statusId               String?                 @map("status_id") @db.Uuid
   archivedAt             DateTime?               @map("archived_at") @db.Timestamptz(3)
   blueprintChecklistJson String?                 @map("blueprint_checklist_json") @db.Text
+  /// M10 AT5: when the application entered its current stage (the board shows the age).
+  stageEnteredAt         DateTime                @default(now()) @map("stage_entered_at") @db.Timestamptz(3)
   referrerUserId         String?                 @map("referrer_user_id") @db.Uuid // set when enteredVia='referral'
   job                    Job                     @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   candidate              Candidate               @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -1763,6 +1767,8 @@ model Interview {
   externalEventId       String?             @map("external_event_id") @db.Text
   externalEventOwnerId  String?             @map("external_event_owner_id") @db.Uuid
   meetingUrl            String?             @map("meeting_url") @db.Text
+  /// M10 AT5: the scorecard panellists fill for this interview.
+  scorecardTemplateId   String?             @map("scorecard_template_id") @db.Uuid
   createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
   pipelineEntry         PipelineEntry       @relation(fields: [pipelineEntryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -1791,6 +1797,8 @@ model InterviewPanelist {
   organizationId String    @map("organization_id") @db.Uuid
   interviewId    String    @map("interview_id") @db.Uuid
   userId         String    @map("user_id") @db.Uuid
+  reminded24hAt  DateTime? @map("reminded_24h_at") @db.Timestamptz(3)
+  reminded48hAt  DateTime? @map("reminded_48h_at") @db.Timestamptz(3)
   interview      Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([interviewId, userId])
@@ -1858,6 +1866,8 @@ model JobExam {
   examId         String   @map("exam_id") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  /// M10 AT5: send this test automatically when an application enters this stage.
+  sendOnStageId  String?  @map("send_on_stage_id") @db.Uuid
   exam           Exam     @relation(fields: [examId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([jobId, examId])
@@ -9819,4 +9829,85 @@ model CandidateRetentionAction {
 
   @@index([runId], map: "candidate_retention_actions_run_idx")
   @@map("candidate_retention_actions")
+}
+
+/// M10 AT5: a rejection message waiting (default 24 h) so a mistaken rejection can be undone.
+model PendingRejection {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  entryId          String    @map("entry_id") @db.Uuid
+  previousStatusId String?   @map("previous_status_id") @db.Uuid
+  templateId       String?   @map("template_id") @db.Uuid
+  subject          String?   @db.VarChar(300)
+  body             String?
+  sendAt           DateTime  @map("send_at") @db.Timestamptz(3)
+  createdBy        String?   @map("created_by") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  sentAt           DateTime? @map("sent_at") @db.Timestamptz(3)
+  undoneAt         DateTime? @map("undone_at") @db.Timestamptz(3)
+
+  @@map("pending_rejections")
+}
+
+/// M10 AT5 (YX-ATS-51): skills or questions with weights and a pass bar.
+model ScorecardTemplate {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  name           String          @db.VarChar(120)
+  scaleMax       Int             @default(4) @map("scale_max")
+  passBar        Decimal         @map("pass_bar") @db.Decimal(4, 2)
+  createdBy      String?         @map("created_by") @db.Uuid
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  archivedAt     DateTime?       @map("archived_at") @db.Timestamptz(3)
+  items          ScorecardItem[]
+
+  @@map("scorecard_templates")
+}
+
+model ScorecardItem {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  templateId     String            @map("template_id") @db.Uuid
+  position       Int
+  label          String            @db.VarChar(200)
+  guidance       String?           @db.VarChar(1000)
+  weight         Int               @default(1)
+  competencyId   String?           @map("competency_id") @db.Uuid
+  template       ScorecardTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId, position], map: "scorecard_items_template_idx")
+  @@map("scorecard_items")
+}
+
+/// M10 AT5: one panellist's scorecard for one interview; final once submitted (D7: blind until then).
+model Scorecard {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  interviewId    String            @map("interview_id") @db.Uuid
+  panelistUserId String            @map("panelist_user_id") @db.Uuid
+  templateId     String            @map("template_id") @db.Uuid
+  status         String            @default("draft") @db.VarChar(10)
+  recommendation String?           @db.VarChar(12)
+  summary        String?
+  weightedScore  Decimal?          @map("weighted_score") @db.Decimal(5, 2)
+  passes         Boolean?
+  submittedAt    DateTime?         @map("submitted_at") @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  ratings        ScorecardRating[]
+
+  @@unique([interviewId, panelistUserId], map: "scorecards_interview_panelist_key")
+  @@map("scorecards")
+}
+
+model ScorecardRating {
+  organizationId String    @map("organization_id") @db.Uuid
+  scorecardId    String    @map("scorecard_id") @db.Uuid
+  itemId         String    @map("item_id") @db.Uuid
+  rating         Int?
+  notes          String?
+  scorecard      Scorecard @relation(fields: [scorecardId], references: [id], onDelete: Cascade)
+
+  @@id([scorecardId, itemId])
+  @@map("scorecard_ratings")
 }

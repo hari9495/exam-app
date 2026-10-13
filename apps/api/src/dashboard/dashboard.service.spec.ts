@@ -656,7 +656,7 @@ describe('DashboardService', () => {
           subtitle: 'Backend Engineer · 13:00 with panel',
           at: '2026-09-08T13:00:00.000Z',
           actionLabel: 'Open brief',
-          actionHref: '/v2/jobs/job-early',
+          actionHref: '/yx/hiring/jobs/job-early',
         },
         {
           id: 'iv-late',
@@ -665,7 +665,7 @@ describe('DashboardService', () => {
           subtitle: 'Frontend Engineer · 15:00 with panel',
           at: '2026-09-08T15:00:00.000Z',
           actionLabel: 'Open brief',
-          actionHref: '/v2/jobs/job-late',
+          actionHref: '/yx/hiring/jobs/job-late',
         },
       ]);
     });
@@ -726,7 +726,7 @@ describe('DashboardService', () => {
         subtitle: 'QA Engineer · interviewed 3 days ago · scorecard due',
         at: '2026-09-05T09:30:00.000Z',
         actionLabel: 'Add feedback',
-        actionHref: '/v2/jobs/job-u',
+        actionHref: '/yx/hiring/jobs/job-u',
       });
     });
 
@@ -860,7 +860,7 @@ describe('DashboardService', () => {
           subtitle: 'Sales Rep · offer sent yesterday · expires Thursday',
           at: '2026-09-10T00:00:00.000Z',
           actionLabel: 'Nudge',
-          actionHref: '/v2/jobs/job-off',
+          actionHref: '/yx/hiring/jobs/job-off',
         },
       ]);
     });

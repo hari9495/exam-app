@@ -46,4 +46,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'domain-verification-recheck', cron: process.env.DOMAIN_RECHECK_CRON?.trim() || '30 5 * * *' },
   // M10 AT4: candidate retention (renewal emails, then anonymisation), daily at 03:15 IST.
   { id: 'candidate-retention', cron: '45 21 * * *' },
+  // M10 AT5: due rejection messages and scorecard reminders, every 5 minutes.
+  { id: 'hiring-due', cron: '*/5 * * * *' },
 ];

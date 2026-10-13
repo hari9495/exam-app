@@ -47,12 +47,16 @@ describe('hiring pages moved to YukthiX', () => {
     ['/v2/candidates', '/yx/hiring/candidates'],
     ['/candidates', '/yx/hiring/candidates'],
     ['/candidates/bulk-upload-invite', '/yx/hiring/candidates'],
+    ['/v2/jobs/:jobId', '/yx/hiring/jobs/:jobId'],
+    ['/jobs/:jobId', '/yx/hiring/jobs/:jobId'],
+    ['/v2/panel/interviews', '/yx/hiring/interviews'],
+    ['/interviews', '/yx/hiring/interviews'],
   ])('%s goes to %s', (source, destination) => {
     expect(redirects).toContainEqual({ source, destination, permanent: false });
   });
 
-  it('a job workspace is not redirected (it ships with AT5), and nothing still sends /jobs to the old list', () => {
-    expect(redirects.some((r) => r.source.startsWith('/v2/jobs/'))).toBe(false);
-    expect(redirects.some((r) => r.destination === '/v2/jobs')).toBe(false);
+  it('nothing still sends anyone to the old job pages', () => {
+    expect(redirects.some((r) => r.destination.startsWith('/v2/jobs'))).toBe(false);
+    expect(redirects.some((r) => r.destination === '/v2/panel/interviews')).toBe(false);
   });
 });

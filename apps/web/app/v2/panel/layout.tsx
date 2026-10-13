@@ -21,7 +21,7 @@ import { useLanding } from '../../../lib/yx-landing';
 // holds neither, and is sent to YukthiX instead).
 const PANEL_NAV = [
   { href: '/v2/panel/reports', label: 'Results', icon: BarChart3, permission: 'results:view' },
-  { href: '/v2/panel/interviews', label: 'Interviews', icon: CalendarClock, permission: 'interview:view_assigned' },
+  { href: '/yx/hiring/interviews', label: 'Interviews', icon: CalendarClock, permission: 'interview:view_assigned' },
 ];
 const ALLOWED_ROLES = ['panel', 'recruiter', 'org_admin'];
 

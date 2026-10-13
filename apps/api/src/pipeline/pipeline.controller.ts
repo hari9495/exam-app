@@ -77,8 +77,8 @@ export class PipelineController {
 
   @Get('jobs/:id/pipeline')
   @RequirePermissions('results:view')
-  getPipeline(@CurrentTenant() tenant: TenantContext, @CurrentUserRole() role: string, @Param('id') id: string) {
-    return this.pipelineService.getBoard(tenant, id, role);
+  getPipeline(@CurrentTenant() tenant: TenantContext, @CurrentUserRole() role: string, @CurrentUserId() userId: string, @Param('id') id: string) {
+    return this.pipelineService.getBoard(tenant, id, role, userId);
   }
 
   @Get('jobs/:id/candidates.csv')

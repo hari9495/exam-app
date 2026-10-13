@@ -1490,7 +1490,7 @@ describe('PipelineService', () => {
       // The flat pipeline_entries.stage column is gone -- statusId is the only source of truth now.
       expect(update).toHaveBeenCalledWith({
         where: { id: 'en1' },
-        data: { statusId: 'st-int', rejected: false, rejectedReason: null, rejectedAt: null, archivedAt: null },
+        data: { statusId: 'st-int', rejected: false, rejectedReason: null, rejectedAt: null, archivedAt: null, stageEnteredAt: expect.any(Date) },
       });
       expect(entry.statusId).toBe('st-int');
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.stage_changed', entityId: 'en1' }));
@@ -1677,7 +1677,7 @@ describe('PipelineService', () => {
       });
       expect(update).toHaveBeenCalledWith({
         where: { id: 'en1' },
-        data: { statusId: 'st-rej', rejected: true, rejectedReason: 'not a fit', rejectedAt: expect.any(Date), archivedAt: null },
+        data: { statusId: 'st-rej', rejected: true, rejectedReason: 'not a fit', rejectedAt: expect.any(Date), archivedAt: null, stageEnteredAt: expect.any(Date) },
       });
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'entry.rejected', entityId: 'en1' }));
     });

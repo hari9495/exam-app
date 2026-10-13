@@ -384,7 +384,7 @@ export class DashboardService {
       subtitle: `${i.pipelineEntry.job.title} · ${fmtTime(i.slot.startsAt)} with panel`,
       at: i.slot.startsAt.toISOString(),
       actionLabel: 'Open brief',
-      actionHref: `/v2/jobs/${i.pipelineEntry.jobId}`,
+      actionHref: `/yx/hiring/jobs/${i.pipelineEntry.jobId}`,
     }));
     const feedbackOwed: TodayItem[] = core.owed.map((i) => ({
       id: i.id,
@@ -393,7 +393,7 @@ export class DashboardService {
       subtitle: `${i.pipelineEntry.job.title} · interviewed ${relDay(i.slot.endsAt)} · scorecard due`,
       at: i.slot.endsAt.toISOString(),
       actionLabel: 'Add feedback',
-      actionHref: `/v2/jobs/${i.pipelineEntry.jobId}`,
+      actionHref: `/yx/hiring/jobs/${i.pipelineEntry.jobId}`,
     }));
     const offersExpiring: TodayItem[] = core.offers.map((o) => ({
       id: o.id,
@@ -402,7 +402,7 @@ export class DashboardService {
       subtitle: `${o.pipelineEntry.job.title} · offer sent ${o.sentAt ? relDay(o.sentAt) : 'recently'} · expires ${weekday(o.expiresAt)}`,
       at: o.expiresAt.toISOString(),
       actionLabel: 'Nudge',
-      actionHref: `/v2/jobs/${o.pipelineEntry.jobId}`,
+      actionHref: `/yx/hiring/jobs/${o.pipelineEntry.jobId}`,
     }));
 
     const summary = await this.getSummary(context, '7d');

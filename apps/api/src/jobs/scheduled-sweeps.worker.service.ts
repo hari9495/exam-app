@@ -16,6 +16,8 @@ import { EmployeeHistoryService } from '../employee-history/employee-history.ser
 import { PeopleService } from '../people/people.service';
 import { IdentityProvidersService } from '../auth/identity-providers.service';
 import { CandidateRetentionService } from '../talent/retention.service';
+import { HiringBoardService } from '../interviewing/hiring-board.service';
+import { ScorecardsService } from '../interviewing/scorecards.service';
 
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -46,6 +48,8 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     people: PeopleService,
     identityProviders: IdentityProvidersService,
     candidateRetention: CandidateRetentionService,
+    hiringBoard: HiringBoardService,
+    scorecards: ScorecardsService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -64,6 +68,8 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'domain-verification-recheck': () => identityProviders.recheckDomains(),
       // M10 AT4 (YX-ATS-53): candidate renewal emails and anonymisation after the company's period.
       'candidate-retention': () => candidateRetention.sweep(),
+      // M10 AT5: rejection messages after their undo window, and scorecard reminders at 24 h / 48 h.
+      'hiring-due': () => Promise.all([hiringBoard.sendDue(), scorecards.remind()]),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

@@ -65,6 +65,7 @@ export interface BoardRow {
   enteredVia: string;
   rejectedReason: string | null;
   examResults: EntryExamResult[];
+  stageEnteredAt: Date;
   avgRating: number | null;
   feedbackCount: number;
   fitScore: number | null;
@@ -752,7 +753,8 @@ export class PipelineService {
     return { success: true };
   }
 
-  async getBoard(context: TenantContext, jobId: string, role: string): Promise<Board> {
+  /** viewerUserId (M10 AT5, rule J13): an internal applicant's current manager does not see the application before the offer stage, nor ever its test results. */
+  async getBoard(context: TenantContext, jobId: string, role: string, viewerUserId?: string): Promise<Board> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const job = await tx.job.findFirst({
         where: { id: jobId, organizationId: context.organizationId as string },
@@ -810,8 +812,14 @@ export class PipelineService {
 
       const stages = job.pipeline?.stages ?? [];
       const columns: Record<string, BoardRow[]> = Object.fromEntries(stages.map((s: { id: string }) => [s.id, [] as BoardRow[]]));
+      const internalIds = [...new Set(entries.filter((e) => e.enteredVia === 'internal' && e.referrerUserId).map((e) => e.referrerUserId as string))];
+      const managed = viewerUserId && internalIds.length
+        ? new Set((await tx.user.findMany({ where: { id: { in: internalIds }, managerId: viewerUserId }, select: { id: true } })).map((u) => u.id))
+        : new Set<string>();
       for (const e of entries) {
         if (!e.status) continue; // no status resolved yet (pre-migration edge case) -- can't place on a dynamic column
+        const managersOwn = e.enteredVia === 'internal' && e.referrerUserId ? managed.has(e.referrerUserId) : false;
+        if (managersOwn && !['offer', 'hired'].includes(e.status.stage.category)) continue;
         const row: BoardRow = {
           entryId: e.id,
           candidateId: e.candidateId,
@@ -822,7 +830,8 @@ export class PipelineService {
           category: e.status.stage.category as StageCategory,
           enteredVia: e.enteredVia,
           rejectedReason: e.rejectedReason,
-          examResults: deriveEntryExamResults(e.candidate.invitations as any, linkedExamIds),
+          examResults: managersOwn ? [] : deriveEntryExamResults(e.candidate.invitations as any, linkedExamIds),
+          stageEnteredAt: e.stageEnteredAt,
           avgRating: averageRating(e.feedback.map((f: { rating: number | null }) => f.rating)),
           feedbackCount: e.feedback.length,
           fitScore: e.fitAssessment?.overallScore ?? null,
@@ -925,7 +934,8 @@ export class PipelineService {
     });
   }
 
-  async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto): Promise<PatchEntryResult> {
+  /** opts.skipComms: the caller sends the candidate message itself (M10 AT5 delayed rejection). */
+  async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto, opts: { skipComms?: boolean } = {}): Promise<PatchEntryResult> {
     let didHire = false;
     // The stage a template's triggerStageId is matched against for the post-commit comms hook.
     let commsStageId: string | null = null;
@@ -938,7 +948,8 @@ export class PipelineService {
       if (!existing) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
       const previousCategory = existing.status?.stage.category;
 
-      let data: { statusId?: string; rejected: boolean; rejectedReason: string | null; rejectedAt: Date | null; archivedAt: Date | null };
+      let data: { statusId?: string; rejected: boolean; rejectedReason: string | null; rejectedAt: Date | null; archivedAt: Date | null; stageEnteredAt?: Date };
+      const currentStage = existing.status?.stageId ?? existing.status?.stage?.id ?? null;
       let action: string;
       if (dto.statusId !== undefined) {
         const resolved = await this.pipelines.resolveStatus(context, dto.statusId);
@@ -952,6 +963,7 @@ export class PipelineService {
           rejectedReason: category === 'rejected' ? (dto.reason ?? null) : null,
           rejectedAt: category === 'rejected' ? new Date() : null,
           archivedAt: category === 'archived' ? new Date() : null,
+          ...(resolved.stage.id !== currentStage ? { stageEnteredAt: new Date() } : {}),
         };
         action = 'entry.stage_changed';
         didHire = category === 'hired' && previousCategory !== 'hired';
@@ -1008,6 +1020,7 @@ export class PipelineService {
           rejectedReason: dto.reason ?? null,
           rejectedAt: new Date(),
           archivedAt: null,
+          ...(rejectStageId && rejectStageId !== currentStage ? { stageEnteredAt: new Date() } : {}),
         };
         action = 'entry.rejected';
         commsStageId = rejectStageId ?? null;
@@ -1091,7 +1104,7 @@ export class PipelineService {
     let pendingSmsMessage: PendingSmsMessage | undefined;
     let pendingWhatsappMessage: PendingWhatsappMessage | undefined;
 
-    if (commsStageId) {
+    if (commsStageId && !opts.skipComms) {
       try {
         const tpl = await this.templates.resolveForStage(context, commsStageId);
         if (tpl?.triggerMode === 'auto') {

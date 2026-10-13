@@ -36,7 +36,7 @@ export class CandidateProfileService {
           FROM candidates c WHERE c.id = ${id}::uuid`,
       ]);
       return {
-        candidate: { id: cand.id, name: cand.name, email: cand.email, phone: cand.phone, phoneE164: cand.phoneE164, status: cand.status, globalStage: cand.globalStage, createdAt: cand.createdAt, erasedAt: cand.erasedAt, emailOptedOut: Boolean(cand.emailOptedOutAt) },
+        candidate: { id: cand.id, name: cand.name, email: cand.email, phone: cand.phone, phoneE164: cand.phoneE164, status: cand.status, globalStage: cand.globalStage, createdAt: cand.createdAt, erasedAt: cand.erasedAt, emailOptedOut: Boolean(cand.emailOptedOutAt), smsOptedOut: Boolean(cand.smsOptedOutAt), whatsappOptedOut: Boolean(cand.whatsappOptedOutAt) },
         legalHold: cand.legalHoldAt ? { at: cand.legalHoldAt, reason: cand.legalHoldReason } : null,
         retention: { months: Number(months), lastActivityAt: last[0]?.at ?? cand.createdAt, until: cand.erasedAt ? null : addMonths(last[0]?.at ?? cand.createdAt, Number(months)), noticeAt: cand.retentionNoticeAt },
         resume: profile ? { hasFile: Boolean(profile.resumePath), scan: profile.resumeScan, parseStatus: profile.parseStatus, title: profile.parsedTitle, summary: profile.parsedSummary, skills: profile.parsedSkills, years: profile.parsedYearsExperience } : null,
