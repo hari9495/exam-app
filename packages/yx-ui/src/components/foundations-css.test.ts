@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const css = readFileSync(fileURLToPath(new URL('./foundations.css', import.meta.url)), 'utf8');
+const css = readFileSync(join(__dirname, 'foundations.css'), 'utf8');
 
 describe('foundations.css', () => {
   it('the paragraph margin reset stays at zero specificity, so screen classes can space a <Text as="p">', () => {

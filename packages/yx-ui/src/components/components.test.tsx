@@ -178,7 +178,7 @@ describe('Select', () => {
       { value: 'u3', label: 'Imran Sheikh · it-collab@demo-org.test' },
     ];
     render(<Select aria-label="Person" options={people} value={null} onChange={() => {}} searchable defaultOpen />);
-    await u.type(await screen.findByRole('combobox', { name: 'Search' }), 'rec');
+    await u.type(await screen.findByPlaceholderText('Search'), 'rec');
     await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(1));
     expect(screen.getByRole('option', { name: /Neha Kulkarni/ })).toBeInTheDocument();
     expect(matchOption('u3', 'imran COLLAB', ['Imran Sheikh · it-collab@demo-org.test'])).toBe(1); // every word, any order, any case
