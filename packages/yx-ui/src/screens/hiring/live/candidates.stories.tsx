@@ -4,7 +4,8 @@ import { CandidateProfileScreen, type CandidateProfileScreenProps } from './prof
 import { CandidateRetentionScreen, DuplicatesScreen, TalentPoolsScreen, type CandidateRetentionScreenProps, type DuplicatesScreenProps, type TalentPoolsScreenProps } from './talent';
 
 // Recruitment, wired (batch AT4; M10-BUILD-DESIGN §7, §13). In the affordance guard set ('screens-hiring-live').
-const meta: Meta = { title: 'Screens/Hiring/Live · Candidates', parameters: { layout: 'fullscreen' } };
+// The lower-case exports are sample props shared with the tests, not stories.
+const meta: Meta = { title: 'Screens/Hiring/Live · Candidates', parameters: { layout: 'fullscreen' }, excludeStories: /^[a-z]/ };
 export default meta;
 type S = StoryObj;
 
