@@ -6,6 +6,7 @@ import { signIn } from './fixtures/sign-in';
 // retention preview changes nothing. Needs the API and web against a seeded database.
 
 const tag = Date.now().toString(36);
+const digits = `9${String(Date.now()).slice(-9)}`; // a phone number no earlier run used
 
 test('candidates on YukthiX Hiring: list, add, profile, duplicates, merge, retention preview', async ({ page }) => {
   test.setTimeout(240_000);
@@ -16,7 +17,7 @@ test('candidates on YukthiX Hiring: list, add, profile, duplicates, merge, reten
   await page.waitForURL(/\/yx\/hiring\/candidates$/, { timeout: 30_000 });
   await expect(page.getByRole('heading', { name: 'Candidates', level: 1 })).toBeVisible({ timeout: 30_000 });
 
-  for (const [name, email, phone] of [[`Kavya ${tag}`, `kavya-${tag}@example.test`, '98450 77001'], [`Kavya N ${tag}`, `kavya.n-${tag}@example.test`, '+91 98450-77001']]) {
+  for (const [name, email, phone] of [[`Kavya ${tag}`, `kavya-${tag}@example.test`, `${digits.slice(0, 5)} ${digits.slice(5)}`], [`Kavya N ${tag}`, `kavya.n-${tag}@example.test`, `+91 ${digits.slice(0, 5)}-${digits.slice(5)}`]]) {
     await page.getByRole('button', { name: 'Add candidate' }).click();
     const d = page.getByRole('dialog');
     await d.getByLabel(/^Name/).fill(name);
@@ -27,10 +28,10 @@ test('candidates on YukthiX Hiring: list, add, profile, duplicates, merge, reten
   }
 
   await page.getByLabel('Search candidates').fill(tag);
-  await expect(page.getByText(`Kavya N ${tag}`)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('cell', { name: `Kavya N ${tag}`, exact: true })).toBeVisible({ timeout: 30_000 });
 
   await page.goto('/yx/hiring/duplicates');
-  const row = page.getByRole('row').filter({ hasText: `kavya-${tag}@example.test` });
+  const row = page.getByRole('row').filter({ hasText: `kavya-${tag}@example.test` }).filter({ hasText: `kavya.n-${tag}@example.test` });
   await expect(row).toBeVisible({ timeout: 30_000 });
   await expect(row).toContainText('Same phone');
   await row.getByRole('button', { name: 'Compare and merge' }).click();
