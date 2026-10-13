@@ -53,6 +53,10 @@ test('raise → assign → reply → resolve', async ({ browser }) => {
   await writeInEditor(agent, 'Checked the proxy logs: her account is not in the intranet group.');
   await agent.getByRole('button', { name: 'Add note' }).click();
   await expect(agent.getByText('Internal note: Divya never sees it').last()).toBeVisible();
+  // The note shows (from the refresh) before sending has finished; when it finishes the composer clears and its editor
+  // is replaced. Typing the reply before then lost it, or met a button still busy with the note.
+  await expect(agent.getByRole('button', { name: 'Add note' })).not.toHaveAttribute('aria-busy', 'true', { timeout: 30_000 });
+  await expect(agent.locator('.ProseMirror')).toHaveText('');
 
   await agent.getByRole('tab', { name: /Reply to Divya/ }).click();
   await writeInEditor(agent, 'Hi Divya, I have added you to the intranet group. Please try again.');
