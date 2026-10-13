@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { CycleScreen, type EligibilityRow, type Preflight, type ReviewCycle, type ReviewCyclesScreenProps } from '@yukthix/ui/performance';
+import { CycleScreen, PeerSetup, type Disagreement, type PeerConfig, type EligibilityRow, type Preflight, type ReviewCycle, type ReviewCyclesScreenProps } from '@yukthix/ui/performance';
 import type { MasterRecord } from '@yukthix/ui/org';
 import { loadState, useOrg } from '../../../../../../lib/yx-org';
 import { usePerf, usePerfWrite } from '../../../../../../lib/yx-performance';
@@ -18,6 +18,7 @@ export default function YxReviewCyclePage() {
   const departments = useOrg<MasterRecord[]>('/masters/departments');
   const funnel = usePerf<{ stage: string; label: string; count: number }[]>(running ? `${base}/funnel` : null);
   const eligibility = usePerf<EligibilityRow[]>(running ? `${base}/eligibility` : null);
+  const disagreements = usePerf<Disagreement[]>(running ? `${base}/disagreements` : null);
   const [preflight, setPreflight] = useState<Preflight | null>(null);
   const write = usePerfWrite();
   return (
@@ -30,6 +31,10 @@ export default function YxReviewCyclePage() {
       preflight={preflight}
       funnel={funnel.data ?? []}
       eligibility={eligibility.data ?? []}
+      disagreements={disagreements.data ?? []}
+      extra={cycle.data?.status === 'draft' ? <PeerSetup value={cycle.data.peerFeedback ?? null} onSave={(v) => (v ? write('PUT', `${base}/peer-feedback`, v) : write('DELETE', `${base}/peer-feedback`))} /> : null}
+      onRelease={() => write('POST', `${base}/release`)}
+      onDecide={(rowId, status, hrNote) => write('POST', `/disagreements/${encodeURIComponent(rowId)}/decide`, { status, hrNote })}
       onBack={() => router.push('/yx/performance/cycles')}
       onSave={async (input) => {
         await write('PUT', base, input);

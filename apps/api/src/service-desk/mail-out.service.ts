@@ -7,7 +7,7 @@ import { generateKeyPairSync, randomUUID } from 'crypto';
 import { promises as dns } from 'dns';
 import { OrgSecretsCryptoService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
-import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { Tx } from '../org-structure/org-structure.service';
 import { DeskActor, audit, deskSystem, has } from './desk-access';
 import { DnsResolver, replyToken, resolverFromEnv, withToken } from './mail-auth';
@@ -60,11 +60,11 @@ export class MailOutService implements OnModuleInit, OnModuleDestroy {
     private readonly crypto: OrgSecretsCryptoService,
     @Inject(SD_DNS_RESOLVER) private readonly resolve: DnsResolver,
   ) {
-    this.queue = logBullErrors(new Queue(MAIL_OUT_QUEUE, { connection }), MAIL_OUT_QUEUE);
+    this.queue = logBullErrors(new Queue(MAIL_OUT_QUEUE, bullOpts(connection)), MAIL_OUT_QUEUE);
   }
 
   async onModuleInit() {
-    this.worker = logBullErrors(new Worker(MAIL_OUT_QUEUE, (job) => this.run(job), { connection: this.connection }), MAIL_OUT_QUEUE);
+    this.worker = logBullErrors(new Worker(MAIL_OUT_QUEUE, (job) => this.run(job), bullOpts(this.connection)), MAIL_OUT_QUEUE);
   }
 
   async onModuleDestroy() {

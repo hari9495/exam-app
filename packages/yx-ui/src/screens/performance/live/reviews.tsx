@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Plus } from 'lucide-react';
 import { Button, Link } from '../../../components/button';
 import { Checkbox, RadioGroup } from '../../../components/choice';
@@ -17,7 +17,7 @@ import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { errorText, useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
-import type { Choice, CycleInput, CycleStage, EligibilityRow, EntryInput, LoadState, Preflight, ReviewCycle, ReviewDetail, ReviewEntry, ReviewSummary, TemplateKind } from './types';
+import type { Choice, CycleInput, CycleStage, Disagreement, EligibilityRow, EntryInput, Handover, LoadState, Preflight, ReviewCycle, ReviewDetail, ReviewEntry, ReviewSummary, TemplateKind } from './types';
 
 // Performance batch PM4, wired (M06-BUILD-DESIGN §9; PRF-04 my review, PRF-05 manager review, PRF-06 cycles, PRF-13
 // hand-over later). The employee always sees where their review is and who has it next (U73), never a score before
@@ -31,6 +31,23 @@ const CYCLE_STATUS: Record<ReviewCycle['status'], { label: string; tone: BadgeTo
   closed: { label: 'Closed', tone: 'neutral' },
 };
 const KIND: Record<TemplateKind, string> = { annual: 'Annual', half_yearly: 'Half-yearly', quarterly: 'Quarterly', project: 'Project', probation: 'Probation' };
+const DISAGREEMENT: Record<Disagreement['status'], { label: string; tone: BadgeTone }> = { open: { label: 'Waiting for HR', tone: 'warning' }, answered: { label: 'Answered', tone: 'info' }, upheld: { label: 'Upheld', tone: 'success' }, not_upheld: { label: 'Not upheld', tone: 'neutral' } };
+
+/** A short text asked for before an action (a reason, a comment); `optional` lets it be empty. */
+function TextDialog({ title, label, confirmLabel, optional, helper, onClose, onSave }: { title: string; label: string; confirmLabel: string; optional?: boolean; helper?: string; onClose: () => void; onSave: (text: string) => Promise<unknown> }) {
+  const [text, setText] = useState('');
+  return (
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={title} confirmLabel={confirmLabel} confirmDisabled={!optional && text.trim().length < 3} onConfirm={async () => {
+      await onSave(text.trim());
+      onClose();
+    }}>
+      <FormField id="td-text" label={label} required={!optional} optional={optional} helper={helper}>
+        <TextArea value={text} onChange={setText} rows={3} maxLength={2000} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
 const RULE: Record<EligibilityRow['rule'], string> = { included: 'Included', excluded_cutoff: 'Joined after the cut-off', leaver: 'Left', transfer_split: 'Moved team', protected_leave: 'Protected leave (counted as served)', override: 'Changed by HR' };
 
 // ------------------------------------------------------------------------------------------ cycles (PRF-06)
@@ -231,6 +248,11 @@ export interface CycleScreenProps {
   onCheck: () => Promise<unknown>;
   onLaunch: () => Promise<unknown>;
   onOverride: (id: string, reviewed: boolean, reason: string) => Promise<unknown>;
+  disagreements?: Disagreement[];
+  onRelease?: () => Promise<unknown>;
+  onDecide?: (id: string, status: 'answered' | 'upheld' | 'not_upheld', hrNote: string) => Promise<unknown>;
+  /** More on the cycle, such as peer feedback set-up (PM5). */
+  extra?: ReactNode;
 }
 
 export function CycleScreen(p: CycleScreenProps) {
@@ -238,6 +260,8 @@ export function CycleScreen(p: CycleScreenProps) {
   const [editing, setEditing] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [changing, setChanging] = useState<EligibilityRow | null>(null);
+  const [releasing, setReleasing] = useState(false);
+  const [deciding, setDeciding] = useState<Disagreement | null>(null);
   const x = p.cycle;
   return (
     <LivePage
@@ -296,7 +320,16 @@ export function CycleScreen(p: CycleScreenProps) {
       )}
       {x && x.status !== 'draft' && (
         <>
-          <Card title="Where reviews are">
+          <Card
+            title="Where reviews are"
+            actions={
+              p.onRelease && (x.status === 'launched' || x.status === 'released') ? (
+                <Button variant="primary" disabled={!p.funnel.some((f) => f.stage === 'release' && f.count > 0)} onClick={() => setReleasing(true)}>
+                  Release ready reviews
+                </Button>
+              ) : undefined
+            }
+          >
             <ul className="yx-lif-list">
               {p.funnel.map((f) => (
                 <li key={f.stage}>
@@ -305,6 +338,23 @@ export function CycleScreen(p: CycleScreenProps) {
               ))}
             </ul>
           </Card>
+          {(p.disagreements ?? []).length > 0 && (
+            <Card title="Disagreements">
+              <ul className="yx-lif-list">
+                {p.disagreements!.map((d) => (
+                  <li key={d.id}>
+                    <Text>{`${d.employee}: ${d.text}`}</Text> <Badge tone={DISAGREEMENT[d.status].tone}>{DISAGREEMENT[d.status].label}</Badge>
+                    {d.hrNote && <Text tone="secondary">{` · ${d.hrNote}`}</Text>}{' '}
+                    {d.status === 'open' && p.onDecide && (
+                      <Button size="sm" onClick={() => setDeciding(d)}>
+                        Answer
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           <Card title="Who is reviewed">
             <DataTable
               label="Who is reviewed"
@@ -329,6 +379,7 @@ export function CycleScreen(p: CycleScreenProps) {
           </Card>
         </>
       )}
+      {x && p.extra}
       {editing && x && <CycleDrawer cycle={x} templates={p.templates} departments={p.departments} onClose={() => setEditing(false)} onSave={async (input) => {
         await p.onSave(input);
         setEditing(false);
@@ -341,8 +392,36 @@ export function CycleScreen(p: CycleScreenProps) {
           <Text as="p">{`${p.preflight?.reviewed ?? 0} reviews open now and their owners are told. The template and scale are then fixed for this cycle.`}</Text>
         </ConfirmDialog>
       )}
+      {releasing && (
+        <ConfirmDialog open onOpenChange={(o) => !o && setReleasing(false)} title="Release the ready reviews?" confirmLabel="Release" onConfirm={async () => {
+          await run('release', p.onRelease!);
+          setReleasing(false);
+        }}>
+          <Text as="p">{`${p.funnel.find((f) => f.stage === 'release')?.count ?? 0} people can then read their rating, band and their manager's review, and acknowledge it. Reviews still in progress are released later.`}</Text>
+        </ConfirmDialog>
+      )}
+      {deciding && <DecideDialog item={deciding} onClose={() => setDeciding(null)} onSave={(status, note) => p.onDecide!(deciding.id, status, note)} />}
       {changing && <OverrideDialog row={changing} onClose={() => setChanging(null)} onSave={(reason) => p.onOverride(changing.id, !changing.reviewed, reason)} />}
     </LivePage>
+  );
+}
+
+function DecideDialog({ item, onClose, onSave }: { item: Disagreement; onClose: () => void; onSave: (status: 'answered' | 'upheld' | 'not_upheld', note: string) => Promise<unknown> }) {
+  const [status, setStatus] = useState<'answered' | 'upheld' | 'not_upheld'>('answered');
+  const [note, setNote] = useState('');
+  return (
+    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Answer ${item.employee}`} confirmLabel="Send answer" confirmDisabled={note.trim().length < 3} onConfirm={async () => {
+      await onSave(status, note.trim());
+      onClose();
+    }}>
+      <Text as="p">{item.text}</Text>
+      <FormField id="dd-status" label="Outcome">
+        <Segment label="Outcome" value={status} onChange={setStatus} options={[{ value: 'answered', label: 'Answered' }, { value: 'upheld', label: 'Upheld' }, { value: 'not_upheld', label: 'Not upheld' }]} />
+      </FormField>
+      <FormField id="dd-note" label="Note to the employee" required helper="If upheld, reopen the review so the manager can change the rating.">
+        <TextArea value={note} onChange={setNote} rows={3} maxLength={2000} />
+      </FormField>
+    </ConfirmDialog>
   );
 }
 
@@ -374,6 +453,8 @@ export interface ReviewsScreenProps {
   canScope: boolean;
   reviews: ReviewSummary[];
   onOpen: (id: string) => void;
+  /** What moved to or from the viewer when a manager changed (PRF-13). */
+  handovers?: Handover[];
 }
 
 const nextText = (n: ReviewSummary['next']) => `${n.label}${n.owner ? ` · ${n.owner}` : ''}${n.dueOn ? ` · due ${dateText(n.dueOn)}` : ''}`;
@@ -403,6 +484,23 @@ export function ReviewsScreen(p: ReviewsScreenProps) {
           </Button>
         )}
       />
+      {(p.handovers ?? []).length > 0 && (
+        <Card title="Hand-overs">
+          <ul className="yx-lif-list">
+            {p.handovers!.map((h) => (
+              <li key={h.id}>
+                <Text>{`${dateText(h.effectiveOn)} · ${h.employee}: ${h.artefactType === 'review' ? 'review' : 'a goal aligned to the old manager\u2019s goal'} ${h.direction === 'to_me' ? `from ${h.from}` : `to ${h.to}`}`}</Text>
+                {h.decisionNeeded && <Badge tone="warning">Re-align the goal</Badge>}{' '}
+                {h.artefactType === 'review' && h.direction === 'to_me' && (
+                  <Button size="sm" onClick={() => p.onOpen(h.artefactId)}>
+                    Open
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
     </LivePage>
   );
 }
@@ -412,7 +510,14 @@ export interface ReviewScreenProps {
   onRetry?: () => void;
   review: ReviewDetail | null;
   onBack: () => void;
-  onSave: (stage: 'self' | 'manager', input: EntryInput, submit: boolean) => Promise<unknown>;
+  onSave: (stage: 'self' | 'manager' | 'other', input: EntryInput, submit: boolean) => Promise<unknown>;
+  onAddOther?: (employeeId: string) => Promise<unknown>;
+  /** More on the review, such as feedback from colleagues (PM5). */
+  extra?: ReactNode;
+  onSkip?: (agree: boolean, text: string | null) => Promise<unknown>;
+  onAcknowledge?: (comment: string | null) => Promise<unknown>;
+  onDisagree?: (text: string) => Promise<unknown>;
+  onReopen?: (reason: string) => Promise<unknown>;
 }
 
 export function ReviewScreen(p: ReviewScreenProps) {
@@ -420,13 +525,17 @@ export function ReviewScreen(p: ReviewScreenProps) {
   return (
     <LivePage title={r ? `${r.cycle.name}: ${r.employee}` : 'Review'} description={r ? `Manager: ${r.manager}` : undefined} state={p.state} onRetry={p.onRetry} what="this review" actions={<Button onClick={p.onBack}>Back</Button>}>
       {r && <ReviewBody key={`${r.id}-${r.version}`} {...p} r={r} />}
+      {r && p.extra}
     </LivePage>
   );
 }
 
-function ReviewBody({ r, onSave }: ReviewScreenProps & { r: ReviewDetail }) {
-  const stage: 'self' | 'manager' | null = r.can.self ? 'self' : r.can.manager ? 'manager' : null;
-  const mine = stage === 'self' ? r.self : stage === 'manager' ? r.managerEntry : null;
+function ReviewBody({ r, onSave, onAddOther, onSkip, onAcknowledge, onDisagree, onReopen }: ReviewScreenProps & { r: ReviewDetail }) {
+  const [adding, setAdding] = useState(false);
+  const [former, setFormer] = useState<string | null>(null);
+  const [asking, setAsking] = useState<'send_back' | 'agree' | 'acknowledge' | 'disagree' | 'reopen' | null>(null);
+  const stage: 'self' | 'manager' | 'other' | null = r.can.self ? 'self' : r.can.manager ? 'manager' : r.can.other ? 'other' : null;
+  const mine = stage === 'self' ? r.self : stage === 'manager' ? r.managerEntry : stage === 'other' ? (r.otherEntry ?? null) : null;
   const [answers, setAnswers] = useState<Record<string, { rating: number | null; text: string | null }>>(mine?.answers ?? {});
   const [overall, setOverall] = useState<number | null>(mine?.overallRating ?? null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -434,7 +543,8 @@ function ReviewBody({ r, onSave }: ReviewScreenProps & { r: ReviewDetail }) {
   const [submitting, setSubmitting] = useState(false);
   const set = (id: string, patch: Partial<{ rating: number | null; text: string | null }>) => setAnswers((a) => ({ ...a, [id]: { rating: a[id]?.rating ?? null, text: a[id]?.text ?? null, ...patch } }));
   const level = (v: number | null) => r.template.levels.find((l) => l.value === v);
-  const sections = r.template.sections.filter((s) => (stage ? s.whoAnswers.includes(stage) : true));
+  // A former manager answers what the manager answers.
+  const sections = r.template.sections.filter((s) => (stage ? s.whoAnswers.includes(stage === 'other' ? 'manager' : stage) : true));
   const input = (): EntryInput => ({ answers: Object.entries(answers).map(([questionId, a]) => ({ questionId, rating: a.rating, text: a.text })), overallRating: overall });
   const save = async (submit: boolean) => {
     setBusy(submit ? 'submit' : 'save');
@@ -452,6 +562,7 @@ function ReviewBody({ r, onSave }: ReviewScreenProps & { r: ReviewDetail }) {
   const shown = (e: ReviewEntry | null, who: string) =>
     e && (
       <Card title={`${who}${e.status === 'submitted' ? '' : ' (draft)'}`}>
+        {e.sealed && <Text as="p" tone="secondary">Comments removed by HR.</Text>}
         {r.template.sections.flatMap((s) =>
           s.questions
             .filter((q) => e.answers[q.id])
@@ -475,12 +586,88 @@ function ReviewBody({ r, onSave }: ReviewScreenProps & { r: ReviewDetail }) {
           ))}
         </ul>
       </Card>
-      {r.role !== 'employee' && r.finalScore !== null && (
+      {r.finalScore !== null && (
         <Card title="Score">
           <Text as="p">{`${r.finalScore}${r.band ? ` · ${r.band}` : ''}`}</Text>
           {r.excludedSections.length > 0 && <InlineAlert tone="info" title="Not scored">{`${r.excludedSections.join(', ')} had no ratings, so ${r.excludedSections.length === 1 ? 'it is' : 'they are'} left out of the score, not counted as 0.`}</InlineAlert>}
         </Card>
       )}
+      {r.skipComment && <Text as="p" tone="secondary">{`Skip-level: ${r.skipComment}`}</Text>}
+      {r.can.skip && (
+        <Card title="Skip-level review">
+          <Text as="p">You agree with the manager's review, or send it back with a reason. You do not change the rating.</Text>
+          <div className="yx-lif-row">
+            <Button variant="primary" onClick={() => setAsking('agree')}>
+              Agree
+            </Button>
+            <Button onClick={() => setAsking('send_back')}>Send back</Button>
+          </div>
+        </Card>
+      )}
+      {r.released && r.role === 'employee' && (
+        <Card title="Your review is released">
+          {r.released.acknowledgedAt ? <Text as="p">{`You acknowledged it on ${dateText(r.released.acknowledgedAt.slice(0, 10))}.`}</Text> : <Text as="p">Read it, then acknowledge it. Acknowledging does not mean you agree.</Text>}
+          {(r.disagreements ?? []).map((d) => (
+            <Text as="p" key={d.id}>
+              {`Your disagreement: ${d.text} · `}
+              <Badge tone={DISAGREEMENT[d.status].tone}>{DISAGREEMENT[d.status].label}</Badge>
+              {d.hrNote ? ` · HR: ${d.hrNote}` : ''}
+            </Text>
+          ))}
+          <div className="yx-lif-row">
+            {r.can.acknowledge && (
+              <Button variant="primary" onClick={() => setAsking('acknowledge')}>
+                Acknowledge
+              </Button>
+            )}
+            {r.can.disagree && <Button onClick={() => setAsking('disagree')}>{`Disagree${r.released.disagreeBy ? ` (until ${dateText(r.released.disagreeBy)})` : ''}`}</Button>}
+          </div>
+        </Card>
+      )}
+      {stage === 'other' && (
+        <InlineAlert tone="info" title="Your input as a former manager">
+          {`${r.manager} now writes the review. Your input is shown to them and HR, not to ${r.employee}, and it is not scored.`}
+        </InlineAlert>
+      )}
+      {(r.others ?? []).filter((o) => o.status === 'submitted').map((o) => (
+        <Card key={o.name} title={`${o.name} (former manager, not scored)`}>
+          {r.template.sections.flatMap((s) =>
+            s.questions
+              .filter((q) => o.answers?.[q.id])
+              .map((q) => (
+                <Text as="p" key={`${o.name}-${q.id}`}>
+                  {`${q.text}: ${[o.answers![q.id].rating !== null ? `${o.answers![q.id].rating} · ${level(o.answers![q.id].rating)?.label ?? ''}` : null, o.answers![q.id].text].filter(Boolean).join(' · ')}`}
+                </Text>
+              )),
+          )}
+          {o.comment && <Text as="p">{o.comment}</Text>}
+        </Card>
+      ))}
+      {r.can.addOther && onAddOther && (r.formerManagers ?? []).length > 0 && (
+        <div className="yx-lif-row">
+          <Button onClick={() => setAdding(true)}>Ask a former manager for input</Button>
+        </div>
+      )}
+      {adding && (
+        <ConfirmDialog open onOpenChange={(o) => !o && setAdding(false)} size="md" title="Ask a former manager for input" confirmLabel="Ask" confirmDisabled={!former} onConfirm={async () => {
+          await onAddOther!(former!);
+          setAdding(false);
+        }}>
+          <FormField id="ao-who" label="Former manager" required helper="They see only the questions and their own input, never the self review or the rating.">
+            <Select aria-label="Former manager" value={former} onChange={setFormer} options={r.formerManagers ?? []} />
+          </FormField>
+        </ConfirmDialog>
+      )}
+      {r.can.reopen && onReopen && (
+        <div className="yx-lif-row">
+          <Button onClick={() => setAsking('reopen')}>Reopen for the manager</Button>
+        </div>
+      )}
+      {asking === 'agree' && <TextDialog title="Agree with the manager's review" label="Comment" optional confirmLabel="Agree" onClose={() => setAsking(null)} onSave={(t) => onSkip!(true, t || null)} />}
+      {asking === 'send_back' && <TextDialog title="Send back to the manager" label="Reason" confirmLabel="Send back" helper="The manager sees it and submits again." onClose={() => setAsking(null)} onSave={(t) => onSkip!(false, t)} />}
+      {asking === 'acknowledge' && <TextDialog title="Acknowledge your review" label="Comment" optional confirmLabel="Acknowledge" onClose={() => setAsking(null)} onSave={(t) => onAcknowledge!(t || null)} />}
+      {asking === 'disagree' && <TextDialog title="Disagree with your review" label="What you disagree with, and why" confirmLabel="Send to HR" helper="HR reads it and answers. Your rating stays as it is unless HR reopens the review." onClose={() => setAsking(null)} onSave={(t) => onDisagree!(t)} />}
+      {asking === 'reopen' && <TextDialog title="Reopen this review" label="Reason" confirmLabel="Reopen" helper="The manager's review opens again; the employee sees nothing until it is released again. Recorded with your name." onClose={() => setAsking(null)} onSave={(t) => onReopen!(t)} />}
       {r.goals.length > 0 && (
         <Card title="Goals in this period">
           <ul className="yx-lif-list">
@@ -538,11 +725,11 @@ function ReviewBody({ r, onSave }: ReviewScreenProps & { r: ReviewDetail }) {
             </Button>
           </div>
           {submitting && (
-            <ConfirmDialog open onOpenChange={(o) => !o && setSubmitting(false)} title={stage === 'self' ? 'Send your self review?' : `Submit ${r.employee}'s review?`} confirmLabel="Submit" onConfirm={async () => {
+            <ConfirmDialog open onOpenChange={(o) => !o && setSubmitting(false)} title={stage === 'self' ? 'Send your self review?' : stage === 'other' ? 'Send your input?' : `Submit ${r.employee}'s review?`} confirmLabel="Submit" onConfirm={async () => {
               await save(true);
               setSubmitting(false);
             }}>
-              <Text as="p">{stage === 'self' ? `It goes to ${r.manager}. You cannot change it afterwards.` : 'The score is worked out from your ratings. You cannot change it afterwards.'}</Text>
+              <Text as="p">{stage === 'self' ? `It goes to ${r.manager}. You cannot change it afterwards.` : stage === 'other' ? `It goes to ${r.manager} and HR. You cannot change it afterwards.` : 'The score is worked out from your ratings. You cannot change it afterwards.'}</Text>
             </ConfirmDialog>
           )}
         </>

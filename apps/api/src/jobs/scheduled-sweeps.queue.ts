@@ -1,4 +1,4 @@
-import { logBullErrors } from './redis-connection';
+import { logBullErrors, bullOpts } from './redis-connection';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
@@ -11,7 +11,7 @@ export const SCHEDULED_SWEEPS_QUEUE = 'SCHEDULED_SWEEPS_QUEUE';
 export const SCHEDULED_SWEEPS_QUEUE_NAME = 'scheduled-sweeps';
 
 export function createScheduledSweepsQueue(connection: Redis): Queue {
-  return logBullErrors(new Queue(SCHEDULED_SWEEPS_QUEUE_NAME, { connection }), SCHEDULED_SWEEPS_QUEUE_NAME);
+  return logBullErrors(new Queue(SCHEDULED_SWEEPS_QUEUE_NAME, bullOpts(connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
 }
 
 export interface SweepDefinition {

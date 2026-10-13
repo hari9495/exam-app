@@ -250,6 +250,8 @@ export interface ReviewCycle {
   population: unknown;
   stages: CycleStage[];
   eligibilityRules: { cutoffMonths: number; rateLeavers: boolean };
+  /** PM5: feedback from colleagues; null = off. */
+  peerFeedback?: PeerConfig | null;
   status: 'draft' | 'launched' | 'calibrating' | 'released' | 'closed';
   launchedAt: string | null;
   version: number;
@@ -309,6 +311,8 @@ export interface ReviewSummary {
 
 export interface ReviewEntry {
   status: 'draft' | 'submitted';
+  /** HR sealed its texts (§15.3); the ratings stay. */
+  sealed?: boolean;
   answers: Record<string, { rating: number | null; text: string | null }>;
   overallRating: number | null;
   comment: string | null;
@@ -322,7 +326,8 @@ export interface ReviewDetail {
   employee: string;
   employeeId: string;
   manager: string;
-  role: 'employee' | 'manager' | 'viewer';
+  /** 'other': a former manager added by HR as a named reviewer; they see only their own input. */
+  role: 'employee' | 'manager' | 'viewer' | 'other';
   status: ReviewSummary['status'];
   next: NextStep;
   template: {
@@ -339,7 +344,16 @@ export interface ReviewDetail {
   band: string | null;
   excludedSections: string[];
   trail: { stage: string; event: string; reason: string | null; at: string }[];
-  can: { self: boolean; manager: boolean };
+  /** The skip-level's comment when they agreed (not shown to the employee before release). */
+  skipComment?: string | null;
+  /** Named other reviewers' input: advisory, never in the score, never shown to the employee. */
+  others?: { name: string; status: 'draft' | 'submitted'; answers: ReviewEntry['answers'] | null; comment: string | null }[];
+  otherEntry?: ReviewEntry | null;
+  /** Former managers HR can add as other reviewers. */
+  formerManagers?: Choice[];
+  released?: { at: string; acknowledgedAt: string | null; acknowledgeComment: string | null; disagreeBy: string | null } | null;
+  disagreements?: { id: string; text: string; status: 'open' | 'answered' | 'upheld' | 'not_upheld'; hrNote: string | null }[];
+  can: { self: boolean; manager: boolean; skip?: boolean; acknowledge?: boolean; disagree?: boolean; reopen?: boolean; other?: boolean; addOther?: boolean };
   version: number;
 }
 
@@ -347,4 +361,90 @@ export interface EntryInput {
   answers: { questionId: string; rating?: number | null; text?: string | null }[];
   overallRating?: number | null;
   comment?: string | null;
+}
+
+export interface Disagreement {
+  id: string;
+  reviewId: string;
+  employee: string;
+  text: string;
+  status: 'open' | 'answered' | 'upheld' | 'not_upheld';
+  hrNote: string | null;
+  at: string;
+}
+
+export interface Handover {
+  id: string;
+  employee: string;
+  from: string;
+  to: string;
+  direction: 'to_me' | 'from_me';
+  artefactType: 'review' | 'goal_parent' | string;
+  artefactId: string;
+  effectiveOn: string;
+  decisionNeeded: boolean;
+}
+
+// ------------------------------------------------------------------------------------------ PM5: peer and 360° (§19)
+
+export interface PeerConfig {
+  minNominees: number;
+  maxNominees: number;
+  dueOn: string;
+}
+
+export interface Nomination {
+  id: string;
+  reviewer: string;
+  reviewerEmployeeId: string;
+  relationship: 'peer' | 'report' | 'other';
+  proposedBy: 'employee' | 'manager' | 'hr';
+  status: 'proposed' | 'approved' | 'declined' | 'withdrawn' | 'submitted';
+}
+
+export interface Nominations {
+  peer: PeerConfig | null;
+  nominations: Nomination[];
+  can: { propose: boolean; decide: boolean; add: boolean };
+}
+
+export interface PeerGroups {
+  advisory: true;
+  peer: PeerConfig | null;
+  released: boolean;
+  responses: number;
+  shown: { group: 'peer' | 'report' | 'others'; responses: number; ratings: Record<string, { average: number; low: number; high: number; count: number }>; texts: string[] }[];
+  heldBack: number;
+}
+
+export interface FeedbackTask {
+  id: string;
+  reviewId: string;
+  employee: string;
+  cycle: string;
+  dueOn: string | null;
+  done: boolean;
+  open: boolean;
+}
+
+export interface PeerForm {
+  reviewId: string;
+  employee: string;
+  cycle: string;
+  dueOn: string | null;
+  anonymous: boolean;
+  sections: { id: string; title: string; questions: { id: string; text: string; answer: 'rating' | 'text' | 'both'; required: boolean; maxChars: number; wholeSection: boolean }[] }[];
+  levels: { value: number; label: string }[];
+  entry: { status: 'draft' | 'submitted'; answers: Record<string, { rating: number | null; text: string | null }>; comment: string | null } | null;
+  can: { answer: boolean };
+}
+
+export interface ReviewerBlock {
+  id: string;
+  a: string;
+  b: string;
+  employeeA: string;
+  employeeB: string;
+  reasonCode: 'conflict' | 'confidential_matter';
+  untilOn: string | null;
 }

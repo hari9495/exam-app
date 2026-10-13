@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
-import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { DocumentsService } from '../documents/documents.service';
 import { FilesService } from '../documents/files.service';
 import { LifecycleJourneysService } from './journeys.service';
@@ -31,11 +31,11 @@ export class LifecycleJobs implements OnModuleInit, OnModuleDestroy {
     private readonly extras: ExitExtrasService,
     private readonly lifeEvents: LifeEventsService,
   ) {
-    this.queue = logBullErrors(new Queue(QUEUE, { connection }), QUEUE);
+    this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
 
   async onModuleInit() {
-    this.worker = logBullErrors(new Worker(QUEUE, (job) => this.handle(job.name), { connection: this.connection }), QUEUE);
+    this.worker = logBullErrors(new Worker(QUEUE, (job) => this.handle(job.name), bullOpts(this.connection)), QUEUE);
     await this.queue.upsertJobScheduler('lifecycle-hourly', { every: 3_600_000 }, { name: 'hourly', data: {} });
     await this.queue.upsertJobScheduler('lifecycle-daily', { every: 24 * 3_600_000 }, { name: 'daily', data: {} });
   }

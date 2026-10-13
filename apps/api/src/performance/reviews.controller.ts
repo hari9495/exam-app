@@ -6,7 +6,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { CycleDto, EntryDto, OverrideDto, ReviewListDto } from './review-dto';
+import { CommentDto, CycleDto, DecideDisagreementDto, DisagreeDto, EntryDto, OtherReviewerDto, OverrideDto, ReasonDto, ReviewListDto } from './review-dto';
 import { VersionDto } from './dto';
 import { PerformanceReviewsService } from './reviews.service';
 
@@ -113,5 +113,79 @@ export class PerformanceReviewsController {
   @HttpCode(200)
   submitManager(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: EntryDto) {
     return this.svc.saveEntry(ctx, this.user(req), id, 'manager', dto, true);
+  }
+
+  @Post('reviews/:id/skip/agree')
+  @HttpCode(200)
+  skipAgree(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CommentDto) {
+    return this.svc.skipDecide(ctx, this.user(req), id, true, dto.comment ?? null);
+  }
+
+  @Post('reviews/:id/send-back')
+  @HttpCode(200)
+  sendBack(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReasonDto) {
+    return this.svc.skipDecide(ctx, this.user(req), id, false, dto.reason);
+  }
+
+  @Post('cycles/:id/release')
+  @HttpCode(200)
+  @RequirePermissions('perf.cycle.manage')
+  release(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.release(ctx, this.user(req), id);
+  }
+
+  @Post('reviews/:id/acknowledge')
+  @HttpCode(200)
+  acknowledge(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CommentDto) {
+    return this.svc.acknowledge(ctx, this.user(req), id, dto.comment ?? null);
+  }
+
+  @Post('reviews/:id/disagree')
+  @HttpCode(200)
+  disagree(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DisagreeDto) {
+    return this.svc.disagree(ctx, this.user(req), id, dto.text);
+  }
+
+  @Get('cycles/:id/disagreements')
+  @RequirePermissions('perf.cycle.manage')
+  disagreements(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.disagreements(ctx, this.user(req), id);
+  }
+
+  @Post('disagreements/:id/decide')
+  @HttpCode(200)
+  @RequirePermissions('perf.cycle.manage')
+  decideDisagreement(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DecideDisagreementDto) {
+    return this.svc.decideDisagreement(ctx, this.user(req), id, dto);
+  }
+
+  @Post('reviews/:id/reopen')
+  @HttpCode(200)
+  @RequirePermissions('perf.cycle.manage')
+  reopen(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReasonDto) {
+    return this.svc.reopen(ctx, this.user(req), id, dto.reason);
+  }
+
+  @Get('handovers')
+  handovers(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.svc.handovers(ctx, this.user(req));
+  }
+
+  @Post('reviews/:id/other-reviewers')
+  @HttpCode(200)
+  @RequirePermissions('perf.cycle.manage')
+  addOther(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: OtherReviewerDto) {
+    return this.svc.addOther(ctx, this.user(req), id, dto.employeeId);
+  }
+
+  @Put('reviews/:id/entries/other')
+  saveOther(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: EntryDto) {
+    return this.svc.saveOther(ctx, this.user(req), id, dto, false);
+  }
+
+  @Post('reviews/:id/entries/other/submit')
+  @HttpCode(200)
+  submitOther(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: EntryDto) {
+    return this.svc.saveOther(ctx, this.user(req), id, dto, true);
   }
 }

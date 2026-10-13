@@ -67,4 +67,25 @@ describe('Review cycles and reviews (M06 batch PM4)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() => expect(put).toEqual([{ answers: [{ questionId: 'g', rating: 3, text: null }], overallRating: null }]));
   });
+
+  it('after release the employee acknowledges and disagrees through their own routes', async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'r1' });
+    const posted: [string, unknown][] = [];
+    const review = { id: 'r1', cycle: { id: 'c1', name: 'FY annual', periodFrom: '2025-04-01', periodTo: '2026-03-31', stages: [] }, employee: 'Arjun', employeeId: 'e1', manager: 'Priya', role: 'employee', status: 'released', next: { stage: 'done', label: 'Released', owner: 'Arjun', dueOn: null }, template: { name: 'Annual', scoring: 'weighted', levels: [], sections: [] }, goals: [], self: null, selfSubmitted: true, managerEntry: null, finalScore: 4, band: 'Exceeds', excludedSections: [], trail: [], released: { at: '2026-11-20T09:00:00.000Z', acknowledgedAt: null, acknowledgeComment: null, disagreeBy: '2026-12-05' }, disagreements: [], can: { self: false, manager: false, acknowledge: true, disagree: true }, version: 3 };
+    const post = (path: string) => (_p: string, init: RequestInit) => (posted.push([path, JSON.parse(String(init.body))]), review);
+    route({
+      'GET /rbac/me/permissions': [],
+      'GET /performance/reviews/r1': review,
+      'POST /performance/reviews/r1/acknowledge': post('ack'),
+      'POST /performance/reviews/r1/disagree': post('disagree'),
+    });
+    wrap(<YxReviewPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Acknowledge' }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Acknowledge' }));
+    await waitFor(() => expect(posted).toEqual([['ack', { comment: null }]]));
+    await userEvent.click(screen.getByRole('button', { name: /^Disagree/ }));
+    await userEvent.type(within(screen.getByRole('dialog')).getByRole('textbox', { name: /What you disagree with/ }), 'Mine.');
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Send to HR' }));
+    await waitFor(() => expect(posted[1]).toEqual(['disagree', { text: 'Mine.' }]));
+  });
 });

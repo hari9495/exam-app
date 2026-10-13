@@ -39,7 +39,9 @@ const EXPENSES_SUPPORT_EXCLUDED = ['expense_claims', 'expense_lines', 'expense_l
 // M06 PM3: feedback and 1:1s (M06-BUILD-DESIGN 5.10).
 const PERFORMANCE_SUPPORT_EXCLUDED = ['feedback_requests', 'feedback_items', 'one_on_ones', 'one_on_one_agenda', 'one_on_one_private_notes', 'one_on_one_actions',
   // PM4: review cycles and reviews.
-  'review_cycles', 'review_eligibility', 'reviews', 'review_entries', 'review_stage_log', 'review_disagreements', 'perf_owner_transfers'];
+  'review_cycles', 'review_eligibility', 'reviews', 'review_entries', 'review_stage_log', 'review_disagreements', 'perf_owner_transfers',
+  // PM5: peer and 360°.
+  'feedback_nominations', 'reviewer_blocks'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt((SUPPORT_EXCLUDED.includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 

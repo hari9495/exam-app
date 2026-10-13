@@ -13,6 +13,7 @@ import { PerformanceSetupController } from '../performance/setup.controller';
 import { PerformanceGoalsController } from '../performance/goals.controller';
 import { PerformanceFeedbackController } from '../performance/feedback.controller';
 import { PerformanceReviewsController } from '../performance/reviews.controller';
+import { PerformancePeerController } from '../performance/peer.controller';
 import { SpecialCasesController } from '../lifecycle/special-cases.controller';
 import { ExpensesController } from '../expenses/expenses.controller';
 import { ExpenseClaimsController } from '../expenses/claims.controller';
@@ -64,12 +65,14 @@ const IMPLICIT: Record<string, string[]> = {
   // PM3: feedback and 1:1s are decided per item (the two people of a 1:1; giver, recipient, manager chain).
   PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone'],
   // PM4: reviews are decided per review (the person, the manager, the chain above, perf.review.view in scope).
-  PerformanceReviewsController: ['list', 'get', 'saveSelf', 'submitSelf', 'saveManager', 'submitManager'],
+  PerformanceReviewsController: ['list', 'get', 'saveSelf', 'submitSelf', 'saveManager', 'submitManager', 'skipAgree', 'sendBack', 'acknowledge', 'disagree', 'handovers', 'saveOther', 'submitOther'],
+  // PM5: nominations and answers are decided per review (the employee, the manager, an approved nominee).
+  PerformancePeerController: ['nominations', 'options', 'nominate', 'approve', 'decline', 'withdraw', 'tasks', 'form', 'savePeer', 'submitPeer', 'grouped'],
   ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff'],
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { OrgSecretsCryptoService, TenantPrismaService } from '@exam-platform/shared';
-import { REDIS_CONNECTION, logBullErrors } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { Tx } from '../org-structure/org-structure.service';
 import { DeskAccessService, DeskActor, audit, canWork, deskSystem, emit } from './desk-access';
 import { GmailPoller, GraphPoller, MailboxPoller, PollResult } from './mail-adapters';
@@ -58,11 +58,11 @@ export class MailboxSyncService implements OnModuleInit, OnModuleDestroy {
     private readonly mailOut: MailOutService,
     @Inject(SD_DNS_RESOLVER) private readonly resolver: DnsResolver,
   ) {
-    this.queue = logBullErrors(new Queue(AGENT_MAIL_QUEUE, { connection }), AGENT_MAIL_QUEUE);
+    this.queue = logBullErrors(new Queue(AGENT_MAIL_QUEUE, bullOpts(connection)), AGENT_MAIL_QUEUE);
   }
 
   async onModuleInit() {
-    this.worker = logBullErrors(new Worker(AGENT_MAIL_QUEUE, () => this.syncAll(), { connection: this.connection, concurrency: 1 }), AGENT_MAIL_QUEUE);
+    this.worker = logBullErrors(new Worker(AGENT_MAIL_QUEUE, () => this.syncAll(), { ...bullOpts(this.connection), concurrency: 1 }), AGENT_MAIL_QUEUE);
     await this.queue.upsertJobScheduler('sd-agent-mail-sync', { every: 120_000 }, { name: 'sync', data: {} });
   }
 
