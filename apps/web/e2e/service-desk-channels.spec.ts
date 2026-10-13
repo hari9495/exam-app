@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { signIn } from './fixtures/sign-in';
@@ -26,7 +26,9 @@ const run = randomUUID().slice(0, 6);
 /** apps/api/.env plus the e2e Redis, for the two laptop scripts. */
 function apiEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
-  for (const line of readFileSync(join(API_DIR, '.env'), 'utf8').split(/\r?\n/)) {
+  // apps/api/.env on a laptop; in CI the API's settings are already in the environment.
+  const file = join(API_DIR, '.env');
+  for (const line of existsSync(file) ? readFileSync(file, 'utf8').split(/\r?\n/) : []) {
     const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
     if (m && env[m[1]] === undefined) env[m[1]] = m[2].replace(/^"(.*)"$/, '$1');
   }
