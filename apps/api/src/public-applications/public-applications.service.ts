@@ -19,6 +19,7 @@ import { resolveConsentStamp } from '../common/consent-check';
 import { EmailService } from '../email/email.service';
 import { scannerFromEnv, type Scanner } from '../common/scanner';
 import { checkConsents, ipHash, isSlug, safeColor } from '../hiring/careers-rules';
+import { poolConsented, withdrawConsent } from '../talent/pools.service';
 import { QuickApplyDto } from './dto/quick-apply.dto';
 import { CareersAssistantDto } from './dto/careers-assistant.dto';
 
@@ -500,12 +501,36 @@ export class PublicApplicationsService {
   // writes (later tasks reuse this). No org context exists yet until the token resolves one, so
   // this bypasses RLS the same way resolveJob/resolveApply do.
   private async resolvePortalCandidate(portalToken: string): Promise<{ id: string; organizationId: string }> {
-    const candidate = await this.tenantPrisma.forTenant(
+    // M10 AT4 (D10): a merged-away candidate's link opens the kept candidate (a few hops at most).
+    let candidate = await this.tenantPrisma.forTenant(
       { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
-      (tx) => tx.candidate.findUnique({ where: { portalToken }, select: { id: true, organizationId: true, erasedAt: true } }),
+      (tx) => tx.candidate.findUnique({ where: { portalToken }, select: { id: true, organizationId: true, erasedAt: true, mergedIntoId: true } }),
     );
-    if (!candidate || candidate.erasedAt) throw new NotFoundException('Portal not found');
+    for (let hop = 0; candidate?.mergedIntoId && hop < 5; hop++) {
+      const next: string = candidate.mergedIntoId;
+      candidate = await this.tenantPrisma.forTenant({ organizationId: candidate.organizationId, isSuperAdmin: true }, (tx) => tx.candidate.findUnique({ where: { id: next }, select: { id: true, organizationId: true, erasedAt: true, mergedIntoId: true } }));
+    }
+    if (!candidate || candidate.erasedAt || candidate.mergedIntoId) throw new NotFoundException('Portal not found');
     return { id: candidate.id, organizationId: candidate.organizationId };
+  }
+
+  /** M10 AT4: the candidate keeps their details for another retention period (the renewal email's link). */
+  async renewRetention(portalToken: string) {
+    const { id, organizationId } = await this.resolvePortalCandidate(portalToken);
+    await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: true }, async (tx) => {
+      await tx.candidate.update({ where: { id }, data: { retentionRenewedAt: new Date(), retentionNoticeAt: null } });
+      // Staying means agreeing to be kept for other roles: recorded against the current notice, when there is one.
+      const notice = await tx.consentNotice.findFirst({ where: { organizationId, purpose: 'talent_pool' }, orderBy: { version: 'desc' } });
+      if (notice) await tx.candidateConsent.create({ data: { organizationId, candidateId: id, noticeId: notice.id, purpose: 'talent_pool', version: notice.version, source: 'renewal' } });
+    });
+    return { renewed: true };
+  }
+
+  /** M10 AT4: the candidate withdraws their talent-pool consent; they leave every pool at once. */
+  async withdrawTalentPool(portalToken: string) {
+    const { id, organizationId } = await this.resolvePortalCandidate(portalToken);
+    await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: true }, (tx) => withdrawConsent(tx, organizationId, id, 'talent_pool'));
+    return { withdrawn: true };
   }
 
   // The unified candidate portal: resolve the candidate by their magic-link token and aggregate
@@ -516,7 +541,7 @@ export class PublicApplicationsService {
     const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
     // Now that the token has resolved a real org, look up the display fields + résumé state
     // through normal org-scoped RLS (candidateId) rather than another LOOKUP_ORG bypass.
-    const { candidate, entries, profile } = await this.tenantPrisma.forTenant(
+    const { candidate, entries, profile, inPools } = await this.tenantPrisma.forTenant(
       { organizationId, isSuperAdmin: true },
       async (tx) => {
         const candidate = await tx.candidate.findUnique({ where: { id: candidateId }, select: { name: true, email: true, phone: true } });
@@ -536,7 +561,8 @@ export class PublicApplicationsService {
           },
         });
         const profile = await tx.candidateProfile.findUnique({ where: { candidateId }, select: { resumePath: true, parseStatus: true } });
-        return { candidate, entries, profile };
+        const inPools = (await poolConsented(tx, organizationId, [candidateId])).has(candidateId);
+        return { candidate, entries, profile, inPools };
       },
     );
     return {
@@ -544,6 +570,8 @@ export class PublicApplicationsService {
       candidateEmail: candidate?.email ?? '',
       candidatePhone: candidate?.phone ?? null,
       resume: { hasResume: Boolean(profile?.resumePath), parseStatus: profile?.parseStatus ?? null },
+      /** M10 AT4: whether they agreed to be kept for other roles (they can withdraw it here). */
+      talentPool: inPools,
       orgName: org?.name ?? '',
       applications: entries.map((e) => ({
         jobTitle: e.job.title,

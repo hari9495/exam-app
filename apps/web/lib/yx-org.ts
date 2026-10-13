@@ -161,6 +161,10 @@ export const YX_KEYS = [
   'approvals:configure',
   // AT3: the careers site, consent notices and job boards (company settings).
   'org:manage_settings',
+  // AT4: candidates (list, profile, merge, lists) and data rights (legal hold, erase, retention).
+  'candidate:manage',
+  'candidate:view',
+  'candidate:data_rights',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

@@ -1108,6 +1108,9 @@ describe('CandidatesService', () => {
         candidateFitAssessment: { updateMany: jest.fn().mockResolvedValue({}) },
         customFieldValue: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
         candidateEmail: { updateMany: jest.fn() },
+        candidateSms: { updateMany: jest.fn() },
+        candidateWhatsapp: { updateMany: jest.fn() },
+        talentPoolMember: { deleteMany: jest.fn() },
         offer: {
           findMany: jest.fn().mockResolvedValue(overrides.offers ?? []),
           updateMany: jest.fn(),
@@ -1167,7 +1170,7 @@ describe('CandidatesService', () => {
       expect(result.id).toBe('cand-1');
       expect(result.erasedAt).toEqual(expect.any(Date));
       expect(audit.record).toHaveBeenCalledWith(context, {
-        actorUserId: 'user-1', action: 'candidate.erased', entityType: 'candidate', entityId: 'cand-1',
+        actorUserId: 'user-1', action: 'candidate.erased', entityType: 'candidate', entityId: 'cand-1', metadata: { reason: 'request' },
       });
     });
 
@@ -1303,6 +1306,10 @@ describe('CandidatesService', () => {
           parsedTitle: null,
           parsedYearsExperience: null,
           parseStatus: 'unavailable',
+          embeddingJson: null,
+          embeddingHash: null,
+          embeddingModel: null,
+          embeddedAt: null,
         },
       });
       // The blob is still collected from the path read before the redaction, and still deleted.
@@ -1386,7 +1393,7 @@ describe('CandidatesService', () => {
       expect(result).toEqual({ id: 'cand-1', erasedAt: expect.any(Date) });
       expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(2);
       expect(audit.record).toHaveBeenCalledWith(context, {
-        actorUserId: 'user-1', action: 'candidate.erased', entityType: 'candidate', entityId: 'cand-1',
+        actorUserId: 'user-1', action: 'candidate.erased', entityType: 'candidate', entityId: 'cand-1', metadata: { reason: 'request' },
       });
       // The summary line (counts only) plus a companion detail line -- the only place left, once
       // this call returns, that identifies *which* blob failed and why (metadataJson is already

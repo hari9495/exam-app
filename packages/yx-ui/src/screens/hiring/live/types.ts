@@ -184,3 +184,106 @@ export interface CostInput {
   currency: string;
   note: string | null;
 }
+
+// ------------------------------------------------------------------------------------------ AT4: candidates
+
+export type GlobalStage = 'new' | 'in_review' | 'engaged' | 'available' | 'offered' | 'hired' | 'rejected';
+
+export interface CandidateRow {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  status: 'active' | 'inactive';
+  globalStage: GlobalStage;
+  createdAt: string;
+  /** Only a candidate never invited to an assessment can be deleted (otherwise erase it). */
+  neverInvited: boolean;
+  customFields?: Record<string, string | number | null>;
+}
+
+export interface CandidateInput {
+  name: string;
+  email: string;
+  phone?: string;
+  customFields?: Record<string, string | number | null>;
+}
+
+export interface EmailTemplateChoice {
+  value: string;
+  label: string;
+  subject: string;
+  body: string;
+}
+
+export interface EmailCompose {
+  templateId: string | null;
+  subject: string;
+  body: string;
+  senderAddressId?: string;
+}
+
+export interface UploadInviteResult {
+  invited: number;
+  skipped: number;
+  errors: { row: number; message: string }[];
+}
+
+export interface CandidateProfileView {
+  candidate: { id: string; name: string; email: string; phone: string | null; phoneE164: string | null; status: string; globalStage: GlobalStage; createdAt: string; erasedAt: string | null; emailOptedOut: boolean };
+  legalHold: { at: string; reason: string | null } | null;
+  retention: { months: number; lastActivityAt: string; until: string | null; noticeAt: string | null };
+  resume: { hasFile: boolean; scan: string; parseStatus: string; title: string | null; summary: string | null; skills: string | null; years: number | null } | null;
+  applications: { id: string; jobId: string; jobTitle: string; jobStatus: string; stage: string | null; status: string | null; appliedAt: string; closed: boolean; closedReason: string | null; source: string | null }[];
+  assessments: { id: string; exam: string; status: string; invitedAt: string }[];
+  interviews: { id: string; status: string; createdAt: string }[];
+  messages: { emails: { id: string; subject: string; status: string; createdAt: string }[]; sms: number; whatsapp: number };
+  consents: { id: string; purpose: string; version: number; source: string; givenAt: string; withdrawnAt: string | null }[];
+  lists: { id: string; name: string; kind: 'pool' | 'hotlist'; addedAt: string }[];
+  merges: { id: string; keptId: string; mergedId: string; mergedAt: string; choices: Record<string, string> }[];
+}
+
+export type MergeField = 'name' | 'phone' | 'resume';
+export type MergeChoices = Record<MergeField, 'kept' | 'merged'>;
+
+export interface DuplicatePairView {
+  a: { id: string; name: string; email: string; phone: string | null };
+  b: { id: string; name: string; email: string; phone: string | null };
+  reasons: ('phone' | 'name_phone' | 'resume')[];
+  score: number | null;
+}
+
+export interface TalentList {
+  id: string;
+  name: string;
+  kind: 'pool' | 'hotlist';
+  description: string | null;
+  members: number;
+}
+
+export interface TalentListMember {
+  candidateId: string;
+  addedAt: string;
+  candidate: { id: string; name: string; email: string; globalStage: GlobalStage } | null;
+}
+
+export interface RetentionRunRow {
+  id: string;
+  runAt: string;
+  periodMonths: number;
+  renewalsSent: number;
+  anonymised: number;
+  skippedHold: number;
+  skippedOpen: number;
+  skippedHired: number;
+  triggeredBy: string | null;
+}
+
+export interface RetentionPreview {
+  periodMonths: number;
+  renewalsSent: number;
+  anonymised: number;
+  skippedHold: number;
+  skippedOpen: number;
+  skippedHired: number;
+}

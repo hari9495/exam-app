@@ -41,7 +41,7 @@ function firstName(name: string | null | undefined): string {
 function WorthALookCard({ watch }: { watch: TodayResponse['watch'] }) {
   const rows: { key: string; text: string; actionLabel: string; href: string }[] = [];
   if (watch.staleInvitations > 0) {
-    rows.push({ key: 'stale', text: `${watch.staleInvitations} invitations unopened for 5+ days`, actionLabel: 'Resend', href: '/v2/candidates' });
+    rows.push({ key: 'stale', text: `${watch.staleInvitations} invitations unopened for 5+ days`, actionLabel: 'Resend', href: '/yx/hiring/candidates' });
   }
   if (watch.proctoringFlags > 0) {
     rows.push({ key: 'flags', text: `${watch.proctoringFlags} proctoring flags waiting for your review`, actionLabel: 'Review', href: '/v2/reports' });
