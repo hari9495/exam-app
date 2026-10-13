@@ -11,5 +11,6 @@ import { CandidateSearchService } from './candidate-search.service';
   imports: [CryptoModule, BillingModule, JobsModule],
   controllers: [CandidateSearchController],
   providers: [CandidateSearchService],
+  exports: [CandidateSearchService],
 })
 export class CandidateSearchModule {}

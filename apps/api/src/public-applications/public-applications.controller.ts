@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Headers, Ip, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Headers, HttpCode, Ip, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { PublicApplicationsService } from './public-applications.service';
 import { ApplyDto } from './dto/apply.dto';
@@ -110,6 +110,19 @@ export class PublicApplicationsController {
 
   // Returning-candidate one-click re-apply: the org's other open roles, and applying to one reusing
   // the candidate's saved details + résumé. Both scoped by the candidate's own portal token.
+  // M10 AT4: the retention renewal email's link, and withdrawing talent-pool consent.
+  @Post('portal/:portalToken/stay')
+  @HttpCode(200)
+  renewRetention(@Param('portalToken') portalToken: string) {
+    return this.service.renewRetention(portalToken);
+  }
+
+  @Post('portal/:portalToken/talent-pool/withdraw')
+  @HttpCode(200)
+  withdrawTalentPool(@Param('portalToken') portalToken: string) {
+    return this.service.withdrawTalentPool(portalToken);
+  }
+
   @Get('portal/:portalToken/open-jobs')
   portalOpenJobs(@Param('portalToken') portalToken: string) {
     return this.service.getPortalOpenJobs(portalToken);

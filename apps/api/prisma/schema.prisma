@@ -828,6 +828,15 @@ model Candidate {
   consentedAt        DateTime?           @map("consented_at") @db.Timestamptz(3)
   consentVersion     Int?                @map("consent_version")
   smsOptedOutAt      DateTime?           @map("sms_opted_out_at") @db.Timestamptz(3)
+  /// M10 AT4: normalised by the database (a generated column) from phone; never written by the app.
+  phoneE164          String?             @map("phone_e164") @db.VarChar(20)
+  /// M10 AT4 (D10): set on the candidate merged away; it points at the kept one so old links still resolve.
+  mergedIntoId       String?             @map("merged_into_id") @db.Uuid
+  legalHoldAt        DateTime?           @map("legal_hold_at") @db.Timestamptz(3)
+  legalHoldReason    String?             @map("legal_hold_reason") @db.VarChar(500)
+  legalHoldBy        String?             @map("legal_hold_by") @db.Uuid
+  retentionRenewedAt DateTime?           @map("retention_renewed_at") @db.Timestamptz(3)
+  retentionNoticeAt  DateTime?           @map("retention_notice_at") @db.Timestamptz(3)
   invitations        Invitation[]
   pipelineEntries    PipelineEntry[]
   profile            CandidateProfile?
@@ -9737,4 +9746,77 @@ model RecruitingCost {
 
   @@index([organizationId, jobId])
   @@map("recruiting_costs")
+}
+
+/// M10 AT4 (D10): one row per merge; never changed or removed.
+model CandidateMerge {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  keptId         String   @map("kept_id") @db.Uuid
+  mergedId       String   @unique(map: "candidate_merges_merged_key") @map("merged_id") @db.Uuid
+  mergedBy       String?  @map("merged_by") @db.Uuid
+  mergedAt       DateTime @default(now()) @map("merged_at") @db.Timestamptz(3)
+  choices        Json
+  moved          Json
+
+  @@index([organizationId, keptId], map: "candidate_merges_kept_idx")
+  @@map("candidate_merges")
+}
+
+/// M10 AT4: a talent pool (needs talent-pool consent) or a hotlist (a shortlist for a current need).
+model TalentPool {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  name           String             @db.VarChar(120)
+  kind           String             @db.VarChar(10)
+  description    String?            @db.VarChar(500)
+  ownerUserId    String?            @map("owner_user_id") @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  archivedAt     DateTime?          @map("archived_at") @db.Timestamptz(3)
+  members        TalentPoolMember[]
+
+  @@map("talent_pools")
+}
+
+model TalentPoolMember {
+  organizationId String     @map("organization_id") @db.Uuid
+  poolId         String     @map("pool_id") @db.Uuid
+  candidateId    String     @map("candidate_id") @db.Uuid
+  addedBy        String?    @map("added_by") @db.Uuid
+  addedAt        DateTime   @default(now()) @map("added_at") @db.Timestamptz(3)
+  note           String?    @db.VarChar(500)
+  pool           TalentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+
+  @@id([poolId, candidateId])
+  @@index([organizationId, candidateId], map: "talent_pool_members_candidate_idx")
+  @@map("talent_pool_members")
+}
+
+/// M10 AT4: the retention sweep's log (no personal data).
+model CandidateRetentionRun {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  runAt          DateTime @default(now()) @map("run_at") @db.Timestamptz(3)
+  triggeredBy    String?  @map("triggered_by") @db.Uuid
+  periodMonths   Int      @map("period_months")
+  renewalsSent   Int      @default(0) @map("renewals_sent")
+  anonymised     Int      @default(0)
+  skippedHold    Int      @default(0) @map("skipped_hold")
+  skippedOpen    Int      @default(0) @map("skipped_open")
+  skippedHired   Int      @default(0) @map("skipped_hired")
+
+  @@index([organizationId, runAt(sort: Desc)], map: "candidate_retention_runs_org_idx")
+  @@map("candidate_retention_runs")
+}
+
+model CandidateRetentionAction {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  runId          String   @map("run_id") @db.Uuid
+  candidateId    String   @map("candidate_id") @db.Uuid
+  action         String   @db.VarChar(20)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([runId], map: "candidate_retention_actions_run_idx")
+  @@map("candidate_retention_actions")
 }
