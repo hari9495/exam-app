@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { DocumentsModule } from '../documents/documents.module';
+import { EmployeeHistoryModule } from '../employee-history/employee-history.module';
+import { PayrollModule } from '../payroll/payroll.module';
 import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connection';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { WorkflowModule } from '../workflow/workflow.module';
@@ -9,6 +12,8 @@ import { PerformanceGoalsController } from './goals.controller';
 import { PerformanceGoalsService } from './goals.service';
 import { PerformanceJobs } from './perf-jobs';
 import { PerformanceCalibrationController } from './calibration.controller';
+import { PerformanceCompController } from './comp.controller';
+import { PerformanceCompService } from './comp.service';
 import { PerformanceCalibrationService } from './calibration.service';
 import { PerformancePeerController } from './peer.controller';
 import { PerformancePeerService } from './peer.service';
@@ -24,10 +29,11 @@ import { PerformanceSetupService } from './setup.service';
 // PM4: review cycles (eligibility, launch) and reviews (self and manager stages, scoring, reminders).
 // PM5: peer and 360° feedback (nominations, anonymous groups, reviewer blocks, reveal for abuse).
 // PM6: calibration (sessions, guide, changes with reasons, sign-off) and reports with suppression.
+// PM7: ratings to pay (matrices, comp cycles, budgets, proposals, approval, apply to P06 and payroll, pay band, pay equity).
 @Module({
-  imports: [AuthModule, WorkflowModule, NotificationsModule],
-  controllers: [PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, PerformanceSetupService, PerformanceGoalsService, PerformanceFeedbackService, PerformanceReviewsService, PerformancePeerService, PerformanceCalibrationService, PerformanceReportsService, PerformanceJobs],
+  imports: [AuthModule, WorkflowModule, NotificationsModule, PayrollModule, EmployeeHistoryModule, DocumentsModule],
+  controllers: [PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, PerformanceSetupService, PerformanceGoalsService, PerformanceFeedbackService, PerformanceReviewsService, PerformancePeerService, PerformanceCalibrationService, PerformanceReportsService, PerformanceCompService, PerformanceJobs],
   exports: [PerformanceSetupService, PerformanceGoalsService],
 })
 export class PerformanceModule {}

@@ -150,6 +150,8 @@ export const YX_KEYS = [
   'perf.feedback.investigate',
   'perf.calibration.facilitate',
   'perf.report.view',
+  'perf.comp.manage',
+  'perf.comp.approve',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

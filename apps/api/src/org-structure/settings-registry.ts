@@ -63,6 +63,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'perf.disagreement.days': { label: 'Performance: days after release to disagree with a review', scopes: ['tenant'], dated: false, values: ['7', '15', '30'], default: '15' },
   'perf.anonymity.min_responses': { label: 'Performance: fewest answers before anonymous feedback is shown (never below 3)', scopes: ['tenant'], dated: false, values: ['3', '4', '5'], default: '3' },
   'perf.report.min_cell': { label: 'Performance: smallest group shown in distributions and reports', scopes: ['tenant'], dated: false, values: ['5', '10'], default: '5' },
+  'perf.comp.budget_overrun': { label: 'Performance: a comp proposal over budget', scopes: ['tenant', 'legal_entity'], dated: false, values: ['extra_approval', 'block'], default: 'extra_approval' },
+  'perf.pay_band.visible': { label: 'Performance: employees see their own pay band', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
+  'perf.pay_equity.flag_pct': { label: 'Performance: flag pay below the grade-and-role median by more than (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '10', '15'], default: '10' },
   'perf.goal.checkin_days': { label: 'Performance: remind about goal check-ins after (days)', scopes: ['tenant'], dated: false, values: ['14', '30', '90'], default: '30' },
   'alumni.access_years': { label: 'Alumni can read their documents for (years after leaving)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10'], default: '7' },
   // M01 YX-LC-18 (lifecycle 6e): the rehire policy. Starter template "fresh start, same record, code and UAN"; HR may
