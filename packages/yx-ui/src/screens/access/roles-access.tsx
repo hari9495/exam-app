@@ -8,7 +8,7 @@ import { TextArea, TextField } from '../../components/inputs';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
-import { Breadcrumbs, Card, PageHeader } from '../../components/shell';
+import { Breadcrumbs, Card, DescriptionList, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { dayKey } from '../../lib/dates';
 import { dateLabel, errorText } from '../org/org-kit';
@@ -247,20 +247,19 @@ function Effective({ userId, loadEffective }: { userId: string; loadEffective: R
     <Card title="What they can do today">
       {error && <InlineAlert tone="danger" title={error} />}
       {!data && !error && <Skeleton height={80} />}
-      {data && (
-        <ul className="yx-acc__list">
-          {data.keys.map((k) => (
-            <li key={k.key}>
-              <Text>{k.label}</Text>
-              <Text tone={k.people ? 'default' : 'secondary'} weight={k.people ? 'semibold' : undefined}>{`${k.people} ${k.people === 1 ? 'person' : 'people'}`}</Text>
-            </li>
-          ))}
-        </ul>
-      )}
       {data && !data.hasEmployeeRecord && (
-        <Text as="p" tone="secondary" size="sm">
+        <Text as="p" tone="secondary" size="sm" className="yx-acc__note">
           No employee record, so no team of their own.
         </Text>
+      )}
+      {data && (
+        <DescriptionList
+          columns={2}
+          items={data.keys.map((k) => ({
+            label: k.label,
+            value: <Text tone={k.people ? 'default' : 'secondary'} weight={k.people ? 'semibold' : undefined}>{`${k.people} ${k.people === 1 ? 'person' : 'people'}`}</Text>,
+          }))}
+        />
       )}
     </Card>
   );

@@ -40,6 +40,14 @@ const pick = async (label: string, option: string) => {
 };
 
 describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
+  it('what they can do today: each count sits beside its label, the no-team note heads the card', async () => {
+    roles();
+    const salary = (await screen.findByText('See salary')).closest('.yx-dl__row') as HTMLElement;
+    expect(within(salary).getByText('0 people')).toBeInTheDocument(); // label and count in one row of the shared DescriptionList
+    const note = screen.getByText('No employee record, so no team of their own.');
+    expect(note.compareDocumentPosition(salary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy(); // about the card, not the last row
+  });
+
   it("shows a person's grants and what they can do today", async () => {
     const p = roles();
     expect((await screen.findAllByText('42 people')).length).toBe(2);
