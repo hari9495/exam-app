@@ -1,6 +1,6 @@
 # M10 · Recruitment / ATS · Build design
 
-> **Status:** 🟡 Draft for the founder, 13 Oct 2026. The module decisions (Q1–Q8, R1, D3, E18, B8, C7, T8–T12, J9, J10, J13, J18, S9) were taken on 25–28 Sep 2026 in [M10](M10-ats.md). This doc turns the internal-hiring part into a reuse plan, tables, permissions, APIs, events, screens, tests and small pull requests. The founder questions are in §20.
+> **Status:** ✅ Decided, 13 Oct 2026: the founder accepted D1–D14 (§20). D1: one set of hiring screens; each v2 hiring page is retired with a redirect once its YukthiX screen ships; candidate-facing v2 pages stay until replaced. D2–D14 with the recommended defaults. Batch AT1 is being built on `feat/yukthix-ats-1`. The module decisions (Q1–Q8, R1, D3, E18, B8, C7, T8–T12, J9, J10, J13, J18, S9) were taken on 25–28 Sep 2026 in [M10](M10-ats.md). This doc turns the internal-hiring part into a reuse plan, tables, permissions, APIs, events, screens, tests and small pull requests. The founder questions are in §20.
 > **Scope:** internal hiring:
 > - requisitions with headcount and budget links;
 > - job posting, the careers site and the job-board seam;
@@ -452,25 +452,26 @@ Short questions, each with the recommended default.
 
 | # | Question | Recommended default |
 |---|---|---|
-| **D1** | The hiring product already has its own screens (v2). Do we rebuild them in YukthiX? | **Yes, YukthiX gets new hiring screens on the same backend.** v2 keeps working for hiring-only customers, but new features land only in YukthiX. We decide later when v2 customers move. |
-| **D2** | Keep the old permission names working? | **Yes.** Old keys keep working; new YukthiX roles use scoped `ats.*` keys (by entity / department). |
-| **D3** | Move requisition and offer approvals to the YukthiX approval engine? | **Yes, migrate the existing chains automatically**, then retire the old engine once v2 uses it too. |
-| **D4** | Offer letters: old offer templates or YukthiX letters with e-sign? | **YukthiX letters (P05) with OTP e-accept** for YukthiX customers; old templates are converted into P05 drafts. v2 keeps the old page until it moves. |
-| **D5** | Must every hire be in an approved headcount plan? | **Advisory by default:** requisitions show plan status, and outside-plan ones need the extra approver. Companies can switch the plan off or make it required. |
-| **D6** | The existing AI features (fit score, AI scorecard draft): on for YukthiX customers? | **Résumé parsing on** (needed for duplicates and search); **fit score and AI scorecard draft off by default**, company switch, advisory only. |
-| **D7** | Can interviewers see each other's scorecards? | **Only after submitting their own**, so nobody copies the first opinion. |
-| **D8** | Agencies today use a shared link. Change to sign-in? | **Yes, agency contacts sign in with a one-time code**; old links expire 30 days after the company switches. Candidate ownership lasts 6 months. |
-| **D9** | When is a referral bonus paid? | **After the hire completes 90 days**, through payroll's normal one-time pay approval; company sets amounts and days. |
-| **D10** | Can a candidate merge be undone? | **No, but it is fully recorded** (who chose which field), and merged links still lead to the kept candidate. |
-| **D11** | When does a candidate become a "person" in YukthiX? | **When the first offer is drafted** (or on a data request), not at application, to keep the person list clean. |
-| **D12** | Which job boards first? | **Keep LinkedIn and Indeed (already built).** Add Naukri first when a customer gives us an account with API access, then Foundit and Shine. Until then, apply links and the feed. |
-| **D13** | Is an internal applicant's current manager told? | **Only when the applicant reaches the offer stage**; company may change it. The manager never sees test results. |
-| **D14** | Can YukthiX support staff see hiring data during a support session? | **Offers, scorecards, budgets and referral rewards: never. Candidate details: masked** (support may need to fix an application). |
+| **D1** | The hiring product already has its own screens (v2). Do we rebuild them in YukthiX? | ✅ **Accepted (13 Oct 2026), refined:** one set of screens. Each v2 hiring page is removed, with a redirect to its YukthiX screen, in the PR that ships that screen; candidate-facing v2 pages stay until replaced. |
+| **D2** | Keep the old permission names working? | ✅ Accepted 13 Oct 2026. **Yes.** Old keys keep working; new YukthiX roles use scoped `ats.*` keys (by entity / department). |
+| **D3** | Move requisition and offer approvals to the YukthiX approval engine? | ✅ Accepted 13 Oct 2026. **Yes, migrate the existing chains automatically**, then retire the old engine once v2 uses it too. |
+| **D4** | Offer letters: old offer templates or YukthiX letters with e-sign? | ✅ Accepted 13 Oct 2026. **YukthiX letters (P05) with OTP e-accept** for YukthiX customers; old templates are converted into P05 drafts. v2 keeps the old page until it moves. |
+| **D5** | Must every hire be in an approved headcount plan? | ✅ Accepted 13 Oct 2026. **Advisory by default:** requisitions show plan status, and outside-plan ones need the extra approver. Companies can switch the plan off or make it required. |
+| **D6** | The existing AI features (fit score, AI scorecard draft): on for YukthiX customers? | ✅ Accepted 13 Oct 2026. **Résumé parsing on** (needed for duplicates and search); **fit score and AI scorecard draft off by default**, company switch, advisory only. |
+| **D7** | Can interviewers see each other's scorecards? | ✅ Accepted 13 Oct 2026. **Only after submitting their own**, so nobody copies the first opinion. |
+| **D8** | Agencies today use a shared link. Change to sign-in? | ✅ Accepted 13 Oct 2026. **Yes, agency contacts sign in with a one-time code**; old links expire 30 days after the company switches. Candidate ownership lasts 6 months. |
+| **D9** | When is a referral bonus paid? | ✅ Accepted 13 Oct 2026. **After the hire completes 90 days**, through payroll's normal one-time pay approval; company sets amounts and days. |
+| **D10** | Can a candidate merge be undone? | ✅ Accepted 13 Oct 2026. **No, but it is fully recorded** (who chose which field), and merged links still lead to the kept candidate. |
+| **D11** | When does a candidate become a "person" in YukthiX? | ✅ Accepted 13 Oct 2026. **When the first offer is drafted** (or on a data request), not at application, to keep the person list clean. |
+| **D12** | Which job boards first? | ✅ Accepted 13 Oct 2026. **Keep LinkedIn and Indeed (already built).** Add Naukri first when a customer gives us an account with API access, then Foundit and Shine. Until then, apply links and the feed. |
+| **D13** | Is an internal applicant's current manager told? | ✅ Accepted 13 Oct 2026. **Only when the applicant reaches the offer stage**; company may change it. The manager never sees test results. |
+| **D14** | Can YukthiX support staff see hiring data during a support session? | ✅ Accepted 13 Oct 2026. **Offers, scorecards, budgets and referral rewards: never. Candidate details: masked** (support may need to fix an application). |
 
 ## 21. Change log
 
 | Date | Change |
 |---|---|
+| 13 Oct 2026 | Founder accepted D1–D14. D1 refined: one set of screens; each v2 hiring page is removed with a redirect to its YukthiX screen in the PR that ships that screen; candidate-facing v2 pages (careers, apply, portal, offer, interview booking, agency) stay until replaced. D2–D14 as recommended. |
 | 13 Oct 2026 | First draft: reuse / adapt / replace table for the existing hiring product, headcount plans and requisitions on P03, careers site and job-board seam, candidates with dedupe, merge, pools, consent and retention, pipeline / interviews / scorecards, assessments link, offers with M03 breakup, P03, P05 e-sign and the M01 hand-off, referrals, agency logins and job shares, communication, P09 reports, AI seam, data model, permissions, APIs, events, 34 slices in batches AT1–AT8, founder decisions D1–D14. |
 
 ## Founder decision D1 (13 Oct 2026)
