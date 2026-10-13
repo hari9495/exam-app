@@ -1023,7 +1023,7 @@ describe('CandidatesService', () => {
   describe('getResumeUrl', () => {
     it('signs and returns the résumé blob URL', async () => {
       const tx = {
-        candidateProfile: { findFirst: jest.fn().mockResolvedValue({ resumePath: 'resumes/cand-1.pdf' }) },
+        candidateProfile: { findFirst: jest.fn().mockResolvedValue({ resumePath: 'resumes/cand-1.pdf', resumeScan: 'clean' }) },
       };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
       blobStorage.signIfOurs.mockResolvedValue('https://blob.test/container/resumes/cand-1.pdf?sig=abc');

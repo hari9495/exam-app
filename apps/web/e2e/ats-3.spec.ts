@@ -64,7 +64,7 @@ test('careers site, consent versions and job boards on YukthiX Hiring', async ({
   await visitor.getByRole('link', { name: 'Apply for this job' }).click();
   await expect(visitor.getByText(`We use your details to consider you for this job (${tag}).`)).toBeVisible({ timeout: 30_000 });
   await expect(visitor.getByRole('button', { name: /Submit application/ })).toBeDisabled();
-  await expect(visitor.getByLabel('Website')).toBeHidden();
+  await expect(visitor.getByLabel('Website')).not.toBeInViewport(); // the honeypot is off-screen for people
 
   // Closing the job takes it off the site and the sitemap at once.
   expect((await request.patch(`${API}/jobs/${job.id}`, { headers, data: { status: 'closed' } })).ok()).toBe(true);

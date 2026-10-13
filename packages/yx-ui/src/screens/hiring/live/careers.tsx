@@ -42,7 +42,7 @@ export interface CareersSiteScreenProps {
 export function CareersSiteScreen(p: CareersSiteScreenProps) {
   return (
     <LivePage title="Careers site" description="Your public jobs page, a page for each company in the group, and what applicants agree to." state={p.state} onRetry={p.onRetry} what="careers site settings" grantedBy="your admin">
-      {p.settings && <SiteCard key={JSON.stringify(p.settings)} {...p} settings={p.settings} />}
+      {p.settings && <SiteCard {...p} settings={p.settings} />}
       <EntitiesCard {...p} />
       <NoticesCard {...p} />
     </LivePage>
