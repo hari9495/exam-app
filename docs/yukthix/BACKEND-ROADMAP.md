@@ -23,4 +23,5 @@ Go-live items are tracked separately in [GO-LIVE-CHECKLIST.md](GO-LIVE-CHECKLIST
 
 | What | Design | When |
 |---|---|---|
+| Mobile app (M04): Capacitor, one React code base, Android and iOS stores | [M04-BUILD-DESIGN.md](design/M04-BUILD-DESIGN.md): 8 batches MB1–MB8; 14 decisions open | After the founder sets up the Apple (D-U-N-S) and Google Play organisation accounts and the public privacy policy and terms |
 | YukthiX Sheets, a web spreadsheet and the first non-HR ecosystem app | [SHEETS-BUILD-DESIGN.md](design/SHEETS-BUILD-DESIGN.md): recommended engine is Univer's free core; 8 batches, about 30–37 engineer-weeks; 11 decisions open | After the current HR suite development is finished. The decisions are not yet answered. |
