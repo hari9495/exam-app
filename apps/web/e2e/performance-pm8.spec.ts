@@ -23,11 +23,17 @@ test('improvement plan: propose, approve, acknowledge, check in, not met', async
   const admin = await signedIn(browser, 'admin@demo-org.test', 'DevAdmin123!');
   const kv = await signedIn(browser, 'kavya@demo-org.test', PASSWORD);
 
-  // A plan left open by an earlier run is closed first (one live plan per person).
+  // A plan left open by an earlier run is closed first (one live plan per person): approved if still waiting, then met.
+  await admin.goto('/yx/approvals');
+  const waiting = admin.getByText(/^Improvement plan: Murugan/).first().locator('xpath=ancestor::*[.//button[normalize-space()="Approve"]][1]');
+  if (await waiting.waitFor({ timeout: 15_000 }).then(() => true, () => false)) {
+    await waiting.getByRole('button', { name: 'Approve', exact: true }).click();
+    await expect(waiting).toHaveCount(0, { timeout: 30_000 });
+  }
   await admin.goto('/yx/performance/pips');
   await admin.getByRole('radio', { name: 'In my scope' }).click();
   const open = admin.getByRole('row', { name: /Murugan.*(In progress|Extended)/ });
-  if (await open.first().isVisible({ timeout: 10_000 }).catch(() => false)) {
+  if (await open.first().waitFor({ timeout: 15_000 }).then(() => true, () => false)) {
     await open.first().getByRole('button', { name: 'Open' }).click();
     await admin.getByRole('button', { name: 'Record the outcome' }).click();
     await admin.getByRole('dialog').getByRole('textbox', { name: /Summary/ }).fill('Closed by an earlier test run.');
@@ -46,7 +52,7 @@ test('improvement plan: propose, approve, acknowledge, check in, not met', async
   await d.getByRole('textbox', { name: /^Goal 1/ }).fill('Faster changeovers');
   await d.getByRole('textbox', { name: /How goal 1 is measured/ }).fill('25 minutes or less, logged per shift');
   await d.getByRole('radio', { name: '30 days' }).click();
-  await d.getByRole('radio', { name: 'Week' }).click();
+  await d.getByRole('radio', { name: 'Week', exact: true }).click();
   const on = d.getByRole('textbox', { name: 'Starts on' });
   await on.fill(shown(today));
   await on.press('Enter');
@@ -56,10 +62,10 @@ test('improvement plan: propose, approve, acknowledge, check in, not met', async
   await expect(kv.getByText('Waiting for HR')).toBeVisible({ timeout: 30_000 });
 
   await admin.goto('/yx/approvals');
-  await admin.getByRole('button', { name: /Improvement plan: Murugan/ }).first().click();
-  await admin.getByRole('button', { name: 'Approve' }).first().click();
-  const confirm = admin.getByRole('dialog').getByRole('button', { name: 'Approve' });
-  if (await confirm.isVisible({ timeout: 3_000 }).catch(() => false)) await confirm.click();
+  const card = admin.getByText(/^Improvement plan: Murugan/).first().locator('xpath=ancestor::*[.//button[normalize-space()="Approve"]][1]');
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await card.getByRole('button', { name: 'Approve', exact: true }).click();
+  await expect(card).toHaveCount(0, { timeout: 30_000 });
   await admin.goto(pipUrl);
   await expect(admin.getByText('In progress')).toBeVisible({ timeout: 30_000 });
 

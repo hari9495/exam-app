@@ -235,7 +235,10 @@ export class PerformancePipsService implements OnModuleInit {
       if (onLeave(today, leave) || onLeave(dto.startsOn, leave)) throw new ConflictException({ statusCode: 409, code: 'PROTECTED_LEAVE', message: 'This person is on protected leave then. A plan cannot start during it.' });
       if (await tx.pip.findFirst({ where: { organizationId: org, employmentId: job.employment_id, status: { in: ['proposed', ...LIVE] } }, select: { id: true } })) throw new ConflictException('This person already has a plan in progress.');
       const owner = job.manager_employee_id ?? me;
-      const hr = (await holdersOf(tx, org, 'perf.pip.manage', dto.employeeId, today)).filter((u) => u !== v.userId && u !== emp.userId);
+      // HR holding perf.pip.manage for the person; with none yet, the company's admins (as M01 exits do).
+      const skip = (u: string) => u !== v.userId && u !== emp.userId;
+      let hr = (await holdersOf(tx, org, 'perf.pip.manage', dto.employeeId, today)).filter(skip);
+      if (!hr.length) hr = (await tx.user.findMany({ where: { organizationId: org, role: 'org_admin', status: 'active' }, select: { id: true }, take: 25 })).map((u) => u.id).filter(skip);
       if (!hr.length) throw new ConflictException('No one in HR can approve plans for this person yet. Ask an admin to grant perf.pip.manage.');
       const p = await tx.pip.create({ data: { organizationId: org, employeeId: dto.employeeId, employmentId: job.employment_id, managerEmployeeId: owner, reason: dto.reason, expectations: dto.expectations, support: dto.support, startsOn: asDate(dto.startsOn), endsOn: asDate(endsOn), checkinEveryDays: dto.checkinEveryDays, createdBy: v.userId } });
       await tx.pipGoal.createMany({ data: dto.goals.map((g, i) => ({ organizationId: org, pipId: p.id, seq: i + 1, goalId: g.goalId ?? null, text: g.text, measure: g.measure })) });
