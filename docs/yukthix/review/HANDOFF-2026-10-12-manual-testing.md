@@ -16,7 +16,7 @@ For a new session that continues the founder's manual testing. The building sess
 - Then Areas **5 Access (13 tests), 6 People (14), 7 Changes (19), 8 Privacy (11)**.
 
 ## The test app
-- Runs from worktree `C:\D-drive\exam-app-org` (branch `test/yukthix-main`, tracking `origin/main`; to refresh: pull, `npm install`, `prisma migrate deploy`, `prisma db seed`), database `examapp_org`, Redis db 4. Preview servers (launch config `C:\.claude\launch.json`): yx-api 3001, yx-web 3000, yx-mock-idp 4010. Local mailbox (Mailpit) 8025; SMS texts are copied there as emails.
+- Runs from worktree `C:\D-drive\exam-app-org` (branch `test/yukthix-main`, tracking `origin/main`; to refresh: pull, `npm install`, `prisma migrate deploy`, `prisma generate`, then restart yx-api; do not re-run `prisma db seed` — its pay part fails on a second run), database `examapp_org`, Redis db 4. Preview servers (launch config `C:\.claude\launch.json`): yx-api 3001, yx-web 3000, yx-mock-idp 4010. Local mailbox (Mailpit) 8025; SMS texts are copied there as emails.
 - Accounts: admin@demo-org.test / `DevAdmin123!`; others / `Passw0rd!2026` (hr@, panel@, arjun@, payroll@, …).
 - Main also has Time and leave, payroll, onboarding and exit, Service Desk, global core and expenses. PowerShell 5.1 has no `&&`: give the founder commands for the Bash tool or one per line.
 - Manual test lists do not exist yet for the new modules. After the move, write them in `manual-tests.json` (same style), area by area, starting with the ones the founder wants to see first (likely payroll screens and expenses).
