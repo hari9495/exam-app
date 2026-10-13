@@ -215,14 +215,14 @@ export function ProfileScreen(props: ProfileScreenProps) {
     <div className="yx-auth__page">
       <PageHeader breadcrumbs={<Breadcrumbs items={[{ label: 'People' }, { label: p?.self ? 'My profile' : 'Profile' }]} />} title={p ? p.name : 'Profile'} description={p?.employeeCode ? `${p.employeeCode}${p.joinedOn ? ` · joined ${dateLabel(p.joinedOn)}` : ''}` : 'Personal, identity and bank details.'} />
       {people && onPickPerson && (
-        <FormField id="pf-person" label="Person">
+        <FormField id="pf-person" label="Person" className="yx-acc__person">
           <Select aria-label="Person" value={p?.employeeId ?? null} onChange={(v) => v && onPickPerson(v)} searchable options={people.map((x) => ({ value: x.id, label: x.employeeCode ? `${x.name} · ${x.employeeCode}` : x.name }))} />
         </FormField>
       )}
       {state === 'loading' && <Skeleton height={240} />}
       {state === 'error' && <ErrorState title="We couldn't load this profile." description="It may not be yours to see, or the connection dropped." onRetry={onRetry} />}
       {state === 'no-access' && <NoAccessState grantedBy="HR" what="this profile" />}
-      {state === 'ready' && !p && <EmptyState title="Pick a person" description="Choose whose profile to open." />}
+      {state === 'ready' && !p && (people?.length ? <EmptyState title="Pick a person" description="Choose whose profile to open." /> : <EmptyState title="No profiles to show" description="You can open the profiles of the people your roles cover. Right now that is no one." />)}
       {state === 'ready' && p && (
         <>
           <Card title="Personal details" actions={p.can.editPersonal && p.personal ? <Button size="sm" onClick={() => setEditing(true)}>Edit</Button> : undefined}>

@@ -160,6 +160,12 @@ function profile(over: Partial<ProfileScreenProps> = {}) {
 }
 
 describe('Profile by sensitivity class (P02 §4.4–4.5)', () => {
+  it('with no one in scope, says so instead of "Pick a person"', () => {
+    profile({ profile: null, people: [], onPickPerson: vi.fn(), requests: [] });
+    expect(screen.getByText('No profiles to show')).toBeInTheDocument();
+    expect(screen.queryByText('Pick a person')).toBeNull();
+  });
+
   it('a manager sees neither Personal nor identity details, and no pay', () => {
     profile({ profile: PROFILE_MANAGER, requests: [] });
     expect(screen.getByText('Personal details are for the person and HR with personal-data access.')).toBeInTheDocument();
