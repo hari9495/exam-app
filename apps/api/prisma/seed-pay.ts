@@ -292,11 +292,12 @@ export async function seedPay5b(tx: Tx, organizationId: string) {
 // return), and Kavya Rao (compliance@demo-org.test) files statutory returns. Nothing is calculated here: the founder runs it.
 export async function seedPay5j(tx: Tx, organizationId: string, passwordHash: string) {
   const org = { organizationId };
-  if (await tx.compensationPackage.findFirst({ where: org })) return;
   const crypto = new OrgSecretsCryptoService();
   const kfpl = await tx.legalEntity.findFirstOrThrow({ where: { ...org, shortName: 'KFPL' } });
   const tn = await tx.legalEntity.findFirstOrThrow({ where: { ...org, shortName: 'KFPL-TN' } });
   await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${kfpl.id},${tn.id}}`}, true)`;
+  // After set_config: RLS hides compensation packages outside app.pay_entities, so checking earlier always saw none.
+  if (await tx.compensationPackage.findFirst({ where: org })) return;
   const suresh = (await tx.user.findFirstOrThrow({ where: { ...org, email: 'payroll@demo-org.test' } })).id;
   const t = await tx.salaryTemplate.findFirstOrThrow({ where: { ...org, name: STARTER_TEMPLATE.name } });
   const ver = await tx.salaryTemplateVersion.findFirstOrThrow({ where: { ...org, templateId: t.id }, orderBy: { version: 'desc' } });
