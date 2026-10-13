@@ -38,6 +38,12 @@ describe('hiring pages moved to YukthiX', () => {
     ['/jobs', '/yx/hiring/jobs'],
     ['/v2/settings/approvals', '/yx/hiring/approval-routes'],
     ['/settings/approvals', '/yx/hiring/approval-routes'],
+    ['/v2/settings/careers', '/yx/hiring/careers'],
+    ['/settings/careers', '/yx/hiring/careers'],
+    ['/v2/settings/apply-consent', '/yx/hiring/careers'],
+    ['/settings/apply-consent', '/yx/hiring/careers'],
+    ['/v2/settings/job-boards', '/yx/hiring/job-boards'],
+    ['/settings/job-boards', '/yx/hiring/job-boards'],
   ])('%s goes to %s', (source, destination) => {
     expect(redirects).toContainEqual({ source, destination, permanent: false });
   });

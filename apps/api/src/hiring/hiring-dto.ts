@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 
 // Recruitment batch AT2 request bodies (M10-BUILD-DESIGN §18.1).
 
@@ -77,3 +77,72 @@ export class PlanQueryDto {
 }
 
 export const REQUISITION_REASONS = ['new', 'replacement'] as const;
+
+// Recruitment batch AT3: careers site settings (M10-BUILD-DESIGN §6, §13).
+export class ConsentNoticeDto {
+  @IsIn(['application', 'talent_pool'])
+  purpose!: 'application' | 'talent_pool';
+
+  @trim()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(5000)
+  text!: string;
+}
+
+export class CareersEntityDto {
+  @trim()
+  @Matches(/^[a-z0-9]+(-[a-z0-9]+)*$/, { message: 'Use lower-case letters, numbers and single hyphens.' })
+  @MaxLength(60)
+  slug!: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(200)
+  headline?: string | null;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(2000)
+  intro?: string | null;
+
+  @IsOptional()
+  @Matches(/^(#[0-9a-fA-F]{6})?$/, { message: 'Use a colour like #1f6feb.' })
+  primaryColor?: string | null;
+}
+
+export class RecruitingCostDto {
+  @IsOptional()
+  @IsUUID()
+  jobId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  jobBoardId?: string | null;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(120)
+  source?: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(1_000_000_000)
+  amount!: number;
+
+  @Matches(/^[A-Z]{3}$/, { message: 'Use a 3-letter currency code like INR.' })
+  currency!: string;
+
+  @IsOptional()
+  @IsDateString({ strict: true })
+  period?: string | null;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(500)
+  note?: string | null;
+}

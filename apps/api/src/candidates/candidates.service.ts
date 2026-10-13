@@ -515,6 +515,8 @@ export class CandidatesService {
       const profile = await tx.candidateProfile.findFirst({
         where: { candidateId, organizationId: context.organizationId as string },
       });
+      // M10 AT3: a résumé from the public apply page is handed out only once the virus check passed.
+      if (profile?.resumePath && profile.resumeScan !== 'clean') throw new ConflictException(profile.resumeScan === 'infected' ? 'This résumé was blocked by the virus check.' : 'This résumé is waiting for the virus check.');
       return profile?.resumePath ?? null;
     });
     if (!resumePath) throw new NotFoundException(`No résumé on file for candidate ${candidateId}`);

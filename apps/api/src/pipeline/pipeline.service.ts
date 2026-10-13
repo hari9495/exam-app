@@ -33,6 +33,7 @@ import { HrisExportService } from '../hris/hris-export.service';
 import { DripService } from '../drip/drip.service';
 import { SurveysService } from '../surveys/surveys.service';
 import { HiringRequisitionsService } from '../hiring/requisitions.service';
+import { jobSlug } from '../hiring/careers-rules';
 
 export interface FeedbackRow {
   id: string;
@@ -219,6 +220,7 @@ export class PipelineService {
       salaryMin?: number;
       salaryMax?: number;
       salaryCurrency?: string;
+      showSalary?: boolean;
       pipelineId?: string;
       customFields?: Record<string, string | number | null>;
       legalEntityId?: string | null;
@@ -246,12 +248,18 @@ export class PipelineService {
       const organizationId = context.organizationId as string;
       const m = await this.masters(tx, organizationId, dto);
       await this.hiring.checkLinks(tx, organizationId, dto);
+      const id = randomUUID();
+      const location = dto.location ?? m.locationName;
       const created = await tx.job.create({
         data: {
+          id,
+          // M10 AT3: the readable careers URL; fixed at creation so shared links keep working after a rename.
+          slug: jobSlug(dto.title, location, id),
+          showSalary: dto.showSalary ?? false,
           organizationId,
           title: dto.title,
           description: dto.description,
-          location: dto.location ?? m.locationName,
+          location,
           employmentType: dto.employmentType,
           department: dto.department ?? m.departmentName,
           ...m.links,
@@ -433,6 +441,7 @@ export class PipelineService {
       status?: 'open' | 'closed';
       publicApplyEnabled?: boolean;
       listOnCareers?: boolean;
+      showSalary?: boolean;
       fitCriteria?: string | null;
       fitRubric?: { label: string; weight: number }[] | null;
       location?: string;
@@ -504,6 +513,8 @@ export class PipelineService {
         closedAt?: Date | null;
         publicApplyEnabled?: boolean;
         listOnCareers?: boolean;
+        publishedAt?: Date;
+        showSalary?: boolean;
         applyToken?: string;
         fitCriteria?: string | null;
         fitRubric?: string | null;
@@ -547,7 +558,10 @@ export class PipelineService {
       }
       if (dto.listOnCareers !== undefined) {
         data.listOnCareers = dto.listOnCareers;
+        // M10 AT3: the Google for Jobs datePosted is the first time the job went on the careers site.
+        if (dto.listOnCareers && !job.publishedAt) data.publishedAt = new Date();
       }
+      if (dto.showSalary !== undefined) data.showSalary = dto.showSalary;
       if (dto.fitCriteria !== undefined) {
         data.fitCriteria = dto.fitCriteria?.trim() || null;
       }

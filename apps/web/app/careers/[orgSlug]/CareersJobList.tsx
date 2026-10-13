@@ -13,7 +13,7 @@ function formatSalary(job: CareersJob): string | null {
 
 const ALL = '__all__';
 
-export function CareersJobList({ jobs }: { jobs: CareersJob[] }) {
+export function CareersJobList({ jobs, orgSlug }: { jobs: CareersJob[]; orgSlug?: string }) {
   const [department, setDepartment] = useState(ALL);
   const [location, setLocation] = useState(ALL);
 
@@ -63,11 +63,11 @@ export function CareersJobList({ jobs }: { jobs: CareersJob[] }) {
         <ul className="flex flex-col gap-3">
           {filtered.map((job) => {
             const salary = formatSalary(job);
-            const meta = [job.department, job.location, job.employmentType?.replace(/_/g, ' ').toLowerCase(), salary].filter(Boolean);
+            const meta = [job.company?.name, job.department, job.location, job.employmentType?.replace(/_/g, ' ').toLowerCase(), salary].filter(Boolean);
             return (
               <li key={job.applyToken}>
                 <Link
-                  href={`/apply/${job.applyToken}`}
+                  href={job.slug && orgSlug ? `/careers/${orgSlug}/jobs/${job.slug}` : `/apply/${job.applyToken}`}
                   className="block rounded-lg border border-candidate-border bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_10px_28px_-18px_rgba(16,24,40,0.20)] transition-all hover:border-candidate-primary hover:shadow-[0_2px_4px_rgba(16,24,40,0.06),0_16px_36px_-18px_rgba(16,24,40,0.28)]"
                 >
                   <p className="font-display text-base font-bold text-candidate-text">{job.title}</p>

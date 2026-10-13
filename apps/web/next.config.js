@@ -36,6 +36,9 @@ const nextConfig = {
       // M10 AT2: hiring approval routes moved to YukthiX (requisitions now run on YukthiX Approvals).
       { source: '/settings/approvals', destination: '/yx/hiring/approval-routes', permanent: false },
       { source: '/v2/settings/approvals', destination: '/yx/hiring/approval-routes', permanent: false },
+      // M10 AT3: the careers site, applicant consent and job boards moved to YukthiX Hiring.
+      ...['careers', 'apply-consent'].flatMap((p) => [`/settings/${p}`, `/v2/settings/${p}`].map((source) => ({ source, destination: '/yx/hiring/careers', permanent: false }))),
+      ...['/settings/job-boards', '/v2/settings/job-boards'].map((source) => ({ source, destination: '/yx/hiring/job-boards', permanent: false })),
       ...routes.map((source) => ({ source, destination: `/v2${source}`, permanent: false })),
       // The classic sign-in is retired (founder decision 7 Oct 2026): every company sign-in, password
       // reset and reset link is the YukthiX one (old bookmarks and emails included). The query string

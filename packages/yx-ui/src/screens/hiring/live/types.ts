@@ -39,6 +39,8 @@ export interface NewJobInput {
   salaryMin?: number;
   salaryMax?: number;
   salaryCurrency?: string;
+  /** AT3: show the salary range on the careers site and to Google for Jobs. */
+  showSalary?: boolean;
   pipelineId?: string;
   customFields?: Record<string, string | number | null>;
   /** AT2: the requisition's plan facts. */
@@ -109,4 +111,76 @@ export interface RouteStep {
 export interface ApprovalRoute {
   enabled: boolean;
   steps: RouteStep[];
+}
+
+// ------------------------------------------------------------------------------------------ AT3: careers site, job boards
+
+export interface CareersSettings {
+  enabled: boolean;
+  assistantEnabled: boolean;
+  headline: string | null;
+  intro: string | null;
+  bannerUrl: string | null;
+}
+
+export interface CareersEntityPage {
+  slug: string;
+  headline: string | null;
+  intro: string | null;
+  primaryColor: string | null;
+}
+
+/** A legal entity and its own careers page, if it has one. */
+export interface CareersEntity {
+  id: string;
+  name: string;
+  page: CareersEntityPage | null;
+}
+
+export type ConsentPurpose = 'application' | 'talent_pool';
+
+export interface ConsentNotice {
+  id: string;
+  purpose: ConsentPurpose;
+  version: number;
+  text: string;
+  publishedAt: string;
+}
+
+export interface JobBoardRow {
+  id: string;
+  name: string;
+  provider: string;
+  configured: boolean;
+  publishedJobCount: number;
+  feedUrl: string;
+}
+
+export interface BoardProvider {
+  id: string;
+  configFields: { key: string; label: string; required: boolean; secret: boolean; placeholder?: string }[];
+}
+
+export interface BoardSettings {
+  name: string;
+  provider: string;
+  /** Only the fields typed in; blank secrets keep what is stored. */
+  config?: Record<string, string>;
+}
+
+export interface RecruitingCostRow {
+  id: string;
+  source: string;
+  jobTitle: string | null;
+  amount: number;
+  currency: string;
+  createdAt: string;
+}
+
+export interface CostInput {
+  jobBoardId: string;
+  jobId: string | null;
+  amount: number;
+  currency: string;
+  note: string | null;
 }

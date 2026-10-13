@@ -23,6 +23,10 @@ export class UpdateJobDto {
   @IsOptional() @IsBoolean()
   listOnCareers?: boolean;
 
+  /** M10 AT3: show the salary range on the careers site and in Google for Jobs. */
+  @IsOptional() @IsBoolean()
+  showSalary?: boolean;
+
   @IsOptional() @IsString() @MaxLength(5000)
   fitCriteria?: string;
 
