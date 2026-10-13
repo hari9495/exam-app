@@ -132,8 +132,13 @@ describe('Recruitment batch AT1', () => {
     expect(await count(true)).toEqual([0, 0, 0, 1]);
   });
 
-  it('companies stay apart', async () => {
+  it('companies stay apart; a company new to hiring gets the standard pipeline with its first job', async () => {
     await api('adminB', 'get', `/jobs/${ids.job}`).expect(404);
     expect((await api('adminB', 'get', '/jobs').expect(200)).body).toEqual([]);
+    const j = (await api('adminB', 'post', '/jobs').send({ title: `First job ${run}` }).expect(201)).body;
+    const pipes = (await api('adminB', 'get', '/pipelines').expect(200)).body as { id: string; isDefault: boolean; stages: { name: string }[] }[];
+    expect(pipes).toHaveLength(1);
+    expect(pipes[0]).toMatchObject({ id: j.pipelineId, isDefault: true });
+    expect(pipes[0].stages.map((st) => st.name)).toEqual(['Applied', 'Screened', 'Interview', 'Offer', 'Hired', 'Rejected']);
   });
 });
