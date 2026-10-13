@@ -434,6 +434,14 @@ export class ConsultantsService implements OnModuleInit {
     await tx.$queryRaw`SELECT id FROM consultants WHERE organization_id = ${org}::uuid AND id = ${inv.consultantId}::uuid FOR UPDATE`;
     const k = await tx.consultant.findFirstOrThrow({ where: { organizationId: org, id: inv.consultantId } });
     const on = dateOf(inv.invoiceDate);
+    // PAY-9.12: outside India nothing is withheld here (the US pack reports 1099-NEC only, YX-PAY-45).
+    const country = (await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: inv.legalEntityId }, select: { country: true } })).country;
+    if (country !== 'IN') {
+      const gross0 = inv.taxableValue.add(inv.cgst).add(inv.sgst).add(inv.igst);
+      await tx.consultantInvoice.update({ where: { id: inv.id }, data: { status: 'approved', tdsAmount: ZERO, tdsBase: ZERO, tdsRate: '0', tdsReason: 'not_withheld', tdsOn: asDate(todayIst()), netPayable: gross0, version: { increment: 1 } } });
+      await audit(tx, c, 'consultant.invoice.approved', 'consultant_invoice', inv.id, { tds: '0', country });
+      return;
+    }
     const rs = inForce(await this.rules.published(), 'IN.TDS-NONSAL', ['IN'], on);
     if (!rs) throw new ConflictException(`No published TDS rules for consultants are in force on ${on}.`);
     const prior = await tx.consultantInvoice.aggregate({ where: { organizationId: org, consultantId: k.id, section: inv.section, taxYear: inv.taxYear, status: { in: LIVE }, id: { not: inv.id } }, _sum: { taxableValue: true } });

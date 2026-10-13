@@ -329,7 +329,7 @@ export interface PayGroupsScreenProps {
   entities: SetupEntity[];
   groups: PayGroup[] | null;
   today: string;
-  onSave: (id: string | null, g: Pick<PayGroup, 'legalEntityId' | 'name' | 'dayBasis' | 'cutOffDay' | 'payDay'> & { version?: number }) => Promise<unknown>;
+  onSave: (id: string | null, g: Pick<PayGroup, 'legalEntityId' | 'name' | 'dayBasis' | 'cutOffDay' | 'payDay'> & { version?: number; frequency?: 'monthly' | 'weekly' | 'fortnightly'; anchorDate?: string }) => Promise<unknown>;
   onMembers: (id: string) => Promise<PayGroupMember[]>;
   onAddMembers: (id: string, employeeIds: string[], from: string) => Promise<unknown>;
   onSearch: (q: string) => Promise<EmployeeHit[]>;
@@ -379,6 +379,7 @@ export function PayGroupsScreen(p: PayGroupsScreenProps) {
               dayBasis: 'calendar',
               cutOffDay: 25,
               payDay: 0,
+              frequency: 'monthly',
             })
           }
         >
@@ -409,7 +410,10 @@ export function PayGroupsScreen(p: PayGroupsScreenProps) {
             <tbody>
               {p.groups.map((g) => (
                 <tr key={g.id}>
-                  <th scope="row">{g.name}</th>
+                  <th scope="row">
+                    {g.name}
+                    {g.frequency !== 'monthly' && <div className="yx-tim-muted">{g.frequency === 'weekly' ? 'Weekly' : 'Fortnightly'}</div>}
+                  </th>
                   <td>{entityName(g.legalEntityId)}</td>
                   <td>{BASIS.find((b) => b.value === g.dayBasis)?.label}</td>
                   <td>Day {g.cutOffDay}</td>
@@ -438,7 +442,7 @@ export function PayGroupsScreen(p: PayGroupsScreenProps) {
           <Button
             variant="primary"
             loading={busy === 'save'}
-            disabled={!edit?.legalEntityId || !edit?.name?.trim()}
+            disabled={!edit?.legalEntityId || !edit?.name?.trim() || (!edit?.id && edit?.frequency !== 'monthly' && !/^\d{4}-\d{2}-\d{2}$/.test(edit?.anchorDate ?? ''))}
             onClick={() =>
               edit &&
               void run('save', async () => {
@@ -449,6 +453,7 @@ export function PayGroupsScreen(p: PayGroupsScreenProps) {
                   cutOffDay: Number(edit.cutOffDay),
                   payDay: Number(edit.payDay),
                   version: edit.version,
+                  ...(!edit.id && edit.frequency && edit.frequency !== 'monthly' ? { frequency: edit.frequency as 'weekly' | 'fortnightly', anchorDate: edit.anchorDate ?? undefined } : {}),
                 });
                 setEdit(null);
               })
@@ -464,6 +469,25 @@ export function PayGroupsScreen(p: PayGroupsScreenProps) {
             <FormField id="pg-name" label="Name" required>
               <TextField value={edit.name ?? ''} onChange={(v) => setEdit({ ...edit, name: v })} />
             </FormField>
+            {!edit.id && (
+              <FormField id="pg-frequency" label="Paid">
+                <Segment
+                  label="Paid"
+                  value={(edit.frequency ?? 'monthly') as 'monthly' | 'weekly' | 'fortnightly'}
+                  onChange={(v) => setEdit({ ...edit, frequency: v })}
+                  options={[
+                    { value: 'monthly', label: 'Monthly' },
+                    { value: 'weekly', label: 'Weekly' },
+                    { value: 'fortnightly', label: 'Fortnightly' },
+                  ]}
+                />
+              </FormField>
+            )}
+            {!edit.id && edit.frequency && edit.frequency !== 'monthly' && (
+              <FormField id="pg-anchor" label="First day of a pay period" required helper="Periods run from this day and are cut at month ends.">
+                <TextField type="date" value={edit.anchorDate ?? ''} onChange={(v) => setEdit({ ...edit, anchorDate: v })} />
+              </FormField>
+            )}
             <FormField id="pg-basis" label="Days in a month for proration">
               <Segment label="Day basis" value={edit.dayBasis ?? 'calendar'} onChange={(v) => setEdit({ ...edit, dayBasis: v })} options={BASIS} />
             </FormField>

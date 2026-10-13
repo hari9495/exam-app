@@ -156,6 +156,14 @@ const PAY_GO_LIVE: WorkspaceLink = { id: 'pay-go-live', label: 'Go-live readines
 const PAY_MODES: WorkspaceLink = { id: 'pay-modes', label: 'Payment modes', href: '/yx/payroll/payment-modes', group: 'Payroll' };
 const PAY_CONSULTANTS: WorkspaceLink = { id: 'pay-consultants', label: 'Consultants', href: '/yx/payroll/consultants', group: 'Payroll' };
 const PAY_CONSULTANT_TDS: WorkspaceLink = { id: 'pay-consultant-tds', label: 'Consultant TDS returns', href: '/yx/payroll/consultant-tds', group: 'Payroll' };
+const PAY_SPECIAL: WorkspaceLink = { id: 'pay-special', label: 'Special pay', href: '/yx/payroll/special-pay', group: 'Payroll' };
+const PAY_EWA: WorkspaceLink = { id: 'pay-ewa', label: 'Earned wage access', href: '/yx/payroll/ewa', group: 'Payroll' };
+const PAY_EQUITY: WorkspaceLink = { id: 'pay-equity', label: 'Equity', href: '/yx/payroll/equity', group: 'Payroll' };
+const PAY_ACTUARIAL: WorkspaceLink = { id: 'pay-actuarial', label: 'Actuarial valuation', href: '/yx/payroll/actuarial', group: 'Payroll' };
+const PAY_PACKS: WorkspaceLink = { id: 'pay-country-packs', label: 'Country packs', href: '/yx/payroll/country-packs', group: 'Payroll' };
+const MY_EWA: WorkspaceLink = { id: 'my-ewa', label: 'Get paid early', href: '/yx/me/earned-pay', group: 'Me' };
+const MY_EQUITY: WorkspaceLink = { id: 'my-equity', label: 'My equity', href: '/yx/me/equity', group: 'Me' };
+const MY_INCENTIVES: WorkspaceLink = { id: 'my-incentives', label: 'My incentives', href: '/yx/me/incentives', group: 'Me' };
 const PAY_LOANS: WorkspaceLink = { id: 'pay-loans', label: 'Loans and advances', href: '/yx/payroll/loans', group: 'Payroll' };
 const PAY_QUERIES: WorkspaceLink = { id: 'pay-queries', label: 'Payslip queries', href: '/yx/payroll/payslip-queries', group: 'Payroll' };
 const PAY_PROOFS: WorkspaceLink = { id: 'pay-proofs', label: 'Proof checking', href: '/yx/payroll/proofs', group: 'Payroll' };
@@ -319,6 +327,11 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         ...(perms.has('payroll.loan.manage') ? [PAY_LOANS] : []),
         ...(perms.has('consultant.manage') || perms.has('consultant.invoice.approve') ? [PAY_CONSULTANTS] : []),
         ...(perms.has('statutory.filing.view') || perms.has('consultant.manage') ? [PAY_CONSULTANT_TDS] : []),
+        ...(perms.has('payroll.special.manage') ? [PAY_SPECIAL] : []),
+        ...(perms.has('payroll.ewa.manage') ? [PAY_EWA] : []),
+        ...(perms.has('payroll.equity.manage') ? [PAY_EQUITY] : []),
+        ...(perms.has('payroll.special.manage') || perms.has('payroll.journal.export') ? [PAY_ACTUARIAL] : []),
+        ...(perms.has('payroll.setup.manage') ? [PAY_PACKS] : []),
         ...(perms.has('payroll.query.handle') ? [PAY_QUERIES] : []),
         ...(perms.has('tax.proof.verify') ? [PAY_PROOFS] : []),
         ...(perms.has('payroll.document.issue') ? [PAY_CERTIFICATES] : []),
@@ -331,7 +344,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         ...(perms.has('payroll.template.manage') ? [PAY_TEMPLATES] : []),
         ...(perms.has('employee.salary.manage') ? [PAY_COMPENSATION] : []),
         ...(perms.has('payroll.import.run') ? [PAY_IMPORTS] : [])];
-  const links = [...(firstDays.data?.card && !support ? [FIRST_30] : []), ...staff, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAYSLIPS, MY_TAX, MY_DECLARATIONS, MY_LOANS, MY_PAY_DOCUMENTS] : []), ...security];
+  const links = [...(firstDays.data?.card && !support ? [FIRST_30] : []), ...staff, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAYSLIPS, MY_TAX, MY_DECLARATIONS, MY_LOANS, MY_EWA, MY_EQUITY, MY_INCENTIVES, MY_PAY_DOCUMENTS] : []), ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
   return (

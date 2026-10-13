@@ -4,7 +4,7 @@ import { CompanyContext, Tx, audit } from '../org-structure/org-structure.servic
 import { asDate, monthRange } from '../time/time-core';
 import { loanEmi } from './inputs.service';
 import { withPayScope } from './pay-access';
-import { MODULE_COMPONENTS } from './starter';
+import { MODULE_COMPONENTS, STARTER_COMPONENTS } from './starter';
 import { taxYearOf } from './tax';
 
 // What other modules hand to payroll (M05 §22.1, M06 PM7). These are server-side hooks, not routes: the calling module has
@@ -21,7 +21,21 @@ const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Which components each module may pay. */
-export const MODULE_SOURCES = { m05: ['exp_reimb', 'exp_taxable'], m06: ['perf_bonus'] } as const;
+export const MODULE_SOURCES = {
+  m05: ['exp_reimb', 'exp_taxable'],
+  m06: ['perf_bonus'],
+  // Batch 5i: approved special-pay postings (SpecialPayService).
+  piece: ['piece_pay', 'min_wage_topup'],
+  incentive: ['incentive', 'incentive_clawback'],
+  tips: ['tips'],
+  oncall: ['standby_allowance', 'callout_pay'],
+  union: ['union_dues'],
+  settle: ['settlement_arrears'],
+  layoff: ['layoff_comp'],
+  vrs: ['vrs_exempt', 'vrs_taxable'],
+  // Earned wage access recovered in the month's payroll (EwaService).
+  ewa: ['ewa_recovery'],
+} as const;
 export type ModuleSource = keyof typeof MODULE_SOURCES;
 
 @Injectable()
@@ -53,7 +67,7 @@ export class PayrollIntakeService {
       const kept = await tx.oneTimePay.findFirst({ where: { organizationId: org, source: x.source, sourceRef: x.sourceRef, status: { not: 'cancelled' } } });
       if (kept) return { id: kept.id, status: kept.status, existing: true };
       await this.notLocked(tx, org, e.legalEntityId, x.month);
-      const starter = MODULE_COMPONENTS.find((m) => m.code === x.componentCode)!;
+      const starter = [...MODULE_COMPONENTS, ...STARTER_COMPONENTS].find((m) => m.code === x.componentCode)!;
       await tx.payComponent.createMany({ data: [{ organizationId: org, ...starter, taxable: starter.taxable ?? true, statutory: null, createdBy: null }], skipDuplicates: true });
       const comp = await tx.payComponent.findFirst({ where: { organizationId: org, code: x.componentCode, status: 'active' } });
       if (!comp) throw new ConflictException(`The ${x.componentCode} component is switched off in this company.`);
