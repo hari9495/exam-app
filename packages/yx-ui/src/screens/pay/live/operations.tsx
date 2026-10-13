@@ -68,7 +68,7 @@ function Failed({ error }: { error: string | null }) {
 }
 
 /** A drawer with a form: errors show only after Save is pressed (no red while typing). */
-function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, children }: { title: string; subtitle?: string; confirm: string; errors: FormErrorItem[]; onClose: () => void; onSave: () => Promise<unknown>; children: (errorOf: (id: string) => string | undefined) => ReactNode }) {
+export function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, children }: { title: string; subtitle?: string; confirm: string; errors: FormErrorItem[]; onClose: () => void; onSave: () => Promise<unknown>; children: (errorOf: (id: string) => string | undefined) => ReactNode }) {
   const { busy, error, run } = useRun();
   const save = useSaveErrors(errors);
   return (

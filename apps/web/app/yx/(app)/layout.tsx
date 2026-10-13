@@ -158,6 +158,8 @@ const PAY_FNF: WorkspaceLink = { id: 'pay-fnf', label: 'Full and final', href: '
 const PAY_ARREARS: WorkspaceLink = { id: 'pay-arrears', label: 'Arrears and recoveries', href: '/yx/payroll/arrears', group: 'Payroll' };
 const PAY_GO_LIVE: WorkspaceLink = { id: 'pay-go-live', label: 'Go-live readiness', href: '/yx/payroll/go-live', group: 'Payroll' };
 const PAY_MODES: WorkspaceLink = { id: 'pay-modes', label: 'Payment modes', href: '/yx/payroll/payment-modes', group: 'Payroll' };
+const PAY_CONSULTANTS: WorkspaceLink = { id: 'pay-consultants', label: 'Consultants', href: '/yx/payroll/consultants', group: 'Payroll' };
+const PAY_CONSULTANT_TDS: WorkspaceLink = { id: 'pay-consultant-tds', label: 'Consultant TDS returns', href: '/yx/payroll/consultant-tds', group: 'Payroll' };
 const PAY_LOANS: WorkspaceLink = { id: 'pay-loans', label: 'Loans and advances', href: '/yx/payroll/loans', group: 'Payroll' };
 const PAY_QUERIES: WorkspaceLink = { id: 'pay-queries', label: 'Payslip queries', href: '/yx/payroll/payslip-queries', group: 'Payroll' };
 const PAY_PROOFS: WorkspaceLink = { id: 'pay-proofs', label: 'Proof checking', href: '/yx/payroll/proofs', group: 'Payroll' };
@@ -322,6 +324,8 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         ...(perms.has('payroll.run.prepare') || perms.has('payroll.setup.manage') ? [PAY_GO_LIVE] : []),
         ...(perms.has('payroll.payment.record') ? [PAY_MODES] : []),
         ...(perms.has('payroll.loan.manage') ? [PAY_LOANS] : []),
+        ...(perms.has('consultant.manage') || perms.has('consultant.invoice.approve') ? [PAY_CONSULTANTS] : []),
+        ...(perms.has('statutory.filing.view') || perms.has('consultant.manage') ? [PAY_CONSULTANT_TDS] : []),
         ...(perms.has('payroll.query.handle') ? [PAY_QUERIES] : []),
         ...(perms.has('tax.proof.verify') ? [PAY_PROOFS] : []),
         ...(perms.has('payroll.document.issue') ? [PAY_CERTIFICATES] : []),
