@@ -1342,9 +1342,9 @@
     "account": "admin@demo-org.test (System Admin)",
     "steps": [
       "Sign in as admin@. Click Access > Roles & access.",
-      "Use the Show switch: People, Waiting, Roles."
+      "Use the Show switch: People, Waiting, Roles. In People, pick a person in the Person box."
     ],
-    "expected": "People lists each person's grants (role, over which people, from / until). Roles lists HR Admin, Payroll Admin, Team Manager, Plant HR Executive and others. Waiting shows grants waiting for approval.",
+    "expected": "People shows the chosen person: the System Admin card, \"What they can do today\" and their grants (role, over which people, from / until, status). Waiting shows grants waiting for approval, or \"Nothing is waiting for approval.\" Roles lists HR Admin, Payroll Admin, Team Manager, Plant HR Executive and others.",
     "stories": [
       "US-A-111",
       "US-A-112",
