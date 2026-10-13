@@ -155,7 +155,7 @@ export default function V2ApprovalsPage() {
       <div style={{ marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--muted)', margin: 0 }}>Approvals</p>
         <h1 className="v2-title" style={{ fontSize: 22, margin: '2px 0 0' }}>Approval Inbox</h1>
-        <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0' }}>Review requisitions and offers waiting on your sign-off, and track what you&apos;ve submitted.</p>
+        <p style={{ fontSize: 13, color: 'var(--muted)', margin: '4px 0 0' }}>Review offers waiting on your sign-off, and track what you&apos;ve submitted. New requisitions are approved in <a href="/yx/approvals">Approvals</a>.</p>
       </div>
 
       {/* Quiet metric strip — one card, thin dividers, no rainbow icon stat tiles (Workfox rule 4/8). */}

@@ -33,6 +33,9 @@ const nextConfig = {
       // M10 AT1 (founder D1): the jobs list is the YukthiX Hiring › Jobs page; each job's workspace stays at /v2/jobs/:id.
       { source: '/jobs', destination: '/yx/hiring/jobs', permanent: false },
       { source: '/v2/jobs', destination: '/yx/hiring/jobs', permanent: false },
+      // M10 AT2: hiring approval routes moved to YukthiX (requisitions now run on YukthiX Approvals).
+      { source: '/settings/approvals', destination: '/yx/hiring/approval-routes', permanent: false },
+      { source: '/v2/settings/approvals', destination: '/yx/hiring/approval-routes', permanent: false },
       ...routes.map((source) => ({ source, destination: `/v2${source}`, permanent: false })),
       // The classic sign-in is retired (founder decision 7 Oct 2026): every company sign-in, password
       // reset and reset link is the YukthiX one (old bookmarks and emails included). The query string
