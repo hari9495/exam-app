@@ -29,7 +29,6 @@ export const CANDIDATE_TABLES = {
   referrals: 'move',
   survey_responses: 'move',
   talent_pool_members: 'unique',
-  candidate_merges: 'record',
   candidate_retention_actions: 'record',
 } as const;
 
