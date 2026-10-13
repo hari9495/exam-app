@@ -14,6 +14,7 @@ import { dayKey } from '../../../lib/dates';
 import { useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
 import { Checkbox } from '../../../components/choice';
+import { CustomFieldInputs } from './fields';
 import type { Choice, HiringJob, HiringJobStatus, JobCustomField, LoadState, NewJobInput, OpenPlanLine } from './types';
 
 // Recruitment batch AT1, wired (M10-BUILD-DESIGN §3): the jobs list that replaces the older /v2/jobs list. Opening a
@@ -263,19 +264,7 @@ function NewJobDialog(p: HiringJobsScreenProps & { onClose: () => void }) {
           Draft the description
         </Button>
       )}
-      {p.customFields.map((f) => (
-        <FormField key={f.id} id={`hj-cf-${f.id}`} label={f.label} required={f.required} optional={!f.required}>
-          {f.fieldType === 'select' ? (
-            <Select aria-label={f.label} value={(custom[f.id] as string | undefined) ?? null} onChange={(v) => setCustom((c) => ({ ...c, [f.id]: v }))} options={(f.options ?? []).map((o) => ({ value: o, label: o }))} clearable />
-          ) : f.fieldType === 'number' ? (
-            <NumberField value={(custom[f.id] as number | undefined) ?? null} onChange={(v) => setCustom((c) => ({ ...c, [f.id]: v }))} />
-          ) : f.fieldType === 'date' ? (
-            <DatePicker aria-label={f.label} value={custom[f.id] ? new Date(`${custom[f.id]}T00:00:00`) : null} onChange={(d) => setCustom((c) => ({ ...c, [f.id]: d ? dayKey(d) : null }))} />
-          ) : (
-            <TextField value={(custom[f.id] as string | undefined) ?? ''} onChange={(v) => setCustom((c) => ({ ...c, [f.id]: v }))} maxLength={500} />
-          )}
-        </FormField>
-      ))}
+      <CustomFieldInputs fields={p.customFields} values={custom} onChange={setCustom} idPrefix="hj" />
     </ConfirmDialog>
   );
 }

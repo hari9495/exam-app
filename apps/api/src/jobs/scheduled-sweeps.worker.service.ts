@@ -15,6 +15,7 @@ import { DripService } from '../drip/drip.service';
 import { EmployeeHistoryService } from '../employee-history/employee-history.service';
 import { PeopleService } from '../people/people.service';
 import { IdentityProvidersService } from '../auth/identity-providers.service';
+import { CandidateRetentionService } from '../talent/retention.service';
 
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -44,6 +45,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     employeeHistory: EmployeeHistoryService,
     people: PeopleService,
     identityProviders: IdentityProvidersService,
+    candidateRetention: CandidateRetentionService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -60,6 +62,8 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       // M01 §3.4 / YX-LC-01: probation review reminders, escalation and opt-in auto-confirmation.
       probations: () => people.probationSweep(),
       'domain-verification-recheck': () => identityProviders.recheckDomains(),
+      // M10 AT4 (YX-ATS-53): candidate renewal emails and anonymisation after the company's period.
+      'candidate-retention': () => candidateRetention.sweep(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

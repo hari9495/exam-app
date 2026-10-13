@@ -44,6 +44,9 @@ describe('hiring pages moved to YukthiX', () => {
     ['/settings/apply-consent', '/yx/hiring/careers'],
     ['/v2/settings/job-boards', '/yx/hiring/job-boards'],
     ['/settings/job-boards', '/yx/hiring/job-boards'],
+    ['/v2/candidates', '/yx/hiring/candidates'],
+    ['/candidates', '/yx/hiring/candidates'],
+    ['/candidates/bulk-upload-invite', '/yx/hiring/candidates'],
   ])('%s goes to %s', (source, destination) => {
     expect(redirects).toContainEqual({ source, destination, permanent: false });
   });

@@ -70,7 +70,7 @@ export function AttentionPanel({ data }: { data: AttentionData }) {
       )}
       <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
         <Link href="/v2/exams/new" style={secondaryBtn}><Plus size={14} /> Create exam</Link>
-        <Link href="/v2/candidates" style={secondaryBtn}><Mail size={14} /> Invite candidates</Link>
+        <Link href="/yx/hiring/candidates" style={secondaryBtn}><Mail size={14} /> Invite candidates</Link>
       </div>
     </Panel>
   );

@@ -76,7 +76,8 @@ jobs:
 
       - name: Migrate and seed database
         working-directory: apps/api
-        run: npx prisma migrate deploy && npx prisma db seed
+        # Seeded twice: the README promises the seed can be re-run on an existing database.
+        run: npx prisma migrate deploy && npx prisma db seed && npx prisma db seed
 
       # Proves tenant isolation in PostgreSQL itself, connected as the app role: no context =>
       # zero rows, cross-tenant reads/writes rejected, no context leak across pooled connections,

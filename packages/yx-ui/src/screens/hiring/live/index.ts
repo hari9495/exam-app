@@ -6,3 +6,6 @@ export { HeadcountPlansScreen, type HeadcountPlansScreenProps } from './plans';
 export { ApprovalRoutesScreen, type ApprovalRoutesScreenProps } from './routes';
 export { CareersSiteScreen, type CareersSiteScreenProps } from './careers';
 export { JobBoardsScreen, type JobBoardsScreenProps } from './boards';
+export { HiringCandidatesScreen, EmailDialog, STAGE, type HiringCandidatesScreenProps, type CandidateStatusFilter } from './candidates';
+export { CandidateProfileScreen, type CandidateProfileScreenProps } from './profile';
+export { DuplicatesScreen, TalentPoolsScreen, CandidateRetentionScreen, type DuplicatesScreenProps, type TalentPoolsScreenProps, type CandidateRetentionScreenProps } from './talent';

@@ -28,7 +28,7 @@ const nextConfig = {
     return ['/sso/callback', '/yx/sign-in/callback'].map((source) => ({ source, headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] }));
   },
   async redirects() {
-    const routes = ['/dashboard', '/exams', '/questions', '/candidates', '/walk-in-groups', '/analytics/hiring', '/message-templates', '/offer-template'];
+    const routes = ['/dashboard', '/exams', '/questions', '/walk-in-groups', '/analytics/hiring', '/message-templates', '/offer-template'];
     return [
       // M10 AT1 (founder D1): the jobs list is the YukthiX Hiring › Jobs page; each job's workspace stays at /v2/jobs/:id.
       { source: '/jobs', destination: '/yx/hiring/jobs', permanent: false },
@@ -39,6 +39,8 @@ const nextConfig = {
       // M10 AT3: the careers site, applicant consent and job boards moved to YukthiX Hiring.
       ...['careers', 'apply-consent'].flatMap((p) => [`/settings/${p}`, `/v2/settings/${p}`].map((source) => ({ source, destination: '/yx/hiring/careers', permanent: false }))),
       ...['/settings/job-boards', '/v2/settings/job-boards'].map((source) => ({ source, destination: '/yx/hiring/job-boards', permanent: false })),
+      // M10 AT4: the candidates list moved to YukthiX Hiring (bulk upload and invite included).
+      ...['/candidates', '/v2/candidates', '/candidates/bulk-upload-invite'].map((source) => ({ source, destination: '/yx/hiring/candidates', permanent: false })),
       ...routes.map((source) => ({ source, destination: `/v2${source}`, permanent: false })),
       // The classic sign-in is retired (founder decision 7 Oct 2026): every company sign-in, password
       // reset and reset link is the YukthiX one (old bookmarks and emails included). The query string
@@ -65,7 +67,6 @@ const nextConfig = {
       // Bulk upload became a modal on the v2 candidates/questions lists (no standalone route);
       // funnel the old standalone pages to those lists so no old recruiter UI stays reachable.
       { source: '/questions/bulk-upload', destination: '/v2/questions', permanent: false },
-      { source: '/candidates/bulk-upload-invite', destination: '/v2/candidates', permanent: false },
       // v2 cutover — org-admin console (settings + admin surfaces).
       { source: '/settings/billing', destination: '/v2/settings/billing', permanent: false },
       { source: '/settings/integrations', destination: '/v2/settings/integrations', permanent: false },

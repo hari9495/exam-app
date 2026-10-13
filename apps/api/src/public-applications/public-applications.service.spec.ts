@@ -702,6 +702,7 @@ describe('PublicApplicationsService', () => {
             candidateProfile: {
               findUnique: jest.fn().mockResolvedValue({ resumePath: 'candidates/org-1/resume.pdf', parseStatus: 'parsed' }),
             },
+            candidateConsent: { findMany: jest.fn().mockResolvedValue([]) },
           }),
         );
       prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
@@ -726,6 +727,7 @@ describe('PublicApplicationsService', () => {
             candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'Asha', email: 'a@x.com', phone: null }) },
             pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
             candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+            candidateConsent: { findMany: jest.fn().mockResolvedValue([]) },
           }),
         );
       prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
@@ -761,6 +763,7 @@ describe('PublicApplicationsService', () => {
             candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'New Name', email: 'a@x.com', phone: '555-1111' }) },
             pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
             candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+            candidateConsent: { findMany: jest.fn().mockResolvedValue([]) },
           }),
         );
       prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
@@ -842,6 +845,7 @@ describe('PublicApplicationsService', () => {
             candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'Asha', email: 'a@x.com', phone: null }) },
             pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
             candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+            candidateConsent: { findMany: jest.fn().mockResolvedValue([]) },
           }),
         ); // getPortal's own read tx
       prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
@@ -895,6 +899,7 @@ describe('PublicApplicationsService', () => {
             candidate: { findUnique: jest.fn().mockResolvedValue({ name: 'Asha', email: 'a@x.com', phone: null }) },
             pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
             candidateProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+            candidateConsent: { findMany: jest.fn().mockResolvedValue([]) },
           }),
         );
       prisma.organization.findUnique.mockResolvedValue({ name: 'Acme' });
