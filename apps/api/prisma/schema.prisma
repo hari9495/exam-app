@@ -8744,3 +8744,149 @@ model ReviewerBlock {
 
   @@map("reviewer_blocks")
 }
+
+// ---- M03 payroll batch 5h (migration 20261117000000_payroll_5h): consultants, s.197 certificates, invoices, payouts, the
+// consultant's own sign-in and Form 131. RLS, the pay guard and the consultant portal guard live in the migration.
+model Consultant {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  legalEntityId    String    @map("legal_entity_id") @db.Uuid
+  name             String    @db.VarChar(200)
+  kind             String    @db.VarChar(10)
+  email            String    @db.VarChar(200)
+  panEnc           String?   @map("pan_enc")
+  panHash          String?   @map("pan_hash") @db.Char(64)
+  panLast4         String?   @map("pan_last4") @db.Char(4)
+  panStatus        String    @map("pan_status") @db.VarChar(12)
+  gstin            String?   @db.VarChar(15)
+  defaultSection   String    @map("default_section") @db.VarChar(8)
+  bankHolder       String?   @map("bank_holder") @db.VarChar(200)
+  bankIfsc         String?   @map("bank_ifsc") @db.Char(11)
+  bankAccountEnc   String?   @map("bank_account_enc")
+  bankAccountHash  String?   @map("bank_account_hash") @db.Char(64)
+  bankAccountLast4 String?   @map("bank_account_last4") @db.Char(4)
+  bankChangedBy    String?   @map("bank_changed_by") @db.Uuid
+  bankUsableFrom   DateTime? @map("bank_usable_from") @db.Timestamptz(3)
+  bankVerifiedRef  String?   @map("bank_verified_ref") @db.VarChar(60)
+  bankVerifiedBy   String?   @map("bank_verified_by") @db.Uuid
+  bankVerifiedAt   DateTime? @map("bank_verified_at") @db.Timestamptz(3)
+  status           String    @default("active") @db.VarChar(10)
+  createdBy        String    @map("created_by") @db.Uuid
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("consultants")
+}
+
+model Tds197Certificate {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  consultantId   String   @map("consultant_id") @db.Uuid
+  certificateNo  String   @map("certificate_no") @db.VarChar(30)
+  section        String   @db.VarChar(8)
+  rate           Decimal  @db.Decimal(6, 4)
+  validFrom      DateTime @map("valid_from") @db.Date
+  validTo        DateTime @map("valid_to") @db.Date
+  limitAmount    Decimal  @map("limit_amount") @db.Decimal(14, 2)
+  consumed       Decimal  @default(0) @db.Decimal(14, 2)
+  createdBy      String   @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("tds_197_certificates")
+}
+
+model ConsultantPayoutBatch {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  formatKey      String    @map("format_key") @db.VarChar(20)
+  formatVersion  String    @map("format_version") @db.VarChar(20)
+  fileName       String    @map("file_name") @db.VarChar(200)
+  contentType    String    @map("content_type") @db.VarChar(100)
+  fileEnc        String    @map("file_enc")
+  sha256         String    @db.Char(64)
+  total          Decimal   @db.Decimal(14, 2)
+  rowCount       Int       @map("row_count")
+  invoiceIds     String[]  @map("invoice_ids") @db.Uuid
+  status         String    @default("draft") @db.VarChar(10)
+  generatedBy    String    @map("generated_by") @db.Uuid
+  releasedBy     String?   @map("released_by") @db.Uuid
+  releasedAt     DateTime? @map("released_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("consultant_payout_batches")
+}
+
+model ConsultantInvoice {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  legalEntityId   String    @map("legal_entity_id") @db.Uuid
+  consultantId    String    @map("consultant_id") @db.Uuid
+  invoiceNo       String    @map("invoice_no") @db.VarChar(40)
+  invoiceDate     DateTime  @map("invoice_date") @db.Date
+  taxYear         String    @map("tax_year") @db.VarChar(7)
+  period          DateTime  @db.Date
+  taxableValue    Decimal   @map("taxable_value") @db.Decimal(14, 2)
+  cgst            Decimal   @default(0) @db.Decimal(14, 2)
+  sgst            Decimal   @default(0) @db.Decimal(14, 2)
+  igst            Decimal   @default(0) @db.Decimal(14, 2)
+  section         String    @db.VarChar(8)
+  fileRef         String?   @map("file_ref") @db.VarChar(500)
+  fileSha256      String?   @map("file_sha256") @db.Char(64)
+  fileName        String?   @map("file_name") @db.VarChar(200)
+  uploadedVia     String    @map("uploaded_via") @db.VarChar(10)
+  uploadedBy      String?   @map("uploaded_by") @db.Uuid
+  status          String    @default("submitted") @db.VarChar(10)
+  wfRequestId     String?   @map("wf_request_id") @db.Uuid
+  decisionNote    String?   @map("decision_note") @db.VarChar(500)
+  tdsAmount       Decimal?  @map("tds_amount") @db.Decimal(14, 2)
+  tdsBase         Decimal?  @map("tds_base") @db.Decimal(14, 2)
+  tdsRate         String?   @map("tds_rate") @db.VarChar(12)
+  tdsReason       String?   @map("tds_reason") @db.VarChar(20)
+  tdsRuleVersion  String?   @map("tds_rule_version") @db.VarChar(20)
+  tdsOn           DateTime? @map("tds_on") @db.Date
+  certificateId   String?   @map("certificate_id") @db.Uuid
+  certificateUsed Decimal   @default(0) @map("certificate_used") @db.Decimal(14, 2)
+  netPayable      Decimal?  @map("net_payable") @db.Decimal(14, 2)
+  payoutBatchId   String?   @map("payout_batch_id") @db.Uuid
+  paidOn          DateTime? @map("paid_on") @db.Date
+  paymentRef      String?   @map("payment_ref") @db.VarChar(80)
+  paymentReason   String?   @map("payment_reason") @db.VarChar(300)
+  version         Int       @default(1)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, legalEntityId, period], map: "consultant_invoices_period_idx")
+  @@map("consultant_invoices")
+}
+
+model ConsultantPortalSession {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  consultantId   String    @map("consultant_id") @db.Uuid
+  tokenHash      String    @unique(map: "consultant_portal_sessions_token_key") @map("token_hash") @db.Char(64)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("consultant_portal_sessions")
+}
+
+model ConsultantCertificate {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  consultantId   String   @map("consultant_id") @db.Uuid
+  taxYear        String   @map("tax_year") @db.VarChar(7)
+  quarter        Int      @db.SmallInt
+  formCode       String   @map("form_code") @db.VarChar(4)
+  fileRef        String   @map("file_ref") @db.VarChar(500)
+  sha256         String   @db.Char(64)
+  status         String   @default("issued") @db.VarChar(10)
+  issuedBy       String   @map("issued_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("consultant_certificates")
+}
