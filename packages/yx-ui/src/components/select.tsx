@@ -44,12 +44,18 @@ function EmptyNote({ text }: { text: string }) {
   );
 }
 
+/** Every typed word must appear in the label or keywords. cmdk's default is fuzzy ("rec" matched "Imran Sheikh · it-collab"); the value is an id, so it is not searched. */
+export function matchOption(_value: string, search: string, keywords: string[] = []): number {
+  const text = keywords.join(' ').toLowerCase();
+  return search.toLowerCase().split(/\s+/).filter(Boolean).every((word) => text.includes(word)) ? 1 : 0;
+}
+
 function OptionList<V extends string>({ options, isSelected, onPick, searchable, searchPlaceholder, emptyText, renderOption, multi, initial, onSearchChange }: ListProps<V>) {
   // Server-backed search: the host filters, so the list shows what it was given; typing is debounced like FilterBar.
   const timer = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => () => clearTimeout(timer.current), []);
   return (
-    <Command className="yx-listbox" loop defaultValue={initial} shouldFilter={!onSearchChange}>
+    <Command className="yx-listbox" loop defaultValue={initial} shouldFilter={!onSearchChange} filter={matchOption}>
       <div className="yx-listbox__search" data-hidden={!searchable || undefined}>
         <Icon icon={Search} />
         <Command.Input

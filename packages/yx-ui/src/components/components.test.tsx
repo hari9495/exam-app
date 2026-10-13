@@ -7,7 +7,7 @@ import { Button, IconButton } from './button';
 import { FormField, ErrorSummary } from './field';
 import { CurrencyField, MaskedField, TextField, TimeField } from './inputs';
 import { Checkbox, MethodCards } from './choice';
-import { MultiSelect, PersonPicker, Select } from './select';
+import { matchOption, MultiSelect, PersonPicker, Select } from './select';
 import { DatePicker } from './date';
 import { FileUpload, typesLabel } from './upload';
 import { Avatar, Badge } from './display';
@@ -169,6 +169,20 @@ describe('Select', () => {
     await u.click(await screen.findByText('Earned leave'));
     expect(onChange).toHaveBeenCalledWith('el');
     await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'false'));
+  });
+  it('search shows only options that contain what was typed (no fuzzy matches)', async () => {
+    const u = userEvent.setup();
+    const people = [
+      { value: 'u1', label: 'Neha Kulkarni · recruiter@demo-org.test' },
+      { value: 'u2', label: 'Kavya Rao · compliance@demo-org.test' },
+      { value: 'u3', label: 'Imran Sheikh · it-collab@demo-org.test' },
+    ];
+    render(<Select aria-label="Person" options={people} value={null} onChange={() => {}} searchable defaultOpen />);
+    await u.type(await screen.findByRole('combobox', { name: 'Search' }), 'rec');
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(1));
+    expect(screen.getByRole('option', { name: /Neha Kulkarni/ })).toBeInTheDocument();
+    expect(matchOption('u3', 'imran COLLAB', ['Imran Sheikh · it-collab@demo-org.test'])).toBe(1); // every word, any order, any case
+    expect(matchOption('u3', 'u3', ['Imran Sheikh'])).toBe(0); // the id is not searched
   });
   it('opens with the current choice highlighted', async () => {
     render(<Select aria-label="Leave type" options={opts} value="el" onChange={() => {}} defaultOpen />);
