@@ -40,6 +40,19 @@ const pick = async (label: string, option: string) => {
 };
 
 describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
+  it('a new role from a template says it was created', async () => {
+    const p = roles();
+    await ue.click(screen.getByRole('radio', { name: 'Roles' }));
+    await ue.click(screen.getByRole('button', { name: 'New role from a template' }));
+    await pick('Template', 'HR Executive');
+    const name = screen.getByRole('textbox', { name: /Role name/ });
+    await ue.clear(name);
+    await ue.type(name, 'Chennai HR');
+    await ue.click(screen.getByRole('button', { name: 'Create role' }));
+    await waitFor(() => expect(p.onFromTemplate).toHaveBeenCalledWith('hr_executive', 'Chennai HR'));
+    expect(await screen.findByText('Role "Chennai HR" created.')).toBeInTheDocument();
+  });
+
   it('roles list: permissions are worded like Held by, so the two counts never read as one', async () => {
     roles();
     await ue.click(screen.getByRole('radio', { name: 'Roles' }));

@@ -280,13 +280,24 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
   const admins = users.filter(isSystemAdmin);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Wraps an action so the screen says what happened once it succeeds; a failure still shows in the dialog that ran it.
+  const said =
+    <A extends unknown[]>(run: (...a: A) => Promise<void>, text: (...a: A) => string) =>
+    async (...a: A) => {
+      setNotice(null);
+      await run(...a);
+      setNotice(text(...a));
+    };
   const waiting = grants.filter((g) => g.status === 'pending');
   const mine = grants.filter((g) => g.userId === userId);
   const approve = async (g: Grant) => {
     setBusy(g.id);
     setError(null);
+    setNotice(null);
     try {
       await props.onApprove(g.id);
+      setNotice('Approved.');
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -324,6 +335,7 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
         <>
           <Segment label="Show" value={view} onChange={setView} options={[{ value: 'people', label: 'People' }, { value: 'waiting', label: `Waiting (${waiting.length})` }, { value: 'roles', label: 'Roles' }]} />
           {error && <InlineAlert tone="danger" title={error} />}
+          {notice && <InlineAlert tone="success" title={notice} />}
           {view === 'people' && (
             <>
               <FormField id="ra-user" label="Person">
@@ -387,10 +399,10 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
           )}
         </>
       )}
-      {giving && <GrantDialog users={users} roles={roles} scopes={props.scopes} today={props.today} userId={userId} onGrant={props.onGrant} onClose={() => setGiving(false)} />}
-      {fromTemplate && <TemplateDialog templates={templates} onFromTemplate={props.onFromTemplate} onClose={() => setFromTemplate(false)} />}
-      {adminAsk && <SystemAdminDialog user={adminAsk} onSystemAdmin={props.onSystemAdmin} onClose={() => setAdminAsk(null)} />}
-      {ask && <ReasonDialog ask={ask} onClose={() => setAsk(null)} onRevoke={props.onRevoke} onReject={props.onReject} />}
+      {giving && <GrantDialog users={users} roles={roles} scopes={props.scopes} today={props.today} userId={userId} onGrant={said(props.onGrant, () => 'Access saved.')} onClose={() => setGiving(false)} />}
+      {fromTemplate && <TemplateDialog templates={templates} onFromTemplate={said(props.onFromTemplate, (_key, name) => `Role "${name}" created.`)} onClose={() => setFromTemplate(false)} />}
+      {adminAsk && <SystemAdminDialog user={adminAsk} onSystemAdmin={said(props.onSystemAdmin, () => 'System Admins saved.')} onClose={() => setAdminAsk(null)} />}
+      {ask && <ReasonDialog ask={ask} onClose={() => setAsk(null)} onRevoke={said(props.onRevoke, () => 'Revoked.')} onReject={said(props.onReject, () => 'Rejected.')} />}
     </div>
   );
 }
