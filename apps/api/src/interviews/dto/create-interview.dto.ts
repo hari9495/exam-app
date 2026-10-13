@@ -31,4 +31,6 @@ export class CreateInterviewDto {
   @IsOptional() @IsDateString() bookingWindowStart?: string;
   @IsOptional() @IsDateString() bookingWindowEnd?: string;
   @IsOptional() @IsIn([15, 30, 45, 60]) slotDurationMinutes?: number;
+  /** M10 AT5: the scorecard panellists fill (defaults to the job's). */
+  @IsOptional() @IsUUID() scorecardTemplateId?: string;
 }

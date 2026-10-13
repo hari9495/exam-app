@@ -15,6 +15,7 @@ import { EmployeeHistoryModule } from '../employee-history/employee-history.modu
 import { PeopleModule } from '../people/people.module';
 import { AuthModule } from '../auth/auth.module';
 import { TalentModule } from '../talent/talent.module';
+import { InterviewingModule } from '../interviewing/interviewing.module';
 
 // Runs every recurring housekeeping sweep as a cron-driven BullMQ job scheduler (one dispatcher
 // worker), replacing the per-service unref'd setInterval timers. Imports each owning module for its
@@ -35,6 +36,7 @@ import { TalentModule } from '../talent/talent.module';
     PeopleModule,
     AuthModule,
     TalentModule,
+    InterviewingModule,
   ],
   providers: [
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },

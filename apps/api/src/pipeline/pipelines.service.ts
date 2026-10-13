@@ -59,7 +59,12 @@ export class PipelinesService {
       const again = await tx.pipeline.findFirst({ where: { organizationId, isDefault: true }, include: STAGE_INCLUDE });
       if (again) return again as PipelineWithStages;
       const created = await tx.pipeline.create({ data: { organizationId, name: 'Standard', isDefault: true } });
-      await tx.pipelineStage.createMany({ data: DEFAULT_PIPELINE_STAGES.map((st, i) => ({ organizationId, pipelineId: created.id, name: st.key[0].toUpperCase() + st.key.slice(1), category: st.category, position: i })) });
+      // Every stage needs a status: an application sits on a status, never on a bare stage (M10 AT5 fix).
+      for (const [i, st] of DEFAULT_PIPELINE_STAGES.entries()) {
+        const name = st.key[0].toUpperCase() + st.key.slice(1);
+        const stage = await tx.pipelineStage.create({ data: { organizationId, pipelineId: created.id, name, category: st.category, position: i } });
+        await tx.pipelineStatus.create({ data: { organizationId, stageId: stage.id, name, position: 0 } });
+      }
       return (await tx.pipeline.findFirstOrThrow({ where: { id: created.id }, include: STAGE_INCLUDE })) as PipelineWithStages;
     });
   }
