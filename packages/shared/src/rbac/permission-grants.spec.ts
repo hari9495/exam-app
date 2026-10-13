@@ -94,3 +94,35 @@ describe('employee field classes (P02 §4.4, YX-SEC-07/08)', () => {
     expect(maskTail(null)).toBeNull();
   });
 });
+
+// M10 founder D2: the older hiring keys keep working, and a company-wide `ats.*` key stands in for them.
+describe('older hiring keys and the ats.* keys (M10 D2)', () => {
+  const build = (profileKeys: string[], grants: { scope_type: string; target: string | null; permissions_json: string }[] = []) => {
+    const prisma = { rolePermission: { findMany: jest.fn().mockResolvedValue([]) } };
+    const tx = { permissionProfile: { findUnique: jest.fn().mockResolvedValue({ permissionsJson: JSON.stringify(profileKeys) }) }, $queryRaw: jest.fn().mockResolvedValue(grants) };
+    const tenantPrisma = { forTenant: jest.fn(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
+    return { prisma: prisma as never, tenantPrisma: tenantPrisma as never };
+  };
+  const subject = { role: 'panel', organizationId: 'o1', userId: 'u1', permissionProfileId: 'p1' };
+
+  it('a company-wide ats.job.manage passes pipeline:manage and pipelines:configure', async () => {
+    const { prisma, tenantPrisma } = build(['ats.job.manage']);
+    const keys = await resolvePermissionGrants(prisma, tenantPrisma, subject, ['pipeline:manage']);
+    expect(keys.has('pipeline:manage')).toBe(true);
+    expect(keys.has('pipelines:configure')).toBe(true);
+    expect(keys.has('candidate:data_rights')).toBe(false);
+  });
+
+  it('the older keys still work on their own', async () => {
+    const { prisma, tenantPrisma } = build(['pipeline:manage']);
+    expect((await resolvePermissionGrants(prisma, tenantPrisma, subject, ['pipeline:manage'])).has('pipeline:manage')).toBe(true);
+  });
+
+  it('hiring keys are company-wide only for now: a scoped grant confers neither the key nor the older one', async () => {
+    const { prisma, tenantPrisma } = build([], [{ scope_type: 'legal_entity', target: 'e1', permissions_json: '["ats.candidate.manage"]' }]);
+    const keys = await resolvePermissionGrants(prisma, tenantPrisma, subject, ['candidate:manage']);
+    expect(keys.has('ats.candidate.manage')).toBe(false);
+    expect(keys.has('candidate:manage')).toBe(false);
+    expect(grantScopesFor('ats.candidate.manage')).toEqual(['tenant']);
+  });
+});

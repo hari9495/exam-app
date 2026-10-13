@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Job, PipelineEntry, PipelineFeedback } from '@prisma/client';
+import { Job, PipelineEntry, PipelineFeedback, Prisma } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, StageCategory, STAGE_CATEGORIES, lockedFieldEdits } from '@exam-platform/shared';
 import { EntryExamResult, deriveEntryExamResults, averageRating } from './derive-entry-exam-results';
 import {
@@ -206,6 +206,11 @@ export class PipelineService {
       salaryCurrency?: string;
       pipelineId?: string;
       customFields?: Record<string, string | number | null>;
+      legalEntityId?: string | null;
+      departmentId?: string | null;
+      designationId?: string | null;
+      gradeId?: string | null;
+      locationId?: string | null;
     },
   ): Promise<Job & { customFields?: CustomFieldRead[] }> {
     // Requisition gate: a job can't go live (status 'open') until its requisition is approved,
@@ -217,14 +222,16 @@ export class PipelineService {
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const organizationId = context.organizationId as string;
+      const m = await this.masters(tx, organizationId, dto);
       const created = await tx.job.create({
         data: {
           organizationId,
           title: dto.title,
           description: dto.description,
-          location: dto.location,
+          location: dto.location ?? m.locationName,
           employmentType: dto.employmentType,
-          department: dto.department,
+          department: dto.department ?? m.departmentName,
+          ...m.links,
           hiringManagerId: dto.hiringManagerId,
           headcount: dto.headcount,
           salaryMin: dto.salaryMin,
@@ -255,6 +262,27 @@ export class PipelineService {
       });
       return { ...created, customFields: serializeCustomFieldValues(rows, defs) };
     });
+  }
+
+  /**
+   * M10 AT1: checks the P01 master links belong to the company (never a 500 from the foreign key) and returns them with
+   * the department and location names, kept in the older free-text columns so the older screens still show them.
+   */
+  private async masters(tx: Prisma.TransactionClient, organizationId: string, dto: { legalEntityId?: string | null; departmentId?: string | null; designationId?: string | null; gradeId?: string | null; locationId?: string | null }) {
+    const one = async (label: string, id: string | null | undefined, find: (id: string) => Promise<{ name: string } | null>) => {
+      if (!id) return null;
+      const row = await find(id);
+      if (!row) throw new BadRequestException(`Choose a ${label} of this company.`);
+      return row.name;
+    };
+    const where = (id: string) => ({ where: { organizationId, id }, select: { name: true } });
+    await one('legal entity', dto.legalEntityId, (id) => tx.legalEntity.findFirst(where(id)));
+    const departmentName = await one('department', dto.departmentId, (id) => tx.department.findFirst(where(id)));
+    await one('designation', dto.designationId, (id) => tx.designation.findFirst(where(id)));
+    await one('grade', dto.gradeId, (id) => tx.grade.findFirst(where(id)));
+    const locationName = await one('location', dto.locationId, (id) => tx.location.findFirst(where(id)));
+    const pick = <K extends keyof typeof dto>(k: K) => (dto[k] === undefined ? {} : { [k]: dto[k] ?? null });
+    return { departmentName: departmentName ?? undefined, locationName: locationName ?? undefined, links: { ...pick('legalEntityId'), ...pick('departmentId'), ...pick('designationId'), ...pick('gradeId'), ...pick('locationId') } };
   }
 
   // Resolves the pipeline a new job should use: the caller's requested pipeline, but only if it
@@ -392,6 +420,11 @@ export class PipelineService {
       salaryCurrency?: string;
       customFields?: Record<string, string | number | null>;
       jobBoardIds?: string[];
+      legalEntityId?: string | null;
+      departmentId?: string | null;
+      designationId?: string | null;
+      gradeId?: string | null;
+      locationId?: string | null;
     },
     // The caller's role, for field-level write enforcement (read-only/hidden governed fields can't
     // be changed). Optional: undefined skips enforcement (internal callers / ungoverned roles like
@@ -518,6 +551,11 @@ export class PipelineService {
           await tx.jobBoardPublication.createMany({ data: toAdd.map((jobBoardId) => ({ jobBoardId, jobId, organizationId })) });
         }
       }
+      // M10 AT1: master links (checked) and, when a department / location is linked, its name in the older column.
+      const m = await this.masters(tx, organizationId, dto);
+      Object.assign(data, m.links);
+      if (dto.departmentId && dto.department === undefined) data.department = m.departmentName;
+      if (dto.locationId && dto.location === undefined) data.location = m.locationName;
       const updated = await tx.job.update({ where: { id: jobId }, data });
       await this.audit.record(context, {
         actorUserId,

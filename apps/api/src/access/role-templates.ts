@@ -127,6 +127,40 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     cannot: 'See anyone’s goals, reviews or ratings.',
     permissions: ['perf.setup.manage', 'perf.goal.manage', 'perf.cycle.manage', 'perf.calibration.facilitate'],
   },
+  // M10 AT1 (founder D2): hiring roles on the scoped ats.* keys. Company-wide for now: the hiring screens become
+  // scope-aware batch by batch (M10-BUILD-DESIGN §17).
+  {
+    key: 'recruiter',
+    name: 'Recruiter',
+    typicalScope: 'tenant',
+    summary: 'Jobs, pipelines, candidates, interviews, assessments and offers; hiring reports (M10).',
+    cannot: 'See offer pay, erase candidate data, or set headcount budgets.',
+    permissions: ['ats.job.manage', 'ats.candidate.manage', 'ats.interview.schedule', 'ats.assessment.view', 'ats.offer.manage', 'ats.report.view'],
+  },
+  {
+    key: 'hiring_manager',
+    name: 'Hiring manager',
+    typicalScope: 'tenant',
+    summary: 'Raises requisitions and follows the candidates and assessment results of the hiring (M10).',
+    cannot: 'Change jobs or pipelines, or see offer pay.',
+    permissions: ['ats.requisition.raise', 'ats.candidate.view', 'ats.assessment.view'],
+  },
+  {
+    key: 'interview_coordinator',
+    name: 'Interview coordinator',
+    typicalScope: 'tenant',
+    summary: 'Schedules interviews and panels and sees the candidates being interviewed (M10).',
+    cannot: 'Move candidates, or see assessment results or offers.',
+    permissions: ['ats.interview.schedule', 'ats.candidate.view'],
+  },
+  {
+    key: 'hiring_admin',
+    name: 'Hiring admin',
+    typicalScope: 'tenant',
+    summary: 'Headcount plans and budgets, offer pay, referral rewards, agencies, hiring reports and candidate data rights (M10).',
+    cannot: 'Change payroll or employee records.',
+    permissions: ['ats.headcount.manage', 'ats.offer.compensation.view', 'ats.referral.manage', 'ats.agency.manage', 'ats.report.view', 'ats.candidate.data_rights'],
+  },
   {
     key: 'compliance_owner',
     name: 'Compliance Owner',
