@@ -120,6 +120,9 @@ export class CandidateRetentionService {
   }
 
   runs(ctx: TenantContext) {
-    return inCompany(this.tenantPrisma, ctx, (tx, c) => tx.candidateRetentionRun.findMany({ where: { organizationId: c.organizationId }, orderBy: { runAt: 'desc' }, take: 60 }));
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => ({
+      months: Number(await settingFor(tx, c, 'ats.retention_months', { legalEntityId: '' })),
+      runs: await tx.candidateRetentionRun.findMany({ where: { organizationId: c.organizationId }, orderBy: { runAt: 'desc' }, take: 60 }),
+    }));
   }
 }

@@ -197,7 +197,8 @@ describe('Recruitment batch AT4', () => {
       expect(entries).toBe(1); // funnel facts stay
       expect(held).toMatchObject({ name: 'Old Held', erasedAt: null });
 
-      const runs = (await api('A', 'get', '/hiring/retention/runs').expect(200)).body;
+      const { runs, months } = (await api('A', 'get', '/hiring/retention/runs').expect(200)).body;
+      expect(months).toBe(12);
       expect(runs[0]).toMatchObject({ renewalsSent: 1, anonymised: 1, skippedHold: 1, skippedOpen: 1, skippedHired: 1, triggeredBy: expect.any(String) });
       const actions = await inA((tx) => tx.candidateRetentionAction.findMany({ where: { runId: runs[0].id } }));
       expect(actions.map((a) => a.action).sort()).toEqual(['anonymised', 'renewal_sent', 'skipped_hired', 'skipped_hold', 'skipped_open']);
