@@ -49,6 +49,338 @@
         { "name": "HRA in a metro: the least is HRA received", "fn": "hra_exempt", "input": { "hra": "20000", "basic": "50000", "rent": "25000", "metro": true }, "expected": { "exempt": "20000" } },
         { "name": "80C capped at 1.5 lakh (old regime)", "fn": "tax_deduction", "input": { "key": "sec80c", "amount": "200000", "regime": "old" }, "expected": { "allowed": "150000" } }
       ]
+    },
+    {
+      "statute": "IN.TDS-NONSAL",
+      "jurisdiction": "IN",
+      "version": "FY2025-26",
+      "validFrom": "2025-04-01",
+      "validTo": "2026-03-31",
+      "lawVersion": "IT-1961",
+      "verify": true,
+      "source": "Income-tax Act 1961: s.194C (1% individual or HUF, 2% others; Rs 30,000 one payment or Rs 1,00,000 in the year), s.194J (2% technical services, 10% professional fees; Rs 50,000 a year from 1 Apr 2025, Finance Act 2025), s.206AA (20% without PAN), s.197 (lower deduction certificate); TDS on the value excluding GST shown separately (CBDT Circular 23/2017); s.288B rounding.",
+      "values": {
+        "kind": "tds_nonsalary",
+        "sections": {
+          "194C": {
+            "label": "Payments to contractors (s.194C)",
+            "returnCode": "94C",
+            "rateIndividual": "0.01",
+            "rateOther": "0.02",
+            "single": "30000",
+            "aggregate": "100000"
+          },
+          "194J_A": {
+            "label": "Fees for technical services (s.194J(a))",
+            "returnCode": "94J-A",
+            "rate": "0.02",
+            "single": null,
+            "aggregate": "50000"
+          },
+          "194J_B": {
+            "label": "Fees for professional services (s.194J(b))",
+            "returnCode": "94J-B",
+            "rate": "0.10",
+            "single": null,
+            "aggregate": "50000"
+          }
+        },
+        "noPanRate": "0.20"
+      },
+      "golden": [
+        {
+          "name": "Professional fees of Rs 1,00,000 in a year already over the limit: 10% on the value without GST",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194J_B",
+            "amount": "100000",
+            "priorInYear": "60000",
+            "pan": "ok",
+            "payee": "other"
+          },
+          "expected": {
+            "tds": "10000",
+            "base": "100000",
+            "reason": "normal",
+            "returnCode": "94J-B"
+          }
+        },
+        {
+          "name": "Below the Rs 50,000 limit for the year: nothing deducted",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194J_B",
+            "amount": "40000",
+            "priorInYear": "0",
+            "pan": "ok",
+            "payee": "other"
+          },
+          "expected": {
+            "tds": "0",
+            "reason": "below_threshold"
+          }
+        },
+        {
+          "name": "The invoice that crosses the limit carries the year: 10% on Rs 60,000",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194J_B",
+            "amount": "20000",
+            "priorInYear": "40000",
+            "pan": "ok",
+            "payee": "other"
+          },
+          "expected": {
+            "tds": "6000",
+            "base": "60000"
+          }
+        },
+        {
+          "name": "No PAN: 20% (s.206AA), higher than the section rate",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194J_B",
+            "amount": "100000",
+            "priorInYear": "60000",
+            "pan": "missing",
+            "payee": "other"
+          },
+          "expected": {
+            "tds": "20000",
+            "reason": "no_pan"
+          }
+        },
+        {
+          "name": "A s.197 certificate at 2% for what is left of its limit, the rest at 10%",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194J_B",
+            "amount": "100000",
+            "priorInYear": "60000",
+            "pan": "ok",
+            "payee": "other",
+            "certificate": {
+              "rate": "0.02",
+              "remaining": "50000"
+            }
+          },
+          "expected": {
+            "tds": "6000",
+            "reason": "certificate_partly",
+            "certificateUsed": "50000"
+          }
+        },
+        {
+          "name": "Contract work, an individual, one payment over Rs 30,000: 1%",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194C",
+            "amount": "40000",
+            "priorInYear": "0",
+            "pan": "ok",
+            "payee": "individual"
+          },
+          "expected": {
+            "tds": "400",
+            "reason": "normal"
+          }
+        },
+        {
+          "name": "Contract work by a firm under both limits: nothing",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194C",
+            "amount": "20000",
+            "priorInYear": "50000",
+            "pan": "ok",
+            "payee": "other"
+          },
+          "expected": {
+            "tds": "0",
+            "reason": "below_threshold"
+          }
+        },
+        {
+          "name": "Technical services at 2%",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194J_A",
+            "amount": "75000",
+            "priorInYear": "0",
+            "pan": "ok",
+            "payee": "other"
+          },
+          "expected": {
+            "tds": "1500"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.TDS-NONSAL",
+      "jurisdiction": "IN",
+      "version": "TY2026-27",
+      "validFrom": "2026-04-01",
+      "validTo": null,
+      "lawVersion": "IT-2025",
+      "verify": true,
+      "source": "Income-tax Act 2025 (tax year from 1 Apr 2026): the same rates and limits carried over from the 1961 Act; the 2025 Act section numbers and the Form 140 deductee codes are to be confirmed by the compliance owner (verify).",
+      "values": {
+        "kind": "tds_nonsalary",
+        "sections": {
+          "194C": {
+            "label": "Payments to contractors (verify section)",
+            "returnCode": "94C",
+            "rateIndividual": "0.01",
+            "rateOther": "0.02",
+            "single": "30000",
+            "aggregate": "100000"
+          },
+          "194J_A": {
+            "label": "Fees for technical services (verify section)",
+            "returnCode": "94J-A",
+            "rate": "0.02",
+            "single": null,
+            "aggregate": "50000"
+          },
+          "194J_B": {
+            "label": "Fees for professional services (verify section)",
+            "returnCode": "94J-B",
+            "rate": "0.10",
+            "single": null,
+            "aggregate": "50000"
+          }
+        },
+        "noPanRate": "0.20"
+      },
+      "golden": [
+        {
+          "name": "Professional fees of Rs 1,00,000 in a year already over the limit: 10% on the value without GST",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194J_B",
+            "amount": "100000",
+            "priorInYear": "60000",
+            "pan": "ok",
+            "payee": "other"
+          },
+          "expected": {
+            "tds": "10000",
+            "base": "100000",
+            "reason": "normal",
+            "returnCode": "94J-B"
+          }
+        },
+        {
+          "name": "Below the Rs 50,000 limit for the year: nothing deducted",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194J_B",
+            "amount": "40000",
+            "priorInYear": "0",
+            "pan": "ok",
+            "payee": "other"
+          },
+          "expected": {
+            "tds": "0",
+            "reason": "below_threshold"
+          }
+        },
+        {
+          "name": "The invoice that crosses the limit carries the year: 10% on Rs 60,000",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194J_B",
+            "amount": "20000",
+            "priorInYear": "40000",
+            "pan": "ok",
+            "payee": "other"
+          },
+          "expected": {
+            "tds": "6000",
+            "base": "60000"
+          }
+        },
+        {
+          "name": "No PAN: 20% (s.206AA), higher than the section rate",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194J_B",
+            "amount": "100000",
+            "priorInYear": "60000",
+            "pan": "missing",
+            "payee": "other"
+          },
+          "expected": {
+            "tds": "20000",
+            "reason": "no_pan"
+          }
+        },
+        {
+          "name": "A s.197 certificate at 2% for what is left of its limit, the rest at 10%",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194J_B",
+            "amount": "100000",
+            "priorInYear": "60000",
+            "pan": "ok",
+            "payee": "other",
+            "certificate": {
+              "rate": "0.02",
+              "remaining": "50000"
+            }
+          },
+          "expected": {
+            "tds": "6000",
+            "reason": "certificate_partly",
+            "certificateUsed": "50000"
+          }
+        },
+        {
+          "name": "Contract work, an individual, one payment over Rs 30,000: 1%",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194C",
+            "amount": "40000",
+            "priorInYear": "0",
+            "pan": "ok",
+            "payee": "individual"
+          },
+          "expected": {
+            "tds": "400",
+            "reason": "normal"
+          }
+        },
+        {
+          "name": "Contract work by a firm under both limits: nothing",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194C",
+            "amount": "20000",
+            "priorInYear": "50000",
+            "pan": "ok",
+            "payee": "other"
+          },
+          "expected": {
+            "tds": "0",
+            "reason": "below_threshold"
+          }
+        },
+        {
+          "name": "Technical services at 2%",
+          "fn": "tds_nonsalary",
+          "input": {
+            "section": "194J_A",
+            "amount": "75000",
+            "priorInYear": "0",
+            "pan": "ok",
+            "payee": "other"
+          },
+          "expected": {
+            "tds": "1500"
+          }
+        }
+      ]
     }
   ]
 }

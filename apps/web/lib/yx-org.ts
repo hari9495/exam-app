@@ -128,6 +128,8 @@ export const YX_KEYS = [
   // Payroll operations screens (PAY-10.09 … 10.16).
   'payroll.payment.record',
   'payroll.loan.manage',
+  'consultant.manage',
+  'consultant.invoice.approve',
   'payroll.query.handle',
   'payroll.document.issue',
   'tax.proof.verify',
