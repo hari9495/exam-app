@@ -331,10 +331,10 @@ function ScheduleDialog(p: ApplicationPanelProps & { onClose: () => void }) {
               <FormField id={`sc-d${i}`} label={`Option ${i + 1} date`}>
                 <DatePicker aria-label={`Option ${i + 1} date`} value={s.date} onChange={(d) => setSlots((x) => x.map((y, k) => (k === i ? { ...y, date: d } : y)))} min={new Date()} />
               </FormField>
-              <FormField id={`sc-s${i}`} label="From">
+              <FormField id={`sc-s${i}`} label={`Option ${i + 1} from`}>
                 <TimeField value={s.start} onChange={(v) => setSlots((x) => x.map((y, k) => (k === i ? { ...y, start: v } : y)))} />
               </FormField>
-              <FormField id={`sc-e${i}`} label="To">
+              <FormField id={`sc-e${i}`} label={`Option ${i + 1} to`}>
                 <TimeField value={s.end} onChange={(v) => setSlots((x) => x.map((y, k) => (k === i ? { ...y, end: v } : y)))} />
               </FormField>
               {slots.length > 1 && <Button size="sm" variant="danger" onClick={() => setSlots((x) => x.filter((_, k) => k !== i))}>Remove option {i + 1}</Button>}

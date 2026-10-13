@@ -64,10 +64,10 @@ test('job workspace: board move, rejection undo, interview with two panellists',
   const s = page.getByRole('dialog').last();
   await s.getByLabel('Option 1 date').fill(day);
   await s.getByLabel('Option 1 date').press('Tab');
-  await s.getByLabel('From').fill('10:00');
-  await s.getByLabel('From').press('Tab');
-  await s.getByLabel('To').fill('11:00');
-  await s.getByLabel('To').press('Tab');
+  await s.getByLabel('Option 1 from').fill('10:00');
+  await s.getByLabel('Option 1 from').press('Tab');
+  await s.getByLabel('Option 1 to').fill('11:00');
+  await s.getByLabel('Option 1 to').press('Tab');
   await s.getByRole('combobox', { name: 'Panel' }).click();
   await page.getByRole('option').nth(0).click();
   await page.getByRole('option').nth(1).click();
