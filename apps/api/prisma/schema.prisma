@@ -8636,6 +8636,7 @@ model Review {
   acknowledgeComment String?   @map("acknowledge_comment") @db.VarChar(2000)
   disagreement       Boolean   @default(false)
   reopenedReason     String?   @map("reopened_reason") @db.VarChar(500)
+  calibrationSessionId String? @map("calibration_session_id") @db.Uuid
   remindedOn         DateTime? @map("reminded_on") @db.Date
   version            Int       @default(1)
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -8747,6 +8748,43 @@ model ReviewerBlock {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("reviewer_blocks")
+}
+
+// ------------------------------------------------------------------------------------------ M06 PM6: calibration
+
+model CalibrationSession {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  cycleId           String    @map("cycle_id") @db.Uuid
+  name              String    @db.VarChar(100)
+  facilitatorUserId String    @map("facilitator_user_id") @db.Uuid
+  population        Json?
+  guide             Json?
+  status            String    @default("open") @db.VarChar(12)
+  signedOffBy       String?   @map("signed_off_by") @db.Uuid
+  signedOffAt       DateTime? @map("signed_off_at") @db.Timestamptz(3)
+  createdBy         String?   @map("created_by") @db.Uuid
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("calibration_sessions")
+}
+
+model CalibrationChange {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  sessionId      String   @map("session_id") @db.Uuid
+  reviewId       String   @map("review_id") @db.Uuid
+  fromScore      Decimal? @map("from_score") @db.Decimal(5, 2)
+  toScore        Decimal  @map("to_score") @db.Decimal(5, 2)
+  fromBand       String?  @map("from_band") @db.VarChar(60)
+  toBand         String?  @map("to_band") @db.VarChar(60)
+  reason         String   @db.VarChar(500)
+  byUserId       String?  @map("by_user_id") @db.Uuid
+  at             DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("calibration_changes")
 }
 
 // ---- M03 payroll batch 5h (migration 20261117000000_payroll_5h): consultants, s.197 certificates, invoices, payouts, the

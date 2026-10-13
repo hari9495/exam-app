@@ -400,7 +400,7 @@ export class PerformanceReviewsService {
           status: r.status,
           next: this.nextStep(r, cycles.get(r.cycleId)!, people),
           // The employee sees no score before release (YX-PERF-09, U69).
-          finalScore: own && !released ? null : num(r.finalScore),
+          finalScore: own && !released ? null : (num(r.calibratedScore) ?? num(r.finalScore)),
           band: own && !released ? null : r.band,
         };
       });
@@ -463,7 +463,9 @@ export class PerformanceReviewsService {
         self: showSelf ? entry(self) : null,
         selfSubmitted: self?.status === 'submitted',
         managerEntry: showManager ? entry(mgr) : null,
-        finalScore: showManager ? num(r.finalScore) : null,
+        // After calibration the released score is the calibrated one (YX-PERF-08); the manager's stays visible to them.
+        finalScore: showManager ? (num(r.calibratedScore) ?? num(r.finalScore)) : null,
+        managerScore: showManager && !a.own ? num(r.finalScore) : null,
         band: showManager ? r.band : null,
         excludedSections: showManager ? ((r.excludedSections as string[] | null) ?? []) : [],
         bands: bands.map((b) => ({ fromScore: num(b.fromScore), toScore: num(b.toScore), label: b.label })),

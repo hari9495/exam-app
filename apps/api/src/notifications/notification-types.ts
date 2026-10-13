@@ -77,6 +77,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   // PM5: peer and 360° feedback.
   { type: 'perf.nomination.proposed', group: 'approvals', label: 'Someone on your team suggested a colleague to give feedback' },
   { type: 'perf.feedback.task', group: 'assignments', label: 'You were asked for feedback on a colleague\u2019s review' },
+  // PM6: calibration.
+  { type: 'perf.calibration.signed_off', group: 'reminders', label: 'A calibration session was signed off (HR)' },
   { type: 'perf.feedback.author_revealed', group: 'reminders', label: 'The author of an anonymous review answer was revealed (admins)' },
   // M05 E4: trips and advances.
   { type: 'expense.trip.update', group: 'assignments', label: 'A trip was approved, or needs bookings from the travel desk' },

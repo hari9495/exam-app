@@ -203,3 +203,75 @@ export class BlockDto {
   @Matches(ISO)
   untilOn?: string | null;
 }
+
+// ------------------------------------------------------------------------------------------ PM6: calibration and reports (§19)
+
+export class GuideBandDto {
+  @IsString()
+  @Length(1, 60)
+  label!: string;
+
+  @IsNumber({ maxDecimalPlaces: 1 })
+  @Min(0)
+  @Max(100)
+  share!: number;
+}
+
+export class GuideDto {
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => GuideBandDto)
+  bands!: GuideBandDto[];
+
+  @IsNumber({ maxDecimalPlaces: 1 })
+  @Min(0)
+  @Max(50)
+  tolerance!: number;
+}
+
+export class SessionDto {
+  @trim()
+  @IsString()
+  @Length(2, 100)
+  name!: string;
+
+  @IsUUID()
+  facilitatorUserId!: string;
+
+  /** Departments whose finished reviews join the session; empty or missing = every finished review of the cycle. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsUUID('all', { each: true })
+  departmentIds?: string[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => GuideDto)
+  guide?: GuideDto | null;
+}
+
+export class CalibrationChangeDto {
+  @IsUUID()
+  reviewId!: string;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  toScore?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 60)
+  toBand?: string | null;
+
+  @trim()
+  @IsString()
+  @Length(3, 500)
+  reason!: string;
+}
+
+export class ReportQueryDto {
+  @IsUUID()
+  cycle!: string;
+}

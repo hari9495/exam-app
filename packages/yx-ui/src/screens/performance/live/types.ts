@@ -448,3 +448,48 @@ export interface ReviewerBlock {
   reasonCode: 'conflict' | 'confidential_matter';
   untilOn: string | null;
 }
+
+// ------------------------------------------------------------------------------------------ PM6: calibration and reports (§19)
+
+export interface CalibrationSession {
+  id: string;
+  name: string;
+  facilitator: string;
+  status: 'open' | 'signed_off';
+  people: number;
+}
+
+export interface CalibrationRow {
+  reviewId: string;
+  employee: string;
+  manager: string;
+  managerScore: number | null;
+  score: number | null;
+  band: string | null;
+  moved: boolean;
+  selfIndication: number | null;
+  skipAgreed: boolean;
+  protectedLeave: boolean;
+}
+
+export interface CalibrationBoard {
+  id: string;
+  name: string;
+  cycle: string;
+  status: 'open' | 'signed_off';
+  guide: { bands: { label: string; share: number }[]; tolerance: number } | null;
+  scale: { min: number; max: number; bands: { fromScore: number; toScore: number; label: string }[] };
+  rows: CalibrationRow[];
+  distribution: { bands: { label: string; count: number; share: number; target: number | null; outside: boolean }[] | null; counted: number; notes: string[] };
+  changes: { reviewId: string; employee: string; from: number | null; to: number; fromBand: string | null; toBand: string | null; reason: string; at: string }[];
+  can: { change: boolean; signOff: boolean };
+}
+
+export interface PerfReport {
+  kind: string;
+  cycle: string;
+  header: string[];
+  rows: (string | number | null)[][];
+  total?: number;
+  min?: number;
+}

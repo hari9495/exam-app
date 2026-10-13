@@ -42,6 +42,8 @@ const MY_REVIEWS: WorkspaceLink = { id: 'reviews', label: 'My reviews', href: '/
 const REVIEW_CYCLES: WorkspaceLink = { id: 'review-cycles', label: 'Review cycles', href: '/yx/performance/cycles', group: 'People' };
 const FEEDBACK_TASKS: WorkspaceLink = { id: 'feedback-tasks', label: 'Feedback I owe', href: '/yx/performance/feedback-tasks', group: 'Me' };
 const REVIEWER_BLOCKS: WorkspaceLink = { id: 'reviewer-blocks', label: 'Reviewer blocks', href: '/yx/performance/reviewer-blocks', group: 'People' };
+const CALIBRATION: WorkspaceLink = { id: 'calibration', label: 'Calibration', href: '/yx/performance/calibrations', group: 'People' };
+const PERF_REPORTS: WorkspaceLink = { id: 'perf-reports', label: 'Performance reports', href: '/yx/performance/reports', group: 'People' };
 const MY_FEEDBACK: WorkspaceLink = { id: 'feedback', label: 'Feedback', href: '/yx/performance/feedback', group: 'Me' };
 const MY_ONE_ON_ONES: WorkspaceLink = { id: 'one-on-ones', label: 'My 1:1s', href: '/yx/performance/one-on-ones', group: 'Me' };
 const GOAL_MAP: WorkspaceLink = { id: 'goal-map', label: 'Goal map', href: '/yx/performance/goal-map', group: 'People' };
@@ -270,6 +272,8 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...(perms.has('perf.goal.view') ? [GOAL_MAP] : []),
     ...(perms.has('perf.cycle.manage') ? [REVIEW_CYCLES] : []),
     ...(perms.has('perf.concern.seal') ? [REVIEWER_BLOCKS] : []),
+    ...(perms.has('perf.calibration.facilitate') ? [CALIBRATION] : []),
+    ...(perms.has('perf.report.view') ? [PERF_REPORTS] : []),
     ...(perms.has('letter.template.manage') || perms.has('letter.signatory.manage') ? [LETTER_TEMPLATES] : []),
     ...(perms.has('access.role.manage') ? [ACCESS] : []),
     // Read by anyone who reads the structure; changed with org.settings.manage (+ access.role.manage for guarded keys).
