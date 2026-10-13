@@ -1380,7 +1380,7 @@
       "Person = recruiter@. Role = Chennai HR. Over = Location, Chennai office. From = today. Reason = test.",
       "Click \"Give access\" and confirm it's you."
     ],
-    "expected": "The grant shows on the recruiter with \"Chennai office\" and the From date. The recruiter now sees People pages, but only for Chennai office people.",
+    "expected": "A toast says \"Access saved.\" The recruiter (Neha Kulkarni) shows Chennai HR · Location: Chennai office · From today · Active. Signed in as the recruiter, the Profile person list shows only Chennai office people; in the demo data that office has no one, so it shows \"No profiles to show\" and never Bengaluru or Hosur staff.",
     "stories": [
       "US-A-112",
       "US-A-127"
