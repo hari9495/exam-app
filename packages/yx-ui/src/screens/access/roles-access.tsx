@@ -8,6 +8,7 @@ import { TextArea, TextField } from '../../components/inputs';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
+import { useToast } from '../../components/notify';
 import { Breadcrumbs, Card, DescriptionList, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { dayKey } from '../../lib/dates';
@@ -280,24 +281,22 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
   const admins = users.filter(isSystemAdmin);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  // Wraps an action so the screen says what happened once it succeeds; a failure still shows in the dialog that ran it.
+  const { toast } = useToast();
+  // Wraps an action so a toast says what happened once it succeeds; a failure still shows in the dialog that ran it.
   const said =
     <A extends unknown[]>(run: (...a: A) => Promise<void>, text: (...a: A) => string) =>
     async (...a: A) => {
-      setNotice(null);
       await run(...a);
-      setNotice(text(...a));
+      toast({ tone: 'success', title: text(...a) });
     };
   const waiting = grants.filter((g) => g.status === 'pending');
   const mine = grants.filter((g) => g.userId === userId);
   const approve = async (g: Grant) => {
     setBusy(g.id);
     setError(null);
-    setNotice(null);
     try {
       await props.onApprove(g.id);
-      setNotice('Approved.');
+      toast({ tone: 'success', title: 'Approved.' });
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -335,7 +334,6 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
         <>
           <Segment label="Show" value={view} onChange={setView} options={[{ value: 'people', label: 'People' }, { value: 'waiting', label: `Waiting (${waiting.length})` }, { value: 'roles', label: 'Roles' }]} />
           {error && <InlineAlert tone="danger" title={error} />}
-          {notice && <InlineAlert tone="success" title={notice} />}
           {view === 'people' && (
             <>
               <FormField id="ra-user" label="Person" className="yx-acc__person">

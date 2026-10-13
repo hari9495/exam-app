@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { WorkspaceShell, type MfaStatus, type WorkspaceLink, type WorkspacePage } from '@yukthix/ui/auth';
-import { Button, InlineAlert, Spinner } from '@yukthix/ui';
+import { Button, InlineAlert, Spinner, ToastProvider } from '@yukthix/ui';
 import { apiFetch } from '../../../lib/api-client';
 import { useAuth } from '../../../lib/auth-context';
 import { useCurrentUser } from '../../../lib/hooks/useCurrentUser';
@@ -314,7 +314,9 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
   const links = [...(firstDays.data?.card && !support ? [FIRST_30] : []), ...staff, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAYSLIPS, MY_TAX, MY_DECLARATIONS, MY_LOANS, MY_PAY_DOCUMENTS] : []), ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
+  // Toasts (§25) say "done" after an action; a message that must stay visible remains an inline alert.
   return (
+    <ToastProvider>
     <WorkspaceShell
       active={active}
       links={links}
@@ -361,5 +363,6 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         {!support && <DeskHelpButton />}
       </div>
     </WorkspaceShell>
+    </ToastProvider>
   );
 }

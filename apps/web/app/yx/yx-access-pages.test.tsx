@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ToastProvider } from '@yukthix/ui';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
@@ -14,7 +15,7 @@ jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
 // Access and privacy pages wired to the /access and /people APIs (P02 §4.2–4.5, §7).
-const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
+const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ToastProvider>{ui}</ToastProvider></QueryClientProvider>);
 const PERMS_PATH = '/rbac/me/permissions';
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const api = apiFetch as jest.Mock;

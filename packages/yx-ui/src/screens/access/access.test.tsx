@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { ToastProvider } from '../../components/notify';
 import { RolesAccessScreen, type RolesAccessScreenProps } from './roles-access';
 import { ProfileScreen, type ProfileScreenProps } from './profile';
 import { ProfileRequestsScreen } from './profile-requests';
@@ -31,7 +32,11 @@ function roles(over: Partial<RolesAccessScreenProps> = {}) {
     onSystemAdmin: ok(),
     ...over,
   };
-  render(<RolesAccessScreen {...props} />);
+  render(
+    <ToastProvider>
+      <RolesAccessScreen {...props} />
+    </ToastProvider>,
+  );
   return props;
 }
 const pick = async (label: string, option: string) => {
@@ -50,7 +55,7 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
     await ue.type(name, 'Chennai HR');
     await ue.click(screen.getByRole('button', { name: 'Create role' }));
     await waitFor(() => expect(p.onFromTemplate).toHaveBeenCalledWith('hr_executive', 'Chennai HR'));
-    expect(await screen.findByText('Role "Chennai HR" created.')).toBeInTheDocument();
+    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Role "Chennai HR" created.')).toBeInTheDocument(); // a toast, not a page-wide bar
   });
 
   it('roles list: permissions are worded like Held by, so the two counts never read as one', async () => {
