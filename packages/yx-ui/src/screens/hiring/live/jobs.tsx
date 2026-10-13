@@ -13,7 +13,8 @@ import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
-import type { Choice, HiringJob, HiringJobStatus, JobCustomField, LoadState, NewJobInput } from './types';
+import { Checkbox } from '../../../components/choice';
+import type { Choice, HiringJob, HiringJobStatus, JobCustomField, LoadState, NewJobInput, OpenPlanLine } from './types';
 
 // Recruitment batch AT1, wired (M10-BUILD-DESIGN §3): the jobs list that replaces the older /v2/jobs list. Opening a
 // job still goes to its existing workspace until the YukthiX pipeline screens ship (AT5).
@@ -47,6 +48,11 @@ export interface HiringJobsScreenProps {
   managers: Choice[];
   pipelines: (Choice & { isDefault?: boolean })[];
   customFields: JobCustomField[];
+  /** AT2: lines of approved headcount plans (empty: no plan in use), people a replacement may name, and the requisition actions. */
+  planLines?: OpenPlanLine[];
+  employees?: Choice[];
+  onSubmitRequisition?: (id: string) => Promise<unknown>;
+  onWithdraw?: (id: string) => Promise<unknown>;
 }
 
 export function HiringJobsScreen(p: HiringJobsScreenProps) {
@@ -94,6 +100,16 @@ export function HiringJobsScreen(p: HiringJobsScreenProps) {
             <Button size="sm" onClick={() => p.onOpen(x.id)}>
               Open
             </Button>
+            {p.canManage && x.status === 'draft' && p.onSubmitRequisition && (
+              <Button size="sm" variant="primary" onClick={() => void p.onSubmitRequisition!(x.id)}>
+                Send for approval
+              </Button>
+            )}
+            {p.canManage && x.status === 'pending_approval' && p.onWithdraw && (
+              <Button size="sm" onClick={() => void p.onWithdraw!(x.id)}>
+                Withdraw
+              </Button>
+            )}
             {p.canManage && (
               <Button size="sm" variant="danger" onClick={() => setDeleting(x)}>
                 Delete
@@ -131,9 +147,18 @@ function NewJobDialog(p: HiringJobsScreenProps & { onClose: () => void }) {
   const [currency, setCurrency] = useState('');
   const [pipelineId, setPipelineId] = useState<string | null>(p.pipelines.find((x) => x.isDefault)?.value ?? p.pipelines[0]?.value ?? null);
   const [custom, setCustom] = useState<Record<string, string | number | null>>({});
+  const [reason, setReason] = useState<'new' | 'replacement'>('new');
+  const [lineId, setLineId] = useState<string | null>(null);
+  const [outside, setOutside] = useState(false);
+  const [outsideWhy, setOutsideWhy] = useState('');
+  const [replaces, setReplaces] = useState<string | null>(null);
+  const [budget, setBudget] = useState<number | null>(null);
+  const [start, setStart] = useState<Date | null>(null);
+  const lines = (p.planLines ?? []).filter((l) => !departmentId || l.departmentId === departmentId);
   const missing = p.customFields.filter((f) => f.required && (custom[f.id] === undefined || custom[f.id] === null || custom[f.id] === ''));
   const rangeBad = salaryMin !== null && salaryMax !== null && salaryMin > salaryMax;
-  const ok = title.trim().length > 0 && !missing.length && !rangeBad;
+  const reqBad = (reason === 'replacement' && !replaces) || (outside && outsideWhy.trim().length < 3);
+  const ok = title.trim().length > 0 && !missing.length && !rangeBad && !reqBad;
   const opt = <T,>(v: T | null | '') => (v === null || v === '' ? undefined : v);
   return (
     <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="New job" confirmLabel="Create" confirmDisabled={!ok} onConfirm={async () => {
@@ -152,6 +177,13 @@ function NewJobDialog(p: HiringJobsScreenProps & { onClose: () => void }) {
         salaryCurrency: opt(currency.trim().toUpperCase()),
         pipelineId: opt(pipelineId),
         customFields: Object.keys(custom).length ? custom : undefined,
+        requisitionReason: reason,
+        headcountPlanLineId: reason === 'new' && !outside ? opt(lineId) : undefined,
+        outsidePlan: reason === 'new' && outside ? true : undefined,
+        outsidePlanReason: reason === 'new' && outside ? outsideWhy.trim() : undefined,
+        replacementOfEmployeeId: reason === 'replacement' ? opt(replaces) : undefined,
+        budgetAmount: opt(budget),
+        targetStart: start ? dayKey(start) : undefined,
       });
       p.onClose();
     }}>
@@ -191,6 +223,34 @@ function NewJobDialog(p: HiringJobsScreenProps & { onClose: () => void }) {
       </FormField>
       <FormField id="hj-pipe" label="Pipeline">
         <Select aria-label="Pipeline" value={pipelineId} onChange={setPipelineId} options={p.pipelines} />
+      </FormField>
+      <FormField id="hj-why" label="Why this hire">
+        <Segment label="Why this hire" value={reason} onChange={setReason} options={[{ value: 'new', label: 'New position' }, { value: 'replacement', label: 'Replacement' }]} />
+      </FormField>
+      {reason === 'replacement' ? (
+        <FormField id="hj-rep" label="Replaces" required helper="A replacement does not use the headcount plan.">
+          <Select aria-label="Replaces" value={replaces} onChange={setReplaces} options={p.employees ?? []} searchable />
+        </FormField>
+      ) : (
+        <>
+          {lines.length > 0 && !outside && (
+            <FormField id="hj-line" label="Headcount plan line" optional>
+              <Select aria-label="Headcount plan line" value={lineId} onChange={setLineId} options={lines.map((l) => ({ value: l.id, label: `${l.department} · ${l.designation}${l.location ? ` · ${l.location}` : ''} · ${l.left} left` }))} clearable />
+            </FormField>
+          )}
+          <Checkbox label="Outside the headcount plan" description="Adds a finance approval." checked={outside} onChange={setOutside} />
+          {outside && (
+            <FormField id="hj-out" label="Why outside the plan" required>
+              <TextArea value={outsideWhy} onChange={setOutsideWhy} rows={2} maxLength={1000} />
+            </FormField>
+          )}
+        </>
+      )}
+      <FormField id="hj-budget" label="Budget for this hire (₹ a year)" optional>
+        <NumberField value={budget} onChange={setBudget} min={0} />
+      </FormField>
+      <FormField id="hj-start" label="Wanted from" optional>
+        <DatePicker aria-label="Wanted from" value={start} onChange={setStart} />
       </FormField>
       <FormField id="hj-desc" label="Description" optional>
         <TextArea value={description} onChange={setDescription} rows={5} maxLength={5000} />

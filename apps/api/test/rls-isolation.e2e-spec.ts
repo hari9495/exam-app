@@ -46,7 +46,9 @@ const PERFORMANCE_SUPPORT_EXCLUDED = ['feedback_requests', 'feedback_items', 'on
   'calibration_sessions', 'calibration_changes',
   // PM7: ratings to pay.
   'comp_matrices', 'comp_matrix_cells', 'comp_cycles', 'comp_budgets', 'comp_proposals', 'comp_equity_runs',
-  'pips', 'pip_goals', 'pip_checkins'];
+  'pips', 'pip_goals', 'pip_checkins',
+  // M10 AT2: headcount plans.
+  'headcount_plans', 'headcount_plan_lines'];
 // M10 AT1 (D14): hiring decisions are never read by YukthiX support.
 const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).

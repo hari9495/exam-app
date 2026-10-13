@@ -36,6 +36,8 @@ describe('hiring pages moved to YukthiX', () => {
   it.each([
     ['/v2/jobs', '/yx/hiring/jobs'],
     ['/jobs', '/yx/hiring/jobs'],
+    ['/v2/settings/approvals', '/yx/hiring/approval-routes'],
+    ['/settings/approvals', '/yx/hiring/approval-routes'],
   ])('%s goes to %s', (source, destination) => {
     expect(redirects).toContainEqual({ source, destination, permanent: false });
   });

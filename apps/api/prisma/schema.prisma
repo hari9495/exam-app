@@ -1201,6 +1201,15 @@ model Job {
   designationId        String?               @map("designation_id") @db.Uuid
   gradeId              String?               @map("grade_id") @db.Uuid
   locationId           String?               @map("location_id") @db.Uuid
+  /// M10 AT2: the requisition (plan line or outside the plan, replacement, budget, P03 request).
+  headcountPlanLineId  String?               @map("headcount_plan_line_id") @db.Uuid
+  outsidePlan          Boolean               @default(false) @map("outside_plan")
+  outsidePlanReason    String?               @map("outside_plan_reason") @db.VarChar(1000)
+  requisitionReason    String?               @map("requisition_reason") @db.VarChar(12)
+  replacementOfEmployeeId String?            @map("replacement_of_employee_id") @db.Uuid
+  budgetAmount         Decimal?              @map("budget_amount") @db.Decimal(14, 2)
+  targetStart          DateTime?             @map("target_start") @db.Date
+  wfRequestId          String?               @map("wf_request_id") @db.Uuid
   headcount            Int?
   salaryMin            Int?                  @map("salary_min")
   salaryMax            Int?                  @map("salary_max")
@@ -9620,4 +9629,40 @@ model PipCheckin {
 
   @@unique([pipId, dueOn])
   @@map("pip_checkins")
+}
+
+// ------------------------------------------------------------------------------------------ M10 AT2: headcount plans
+
+model HeadcountPlan {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  departmentId  String   @map("department_id") @db.Uuid
+  legalEntityId String?  @map("legal_entity_id") @db.Uuid
+  fyStart       Int      @map("fy_start")
+  status        String   @default("draft") @db.VarChar(12)
+  note          String?  @db.VarChar(1000)
+  wfRequestId   String?  @map("wf_request_id") @db.Uuid
+  version       Int      @default(1)
+  createdBy     String?  @map("created_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, departmentId, fyStart])
+  @@map("headcount_plans")
+}
+
+model HeadcountPlanLine {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  planId         String   @map("plan_id") @db.Uuid
+  designationId  String   @map("designation_id") @db.Uuid
+  gradeId        String?  @map("grade_id") @db.Uuid
+  locationId     String?  @map("location_id") @db.Uuid
+  count          Int
+  budget         Decimal? @db.Decimal(14, 2)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, planId])
+  @@map("headcount_plan_lines")
 }

@@ -156,6 +156,9 @@ export const YX_KEYS = [
   // M10 AT1: hiring (the older keys answer for the new ones too, founder D2).
   'pipeline:manage',
   'results:view',
+  // AT2: headcount plans and the hiring approval routes.
+  'ats.headcount.manage',
+  'approvals:configure',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

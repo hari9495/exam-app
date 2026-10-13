@@ -32,6 +32,7 @@ import { JobBoardPosterService } from '../job-boards/job-board-poster.service';
 import { HrisExportService } from '../hris/hris-export.service';
 import { DripService } from '../drip/drip.service';
 import { SurveysService } from '../surveys/surveys.service';
+import { HiringRequisitionsService } from '../hiring/requisitions.service';
 
 export interface FeedbackRow {
   id: string;
@@ -166,6 +167,19 @@ const JOB_DEFINITION_SELECT = {
   required: true,
 } as const;
 
+/** M10 AT2: the requisition columns a job create / update sets (only what the caller sent). */
+function requisitionData(dto: { headcountPlanLineId?: string | null; outsidePlan?: boolean; outsidePlanReason?: string | null; requisitionReason?: 'new' | 'replacement' | null; replacementOfEmployeeId?: string | null; budgetAmount?: number | null; targetStart?: string | null }) {
+  const out: Record<string, unknown> = {};
+  if (dto.headcountPlanLineId !== undefined) out.headcountPlanLineId = dto.headcountPlanLineId;
+  if (dto.outsidePlan !== undefined) out.outsidePlan = dto.outsidePlan;
+  if (dto.outsidePlanReason !== undefined) out.outsidePlanReason = dto.outsidePlanReason?.trim() || null;
+  if (dto.requisitionReason !== undefined) out.requisitionReason = dto.requisitionReason;
+  if (dto.replacementOfEmployeeId !== undefined) out.replacementOfEmployeeId = dto.replacementOfEmployeeId;
+  if (dto.budgetAmount !== undefined) out.budgetAmount = dto.budgetAmount;
+  if (dto.targetStart !== undefined) out.targetStart = dto.targetStart ? new Date(`${dto.targetStart}T00:00:00Z`) : null;
+  return out;
+}
+
 @Injectable()
 export class PipelineService {
   private readonly logger = new Logger(PipelineService.name);
@@ -188,6 +202,7 @@ export class PipelineService {
     private readonly hrisExport: HrisExportService,
     private readonly drip: DripService,
     private readonly surveys: SurveysService,
+    private readonly hiring: HiringRequisitionsService,
   ) {}
 
   async createJob(
@@ -211,18 +226,26 @@ export class PipelineService {
       designationId?: string | null;
       gradeId?: string | null;
       locationId?: string | null;
+      headcountPlanLineId?: string | null;
+      outsidePlan?: boolean;
+      outsidePlanReason?: string | null;
+      requisitionReason?: 'new' | 'replacement' | null;
+      replacementOfEmployeeId?: string | null;
+      budgetAmount?: number | null;
+      targetStart?: string | null;
     },
   ): Promise<Job & { customFields?: CustomFieldRead[] }> {
     // Requisition gate: a job can't go live (status 'open') until its requisition is approved,
     // but only when the org has actually turned the gate on -- an org with no chain configured
     // keeps today's behavior of jobs opening immediately.
-    const chains = await this.approvals.getChains(context);
-    const status = chains.requisition.enabled ? 'draft' : 'open';
+    // M10 AT2: a new job is a draft requisition when the company's requisition chain is on or the plan is required.
+    const status = (await this.hiring.startsAsDraft(context)) ? 'draft' : 'open';
     const pipelineId = await this.resolvePipelineId(context, dto.pipelineId);
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const organizationId = context.organizationId as string;
       const m = await this.masters(tx, organizationId, dto);
+      await this.hiring.checkLinks(tx, organizationId, dto);
       const created = await tx.job.create({
         data: {
           organizationId,
@@ -232,6 +255,7 @@ export class PipelineService {
           employmentType: dto.employmentType,
           department: dto.department ?? m.departmentName,
           ...m.links,
+          ...requisitionData(dto),
           hiringManagerId: dto.hiringManagerId,
           headcount: dto.headcount,
           salaryMin: dto.salaryMin,
@@ -346,6 +370,7 @@ export class PipelineService {
 
     // One batched call for the whole list, not one per job -- avoids N+1.
     const approvalByJobId = await this.approvals.getSummariesFor(context, 'job', jobs.map((j) => j.id));
+    for (const [k, v] of await this.hiring.summaries(context, jobs.map((j) => j.id))) approvalByJobId.set(k, v);
     const result = jobs.map((job) => ({ ...job, approval: approvalByJobId.get(job.id) ?? null }));
     const hiddenJ = await this.fieldPerms.getHiddenFields(context, role, 'job');
     return redactMany(result, hiddenJ);
@@ -393,7 +418,7 @@ export class PipelineService {
         jobBoardIds: publications.map((p: { jobBoardId: string }) => p.jobBoardId),
       };
     });
-    const approval = (await this.approvals.getSummariesFor(context, 'job', [jobId])).get(jobId) ?? null;
+    const approval = (await this.hiring.summaries(context, [jobId])).get(jobId) ?? (await this.approvals.getSummariesFor(context, 'job', [jobId])).get(jobId) ?? null;
     const hiddenJ = await this.fieldPerms.getHiddenFields(context, role, 'job');
     return redactFields({ ...job, linkedExams, customFields, approval, jobBoardIds }, hiddenJ);
   }
@@ -425,6 +450,13 @@ export class PipelineService {
       designationId?: string | null;
       gradeId?: string | null;
       locationId?: string | null;
+      headcountPlanLineId?: string | null;
+      outsidePlan?: boolean;
+      outsidePlanReason?: string | null;
+      requisitionReason?: 'new' | 'replacement' | null;
+      replacementOfEmployeeId?: string | null;
+      budgetAmount?: number | null;
+      targetStart?: string | null;
     },
     // The caller's role, for field-level write enforcement (read-only/hidden governed fields can't
     // be changed). Optional: undefined skips enforcement (internal callers / ungoverned roles like
@@ -554,6 +586,8 @@ export class PipelineService {
       // M10 AT1: master links (checked) and, when a department / location is linked, its name in the older column.
       const m = await this.masters(tx, organizationId, dto);
       Object.assign(data, m.links);
+      await this.hiring.checkLinks(tx, organizationId, dto);
+      Object.assign(data, requisitionData(dto));
       if (dto.departmentId && dto.department === undefined) data.department = m.departmentName;
       if (dto.locationId && dto.location === undefined) data.location = m.locationName;
       const updated = await tx.job.update({ where: { id: jobId }, data });
@@ -640,19 +674,16 @@ export class PipelineService {
     if (!job) throw new NotFoundException(`Job ${jobId} not found`);
     if (job.status !== 'draft') throw new ConflictException('Only a draft requisition can be submitted');
 
-    const result = await this.approvals.submit(context, 'requisition', jobId, actorUserId);
-    if (result.status === 'approved') {
-      await this.markRequisitionApproved(context, jobId);
-    } else {
-      await this.setJobStatus(context, jobId, 'pending_approval');
-    }
-    return result;
+    // M10 AT2 (D3): requisitions run on P03; the company's chain is the route, the plan may add a step.
+    return this.hiring.submit(context, actorUserId, jobId);
   }
 
   // Cancels the job's open approval request (permission-checked by ApprovalsService.cancel via
   // isConfigurer) and puts the requisition back in draft so it can be edited and resubmitted.
   async cancelRequisitionApproval(context: TenantContext, actorUserId: string, jobId: string): Promise<void> {
     const isConfigurer = await this.approvals.isConfigurer(context, actorUserId);
+    // A P03 request is withdrawn there; one still in the older engine is cancelled there (requests finish where they began).
+    if (await this.hiring.withdraw(context, actorUserId, jobId, isConfigurer)) return;
     await this.approvals.cancelForSubject(context, 'job', jobId, actorUserId, isConfigurer);
     await this.markRequisitionDraft(context, jobId);
   }

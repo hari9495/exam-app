@@ -41,4 +41,72 @@ export interface NewJobInput {
   salaryCurrency?: string;
   pipelineId?: string;
   customFields?: Record<string, string | number | null>;
+  /** AT2: the requisition's plan facts. */
+  headcountPlanLineId?: string;
+  outsidePlan?: boolean;
+  outsidePlanReason?: string;
+  requisitionReason?: 'new' | 'replacement';
+  replacementOfEmployeeId?: string;
+  budgetAmount?: number;
+  targetStart?: string;
+}
+
+// ------------------------------------------------------------------------------------------ AT2: plans and routes
+
+export interface PlanLine {
+  id: string;
+  designationId: string;
+  designation: string;
+  gradeId: string | null;
+  grade: string | null;
+  locationId: string | null;
+  location: string | null;
+  count: number;
+  budget: number | null;
+  committed: number;
+  committedBudget: number;
+  filled: number;
+}
+
+export interface HeadcountPlan {
+  id: string;
+  departmentId: string;
+  department: string;
+  legalEntityId: string | null;
+  fyStart: number;
+  status: 'draft' | 'submitted' | 'approved' | 'rejected';
+  note: string | null;
+  version: number;
+  lines: PlanLine[];
+}
+
+export interface PlanInput {
+  departmentId: string;
+  legalEntityId: string | null;
+  fyStart: number;
+  note: string | null;
+  lines: { designationId: string; gradeId: string | null; locationId: string | null; count: number; budget: number | null }[];
+  version?: number;
+}
+
+/** A line of an approved plan a requisition can draw on. */
+export interface OpenPlanLine extends PlanLine {
+  planId: string;
+  departmentId: string;
+  department: string;
+  fyStart: number;
+  left: number;
+}
+
+export type ApproverType = 'users' | 'reporting_manager' | 'hiring_manager' | 'group';
+export interface RouteStep {
+  name: string;
+  approverType: ApproverType;
+  approverUserIds: string[];
+  managerLevel: number | null;
+  groupId: string | null;
+}
+export interface ApprovalRoute {
+  enabled: boolean;
+  steps: RouteStep[];
 }
