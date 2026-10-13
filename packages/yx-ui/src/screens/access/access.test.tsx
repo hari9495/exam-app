@@ -40,6 +40,14 @@ const pick = async (label: string, option: string) => {
 };
 
 describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
+  it('roles list: permissions are worded like Held by, so the two counts never read as one', async () => {
+    roles();
+    await ue.click(screen.getByRole('radio', { name: 'Roles' }));
+    const hr = screen.getByText('HR Admin').closest('tr') as HTMLElement;
+    expect(within(hr).getByText('3 permissions')).toBeInTheDocument();
+    expect(within(hr).getByText('1 person')).toBeInTheDocument();
+  });
+
   it('what they can do today: each count sits beside its label, the no-team note heads the card', async () => {
     roles();
     const salary = (await screen.findByText('See salary')).closest('.yx-dl__row') as HTMLElement;

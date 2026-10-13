@@ -306,7 +306,7 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
   ];
   const roleColumns: TableColumn<AccessRole>[] = [
     { key: 'name', header: 'Role', value: (r) => r.name, render: (r) => <span className="yx-ppl2__row"><Text>{r.name}</Text>{r.confidential && <ConfidentialBadge />}</span>, width: 260, hideable: false },
-    { key: 'perms', header: 'Permissions', value: (r) => r.permissions.length, render: (r) => `${r.permissions.length}`, width: 120, type: 'number' },
+    { key: 'perms', header: 'Permissions', value: (r) => r.permissions.length, render: (r) => `${r.permissions.length} ${r.permissions.length === 1 ? 'permission' : 'permissions'}`, width: 140 }, // worded like Held by: a right-aligned bare number ran into it ("14 1 person")
     { key: 'holders', header: 'Held by', value: (r) => r.grants + r.assignedUsers, render: (r) => `${r.grants + r.assignedUsers} ${r.grants + r.assignedUsers === 1 ? 'person' : 'people'}`, width: 140 },
   ];
   return (
