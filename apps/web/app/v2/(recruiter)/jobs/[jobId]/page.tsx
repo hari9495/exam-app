@@ -170,7 +170,7 @@ export default function V2JobPage() {
           position:fixed drawer/dialog descendants. */}
       <div className="v2-rise" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div>
-        <Link href="/v2/jobs" style={backLink}><ArrowLeft size={15} /> Back to Jobs</Link>
+        <Link href="/yx/hiring/jobs" style={backLink}><ArrowLeft size={15} /> Back to Jobs</Link>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <h1 className="v2-title" style={{ fontSize: 22, margin: 0 }}>{job?.title ?? 'Job'}</h1>

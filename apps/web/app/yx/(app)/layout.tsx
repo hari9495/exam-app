@@ -44,6 +44,7 @@ const FEEDBACK_TASKS: WorkspaceLink = { id: 'feedback-tasks', label: 'Feedback I
 const REVIEWER_BLOCKS: WorkspaceLink = { id: 'reviewer-blocks', label: 'Reviewer blocks', href: '/yx/performance/reviewer-blocks', group: 'People' };
 const CALIBRATION: WorkspaceLink = { id: 'calibration', label: 'Calibration', href: '/yx/performance/calibrations', group: 'People' };
 const PIPS: WorkspaceLink = { id: 'pips', label: 'Improvement plans', href: '/yx/performance/pips', group: 'People' };
+const HIRING_JOBS: WorkspaceLink = { id: 'hiring-jobs', label: 'Jobs', href: '/yx/hiring/jobs', group: 'Hiring' };
 const COMP_REVIEW: WorkspaceLink = { id: 'comp-review', label: 'Comp review', href: '/yx/performance/comp', group: 'People' };
 const PERF_REPORTS: WorkspaceLink = { id: 'perf-reports', label: 'Performance reports', href: '/yx/performance/reports', group: 'People' };
 const MY_FEEDBACK: WorkspaceLink = { id: 'feedback', label: 'Feedback', href: '/yx/performance/feedback', group: 'Me' };
@@ -354,7 +355,9 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         ...(perms.has('payroll.template.manage') ? [PAY_TEMPLATES] : []),
         ...(perms.has('employee.salary.manage') ? [PAY_COMPENSATION] : []),
         ...(perms.has('payroll.import.run') ? [PAY_IMPORTS] : [])];
-  const links = [...(firstDays.data?.card && !support ? [FIRST_30] : []), ...staff, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAYSLIPS, MY_TAX, MY_DECLARATIONS, MY_LOANS, MY_EWA, MY_EQUITY, MY_INCENTIVES, MY_PAY_DOCUMENTS] : []), ...security];
+  // M10 AT1: hiring, for holders of the hiring keys (older or ats.*, founder D2); never in a support session (D14).
+  const hiring = !support && (perms.has('pipeline:manage') || perms.has('results:view')) ? [HIRING_JOBS] : [];
+  const links = [...(firstDays.data?.card && !support ? [FIRST_30] : []), ...staff, ...hiring, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAYSLIPS, MY_TAX, MY_DECLARATIONS, MY_LOANS, MY_EWA, MY_EQUITY, MY_INCENTIVES, MY_PAY_DOCUMENTS] : []), ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
   const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
   return (
