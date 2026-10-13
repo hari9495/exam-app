@@ -214,6 +214,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     // PM7: comp review.
     'perf.comp.manage',
     'perf.comp.approve',
+    // PM8: improvement plans.
+    'perf.pip.manage',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
   panel: ['org:view', 'results:view', 'interview:view_assigned'],

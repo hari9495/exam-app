@@ -16,6 +16,7 @@ import { PerformanceReviewsController } from '../performance/reviews.controller'
 import { PerformancePeerController } from '../performance/peer.controller';
 import { PerformanceCalibrationController } from '../performance/calibration.controller';
 import { PerformanceCompController } from '../performance/comp.controller';
+import { PerformancePipsController } from '../performance/pips.controller';
 import { SpecialCasesController } from '../lifecycle/special-cases.controller';
 import { ExpensesController } from '../expenses/expenses.controller';
 import { ExpenseClaimsController } from '../expenses/claims.controller';
@@ -74,11 +75,13 @@ const IMPLICIT: Record<string, string[]> = {
   PerformanceCalibrationController: ['board'],
   // PM7: a manager's own team in a comp cycle, decided per cycle; my own pay band.
   PerformanceCompController: ['cycles', 'sheet', 'updateProposal', 'submit', 'myPayBand'],
+  // PM8: a plan is about one person; the person, their manager chain and HR in scope, decided per plan.
+  PerformancePipsController: ['list', 'propose', 'get', 'acknowledge', 'checkin'],
   ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff'],
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

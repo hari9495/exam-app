@@ -117,6 +117,8 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'perf.calibration.facilitate',
   // PM7: pay changes and their approval.
   'perf.comp.manage',
+  // PM8: improvement plans and the exit link.
+  'perf.pip.manage',
   'perf.comp.approve',
 ];
 

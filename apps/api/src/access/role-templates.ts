@@ -61,7 +61,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'All HR records, job changes, personal details and identity changes for the people in scope; leave and attendance set-up, balances and medical leave.',
     cannot: 'Pay, Aadhaar in full, payroll approval.',
-    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view'],
+    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view', 'perf.pip.manage'],
   },
   {
     key: 'hr_executive',

@@ -13,9 +13,11 @@ import { suppress, toCsv } from './calibration-rules';
 //   calibration-changes  every change with its reason (YX-PERF-08)
 //   goal-alignment       person goals in the cycle's period per department and how many align to another goal;
 //                        departments under the minimum are suppressed
-// PIP status arrives with PM8.
+//   pip-status           plans in the cycle's period per department and outcome; departments under the minimum are
+//                        suppressed (PM8)
 
-export type ReportKind = 'completion' | 'distribution' | 'calibration-changes' | 'goal-alignment';
+export type ReportKind = 'completion' | 'distribution' | 'calibration-changes' | 'goal-alignment' | 'pip-status';
+const PIP_STATUSES = ['active', 'extended', 'met', 'not_met'] as const;
 const STATUSES = ['open', 'in_calibration', 'ready', 'released', 'acknowledged', 'closed'] as const;
 
 @Injectable()
@@ -80,6 +82,16 @@ export class PerformanceReportsService {
           GROUP BY 1 ORDER BY 1`;
         const cells = suppress(rows.map((x) => ({ department: x.department, count: Number(x.goals), aligned: Number(x.aligned) })), min);
         return { kind, cycle: cycle.name, min, header: ['department', 'goals', 'aligned', 'aligned %'], rows: cells.map((x) => (x.count === null ? [x.department, null, null, null] : [x.department, x.count, x.aligned, Math.round((x.aligned / x.count) * 1000) / 10])) };
+      }
+      if (kind === 'pip-status') {
+        const rows = await tx.$queryRaw<{ department: string; status: string; n: bigint }[]>`
+          SELECT ${dept} AS department, r.status, count(*) AS n FROM pips r
+          WHERE r.organization_id = ${org}::uuid AND r.status IN ('active', 'extended', 'met', 'not_met')
+            AND r.starts_on <= ${cycle.periodTo} AND r.ends_on >= ${cycle.periodFrom} AND ${scope}
+          GROUP BY 1, 2 ORDER BY 1`;
+        const depts = [...new Set(rows.map((x) => x.department))];
+        const cells = suppress(depts.map((d) => ({ department: d, count: rows.filter((x) => x.department === d).reduce((t, x) => t + Number(x.n), 0), by: PIP_STATUSES.map((s) => Number(rows.find((x) => x.department === d && x.status === s)?.n ?? 0)) })), min);
+        return { kind, cycle: cycle.name, min, header: ['department', ...PIP_STATUSES, 'total'], rows: cells.map((x) => (x.count === null ? [x.department, ...PIP_STATUSES.map(() => null), null] : [x.department, ...x.by, x.count])) };
       }
       throw new BadRequestException('No such report.');
     });

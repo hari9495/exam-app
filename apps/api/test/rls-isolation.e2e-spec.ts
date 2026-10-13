@@ -45,7 +45,8 @@ const PERFORMANCE_SUPPORT_EXCLUDED = ['feedback_requests', 'feedback_items', 'on
   // PM6: calibration.
   'calibration_sessions', 'calibration_changes',
   // PM7: ratings to pay.
-  'comp_matrices', 'comp_matrix_cells', 'comp_cycles', 'comp_budgets', 'comp_proposals', 'comp_equity_runs'];
+  'comp_matrices', 'comp_matrix_cells', 'comp_cycles', 'comp_budgets', 'comp_proposals', 'comp_equity_runs',
+  'pips', 'pip_goals', 'pip_checkins'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt((SUPPORT_EXCLUDED.includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 

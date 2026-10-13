@@ -570,3 +570,49 @@ export interface PayEquity {
   threshold: number;
   min: number;
 }
+
+// ------------------------------------------------------------------------------------------ PM8: improvement plans (§13)
+
+export type PipStatus = 'proposed' | 'declined' | 'active' | 'extended' | 'met' | 'not_met' | 'withdrawn';
+export type PipsView = 'mine' | 'team' | 'scope';
+
+export interface PipSummary {
+  id: string;
+  employee: string;
+  manager: string;
+  status: PipStatus;
+  startsOn: string;
+  endsOn: string;
+  nextCheckin: string | null;
+}
+
+export interface Pip {
+  id: string;
+  employee: string;
+  employeeId: string;
+  manager: string;
+  reason: string;
+  expectations: string;
+  support: string;
+  startsOn: string;
+  plannedEndsOn: string;
+  endsOn: string;
+  pausedDays: number;
+  pausedNow: boolean;
+  checkinEveryDays: number;
+  status: PipStatus;
+  acknowledgedAt: string | null;
+  employeeComment: string | null;
+  extendedFrom: string | null;
+  extendReason: string | null;
+  outcomeNote: string | null;
+  outcomeAt: string | null;
+  letterId: string | null;
+  exitCaseId: string | null;
+  goals: { id: string; text: string; measure: string; status: string }[];
+  checkins: { id: string; dueOn: string; heldOn: string | null; managerNote: string | null; employeeNote: string | null; status: 'due' | 'held' | 'missed' | 'cancelled' }[];
+  warning: boolean;
+  role: 'employee' | 'manager' | 'hr';
+  can: { acknowledge: boolean; checkin: boolean; employeeNote: boolean; outcome: boolean; extend: boolean; letter: boolean; startExit: boolean };
+  version: number;
+}

@@ -436,3 +436,115 @@ export class EquityQueryDto {
   @IsIn(['gender', 'grade', 'location'])
   dimension!: 'gender' | 'grade' | 'location';
 }
+
+// ------------------------------------------------------------------------------------------ PM8: improvement plans (§19 "PIPs")
+
+export class PipGoalDto {
+  @IsOptional()
+  @IsUUID()
+  goalId?: string | null;
+
+  @trim()
+  @IsString()
+  @Length(3, 500)
+  text!: string;
+
+  @trim()
+  @IsString()
+  @Length(3, 500)
+  measure!: string;
+}
+
+export class PipProposeDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @trim()
+  @IsString()
+  @Length(10, 2000)
+  reason!: string;
+
+  @trim()
+  @IsString()
+  @Length(10, 4000)
+  expectations!: string;
+
+  @trim()
+  @IsString()
+  @Length(3, 2000)
+  support!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => PipGoalDto)
+  goals!: PipGoalDto[];
+
+  @IsInt()
+  @Min(7)
+  @Max(365)
+  lengthDays!: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(60)
+  checkinEveryDays!: number;
+
+  @Matches(ISO)
+  startsOn!: string;
+}
+
+export class PipAcknowledgeDto {
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(2000)
+  comment?: string | null;
+
+  @IsInt()
+  version!: number;
+}
+
+export class PipCheckinDto {
+  @IsUUID()
+  checkinId!: string;
+
+  @trim()
+  @IsString()
+  @Length(3, 2000)
+  note!: string;
+}
+
+export class PipOutcomeDto {
+  @IsIn(['met', 'extended', 'not_met'])
+  outcome!: 'met' | 'extended' | 'not_met';
+
+  @trim()
+  @IsString()
+  @Length(3, 1000)
+  note!: string;
+
+  @IsOptional()
+  @Matches(ISO)
+  extendTo?: string | null;
+
+  @IsInt()
+  version!: number;
+}
+
+export class PipExitDto {
+  @Matches(ISO)
+  lwd!: string;
+
+  @trim()
+  @IsString()
+  @Length(3, 1000)
+  reasonText!: string;
+}
+
+export class PipListQueryDto {
+  @IsOptional()
+  @IsIn(['mine', 'team', 'scope'])
+  view?: 'mine' | 'team' | 'scope';
+}
