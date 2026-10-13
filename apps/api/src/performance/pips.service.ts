@@ -211,7 +211,7 @@ export class PerformancePipsService implements OnModuleInit {
   async propose(ctx: TenantContext, user: ScopeUser, dto: PipProposeDto) {
     const v = await this.viewer(user);
     let notices: Notice[] = [];
-    let warn: { org: string; hr: string[]; id: string } | null = null;
+    let warn = null as { org: string; hr: string[]; id: string } | null;
     const id = await this.run(ctx, async (tx, c) => {
       const org = c.organizationId;
       const today = todayIst();

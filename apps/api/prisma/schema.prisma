@@ -9609,7 +9609,7 @@ model PipCheckin {
   heldOn         DateTime? @map("held_on") @db.Date
   managerNote    String?   @map("manager_note") @db.VarChar(2000)
   employeeNote   String?   @map("employee_note") @db.VarChar(2000)
-  status         String    @default("due") @db.VarChar(8)
+  status         String    @default("due") @db.VarChar(10)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([pipId, dueOn])

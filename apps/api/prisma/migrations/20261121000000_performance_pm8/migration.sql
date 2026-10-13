@@ -73,7 +73,7 @@ CREATE TABLE "pip_checkins" (
     "held_on" DATE,
     "manager_note" VARCHAR(2000),
     "employee_note" VARCHAR(2000),
-    "status" VARCHAR(8) NOT NULL DEFAULT 'due',
+    "status" VARCHAR(10) NOT NULL DEFAULT 'due',
     "created_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "pip_checkins_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "pip_checkins_one_key" UNIQUE ("pip_id", "due_on"),

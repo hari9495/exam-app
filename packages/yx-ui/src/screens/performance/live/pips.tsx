@@ -113,10 +113,11 @@ function ProposeDialog(p: PipsScreenProps & { onClose: () => void }) {
   const ok = who && reason.trim().length >= 10 && expectations.trim().length >= 10 && support.trim().length >= 3 && filled.length === goals.length && on;
   const setGoal = (i: number, k: 'text' | 'measure', val: string) => setGoals((gs) => gs.map((g, j) => (j === i ? { ...g, [k]: val } : g)));
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="lg" title="Propose an improvement plan" description="HR approves the plan before the person sees it." confirmLabel="Send to HR" confirmDisabled={!ok} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="Propose an improvement plan" confirmLabel="Send to HR" confirmDisabled={!ok} onConfirm={async () => {
       await p.onPropose({ employeeId: who!, reason: reason.trim(), expectations: expectations.trim(), support: support.trim(), goals: goals.map((g) => ({ text: g.text.trim(), measure: g.measure.trim() })), lengthDays: length, checkinEveryDays: every, startsOn: dayKey(on!) });
       p.onClose();
     }}>
+      <Text as="p" tone="secondary">HR approves the plan before the person sees it.</Text>
       <FormField id="pip-who" label="Employee" required>
         <PersonPicker aria-label="Employee" value={who} onChange={setWho} people={p.team} />
       </FormField>
@@ -313,10 +314,11 @@ function OutcomeDialog(p: { canExtend: boolean; endsOn: string; onClose: () => v
   const [to, setTo] = useState<Date | null>(null);
   const ok = note.trim().length >= 3 && (outcome !== 'extended' || to);
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="Record the outcome" description={outcome === 'not_met' ? 'Not met closes the plan. It does not start an exit; you decide that separately.' : undefined} confirmLabel="Save" confirmDisabled={!ok} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="Record the outcome" confirmLabel="Save" confirmDisabled={!ok} onConfirm={async () => {
       await p.onSave({ outcome, note: note.trim(), extendTo: outcome === 'extended' && to ? dayKey(to) : null });
       p.onClose();
     }}>
+      {outcome === 'not_met' && <Text as="p" tone="secondary">Not met closes the plan. It does not start an exit; you decide that separately.</Text>}
       <FormField id="pip-outcome" label="Outcome">
         <Segment label="Outcome" value={outcome} onChange={setOutcome} options={[{ value: 'met', label: 'Met' }, ...(p.canExtend ? [{ value: 'extended' as const, label: 'Extend once' }] : []), { value: 'not_met', label: 'Not met' }]} />
       </FormField>
@@ -336,10 +338,11 @@ function ExitDialog(p: { onClose: () => void; onSave: PipScreenProps['onStartExi
   const [lwd, setLwd] = useState<Date | null>(null);
   const [why, setWhy] = useState('');
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="Start an exit case" description="Opens a company-initiated exit in Exits, linked to this plan. It goes through the usual exit approval." confirmLabel="Start the exit case" destructive confirmDisabled={!lwd || why.trim().length < 3} onConfirm={async () => {
+    <ConfirmDialog open onOpenChange={(o) => !o && p.onClose()} size="md" title="Start an exit case" confirmLabel="Start the exit case" destructive confirmDisabled={!lwd || why.trim().length < 3} onConfirm={async () => {
       await p.onSave({ lwd: dayKey(lwd!), reasonText: why.trim() });
       p.onClose();
     }}>
+      <Text as="p" tone="secondary">Opens a company-initiated exit in Exits, linked to this plan. It goes through the usual exit approval.</Text>
       <FormField id="pip-lwd" label="Last working day" required>
         <DatePicker value={lwd} onChange={setLwd} aria-label="Last working day" />
       </FormField>
