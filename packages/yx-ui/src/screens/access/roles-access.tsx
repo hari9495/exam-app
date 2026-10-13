@@ -215,7 +215,7 @@ function SystemAdminCard({ user, admins, onChange }: { user: AccessUser; admins:
     <Card
       title={<span className="yx-ppl2__row">System Admin{admin && <SystemAdminBadge />}</span>}
       actions={
-        <Button size="sm" variant={admin ? 'secondary' : 'primary'} onClick={onChange}>
+        <Button size="sm" variant="secondary" onClick={onChange}>
           {admin ? 'Remove System Admin' : 'Make System Admin'}
         </Button>
       }
@@ -253,13 +253,14 @@ function Effective({ userId, loadEffective }: { userId: string; loadEffective: R
         </Text>
       )}
       {data && (
-        <DescriptionList
-          columns={2}
-          items={data.keys.map((k) => ({
-            label: k.label,
-            value: <Text tone={k.people ? 'default' : 'secondary'} weight={k.people ? 'semibold' : undefined}>{`${k.people} ${k.people === 1 ? 'person' : 'people'}`}</Text>,
-          }))}
-        />
+        <div className="yx-acc__facts">
+          <DescriptionList
+            items={data.keys.map((k) => ({
+              label: k.label,
+              value: <Text tone={k.people ? 'default' : 'secondary'} weight={k.people ? 'semibold' : undefined}>{`${k.people} ${k.people === 1 ? 'person' : 'people'}`}</Text>,
+            }))}
+          />
+        </div>
       )}
     </Card>
   );
