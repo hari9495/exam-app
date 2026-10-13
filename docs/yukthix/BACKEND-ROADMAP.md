@@ -18,3 +18,9 @@ Agreed with the founder on 6–7 Oct 2026. Backend is built inside the exam-app 
 Cross-cutting pieces (notification engine P04, workflow engine P03, documents P05, period locks and audit P08) are built the first time a step needs them, then reused.
 
 Go-live items are tracked separately in [GO-LIVE-CHECKLIST.md](GO-LIVE-CHECKLIST.md).
+
+## Parked (founder, 13 Oct 2026)
+
+| What | Design | When |
+|---|---|---|
+| YukthiX Sheets, a web spreadsheet and the first non-HR ecosystem app | [SHEETS-BUILD-DESIGN.md](design/SHEETS-BUILD-DESIGN.md): recommended engine is Univer's free core; 8 batches, about 30–37 engineer-weeks; 11 decisions open | After the current HR suite development is finished. The decisions are not yet answered. |
