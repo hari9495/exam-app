@@ -165,6 +165,9 @@ export const YX_KEYS = [
   'candidate:manage',
   'candidate:view',
   'candidate:data_rights',
+  // AT5: interviews (panellists) and scorecard templates.
+  'interview:view_assigned',
+  'pipelines:configure',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

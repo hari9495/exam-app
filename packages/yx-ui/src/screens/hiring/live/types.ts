@@ -230,7 +230,7 @@ export interface UploadInviteResult {
 }
 
 export interface CandidateProfileView {
-  candidate: { id: string; name: string; email: string; phone: string | null; phoneE164: string | null; status: string; globalStage: GlobalStage; createdAt: string; erasedAt: string | null; emailOptedOut: boolean };
+  candidate: { id: string; name: string; email: string; phone: string | null; phoneE164: string | null; status: string; globalStage: GlobalStage; createdAt: string; erasedAt: string | null; emailOptedOut: boolean; smsOptedOut?: boolean; whatsappOptedOut?: boolean };
   legalHold: { at: string; reason: string | null } | null;
   retention: { months: number; lastActivityAt: string; until: string | null; noticeAt: string | null };
   resume: { hasFile: boolean; scan: string; parseStatus: string; title: string | null; summary: string | null; skills: string | null; years: number | null } | null;

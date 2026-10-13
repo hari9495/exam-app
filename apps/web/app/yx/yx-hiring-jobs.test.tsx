@@ -42,7 +42,7 @@ describe('Hiring › Jobs (M10 AT1)', () => {
     wrap(<YxHiringJobsPage />);
     expect(await screen.findByText('2 Interview')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Open' }));
-    expect(push).toHaveBeenCalledWith('/v2/jobs/j1');
+    expect(push).toHaveBeenCalledWith('/yx/hiring/jobs/j1');
     await userEvent.click(screen.getByRole('button', { name: 'New job' }));
     const d = screen.getByRole('dialog');
     await userEvent.type(within(d).getByRole('textbox', { name: /Job title/ }), 'Accountant');

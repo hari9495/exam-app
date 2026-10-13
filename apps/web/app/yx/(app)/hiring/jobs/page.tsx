@@ -48,7 +48,7 @@ export default function YxHiringJobsPage() {
       filter={filter}
       onFilter={setFilter}
       canManage={perms.has('pipeline:manage')}
-      onOpen={(id) => router.push(`/v2/jobs/${encodeURIComponent(id)}`)}
+      onOpen={(id) => router.push(`/yx/hiring/jobs/${encodeURIComponent(id)}`)}
       onCreate={(input) => createJob.mutateAsync(input as never)}
       onDelete={(id) => deleteJob.mutateAsync(id)}
       onDraftDescription={async (title) => (await draft.mutateAsync({ title })).description}

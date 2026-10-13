@@ -48,7 +48,7 @@ export default function YxHiringCandidatePage() {
         return { name: v.candidate.name, phone: v.candidate.phone, hasResume: Boolean(v.resume?.hasFile) };
       }}
       onBack={() => router.push('/yx/hiring/candidates')}
-      onOpenJob={(jobId) => router.push(`/v2/jobs/${encodeURIComponent(jobId)}`)}
+      onOpenJob={(jobId) => router.push(`/yx/hiring/jobs/${encodeURIComponent(jobId)}`)}
       onResume={async () => {
         const { url } = (await call(`/candidates/${id}/resume`, 'GET')) as { url: string };
         window.open(url, '_blank', 'noopener');

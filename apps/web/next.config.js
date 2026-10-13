@@ -30,9 +30,12 @@ const nextConfig = {
   async redirects() {
     const routes = ['/dashboard', '/exams', '/questions', '/walk-in-groups', '/analytics/hiring', '/message-templates', '/offer-template'];
     return [
-      // M10 AT1 (founder D1): the jobs list is the YukthiX Hiring › Jobs page; each job's workspace stays at /v2/jobs/:id.
+      // M10 AT1 / AT5 (founder D1): the jobs list and each job's workspace are YukthiX Hiring pages.
       { source: '/jobs', destination: '/yx/hiring/jobs', permanent: false },
       { source: '/v2/jobs', destination: '/yx/hiring/jobs', permanent: false },
+      { source: '/v2/jobs/:jobId', destination: '/yx/hiring/jobs/:jobId', permanent: false },
+      // M10 AT5: an interviewer's interviews and scorecards.
+      { source: '/v2/panel/interviews', destination: '/yx/hiring/interviews', permanent: false },
       // M10 AT2: hiring approval routes moved to YukthiX (requisitions now run on YukthiX Approvals).
       { source: '/settings/approvals', destination: '/yx/hiring/approval-routes', permanent: false },
       { source: '/v2/settings/approvals', destination: '/yx/hiring/approval-routes', permanent: false },
@@ -59,7 +62,7 @@ const nextConfig = {
       { source: '/exams/:id/edit', destination: '/v2/exams/:id/edit', permanent: false },
       { source: '/exams/:id/preview', destination: '/v2/exams/:id/preview', permanent: false },
       // Job detail (pipeline board) is rebuilt in v2.
-      { source: '/jobs/:jobId', destination: '/v2/jobs/:jobId', permanent: false },
+      { source: '/jobs/:jobId', destination: '/yx/hiring/jobs/:jobId', permanent: false },
       // Drive detail (live board + results) is rebuilt in v2.
       { source: '/drives/:driveId', destination: '/v2/drives/:driveId', permanent: false },
       // Walk-in group drives list rebuilt in v2.
@@ -83,7 +86,7 @@ const nextConfig = {
       { source: '/all-users', destination: '/v2/all-users', permanent: false },
       // v2 cutover — panel/interviewer console (/v2/panel/* is a real path, so /reports redirects
       // here without the old loop). Each report depth is listed explicitly (:param = one segment).
-      { source: '/interviews', destination: '/v2/panel/interviews', permanent: false },
+      { source: '/interviews', destination: '/yx/hiring/interviews', permanent: false },
       { source: '/reports', destination: '/v2/panel/reports', permanent: false },
       { source: '/reports/:examId', destination: '/v2/panel/reports/:examId', permanent: false },
       { source: '/reports/:examId/compare', destination: '/v2/panel/reports/:examId/compare', permanent: false },
