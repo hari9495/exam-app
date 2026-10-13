@@ -12,17 +12,24 @@ test('comp review: start a cycle, open it, and a change outside the matrix needs
   test.setTimeout(180_000);
   await signIn(page, 'admin@demo-org.test', 'DevAdmin123!');
   await page.waitForURL((url) => !url.pathname.includes('sign-in'));
+  // The matrix uses the rating scale: the performance starters come first (as in PM6).
+  await page.goto('/yx/settings/performance');
+  const starters = page.getByRole('button', { name: 'Use the starters' });
+  await expect(starters.or(page.getByRole('tab', { name: 'Review templates' })).first()).toBeVisible({ timeout: 30_000 });
+  if (await starters.isVisible()) await starters.click();
+  await expect(page.getByRole('tab', { name: 'Review templates' })).toBeVisible({ timeout: 30_000 });
   await page.goto('/yx/performance/comp');
   const create = page.getByRole('button', { name: 'New comp cycle' });
-  await expect(create).toBeVisible({ timeout: 30_000 });
   const starter = page.getByRole('button', { name: 'Use the starter matrix' });
+  await expect(starter.or(page.getByRole('button', { name: 'New comp cycle', disabled: false })).first()).toBeVisible({ timeout: 30_000 });
   if (await starter.isVisible()) await starter.click();
   await expect(create).toBeEnabled({ timeout: 30_000 });
   await create.click();
   const d = page.getByRole('dialog');
   await d.getByRole('textbox', { name: /^Name/ }).fill(`Merit ${Date.now().toString(36)}`);
   const on = d.getByRole('textbox', { name: 'Effective from' });
-  await on.fill(shown('2027-04-01'));
+  // One cycle per entity, currency and date: each run takes its own date.
+  await on.fill(shown(new Date(Date.now() + (30 + Math.floor(Math.random() * 600)) * 86_400_000).toISOString().slice(0, 10)));
   await on.press('Enter');
   await d.getByRole('button', { name: 'Create' }).click();
   await page.waitForURL(/\/yx\/performance\/comp\/[0-9a-f-]+$/, { timeout: 30_000 });

@@ -8896,5 +8896,5 @@ model PayEquityRun {
   runBy          String?  @map("run_by") @db.Uuid
   runAt          DateTime @default(now()) @map("run_at") @db.Timestamptz(3)
 
-  @@map("pay_equity_runs")
+  @@map("comp_equity_runs")
 }

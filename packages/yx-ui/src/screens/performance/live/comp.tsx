@@ -289,7 +289,8 @@ function ProposalDrawer({ p, designations, onClose, onSave }: { p: CompProposal;
   const [failed, setFailed] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const cell = p.cell;
-  const outside = promote === 'yes' || (cell && merit !== null && (merit < cell.minPct * (p.proration ?? 1) - 0.001 || merit > cell.maxPct * (p.proration ?? 1) + 0.001));
+  // Same rule as the API (outOfRange): with no rating there is no cell, so any increase needs a reason.
+  const outside = promote === 'yes' || (merit !== null && (cell ? merit < cell.minPct * (p.proration ?? 1) - 0.001 || merit > cell.maxPct * (p.proration ?? 1) + 0.001 : merit > 0));
   const save = async () => {
     setSaving(true);
     setFailed(null);

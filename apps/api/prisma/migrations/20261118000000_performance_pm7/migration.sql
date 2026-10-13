@@ -115,7 +115,7 @@ CREATE TABLE "comp_proposals" (
 );
 CREATE INDEX "comp_proposals_manager_idx" ON "comp_proposals" ("organization_id", "comp_cycle_id", "manager_employee_id");
 
-CREATE TABLE "pay_equity_runs" (
+CREATE TABLE "comp_equity_runs" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "organization_id" UUID NOT NULL,
     "comp_cycle_id" UUID NOT NULL,
@@ -124,8 +124,8 @@ CREATE TABLE "pay_equity_runs" (
     "results" JSONB NOT NULL,
     "run_by" UUID,
     "run_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "pay_equity_runs_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "pay_equity_runs_cycle_fkey" FOREIGN KEY ("organization_id", "comp_cycle_id") REFERENCES "comp_cycles"("organization_id", "id")
+    CONSTRAINT "comp_equity_runs_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "comp_equity_runs_cycle_fkey" FOREIGN KEY ("organization_id", "comp_cycle_id") REFERENCES "comp_cycles"("organization_id", "id")
 );
 
 -- P06 bulk batches made by applying a comp cycle point back to it (§12.6); a large cycle is several batches.
@@ -136,7 +136,7 @@ ALTER TABLE "employee_change_batches" ADD CONSTRAINT "employee_change_batches_co
 DO $$
 DECLARE t text;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['comp_matrices', 'comp_matrix_cells', 'comp_cycles', 'comp_budgets', 'comp_proposals', 'pay_equity_runs']
+  FOREACH t IN ARRAY ARRAY['comp_matrices', 'comp_matrix_cells', 'comp_cycles', 'comp_budgets', 'comp_proposals', 'comp_equity_runs']
   LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY', t);
     EXECUTE format(
@@ -155,10 +155,10 @@ END $$;
 CREATE POLICY pay_guard ON "comp_proposals" AS RESTRICTIVE
   USING ("legal_entity_id" = ANY ((SELECT app_pay_entities())::uuid[]))
   WITH CHECK ("legal_entity_id" = ANY ((SELECT app_pay_entities())::uuid[]));
-CREATE POLICY pay_guard ON "pay_equity_runs" AS RESTRICTIVE
+CREATE POLICY pay_guard ON "comp_equity_runs" AS RESTRICTIVE
   USING ("legal_entity_id" = ANY ((SELECT app_pay_entities())::uuid[]))
   WITH CHECK ("legal_entity_id" = ANY ((SELECT app_pay_entities())::uuid[]));
-REVOKE DELETE, TRUNCATE ON TABLE "comp_cycles", "comp_proposals", "pay_equity_runs", "comp_matrices" FROM app_runtime;
+REVOKE DELETE, TRUNCATE ON TABLE "comp_cycles", "comp_proposals", "comp_equity_runs", "comp_matrices" FROM app_runtime;
 
 -- ---------------------------------------------------------------------------------------------- permission keys (§17)
 INSERT INTO "permissions" ("id", "key", "description") VALUES
