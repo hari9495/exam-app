@@ -119,6 +119,10 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'perf.comp.manage',
   // PM8: improvement plans and the exit link.
   'perf.pip.manage',
+  // M10: offer pay, candidate data rights and headcount budgets.
+  'ats.offer.compensation.view',
+  'ats.candidate.data_rights',
+  'ats.headcount.manage',
   'perf.comp.approve',
 ];
 

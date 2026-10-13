@@ -25,3 +25,23 @@ describe('classic sign-in redirects', () => {
     for (const r of redirects) expect(r.destination).not.toMatch(/^\/(v2\/)?login|^\/(forgot|reset)-password|^\/staff/);
   });
 });
+
+// M10 AT1 (founder D1): a v2 hiring page is retired with a redirect once its YukthiX screen ships.
+describe('hiring pages moved to YukthiX', () => {
+  let redirects: Redirect[];
+  beforeAll(async () => {
+    redirects = await config.redirects();
+  });
+
+  it.each([
+    ['/v2/jobs', '/yx/hiring/jobs'],
+    ['/jobs', '/yx/hiring/jobs'],
+  ])('%s goes to %s', (source, destination) => {
+    expect(redirects).toContainEqual({ source, destination, permanent: false });
+  });
+
+  it('a job workspace is not redirected (it ships with AT5), and nothing still sends /jobs to the old list', () => {
+    expect(redirects.some((r) => r.source.startsWith('/v2/jobs/'))).toBe(false);
+    expect(redirects.some((r) => r.destination === '/v2/jobs')).toBe(false);
+  });
+});

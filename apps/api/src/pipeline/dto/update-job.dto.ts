@@ -54,4 +54,20 @@ export class UpdateJobDto {
   // send [] to clear all. See PipelineService.updateJob.
   @IsOptional() @IsArray() @IsUUID('4', { each: true })
   jobBoardIds?: string[];
+
+  /** M10 AT1: the P01 masters (YukthiX screens); each must belong to the company. */
+  @IsOptional() @IsUUID()
+  legalEntityId?: string | null;
+
+  @IsOptional() @IsUUID()
+  departmentId?: string | null;
+
+  @IsOptional() @IsUUID()
+  designationId?: string | null;
+
+  @IsOptional() @IsUUID()
+  gradeId?: string | null;
+
+  @IsOptional() @IsUUID()
+  locationId?: string | null;
 }

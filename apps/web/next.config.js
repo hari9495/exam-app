@@ -28,8 +28,11 @@ const nextConfig = {
     return ['/sso/callback', '/yx/sign-in/callback'].map((source) => ({ source, headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] }));
   },
   async redirects() {
-    const routes = ['/dashboard', '/exams', '/questions', '/candidates', '/walk-in-groups', '/jobs', '/analytics/hiring', '/message-templates', '/offer-template'];
+    const routes = ['/dashboard', '/exams', '/questions', '/candidates', '/walk-in-groups', '/analytics/hiring', '/message-templates', '/offer-template'];
     return [
+      // M10 AT1 (founder D1): the jobs list is the YukthiX Hiring › Jobs page; each job's workspace stays at /v2/jobs/:id.
+      { source: '/jobs', destination: '/yx/hiring/jobs', permanent: false },
+      { source: '/v2/jobs', destination: '/yx/hiring/jobs', permanent: false },
       ...routes.map((source) => ({ source, destination: `/v2${source}`, permanent: false })),
       // The classic sign-in is retired (founder decision 7 Oct 2026): every company sign-in, password
       // reset and reset link is the YukthiX one (old bookmarks and emails included). The query string

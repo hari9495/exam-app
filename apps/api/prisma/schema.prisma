@@ -1195,6 +1195,12 @@ model Job {
   fitRubric            String?               @map("fit_rubric") @db.Text
   department           String?               @db.VarChar(200)
   hiringManagerId      String?               @map("hiring_manager_id") @db.Uuid
+  /// M10 AT1: the P01 masters a YukthiX job is linked to (the free-text department stays for the older screens).
+  legalEntityId        String?               @map("legal_entity_id") @db.Uuid
+  departmentId         String?               @map("department_id") @db.Uuid
+  designationId        String?               @map("designation_id") @db.Uuid
+  gradeId              String?               @map("grade_id") @db.Uuid
+  locationId           String?               @map("location_id") @db.Uuid
   headcount            Int?
   salaryMin            Int?                  @map("salary_min")
   salaryMax            Int?                  @map("salary_max")
