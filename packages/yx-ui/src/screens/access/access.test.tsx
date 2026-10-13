@@ -9,7 +9,7 @@ import { AccessLogScreen } from './access-log';
 import { ACCESS_LOG, EFFECTIVE, GRANTS, PROFILE_MANAGER, PROFILE_SELF, REQUESTS, ROLES, SCOPES, TEMPLATES, TODAY_ISO, USERS } from './data';
 
 // Radix dialogs and popovers toggle pointer-events while they open; the check is for real users, not here.
-const ue = userEvent.setup({ pointerEventsCheck: 0 });
+const ue = userEvent.setup({ pointerEventsCheck: 0, delay: null }); // no pause per keystroke: form-filling tests ran past 5 s when the suite runs in parallel
 const ok = () => vi.fn().mockResolvedValue(undefined);
 const coded = (code: string, message: string) => Object.assign(new Error(message), { code });
 
