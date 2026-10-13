@@ -110,6 +110,12 @@ export class InterviewingController {
     return this.templates.archive(ctx, id);
   }
 
+  @Get('interviews/mine')
+  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  myInterviews(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string) {
+    return this.scorecards.mine(ctx, userId);
+  }
+
   // Panellists (interview:view_assigned) and recruiters; the service applies D7 per viewer.
   @Get('interviews/:id')
   @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')

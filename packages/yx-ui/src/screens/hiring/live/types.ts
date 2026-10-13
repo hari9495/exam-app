@@ -287,3 +287,162 @@ export interface RetentionPreview {
   skippedOpen: number;
   skippedHired: number;
 }
+
+// ------------------------------------------------------------------------------------------ AT5: job workspace, interviews
+
+export type StageCategory = 'active' | 'offer' | 'hired' | 'rejected' | 'archived';
+
+export interface BoardStageView {
+  id: string;
+  name: string;
+  category: StageCategory;
+  statuses: { id: string; name: string }[];
+}
+
+export interface ScorecardSummary {
+  complete: boolean;
+  submitted: number;
+  expected: number;
+  score: number | null;
+  passes: boolean | null;
+}
+
+export interface BoardRowView {
+  entryId: string;
+  candidateId: string;
+  name: string;
+  email: string | null;
+  stageId: string;
+  statusId: string;
+  statusName: string;
+  category: StageCategory;
+  daysInStage: number;
+  /** "Plant aptitude 72% · passed", or null. */
+  testSummary: string | null;
+  scorecards: ScorecardSummary | null;
+  nextInterviewAt: string | null;
+  rejectionPendingUntil: string | null;
+  assignee: string | null;
+  fitScore: number | null;
+  internal: boolean;
+}
+
+export interface RejectInput {
+  reason: string;
+  message: { templateId: string | null; subject: string; body: string } | null;
+  delayHours: 0 | 24;
+}
+
+export interface JobView {
+  id: string;
+  title: string;
+  status: HiringJobStatus;
+  summary: string;
+  description: string | null;
+  publicApplyEnabled: boolean;
+  listOnCareers: boolean;
+  applyUrl: string | null;
+  fitCriteria: string | null;
+  fitRubric: { label: string; weight: number }[];
+  customFields: { label: string; value: string }[];
+  boardIds: string[];
+}
+
+export interface JobSettingsView {
+  scorecardTemplateId: string | null;
+  exams: { examId: string; title: string; sendOnStageId: string | null }[];
+}
+
+export interface ApplicationView {
+  entryId: string;
+  candidateId: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  statusId: string;
+  stageName: string;
+  category: StageCategory;
+  rejectedReason: string | null;
+  rejectionPendingUntil: string | null;
+  resume: { title: string | null; summary: string | null; skills: string[]; hasFile: boolean; status: string } | null;
+  fit: { status: string | null; score: number | null; summary: string | null; stale: boolean } | null;
+  tests: { examId: string; title: string; score: number | null; passFail: string | null; status: string }[];
+  customFields: { label: string; value: string }[];
+  checklist: { id: string; label: string; done: boolean }[];
+  assignee: string | null;
+  interviews: { id: string; status: string; when: string | null; panel: string[]; location: string; meetingUrl: string | null; scorecards: ScorecardSummary | null }[];
+  emails: { id: string; subject: string; status: string; at: string }[];
+  sms: { id: string; body: string; status: string; at: string }[];
+  whatsapp: { id: string; body: string; status: string; at: string }[];
+  smsOptedOut: boolean;
+  whatsappOptedOut: boolean;
+  notes: { id: string; author: string; note: string | null; rating: number | null; at: string }[];
+  offers: { id: string; status: string; compensation: string; startDate: string; expiresAt: string }[];
+}
+
+export interface ScheduleInput {
+  mode: 'proposed' | 'self_book';
+  slots: { startsAt: string; endsAt: string }[];
+  windowStart: string | null;
+  windowEnd: string | null;
+  slotMinutes: 15 | 30 | 45 | 60 | null;
+  panelistUserIds: string[];
+  location: string;
+  timeZone: string;
+  note: string | null;
+  scorecardTemplateId: string | null;
+}
+
+export interface OfferInput {
+  compensation: string;
+  startDate: string;
+  expiresAt: string;
+  templateId: string | null;
+  subject: string;
+  body: string;
+  then: 'save' | 'send' | 'approval';
+}
+
+export interface ScorecardTemplateView {
+  id: string;
+  name: string;
+  scaleMax: number;
+  passBar: number;
+  inUse: boolean;
+  items: { id: string; label: string; guidance: string | null; weight: number; competencyId: string | null }[];
+}
+
+export interface ScorecardTemplateInput {
+  name: string;
+  scaleMax: number;
+  passBar: number;
+  items: { label: string; guidance: string | null; weight: number; competencyId: string | null }[];
+}
+
+export type Recommendation = 'strong_no' | 'no' | 'yes' | 'strong_yes';
+
+export interface InterviewView {
+  interview: { id: string; status: string; location: string; timeZone: string; meetingUrl: string | null; slots: { startsAt: string; endsAt: string; confirmed: boolean }[]; jobId: string; jobTitle: string; candidateId: string; candidateName: string };
+  panel: { userId: string; name: string; submitted: boolean }[];
+  resume: { title: string | null; summary: string | null; skills: string | null; hasFile: boolean } | null;
+  template: { id: string; name: string; scaleMax: number; passBar: number; items: { id: string; label: string; guidance: string | null; weight: number }[] } | null;
+  viewer: { isPanelist: boolean; isOverseer: boolean };
+  scorecards: { id: string; panelistUserId: string; panelistName: string; mine: boolean; status: 'draft' | 'submitted'; recommendation: Recommendation | null; summary: string | null; weightedScore: number | null; passes: boolean | null; submittedAt: string | null; ratings: { itemId: string; rating: number | null; notes: string | null }[] }[];
+  result: (ScorecardSummary & { score: number | null }) | null;
+  earlier: { interviewId: string; panelistName: string; recommendation: string | null; weightedScore: number; passes: boolean | null; summary: string | null }[];
+}
+
+export interface ScorecardInput {
+  ratings: { itemId: string; rating: number | null; notes: string | null }[];
+  recommendation: Recommendation | null;
+  summary: string | null;
+}
+
+export interface MyInterviewRow {
+  id: string;
+  candidateName: string;
+  jobTitle: string;
+  when: string | null;
+  status: string;
+  scorecard: 'not_started' | 'draft' | 'submitted' | 'none';
+}

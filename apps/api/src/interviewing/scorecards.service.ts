@@ -73,6 +73,25 @@ export class ScorecardsService {
     });
   }
 
+  /** The viewer's own interviews as a panellist, newest first, with where their scorecard stands. */
+  mine(ctx: TenantContext, userId: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const ivs = await tx.interview.findMany({
+        where: { organizationId: c.organizationId, panelists: { some: { userId } } },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+        include: { slots: true, pipelineEntry: { select: { job: { select: { title: true, scorecardTemplateId: true } }, candidate: { select: { name: true } } } } },
+      });
+      const cards = await tx.scorecard.findMany({ where: { panelistUserId: userId, interviewId: { in: ivs.map((i) => i.id) } }, select: { interviewId: true, status: true } });
+      return ivs.map((i) => {
+        const slot = i.slots.find((s) => s.id === i.confirmedSlotId) ?? i.slots[0];
+        const card = cards.find((x) => x.interviewId === i.id);
+        const hasTemplate = Boolean(i.scorecardTemplateId ?? i.pipelineEntry.job.scorecardTemplateId);
+        return { id: i.id, candidateName: i.pipelineEntry.candidate.name, jobTitle: i.pipelineEntry.job.title, when: slot?.startsAt ?? null, status: i.status, scorecard: !hasTemplate ? 'none' : card ? card.status : 'not_started' };
+      });
+    });
+  }
+
   /** Saves the viewer's own draft; with submit, checks it is complete, scores it and makes it final. */
   save(ctx: TenantContext, interviewId: string, v: Viewer, dto: ScorecardDto, submit: boolean) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
