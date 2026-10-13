@@ -5,7 +5,8 @@ import type { ConsultantBatch, ConsultantInvoice, ConsultantRow, NonSalaryReturn
 
 // Batch 5h screens with sample data (the affordance guard opens these in light and dark).
 const ok = async () => ({}) as never;
-const meta: Meta = { title: 'Screens/Pay/Live 5h', parameters: { layout: 'fullscreen' } };
+// The ALL-CAPS exports are sample data shared with the tests, not stories.
+const meta: Meta = { title: 'Screens/Pay/Live 5h', parameters: { layout: 'fullscreen' }, excludeStories: /^[A-Z][A-Z0-9_]+$/ };
 export default meta;
 type S = StoryObj;
 

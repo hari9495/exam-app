@@ -3,7 +3,8 @@ import { CareersSiteScreen, type CareersSiteScreenProps } from './careers';
 import { JobBoardsScreen, type JobBoardsScreenProps } from './boards';
 
 // Recruitment, wired (batch AT3; M10-BUILD-DESIGN §6). In the affordance guard set ('screens-hiring-live').
-const meta: Meta = { title: 'Screens/Hiring/Live · Careers site and job boards', parameters: { layout: 'fullscreen' } };
+// careers and boards are sample props shared with the tests, not stories.
+const meta: Meta = { title: 'Screens/Hiring/Live · Careers site and job boards', parameters: { layout: 'fullscreen' }, excludeStories: ['careers', 'boards'] };
 export default meta;
 type S = StoryObj;
 

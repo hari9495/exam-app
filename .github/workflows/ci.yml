@@ -273,13 +273,17 @@ jobs:
   # packages/yx-ui/tests/__screenshots__/linux, Git LFS) and a WCAG 2.2 AA axe scan of each (a11y.spec.ts).
   # Refreshing the Linux baselines after an intended UI change: packages/yx-ui/tests/README.md.
   yx-ui:
-    name: yx-ui ${{ matrix.suite }} (shard ${{ matrix.shard }}/3)
+    name: yx-ui ${{ matrix.suite }} (shard ${{ matrix.shard }}/${{ matrix.of }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        suite: [visual, a11y]
-        shard: [1, 2, 3]
+        include:
+          - { suite: visual, shard: 1, of: 1 }
+          - { suite: a11y, shard: 1, of: 4 }
+          - { suite: a11y, shard: 2, of: 4 }
+          - { suite: a11y, shard: 3, of: 4 }
+          - { suite: a11y, shard: 4, of: 4 }
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -305,9 +309,9 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Storybook ${{ matrix.suite }} tests (shard ${{ matrix.shard }}/3)
+      - name: Storybook ${{ matrix.suite }} tests (shard ${{ matrix.shard }}/${{ matrix.of }})
         working-directory: packages/yx-ui
-        run: npx playwright test tests/${{ matrix.suite }}.spec.ts --shard=${{ matrix.shard }}/3
+        run: npx playwright test tests/${{ matrix.suite }}.spec.ts --shard=${{ matrix.shard }}/${{ matrix.of }}
 
       - name: Upload the results on failure
         if: failure()

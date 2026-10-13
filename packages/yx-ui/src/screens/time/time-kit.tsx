@@ -308,7 +308,7 @@ export function GeoMap({ fences, pins, trail, caption: rawCaption, height = 200,
         The 320 × 200 drawing stays whole and centred ('meet'); the background, grid and roads run far past the viewBox
         on every side, so a wide or tall frame shows more map instead of empty bands (S8).
       */}
-      <svg ref={svgRef} viewBox="0 0 320 200" style={{ height }} role="img" aria-labelledby={titleId} preserveAspectRatio="xMidYMid meet">
+      <svg ref={svgRef} viewBox="0 0 320 200" style={{ height }} role={editable ? 'group' : 'img'} aria-labelledby={titleId} preserveAspectRatio="xMidYMid meet">
         <title id={titleId}>
           {['Map', ...fences.map((f) => `${f.label} zone`), ...pins.map((p) => p.label)].join('; ')}
         </title>

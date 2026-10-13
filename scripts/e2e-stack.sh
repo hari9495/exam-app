@@ -29,8 +29,10 @@ export SD_SCANNER=dev-fake LETTER_PDF_CONVERTER=dev-fake EXPENSE_OCR_ADAPTER=dev
 # The mail-in walk-through writes the DKIM/SPF/DMARC records it signs with to this file (service-desk-channels.spec.ts).
 if [ -n "${E2E_DEV_DNS:-}" ]; then export SD_MAIL_DEV_DNS="$E2E_DEV_DNS"; fi
 
-node apps/api/dist/main.js >"$LOGS/api.log" 2>&1 &
-node apps/exam-runtime/dist/main.js >"$LOGS/exam-runtime.log" 2>&1 &
+# From their own folders, as `nest start` runs them: the seed writes its files (letter templates, .pay-files) relative
+# to apps/api, and the API reads them back from its working directory.
+(cd apps/api && exec node dist/main.js) >"$LOGS/api.log" 2>&1 &
+(cd apps/exam-runtime && exec node dist/main.js) >"$LOGS/exam-runtime.log" 2>&1 &
 PORT="$WEB_PORT" HOSTNAME=127.0.0.1 node apps/web/.next/standalone/apps/web/server.js >"$LOGS/web.log" 2>&1 &
 
 wait_for() {

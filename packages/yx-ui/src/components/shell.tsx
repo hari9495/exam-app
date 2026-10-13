@@ -244,7 +244,9 @@ export function AppShell({
         )}
         <div className="yx-shell__main">
           {topBar}
-          <main id={mainId} tabIndex={-1} className="yx-shell__content">
+          {/* A Tab stop of its own: the content area scrolls, and keys must be able to scroll it even when it holds nothing
+              focusable yet (a page still loading), WCAG 2.1.1. The skip link lands here too. */}
+          <main id={mainId} tabIndex={0} className="yx-shell__content">
             {children}
           </main>
         </div>

@@ -26,6 +26,7 @@
 .yx-shell__main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .yx-shell__content { position: relative; flex: 1; min-height: 0; overflow-y: auto; padding: var(--yx-space-6); } /* relative: keeps absolutely placed screen-reader text inside the scroll box, so the page itself never scrolls */
 .yx-shell__content:focus { outline: none; }
+.yx-shell__content:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: calc(var(--yx-focus-width) * -1); }
 .yx-shell__tabs { display: none; }
 
 .yx-shell__skip {

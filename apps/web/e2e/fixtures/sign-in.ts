@@ -22,7 +22,14 @@ export async function signIn(page: Page, email: string, password: string) {
     // Roles that must set up a second step are asked to on sign-in while their grace period runs (the seed gives
     // two weeks). The walk-throughs are not about enrolment: put it off, as a person may, and carry on.
     const remindLater = page.getByRole('button', { name: 'Remind me later' });
-    const leftSignIn = await page.waitForURL((url) => !url.pathname.startsWith('/yx/sign-in'), { timeout: 15_000 }).then(() => true, () => false);
+    const leftSignIn = await page
+      .waitForURL((url) => !url.pathname.startsWith('/yx/sign-in'), {
+        timeout: 15_000,
+      })
+      .then(
+        () => true,
+        () => false,
+      );
     if (leftSignIn && new URL(page.url()).pathname.startsWith('/yx/setup-mfa')) await remindLater.click();
     return;
   }

@@ -5,6 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { signIn } from './fixtures/sign-in';
+import { writeInEditor } from './fixtures/editor';
 
 // M14 Service Desk, phase 3b-1 batch 3 on the seeded Kaveri Foods demo:
 //   1. an outside customer (Asha Menon, Annapurna Stores) signs in to the Customer Care portal with a one-time code,
@@ -87,8 +88,7 @@ test('outside customer: portal sign-in → raise → agent replies → customer 
   await expect(agent.getByRole('heading', { name: subject })).toBeVisible();
   await expect(agent.getByText('Annapurna Stores').first()).toBeVisible();
   await agent.getByRole('tab', { name: /Reply to/ }).click();
-  await agent.locator('.ProseMirror').click();
-  await agent.keyboard.type('Hello Asha, new packets leave our warehouse today.');
+  await writeInEditor(agent, 'Hello Asha, new packets leave our warehouse today.');
   await agent.getByRole('button', { name: 'Send reply' }).click();
   await expect(agent.getByText('new packets leave our warehouse today')).toBeVisible();
 
