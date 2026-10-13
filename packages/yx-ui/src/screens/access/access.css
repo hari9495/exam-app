@@ -4,6 +4,8 @@
 .yx-acc__note { margin: 0 0 var(--yx-space-4); }
 /* One column in permission order, narrow enough that each count stays beside its label (founder review 13 Oct 2026). */
 .yx-acc__facts { max-width: 40rem; }
+/* The person picker holds a name and email, not a paragraph: standard form width, not the whole page. */
+.yx-acc__person { max-width: var(--yx-form-max); }
 
 /* Identity and bank: a calm confidential note with space below (founder review 7 Oct 2026). */
 .yx-ppl2__confidential { display: flex; align-items: center; gap: var(--yx-space-1); margin: 0 0 var(--yx-space-4); color: var(--yx-color-text-secondary); }
