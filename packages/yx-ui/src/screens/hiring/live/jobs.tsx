@@ -145,6 +145,7 @@ function NewJobDialog(p: HiringJobsScreenProps & { onClose: () => void }) {
   const [salaryMin, setSalaryMin] = useState<number | null>(null);
   const [salaryMax, setSalaryMax] = useState<number | null>(null);
   const [currency, setCurrency] = useState('');
+  const [showSalary, setShowSalary] = useState(false);
   const [pipelineId, setPipelineId] = useState<string | null>(p.pipelines.find((x) => x.isDefault)?.value ?? p.pipelines[0]?.value ?? null);
   const [custom, setCustom] = useState<Record<string, string | number | null>>({});
   const [reason, setReason] = useState<'new' | 'replacement'>('new');
@@ -175,6 +176,7 @@ function NewJobDialog(p: HiringJobsScreenProps & { onClose: () => void }) {
         salaryMin: opt(salaryMin),
         salaryMax: opt(salaryMax),
         salaryCurrency: opt(currency.trim().toUpperCase()),
+        showSalary: showSalary || undefined,
         pipelineId: opt(pipelineId),
         customFields: Object.keys(custom).length ? custom : undefined,
         requisitionReason: reason,
@@ -221,6 +223,7 @@ function NewJobDialog(p: HiringJobsScreenProps & { onClose: () => void }) {
       <FormField id="hj-cur" label="Currency" optional helper="Three letters, for example INR.">
         <TextField value={currency} onChange={setCurrency} maxLength={3} />
       </FormField>
+      <Checkbox label="Show the salary on the careers site" description="Also shared with Google for Jobs." checked={showSalary} onChange={setShowSalary} />
       <FormField id="hj-pipe" label="Pipeline">
         <Select aria-label="Pipeline" value={pipelineId} onChange={setPipelineId} options={p.pipelines} />
       </FormField>

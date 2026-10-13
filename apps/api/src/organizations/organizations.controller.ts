@@ -22,7 +22,6 @@ import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateReminderSettingsDto } from './dto/update-reminder-settings.dto';
 import { UpdateScheduledReportSettingsDto } from './dto/update-scheduled-report-settings.dto';
 import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
-import { UpdateApplyConsentDto } from './dto/update-apply-consent.dto';
 import { ApiUsageQueryDto } from './dto/api-usage-query.dto';
 import { UpdateCareersDto } from './dto/update-careers.dto';
 import { UpdateSmsConfigDto } from './dto/update-sms-config.dto';
@@ -226,18 +225,6 @@ export class OrganizationsController {
   @RequirePermissions('org:manage_settings')
   updateBusinessHours(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateBusinessHoursDto) {
     return this.organizationsService.updateBusinessHours(tenant, userId, dto);
-  }
-
-  @Get('apply-consent')
-  @RequirePermissions('org:manage_settings')
-  getApplyConsent(@CurrentTenant() tenant: TenantContext) {
-    return this.organizationsService.getApplyConsent(tenant);
-  }
-
-  @Put('apply-consent')
-  @RequirePermissions('org:manage_settings')
-  updateApplyConsent(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateApplyConsentDto) {
-    return this.organizationsService.setApplyConsent(tenant, userId, dto);
   }
 
   @Patch('branding')

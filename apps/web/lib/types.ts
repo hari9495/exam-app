@@ -535,12 +535,16 @@ export interface PublicJob {
   // (no field at all) is treated identically to "not configured".
   applyConsentText?: string | null;
   applyConsentVersion?: number;
+  // M10 AT3: every consent notice at its current version; 'application' is required, 'talent_pool' optional.
+  consents?: { purpose: 'application' | 'talent_pool'; version: number; text: string; required: boolean }[];
   customFields: PublicCustomFieldDef[];
 }
 
 // GET /public/careers/:orgSlug -- unauthenticated, mirrors PublicApplicationsService.getCareers
 // verbatim (org branding + the jobs opted into the public careers page via listOnCareers).
 export interface CareersJob {
+  /** M10 AT3: the readable URL part (/careers/:org/jobs/:slug); null only for a job made before slugs. */
+  slug?: string | null;
   applyToken: string;
   title: string;
   location: string | null;
@@ -549,10 +553,23 @@ export interface CareersJob {
   salaryMin: number | null;
   salaryMax: number | null;
   salaryCurrency: string | null;
+  company?: { name: string; slug: string | null } | null;
+  postedAt?: string;
+}
+
+/** GET /public/careers/:orgSlug/jobs/:slug (M10 AT3). */
+export interface CareersJobDetail extends CareersJob {
+  description: string | null;
+  orgName: string;
+  logoUrl: string | null;
+  primaryColor: string | null;
 }
 
 export interface CareersPageResponse {
   orgName: string;
+  /** M10 AT3: the legal entity whose page this is (?company=), else null. */
+  companyName?: string | null;
+  companies?: { slug: string; name: string }[];
   headline: string | null;
   intro: string | null;
   assistantEnabled: boolean;

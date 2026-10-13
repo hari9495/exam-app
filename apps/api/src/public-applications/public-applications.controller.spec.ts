@@ -16,8 +16,8 @@ describe('PublicApplicationsController', () => {
   it('apply delegates to service.apply with the applyToken and dto', () => {
     const { service, controller } = setup();
     const dto = { name: 'Candidate', email: 'candidate@example.com', resumeBase64: 'JVBERi0=' };
-    controller.apply('apply-token-1', dto as any);
-    expect(service.apply).toHaveBeenCalledWith('apply-token-1', dto);
+    controller.apply('apply-token-1', dto as any, '1.2.3.4');
+    expect(service.apply).toHaveBeenCalledWith('apply-token-1', dto, '1.2.3.4');
   });
 
   it('parseResume delegates to service.parseResume with the applyToken and dto', () => {
@@ -80,6 +80,6 @@ describe('PublicApplicationsController', () => {
   it('getCareers delegates to service.getCareers with the orgSlug', () => {
     const { service, controller } = setup();
     controller.getCareers('acme');
-    expect(service.getCareers).toHaveBeenCalledWith('acme');
+    expect(service.getCareers).toHaveBeenCalledWith('acme', undefined);
   });
 });

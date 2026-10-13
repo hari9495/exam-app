@@ -5,13 +5,14 @@ import { RulesEngineModule } from '../rules-engine/rules-engine.module';
 import { JobBoardsModule } from '../job-boards/job-boards.module';
 import { HiringController } from './hiring.controller';
 import { HiringRequisitionsService } from './requisitions.service';
+import { CareersAdminService } from './careers-admin.service';
 
 // M10 recruitment (M10-BUILD-DESIGN §4). AT1: keys, support masking (app module). AT2: headcount plans and
-// requisitions on P03.
+// requisitions on P03. AT3: careers site settings (consent notices, entity pages).
 @Module({
   imports: [AuthModule, WorkflowModule, RulesEngineModule, JobBoardsModule],
   controllers: [HiringController],
-  providers: [HiringRequisitionsService],
+  providers: [HiringRequisitionsService, CareersAdminService],
   exports: [HiringRequisitionsService],
 })
 export class HiringModule {}

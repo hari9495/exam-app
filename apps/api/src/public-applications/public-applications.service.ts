@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import pdfParse from 'pdf-parse';
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService, TenantPrismaService, BlobStorageService, AiApiKeyResolverService, AiNotConfiguredError, OrgSecretsCryptoService } from '@exam-platform/shared';
 import { getEasyApplyProvider } from '../easy-apply/providers';
 import { QuotaService } from '../billing/quota.service';
@@ -16,6 +16,9 @@ import { UploadPortalResumeDto } from './dto/upload-portal-resume.dto';
 import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
 import { upsertCustomFieldValues, serializeCustomFieldValues, CustomFieldDefinitionLite } from '../custom-fields/custom-field-values';
 import { resolveConsentStamp } from '../common/consent-check';
+import { EmailService } from '../email/email.service';
+import { scannerFromEnv, type Scanner } from '../common/scanner';
+import { checkConsents, ipHash, isSlug, safeColor } from '../hiring/careers-rules';
 import { QuickApplyDto } from './dto/quick-apply.dto';
 import { CareersAssistantDto } from './dto/careers-assistant.dto';
 
@@ -37,6 +40,8 @@ function parseOptionsJson(optionsJson: string | null): string[] | null {
 
 export interface CareersPageResponse {
   orgName: string;
+  /** M10 AT3: the legal entity whose page this is (?company=), or null for the company's own page. */
+  companyName: string | null;
   headline: string | null;
   intro: string | null;
   assistantEnabled: boolean;
@@ -45,12 +50,16 @@ export interface CareersPageResponse {
   primaryColor: string | null;
   accentColor: string | null;
   textColor: string | null;
+  companies: { slug: string; name: string }[];
   jobs: {
+    slug: string | null;
     applyToken: string;
     title: string;
     location: string | null;
     employmentType: string | null;
     department: string | null;
+    company: { name: string; slug: string | null } | null;
+    postedAt: string;
     salaryMin: number | null;
     salaryMax: number | null;
     salaryCurrency: string | null;
@@ -90,7 +99,21 @@ export class PublicApplicationsService {
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
     private readonly quota: QuotaService,
     private readonly crypto: OrgSecretsCryptoService,
+    private readonly email: EmailService,
   ) {}
+
+  // M10 AT3: public résumés are virus-scanned (null: no scanner configured, files wait as 'pending').
+  private scanner: Scanner | null | undefined;
+  private scan() {
+    if (this.scanner === undefined) this.scanner = scannerFromEnv();
+    return this.scanner;
+  }
+
+  /** The latest notice per purpose (M10 AT3: consent text is versioned; a published version never changes). */
+  private async notices(organizationId: string) {
+    const rows = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: true }, (tx) => tx.consentNotice.findMany({ where: { organizationId }, orderBy: { version: 'desc' } }));
+    return ['application', 'talent_pool'].map((p) => rows.find((r) => r.purpose === p)).filter((r): r is NonNullable<typeof r> => Boolean(r));
+  }
 
   private async resolveJob(applyToken: string) {
     const job = await this.tenantPrisma.forTenant(
@@ -214,6 +237,8 @@ export class PublicApplicationsService {
       orgLogo: org?.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
       applyConsentText: org?.applyConsentText ?? null,
       applyConsentVersion: org?.applyConsentVersion ?? 1,
+      // M10 AT3: every notice the applicant can accept, at its current version (the application one is required).
+      consents: (await this.notices(job.organizationId)).map((n) => ({ purpose: n.purpose, version: n.version, text: n.text, required: n.purpose === 'application' })),
       customFields: defs.map((d) => ({
         definitionId: d.id,
         key: d.key,
@@ -307,8 +332,17 @@ export class PublicApplicationsService {
     return this.renderJobsFeedXml(jobs);
   }
 
-  async apply(applyToken: string, dto: ApplyDto): Promise<{ statusToken: string; portalToken: string }> {
+  async apply(applyToken: string, dto: ApplyDto, ip: string | null = null): Promise<{ received: true }> {
     const job = await this.resolveJob(applyToken);
+    // M10 AT3 honeypot: a bot that filled the hidden field gets the same answer as a person, and nothing is stored.
+    if (dto.website && dto.website.trim()) {
+      this.logger.warn(`apply honeypot tripped for job ${job.id}`);
+      return { received: true };
+    }
+    const notices = await this.notices(job.organizationId);
+    const accepted = dto.consents ?? (dto.consentAccepted ? notices.filter((n) => n.purpose === 'application').map((n) => ({ purpose: n.purpose, version: n.version })) : []);
+    const consent = checkConsents(notices, accepted);
+    if (consent.problem) throw consent.stale ? new ConflictException(consent.problem) : new BadRequestException(consent.problem);
 
     // Cheap read via the already-known organizationId (not the tenant-scoped tx -- there is no
     // candidate write yet to gate). Throws BadRequestException before any blob/DB write when
@@ -317,13 +351,19 @@ export class PublicApplicationsService {
       where: { id: job.organizationId },
       select: { applyConsentText: true, applyConsentVersion: true },
     });
-    const consentStamp = resolveConsentStamp(org?.applyConsentText, org?.applyConsentVersion ?? 1, dto.consentAccepted);
+    const consentStamp = resolveConsentStamp(org?.applyConsentText, org?.applyConsentVersion ?? 1, consent.record.some((r) => r.purpose === 'application') || dto.consentAccepted);
 
     const buf = Buffer.from(dto.resumeBase64, 'base64');
     const validated = validatePdfUpload(buf);
     if (!validated.ok) {
       throw new BadRequestException(validated.reason === 'too_large' ? 'Résumé exceeds 5 MB' : 'Résumé must be a PDF');
     }
+    // M10 AT3: virus scan before anything is stored. Infected is refused; no scanner or a scanner error keeps the file
+    // 'pending', and recruiters cannot open it until it is checked (fail closed, as documents do).
+    const scanner = this.scan();
+    const verdict = scanner ? await scanner.scan(buf) : null;
+    if (verdict?.verdict === 'infected') throw new BadRequestException('This file cannot be accepted. Upload a different PDF.');
+    const resumeScan = verdict?.verdict === 'clean' ? 'clean' : 'pending';
 
     // Uploaded OUTSIDE the tenant tx (ADO #6810): blob I/O inside a tx holds the transaction open
     // for the duration of a network call to storage, which is the known mistake to avoid here.
@@ -380,21 +420,20 @@ export class PublicApplicationsService {
         portalToken = randomUUID();
         await tx.candidate.update({ where: { id: candidate.id }, data: { portalToken } });
       }
-      await tx.candidateProfile.upsert({
-        where: { candidateId: candidate.id },
-        create: { organizationId: job.organizationId, candidateId: candidate.id, resumePath, parseStatus: 'pending' },
-        // Re-apply resets the parsed fields + status so the newly-uploaded résumé gets re-parsed
-        // instead of showing stale data from the previous submission.
-        update: {
-          resumePath,
-          parseStatus: 'pending',
-          parsedSummary: null,
-          parsedSkills: null,
-          parsedTitle: null,
-          parsedYearsExperience: null,
-          parsedAt: null,
-        },
-      });
+      // M10 AT3: the public page proves nothing about who is applying, so it never replaces a résumé already on file
+      // (the candidate changes it from their portal link, which only reaches their own inbox).
+      const profile = await tx.candidateProfile.findUnique({ where: { candidateId: candidate.id }, select: { resumePath: true } });
+      if (!profile?.resumePath) {
+        await tx.candidateProfile.upsert({
+          where: { candidateId: candidate.id },
+          create: { organizationId: job.organizationId, candidateId: candidate.id, resumePath, resumeScan, parseStatus: 'pending' },
+          update: { resumePath, resumeScan, parseStatus: 'pending', parsedSummary: null, parsedSkills: null, parsedTitle: null, parsedYearsExperience: null, parsedAt: null },
+        });
+      }
+      // What the applicant accepted, at which version, when and (hashed) from where.
+      if (consent.record.length) {
+        await tx.candidateConsent.createMany({ data: consent.record.map((n) => ({ organizationId: job.organizationId, candidateId: candidate.id, noticeId: n.id, purpose: n.purpose, version: n.version, source: 'apply', ipHash: ipHash(ip, process.env.JWT_SECRET ?? 'yukthix') })) });
+      }
       // New entries land on the job's pipeline's first active-category stage's first status (by
       // position), same rule as PipelineService.addEntry -- falls back to the pipeline's first
       // stage at all if none is category 'active', and to no statusId if the job has no pipeline
@@ -437,7 +476,24 @@ export class PublicApplicationsService {
       });
     }
 
-    return { statusToken: entry.applicationToken!, portalToken };
+    // M10 AT3: no candidate enumeration. The answer is the same for a new and a known address; the status and portal
+    // links go only to that address.
+    await this.sendApplyLinks(job.organizationId, dto.email, job.title, entry.applicationToken!, portalToken).catch((e) => this.logger.warn(`apply email: ${(e as Error).message}`));
+    return { received: true };
+  }
+
+  private async sendApplyLinks(organizationId: string, to: string, jobTitle: string, statusToken: string, portalToken: string) {
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+    const base = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+    const esc = (v: string) => v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+    const name = org?.name ?? 'the company';
+    await this.email.send({
+      to,
+      organizationId,
+      subject: `Your application to ${name}`,
+      html: `<p>Thank you for applying for <strong>${esc(jobTitle)}</strong> at ${esc(name)}.</p><p><a href="${base}/application/${encodeURIComponent(statusToken)}">See where your application is</a></p><p><a href="${base}/portal/${encodeURIComponent(portalToken)}">Open your candidate page</a> to update your résumé or see your other applications.</p><p>If you did not apply, you can ignore this email.</p>`,
+      text: `Thank you for applying for ${jobTitle} at ${name}.\nWhere your application is: ${base}/application/${statusToken}\nYour candidate page: ${base}/portal/${portalToken}\nIf you did not apply, ignore this email.`,
+    });
   }
 
   // Cross-tenant candidate-by-token resolution shared by the portal and its later self-service
@@ -691,7 +747,7 @@ export class PublicApplicationsService {
   // custom-field enforcement and pipeline placement are all identical. Inert until the org has
   // configured that provider's secret; a bad/absent secret or unknown provider returns the same
   // generic 404 as resolveJob (never an oracle for which orgs/providers are wired up).
-  async easyApplyIngest(orgSlug: string, provider: string, providedSecret: string | undefined, payload: unknown): Promise<{ statusToken: string; portalToken: string }> {
+  async easyApplyIngest(orgSlug: string, provider: string, providedSecret: string | undefined, payload: unknown): Promise<{ received: true }> {
     const notAvailable = new NotFoundException('Easy Apply is not available');
     const adapter = getEasyApplyProvider(provider);
     if (!adapter) throw notAvailable;
@@ -760,50 +816,105 @@ export class PublicApplicationsService {
   // no org context until the slug resolves one, so this reads inside the same LOOKUP_ORG bypass as
   // resolveJob/getJobsFeed. 404 (not a distinguishing error) for both an unknown slug and a known
   // org that hasn't opted in -- same anti-oracle reasoning as resolveJob's generic message.
-  async getCareers(orgSlug: string): Promise<CareersPageResponse> {
-    const result = await this.tenantPrisma.forTenant(
-      { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
-      async (tx) => {
-        const org = await tx.organization.findFirst({
-          where: { slug: orgSlug },
-          select: {
-            id: true, name: true, careersEnabled: true, careersHeadline: true, careersIntro: true,
-            careersAssistantEnabled: true,
-            careersBannerPath: true, logoPath: true, primaryColor: true, accentColor: true, textColor: true,
-          },
-        });
-        if (!org || !org.careersEnabled) return null;
-        // The 4-condition filter is load-bearing: listOnCareers alone must never surface a job
-        // that isn't also open + publicApplyEnabled + has a live apply link.
-        const jobs = await tx.job.findMany({
-          where: { organizationId: org.id, status: 'open', publicApplyEnabled: true, listOnCareers: true, applyToken: { not: null } },
-          select: {
-            applyToken: true, title: true, location: true, employmentType: true, department: true,
-            salaryMin: true, salaryMax: true, salaryCurrency: true, createdAt: true,
-          },
-          orderBy: { createdAt: 'desc' },
-        });
-        return { org, jobs };
-      },
+  // M10 AT3: the careers site. The 4-condition filter is load-bearing: listOnCareers alone must never surface a job
+  // that isn't also open + publicApplyEnabled + has a live apply link. Colours are #rrggbb or nothing (they go into
+  // CSS); images are only our own signed URLs; job text is returned as text (the page renders it as text).
+  private readonly LISTED = { status: 'open', publicApplyEnabled: true, listOnCareers: true, applyToken: { not: null }, deletedAt: null } as const;
+
+  private async careersOrg(orgSlug: string) {
+    if (!/^[a-z0-9][a-z0-9-]{0,98}$/.test(orgSlug)) return null;
+    return this.tenantPrisma.forTenant({ organizationId: this.LOOKUP_ORG, isSuperAdmin: true }, (tx) =>
+      tx.organization.findFirst({
+        where: { slug: orgSlug, careersEnabled: true },
+        select: { id: true, name: true, careersHeadline: true, careersIntro: true, careersAssistantEnabled: true, careersBannerPath: true, logoPath: true, primaryColor: true, accentColor: true, textColor: true },
+      }),
     );
-    if (!result) throw new NotFoundException('Careers page not found');
-    const { org, jobs } = result;
+  }
+
+  private async careersJobs(orgId: string, where: Record<string, unknown> = {}) {
+    return this.tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: true }, async (tx) => {
+      const jobs = await tx.job.findMany({
+        where: { organizationId: orgId, ...this.LISTED, ...where },
+        select: { id: true, slug: true, applyToken: true, title: true, description: true, location: true, employmentType: true, department: true, salaryMin: true, salaryMax: true, salaryCurrency: true, showSalary: true, createdAt: true, publishedAt: true, closedAt: true, legalEntityId: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      const pages = await tx.careersEntityPage.findMany({ where: { organizationId: orgId } });
+      const entities = await tx.legalEntity.findMany({ where: { organizationId: orgId, id: { in: [...new Set([...jobs.map((j) => j.legalEntityId), ...pages.map((p) => p.legalEntityId)].filter((x): x is string => Boolean(x)))] } }, select: { id: true, name: true } });
+      return { jobs, pages, entities };
+    });
+  }
+
+  private publicJob(j: { slug: string | null; applyToken: string | null; title: string; location: string | null; employmentType: string | null; department: string | null; salaryMin: number | null; salaryMax: number | null; salaryCurrency: string | null; showSalary: boolean; createdAt: Date; publishedAt: Date | null; legalEntityId: string | null }, company: (id: string | null) => { name: string; slug: string | null } | null) {
+    return {
+      slug: j.slug,
+      applyToken: j.applyToken as string,
+      title: j.title,
+      location: j.location,
+      employmentType: j.employmentType,
+      department: j.department,
+      company: company(j.legalEntityId),
+      postedAt: (j.publishedAt ?? j.createdAt).toISOString(),
+      salaryMin: j.showSalary ? j.salaryMin : null,
+      salaryMax: j.showSalary ? j.salaryMax : null,
+      salaryCurrency: j.showSalary ? j.salaryCurrency : null,
+    };
+  }
+
+  async getCareers(orgSlug: string, companySlug?: string): Promise<CareersPageResponse> {
+    const org = await this.careersOrg(orgSlug);
+    if (!org) throw new NotFoundException('Careers page not found');
+    if (companySlug !== undefined && !isSlug(companySlug)) throw new NotFoundException('Careers page not found');
+    const { jobs, pages, entities } = await this.careersJobs(org.id);
+    const page = companySlug ? pages.find((p) => p.slug === companySlug) : null;
+    if (companySlug && !page) throw new NotFoundException('Careers page not found');
+    const company = (id: string | null) => {
+      const e = entities.find((x) => x.id === id);
+      return e ? { name: e.name, slug: pages.find((p) => p.legalEntityId === e.id)?.slug ?? null } : null;
+    };
+    const shown = page ? jobs.filter((j) => j.legalEntityId === page.legalEntityId) : jobs;
     return {
       orgName: org.name,
-      headline: org.careersHeadline ?? null,
-      intro: org.careersIntro ?? null,
+      companyName: page ? (entities.find((e) => e.id === page.legalEntityId)?.name ?? null) : null,
+      headline: page?.headline ?? org.careersHeadline ?? null,
+      intro: page?.intro ?? org.careersIntro ?? null,
       assistantEnabled: org.careersAssistantEnabled,
       logoUrl: org.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
       bannerUrl: org.careersBannerPath ? ((await this.blobStorage.signIfOurs(org.careersBannerPath)) as string | null) : null,
-      primaryColor: org.primaryColor ?? null,
-      accentColor: org.accentColor ?? null,
-      textColor: org.textColor ?? null,
-      jobs: jobs.map((j) => ({
-        applyToken: j.applyToken as string,
-        title: j.title, location: j.location, employmentType: j.employmentType, department: j.department,
-        salaryMin: j.salaryMin, salaryMax: j.salaryMax, salaryCurrency: j.salaryCurrency,
-      })),
+      primaryColor: safeColor(page?.primaryColor ?? org.primaryColor),
+      accentColor: safeColor(org.accentColor),
+      textColor: safeColor(org.textColor),
+      companies: pages.map((p) => ({ slug: p.slug, name: entities.find((e) => e.id === p.legalEntityId)?.name ?? p.slug })),
+      jobs: shown.map((j) => this.publicJob(j, company)),
     };
+  }
+
+  /** One listed job by its readable URL (M10 AT3); a closed or unlisted job is simply not found. */
+  async getCareersJob(orgSlug: string, slug: string) {
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug) || slug.length > 120) throw new NotFoundException('Job not found');
+    const org = await this.careersOrg(orgSlug);
+    if (!org) throw new NotFoundException('Job not found');
+    const { jobs, pages, entities } = await this.careersJobs(org.id, { slug });
+    const j = jobs[0];
+    if (!j) throw new NotFoundException('Job not found');
+    const company = (id: string | null) => {
+      const e = entities.find((x) => x.id === id);
+      return e ? { name: e.name, slug: pages.find((p) => p.legalEntityId === e.id)?.slug ?? null } : null;
+    };
+    return {
+      ...this.publicJob(j, company),
+      description: j.description,
+      orgName: org.name,
+      logoUrl: org.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
+      primaryColor: safeColor(org.primaryColor),
+    };
+  }
+
+  /** Listed jobs for the careers sitemap; a closed job drops out at once (S9: gone within a day). */
+  async getCareersSitemap(orgSlug: string) {
+    const org = await this.careersOrg(orgSlug);
+    if (!org) throw new NotFoundException('Careers page not found');
+    const { jobs, pages } = await this.careersJobs(org.id);
+    return { jobs: jobs.filter((j) => j.slug).map((j) => ({ slug: j.slug as string, updatedAt: (j.publishedAt ?? j.createdAt).toISOString() })), companies: pages.map((p) => p.slug) };
   }
 
   // Public careers-site AI assistant. Grounded ONLY on the org's careers intro + its publicly-listed

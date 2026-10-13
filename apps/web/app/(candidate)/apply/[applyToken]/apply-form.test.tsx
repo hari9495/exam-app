@@ -17,7 +17,7 @@ function mockFetch() {
   global.fetch = jest.fn(async (url, options) => {
     const urlString = String(url);
     if (options?.method === 'POST' && urlString.endsWith('/public/jobs/tok-abc/apply')) {
-      return new Response(JSON.stringify({ statusToken: 'tok-1' }), { status: 200 });
+      return new Response(JSON.stringify({ received: true }), { status: 200 });
     }
     // Résumé autofill fires on file-select; return no fields so it's a no-op for these tests.
     if (options?.method === 'POST' && urlString.endsWith('/public/jobs/tok-abc/parse-resume')) {
@@ -55,8 +55,10 @@ describe('ApplyForm', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Submit application/i }));
 
-    const link = await screen.findByRole('link', { name: 'Track this application' });
-    expect(link).toHaveAttribute('href', '/application/tok-1');
+    // M10 AT3: no tokens in the answer; the links go to the applicant's inbox.
+    expect(await screen.findByText('Application received')).toBeInTheDocument();
+    expect(screen.getByText(/sent an email to jane@example.com/)).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
 
     const postCall = (global.fetch as jest.Mock).mock.calls.find(([url, options]) => options?.method === 'POST' && String(url).endsWith('/apply'));
     expect(postCall).toBeDefined();
@@ -105,7 +107,7 @@ describe('ApplyForm', () => {
     global.fetch = jest.fn(async (url, options) => {
       const urlString = String(url);
       if (options?.method === 'POST' && urlString.endsWith('/public/jobs/tok-abc/apply')) {
-        return new Response(JSON.stringify({ statusToken: 'tok-1' }), { status: 200 });
+        return new Response(JSON.stringify({ received: true }), { status: 200 });
       }
       if (urlString.endsWith('/public/jobs/tok-abc')) {
         return new Response(
@@ -130,7 +132,7 @@ describe('ApplyForm', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Submit application/i }));
 
-    await screen.findByRole('link', { name: 'Track this application' });
+    await screen.findByText('Application received');
     const postCall = (global.fetch as jest.Mock).mock.calls.find(([url, options]) => options?.method === 'POST' && String(url).endsWith('/apply'));
     const body = JSON.parse(postCall![1].body);
     expect(body.customFields).toEqual({ 'def-1': 'https://linkedin.com/in/jane' });
@@ -140,7 +142,7 @@ describe('ApplyForm', () => {
     global.fetch = jest.fn(async (url, options) => {
       const urlString = String(url);
       if (options?.method === 'POST' && urlString.endsWith('/public/jobs/tok-abc/apply')) {
-        return new Response(JSON.stringify({ statusToken: 'tok-1' }), { status: 200 });
+        return new Response(JSON.stringify({ received: true }), { status: 200 });
       }
       if (urlString.endsWith('/public/jobs/tok-abc')) {
         return new Response(
@@ -182,14 +184,14 @@ describe('ApplyForm', () => {
     render(<ApplyForm />);
 
     expect(await screen.findByText('Senior Backend Engineer')).toBeInTheDocument();
-    expect(screen.queryByText('I have read and agree to the above.')).not.toBeInTheDocument();
+    expect(screen.queryByText(/I have read and agree/)).not.toBeInTheDocument();
   });
 
-  it('requires the consent checkbox and blocks submission until checked, then sends consentAccepted:true', async () => {
+  it('requires the consent checkbox (legacy single text) and sends it as the application consent at that version', async () => {
     global.fetch = jest.fn(async (url, options) => {
       const urlString = String(url);
       if (options?.method === 'POST' && urlString.endsWith('/public/jobs/tok-abc/apply')) {
-        return new Response(JSON.stringify({ statusToken: 'tok-1' }), { status: 200 });
+        return new Response(JSON.stringify({ received: true }), { status: 200 });
       }
       if (urlString.endsWith('/public/jobs/tok-abc')) {
         return new Response(
@@ -213,13 +215,47 @@ describe('ApplyForm', () => {
     await userEvent.click(submitButton);
     expect((global.fetch as jest.Mock).mock.calls.some(([url, options]) => options?.method === 'POST' && String(url).endsWith('/apply'))).toBe(false);
 
-    await userEvent.click(screen.getByLabelText('I have read and agree to the above.'));
+    await userEvent.click(screen.getByLabelText(/I have read and agree/));
     expect(submitButton).toBeEnabled();
     await userEvent.click(submitButton);
 
-    await screen.findByRole('link', { name: 'Track this application' });
+    await screen.findByText('Application received');
     const postCall = (global.fetch as jest.Mock).mock.calls.find(([url, options]) => options?.method === 'POST' && String(url).endsWith('/apply'));
     const body = JSON.parse(postCall![1].body);
-    expect(body.consentAccepted).toBe(true);
+    expect(body.consents).toEqual([{ purpose: 'application', version: 2 }]);
+    expect(body.website).toBeUndefined();
+  });
+
+  it('shows each consent purpose with its version; the optional one is sent only when ticked; a changed notice is explained', async () => {
+    let status = 409;
+    global.fetch = jest.fn(async (url, options) => {
+      const urlString = String(url);
+      if (options?.method === 'POST' && urlString.endsWith('/public/jobs/tok-abc/apply')) {
+        return status === 409
+          ? new Response(JSON.stringify({ message: 'The privacy notice changed while you were applying. Reload the page and read it again.' }), { status })
+          : new Response(JSON.stringify({ received: true }), { status: 201 });
+      }
+      if (urlString.endsWith('/public/jobs/tok-abc')) {
+        return new Response(JSON.stringify({ ...JOB, consents: [
+          { purpose: 'application', version: 3, text: 'We use your details for this job.', required: true },
+          { purpose: 'talent_pool', version: 1, text: 'We may keep your details for later.', required: false },
+        ] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 404 });
+    }) as unknown as typeof fetch;
+    render(<ApplyForm />);
+    expect(await screen.findByText('We use your details for this job.')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Name'), 'Jane Candidate');
+    await userEvent.type(screen.getByLabelText('Email'), 'jane@example.com');
+    await userEvent.upload(screen.getByLabelText(/Resume/), new File([new Uint8Array([1])], 'cv.pdf', { type: 'application/pdf' }));
+    await userEvent.click(screen.getByLabelText(/required/));
+    await userEvent.click(screen.getByRole('button', { name: /Submit application/i }));
+    expect(await screen.findByText(/privacy notice changed/)).toBeInTheDocument();
+    const body = JSON.parse((global.fetch as jest.Mock).mock.calls.find(([u, o]) => o?.method === 'POST' && String(u).endsWith('/apply'))![1].body);
+    expect(body.consents).toEqual([{ purpose: 'application', version: 3 }]);
+    status = 201;
+    await userEvent.click(screen.getByLabelText(/other suitable roles/));
+    await userEvent.click(screen.getByRole('button', { name: /Submit application/i }));
+    expect(await screen.findByText('Application received')).toBeInTheDocument();
   });
 });

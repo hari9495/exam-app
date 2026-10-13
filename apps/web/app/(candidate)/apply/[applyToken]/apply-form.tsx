@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import Link from 'next/link';
 import { API_BASE } from '../../../../lib/api-client';
 import { EMAIL_PATTERN } from '../../../../lib/candidateValidation';
 import { CustomFieldInputMap, PublicJob } from '../../../../lib/types';
@@ -34,11 +33,12 @@ export default function ApplyForm() {
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [customFields, setCustomFields] = useState<CustomFieldInputMap>({});
-  const [consentAccepted, setConsentAccepted] = useState(false);
+  // M10 AT3: one checkbox per consent purpose, sent with the version shown; website is the bot honeypot.
+  const [accepted, setAccepted] = useState<Record<string, boolean>>({});
+  const [website, setWebsite] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [statusToken, setStatusToken] = useState<string | null>(null);
-  const [portalToken, setPortalToken] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
   const [autofilling, setAutofilling] = useState(false);
 
   useEffect(() => {
@@ -85,6 +85,10 @@ export default function ApplyForm() {
     }
   }
 
+  // Versioned notices (M10 AT3); an older API answer only has the single company consent text.
+  const notices = job?.consents ?? (job?.applyConsentText?.trim() ? [{ purpose: 'application' as const, version: job.applyConsentVersion ?? 1, text: job.applyConsentText, required: true }] : []);
+  const missingConsent = notices.some((n) => n.required && !accepted[n.purpose]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!job) return;
@@ -120,8 +124,7 @@ export default function ApplyForm() {
       setFileError('File must be 5 MB or smaller.');
       return;
     }
-    const requiresConsent = Boolean(job.applyConsentText && job.applyConsentText.trim());
-    if (requiresConsent && !consentAccepted) {
+    if (missingConsent) {
       setSubmitError('You must accept the consent statement to apply.');
       return;
     }
@@ -139,13 +142,16 @@ export default function ApplyForm() {
           phone: phone.trim() || undefined,
           resumeBase64,
           customFields,
-          ...(requiresConsent ? { consentAccepted } : {}),
+          consents: notices.filter((n) => accepted[n.purpose]).map((n) => ({ purpose: n.purpose, version: n.version })),
+          ...(website ? { website } : {}),
         }),
       });
-      if (!res.ok) throw new Error('Submission failed. Please try again.');
-      const data = await res.json();
-      setStatusToken(data.statusToken);
-      setPortalToken(data.portalToken ?? null);
+      if (!res.ok) {
+        // 400 / 409 carry a message written for the applicant (bad file, privacy notice changed); anything else is generic.
+        const body = res.status === 400 || res.status === 409 ? await res.json().catch(() => null) : null;
+        throw new Error(typeof body?.message === 'string' ? body.message : 'Submission failed. Please try again.');
+      }
+      setDone(true);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Submission failed. Please try again.');
     } finally {
@@ -161,20 +167,13 @@ export default function ApplyForm() {
     return <TerminalCard tone="loading" title="Loading" body="This only takes a moment." />;
   }
 
-  if (statusToken) {
+  if (done) {
     return (
-      <TerminalCard tone="success" title="Application submitted" body="Thanks for applying — we'll be in touch.">
-        <div className="flex flex-col gap-2">
-          {portalToken && (
-            <Link href={`/portal/${portalToken}`} className="text-sm font-medium text-candidate-primary underline">
-              View all your applications
-            </Link>
-          )}
-          <Link href={`/application/${statusToken}`} className="text-sm font-medium text-candidate-primary underline">
-            Track this application
-          </Link>
-        </div>
-      </TerminalCard>
+      <TerminalCard
+        tone="success"
+        title="Application received"
+        body={`Thanks for applying. We have sent an email to ${email} with a link to track this application and update your details.`}
+      />
     );
   }
 
@@ -273,24 +272,32 @@ export default function ApplyForm() {
             {fileError ? <p className="text-xs text-candidate-danger">{fileError}</p> : null}
           </div>
 
-          {job.applyConsentText && job.applyConsentText.trim() ? (
-            <div className="flex flex-col gap-2">
-              <p className="whitespace-pre-wrap text-xs text-candidate-text-secondary">{job.applyConsentText}</p>
-              <label className="flex items-start gap-2 text-sm text-candidate-text">
+          {notices.map((n) => (
+            <div key={n.purpose} className="flex flex-col gap-2">
+              <p className="whitespace-pre-wrap text-xs text-candidate-text-secondary">{n.text}</p>
+              <label className="flex cursor-pointer items-start gap-2 text-sm text-candidate-text">
                 <input
                   type="checkbox"
-                  checked={consentAccepted}
-                  onChange={(e) => setConsentAccepted(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded-sm border border-candidate-border"
+                  checked={Boolean(accepted[n.purpose])}
+                  onChange={(e) => setAccepted((a) => ({ ...a, [n.purpose]: e.target.checked }))}
+                  className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded-sm border border-candidate-border"
                 />
-                I have read and agree to the above.
+                {n.required ? 'I have read and agree to the above (required).' : 'Yes, keep my details for other suitable roles (optional).'}
               </label>
             </div>
-          ) : null}
+          ))}
+
+          {/* Honeypot: hidden from people and screen readers; a bot that fills it is quietly ignored. */}
+          <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }}>
+            <label>
+              Website
+              <input type="text" name="website" tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
+            </label>
+          </div>
 
           <CandidateButton
             type="submit"
-            disabled={submitting || (Boolean(job.applyConsentText?.trim()) && !consentAccepted)}
+            disabled={submitting || missingConsent}
             className="w-full"
           >
             {submitting ? 'Submitting…' : 'Submit application'}

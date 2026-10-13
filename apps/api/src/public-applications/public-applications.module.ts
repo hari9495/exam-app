@@ -1,3 +1,4 @@
+import { EmailModule } from '../email/email.module';
 import { Module } from '@nestjs/common';
 import { StorageModule, CryptoModule } from '@exam-platform/shared';
 import { JobsModule } from '../jobs/jobs.module';
@@ -11,7 +12,7 @@ import { PublicApplicationsThrottlerGuard } from './public-applications.throttle
   // in AppModule), same as WalkInModule -- only the non-global deps need importing here.
   // CryptoModule provides AiApiKeyResolverService; BillingModule provides QuotaService (both used
   // by the résumé-autofill parse endpoint), mirroring how JobsModule wires the résumé-parse job.
-  imports: [StorageModule, JobsModule, CryptoModule, BillingModule],
+  imports: [StorageModule, JobsModule, CryptoModule, BillingModule, EmailModule],
   controllers: [PublicApplicationsController],
   providers: [PublicApplicationsService, PublicApplicationsThrottlerGuard],
 })

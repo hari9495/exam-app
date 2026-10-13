@@ -15,7 +15,7 @@ export function useHiring<T>(path: string | null, enabled = true) {
 export function useHiringWrite() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
-  return async <T = unknown>(method: 'POST' | 'PUT', path: string, body?: unknown): Promise<T> => {
+  return async <T = unknown>(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> => {
     const result = await apiFetch(`/hiring${path}`, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
     await Promise.all([queryClient.invalidateQueries({ queryKey: ['hiring'] }), queryClient.invalidateQueries({ queryKey: ['jobs'] })]);
     return result as T;
