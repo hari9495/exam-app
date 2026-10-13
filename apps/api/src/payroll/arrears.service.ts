@@ -249,6 +249,8 @@ export class ArrearsService {
         postedAt: null,
         totals: null,
         voidReason: null,
+        subPeriod: 0,
+        rangeStart: null,
         version: 1,
         createdAt: new Date(),
       };

@@ -1,6 +1,34 @@
 {
   "ruleSets": [
     {
+      "statute": "IN.LAYOFF",
+      "jurisdiction": "IN",
+      "version": "2025-v1",
+      "validFrom": "2025-11-21",
+      "validTo": null,
+      "lawVersion": "CODE",
+      "verify": true,
+      "source": "Industrial Relations Code, 2020 s.67: a laid-off worker is paid half of the basic wages and dearness allowance that would have been payable for the lay-off days (no compensation for weekly holidays in between is computed here; the days come from the employer).",
+      "values": {
+        "kind": "layoff",
+        "share": "0.50"
+      },
+      "golden": [
+        {
+          "name": "6 lay-off days at 15,000 basic and DA in a 30-day month",
+          "fn": "layoff",
+          "input": { "basicDaMonthly": "15000", "days": 6, "monthDays": 30 },
+          "expected": { "amount": "1500" }
+        },
+        {
+          "name": "Half a day at 26,000 in a 31-day month",
+          "fn": "layoff",
+          "input": { "basicDaMonthly": "26000", "days": 0.5, "monthDays": 31 },
+          "expected": { "amount": "209.68" }
+        }
+      ]
+    },
+    {
       "statute": "IN.IR",
       "jurisdiction": "IN",
       "version": "2025-v1",
