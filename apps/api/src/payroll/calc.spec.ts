@@ -26,6 +26,17 @@ describe('calculatePayslip', () => {
     expect(r.minWage).toMatchObject({ below: false });
   });
 
+  it('PAY-9.01: a part-month run pays its days without PT; the run that ends the month takes PT on the month so far', () => {
+    const base = snapshot();
+    const part = (days: number, sub: Snapshot['sub']) => snapshot({ segments: [{ ...base.segments[0], days }], sub });
+    const first = calculatePayslip(part(7, { k: 1, final: false }), RULES);
+    expect(amount(first, 'pt')).toBe('0.00');
+    expect(Number(first.gross)).toBeLessThan(Number(calculatePayslip(base, RULES).gross) / 4);
+    // The last 3 days alone are below the Karnataka slab; with the month's earlier pay the month's PT is due.
+    expect(amount(calculatePayslip(part(3, { k: 5, final: true, mtd: { taxable: '0', ptWage: '0', basic: '0', hra: '0' } }), RULES), 'pt')).toBe('0.00');
+    expect(amount(calculatePayslip(part(3, { k: 5, final: true, mtd: { taxable: '30000', ptWage: '30000', basic: '12000', hra: '6000' } }), RULES), 'pt')).toBe('200.00');
+  });
+
   it('M05 D3: a reimbursement is outside gross pay and every wage base, inside net pay; a taxable one is an earning', () => {
     const modules = MODULE_COMPONENTS.map((c) => ({ code: c.code, name: c.name, kind: c.kind, pfWage: !!c.pfWage, esiWage: !!c.esiWage, ptWage: !!c.ptWage, gratuityWage: !!c.gratuityWage, bonusWage: !!c.bonusWage, codeWagePart: !!c.codeWagePart, codeExclusion: !!c.codeExclusion, prorated: c.prorated ?? true, rounding: c.rounding ?? 'rupee', statutory: null }));
     const plain = calculatePayslip(snapshot(), RULES);

@@ -106,6 +106,15 @@ export class PayGroupDto {
   @MaxLength(30)
   bankFormat?: string;
 
+  /** PAY-9.01: weekly and fortnightly groups pay each period from the anchor date. */
+  @IsOptional()
+  @IsIn(['monthly', 'weekly', 'fortnightly'])
+  frequency?: 'monthly' | 'weekly' | 'fortnightly';
+
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  anchorDate?: string;
+
   @IsOptional()
   @IsInt()
   version?: number;

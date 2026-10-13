@@ -396,6 +396,8 @@ async function main() {
       // Batch 5g: retrenchment under the IR Code (verify), by the same flow.
       const exitRules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-exit.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
       await loadRuleSets(tx, exitRules, anand.id, reviewer.id);
+      // Batch 5i: the UAE and US country packs (verify), by the same flow.
+      for (const pack of ['ae.json', 'us.json']) await loadRuleSets(tx, (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', pack), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets, anand.id, reviewer.id);
       for (const slug of ['demo-org', 'ganga-textiles']) {
         const org = await tx.organization.findUnique({ where: { slug }, select: { id: true } });
         if (org) {

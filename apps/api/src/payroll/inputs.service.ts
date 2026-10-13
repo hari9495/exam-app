@@ -91,8 +91,10 @@ export class PayInputsService implements OnModuleInit {
   }
 
   /** Saves LOP rows for a month (each row checked; a CSV upload sends the same rows with source "upload"). */
-  async saveLop(ctx: TenantContext, user: ScopeUser, month: string, rows: LopRowDto[], source: 'manual' | 'upload' = 'manual') {
+  async saveLop(ctx: TenantContext, user: ScopeUser, month: string, rows: LopRowDto[], source: 'manual' | 'upload' = 'manual', periodStart?: string) {
     const v = await this.viewer(user);
+    if (periodStart && periodStart.slice(0, 7) !== month) throw new BadRequestException('The pay period starts in this month.');
+    const key = asDate(periodStart ?? `${month}-01`);
     const days = Number(monthRange(month).to.slice(8));
     const bad = rows.map((r, i) => (D(r.lopDays).gt(days) ? `Row ${i + 1}: more than ${days} days.` : null)).filter(Boolean);
     if (bad.length) throw new BadRequestException({ statusCode: 400, code: 'LOP_ROWS', message: bad.join(' '), rows: bad });
@@ -100,7 +102,7 @@ export class PayInputsService implements OnModuleInit {
       for (const r of rows) {
         const e = await this.person(tx, c, v, 'payroll.input.manage', r.employeeId, monthRange(month).to);
         await this.notLocked(tx, c.organizationId, e.legalEntityId, month);
-        await tx.lopInput.upsert({ where: { organizationId_employmentId_periodStart: { organizationId: c.organizationId, employmentId: e.id, periodStart: asDate(`${month}-01`) } }, update: { lopDays: r.lopDays, reason: r.reason, source, enteredBy: v.userId!, enteredAt: new Date() }, create: { organizationId: c.organizationId, legalEntityId: e.legalEntityId, employeeId: e.employeeId, employmentId: e.id, periodStart: asDate(`${month}-01`), lopDays: r.lopDays, reason: r.reason, source, enteredBy: v.userId! } });
+        await tx.lopInput.upsert({ where: { organizationId_employmentId_periodStart: { organizationId: c.organizationId, employmentId: e.id, periodStart: key } }, update: { lopDays: r.lopDays, reason: r.reason, source, enteredBy: v.userId!, enteredAt: new Date() }, create: { organizationId: c.organizationId, legalEntityId: e.legalEntityId, employeeId: e.employeeId, employmentId: e.id, periodStart: key, lopDays: r.lopDays, reason: r.reason, source, enteredBy: v.userId! } });
       }
       await audit(tx, c, 'payroll.lop.saved', 'payroll_input', month, { rows: rows.length, source });
       return { saved: rows.length };

@@ -50,7 +50,7 @@ describe('batch 5j payroll screens', () => {
     await ue.click(screen.getByRole('radio', { name: 'Off-cycle' }));
     await ue.click(screen.getByRole('radio', { name: 'Arrears' }));
     await ue.click(screen.getByRole('button', { name: 'Create run' }));
-    await waitFor(() => expect(onCreate).toHaveBeenCalledWith('g1', '2026-10', 'arrears'));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith('g1', '2026-10', 'arrears', null));
     expect(onOpen).toHaveBeenCalledWith('r9');
   });
 

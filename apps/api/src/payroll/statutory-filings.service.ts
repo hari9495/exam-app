@@ -103,14 +103,31 @@ export class StatutoryFilingsService {
 
   /** The month's approved payslips (every run) with their lines and the people. */
   private async month(tx: Tx, org: string, entityId: string, month: string) {
-    const slips: Slip[] = await tx.payslip.findMany({
+    const all = await tx.payslip.findMany({
       where: { organizationId: org, legalEntityId: entityId, periodStart: asDate(`${month}-01`), status: 'approved' },
-      select: { id: true, employeeId: true, employmentId: true, gross: true, ruleVersions: true, version: true },
+      select: { id: true, employeeId: true, employmentId: true, gross: true, ruleVersions: true, version: true, subPeriod: true },
     });
-    const lines: Line[] = await tx.payslipLine.findMany({
-      where: { organizationId: org, payslipId: { in: slips.map((s) => s.id) } },
-      select: { payslipId: true, componentCode: true, amount: true, quantity: true, rule: true },
-    });
+    // PAY-9.01: a weekly or fortnightly group pays a person once per period; the month's returns see them once, their
+    // periods' payslips added together (lines re-pointed to the first one). Off-cycle payslips stay separate as before.
+    const alias = new Map<string, string>();
+    const slips: Slip[] = [];
+    for (const x of all) {
+      const first = x.subPeriod > 0 ? slips.find((y) => y.employmentId === x.employmentId && alias.get(y.id) === y.id && all.find((z) => z.id === y.id)!.subPeriod > 0) : undefined;
+      if (first) {
+        first.gross = first.gross.add(x.gross);
+        alias.set(x.id, first.id);
+      } else {
+        const { subPeriod: _s, ...slip } = x;
+        slips.push(slip);
+        alias.set(x.id, x.id);
+      }
+    }
+    const lines: Line[] = (
+      await tx.payslipLine.findMany({
+        where: { organizationId: org, payslipId: { in: all.map((x) => x.id) } },
+        select: { payslipId: true, componentCode: true, amount: true, quantity: true, rule: true },
+      })
+    ).map((l) => ({ ...l, payslipId: alias.get(l.payslipId)! }));
     const comps = await tx.payComponent.findMany({ where: { organizationId: org, statutory: { not: null } }, select: { code: true, statutory: true } });
     const codes = (key: string) => new Set([key, ...comps.filter((x) => x.statutory === key).map((x) => x.code)]);
     const people = await tx.employment.findMany({ where: { organizationId: org, id: { in: slips.map((s) => s.employmentId) } }, select: { id: true, employeeCode: true, exitedOn: true } });
