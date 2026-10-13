@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
+import { YX_KEYS } from '../../lib/yx-org';
 import YxAppLayout from './(app)/layout';
 import YxLegalEntitiesPage from './(app)/settings/legal-entities/page';
 import YxLocationsPage from './(app)/settings/locations/page';
@@ -62,6 +63,11 @@ describe('/yx layout: organisation pages follow the grants, not the role', () =>
     const names = within(nav).getAllByRole('link').map((a) => a.textContent);
     expect(names).not.toContain('Component library');
     expect(names).not.toContain('Import old payroll');
+  });
+
+  // The API takes at most 250 keys in one call (MyPermissionsQueryDto); past that the whole menu is refused.
+  it('the menu asks for no more keys than the API takes', () => {
+    expect(YX_KEYS.length).toBeLessThanOrEqual(250);
   });
 
   it('a Payroll Admin profile on a non-admin role sees the organisation pages', async () => {
