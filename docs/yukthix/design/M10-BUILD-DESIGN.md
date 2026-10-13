@@ -371,15 +371,16 @@ Events go to the existing system-events / webhook catalogue (P11):
 
 ## 19. Slices (batches; each ends with typecheck, unit, the batch e2e and the RLS suite, screen tests and stories, the affordance guard, web tests, Playwright on the demo and a fresh-database migration)
 
-### Batch AT1 · Foundations (5 slices)
+### Batch AT1 · Foundations (4 slices; as built 13 Oct 2026)
 
 | ID | Slice | Tests |
 |---|---|---|
-| AT-1.01 | `ats.*` keys, legacy-key alias table in the RBAC resolver, role templates (Recruiter, Hiring manager, Panel, Coordinator), MFA list | Unit: alias resolution; e2e: a legacy `pipeline:manage` role still moves candidates; a scoped recruiter sees only their entity's jobs |
-| AT-1.02 | Support-session exclusion / masking per §16.1; P02 field classes for candidate fields | RLS e2e: support session cannot read offers / scorecards; candidate phone masked |
-| AT-1.03 | yx-ui hiring shell: jobs list, candidates list, candidate profile (read) on existing APIs; nav "Hiring" | Screen tests; Playwright: recruiter opens a candidate |
-| AT-1.04 | Candidate phone E.164 normalisation + backfill; events catalogue entries | Unit; migration test on sample data |
-| AT-1.05 | Link jobs to P01 masters: columns, "Link to masters" screen | e2e: exact-name match backfill; unmatched listed |
+| AT-1.01 | `ats.*` keys; older-key aliases in the shared grant resolver (a **company-wide** `ats.*` key passes the older check; a scoped one confers nothing until the endpoints are scope-aware); role templates Recruiter, Hiring manager, Interview coordinator, Hiring admin; MFA list | Unit: alias resolution, scoped grant fails closed; e2e: `ats.job.manage` creates jobs, the older recruiter role still does, a scoped grant and a plain user get 403 |
+| AT-1.02 | Support sessions (D14): `support_session_excluded` on offers, interview feedback and referrals; candidate email / phone masked in hiring responses | RLS e2e: a support session reads no offers / feedback / referrals but still reads candidates; unit: masking at any depth, hiring controllers only |
+| AT-1.03 | Hiring › Jobs in yx-ui with parity to the older list (filter, search, pipeline summary, new job with masters, pipeline, custom fields and AI draft, delete); **/v2/jobs and /jobs redirect here**; a job still opens in its existing workspace (`/v2/jobs/:id`) until AT5 | Screen tests; web test on the wired page; next.config redirect test; Playwright: /v2/jobs redirects, create, open |
+| AT-1.04 | Jobs linked to P01 masters (entity, department, designation, grade, location): checked per company, the older free-text department / location filled from the master; exact-name backfill of existing jobs | e2e: own-company master saved with its name; another company's master → 400; clearing a link |
+
+Moved out of AT1: the candidates list and profile (with phone normalisation) go to AT4, where the older candidates list (with its bulk upload, invite and e-mail actions) can be replaced at parity and redirected.
 
 ### Batch AT2 · Headcount plan and requisitions (4 slices)
 
@@ -445,7 +446,7 @@ Events go to the existing system-events / webhook catalogue (P11):
 | AT-8.02 | P09 hiring metrics and report screens with CSV | e2e: funnel totals equal applications; formula cells defused |
 | AT-8.03 | Diversity report with suppression; cost per hire | e2e: a stage with 3 people suppressed |
 
-Total: 34 slices. **AT1 → AT6** give a complete internal hiring flow from plan to joiner. AT7 and AT8 complete the scope.
+Total: 33 slices. **AT1 → AT6** give a complete internal hiring flow from plan to joiner. AT7 and AT8 complete the scope.
 
 ## 20. Decisions for the founder
 Short questions, each with the recommended default.
