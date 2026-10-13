@@ -80,6 +80,11 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   // PM6: calibration.
   { type: 'perf.calibration.signed_off', group: 'reminders', label: 'A calibration session was signed off (HR)' },
   { type: 'perf.feedback.author_revealed', group: 'reminders', label: 'The author of an anonymous review answer was revealed (admins)' },
+  // PM8: improvement plans.
+  { type: 'perf.pip.started', group: 'assignments', label: 'An improvement plan for you to read and acknowledge' },
+  { type: 'perf.pip.warning', group: 'approvals', label: 'Check with the case owner before deciding on an improvement plan (HR)' },
+  { type: 'perf.pip.checkin_missed', group: 'reminders', label: 'An improvement plan check-in was missed (HR and the manager)' },
+  { type: 'perf.pip.handed_over', group: 'assignments', label: 'An improvement plan was handed over to you' },
   // M05 E4: trips and advances.
   { type: 'expense.trip.update', group: 'assignments', label: 'A trip was approved, or needs bookings from the travel desk' },
   { type: 'expense.advance.update', group: 'reminders', label: 'An expense advance was paid, is due to be settled, or is overdue' },

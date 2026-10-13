@@ -6126,6 +6126,9 @@ model ExitCase {
   retrenchment         Json?
   irPermissionId       String?   @map("ir_permission_id") @db.Uuid
   vrsSchemeId          String?   @map("vrs_scheme_id") @db.Uuid
+  /// M06 PM8 (§4.1 change 4): an exit opened from an improvement plan links back to it.
+  sourceType           String?   @map("source_type") @db.VarChar(16)
+  sourceId             String?   @map("source_id") @db.Uuid
   createdBy            String?   @map("created_by") @db.Uuid
   version              Int       @default(1)
   createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -9043,4 +9046,69 @@ model ConsultantCertificate {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("consultant_certificates")
+}
+
+// ------------------------------------------------------------------------------------------ M06 PM8: improvement plans
+
+model Pip {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  employeeId        String    @map("employee_id") @db.Uuid
+  employmentId      String    @map("employment_id") @db.Uuid
+  managerEmployeeId String    @map("manager_employee_id") @db.Uuid
+  reason            String    @db.VarChar(2000)
+  expectations      String    @db.VarChar(4000)
+  support           String    @db.VarChar(2000)
+  startsOn          DateTime  @map("starts_on") @db.Date
+  endsOn            DateTime  @map("ends_on") @db.Date
+  checkinEveryDays  Int       @map("checkin_every_days")
+  status            String    @default("proposed") @db.VarChar(12)
+  wfRequestId       String?   @map("wf_request_id") @db.Uuid
+  acknowledgedAt    DateTime? @map("acknowledged_at") @db.Timestamptz(3)
+  employeeComment   String?   @map("employee_comment") @db.VarChar(2000)
+  employeeToldOn    DateTime? @map("employee_told_on") @db.Date
+  extendedFrom      DateTime? @map("extended_from") @db.Date
+  extendReason      String?   @map("extend_reason") @db.VarChar(1000)
+  outcomeNote       String?   @map("outcome_note") @db.VarChar(2000)
+  outcomeBy         String?   @map("outcome_by") @db.Uuid
+  outcomeAt         DateTime? @map("outcome_at") @db.Timestamptz(3)
+  letterId          String?   @map("letter_id") @db.Uuid
+  exitCaseId        String?   @map("exit_case_id") @db.Uuid
+  version           Int       @default(1)
+  createdBy         String?   @map("created_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, employeeId])
+  @@map("pips")
+}
+
+model PipGoal {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  pipId          String  @map("pip_id") @db.Uuid
+  seq            Int
+  goalId         String? @map("goal_id") @db.Uuid
+  text           String  @db.VarChar(500)
+  measure        String  @db.VarChar(500)
+  status         String  @default("open") @db.VarChar(8)
+
+  @@index([organizationId, pipId])
+  @@map("pip_goals")
+}
+
+model PipCheckin {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  pipId          String    @map("pip_id") @db.Uuid
+  dueOn          DateTime  @map("due_on") @db.Date
+  heldOn         DateTime? @map("held_on") @db.Date
+  managerNote    String?   @map("manager_note") @db.VarChar(2000)
+  employeeNote   String?   @map("employee_note") @db.VarChar(2000)
+  status         String    @default("due") @db.VarChar(8)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([pipId, dueOn])
+  @@map("pip_checkins")
 }

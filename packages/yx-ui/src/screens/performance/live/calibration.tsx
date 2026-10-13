@@ -242,12 +242,13 @@ function MoveDialog({ row, band: initial, bands, min, max, onClose, onSave }: { 
 
 // ------------------------------------------------------------------------------------------ reports (§13)
 
-export type ReportKind = 'completion' | 'distribution' | 'calibration-changes' | 'goal-alignment';
+export type ReportKind = 'completion' | 'distribution' | 'calibration-changes' | 'goal-alignment' | 'pip-status';
 const REPORTS: { value: ReportKind; label: string }[] = [
   { value: 'completion', label: 'Completion' },
   { value: 'distribution', label: 'Distribution' },
   { value: 'calibration-changes', label: 'Calibration changes' },
   { value: 'goal-alignment', label: 'Goal alignment' },
+  { value: 'pip-status', label: 'Improvement plans' },
 ];
 
 export interface PerformanceReportsScreenProps {

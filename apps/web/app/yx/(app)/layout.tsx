@@ -43,6 +43,7 @@ const REVIEW_CYCLES: WorkspaceLink = { id: 'review-cycles', label: 'Review cycle
 const FEEDBACK_TASKS: WorkspaceLink = { id: 'feedback-tasks', label: 'Feedback I owe', href: '/yx/performance/feedback-tasks', group: 'Me' };
 const REVIEWER_BLOCKS: WorkspaceLink = { id: 'reviewer-blocks', label: 'Reviewer blocks', href: '/yx/performance/reviewer-blocks', group: 'People' };
 const CALIBRATION: WorkspaceLink = { id: 'calibration', label: 'Calibration', href: '/yx/performance/calibrations', group: 'People' };
+const PIPS: WorkspaceLink = { id: 'pips', label: 'Improvement plans', href: '/yx/performance/pips', group: 'People' };
 const COMP_REVIEW: WorkspaceLink = { id: 'comp-review', label: 'Comp review', href: '/yx/performance/comp', group: 'People' };
 const PERF_REPORTS: WorkspaceLink = { id: 'perf-reports', label: 'Performance reports', href: '/yx/performance/reports', group: 'People' };
 const MY_FEEDBACK: WorkspaceLink = { id: 'feedback', label: 'Feedback', href: '/yx/performance/feedback', group: 'Me' };
@@ -269,6 +270,8 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
     ...(perms.has('perf.calibration.facilitate') ? [CALIBRATION] : []),
     ...(perms.has('perf.report.view') ? [PERF_REPORTS] : []),
     ...(perms.has('perf.comp.manage') || perms.has('perf.comp.approve') ? [COMP_REVIEW] : []),
+    // Managers propose plans for their reports; HR approves and closes them.
+    ...(manager || perms.has('perf.pip.manage') ? [PIPS] : []),
     ...(perms.has('letter.template.manage') || perms.has('letter.signatory.manage') ? [LETTER_TEMPLATES] : []),
     ...(perms.has('access.role.manage') ? [ACCESS] : []),
     // Read by anyone who reads the structure; changed with org.settings.manage (+ access.role.manage for guarded keys).

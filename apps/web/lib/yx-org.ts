@@ -148,6 +148,7 @@ export const YX_KEYS = [
   'perf.report.view',
   'perf.comp.manage',
   'perf.comp.approve',
+  'perf.pip.manage',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 
