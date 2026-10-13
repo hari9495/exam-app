@@ -5,6 +5,8 @@
 // allows. FORMAT is "verify" until the FVU has accepted a file made here (go-live checklist item 16).
 
 export const ETDS_FORMAT = 'PROTEAN-ETDS-REGULAR-24Q (verify)';
+/** Batch 5h: the non-salary return (26Q / Form 140) in the same layout; its section codes and deductee codes are verify too. */
+export const ETDS_FORMAT_NONSALARY = 'PROTEAN-ETDS-REGULAR-26Q (verify)';
 
 export interface Deductor {
   tan: string;
@@ -26,10 +28,12 @@ export interface EtdsChallan {
   tds: string;
   interest: string;
   fee: string;
-  deductees: { pan: string | null; name: string; paid: string; tds: string; paidOn: string; deductedOn: string; noPan: boolean }[];
+  /** 26Q / 140: the section code of the payments (94C, 94J-A …); salary returns use 92B. */
+  section?: string;
+  deductees: { pan: string | null; name: string; paid: string; tds: string; paidOn: string; deductedOn: string; noPan: boolean; /** 26Q / 140: 01 company, 02 other; the rate; s.197 certificate. */ code?: string; rate?: string; lowerCertificate?: boolean }[];
 }
 export interface EtdsInput {
-  formNo: '24Q' | '138';
+  formNo: '24Q' | '138' | '26Q' | '140';
   taxYear: string; // 2026-27
   quarter: number;
   createdOn: string; // YYYY-MM-DD
@@ -320,7 +324,7 @@ export function etdsFile(i: EtdsInput): Buffer {
         bankChallanNo: c.challanNo,
         bsr: c.bsr,
         challanDate: ddmmyyyy(c.depositDate),
-        sectionCode: '92B',
+        sectionCode: c.section ?? '92B',
         oltasTax: money(c.tds),
         oltasSurcharge: '0.00',
         oltasCess: '0.00',
@@ -360,7 +364,9 @@ export function etdsFile(i: EtdsInput): Buffer {
           deductedOn: ddmmyyyy(d.deductedOn),
           depositedOn: ddmmyyyy(c.depositDate),
           bookEntry: 'N',
-          remarks: d.noPan ? 'C' : '',
+          deducteeCode: d.code,
+          rate: d.rate,
+          remarks: d.noPan ? 'C' : d.lowerCertificate ? 'A' : '',
         }),
       ),
     );
