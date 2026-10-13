@@ -56,6 +56,8 @@ export interface Snapshot {
   employmentId: string;
   legalEntityId: string;
   period: { start: string; end: string; days: number };
+  /** PAY-9.01: a weekly or fortnightly run; the one that ends the month carries PT, LWF and TDS on the month so far. */
+  sub?: { k: number; final: boolean; mtd?: { taxable: string; ptWage: string; basic: string; hra: string } };
   dayBasis: 'calendar' | '30' | '26';
   segments: Segment[];
   components: CalcComponent[];
@@ -259,16 +261,19 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
     add({ code: statCode('esi_employee'), name: nameOf(statCode('esi_employee'), 'ESI'), kind: 'deduction', segmentNo: 0, amount: r.employee, explanation: covered ? `ESI on the ESI wage ${rupees(earned('esiWage').add(addBack))}, rounded up to the rupee (covered for this contribution period).` : 'Not covered by ESI this contribution period.', rule: r.citation });
     add({ code: statCode('esi_employer'), name: nameOf(statCode('esi_employer'), 'ESI (employer)'), kind: 'employer', segmentNo: 0, amount: r.employer, explanation: 'Employer ESI on the same wage, rounded up.', rule: r.citation });
   }
-  const ptRs = itemsOnly ? null : rule('IN.PT', [s.profile.ptState]);
+  const partial = !!s.sub && !s.sub.final;
+  const mtd = s.sub?.mtd;
+  const ptRs = itemsOnly || partial ? null : rule('IN.PT', [s.profile.ptState]);
   if (ptRs) {
     const halfYear = (ptRs.values as { basis?: string }).basis === 'half_yearly';
-    const r = pt(ptRs, { ptWage: halfYear ? earned('ptWage').mul(6) : earned('ptWage'), month, gender: s.profile.gender });
+    const ptWage = earned('ptWage').add(mtd?.ptWage ?? 0);
+    const r = pt(ptRs, { ptWage: halfYear ? ptWage.mul(6) : ptWage, month, gender: s.profile.gender });
     const capRs = rule('IN.PT');
     const room = capRs && capRs.values.kind === 'pt_limit' ? Prisma.Decimal.max(ZERO, D(String(capRs.values.annualMax)).sub(s.ytd.pt)) : r.amount;
     const amount = Prisma.Decimal.min(r.amount, room);
-    add({ code: statCode('pt'), name: nameOf(statCode('pt'), 'Professional tax'), kind: 'deduction', segmentNo: 0, amount, explanation: `${s.profile.ptState} professional tax for this month on the PT wage ${rupees(earned('ptWage'))}${amount.lt(r.amount) ? ', limited by the yearly ceiling' : ''}.`, rule: r.citation });
+    add({ code: statCode('pt'), name: nameOf(statCode('pt'), 'Professional tax'), kind: 'deduction', segmentNo: 0, amount, explanation: `${s.profile.ptState} professional tax for this month on the PT wage ${rupees(ptWage)}${amount.lt(r.amount) ? ', limited by the yearly ceiling' : ''}.`, rule: r.citation });
   }
-  const lwfRs = !itemsOnly && s.profile.lwfState ? rule('IN.LWF', [s.profile.lwfState]) : null;
+  const lwfRs = !itemsOnly && !partial && s.profile.lwfState ? rule('IN.LWF', [s.profile.lwfState]) : null;
   if (lwfRs) {
     const r = lwf(lwfRs, { month });
     add({ code: statCode('lwf_employee'), name: nameOf(statCode('lwf_employee'), 'Labour welfare fund'), kind: 'deduction', segmentNo: 0, amount: r.employee, explanation: `${s.profile.lwfState} labour welfare fund for this month.`, rule: r.citation });
@@ -321,7 +326,8 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
       tax = { ...withItems, monthTds: extra.toFixed(2) };
       add({ code: statCode('tds'), name: nameOf(statCode('tds'), 'Income tax (TDS)'), kind: 'deduction', segmentNo: 0, amount: extra, explanation: `The year's tax with this payment ${rupees(withItems.tax.total)} less without it ${rupees(without.tax.total)} (${withItems.regime} regime), deducted in full now.`, rule: tdsRs ? cite(tdsRs) : undefined });
     } else {
-      tax = projectTax(s.tax, rules, { month: on.slice(0, 7), gross: taxable, basic: sumOf((l) => l.code === 'basic'), hra: sumOf((l) => l.code === 'hra'), pt: sumOf((l) => l.code === statCode('pt')) });
+      const plus = (x: string, y?: string) => D(x).add(y ?? 0).toFixed(2);
+      tax = projectTax(s.tax, rules, { month: on.slice(0, 7), gross: plus(taxable, mtd?.taxable), basic: plus(sumOf((l) => l.code === 'basic'), mtd?.basic), hra: plus(sumOf((l) => l.code === 'hra'), mtd?.hra), pt: sumOf((l) => l.code === statCode('pt')) });
       add({ code: statCode('tds'), name: nameOf(statCode('tds'), 'Income tax (TDS)'), kind: 'deduction', segmentNo: 0, amount: D(tax.monthTds), explanation: `Tax for the year ${rupees(tax.tax.total)} (${tax.regime} regime) less ${rupees(tax.alreadyDeducted)} already deducted, over ${tax.remainingPeriods} pay ${tax.remainingPeriods === 1 ? 'period' : 'periods'}.`, rule: tdsRs ? cite(tdsRs) : undefined });
     }
   }

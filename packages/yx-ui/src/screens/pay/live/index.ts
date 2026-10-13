@@ -72,3 +72,6 @@ export { GoLiveScreen, type GoLiveScreenProps, type GoLiveReadiness, type Readin
 // Batch 5h (PAY-8.01 … 8.04): consultants, their invoices and payments, Form 140 / 131 and the consultant's own page.
 export * from './types-5h';
 export { ConsultantsScreen, ConsultantTaxScreen, ConsultantPortalScreen, InvoiceStatusBadge, type ConsultantsScreenProps, type ConsultantTaxScreenProps, type ConsultantPortalScreenProps } from './consultants';
+// Batch 5i (PAY-9.01 … 9.12): special pay, earned wage access, equity, actuarial valuation and country packs.
+export * from './types-5i';
+export { SpecialPayScreen, MyIncentivesScreen, EwaAdminScreen, MyEwaScreen, EquityScreen, MyEquityScreen, ActuarialScreen, CountryPacksScreen, type SpecialPayScreenProps, type EwaAdminScreenProps, type EquityScreenProps, type ActuarialScreenProps, type CountryPacksScreenProps } from './special';

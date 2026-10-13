@@ -29,7 +29,9 @@ const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_r
   // Batch 5j.
   'parallel_runs',
   // Batch 5h.
-  'consultants', 'tds_197_certificates', 'consultant_payout_batches', 'consultant_invoices', 'consultant_portal_sessions', 'consultant_certificates'];
+  'consultants', 'tds_197_certificates', 'consultant_payout_batches', 'consultant_invoices', 'consultant_portal_sessions', 'consultant_certificates',
+  // Batch 5i.
+  'special_postings', 'piece_rate_cards', 'piece_outputs', 'unions', 'union_authorisations', 'wage_settlements', 'layoff_days', 'vrs_payouts', 'incentive_plans', 'incentive_results', 'incentive_clawbacks', 'tip_pools', 'tip_shares', 'oncall_rules', 'oncall_slots', 'ewa_policies', 'ewa_draws', 'equity_plans', 'equity_valuations', 'equity_grants', 'vesting_events', 'equity_exercises', 'actuarial_census_exports', 'actuarial_valuations', 'entity_country_packs', 'wps_employee_ids', 'wps_files', 'eosb_provisions', 'contractor_tax_forms'];
 // Lifecycle batch 6a: people's files and documents, and joiners' planned jobs.
 const LIFECYCLE_SUPPORT_EXCLUDED = ['files', 'documents', 'document_versions', 'preboardings', 'preboarding_portal_sessions', 'consent_records', 'bgv_checks', 'letter_issues', 'signature_requests', 'exit_cases', 'exit_case_hr', 'clearance_items', 'exit_interviews', 'exit_interview_answers', 'probation_reviews', 'exit_deprovisioning', 'exit_settlement_inputs', 'alumni_sessions', 'employee_nominations', 'exit_payees', 'absconding_timelines'];
 // M05 expenses E2: claims, their lines, the approvers' changes and the flags (§5.8).

@@ -9,10 +9,11 @@ import { Segment } from '../../../components/segment';
 import { Select } from '../../../components/select';
 import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
-import { LivePage } from '../../time/live/kit';
+import { LivePage, dateText } from '../../time/live/kit';
 import { IrreversibleSheet, RunStageTrack, type RunStage } from '../pay-kit';
 import { monthText } from './periods';
 import type { Confirmation, LoadState } from './types';
+import { periodsOf } from './types-5j';
 import type { BankFileMade, BankFileRow, OffcycleKind, PayGroupRef, PayRun, PayslipDetail, PayslipLine, RunCheck, RunPayslip, RunPerson, RunProgressData, RunReadiness, RunStatus, RunVariance } from './types-5j';
 
 // Payroll runs, wired (M03 §9, §15; PAY-10.01 for PAY-01 … PAY-11): the runs of each month, and one run from its checks to
@@ -43,7 +44,7 @@ const STATUS: Record<RunStatus, { label: string; tone: BadgeTone }> = {
 };
 export const RunStatusBadge = ({ status }: { status: RunStatus }) => <Badge tone={STATUS[status].tone}>{STATUS[status].label}</Badge>;
 const KIND: Record<OffcycleKind, string> = { bonus: 'Bonus', arrears: 'Arrears', correction: 'Correction', payment: 'Payment', fnf: 'Full and final' };
-export const runName = (r: Pick<PayRun, 'runType' | 'offcycleKind' | 'month'>) => `${r.runType === 'regular' ? 'Payroll' : `Off-cycle · ${KIND[r.offcycleKind ?? 'payment']}`} · ${monthText(r.month)}`;
+export const runName = (r: Pick<PayRun, 'runType' | 'offcycleKind' | 'month'> & { range?: PayRun['range'] }) => `${r.runType === 'regular' ? 'Payroll' : `Off-cycle · ${KIND[r.offcycleKind ?? 'payment']}`} · ${r.range ? `${dateText(r.range.from)} to ${dateText(r.range.to)}` : monthText(r.month)}`;
 const stageOf = (s: RunStatus, published: boolean): RunStage =>
   published ? 'Published' : s === 'paid' ? 'Paid' : s === 'approved' ? 'Approved and locked' : s === 'submitted' || s === 'in_review' ? 'In review' : s === 'calculated' ? 'Calculated' : 'Draft';
 
@@ -58,7 +59,7 @@ export interface PayRunsScreenProps {
   thisMonth: string;
   canPrepare: boolean;
   canOffcycle: boolean;
-  onCreate: (payGroupId: string, month: string, offcycleKind: Exclude<OffcycleKind, 'fnf'> | null) => Promise<{ id: string }>;
+  onCreate: (payGroupId: string, month: string, offcycleKind: Exclude<OffcycleKind, 'fnf'> | null, subPeriod?: number | null) => Promise<{ id: string }>;
   onOpen: (id: string) => void;
 }
 
@@ -148,8 +149,12 @@ function NewRunDrawer(p: PayRunsScreenProps & { onClose: () => void }) {
   const [off, setOff] = useState<Exclude<OffcycleKind, 'fnf'>>('bonus');
   const [group, setGroup] = useState<string | null>(p.groups[0]?.id ?? null);
   const [month, setMonth] = useState(p.thisMonth);
+  const [period, setPeriod] = useState<string | null>(null);
   const { busy, error, run } = useRun();
-  const errors = [...(!group ? [{ fieldId: 'nr-group', message: 'Choose a pay group.' }] : []), ...(!/^\d{4}-\d{2}$/.test(month) ? [{ fieldId: 'nr-month', message: 'Choose the month.' }] : [])];
+  const g = p.groups.find((x) => x.id === group);
+  // PAY-9.01: a weekly or fortnightly group's regular run is for one period of the month.
+  const periods = kind === 'regular' && g?.frequency && g.frequency !== 'monthly' && g.anchorDate && /^\d{4}-\d{2}$/.test(month) ? periodsOf(g.frequency, g.anchorDate, month) : null;
+  const errors = [...(!group ? [{ fieldId: 'nr-group', message: 'Choose a pay group.' }] : []), ...(!/^\d{4}-\d{2}$/.test(month) ? [{ fieldId: 'nr-month', message: 'Choose the month.' }] : []), ...(periods && !periods.some((x) => String(x.k) === period) ? [{ fieldId: 'nr-period', message: 'Choose the pay period.' }] : [])];
   const save = useSaveErrors(errors);
   return (
     <Drawer
@@ -165,7 +170,7 @@ function NewRunDrawer(p: PayRunsScreenProps & { onClose: () => void }) {
             onClick={() => {
               if (errors.length) return save.reveal();
               void run('create', async () => {
-                const r = await p.onCreate(group!, month, kind === 'regular' ? null : off);
+                const r = await p.onCreate(group!, month, kind === 'regular' ? null : off, periods ? Number(period) : null);
                 p.onOpen(r.id);
               });
             }}
@@ -212,6 +217,11 @@ function NewRunDrawer(p: PayRunsScreenProps & { onClose: () => void }) {
         <FormField id="nr-month" label="Month" required error={save.errorOf('nr-month')} helper="The month the run pays.">
           <TextField type="month" value={month} onChange={setMonth} />
         </FormField>
+        {periods && (
+          <FormField id="nr-period" label="Pay period" required error={save.errorOf('nr-period')} helper="The month's items, PT and TDS go in the run that ends the month.">
+            <Select value={period} onChange={setPeriod} placeholder="Choose the pay period" options={periods.map((x) => ({ value: String(x.k), label: `${dateText(x.from)} to ${dateText(x.to)}` }))} />
+          </FormField>
+        )}
         {kind === 'offcycle' && (
           <InlineAlert tone="info" title="An off-cycle run pays only what you add to it">
             It never changes the month's regular payslip and can run after the month is locked. Tax on it is the extra tax the payment adds for the year.

@@ -45,6 +45,8 @@ const PAY_APPROVER_5G = ['payroll.arrears.approve', 'payroll.writeoff.approve'];
 // Batch 5h: the consultant register and invoices (payroll); approving consultant invoices (approvers, finance).
 const PAY_ADMIN_5H = ['consultant.manage'];
 const PAY_APPROVER_5H = ['consultant.invoice.approve'];
+// Batch 5i: special pay sent to payroll, earned wage access and equity plans (payroll); approvers approve postings with payroll.run.approve.
+const PAY_ADMIN_5I = ['payroll.special.manage', 'payroll.ewa.manage', 'payroll.equity.manage'];
 const PAY_APPROVER_5A = ['payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release'];
 
 const DESK_AGENT = ['desk.ticket.view', 'desk.ticket.work', 'desk.ticket.note', 'desk.ticket.export', 'desk.task.work', 'desk.kb.view_internal', 'desk.kb.author', 'desk.chat.work', 'desk.hr_summary.view', 'desk.ticket.move'];
@@ -75,7 +77,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'Pay, pay ranges, entity tax identifiers, and approving bank and identity changes.',
     cannot: 'HR settings.',
-    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G, ...PAY_ADMIN_5H],
+    permissions: [...HR_VIEW, 'employee.change.manage', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'employee.identity.approve', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G, ...PAY_ADMIN_5H, ...PAY_ADMIN_5I],
   },
   {
     key: 'payroll_approver',
