@@ -73,6 +73,9 @@ export const PAY_KEYS = [
   // Batch 5h.
   'consultant.manage',
   'consultant.invoice.approve',
+  'payroll.special.manage',
+  'payroll.ewa.manage',
+  'payroll.equity.manage',
 ] as const;
 export type PayKey = (typeof PAY_KEYS)[number];
 

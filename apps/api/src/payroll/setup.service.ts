@@ -189,7 +189,7 @@ export class PaySetupService {
   // ------------------------------------------------------------------------------------------ pay groups (PAY-2.05)
 
   private groupView(g: Prisma.PayGroupGetPayload<object>) {
-    return { id: g.id, legalEntityId: g.legalEntityId, name: g.name, frequency: g.frequency, currency: g.currency, dayBasis: g.dayBasis, cutOffDay: g.cutOffDay, payDay: g.payDay, bankFormat: g.bankFormat, status: g.status, version: g.version };
+    return { id: g.id, legalEntityId: g.legalEntityId, name: g.name, frequency: g.frequency, anchorDate: g.anchorDate ? g.anchorDate.toISOString().slice(0, 10) : null, currency: g.currency, dayBasis: g.dayBasis, cutOffDay: g.cutOffDay, payDay: g.payDay, bankFormat: g.bankFormat, status: g.status, version: g.version };
   }
 
   payGroups(ctx: TenantContext, user: ScopeUser) {
@@ -203,7 +203,8 @@ export class PaySetupService {
   createPayGroup(ctx: TenantContext, user: ScopeUser, dto: PayGroupDto) {
     return this.run(ctx, user, async (tx, c, v) => {
       await requireEntity(tx, c, v, 'payroll.setup.manage', dto.legalEntityId);
-      const g = await tx.payGroup.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, name: dto.name, dayBasis: dto.dayBasis ?? 'calendar', cutOffDay: dto.cutOffDay, payDay: dto.payDay, bankFormat: dto.bankFormat ?? null, createdBy: c.userId } });
+      if ((dto.frequency ?? 'monthly') !== 'monthly' && !dto.anchorDate) throw new BadRequestException('A weekly or fortnightly group needs the first day of one of its pay periods.');
+      const g = await tx.payGroup.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, name: dto.name, dayBasis: dto.dayBasis ?? 'calendar', cutOffDay: dto.cutOffDay, payDay: dto.payDay, bankFormat: dto.bankFormat ?? null, frequency: dto.frequency ?? 'monthly', anchorDate: dto.frequency && dto.frequency !== 'monthly' ? new Date(`${dto.anchorDate}T00:00:00Z`) : null, createdBy: c.userId } });
       await audit(tx, c, 'payroll.pay_group.created', 'pay_group', g.id, { name: g.name, legalEntityId: g.legalEntityId });
       return this.groupView(g);
     });

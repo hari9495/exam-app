@@ -42,6 +42,8 @@ const GUARD = [
   'screens-expenses-live',
   // M06 performance, wired (PM1 onwards).
   'screens-performance-live',
+  // M03 payroll, wired (5a onwards, consultants 5h and special pay 5i included).
+  'screens-pay-live',
 ];
 
 // Documented exceptions: [story id prefix or '*', selector, reason, rules skipped (all when omitted)].
