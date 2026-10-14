@@ -18,7 +18,8 @@ export interface WorkspaceLink {
 }
 
 export interface WorkspaceShellProps {
-  active: WorkspacePage;
+  /** The page shown; none when it is not one of their links (a "no access" page), so nothing is highlighted. */
+  active?: WorkspacePage;
   /** Only the pages this person may open. */
   links: WorkspaceLink[];
   /** Company shown in the top bar. */
