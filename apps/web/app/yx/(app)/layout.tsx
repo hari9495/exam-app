@@ -313,7 +313,7 @@ export default function YxAppLayout({ children }: { children: React.ReactNode })
         ...(perms.has('payroll.import.run') ? [PAY_IMPORTS] : [])];
   const links = [...(firstDays.data?.card && !support ? [FIRST_30] : []), ...staff, ...time, ...payroll, ...desk, ...(support ? [] : [APPROVALS]), ...(employee && !support ? [MY_PAYSLIPS, MY_TAX, MY_DECLARATIONS, MY_LOANS, MY_PAY_DOCUMENTS] : []), ...security];
   // The link whose page this is, or one of its sub-pages: /yx/people/profile-requests is not My profile.
-  const active: WorkspacePage = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id ?? 'me';
+  const active: WorkspacePage | undefined = links.find((l) => pathname === l.href || pathname?.startsWith(`${l.href}/`))?.id;
   // Toasts (§25) say "done" after an action; a message that must stay visible remains an inline alert.
   return (
     <ToastProvider>
