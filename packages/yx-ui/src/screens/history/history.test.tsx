@@ -265,7 +265,8 @@ describe('Add person (P01 §4.4 / §4.5a, PPL-36)', () => {
     await u.type(within(dialog).getByLabelText(/Joins on/), '1/10/2026');
     await u.type(within(dialog).getByLabelText(/^Reason/), 'Offer accepted');
     await u.click(within(dialog).getByRole('button', { name: 'Add person' }));
-    await screen.findByText('This email or phone already belongs to someone here');
+    const box = await screen.findByText('This email or phone already belongs to someone here');
+    expect(box.closest('.yx-drawer__notice')).not.toBeNull(); // above the buttons, not scrolled away at the top of the form
     expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('personId');
     const link = within(dialog).getByRole('button', { name: 'Link and add' });
     expect(link).toBeDisabled();

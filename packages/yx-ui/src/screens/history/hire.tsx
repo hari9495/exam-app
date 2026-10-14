@@ -221,6 +221,17 @@ export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreate
       dirty={dirty}
       title="Add person"
       subtitle="Creates their record with the job they start in. Later changes go through Job changes."
+      // Beside the button it unlocks, never scrolled away (founder review 14 Oct 2026).
+      notice={
+        match && (
+          <div className="yx-auth__stack">
+            <InlineAlert tone="warning" title="This email or phone already belongs to someone here">
+              It may be the same person (a rehire, a former candidate or contractor). Check before linking: their history stays with them. If it is someone else, change the email or phone.
+            </InlineAlert>
+            <Checkbox label="I checked: this is the same person" checked={sameConfirmed} onChange={setSameConfirmed} />
+          </div>
+        )
+      }
       footer={
         <>
           <Button onClick={onClose} disabled={busy}>Cancel</Button>
@@ -245,12 +256,6 @@ export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreate
           <FormField id="hire-phone" label="Mobile" optional error={errorOf('hire-phone')}>
             <TextField type="tel" value={draft.mobilePhone} onChange={(mobilePhone) => set({ mobilePhone })} maxLength={20} inputMode="tel" autoComplete="off" />
           </FormField>
-          {match && (
-            <InlineAlert tone="warning" title="This email or phone already belongs to someone here">
-              It may be the same person (a rehire, a former candidate or contractor). Check before linking: their history stays with them. If it is someone else, change the email or phone.
-            </InlineAlert>
-          )}
-          {match && <Checkbox label="I checked: this is the same person" checked={sameConfirmed} onChange={setSameConfirmed} />}
         </FormSection>
         <FormSection title="Employment">
           <FormField id="hire-entity" label="Legal entity" required error={errorOf('hire-entity')}>
