@@ -111,7 +111,7 @@ export function hireInput(d: HireDraft, canPay: boolean): { input: HireInput | n
   if (hours && !(/^\d{1,2}(\.5)?$/.test(hours) && Number(hours) > 0 && Number(hours) <= 80)) errors.push({ fieldId: 'hire-hours', message: 'Enter the hours a week, e.g. 24 or 37.5 (at most 80), or leave it empty for full-time' });
   const ctc = d.annualCtc.trim();
   if (canPay && ctc && !AMOUNT.test(ctc)) errors.push({ fieldId: 'hire-ctc', message: 'Enter the annual CTC in rupees' });
-  if (d.reason.trim().length < 3) errors.push({ fieldId: 'hire-reason', message: 'Say why, in a few words' });
+  if (d.reason.trim().length < 3) errors.push({ fieldId: 'hire-reason', message: 'Enter the reason for adding them, e.g. the offer' });
   const back = d.overrideReason.trim();
   if (back && back.length < 10) errors.push({ fieldId: 'hire-back', message: 'Say why it goes back that far, in at least 10 characters' });
   if (errors.length) return { input: null, errors };
@@ -269,6 +269,12 @@ export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreate
               <TextField value={draft.employeeCode} onChange={(v) => set({ employeeCode: v.replace(/\s/g, '').slice(0, 30) })} autoComplete="off" spellCheck={false} />
             </FormField>
           </FieldRow>
+          {/* Right under the date that asks for it (founder review 14 Oct 2026). */}
+          {draft.joinedOn && dayKey(draft.joinedOn) < dayKey(new Date()) && (
+            <FormField id="hire-back" label="Reason for the past date" optional helper="Needed when the joining date is before the company's limit for past-dated changes." error={errorOf('hire-back')}>
+              <TextArea value={draft.overrideReason} onChange={(overrideReason) => set({ overrideReason })} rows={2} maxLength={1000} />
+            </FormField>
+          )}
           <FormField label="Starts">
             <Segment label="Starts" options={[{ value: 'probation' as const, label: 'On probation' }, { value: 'confirmed' as const, label: 'Confirmed' }]} value={draft.status} onChange={(status) => set({ status })} />
           </FormField>
@@ -306,11 +312,6 @@ export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreate
           <FormField id="hire-reason" label="Reason" required helper="Shown on their timeline, e.g. the offer or requisition." error={errorOf('hire-reason')}>
             <TextArea value={draft.reason} onChange={(reason) => set({ reason })} rows={2} maxLength={1000} />
           </FormField>
-          {draft.joinedOn && dayKey(draft.joinedOn) < dayKey(new Date()) && (
-            <FormField id="hire-back" label="Reason for the past date" optional helper="Needed when the joining date is before the company's limit for past-dated changes." error={errorOf('hire-back')}>
-              <TextArea value={draft.overrideReason} onChange={(overrideReason) => set({ overrideReason })} rows={2} maxLength={1000} />
-            </FormField>
-          )}
         </FormSection>
         {failed && <InlineAlert tone="danger" title="Not added">{failed}</InlineAlert>}
       </form>
