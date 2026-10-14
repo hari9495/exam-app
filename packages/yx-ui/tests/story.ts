@@ -17,4 +17,14 @@ export async function openStory(page: Page, id: string, theme: 'light' | 'dark')
   await page.goto(`/iframe.html?id=${id}&viewMode=story&globals=theme:${theme}`);
   await page.waitForSelector('#storybook-root > *', { state: 'attached' });
   await page.waitForFunction(() => (window as unknown as { __yxRendered?: boolean }).__yxRendered === true);
+  // storybook-addon-pseudo-states rewrites the stylesheets (:focus-visible → a class) when storyRendered fires. On a
+  // slow runner a stylesheet can finish loading after that single event (the light theme renders once; dark renders
+  // again on the theme switch), so the forced state never showed. Once every sheet has loaded, announce the render
+  // again so the rewrite sees them all; for stories without forced states it changes nothing.
+  await page.waitForLoadState('load');
+  await page.evaluate((storyId) => {
+    const w = window as unknown as { __STORYBOOK_ADDONS_CHANNEL__: { emit(e: string, id: string): void } };
+    w.__STORYBOOK_ADDONS_CHANNEL__.emit('storyRendered', storyId);
+    return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  }, id);
 }
