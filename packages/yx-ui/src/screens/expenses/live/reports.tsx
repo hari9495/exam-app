@@ -5,7 +5,7 @@ import { DatePicker } from '../../../components/date';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { FormField } from '../../../components/field';
 import { Text } from '../../../components/foundations';
-import { Tabs, TabsList, TabsTrigger } from '../../../components/shell';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/shell';
 import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { useRun } from '../../org/org-kit';
@@ -71,7 +71,8 @@ export function ExpenseReportsScreen(p: ExpenseReportsScreenProps) {
             </TabsTrigger>
           ))}
         </TabsList>
-      </Tabs>
+        {/* The panel the active tab controls (its aria-controls must point at one). */}
+        <TabsContent value={p.kind}>
       {p.kind !== 'advance-ageing' && p.kind !== 'unpaid' && (
         <div className="yx-lif-row">
           <FormField id="rp-from" label="From">
@@ -93,6 +94,8 @@ export function ExpenseReportsScreen(p: ExpenseReportsScreenProps) {
           <DataTable label={tab.label} columns={columns} rows={p.report.rows} getRowId={(r) => String(p.report!.rows.indexOf(r))} rowNoun={['row', 'rows']} empty={<EmptyState compact title="Nothing to show for this period." />} />
         </>
       )}
+        </TabsContent>
+      </Tabs>
     </LivePage>
   );
 }

@@ -2,18 +2,16 @@
 
 /* ---------------------------------------------------------------- Tenant portal wrapper (§38) */
 .yx-tportal { --yx-tportal-accent: var(--yx-color-action-primary); }
-.yx-tportal[data-accent="tenant"] {
-  --yx-tportal-accent: var(--yx-tenant-accent);
+.yx-tportal[data-accent="tenant"] { --yx-tportal-accent: var(--yx-tenant-accent); }
+/* Text, links, tabs and buttons take the tenant colour on the light theme only: it is checked for 4.5:1 on white (§38),
+   and on the dark surfaces it can fall to 2:1. There the theme's own colours stay; the tenant colour keeps the top rule. */
+:root:not([data-theme="dark"]) .yx-tportal[data-accent="tenant"] {
   --yx-button-primary-bg: var(--yx-tportal-accent);
   --yx-button-primary-bg-hover: var(--yx-tportal-accent);
   --yx-color-link: var(--yx-tportal-accent);
   --yx-color-action-primary: var(--yx-tportal-accent);
 }
-.yx-tportal[data-accent="tenant"] .yx-button[data-variant="primary"]:hover:not(:disabled) { filter: brightness(0.9); }
-:root[data-theme="dark"] .yx-tportal[data-accent="tenant"] {
-  --yx-button-primary-bg: var(--yx-color-action-primary-hover);
-  --yx-color-link: var(--yx-color-link);
-}
+:root:not([data-theme="dark"]) .yx-tportal[data-accent="tenant"] .yx-button[data-variant="primary"]:hover:not(:disabled) { filter: brightness(0.9); }
 .yx-tportal .yx-portal__head { border-top: calc(var(--yx-space-1)) solid var(--yx-tportal-accent); }
 .yx-tportal__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-2) var(--yx-space-4); }
 .yx-tportal__note { display: inline-flex; align-items: center; gap: var(--yx-space-2); color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }

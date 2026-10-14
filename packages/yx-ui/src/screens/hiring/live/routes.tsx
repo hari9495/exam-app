@@ -53,6 +53,8 @@ function RouteCard(p: ApprovalRoutesScreenProps & { gate: 'requisition' | 'offer
   const incomplete = steps.some((s) => !s.name.trim() || (s.approverType === 'users' && enabled && !s.approverUserIds.length) || (s.approverType === 'group' && !s.groupId));
   return (
     <Card title={p.title}>
+      {/* Spaced like the step blocks: the checkbox and "Add a step" sat 2 px apart, under the 24 px target rule. */}
+      <div className="yx-tim-stack">
       <Text as="p" tone="secondary">{p.note}</Text>
       {error && (
         <InlineAlert tone="danger" title="Not saved">
@@ -96,6 +98,7 @@ function RouteCard(p: ApprovalRoutesScreenProps & { gate: 'requisition' | 'offer
         <Button variant="primary" loading={busy === 'save'} disabled={incomplete} onClick={() => void run('save', async () => { await p.onSave(p.gate, { enabled, steps }); setSaved(true); })}>
           Save {p.title.toLowerCase()}
         </Button>
+      </div>
       </div>
     </Card>
   );

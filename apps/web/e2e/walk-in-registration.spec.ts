@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { signIn } from './fixtures/sign-in';
+import { skipPreV2Console } from './fixtures/pre-v2';
+
+skipPreV2Console('walk-in-registration.spec.ts');
 
 const ORG_SLUG = process.env.E2E_ORG_SLUG ?? 'demo-org';
 const RECRUITER_EMAIL = process.env.E2E_RECRUITER_EMAIL ?? 'recruiter@demo-org.test';

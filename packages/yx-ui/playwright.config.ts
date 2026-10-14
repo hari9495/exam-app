@@ -9,7 +9,7 @@ export default defineConfig({
   snapshotPathTemplate: '{testDir}/__screenshots__/{platform}/{arg}{ext}',
   timeout: 60_000,
   fullyParallel: true,
-  workers: process.env.CI ? 2 : 4,
+  workers: 4,
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
   expect: { timeout: 20_000, toHaveScreenshot: { maxDiffPixelRatio: 0.002, animations: 'disabled', caret: 'hide' } },
   use: {

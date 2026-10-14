@@ -4,7 +4,8 @@ import { ApplicationPanel, type ApplicationPanelProps } from './application';
 import { InterviewScreen, MyInterviewsScreen, ScorecardTemplatesScreen, type InterviewScreenProps, type MyInterviewsScreenProps, type ScorecardTemplatesScreenProps } from './interviews';
 
 // Recruitment, wired (batch AT5; M10-BUILD-DESIGN §8, §9). In the affordance guard set ('screens-hiring-live').
-const meta: Meta = { title: 'Screens/Hiring/Live · Job workspace and interviews', parameters: { layout: 'fullscreen' } };
+// The lower-case exports are sample props shared with the tests, not stories.
+const meta: Meta = { title: 'Screens/Hiring/Live · Job workspace and interviews', parameters: { layout: 'fullscreen' }, excludeStories: /^[a-z]/ };
 export default meta;
 type S = StoryObj;
 

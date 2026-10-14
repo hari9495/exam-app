@@ -1,6 +1,6 @@
 import { EmailLookService } from '../src/email/email-look.service';
 import { Test } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication, Logger, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import * as argon2 from 'argon2';
 import { createHash, randomUUID } from 'crypto';
@@ -558,11 +558,19 @@ describe('one-time-code sign-in and OTP fallback factor (P12 §3, YX-IAM-03/07/1
       const down = new Redis('redis://127.0.0.1:1', { maxRetriesPerRequest: 0, lazyConnect: true, retryStrategy: () => null });
       down.on('error', () => undefined);
       const otp = new OtpService(app.get(OrgSecretsCryptoService), email as never, app.get(OTP_SMS_SENDER), down, app.get(PrismaService), app.get(EmailLookService));
-      await expect(otp.reserveSend('x', null)).rejects.toThrow('temporarily unavailable');
-      await expect(otp.issue('k', {})).rejects.toThrow('temporarily unavailable');
-      await settle();
-      expect(email.send).not.toHaveBeenCalled();
-      down.disconnect();
+      // The store being down is logged as an error (that is the point); capture it here instead of printing a
+      // "Connection is closed" stack into the run's output, where it reads like a teardown failure.
+      const logged = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      try {
+        await expect(otp.reserveSend('x', null)).rejects.toThrow('temporarily unavailable');
+        await expect(otp.issue('k', {})).rejects.toThrow('temporarily unavailable');
+        await settle();
+        expect(email.send).not.toHaveBeenCalled();
+        expect(logged).toHaveBeenCalledWith('One-time-code store unavailable', expect.any(Error));
+      } finally {
+        logged.mockRestore();
+        down.disconnect();
+      }
     });
   });
 });

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { expect, test } from '@playwright/test';
+import { openStory } from './story';
 
 // WCAG 2.2 AA scan of every story in light and dark (§36). Runs against the built Storybook.
 const require = createRequire(import.meta.url);
@@ -14,8 +15,7 @@ for (const theme of ['light', 'dark'] as const) {
     test(`a11y ${s.title} › ${s.name} [${theme}]`, async ({ page }) => {
       const crashes: string[] = [];
       page.on('pageerror', (e) => crashes.push(e.message));
-      await page.goto(`/iframe.html?id=${s.id}&viewMode=story&globals=theme:${theme}`);
-      await page.waitForSelector('#storybook-root > *', { state: 'attached' });
+      await openStory(page, s.id, theme);
       await page.waitForTimeout(s.id.includes('live-validation') ? 4000 : 800);
       await page.addScriptTag({ path: axePath });
       const violations = await page.evaluate(async () => {

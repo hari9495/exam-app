@@ -46,3 +46,14 @@ export async function unlinkConsoleAgent(staffUserId: string): Promise<void> {
   }).catch(() => undefined);
   await prisma.$disconnect();
 }
+
+/**
+ * The seeded "near its breach" ticket has 48 office-hours minutes left, so it is due within 4 hours (the "Breaching
+ * soon" rule) only while the office is open. Make its resolution target fall due an hour from now, whatever the time.
+ */
+export async function dueWithinAnHour(subject: string): Promise<void> {
+  await asPlatform(async (tx) => {
+    const ticket = await tx.sdTicket.findFirstOrThrow({ where: { subject }, select: { id: true } });
+    await tx.sdSlaTimer.updateMany({ where: { ticketId: ticket.id, metric: 'resolution', state: 'running' }, data: { dueAt: new Date(Date.now() + 3_600_000) } });
+  });
+}

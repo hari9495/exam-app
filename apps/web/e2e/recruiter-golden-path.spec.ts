@@ -1,6 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { signIn } from './fixtures/sign-in';
 import path from 'path';
+import { skipPreV2Console } from './fixtures/pre-v2';
+
+skipPreV2Console('recruiter-golden-path.spec.ts');
 
 const RECRUITER_EMAIL = process.env.E2E_RECRUITER_EMAIL ?? 'recruiter@demo-org.test';
 const RECRUITER_PASSWORD = process.env.E2E_RECRUITER_PASSWORD ?? 'Passw0rd!2026';
